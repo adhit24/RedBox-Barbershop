@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔴 REDBOX CRM — Admin Setup</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+      background: #0A0A0A;
+      color: #fff;
+      padding: 40px 20px;
+    }
+    .container { max-width: 600px; margin: 0 auto; }
+    h1 { font-size: 2rem; margin-bottom: 10px; color: #C1121F; }
+    .subtitle { color: #999; margin-bottom: 30px; }
+    .card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      padding: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .status.ok { color: #4ade80; }
+    .status.pending { color: #fbbf24; }
+    .status.error { color: #f87171; }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status.ok .dot { background: #4ade80; }
+    .status.pending .dot { background: #fbbf24; }
+    .status.error .dot { background: #f87171; }
+    h3 { margin: 20px 0 12px; color: #eee; }
+    p { line-height: 1.6; color: #ccc; margin-bottom: 12px; font-size: 14px; }
+    .button {
+      display: block;
+      width: 100%;
+      padding: 12px 20px;
+      margin: 10px 0;
+      background: #C1121F;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+      transition: background .2s;
+    }
+    .button:hover { background: #E63946; }
+    .button.secondary {
+      background: transparent;
+      border: 1px solid #333;
+      color: #aaa;
+    }
+    .button.secondary:hover { background: #1a1a1a; color: #fff; }
+    code {
+      background: #1a1a1a;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Monaco', monospace;
+      font-size: 12px;
+    }
+    .steps {
+      counter-reset: step;
+      list-style: none;
+    }
+    .steps li {
+      counter-increment: step;
+      margin: 16px 0;
+      padding-left: 32px;
+      position: relative;
+      line-height: 1.6;
+      color: #ccc;
+      font-size: 14px;
+    }
+    .steps li:before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      background: #C1121F;
+      color: white;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .success { color: #4ade80; }
+    footer { text-align: center; margin-top: 40px; color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔴 REDBOX CRM</h1>
+    <p class="subtitle">Admin Dashboard Setup Guide</p>
+
+    <div class="card">
+      <h3>✅ System Status</h3>
+      <div class="status ok"><span class="dot"></span> API Server (localhost:3001)</div>
+      <div class="status ok"><span class="dot"></span> Database (Supabase PostgreSQL)</div>
+      <div id="tokenStatus" class="status pending"><span class="dot"></span> Admin Token</div>
+      <p style="margin-top: 12px; font-size: 12px;">Last check: <code id="timestamp">—</code></p>
+    </div>
+
+    <div class="card">
+      <h3>🚀 Quick Setup (Recommended)</h3>
+      <button class="button" onclick="quickSetup()">
+        1️⃣ Activate Admin Mode
+      </button>
+      <p style="text-align: center; color: #666; margin: 12px 0; font-size: 12px;">Then:</p>
+      <button class="button secondary" onclick="openCRM()">
+        2️⃣ Open CRM Dashboard
+      </button>
+    </div>
+
+    <div class="card">
+      <h3>📋 Manual Setup (If Button Doesn't Work)</h3>
+      <ol class="steps">
+        <li>Open Developer Tools: <code>F12</code> (or Right-click → Inspect)</li>
+        <li>Click <strong>Console</strong> tab</li>
+        <li>Copy & paste this code:
+          <div style="background: #1a1a1a; padding: 8px; margin: 8px 0; border-radius: 4px; overflow-x: auto;">
+            <code>localStorage.setItem('rb_admin_token', 'redbox_admin_2024')</code>
+          </div>
+        </li>
+        <li>Press <code>Enter</code></li>
+        <li>Click button below to open CRM</li>
+      </ol>
+      <button class="button" onclick="openCRM()">🔐 Open CRM (after token set)</button>
+    </div>
+
+    <div class="card">
+      <h3>🧪 System Tests</h3>
+      <button class="button secondary" onclick="testAPI()">Test API Connection</button>
+      <button class="button secondary" onclick="testBookings()">Test Bookings Endpoint</button>
+      <button class="button secondary" onclick="testCustomers()">Test Customers Endpoint</button>
+      <p id="testResult" style="margin-top: 12px; font-size: 12px; color: #999;"></p>
+    </div>
+
+    <div class="card">
+      <h3>📖 Features Ready to Test</h3>
+      <ul style="margin-left: 20px; color: #aaa; font-size: 14px;">
+        <li>✅ Create bookings from <code>booking.html</code></li>
+        <li>✅ View all bookings in CRM</li>
+        <li>✅ View all customers in CRM</li>
+        <li>✅ Edit booking status (pending → confirmed → done)</li>
+        <li>✅ Cancel bookings</li>
+        <li>✅ Anti-double-booking protection</li>
+        <li>✅ Calendar view with barber filter</li>
+      </ul>
+    </div>
+
+    <footer>
+      REDBOX Barbershop CRM v1.0 • April 2026 • System Operational ✅
+    </footer>
+  </div>
+
+  <script>
+    function quickSetup() {
+      localStorage.setItem('rb_admin_token', 'redbox_admin_2024');
+      updateTokenStatus();
+      alert('✅ Admin token saved!\n\nNow opening CRM Dashboard...');
+      openCRM();
+    }
+
+    function updateTokenStatus() {
+      const token = localStorage.getItem('rb_admin_token');
+      const statusEl = document.getElementById('tokenStatus');
+      if (token) {
+        statusEl.className = 'status ok';
+        statusEl.innerHTML = '<span class="dot"></span> Admin Token (Set)';
+      } else {
+        statusEl.className = 'status pending';
+        statusEl.innerHTML = '<span class="dot"></span> Admin Token (Not Set)';
+      }
+    }
+
+    function openCRM() {
+      const token = localStorage.getItem('rb_admin_token');
+      if (!token) {
+        alert('❌ Admin token not set yet.\n\nClick "Activate Admin Mode" button or follow Manual Setup steps.');
+        return;
+      }
+      window.location.href = '/crm.html';
+    }
+
+    async function testAPI() {
+      const result = document.getElementById('testResult');
+      result.textContent = '🔄 Testing...';
+      try {
+        const res = await fetch('/api/health');
+        if (res.ok) {
+          const data = await res.json();
+          result.innerHTML = `<span class="success">✅ API OK</span> - ${data.service}`;
+        } else {
+          result.innerHTML = `<span>❌ API Error: ${res.status}</span>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span>❌ Connection failed: ${e.message}</span>`;
+      }
+    }
+
+    async function testBookings() {
+      const result = document.getElementById('testResult');
+      result.textContent = '🔄 Testing...';
+      try {
+        const res = await fetch('/api/bookings', {
+          headers: { 'x-admin-token': localStorage.getItem('rb_admin_token') || '' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          result.innerHTML = `<span class="success">✅ Bookings OK</span> - ${data.data.length} bookings in DB`;
+        } else if (res.status === 401) {
+          result.innerHTML = `<span>⚠️ Admin token not set. Click "Activate Admin Mode" first.</span>`;
+        } else {
+          result.innerHTML = `<span>❌ Error: ${res.status}</span>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span>❌ Connection failed: ${e.message}</span>`;
+      }
+    }
+
+    async function testCustomers() {
+      const result = document.getElementById('testResult');
+      result.textContent = '🔄 Testing...';
+      try {
+        const res = await fetch('/api/customers', {
+          headers: { 'x-admin-token': localStorage.getItem('rb_admin_token') || '' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          result.innerHTML = `<span class="success">✅ Customers OK</span> - ${data.data.length} customers in DB`;
+        } else if (res.status === 401) {
+          result.innerHTML = `<span>⚠️ Admin token not set. Click "Activate Admin Mode" first.</span>`;
+        } else {
+          result.innerHTML = `<span>❌ Error: ${res.status}</span>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<span>❌ Connection failed: ${e.message}</span>`;
+      }
+    }
+
+    // Update on load
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('timestamp').textContent = new Date().toLocaleTimeString();
+      updateTokenStatus();
+    });
+  </script>
+</body>
+</html>

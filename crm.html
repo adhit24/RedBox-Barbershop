@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRM Dashboard — Redbox Barbershop</title>
+  <link rel="icon" type="image/png" href="Brand_assets/RedBox Logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/crm.css" />
+</head>
+<body>
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="crm-sidebar" id="crmSidebar">
+    <div class="sidebar-top">
+      <img src="Brand_assets/RedBox Logo.png" alt="Redbox" class="sb-logo" />
+      <div class="sb-brand">
+        <span class="sb-name">REDBOX</span>
+        <span class="sb-role">Admin Dashboard</span>
+      </div>
+    </div>
+    <nav class="sb-nav">
+      <button class="sb-link active" data-view="overview">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Overview
+      </button>
+      <button class="sb-link" data-view="calendar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Calendar
+      </button>
+      <button class="sb-link" data-view="bookings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Bookings
+      </button>
+      <button class="sb-link" data-view="barbers">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        Barbers
+      </button>
+      <button class="sb-link" data-view="customers">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Customers
+      </button>
+      <button class="sb-link" data-view="revenue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Revenue
+      </button>
+    </nav>
+    <div class="sb-bottom">
+      <a href="index.html" class="sb-back">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Back to Website
+      </a>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <main class="crm-main">
+
+    <!-- Top Bar -->
+    <div class="crm-topbar">
+      <div class="topbar-left">
+        <button class="sidebar-toggle" id="sidebarToggle">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <h1 class="page-title" id="pageTitle">Overview</h1>
+      </div>
+      <div class="topbar-right">
+        <span class="topbar-date" id="topbarDate"></span>
+        <div class="admin-badge">Admin</div>
+      </div>
+    </div>
+
+    <!-- ===== VIEW: OVERVIEW ===== -->
+    <div class="crm-view active" id="view-overview">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon red">📋</div>
+          <div class="stat-info">
+            <span class="stat-val" id="statToday">0</span>
+            <span class="stat-label">Bookings Today</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green">✅</div>
+          <div class="stat-info">
+            <span class="stat-val" id="statDone">0</span>
+            <span class="stat-label">Completed</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon yellow">⏳</div>
+          <div class="stat-info">
+            <span class="stat-val" id="statPending">0</span>
+            <span class="stat-label">Pending</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon blue">👥</div>
+          <div class="stat-info">
+            <span class="stat-val" id="statCustomers">0</span>
+            <span class="stat-label">Total Customers</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="overview-grid">
+        <div class="crm-card">
+          <div class="card-head">
+            <h3>Today's Schedule</h3>
+            <span class="card-badge" id="todayDateLabel"></span>
+          </div>
+          <div class="today-slots" id="todaySlots">
+            <p class="empty-state">No bookings today</p>
+          </div>
+        </div>
+        <div class="crm-card">
+          <div class="card-head"><h3>Recent Bookings</h3></div>
+          <div class="recent-list" id="recentList">
+            <p class="empty-state">No bookings yet</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VIEW: CALENDAR ===== -->
+    <div class="crm-view" id="view-calendar">
+      <div class="crm-card">
+        <div class="card-head">
+          <div class="cal-nav-wrap">
+            <button class="icon-btn" id="calPrevAdmin">‹</button>
+            <h3 id="calAdminLabel">—</h3>
+            <button class="icon-btn" id="calNextAdmin">›</button>
+          </div>
+          <div class="barber-filter-wrap">
+            <label>Barber:</label>
+            <select id="calBarberFilter" class="crm-select">
+              <option value="all">All Barbers</option>
+            </select>
+          </div>
+        </div>
+        <div class="crm-cal-days-head">
+          <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+        </div>
+        <div class="crm-cal-grid" id="crmCalGrid"></div>
+      </div>
+
+      <!-- Day Detail -->
+      <div class="crm-card" id="dayDetailCard" style="display:none">
+        <div class="card-head">
+          <h3 id="dayDetailTitle">Schedule</h3>
+          <button class="btn-sm-red" id="addBookingBtn">+ Add Booking</button>
+        </div>
+        <div class="slot-timeline" id="slotTimeline"></div>
+      </div>
+    </div>
+
+    <!-- ===== VIEW: BOOKINGS ===== -->
+    <div class="crm-view" id="view-bookings">
+      <div class="crm-card">
+        <div class="card-head">
+          <h3>All Bookings</h3>
+          <div class="filter-row">
+            <input type="text" class="crm-input" id="bookingSearch" placeholder="Search name or service..." />
+            <select class="crm-select" id="bookingStatusFilter">
+              <option value="all">All Status</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="done">Done</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select class="crm-select" id="bookingBarberFilter">
+              <option value="all">All Barbers</option>
+            </select>
+            <button class="action-btn" onclick="exportBookingsCSV()" title="Export CSV">⬇ CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="crm-table" id="bookingsTable">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Customer</th>
+                <th>Service</th>
+                <th>Barber</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="bookingsBody"></tbody>
+          </table>
+          <p class="empty-state" id="bookingsEmpty" style="display:none">No bookings found</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VIEW: BARBERS ===== -->
+    <div class="crm-view" id="view-barbers">
+      <div class="barbers-grid" id="barbersGrid"></div>
+    </div>
+
+    <!-- ===== VIEW: CUSTOMERS ===== -->
+    <div class="crm-view" id="view-customers">
+      <div class="crm-card">
+        <div class="card-head">
+          <h3>Customer Database</h3>
+          <div class="filter-row">
+            <input type="text" class="crm-input" id="customerSearch" placeholder="Search name or WhatsApp..." />
+            <button class="action-btn active" data-segment="all">Semua</button>
+            <button class="action-btn" data-segment="loyal" style="color:#4ade80">Loyal ≥5x</button>
+            <button class="action-btn" data-segment="atrisk" style="color:#fbbf24">At-Risk</button>
+            <button class="action-btn" data-segment="lost" style="color:#f87171">Lost</button>
+            <button class="action-btn" onclick="exportCustomersCSV()" title="Export CSV">⬇ CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="crm-table" id="customersTable">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>WhatsApp</th>
+                <th>Visits</th>
+                <th>Last Visit</th>
+                <th>Fav. Service</th>
+                <th>Total Spent</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="customersBody"></tbody>
+          </table>
+          <p class="empty-state" id="customersEmpty" style="display:none">No customers yet</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== VIEW: REVENUE ===== -->
+    <div class="crm-view" id="view-revenue">
+      <div style="text-align:center;padding:40px;color:#aaa">Pilih menu Revenue untuk melihat laporan...</div>
+    </div>
+
+  </main>
+
+  <!-- ===== MODAL: ADD/EDIT BOOKING ===== -->
+  <div class="modal-overlay" id="bookingModal" style="display:none">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="modalTitle">Add Booking</h3>
+        <button class="modal-close" id="modalClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Customer Name *</label>
+            <input type="text" id="mName" class="crm-input" placeholder="Full name" />
+          </div>
+          <div class="form-group">
+            <label>WhatsApp *</label>
+            <input type="tel" id="mWa" class="crm-input" placeholder="08xx xxxx xxxx" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Service *</label>
+            <select id="mService" class="crm-select"></select>
+          </div>
+          <div class="form-group">
+            <label>Barber *</label>
+            <select id="mBarber" class="crm-select">
+              <option value="any">Anyone Available</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date *</label>
+            <input type="date" id="mDate" class="crm-input" />
+          </div>
+          <div class="form-group">
+            <label>Time *</label>
+            <select id="mTime" class="crm-select"></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Location</label>
+            <select id="mLocation" class="crm-select">
+              <option value="bypass">Redbox Bypass</option>
+              <option value="samadikun">Redbox Samadikun</option>
+              <option value="csb">Redbox CSB Mall</option>
+              <option value="sumber">Redbox Sumber</option>
+              <option value="tegal">Redbox Tegal</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="mStatus" class="crm-select">
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="mNotes" class="crm-input" rows="2" placeholder="Optional notes..."></textarea>
+        </div>
+        <div id="doubleBookingWarn" class="warn-box" style="display:none">
+          ⚠️ <strong>Conflict!</strong> This barber already has a booking at this time slot.
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-ghost" id="modalCancel">Cancel</button>
+        <button class="btn-red" id="modalSave">Save Booking</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: BOOKING DETAIL ===== -->
+  <div class="modal-overlay" id="detailModal" style="display:none">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Booking Detail</h3>
+        <button class="modal-close" id="detailClose">&times;</button>
+      </div>
+      <div class="modal-body" id="detailBody"></div>
+      <div class="modal-foot">
+        <button class="btn-red" id="detailConfirm">✅ Confirm</button>
+        <button class="btn-yellow" id="detailDeny">⛔ Deny</button>
+        <button class="btn-danger" id="detailCancel">❌ Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: CUSTOMER DETAIL ===== -->
+  <div class="modal-overlay" id="customerDetailModal" style="display:none">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>Customer Detail</h3>
+        <button class="modal-close" id="customerDetailClose">&times;</button>
+      </div>
+      <div class="modal-body" id="customerDetailBody"></div>
+      <div class="modal-foot">
+        <button class="btn-ghost" id="customerDetailCancel">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/services-data.js"></script>
+  <script src="js/crm.js"></script>
+</body>
+</html>

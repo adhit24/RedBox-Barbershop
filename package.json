@@ -1,0 +1,11 @@
+{
+  "name": "redbox-barbershop",
+  "private": true,
+  "workspaces": [
+    "server"
+  ],
+  "scripts": {
+    "start": "npm --workspace server run start",
+    "dev": "npm --workspace server run dev"
+  }
+}
