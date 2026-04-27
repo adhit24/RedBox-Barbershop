@@ -1,5 +1,5 @@
 const Airtable = require('airtable');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 function isConfigured() {
   return Boolean(
