@@ -6,7 +6,7 @@ require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
 const { syncBookingToAirtable, updateBookingInAirtable } = require('./airtable');
@@ -653,7 +653,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
     return res.status(400).json({ error: 'Format nomor WhatsApp tidak valid (8-15 angka tanpa kode negara)' });
   }
 
-  const bookingId = uuidv4();
+  const bookingId = randomUUID();
 
   if (DB_TYPE === 'supabase') {
     try {
@@ -692,7 +692,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       if (customers.length > 0) {
         customerId = customers[0].id;
       } else {
-        customerId = uuidv4();
+        customerId = randomUUID();
         await mysqlPool.execute('INSERT INTO customers (id, name, wa) VALUES (?, ?, ?)', [customerId, name, wa]);
       }
 
@@ -797,7 +797,7 @@ app.patch('/api/bookings/:id', adminAuth, async (req, res) => {
           );
         } else {
           // Buat customer baru jika belum ada (seharusnya sudah ada dari POST, tapi sebagai fallback)
-          const custId = uuidv4();
+          const custId = randomUUID();
           const custName = updates.name || cur.name || '';
           await mysqlPool.execute(
             `INSERT INTO customers (id, name, wa, visits, total_spent, last_visit, services) VALUES (?, ?, ?, 1, ?, ?, ?)`,

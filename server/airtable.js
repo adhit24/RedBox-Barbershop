@@ -1,10 +1,18 @@
 const Airtable = require('airtable');
 require('dotenv').config();
 
-const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
-
 function isConfigured() {
-  return process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_API_KEY !== 'your_airtable_api_key';
+  return Boolean(
+    process.env.AIRTABLE_API_KEY &&
+    process.env.AIRTABLE_API_KEY !== 'your_airtable_api_key' &&
+    process.env.AIRTABLE_BASE_ID &&
+    process.env.AIRTABLE_TABLE_NAME
+  );
+}
+
+function getBase() {
+  if (!isConfigured()) return null;
+  return new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(process.env.AIRTABLE_BASE_ID);
 }
 
 function escapeAirtableValue(val) {
@@ -33,6 +41,7 @@ function buildFields(booking) {
 async function syncBookingToAirtable(booking) {
   if (!isConfigured()) { console.log('Airtable sync skipped: API Key not configured.'); return; }
   try {
+    const base = getBase();
     await base(process.env.AIRTABLE_TABLE_NAME).create([{ fields: buildFields(booking) }]);
     console.log(`Synced booking ${booking.id} to Airtable`);
   } catch (error) {
@@ -43,6 +52,7 @@ async function syncBookingToAirtable(booking) {
 async function updateBookingInAirtable(booking) {
   if (!isConfigured()) return;
   try {
+    const base = getBase();
     // Gunakan ID yang di-escape untuk mencegah formula injection
     const safeId = escapeAirtableValue(booking.id);
     const records = await base(process.env.AIRTABLE_TABLE_NAME).select({
