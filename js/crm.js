@@ -155,7 +155,7 @@ async function apiSetBookingStatus(id, status) {
   return true;
 }
 
-const TIME_SLOTS = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+const TIME_SLOTS = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
 const BARBER_DATA = {};
 const LOCATION_LABELS = { bypass: 'Bypass', samadikun: 'Samadikun', csb: 'Csb Mall', sumber: 'Sumber', tegal: 'Tegal' };
 let CACHED_BARBERS = null;

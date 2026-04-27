@@ -6,7 +6,7 @@
   <title>Book Appointment — Redbox Barbershop</title>
   <meta name="description" content="Booking online Redbox Barbershop. Pilih layanan, barber, dan jadwal favorit kamu." />
   <meta name="theme-color" content="#0A0A0A" />
-  <link rel="icon" type="image/jpeg" href="Brand_assets/RedBox Logo.jpeg" />
+  <link rel="icon" type="image/png" href="Brand_assets/logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
@@ -19,14 +19,14 @@
   <nav class="navbar scrolled" id="navbar">
     <div class="container nav-container">
       <a href="index.html" class="nav-logo">
-        <img src="Brand_assets/RedBox Logo.jpeg" alt="Redbox" />
+        <img src="Brand_assets/logo.png" alt="Redbox" />
         <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
       </a>
       <ul class="nav-links" id="navLinks">
         <li><a href="index.html" class="nav-link">Home</a></li>
         <li><a href="index.html#services" class="nav-link">Services</a></li>
         <li><a href="index.html#professionals" class="nav-link">Professionals</a></li>
-        <li><a href="index.html#gallery" class="nav-link">Gallery</a></li>
+        <li><a href="products.html" class="nav-link">Product</a></li>
         <li><a href="index.html#location" class="nav-link">Location</a></li>
       </ul>
       <a href="crm.html" class="crm-nav-link" title="Admin Dashboard">⚙️</a>
@@ -262,7 +262,7 @@
       <aside class="book-sidebar" id="bookSidebar">
         <div class="sidebar-card">
           <div class="sidebar-logo">
-            <img src="Brand_assets/RedBox Logo.jpeg" alt="Redbox" />
+            <img src="Brand_assets/logo.png" alt="Redbox" />
           </div>
           <h3 class="sidebar-title">BOOKING SUMMARY</h3>
           <p class="sidebar-hint" id="sidebarHint">Select a service to get started</p>
@@ -284,5 +284,33 @@
 
   <script src="js/services-data.js"></script>
   <script src="js/booking.js"></script>
+  <script>
+    // Strip black background from logo at runtime
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.nav-logo img').forEach(function(img) {
+        function process(src) {
+          var canvas = document.createElement('canvas');
+          var ctx = canvas.getContext('2d');
+          var tmp = new Image();
+          tmp.crossOrigin = 'anonymous';
+          tmp.onload = function() {
+            canvas.width = tmp.naturalWidth;
+            canvas.height = tmp.naturalHeight;
+            ctx.drawImage(tmp, 0, 0);
+            try {
+              var d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              for (var i = 0; i < d.data.length; i += 4) {
+                if (d.data[i] < 40 && d.data[i+1] < 40 && d.data[i+2] < 40) d.data[i+3] = 0;
+              }
+              ctx.putImageData(d, 0, 0);
+              img.src = canvas.toDataURL('image/png');
+            } catch(e) {}
+          };
+          tmp.src = src;
+        }
+        img.complete ? process(img.src) : img.addEventListener('load', function() { process(img.src); }, { once: true });
+      });
+    });
+  </script>
 </body>
 </html>

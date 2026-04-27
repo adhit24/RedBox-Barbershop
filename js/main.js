@@ -91,7 +91,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const paginatedItems = filtered.slice(start, start + itemsPerPage);
 
       // Render Grid - Entire card is clickable
-      svcGrid.innerHTML = paginatedItems.map(svc => `
+      svcGrid.innerHTML = paginatedItems.map(svc => {
+        const csbNote = (svc.csbPrice && svc.csbPrice !== svc.price)
+          ? `<span class="svc-card-csb-price" title="Harga Cabang CSB Mall">CSB Mall: ${fmt(svc.csbPrice)}</span>`
+          : '';
+        return `
         <a href="booking.html?service=${svc.id}" class="svc-card reveal" style="display:block;text-decoration:none;color:inherit;">
           <div class="svc-card-img">
             <img src="${svc.img || ''}" alt="${svc.name}" style="width:100%;height:100%;object-fit:cover;" />
@@ -103,11 +107,12 @@ document.addEventListener('DOMContentLoaded', () => {
               <span class="svc-card-duration">${svc.duration}</span>
               <span class="svc-card-price">${fmt(svc.price)}</span>
             </div>
+            ${csbNote}
             <p class="svc-card-desc">${svc.desc}</p>
             <span class="svc-card-book">Book Now</span>
           </div>
-        </a>
-      `).join('');
+        </a>`;
+      }).join('');
 
       // Render Pagination Numbers
       if (totalPages > 1) {
@@ -240,6 +245,23 @@ document.addEventListener('DOMContentLoaded', () => {
       return list.length || 0;
     }
 
+    const VISIBLE_SKILLS = 4;
+
+    function renderSkills(role) {
+      const skills = String(role || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (skills.length <= 1) {
+        return `<span class="pro-role">${skills[0] || ''}</span>`;
+      }
+      const visible = skills.slice(0, VISIBLE_SKILLS);
+      const hidden  = skills.slice(VISIBLE_SKILLS);
+      const visibleHTML = visible.map(s => `<span class="pro-skill-tag">${s}</span>`).join('');
+      const hiddenHTML  = hidden.map(s => `<span class="pro-skill-tag">${s}</span>`).join('');
+      const moreHTML = hidden.length
+        ? `<details class="pro-skills-more"><summary>+${hidden.length} more</summary><span class="pro-skills-extra">${hiddenHTML}</span></details>`
+        : '';
+      return `<div class="pro-skills">${visibleHTML}${moreHTML}</div>`;
+    }
+
     function proImgHtml(b) {
       const img = String(b.img || '').trim();
       if (!img) {
@@ -262,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="pro-info">
           <h3>${b.name}</h3>
-          <span class="pro-role">${b.role}</span>
+          ${renderSkills(b.role)}
           <div class="pro-meta">
             <span class="pro-services">${serviceCount(b.role)} Services</span>
             <span class="pro-branch-tag">${formatBranchName(b.branch)}</span>
@@ -280,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="pro-info">
               <h3>${b.name}</h3>
-              <span class="pro-role">${b.role}</span>
+              ${renderSkills(b.role)}
               <div class="pro-meta">
                 <span class="pro-services">${serviceCount(b.role)} Services</span>
                 <span class="pro-branch-tag">${formatBranchName(b.branch)}</span>
@@ -290,6 +312,14 @@ document.addEventListener('DOMContentLoaded', () => {
         `).join('')}
       </div>
     `;
+
+    // Prevent <details> clicks inside <a> cards from triggering navigation
+    [proGrid, proSwiper].forEach(container => {
+      if (!container) return;
+      container.addEventListener('click', e => {
+        if (e.target.closest('.pro-skills-more')) e.preventDefault();
+      });
+    });
 
     function formatBranchName(branch) {
       const names = {
@@ -383,6 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const btns = Array.from(filter.querySelectorAll('.loc-branch-btn'));
     if (!btns.length) return;
 
+    const hoursVal = document.getElementById('locHoursValue');
+
     const setActive = btn => {
       btns.forEach(b => b.classList.toggle('active', b === btn));
       const q = btn.dataset.query || '';
@@ -392,6 +424,9 @@ document.addEventListener('DOMContentLoaded', () => {
       addrSub.textContent = btn.dataset.sub || '';
       const share = btn.dataset.share || '';
       mapLink.href = share || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+      if (hoursVal) {
+        hoursVal.textContent = btn.dataset.branch === 'csb' ? '10:00 — 21:30' : '10:00 — 21:00';
+      }
     };
 
     btns.forEach(btn => btn.addEventListener('click', () => setActive(btn)));
@@ -508,6 +543,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (d === 3) el.classList.add('reveal-d3');
     revealObs.observe(el);
   });
+
+  // ---- LOGO TRANSPARENCY (strip black background at runtime) ----
+  function applyTransparentLogo() {
+    document.querySelectorAll('.nav-logo img, .footer-logo-img').forEach(img => {
+      function process(src) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const tmp = new Image();
+        tmp.crossOrigin = 'anonymous';
+        tmp.onload = function() {
+          canvas.width = tmp.naturalWidth;
+          canvas.height = tmp.naturalHeight;
+          ctx.drawImage(tmp, 0, 0);
+          try {
+            const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < d.data.length; i += 4) {
+              if (d.data[i] < 40 && d.data[i+1] < 40 && d.data[i+2] < 40) d.data[i+3] = 0;
+            }
+            ctx.putImageData(d, 0, 0);
+            img.src = canvas.toDataURL('image/png');
+          } catch(e) {}
+        };
+        tmp.src = src;
+      }
+      img.complete ? process(img.src) : img.addEventListener('load', () => process(img.src), { once: true });
+    });
+  }
+  applyTransparentLogo();
 
   // ---- GALLERY LIGHTBOX ----
   document.querySelectorAll('.gallery-item').forEach(item => {

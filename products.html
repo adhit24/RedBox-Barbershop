@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product — Redbox Barbershop</title>
+  <meta name="description" content="Produk premium Redbox Barbershop. Hair care, grooming tools, dan perlengkapan barbershop pilihan terbaik." />
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="icon" type="image/png" href="Brand_assets/logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    /* ── PAGE-SPECIFIC STYLES ─────────────────────────── */
+    .product-hero {
+      min-height: 44vh;
+      display: flex;
+      align-items: flex-end;
+      padding: 0 0 60px;
+      position: relative;
+      overflow: hidden;
+      background: var(--black);
+    }
+    .product-hero-bg {
+      position: absolute;
+      inset: 0;
+      background-image: url('Brand_assets/homepage_background.jpg');
+      background-size: cover;
+      background-position: center 30%;
+      filter: brightness(0.25) saturate(0.6);
+    }
+    .product-hero-content {
+      position: relative;
+      z-index: 1;
+      padding: 0 clamp(20px, 6vw, 80px);
+    }
+    .product-hero-eyebrow {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .product-hero-eyebrow::before {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 1px;
+      background: var(--red);
+    }
+    .product-hero-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(3.5rem, 10vw, 7rem);
+      line-height: .9;
+      letter-spacing: .03em;
+      color: var(--white);
+      margin-bottom: 16px;
+    }
+    .product-hero-sub {
+      font-size: .9rem;
+      font-weight: 300;
+      color: var(--w50);
+      max-width: 480px;
+    }
+
+    /* ── PRODUCT GRID ─────────────────────────────────── */
+    .product-section {
+      padding: clamp(48px, 8vw, 96px) clamp(20px, 6vw, 80px);
+      background: var(--bg);
+    }
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(12px, 2vw, 24px);
+    }
+    .product-item {
+      position: relative;
+      border-radius: var(--radius);
+      overflow: hidden;
+      aspect-ratio: 3/4;
+      background: var(--black-2);
+      cursor: zoom-in;
+    }
+    .product-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform .55s cubic-bezier(0.16,1,0.3,1);
+    }
+    .product-item:hover img {
+      transform: scale(1.06);
+    }
+    .product-item-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0,0,0,.55) 0%, transparent 55%);
+      opacity: 0;
+      transition: opacity .35s ease;
+      display: flex;
+      align-items: flex-end;
+      padding: 20px;
+    }
+    .product-item:hover .product-item-overlay {
+      opacity: 1;
+    }
+    .product-item-label {
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--white);
+    }
+
+    /* ── LIGHTBOX ─────────────────────────────────────── */
+    .lb-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s ease;
+    }
+    .lb-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+    .lb-img {
+      max-width: 90vw;
+      max-height: 88vh;
+      object-fit: contain;
+      border-radius: 8px;
+      box-shadow: 0 20px 80px rgba(0,0,0,.8);
+    }
+    .lb-close {
+      position: absolute;
+      top: 20px; right: 24px;
+      background: none;
+      border: none;
+      color: var(--w70);
+      font-size: 2rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: color .2s;
+    }
+    .lb-close:hover { color: var(--white); }
+    .lb-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,.08);
+      border: none;
+      color: var(--white);
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .2s;
+    }
+    .lb-nav:hover { background: rgba(255,255,255,.18); }
+    .lb-prev { left: 16px; }
+    .lb-next { right: 16px; }
+
+    @media (max-width: 768px) {
+      .product-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .product-item { aspect-ratio: 1; }
+    }
+    @media (max-width: 480px) {
+      .product-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========== NAVBAR ========== -->
+  <nav class="navbar" id="navbar">
+    <div class="container nav-container">
+      <a href="index.html" class="nav-logo">
+        <img src="Brand_assets/logo.png" alt="Redbox Barbershop" />
+        <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="index.html" class="nav-link">Home</a></li>
+        <li><a href="index.html#services" class="nav-link">Services</a></li>
+        <li><a href="index.html#professionals" class="nav-link">Professionals</a></li>
+        <li><a href="products.html" class="nav-link active">Product</a></li>
+        <li><a href="index.html#location" class="nav-link">Location</a></li>
+      </ul>
+      <a href="booking.html" class="btn-book-nav">Book Now</a>
+      <a href="crm.html" class="crm-nav-link" title="Admin Dashboard">⚙️</a>
+      <button class="hamburger" id="hamburger" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ========== HERO ========== -->
+  <section class="product-hero">
+    <div class="product-hero-bg"></div>
+    <div class="product-hero-content container">
+      <p class="product-hero-eyebrow">Redbox Barbershop</p>
+      <h1 class="product-hero-title">Product</h1>
+      <p class="product-hero-sub">Produk grooming premium pilihan Redbox — untuk tampilan terbaik Anda setiap hari.</p>
+    </div>
+  </section>
+
+  <!-- ========== PRODUCT GRID ========== -->
+  <section class="product-section" id="products">
+    <div class="product-grid" id="productGrid">
+
+      <div class="product-item reveal" data-idx="0">
+        <img src="Brand_assets/product/1860A5C9-EB7D-4F8B-B339-8B1E010E93E8.JPG.jpeg" alt="Redbox Product" loading="lazy" />
+        <div class="product-item-overlay">
+          <span class="product-item-label">Product</span>
+        </div>
+      </div>
+
+      <div class="product-item reveal" data-idx="1">
+        <img src="Brand_assets/product/IMG_6523.JPG.jpeg" alt="Redbox Product" loading="lazy" />
+        <div class="product-item-overlay">
+          <span class="product-item-label">Product</span>
+        </div>
+      </div>
+
+      <div class="product-item reveal" data-idx="2">
+        <img src="Brand_assets/product/IMG_6524.JPG.jpeg" alt="Redbox Product" loading="lazy" />
+        <div class="product-item-overlay">
+          <span class="product-item-label">Product</span>
+        </div>
+      </div>
+
+      <div class="product-item reveal" data-idx="3">
+        <img src="Brand_assets/product/IMG_6528.JPG.jpeg" alt="Redbox Product" loading="lazy" />
+        <div class="product-item-overlay">
+          <span class="product-item-label">Product</span>
+        </div>
+      </div>
+
+      <div class="product-item reveal" data-idx="4">
+        <img src="Brand_assets/product/IMG_6532.JPG.jpeg" alt="Redbox Product" loading="lazy" />
+        <div class="product-item-overlay">
+          <span class="product-item-label">Product</span>
+        </div>
+      </div>
+
+      <div class="product-item reveal" data-idx="5">
+        <img src="Brand_assets/product/IMG_6534.JPG.jpeg" alt="Redbox Product" loading="lazy" />
+        <div class="product-item-overlay">
+          <span class="product-item-label">Product</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ========== LIGHTBOX ========== -->
+  <div class="lb-overlay" id="lbOverlay" role="dialog" aria-modal="true" aria-label="Product preview">
+    <button class="lb-close" id="lbClose" aria-label="Tutup">&times;</button>
+    <button class="lb-nav lb-prev" id="lbPrev" aria-label="Sebelumnya">&#8249;</button>
+    <img class="lb-img" id="lbImg" src="" alt="" />
+    <button class="lb-nav lb-next" id="lbNext" aria-label="Berikutnya">&#8250;</button>
+  </div>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="footer">
+    <div class="container footer-simple">
+      <div class="footer-simple-top">
+        <img src="Brand_assets/logo.png" alt="Redbox" class="footer-logo-img" />
+        <span class="footer-tagline">Precision Cut. Elevated Confidence.</span>
+      </div>
+      <div class="footer-social">
+        <a href="https://www.instagram.com/" target="_blank" aria-label="Instagram">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+        </a>
+        <a href="https://www.tiktok.com/" target="_blank" aria-label="TikTok">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.22 6.22 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.52V6.75a4.85 4.85 0 01-1.02-.06z"/></svg>
+        </a>
+        <a href="https://www.facebook.com/" target="_blank" aria-label="Facebook">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+        </a>
+      </div>
+      <p class="footer-copy">&copy; 2026 Redbox Barbershop. All rights reserved. &mdash; Since 2014</p>
+    </div>
+  </footer>
+
+  <!-- WhatsApp Float -->
+  <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tanya%20tentang%20produk" target="_blank" class="wa-float" aria-label="WhatsApp">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+  </a>
+
+  <!-- Mobile Sticky CTA -->
+  <div class="mobile-sticky-cta" id="mobileCta">
+    <a href="booking.html" class="mobile-cta-book">Book Now</a>
+  </div>
+
+  <script>
+    // Navbar scroll effect
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+      navbar.classList.toggle('scrolled', window.scrollY > 50);
+    }, { passive: true });
+
+    // Hamburger
+    const hamburger = document.getElementById('hamburger');
+    const navLinksEl = document.getElementById('navLinks');
+    if (hamburger && navLinksEl) {
+      hamburger.addEventListener('click', () => {
+        hamburger.classList.toggle('active');
+        navLinksEl.classList.toggle('open');
+        document.body.style.overflow = navLinksEl.classList.contains('open') ? 'hidden' : '';
+      });
+    }
+
+    // Scroll reveal
+    const revealObs = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); }
+      });
+    }, { threshold: 0.08 });
+    document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+    // Lightbox
+    const lbOverlay = document.getElementById('lbOverlay');
+    const lbImg = document.getElementById('lbImg');
+    const lbClose = document.getElementById('lbClose');
+    const lbPrev = document.getElementById('lbPrev');
+    const lbNext = document.getElementById('lbNext');
+    const items = Array.from(document.querySelectorAll('.product-item'));
+    let currentIdx = 0;
+
+    function openLb(idx) {
+      currentIdx = idx;
+      const img = items[idx].querySelector('img');
+      lbImg.src = img.src;
+      lbImg.alt = img.alt;
+      lbOverlay.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeLb() {
+      lbOverlay.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function navLb(dir) {
+      currentIdx = (currentIdx + dir + items.length) % items.length;
+      const img = items[currentIdx].querySelector('img');
+      lbImg.src = img.src;
+      lbImg.alt = img.alt;
+    }
+
+    items.forEach((item, idx) => item.addEventListener('click', () => openLb(idx)));
+    lbClose.addEventListener('click', closeLb);
+    lbOverlay.addEventListener('click', e => { if (e.target === lbOverlay) closeLb(); });
+    lbPrev.addEventListener('click', e => { e.stopPropagation(); navLb(-1); });
+    lbNext.addEventListener('click', e => { e.stopPropagation(); navLb(1); });
+    document.addEventListener('keydown', e => {
+      if (!lbOverlay.classList.contains('open')) return;
+      if (e.key === 'Escape') closeLb();
+      if (e.key === 'ArrowLeft') navLb(-1);
+      if (e.key === 'ArrowRight') navLb(1);
+    });
+
+    // Strip black background from logo at runtime
+    (function applyTransparentLogo() {
+      document.querySelectorAll('.nav-logo img').forEach(img => {
+        function process(src) {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const tmp = new Image();
+          tmp.crossOrigin = 'anonymous';
+          tmp.onload = function() {
+            canvas.width = tmp.naturalWidth;
+            canvas.height = tmp.naturalHeight;
+            ctx.drawImage(tmp, 0, 0);
+            try {
+              const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              for (let i = 0; i < d.data.length; i += 4) {
+                if (d.data[i] < 40 && d.data[i+1] < 40 && d.data[i+2] < 40) d.data[i+3] = 0;
+              }
+              ctx.putImageData(d, 0, 0);
+              img.src = canvas.toDataURL('image/png');
+            } catch(e) {}
+          };
+          tmp.src = src;
+        }
+        img.complete ? process(img.src) : img.addEventListener('load', () => process(img.src), { once: true });
+      });
+    })();
+  </script>
+</body>
+</html>

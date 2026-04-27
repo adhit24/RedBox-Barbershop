@@ -119,6 +119,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         item.dataset.service = svc.id;
         item.dataset.name = svc.name;
         item.dataset.price = svc.price;
+        item.dataset.csbPrice = svc.csbPrice || '';
         item.dataset.duration = svc.duration;
         item.dataset.cat = svc.category;
 
@@ -201,6 +202,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           id: svcItem.dataset.service,
           name: svcItem.dataset.name,
           price: parseInt(svcItem.dataset.price),
+          csbPrice: svcItem.dataset.csbPrice ? parseInt(svcItem.dataset.csbPrice) : null,
           duration: svcItem.dataset.duration,
         };
         document.getElementById('step1Next').disabled = false;
@@ -231,6 +233,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             id: preItem.dataset.service,
             name: preItem.dataset.name,
             price: parseInt(preItem.dataset.price),
+            csbPrice: preItem.dataset.csbPrice ? parseInt(preItem.dataset.csbPrice) : null,
             duration: preItem.dataset.duration,
           };
           preItem.classList.add('selected');
@@ -458,12 +461,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         proPickGrid.querySelectorAll('.pro-pick-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
         state.barber = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
-        
+
         // Auto-select branch if available
         if (card.dataset.branch && card.dataset.branch !== 'any') {
           state.location = card.dataset.branch;
           const locSel = document.getElementById('custLocation');
           if (locSel) locSel.value = state.location;
+        }
+
+        // Apply CSB-specific pricing when CSB branch is selected
+        if (state.service) {
+          const effectivePrice = (state.location === 'csb' && state.service.csbPrice)
+            ? state.service.csbPrice
+            : (state.service.basePrice || state.service.price);
+          if (!state.service.basePrice) state.service.basePrice = state.service.price;
+          state.service.price = effectivePrice;
         }
 
         document.getElementById('step2Next').disabled = false;
@@ -615,7 +627,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   function buildTimeGrid() {
     const grid = document.getElementById('timeGrid');
     if (!grid) return;
-    const slots = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+    const slotsDefault = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+    const slotsCsb     = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
+    const slots = state.location === 'csb' ? slotsCsb : slotsDefault;
     const today = todayStr();
     const isToday = state.date === today;
     const floorHourMins = Math.floor(currentLocalMins() / 60) * 60;
