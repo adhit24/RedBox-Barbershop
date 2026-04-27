@@ -1,19 +1,89 @@
-server/.env
-server/.env.*
-.env
-.env.*
-
-server/node_modules
-node_modules
-
-.vercel
-.trae
-.claude
-
+# Logs
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
 pnpm-debug.log*
 
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage and build artifacts
+coverage
+*.lcov
+.nyc_output
+lib-cov
+build/Release
+dist
+.output
+out
+.next
+.nuxt
+.serverless/
+.cache
+.cache/
+.parcel-cache
+.vite/
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Dependency directories
+node_modules/
+server/node_modules/
+jspm_packages/
+bower_components
+web_modules/
+
+# TypeScript and package-manager caches
+*.tsbuildinfo
+.npm
+.pnpm-store
+.eslintcache
+.stylelintcache
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+.yarn-integrity
+
+# Environment files
+.env
+.env.*
+server/.env
+server/.env.*
+!.env.example
+
+# Framework and tooling directories
+.svelte-kit/
+**/.vitepress/dist
+**/.vitepress/cache
+.docusaurus
+.firebase/
+.dynamodb/
+.fusebox/
+.grunt
+.vuepress/dist
+.temp
+.tern-port
+.vscode-test
+
+# Misc
+.lock-wscript
+.node_repl_history
+*.tgz
+.vercel
+.trae
+.claude
 .DS_Store
 Thumbs.db
