@@ -176,33 +176,33 @@ document.addEventListener('DOMContentLoaded', () => {
   let allBarbers = [];
 
   const FALLBACK_BARBERS = [
-    { id:'bypass1',     name:'Alex Chillboy UA', role:'Senior Master Barber', img:'Brand_assets/Kapster1.jpg', branch:'bypass' },
-    { id:'bypass2',     name:'Adrián AR',        role:'Senior Master Barber', img:'Brand_assets/Kapster2.jpg', branch:'bypass' },
-    { id:'bypass3',     name:'B Richards BR',    role:'Fade Specialist',      img:'Brand_assets/Kapster3.jpg', branch:'bypass' },
-    { id:'bypass4',     name:'Iwan',             role:'Barber',               img:'Brand_assets/Kapster4.jpg', branch:'bypass' },
-    { id:'bypass5',     name:'Heri',             role:'Junior Barber',        img:'Brand_assets/Kapster1.jpg', branch:'bypass' },
-    { id:'bypass6',     name:'Ujang',            role:'Junior Barber',        img:'Brand_assets/Kapster2.jpg', branch:'bypass' },
-    { id:'samadikun1',  name:'Andi',             role:'Senior Barber',        img:'Brand_assets/Kapster3.jpg', branch:'samadikun' },
-    { id:'samadikun2',  name:'Rian',             role:'Senior Barber',        img:'Brand_assets/Kapster4.jpg', branch:'samadikun' },
-    { id:'samadikun3',  name:'Eko',              role:'Barber',               img:'Brand_assets/Kapster1.jpg', branch:'samadikun' },
-    { id:'samadikun4',  name:'Toto',             role:'Barber',               img:'Brand_assets/Kapster2.jpg', branch:'samadikun' },
-    { id:'samadikun5',  name:'Gani',             role:'Junior Barber',        img:'Brand_assets/Kapster3.jpg', branch:'samadikun' },
-    { id:'csb1',        name:'Rizky',            role:'Senior Barber',        img:'Brand_assets/Kapster4.jpg', branch:'csb' },
-    { id:'csb2',        name:'Fajar',            role:'Senior Barber',        img:'Brand_assets/Kapster1.jpg', branch:'csb' },
-    { id:'csb3',        name:'Yanto',            role:'Barber',               img:'Brand_assets/Kapster2.jpg', branch:'csb' },
-    { id:'csb4',        name:'Asep',             role:'Barber',               img:'Brand_assets/Kapster3.jpg', branch:'csb' },
-    { id:'csb5',        name:'Deni',             role:'Junior Barber',        img:'Brand_assets/Kapster4.jpg', branch:'csb' },
-    { id:'csb6',        name:'Maman',            role:'Junior Barber',        img:'Brand_assets/Kapster1.jpg', branch:'csb' },
-    { id:'sumber1',     name:'Joko',             role:'Senior Barber',        img:'Brand_assets/Kapster2.jpg', branch:'sumber' },
-    { id:'sumber2',     name:'Slamet',           role:'Senior Barber',        img:'Brand_assets/Kapster3.jpg', branch:'sumber' },
-    { id:'sumber3',     name:'Nanang',           role:'Barber',               img:'Brand_assets/Kapster4.jpg', branch:'sumber' },
-    { id:'sumber4',     name:'Wawan',            role:'Barber',               img:'Brand_assets/Kapster1.jpg', branch:'sumber' },
-    { id:'tegal1',      name:'Hadi',             role:'Senior Barber',        img:'Brand_assets/Kapster2.jpg', branch:'tegal' },
-    { id:'tegal2',      name:'Yudi',             role:'Senior Barber',        img:'Brand_assets/Kapster3.jpg', branch:'tegal' },
-    { id:'tegal3',      name:'Aris',             role:'Barber',               img:'Brand_assets/Kapster4.jpg', branch:'tegal' },
-    { id:'tegal4',      name:'Tedi',             role:'Barber',               img:'Brand_assets/Kapster1.jpg', branch:'tegal' },
-    { id:'tegal5',      name:'Sony',             role:'Junior Barber',        img:'Brand_assets/Kapster2.jpg', branch:'tegal' },
-    { id:'tegal6',      name:'Diki',             role:'Junior Barber',        img:'Brand_assets/Kapster3.jpg', branch:'tegal' }
+    { id:'bypass1',     name:'Alex Chillboy UA', role:'Senior Master Barber', img:'/Brand_assets/Kapster1.jpg', branch:'bypass' },
+    { id:'bypass2',     name:'Adrián AR',        role:'Senior Master Barber', img:'/Brand_assets/Kapster2.jpg', branch:'bypass' },
+    { id:'bypass3',     name:'B Richards BR',    role:'Fade Specialist',      img:'/Brand_assets/Kapster3.jpg', branch:'bypass' },
+    { id:'bypass4',     name:'Iwan',             role:'Barber',               img:'/Brand_assets/Kapster4.jpg', branch:'bypass' },
+    { id:'bypass5',     name:'Heri',             role:'Junior Barber',        img:'/Brand_assets/Kapster1.jpg', branch:'bypass' },
+    { id:'bypass6',     name:'Ujang',            role:'Junior Barber',        img:'/Brand_assets/Kapster2.jpg', branch:'bypass' },
+    { id:'samadikun1',  name:'Andi',             role:'Senior Barber',        img:'/Brand_assets/Kapster3.jpg', branch:'samadikun' },
+    { id:'samadikun2',  name:'Rian',             role:'Senior Barber',        img:'/Brand_assets/Kapster4.jpg', branch:'samadikun' },
+    { id:'samadikun3',  name:'Eko',              role:'Barber',               img:'/Brand_assets/Kapster1.jpg', branch:'samadikun' },
+    { id:'samadikun4',  name:'Toto',             role:'Barber',               img:'/Brand_assets/Kapster2.jpg', branch:'samadikun' },
+    { id:'samadikun5',  name:'Gani',             role:'Junior Barber',        img:'/Brand_assets/Kapster3.jpg', branch:'samadikun' },
+    { id:'csb1',        name:'Rizky',            role:'Senior Barber',        img:'/Brand_assets/Kapster4.jpg', branch:'csb' },
+    { id:'csb2',        name:'Fajar',            role:'Senior Barber',        img:'/Brand_assets/Kapster1.jpg', branch:'csb' },
+    { id:'csb3',        name:'Yanto',            role:'Barber',               img:'/Brand_assets/Kapster2.jpg', branch:'csb' },
+    { id:'csb4',        name:'Asep',             role:'Barber',               img:'/Brand_assets/Kapster3.jpg', branch:'csb' },
+    { id:'csb5',        name:'Deni',             role:'Junior Barber',        img:'/Brand_assets/Kapster4.jpg', branch:'csb' },
+    { id:'csb6',        name:'Maman',            role:'Junior Barber',        img:'/Brand_assets/Kapster1.jpg', branch:'csb' },
+    { id:'sumber1',     name:'Joko',             role:'Senior Barber',        img:'/Brand_assets/Kapster2.jpg', branch:'sumber' },
+    { id:'sumber2',     name:'Slamet',           role:'Senior Barber',        img:'/Brand_assets/Kapster3.jpg', branch:'sumber' },
+    { id:'sumber3',     name:'Nanang',           role:'Barber',               img:'/Brand_assets/Kapster4.jpg', branch:'sumber' },
+    { id:'sumber4',     name:'Wawan',            role:'Barber',               img:'/Brand_assets/Kapster1.jpg', branch:'sumber' },
+    { id:'tegal1',      name:'Hadi',             role:'Senior Barber',        img:'/Brand_assets/Kapster2.jpg', branch:'tegal' },
+    { id:'tegal2',      name:'Yudi',             role:'Senior Barber',        img:'/Brand_assets/Kapster3.jpg', branch:'tegal' },
+    { id:'tegal3',      name:'Aris',             role:'Barber',               img:'/Brand_assets/Kapster4.jpg', branch:'tegal' },
+    { id:'tegal4',      name:'Tedi',             role:'Barber',               img:'/Brand_assets/Kapster1.jpg', branch:'tegal' },
+    { id:'tegal5',      name:'Sony',             role:'Junior Barber',        img:'/Brand_assets/Kapster2.jpg', branch:'tegal' },
+    { id:'tegal6',      name:'Diki',             role:'Junior Barber',        img:'/Brand_assets/Kapster3.jpg', branch:'tegal' }
   ];
 
   async function fetchBarbers() {
@@ -248,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const pos = String(b.id) === 'tegal-yafi' ? 'object-fit:cover;object-position:80% center;' : '';
       const styleAttr = pos ? ` style="${pos}"` : '';
-      return `<img src="${img}" alt="${b.name}" loading="lazy" referrerpolicy="no-referrer"${styleAttr} onerror="this.onerror=null;this.src='Brand_assets/Kapster1.jpg';" />`;
+      return `<img src="${img}" alt="${b.name}" loading="lazy" referrerpolicy="no-referrer"${styleAttr} onerror="this.onerror=null;this.src='/Brand_assets/Kapster1.jpg';" />`;
     }
 
     // Render Desktop

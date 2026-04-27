@@ -245,21 +245,21 @@ function normalizeDriveUrl(input) {
   const raw = String(input || '').trim();
   if (!raw) return '';
   const first = raw.split(/[\s,]+/).filter(Boolean)[0] || '';
-  const fileMatch = first.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-  if (fileMatch) return `/api/img?u=${encodeURIComponent(`https://drive.google.com/uc?export=view&id=${fileMatch[1]}`)}`;
+  const fileMatch = first.match(/drive\.google\.com\/file\/d\/([^/?]+)/);
+  if (fileMatch) return `https://lh3.googleusercontent.com/d/${fileMatch[1]}=w800`;
   const openMatch = first.match(/drive\.google\.com\/open\?id=([^&]+)/);
-  if (openMatch) return `/api/img?u=${encodeURIComponent(`https://drive.google.com/uc?export=view&id=${openMatch[1]}`)}`;
+  if (openMatch) return `https://lh3.googleusercontent.com/d/${openMatch[1]}=w800`;
   const idMatch = first.match(/[?&]id=([^&]+)/);
-  if (idMatch && first.includes('drive.google.com')) return `/api/img?u=${encodeURIComponent(`https://drive.google.com/uc?export=view&id=${idMatch[1]}`)}`;
+  if (idMatch && first.includes('drive.google.com')) return `https://lh3.googleusercontent.com/d/${idMatch[1]}=w800`;
   try {
     const u = new URL(first);
     const host = u.hostname.toLowerCase();
-    if (host.endsWith('googleusercontent.com') || host === 'drive.google.com') return `/api/img?u=${encodeURIComponent(first)}`;
+    if (host.endsWith('googleusercontent.com') || host === 'drive.google.com') return first;
   } catch (e) {}
   return first;
 }
 function placeholderImg(id) {
-  const imgs = ['Brand_assets/Kapster1.jpg','Brand_assets/Kapster2.jpg','Brand_assets/Kapster3.jpg','Brand_assets/Kapster4.jpg'];
+  const imgs = ['/Brand_assets/Kapster1.jpg','/Brand_assets/Kapster2.jpg','/Brand_assets/Kapster3.jpg','/Brand_assets/Kapster4.jpg'];
   const s = String(id || '');
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
@@ -567,9 +567,16 @@ app.get('/api/img', async (req, res) => {
   const allowed = host === 'drive.google.com' || host.endsWith('googleusercontent.com') || host.endsWith('gstatic.com');
   if (!allowed) return res.status(403).end();
   try {
-    const r = await fetch(url.toString(), { redirect: 'follow' });
+    // If old uc?export=view format, upgrade to lh3 thumbnail URL
+    let fetchUrl = url.toString();
+    const ucMatch = fetchUrl.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);
+    if (ucMatch) fetchUrl = `https://lh3.googleusercontent.com/d/${ucMatch[1]}=w800`;
+
+    const r = await fetch(fetchUrl, { redirect: 'follow' });
     if (!r.ok) return res.status(404).end();
     const ct = r.headers.get('content-type') || 'image/jpeg';
+    // Reject non-image responses (e.g. Google login page HTML)
+    if (!ct.startsWith('image/')) return res.status(404).end();
     const buf = Buffer.from(await r.arrayBuffer());
     if (buf.length > 10 * 1024 * 1024) return res.status(413).end();
     res.setHeader('Content-Type', ct);

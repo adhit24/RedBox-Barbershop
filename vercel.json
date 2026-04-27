@@ -1,0 +1,16 @@
+{
+  "outputDirectory": ".",
+  "functions": {
+    "api/[...path].js": {
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/Brand_assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ]
+}
