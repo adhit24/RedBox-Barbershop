@@ -62,7 +62,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── URL PARAMS ──────────────────────────────
   const params = new URLSearchParams(window.location.search);
-  const preService = params.get('service');
+  // Creambath tidak tersedia, redirect ke Hair Spa
+  const rawService = params.get('service');
+  const preService = rawService === 'creambath' ? 'hair-spa' : rawService;
   const preBarber = params.get('barber');
 
   // ── BUILD SERVICE LIST (category grouped + show more/less) ──
