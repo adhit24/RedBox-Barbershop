@@ -16,14 +16,53 @@ const PORT = process.env.PORT || 3001;
 const DB_TYPE = process.env.DATABASE_TYPE || 'supabase';
 
 // ================================================
-// MOKA POS INTEGRATION (DRAFT)
+// MOKA POS INTEGRATION
+// Dokumentasi: https://api.mokapos.com/docs
+// Developer portal: https://developers.mokapos.com
+// Auth: OAuth 2.0 Client Credentials
 // ================================================
-const MOKA_BASE_URL  = String(process.env.MOKA_BASE_URL || '').trim();
-const MOKA_API_KEY   = String(process.env.MOKA_API_KEY || '').trim();
-const MOKA_OUTLET_ID = String(process.env.MOKA_OUTLET_ID || '').trim();
+const MOKA_BASE_URL    = String(process.env.MOKA_BASE_URL    || 'https://api.mokapos.com').trim();
+const MOKA_APP_ID      = String(process.env.MOKA_APP_ID      || '').trim();
+const MOKA_SECRET_KEY  = String(process.env.MOKA_SECRET_KEY  || '').trim();
+const MOKA_OUTLET_ID   = String(process.env.MOKA_OUTLET_ID   || '').trim();
+
+// Cache OAuth token agar tidak request ulang setiap saat
+const _mokaToken = { value: null, expiresAt: 0 };
 
 function isMokaConfigured() {
-  return Boolean(MOKA_BASE_URL && MOKA_API_KEY && MOKA_OUTLET_ID);
+  return Boolean(MOKA_APP_ID && MOKA_SECRET_KEY && MOKA_OUTLET_ID);
+}
+
+async function getMokaAccessToken() {
+  const now = Date.now();
+  // Pakai cache kalau masih valid (buffer 60 detik sebelum expired)
+  if (_mokaToken.value && _mokaToken.expiresAt > now + 60_000) return _mokaToken.value;
+
+  const resp = await fetch(`${MOKA_BASE_URL}/v2/auth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id:     MOKA_APP_ID,
+      client_secret: MOKA_SECRET_KEY,
+      grant_type:    'client_credentials',
+    }),
+  });
+
+  const text = await resp.text().catch(() => '');
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+  if (!resp.ok) {
+    const err = new Error('MOKA auth failed');
+    err.status = resp.status;
+    err.details = data;
+    throw err;
+  }
+
+  // Simpan token + waktu expired (default 1 jam jika tidak ada expires_in)
+  _mokaToken.value     = data.access_token || data.token;
+  _mokaToken.expiresAt = now + ((data.expires_in || 3600) * 1000);
+  return _mokaToken.value;
 }
 
 async function mokaRequest(pathname, { method = 'GET', body } = {}) {
@@ -33,13 +72,13 @@ async function mokaRequest(pathname, { method = 'GET', body } = {}) {
     throw err;
   }
 
-  // TODO: isi API MOKA di sini (endpoint + auth scheme mengikuti dokumentasi MOKA)
+  const token = await getMokaAccessToken();
   const url = `${MOKA_BASE_URL}${pathname}`;
   const resp = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MOKA_API_KEY}`,
+      'Authorization': `Bearer ${token}`,
     },
     body: body ? JSON.stringify(body) : undefined,
     redirect: 'follow',
@@ -83,9 +122,10 @@ async function mokaUpsertCustomerFromBooking(booking) {
     notes: 'Customer dari website booking',
   };
 
-  // TODO: isi API MOKA di sini (buat/update customer sesuai docs)
-  const result = await mokaRequest('/customers', { method: 'POST', body: customerPayload });
-  const mokaCustomerId = result?.customer_id || result?.id || result?.data?.id || null;
+  // Endpoint: POST /v2/outlets/{outlet_id}/customers
+  // Ref: https://api.mokapos.com/docs
+  const result = await mokaRequest(`/v2/outlets/${MOKA_OUTLET_ID}/customers`, { method: 'POST', body: customerPayload });
+  const mokaCustomerId = result?.data?.customer_id || result?.data?.id || result?.customer_id || result?.id || null;
   return { result, moka_customer_id: mokaCustomerId, payload: customerPayload };
 }
 
@@ -125,9 +165,10 @@ async function mokaCreateTransactionFromBooking(booking, mokaCustomerId) {
     status: 'CONFIRMED',
   };
 
-  // TODO: isi API MOKA di sini (buat transaksi sesuai docs)
-  const result = await mokaRequest('/transactions', { method: 'POST', body: payload });
-  const mokaTransactionId = result?.transaction_id || result?.id || result?.data?.id || null;
+  // Endpoint: POST /v2/outlets/{outlet_id}/invoices
+  // Ref: https://api.mokapos.com/docs
+  const result = await mokaRequest(`/v2/outlets/${MOKA_OUTLET_ID}/invoices`, { method: 'POST', body: payload });
+  const mokaTransactionId = result?.data?.invoice_id || result?.data?.id || result?.invoice_id || result?.id || null;
   return { result, moka_transaction_id: mokaTransactionId, payload };
 }
 
