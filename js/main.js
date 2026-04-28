@@ -291,6 +291,9 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="pro-services">${serviceCount(b.role)} Services</span>
             <span class="pro-branch-tag">${formatBranchName(b.branch)}</span>
           </div>
+          <div class="pro-card-book-footer">
+            <span class="pro-mini-book">Book<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+          </div>
         </div>
       </a>
     `).join('');
@@ -308,6 +311,9 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="pro-meta">
                 <span class="pro-services">${serviceCount(b.role)} Services</span>
                 <span class="pro-branch-tag">${formatBranchName(b.branch)}</span>
+              </div>
+              <div class="pro-card-book-footer">
+                <span class="pro-mini-book">Book<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
               </div>
             </div>
           </a>
