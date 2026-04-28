@@ -234,14 +234,16 @@ section{padding:100px 0}
 .svc-card-duration{font-size:.8rem;color:var(--w50)}
 .svc-card-price{font-size:.95rem;font-weight:700;color:var(--white)}
 .svc-card-csb-price{display:block;font-size:.75rem;color:var(--red);margin-bottom:8px;opacity:.85}
-.svc-card-desc{font-size:.82rem;color:var(--w50);line-height:1.6;margin-bottom:16px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.svc-card-book{
-  display:block;text-align:center;width:100%;
-  padding:10px;border-radius:var(--radius-sm);
-  background:var(--w05);color:var(--w70);
-  font-size:.8rem;font-weight:600;transition:var(--transition);border:1px solid var(--w10);
+.svc-card-desc{font-size:.82rem;color:var(--w50);line-height:1.6;margin-bottom:16px;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.svc-card-footer{display:flex;justify-content:flex-end;margin-top:4px}
+.svc-card-mini-book{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:5px 12px;border-radius:20px;
+  background:var(--w05);color:var(--w40);
+  font-size:.75rem;font-weight:600;
+  border:1px solid var(--w10);transition:var(--transition);
 }
-.svc-card:hover .svc-card-book{background:var(--red);color:var(--white);border-color:var(--red)}
+.svc-card:hover .svc-card-mini-book{background:var(--red);color:var(--white);border-color:var(--red)}
 
 .carousel-arrow{
   position:absolute;top:50%;transform:translateY(-50%);z-index:5;
@@ -824,6 +826,7 @@ section{padding:100px 0}
   .svc-card-desc {
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     font-size: 0.7rem;
@@ -837,10 +840,9 @@ section{padding:100px 0}
     margin-bottom: 10px;
     font-size: 0.7rem;
   }
-  .svc-card-book {
-    padding: 8px;
-    font-size: 0.75rem;
-    border-radius: 6px;
+  .svc-card-mini-book {
+    padding: 4px 10px;
+    font-size: 0.72rem;
   }
 }
 

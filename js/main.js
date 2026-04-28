@@ -109,7 +109,9 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             ${csbNote}
             <p class="svc-card-desc">${svc.desc}</p>
-            <span class="svc-card-book">Book Now</span>
+            <div class="svc-card-footer">
+              <span class="svc-card-mini-book">Book<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            </div>
           </div>
         </a>`;
       }).join('');
