@@ -422,6 +422,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!btns.length) return;
 
     const hoursVal = document.getElementById('locHoursValue');
+    const waLink = document.getElementById('locWaLink');
+    const waNumber = document.getElementById('locWaNumber');
+    const waFloat = document.getElementById('waFloat');
 
     const setActive = btn => {
       btns.forEach(b => b.classList.toggle('active', b === btn));
@@ -434,6 +437,21 @@ document.addEventListener('DOMContentLoaded', () => {
       mapLink.href = share || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
       if (hoursVal) {
         hoursVal.textContent = btn.dataset.branch === 'csb' ? '10:00 — 21:30' : '10:00 — 21:00';
+      }
+
+      // Update WhatsApp numbers
+      const waData = btn.dataset.wa;
+      const waFormat = btn.dataset.waFormat;
+      if (waData && waFormat) {
+        if (waLink) {
+          waLink.href = `https://wa.me/${waData}?text=Hi%20Redbox%20Barbershop%2C%20I%27d%20like%20to%20book%20an%20appointment`;
+        }
+        if (waNumber) {
+          waNumber.textContent = waFormat;
+        }
+        if (waFloat) {
+          waFloat.href = `https://wa.me/${waData}?text=Halo%20Redbox,%20saya%20ingin%20booking`;
+        }
       }
     };
 

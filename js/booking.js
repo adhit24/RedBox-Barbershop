@@ -771,7 +771,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       '', '_Sharp Cuts, Bold Style_ 🔴',
     ].filter(Boolean).join('\n');
 
-    const waUrl = 'https://wa.me/62818202569?text=' + encodeURIComponent(msg);
+    const branchPhones = {
+      'csb': '62818202889',
+      'sumber': '62818202599',
+      'samadikun': '62818202589',
+      'tegal': '62818268883',
+      'bypass': '62818202569',
+      'default': '62818202569'
+    };
+    const targetPhone = branchPhones[state.location] || branchPhones['default'];
+    const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
 
     // ── Save to CRM (localStorage + API) ──
     const payload = {
