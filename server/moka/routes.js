@@ -1,0 +1,533 @@
+'use strict';
+// ============================================================
+// MOKA POS  —  Express Router
+//
+// Mount in index.js:
+//   const createMokaRouter = require('./moka/routes');
+//   app.use('/api', createMokaRouter(supabase));
+//
+// Endpoints:
+//   GET  /api/availability          — slot engine
+//   POST /api/reservations          — create booking (web→Moka)
+//   GET  /api/schedules             — list schedules
+//   PATCH /api/schedules/:id        — update status
+//   GET  /api/moka/auth             — begin OAuth flow
+//   GET  /api/moka/callback         — OAuth code exchange
+//   POST /api/moka/webhook          — Moka real-time events
+//   POST /api/moka/sync             — manual pull trigger
+//   GET  /api/moka/sync-logs        — recent sync audit
+// ============================================================
+
+const express  = require('express');
+const crypto   = require('crypto');
+const { randomUUID } = require('crypto');
+
+const { buildAuthorizationUrl, exchangeCode, isMokaOAuthConfigured } = require('./oauth');
+const { pushScheduleToMoka, pullMokaToWeb, handleWebhookEvent }       = require('./sync');
+const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
+
+const APP_BASE_URL = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
+
+/**
+ * Factory — returns a configured Express Router.
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ */
+function createMokaRouter(supabase) {
+  const router = express.Router();
+
+  // ── GET /api/availability ────────────────────────────────
+  // Query params:
+  //   outletId        (required) — our DB UUID  OR  outlet slug
+  //   date            (required) — YYYY-MM-DD
+  //   serviceId       (optional) — UUID; used to look up duration
+  //   durationMinutes (optional) — override duration
+  //   barberId        (optional) — filter to one barber
+  //
+  // Example response:
+  // [
+  //   { "start": "2025-05-01T09:00:00.000Z", "end": "2025-05-01T09:30:00.000Z",
+  //     "barberId": "bypass1", "barberName": "Alex Chillboy UA" },
+  //   ...
+  // ]
+  router.get('/availability', async (req, res) => {
+    try {
+      const { outletId: rawOutletId, date, serviceId, durationMinutes, barberId } = req.query;
+
+      if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+
+      // Resolve outletId — accept UUID or slug
+      const outletId = await _resolveOutletId(supabase, rawOutletId);
+      if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+      // Resolve duration
+      let duration = durationMinutes ? parseInt(durationMinutes, 10) : null;
+      if (!duration && serviceId) {
+        const { data: svc } = await supabase
+          .from('services').select('duration_minutes').eq('id', serviceId).single();
+        duration = svc?.duration_minutes;
+      }
+      duration = duration || 30; // fallback to 30 min
+
+      const slots = await getAvailableSlots(supabase, {
+        outletId,
+        date,
+        durationMinutes: duration,
+        barberId:        barberId || null,
+      });
+
+      res.json({ date, outletId, durationMinutes: duration, slots });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── POST /api/reservations ────────────────────────────────
+  // Creates a schedule, then asynchronously pushes to Moka.
+  //
+  // Request body:
+  // {
+  //   "outletId":  "uuid-or-slug",
+  //   "barberId":  "bypass1",           // or null for "any"
+  //   "serviceId": "uuid",
+  //   "startTime": "2025-05-01T09:00:00+07:00",
+  //   "customer": {
+  //     "name":  "Budi Santoso",
+  //     "phone": "081234567890",
+  //     "email": "budi@example.com"
+  //   },
+  //   "notes": "optional"
+  // }
+  //
+  // Response 201:
+  // { "scheduleId": "uuid", "status": "reserved", "mokaSync": "pending" }
+  router.post('/reservations', async (req, res) => {
+    try {
+      const { outletId: rawOutletId, barberId, serviceId, startTime, customer, notes } = req.body;
+
+      // ── Validate required fields ────────────────────────────
+      const missing = [];
+      if (!rawOutletId) missing.push('outletId');
+      if (!startTime)   missing.push('startTime');
+      if (!customer?.name)  missing.push('customer.name');
+      if (!customer?.phone) missing.push('customer.phone');
+      if (missing.length)
+        return res.status(400).json({ error: `Missing required fields: ${missing.join(', ')}` });
+
+      // ── Resolve outlet ──────────────────────────────────────
+      const outletId = await _resolveOutletId(supabase, rawOutletId);
+      if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+      // ── Resolve service ─────────────────────────────────────
+      let service = null;
+      if (serviceId) {
+        const { data: svc } = await supabase
+          .from('services').select('*').eq('id', serviceId).single();
+        service = svc;
+      }
+      const duration = service?.duration_minutes || 30;
+      const price    = service?.price            || 0;
+
+      // ── Calculate end time ──────────────────────────────────
+      const startMs = new Date(startTime).getTime();
+      if (isNaN(startMs)) return res.status(400).json({ error: 'Invalid startTime format' });
+      const endTime = new Date(startMs + duration * 60_000).toISOString();
+
+      // ── Resolve barber (auto-assign if null or 'any') ────────
+      let resolvedBarberId = barberId && barberId !== 'any' ? barberId : null;
+      if (!resolvedBarberId) {
+        const { data: autoBarber } = await supabase.rpc('find_available_barber', {
+          p_outlet_id: outletId,
+          p_start:     startTime,
+          p_end:       endTime,
+        });
+        resolvedBarberId = autoBarber || null;
+        if (!resolvedBarberId)
+          return res.status(409).json({ error: 'No barbers available for the requested time slot' });
+      }
+
+      // ── Check slot availability ─────────────────────────────
+      const free = await isSlotAvailable(supabase, {
+        barberId:  resolvedBarberId,
+        startTime,
+        endTime,
+      });
+      if (!free)
+        return res.status(409).json({ error: 'Slot already booked — choose a different time or barber' });
+
+      // ── Upsert customer ─────────────────────────────────────
+      const phone = _normalizePhone(customer.phone);
+      let customerId = null;
+
+      const { data: existingCust } = await supabase
+        .from('customers').select('id').eq('wa', phone).maybeSingle();
+
+      if (existingCust) {
+        customerId = existingCust.id;
+      } else {
+        const { data: newCust } = await supabase
+          .from('customers')
+          .insert({ name: customer.name, wa: phone, email: customer.email || null, source: 'web' })
+          .select('id').single();
+        customerId = newCust?.id;
+      }
+
+      // ── Insert schedule ─────────────────────────────────────
+      const { data: schedule, error: schErr } = await supabase
+        .from('schedules')
+        .insert({
+          outlet_id:    outletId,
+          barber_id:    resolvedBarberId,
+          customer_id:  customerId,
+          service_id:   serviceId || null,
+          service_name: service?.name || null,
+          price,
+          start_time:   startTime,
+          end_time:     endTime,
+          status:       'reserved',
+          source:       'web',
+          notes:        notes || null,
+        })
+        .select()
+        .single();
+
+      if (schErr) {
+        // Overlap constraint violation
+        if (schErr.code === '23P01' || schErr.message?.includes('no_barber_overlap'))
+          return res.status(409).json({ error: 'Double-booking detected — slot taken' });
+        throw new Error(schErr.message);
+      }
+
+      // ── Push to Moka asynchronously (fire-and-forget) ───────
+      let mokaSync = 'skipped';
+      if (isMokaOAuthConfigured()) {
+        mokaSync = 'pending';
+        pushScheduleToMoka(supabase, schedule.id).catch(err => {
+          console.error(`[Reservation] Moka push failed for ${schedule.id}:`, err.message);
+        });
+      }
+
+      res.status(201).json({
+        scheduleId:  schedule.id,
+        status:      schedule.status,
+        startTime:   schedule.start_time,
+        endTime:     schedule.end_time,
+        barberId:    schedule.barber_id,
+        mokaSync,
+      });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/schedules ────────────────────────────────────
+  // Query params: outletId, date (YYYY-MM-DD), status, barberId
+  //
+  // Example response:
+  // {
+  //   "schedules": [
+  //     { "id": "uuid", "barber_name": "Alex", "customer_name": "Budi",
+  //       "service_name": "Haircut", "start_time": "...", "status": "confirmed", "source": "web" }
+  //   ]
+  // }
+  router.get('/schedules', async (req, res) => {
+    try {
+      const { outletId: rawOutletId, date, status, barberId, limit = 100 } = req.query;
+
+      let query = supabase
+        .from('schedules_full')
+        .select('id,barber_id,barber_name,barber_role,customer_id,customer_name,customer_phone,service_name,price,start_time,end_time,status,source,external_id,notes,outlet_id,outlet_name')
+        .order('start_time', { ascending: true })
+        .limit(parseInt(limit, 10) || 100);
+
+      if (rawOutletId) {
+        const outletId = await _resolveOutletId(supabase, rawOutletId);
+        if (outletId) query = query.eq('outlet_id', outletId);
+      }
+      if (date) {
+        const dayStart = `${date}T00:00:00+07:00`;
+        const dayEnd   = `${date}T23:59:59+07:00`;
+        query = query.gte('start_time', dayStart).lte('start_time', dayEnd);
+      }
+      if (status)   query = query.eq('status', status);
+      if (barberId) query = query.eq('barber_id', barberId);
+
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      res.json({ schedules: data || [] });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── PATCH /api/schedules/:id ──────────────────────────────
+  // Update status (confirm, cancel, complete, start).
+  // Body: { "status": "confirmed" }
+  router.patch('/schedules/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      const allowed = ['reserved','confirmed','in_progress','completed','cancelled'];
+
+      if (!status || !allowed.includes(status))
+        return res.status(400).json({ error: `status must be one of: ${allowed.join(', ')}` });
+
+      const { data, error } = await supabase
+        .from('schedules')
+        .update({ status })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      if (!data)  return res.status(404).json({ error: 'Schedule not found' });
+
+      // If cancelling, also propagate to Moka
+      if (status === 'cancelled' && data.external_id && isMokaOAuthConfigured()) {
+        _cancelMokaOrder(supabase, data).catch(err => {
+          console.warn('[Patch] Moka cancel failed:', err.message);
+        });
+      }
+
+      res.json({ schedule: data });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/auth ────────────────────────────────────
+  // Initiates Moka OAuth authorization code flow.
+  // Admin visits this URL; gets redirected to Moka consent screen.
+  // Query: outletId (UUID or slug)
+  router.get('/moka/auth', async (req, res) => {
+    try {
+      if (!isMokaOAuthConfigured())
+        return res.status(503).json({ error: 'Moka OAuth not configured. Set MOKA_CLIENT_ID, MOKA_CLIENT_SECRET, MOKA_REDIRECT_URI in .env' });
+
+      const { outletId: rawOutletId } = req.query;
+      if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
+
+      const outletId = await _resolveOutletId(supabase, rawOutletId);
+      if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+      // CSRF state: encode outletId so callback can pick it up
+      const state = Buffer.from(JSON.stringify({ outletId, nonce: randomUUID() })).toString('base64url');
+      const authUrl = buildAuthorizationUrl(state);
+
+      // In a real app, store state in session/cookie for CSRF verification
+      res.redirect(authUrl);
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/callback ────────────────────────────────
+  // OAuth redirect target. Exchanges code for tokens.
+  // Query: code, state (base64url-encoded { outletId, nonce })
+  router.get('/moka/callback', async (req, res) => {
+    try {
+      const { code, state, error: oauthErr, error_description } = req.query;
+
+      if (oauthErr)
+        return res.status(400).json({ error: `Moka OAuth error: ${oauthErr} — ${error_description}` });
+      if (!code || !state)
+        return res.status(400).json({ error: 'Missing code or state' });
+
+      // Decode state
+      let outletId;
+      try {
+        const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
+        outletId = decoded.outletId;
+      } catch {
+        return res.status(400).json({ error: 'Invalid state parameter' });
+      }
+
+      await exchangeCode(supabase, code, outletId);
+
+      res.json({
+        message: `Moka OAuth successful for outlet ${outletId}`,
+        outletId,
+        note: 'Tokens stored. Sync will begin on next cron tick or via POST /api/moka/sync',
+      });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── POST /api/moka/callback/:event ──────────────────────
+  // Moka Advanced Ordering per-order callbacks.
+  //
+  // These URLs are registered per-order when we call createOrder().
+  // Moka POSTs here when the cashier acts on an order:
+  //
+  //   POST /api/moka/callback/accept   → cashier accepted order
+  //   POST /api/moka/callback/complete → cashier completed/paid order
+  //   POST /api/moka/callback/cancel   → cashier rejected/cancelled order
+  //
+  // Moka payload:
+  //   { "outlet_id": 123, "application_order_id": "<our-schedule-uuid>", "status": "accepted" }
+  //
+  // APP_BASE_URL in .env must be reachable by Moka servers.
+  for (const cbEvent of ['accept', 'complete', 'cancel']) {
+    router.post(`/moka/callback/${cbEvent}`, async (req, res) => {
+      try {
+        const body = req.body;
+
+        if (!body?.application_order_id) {
+          console.warn(`[Callback/${cbEvent}] Missing application_order_id:`, body);
+          return res.status(400).json({ error: 'Missing application_order_id' });
+        }
+
+        // Acknowledge immediately — Moka expects < 5s response
+        res.status(200).json({ received: true });
+
+        // Process asynchronously
+        handleWebhookEvent(supabase, body).catch(err => {
+          console.error(`[Callback/${cbEvent}] Processing error:`, err.message);
+        });
+
+      } catch (err) {
+        if (!res.headersSent) res.status(500).json({ error: 'Callback processing failed' });
+        console.error(`[Callback/${cbEvent}] Fatal error:`, err);
+      }
+    });
+  }
+
+  // ── POST /api/moka/sync ───────────────────────────────────
+  // Manual trigger for Moka → Web pull sync.
+  // Body (optional): { "outletId": "uuid-or-slug" }
+  // If omitted, syncs ALL authorized outlets.
+  router.post('/moka/sync', async (req, res) => {
+    try {
+      const { outletId: rawOutletId } = req.body || {};
+      const results = [];
+
+      if (rawOutletId) {
+        const outletId = await _resolveOutletId(supabase, rawOutletId);
+        if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+        const result = await pullMokaToWeb(supabase, outletId);
+        results.push({ outletId, ...result });
+      } else {
+        // Sync all outlets that have tokens
+        const { data: tokens } = await supabase
+          .from('moka_tokens').select('outlet_id');
+
+        for (const t of tokens || []) {
+          const result = await pullMokaToWeb(supabase, t.outlet_id).catch(err => ({
+            error: err.message, processed: 0, skipped: 0, errors: 1,
+          }));
+          results.push({ outletId: t.outlet_id, ...result });
+        }
+      }
+
+      res.json({ message: 'Sync complete', results });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/sync-logs ───────────────────────────────
+  // Returns recent sync audit log entries.
+  // Query: direction, status, limit (default 50)
+  router.get('/moka/sync-logs', async (req, res) => {
+    try {
+      const { direction, status, limit = 50 } = req.query;
+
+      let query = supabase
+        .from('sync_logs')
+        .select('id,direction,entity_type,entity_id,status,error_message,retry_count,created_at')
+        .order('created_at', { ascending: false })
+        .limit(parseInt(limit, 10) || 50);
+
+      if (direction) query = query.eq('direction', direction);
+      if (status)    query = query.eq('status', status);
+
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      res.json({ logs: data || [] });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/outlets ─────────────────────────────────────
+  // List all active outlets (useful for front-end dropdowns)
+  router.get('/outlets', async (_req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('outlets')
+        .select('id, name, slug, address, timezone')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw new Error(error.message);
+      res.json({ outlets: data || [] });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/services ─────────────────────────────────────
+  // List all active services (for booking form)
+  router.get('/services', async (_req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .select('id, name, slug, duration_minutes, price')
+        .eq('is_active', true)
+        .order('price');
+
+      if (error) throw new Error(error.message);
+      res.json({ services: data || [] });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  return router;
+}
+
+// ── PRIVATE HELPERS ───────────────────────────────────────
+
+/** Accept UUID or slug, return UUID. Returns null if not found. */
+async function _resolveOutletId(supabase, raw) {
+  if (!raw) return null;
+  const _UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  if (_UUID_RE.test(raw)) return raw;   // already a UUID
+
+  const { data } = await supabase
+    .from('outlets').select('id').eq('slug', raw).single();
+  return data?.id || null;
+}
+
+function _normalizePhone(raw) {
+  if (!raw) return '';
+  const digits = String(raw).replace(/[^\d]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('62')) return `+${digits}`;
+  if (digits.startsWith('0'))  return `+62${digits.slice(1)}`;
+  return `+62${digits}`;
+}
+
+async function _cancelMokaOrder(supabase, schedule) {
+  const MokaClient = require('./client');
+  const { data: outlet } = await supabase
+    .from('outlets').select('id, moka_outlet_id').eq('id', schedule.outlet_id).single();
+  if (!outlet?.moka_outlet_id) return;
+  const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
+  await client.updateOrder(schedule.external_id, { status: 'CANCELLED' });
+}
+
+function _serverError(res, err) {
+  console.error('[MokaRoute] Error:', err.message || err);
+  if (res.headersSent) return;
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
+}
+
+module.exports = createMokaRouter;

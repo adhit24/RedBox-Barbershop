@@ -1095,6 +1095,23 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e?.message || 'Sync failed' }); }
 });
 
+// ── MOKA INTEGRATION ROUTER ──────────────────────────────
+// Registers: /api/availability, /api/reservations, /api/schedules,
+//            /api/outlets, /api/services, /api/moka/*
+try {
+  const createMokaRouter = require('./moka/routes');
+  const { startCronJobs } = require('./moka/sync');
+  if (supabase) {
+    app.use('/api', createMokaRouter(supabase));
+    console.log('✅ Moka integration routes mounted');
+    startCronJobs(supabase);
+  } else {
+    console.warn('⚠️  Supabase not configured — Moka routes skipped');
+  }
+} catch (e) {
+  console.error('❌ Failed to load Moka integration:', e.message);
+}
+
 // START SERVER
 if (require.main === module) {
   app.listen(PORT, () => {
