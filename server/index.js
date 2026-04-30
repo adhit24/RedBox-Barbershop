@@ -3,6 +3,7 @@
 // Backend: Node.js + MySQL (XAMPP) / Supabase
 // ================================================
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+const fs = require('fs');
 const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
@@ -241,10 +242,58 @@ function parseWorkDays(input) {
   for (const p of parts) { const val = map.get(p.toLowerCase()); if (val && !out.includes(val)) out.push(val); }
   return out.length ? out : ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 }
+function normalizeKapsterKey(input) {
+  return String(input || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function stripKapsterNoise(key) {
+  return String(key || '')
+    .replace(/(bypass|samadikun|csb|sumber|tegal|cirebon|mall|kota|kab|kabupaten)/g, '')
+    .trim();
+}
+
+const KAPSTER_IMG_MAP = (() => {
+  try {
+    const dir = path.join(__dirname, '..', 'Brand_assets', 'kapster');
+    const files = fs.readdirSync(dir, { withFileTypes: true })
+      .filter(d => d.isFile())
+      .map(d => d.name);
+    const m = new Map();
+    for (const f of files) {
+      const key = normalizeKapsterKey(f);
+      if (!key) continue;
+      if (!m.has(key)) m.set(key, `/Brand_assets/kapster/${f}`);
+    }
+    return m;
+  } catch {
+    return new Map();
+  }
+})();
+
 function normalizeDriveUrl(input) {
   const raw = String(input || '').trim();
   if (!raw) return '';
-  const first = raw.split(/[\s,]+/).filter(Boolean)[0] || '';
+
+  const isUrl = /https?:\/\//i.test(raw);
+  const first = isUrl
+    ? (raw.split(/[\s,]+/).filter(Boolean)[0] || '')
+    : (raw.split(',').map(x => x.trim()).filter(Boolean)[0] || raw);
+
+  if (!first) return '';
+
+  if (!isUrl) {
+    const v = first.trim();
+    if (/^\/?Brand_assets\//i.test(v)) return v.startsWith('/') ? v : `/${v}`;
+
+    const key = stripKapsterNoise(normalizeKapsterKey(v));
+    const mapped = KAPSTER_IMG_MAP.get(key);
+    return mapped || v;
+  }
+
   const fileMatch = first.match(/drive\.google\.com\/file\/d\/([^/?]+)/);
   if (fileMatch) return `https://lh3.googleusercontent.com/d/${fileMatch[1]}=w800`;
   const openMatch = first.match(/drive\.google\.com\/open\?id=([^&]+)/);
@@ -255,7 +304,7 @@ function normalizeDriveUrl(input) {
     const u = new URL(first);
     const host = u.hostname.toLowerCase();
     if (host.endsWith('googleusercontent.com') || host === 'drive.google.com') return first;
-  } catch (e) {}
+  } catch {}
   return first;
 }
 function placeholderImg(id) {
