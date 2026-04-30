@@ -12,7 +12,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Cut.jpg',
     duration: '45 menit',
     price: 85000,
-    csbPrice: 110000,
+    csbPrice: 120000,
     desc: 'Potongan rambut presisi atau teknik fade modern untuk tampilan yang tajam.'
   },
   {
@@ -23,7 +23,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Fade_Cut.jpg',
     duration: '60 menit',
     price: 95000,
-    csbPrice: 120000,
+    csbPrice: 130000,
     desc: 'Potongan rambut presisi atau teknik fade modern untuk tampilan yang tajam dengan shade dan fade degradasi'
   },
   {
@@ -34,6 +34,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Tatto_Single_Side.jpg',
     duration: '15 menit',
     price: 45000,
+    csbPrice: 55000,
     desc: 'Desain seni pada satu sisi rambut untuk gaya yang unik.'
   },
   {
@@ -44,6 +45,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Tattoo_Double_Side.jpg',
     duration: '30 menit',
     price: 75000,
+    csbPrice: 85000,
     desc: 'Desain seni pada kedua sisi rambut untuk tampilan yang lebih ekspresif.'
   },
   {
@@ -54,7 +56,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Color.jpg',
     duration: '45 menit',
     price: 135000,
-    csbPrice: 150000,
+    csbPrice: 160000,
     desc: 'Pewarnaan rambut profesional dengan pilihan warna yang trendi.'
   },
   {
@@ -65,6 +67,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Bleaching.jpg',
     duration: '180 menit',
     price: 360000,
+    csbPrice: 370000,
     desc: 'Proses pemutihan rambut sebelum pewarnaan untuk hasil warna yang maksimal.'
   },
   {
@@ -75,6 +78,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Highlighting.jpg',
     duration: '180 menit',
     price: 310000,
+    csbPrice: 320000,
     desc: 'Teknik highlight untuk memberikan dimensi dan kilau pada rambut Anda.'
   },
   {
@@ -85,6 +89,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Curly.jpg',
     duration: '90 menit',
     price: 310000,
+    csbPrice: 320000,
     desc: 'Proses pengeritingan rambut untuk tekstur dan volume yang lebih gaya.'
   },
   {
@@ -95,6 +100,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Smoothing.jpg',
     duration: '90 menit',
     price: 360000,
+    csbPrice: 370000,
     desc: 'Meluruskan dan menghaluskan rambut agar lebih mudah diatur and berkilau.'
   },
   {
@@ -105,6 +111,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Hair_Spa.jpg',
     duration: '30 menit',
     price: 110000,
+    csbPrice: 120000,
     desc: 'Perawatan mendalam untuk kesehatan rambut yang lebih optimal.'
   },
   {
@@ -115,6 +122,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Down_Perm.jpg',
     duration: '60 menit',
     price: 175000,
+    csbPrice: 185000,
     desc: 'Teknik untuk mengatur arah tumbuh rambut agar lebih rapi dan bervolume.'
   },
 
@@ -127,6 +135,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Shaving.jpg',
     duration: '20 menit',
     price: 40000,
+    csbPrice: 50000,
     desc: 'Pencukuran jenggot atau kumis standar agar tampil bersih.'
   },
   {
@@ -137,6 +146,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Traditional_Shaving.jpg',
     duration: '30 menit',
     price: 70000,
+    csbPrice: 80000,
     desc: 'Pencukuran klasik dengan handuk hangat untuk kenyamanan ekstra.'
   },
   {
@@ -147,6 +157,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Premium_Head_Shave.jpg',
     duration: '45 menit',
     price: 130000,
+    csbPrice: 140000,
     desc: 'Pencukuran kepala hingga licin dengan perawatan premium.'
   },
 
@@ -159,6 +170,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Men_Massage_Service.jpg',
     duration: '45 menit',
     price: 145000,
+    csbPrice: 155000,
     desc: 'Pijat relaksasi khusus pria meliputi Kepala, Wajah, Tangan & Bahu.'
   },
   {
@@ -169,6 +181,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Nose_Wax.jpg',
     duration: '25 menit',
     price: 70000,
+    csbPrice: 80000,
     desc: 'Pembersihan bulu hidung dengan teknik waxing yang cepat dan efektif.'
   },
   {
@@ -179,6 +192,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Ear_Wax.jpg',
     duration: '25 menit',
     price: 70000,
+    csbPrice: 80000,
     desc: 'Pembersihan bulu telinga dengan teknik waxing.'
   },
   {
@@ -189,6 +203,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Ear_Singeing.jpg',
     duration: '20 menit',
     price: 75000,
+    csbPrice: 85000,
     desc: 'Teknik tradisional menghilangkan bulu telinga menggunakan api.'
   },
   {
@@ -199,6 +214,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Charcoal_Deep_Cleansing.jpg',
     duration: '45 menit',
     price: 105000,
+    csbPrice: 115000,
     desc: 'Pembersihan wajah mendalam dengan masker charcoal untuk mengangkat kotoran.'
   },
   {
@@ -209,6 +225,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Ear_Candle.jpg',
     duration: '25 menit',
     price: 40000,
+    csbPrice: 50000,
     desc: 'Terapi pembersihan telinga untuk relaksasi dan kebersihan.'
   },
   {
@@ -219,6 +236,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Services/Charcoal_Nose_Cleansing_Strip.jpg',
     duration: '30 menit',
     price: 65000,
+    csbPrice: 75000,
     desc: 'Pembersihan komedo pada hidung dengan charcoal strip.'
   },
 
@@ -231,6 +249,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Redbox Royal.jpg',
     duration: '90 menit',
     price: 305000,
+    csbPrice: 315000,
     badge: 'ROYAL',
     desc: 'Haircut, Face & Back Massage, Charcoal Cleansing, Traditional Shaving, Waxing Nose & Ear.'
   },
@@ -242,6 +261,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Redbox Duxe.jpg',
     duration: '90 menit',
     price: 250000,
+    csbPrice: 260000,
     badge: 'DUXE',
     desc: 'Haircut, Charcoal Deep Cleansing, Face Scrub, Hair Spa.'
   },
@@ -253,6 +273,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Redbox Earl.jpg',
     duration: '90 menit',
     price: 185000,
+    csbPrice: 195000,
     badge: 'EARL',
     desc: 'Haircut, Face & Back Massage, Hair Spa.'
   },
@@ -264,7 +285,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Redbox Baron.jpg',
     duration: '90 menit',
     price: 150000,
-    csbPrice: 180000,
+    csbPrice: 190000,
     badge: 'BARON',
     desc: 'Haircut / Fade / Long Trim.'
   },
@@ -276,6 +297,7 @@ const REDBOX_SERVICES = [
     img: 'Brand_assets/Redbox Noble.jpg',
     duration: '90 menit',
     price: 140000,
+    csbPrice: 150000,
     badge: 'NOBLE',
     desc: 'Haircut, Face & Back Massage, Ear Singeing.'
   }

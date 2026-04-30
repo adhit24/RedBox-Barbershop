@@ -87,3 +87,5 @@ server/.env.*
 .claude
 .DS_Store
 Thumbs.db
+server/sheet.csv
+server/test_sheet.js
