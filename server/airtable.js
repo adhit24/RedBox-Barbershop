@@ -195,4 +195,4 @@ async function fetchBarbersFromAirtable() {
   return { ok: true, data };
 }
 
-module.exports = { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured };
+module.exports = { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured, getBarbersTableName };

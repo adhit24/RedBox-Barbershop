@@ -10,7 +10,7 @@ const path    = require('path');
 const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
-const { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured } = require('./airtable');
+const { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured, getBarbersTableName } = require('./airtable');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -909,6 +909,8 @@ app.get('/api/barbers', async (req, res) => {
       const normalized = (airtableResult.data || []).map(normalizeBarberRecord).filter(b => b.is_active);
       if (normalized.length) {
         res.setHeader('x-barbers-source', 'airtable');
+        res.setHeader('x-barbers-table', getBarbersTableName() || '?');
+        res.setHeader('x-barbers-base', (process.env.AIRTABLE_BASE_ID || '?').slice(0, 8));
         return res.json({ data: normalized });
       }
     } catch (airtableError) {
