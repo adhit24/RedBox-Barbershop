@@ -10,7 +10,7 @@ const path    = require('path');
 const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
-const { syncBookingToAirtable, updateBookingInAirtable } = require('./airtable');
+const { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured } = require('./airtable');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -431,25 +431,20 @@ async function fetchBarbersFromSheet(sheetUrl) {
   return { data, sheet: csvUrl };
 }
 
-async function syncBarbersFromSheet(sheetUrl) {
-  const csvUrl = buildGvizCsvUrl(sheetUrl);
-  const resp = await fetch(csvUrl, { redirect: 'follow' });
-  if (!resp.ok) { const err = new Error('Tidak bisa mengambil data Google Sheets.'); err.details = (await resp.text().catch(() => '')).slice(0, 500); throw err; }
-  const csvText = await resp.text();
-  const rows = parseCsv(csvText);
-  if (!rows.length) return { sheet: csvUrl, imported_mysql: 0, imported_supabase: 0, deactivated_demo: 0 };
+function normalizeBarberRecord(b) {
+  return {
+    ...b,
+    role: String(b?.role || '').trim() || 'Barber',
+    branch: branchSlug(b?.branch),
+    work_days: Array.isArray(b?.work_days) ? b.work_days : parseWorkDays(b?.work_days),
+    img: normalizeDriveUrl(b?.img) || placeholderImg(b?.id),
+    is_active: Boolean(b?.is_active),
+  };
+}
 
-  const header = rows[0].map(h => String(h || '').trim());
-  const headerIndex = new Map(header.map((h, i) => [h, i]));
-  const get = (r, col) => { const idx = headerIndex.get(col); return idx === undefined ? '' : (r[idx] ?? ''); };
-
-  const colFull   = 'Nama Lengkap';
-  const colNick   = 'Nama Panggilan';
-  const colBranch = 'Cabang Tempat Bekerja';
-  const colStatus = 'Status Kerja';
-  const colDays   = 'Hari Kerja (Yg Pilih Part Time,Abaikan)';
-  const colSkill  = 'Keahlian Utama';
-  const colPhoto  = 'Upload Foto Diri (Opsional, klo ada yg terbaik ya :) )';
+async function syncBarbersToDatabases(barbers = [], source = 'unknown') {
+  const incoming = (barbers || []).map(normalizeBarberRecord).filter(b => b.id && b.name);
+  if (!incoming.length) return { source, imported_mysql: 0, imported_supabase: 0, deactivated_demo: 0 };
 
   let mysqlExisting = [];
   let supaExisting = [];
@@ -469,34 +464,19 @@ async function syncBarbersFromSheet(sheetUrl) {
 
   const usedIds = new Set([...mysqlExisting, ...supaExisting].map(b => b.id));
   const toUpsert = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    const full = String(get(r, colFull) || '').trim();
-    const nick = String(get(r, colNick) || '').trim();
-    const name = (nick || full).trim();
-    if (!name) continue;
-
-    const branch = branchSlug(get(r, colBranch));
-    let role = String(get(r, colSkill) || '').trim() || 'Barber';
-    role = role.replace(/[,\s]+$/g, '');
-    const is_active = isActiveFromStatus(get(r, colStatus));
-    const workDays = parseWorkDays(get(r, colDays));
-    const imgRaw = normalizeDriveUrl(get(r, colPhoto));
-
-    const keyName = normName(name);
-    let id = nameToId.get(keyName);
+  for (const raw of incoming) {
+    const keyName = normName(raw.name);
+    let id = String(raw.id || '').trim();
+    if (!id) id = nameToId.get(keyName);
     if (!id) {
-      const base = `${branch}-${slugify(name)}`.slice(0, 50);
+      const base = `${raw.branch}-${slugify(raw.name)}`.slice(0, 50);
       id = base;
       let n = 2;
       while (usedIds.has(id)) { id = `${base}-${n++}`.slice(0, 50); }
-      usedIds.add(id);
     }
-    toUpsert.push({ id, name, role, img: imgRaw || placeholderImg(id), work_days: workDays, branch, is_active: Boolean(is_active) });
+    usedIds.add(id);
+    toUpsert.push({ ...raw, id });
   }
-
-  if (!toUpsert.length) return { sheet: csvUrl, imported_mysql: 0, imported_supabase: 0, deactivated_demo: 0 };
 
   let importedMysql = 0;
   let importedSupabase = 0;
@@ -550,7 +530,19 @@ async function syncBarbersFromSheet(sheetUrl) {
     }
   }
 
-  return { sheet: csvUrl, imported_mysql: importedMysql, imported_supabase: importedSupabase, deactivated_demo: deactivatedDemo, supabase_error };
+  return { source, imported_mysql: importedMysql, imported_supabase: importedSupabase, deactivated_demo: deactivatedDemo, supabase_error };
+}
+
+async function syncBarbersFromSheet(sheetUrl) {
+  const result = await fetchBarbersFromSheet(sheetUrl);
+  const synced = await syncBarbersToDatabases(result.data || [], 'google_sheet');
+  return { sheet: result.sheet, ...synced };
+}
+
+async function syncBarbersFromAirtableSource() {
+  if (!isBarbersConfigured()) throw new Error('Airtable kapster belum dikonfigurasi.');
+  const result = await fetchBarbersFromAirtable();
+  return syncBarbersToDatabases(result.data || [], 'airtable');
 }
 
 const supabaseConfigured = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
@@ -571,9 +563,17 @@ if (DB_TYPE === 'supabase') {
   console.log('Using MySQL (XAMPP)');
   if (supabaseConfigured) supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   ensureMysqlBookingSlotKey();
-  if (process.env.AUTO_SYNC_BARBERS === '1' && (process.env.BARBERS_SHEET_URL || process.env.AUTO_SYNC_BARBERS_URL)) {
-    const u = process.env.AUTO_SYNC_BARBERS_URL || process.env.BARBERS_SHEET_URL;
-    syncBarbersFromSheet(u).then(r => console.log(`Barbers sync: mysql=${r.imported_mysql} supabase=${r.imported_supabase} deactivated_demo=${r.deactivated_demo}`)).catch(e => console.warn('Barbers sync failed:', e?.message || e));
+  if (process.env.AUTO_SYNC_BARBERS === '1') {
+    if (isBarbersConfigured()) {
+      syncBarbersFromAirtableSource()
+        .then(r => console.log(`Barbers sync (${r.source}): mysql=${r.imported_mysql} supabase=${r.imported_supabase} deactivated_demo=${r.deactivated_demo}`))
+        .catch(e => console.warn('Barbers Airtable sync failed:', e?.message || e));
+    } else if (process.env.BARBERS_SHEET_URL || process.env.AUTO_SYNC_BARBERS_URL) {
+      const u = process.env.AUTO_SYNC_BARBERS_URL || process.env.BARBERS_SHEET_URL;
+      syncBarbersFromSheet(u)
+        .then(r => console.log(`Barbers sync (${r.source}): mysql=${r.imported_mysql} supabase=${r.imported_supabase} deactivated_demo=${r.deactivated_demo}`))
+        .catch(e => console.warn('Barbers sheet sync failed:', e?.message || e));
+    }
   }
 }
 
@@ -903,33 +903,39 @@ app.delete('/api/bookings/:id', adminAuth, async (req, res) => {
 
 // GET /api/barbers
 app.get('/api/barbers', async (req, res) => {
+  if (isBarbersConfigured()) {
+    try {
+      const airtableResult = await fetchBarbersFromAirtable();
+      const normalized = (airtableResult.data || []).map(normalizeBarberRecord).filter(b => b.is_active);
+      if (normalized.length) {
+        res.setHeader('x-barbers-source', 'airtable');
+        return res.json({ data: normalized });
+      }
+    } catch (airtableError) {
+      console.warn('Airtable barbers fetch failed:', airtableError?.message || airtableError);
+    }
+  }
+
   if (DB_TYPE === 'supabase') {
     const { data, error } = await supabase.from('barbers').select('*').eq('is_active', true);
     if (error) return res.status(500).json({ error: error.message });
-    const normalized = (data || []).map(b => ({
-      ...b,
-      img: normalizeDriveUrl(b.img) || placeholderImg(b.id),
-    }));
+    const normalized = (data || []).map(normalizeBarberRecord);
     return res.json({ data: normalized });
   } else {
     try {
       const [rows] = await mysqlPool.execute('SELECT * FROM barbers WHERE is_active = 1');
-      const normalized = (rows || []).map(b => ({
-        ...b,
-        img: normalizeDriveUrl(b.img) || placeholderImg(b.id),
-      }));
+      const normalized = (rows || []).map(normalizeBarberRecord);
       res.json({ data: normalized });
     } catch (error) {
-      const fallbackSheetUrl = process.env.BARBERS_SHEET_URL
-        || 'https://docs.google.com/spreadsheets/d/1QKcxyKV8gHLJzQtN2s_3pMsVMvRS8kgNBYRV8k1S74c/edit?resourcekey=&gid=784726083#gid=784726083';
-      try {
-        const r = await fetchBarbersFromSheet(fallbackSheetUrl);
-        res.setHeader('x-barbers-source', 'sheet');
-        res.json({ data: (r.data || []).filter(b => b.is_active) });
-      } catch (sheetErr) {
-        const details = error?.message || error?.code || String(error || '');
-        res.status(503).json({ error: 'Database kapster sedang offline. Nyalakan MySQL (XAMPP) atau jalankan sync kapster.', details });
+      if (process.env.BARBERS_SHEET_URL) {
+        try {
+          const r = await fetchBarbersFromSheet(process.env.BARBERS_SHEET_URL);
+          res.setHeader('x-barbers-source', 'google_sheet');
+          return res.json({ data: (r.data || []).map(normalizeBarberRecord).filter(b => b.is_active) });
+        } catch (sheetErr) {}
       }
+      const details = error?.message || error?.code || String(error || '');
+      res.status(503).json({ error: 'Data kapster sedang offline. Hubungkan Airtable kapster atau nyalakan database.', details });
     }
   }
 });
@@ -1072,11 +1078,19 @@ function buildRevenueReport(rows, fromStr, toStr) {
 
 // POST /api/admin/sync-barbers
 app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
-  const sheetUrl = req.body?.sheetUrl
-    || process.env.BARBERS_SHEET_URL
-    || 'https://docs.google.com/spreadsheets/d/1QKcxyKV8gHLJzQtN2s_3pMsVMvRS8kgNBYRV8k1S74c/edit?gid=784726083#gid=784726083';
   try {
-    const result = await syncBarbersFromSheet(sheetUrl);
+    let result;
+    if (req.body?.source === 'sheet') {
+      const sheetUrl = req.body?.sheetUrl || process.env.BARBERS_SHEET_URL;
+      if (!sheetUrl) return res.status(400).json({ error: 'sheetUrl wajib diisi untuk source=sheet' });
+      result = await syncBarbersFromSheet(sheetUrl);
+    } else if (isBarbersConfigured()) {
+      result = await syncBarbersFromAirtableSource();
+    } else if (process.env.BARBERS_SHEET_URL) {
+      result = await syncBarbersFromSheet(process.env.BARBERS_SHEET_URL);
+    } else {
+      return res.status(400).json({ error: 'Airtable kapster belum dikonfigurasi.' });
+    }
     res.json(result);
   } catch (e) { res.status(500).json({ error: e?.message || 'Sync failed' }); }
 });
