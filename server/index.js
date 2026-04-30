@@ -1017,7 +1017,7 @@ function buildRevenueReport(rows, fromStr, toStr) {
 app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
   const sheetUrl = req.body?.sheetUrl
     || process.env.BARBERS_SHEET_URL
-    || 'https://docs.google.com/spreadsheets/d/1QKcxyKV8gHLJzQtN2s_3pMsVMvRS8kgNBYRV8k1S74c/edit?usp=sharing';
+    || 'https://docs.google.com/spreadsheets/d/1QKcxyKV8gHLJzQtN2s_3pMsVMvRS8kgNBYRV8k1S74c/edit?gid=784726083#gid=784726083';
   try {
     const result = await syncBarbersFromSheet(sheetUrl);
     res.json(result);
