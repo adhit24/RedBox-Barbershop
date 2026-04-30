@@ -922,6 +922,8 @@ app.get('/api/barbers', async (req, res) => {
     const { data, error } = await supabase.from('barbers').select('*').eq('is_active', true);
     if (error) return res.status(500).json({ error: error.message });
     const normalized = (data || []).map(normalizeBarberRecord);
+    res.setHeader('x-barbers-source', 'supabase');
+    res.setHeader('x-supabase-url', (process.env.SUPABASE_URL || '?').replace('https://','').slice(0,16));
     return res.json({ data: normalized });
   } else {
     try {
