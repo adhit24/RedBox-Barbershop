@@ -924,6 +924,7 @@ app.get('/api/barbers', async (req, res) => {
     const normalized = (data || []).map(normalizeBarberRecord);
     res.setHeader('x-barbers-source', 'supabase');
     res.setHeader('x-supabase-url', (process.env.SUPABASE_URL || '?').replace('https://','').slice(0,16));
+    res.setHeader('x-barbers-raw-ids', (data||[]).filter(b=>b.id&&b.id.includes('samad')).map(b=>b.id).join(','));
     return res.json({ data: normalized });
   } else {
     try {
