@@ -30,7 +30,7 @@ function getBarbersBase() {
 }
 
 function getBarbersTableName() {
-  return process.env.AIRTABLE_BARBERS_TABLE_NAME || process.env.AIRTABLE_BARBERS_TABLE;
+  return process.env.AIRTABLE_BARBERS_TABLE_NAME || process.env.AIRTABLE_BARBERS_TABLE || process.env.AIRTABLE_TABLE_NAME;
 }
 
 function escapeAirtableValue(val) {
