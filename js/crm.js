@@ -26,6 +26,48 @@ function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// ── TOAST NOTIFICATION SYSTEM ────────────────────
+const TOAST_ICONS = { success: '✓', error: '✕', info: 'ℹ', warning: '⚠' };
+function showToast(message, type = 'info', duration = 3500) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span class="toast-icon">${TOAST_ICONS[type] || 'ℹ'}</span><span class="toast-msg">${esc(message)}</span><button class="toast-close" onclick="this.closest('.toast').remove()">&times;</button>`;
+  container.appendChild(toast);
+  setTimeout(() => { toast.classList.add('removing'); setTimeout(() => toast.remove(), 300); }, duration);
+}
+
+// ── ANIMATED COUNTER ─────────────────────────────
+function animateCounter(el, target, duration = 600) {
+  if (!el) return;
+  const start = parseInt(el.textContent) || 0;
+  if (start === target) return;
+  const startTime = performance.now();
+  const step = (now) => {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = Math.round(start + (target - start) * eased);
+    if (progress < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// ── TIME-BASED GREETING ──────────────────────────
+function updateGreeting() {
+  const hour = new Date().getHours();
+  let greeting = 'Good Evening';
+  if (hour >= 5 && hour < 12) greeting = 'Good Morning';
+  else if (hour >= 12 && hour < 17) greeting = 'Good Afternoon';
+  const el = document.getElementById('greetingTitle');
+  if (el) el.textContent = `${greeting}, Admin`;
+  const sub = document.getElementById('greetingSub');
+  if (sub) {
+    const d = new Date();
+    sub.textContent = `Here's what's happening at Redbox — ${DAYS_SHORT[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  }
+}
+
 function safePrompt(message) {
   try { return typeof window.prompt === 'function' ? window.prompt(message) : null; } catch { return null; }
 }
@@ -40,7 +82,7 @@ async function handleApiError(res) {
   return null;
 }
 
-async function detectApiMode() {
+async function detectApiMode(showStatusToast = true) {
   try {
     const res = await fetch(API_URL + '/health', { signal: AbortSignal.timeout(2000) });
     if (res.ok) {
@@ -51,6 +93,9 @@ async function detectApiMode() {
       if (info.airtable === 'connected') showDbBadge('☁️ Airtable Sync: ON', 'blue', 'airtableBadge');
     }
   } catch { USE_API = false; showDbBadge('🟡 Local (Offline Mode)', 'yellow', 'dbBadge'); }
+  if (showStatusToast && typeof showToast === 'function') {
+    showToast(USE_API ? 'Connected to server' : 'Running in offline mode', USE_API ? 'success' : 'info', 2500);
+  }
 }
 
 function showDbBadge(text, color, id = 'dbBadge') {
@@ -285,7 +330,7 @@ document.querySelectorAll('.sb-link').forEach(btn => {
     btn.classList.add('active');
     document.querySelectorAll('.crm-view').forEach(v => v.classList.remove('active'));
     const el = document.getElementById('view-' + view);
-    if (el) el.classList.add('active');
+    if (el) { el.classList.add('active'); el.style.animation = 'none'; el.offsetHeight; el.style.animation = ''; }
     document.getElementById('pageTitle').textContent = btn.textContent.trim();
     renderView(view);
     document.getElementById('crmSidebar').classList.remove('open');
@@ -308,11 +353,14 @@ function getCurrentView() { return document.querySelector('.sb-link.active')?.da
 async function renderOverview() {
   const today = todayStr();
   const stats = await apiGetStats();
-  document.getElementById('statToday').textContent     = stats.today;
-  document.getElementById('statDone').textContent      = stats.done;
-  document.getElementById('statPending').textContent   = stats.pending;
-  document.getElementById('statCustomers').textContent = stats.customers;
+  animateCounter(document.getElementById('statToday'), stats.today);
+  animateCounter(document.getElementById('statDone'), stats.done);
+  animateCounter(document.getElementById('statPending'), stats.pending);
+  animateCounter(document.getElementById('statCustomers'), stats.customers);
+  animateCounter(document.getElementById('gsToday'), stats.today);
+  animateCounter(document.getElementById('gsPending'), stats.pending);
   document.getElementById('todayDateLabel').textContent = fmtDate(today);
+  updateGreeting();
 
   const bookings = await apiGetBookings({ date: today });
   const todayBks = bookings.filter(b => dateKey(b.date) === today);
@@ -598,16 +646,16 @@ document.querySelectorAll('[data-segment]').forEach(btn => {
 
 // ── REVENUE REPORT ───────────────────────────────
 async function renderRevenue() {
-  const container = document.getElementById('view-revenue');
+  const container = document.getElementById('revenueContent') || document.getElementById('view-revenue');
   if (!container) return;
 
   const period  = document.getElementById('revPeriod')?.value || 'month';
   const branch  = document.getElementById('revBranch')?.value || 'all';
 
-  container.innerHTML = `<div style="text-align:center;padding:40px;color:#aaa">Memuat laporan...</div>`;
+  container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--w30,#aaa)">Memuat laporan...</div>`;
 
   const data = await apiGetRevenue({ period, branch });
-  if (!data) { container.innerHTML = `<div class="empty-state">Gagal memuat data revenue. Pastikan server berjalan.</div>`; return; }
+  if (!data) { container.innerHTML = `<div class="empty-state">Gagal memuat data revenue. Pastikan server berjalan.</div>`; showToast('Gagal memuat data revenue', 'error'); return; }
 
   const periodLabels = { week: '7 Hari Terakhir', month: '30 Hari Terakhir', year: '1 Tahun Terakhir' };
 
@@ -837,9 +885,10 @@ document.getElementById('modalSave')?.addEventListener('click', async () => {
   try {
     await apiSaveBooking({ name, wa, service_id: serviceId, service: serviceName, price: servicePrice, duration: serviceDuration, barber_id: barber, date, time, location, status, notes }, editingBookingId || null);
     closeBookingModal();
+    showToast(editingBookingId ? 'Booking berhasil diupdate' : 'Booking baru berhasil ditambahkan', 'success');
     await renderView(getCurrentView());
     if (selectedCalDate === date) renderDayDetail(date);
-  } catch(err) { alert(err.message); }
+  } catch(err) { showToast(err.message, 'error'); }
 });
 
 function closeBookingModal() { document.getElementById('bookingModal').style.display = 'none'; editingBookingId = null; }
@@ -932,17 +981,20 @@ document.getElementById('customerDetailModal')?.addEventListener('click', e => {
 window.cancelBooking = async function(id) {
   if (!confirm('Cancel booking ini?')) return;
   await apiSaveBooking({ status: 'cancelled' }, id);
+  showToast('Booking dibatalkan', 'warning');
   renderView(getCurrentView());
   if (selectedCalDate) renderDayDetail(selectedCalDate);
 };
 window.confirmBooking = async function(id) {
   await apiSaveBooking({ status: 'confirmed' }, id);
+  showToast('Booking dikonfirmasi', 'success');
   renderView(getCurrentView());
   if (selectedCalDate) renderDayDetail(selectedCalDate);
 };
 window.denyBooking = async function(id) {
   if (!confirm('Deny booking ini?')) return;
   await apiSaveBooking({ status: 'cancelled' }, id);
+  showToast('Booking ditolak', 'error');
   renderView(getCurrentView());
   if (selectedCalDate) renderDayDetail(selectedCalDate);
 };
@@ -956,11 +1008,12 @@ async function refreshDataAndView() {
   REFRESHING = true;
   try {
     CACHED_BARBERS = null;
-    await detectApiMode();
+    await detectApiMode(false);
     await populateBarberFilters();
     const view = getCurrentView();
     await renderView(view);
     if (view === 'calendar' && selectedCalDate) await renderDayDetail(selectedCalDate);
+    showToast(USE_API ? 'Dashboard refreshed with live data' : 'Dashboard refreshed in offline mode', 'success', 2200);
   } finally { REFRESHING = false; }
 }
 
@@ -1030,7 +1083,7 @@ function seedDemoData() {
 // ── INIT ─────────────────────────────────────────
 setTopbarDate();
 async function init() {
-  await detectApiMode();
+  await detectApiMode(false);
   if (USE_API && !getAdminToken()) {
     const pwd = safePrompt('Masukkan Admin Password untuk akses CRM:');
     if (pwd) setAdminToken(pwd);
@@ -1039,6 +1092,11 @@ async function init() {
   await populateBarberFilters();
   await renderView('overview');
   setupPullToRefresh();
+  showToast(
+    USE_API ? 'Welcome back, Admin. Live Redbox data is ready.' : 'Welcome back, Admin. Offline demo mode is ready.',
+    USE_API ? 'success' : 'info',
+    3200
+  );
 
   // Auto-refresh setiap 60 detik
   setInterval(async () => {

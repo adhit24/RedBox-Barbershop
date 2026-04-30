@@ -161,14 +161,20 @@ function createMokaRouter(supabase) {
       let customerId = null;
 
       const { data: existingCust } = await supabase
-        .from('customers').select('id').eq('wa', phone).maybeSingle();
+        .from('customers').select('id').eq('phone_e164', phone).maybeSingle();
 
       if (existingCust) {
         customerId = existingCust.id;
       } else {
         const { data: newCust } = await supabase
           .from('customers')
-          .insert({ name: customer.name, wa: phone, email: customer.email || null, source: 'web' })
+          .insert({
+            name: customer.name,
+            wa: phone,
+            phone_e164: phone,
+            email: customer.email || null,
+            source: 'web',
+          })
           .select('id').single();
         customerId = newCust?.id;
       }

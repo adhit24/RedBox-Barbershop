@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS services (
   duration_minutes INTEGER NOT NULL DEFAULT 30,
   price            INTEGER NOT NULL DEFAULT 0,
   moka_item_id     TEXT UNIQUE,        -- Moka item / product ID
+  moka_category_id TEXT,               -- Moka category ID
+  moka_category_name TEXT,             -- Optional Moka category label
   is_active        BOOLEAN NOT NULL DEFAULT TRUE,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -91,6 +93,9 @@ WHERE phone_e164 IS NULL AND wa IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_customers_email       ON customers (email)         WHERE email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_customers_phone_e164  ON customers (phone_e164)    WHERE phone_e164 IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_customers_moka        ON customers (moka_customer_id) WHERE moka_customer_id IS NOT NULL;
+
+ALTER TABLE services ADD COLUMN IF NOT EXISTS moka_category_id   TEXT;
+ALTER TABLE services ADD COLUMN IF NOT EXISTS moka_category_name TEXT;
 
 -- ============================================================
 -- TABLE: schedules   ★ SOURCE OF TRUTH ★
@@ -322,11 +327,15 @@ CREATE OR REPLACE VIEW schedules_full AS
     b.name            AS barber_name,
     b.role            AS barber_role,
     c.name            AS customer_name,
-    c.wa              AS customer_phone,
+    COALESCE(c.phone_e164, c.wa) AS customer_phone,
     c.email           AS customer_email,
     o.name            AS outlet_name,
-    o.moka_outlet_id  AS outlet_moka_id
+    o.moka_outlet_id  AS outlet_moka_id,
+    svc.moka_item_id,
+    svc.moka_category_id,
+    svc.moka_category_name
   FROM  schedules s
   LEFT JOIN barbers   b ON s.barber_id   = b.id
   LEFT JOIN customers c ON s.customer_id = c.id
-  LEFT JOIN outlets   o ON s.outlet_id   = o.id;
+  LEFT JOIN outlets   o ON s.outlet_id   = o.id
+  LEFT JOIN services svc ON s.service_id = svc.id;

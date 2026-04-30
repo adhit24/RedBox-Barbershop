@@ -64,7 +64,10 @@ async function pushScheduleToMoka(supabase, scheduleId) {
         // Persist Moka customer ID back onto our customer row
         if (mokaCustomerId && sch.customer_id) {
           await supabase.from('customers')
-            .update({ moka_customer_id: mokaCustomerId })
+            .update({
+              moka_customer_id: mokaCustomerId,
+              phone_e164: sch.customer_phone || null,
+            })
             .eq('id', sch.customer_id);
         }
       } catch (custErr) {
@@ -484,12 +487,16 @@ async function _resolveCustomer(supabase, customerData) {
   // Lookup by phone (wa column)
   if (phone) {
     const { data: byPhone } = await supabase
-      .from('customers').select('id').eq('wa', phone).maybeSingle();
+      .from('customers').select('id').eq('phone_e164', phone).maybeSingle();
     if (byPhone) {
       // Backfill moka_customer_id if missing
-      if (mokaId) {
+      if (mokaId || phone) {
         await supabase.from('customers')
-          .update({ moka_customer_id: mokaId }).eq('id', byPhone.id);
+          .update({
+            moka_customer_id: mokaId || null,
+            phone_e164: phone,
+          })
+          .eq('id', byPhone.id);
       }
       return byPhone.id;
     }
@@ -498,7 +505,14 @@ async function _resolveCustomer(supabase, customerData) {
   // Create new customer
   const { data: newCust } = await supabase
     .from('customers')
-    .insert({ name, wa: phone || '', email, source: 'moka', moka_customer_id: mokaId || null })
+    .insert({
+      name,
+      wa: phone || '',
+      phone_e164: phone || null,
+      email,
+      source: 'moka',
+      moka_customer_id: mokaId || null,
+    })
     .select('id')
     .single();
 
