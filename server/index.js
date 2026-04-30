@@ -906,11 +906,19 @@ app.get('/api/barbers', async (req, res) => {
   if (DB_TYPE === 'supabase') {
     const { data, error } = await supabase.from('barbers').select('*').eq('is_active', true);
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ data });
+    const normalized = (data || []).map(b => ({
+      ...b,
+      img: normalizeDriveUrl(b.img) || placeholderImg(b.id),
+    }));
+    return res.json({ data: normalized });
   } else {
     try {
       const [rows] = await mysqlPool.execute('SELECT * FROM barbers WHERE is_active = 1');
-      res.json({ data: rows });
+      const normalized = (rows || []).map(b => ({
+        ...b,
+        img: normalizeDriveUrl(b.img) || placeholderImg(b.id),
+      }));
+      res.json({ data: normalized });
     } catch (error) {
       const fallbackSheetUrl = process.env.BARBERS_SHEET_URL
         || 'https://docs.google.com/spreadsheets/d/1QKcxyKV8gHLJzQtN2s_3pMsVMvRS8kgNBYRV8k1S74c/edit?resourcekey=&gid=784726083#gid=784726083';
