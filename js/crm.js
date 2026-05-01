@@ -582,7 +582,7 @@ async function renderBookingsTable(search = '', statusF = 'all', barberF = 'all'
     const canConfirm = b.status === 'pending';
     const canCancel  = b.status === 'pending' || b.status === 'confirmed';
     const dis = 'disabled style="opacity:.4;pointer-events:none"';
-    return `<tr onclick="openDetailModal('${esc(b.id)}')">
+    return `<tr data-booking-id="${esc(b.id)}" onclick="openDetailModal('${esc(b.id)}')">
       <td><div class="td-name">${esc(fmtDate(b.date))}</div><div class="td-meta">${esc(timeKey(b.time))}</div></td>
       <td><div class="td-name">${esc(b.name)}</div><div class="td-meta"><a href="https://wa.me/62${esc(b.wa || '')}" target="_blank" class="wa-link">+62${esc(b.wa || '')}</a></div></td>
       <td>${esc(b.service)}<div class="td-meta">${esc(b.duration || '')}</div></td>
@@ -1073,8 +1073,13 @@ document.getElementById('customerDetailModal')?.addEventListener('click', e => {
 // ── ACTION HANDLERS ──────────────────────────────
 window.cancelBooking = async function(id) {
   if (!confirm('Cancel booking ini?')) return;
-  await apiSaveBooking({ status: 'cancelled' }, id);
-  showToast('Booking dibatalkan', 'warning');
+  document.querySelector(`tr[data-booking-id="${id}"]`)?.remove();
+  try {
+    await apiSaveBooking({ status: 'cancelled' }, id);
+    showToast('Booking dibatalkan', 'warning');
+  } catch(e) {
+    showToast('Gagal cancel: ' + e.message, 'error');
+  }
   renderView(getCurrentView());
   if (selectedCalDate) renderDayDetail(selectedCalDate);
 };
