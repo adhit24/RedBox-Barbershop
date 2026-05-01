@@ -256,16 +256,19 @@ async function apiSaveBooking(data, id = null) {
     saveBookings(bookings);
     return { success: true };
   }
-  const method = id ? 'PATCH' : 'POST';
-  const url    = id ? `${API_URL}/bookings/${id}` : `${API_URL}/bookings`;
-  const res    = await fetch(url, { method, headers: apiHeaders(), body: JSON.stringify(data) });
-  if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Failed to save booking'); }
+  const url = id ? `${API_URL}/bookings/${id}` : `${API_URL}/bookings`;
+  const res = await fetch(url, { method: 'POST', headers: apiHeaders(), body: JSON.stringify(data) });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const err = await res.json(); msg = err.error || msg; } catch { try { msg += ': ' + (await res.text()).slice(0, 120); } catch {} }
+    throw new Error(msg);
+  }
   return res.json();
 }
 
 async function apiSetBookingStatus(id, status) {
   if (!USE_API) return true;
-  const res = await fetch(`${API_URL}/bookings/${id}`, { method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ status }) });
+  const res = await fetch(`${API_URL}/bookings/${id}`, { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ status }) });
   if (!res.ok) { await handleApiError(res); return false; }
   return true;
 }

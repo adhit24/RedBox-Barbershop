@@ -825,8 +825,8 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
   }
 });
 
-// PATCH /api/bookings/:id
-app.patch('/api/bookings/:id', adminAuth, async (req, res) => {
+// PATCH /api/bookings/:id  (also accepts POST for proxies that block PATCH)
+async function handleBookingUpdate(req, res) {
   const allowed = ['name','wa','service_id','service','price','duration','barber_id','date','time','location','status','notes','payment'];
   const updates = {};
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
@@ -931,7 +931,9 @@ app.patch('/api/bookings/:id', adminAuth, async (req, res) => {
       res.status(500).json({ error: error.message });
     }
   }
-});
+}
+app.patch('/api/bookings/:id', adminAuth, handleBookingUpdate);
+app.post('/api/bookings/:id', adminAuth, handleBookingUpdate);
 
 // DELETE /api/bookings/:id
 app.delete('/api/bookings/:id', adminAuth, async (req, res) => {
