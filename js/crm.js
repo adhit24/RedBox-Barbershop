@@ -180,6 +180,7 @@ async function apiGetBookings(params = {}) {
     return local;
   }
   try {
+    params._t = Date.now();
     const q = new URLSearchParams(params).toString();
     const res = await fetch(`${API_URL}/bookings?${q}`, { headers: apiHeaders() });
     if (!res.ok) {
@@ -198,6 +199,7 @@ async function apiGetBookings(params = {}) {
 async function apiGetCustomers(params = {}) {
   if (!USE_API) return getCustomers();
   try {
+    params._t = Date.now();
     const q = new URLSearchParams(params).toString();
     const res = await fetch(`${API_URL}/customers?${q}`, { headers: apiHeaders() });
     if (!res.ok) {
@@ -217,7 +219,7 @@ async function apiGetStats() {
     return { today: bks.filter(b => b.date === today && b.status !== 'cancelled').length, done: bks.filter(b => b.status === 'done').length, pending: bks.filter(b => ['pending','confirmed'].includes(b.status)).length, customers: getCustomers().length };
   }
   try {
-    const res = await fetch(`${API_URL}/stats`, { headers: apiHeaders() });
+    const res = await fetch(`${API_URL}/stats?_t=${Date.now()}`, { headers: apiHeaders() });
     if (!res.ok) {
       const apiErr = await handleApiError(res);
       if (apiErr === 'unauthorized') return null;
@@ -229,7 +231,7 @@ async function apiGetStats() {
 async function apiGetBarbers() {
   if (!USE_API) return Object.entries(BARBER_DATA).map(([id, data]) => ({ id, ...data }));
   try {
-    const res = await fetch(`${API_URL}/barbers`, { headers: apiHeaders() });
+    const res = await fetch(`${API_URL}/barbers?_t=${Date.now()}`, { headers: apiHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || [];
@@ -238,6 +240,7 @@ async function apiGetBarbers() {
 
 async function apiGetRevenue(params = {}) {
   try {
+    params._t = Date.now();
     const q = new URLSearchParams(params).toString();
     const res = await fetch(`${API_URL}/revenue?${q}`, { headers: apiHeaders() });
     if (!res.ok) return null;
@@ -409,7 +412,12 @@ async function renderView(view) {
   if (!(await ensureAdminSession())) return;
   if (view === 'overview')   await renderOverview();
   if (view === 'calendar')   await renderAdminCalendar();
-  if (view === 'bookings')   await renderBookingsTable();
+  if (view === 'bookings') {
+    const s = document.getElementById('bookingSearch')?.value || '';
+    const st = document.getElementById('bookingStatusFilter')?.value || 'all';
+    const b = document.getElementById('bookingBarberFilter')?.value || 'all';
+    await renderBookingsTable(s, st, b, bookingsPage || 0);
+  }
   if (view === 'barbers')    await renderBarbers();
   if (view === 'customers')  await renderCustomers();
   if (view === 'revenue')    await renderRevenue();
