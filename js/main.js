@@ -227,9 +227,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderBarbers(branchFilter) {
     if (!proGrid || !proSwiper) return;
 
-    const filtered = branchFilter === 'all' 
-      ? allBarbers 
-      : allBarbers.filter(b => b.branch === branchFilter);
+    const filtered = (branchFilter === 'all'
+      ? allBarbers
+      : allBarbers.filter(b => b.branch === branchFilter))
+      .slice()
+      .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'id'));
 
     function getInitials(name) {
       const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
