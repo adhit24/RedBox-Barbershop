@@ -619,14 +619,17 @@ if (DB_TYPE === 'supabase') {
 
 // ── Middleware ──────────────────────────────────
 // CORS: izinkan dari localhost dev dan domain production
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3001,http://127.0.0.1:3001').split(',').map(o => o.trim()).filter(Boolean);
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean);
 app.use(cors({
   origin: (origin, callback) => {
-    // Izinkan request tanpa origin (curl, Postman, server-to-server)
+    // Izinkan request tanpa origin (curl, Postman, server-to-server, same-origin GET)
     if (!origin) return callback(null, true);
+    // Izinkan origin yang ada di whitelist
     if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) return callback(null, true);
-    // Izinkan Cloudflare tunnel & subdomain dinamis saat dev
-    if (process.env.NODE_ENV !== 'production') return callback(null, true);
+    // Izinkan Vercel deployment URLs dan domain produksi
+    if (origin.endsWith('.vercel.app') || origin.includes('redboxbarbershop.com')) return callback(null, true);
+    // Izinkan localhost untuk dev
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) return callback(null, true);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
