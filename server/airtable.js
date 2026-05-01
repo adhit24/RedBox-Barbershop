@@ -38,14 +38,26 @@ function escapeAirtableValue(val) {
   return String(val || '').replace(/'/g, "\\'");
 }
 
+function convertGDriveUrl(url) {
+  if (!url) return '';
+  if (url.includes('lh3.googleusercontent.com')) return url;
+  const match = url.match(/(?:\/d\/|open\?id=|[?&]id=)([A-Za-z0-9_-]{10,})/);
+  if (match) return `https://lh3.googleusercontent.com/d/${match[1]}=w800`;
+  return url;
+}
+
 function normalizeAttachmentUrl(val) {
   if (!val) return '';
+  let url = '';
   if (Array.isArray(val)) {
     const first = val.find(x => x && typeof x === 'object' && x.url) || val[0];
-    return first?.url ? String(first.url) : '';
+    url = first?.url ? String(first.url) : '';
+  } else if (typeof val === 'object') {
+    url = val.url ? String(val.url) : '';
+  } else {
+    url = String(val);
   }
-  if (typeof val === 'object') return val.url ? String(val.url) : '';
-  return String(val);
+  return convertGDriveUrl(url);
 }
 
 function parseAirtableWorkDays(val) {

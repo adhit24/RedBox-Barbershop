@@ -89,3 +89,5 @@ server/.env.*
 Thumbs.db
 server/sheet.csv
 server/test_sheet.js
+
+.env*.local

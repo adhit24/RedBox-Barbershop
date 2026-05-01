@@ -16,6 +16,11 @@ const app  = express();
 const PORT = process.env.PORT || 3001;
 const DB_TYPE = process.env.DATABASE_TYPE || 'supabase';
 
+// Returns YYYY-MM-DD in local (server) timezone — avoids UTC shift near midnight
+function localDateStr(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 // ================================================
 // MOKA POS INTEGRATION (DRAFT)
 // ================================================
@@ -566,8 +571,13 @@ async function syncBarbersFromSheet(sheetUrl) {
 async function syncBarbersFromAirtableSource() {
   if (!isBarbersConfigured()) throw new Error('Airtable kapster belum dikonfigurasi.');
   const result = await fetchBarbersFromAirtable();
+  barbersCache = null; // invalidate cache on sync
   return syncBarbersToDatabases(result.data || [], 'airtable');
 }
+
+// In-memory cache — valid for 60s (configurable via BARBERS_CACHE_TTL env)
+let barbersCache = null; // { data: [], timestamp: number }
+const BARBERS_CACHE_TTL_MS = parseInt(process.env.BARBERS_CACHE_TTL || '60') * 1000;
 
 const supabaseConfigured = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
 
@@ -692,11 +702,13 @@ app.get('/api/bookings', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ data: data || [], total: data?.length || 0 });
   } else {
-    let sql = `
-      SELECT b.id, b.customer_id, b.name, b.wa, b.service_id, b.service, b.price, b.duration,
+    const selectCols = isAdmin
+      ? `b.id, b.customer_id, b.name, b.wa, b.service_id, b.service, b.price, b.duration,
              b.barber_id, DATE_FORMAT(b.date, '%Y-%m-%d') AS date, TIME_FORMAT(b.time, '%H:%i') AS time,
-             b.location, b.status, b.notes, b.payment, b.created_at, b.updated_at, br.name AS barber_name
-      FROM bookings b LEFT JOIN barbers br ON b.barber_id = br.id WHERE 1=1`;
+             b.location, b.status, b.notes, b.payment, b.created_at, b.updated_at, br.name AS barber_name`
+      : `b.id, DATE_FORMAT(b.date, '%Y-%m-%d') AS date, TIME_FORMAT(b.time, '%H:%i') AS time,
+             b.duration, b.barber_id, b.status`;
+    let sql = `SELECT ${selectCols} FROM bookings b LEFT JOIN barbers br ON b.barber_id = br.id WHERE 1=1`;
     const params = [];
     if (date)   { sql += ` AND b.date = ?`; params.push(date); }
     if (bid && bid !== 'all' && bid !== 'any') { sql += ` AND b.barber_id = ?`; params.push(bid); }
@@ -928,27 +940,42 @@ app.delete('/api/bookings/:id', adminAuth, async (req, res) => {
 // GET /api/barbers
 app.get('/api/barbers', async (req, res) => {
   if (isBarbersConfigured()) {
+    // Serve from cache if still fresh
+    if (barbersCache && (Date.now() - barbersCache.timestamp) < BARBERS_CACHE_TTL_MS) {
+      res.setHeader('x-barbers-source', 'airtable-cache');
+      return res.json({ data: barbersCache.data });
+    }
     try {
       const airtableResult = await fetchBarbersFromAirtable();
       const normalized = dedupeBarberRecords(airtableResult.data || []).filter(b => b.is_active);
       if (normalized.length) {
+        barbersCache = { data: normalized, timestamp: Date.now() };
         res.setHeader('x-barbers-source', 'airtable');
         return res.json({ data: normalized });
       }
     } catch (airtableError) {
-      console.warn('Airtable barbers fetch failed:', airtableError?.message || airtableError);
+      console.error('Airtable barbers fetch failed:', airtableError?.message || airtableError);
+      // Return stale cache rather than wrong DB data
+      if (barbersCache) {
+        res.setHeader('x-barbers-source', 'airtable-cache-stale');
+        return res.json({ data: barbersCache.data });
+      }
+      return res.status(503).json({ error: 'Data kapster dari Airtable tidak tersedia.', details: airtableError?.message });
     }
   }
 
+  // Fallback ke database hanya jika Airtable tidak dikonfigurasi
   if (DB_TYPE === 'supabase') {
     const { data, error } = await supabase.from('barbers').select('*').eq('is_active', true);
     if (error) return res.status(500).json({ error: error.message });
     const normalized = dedupeBarberRecords(data || []);
+    res.setHeader('x-barbers-source', 'supabase');
     return res.json({ data: normalized });
   } else {
     try {
       const [rows] = await mysqlPool.execute('SELECT * FROM barbers WHERE is_active = 1');
       const normalized = dedupeBarberRecords(rows || []);
+      res.setHeader('x-barbers-source', 'mysql');
       res.json({ data: normalized });
     } catch (error) {
       if (process.env.BARBERS_SHEET_URL) {
@@ -959,7 +986,7 @@ app.get('/api/barbers', async (req, res) => {
         } catch (sheetErr) {}
       }
       const details = error?.message || error?.code || String(error || '');
-      res.status(503).json({ error: 'Data kapster sedang offline. Hubungkan Airtable kapster atau nyalakan database.', details });
+      res.status(503).json({ error: 'Data kapster sedang offline.', details });
     }
   }
 });
@@ -989,8 +1016,8 @@ app.get('/api/customers', adminAuth, async (req, res) => {
   const now = new Date();
   const thirtyDaysAgo = new Date(now); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const ninetyDaysAgo = new Date(now); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const thirtyStr = thirtyDaysAgo.toISOString().split('T')[0];
-  const ninetyStr = ninetyDaysAgo.toISOString().split('T')[0];
+  const thirtyStr = localDateStr(thirtyDaysAgo);
+  const ninetyStr = localDateStr(ninetyDaysAgo);
 
   if (DB_TYPE === 'supabase') {
     let q = supabase.from('customers').select('*').order('visits', { ascending: false }).range(Number(offset), Number(offset) + Number(limit) - 1);
@@ -1020,7 +1047,7 @@ app.get('/api/customers', adminAuth, async (req, res) => {
 
 // GET /api/stats
 app.get('/api/stats', adminAuth, async (req, res) => {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateStr();
   if (DB_TYPE === 'supabase') {
     const [todayRes, doneRes, pendingRes, custRes] = await Promise.all([
       supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('date', today).neq('status', 'cancelled'),
@@ -1051,8 +1078,8 @@ app.get('/api/revenue', adminAuth, async (req, res) => {
   if (period === 'week')  { dateFrom = new Date(now); dateFrom.setDate(dateFrom.getDate() - 7); }
   else if (period === 'year') { dateFrom = new Date(now); dateFrom.setFullYear(dateFrom.getFullYear() - 1); }
   else { dateFrom = new Date(now); dateFrom.setMonth(dateFrom.getMonth() - 1); } // default: month
-  const fromStr = dateFrom.toISOString().split('T')[0];
-  const toStr = now.toISOString().split('T')[0];
+  const fromStr = localDateStr(dateFrom);
+  const toStr = localDateStr(now);
 
   if (DB_TYPE === 'supabase') {
     let q = supabase.from('booking_full').select('price,barber_id,barber_name,location,date,service').eq('status', 'done').gte('date', fromStr).lte('date', toStr);

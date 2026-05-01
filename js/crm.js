@@ -429,17 +429,18 @@ async function renderDayDetail(dateStr) {
   const bookings = (await apiGetBookings()).filter(b => dateKey(b.date) === dateStr && b.status !== 'cancelled');
   const barberFilter = document.getElementById('calBarberFilter')?.value || 'all';
   const timelineItems = await Promise.all(TIME_SLOTS.map(async slot => {
-    const bk = bookings.find(b => timeKey(b.time) === slot && (barberFilter === 'all' || (b.barber_id || b.barber) === barberFilter));
-    if (bk) {
-      const barberName = await getBarberName(bk.barber_id || bk.barber);
-      return `<div class="timeline-row">
-        <div class="tl-time">${esc(slot)}</div>
-        <div class="tl-cell occupied" data-id="${esc(bk.id)}">
-          <div class="tl-booking">
+    const slotBookings = bookings.filter(b => timeKey(b.time) === slot && (barberFilter === 'all' || (b.barber_id || b.barber) === barberFilter));
+    if (slotBookings.length > 0) {
+      const cards = await Promise.all(slotBookings.map(async bk => {
+        const barberName = await getBarberName(bk.barber_id || bk.barber);
+        return `<div class="tl-booking tl-cell occupied" data-id="${esc(bk.id)}" style="cursor:pointer">
             <div class="tl-bname">${esc(bk.name)}</div>
             <div class="tl-bmeta">${esc(bk.service)} · ${esc(barberName)} · <span class="slot-status status-${esc(bk.status)}" style="font-size:.65rem;padding:1px 6px">${esc(bk.status)}</span></div>
-          </div>
-        </div>
+          </div>`;
+      }));
+      return `<div class="timeline-row">
+        <div class="tl-time">${esc(slot)}</div>
+        <div class="tl-cell" style="flex-direction:column;gap:4px">${cards.join('')}</div>
       </div>`;
     }
     return `<div class="timeline-row">
@@ -451,8 +452,8 @@ async function renderDayDetail(dateStr) {
     </div>`;
   }));
   timeline.innerHTML = timelineItems.join('');
-  timeline.querySelectorAll('.tl-cell.occupied').forEach(cell => cell.addEventListener('click', () => openDetailModal(cell.dataset.id)));
-  timeline.querySelectorAll('.tl-add-btn').forEach(btn => btn.addEventListener('click', () => openBookingModal(btn.dataset.date, btn.dataset.time)));
+  timeline.querySelectorAll('.tl-booking.occupied').forEach(card => card.addEventListener('click', () => openDetailModal(card.dataset.id)));
+  timeline.querySelectorAll('.tl-add-btn').forEach(btn => btn.addEventListener('click', () => openBookingModal(null, btn.dataset.date, btn.dataset.time)));
 }
 
 document.getElementById('calPrevAdmin')?.addEventListener('click', () => { adminCalMonth--; if (adminCalMonth < 0) { adminCalMonth = 11; adminCalYear--; } renderAdminCalendar(); });
