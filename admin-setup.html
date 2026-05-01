@@ -175,15 +175,24 @@
   </div>
 
   <script>
+    function getAdminToken() {
+      return sessionStorage.getItem('rb_admin_token') || localStorage.getItem('rb_admin_token');
+    }
+
+    function setAdminToken(token) {
+      sessionStorage.setItem('rb_admin_token', token);
+      localStorage.setItem('rb_admin_token', token);
+    }
+
     function quickSetup() {
-      localStorage.setItem('rb_admin_token', 'redbox_admin_2024');
+      setAdminToken('redbox_admin_2024');
       updateTokenStatus();
       alert('✅ Admin token saved!\n\nNow opening CRM Dashboard...');
       openCRM();
     }
 
     function updateTokenStatus() {
-      const token = localStorage.getItem('rb_admin_token');
+      const token = getAdminToken();
       const statusEl = document.getElementById('tokenStatus');
       if (token) {
         statusEl.className = 'status ok';
@@ -195,7 +204,7 @@
     }
 
     function openCRM() {
-      const token = localStorage.getItem('rb_admin_token');
+      const token = getAdminToken();
       if (!token) {
         alert('❌ Admin token not set yet.\n\nClick "Activate Admin Mode" button or follow Manual Setup steps.');
         return;
@@ -224,7 +233,7 @@
       result.textContent = '🔄 Testing...';
       try {
         const res = await fetch('/api/bookings', {
-          headers: { 'x-admin-token': localStorage.getItem('rb_admin_token') || '' }
+          headers: { 'x-admin-token': getAdminToken() || '' }
         });
         if (res.ok) {
           const data = await res.json();
@@ -244,7 +253,7 @@
       result.textContent = '🔄 Testing...';
       try {
         const res = await fetch('/api/customers', {
-          headers: { 'x-admin-token': localStorage.getItem('rb_admin_token') || '' }
+          headers: { 'x-admin-token': getAdminToken() || '' }
         });
         if (res.ok) {
           const data = await res.json();

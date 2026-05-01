@@ -404,7 +404,7 @@
 .book-sidebar{position:sticky;top:100px}
 .sidebar-card{background:var(--bg-3);border:1px solid var(--w10);border-radius:20px;padding:28px}
 .sidebar-logo{text-align:center;margin-bottom:20px}
-.sidebar-logo img{width:60px;height:60px;object-fit:contain;margin:0 auto;filter:drop-shadow(0 0 12px rgba(193,18,31,.4))}
+.sidebar-logo img{width:92px;height:92px;object-fit:contain;margin:0 auto;filter:drop-shadow(0 0 16px rgba(193,18,31,.45))}
 .sidebar-title{
   font-family:var(--font-accent);font-size:.75rem;font-weight:600;
   letter-spacing:.15em;color:var(--w30);text-transform:uppercase;

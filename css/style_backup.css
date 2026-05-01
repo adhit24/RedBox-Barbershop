@@ -211,7 +211,7 @@ button { cursor: pointer; border: none; background: none; font-family: var(--fon
   flex-shrink: 0;
 }
 .nav-logo img {
-  height: 56px;
+  height: 72px;
   width: auto;
   filter: drop-shadow(0 0 8px rgba(193,18,31,0.5));
   transition: var(--transition);
@@ -552,7 +552,7 @@ button { cursor: pointer; border: none; background: none; font-family: var(--fon
   align-items: center; gap: 24px;
   padding: 0 0 0 48px;
 }
-.manifesto-logo { height: 56px; width: auto; }
+.manifesto-logo { height: 84px; width: auto; }
 
 /* ======================================================
    QUICK BOOKING
@@ -957,7 +957,7 @@ button { cursor: pointer; border: none; background: none; font-family: var(--fon
   grid-template-columns: 2fr 1fr 1fr 1.5fr;
   gap: 48px;
 }
-.footer-logo { height: 64px; width: auto; margin-bottom: 20px; }
+.footer-logo { height: 88px; width: auto; margin-bottom: 20px; }
 .footer-brand p { color: var(--white-50); font-size: 0.85rem; line-height: 1.7; margin-bottom: 24px; }
 .footer-social { display: flex; gap: 12px; }
 .footer-social a {
@@ -1073,7 +1073,7 @@ button { cursor: pointer; border: none; background: none; font-family: var(--fon
 @media (max-width: 768px) {
   .navbar { padding: 0 20px; height: 68px; }
   .nav-brand-name { font-size: 1.6rem; }
-  .nav-logo img { height: 44px; }
+  .nav-logo img { height: 58px; }
   .nav-links {
     display: none; position: fixed;
     top: 68px; left: 0; right: 0; bottom: 0;

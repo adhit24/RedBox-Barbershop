@@ -799,6 +799,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       status: 'pending'
     };
 
+    let savedToApi = false;
+
     if (USE_API) {
       try {
         const res = await fetch(API_URL + '/bookings', {
@@ -814,24 +816,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             goToStep(3); // Go back to calendar
             return;
           }
-          throw new Error(errData.error || 'Server error');
+          alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));
+          return;
         }
         console.log('Booking synced to Supabase');
-      } catch(e) { 
-        console.warn('API sync failed, falling back to local', e); 
+        savedToApi = true;
+      } catch(e) {
+        console.warn('API sync failed, checking offline fallback', e);
       }
     }
 
-    // Local fallback/sync
-    try {
-      const existing = JSON.parse(localStorage.getItem('rb_bookings') || '[]');
-      existing.push({ 
-        id: 'bk_' + Date.now(), 
-        ...payload, 
-        createdAt: new Date().toISOString() 
-      });
-      localStorage.setItem('rb_bookings', JSON.stringify(existing));
-    } catch(e) { console.warn('Local storage sync failed', e); }
+    // Local fallback hanya untuk mode offline / server tidak terjangkau
+    if (!USE_API || !savedToApi) {
+      try {
+        const existing = JSON.parse(localStorage.getItem('rb_bookings') || '[]');
+        existing.push({
+          id: 'bk_' + Date.now(),
+          ...payload,
+          createdAt: new Date().toISOString()
+        });
+        localStorage.setItem('rb_bookings', JSON.stringify(existing));
+      } catch(e) { console.warn('Local storage sync failed', e); }
+    }
 
     document.querySelectorAll('.book-step').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
     const stepSuccess = document.getElementById('stepSuccess');

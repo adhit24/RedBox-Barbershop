@@ -336,6 +336,12 @@ function timeToMinsStr(t) {
   return h * 60 + m;
 }
 
+function normalizeBarberIdInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.toLowerCase() === 'any') return null;
+  return raw;
+}
+
 async function hasOverlapMysql({ barberId, date, time, duration, excludeId = null }) {
   if (!mysqlPool) return false;
   if (!barberId || barberId === 'any') return false;
@@ -736,6 +742,7 @@ app.get('/api/bookings', async (req, res) => {
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
   const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment } = req.body;
+  const normalizedBarberId = normalizeBarberIdInput(barber_id);
 
   if (!name || !wa || !service || !date || !time) {
     return res.status(400).json({ error: 'Missing required fields: name, wa, service, date, time' });
@@ -757,7 +764,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // 2. Insert booking
       const { data, error } = await supabase.from('bookings').insert([{
         id: bookingId, name, wa, service_id: service_id || '', service, price: price || 0,
-        duration: duration || '', barber_id: barber_id || null, date, time,
+        duration: duration || '', barber_id: normalizedBarberId, date, time,
         location: location || 'bypass', notes: notes || '', payment: payment || ''
       }]).select().single();
       if (error) return res.status(500).json({ error: error.message });
@@ -796,7 +803,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // 3. Insert Booking
       await mysqlPool.execute(
         `INSERT INTO bookings (id, customer_id, name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [bookingId, customerId, name, wa, service_id || '', service, price || 0, duration || '', barber_id || null, date, time, location || 'bypass', notes || '', payment || '']
+        [bookingId, customerId, name, wa, service_id || '', service, price || 0, duration || '', normalizedBarberId, date, time, location || 'bypass', notes || '', payment || '']
       );
 
       const [newBooking] = await mysqlPool.execute(
@@ -821,6 +828,7 @@ app.patch('/api/bookings/:id', adminAuth, async (req, res) => {
   const allowed = ['name','wa','service_id','service','price','duration','barber_id','date','time','location','status','notes','payment'];
   const updates = {};
   allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+  if (updates.barber_id !== undefined) updates.barber_id = normalizeBarberIdInput(updates.barber_id);
 
   if (DB_TYPE === 'supabase') {
     const { data: cur, error: curError } = await supabase.from('bookings').select('id,status').eq('id', req.params.id).single();

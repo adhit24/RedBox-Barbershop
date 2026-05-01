@@ -18,6 +18,10 @@ function setAdminToken(t) {
   // Hapus dari localStorage jika masih ada (migrasi dari versi lama)
   localStorage.removeItem('rb_admin_token');
 }
+function clearAdminToken() {
+  sessionStorage.removeItem('rb_admin_token');
+  localStorage.removeItem('rb_admin_token');
+}
 
 const apiHeaders = () => ({ 'Content-Type': 'application/json', 'x-admin-token': getAdminToken() });
 
@@ -74,12 +78,64 @@ function safePrompt(message) {
 
 async function handleApiError(res) {
   if (res.status === 401) {
+    clearAdminToken();
     const pwd = safePrompt('Masukkan Admin Password:');
-    if (pwd) { setAdminToken(pwd); window.location.reload(); }
-    return null;
+    if (pwd) { setAdminToken(pwd); window.location.reload(); return 'reauth'; }
+    showToast('Admin login diperlukan untuk membuka data dashboard live', 'warning', 3500);
+    return 'unauthorized';
   }
   try { const j = await res.json(); console.error('API Error:', j.error || 'Unknown error'); } catch { console.error('API Error: Could not parse response'); }
   return null;
+}
+
+function renderLockedState(message = 'Admin password diperlukan untuk memuat dashboard live.') {
+  ['statToday', 'statDone', 'statPending', 'statCustomers', 'gsToday', 'gsPending'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '0';
+  });
+
+  const targets = [
+    ['todaySlots', 'No bookings today'],
+    ['recentList', 'No bookings yet'],
+    ['bookingsBody', ''],
+    ['customersBody', ''],
+    ['barbersGrid', ''],
+    ['crmCalGrid', ''],
+    ['slotTimeline', ''],
+    ['view-revenue', ''],
+  ];
+
+  targets.forEach(([id, fallback]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === 'bookingsBody' || id === 'customersBody') {
+      el.innerHTML = '';
+      return;
+    }
+    el.innerHTML = `<p class="empty-state">${esc(message)}</p>`;
+  });
+
+  const bookingsEmpty = document.getElementById('bookingsEmpty');
+  if (bookingsEmpty) { bookingsEmpty.style.display = ''; bookingsEmpty.textContent = message; }
+
+  const customersEmpty = document.getElementById('customersEmpty');
+  if (customersEmpty) { customersEmpty.style.display = ''; customersEmpty.textContent = message; }
+
+  const dayCard = document.getElementById('dayDetailCard');
+  if (dayCard) dayCard.style.display = 'none';
+}
+
+async function ensureAdminSession() {
+  if (!USE_API) return true;
+  if (getAdminToken()) return true;
+  const pwd = safePrompt('Masukkan Admin Password untuk akses CRM:');
+  if (!pwd) {
+    renderLockedState();
+    showToast('Admin login diperlukan untuk melihat data live', 'warning', 3500);
+    return false;
+  }
+  setAdminToken(pwd);
+  return true;
 }
 
 async function detectApiMode(showStatusToast = true) {
@@ -126,7 +182,11 @@ async function apiGetBookings(params = {}) {
   try {
     const q = new URLSearchParams(params).toString();
     const res = await fetch(`${API_URL}/bookings?${q}`, { headers: apiHeaders() });
-    if (!res.ok) { await handleApiError(res); return getBookings(); }
+    if (!res.ok) {
+      const apiErr = await handleApiError(res);
+      if (apiErr === 'unauthorized') return null;
+      return getBookings();
+    }
     const json = await res.json();
     bookingsTotalCount = json.total || json.data?.length || 0;
     const data = json.data || [];
@@ -140,7 +200,11 @@ async function apiGetCustomers(params = {}) {
   try {
     const q = new URLSearchParams(params).toString();
     const res = await fetch(`${API_URL}/customers?${q}`, { headers: apiHeaders() });
-    if (!res.ok) { await handleApiError(res); return getCustomers(); }
+    if (!res.ok) {
+      const apiErr = await handleApiError(res);
+      if (apiErr === 'unauthorized') return null;
+      return getCustomers();
+    }
     const json = await res.json();
     return json.data || [];
   } catch(e) { return getCustomers(); }
@@ -154,7 +218,10 @@ async function apiGetStats() {
   }
   try {
     const res = await fetch(`${API_URL}/stats`, { headers: apiHeaders() });
-    if (!res.ok) { await handleApiError(res); }
+    if (!res.ok) {
+      const apiErr = await handleApiError(res);
+      if (apiErr === 'unauthorized') return null;
+    }
     return await res.json();
   } catch { return { today: 0, done: 0, pending: 0, customers: 0 }; }
 }
@@ -339,6 +406,7 @@ document.querySelectorAll('.sb-link').forEach(btn => {
 document.getElementById('sidebarToggle')?.addEventListener('click', () => document.getElementById('crmSidebar').classList.toggle('open'));
 
 async function renderView(view) {
+  if (!(await ensureAdminSession())) return;
   if (view === 'overview')   await renderOverview();
   if (view === 'calendar')   await renderAdminCalendar();
   if (view === 'bookings')   await renderBookingsTable();
@@ -353,6 +421,7 @@ function getCurrentView() { return document.querySelector('.sb-link.active')?.da
 async function renderOverview() {
   const today = todayStr();
   const stats = await apiGetStats();
+  if (!stats) return renderLockedState();
   animateCounter(document.getElementById('statToday'), stats.today);
   animateCounter(document.getElementById('statDone'), stats.done);
   animateCounter(document.getElementById('statPending'), stats.pending);
@@ -363,6 +432,7 @@ async function renderOverview() {
   updateGreeting();
 
   const bookings = await apiGetBookings({ date: today });
+  if (!bookings) return renderLockedState();
   const todayBks = bookings.filter(b => dateKey(b.date) === today);
   const slotsEl = document.getElementById('todaySlots');
   if (!todayBks.length) {
@@ -381,6 +451,7 @@ async function renderOverview() {
   }
 
   const allBookings = await apiGetBookings({ limit: 6 });
+  if (!allBookings) return renderLockedState();
   const recentEl = document.getElementById('recentList');
   const recent = [...allBookings].sort((a, b) => (b.created_at || b.createdAt || '').localeCompare(a.created_at || a.createdAt || '')).slice(0, 6);
   recentEl.innerHTML = recent.length ? recent.map(b => `
@@ -401,6 +472,7 @@ async function renderAdminCalendar() {
   const daysInMonth = new Date(adminCalYear, adminCalMonth + 1, 0).getDate();
   const today = todayStr();
   const bookings = await apiGetBookings();
+  if (!bookings) return renderLockedState();
   const barberFilter = document.getElementById('calBarberFilter')?.value || 'all';
   grid.innerHTML = '';
   for (let i = 0; i < firstDay; i++) { const el = document.createElement('div'); el.className = 'crm-cal-day empty'; grid.appendChild(el); }
@@ -426,7 +498,9 @@ async function renderDayDetail(dateStr) {
   if (!card || !timeline) return;
   card.style.display = '';
   title.textContent = 'Schedule — ' + fmtDate(dateStr);
-  const bookings = (await apiGetBookings()).filter(b => dateKey(b.date) === dateStr && b.status !== 'cancelled');
+  const allBookings = await apiGetBookings();
+  if (!allBookings) return renderLockedState();
+  const bookings = allBookings.filter(b => dateKey(b.date) === dateStr && b.status !== 'cancelled');
   const barberFilter = document.getElementById('calBarberFilter')?.value || 'all';
   const timelineItems = await Promise.all(TIME_SLOTS.map(async slot => {
     const slotBookings = bookings.filter(b => timeKey(b.time) === slot && (barberFilter === 'all' || (b.barber_id || b.barber) === barberFilter));
@@ -470,6 +544,7 @@ async function renderBookingsTable(search = '', statusF = 'all', barberF = 'all'
   if (barberF !== 'all') params.barber_id = barberF;
 
   let bookings = await apiGetBookings(params);
+  if (!bookings) return renderLockedState();
 
   // Offline fallback filtering
   if (!USE_API) {
@@ -541,6 +616,7 @@ document.getElementById('bookingBarberFilter')?.addEventListener('change', funct
 // ── BARBERS VIEW ────────────────────────────────
 async function renderBarbers() {
   const bookings = await apiGetBookings();
+  if (!bookings) return renderLockedState();
   const barbers = await apiGetBarbers();
   const grid = document.getElementById('barbersGrid');
   if (!grid) return;
@@ -591,6 +667,7 @@ async function renderCustomers(search = '', segment = currentSegment) {
   if (search) params.search = search;
   if (segment !== 'all') params.segment = segment;
   const customers = await apiGetCustomers(params);
+  if (!customers) return renderLockedState();
 
   // Badge counts (hanya saat tidak sedang filter)
   if (!search) {
@@ -1085,10 +1162,7 @@ function seedDemoData() {
 setTopbarDate();
 async function init() {
   await detectApiMode(false);
-  if (USE_API && !getAdminToken()) {
-    const pwd = safePrompt('Masukkan Admin Password untuk akses CRM:');
-    if (pwd) setAdminToken(pwd);
-  }
+  if (!(await ensureAdminSession())) return;
   if (!USE_API) seedDemoData();
   await populateBarberFilters();
   await renderView('overview');
