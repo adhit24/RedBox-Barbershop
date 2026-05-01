@@ -825,6 +825,23 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
   }
 });
 
+// POST /api/booking-status — flat endpoint for cancel/confirm/deny (avoids dynamic-segment routing issues)
+app.post('/api/booking-status', adminAuth, async (req, res) => {
+  const { id, status } = req.body;
+  if (!id || !status) return res.status(400).json({ error: 'id and status required' });
+  if (DB_TYPE === 'supabase') {
+    const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    updateBookingInAirtable(data);
+    return res.json({ data });
+  } else {
+    try {
+      await mysqlPool.execute('UPDATE bookings SET status = ? WHERE id = ?', [status, id]);
+      return res.json({ success: true });
+    } catch (e) { return res.status(500).json({ error: e.message }); }
+  }
+});
+
 // PATCH /api/bookings/:id  (also accepts POST for proxies that block PATCH)
 async function handleBookingUpdate(req, res) {
   const allowed = ['name','wa','service_id','service','price','duration','barber_id','date','time','location','status','notes','payment'];

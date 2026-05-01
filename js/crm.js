@@ -1074,11 +1074,28 @@ document.getElementById('customerDetailCancel')?.addEventListener('click', () =>
 document.getElementById('customerDetailModal')?.addEventListener('click', e => { if (e.target === document.getElementById('customerDetailModal')) document.getElementById('customerDetailModal').style.display = 'none'; });
 
 // ── ACTION HANDLERS ──────────────────────────────
+async function setBookingStatus(id, status) {
+  if (!USE_API) {
+    const bks = getBookings();
+    const idx = bks.findIndex(b => b.id === id);
+    if (idx !== -1) { bks[idx].status = status; saveBookings(bks); }
+    return;
+  }
+  const res = await fetch(`${API_URL}/booking-status`, {
+    method: 'POST', headers: apiHeaders(), body: JSON.stringify({ id, status })
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try { const err = await res.json(); msg = err.error || msg; } catch {}
+    throw new Error(msg);
+  }
+}
+
 window.cancelBooking = async function(id) {
   if (!confirm('Cancel booking ini?')) return;
   document.querySelector(`tr[data-booking-id="${id}"]`)?.remove();
   try {
-    await apiSaveBooking({ status: 'cancelled' }, id);
+    await setBookingStatus(id, 'cancelled');
     showToast('Booking dibatalkan', 'warning');
   } catch(e) {
     showToast('Gagal cancel: ' + e.message, 'error');
@@ -1087,15 +1104,23 @@ window.cancelBooking = async function(id) {
   if (selectedCalDate) renderDayDetail(selectedCalDate);
 };
 window.confirmBooking = async function(id) {
-  await apiSaveBooking({ status: 'confirmed' }, id);
-  showToast('Booking dikonfirmasi', 'success');
+  try {
+    await setBookingStatus(id, 'confirmed');
+    showToast('Booking dikonfirmasi', 'success');
+  } catch(e) {
+    showToast('Gagal confirm: ' + e.message, 'error');
+  }
   renderView(getCurrentView());
   if (selectedCalDate) renderDayDetail(selectedCalDate);
 };
 window.denyBooking = async function(id) {
   if (!confirm('Deny booking ini?')) return;
-  await apiSaveBooking({ status: 'cancelled' }, id);
-  showToast('Booking ditolak', 'error');
+  try {
+    await setBookingStatus(id, 'cancelled');
+    showToast('Booking ditolak', 'error');
+  } catch(e) {
+    showToast('Gagal deny: ' + e.message, 'error');
+  }
   renderView(getCurrentView());
   if (selectedCalDate) renderDayDetail(selectedCalDate);
 };
