@@ -703,6 +703,7 @@ app.get('/api/bookings', async (req, res) => {
     if (date) q = q.eq('date', date);
     if (bid && bid !== 'all' && bid !== 'any') q = q.eq('barber_id', bid);
     if (status && status !== 'all') q = q.eq('status', status);
+    else q = q.neq('status', 'cancelled');
     if (search) q = q.or(`name.ilike.%${search}%,wa.ilike.%${search}%,service.ilike.%${search}%`);
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
@@ -719,6 +720,7 @@ app.get('/api/bookings', async (req, res) => {
     if (date)   { sql += ` AND b.date = ?`; params.push(date); }
     if (bid && bid !== 'all' && bid !== 'any') { sql += ` AND b.barber_id = ?`; params.push(bid); }
     if (status && status !== 'all') { sql += ` AND b.status = ?`; params.push(status); }
+    else { sql += ` AND b.status != 'cancelled'`; }
     if (search) { sql += ` AND (b.name LIKE ? OR b.wa LIKE ? OR b.service LIKE ?)`; const s = `%${search}%`; params.push(s, s, s); }
 
     // Count total untuk pagination

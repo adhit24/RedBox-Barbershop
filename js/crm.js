@@ -558,9 +558,16 @@ async function renderBookingsTable(search = '', statusF = 'all', barberF = 'all'
   if (!USE_API) {
     if (search) bookings = bookings.filter(b => b.name?.toLowerCase().includes(search.toLowerCase()) || b.service?.toLowerCase().includes(search.toLowerCase()) || (b.wa || '').includes(search));
     if (statusF !== 'all') bookings = bookings.filter(b => b.status === statusF);
+    else bookings = bookings.filter(b => b.status !== 'cancelled');
     if (barberF !== 'all') bookings = bookings.filter(b => (b.barber_id || b.barber) === barberF);
     bookingsTotalCount = bookings.length;
     bookings = bookings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  }
+
+  // API mode: exclude cancelled when no specific status filter
+  if (USE_API && statusF === 'all') {
+    bookings = bookings.filter(b => b.status !== 'cancelled');
+    bookingsTotalCount = bookings.length;
   }
 
   bookings.sort((a, b) => (dateKey(b.date) + timeKey(b.time)).localeCompare(dateKey(a.date) + timeKey(a.time)));
