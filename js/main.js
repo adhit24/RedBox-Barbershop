@@ -96,11 +96,13 @@ document.addEventListener('DOMContentLoaded', () => {
           ? `<span class="svc-card-csb-price" title="Harga Cabang CSB Mall">CSB Mall: ${fmt(svc.csbPrice)}</span>`
           : '';
         return `
-        <a href="booking.html?service=${svc.id}" class="svc-card reveal" style="display:block;text-decoration:none;color:inherit;">
-          <div class="svc-card-img">
-            <img src="${svc.img || ''}" alt="${svc.name}" style="width:100%;height:100%;object-fit:cover;" />
-            ${svc.badge ? `<span class="svc-card-badge">${svc.badge}</span>` : ''}
-          </div>
+        <div class="svc-card reveal">
+          <a href="booking.html?service=${svc.id}" class="svc-card-img-link" aria-label="Reservasi ${svc.name}">
+            <div class="svc-card-img">
+              <img src="${svc.img || ''}" alt="${svc.name}" style="width:100%;height:100%;object-fit:cover;" />
+              ${svc.badge ? `<span class="svc-card-badge">${svc.badge}</span>` : ''}
+            </div>
+          </a>
           <div class="svc-card-body">
             <h3>${svc.name}</h3>
             <div class="svc-card-meta">
@@ -109,11 +111,8 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             ${csbNote}
             <p class="svc-card-desc">${svc.desc}</p>
-            <div class="svc-card-footer">
-              <span class="svc-card-mini-book">Book<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
-            </div>
           </div>
-        </a>`;
+        </div>`;
       }).join('');
 
       // Render Pagination Numbers
@@ -277,13 +276,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render Desktop
     proGrid.innerHTML = filtered.map(b => `
-      <a href="booking.html?barber=${b.id}" class="pro-card reveal">
-        <div class="pro-img">
-          ${proImgHtml(b)}
-          <div class="pro-card-overlay">
-            <button class="btn-book-overlay">Book</button>
+      <div class="pro-card reveal">
+        <a href="booking.html?barber=${b.id}" class="pro-img-link" aria-label="Reservasi dengan ${b.name}">
+          <div class="pro-img">
+            ${proImgHtml(b)}
           </div>
-        </div>
+        </a>
         <div class="pro-info">
           <h3>${b.name}</h3>
           ${renderSkills(b.role)}
@@ -291,20 +289,19 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="pro-services">${serviceCount(b.role)} Services</span>
             <span class="pro-branch-tag">${formatBranchName(b.branch)}</span>
           </div>
-          <div class="pro-card-book-footer">
-            <span class="pro-mini-book">Book<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
-          </div>
         </div>
-      </a>
+      </div>
     `).join('');
 
     proSwiper.innerHTML = `
       <div class="pro-mgrid">
         ${filtered.map(b => `
-          <a href="booking.html?barber=${b.id}" class="pro-card pro-card-mini">
-            <div class="pro-img">
-              ${proImgHtml(b)}
-            </div>
+          <div class="pro-card pro-card-mini">
+            <a href="booking.html?barber=${b.id}" class="pro-img-link" aria-label="Reservasi dengan ${b.name}">
+              <div class="pro-img">
+                ${proImgHtml(b)}
+              </div>
+            </a>
             <div class="pro-info">
               <h3>${b.name}</h3>
               ${renderSkills(b.role)}
@@ -312,22 +309,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="pro-services">${serviceCount(b.role)} Services</span>
                 <span class="pro-branch-tag">${formatBranchName(b.branch)}</span>
               </div>
-              <div class="pro-card-book-footer">
-                <span class="pro-mini-book">Book<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
-              </div>
             </div>
-          </a>
+          </div>
         `).join('')}
       </div>
     `;
-
-    // Prevent <details> clicks inside <a> cards from triggering navigation
-    [proGrid, proSwiper].forEach(container => {
-      if (!container) return;
-      container.addEventListener('click', e => {
-        if (e.target.closest('.pro-skills-more')) e.preventDefault();
-      });
-    });
 
     function formatBranchName(branch) {
       const names = {

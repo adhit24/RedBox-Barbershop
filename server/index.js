@@ -442,8 +442,32 @@ function normalizeBarberRecord(b) {
   };
 }
 
+function barberRecordScore(b) {
+  let score = 0;
+  if (b?.is_active) score += 100;
+  if (String(b?.img || '').trim()) score += 10;
+  if (String(b?.role || '').trim() && String(b?.role || '').trim().toLowerCase() !== 'barber') score += 5;
+  if (Array.isArray(b?.work_days) && b.work_days.length) score += Math.min(b.work_days.length, 7);
+  if (String(b?.id || '').trim()) score += 1;
+  return score;
+}
+
+function dedupeBarberRecords(barbers = []) {
+  const byKey = new Map();
+  for (const raw of (barbers || [])) {
+    const b = normalizeBarberRecord(raw);
+    if (!b.id || !b.name) continue;
+    const key = `${branchSlug(b.branch)}::${normName(b.name)}`;
+    const existing = byKey.get(key);
+    if (!existing || barberRecordScore(b) > barberRecordScore(existing)) {
+      byKey.set(key, b);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
 async function syncBarbersToDatabases(barbers = [], source = 'unknown') {
-  const incoming = (barbers || []).map(normalizeBarberRecord).filter(b => b.id && b.name);
+  const incoming = dedupeBarberRecords(barbers || []).filter(b => b.id && b.name);
   if (!incoming.length) return { source, imported_mysql: 0, imported_supabase: 0, deactivated_demo: 0 };
 
   let mysqlExisting = [];
@@ -906,7 +930,7 @@ app.get('/api/barbers', async (req, res) => {
   if (isBarbersConfigured()) {
     try {
       const airtableResult = await fetchBarbersFromAirtable();
-      const normalized = (airtableResult.data || []).map(normalizeBarberRecord).filter(b => b.is_active);
+      const normalized = dedupeBarberRecords(airtableResult.data || []).filter(b => b.is_active);
       if (normalized.length) {
         res.setHeader('x-barbers-source', 'airtable');
         return res.json({ data: normalized });
@@ -919,19 +943,19 @@ app.get('/api/barbers', async (req, res) => {
   if (DB_TYPE === 'supabase') {
     const { data, error } = await supabase.from('barbers').select('*').eq('is_active', true);
     if (error) return res.status(500).json({ error: error.message });
-    const normalized = (data || []).map(normalizeBarberRecord);
+    const normalized = dedupeBarberRecords(data || []);
     return res.json({ data: normalized });
   } else {
     try {
       const [rows] = await mysqlPool.execute('SELECT * FROM barbers WHERE is_active = 1');
-      const normalized = (rows || []).map(normalizeBarberRecord);
+      const normalized = dedupeBarberRecords(rows || []);
       res.json({ data: normalized });
     } catch (error) {
       if (process.env.BARBERS_SHEET_URL) {
         try {
           const r = await fetchBarbersFromSheet(process.env.BARBERS_SHEET_URL);
           res.setHeader('x-barbers-source', 'google_sheet');
-          return res.json({ data: (r.data || []).map(normalizeBarberRecord).filter(b => b.is_active) });
+          return res.json({ data: dedupeBarberRecords(r.data || []).filter(b => b.is_active) });
         } catch (sheetErr) {}
       }
       const details = error?.message || error?.code || String(error || '');
