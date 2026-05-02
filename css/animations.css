@@ -234,6 +234,12 @@
   margin-right: auto;
 }
 
+/* ── LOGO TRANSPARENCY ──────────────────────────── */
+.nav-logo img,
+.footer-logo-img {
+  mix-blend-mode: screen;
+}
+
 /* ── MOBILE ─────────────────────────────────────── */
 @media (max-width: 768px) {
   .rb-orb-1 { width: 400px; height: 400px; }
