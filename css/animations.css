@@ -69,6 +69,7 @@
 /* ── HERO TITLE GRADIENT ────────────────────────── */
 .hero-line2 em {
   font-style: italic;
+  padding-right: 0.08em; /* italic glyphs extend past border-box; prevent clip */
   background: linear-gradient(135deg, #E63946 0%, #C1121F 40%, #E63946 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
