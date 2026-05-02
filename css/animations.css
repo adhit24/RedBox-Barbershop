@@ -1,0 +1,252 @@
+/* ================================================
+   REDBOX BARBERSHOP — GRADIENT & MOTION ANIMATIONS
+   ================================================ */
+
+/* ── SCROLL PROGRESS BAR ───────────────────────── */
+.rb-progress {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #C1121F 0%, #E63946 50%, #C1121F 100%);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  z-index: 10000;
+  pointer-events: none;
+}
+
+/* ── HERO GRADIENT ORBS ─────────────────────────── */
+.rb-hero-orbs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.rb-orb {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.rb-orb-1 {
+  width: 700px; height: 700px;
+  background: radial-gradient(circle at center, rgba(193,18,31,.22) 0%, transparent 65%);
+  filter: blur(90px);
+  top: -250px; right: -120px;
+}
+
+.rb-orb-2 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle at center, rgba(100,0,10,.20) 0%, transparent 65%);
+  filter: blur(80px);
+  bottom: -150px; left: -80px;
+}
+
+.rb-orb-3 {
+  width: 320px; height: 320px;
+  background: radial-gradient(circle at center, rgba(230,57,70,.12) 0%, transparent 65%);
+  filter: blur(70px);
+  top: 40%; left: 30%;
+}
+
+/* ── GRADIENT SECTION DIVIDER ───────────────────── */
+.rb-divider {
+  border: none;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(193,18,31,.25) 30%,
+    rgba(230,57,70,.4) 50%,
+    rgba(193,18,31,.25) 70%,
+    transparent 100%
+  );
+  margin: 0;
+}
+
+/* ── HERO TITLE GRADIENT ────────────────────────── */
+.hero-line2 em {
+  font-style: italic;
+  background: linear-gradient(135deg, #E63946 0%, #C1121F 40%, #E63946 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: rb-txt-shift 5s ease infinite;
+}
+
+/* ── ANIMATED GRADIENT TEXT ─────────────────────── */
+.rb-grad {
+  background: linear-gradient(135deg, #ffffff 0%, #E63946 45%, #ffffff 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: rb-txt-shift 6s ease infinite;
+}
+
+@keyframes rb-txt-shift {
+  0%   { background-position: 0% center; }
+  50%  { background-position: 100% center; }
+  100% { background-position: 0% center; }
+}
+
+/* ── BUTTON GRADIENT SHIMMER ────────────────────── */
+.btn-primary {
+  overflow: hidden;
+  position: relative;
+}
+
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 25%,
+    rgba(255,255,255,.15) 50%,
+    transparent 75%
+  );
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+.btn-primary:hover::after {
+  animation: rb-shimmer .55s ease forwards;
+}
+
+@keyframes rb-shimmer {
+  to { transform: translateX(100%); }
+}
+
+/* ── SERVICE CARD GRADIENT HOVER ────────────────── */
+.service-card {
+  transition: border-color .3s ease, box-shadow .3s ease, transform .25s ease !important;
+}
+
+.service-card:hover {
+  border-color: rgba(193,18,31,.35) !important;
+  box-shadow:
+    0 0 0 1px rgba(193,18,31,.18),
+    0 8px 32px rgba(193,18,31,.10),
+    0 2px 8px rgba(0,0,0,.3) !important;
+  transform: translateY(-3px) !important;
+}
+
+/* ── REVIEW CARD GRADIENT GLOW ──────────────────── */
+.review-card {
+  transition: box-shadow .3s ease, transform .25s ease !important;
+}
+
+.review-card:hover {
+  box-shadow:
+    0 0 0 1px rgba(193,18,31,.15),
+    0 12px 40px rgba(193,18,31,.10) !important;
+  transform: translateY(-4px) !important;
+}
+
+/* ── PRO CARD GRADIENT GLOW ─────────────────────── */
+.pro-card {
+  transition: box-shadow .3s ease, transform .25s ease !important;
+}
+
+.pro-card:hover {
+  box-shadow: 0 8px 32px rgba(193,18,31,.14) !important;
+  transform: translateY(-4px) !important;
+}
+
+/* ── GALLERY ITEM OVERLAY ────────────────────────── */
+.gallery-item {
+  position: relative;
+  overflow: hidden;
+}
+
+.gallery-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(193,18,31,.15) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity .35s ease;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.gallery-item:hover::after {
+  opacity: 1;
+}
+
+/* ── LOCATION CARD GLOW ─────────────────────────── */
+.loc-card {
+  transition: box-shadow .3s ease, border-color .3s ease !important;
+}
+
+.loc-card:hover {
+  border-color: rgba(193,18,31,.25) !important;
+  box-shadow: 0 0 0 1px rgba(193,18,31,.12), 0 6px 24px rgba(193,18,31,.07) !important;
+}
+
+/* ── FOOTER GRADIENT BORDER ─────────────────────── */
+.footer {
+  border-top: 1px solid transparent;
+  background:
+    linear-gradient(var(--bg, #0A0A0A), var(--bg, #0A0A0A)) padding-box,
+    linear-gradient(90deg, transparent 0%, rgba(193,18,31,.35) 50%, transparent 100%) border-box;
+}
+
+/* ── WA FLOAT GLOW PULSE ────────────────────────── */
+.wa-float {
+  animation: rb-wa-pulse 2.8s ease infinite;
+}
+
+@keyframes rb-wa-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(193,18,31,.35), 0 4px 20px rgba(0,0,0,.35); }
+  50%       { box-shadow: 0 0 0 12px rgba(193,18,31,0), 0 4px 20px rgba(0,0,0,.35); }
+}
+
+/* ── FILTER BUTTON ACTIVE GLOW ──────────────────── */
+.svc-filter-btn.active,
+.filter-btn.active,
+.loc-branch-btn.active {
+  box-shadow: 0 0 0 1px rgba(193,18,31,.3), 0 4px 16px rgba(193,18,31,.15);
+}
+
+/* ── NAV LINK ACTIVE GRADIENT ───────────────────── */
+.nav-link.active::after {
+  background: linear-gradient(90deg, #C1121F, #E63946) !important;
+}
+
+/* ── SECTION TITLE GRADIENT ACCENT LINE ─────────── */
+.rb-title-line {
+  display: block;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #C1121F, #E63946);
+  border-radius: 2px;
+  margin-top: 10px;
+}
+
+.section-header.center .rb-title-line {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── MOBILE ─────────────────────────────────────── */
+@media (max-width: 768px) {
+  .rb-orb-1 { width: 400px; height: 400px; }
+  .rb-orb-2 { width: 300px; height: 300px; }
+  .rb-orb-3 { display: none; }
+}
+
+/* ── REDUCED MOTION ─────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .rb-orb,
+  .wa-float,
+  .rb-grad,
+  .hero-line2 em,
+  .btn-primary::after {
+    animation: none !important;
+  }
+}

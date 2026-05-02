@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/animations.css" />
   <style>
     /* ── PAGE-SPECIFIC STYLES ─────────────────────────── */
     .product-hero {
@@ -190,6 +191,9 @@
   </style>
 </head>
 <body>
+
+  <!-- Scroll Progress -->
+  <div class="rb-progress" aria-hidden="true"></div>
 
   <!-- ========== NAVBAR ========== -->
   <nav class="navbar" id="navbar">
@@ -406,5 +410,6 @@
       });
     })();
   </script>
+  <script type="module" src="js/animations.js"></script>
 </body>
 </html>

@@ -938,8 +938,12 @@
     .csb-price-row .name { color: var(--text-2); }
     .csb-price-row .price { color: var(--gold); font-weight: 600; font-size: 0.88rem; }
   </style>
+  <link rel="stylesheet" href="css/animations.css" />
 </head>
 <body>
+
+  <!-- Scroll Progress -->
+  <div class="rb-progress" aria-hidden="true"></div>
 
   <!-- NAVBAR -->
   <nav class="nav" role="navigation" aria-label="Site navigation">
@@ -1572,5 +1576,6 @@
       });
     })();
   </script>
+  <script type="module" src="js/animations.js"></script>
 </body>
 </html>

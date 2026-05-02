@@ -11,8 +11,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/animations.css" />
 </head>
 <body>
+
+  <!-- Scroll Progress -->
+  <div class="rb-progress" aria-hidden="true"></div>
 
   <!-- ========== NAVBAR ========== -->
   <nav class="navbar" id="navbar">
@@ -40,6 +44,12 @@
     <div class="hero-bg">
       <div class="hero-slide active" style="background-image:url('Brand_assets/homepage_background.jpg')"></div>
       <div class="hero-overlay"></div>
+      <!-- Gradient Orbs -->
+      <div class="rb-hero-orbs" aria-hidden="true">
+        <div class="rb-orb rb-orb-1"></div>
+        <div class="rb-orb rb-orb-2"></div>
+        <div class="rb-orb rb-orb-3"></div>
+      </div>
     </div>
     <div class="hero-content container">
       <div class="hero-eyebrow">
@@ -67,6 +77,7 @@
     <div class="container">
       <div class="section-header center">
         <h2 class="section-title">Our Services</h2>
+        <span class="rb-title-line" aria-hidden="true"></span>
         <p class="section-sub">Experience premium services tailored to your unique style.</p>
       </div>
 
@@ -101,6 +112,7 @@
     <div class="container">
       <div class="section-header">
         <h2 class="section-title">Meet Our <em>Professionals</em></h2>
+        <span class="rb-title-line" aria-hidden="true"></span>
         <p class="section-sub">Skilled professionals ready to provide you with great service.</p>
       </div>
 
@@ -143,11 +155,14 @@
 
 
 
+  <hr class="rb-divider" aria-hidden="true">
+
   <!-- ========== GALLERY ========== -->
   <section class="gallery" id="gallery">
     <div class="container">
       <div class="section-header center">
         <h2 class="section-title">Our Gallery</h2>
+        <span class="rb-title-line" aria-hidden="true"></span>
         <p class="section-sub">Look at our work! We take pride in delivering exceptional results.</p>
       </div>
       <div class="gallery-grid">
@@ -163,11 +178,14 @@
     </div>
   </section>
 
+  <hr class="rb-divider" aria-hidden="true">
+
   <!-- ========== REVIEWS ========== -->
   <section class="reviews" id="reviews">
     <div class="container">
       <div class="section-header center">
         <h2 class="section-title">Reviews</h2>
+        <span class="rb-title-line" aria-hidden="true"></span>
         <p class="section-sub">See what our customers are saying</p>
       </div>
       <div class="reviews-grid">
@@ -205,6 +223,7 @@
     <div class="container">
       <div class="section-header center">
         <h2 class="section-title">Visit Redbox Barbershop</h2>
+        <span class="rb-title-line" aria-hidden="true"></span>
         <p class="section-sub">Find us, check our hours, and see what makes us special.</p>
       </div>
       <div class="loc-branch-filter" id="locBranchFilter">
@@ -284,5 +303,6 @@
 
   <script src="js/services-data.js"></script>
   <script src="js/main.js"></script>
+  <script type="module" src="js/animations.js"></script>
 </body>
 </html>
