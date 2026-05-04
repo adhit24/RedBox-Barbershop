@@ -175,7 +175,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.stopPropagation();
         const catGroup = catToggle.closest('.cat-group');
         const expanded = catToggle.dataset.expanded === 'true';
-        const hiddenItems = catGroup.querySelectorAll('.svc-item.svc-hidden');
         const allItems = catGroup.querySelectorAll('.svc-item');
 
         if (!expanded) {
@@ -864,6 +863,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (num) num.textContent = '✓';
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Show celebration popup with confetti
+    if (typeof window.showBookingSuccess === 'function') {
+      window.showBookingSuccess();
+    }
   });
 
   // ── HAMBURGER (booking page) ────────────────

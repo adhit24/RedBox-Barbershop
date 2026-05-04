@@ -234,6 +234,142 @@
   margin-right: auto;
 }
 
+/* ── BOOKING SUCCESS OVERLAY ────────────────────── */
+.rb-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .35s ease;
+}
+.rb-success-overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+.rb-confetti-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.rb-success-popup {
+  position: relative;
+  z-index: 2;
+  background: #141414;
+  border: 1px solid rgba(193,18,31,.3);
+  border-radius: 24px;
+  padding: 52px 40px 44px;
+  max-width: 400px;
+  width: 88%;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(193,18,31,.1), 0 32px 80px rgba(0,0,0,.65), 0 0 60px rgba(193,18,31,.12);
+  transform: scale(.82) translateY(24px);
+  transition: transform .5s cubic-bezier(.34,1.56,.64,1);
+}
+.rb-success-overlay.active .rb-success-popup {
+  transform: scale(1) translateY(0);
+}
+
+/* emoji burst */
+.rb-success-emoji {
+  font-size: 3.2rem;
+  line-height: 1;
+  margin-bottom: 18px;
+  display: inline-block;
+  opacity: 0;
+  transform: scale(0) rotate(-20deg);
+  transition: opacity .4s ease .25s, transform .5s cubic-bezier(.34,1.56,.64,1) .25s;
+}
+.rb-success-overlay.active .rb-success-emoji {
+  opacity: 1;
+  transform: scale(1) rotate(0);
+}
+
+/* animated SVG check */
+.rb-success-check {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+}
+.rb-check-circle {
+  stroke-dasharray: 160;
+  stroke-dashoffset: 160;
+  transition: stroke-dashoffset .6s ease .4s;
+}
+.rb-check-tick {
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  transition: stroke-dashoffset .45s ease .9s;
+}
+.rb-success-overlay.active .rb-check-circle { stroke-dashoffset: 0; }
+.rb-success-overlay.active .rb-check-tick   { stroke-dashoffset: 0; }
+
+.rb-success-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 10px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity .4s ease .55s, transform .4s ease .55s;
+}
+.rb-success-overlay.active .rb-success-title {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.rb-success-msg {
+  font-size: .93rem;
+  color: rgba(255,255,255,.58);
+  line-height: 1.65;
+  margin: 0 0 30px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .4s ease .65s, transform .4s ease .65s;
+}
+.rb-success-overlay.active .rb-success-msg {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.rb-success-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #C1121F, #E63946);
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  padding: 14px 28px;
+  font-size: .95rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: .02em;
+  box-shadow: 0 4px 20px rgba(193,18,31,.4);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .4s ease .75s, transform .4s ease .75s, box-shadow .25s ease, scale .15s ease;
+}
+.rb-success-overlay.active .rb-success-cta {
+  opacity: 1;
+  transform: translateY(0);
+}
+.rb-success-cta:hover {
+  box-shadow: 0 6px 28px rgba(193,18,31,.55);
+}
+.rb-success-cta:active {
+  scale: .96;
+}
+
 /* ── LOGO TRANSPARENCY ──────────────────────────── */
 .nav-logo img,
 .footer-logo-img {

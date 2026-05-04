@@ -281,7 +281,28 @@
     </div><!-- end book-layout -->
   </div><!-- end book-wrapper -->
 
+  <!-- ========== BOOKING SUCCESS POPUP ========== -->
+  <div class="rb-success-overlay" id="rbSuccessOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Booking berhasil">
+    <canvas class="rb-confetti-canvas" id="rbConfettiCanvas" aria-hidden="true"></canvas>
+    <div class="rb-success-popup">
+      <div class="rb-success-emoji" aria-hidden="true">🎉</div>
+      <div class="rb-success-check" aria-hidden="true">
+        <svg viewBox="0 0 52 52" fill="none">
+          <circle class="rb-check-circle" cx="26" cy="26" r="24" stroke="#C1121F" stroke-width="2.5"/>
+          <path class="rb-check-tick" d="M14 27l9 9 15-18" stroke="#C1121F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h2 class="rb-success-title">Booking Confirmed!</h2>
+      <p class="rb-success-msg">Yeay! Appointment kamu udah masuk. Jangan lupa konfirmasi via WhatsApp ya 😊</p>
+      <button class="rb-success-cta" id="rbSuccessClose">
+        Lihat Detail Booking
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
+    </div>
+  </div>
+
   <script src="js/services-data.js"></script>
+  <script src="js/booking-success.js"></script>
   <script src="js/booking.js"></script>
   <script type="module" src="js/animations.js"></script>
   <script>
