@@ -36,8 +36,8 @@ class MokaClient {
     // Uses Report API (v3) to pull completed transactions for Moka → Web sync.
     // Docs: GET /v3/outlets/{outlet_id}/reports/get_latest_transactions
     const qs = new URLSearchParams({ limit: String(limit), page: String(page) });
-    if (updatedSince) qs.set(‘updated_since’, updatedSince);
-    return this._req(‘GET’, `/v3/outlets/${this._mokaOutletId}/reports/get_latest_transactions?${qs}`);
+    if (updatedSince) qs.set('updated_since', updatedSince);
+    return this._req('GET', `/v3/outlets/${this._mokaOutletId}/reports/get_latest_transactions?${qs}`);
   }
 
   /**
@@ -47,7 +47,7 @@ class MokaClient {
    * @param {object} payload
    */
   async createOrder(payload) {
-    return this._req(‘POST’, `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders`, payload);
+    return this._req('POST', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders`, payload);
   }
 
   /**
@@ -56,7 +56,7 @@ class MokaClient {
    * @param {string} mokaOrderId
    */
   async getOrder(mokaOrderId) {
-    return this._req(‘GET’, `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`);
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`);
   }
 
   /**
@@ -65,8 +65,8 @@ class MokaClient {
    * @param {string} mokaOrderId
    * @param {string} reason  - e.g. "CUSTOMER#Customer requested cancellation"
    */
-  async cancelOrder(mokaOrderId, reason = ‘CUSTOMER#Cancelled by customer’) {
-    return this._req(‘POST’,
+  async cancelOrder(mokaOrderId, reason = 'CUSTOMER#Cancelled by customer') {
+    return this._req('POST',
       `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}/cancel`,
       { cancel_reason: reason });
   }
@@ -75,10 +75,10 @@ class MokaClient {
    * @deprecated Use cancelOrder() instead — kept for backward compat
    */
   async updateOrder(mokaOrderId, patch) {
-    if (patch?.status === ‘CANCELLED’) {
+    if (patch?.status === 'CANCELLED') {
       return this.cancelOrder(mokaOrderId);
     }
-    return this._req(‘PATCH’, `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`, patch);
+    return this._req('PATCH', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`, patch);
   }
 
   // ── CUSTOMERS ─────────────────────────────────────────────
