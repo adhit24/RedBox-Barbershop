@@ -7,7 +7,6 @@
 // Cron:                 startCronJobs(supabase)  — every 5 min
 // ============================================================
 
-const cron       = require('node-cron');
 const MokaClient = require('./client');
 
 // Simple in-process lock so concurrent cron ticks don't overlap
@@ -342,6 +341,12 @@ async function handleWebhookEvent(supabase, callbackBody) {
 function startCronJobs(supabase) {
   if (process.env.NODE_ENV === 'test') return;
   if (!supabase) { console.warn('[Cron] Supabase not configured — skipping Moka cron'); return; }
+
+  let cron;
+  try { cron = require('node-cron'); } catch {
+    console.warn('[Cron] node-cron not available (serverless env) — cron skipped');
+    return;
+  }
 
   cron.schedule('*/5 * * * *', async () => {
     console.log('[Cron] Moka → Web sync starting…');
