@@ -1181,16 +1181,16 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
 // ── MOKA INTEGRATION ROUTER ──────────────────────────────
 // Registers: /api/availability, /api/reservations, /api/schedules,
 //            /api/outlets, /api/services, /api/moka/*
+// Now works with or without Supabase (in-memory fallback)
+const { createInMemorySupabase } = require('./moka/memoryStore');
+const mokaSupabase = supabase || createInMemorySupabase();
+
 try {
   const createMokaRouter = require('./moka/routes');
   const { startCronJobs } = require('./moka/sync');
-  if (supabase) {
-    app.use('/api', createMokaRouter(supabase));
-    console.log('✅ Moka integration routes mounted');
-    startCronJobs(supabase);
-  } else {
-    console.warn('⚠️  Supabase not configured — Moka routes skipped');
-  }
+  app.use('/api', createMokaRouter(mokaSupabase));
+  console.log('✅ Moka integration routes mounted');
+  if (supabase) startCronJobs(supabase);
 } catch (e) {
   console.error('❌ Failed to load Moka integration:', e.message);
 }
