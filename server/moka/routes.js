@@ -205,22 +205,29 @@ function createMokaRouter(supabase) {
         throw new Error(schErr.message);
       }
 
-      // ── Push to Moka asynchronously (fire-and-forget) ───────
+      // ── Push to Moka (synchronous so Vercel doesn't kill it) ─
       let mokaSync = 'skipped';
+      let mokaSyncDetail = null;
       if (isMokaOAuthConfigured()) {
-        mokaSync = 'pending';
-        pushScheduleToMoka(supabase, schedule.id).catch(err => {
+        try {
+          const result = await pushScheduleToMoka(supabase, schedule.id);
+          mokaSync = 'success';
+          mokaSyncDetail = result;
+        } catch (err) {
+          mokaSync = 'failed';
+          mokaSyncDetail = err.message;
           console.error(`[Reservation] Moka push failed for ${schedule.id}:`, err.message);
-        });
+        }
       }
 
       res.status(201).json({
-        scheduleId:  schedule.id,
-        status:      schedule.status,
-        startTime:   schedule.start_time,
-        endTime:     schedule.end_time,
-        barberId:    schedule.barber_id,
+        scheduleId:   schedule.id,
+        status:       schedule.status,
+        startTime:    schedule.start_time,
+        endTime:      schedule.end_time,
+        barberId:     schedule.barber_id,
         mokaSync,
+        mokaSyncDetail,
       });
     } catch (err) {
       _serverError(res, err);
@@ -332,16 +339,50 @@ function createMokaRouter(supabase) {
   // ── GET /api/moka/callback ────────────────────────────────
   // OAuth redirect target. Exchanges code for tokens.
   // Query: code, state (base64url-encoded { outletId, nonce })
+  // Also handles Moka "Launch" button which sends code without state.
   router.get('/moka/callback', async (req, res) => {
     try {
       const { code, state, error: oauthErr, error_description } = req.query;
 
       if (oauthErr)
         return res.status(400).json({ error: `Moka OAuth error: ${oauthErr} — ${error_description}` });
-      if (!code || !state)
-        return res.status(400).json({ error: 'Missing code or state' });
+      if (!code)
+        return res.status(400).json({ error: 'Missing code' });
 
-      // Decode state
+      // If state is missing (Moka Launch button), apply token to ALL outlets
+      if (!state) {
+        const { data: outlets } = await supabase.from('outlets').select('id').eq('is_active', true);
+        const results = [];
+        for (const outlet of outlets || []) {
+          try {
+            await exchangeCode(supabase, code, outlet.id);
+            results.push({ outletId: outlet.id, status: 'success' });
+            // Code can only be used once — subsequent outlets reuse the stored token
+            break;
+          } catch (e) {
+            results.push({ outletId: outlet.id, status: 'failed', error: e.message });
+            break;
+          }
+        }
+        // Copy first outlet token to all others
+        const { data: firstToken } = await supabase.from('moka_tokens').select('*').single();
+        if (firstToken) {
+          for (const outlet of outlets || []) {
+            if (outlet.id === firstToken.outlet_id) continue;
+            await supabase.from('moka_tokens').upsert(
+              { ...firstToken, outlet_id: outlet.id, updated_at: new Date().toISOString() },
+              { onConflict: 'outlet_id' }
+            );
+          }
+        }
+        return res.json({
+          message: 'Moka OAuth successful — tokens applied to all outlets',
+          outlets: (outlets || []).length,
+          note: 'Tokens stored. Sync will begin on next cron tick or via POST /api/moka/sync',
+        });
+      }
+
+      // Decode state (normal OAuth flow)
       let outletId;
       try {
         const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());

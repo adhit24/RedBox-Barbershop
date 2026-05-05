@@ -34,40 +34,40 @@ class MokaClient {
    */
   async getOrders({ updatedSince, limit = 100, page = 1 } = {}) {
     // Uses Report API (v3) to pull completed transactions for Moka → Web sync.
-    // Docs: GET /v3/outlets/{outlet_id}/payments/latest
+    // Docs: GET /v3/outlets/{outlet_id}/reports/get_latest_transactions
     const qs = new URLSearchParams({ limit: String(limit), page: String(page) });
-    if (updatedSince) qs.set('updated_since', updatedSince);
-    return this._req('GET', `/v3/outlets/${this._mokaOutletId}/payments/latest?${qs}`);
+    if (updatedSince) qs.set(‘updated_since’, updatedSince);
+    return this._req(‘GET’, `/v3/outlets/${this._mokaOutletId}/reports/get_latest_transactions?${qs}`);
   }
 
   /**
    * Create an order in Moka via Advanced Ordering API (Flow A: web → Moka).
-   * Docs: POST /v1/outlets/{outlet_id}/orders
+   * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/orders
    * Payload shape: see _buildMokaOrderPayload() in sync.js
    * @param {object} payload
    */
   async createOrder(payload) {
-    return this._req('POST', `/v1/outlets/${this._mokaOutletId}/orders`, payload);
+    return this._req(‘POST’, `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders`, payload);
   }
 
   /**
-   * Fetch a single Advanced Order by Moka's internal order ID.
-   * Docs: GET /v1/outlets/{outlet_id}/orders/{order_id}
+   * Fetch a single Advanced Order by Moka’s internal order ID.
+   * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}
    * @param {string} mokaOrderId
    */
   async getOrder(mokaOrderId) {
-    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/orders/${mokaOrderId}`);
+    return this._req(‘GET’, `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`);
   }
 
   /**
    * Cancel an Advanced Order (cashier hasn’t accepted yet).
-   * Docs: POST /v1/outlets/{outlet_id}/orders/{order_id}/cancel
+   * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}/cancel
    * @param {string} mokaOrderId
    * @param {string} reason  - e.g. "CUSTOMER#Customer requested cancellation"
    */
-  async cancelOrder(mokaOrderId, reason = 'CUSTOMER#Cancelled by customer') {
-    return this._req('POST',
-      `/v1/outlets/${this._mokaOutletId}/orders/${mokaOrderId}/cancel`,
+  async cancelOrder(mokaOrderId, reason = ‘CUSTOMER#Cancelled by customer’) {
+    return this._req(‘POST’,
+      `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}/cancel`,
       { cancel_reason: reason });
   }
 
@@ -75,10 +75,10 @@ class MokaClient {
    * @deprecated Use cancelOrder() instead — kept for backward compat
    */
   async updateOrder(mokaOrderId, patch) {
-    if (patch?.status === 'CANCELLED') {
+    if (patch?.status === ‘CANCELLED’) {
       return this.cancelOrder(mokaOrderId);
     }
-    return this._req('PATCH', `/v1/outlets/${this._mokaOutletId}/orders/${mokaOrderId}`, patch);
+    return this._req(‘PATCH’, `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`, patch);
   }
 
   // ── CUSTOMERS ─────────────────────────────────────────────

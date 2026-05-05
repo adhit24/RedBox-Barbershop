@@ -290,7 +290,6 @@ async function _processIncomingOrder(supabase, order, outletId) {
  */
 async function handleWebhookEvent(supabase, callbackBody) {
   const {
-    outlet_id:            mokaOutletId,
     application_order_id: scheduleId,
     status:               mokaStatus,
   } = callbackBody || {};
@@ -350,7 +349,7 @@ function startCronJobs(supabase) {
       // Only sync outlets that have a moka_outlet_id AND a stored token
       const { data: outletIds } = await supabase
         .from('outlets')
-        .select('outlets.id')
+        .select('id')
         .eq('is_active', true)
         .not('moka_outlet_id', 'is', null);
 
@@ -417,7 +416,8 @@ function _buildMokaOrderPayload(schedule, mokaCustomerId) {
     note:                 note.slice(0, 255),   // Moka max 255 chars
 
     // ── Optional customer info ──────────────────────────────────
-    customer_phone_number: schedule.customer_phone || undefined,
+    customer_id:           mokaCustomerId           || undefined,
+    customer_phone_number: schedule.customer_phone  || undefined,
     client_created_at:     schedule.start_time,
 
     // ── Per-order callback URLs ─────────────────────────────────

@@ -96,8 +96,7 @@ async function getAvailableSlots(supabase, {
     if (!wh) {
       const { data: b } = await supabase
         .from('barbers').select('work_days').eq('id', barber.id).single();
-      const shortDay = _shortDayName(dayOfWeek);
-      if (b?.work_days && !b.work_days.includes(shortDay)) continue;
+      if (!_barberWorksOnDay(b?.work_days, dayOfWeek)) continue;
     }
 
     const openMs  = _timeStrToMs(date, openTime);
@@ -167,7 +166,14 @@ function _dayOfWeek(dateStr) {
 }
 
 const SHORT_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-function _shortDayName(dow) { return SHORT_DAYS[dow]; }
+const ID_DAYS    = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+
+function _barberWorksOnDay(workDays, dow) {
+  if (!workDays || !workDays.length) return true; // no restriction = always works
+  const en = SHORT_DAYS[dow];
+  const id = ID_DAYS[dow];
+  return workDays.includes(en) || workDays.includes(id);
+}
 
 /** Convert 'HH:MM' on a given date to epoch ms (WIB = UTC+7) */
 function _timeStrToMs(dateStr, timeStr) {

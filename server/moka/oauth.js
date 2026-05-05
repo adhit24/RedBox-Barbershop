@@ -4,8 +4,10 @@
 // Handles: authorization URL, code exchange, refresh, storage
 // ============================================================
 
-const MOKA_AUTH_URL    = process.env.MOKA_AUTH_URL    || 'https://account.mokapos.com/oauth/authorize';
-const MOKA_TOKEN_URL   = process.env.MOKA_TOKEN_URL   || 'https://account.mokapos.com/oauth/token';
+let MOKA_AUTH_URL  = process.env.MOKA_AUTH_URL  || 'https://account.mokapos.com/oauth/authorize';
+let MOKA_TOKEN_URL = process.env.MOKA_TOKEN_URL || 'https://api.mokapos.com/oauth/token';
+if (!/^https?:\/\//i.test(MOKA_AUTH_URL))  MOKA_AUTH_URL  = 'https://' + MOKA_AUTH_URL;
+if (!/^https?:\/\//i.test(MOKA_TOKEN_URL)) MOKA_TOKEN_URL = 'https://' + MOKA_TOKEN_URL;
 const MOKA_CLIENT_ID   = process.env.MOKA_CLIENT_ID   || '';
 const MOKA_CLIENT_SECRET = process.env.MOKA_CLIENT_SECRET || '';
 const MOKA_REDIRECT_URI  = process.env.MOKA_REDIRECT_URI  || '';
@@ -30,9 +32,10 @@ function buildAuthorizationUrl(state) {
     response_type: 'code',
     client_id:     MOKA_CLIENT_ID,
     redirect_uri:  MOKA_REDIRECT_URI,
-    scope:         MOKA_SCOPE,
     state,
   });
+  const scope = MOKA_SCOPE.trim();
+  if (scope) params.set('scope', scope);
   return `${MOKA_AUTH_URL}?${params.toString()}`;
 }
 
@@ -129,11 +132,26 @@ async function _doRefresh(supabase, outletId, refreshToken) {
 }
 
 async function _tokenRequest(params) {
-  const res = await fetch(MOKA_TOKEN_URL, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:    new URLSearchParams(params).toString(),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+
+  let res;
+  try {
+    res = await fetch(MOKA_TOKEN_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    new URLSearchParams(params).toString(),
+      signal:  controller.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw Object.assign(
+      new Error('Moka token request timed out after 15 s'),
+      { code: 'MOKA_TIMEOUT' }
+    );
+    throw err;
+  }
+  clearTimeout(timer);
 
   const text = await res.text();
   let body;
