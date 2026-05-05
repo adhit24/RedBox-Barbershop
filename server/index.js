@@ -1185,14 +1185,15 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
 const { createInMemorySupabase } = require('./moka/memoryStore');
 const mokaSupabase = supabase || createInMemorySupabase();
 
+const createMokaRouter = require('./moka/routes');
+app.use('/api', createMokaRouter(mokaSupabase));
+console.log('✅ Moka integration routes mounted');
+
 try {
-  const createMokaRouter = require('./moka/routes');
   const { startCronJobs } = require('./moka/sync');
-  app.use('/api', createMokaRouter(mokaSupabase));
-  console.log('✅ Moka integration routes mounted');
   if (supabase) startCronJobs(supabase);
 } catch (e) {
-  console.error('❌ Failed to load Moka integration:', e.message);
+  console.warn('[Cron] Could not start Moka cron jobs:', e.message);
 }
 
 // START SERVER

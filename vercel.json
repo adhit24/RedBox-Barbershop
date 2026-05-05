@@ -2,7 +2,8 @@
   "outputDirectory": ".",
   "functions": {
     "api/[...path].js": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "includeFiles": "server/**"
     }
   },
   "rewrites": [
