@@ -33,6 +33,9 @@ const MOKA_PUSH_BRANCHES = String(process.env.MOKA_PUSH_BRANCHES || 'bypass').sp
 const MOKA_DEFAULT_ITEM_ID = String(process.env.MOKA_DEFAULT_ITEM_ID || '').trim();
 const MOKA_DEFAULT_CATEGORY_ID = String(process.env.MOKA_DEFAULT_CATEGORY_ID || '').trim();
 const MOKA_DEFAULT_CATEGORY_NAME = String(process.env.MOKA_DEFAULT_CATEGORY_NAME || 'Services').trim();
+const MOKA_PAYMENT_TYPE = String(process.env.MOKA_PAYMENT_TYPE || 'online_booking').trim();
+const MOKA_SALES_TYPE_ID = String(process.env.MOKA_SALES_TYPE_ID || '').trim();
+const MOKA_SALES_TYPE_NAME = String(process.env.MOKA_SALES_TYPE_NAME || '').trim();
 const APP_BASE_URL = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
 
 function isMokaConfigured() {
@@ -101,18 +104,64 @@ function bookingTimeIso({ date, time }) {
   return `${d}T${t}:00+07:00`;
 }
 
-async function mokaResolveDefaultItem(outletId) {
-  if (MOKA_DEFAULT_ITEM_ID) return { itemId: MOKA_DEFAULT_ITEM_ID, itemName: null };
-  const res = await mokaRequest(`/v2/outlets/${encodeURIComponent(outletId)}/items`, { method: 'GET' });
-  const items = res?.data || res?.items || [];
-  const first = items.find(i => i?.id) || items[0];
-  const itemId = first?.id ? String(first.id) : '';
-  const itemName = first?.name ? String(first.name) : null;
-  if (!itemId) throw new Error('Moka items list empty — set MOKA_DEFAULT_ITEM_ID');
-  return { itemId, itemName };
+function mokaNum(val) {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
 }
 
-function mokaBuildOrderPayloadFromBooking(booking, { outletId, itemId, itemName }) {
+async function mokaResolveDefaultItem(outletId) {
+  if (MOKA_DEFAULT_ITEM_ID) {
+    const itemId = mokaNum(MOKA_DEFAULT_ITEM_ID);
+    if (!itemId) throw new Error('Invalid MOKA_DEFAULT_ITEM_ID (must be number)');
+    return { itemId, itemName: null, categoryId: null, categoryName: null };
+  }
+
+  const res = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/items`, { method: 'GET' });
+  const items = res?.data?.items || res?.items || res?.data || [];
+  const list = Array.isArray(items) ? items : [];
+  const first = list.find(i => i?.id) || list[0];
+  const itemId = mokaNum(first?.id);
+  const itemName = first?.name ? String(first.name) : null;
+  const categoryId = mokaNum(first?.category_id || first?.category?.id);
+  const categoryName = first?.category?.name ? String(first.category.name) : (first?.category_name ? String(first.category_name) : null);
+  if (!itemId) throw new Error('Moka items list empty — set MOKA_DEFAULT_ITEM_ID');
+  return { itemId, itemName, categoryId, categoryName };
+}
+
+async function mokaResolveDefaultCategory(outletId, { categoryIdFromItem, categoryNameFromItem } = {}) {
+  if (MOKA_DEFAULT_CATEGORY_ID) {
+    const categoryId = mokaNum(MOKA_DEFAULT_CATEGORY_ID);
+    if (!categoryId) throw new Error('Invalid MOKA_DEFAULT_CATEGORY_ID (must be number)');
+    return { categoryId, categoryName: MOKA_DEFAULT_CATEGORY_NAME || null };
+  }
+  if (categoryIdFromItem) return { categoryId: categoryIdFromItem, categoryName: categoryNameFromItem || null };
+
+  const res = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/categories`, { method: 'GET' });
+  const cats = res?.data?.category || res?.data?.categories || res?.categories || [];
+  const list = Array.isArray(cats) ? cats : [];
+  const first = list.find(c => c?.id) || list[0];
+  const categoryId = mokaNum(first?.id);
+  const categoryName = first?.name ? String(first.name) : null;
+  if (!categoryId) throw new Error('Moka categories list empty — set MOKA_DEFAULT_CATEGORY_ID');
+  return { categoryId, categoryName };
+}
+
+async function mokaResolveSalesType(outletId) {
+  if (MOKA_SALES_TYPE_ID) {
+    const id = mokaNum(MOKA_SALES_TYPE_ID);
+    if (!id) throw new Error('Invalid MOKA_SALES_TYPE_ID (must be number)');
+    return { salesTypeId: id, salesTypeName: MOKA_SALES_TYPE_NAME || null };
+  }
+  const res = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/advanced_orderings/generate_sales_type`, { method: 'POST' });
+  const data = res?.data || [];
+  const list = Array.isArray(data) ? data : [];
+  const first = list.find(x => x?.id) || list[0];
+  const salesTypeId = mokaNum(first?.id);
+  const salesTypeName = first?.name ? String(first.name) : null;
+  return { salesTypeId, salesTypeName };
+}
+
+function mokaBuildOrderPayloadFromBooking(booking, { itemId, itemName, categoryId, categoryName, salesTypeId, salesTypeName }) {
   const note = [
     'Booking via website',
     booking?.barber_name ? `Barber: ${booking.barber_name}` : (booking?.barber_id ? `Barber ID: ${booking.barber_id}` : null),
@@ -123,17 +172,20 @@ function mokaBuildOrderPayloadFromBooking(booking, { outletId, itemId, itemName 
 
   const payload = {
     application_order_id: String(booking?.id || '').trim(),
-    payment_type: 'online_booking',
+    payment_type: MOKA_PAYMENT_TYPE,
     customer_name: String(booking?.name || '').trim() || 'Guest',
     customer_phone_number: toE164Indonesia(booking?.wa),
     note: note.slice(0, 255),
     client_created_at: bookingTimeIso({ date: booking?.date, time: booking?.time }) || undefined,
+    ...(salesTypeId ? { sales_type_id: salesTypeId } : {}),
+    ...(salesTypeName ? { sales_type_name: salesTypeName } : {}),
     order_items: [{
       item_id: itemId,
       item_name: String(booking?.service || '').trim() || itemName || 'Service',
       quantity: 1,
       item_price_library: Number(booking?.price || 0),
-      ...(MOKA_DEFAULT_CATEGORY_ID ? { category_id: MOKA_DEFAULT_CATEGORY_ID, category_name: MOKA_DEFAULT_CATEGORY_NAME } : {}),
+      category_id: categoryId,
+      ...(categoryName ? { category_name: categoryName } : {}),
     }],
   };
 
@@ -150,10 +202,12 @@ async function pushConfirmedBookingToMoka(booking) {
   if (!isMokaConfigured()) return { ok: false, skipped: true, reason: 'not_configured' };
   const outletId = mokaOutletIdForLocation(booking?.location);
   if (!outletId) return { ok: false, skipped: true, reason: 'missing_outlet_id' };
-  const { itemId, itemName } = await mokaResolveDefaultItem(outletId);
-  const payload = mokaBuildOrderPayloadFromBooking(booking, { outletId, itemId, itemName });
+  const { itemId, itemName, categoryId: categoryIdFromItem, categoryName: categoryNameFromItem } = await mokaResolveDefaultItem(outletId);
+  const { categoryId, categoryName } = await mokaResolveDefaultCategory(outletId, { categoryIdFromItem, categoryNameFromItem });
+  const { salesTypeId, salesTypeName } = await mokaResolveSalesType(outletId);
+  const payload = mokaBuildOrderPayloadFromBooking(booking, { itemId, itemName, categoryId, categoryName, salesTypeId, salesTypeName });
   const result = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/advanced_orderings/orders`, { method: 'POST', body: payload });
-  const mokaOrderId = result?.data?.id || result?.id || null;
+  const mokaOrderId = Array.isArray(result?.data) ? (result.data[0]?.id || null) : (result?.data?.id || result?.id || null);
   return { ok: true, moka_order_id: mokaOrderId, result, payload };
 }
 
@@ -801,7 +855,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         try {
           moka = await pushConfirmedBookingToMoka(data);
         } catch (e) {
-          moka = { ok: false, error: e?.message || 'MOKA sync failed' };
+          moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
         }
       }
 
@@ -847,7 +901,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         try {
           moka = await pushConfirmedBookingToMoka(newBooking[0]);
         } catch (e) {
-          moka = { ok: false, error: e?.message || 'MOKA sync failed' };
+          moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
         }
       }
       res.status(201).json({ data: newBooking[0], moka });
@@ -898,7 +952,7 @@ async function handleBookingUpdate(req, res) {
         try {
           moka = await pushConfirmedBookingToMoka(data);
         } catch (e) {
-          moka = { ok: false, error: e?.message || 'MOKA sync failed' };
+            moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
         }
       }
     }
@@ -975,7 +1029,7 @@ async function handleBookingUpdate(req, res) {
           try {
             moka = await pushConfirmedBookingToMoka(updated[0]);
           } catch (e) {
-            moka = { ok: false, error: e?.message || 'MOKA sync failed' };
+            moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
           }
         }
       }
@@ -1251,15 +1305,41 @@ app.get('/api/admin/moka-health', adminAuth, async (req, res) => {
       return res.json({
         ok: false,
         configured: false,
-        required_env: ['MOKA_API_BASE (optional)', 'MOKA_ACCESS_TOKEN (or MOKA_API_KEY)', 'MOKA_OUTLET_ID (or MOKA_OUTLET_ID_BYPASS)'],
+        required_env: [
+          'MOKA_API_BASE (optional)',
+          'MOKA_ACCESS_TOKEN (or MOKA_API_KEY)',
+          'MOKA_OUTLET_ID (or MOKA_OUTLET_ID_BYPASS)',
+          'MOKA_DEFAULT_ITEM_ID (recommended)',
+          'MOKA_DEFAULT_CATEGORY_ID (required if item has no category_id)',
+        ],
       });
     }
     const outletId = mokaOutletIdForLocation('bypass');
-    const items = await mokaRequest(`/v2/outlets/${encodeURIComponent(outletId)}/items`, { method: 'GET' });
-    const list = items?.data || items?.items || [];
-    res.json({ ok: true, configured: true, outlet_id: outletId, items_count: Array.isArray(list) ? list.length : 0 });
+    const itemsRes = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/items`, { method: 'GET' });
+    const items = itemsRes?.data?.items || itemsRes?.items || itemsRes?.data || [];
+    const itemCount = Array.isArray(items) ? items.length : 0;
+
+    const catsRes = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/categories`, { method: 'GET' });
+    const cats = catsRes?.data?.category || catsRes?.categories || catsRes?.data || [];
+    const categoryCount = Array.isArray(cats) ? cats.length : 0;
+
+    res.json({
+      ok: true,
+      configured: true,
+      outlet_id: outletId,
+      items_count: itemCount,
+      categories_count: categoryCount,
+      env: {
+        push_on_booking: MOKA_PUSH_ON_BOOKING,
+        push_branches: MOKA_PUSH_BRANCHES,
+        payment_type: MOKA_PAYMENT_TYPE,
+        default_item_id: MOKA_DEFAULT_ITEM_ID || null,
+        default_category_id: MOKA_DEFAULT_CATEGORY_ID || null,
+        sales_type_id: MOKA_SALES_TYPE_ID || null,
+      },
+    });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e?.message || 'Moka health failed' });
+    res.status(500).json({ ok: false, error: e?.message || 'Moka health failed', status: e?.status, details: e?.details });
   }
 });
 
