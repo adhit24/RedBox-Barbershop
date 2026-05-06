@@ -19,10 +19,31 @@ _outlets.set('redbox', DEFAULT_OUTLET);
 _outlets.set('default-outlet', DEFAULT_OUTLET);
 
 /**
+ * Ensure default outlet exists (call this before queries)
+ */
+function _ensureDefaultOutlet() {
+  const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
+  if (!_outlets.has('redbox')) {
+    const outlet = {
+      id: 'default-outlet',
+      slug: 'redbox',
+      name: 'Redbox Barbershop',
+      moka_outlet_id: outletId,
+    };
+    _outlets.set('redbox', outlet);
+    _outlets.set('default-outlet', outlet);
+    _outlets.set(outletId, outlet);
+  }
+}
+
+/**
  * Create a minimal in-memory Supabase client for Moka integration
  * Implements only .from('moka_tokens') and .from('outlets')
  */
 function createInMemorySupabase() {
+  // Ensure outlet is initialized for this instance
+  _ensureDefaultOutlet();
+  
   return {
     from: (table) => ({
       // ── moka_tokens table ──────────────────────────────────
@@ -49,7 +70,16 @@ function createInMemorySupabase() {
           return {
             eq: (col, val) => ({
               single: async () => {
-                const outlet = _outlets.get(val) || Array.from(_outlets.values()).find(o => o.id === val || o.slug === val);
+                _ensureDefaultOutlet(); // Re-check before query
+                let outlet = null;
+                if (col === 'slug') {
+                  outlet = _outlets.get(val);
+                } else if (col === 'id') {
+                  outlet = Array.from(_outlets.values()).find(o => o.id === val);
+                }
+                if (!outlet) {
+                  outlet = Array.from(_outlets.values()).find(o => o.id === val || o.slug === val);
+                }
                 if (!outlet) {
                   return { data: null, error: { message: 'No rows found', code: 'PGRST116' } };
                 }
@@ -58,6 +88,7 @@ function createInMemorySupabase() {
             }),
             ilike: () => ({
               single: async () => {
+                _ensureDefaultOutlet();
                 const outlet = _outlets.get(val) || Array.from(_outlets.values()).find(o => o.id === val || o.slug === val);
                 return { data: outlet || null, error: outlet ? null : { message: 'No rows found' } };
               },
