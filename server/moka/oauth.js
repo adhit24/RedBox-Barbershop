@@ -60,7 +60,7 @@ async function exchangeCode(supabase, code, outletId) {
 
 /**
  * Get a valid access_token for the given outlet.
- * Automatically refreshes if the token is expiring soon.
+ * Uses Client Credentials flow - auto-generates token if not cached.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} outletId
  * @returns {Promise<string>} access_token
@@ -72,35 +72,77 @@ async function getAccessToken(supabase, outletId) {
     return cached.access_token;
   }
 
-  // 2. Load from DB
-  const { data: row, error } = await supabase
-    .from('moka_tokens')
-    .select('*')
-    .eq('outlet_id', outletId)
-    .single();
-
-  if (error || !row) {
-    throw Object.assign(
-      new Error(`No Moka OAuth token for outlet ${outletId}. Re-authorize via GET /api/moka/auth`),
-      { code: 'MOKA_NOT_AUTHORIZED' }
-    );
+  // 2. Try load from DB (if available)
+  let row = null;
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('moka_tokens')
+        .select('*')
+        .eq('outlet_id', outletId)
+        .single();
+      if (!error && data) row = data;
+    } catch (e) {
+      // Ignore DB errors, use client credentials
+    }
   }
 
-  // 3. Refresh if needed
-  if (_isExpiringSoon(row.expires_at)) {
-    if (!row.refresh_token) {
-      throw Object.assign(
-        new Error('Moka refresh_token missing — re-authorize'),
-        { code: 'MOKA_REFRESH_MISSING' }
-      );
+  // 3. If no token or expiring, use Client Credentials to get new token
+  if (!row || _isExpiringSoon(row.expires_at)) {
+    console.log('[Moka] Using Client Credentials to generate token...');
+    const tokenData = await _getClientCredentialsToken();
+    
+    const expiresAt = new Date(
+      Date.now() + (tokenData.expires_in || 15552000) * 1000
+    ).toISOString();
+    
+    row = {
+      outlet_id: outletId,
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token || null,
+      token_type: tokenData.token_type || 'Bearer',
+      expires_at: expiresAt,
+      scope: tokenData.scope || 'profile',
+      updated_at: new Date().toISOString(),
+    };
+    
+    // Try save to DB (optional)
+    if (supabase) {
+      supabase.from('moka_tokens').upsert(row, { onConflict: 'outlet_id' })
+        .catch(() => {});
     }
-    const refreshed = await _doRefresh(supabase, outletId, row.refresh_token);
-    return refreshed.access_token;
   }
 
   // 4. Cache and return
   _cache.set(outletId, { access_token: row.access_token, expires_at: row.expires_at });
   return row.access_token;
+}
+
+/**
+ * Get token using Client Credentials flow
+ */
+async function _getClientCredentialsToken() {
+  const res = await fetch(MOKA_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: MOKA_CLIENT_ID,
+      client_secret: MOKA_CLIENT_SECRET,
+    }).toString(),
+  });
+
+  const text = await res.text();
+  let body;
+  try { body = JSON.parse(text); } catch { body = { raw: text }; }
+
+  if (!res.ok) {
+    throw Object.assign(
+      new Error(`Moka client credentials failed [${res.status}]: ${body?.error_description || body?.error || text}`),
+      { status: res.status, code: 'MOKA_TOKEN_ERROR', details: body }
+    );
+  }
+  return body;
 }
 
 /**
