@@ -96,7 +96,21 @@ function createInMemorySupabase() {
       // ── moka_tokens table ──────────────────────────────────
       select: (columns) => {
         if (table === 'moka_tokens') {
+          const _firstToken = () => {
+            const all = Array.from(_memoryTokens.values());
+            return all.length
+              ? { data: all[0], error: null }
+              : { data: null, error: { message: 'No rows found', code: 'PGRST116' } };
+          };
           return {
+            single: async () => _firstToken(),
+            limit: (n) => ({
+              single: async () => _firstToken(),
+              then: async (cb) => {
+                const slice = Array.from(_memoryTokens.values()).slice(0, n);
+                return cb ? cb({ data: slice, error: null }) : { data: slice, error: null };
+              },
+            }),
             eq: (col, val) => ({
               single: async () => {
                 const token = _memoryTokens.get(val);
@@ -104,6 +118,10 @@ function createInMemorySupabase() {
                   return { data: null, error: { message: 'No rows found', code: 'PGRST116' } };
                 }
                 return { data: token, error: null };
+              },
+              maybeSingle: async () => {
+                const token = _memoryTokens.get(val);
+                return { data: token || null, error: null };
               },
             }),
             // For selecting all tokens
@@ -114,24 +132,22 @@ function createInMemorySupabase() {
           };
         }
         if (table === 'outlets') {
+          const _findOutlet = (col, val) => {
+            _ensureDefaultOutlet();
+            let outlet = null;
+            if (col === 'slug') outlet = _outlets.get(val);
+            else if (col === 'id') outlet = Array.from(_outlets.values()).find(o => o.id === val);
+            if (!outlet) outlet = Array.from(_outlets.values()).find(o => o.id === val || o.slug === val);
+            return outlet || null;
+          };
           return {
             eq: (col, val) => ({
               single: async () => {
-                _ensureDefaultOutlet(); // Re-check before query
-                let outlet = null;
-                if (col === 'slug') {
-                  outlet = _outlets.get(val);
-                } else if (col === 'id') {
-                  outlet = Array.from(_outlets.values()).find(o => o.id === val);
-                }
-                if (!outlet) {
-                  outlet = Array.from(_outlets.values()).find(o => o.id === val || o.slug === val);
-                }
-                if (!outlet) {
-                  return { data: null, error: { message: 'No rows found', code: 'PGRST116' } };
-                }
+                const outlet = _findOutlet(col, val);
+                if (!outlet) return { data: null, error: { message: 'No rows found', code: 'PGRST116' } };
                 return { data: outlet, error: null };
               },
+              maybeSingle: async () => ({ data: _findOutlet(col, val), error: null }),
               // Support chaining eq().order() for filtering
               order: (sortCol, options) => ({
                 limit: (n) => ({
@@ -193,24 +209,33 @@ function createInMemorySupabase() {
                 const outlet = _outlets.get(val) || Array.from(_outlets.values()).find(o => o.id === val || o.slug === val);
                 return { data: outlet || null, error: outlet ? null : { message: 'No rows found' } };
               },
+              maybeSingle: async () => {
+                _ensureDefaultOutlet();
+                const outlet = _outlets.get(val) || Array.from(_outlets.values()).find(o => o.id === val || o.slug === val);
+                return { data: outlet || null, error: null };
+              },
             }),
           };
         }
         // ── Generic tables (services, barbers, schedules, etc.) ──────────────────
         const createEqChain = () => ({
           single: async () => ({ data: null, error: { message: 'Not found', code: 'PGRST116' } }),
-          limit: (n) => ({ 
+          maybeSingle: async () => ({ data: null, error: null }),
+          limit: (n) => ({
             single: async () => ({ data: null, error: { message: 'Not found', code: 'PGRST116' } }),
-            then: async (cb) => cb({ data: [], error: null })
+            maybeSingle: async () => ({ data: null, error: null }),
+            then: async (cb) => cb({ data: [], error: null }),
           }),
-          eq: () => createEqChain(), // Support chaining .eq().eq()
+          eq: () => createEqChain(),
+          ilike: () => createEqChain(),
           order: () => createEqChain(),
           range: () => ({ then: async (cb) => cb({ data: [], error: null }) }),
           then: async (cb) => cb({ data: [], error: null }),
         });
-        
+
         return {
           eq: (col, val) => createEqChain(),
+          ilike: (col, val) => createEqChain(),
           order: (col, opts) => ({
             limit: (n) => ({
               then: async (cb) => cb({ data: [], error: null }),
