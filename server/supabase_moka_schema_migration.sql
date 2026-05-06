@@ -85,5 +85,5 @@ UPDATE services SET moka_variant_name = 'Hair Curly'         WHERE name ILIKE '%
 UPDATE services SET moka_variant_name = 'Hair Colouring'     WHERE name ILIKE '%warna%' OR name ILIKE '%coloring%';
 
 -- Verifikasi hasil
-SELECT id, name, moka_variant_name, moka_employee_id FROM barbers ORDER BY outlet_id, name;
+SELECT id, name, moka_employee_id FROM barbers ORDER BY outlet_id, name;
 SELECT id, name, moka_variant_name, moka_item_id, moka_category_id FROM services;

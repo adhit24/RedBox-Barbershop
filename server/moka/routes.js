@@ -205,18 +205,24 @@ function createMokaRouter(supabase) {
         throw new Error(schErr.message);
       }
 
-      // ── Push to Moka (synchronous so Vercel doesn't kill it) ─
-      let mokaSync = 'skipped';
+      // ── Push to Moka ─────────────────────────────────────────
+      // Moka acceptance window = 10 menit. Untuk booking jauh ke depan, cron
+      // akan push 15-25 mnt sebelum jadwal supaya kasir accept tepat waktu.
+      // Untuk booking mendadak (≤ 25 mnt), push sekarang juga.
+      let mokaSync = 'queued'; // default: cron handles it
       let mokaSyncDetail = null;
       if (isMokaOAuthConfigured()) {
-        try {
-          const result = await pushScheduleToMoka(supabase, schedule.id);
-          mokaSync = 'success';
-          mokaSyncDetail = result;
-        } catch (err) {
-          mokaSync = 'failed';
-          mokaSyncDetail = err.message;
-          console.error(`[Reservation] Moka push failed for ${schedule.id}:`, err.message);
+        const minutesUntilStart = (new Date(startTime) - Date.now()) / 60_000;
+        if (minutesUntilStart <= 25) {
+          try {
+            const result = await pushScheduleToMoka(supabase, schedule.id);
+            mokaSync = 'success';
+            mokaSyncDetail = result;
+          } catch (err) {
+            mokaSync = 'failed';
+            mokaSyncDetail = err.message;
+            console.error(`[Reservation] Moka push failed for ${schedule.id}:`, err.message);
+          }
         }
       }
 

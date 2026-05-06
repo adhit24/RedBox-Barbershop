@@ -8,7 +8,7 @@
 // ============================================================
 
 const MokaClient = require('./client');
-const { resolveBarberMokaItem, resolveVariantId } = require('./schemaSync');
+const { _matchScore } = require('./schemaSync');
 
 // Simple in-process lock so concurrent cron ticks don't overlap
 const _syncLock = new Set();
@@ -445,7 +445,36 @@ function startCronJobs(supabase) {
     }
   });
 
-  // Cron 2: Schema sync harian jam 03:00 WIB (20:00 UTC)
+  // Cron 2: Pre-appointment push — setiap 2 menit
+  // Moka acceptance window = 10 menit. Kita push 15-25 menit sebelum jadwal
+  // supaya kasir punya waktu untuk accept → langsung muncul di Daftar Bill.
+  cron.schedule('*/2 * * * *', async () => {
+    try {
+      const now      = new Date();
+      const winStart = new Date(now.getTime() + 15 * 60 * 1000);
+      const winEnd   = new Date(now.getTime() + 25 * 60 * 1000);
+
+      const { data: upcoming } = await supabase
+        .from('schedules')
+        .select('id')
+        .is('external_id', null)
+        .in('status', ['reserved', 'confirmed'])
+        .gte('start_time', winStart.toISOString())
+        .lte('start_time', winEnd.toISOString());
+
+      if (!upcoming?.length) return;
+      console.log(`[Cron] Pre-appt push: ${upcoming.length} schedule(s)`);
+      for (const s of upcoming) {
+        pushScheduleToMoka(supabase, s.id).catch(err =>
+          console.error(`[Cron] Pre-appt push ${s.id}:`, err.message)
+        );
+      }
+    } catch (err) {
+      console.error('[Cron] Pre-appt push error:', err.message);
+    }
+  });
+
+  // Cron 3: Schema sync harian jam 03:00 WIB (20:00 UTC)
   cron.schedule('0 20 * * *', async () => {
     console.log('[Cron] Daily schema sync starting…');
     try {
@@ -468,7 +497,7 @@ function startCronJobs(supabase) {
     }
   }, 5000);
 
-  console.log('[Cron] Moka jobs scheduled: pull every 5min, schema sync daily 03:00 WIB');
+  console.log('[Cron] Moka jobs scheduled: pull 5min, pre-appt push 2min, schema sync 03:00 WIB');
 }
 
 // ── PRIVATE HELPERS ───────────────────────────────────────
@@ -511,16 +540,11 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
   let variantId    = null;
   const variantName = schedule.moka_variant_name || schedule.service_name || null;
 
-  // Resolve barber → Moka item via schemaSync (supports name matching)
+  // Resolve barber → Moka item via name matching against live items cache
   const mokaOutletId = schedule.outlet_moka_id || schedule.outlet_moka_outlet_id || null;
   if (mokaOutletId && schedule.barber_name) {
     try {
-      const token = await client._req && null; // token is managed by client internally
-      // Use client's internal token via a lightweight items fetch
       const itemsRes = await _getMokaItems(client, schedule.outlet_id);
-      const { resolveBarberMokaItem: _rbmi, resolveVariantId: _rvi } = require('./schemaSync');
-      // Manual resolve using cached items
-      const { _norm, _matchScore } = require('./schemaSync');
       let bestItem = null, bestScore = 0;
       for (const item of itemsRes) {
         if (!item.item_variants?.length) continue;
@@ -572,6 +596,8 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
     customer_id:                     mokaCustomerId          || undefined,
     customer_phone_number:           schedule.customer_phone || undefined,
     client_created_at:               schedule.start_time,
+    // Keep order alive for 2 hours in case cashier is slow to respond
+    auto_cancel_in_seconds:          7200,
     accept_order_notification_url:   `${base}/api/moka/callback/accept`,
     complete_order_notification_url: `${base}/api/moka/callback/complete`,
     cancel_order_notification_url:   `${base}/api/moka/callback/cancel`,
@@ -592,24 +618,6 @@ async function _getMokaItems(client, outletId) {
     console.warn('[Sync] Could not fetch Moka items for cache:', err.message);
     return cached?.items || [];
   }
-}
-
-async function _resolveVariantId(client, outletId, mokaItemId, variantName) {
-  const items  = await _getMokaItems(client, outletId);
-  const item   = items.find(i => String(i.id) === String(mokaItemId));
-  // Moka API returns item_variants (not variants)
-  const variants = item?.item_variants || item?.variants || [];
-  if (!variants.length) return null;
-  const variant = variants.find(
-    v => v.name?.toLowerCase() === variantName?.toLowerCase()
-  );
-  return variant?.id || null;
-}
-
-async function _resolveBarberMokaItem(client, outletId, barberName) {
-  if (!barberName) return null;
-  const items = await _getMokaItems(client, outletId);
-  return items.find(i => i.name?.toLowerCase() === barberName?.toLowerCase()) || null;
 }
 
 async function _mapOrderItems(supabase, items, totalCollected) {
