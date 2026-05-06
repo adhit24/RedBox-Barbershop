@@ -5,7 +5,10 @@
 
 -- 1. Update schedules_full view — tambah barber_moka_employee_id dan moka_variant_name
 --    sehingga tidak perlu extra round-trip ke DB saat push booking ke Moka
-CREATE OR REPLACE VIEW schedules_full AS
+--    Harus DROP dulu karena CREATE OR REPLACE tidak bisa ubah urutan/nama kolom
+DROP VIEW IF EXISTS schedules_full;
+
+CREATE VIEW schedules_full AS
   SELECT
     s.*,
     b.name               AS barber_name,
@@ -42,7 +45,6 @@ CREATE INDEX IF NOT EXISTS idx_schedules_external_id
   WHERE external_id IS NOT NULL;
 
 -- 5. Tambah kolom schedule_id ke bookings (untuk mirror status dari Moka callback)
---    Kolom ini menghubungkan bookings lama ke schedules baru setelah bridge
 ALTER TABLE bookings
   ADD COLUMN IF NOT EXISTS schedule_id UUID REFERENCES schedules(id);
 
@@ -50,7 +52,7 @@ CREATE INDEX IF NOT EXISTS idx_bookings_schedule_id
   ON bookings (schedule_id)
   WHERE schedule_id IS NOT NULL;
 
--- 6. Verifikasi: lihat kolom schedules_full
+-- Verifikasi: lihat kolom schedules_full
 SELECT column_name
 FROM information_schema.columns
 WHERE table_name = 'schedules_full'
