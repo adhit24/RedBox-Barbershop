@@ -101,19 +101,22 @@ function createInMemorySupabase() {
       },
 
       // ── moka_tokens upsert ─────────────────────────────────
-      upsert: (record, options) => ({
-        then: async (cb) => {
+      upsert: (record, options) => {
+        const execute = async () => {
           if (table === 'moka_tokens' && record.outlet_id) {
             _memoryTokens.set(record.outlet_id, {
               ..._memoryTokens.get(record.outlet_id),
               ...record,
               updated_at: new Date().toISOString(),
             });
-            return cb ? cb({ error: null }) : { error: null };
           }
-          return cb ? cb({ error: null }) : { error: null };
-        },
-      }),
+          return { error: null };
+        };
+        return {
+          then: (onFulfilled, onRejected) => execute().then(onFulfilled, onRejected),
+          catch: (onRejected) => execute().catch(onRejected),
+        };
+      },
 
       // ── Generic methods ─────────────────────────────────────
       insert: (records) => ({
