@@ -7,16 +7,18 @@
 const _memoryTokens = new Map(); // outlet_id -> token data
 const _outlets = new Map(); // slug -> { id, slug, name }
 
-// Default outlet for single-outlet setup
+// Default outlet for single-outlet setup - uses env MOKA_OUTLET_ID
+const DEFAULT_OUTLET_ID = process.env.MOKA_OUTLET_ID || '2000001165';
 const DEFAULT_OUTLET = {
   id: 'default-outlet',
   slug: 'redbox',
   name: 'Redbox Barbershop',
-  moka_outlet_id: process.env.MOKA_OUTLET_ID || '',
+  moka_outlet_id: DEFAULT_OUTLET_ID,
 };
 
 _outlets.set('redbox', DEFAULT_OUTLET);
 _outlets.set('default-outlet', DEFAULT_OUTLET);
+_outlets.set(DEFAULT_OUTLET_ID, DEFAULT_OUTLET);
 
 /**
  * Ensure default outlet exists (call this before queries)

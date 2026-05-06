@@ -1192,19 +1192,6 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
 const { createInMemorySupabase } = require('./moka/memoryStore');
 const memorySupabase = createInMemorySupabase();
 
-// Create outlet in memory store (always works regardless of DB)
-const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
-memorySupabase.from('outlets').eq('slug', 'redbox').single = async () => ({
-  data: {
-    id: 'default-outlet',
-    slug: 'redbox',
-    name: 'Redbox Barbershop',
-    moka_outlet_id: outletId,
-    is_active: true,
-  },
-  error: null
-});
-
 // For serverless: immediately mount with memory store (guaranteed to work)
 // DB features will use Supabase if available, outlets use memory
 const createMokaRouter = require('./moka/routes');
