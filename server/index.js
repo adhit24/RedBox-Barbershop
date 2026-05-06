@@ -1190,12 +1190,26 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
 //            /api/outlets, /api/services, /api/moka/*
 // Now works with or without Supabase (in-memory fallback)
 const { createInMemorySupabase } = require('./moka/memoryStore');
-const mokaSupabase = supabase || createInMemorySupabase();
+// Create hybrid Supabase client with in-memory outlet fallback
+const memorySupabase = createInMemorySupabase();
+const mokaSupabase = supabase || memorySupabase;
 
-// Auto-create default outlet in Supabase if it doesn't exist
-async function ensureMokaOutlet() {
-  if (!supabase) return; // Skip if using in-memory
+// Test if Supabase outlets table exists
+let useMemoryOutlet = false;
+async function checkSupabaseOutlet() {
+  if (!supabase) {
+    useMemoryOutlet = true;
+    console.log('📦 Using in-memory outlet (no Supabase)');
+    return;
+  }
   try {
+    const { data, error } = await supabase.from('outlets').select('id').limit(1);
+    if (error || !data) {
+      throw new Error('Outlets table not accessible');
+    }
+    console.log('✅ Supabase outlets table connected');
+    
+    // Try to create default outlet if not exists
     const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
     const { data: existing } = await supabase
       .from('outlets')
@@ -1204,7 +1218,7 @@ async function ensureMokaOutlet() {
       .single();
     
     if (!existing) {
-      const { error } = await supabase.from('outlets').insert({
+      await supabase.from('outlets').insert({
         id: 'default-outlet',
         slug: 'redbox',
         name: 'Redbox Barbershop',
@@ -1212,24 +1226,59 @@ async function ensureMokaOutlet() {
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
-      if (error) {
-        console.log('⚠️  Could not auto-create outlet (may already exist or table missing):', error.message);
-      } else {
-        console.log('✅ Default outlet created for Moka integration');
-      }
+      }).catch(() => {});
     }
   } catch (e) {
-    console.log('⚠️  Outlet check skipped:', e.message);
+    console.log('⚠️  Supabase outlets not available, using in-memory fallback');
+    useMemoryOutlet = true;
   }
 }
 
-const createMokaRouter = require('./moka/routes');
-app.use('/api', createMokaRouter(mokaSupabase));
-console.log('✅ Moka integration routes mounted');
+// Wrapper that merges Supabase with in-memory outlet fallback
+function createHybridSupabase() {
+  if (!supabase || useMemoryOutlet) return memorySupabase;
+  
+  // Wrap supabase to inject in-memory outlet for queries
+  const originalFrom = supabase.from.bind(supabase);
+  return {
+    ...supabase,
+    from: (table) => {
+      const result = originalFrom(table);
+      if (table === 'outlets') {
+        // Wrap eq().single() to fallback to memory
+        const originalEq = result.eq.bind(result);
+        result.eq = (col, val) => {
+          const eqResult = originalEq(col, val);
+          const originalSingle = eqResult.single.bind(eqResult);
+          eqResult.single = async () => {
+            const supaResult = await originalSingle();
+            if (supaResult.data) return supaResult;
+            // Fallback to memory
+            return memorySupabase.from('outlets').eq(col, val).single();
+          };
+          return eqResult;
+        };
+      }
+      return result;
+    }
+  };
+}
 
-// Run outlet check in background
-ensureMokaOutlet().catch(() => {});
+const createMokaRouter = require('./moka/routes');
+
+// Wait for outlet check before mounting
+async function initMokaRoutes() {
+  await checkSupabaseOutlet();
+  const hybridSupabase = createHybridSupabase();
+  app.use('/api', createMokaRouter(hybridSupabase));
+  console.log('✅ Moka integration routes mounted');
+}
+
+initMokaRoutes().catch(e => {
+  console.error('❌ Failed to init Moka:', e.message);
+  // Fallback: mount with memory store
+  app.use('/api', createMokaRouter(memorySupabase));
+});
 
 try {
   const { startCronJobs } = require('./moka/sync');
