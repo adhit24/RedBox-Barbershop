@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Moka POS Integration — RedBox Admin</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --red: #e63946;
+    --dark: #0d0d0d;
+    --card: #1a1a1a;
+    --border: #2a2a2a;
+    --text: #f0f0f0;
+    --muted: #888;
+    --green: #2ecc71;
+    --yellow: #f39c12;
+    --blue: #3498db;
+    --font: 'Segoe UI', system-ui, sans-serif;
+  }
+  body { background: var(--dark); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  .topbar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .topbar .logo { font-size: 1.2rem; font-weight: 700; color: var(--red); letter-spacing: .04em; }
+  .topbar .sub { font-size: .8rem; color: var(--muted); }
+  .topbar a { margin-left: auto; font-size: .82rem; color: var(--muted); text-decoration: none; }
+  .topbar a:hover { color: var(--text); }
+
+  .layout { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 54px); }
+
+  .sidebar {
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+  }
+  .sidebar a {
+    display: block;
+    padding: 10px 20px;
+    font-size: .88rem;
+    color: var(--muted);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all .15s;
+  }
+  .sidebar a:hover, .sidebar a.active {
+    color: var(--text);
+    border-left-color: var(--red);
+    background: rgba(230,57,70,.07);
+  }
+  .sidebar .sect-label {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--muted);
+    padding: 18px 20px 6px;
+  }
+
+  .main { padding: 28px; overflow-y: auto; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 6px; }
+  .page-desc { font-size: .85rem; color: var(--muted); margin-bottom: 24px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .card-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+  .card-value { font-size: 1.5rem; font-weight: 700; }
+  .card-value.ok { color: var(--green); }
+  .card-value.warn { color: var(--yellow); }
+  .card-value.err { color: var(--red); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: 7px;
+    border: none;
+    font-size: .88rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+    text-decoration: none;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-red { background: var(--red); color: #fff; }
+  .btn-green { background: var(--green); color: #000; }
+  .btn-blue { background: var(--blue); color: #fff; }
+  .btn-ghost { background: var(--border); color: var(--text); }
+
+  .section { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .section-title { font-size: .95rem; font-weight: 700; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: .75rem;
+    font-weight: 600;
+  }
+  .badge-green { background: rgba(46,204,113,.18); color: var(--green); }
+  .badge-red   { background: rgba(230,57,70,.18);  color: var(--red); }
+  .badge-yellow{ background: rgba(243,156,18,.18); color: var(--yellow); }
+  .badge-blue  { background: rgba(52,152,219,.18); color: var(--blue); }
+  .badge-grey  { background: var(--border); color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  th { text-align: left; padding: 8px 10px; font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border-bottom: 1px solid var(--border); }
+  td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  .outlet-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 12px 14px; background: var(--dark); border-radius: 8px; }
+  .outlet-name { font-weight: 600; font-size: .9rem; flex: 1; }
+  .outlet-id { font-size: .78rem; color: var(--muted); font-family: monospace; }
+
+  .log-direction { font-family: monospace; font-size: .78rem; }
+  .log-msg { font-size: .78rem; color: var(--muted); max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .map-row td:last-child { text-align: right; }
+  select.inline-select {
+    background: var(--dark);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 4px 8px;
+    font-size: .82rem;
+  }
+
+  .alert {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: .88rem;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .alert.show { display: block; }
+  .alert-info    { background: rgba(52,152,219,.15); border: 1px solid rgba(52,152,219,.3); color: #74b9ff; }
+  .alert-success { background: rgba(46,204,113,.15); border: 1px solid rgba(46,204,113,.3); color: #55efc4; }
+  .alert-error   { background: rgba(230,57,70,.15);  border: 1px solid rgba(230,57,70,.3);  color: #ff7675; }
+  .alert-warning { background: rgba(243,156,18,.15); border: 1px solid rgba(243,156,18,.3); color: #ffeaa7; }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .step-box {
+    background: var(--dark);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .step-box h4 { font-size: .9rem; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: var(--red); color: #fff; font-size: .75rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-box p { font-size: .84rem; color: var(--muted); line-height: 1.5; }
+  .step-box code { background: var(--border); padding: 1px 6px; border-radius: 4px; font-size: .82rem; }
+  .step-box .btn { margin-top: 10px; }
+
+  input.text-input {
+    background: var(--dark);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 11px;
+    font-size: .87rem;
+    width: 100%;
+    margin-top: 8px;
+  }
+  input.text-input:focus { outline: none; border-color: var(--red); }
+  label.field-label { font-size: .8rem; color: var(--muted); }
+
+  .empty { text-align: center; color: var(--muted); font-size: .85rem; padding: 28px; }
+
+  @media (max-width: 700px) {
+    .layout { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+    .main { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">RedBox</div>
+  <div class="sub">Moka POS Integration Admin</div>
+  <a href="/admin-setup.html">← Back to Admin</a>
+</div>
+
+<div class="layout">
+  <nav class="sidebar">
+    <div class="sect-label">Overview</div>
+    <a href="#" class="active" data-page="status">Status & OAuth</a>
+    <a href="#" data-page="sync">Sync</a>
+    <div class="sect-label">Configuration</div>
+    <a href="#" data-page="mapping">Item Mapping</a>
+    <a href="#" data-page="guide">Setup Guide</a>
+  </nav>
+
+  <div class="main">
+    <!-- ── STATUS PAGE ── -->
+    <div class="page active" id="page-status">
+      <h2>Status & OAuth</h2>
+      <p class="page-desc">Pantau koneksi OAuth Moka per outlet dan refresh token jika perlu.</p>
+
+      <div id="alertStatus" class="alert alert-info">
+        <span class="spinner"></span> Memuat status…
+      </div>
+
+      <div class="cards" id="statusCards">
+        <div class="card">
+          <div class="card-label">OAuth Configured</div>
+          <div class="card-value warn" id="statOauth">—</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Outlets Authorized</div>
+          <div class="card-value" id="statAuthorized">—</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Last Sync</div>
+          <div class="card-value" id="statLastSync" style="font-size:1rem">—</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Outlet Status</div>
+        <div id="outletList"><div class="empty">Memuat…</div></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Recent Activity (10 entri terakhir)</div>
+        <table id="recentLogsTable">
+          <thead><tr><th>Waktu</th><th>Arah</th><th>Status</th><th>Keterangan</th></tr></thead>
+          <tbody id="recentLogsBody"><tr><td colspan="4" class="empty">Memuat…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── SYNC PAGE ── -->
+    <div class="page" id="page-sync">
+      <h2>Sync Manual</h2>
+      <p class="page-desc">Pull data terbaru dari Moka ke database website. Cron otomatis berjalan setiap 5 menit.</p>
+
+      <div id="alertSync" class="alert"></div>
+
+      <div class="section">
+        <div class="section-title">
+          Trigger Sync
+          <div style="display:flex;gap:8px">
+            <select id="syncOutletSel" class="inline-select">
+              <option value="">Semua Outlet</option>
+            </select>
+            <button class="btn btn-blue" id="btnSync">
+              ↻ Pull dari Moka
+            </button>
+          </div>
+        </div>
+        <p style="font-size:.84rem;color:var(--muted)">
+          Menarik order terbaru dari Moka dan membuat schedule + transaksi di database website.
+          GoShow yang sudah terjadi di POS akan langsung muncul dan memblokir slot website.
+        </p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          Sync Logs
+          <button class="btn btn-ghost" id="btnRefreshLogs" style="font-size:.8rem;padding:6px 12px">↻ Refresh</button>
+        </div>
+        <table>
+          <thead><tr><th>Waktu</th><th>Arah</th><th>Tipe</th><th>Status</th><th>Pesan</th></tr></thead>
+          <tbody id="syncLogsBody"><tr><td colspan="5" class="empty">Belum ada log</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── ITEM MAPPING PAGE ── -->
+    <div class="page" id="page-mapping">
+      <h2>Item Mapping</h2>
+      <p class="page-desc">Hubungkan layanan di website dengan produk di Moka POS agar order yang dikirim ke Moka menunjuk item yang benar.</p>
+
+      <div id="alertMap" class="alert"></div>
+
+      <div class="section">
+        <div class="section-title">
+          Layanan Website ↔ Item Moka
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" id="btnLoadItems" style="font-size:.8rem;padding:6px 12px">↻ Load dari Moka</button>
+            <button class="btn btn-green" id="btnSaveMappings">💾 Simpan Mapping</button>
+          </div>
+        </div>
+        <table id="mappingTable">
+          <thead>
+            <tr>
+              <th>Layanan Website</th>
+              <th>Harga</th>
+              <th>Durasi</th>
+              <th>Moka Item</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="mappingBody">
+            <tr><td colspan="5" class="empty">Klik "Load dari Moka" untuk memuat daftar produk</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── GUIDE PAGE ── -->
+    <div class="page" id="page-guide">
+      <h2>Setup Guide</h2>
+      <p class="page-desc">Ikuti langkah-langkah ini secara berurutan untuk mengaktifkan integrasi Moka.</p>
+
+      <div class="step-box">
+        <h4><span class="step-num">1</span> Jalankan Schema Migration</h4>
+        <p>Buat tabel-tabel baru di Supabase yang dibutuhkan sistem Moka (schedules, outlets, services, dll).</p>
+        <p style="margin-top:8px">Opsi A — satu perintah terminal:</p>
+        <code style="display:block;margin:8px 0;padding:8px 12px;background:var(--dark);border-radius:6px;font-size:.82rem">
+          cd /path/to/project && node server/run-migration.js
+        </code>
+        <p>Opsi B — paste isi <code>server/moka_integration_schema.sql</code> ke <strong>Supabase → SQL Editor → Run</strong></p>
+      </div>
+
+      <div class="step-box">
+        <h4><span class="step-num">2</span> Daftar Aplikasi di Moka Developer Portal</h4>
+        <p>Buka <strong>developer.mokapos.com</strong> → My Apps → Create New App.</p>
+        <p style="margin-top:6px">Isi Redirect URI dengan:</p>
+        <code id="guideRedirectUri" style="display:block;margin:8px 0;padding:8px 12px;background:var(--dark);border-radius:6px;font-size:.82rem">
+          https://your-domain.vercel.app/api/moka/callback
+        </code>
+        <p>Salin CLIENT_ID dan CLIENT_SECRET ke <code>server/.env</code></p>
+      </div>
+
+      <div class="step-box">
+        <h4><span class="step-num">3</span> Set MOKA_OUTLET_ID</h4>
+        <p>Di Moka Dashboard → Settings → Outlet Info, salin <strong>Outlet ID</strong> (angka) ke <code>server/.env</code> sebagai <code>MOKA_OUTLET_ID</code>.</p>
+        <p style="margin-top:6px">Juga set <code>moka_outlet_id</code> di tabel <code>outlets</code> Supabase untuk setiap cabang.</p>
+      </div>
+
+      <div class="step-box">
+        <h4><span class="step-num">4</span> Authorize OAuth (sekali saja)</h4>
+        <p>Setelah .env diisi dan server direstart, klik tombol di bawah atau akses URL ini di browser:</p>
+        <button class="btn btn-red" id="btnGuideOAuth" onclick="window.open(API_BASE + '/api/moka/auth?outletId=bypass', '_blank')">
+          🔑 Authorize Moka OAuth
+        </button>
+        <p style="margin-top:8px;font-size:.8rem;color:var(--muted)">
+          Setelah login di halaman Moka, token disimpan otomatis dan sync dimulai.
+        </p>
+      </div>
+
+      <div class="step-box">
+        <h4><span class="step-num">5</span> Map Item Moka ↔ Layanan Website</h4>
+        <p>Buka tab <strong>Item Mapping</strong>, klik "Load dari Moka", lalu sambungkan setiap layanan website ke produk Moka yang sesuai. Klik "Simpan Mapping".</p>
+        <p style="margin-top:6px;font-size:.82rem;color:var(--muted)">
+          Mapping ini dipakai saat order dari website dikirim ke Moka agar produk yang muncul di kasir sudah benar.
+        </p>
+      </div>
+
+      <div class="step-box">
+        <h4><span class="step-num">6</span> Test End-to-End</h4>
+        <p>Buka website → lakukan booking test → cek apakah order muncul di Moka POS kasir.</p>
+        <p style="margin-top:6px">Dari sisi GoShow: lakukan transaksi di Moka → kembali ke tab <strong>Sync</strong> → klik "Pull dari Moka" → cek apakah slot kapster terblokir di website.</p>
+      </div>
+
+      <div id="alertGuide" class="alert alert-info show">
+        💡 Checklist: ENV vars set? Schema applied? moka_outlet_id di tabel outlets diisi? Token OAuth ada? Item mapping selesai?
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const ADMIN_TOKEN = localStorage.getItem('rb_admin_token') || '';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3001'
+  : `${window.location.protocol}//${window.location.host}`;
+
+// ── AUTH ──────────────────────────────────────────────────────
+if (!ADMIN_TOKEN) {
+  const t = prompt('Admin Token:');
+  if (!t) { location.href = '/admin-setup.html'; }
+  else { localStorage.setItem('rb_admin_token', t); location.reload(); }
+}
+
+function apiFetch(path, opts = {}) {
+  return fetch(API_BASE + path, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-admin-token': ADMIN_TOKEN,
+      ...(opts.headers || {}),
+    },
+  });
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────
+document.querySelectorAll('.sidebar a[data-page]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    const page = a.dataset.page;
+    document.querySelectorAll('.sidebar a').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+    document.getElementById('page-' + page)?.classList.add('active');
+    if (page === 'status')  loadStatus();
+    if (page === 'sync')    loadSyncLogs();
+    if (page === 'mapping') { /* user clicks Load */ }
+  });
+});
+
+function showAlert(id, type, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = `alert alert-${type} show`;
+  el.innerHTML = msg;
+}
+function hideAlert(id) {
+  const el = document.getElementById(id);
+  if (el) el.className = 'alert';
+}
+
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'baru saja';
+  if (m < 60) return `${m} menit lalu`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} jam lalu`;
+  return `${Math.floor(h / 24)} hari lalu`;
+}
+
+// ── STATUS ────────────────────────────────────────────────────
+async function loadStatus() {
+  showAlert('alertStatus', 'info', '<span class="spinner"></span> Memuat status…');
+  try {
+    const res = await apiFetch('/api/moka/status');
+    const data = await res.json();
+
+    hideAlert('alertStatus');
+
+    // Summary cards
+    document.getElementById('statOauth').textContent = data.oauthConfigured ? '✓ Dikonfigurasi' : '✗ Belum';
+    document.getElementById('statOauth').className = 'card-value ' + (data.oauthConfigured ? 'ok' : 'err');
+
+    const authorized = (data.outlets || []).filter(o => o.hasToken && !o.tokenExpired).length;
+    document.getElementById('statAuthorized').textContent = `${authorized} / ${(data.outlets || []).length}`;
+    document.getElementById('statAuthorized').className = 'card-value ' + (authorized > 0 ? 'ok' : 'warn');
+
+    const lastLog = (data.recentLogs || [])[0];
+    document.getElementById('statLastSync').textContent = lastLog ? timeAgo(lastLog.created_at) : 'Belum ada';
+
+    // Outlet list
+    const outletList = document.getElementById('outletList');
+    if (!data.outlets?.length) {
+      outletList.innerHTML = '<div class="empty">Tidak ada outlet. Jalankan schema migration terlebih dahulu.</div>';
+    } else {
+      outletList.innerHTML = data.outlets.map(o => `
+        <div class="outlet-row">
+          <div>
+            <div class="outlet-name">${o.name}</div>
+            <div class="outlet-id">slug: ${o.slug} | moka_id: ${o.mokaOutletId || '—'}</div>
+          </div>
+          <span class="badge ${o.hasToken && !o.tokenExpired ? 'badge-green' : o.hasToken ? 'badge-yellow' : 'badge-red'}">
+            ${o.hasToken && !o.tokenExpired ? '✓ Authorized' : o.hasToken ? '⚠ Token Expired' : '✗ No Token'}
+          </span>
+          ${o.hasToken
+            ? `<span style="font-size:.78rem;color:var(--muted)">exp: ${o.tokenExpiry ? new Date(o.tokenExpiry).toLocaleDateString('id-ID') : '?'}</span>`
+            : `<a href="${API_BASE}/api/moka/auth?outletId=${o.slug}" target="_blank" class="btn btn-red" style="font-size:.78rem;padding:5px 10px">🔑 Authorize</a>`
+          }
+        </div>
+      `).join('');
+    }
+
+    // Recent logs
+    renderLogsTable('recentLogsBody', data.recentLogs || [], 4);
+
+  } catch (err) {
+    showAlert('alertStatus', 'error', '❌ Gagal memuat status: ' + err.message);
+  }
+}
+
+function renderLogsTable(tbodyId, logs, cols = 5) {
+  const tbody = document.getElementById(tbodyId);
+  if (!tbody) return;
+  if (!logs.length) {
+    tbody.innerHTML = `<tr><td colspan="${cols}" class="empty">Belum ada log</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = logs.map(l => {
+    const dirBadge = l.direction === 'web_to_moka'
+      ? '<span class="badge badge-blue">web→moka</span>'
+      : '<span class="badge badge-yellow">moka→web</span>';
+    const statusBadge = l.status === 'success'
+      ? '<span class="badge badge-green">✓ ok</span>'
+      : l.status === 'skipped'
+        ? '<span class="badge badge-grey">⏭ skip</span>'
+        : '<span class="badge badge-red">✗ fail</span>';
+
+    if (cols === 4) {
+      return `<tr>
+        <td style="font-size:.78rem;color:var(--muted)">${timeAgo(l.created_at)}</td>
+        <td>${dirBadge}</td>
+        <td>${statusBadge}</td>
+        <td class="log-msg">${l.error_message || ''}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td style="font-size:.78rem;color:var(--muted)">${timeAgo(l.created_at)}</td>
+      <td>${dirBadge}</td>
+      <td style="font-size:.78rem;color:var(--muted)">${l.entity_type || '—'}</td>
+      <td>${statusBadge}</td>
+      <td class="log-msg">${l.error_message || ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── SYNC ─────────────────────────────────────────────────────
+async function loadSyncLogs() {
+  try {
+    // Populate outlet selector
+    const statusRes = await apiFetch('/api/moka/status');
+    const statusData = await statusRes.json();
+    const sel = document.getElementById('syncOutletSel');
+    sel.innerHTML = '<option value="">Semua Outlet</option>';
+    (statusData.outlets || []).forEach(o => {
+      sel.innerHTML += `<option value="${o.slug}">${o.name}</option>`;
+    });
+
+    const logsRes = await apiFetch('/api/moka/sync-logs?limit=50');
+    const logsData = await logsRes.json();
+    renderLogsTable('syncLogsBody', logsData.logs || [], 5);
+  } catch (err) {
+    showAlert('alertSync', 'error', '❌ Gagal memuat logs: ' + err.message);
+  }
+}
+
+document.getElementById('btnSync')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btnSync');
+  const outletId = document.getElementById('syncOutletSel')?.value;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Syncing…';
+  hideAlert('alertSync');
+  try {
+    const res = await apiFetch('/api/moka/sync', {
+      method: 'POST',
+      body: JSON.stringify(outletId ? { outletId } : {}),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Sync failed');
+    const total = (data.results || []).reduce((s, r) => ({
+      processed: s.processed + (r.processed || 0),
+      skipped:   s.skipped   + (r.skipped   || 0),
+      errors:    s.errors    + (r.errors     || 0),
+    }), { processed: 0, skipped: 0, errors: 0 });
+    showAlert('alertSync', 'success',
+      `✅ Sync selesai — ${total.processed} diproses, ${total.skipped} dilewati, ${total.errors} error`);
+    await loadSyncLogs();
+  } catch (err) {
+    showAlert('alertSync', 'error', '❌ Sync gagal: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '↻ Pull dari Moka';
+  }
+});
+
+document.getElementById('btnRefreshLogs')?.addEventListener('click', loadSyncLogs);
+
+// ── ITEM MAPPING ──────────────────────────────────────────────
+let mokaItemsList = [];
+let webServicesList = [];
+
+document.getElementById('btnLoadItems')?.addEventListener('click', loadMokaItems);
+
+async function loadMokaItems() {
+  const btn = document.getElementById('btnLoadItems');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  hideAlert('alertMap');
+  try {
+    const res = await apiFetch('/api/moka/items');
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Gagal memuat items');
+    }
+    const data = await res.json();
+    mokaItemsList   = data.items    || [];
+    webServicesList = data.services || [];
+    renderMappingTable();
+    showAlert('alertMap', 'info',
+      `📦 ${mokaItemsList.length} item Moka dimuat. ${webServicesList.length} layanan website ditemukan.`);
+  } catch (err) {
+    showAlert('alertMap', 'error', '❌ ' + err.message +
+      (err.message.includes('OAuth') ? ' — Jalankan OAuth di tab Status terlebih dahulu.' : ''));
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '↻ Load dari Moka';
+  }
+}
+
+function renderMappingTable() {
+  const tbody = document.getElementById('mappingBody');
+  if (!webServicesList.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">Tidak ada layanan di database. Jalankan schema migration.</td></tr>';
+    return;
+  }
+
+  const mokaOptions = mokaItemsList
+    .map(i => `<option value="${i.id}|${i.category_id || ''}|${(i.category_name || '').replace(/"/g, '&quot;')}">${i.name} (Rp ${(i.price || 0).toLocaleString('id-ID')})</option>`)
+    .join('');
+
+  tbody.innerHTML = webServicesList.map(svc => {
+    const currentMokaId = svc.moka_item_id || '';
+    const isMapped = Boolean(currentMokaId);
+    const selectedVal = currentMokaId
+      ? mokaItemsList.find(i => String(i.id) === String(currentMokaId))
+        ? `${currentMokaId}|${mokaItemsList.find(i => String(i.id) === String(currentMokaId))?.category_id || ''}|`
+        : currentMokaId
+      : '';
+
+    return `<tr data-service-id="${svc.id}">
+      <td><strong>${svc.name}</strong></td>
+      <td style="font-size:.82rem">Rp ${(svc.price || 0).toLocaleString('id-ID')}</td>
+      <td style="font-size:.82rem">${svc.duration_minutes || '?'} mnt</td>
+      <td>
+        <select class="inline-select moka-item-sel" data-service-id="${svc.id}" style="width:100%;max-width:280px">
+          <option value="">— Pilih item Moka —</option>
+          ${mokaOptions}
+        </select>
+      </td>
+      <td>
+        <span class="badge ${isMapped ? 'badge-green' : 'badge-grey'}" id="mapStatus-${svc.id}">
+          ${isMapped ? '✓ mapped' : 'unmapped'}
+        </span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Pre-select current mappings
+  document.querySelectorAll('.moka-item-sel').forEach(sel => {
+    const svcId = sel.dataset.serviceId;
+    const svc = webServicesList.find(s => s.id === svcId);
+    if (svc?.moka_item_id) {
+      const opt = Array.from(sel.options).find(o => o.value.startsWith(svc.moka_item_id + '|'));
+      if (opt) sel.value = opt.value;
+    }
+  });
+}
+
+document.getElementById('btnSaveMappings')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btnSaveMappings');
+  hideAlert('alertMap');
+  const mappings = [];
+  document.querySelectorAll('.moka-item-sel').forEach(sel => {
+    const val = sel.value;
+    if (!val) return;
+    const [mokaItemId, mokaCategoryId, mokaCategoryName] = val.split('|');
+    if (!mokaItemId) return;
+    mappings.push({
+      serviceId: sel.dataset.serviceId,
+      mokaItemId,
+      mokaCategoryId: mokaCategoryId || null,
+      mokaCategoryName: mokaCategoryName || null,
+    });
+  });
+
+  if (!mappings.length) {
+    showAlert('alertMap', 'warning', '⚠ Tidak ada mapping yang dipilih.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Menyimpan…';
+  try {
+    const res = await apiFetch('/api/moka/map-items', {
+      method: 'POST',
+      body: JSON.stringify({ mappings }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal menyimpan');
+    const ok = (data.results || []).filter(r => r.status === 'ok').length;
+    showAlert('alertMap', 'success', `✅ ${ok} dari ${mappings.length} mapping disimpan.`);
+    // Update status badges
+    (data.results || []).forEach(r => {
+      if (r.status === 'ok') {
+        const badge = document.getElementById(`mapStatus-${r.serviceId}`);
+        if (badge) { badge.textContent = '✓ mapped'; badge.className = 'badge badge-green'; }
+      }
+    });
+  } catch (err) {
+    showAlert('alertMap', 'error', '❌ ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '💾 Simpan Mapping';
+  }
+});
+
+// ── INIT ──────────────────────────────────────────────────────
+loadStatus();
+</script>
+</body>
+</html>

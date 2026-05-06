@@ -10,7 +10,9 @@ const API_URL = (() => {
   return `${window.location.protocol}//${window.location.host}/api`;
 })();
 let USE_API = false;
-let apiBookings = []; // Cache for server-side bookings to detect conflicts
+let apiBookings = []; // Cache for server-side bookings to detect conflicts (legacy fallback)
+let mokaAvailableSlots = []; // Slots from /api/availability (includes Moka walk-ins)
+let mokaAvailabilityActive = false; // true when new availability API responded successfully
 
 async function detectApiMode() {
   try {
@@ -547,17 +549,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         el.addEventListener('click', async () => {
           state.date = dateStr;
           state.time = null;
-          
-          // Fetch server-side bookings for this date and barber to detect conflicts
-          if (USE_API && state.barber?.id && state.barber.id !== 'any') {
+          mokaAvailabilityActive = false;
+          mokaAvailableSlots = [];
+
+          if (USE_API) {
+            // ── Primary: /api/availability (includes Moka walk-ins realtime) ──
             try {
-              const res = await fetch(`${API_URL}/bookings?date=${dateStr}&barber_id=${state.barber.id}`);
+              const durMins = _parseDurToMins(state.service?.duration);
+              const params = new URLSearchParams({
+                outletId: state.location || 'bypass',
+                date:     dateStr,
+                durationMinutes: durMins,
+              });
+              if (state.barber?.id && state.barber.id !== 'any') params.set('barberId', state.barber.id);
+              const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(4000) });
               if (res.ok) {
                 const json = await res.json();
-                apiBookings = json.data || [];
+                mokaAvailableSlots = json.slots || [];
+                mokaAvailabilityActive = true;
               }
             } catch (e) {
-              console.warn('Failed to fetch API bookings for conflict check', e);
+              console.warn('[Availability] Moka slot API unavailable, falling back to bookings API', e.message);
+            }
+
+            // ── Fallback: old /api/bookings endpoint ─────────────────────────
+            if (!mokaAvailabilityActive && state.barber?.id && state.barber.id !== 'any') {
+              try {
+                const res = await fetch(`${API_URL}/bookings?date=${dateStr}&barber_id=${state.barber.id}`, { signal: AbortSignal.timeout(3000) });
+                if (res.ok) {
+                  const json = await res.json();
+                  apiBookings = json.data || [];
+                }
+              } catch (e) {
+                console.warn('Failed to fetch API bookings for conflict check', e);
+              }
             }
           }
 
@@ -590,6 +615,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!isNaN(m)) mins = m * 60;
     }
     return mins;
+  }
+
+  // Convert service duration string ("45 menit", "1.5 jam") → integer minutes
+  function _parseDurToMins(durStr) {
+    if (!durStr) return 30;
+    const s = String(durStr).toLowerCase();
+    if (s.includes('jam')) return Math.round((parseFloat(s) || 1) * 60);
+    const m = parseInt(s, 10);
+    return (Number.isFinite(m) && m > 0) ? m : 30;
   }
 
   function hasConflict(barberId, dateStr, timeStr, durationStr = '60 menit') {
@@ -640,13 +674,29 @@ document.addEventListener('DOMContentLoaded', async () => {
       grid.innerHTML = '<div style="grid-column:1/-1;color:var(--w50);font-size:.85rem;padding:8px 2px">Tidak ada jam tersedia untuk hari ini. Silakan pilih tanggal lain.</div>';
       return;
     }
+    // Build a Set of available slot start-times (HH:MM WIB) from Moka API
+    const mokaFreeSet = new Set();
+    if (mokaAvailabilityActive) {
+      for (const s of mokaAvailableSlots) {
+        // s.start is ISO8601; extract HH:MM in WIB (UTC+7)
+        const d = new Date(s.start);
+        const wibH = String((d.getUTCHours() + 7) % 24).padStart(2, '0');
+        const wibM = String(d.getUTCMinutes()).padStart(2, '0');
+        mokaFreeSet.add(`${wibH}:${wibM}`);
+      }
+    }
+
     let availableCount = 0;
     visibleSlots.forEach(slot => {
       const el = document.createElement('div');
       el.className = 'time-slot';
       el.textContent = slot;
-      
-      const isBooked = hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
+
+      // If new Moka availability API responded: trust it as source-of-truth.
+      // Otherwise fall back to local + legacy API conflict check.
+      const isBooked = mokaAvailabilityActive
+        ? !mokaFreeSet.has(slot)
+        : hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
 
       if (isBooked) {
         el.classList.add('unavailable');

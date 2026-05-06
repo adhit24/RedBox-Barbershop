@@ -1,4 +1,4 @@
- // ================================================
+  // ================================================
 // REDBOX BARBERSHOP — Express API Server
 // Backend: Node.js + MySQL (XAMPP) / Supabase
 // ================================================
@@ -783,6 +783,13 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // Sync to Airtable
       syncBookingToAirtable(data);
 
+      // Bridge to Moka schedules table (non-blocking)
+      if (supabase) {
+        require('./moka/sync').bridgeBookingToMoka(supabase, data)
+          .then(r => console.log(`[Moka Bridge] booking ${data.id} →`, r))
+          .catch(e => console.warn(`[Moka Bridge] booking ${data.id} failed:`, e.message));
+      }
+
       return res.status(201).json({ data });
     } catch (err) {
       console.error('Supabase POST Error:', err);
@@ -1185,9 +1192,44 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
 const { createInMemorySupabase } = require('./moka/memoryStore');
 const mokaSupabase = supabase || createInMemorySupabase();
 
+// Auto-create default outlet in Supabase if it doesn't exist
+async function ensureMokaOutlet() {
+  if (!supabase) return; // Skip if using in-memory
+  try {
+    const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
+    const { data: existing } = await supabase
+      .from('outlets')
+      .select('id')
+      .eq('slug', 'redbox')
+      .single();
+    
+    if (!existing) {
+      const { error } = await supabase.from('outlets').insert({
+        id: 'default-outlet',
+        slug: 'redbox',
+        name: 'Redbox Barbershop',
+        moka_outlet_id: outletId,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      if (error) {
+        console.log('⚠️  Could not auto-create outlet (may already exist or table missing):', error.message);
+      } else {
+        console.log('✅ Default outlet created for Moka integration');
+      }
+    }
+  } catch (e) {
+    console.log('⚠️  Outlet check skipped:', e.message);
+  }
+}
+
 const createMokaRouter = require('./moka/routes');
 app.use('/api', createMokaRouter(mokaSupabase));
 console.log('✅ Moka integration routes mounted');
+
+// Run outlet check in background
+ensureMokaOutlet().catch(() => {});
 
 try {
   const { startCronJobs } = require('./moka/sync');

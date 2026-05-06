@@ -15,6 +15,10 @@ const _syncLock = new Set();
 // Last-pulled timestamp per outlet to fetch only new/updated orders
 const _lastSyncAt = new Map(); // outletId → ISO string
 
+// Moka items (barbers + variants) cached per outlet to avoid repeated API calls
+const _mokaItemsCache = new Map(); // outletId → { ts: number, items: [] }
+const MOKA_ITEMS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
 // ── FLOW A: WEB → MOKA ────────────────────────────────────
 
 /**
@@ -49,6 +53,19 @@ async function pushScheduleToMoka(supabase, scheduleId) {
     // 2. Resolve Moka client for this outlet
     const client = await _getClient(supabase, sch.outlet_id, sch.outlet_moka_id);
 
+    // Enrich schedule with barber's moka_employee_id and service's moka_variant_name
+    // if the schedules_full view doesn't expose them directly
+    if (!sch.barber_moka_employee_id && sch.barber_id) {
+      const { data: barber } = await supabase
+        .from('barbers').select('moka_employee_id').eq('id', sch.barber_id).maybeSingle();
+      sch.barber_moka_employee_id = barber?.moka_employee_id || null;
+    }
+    if (!sch.moka_variant_name && sch.service_id) {
+      const { data: svc } = await supabase
+        .from('services').select('moka_variant_name').eq('id', sch.service_id).maybeSingle();
+      sch.moka_variant_name = svc?.moka_variant_name || null;
+    }
+
     // 3. Upsert customer in Moka
     let mokaCustomerId = null;
     if (sch.customer_phone) {
@@ -76,7 +93,7 @@ async function pushScheduleToMoka(supabase, scheduleId) {
     }
 
     // 4. Create Moka order
-    const orderPayload = _buildMokaOrderPayload(sch, mokaCustomerId);
+    const orderPayload = await _buildMokaOrderPayload(sch, mokaCustomerId, client);
     const mokaOrder    = await client.createOrder(orderPayload);
     const mokaOrderId  = mokaOrder?.data?.id || mokaOrder?.id;
 
@@ -195,19 +212,51 @@ async function pullMokaToWeb(supabase, outletId) {
 
 /**
  * Process a single Moka order into our schedules + transactions.
- * @returns {'skipped'|'processed'}
+ *
+ * Status mapping from Moka:
+ *   HOLD / PENDING → 'reserved'   (GoShow sitting down, not yet paid — blocks slot immediately)
+ *   COMPLETED      → 'completed'  (paid and done)
+ *   VOID           → 'cancelled'  (voided in Moka — cancel existing schedule if any)
+ *
+ * @returns {'skipped'|'processed'|'updated'|'cancelled'}
  */
 async function _processIncomingOrder(supabase, order, outletId) {
-  const mokaOrderId = String(order.id || order.order_id);
+  const mokaOrderId  = String(order.id || order.order_id);
+  const mokaStatus   = (order.transaction_status || order.status || 'COMPLETED').toUpperCase();
 
-  // 1. Idempotency: skip if already imported
-  const { data: exists } = await supabase
+  // 1. Check if we already have a schedule for this order
+  const { data: existing } = await supabase
     .from('schedules')
-    .select('id')
+    .select('id, status')
     .eq('external_id', mokaOrderId)
     .maybeSingle();
 
-  if (exists) return 'skipped';
+  // VOID — cancel existing schedule (if any) and stop
+  if (mokaStatus === 'VOID' || mokaStatus === 'VOIDED') {
+    if (existing) {
+      await supabase.from('schedules').update({ status: 'cancelled' }).eq('id', existing.id);
+    }
+    return 'cancelled';
+  }
+
+  // Map Moka status to our schedule status
+  const scheduleStatus = (mokaStatus === 'COMPLETED') ? 'completed' : 'reserved';
+
+  // If already exists: update status if progressed (reserved → completed), otherwise skip
+  if (existing) {
+    if (existing.status === 'reserved' && scheduleStatus === 'completed') {
+      await supabase.from('schedules').update({ status: 'completed' }).eq('id', existing.id);
+      // Insert transaction now that it's completed
+      await _insertTransaction(supabase, {
+        customerId: null, outletId,
+        scheduleId: existing.id, externalId: mokaOrderId,
+        totalAmount: order.total_collected || 0,
+        source: 'moka', mokaPayload: order, items: [],
+      });
+      return 'updated';
+    }
+    return 'skipped';
+  }
 
   // 2. Determine start time
   const orderTime = new Date(
@@ -215,24 +264,43 @@ async function _processIncomingOrder(supabase, order, outletId) {
   );
 
   // 3. Map order items → duration + amount
-  const items = order.order_items || order.items || [];
+  // Moka Report API returns items in `checkouts[]`; Advanced Ordering uses `order_items`
+  const items = order.checkouts || order.order_items || order.items || [];
   const { totalDuration, totalAmount, mappedItems } =
-    await _mapOrderItems(supabase, items);
+    await _mapOrderItems(supabase, items, order.total_collected);
 
   const startTime = orderTime;
   const endTime   = new Date(orderTime.getTime() + totalDuration * 60 * 1000);
 
   // 4. Resolve or create customer
-  const customerId = await _resolveCustomer(supabase, order.customer || order.buyer);
-
-  // 5. Find available barber (conflict resolution: Option A — reassign)
-  const { data: barberId } = await supabase.rpc('find_available_barber', {
-    p_outlet_id: outletId,
-    p_start:     startTime.toISOString(),
-    p_end:       endTime.toISOString(),
+  const customerId = await _resolveCustomer(supabase, {
+    name:  order.customer_name  || null,
+    phone: order.customer_phone || null,
+    id:    order.customer_id    || null,
   });
-  // barberId may be null if all barbers are busy — schedule is still inserted
-  // (shows as unassigned conflict for manual review)
+
+  // 5. Resolve barber from Moka item_id (checkouts[0].item_id = barber's moka_employee_id)
+  //    This is more accurate than "find available" since we know exactly which barber served them
+  let barberId = null;
+  const firstItem = items[0];
+  if (firstItem?.item_id) {
+    const { data: barber } = await supabase
+      .from('barbers')
+      .select('id')
+      .eq('moka_employee_id', String(firstItem.item_id))
+      .eq('outlet_id', outletId)
+      .maybeSingle();
+    barberId = barber?.id || null;
+  }
+  // Fallback: find any available barber if specific one not matched
+  if (!barberId) {
+    const { data: avail } = await supabase.rpc('find_available_barber', {
+      p_outlet_id: outletId,
+      p_start:     startTime.toISOString(),
+      p_end:       endTime.toISOString(),
+    });
+    barberId = avail || null;
+  }
 
   // 6. Insert schedule
   const { data: schedule, error: schErr } = await supabase
@@ -245,27 +313,28 @@ async function _processIncomingOrder(supabase, order, outletId) {
       price:        totalAmount,
       start_time:   startTime.toISOString(),
       end_time:     endTime.toISOString(),
-      status:       'completed',
+      status:       scheduleStatus,
       source:       'moka',
       external_id:  mokaOrderId,
-      notes:        barberId ? null : '⚠ No barber available at sync time — assign manually',
+      notes:        barberId ? null : '⚠ No barber matched — assign manually',
     })
     .select()
     .single();
 
   if (schErr) throw new Error(`Schedule insert failed: ${schErr.message}`);
 
-  // 7. Insert transaction
-  await _insertTransaction(supabase, {
-    customerId,
-    outletId,
-    scheduleId:  schedule.id,
-    externalId:  mokaOrderId,
-    totalAmount,
-    source:      'moka',
-    mokaPayload: order,
-    items:       mappedItems,
-  });
+  // 7. Insert transaction (only for completed orders — HOLD transactions haven't been paid)
+  if (scheduleStatus === 'completed') {
+    await _insertTransaction(supabase, {
+      customerId, outletId,
+      scheduleId:  schedule.id,
+      externalId:  mokaOrderId,
+      totalAmount,
+      source:      'moka',
+      mokaPayload: order,
+      items:       mappedItems,
+    });
+  }
 
   return 'processed';
 }
@@ -348,7 +417,7 @@ function startCronJobs(supabase) {
     return;
   }
 
-  cron.schedule('*/5 * * * *', async () => {
+  cron.schedule('*/2 * * * *', async () => {
     console.log('[Cron] Moka → Web sync starting…');
     try {
       // Only sync outlets that have a moka_outlet_id AND a stored token
@@ -395,79 +464,121 @@ async function _getClient(supabase, outletId, mokaOutletId) {
 
 /**
  * Build a payload for Moka Advanced Ordering API.
- * Spec: POST /v1/outlets/{outlet_id}/orders
- * Docs: https://api.mokapos.com/docs — "Advanced Orderings" section
+ * Spec: POST /v1/outlets/{outlet_id}/advanced_orderings/orders
  *
- * Moka requires per-order callback URLs so it can notify us when
- * the cashier accepts / completes / rejects the order.
+ * In Moka's item library: Items = barbers, Variants = service types.
+ * So item_id = barber's moka_employee_id, variant_id = service variant in that barber's item.
  *
- * @param {object} schedule  - row from schedules_full view
- * @param {string|null} mokaCustomerId  - Moka's internal customer ID (optional)
+ * @param {object} schedule       - row from schedules_full view (enriched with barber/service moka fields)
+ * @param {string|null} mokaCustomerId
+ * @param {MokaClient|null} client - used to resolve variant ID from item cache
  * @returns {object}
  */
-function _buildMokaOrderPayload(schedule, mokaCustomerId) {
+async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
   const base = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
 
   const note = [
     `Online booking — ${schedule.outlet_name || 'RedBox'}`,
     schedule.barber_name ? `Barber: ${schedule.barber_name}` : null,
+    schedule.notes || null,
   ].filter(Boolean).join('. ');
 
+  // In Moka: item = barber, variant = service type
+  const mokaItemId    = schedule.barber_moka_employee_id || null;
+  const variantName   = schedule.moka_variant_name       || null;
+
+  // Resolve variant ID from cached item list (best-effort, non-fatal)
+  let variantId = null;
+  if (client && mokaItemId && variantName) {
+    variantId = await _resolveVariantId(client, schedule.outlet_id, mokaItemId, variantName)
+      .catch(() => null);
+  }
+
+  const orderItem = {
+    item_id:            mokaItemId || undefined,
+    item_name:          schedule.barber_name  || 'Barber',
+    quantity:           1,
+    item_price_library: schedule.price        || 0,
+    category_id:        schedule.moka_category_id   || undefined,
+    category_name:      schedule.moka_category_name || 'Barber',
+  };
+  if (variantId)   orderItem.item_variant_id   = variantId;
+  if (variantName) orderItem.item_variant_name = variantName;
+
   return {
-    // ── Required fields ────────────────────────────────────────
-    application_order_id: schedule.id,          // our UUID — returned in every callback
-    payment_type:         'online_booking',      // register this payment type in Moka dashboard
-    customer_name:        schedule.customer_name  || 'Guest',
-    note:                 note.slice(0, 255),   // Moka max 255 chars
-
-    // ── Optional customer info ──────────────────────────────────
-    customer_id:           mokaCustomerId           || undefined,
-    customer_phone_number: schedule.customer_phone  || undefined,
-    client_created_at:     schedule.start_time,
-
-    // ── Per-order callback URLs ─────────────────────────────────
-    // Moka will POST { outlet_id, application_order_id, status } to these URLs
+    application_order_id:            schedule.id,
+    payment_type:                    'online_booking',
+    customer_name:                   schedule.customer_name  || 'Guest',
+    note:                            note.slice(0, 255),
+    customer_id:                     mokaCustomerId          || undefined,
+    customer_phone_number:           schedule.customer_phone || undefined,
+    client_created_at:               schedule.start_time,
     accept_order_notification_url:   `${base}/api/moka/callback/accept`,
     complete_order_notification_url: `${base}/api/moka/callback/complete`,
     cancel_order_notification_url:   `${base}/api/moka/callback/cancel`,
-
-    // ── Order items ─────────────────────────────────────────────
-    // item_id and category_id must match real IDs in Moka's item library.
-    // Store them in the services table as moka_item_id / moka_category_id.
-    order_items: [{
-      item_id:            schedule.moka_item_id      || 1,
-      item_name:          schedule.service_name      || 'Service',
-      quantity:           1,
-      item_price_library: schedule.price             || 0,
-      category_id:        schedule.moka_category_id  || 1,
-      category_name:      schedule.moka_category_name || 'Services',
-    }],
+    order_items: [orderItem],
   };
 }
 
-async function _mapOrderItems(supabase, items) {
+async function _getMokaItems(client, outletId) {
+  const cached = _mokaItemsCache.get(outletId);
+  if (cached && Date.now() - cached.ts < MOKA_ITEMS_CACHE_TTL) return cached.items;
+  try {
+    const res   = await client.getItems();
+    const items = res?.data || res?.items || [];
+    _mokaItemsCache.set(outletId, { ts: Date.now(), items });
+    return items;
+  } catch (err) {
+    console.warn('[Sync] Could not fetch Moka items for cache:', err.message);
+    return cached?.items || [];
+  }
+}
+
+async function _resolveVariantId(client, outletId, mokaItemId, variantName) {
+  const items  = await _getMokaItems(client, outletId);
+  const item   = items.find(i => String(i.id) === String(mokaItemId));
+  if (!item?.variants?.length) return null;
+  const variant = item.variants.find(
+    v => v.name?.toLowerCase() === variantName?.toLowerCase()
+  );
+  return variant?.id || null;
+}
+
+async function _mapOrderItems(supabase, items, totalCollected) {
   let totalDuration = 0;
   let totalAmount   = 0;
   const mappedItems = [];
 
   for (const item of items) {
-    const itemName  = item.name  || item.item_name  || 'Service';
-    const itemPrice = item.price || item.unit_price || 0;
-    const qty       = item.qty   || item.quantity   || 1;
+    // In Moka checkouts: item_variant_name = service type, item_name = barber name
+    const variantName = item.item_variant_name || item.variant_name || null;
+    const itemName    = variantName || item.item_name || item.name || 'Service';
+    const itemPrice   = item.price || item.unit_price || 0;
+    const qty         = item.quantity || item.qty || 1;
 
-    // Try to match by moka_item_id or name to get duration
-    const { data: svc } = await supabase
-      .from('services')
-      .select('duration_minutes, price')
-      .or(`moka_item_id.eq.${item.item_id || ''},name.ilike.${itemName}`)
-      .maybeSingle();
+    // Match service duration by moka_variant_name first, then by display name
+    let svc = null;
+    if (variantName) {
+      const { data } = await supabase
+        .from('services').select('duration_minutes, price')
+        .ilike('moka_variant_name', variantName).maybeSingle();
+      svc = data;
+    }
+    if (!svc) {
+      const { data } = await supabase
+        .from('services').select('duration_minutes, price')
+        .ilike('name', itemName).maybeSingle();
+      svc = data;
+    }
 
     totalDuration += (svc?.duration_minutes || 30) * qty;
     totalAmount   += (itemPrice || svc?.price || 0) * qty;
-    mappedItems.push({ name: itemName, price: itemPrice * qty, qty, moka_item_id: item.item_id });
+    mappedItems.push({ name: itemName, price: itemPrice * qty, qty, moka_item_id: item.item_id || null });
   }
 
-  if (!mappedItems.length) { totalDuration = 30; }  // fallback: 30 min
+  if (!mappedItems.length) totalDuration = 30;
+  // Prefer Moka's authoritative total_collected over per-item sum
+  if (totalCollected != null) totalAmount = totalCollected;
 
   return { totalDuration, totalAmount, mappedItems };
 }
@@ -590,9 +701,138 @@ function _normalizePhone(raw) {
   return `+62${digits}`;
 }
 
+// ── BRIDGE: OLD BOOKINGS TABLE → SCHEDULES + MOKA ────────────
+
+/**
+ * Bridge a legacy `bookings` row into the new `schedules` table and push to Moka.
+ * Called fire-and-forget from POST /api/bookings after the booking is saved.
+ *
+ * Idempotent: uses external_id = 'booking:<uuid>' so duplicate calls are no-ops.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {object} booking  - row from bookings table
+ * @returns {Promise<{ scheduleId:string|null, mokaSync:string }>}
+ */
+async function bridgeBookingToMoka(supabase, booking) {
+  const legacyRef = `booking:${booking.id}`;
+
+  // Idempotency guard
+  const { data: already } = await supabase
+    .from('schedules').select('id').eq('external_id', legacyRef).maybeSingle();
+  if (already) return { scheduleId: already.id, mokaSync: 'already_synced' };
+
+  // 1. Resolve outlet from location slug
+  const { data: outlet } = await supabase
+    .from('outlets')
+    .select('id, moka_outlet_id')
+    .eq('slug', booking.location || 'bypass')
+    .maybeSingle();
+
+  if (!outlet?.id) {
+    console.warn(`[Bridge] Outlet not found for location: "${booking.location}"`);
+    return { scheduleId: null, mokaSync: 'skipped_no_outlet' };
+  }
+
+  // 2. Resolve service UUID from name (best-effort)
+  let serviceId = null;
+  if (booking.service) {
+    const { data: svc } = await supabase
+      .from('services').select('id').ilike('name', booking.service).maybeSingle();
+    serviceId = svc?.id || null;
+  }
+
+  // 3. Build ISO timestamps (WIB = +07:00)
+  const timeStr  = String(booking.time  || '09:00').slice(0, 5);
+  const dateStr  = String(booking.date  || '').slice(0, 10);
+  const startTime = `${dateStr}T${timeStr}:00+07:00`;
+  const durMins   = _parseDurationMins(booking.duration);
+  const endTime   = new Date(new Date(startTime).getTime() + durMins * 60_000).toISOString();
+
+  // 4. Resolve/create customer by phone
+  const phone = _normalizePhone(booking.wa);
+  let customerId = null;
+  if (phone) {
+    const { data: existCust } = await supabase
+      .from('customers').select('id').eq('phone_e164', phone).maybeSingle();
+    if (existCust) {
+      customerId = existCust.id;
+    } else {
+      const { data: newCust } = await supabase
+        .from('customers')
+        .insert({ name: booking.name || 'Guest', wa: phone, phone_e164: phone, source: 'web' })
+        .select('id').single();
+      customerId = newCust?.id;
+    }
+  }
+
+  // 5. Insert schedule
+  // Encode payment method in notes so it reaches the Moka cashier
+  const paymentNote = _formatPaymentNote(booking.payment);
+  const combinedNotes = [paymentNote, booking.notes].filter(Boolean).join(' | ');
+
+  const { data: schedule, error: schErr } = await supabase
+    .from('schedules')
+    .insert({
+      outlet_id:    outlet.id,
+      barber_id:    booking.barber_id || null,
+      customer_id:  customerId,
+      service_id:   serviceId,
+      service_name: booking.service || null,
+      price:        Number(booking.price) || 0,
+      start_time:   startTime,
+      end_time:     endTime,
+      status:       'reserved',
+      source:       'web',
+      external_id:  legacyRef,
+      notes:        combinedNotes || null,
+    })
+    .select().single();
+
+  if (schErr) {
+    if (schErr.code === '23P01' || schErr.message?.includes('no_barber_overlap')) {
+      console.warn(`[Bridge] Barber overlap for booking ${booking.id} — slot taken by Moka walk-in`);
+      return { scheduleId: null, mokaSync: 'conflict_overlap' };
+    }
+    console.error(`[Bridge] Schedule insert failed for booking ${booking.id}:`, schErr.message);
+    return { scheduleId: null, mokaSync: 'error_insert' };
+  }
+
+  // 6. Push to Moka
+  const { isMokaOAuthConfigured } = require('./oauth');
+  let mokaSync = 'skipped_not_configured';
+  if (isMokaOAuthConfigured()) {
+    try {
+      await pushScheduleToMoka(supabase, schedule.id);
+      mokaSync = 'success';
+    } catch (err) {
+      mokaSync = 'failed';
+      console.error(`[Bridge] Moka push failed for schedule ${schedule.id}:`, err.message);
+    }
+  }
+
+  return { scheduleId: schedule.id, mokaSync };
+}
+
+function _formatPaymentNote(payment) {
+  if (!payment) return null;
+  const p = String(payment).toLowerCase();
+  if (p.includes('tempat') || p === 'cash' || p === 'bayar_ditempat') return '💵 Bayar di tempat';
+  if (p.includes('qr') || p.includes('online') || p.includes('transfer')) return '📱 Sudah bayar online';
+  return null;
+}
+
+function _parseDurationMins(dur) {
+  if (!dur) return 30;
+  const s = String(dur).toLowerCase();
+  if (s.includes('jam')) return Math.round((parseFloat(s) || 1) * 60);
+  const m = parseInt(s, 10);
+  return (Number.isFinite(m) && m > 0) ? m : 30;
+}
+
 module.exports = {
   pushScheduleToMoka,
   pullMokaToWeb,
   handleWebhookEvent,
   startCronJobs,
+  bridgeBookingToMoka,
 };

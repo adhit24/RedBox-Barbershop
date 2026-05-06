@@ -16,17 +16,17 @@
 //   POST /api/moka/webhook          — Moka real-time events
 //   POST /api/moka/sync             — manual pull trigger
 //   GET  /api/moka/sync-logs        — recent sync audit
+//   GET  /api/moka/items            — Moka product list + mapping status
+//   POST /api/moka/map-items        — save service↔Moka item mappings
+//   GET  /api/moka/status           — OAuth + last-sync health check
 // ============================================================
 
-const express  = require('express');
-const crypto   = require('crypto');
-const { randomUUID } = require('crypto');
+const express          = require('express');
+const { randomUUID }   = require('crypto');
 
 const { buildAuthorizationUrl, exchangeCode, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pullMokaToWeb, handleWebhookEvent }       = require('./sync');
 const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
-
-const APP_BASE_URL = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
 
 /**
  * Factory — returns a configured Express Router.
@@ -519,7 +519,6 @@ function createMokaRouter(supabase) {
   });
 
   // ── GET /api/services ─────────────────────────────────────
-  // List all active services (for booking form)
   router.get('/services', async (_req, res) => {
     try {
       const { data, error } = await supabase
@@ -530,6 +529,139 @@ function createMokaRouter(supabase) {
 
       if (error) throw new Error(error.message);
       res.json({ services: data || [] });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/items ───────────────────────────────────
+  // Pull the full item list from Moka for this outlet.
+  // Used by admin to see Moka products and map them to services.
+  // Query: outletId (optional, defaults to first authorized outlet)
+  router.get('/moka/items', async (req, res) => {
+    try {
+      if (!isMokaOAuthConfigured())
+        return res.status(503).json({ error: 'Moka OAuth not configured' });
+
+      const { outletId: rawOutletId } = req.query;
+
+      // Resolve outlet — fall back to first one with a token
+      let outletId = rawOutletId ? await _resolveOutletId(supabase, rawOutletId) : null;
+      let mokaOutletId = null;
+
+      if (!outletId) {
+        const { data: tok } = await supabase
+          .from('moka_tokens').select('outlet_id').limit(1).single();
+        outletId = tok?.outlet_id;
+      }
+
+      if (!outletId) return res.status(404).json({ error: 'No authorized outlet found. Run OAuth first.' });
+
+      const { data: outlet } = await supabase
+        .from('outlets').select('id, moka_outlet_id').eq('id', outletId).single();
+      mokaOutletId = outlet?.moka_outlet_id;
+      if (!mokaOutletId) return res.status(400).json({ error: 'Outlet has no moka_outlet_id set' });
+
+      const MokaClient = require('./client');
+      const client = new MokaClient(supabase, outletId, mokaOutletId);
+      const data = await client.getItems();
+      const items = data?.data || data?.items || data || [];
+
+      // Also load our services to show mapping status
+      const { data: services } = await supabase
+        .from('services').select('id, name, moka_item_id, moka_category_id');
+
+      const mappedIds = new Set((services || []).map(s => String(s.moka_item_id)).filter(Boolean));
+
+      res.json({
+        outletId,
+        mokaOutletId,
+        items: items.map(item => ({
+          id:           item.id,
+          name:         item.name || item.item_name,
+          price:        item.price || item.selling_price,
+          category_id:  item.category_id,
+          category_name:item.category?.name || item.category_name,
+          mapped:       mappedIds.has(String(item.id)),
+        })),
+        services: services || [],
+      });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── POST /api/moka/map-items ──────────────────────────────
+  // Save Moka item → service mappings.
+  // Body: { mappings: [{ serviceId: "uuid", mokaItemId: "123", mokaCategoryId: "456", mokaCategoryName: "..." }] }
+  router.post('/moka/map-items', async (req, res) => {
+    try {
+      const { mappings } = req.body || {};
+      if (!Array.isArray(mappings) || !mappings.length)
+        return res.status(400).json({ error: 'mappings array is required' });
+
+      const results = [];
+      for (const m of mappings) {
+        const { serviceId, mokaItemId, mokaCategoryId, mokaCategoryName } = m;
+        if (!serviceId || !mokaItemId) {
+          results.push({ serviceId, mokaItemId, status: 'skipped_missing_fields' });
+          continue;
+        }
+
+        const { error } = await supabase
+          .from('services')
+          .update({
+            moka_item_id:      String(mokaItemId),
+            moka_category_id:  mokaCategoryId ? String(mokaCategoryId) : null,
+            moka_category_name:mokaCategoryName || null,
+          })
+          .eq('id', serviceId);
+
+        results.push({ serviceId, mokaItemId, status: error ? 'error' : 'ok', error: error?.message });
+      }
+
+      res.json({ results });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/status ──────────────────────────────────
+  // Quick health check: OAuth status per outlet, cron state, last sync.
+  router.get('/moka/status', async (_req, res) => {
+    try {
+      const { data: outlets } = await supabase
+        .from('outlets').select('id, name, slug, moka_outlet_id').eq('is_active', true);
+
+      const { data: tokens } = await supabase
+        .from('moka_tokens').select('outlet_id, expires_at, updated_at, scope');
+
+      const { data: lastLogs } = await supabase
+        .from('sync_logs')
+        .select('direction, status, created_at, error_message')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      const tokenMap = {};
+      for (const t of tokens || []) tokenMap[t.outlet_id] = t;
+
+      const outletStatus = (outlets || []).map(o => ({
+        id:            o.id,
+        name:          o.name,
+        slug:          o.slug,
+        mokaOutletId:  o.moka_outlet_id,
+        hasToken:      Boolean(tokenMap[o.id]),
+        tokenExpiry:   tokenMap[o.id]?.expires_at || null,
+        tokenExpired:  tokenMap[o.id]
+          ? new Date(tokenMap[o.id].expires_at) < new Date()
+          : null,
+      }));
+
+      res.json({
+        oauthConfigured: isMokaOAuthConfigured(),
+        outlets: outletStatus,
+        recentLogs: lastLogs || [],
+      });
     } catch (err) {
       _serverError(res, err);
     }
