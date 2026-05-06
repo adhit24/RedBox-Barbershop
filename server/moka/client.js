@@ -60,6 +60,15 @@ class MokaClient {
   }
 
   /**
+   * List pending Advanced Orders (status=pending/accepted/in_progress).
+   * Used to block slots occupied by walk-in customers not yet paid.
+   * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders
+   */
+  async getPendingOrders() {
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders?status=pending,accepted,in_progress`);
+  }
+
+  /**
    * Cancel an Advanced Order (cashier hasn't accepted yet).
    * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}/cancel
    * @param {string} mokaOrderId
@@ -106,7 +115,7 @@ class MokaClient {
    * Fetch the outlet's item list (for service→Moka item mapping).
    */
   async getItems() {
-    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/items`);
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/items?include_variants=true`);
   }
 
   // ── PRIVATE ───────────────────────────────────────────────

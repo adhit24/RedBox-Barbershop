@@ -49,7 +49,11 @@ async function pushScheduleToMoka(supabase, scheduleId) {
       .single();
 
     if (schErr || !sch) throw new Error(`Schedule not found: ${scheduleId}`);
-    if (sch.external_id)  { await _finishLog(supabase, logId, 'skipped', 'Already synced'); return; }
+    // Skip only if external_id is a real Moka order ID (not a bridge legacy ref like 'booking:uuid')
+    if (sch.external_id && !String(sch.external_id).startsWith('booking:')) {
+      await _finishLog(supabase, logId, 'skipped', 'Already synced');
+      return;
+    }
 
     // 2. Resolve Moka client for this outlet
     const client = await _getClient(supabase, sch.outlet_id, sch.outlet_moka_id);
@@ -171,7 +175,8 @@ async function pullMokaToWeb(supabase, outletId) {
 
     const client = await _getClient(supabase, outletId, outlet.moka_outlet_id);
 
-    // Fetch orders updated since last sync (default: last 24 h on first run)
+    // ── Pull 1: Completed transactions via Report API ──────────────────────
+    // Membawa walk-in yang sudah selesai + dibayar → menjadi schedule 'completed'
     const since = _lastSyncAt.get(outletId)
       || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
@@ -187,7 +192,6 @@ async function pullMokaToWeb(supabase, outletId) {
       } catch (orderErr) {
         errors++;
         console.error(`[Sync] Error processing Moka order ${order.id}:`, orderErr.message);
-        // Log per-order failure but continue with remaining orders
         await supabase.from('sync_logs').insert({
           direction:     'moka_to_web',
           entity_type:   'order',
@@ -197,6 +201,29 @@ async function pullMokaToWeb(supabase, outletId) {
           error_message: orderErr.message,
         });
       }
+    }
+
+    // ── Pull 2: Pending Advanced Orders ─────────────────────────────────────
+    // Walk-in yang masih HOLD/in-progress belum muncul di Report API.
+    // Kita tarik dari Advanced Ordering list agar slot-nya terblokir di web.
+    try {
+      const pendingRes   = await client.getPendingOrders();
+      const pendingOrders = pendingRes?.data || pendingRes?.orders || [];
+      if (Array.isArray(pendingOrders)) {
+        for (const order of pendingOrders) {
+          try {
+            const result = await _processIncomingOrder(supabase, order, outletId);
+            if (result === 'skipped') skipped++;
+            else processed++;
+          } catch (pErr) {
+            // Non-fatal — continue
+            console.warn(`[Sync] Pending order ${order.id}:`, pErr.message);
+          }
+        }
+      }
+    } catch (pendingErr) {
+      // Endpoint mungkin tidak tersedia di semua aplikasi Moka — abaikan error
+      console.warn(`[Sync] getPendingOrders skipped (${pendingErr.message})`);
     }
 
     _lastSyncAt.set(outletId, new Date().toISOString());
@@ -381,15 +408,38 @@ async function handleWebhookEvent(supabase, callbackBody) {
     return;
   }
 
-  const { error } = await supabase
+  const { data: schedule, error } = await supabase
     .from('schedules')
     .update({ status: newStatus })
-    .eq('id', scheduleId);   // application_order_id = our schedule UUID
+    .eq('id', scheduleId)   // application_order_id = our schedule UUID
+    .select('external_id, source')
+    .single();
 
   if (error) {
     console.error(`[Callback] Update schedule ${scheduleId} failed:`, error.message);
   } else {
     console.log(`[Callback] Schedule ${scheduleId}: Moka "${mokaStatus}" → local "${newStatus}"`);
+
+    // Mirror status ke bookings table jika schedule ini berasal dari bridge booking.
+    // Bridge booking punya external_id awal 'booking:<uuid>' sebelum diganti Moka order ID.
+    // Setelah push sukses external_id jadi Moka order ID, tapi source tetap 'web'.
+    // Kita lookup booking berdasarkan schedule UUID yang tersimpan di bookings.notes atau
+    // lewat jadwal → cari booking dengan barber+date+time yang sama.
+    // Cara paling andal: simpan schedule_id di bookings table (via trigger atau lookup).
+    // Fallback sementara: update bookings WHERE schedule_id = scheduleId (jika kolom ada).
+    if (schedule?.source === 'web' || schedule?.source === 'bridge') {
+      // Try to update bookings table by schedule_id reference (if column exists)
+      supabase.from('bookings')
+        .update({ status: newStatus === 'confirmed' ? 'confirmed'
+                        : newStatus === 'completed'  ? 'done'
+                        : newStatus === 'cancelled'  ? 'cancelled'
+                        : newStatus })
+        .eq('schedule_id', scheduleId)
+        .then(() => {})
+        .catch(() => {
+          // Column schedule_id might not exist yet — non-fatal
+        });
+    }
   }
 
   // Log the callback for audit
@@ -446,22 +496,38 @@ function startCronJobs(supabase) {
   });
 
   // Cron 2: Retry fallback — setiap 5 menit
-  // Push real-time dilakukan saat booking dibuat. Cron ini menangani
-  // jadwal yang gagal push (external_id masih null) dalam 24 jam ke depan.
+  // Push real-time dilakukan saat booking dibuat. Cron ini menangani jadwal
+  // yang gagal push dalam 24 jam ke depan. Dua kondisi yang perlu di-retry:
+  //   (a) external_id IS NULL  → push belum pernah dicoba / gagal sebelum save
+  //   (b) external_id LIKE 'booking:%' → bridge booking (dari /api/bookings)
+  //       yang belum dapat Moka order ID
   cron.schedule('*/5 * * * *', async () => {
     try {
       const now     = new Date();
       const ceiling = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const range   = { gte: now.toISOString(), lte: ceiling.toISOString() };
 
-      const { data: missed } = await supabase
+      // (a) external_id null
+      const { data: nullMissed } = await supabase
         .from('schedules')
         .select('id')
         .is('external_id', null)
         .in('status', ['reserved', 'confirmed'])
-        .gte('start_time', now.toISOString())
-        .lte('start_time', ceiling.toISOString());
+        .gte('start_time', range.gte)
+        .lte('start_time', range.lte);
 
-      if (!missed?.length) return;
+      // (b) external_id starts with 'booking:' (bridge ref, not a real Moka ID)
+      const { data: bridgeMissed } = await supabase
+        .from('schedules')
+        .select('id')
+        .like('external_id', 'booking:%')
+        .in('status', ['reserved', 'confirmed'])
+        .gte('start_time', range.gte)
+        .lte('start_time', range.lte);
+
+      const missed = [...(nullMissed || []), ...(bridgeMissed || [])];
+      if (!missed.length) return;
+
       console.log(`[Cron] Retry push: ${missed.length} schedule(s) belum ke Moka`);
       for (const s of missed) {
         pushScheduleToMoka(supabase, s.id).catch(err =>
@@ -539,8 +605,10 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
   let variantId    = null;
   const variantName = schedule.moka_variant_name || schedule.service_name || null;
 
-  // Resolve barber → Moka item via name matching against live items cache
-  const mokaOutletId = schedule.outlet_moka_id || schedule.outlet_moka_outlet_id || null;
+  // Resolve barber → Moka item via name matching against live items cache.
+  // outlet_moka_id may not be in schedules_full view; client always has it.
+  const mokaOutletId = schedule.outlet_moka_id || schedule.outlet_moka_outlet_id
+    || (client && client._mokaOutletId) || null;
   if (mokaOutletId && schedule.barber_name) {
     try {
       const itemsRes = await _getMokaItems(client, schedule.outlet_id);
@@ -872,7 +940,14 @@ async function bridgeBookingToMoka(supabase, booking) {
     return { scheduleId: null, mokaSync: 'error_insert' };
   }
 
-  // 6. Push to Moka
+  // 6. Write schedule_id back to bookings so Moka callbacks can mirror status
+  supabase.from('bookings')
+    .update({ schedule_id: schedule.id })
+    .eq('id', booking.id)
+    .then(() => {})
+    .catch(() => {}); // non-fatal — column may not exist yet
+
+  // 7. Push to Moka
   const { isMokaOAuthConfigured } = require('./oauth');
   let mokaSync = 'skipped_not_configured';
   if (isMokaOAuthConfigured()) {

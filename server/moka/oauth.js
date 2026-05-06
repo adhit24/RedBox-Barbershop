@@ -181,10 +181,19 @@ function invalidateCache(outletId) {
 }
 
 /**
- * Check whether Moka OAuth credentials are set in environment.
+ * Check whether Moka integration is ready to make API calls.
+ * Two modes:
+ *   1. Full OAuth: CLIENT_ID + CLIENT_SECRET + REDIRECT_URI → token auto-refresh works
+ *   2. Token-only:  no CLIENT_ID/SECRET but a token was manually stored via DB — still usable
+ *      (token won't auto-refresh, but avoids blocking the entire integration)
+ * MOKA_OUTLET_ID is used as the fallback token key when no outlet UUID is known.
  */
 function isMokaOAuthConfigured() {
-  return Boolean(MOKA_CLIENT_ID && MOKA_CLIENT_SECRET && MOKA_REDIRECT_URI);
+  // Full OAuth credentials present
+  if (MOKA_CLIENT_ID && MOKA_CLIENT_SECRET && MOKA_REDIRECT_URI) return true;
+  // At minimum we need a client_credentials capable secret (allows token generation without redirect)
+  if (MOKA_CLIENT_ID && MOKA_CLIENT_SECRET) return true;
+  return false;
 }
 
 // ── PRIVATE HELPERS ───────────────────────────────────────
