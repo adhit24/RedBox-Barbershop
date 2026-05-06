@@ -24,7 +24,7 @@
 const express          = require('express');
 const { randomUUID }   = require('crypto');
 
-const { buildAuthorizationUrl, exchangeCode, isMokaOAuthConfigured } = require('./oauth');
+const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pullMokaToWeb, handleWebhookEvent }       = require('./sync');
 const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
 
@@ -496,6 +496,21 @@ function createMokaRouter(supabase) {
       if (error) throw new Error(error.message);
 
       res.json({ logs: data || [] });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/token-info ──────────────────────────────
+  // Returns current token scopes and expiry info
+  router.get('/moka/token-info', async (req, res) => {
+    try {
+      if (!isMokaOAuthConfigured()) {
+        return res.status(503).json({ error: 'Moka OAuth not configured' });
+      }
+      const { outletId = 'default-outlet' } = req.query;
+      const info = await getTokenInfo(supabase, outletId);
+      res.json(info);
     } catch (err) {
       _serverError(res, err);
     }

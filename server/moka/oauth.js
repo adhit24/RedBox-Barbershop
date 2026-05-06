@@ -119,9 +119,12 @@ async function getAccessToken(supabase, outletId) {
 }
 
 /**
- * Get token using Client Credentials flow
+ * Get token using Client Credentials flow with ALL scopes
+ * Scopes: customer, library, profile, report, transaction, checkout, checkout_api, sales_type
  */
 async function _getClientCredentialsToken() {
+  const ALL_SCOPES = 'customer library profile report transaction checkout checkout_api sales_type';
+  
   const res = await fetch(MOKA_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -129,6 +132,7 @@ async function _getClientCredentialsToken() {
       grant_type: 'client_credentials',
       client_id: MOKA_CLIENT_ID,
       client_secret: MOKA_CLIENT_SECRET,
+      scope: ALL_SCOPES,
     }).toString(),
   });
 
@@ -142,7 +146,30 @@ async function _getClientCredentialsToken() {
       { status: res.status, code: 'MOKA_TOKEN_ERROR', details: body }
     );
   }
+  console.log('[Moka] Token generated with scopes:', body.scope || ALL_SCOPES);
   return body;
+}
+
+/**
+ * Test current token and return scopes info
+ */
+async function getTokenInfo(supabase, outletId) {
+  try {
+    const token = await getAccessToken(supabase, outletId);
+    // Decode JWT payload (base64)
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      return {
+        scopes: payload.scope?.split(' ') || [],
+        expires_at: payload.exp ? new Date(payload.exp * 1000).toISOString() : null,
+        outlet_id: payload.outlet_id || null,
+      };
+    }
+    return { scopes: [], error: 'Not a JWT token' };
+  } catch (e) {
+    return { scopes: [], error: e.message };
+  }
 }
 
 /**
@@ -240,6 +267,7 @@ module.exports = {
   buildAuthorizationUrl,
   exchangeCode,
   getAccessToken,
+  getTokenInfo,
   invalidateCache,
   isMokaOAuthConfigured,
 };
