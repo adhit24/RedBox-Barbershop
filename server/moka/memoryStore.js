@@ -98,14 +98,20 @@ function createInMemorySupabase() {
           };
         }
         // ── Generic tables (services, barbers, schedules, etc.) ──────────────────
-        return {
-          eq: (col, val) => ({
+        const createEqChain = () => ({
+          single: async () => ({ data: null, error: { message: 'Not found', code: 'PGRST116' } }),
+          limit: (n) => ({ 
             single: async () => ({ data: null, error: { message: 'Not found', code: 'PGRST116' } }),
-            limit: (n) => ({ 
-              single: async () => ({ data: null, error: { message: 'Not found', code: 'PGRST116' } }),
-              then: async (cb) => cb({ data: [], error: null })
-            }),
+            then: async (cb) => cb({ data: [], error: null })
           }),
+          eq: () => createEqChain(), // Support chaining .eq().eq()
+          order: () => createEqChain(),
+          range: () => ({ then: async (cb) => cb({ data: [], error: null }) }),
+          then: async (cb) => cb({ data: [], error: null }),
+        });
+        
+        return {
+          eq: (col, val) => createEqChain(),
           order: (col, opts) => ({
             limit: (n) => ({
               then: async (cb) => cb({ data: [], error: null }),
