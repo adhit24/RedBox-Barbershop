@@ -205,24 +205,18 @@ function createMokaRouter(supabase) {
         throw new Error(schErr.message);
       }
 
-      // ── Push to Moka ─────────────────────────────────────────
-      // Moka acceptance window = 10 menit. Untuk booking jauh ke depan, cron
-      // akan push 15-25 mnt sebelum jadwal supaya kasir accept tepat waktu.
-      // Untuk booking mendadak (≤ 25 mnt), push sekarang juga.
-      let mokaSync = 'queued'; // default: cron handles it
+      // ── Push ke Moka secara real-time ────────────────────────
+      let mokaSync = 'skipped';
       let mokaSyncDetail = null;
       if (isMokaOAuthConfigured()) {
-        const minutesUntilStart = (new Date(startTime) - Date.now()) / 60_000;
-        if (minutesUntilStart <= 25) {
-          try {
-            const result = await pushScheduleToMoka(supabase, schedule.id);
-            mokaSync = 'success';
-            mokaSyncDetail = result;
-          } catch (err) {
-            mokaSync = 'failed';
-            mokaSyncDetail = err.message;
-            console.error(`[Reservation] Moka push failed for ${schedule.id}:`, err.message);
-          }
+        try {
+          const result = await pushScheduleToMoka(supabase, schedule.id);
+          mokaSync = 'success';
+          mokaSyncDetail = result;
+        } catch (err) {
+          mokaSync = 'failed';
+          mokaSyncDetail = err.message;
+          console.error(`[Reservation] Moka push failed for ${schedule.id}:`, err.message);
         }
       }
 

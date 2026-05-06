@@ -445,32 +445,31 @@ function startCronJobs(supabase) {
     }
   });
 
-  // Cron 2: Pre-appointment push — setiap 2 menit
-  // Moka acceptance window = 10 menit. Kita push 15-25 menit sebelum jadwal
-  // supaya kasir punya waktu untuk accept → langsung muncul di Daftar Bill.
-  cron.schedule('*/2 * * * *', async () => {
+  // Cron 2: Retry fallback — setiap 5 menit
+  // Push real-time dilakukan saat booking dibuat. Cron ini menangani
+  // jadwal yang gagal push (external_id masih null) dalam 24 jam ke depan.
+  cron.schedule('*/5 * * * *', async () => {
     try {
-      const now      = new Date();
-      const winStart = new Date(now.getTime() + 15 * 60 * 1000);
-      const winEnd   = new Date(now.getTime() + 25 * 60 * 1000);
+      const now     = new Date();
+      const ceiling = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-      const { data: upcoming } = await supabase
+      const { data: missed } = await supabase
         .from('schedules')
         .select('id')
         .is('external_id', null)
         .in('status', ['reserved', 'confirmed'])
-        .gte('start_time', winStart.toISOString())
-        .lte('start_time', winEnd.toISOString());
+        .gte('start_time', now.toISOString())
+        .lte('start_time', ceiling.toISOString());
 
-      if (!upcoming?.length) return;
-      console.log(`[Cron] Pre-appt push: ${upcoming.length} schedule(s)`);
-      for (const s of upcoming) {
+      if (!missed?.length) return;
+      console.log(`[Cron] Retry push: ${missed.length} schedule(s) belum ke Moka`);
+      for (const s of missed) {
         pushScheduleToMoka(supabase, s.id).catch(err =>
-          console.error(`[Cron] Pre-appt push ${s.id}:`, err.message)
+          console.error(`[Cron] Retry push ${s.id}:`, err.message)
         );
       }
     } catch (err) {
-      console.error('[Cron] Pre-appt push error:', err.message);
+      console.error('[Cron] Retry push error:', err.message);
     }
   });
 
