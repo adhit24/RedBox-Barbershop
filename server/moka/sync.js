@@ -485,8 +485,21 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
   ].filter(Boolean).join('. ');
 
   // In Moka: item = barber, variant = service type
-  const mokaItemId    = schedule.barber_moka_employee_id || null;
-  const variantName   = schedule.moka_variant_name       || null;
+  let mokaItemId  = schedule.barber_moka_employee_id || null;
+  let categoryId  = schedule.moka_category_id   || null;
+  let categoryName = schedule.moka_category_name || null;
+  const variantName = schedule.moka_variant_name || null;
+
+  // If no explicit Moka item ID, try to resolve by matching barber name in Moka items
+  if (!mokaItemId && schedule.barber_name && client) {
+    const mokaItem = await _resolveBarberMokaItem(client, schedule.outlet_id, schedule.barber_name)
+      .catch(() => null);
+    if (mokaItem) {
+      mokaItemId   = mokaItem.id;
+      categoryId   = categoryId   || mokaItem.category_id   || null;
+      categoryName = categoryName || mokaItem.category?.name || null;
+    }
+  }
 
   // Resolve variant ID from cached item list (best-effort, non-fatal)
   let variantId = null;
@@ -496,12 +509,12 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
   }
 
   const orderItem = {
-    item_id:            mokaItemId || undefined,
+    item_id:            mokaItemId   || undefined,
     item_name:          schedule.barber_name  || 'Barber',
     quantity:           1,
     item_price_library: schedule.price        || 0,
-    category_id:        schedule.moka_category_id   || undefined,
-    category_name:      schedule.moka_category_name || 'Barber',
+    category_id:        categoryId   || undefined,
+    category_name:      categoryName || undefined,
   };
   if (variantId)   orderItem.item_variant_id   = variantId;
   if (variantName) orderItem.item_variant_name = variantName;
@@ -526,9 +539,10 @@ async function _getMokaItems(client, outletId) {
   if (cached && Date.now() - cached.ts < MOKA_ITEMS_CACHE_TTL) return cached.items;
   try {
     const res   = await client.getItems();
-    const items = res?.data || res?.items || [];
+    // Moka v1/items returns { data: { items: [...] } }
+    const items = res?.data?.items || res?.data || res?.items || [];
     _mokaItemsCache.set(outletId, { ts: Date.now(), items });
-    return items;
+    return Array.isArray(items) ? items : [];
   } catch (err) {
     console.warn('[Sync] Could not fetch Moka items for cache:', err.message);
     return cached?.items || [];
@@ -538,11 +552,19 @@ async function _getMokaItems(client, outletId) {
 async function _resolveVariantId(client, outletId, mokaItemId, variantName) {
   const items  = await _getMokaItems(client, outletId);
   const item   = items.find(i => String(i.id) === String(mokaItemId));
-  if (!item?.variants?.length) return null;
-  const variant = item.variants.find(
+  // Moka API returns item_variants (not variants)
+  const variants = item?.item_variants || item?.variants || [];
+  if (!variants.length) return null;
+  const variant = variants.find(
     v => v.name?.toLowerCase() === variantName?.toLowerCase()
   );
   return variant?.id || null;
+}
+
+async function _resolveBarberMokaItem(client, outletId, barberName) {
+  if (!barberName) return null;
+  const items = await _getMokaItems(client, outletId);
+  return items.find(i => i.name?.toLowerCase() === barberName?.toLowerCase()) || null;
 }
 
 async function _mapOrderItems(supabase, items, totalCollected) {

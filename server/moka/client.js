@@ -159,64 +159,19 @@ class MokaClient {
   }
 
   // ── Business Methods ─────────────────────────────────────
-  
+
   /**
-   * Create or update customer in Moka
-   * Note: Moka API doesn't have customer creation endpoint, returns mock data
+   * Find a Moka customer by phone, returns first match or null.
    */
   async createCustomer(customerData) {
-    // Moka API only supports GET customers, not POST/PUT
-    // Return mock customer ID for order creation
-    console.log('[Moka] Customer creation not supported, returning mock data');
-    return {
-      id: `mock-customer-${Date.now()}`,
-      customer_name: customerData.customer_name,
-      phone: customerData.phone,
-      email: customerData.email,
-      external_ref: customerData.external_ref,
-      notes: customerData.notes
-    };
-  }
-  
-  /**
-   * Create order/transaction in Moka using Advanced Orderings
-   */
-  async createOrder(orderData) {
-    // Transform booking data to Moka Advanced Orderings format
-    const mokaOrder = {
-      application_order_id: orderData.external_ref || `order-${Date.now()}`,
-      customer_name: orderData.customer?.customer_name || 'Customer',
-      customer_phone_number: orderData.customer?.phone || '',
-      customer_address_detail: orderData.customer?.address || '',
-      customer_province: orderData.customer?.province || '',
-      customer_city: orderData.customer?.city || '',
-      customer_kecamatan: orderData.customer?.district || '',
-      customer_postal_code: orderData.customer?.postal_code || '',
-      payment_type: orderData.payment_type || 'cash',
-      note: orderData.notes || '',
-      client_created_at: orderData.booking_time || new Date().toISOString(),
-      sales_type_id: orderData.sales_type_id || undefined,
-      sales_type_name: orderData.sales_type_name || 'Website Booking',
-      order_items: []
-    };
-    
-    // Transform items to Moka format
-    if (orderData.items && Array.isArray(orderData.items)) {
-      mokaOrder.order_items = orderData.items.map(item => ({
-        item_name: item.name || item.item_name || 'Service',
-        item_price: item.price || item.item_price || 0,
-        item_quantity: item.qty || item.item_quantity || 1,
-        item_sku: item.sku || item.item_sku || '',
-        item_note: item.notes || ''
-      }));
-    }
-    
-    // Try Advanced Orderings endpoint
     try {
-      return await this._req('POST', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders`, { order: mokaOrder });
-    } catch (e) {
-      throw new Error(`Failed to create advanced order: ${e.message}`);
-    }
+      const qs = new URLSearchParams({ phone: customerData.phone || '' });
+      const res = await this._req('GET', `/v2/outlets/${this._mokaOutletId}/customers?${qs}`);
+      const customers = res?.data?.customers || res?.customers || [];
+      if (customers.length > 0) return customers[0];
+    } catch (_) {}
+    // Return a passthrough object so callers get a usable customer_name/phone
+    return { customer_name: customerData.customer_name, phone: customerData.phone };
   }
 
   async _handleRetry(method, path, body, attempt, networkErr, httpStatus) {
