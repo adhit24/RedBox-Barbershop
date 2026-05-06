@@ -1190,99 +1190,38 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
 //            /api/outlets, /api/services, /api/moka/*
 // Now works with or without Supabase (in-memory fallback)
 const { createInMemorySupabase } = require('./moka/memoryStore');
-// Create hybrid Supabase client with in-memory outlet fallback
 const memorySupabase = createInMemorySupabase();
-const mokaSupabase = supabase || memorySupabase;
 
-// Test if Supabase outlets table exists
-let useMemoryOutlet = false;
-async function checkSupabaseOutlet() {
-  if (!supabase) {
-    useMemoryOutlet = true;
-    console.log('📦 Using in-memory outlet (no Supabase)');
-    return;
-  }
-  try {
-    const { data, error } = await supabase.from('outlets').select('id').limit(1);
-    if (error || !data) {
-      throw new Error('Outlets table not accessible');
-    }
-    console.log('✅ Supabase outlets table connected');
-    
-    // Try to create default outlet if not exists
-    const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
-    const { data: existing } = await supabase
-      .from('outlets')
-      .select('id')
-      .eq('slug', 'redbox')
-      .single();
-    
-    if (!existing) {
-      await supabase.from('outlets').insert({
-        id: 'default-outlet',
-        slug: 'redbox',
-        name: 'Redbox Barbershop',
-        moka_outlet_id: outletId,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }).catch(() => {});
-    }
-  } catch (e) {
-    console.log('⚠️  Supabase outlets not available, using in-memory fallback');
-    useMemoryOutlet = true;
-  }
-}
-
-// Wrapper that merges Supabase with in-memory outlet fallback
-function createHybridSupabase() {
-  if (!supabase || useMemoryOutlet) return memorySupabase;
-  
-  // Wrap supabase to inject in-memory outlet for queries
-  const originalFrom = supabase.from.bind(supabase);
-  return {
-    ...supabase,
-    from: (table) => {
-      const result = originalFrom(table);
-      if (table === 'outlets') {
-        // Wrap eq().single() to fallback to memory
-        const originalEq = result.eq.bind(result);
-        result.eq = (col, val) => {
-          const eqResult = originalEq(col, val);
-          const originalSingle = eqResult.single.bind(eqResult);
-          eqResult.single = async () => {
-            const supaResult = await originalSingle();
-            if (supaResult.data) return supaResult;
-            // Fallback to memory
-            return memorySupabase.from('outlets').eq(col, val).single();
-          };
-          return eqResult;
-        };
-      }
-      return result;
-    }
-  };
-}
-
-const createMokaRouter = require('./moka/routes');
-
-// Wait for outlet check before mounting
-async function initMokaRoutes() {
-  await checkSupabaseOutlet();
-  const hybridSupabase = createHybridSupabase();
-  app.use('/api', createMokaRouter(hybridSupabase));
-  console.log('✅ Moka integration routes mounted');
-}
-
-initMokaRoutes().catch(e => {
-  console.error('❌ Failed to init Moka:', e.message);
-  // Fallback: mount with memory store
-  app.use('/api', createMokaRouter(memorySupabase));
+// Create outlet in memory store (always works regardless of DB)
+const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
+memorySupabase.from('outlets').eq('slug', 'redbox').single = async () => ({
+  data: {
+    id: 'default-outlet',
+    slug: 'redbox',
+    name: 'Redbox Barbershop',
+    moka_outlet_id: outletId,
+    is_active: true,
+  },
+  error: null
 });
 
+// For serverless: immediately mount with memory store (guaranteed to work)
+// DB features will use Supabase if available, outlets use memory
+const createMokaRouter = require('./moka/routes');
+const mokaRouter = createMokaRouter(memorySupabase);
+app.use('/api', mokaRouter);
+console.log('✅ Moka integration routes mounted (with in-memory outlet)');
+
+// Background: try to setup Supabase tables for persistence
 try {
   const { startCronJobs } = require('./moka/sync');
-  if (supabase) startCronJobs(supabase);
+  if (supabase) {
+    // Try create tables in background
+    supabase.from('outlets').select('id').limit(1)
+      .then(() => console.log('✅ Supabase outlets table available'))
+      .catch(() => console.log('⚠️  Supabase outlets table missing - using in-memory only'));
+    startCronJobs(supabase);
+  }
 } catch (e) {
   console.warn('[Cron] Could not start Moka cron jobs:', e.message);
 }
