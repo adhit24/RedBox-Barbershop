@@ -726,6 +726,19 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── POST /api/moka/sync-schema ────────────────────────────
+  // Sinkronisasi data Moka (items/barbers + variants/services) ke Supabase.
+  // Dipanggil: manual, atau cron harian jam 03:00 WIB.
+  router.post('/moka/sync-schema', async (_req, res) => {
+    try {
+      const { syncMokaSchema } = require('./schemaSync');
+      const report = await syncMokaSchema(supabase);
+      res.json({ message: 'Schema sync complete', ...report });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   return router;
 }
 

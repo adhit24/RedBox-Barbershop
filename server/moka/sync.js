@@ -8,6 +8,7 @@
 // ============================================================
 
 const MokaClient = require('./client');
+const { resolveBarberMokaItem, resolveVariantId } = require('./schemaSync');
 
 // Simple in-process lock so concurrent cron ticks don't overlap
 const _syncLock = new Set();
@@ -418,24 +419,20 @@ function startCronJobs(supabase) {
     return;
   }
 
-  cron.schedule('*/2 * * * *', async () => {
-    console.log('[Cron] Moka → Web sync starting…');
+  // Cron 1: Pull Moka → Web setiap 5 menit
+  cron.schedule('*/5 * * * *', async () => {
     try {
-      // Only sync outlets that have a moka_outlet_id AND a stored token
       const { data: outletIds } = await supabase
-        .from('outlets')
-        .select('id')
-        .eq('is_active', true)
+        .from('outlets').select('id').eq('is_active', true)
         .not('moka_outlet_id', 'is', null);
 
       if (!outletIds?.length) return;
 
-      const tokenCheck = await supabase
-        .from('moka_tokens')
-        .select('outlet_id')
+      const { data: tokenRows } = await supabase
+        .from('moka_tokens').select('outlet_id')
         .in('outlet_id', outletIds.map(o => o.id));
 
-      const authorizedIds = new Set((tokenCheck.data || []).map(r => r.outlet_id));
+      const authorizedIds = new Set((tokenRows || []).map(r => r.outlet_id));
 
       for (const o of outletIds) {
         if (!authorizedIds.has(o.id)) continue;
@@ -444,11 +441,34 @@ function startCronJobs(supabase) {
         });
       }
     } catch (err) {
-      console.error('[Cron] Fatal sync error:', err.message);
+      console.error('[Cron] Pull sync error:', err.message);
     }
   });
 
-  console.log('[Cron] Moka sync scheduled every 5 minutes');
+  // Cron 2: Schema sync harian jam 03:00 WIB (20:00 UTC)
+  cron.schedule('0 20 * * *', async () => {
+    console.log('[Cron] Daily schema sync starting…');
+    try {
+      const { syncMokaSchema } = require('./schemaSync');
+      const report = await syncMokaSchema(supabase);
+      console.log(`[Cron] Schema sync done — barbers:${report.barbers_updated} services:${report.services_updated} errors:${report.errors.length}`);
+    } catch (err) {
+      console.error('[Cron] Schema sync error:', err.message);
+    }
+  });
+
+  // Run schema sync sekali saat startup (non-blocking)
+  setTimeout(async () => {
+    try {
+      const { syncMokaSchema } = require('./schemaSync');
+      const report = await syncMokaSchema(supabase);
+      console.log(`[Startup] Schema sync — barbers:${report.barbers_updated} services:${report.services_updated}`);
+    } catch (err) {
+      console.warn('[Startup] Schema sync failed:', err.message);
+    }
+  }, 5000);
+
+  console.log('[Cron] Moka jobs scheduled: pull every 5min, schema sync daily 03:00 WIB');
 }
 
 // ── PRIVATE HELPERS ───────────────────────────────────────
@@ -485,39 +505,64 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
   ].filter(Boolean).join('. ');
 
   // In Moka: item = barber, variant = service type
-  let mokaItemId  = schedule.barber_moka_employee_id || null;
-  let categoryId  = schedule.moka_category_id   || null;
+  let mokaItemId   = schedule.barber_moka_employee_id ? String(schedule.barber_moka_employee_id) : null;
+  let categoryId   = schedule.moka_category_id   ? String(schedule.moka_category_id) : null;
   let categoryName = schedule.moka_category_name || null;
-  const variantName = schedule.moka_variant_name || null;
+  let variantId    = null;
+  const variantName = schedule.moka_variant_name || schedule.service_name || null;
 
-  // If no explicit Moka item ID, try to resolve by matching barber name in Moka items
-  if (!mokaItemId && schedule.barber_name && client) {
-    const mokaItem = await _resolveBarberMokaItem(client, schedule.outlet_id, schedule.barber_name)
-      .catch(() => null);
-    if (mokaItem) {
-      mokaItemId   = mokaItem.id;
-      categoryId   = categoryId   || mokaItem.category_id   || null;
-      categoryName = categoryName || mokaItem.category?.name || null;
+  // Resolve barber → Moka item via schemaSync (supports name matching)
+  const mokaOutletId = schedule.outlet_moka_id || schedule.outlet_moka_outlet_id || null;
+  if (mokaOutletId && schedule.barber_name) {
+    try {
+      const token = await client._req && null; // token is managed by client internally
+      // Use client's internal token via a lightweight items fetch
+      const itemsRes = await _getMokaItems(client, schedule.outlet_id);
+      const { resolveBarberMokaItem: _rbmi, resolveVariantId: _rvi } = require('./schemaSync');
+      // Manual resolve using cached items
+      const { _norm, _matchScore } = require('./schemaSync');
+      let bestItem = null, bestScore = 0;
+      for (const item of itemsRes) {
+        if (!item.item_variants?.length) continue;
+        const s = _matchScore(schedule.barber_name, item.name);
+        if (s > bestScore) { bestScore = s; bestItem = item; }
+      }
+      if (bestItem && bestScore >= 0.6) {
+        mokaItemId   = mokaItemId   || String(bestItem.id);
+        categoryId   = categoryId   || (bestItem.category_id ? String(bestItem.category_id) : null);
+        categoryName = categoryName || bestItem.category?.name || null;
+
+        // Resolve variant by service name
+        if (variantName && !variantId) {
+          let bestV = null, bestVScore = 0;
+          for (const v of (bestItem.item_variants || [])) {
+            const vs = _matchScore(variantName, v.name);
+            if (vs > bestVScore) { bestVScore = vs; bestV = v; }
+          }
+          if (bestV && bestVScore >= 0.5) {
+            variantId = bestV.id;
+          }
+          // Fallback: first variant if still null
+          if (!variantId && bestItem.item_variants?.length) {
+            variantId = bestItem.item_variants[0].id;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Sync] Could not resolve barber Moka item:', err.message);
     }
   }
 
-  // Resolve variant ID from cached item list (best-effort, non-fatal)
-  let variantId = null;
-  if (client && mokaItemId && variantName) {
-    variantId = await _resolveVariantId(client, schedule.outlet_id, mokaItemId, variantName)
-      .catch(() => null);
-  }
-
   const orderItem = {
-    item_id:            mokaItemId   || undefined,
-    item_name:          schedule.barber_name  || 'Barber',
+    item_id:            mokaItemId ? Number(mokaItemId) : undefined,
+    item_name:          schedule.barber_name || 'Barber',
     quantity:           1,
-    item_price_library: schedule.price        || 0,
-    category_id:        categoryId   || undefined,
-    category_name:      categoryName || undefined,
+    item_price_library: schedule.price || 0,
   };
-  if (variantId)   orderItem.item_variant_id   = variantId;
-  if (variantName) orderItem.item_variant_name = variantName;
+  if (variantId)    orderItem.item_variant_id  = Number(variantId);
+  if (variantName)  orderItem.item_variant_name = variantName;
+  if (categoryId)   orderItem.category_id       = Number(categoryId);
+  if (categoryName) orderItem.category_name      = categoryName;
 
   return {
     application_order_id:            schedule.id,
