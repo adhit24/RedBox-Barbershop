@@ -1318,24 +1318,23 @@ app.get('/api/admin/moka-health', adminAuth, async (req, res) => {
 // ── MOKA INTEGRATION ROUTER ──────────────────────────────
 // Registers: /api/availability, /api/reservations, /api/schedules,
 //            /api/outlets, /api/services, /api/moka/*
-// Now works with or without Supabase (in-memory fallback)
+// Uses real Supabase when available, falls back to in-memory for OAuth only
 const { createInMemorySupabase } = require('./moka/memoryStore');
 const memorySupabase = createInMemorySupabase();
 
-// For serverless: immediately mount with memory store (guaranteed to work)
-// DB features will use Supabase if available, outlets use memory
 const createMokaRouter = require('./moka/routes');
-const mokaRouter = createMokaRouter(memorySupabase);
+// Prefer real Supabase so sync-schema and DB writes work correctly
+const mokaRouter = createMokaRouter(supabase || memorySupabase);
 app.use('/api', mokaRouter);
-console.log('✅ Moka integration routes mounted (with in-memory outlet)');
+console.log('✅ Moka integration routes mounted');
 
-// Background: try to setup Supabase tables for persistence
+// Background: start cron jobs
 try {
   const { startCronJobs } = require('./moka/sync');
   if (supabase) {
     supabase.from('outlets').select('id').limit(1)
       .then(() => console.log('✅ Supabase outlets table available'))
-      .catch(() => console.log('⚠️  Supabase outlets table missing - using in-memory only'));
+      .catch(() => console.log('⚠️  Supabase outlets table missing'));
     const { isMokaOAuthConfigured } = require('./moka/oauth');
     if (isMokaOAuthConfigured()) startCronJobs(supabase);
   }
