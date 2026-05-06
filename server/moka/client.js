@@ -162,24 +162,20 @@ class MokaClient {
   
   /**
    * Create or update customer in Moka
+   * Note: Moka API doesn't have customer creation endpoint, returns mock data
    */
   async createCustomer(customerData) {
-    // Try to find existing customer by phone first
-    if (customerData.phone) {
-      try {
-        const existing = await this._req('GET', `/v2/customers?phone=${encodeURIComponent(customerData.phone)}`);
-        if (existing.data && existing.data.length > 0) {
-          // Update existing customer
-          const customerId = existing.data[0].id;
-          return await this._req('PUT', `/v2/customers/${customerId}`, customerData);
-        }
-      } catch (e) {
-        // Customer not found, continue to create new
-      }
-    }
-    
-    // Create new customer
-    return await this._req('POST', '/v2/customers', customerData);
+    // Moka API only supports GET customers, not POST/PUT
+    // Return mock customer ID for order creation
+    console.log('[Moka] Customer creation not supported, returning mock data');
+    return {
+      id: `mock-customer-${Date.now()}`,
+      customer_name: customerData.customer_name,
+      phone: customerData.phone,
+      email: customerData.email,
+      external_ref: customerData.external_ref,
+      notes: customerData.notes
+    };
   }
   
   /**
