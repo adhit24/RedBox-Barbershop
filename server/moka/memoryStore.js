@@ -97,7 +97,27 @@ function createInMemorySupabase() {
             }),
           };
         }
-        return { data: null, error: null };
+        // ── Generic tables (services, barbers, schedules, etc.) ──────────────────
+        return {
+          eq: (col, val) => ({
+            single: async () => ({ data: null, error: { message: 'Not found', code: 'PGRST116' } }),
+            limit: (n) => ({ 
+              single: async () => ({ data: null, error: { message: 'Not found', code: 'PGRST116' } }),
+              then: async (cb) => cb({ data: [], error: null })
+            }),
+          }),
+          order: (col, opts) => ({
+            limit: (n) => ({
+              then: async (cb) => cb({ data: [], error: null }),
+              range: (from, to) => ({ then: async (cb) => cb({ data: [], error: null }) }),
+            }),
+            range: (from, to) => ({ then: async (cb) => cb({ data: [], error: null }) }),
+            then: async (cb) => cb({ data: [], error: null }),
+          }),
+          range: (from, to) => ({ then: async (cb) => cb({ data: [], error: null }) }),
+          limit: (n) => ({ then: async (cb) => cb({ data: [], error: null }) }),
+          then: async (cb) => cb({ data: [], error: null }),
+        };
       },
 
       // ── moka_tokens upsert ─────────────────────────────────
