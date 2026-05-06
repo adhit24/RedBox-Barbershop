@@ -179,25 +179,43 @@ class MokaClient {
   }
   
   /**
-   * Create order/transaction in Moka
+   * Create order/transaction in Moka using Advanced Orderings
    */
   async createOrder(orderData) {
-    // Try different endpoints based on API version
+    // Transform booking data to Moka Advanced Orderings format
+    const mokaOrder = {
+      application_order_id: orderData.external_ref || `order-${Date.now()}`,
+      customer_name: orderData.customer?.customer_name || 'Customer',
+      customer_phone_number: orderData.customer?.phone || '',
+      customer_address_detail: orderData.customer?.address || '',
+      customer_province: orderData.customer?.province || '',
+      customer_city: orderData.customer?.city || '',
+      customer_kecamatan: orderData.customer?.district || '',
+      customer_postal_code: orderData.customer?.postal_code || '',
+      payment_type: orderData.payment_type || 'cash',
+      note: orderData.notes || '',
+      client_created_at: orderData.booking_time || new Date().toISOString(),
+      sales_type_id: orderData.sales_type_id || undefined,
+      sales_type_name: orderData.sales_type_name || 'Website Booking',
+      order_items: []
+    };
+    
+    // Transform items to Moka format
+    if (orderData.items && Array.isArray(orderData.items)) {
+      mokaOrder.order_items = orderData.items.map(item => ({
+        item_name: item.name || item.item_name || 'Service',
+        item_price: item.price || item.item_price || 0,
+        item_quantity: item.qty || item.item_quantity || 1,
+        item_sku: item.sku || item.item_sku || '',
+        item_note: item.notes || ''
+      }));
+    }
+    
+    // Try Advanced Orderings endpoint
     try {
-      // First try v2 orders
-      return await this._req('POST', `/v2/outlets/${this._mokaOutletId}/orders`, orderData);
+      return await this._req('POST', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders`, { order: mokaOrder });
     } catch (e) {
-      try {
-        // Fallback to v1 advanced_orderings
-        return await this._req('POST', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders`, orderData);
-      } catch (e2) {
-        try {
-          // Last fallback to v1 transactions
-          return await this._req('POST', `/v1/outlets/${this._mokaOutletId}/transactions`, orderData);
-        } catch (e3) {
-          throw new Error(`Failed to create order with all endpoints: ${e3.message}`);
-        }
-      }
+      throw new Error(`Failed to create advanced order: ${e.message}`);
     }
   }
 
