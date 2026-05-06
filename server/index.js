@@ -80,68 +80,92 @@ function bookingTimeIso({ date, time }) {
   return `${d}T${t}:00+07:00`;
 }
 
-async function mokaUpsertCustomerFromBooking(booking) {
-  const customerPayload = {
-    customer_name: String(booking?.name || '').trim(),
-    phone: toE164Indonesia(booking?.wa),
-    email: String(booking?.email || '').trim() || undefined,
-    external_ref: String(booking?.id || '').trim(),
-    notes: 'Customer dari website booking',
-  };
+// ── MOKA INTEGRATION WITH OAUTH ─────────────────────────────
+// Using MokaClient with OAuth Client Credentials
+async function pushConfirmedBookingToMoka(booking) {
+  const { createInMemorySupabase } = require('./moka/memoryStore');
+  const MokaClient = require('./moka/client');
+  const { isMokaOAuthConfigured } = require('./moka/oauth');
+  
+  if (!isMokaOAuthConfigured()) {
+    return { ok: false, skipped: true, reason: 'oauth_not_configured' };
+  }
 
-  // TODO: isi API MOKA di sini (buat/update customer sesuai docs)
-  const result = await mokaRequest('/customers', { method: 'POST', body: customerPayload });
-  const mokaCustomerId = result?.customer_id || result?.id || result?.data?.id || null;
-  return { result, moka_customer_id: mokaCustomerId, payload: customerPayload };
-}
-
-async function mokaCreateTransactionFromBooking(booking, mokaCustomerId) {
-  const items = [
-    {
-      sku: String(booking?.service_id || 'SRV').trim() || 'SRV',
-      name: String(booking?.service || '').trim(),
-      qty: 1,
-      price: Number(booking?.price || 0),
-    },
-  ];
-
-  const payload = {
-    outlet_id: MOKA_OUTLET_ID,
-    external_ref: String(booking?.id || '').trim(),
-    booking_time: bookingTimeIso({ date: booking?.date, time: booking?.time }),
-    customer: {
-      customer_id: mokaCustomerId || undefined,
+  try {
+    // Use in-memory supabase for outlet lookup
+    const memorySupabase = createInMemorySupabase();
+    const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
+    const client = new MokaClient(memorySupabase, 'default-outlet', outletId);
+    
+    // 1. Create or update customer
+    const customerPayload = {
       customer_name: String(booking?.name || '').trim(),
       phone: toE164Indonesia(booking?.wa),
-    },
-    items,
-    amounts: {
-      subtotal: Number(booking?.price || 0),
-      discount: 0,
-      tax: 0,
-      total: Number(booking?.price || 0),
-    },
-    notes: [
-      `Booking via website`,
-      booking?.barber_name ? `Barber: ${booking.barber_name}` : (booking?.barber_id ? `Barber ID: ${booking.barber_id}` : ''),
-      booking?.location ? `Location: ${booking.location}` : '',
-      booking?.payment ? `Payment: ${booking.payment}` : '',
-      booking?.notes ? `Notes: ${booking.notes}` : '',
-    ].filter(Boolean).join('. '),
-    status: 'CONFIRMED',
-  };
-
-  // TODO: isi API MOKA di sini (buat transaksi sesuai docs)
-  const result = await mokaRequest('/transactions', { method: 'POST', body: payload });
-  const mokaTransactionId = result?.transaction_id || result?.id || result?.data?.id || null;
-  return { result, moka_transaction_id: mokaTransactionId, payload };
-}
-
-async function pushConfirmedBookingToMoka(booking) {
-  if (!isMokaConfigured()) return { ok: false, skipped: true, reason: 'not_configured' };
-  const customer = await mokaUpsertCustomerFromBooking(booking);
-  const trx = await mokaCreateTransactionFromBooking(booking, customer.moka_customer_id);
-  return { ok: true, customer, transaction: trx };
+      email: String(booking?.email || '').trim() || undefined,
+      external_ref: String(booking?.id || '').trim(),
+      notes: 'Customer dari website booking',
+    };
+    
+    const customerResult = await client.createCustomer(customerPayload);
+    const mokaCustomerId = customerResult?.id || customerResult?.customer_id;
+    
+    if (!mokaCustomerId) {
+      throw new Error('Failed to create Moka customer');
+    }
+    
+    // 2. Create transaction/order
+    const orderPayload = {
+      outlet_id: outletId,
+      external_ref: String(booking?.id || '').trim(),
+      booking_time: bookingTimeIso({ date: booking?.date, time: booking?.time }),
+      customer: {
+        customer_id: mokaCustomerId,
+        customer_name: String(booking?.name || '').trim(),
+        phone: toE164Indonesia(booking?.wa),
+      },
+      items: [{
+        sku: String(booking?.service_id || 'SRV').trim() || 'SRV',
+        name: String(booking?.service || '').trim(),
+        qty: 1,
+        price: Number(booking?.price || 0),
+      }],
+      amounts: {
+        subtotal: Number(booking?.price || 0),
+        discount: 0,
+        tax: 0,
+        total: Number(booking?.price || 0),
+      },
+      notes: [
+        `Booking via website`,
+        booking?.barber_name ? `Barber: ${booking.barber_name}` : (booking?.barber_id ? `Barber ID: ${booking.barber_id}` : ''),
+        booking?.location ? `Location: ${booking.location}` : '',
+        booking?.payment ? `Payment: ${booking.payment}` : '',
+        booking?.notes ? `Notes: ${booking.notes}` : '',
+      ].filter(Boolean).join('. '),
+      status: 'CONFIRMED',
+    };
+    
+    const orderResult = await client.createOrder(orderPayload);
+    const mokaOrderId = orderResult?.id || orderResult?.order_id || orderResult?.transaction_id;
+    
+    if (!mokaOrderId) {
+      throw new Error('Failed to create Moka order');
+    }
+    
+    return { 
+      ok: true, 
+      customer: { moka_customer_id: mokaCustomerId, payload: customerPayload }, 
+      order: { moka_order_id: mokaOrderId, payload: orderPayload } 
+    };
+    
+  } catch (error) {
+    console.error('[Moka] Booking sync failed:', error.message);
+    return { 
+      ok: false, 
+      error: error.message,
+      skipped: false 
+    };
+  }
 }
 
 // ── Rate Limiting ────────────────────────────────

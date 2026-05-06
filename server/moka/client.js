@@ -158,6 +158,53 @@ class MokaClient {
     return data;
   }
 
+  // ── Business Methods ─────────────────────────────────────
+  
+  /**
+   * Create or update customer in Moka
+   */
+  async createCustomer(customerData) {
+    // Try to find existing customer by phone first
+    if (customerData.phone) {
+      try {
+        const existing = await this._req('GET', `/v2/customers?phone=${encodeURIComponent(customerData.phone)}`);
+        if (existing.data && existing.data.length > 0) {
+          // Update existing customer
+          const customerId = existing.data[0].id;
+          return await this._req('PUT', `/v2/customers/${customerId}`, customerData);
+        }
+      } catch (e) {
+        // Customer not found, continue to create new
+      }
+    }
+    
+    // Create new customer
+    return await this._req('POST', '/v2/customers', customerData);
+  }
+  
+  /**
+   * Create order/transaction in Moka
+   */
+  async createOrder(orderData) {
+    // Try different endpoints based on API version
+    try {
+      // First try v2 orders
+      return await this._req('POST', `/v2/outlets/${this._mokaOutletId}/orders`, orderData);
+    } catch (e) {
+      try {
+        // Fallback to v1 advanced_orderings
+        return await this._req('POST', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders`, orderData);
+      } catch (e2) {
+        try {
+          // Last fallback to v1 transactions
+          return await this._req('POST', `/v1/outlets/${this._mokaOutletId}/transactions`, orderData);
+        } catch (e3) {
+          throw new Error(`Failed to create order with all endpoints: ${e3.message}`);
+        }
+      }
+    }
+  }
+
   async _handleRetry(method, path, body, attempt, networkErr, httpStatus) {
     const delay = RETRY_DELAYS[attempt] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
     const reason = networkErr ? networkErr.message : `HTTP ${httpStatus}`;
