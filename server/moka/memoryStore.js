@@ -9,16 +9,61 @@ const _outlets = new Map(); // slug -> { id, slug, name }
 
 // Default outlet for single-outlet setup - uses env MOKA_OUTLET_ID
 const DEFAULT_OUTLET_ID = process.env.MOKA_OUTLET_ID || '2000001165';
-const DEFAULT_OUTLET = {
-  id: 'default-outlet',
-  slug: 'redbox',
-  name: 'Redbox Barbershop',
-  moka_outlet_id: DEFAULT_OUTLET_ID,
-};
 
-_outlets.set('redbox', DEFAULT_OUTLET);
-_outlets.set('default-outlet', DEFAULT_OUTLET);
-_outlets.set(DEFAULT_OUTLET_ID, DEFAULT_OUTLET);
+// RedBox Branches - 5 locations
+const REDBOX_OUTLETS = [
+  {
+    id: 'bypass',
+    slug: 'bypass',
+    name: 'Redbox Bypass',
+    address: 'Jl. Soekarno Hatta Bypass No. 123, Bandung',
+    timezone: 'Asia/Jakarta',
+    is_active: true,
+    moka_outlet_id: DEFAULT_OUTLET_ID,
+  },
+  {
+    id: 'csb',
+    slug: 'csb', 
+    name: 'Redbox Cibabat',
+    address: 'Jl. Raya Cibabat No. 45, Cimahi',
+    timezone: 'Asia/Jakarta',
+    is_active: true,
+    moka_outlet_id: DEFAULT_OUTLET_ID,
+  },
+  {
+    id: 'tegal',
+    slug: 'tegal',
+    name: 'Redbox Tegal',
+    address: 'Jl. Martadinata No. 67, Tegal',
+    timezone: 'Asia/Jakarta',
+    is_active: true,
+    moka_outlet_id: DEFAULT_OUTLET_ID,
+  },
+  {
+    id: 'sumber',
+    slug: 'sumber',
+    name: 'Redbox Sumber',
+    address: 'Jl. Sumber No. 89, Bandung',
+    timezone: 'Asia/Jakarta',
+    is_active: true,
+    moka_outlet_id: DEFAULT_OUTLET_ID,
+  },
+  {
+    id: 'samadikun',
+    slug: 'samadikun',
+    name: 'Redbox Samadikun',
+    address: 'Jl. Samadikun No. 234, Bandung',
+    timezone: 'Asia/Jakarta',
+    is_active: true,
+    moka_outlet_id: DEFAULT_OUTLET_ID,
+  }
+];
+
+// Initialize all outlets
+REDBOX_OUTLETS.forEach(outlet => {
+  _outlets.set(outlet.slug, outlet);
+  _outlets.set(outlet.id, outlet);
+});
 
 /**
  * Ensure default outlet exists (call this before queries)
@@ -87,6 +132,60 @@ function createInMemorySupabase() {
                 }
                 return { data: outlet, error: null };
               },
+              // Support chaining eq().order() for filtering
+              order: (sortCol, options) => ({
+                limit: (n) => ({
+                  then: async (cb) => {
+                    _ensureDefaultOutlet();
+                    let filtered = Array.from(_outlets.values());
+                    if (col && val !== undefined) {
+                      filtered = filtered.filter(o => o[col] === val);
+                    }
+                    // Sort by name by default
+                    filtered.sort((a, b) => a.name.localeCompare(b.name));
+                    if (n) filtered = filtered.slice(0, n);
+                    return cb ? cb({ data: filtered, error: null }) : { data: filtered, error: null };
+                  }
+                }),
+                then: async (cb) => {
+                  _ensureDefaultOutlet();
+                  let filtered = Array.from(_outlets.values());
+                  if (col && val !== undefined) {
+                    filtered = filtered.filter(o => o[col] === val);
+                  }
+                  // Sort by name by default
+                  filtered.sort((a, b) => a.name.localeCompare(b.name));
+                  return cb ? cb({ data: filtered, error: null }) : { data: filtered, error: null };
+                }
+              })
+            }),
+            // Support direct order() without eq()
+            order: (sortCol, options) => ({
+              limit: (n) => ({
+                then: async (cb) => {
+                  _ensureDefaultOutlet();
+                  let allOutlets = Array.from(_outlets.values());
+                  // Remove duplicates (same outlet might be stored by slug and id)
+                  const uniqueOutlets = allOutlets.filter((outlet, index, self) => 
+                    index === self.findIndex(o => o.id === outlet.id)
+                  );
+                  // Sort by name by default
+                  uniqueOutlets.sort((a, b) => a.name.localeCompare(b.name));
+                  if (n) uniqueOutlets.slice(0, n);
+                  return cb ? cb({ data: uniqueOutlets, error: null }) : { data: uniqueOutlets, error: null };
+                }
+              }),
+              then: async (cb) => {
+                _ensureDefaultOutlet();
+                let allOutlets = Array.from(_outlets.values());
+                // Remove duplicates
+                const uniqueOutlets = allOutlets.filter((outlet, index, self) => 
+                  index === self.findIndex(o => o.id === outlet.id)
+                );
+                // Sort by name by default
+                uniqueOutlets.sort((a, b) => a.name.localeCompare(b.name));
+                return cb ? cb({ data: uniqueOutlets, error: null }) : { data: uniqueOutlets, error: null };
+              }
             }),
             ilike: () => ({
               single: async () => {
