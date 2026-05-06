@@ -516,6 +516,50 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── POST /api/moka/test-customer ───────────────────────────
+  // Test Moka customer creation
+  router.post('/moka/test-customer', async (req, res) => {
+    try {
+      if (!isMokaOAuthConfigured()) {
+        return res.status(503).json({ error: 'Moka OAuth not configured' });
+      }
+      
+      const { createInMemorySupabase } = require('./memoryStore');
+      const MokaClient = require('./client');
+      
+      const memorySupabase = createInMemorySupabase();
+      const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
+      const client = new MokaClient(memorySupabase, 'default-outlet', outletId);
+      
+      const result = await client.createCustomer(req.body);
+      res.json({ success: true, result });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── POST /api/moka/test-order ──────────────────────────────
+  // Test Moka order creation
+  router.post('/moka/test-order', async (req, res) => {
+    try {
+      if (!isMokaOAuthConfigured()) {
+        return res.status(503).json({ error: 'Moka OAuth not configured' });
+      }
+      
+      const { createInMemorySupabase } = require('./memoryStore');
+      const MokaClient = require('./client');
+      
+      const memorySupabase = createInMemorySupabase();
+      const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
+      const client = new MokaClient(memorySupabase, 'default-outlet', outletId);
+      
+      const result = await client.createOrder(req.body);
+      res.json({ success: true, result });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   // ── GET /api/outlets ─────────────────────────────────────
   // List all active outlets (useful for front-end dropdowns)
   router.get('/outlets', async (_req, res) => {
