@@ -175,7 +175,8 @@ async function pullMokaToWeb(supabase, outletId) {
       || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const response  = await client.getOrders({ updatedSince: since, limit: 100 });
-    const orders    = response?.data || response?.orders || [];
+    const rawOrders = response?.data || response?.orders || [];
+    const orders    = Array.isArray(rawOrders) ? rawOrders : [];
 
     for (const order of orders) {
       try {

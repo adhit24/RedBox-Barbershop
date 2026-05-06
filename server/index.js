@@ -24,12 +24,22 @@ function localDateStr(d = new Date()) {
 // ================================================
 // MOKA POS INTEGRATION (DRAFT)
 // ================================================
-const MOKA_BASE_URL  = String(process.env.MOKA_BASE_URL || '').trim();
-const MOKA_API_KEY   = String(process.env.MOKA_API_KEY || '').trim();
+const MOKA_API_BASE = String(process.env.MOKA_API_BASE || process.env.MOKA_BASE_URL || '').trim() || 'https://api.mokapos.com';
+const MOKA_ACCESS_TOKEN = String(process.env.MOKA_ACCESS_TOKEN || process.env.MOKA_API_KEY || '').trim();
 const MOKA_OUTLET_ID = String(process.env.MOKA_OUTLET_ID || '').trim();
+const MOKA_OUTLET_ID_BYPASS = String(process.env.MOKA_OUTLET_ID_BYPASS || '').trim();
+const MOKA_PUSH_ON_BOOKING = String(process.env.MOKA_PUSH_ON_BOOKING || '').trim() === '1';
+const MOKA_PUSH_BRANCHES = String(process.env.MOKA_PUSH_BRANCHES || 'bypass').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+const MOKA_DEFAULT_ITEM_ID = String(process.env.MOKA_DEFAULT_ITEM_ID || '').trim();
+const MOKA_DEFAULT_CATEGORY_ID = String(process.env.MOKA_DEFAULT_CATEGORY_ID || '').trim();
+const MOKA_DEFAULT_CATEGORY_NAME = String(process.env.MOKA_DEFAULT_CATEGORY_NAME || 'Services').trim();
+const MOKA_PAYMENT_TYPE = String(process.env.MOKA_PAYMENT_TYPE || 'online_booking').trim();
+const MOKA_SALES_TYPE_ID = String(process.env.MOKA_SALES_TYPE_ID || '').trim();
+const MOKA_SALES_TYPE_NAME = String(process.env.MOKA_SALES_TYPE_NAME || '').trim();
+const APP_BASE_URL = String(process.env.APP_BASE_URL || '').trim().replace(/\/$/, '');
 
 function isMokaConfigured() {
-  return Boolean(MOKA_BASE_URL && MOKA_API_KEY && MOKA_OUTLET_ID);
+  return Boolean(MOKA_API_BASE && MOKA_ACCESS_TOKEN && (MOKA_OUTLET_ID || MOKA_OUTLET_ID_BYPASS));
 }
 
 async function mokaRequest(pathname, { method = 'GET', body } = {}) {
@@ -39,13 +49,12 @@ async function mokaRequest(pathname, { method = 'GET', body } = {}) {
     throw err;
   }
 
-  // TODO: isi API MOKA di sini (endpoint + auth scheme mengikuti dokumentasi MOKA)
-  const url = `${MOKA_BASE_URL}${pathname}`;
+  const url = `${MOKA_API_BASE}${pathname}`;
   const resp = await fetch(url, {
     method,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MOKA_API_KEY}`,
+      'Authorization': `Bearer ${MOKA_ACCESS_TOKEN}`,
     },
     body: body ? JSON.stringify(body) : undefined,
     redirect: 'follow',
@@ -63,6 +72,21 @@ async function mokaRequest(pathname, { method = 'GET', body } = {}) {
   }
 
   return data;
+}
+
+function mokaOutletIdForLocation(location) {
+  const loc = String(location || '').trim().toLowerCase();
+  if (loc === 'bypass') return MOKA_OUTLET_ID_BYPASS || MOKA_OUTLET_ID;
+  return MOKA_OUTLET_ID;
+}
+
+function isMokaBranchEnabled(location) {
+  const loc = String(location || '').trim().toLowerCase() || 'bypass';
+  return MOKA_PUSH_BRANCHES.includes(loc);
+}
+
+function shouldPushBookingToMokaOnCreate(location) {
+  return MOKA_PUSH_ON_BOOKING && isMokaBranchEnabled(location);
 }
 
 function toE164Indonesia(waDigits) {
@@ -86,18 +110,16 @@ async function pushConfirmedBookingToMoka(booking) {
   const { createInMemorySupabase } = require('./moka/memoryStore');
   const MokaClient = require('./moka/client');
   const { isMokaOAuthConfigured } = require('./moka/oauth');
-  
+
   if (!isMokaOAuthConfigured()) {
     return { ok: false, skipped: true, reason: 'oauth_not_configured' };
   }
 
   try {
-    // Use in-memory supabase for outlet lookup
     const memorySupabase = createInMemorySupabase();
     const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
     const client = new MokaClient(memorySupabase, 'default-outlet', outletId);
-    
-    // 1. Create or update customer
+
     const customerPayload = {
       customer_name: String(booking?.name || '').trim(),
       phone: toE164Indonesia(booking?.wa),
@@ -105,15 +127,14 @@ async function pushConfirmedBookingToMoka(booking) {
       external_ref: String(booking?.id || '').trim(),
       notes: 'Customer dari website booking',
     };
-    
+
     const customerResult = await client.createCustomer(customerPayload);
     const mokaCustomerId = customerResult?.id || customerResult?.customer_id;
-    
+
     if (!mokaCustomerId) {
       throw new Error('Failed to create Moka customer');
     }
-    
-    // 2. Create transaction/order
+
     const orderPayload = {
       outlet_id: outletId,
       external_ref: String(booking?.id || '').trim(),
@@ -144,27 +165,23 @@ async function pushConfirmedBookingToMoka(booking) {
       ].filter(Boolean).join('. '),
       status: 'CONFIRMED',
     };
-    
+
     const orderResult = await client.createOrder(orderPayload);
     const mokaOrderId = orderResult?.id || orderResult?.order_id || orderResult?.transaction_id;
-    
+
     if (!mokaOrderId) {
       throw new Error('Failed to create Moka order');
     }
-    
-    return { 
-      ok: true, 
-      customer: { moka_customer_id: mokaCustomerId, payload: customerPayload }, 
-      order: { moka_order_id: mokaOrderId, payload: orderPayload } 
+
+    return {
+      ok: true,
+      customer: { moka_customer_id: mokaCustomerId, payload: customerPayload },
+      order: { moka_order_id: mokaOrderId, payload: orderPayload }
     };
-    
+
   } catch (error) {
     console.error('[Moka] Booking sync failed:', error.message);
-    return { 
-      ok: false, 
-      error: error.message,
-      skipped: false 
-    };
+    return { ok: false, error: error.message, skipped: false };
   }
 }
 
@@ -851,7 +868,15 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       );
 
       syncBookingToAirtable(newBooking[0]);
-      res.status(201).json({ data: newBooking[0] });
+      let moka = null;
+      if (shouldPushBookingToMokaOnCreate(newBooking[0]?.location)) {
+        try {
+          moka = await pushConfirmedBookingToMoka(newBooking[0]);
+        } catch (e) {
+          moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
+        }
+      }
+      res.status(201).json({ data: newBooking[0], moka });
     } catch (error) {
       console.error('MySQL Error:', error);
       res.status(500).json({ error: error.message });
@@ -895,10 +920,12 @@ async function handleBookingUpdate(req, res) {
 
     let moka = null;
     if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
-      try {
-        moka = await pushConfirmedBookingToMoka(data);
-      } catch (e) {
-        moka = { ok: false, error: e?.message || 'MOKA sync failed' };
+      if (isMokaBranchEnabled(data.location)) {
+        try {
+          moka = await pushConfirmedBookingToMoka(data);
+        } catch (e) {
+            moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
+        }
       }
     }
 
@@ -970,10 +997,12 @@ async function handleBookingUpdate(req, res) {
 
       let moka = null;
       if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
-        try {
-          moka = await pushConfirmedBookingToMoka(updated[0]);
-        } catch (e) {
-          moka = { ok: false, error: e?.message || 'MOKA sync failed' };
+        if (isMokaBranchEnabled(updated[0]?.location)) {
+          try {
+            moka = await pushConfirmedBookingToMoka(updated[0]);
+          } catch (e) {
+            moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
+          }
         }
       }
 
@@ -1209,6 +1238,83 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e?.message || 'Sync failed' }); }
 });
 
+// POST /api/admin/test-moka-bypass
+app.post('/api/admin/test-moka-bypass', adminAuth, async (req, res) => {
+  try {
+    const now = new Date();
+    const date = localDateStr(now);
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+
+    const booking = {
+      id: `test-${randomUUID()}`,
+      name: req.body?.name || 'Test Bypass',
+      wa: req.body?.wa || '81234567890',
+      service_id: req.body?.service_id || 'test-service',
+      service: req.body?.service || 'Hair Cut',
+      price: Number(req.body?.price ?? 100000),
+      duration: req.body?.duration || '45 menit',
+      barber_id: req.body?.barber_id || 'any',
+      barber_name: req.body?.barber_name || '',
+      date: req.body?.date || date,
+      time: req.body?.time || `${hh}:${mm}`,
+      location: 'bypass',
+      notes: req.body?.notes || 'Simulasi booking dari API',
+      payment: req.body?.payment || 'Test',
+    };
+
+    const moka = await pushConfirmedBookingToMoka(booking);
+    res.json({ booking, moka });
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'Moka test failed' });
+  }
+});
+
+// GET /api/admin/moka-health
+app.get('/api/admin/moka-health', adminAuth, async (req, res) => {
+  try {
+    if (!isMokaConfigured()) {
+      return res.json({
+        ok: false,
+        configured: false,
+        required_env: [
+          'MOKA_API_BASE (optional)',
+          'MOKA_ACCESS_TOKEN (or MOKA_API_KEY)',
+          'MOKA_OUTLET_ID (or MOKA_OUTLET_ID_BYPASS)',
+          'MOKA_DEFAULT_ITEM_ID (recommended)',
+          'MOKA_DEFAULT_CATEGORY_ID (required if item has no category_id)',
+        ],
+      });
+    }
+    const outletId = mokaOutletIdForLocation('bypass');
+    const itemsRes = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/items`, { method: 'GET' });
+    const items = itemsRes?.data?.items || itemsRes?.items || itemsRes?.data || [];
+    const itemCount = Array.isArray(items) ? items.length : 0;
+
+    const catsRes = await mokaRequest(`/v1/outlets/${encodeURIComponent(outletId)}/categories`, { method: 'GET' });
+    const cats = catsRes?.data?.category || catsRes?.categories || catsRes?.data || [];
+    const categoryCount = Array.isArray(cats) ? cats.length : 0;
+
+    res.json({
+      ok: true,
+      configured: true,
+      outlet_id: outletId,
+      items_count: itemCount,
+      categories_count: categoryCount,
+      env: {
+        push_on_booking: MOKA_PUSH_ON_BOOKING,
+        push_branches: MOKA_PUSH_BRANCHES,
+        payment_type: MOKA_PAYMENT_TYPE,
+        default_item_id: MOKA_DEFAULT_ITEM_ID || null,
+        default_category_id: MOKA_DEFAULT_CATEGORY_ID || null,
+        sales_type_id: MOKA_SALES_TYPE_ID || null,
+      },
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e?.message || 'Moka health failed', status: e?.status, details: e?.details });
+  }
+});
+
 // ── MOKA INTEGRATION ROUTER ──────────────────────────────
 // Registers: /api/availability, /api/reservations, /api/schedules,
 //            /api/outlets, /api/services, /api/moka/*
@@ -1227,11 +1333,11 @@ console.log('✅ Moka integration routes mounted (with in-memory outlet)');
 try {
   const { startCronJobs } = require('./moka/sync');
   if (supabase) {
-    // Try create tables in background
     supabase.from('outlets').select('id').limit(1)
       .then(() => console.log('✅ Supabase outlets table available'))
       .catch(() => console.log('⚠️  Supabase outlets table missing - using in-memory only'));
-    startCronJobs(supabase);
+    const { isMokaOAuthConfigured } = require('./moka/oauth');
+    if (isMokaOAuthConfigured()) startCronJobs(supabase);
   }
 } catch (e) {
   console.warn('[Cron] Could not start Moka cron jobs:', e.message);
