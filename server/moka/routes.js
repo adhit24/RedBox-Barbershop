@@ -446,7 +446,16 @@ function createMokaRouter(supabase) {
   // Manual trigger for Moka → Web pull sync.
   // Body (optional): { "outletId": "uuid-or-slug" }
   // If omitted, syncs ALL authorized outlets.
+  // Auth: Bearer <CRON_SECRET> header required (or adminAuth for dashboard use)
   router.post('/moka/sync', async (req, res) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const auth = req.headers['authorization'] || '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      if (token !== cronSecret) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
     try {
       const { outletId: rawOutletId } = req.body || {};
       const results = [];
