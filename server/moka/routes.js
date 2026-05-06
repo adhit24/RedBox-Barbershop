@@ -732,7 +732,24 @@ function createMokaRouter(supabase) {
   router.post('/moka/sync-schema', async (_req, res) => {
     try {
       const { syncMokaSchema } = require('./schemaSync');
-      const report = await syncMokaSchema(supabase);
+
+      // Always use a real Supabase client for schema sync (needs DB writes).
+      // The router may have been initialized with the in-memory mock, so we
+      // build a fresh client from env vars when available.
+      let db = supabase;
+      const sbUrl = process.env.SUPABASE_URL;
+      const sbKey = process.env.SUPABASE_SERVICE_KEY
+                 || process.env.SUPABASE_SERVICE_ROLE_KEY
+                 || process.env.SUPABASE_ANON_KEY;
+      if (sbUrl && sbKey && (!db || typeof db._isMemoryMock !== 'undefined')) {
+        const { createClient } = require('@supabase/supabase-js');
+        db = createClient(sbUrl, sbKey);
+      }
+      if (!db || !sbUrl) {
+        return res.status(503).json({ error: 'Supabase not configured — set SUPABASE_URL and SUPABASE_SERVICE_KEY env vars' });
+      }
+
+      const report = await syncMokaSchema(db);
       res.json({ message: 'Schema sync complete', ...report });
     } catch (err) {
       _serverError(res, err);
