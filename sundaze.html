@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SUNDAZE — Sunday Feeling, Every Day</title>
+  <meta name="description" content="SUNDAZE — A lifestyle coffee & eatery space. Warm escape from routine. Sunday feeling every day." />
+  <meta name="theme-color" content="#0B0B0C" />
+  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --black:   #0B0B0C;
+      --charcoal:#1A1A1D;
+      --cream:   #F5F1E8;
+      --orange:  #C47A2C;
+      --gold:    #D9A441;
+      --brown:   #6B4F3A;
+      --olive:   #3A4A3F;
+      --beige:   #E8DCCB;
+      --w90: rgba(245,241,232,.9);
+      --w70: rgba(245,241,232,.7);
+      --w50: rgba(245,241,232,.5);
+      --w30: rgba(245,241,232,.3);
+      --w15: rgba(245,241,232,.15);
+      --w08: rgba(245,241,232,.08);
+      --w04: rgba(245,241,232,.04);
+      --gold-30: rgba(217,164,65,.30);
+      --gold-15: rgba(217,164,65,.15);
+      --gold-08: rgba(217,164,65,.08);
+      --orange-30: rgba(196,122,44,.30);
+      --font-serif: 'Playfair Display', Georgia, serif;
+      --font-body:  'Inter', sans-serif;
+      --ease: cubic-bezier(.4,0,.2,1);
+    }
+
+    html { scroll-behavior: smooth; font-size: 16px; }
+    body {
+      font-family: var(--font-body);
+      background: var(--black);
+      color: var(--cream);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    img { max-width: 100%; height: auto; display: block; }
+    a { text-decoration: none; color: inherit; }
+    ul { list-style: none; }
+    button { cursor: pointer; border: none; background: none; font-family: var(--font-body); }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--black); }
+    ::-webkit-scrollbar-thumb { background: var(--orange); border-radius: 2px; }
+    ::selection { background: var(--orange); color: var(--cream); }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
+
+    /* ── Photo utility ── */
+    .sd-photo {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover; object-position: center;
+      display: block; z-index: 0;
+    }
+
+    /* ── Progress ── */
+    .sd-progress {
+      position: fixed; top: 0; left: 0; height: 2px; z-index: 9999;
+      background: linear-gradient(90deg, var(--orange), var(--gold));
+      width: 0%; transition: width .1s linear;
+    }
+
+    /* ── NAVBAR ── */
+    .sd-nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      height: 72px; transition: all .4s ease; background: transparent;
+    }
+    .sd-nav.scrolled {
+      background: rgba(11,11,12,.92); backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--w08);
+    }
+    .sd-nav-inner { display: flex; align-items: center; height: 72px; }
+    .sd-back {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .8rem; font-weight: 500; letter-spacing: .06em;
+      color: var(--w50); transition: color .3s ease; flex-shrink: 0;
+    }
+    .sd-back svg { width: 16px; height: 16px; }
+    .sd-back:hover { color: var(--cream); }
+    .sd-logo-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      margin: 0 auto; line-height: 1;
+    }
+    .sd-logo-name {
+      font-family: var(--font-serif); font-size: 1.55rem; font-weight: 400;
+      letter-spacing: .35em; color: var(--cream); text-transform: uppercase;
+    }
+    .sd-logo-tag { font-size: .6rem; letter-spacing: .25em; color: var(--gold); text-transform: uppercase; margin-top: 1px; }
+    .sd-nav-cta {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--orange); color: var(--cream);
+      font-size: .8rem; font-weight: 600; letter-spacing: .04em;
+      padding: 9px 20px; border-radius: 6px;
+      transition: all .3s ease; white-space: nowrap; flex-shrink: 0;
+    }
+    .sd-nav-cta:hover { background: #D4892F; transform: translateY(-1px); }
+
+    /* ── HERO ── */
+    .sd-hero {
+      position: relative; min-height: 100vh;
+      display: flex; align-items: center; overflow: hidden;
+    }
+    .sd-hero-bg { position: absolute; inset: 0; }
+    .sd-hero-overlay {
+      position: absolute; inset: 0; z-index: 1;
+      background:
+        linear-gradient(to right, rgba(11,11,12,.88) 0%, rgba(11,11,12,.65) 50%, rgba(11,11,12,.25) 100%),
+        linear-gradient(to top, rgba(11,11,12,.75) 0%, transparent 55%);
+    }
+    .sd-hero-grain {
+      position: absolute; inset: 0; z-index: 2; opacity: .018;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 200px; pointer-events: none;
+    }
+    .sd-hero-orb1 {
+      position: absolute; z-index: 2; pointer-events: none;
+      width: 500px; height: 500px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(196,122,44,.08) 0%, transparent 70%);
+      top: -80px; right: 8%;
+      animation: sd-orb-drift 14s ease-in-out infinite alternate;
+    }
+    @keyframes sd-orb-drift {
+      from { transform: translate(0,0) scale(1); }
+      to   { transform: translate(24px,-24px) scale(1.06); }
+    }
+    .sd-hero-content { position: relative; z-index: 3; padding-top: 72px; }
+    .sd-hero-eyebrow {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 28px;
+      opacity: 0; transform: translateY(20px);
+      animation: sd-fadein .9s var(--ease) .3s forwards;
+    }
+    .sd-eyebrow-line { display: block; width: 36px; height: 1px; background: var(--gold); }
+    .sd-eyebrow-text { font-size: .65rem; letter-spacing: .28em; color: var(--gold); text-transform: uppercase; font-weight: 500; }
+    .sd-hero-title {
+      font-family: var(--font-serif);
+      font-size: clamp(3rem, 8vw, 6.5rem);
+      font-weight: 400; line-height: 1.08; margin-bottom: 28px;
+      opacity: 0; transform: translateY(30px);
+      animation: sd-fadein 1s var(--ease) .5s forwards;
+    }
+    .sd-hero-title em { font-style: italic; color: var(--gold); display: block; }
+    .sd-hero-title strong { font-weight: 600; color: var(--cream); display: block; }
+    .sd-hero-sub {
+      font-size: 1rem; line-height: 1.85; color: var(--w70);
+      max-width: 480px; margin-bottom: 40px; font-weight: 300;
+      opacity: 0; transform: translateY(20px);
+      animation: sd-fadein .9s var(--ease) .8s forwards;
+    }
+    .sd-hero-actions {
+      display: flex; align-items: center; gap: 16px;
+      opacity: 0; transform: translateY(20px);
+      animation: sd-fadein .9s var(--ease) 1s forwards;
+    }
+    .sd-btn-primary {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: var(--orange); color: var(--cream);
+      font-size: .9rem; font-weight: 600; letter-spacing: .04em;
+      padding: 14px 30px; border-radius: 8px; transition: all .3s ease;
+    }
+    .sd-btn-primary:hover { background: #D4892F; transform: translateY(-2px); box-shadow: 0 12px 40px rgba(196,122,44,.35); }
+    .sd-btn-secondary {
+      display: inline-flex; align-items: center; gap: 10px;
+      color: var(--w70); font-size: .9rem; font-weight: 500;
+      padding: 14px 22px; border: 1px solid var(--w15); border-radius: 8px; transition: all .3s ease;
+    }
+    .sd-btn-secondary:hover { color: var(--cream); border-color: var(--w30); }
+    .sd-hero-scroll {
+      position: absolute; bottom: 36px; left: 50%; transform: translateX(-50%); z-index: 3;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      opacity: 0; animation: sd-fadein .8s ease 1.4s forwards;
+    }
+    .sd-hero-scroll span { font-size: .6rem; letter-spacing: .2em; color: var(--w30); text-transform: uppercase; }
+    .sd-scroll-line {
+      width: 1px; height: 48px;
+      background: linear-gradient(to bottom, var(--w30), transparent);
+      animation: sd-scroll-pulse 2s ease-in-out infinite;
+    }
+    @keyframes sd-scroll-pulse { 0%,100%{opacity:.4;transform:scaleY(1)} 50%{opacity:1;transform:scaleY(.6)} }
+    @keyframes sd-fadein { to { opacity: 1; transform: translateY(0); } }
+
+    /* ── VIBE TICKER ── */
+    .sd-vibe { background: var(--charcoal); border-top: 1px solid var(--w04); border-bottom: 1px solid var(--w04); }
+    .sd-vibe-inner { display: flex; align-items: center; overflow: hidden; height: 64px; }
+    .sd-vibe-track {
+      display: flex; align-items: center; white-space: nowrap;
+      animation: sd-marquee 22s linear infinite;
+    }
+    .sd-vibe-item { display: flex; align-items: center; gap: 28px; padding: 0 16px; }
+    .sd-vibe-item span { font-family: var(--font-serif); font-style: italic; font-size: .95rem; color: var(--w50); }
+    .sd-vibe-item .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--gold); opacity: .4; }
+    @keyframes sd-marquee { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+
+    /* ── SHARED SECTION ── */
+    section { padding: 110px 0; }
+    .sd-eyebrow-label {
+      display: inline-flex; align-items: center; gap: 10px;
+      font-size: .62rem; letter-spacing: .26em; color: var(--gold);
+      text-transform: uppercase; font-weight: 500; margin-bottom: 18px;
+    }
+    .sd-eyebrow-label::before { content:''; display:block; width:28px; height:1px; background:var(--gold); }
+    .sd-section-title {
+      font-family: var(--font-serif); font-size: clamp(2rem,5vw,3.5rem);
+      font-weight: 400; line-height: 1.15; color: var(--cream);
+    }
+    .sd-section-title em { font-style: italic; color: var(--gold); }
+    .sd-section-body { font-size: 1rem; line-height: 1.85; color: var(--w70); font-weight: 300; }
+
+    /* ── ABOUT ── */
+    .sd-about { background: var(--black); }
+    .sd-about-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+    .sd-about-visual { position: relative; aspect-ratio: 4/5; border-radius: 4px; overflow: hidden; }
+    .sd-about-overlay {
+      position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(to top, rgba(11,11,12,.85) 0%, rgba(11,11,12,.3) 50%, rgba(11,11,12,.1) 100%);
+    }
+    .sd-about-frame { position: absolute; inset: 20px; border: 1px solid var(--gold-30); border-radius: 2px; z-index: 2; pointer-events: none; }
+    .sd-about-quote {
+      position: absolute; bottom: 36px; left: 36px; right: 36px; z-index: 3;
+      font-family: var(--font-serif); font-style: italic; font-size: 1.45rem; line-height: 1.4; color: var(--cream);
+    }
+    .sd-about-quote::before { content:'"'; display:block; font-size:3.5rem; color:var(--gold); line-height:.8; margin-bottom:8px; opacity:.5; }
+    .sd-about-float {
+      position: absolute; top: 36px; right: -22px; z-index: 4;
+      background: var(--charcoal); border: 1px solid var(--gold-15);
+      border-radius: 8px; padding: 14px 18px; min-width: 130px;
+    }
+    .sd-float-num { font-family: var(--font-serif); font-size: 2.2rem; color: var(--gold); line-height: 1; }
+    .sd-float-label { font-size: .68rem; color: var(--w50); margin-top: 4px; letter-spacing: .08em; }
+    .sd-about-content { display: flex; flex-direction: column; gap: 26px; }
+    .sd-about-pillars { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+    .sd-pillar {
+      padding: 18px 20px; background: var(--charcoal);
+      border: 1px solid var(--w08); border-radius: 8px; border-left: 3px solid var(--orange);
+    }
+    .sd-pillar h4 { font-family: var(--font-serif); font-size: .92rem; color: var(--cream); margin-bottom: 5px; }
+    .sd-pillar p { font-size: .78rem; color: var(--w50); line-height: 1.6; }
+
+    /* ── ATMOSPHERE GALLERY ── */
+    .sd-atmosphere { background: var(--charcoal); }
+    .sd-atmosphere-header { text-align: center; margin-bottom: 56px; }
+    .sd-atm-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      grid-template-rows: 320px 290px;
+      gap: 14px;
+    }
+    .sd-atm-cell {
+      position: relative; border-radius: 6px; overflow: hidden;
+      transition: transform .5s ease, box-shadow .5s ease;
+    }
+    .sd-atm-cell:hover { transform: scale(1.018); box-shadow: 0 20px 60px rgba(0,0,0,.7); }
+    .sd-atm-cell:nth-child(1) { grid-column: 1/6;  grid-row: 1; }
+    .sd-atm-cell:nth-child(2) { grid-column: 6/9;  grid-row: 1; }
+    .sd-atm-cell:nth-child(3) { grid-column: 9/13; grid-row: 1; }
+    .sd-atm-cell:nth-child(4) { grid-column: 1/5;  grid-row: 2; }
+    .sd-atm-cell:nth-child(5) { grid-column: 5/9;  grid-row: 2; }
+    .sd-atm-cell:nth-child(6) { grid-column: 9/13; grid-row: 2; }
+    .sd-atm-overlay {
+      position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(to top, rgba(11,11,12,.75) 0%, transparent 55%);
+    }
+    .sd-atm-inner {
+      position: absolute; inset: 0; z-index: 2;
+      display: flex; align-items: flex-end; padding: 20px;
+    }
+    .sd-atm-label {
+      font-size: .68rem; letter-spacing: .18em; color: var(--w80, rgba(245,241,232,.8));
+      text-transform: uppercase; font-weight: 500;
+      background: rgba(11,11,12,.45); backdrop-filter: blur(8px);
+      padding: 5px 12px; border-radius: 4px; border: 1px solid rgba(245,241,232,.1);
+    }
+
+    /* ── MENU ── */
+    .sd-menu { background: var(--black); }
+    .sd-menu-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 48px; }
+    .sd-menu-tabs {
+      display: flex; gap: 4px;
+      background: var(--charcoal); padding: 4px; border-radius: 8px; border: 1px solid var(--w08);
+    }
+    .sd-tab { font-size: .78rem; font-weight: 500; padding: 7px 16px; border-radius: 6px; color: var(--w50); cursor: pointer; transition: all .25s ease; }
+    .sd-tab.active { background: var(--orange); color: var(--cream); }
+    .sd-tab:hover:not(.active) { color: var(--cream); background: var(--w08); }
+    .sd-menu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    .sd-menu-card {
+      background: var(--charcoal); border: 1px solid var(--w08);
+      border-radius: 10px; overflow: hidden; transition: all .35s ease;
+    }
+    .sd-menu-card:hover { border-color: var(--gold-30); transform: translateY(-4px); box-shadow: 0 16px 50px rgba(0,0,0,.5); }
+    .sd-menu-img { aspect-ratio: 4/3; position: relative; overflow: hidden; }
+    .sd-menu-img .sd-photo { transition: transform .5s ease; }
+    .sd-menu-card:hover .sd-menu-img .sd-photo { transform: scale(1.06); }
+    .sd-menu-img-overlay {
+      position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(to bottom, rgba(11,11,12,.2) 0%, transparent 50%);
+    }
+    .sd-menu-img-tag {
+      position: absolute; top: 14px; right: 14px; z-index: 2;
+      font-size: .6rem; letter-spacing: .18em; text-transform: uppercase;
+      background: rgba(11,11,12,.65); backdrop-filter: blur(8px);
+      color: var(--gold); padding: 5px 10px; border-radius: 4px; border: 1px solid var(--gold-30);
+    }
+    .sd-menu-body { padding: 18px 20px 22px; }
+    .sd-menu-name { font-family: var(--font-serif); font-size: 1.08rem; color: var(--cream); margin-bottom: 6px; }
+    .sd-menu-desc { font-size: .8rem; color: var(--w50); line-height: 1.65; margin-bottom: 14px; }
+    .sd-menu-footer { display: flex; align-items: center; justify-content: flex-start; }
+    .sd-menu-price { display: none; }
+    .sd-menu-badge {
+      font-size: .62rem; letter-spacing: .12em; text-transform: uppercase;
+      padding: 4px 10px; border-radius: 20px; border: 1px solid var(--orange-30); color: var(--orange);
+    }
+
+    /* ── EXPERIENCE ── */
+    .sd-experience {
+      background: linear-gradient(180deg, var(--black) 0%, #0F0D0A 100%);
+      position: relative; overflow: hidden;
+    }
+    .sd-experience::before {
+      content:''; position:absolute; inset:0;
+      background: radial-gradient(ellipse 70% 55% at 50% 30%, rgba(196,122,44,.07) 0%, transparent 65%);
+      pointer-events: none;
+    }
+    .sd-exp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center; }
+    .sd-exp-content { display: flex; flex-direction: column; gap: 30px; }
+    .sd-exp-list { display: flex; flex-direction: column; gap: 22px; }
+    .sd-exp-item { display: flex; gap: 20px; align-items: flex-start; }
+    .sd-exp-num { font-family: var(--font-serif); font-size: 2.8rem; font-weight: 400; line-height: 1; color: var(--gold); opacity: .3; flex-shrink: 0; min-width: 50px; }
+    .sd-exp-text h4 { font-family: var(--font-serif); font-size: 1.05rem; color: var(--cream); margin-bottom: 5px; }
+    .sd-exp-text p { font-size: .83rem; color: var(--w50); line-height: 1.7; }
+    .sd-exp-visual { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .sd-exp-card { border-radius: 8px; overflow: hidden; aspect-ratio: 1; position: relative; }
+    .sd-exp-card:first-child { aspect-ratio: auto; grid-row: 1/3; }
+    .sd-exp-card-overlay {
+      position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(to top, rgba(11,11,12,.6) 0%, transparent 60%);
+    }
+    .sd-exp-card-content {
+      position: absolute; inset: 0; z-index: 2;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 6px; text-align: center; padding: 20px;
+    }
+    .sd-exp-card-content .num { font-family: var(--font-serif); font-size: 2.4rem; color: var(--gold); text-shadow: 0 2px 20px rgba(0,0,0,.8); }
+    .sd-exp-card-content .lbl { font-size: .68rem; letter-spacing: .16em; color: var(--w70); text-transform: uppercase; text-shadow: 0 1px 8px rgba(0,0,0,.9); }
+
+    /* ── REVEAL ── */
+    .sd-reveal { opacity: 0; transform: translateY(30px); transition: opacity .8s var(--ease), transform .8s var(--ease); }
+    .sd-reveal.visible { opacity: 1; transform: translateY(0); }
+    .sd-reveal-delay-1 { transition-delay: .12s; }
+    .sd-reveal-delay-2 { transition-delay: .24s; }
+    .sd-reveal-delay-3 { transition-delay: .36s; }
+    .sd-reveal-delay-4 { transition-delay: .5s; }
+
+    /* ── VISIT CTA ── */
+    .sd-visit {
+      padding: 100px 0; position: relative; overflow: hidden; text-align: center;
+      background: var(--black);
+    }
+    .sd-visit-bg { position: absolute; inset: 0; }
+    .sd-visit-overlay {
+      position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(180deg, rgba(11,11,12,.92) 0%, rgba(11,11,12,.82) 100%);
+    }
+    .sd-visit-content { position: relative; z-index: 2; }
+
+    /* ── FOOTER ── */
+    .sd-footer { background: var(--black); padding: 72px 0 40px; border-top: 1px solid var(--w08); }
+    .sd-footer-top { display: grid; grid-template-columns: 1.8fr 1fr 1fr; gap: 56px; margin-bottom: 56px; }
+    .sd-footer-brand { display: flex; flex-direction: column; gap: 14px; }
+    .sd-footer-name { font-family: var(--font-serif); font-size: 2rem; letter-spacing: .2em; color: var(--cream); }
+    .sd-footer-tagline { font-size: .83rem; color: var(--w50); font-style: italic; }
+    .sd-footer-socials { display: flex; gap: 10px; margin-top: 6px; }
+    .sd-social-btn {
+      width: 38px; height: 38px; border-radius: 8px;
+      border: 1px solid var(--w15); display: flex; align-items: center; justify-content: center;
+      color: var(--w50); transition: all .3s ease;
+    }
+    .sd-social-btn:hover { border-color: var(--gold-30); color: var(--gold); }
+    .sd-footer-col h5 { font-size: .68rem; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; font-weight: 600; }
+    .sd-footer-col ul li { margin-bottom: 9px; }
+    .sd-footer-col ul li a { font-size: .85rem; color: var(--w50); transition: color .25s ease; }
+    .sd-footer-col ul li a:hover { color: var(--cream); }
+    .sd-footer-col p { font-size: .83rem; color: var(--w50); line-height: 1.8; }
+    .sd-footer-bottom { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--w08); padding-top: 26px; }
+    .sd-footer-copy { font-size: .76rem; color: var(--w30); }
+    .sd-footer-back { display: inline-flex; align-items: center; gap: 8px; font-size: .76rem; color: var(--w30); transition: color .25s ease; }
+    .sd-footer-back:hover { color: var(--gold); }
+    .sd-kinarya-credit {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 14px 0 0; margin-top: 4px;
+      border-top: 1px solid var(--w04);
+      font-size: .68rem; letter-spacing: .05em; color: var(--w30);
+    }
+    .sd-kinarya-credit a {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--w30); font-weight: 500; transition: color .25s;
+    }
+    .sd-kinarya-credit a:hover { color: var(--gold); }
+    .sd-kinarya-credit img {
+      width: 16px; height: 16px; border-radius: 3px;
+      opacity: .4; display: inline-block;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 960px) {
+      .sd-about-grid, .sd-exp-grid { grid-template-columns: 1fr; gap: 48px; }
+      .sd-about-visual { aspect-ratio: 16/9; }
+      .sd-about-float { right: 16px; }
+      .sd-atm-grid { grid-template-columns: 1fr 1fr; grid-template-rows: auto; }
+      .sd-atm-cell { grid-column: auto !important; grid-row: auto !important; aspect-ratio: 4/3; }
+      .sd-menu-grid { grid-template-columns: 1fr 1fr; }
+      .sd-footer-top { grid-template-columns: 1fr; gap: 36px; }
+      .sd-menu-header { flex-direction: column; align-items: flex-start; gap: 18px; }
+    }
+
+    @media (max-width: 600px) {
+      /* Container & section */
+      .container { padding: 0 18px; }
+      section { padding: 64px 0; }
+
+      /* Nav */
+      .sd-nav { height: 60px; }
+      .sd-nav-inner { height: 60px; }
+      .sd-logo-name { font-size: 1.2rem; letter-spacing: .22em; }
+      .sd-nav-cta { display: none; }
+
+      /* Hero — compact & full-screen */
+      .sd-hero-content { padding-top: 60px; }
+      .sd-hero-title { font-size: clamp(2.4rem, 10.5vw, 3.5rem); line-height: 1.1; margin-bottom: 20px; }
+      .sd-hero-sub { font-size: .88rem; line-height: 1.75; margin-bottom: 28px; max-width: 100%; }
+      .sd-hero-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+      .sd-btn-primary, .sd-btn-secondary { justify-content: center; padding: 15px 20px; font-size: .88rem; }
+      .sd-hero-scroll { display: none; }
+      .sd-hero-eyebrow { margin-bottom: 20px; }
+
+      /* Vibe ticker — hide on small screens */
+      .sd-vibe { display: none; }
+
+      /* About */
+      .sd-about-visual { aspect-ratio: 4/3; }
+      .sd-about-float { display: none; }
+      .sd-about-pillars { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .sd-pillar { padding: 14px 16px; }
+
+      /* Atmosphere */
+      .sd-atm-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+      .sd-atm-cell { aspect-ratio: 1; }
+      .sd-atmosphere-header { margin-bottom: 32px; }
+
+      /* Menu — horizontal swipe carousel */
+      .sd-menu-header { margin-bottom: 28px; }
+      .sd-menu-tabs {
+        overflow-x: auto; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; padding-bottom: 2px;
+      }
+      .sd-menu-tabs::-webkit-scrollbar { display: none; }
+      .sd-tab { white-space: nowrap; }
+      .sd-menu-grid {
+        display: flex; gap: 14px; overflow-x: auto;
+        scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; padding-bottom: 8px;
+        margin: 0 -18px; padding-left: 18px; padding-right: 18px;
+      }
+      .sd-menu-grid::-webkit-scrollbar { display: none; }
+      .sd-menu-card { flex: 0 0 78vw; scroll-snap-align: start; }
+
+      /* Experience */
+      .sd-exp-visual { display: none; }
+      .sd-exp-grid { gap: 0; }
+      .sd-exp-num { font-size: 2rem; min-width: 36px; opacity: .2; }
+      .sd-exp-item { gap: 14px; }
+      .sd-exp-list { gap: 18px; }
+
+      /* Visit */
+      .sd-visit { padding: 72px 0; }
+
+      /* Footer */
+      .sd-footer { padding: 48px 0 28px; }
+      .sd-footer-bottom { flex-direction: column; gap: 12px; text-align: center; }
+      .sd-footer-socials { justify-content: center; }
+
+      /* Space for bottom bar */
+      body { padding-bottom: 72px; }
+    }
+
+    @media (max-width: 390px) {
+      .sd-about-pillars { grid-template-columns: 1fr; }
+      .sd-section-title { font-size: clamp(1.65rem, 8vw, 2.2rem); }
+      .sd-menu-card { flex: 0 0 85vw; }
+      .sd-atm-grid { grid-template-columns: 1fr; }
+      .sd-atm-cell { aspect-ratio: 4/3 !important; }
+    }
+
+    /* ══════════════════════════════════════════════
+       MOBILE FIRST — PRIORITY ENHANCEMENTS
+       ══════════════════════════════════════════════ */
+
+    /* Anchor scroll offset for fixed nav */
+    html { scroll-padding-top: 72px; }
+
+    /* Global: kill tap flash */
+    * { -webkit-tap-highlight-color: transparent; }
+
+    /* Touch devices: disable hover transforms — use active states instead */
+    @media (hover: none) {
+      .sd-menu-card:hover   { transform: none; box-shadow: none; border-color: var(--w08); }
+      .sd-atm-cell:hover    { transform: none; box-shadow: none; }
+      .sd-pillar:hover      { background: var(--charcoal); }
+      .sd-btn-primary:active  { transform: scale(.96); box-shadow: none; }
+      .sd-btn-secondary:active { transform: scale(.96); }
+      .sd-tab:active        { background: var(--w08); color: var(--cream); }
+      .sd-social-btn:active { border-color: var(--gold-30); color: var(--gold); }
+    }
+
+    /* Menu swipe carousel — smoother on mobile */
+    @media (max-width: 600px) {
+      /* Tabs: full-width 3-column equal tap targets */
+      .sd-menu-tabs {
+        display: grid !important;
+        grid-template-columns: repeat(3, 1fr);
+        overflow: visible !important;
+        padding: 5px !important;
+        width: 100%;
+      }
+      .sd-tab {
+        text-align: center;
+        padding: 11px 4px !important;
+        font-size: .8rem !important;
+        white-space: nowrap;
+        min-height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Menu carousel: peek next card at right edge */
+      .sd-menu-grid {
+        padding-right: 36px !important;
+        will-change: scroll-position;
+        overscroll-behavior-x: contain;
+      }
+      .sd-menu-card { flex: 0 0 74vw !important; border-radius: 12px; }
+      .sd-menu-img  { aspect-ratio: 3/2; }
+      .sd-menu-body { padding: 14px 16px 18px; }
+      .sd-menu-name { font-size: 1rem; margin-bottom: 5px; }
+      .sd-menu-desc { font-size: .8rem; line-height: 1.6; margin-bottom: 10px; }
+
+      /* Atmosphere: portrait cells — more dramatic */
+      .sd-atm-cell { aspect-ratio: 2/3 !important; border-radius: 10px; }
+      .sd-atm-label { font-size: .6rem; padding: 4px 9px; }
+      .sd-atm-inner { padding: 14px; }
+
+      /* About: tighter quote */
+      .sd-about-quote { font-size: 1.1rem; line-height: 1.45; bottom: 20px; left: 20px; right: 20px; }
+      .sd-about-quote::before { font-size: 2.5rem; margin-bottom: 4px; }
+      .sd-pillar h4 { font-size: .87rem; }
+      .sd-pillar p  { font-size: .75rem; }
+
+      /* Experience: readable on mobile */
+      .sd-exp-text h4 { font-size: 1rem; margin-bottom: 4px; }
+      .sd-exp-text p  { font-size: .82rem; }
+
+      /* Visit CTA */
+      .sd-visit-content p { font-size: .9rem !important; margin-bottom: 28px !important; }
+      .sd-visit-content h2 { font-size: clamp(2.2rem, 9vw, 3rem) !important; }
+
+      /* Footer: centered on mobile */
+      .sd-footer-top   { gap: 28px; }
+      .sd-footer-name  { font-size: 1.5rem; letter-spacing: .15em; }
+      .sd-footer-tagline { font-size: .78rem; }
+      .sd-footer-col   { text-align: center; }
+      .sd-footer-col h5 { text-align: center; }
+      .sd-footer-col ul { display: flex; flex-direction: column; align-items: center; }
+      .sd-footer-col p  { text-align: center; }
+
+      /* Menu header: tighter gap */
+      .sd-menu-header { margin-bottom: 22px; gap: 14px; }
+      .sd-atmosphere-header { margin-bottom: 28px; }
+      .sd-section-title { line-height: 1.2; }
+    }
+
+    /* ── MOBILE BOTTOM BAR ── */
+    .sd-mobile-bar { display: none; }
+
+    @media (max-width: 600px) {
+      .sd-mobile-bar {
+        display: flex; position: fixed;
+        bottom: 0; left: 0; right: 0; z-index: 9999;
+        background: rgba(11,11,12,.97); backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border-top: 1px solid var(--w08);
+        padding: 10px 14px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        gap: 8px; align-items: center;
+      }
+      .sd-mbar-btn {
+        flex: 1; display: flex; align-items: center; justify-content: center;
+        gap: 6px; padding: 11px 8px; border-radius: 10px;
+        font-size: .7rem; font-weight: 600; letter-spacing: .03em;
+        transition: transform .18s ease, opacity .18s ease;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .sd-mbar-btn:active { transform: scale(.94); opacity: .8; }
+      .sd-mbar-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+      .sd-mbar-ig {
+        background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%);
+        color: #fff;
+      }
+      .sd-mbar-tiktok {
+        background: var(--charcoal); color: var(--cream);
+        border: 1px solid var(--w15);
+      }
+      .sd-mbar-visit {
+        background: var(--orange); color: var(--cream);
+      }
+    }
+
+    /* ── MOBILE-FIRST PRIORITY PASS ── */
+    @supports (height: 100svh) {
+      .sd-hero { min-height: 100svh; }
+    }
+
+    @media (max-width: 600px) {
+      html { scroll-padding-top: 68px; }
+      body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+
+      .sd-progress { height: 3px; }
+      .sd-nav {
+        height: 64px;
+        background: rgba(11,11,12,.72);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+      }
+      .sd-nav-inner {
+        height: 64px;
+        display: grid;
+        grid-template-columns: 48px 1fr 48px;
+        gap: 8px;
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+      .sd-back {
+        width: 44px;
+        height: 44px;
+        justify-content: center;
+        border: 1px solid var(--w08);
+        border-radius: 10px;
+        color: var(--w70);
+        font-size: 0;
+      }
+      .sd-back svg { width: 18px; height: 18px; }
+      .sd-logo-wrap {
+        min-width: 0;
+        overflow: hidden;
+      }
+      .sd-logo-name {
+        font-size: clamp(1rem, 5vw, 1.25rem);
+        letter-spacing: .16em;
+        max-width: 100%;
+      }
+      .sd-logo-tag {
+        font-size: .52rem;
+        letter-spacing: .16em;
+        white-space: nowrap;
+      }
+
+      .sd-hero {
+        align-items: flex-end;
+        min-height: 100svh;
+        padding-bottom: 34px;
+      }
+      .sd-hero-overlay {
+        background:
+          linear-gradient(to bottom, rgba(11,11,12,.3) 0%, rgba(11,11,12,.18) 36%, rgba(11,11,12,.94) 100%),
+          linear-gradient(to right, rgba(11,11,12,.72) 0%, rgba(11,11,12,.2) 100%);
+      }
+      .sd-hero-orb1 { display: none; }
+      .sd-hero-content {
+        padding-top: 96px;
+        padding-bottom: 8px;
+      }
+      .sd-hero-eyebrow {
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .sd-eyebrow-line { width: 28px; }
+      .sd-eyebrow-text {
+        font-size: .58rem;
+        letter-spacing: .2em;
+      }
+      .sd-hero-title {
+        font-size: clamp(2.45rem, 13vw, 3.75rem);
+        line-height: 1.04;
+        margin-bottom: 18px;
+      }
+      .sd-hero-sub {
+        font-size: .9rem;
+        line-height: 1.72;
+        margin-bottom: 24px;
+      }
+      .sd-btn-primary,
+      .sd-btn-secondary {
+        min-height: 50px;
+        border-radius: 10px;
+        white-space: normal;
+        text-align: center;
+      }
+
+      .sd-section-title {
+        font-size: clamp(1.9rem, 9vw, 2.6rem);
+      }
+      .sd-section-body {
+        font-size: .92rem;
+        line-height: 1.76;
+      }
+      .sd-eyebrow-label {
+        font-size: .58rem;
+        letter-spacing: .2em;
+      }
+
+      .sd-about-grid,
+      .sd-exp-grid {
+        gap: 30px;
+      }
+      .sd-about-content { gap: 20px; }
+      .sd-about-visual {
+        aspect-ratio: 3/4;
+        border-radius: 10px;
+      }
+      .sd-about-frame { inset: 12px; }
+      .sd-about-pillars {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        margin: 0 -18px;
+        padding: 0 18px 6px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      .sd-about-pillars::-webkit-scrollbar { display: none; }
+      .sd-pillar {
+        flex: 0 0 76%;
+        scroll-snap-align: start;
+        min-height: 122px;
+      }
+
+      .sd-atm-grid {
+        display: flex;
+        gap: 10px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        margin: 0 -18px;
+        padding: 0 18px 8px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      .sd-atm-grid::-webkit-scrollbar { display: none; }
+      .sd-atm-cell {
+        flex: 0 0 72vw;
+        scroll-snap-align: start;
+        aspect-ratio: 3/4 !important;
+      }
+
+      .sd-menu-grid {
+        gap: 12px;
+        padding-bottom: 12px;
+      }
+      .sd-menu-card {
+        flex-basis: 80vw !important;
+      }
+      .sd-menu-img { aspect-ratio: 4/3; }
+      .sd-menu-img-tag {
+        top: 10px;
+        right: 10px;
+      }
+
+      .sd-exp-item {
+        padding: 16px 0;
+        border-bottom: 1px solid var(--w08);
+      }
+      .sd-exp-item:last-child { border-bottom: 0; }
+      .sd-exp-num { min-width: 32px; }
+
+      .sd-visit {
+        min-height: 62vh;
+        display: flex;
+        align-items: center;
+      }
+      .sd-footer { padding-bottom: 32px; }
+      .sd-kinarya-credit {
+        flex-wrap: wrap;
+        text-align: center;
+      }
+      .sd-mobile-bar {
+        min-height: calc(66px + env(safe-area-inset-bottom));
+      }
+      .sd-mbar-btn {
+        min-width: 0;
+        min-height: 46px;
+        border-radius: 10px;
+      }
+    }
+
+    @media (max-width: 390px) {
+      .sd-nav-inner {
+        grid-template-columns: 42px 1fr 42px;
+        padding-left: 10px;
+        padding-right: 10px;
+      }
+      .sd-back {
+        width: 40px;
+        height: 40px;
+      }
+      .sd-logo-name {
+        font-size: .98rem;
+        letter-spacing: .12em;
+      }
+      .sd-logo-tag { display: none; }
+      .sd-hero-title {
+        font-size: clamp(2.25rem, 14vw, 3rem);
+      }
+      .sd-atm-cell,
+      .sd-menu-card {
+        flex-basis: 86vw !important;
+      }
+      .sd-pillar { flex-basis: 84%; }
+      .sd-mbar-btn {
+        gap: 4px;
+        padding-left: 6px;
+        padding-right: 6px;
+        font-size: .66rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="sd-progress" id="sdProgress"></div>
+
+  <!-- ========== NAVBAR ========== -->
+  <nav class="sd-nav" id="sdNav">
+    <div class="container sd-nav-inner">
+      <a href="index.html" class="sd-back">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+        Redbox
+      </a>
+      <div class="sd-logo-wrap">
+        <span class="sd-logo-name">SUNDAZE</span>
+        <span class="sd-logo-tag">Coffee &amp; Eatery</span>
+      </div>
+      <a href="#visit" class="sd-nav-cta">Visit Us</a>
+    </div>
+  </nav>
+
+  <!-- ========== HERO ========== -->
+  <!-- Photo: outdoor terrace malam, cinematic wide angle -->
+  <section class="sd-hero" id="hero">
+    <div class="sd-hero-bg">
+      <img class="sd-photo" id="heroImg" alt="SUNDAZE outdoor atmosphere at night" style="object-position: center 40%;" loading="eager" fetchpriority="high">
+      <div class="sd-hero-overlay"></div>
+      <div class="sd-hero-grain"></div>
+      <div class="sd-hero-orb1"></div>
+    </div>
+    <div class="container sd-hero-content">
+      <div class="sd-hero-eyebrow">
+        <span class="sd-eyebrow-line"></span>
+        <span class="sd-eyebrow-text">Lifestyle Coffee &amp; Eatery — Cirebon</span>
+      </div>
+      <h1 class="sd-hero-title">
+        <em>Take it slow.</em>
+        <strong>Stay a little longer.</strong>
+      </h1>
+      <p class="sd-hero-sub">
+        SUNDAZE bukan sekadar tempat minum kopi. Ini adalah ruang untuk berhenti sebentar — merasakan warmth, presence, dan slow-living yang sesungguhnya.
+      </p>
+      <div class="sd-hero-actions">
+        <a href="#menu" class="sd-btn-primary">
+          Explore Menu
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#atmosphere" class="sd-btn-secondary">Our Space</a>
+      </div>
+    </div>
+    <div class="sd-hero-scroll">
+      <span>Scroll</span>
+      <div class="sd-scroll-line"></div>
+    </div>
+  </section>
+
+  <!-- ========== VIBE TICKER ========== -->
+  <div class="sd-vibe">
+    <div class="sd-vibe-inner">
+      <div class="sd-vibe-track">
+        <div class="sd-vibe-item"><span>take it slow</span><div class="dot"></div><span>no rush today</span><div class="dot"></div><span>stay a little longer</span><div class="dot"></div><span>warm nights, slow moments</span><div class="dot"></div><span>Sunday feeling, every day</span><div class="dot"></div><span>good food, good mood</span><div class="dot"></div></div>
+        <div class="sd-vibe-item"><span>take it slow</span><div class="dot"></div><span>no rush today</span><div class="dot"></div><span>stay a little longer</span><div class="dot"></div><span>warm nights, slow moments</span><div class="dot"></div><span>Sunday feeling, every day</span><div class="dot"></div><span>good food, good mood</span><div class="dot"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== ABOUT ========== -->
+  <section class="sd-about" id="about">
+    <div class="container">
+      <div class="sd-about-grid">
+
+        <!-- Photo: Soft Morning Light — wooden chair closeup, warm natural -->
+        <div class="sd-about-visual sd-reveal">
+          <img class="sd-photo" id="aboutImg" alt="Soft morning light at SUNDAZE" style="object-position: center 30%;" loading="lazy">
+          <div class="sd-about-overlay"></div>
+          <div class="sd-about-frame"></div>
+          <div class="sd-about-quote">
+            A warm escape<br/>from routine.
+          </div>
+          <div class="sd-about-float">
+            <div class="sd-float-num">∞</div>
+            <div class="sd-float-label">Sunday Energy</div>
+          </div>
+        </div>
+
+        <div class="sd-about-content sd-reveal sd-reveal-delay-2">
+          <div>
+            <div class="sd-eyebrow-label">Our Story</div>
+            <h2 class="sd-section-title">
+              Bukan hanya kopi.<br/>
+              <em>Sebuah perasaan.</em>
+            </h2>
+          </div>
+          <p class="sd-section-body">
+            SUNDAZE lahir dari satu keyakinan sederhana: setiap orang berhak merasakan kedamaian Sunday — bahkan di hari Senin. Kami membangun ruang yang mengundangmu untuk memperlambat langkah, menikmati momen, dan kembali hadir sepenuhnya.
+          </p>
+          <p class="sd-section-body">
+            Atmosphere adalah produk kami yang sesungguhnya. Cahaya hangat, material natural, dan energi yang santai — semuanya dirancang agar kamu merasa nyaman, diterima, dan tidak terburu-buru.
+          </p>
+          <div class="sd-about-pillars">
+            <div class="sd-pillar sd-reveal sd-reveal-delay-1">
+              <h4>Escape</h4>
+              <p>Keluar sebentar dari hiruk pikuk kota.</p>
+            </div>
+            <div class="sd-pillar sd-reveal sd-reveal-delay-2">
+              <h4>Warmth</h4>
+              <p>Cahaya, interaksi, dan suasana yang hangat.</p>
+            </div>
+            <div class="sd-pillar sd-reveal sd-reveal-delay-3">
+              <h4>Presence</h4>
+              <p>Momen kecil yang terasa nyata dan bermakna.</p>
+            </div>
+            <div class="sd-pillar sd-reveal sd-reveal-delay-4">
+              <h4>Atmosphere</h4>
+              <p>Space itu sendiri adalah bagian dari pengalaman.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== ATMOSPHERE GALLERY ========== -->
+  <section class="sd-atmosphere" id="atmosphere">
+    <div class="container">
+      <div class="sd-atmosphere-header sd-reveal">
+        <div class="sd-eyebrow-label">Our Space</div>
+        <h2 class="sd-section-title">Space yang terasa <em>immersive.</em></h2>
+      </div>
+      <div class="sd-atm-grid">
+
+        <!-- Cell 1: Indoor lounge — brick wall, warm strip light -->
+        <div class="sd-atm-cell sd-reveal">
+          <img class="sd-photo" id="atm1Img" alt="Main Lounge" style="object-position: center 40%;" loading="lazy">
+          <div class="sd-atm-overlay"></div>
+          <div class="sd-atm-inner"><span class="sd-atm-label">Main Lounge</span></div>
+        </div>
+
+        <!-- Cell 2: Coffee Bar — cherry blossom tree, retro TVs -->
+        <div class="sd-atm-cell sd-reveal sd-reveal-delay-1">
+          <img class="sd-photo" id="atm2Img" alt="Coffee Bar" style="object-position: center 20%;" loading="lazy">
+          <div class="sd-atm-overlay"></div>
+          <div class="sd-atm-inner"><span class="sd-atm-label">Coffee Bar</span></div>
+        </div>
+
+        <!-- Cell 3: Indoor dining — people, arch windows -->
+        <div class="sd-atm-cell sd-reveal sd-reveal-delay-2">
+          <img class="sd-photo" id="atm3Img" alt="Social Dining" style="object-position: center 30%;" loading="lazy">
+          <div class="sd-atm-overlay"></div>
+          <div class="sd-atm-inner"><span class="sd-atm-label">Social Dining</span></div>
+        </div>
+
+        <!-- Cell 4: Outdoor area — arch windows + plants, umbrella -->
+        <div class="sd-atm-cell sd-reveal sd-reveal-delay-1">
+          <img class="sd-photo" id="atm4Img" alt="Outdoor Area" style="object-position: center 50%;" loading="lazy">
+          <div class="sd-atm-overlay"></div>
+          <div class="sd-atm-inner"><span class="sd-atm-label">Outdoor Area</span></div>
+        </div>
+
+        <!-- Cell 5: Vintage shelf — retro electronics, dark wood -->
+        <div class="sd-atm-cell sd-reveal sd-reveal-delay-2">
+          <img class="sd-photo" id="atm5Img" alt="Warm Corner" style="object-position: center 40%;" loading="lazy">
+          <div class="sd-atm-overlay"></div>
+          <div class="sd-atm-inner"><span class="sd-atm-label">Warm Corner</span></div>
+        </div>
+
+        <!-- Cell 6: Bird's eye overview of full space -->
+        <div class="sd-atm-cell sd-reveal sd-reveal-delay-3">
+          <img class="sd-photo" id="atm6Img" alt="Overview" style="object-position: center 30%;" loading="lazy">
+          <div class="sd-atm-overlay"></div>
+          <div class="sd-atm-inner"><span class="sd-atm-label">The Full Space</span></div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== MENU ========== -->
+  <section class="sd-menu" id="menu">
+    <div class="container">
+      <div class="sd-menu-header">
+        <div class="sd-reveal">
+          <div class="sd-eyebrow-label">Featured Menu</div>
+          <h2 class="sd-section-title">Food sebagai<br/><em>bagian dari lifestyle.</em></h2>
+        </div>
+        <div class="sd-menu-tabs sd-reveal sd-reveal-delay-2">
+          <span class="sd-tab active" data-tab="drinks">Drinks</span>
+          <span class="sd-tab" data-tab="food">Food</span>
+          <span class="sd-tab" data-tab="dessert">Dessert</span>
+        </div>
+      </div>
+      <div class="sd-menu-grid">
+
+        <!-- ── DRINKS ── -->
+        <div class="sd-menu-card sd-reveal" data-category="drinks">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/Cuaca lagi terik-teriknya dan Sundaze hadir dengan tminuman yang paling ditunggu-tungguViolet bu.jpg" alt="Violet Bu" style="object-position:center 50%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Signature</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Violet Bu</h3>
+            <p class="sd-menu-desc">Minuman unggulan Sundaze — warna violet yang menggoda, rasa yang memanjakan, dan visual yang Instagrammable.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Drinks</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-1" data-category="drinks">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/senyawa.webp" alt="Signature Coffee" style="object-position:center 40%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Coffee</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Signature Coffee Series</h3>
+            <p class="sd-menu-desc">Apapun kondisinya, Sundaze selalu punya kopi yang cocok. Dari manual brew hingga creamy latte favorite.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Drinks</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-2" data-category="drinks">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/kopyor.webp" alt="Coffee Collection" style="object-position:center 40%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Popular</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Coffee Collection</h3>
+            <p class="sd-menu-desc">Serupa tapi tak sama — pilih mana yang paling cocok dengan mood harimu. Hot atau iced, classic atau twist.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Drinks</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal" data-category="drinks">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/spesial.webp" alt="Sundaze Specials" style="object-position:center 45%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Special</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Sundaze Specials</h3>
+            <p class="sd-menu-desc">Menu minuman spesial yang hadir merayakan momen — fun, bold, dan penuh kejutan setiap kali datang.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Drinks</span></div>
+          </div>
+        </div>
+
+        <!-- ── FOOD ── -->
+        <div class="sd-menu-card sd-reveal" data-category="food" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/Sudah waktunya istirahat makan siang, dan Sundaze punya semua yang kamu butuhkan, ada Ayam Betut (1).jpg" alt="Ayam Betutu" style="object-position:center 50%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Best Seller</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Ayam Betutu</h3>
+            <p class="sd-menu-desc">Ayam berbumbu rempah khas Bali, slow-cooked hingga meresap sempurna — kaya rasa, comfort food sejati.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Food</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-1" data-category="food" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/udah jam makan siang tapi bingung mau makan apajawabannya satu- Sundaze, ada Nasi Goreng Ayam As (1).jpg" alt="Nasi Goreng Ayam Asap" style="object-position:center 45%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Favorite</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Nasi Goreng Ayam Asap</h3>
+            <p class="sd-menu-desc">Nasi goreng dengan ayam asap smoky, telur, kerupuk, dan acar segar — jawaban sempurna untuk makan siang.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Food</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-2" data-category="food" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/udah jam makan siang tapi bingung mau makan apajawabannya satu- Sundaze, ada Nasi Goreng Ayam As (2).jpg" alt="Makan Siang Sundaze" style="object-position:center 35%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Lunch Set</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Makan Siang di Sundaze</h3>
+            <p class="sd-menu-desc">Lunch bukan sekadar mengisi perut. Di Sundaze, makan siang adalah waktu untuk meluangkan diri dan menikmati momen.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Food</span></div>
+          </div>
+        </div>
+
+        <!-- ── DESSERT ── -->
+        <div class="sd-menu-card sd-reveal" data-category="dessert" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/Rasa ngidam gak liat kalender, kamu juga gak harus nunggu. Nikmati kesempurnaan yang renyah kap (1).webp" alt="Renyah Bites" style="object-position:center 40%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Must Try</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Renyah Bites</h3>
+            <p class="sd-menu-desc">Rasa ngidam gak lihat kalender — dan Sundaze selalu siap dengan pilihan renyah yang bikin susah berhenti.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Dessert</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-1" data-category="dessert" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/Rasa ngidam gak liat kalender, kamu juga gak harus nunggu. Nikmati kesempurnaan yang renyah kap (2).webp" alt="Pastry Harian" style="object-position:center 40%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Daily</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Pastry Harian</h3>
+            <p class="sd-menu-desc">Pilihan pastry segar setiap hari — kesempurnaan yang renyah, cocok menemani kopi pagi atau sore.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Dessert</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-2" data-category="dessert" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/Rasa ngidam gak liat kalender, kamu juga gak harus nunggu. Nikmati kesempurnaan yang renyah kap (3).webp" alt="Sweet Selection" style="object-position:center 40%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Favorite</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Sweet Selection</h3>
+            <p class="sd-menu-desc">Koleksi dessert Sundaze yang selalu bikin kamu balik lagi — manis, renyah, dan sempurna untuk berbagi.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Dessert</span></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== EXPERIENCE ========== -->
+  <section class="sd-experience" id="experience">
+    <div class="container">
+      <div class="sd-exp-grid">
+        <div class="sd-exp-content sd-reveal">
+          <div>
+            <div class="sd-eyebrow-label">The Experience</div>
+            <h2 class="sd-section-title">Setiap detail,<br/><em>disengaja.</em></h2>
+          </div>
+          <div class="sd-exp-list">
+            <div class="sd-exp-item">
+              <div class="sd-exp-num">01</div>
+              <div class="sd-exp-text">
+                <h4>Cahaya sebagai Emosi</h4>
+                <p>Warm spotlights dalam ruang yang gelap menciptakan intimacy yang tidak bisa direplikasi. Setiap sudut dirancang untuk terasa sinematik.</p>
+              </div>
+            </div>
+            <div class="sd-exp-item">
+              <div class="sd-exp-num">02</div>
+              <div class="sd-exp-text">
+                <h4>Musik &amp; Visual Sinkron</h4>
+                <p>Playlist kami dipilih dengan cermat — ambient, lo-fi, dan indie yang mendukung mood santai tanpa mengganggu percakapan.</p>
+              </div>
+            </div>
+            <div class="sd-exp-item">
+              <div class="sd-exp-num">03</div>
+              <div class="sd-exp-text">
+                <h4>Space yang Immersive</h4>
+                <p>Exposed brick, cherry blossom tree, vintage collections — setiap elemen dipilih untuk membuat kamu ingin berlama-lama.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sd-exp-visual sd-reveal sd-reveal-delay-2">
+          <!-- Big card: outdoor garden malam hari -->
+          <div class="sd-exp-card">
+            <img class="sd-photo" id="exp1Img" alt="Outdoor garden at night" style="object-position: center 40%;" loading="lazy">
+            <div class="sd-exp-card-overlay"></div>
+            <div class="sd-exp-card-content">
+              <span class="num">5+</span>
+              <span class="lbl">Hours Average<br/>Stay</span>
+            </div>
+          </div>
+          <!-- Small top: comfortable outdoors green -->
+          <div class="sd-exp-card">
+            <img class="sd-photo" id="exp2Img" alt="Comfortable outdoors" style="object-position: center 40%;" loading="lazy">
+            <div class="sd-exp-card-overlay"></div>
+            <div class="sd-exp-card-content">
+              <span class="num">7</span>
+              <span class="lbl">Days Open<br/>09.00 – 22.00</span>
+            </div>
+          </div>
+          <!-- Small bottom: indoor dining social -->
+          <div class="sd-exp-card">
+            <img class="sd-photo" id="exp3Img" alt="Social atmosphere" style="object-position: center 30%;" loading="lazy">
+            <div class="sd-exp-card-overlay"></div>
+            <div class="sd-exp-card-content">
+              <span class="num">∞</span>
+              <span class="lbl">Sunday Vibes<br/>Every Day</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== VISIT CTA ========== -->
+  <!-- Background: wide outdoor terrace -->
+  <section class="sd-visit" id="visit">
+    <div class="sd-visit-bg">
+      <img class="sd-photo" id="visitImg" alt="SUNDAZE outdoor" style="object-position: center 50%;" loading="lazy">
+      <div class="sd-visit-overlay"></div>
+    </div>
+    <div class="container sd-visit-content">
+      <div class="sd-reveal">
+        <div class="sd-eyebrow-label" style="justify-content:center;">Come Visit Us</div>
+        <h2 class="sd-section-title" style="font-size:clamp(2.5rem,6vw,5rem);margin-bottom:18px;">
+          <em>No rush today.</em>
+        </h2>
+        <p style="font-size:1rem;color:var(--w50);margin-bottom:36px;max-width:420px;margin-left:auto;margin-right:auto;line-height:1.85;">
+          Datang, duduk, dan biarkan SUNDAZE memeluk harimu yang panjang. Kami selalu punya kursi untukmu.
+        </p>
+        <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+          <a href="#" class="sd-btn-primary">
+            Get Directions
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </a>
+          <a href="https://www.instagram.com/sundazecoffeeeatery/" target="_blank" rel="noopener" class="sd-btn-secondary">Follow @sundazecoffeeeatery</a>
+        </div>
+        <p style="margin-top:36px;font-size:.8rem;color:var(--w30);">
+          Cirebon &nbsp;·&nbsp; 09:00 – 22:00 &nbsp;·&nbsp; Buka 7 hari seminggu
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== FOOTER ========== -->
+  <footer class="sd-footer">
+    <div class="container">
+      <div class="sd-footer-top">
+        <div class="sd-footer-brand">
+          <div class="sd-footer-name">SUNDAZE</div>
+          <div class="sd-footer-tagline">"Sunday feeling, every day."</div>
+          <p style="font-size:.8rem;color:var(--w30);line-height:1.7;max-width:270px;">
+            A lifestyle coffee &amp; eatery space. Dibuat untuk mereka yang percaya bahwa momen kecil layak dinikmati sepenuhnya.
+          </p>
+          <div class="sd-footer-socials">
+            <a href="https://www.instagram.com/sundazecoffeeeatery/" target="_blank" rel="noopener" class="sd-social-btn" aria-label="Instagram">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>
+            </a>
+            <a href="https://www.tiktok.com/@sundazecoffeeandeatery_" target="_blank" rel="noopener" class="sd-social-btn" aria-label="TikTok">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.34 6.34 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.72a8.17 8.17 0 0 0 4.77 1.52V6.79a4.85 4.85 0 0 1-1-.1z"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="sd-footer-col">
+          <h5>Explore</h5>
+          <ul>
+            <li><a href="#about">Our Story</a></li>
+            <li><a href="#atmosphere">Space</a></li>
+            <li><a href="#menu">Menu</a></li>
+            <li><a href="#experience">Experience</a></li>
+            <li><a href="#visit">Visit Us</a></li>
+          </ul>
+        </div>
+        <div class="sd-footer-col">
+          <h5>Contact</h5>
+          <p>Cirebon, Jawa Barat</p>
+          <br/>
+          <p style="color:var(--gold);">@sundazecoffeeeatery</p>
+          <br/>
+          <p>09:00 – 22:00<br/>Senin – Minggu</p>
+        </div>
+      </div>
+      <div class="sd-footer-bottom">
+        <span class="sd-footer-copy">© 2025 SUNDAZE. Part of Redbox Group.</span>
+        <a href="index.html" class="sd-footer-back">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          Back to Redbox Barbershop
+        </a>
+      </div>
+      <div class="sd-kinarya-credit">
+        <a href="https://kinaryaloka-digital.vercel.app/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // ── Photo paths ──
+    const P = {
+      hero:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr (5).jpg",
+      about: "sundaze/public/Cuma pengen tau aja sih kalo ke Sundaze dimanakah tempat favorit kamu Coba jawab dan kasih alas.webp",
+      atm1:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr.jpg",
+      atm2:  "sundaze/public/bar.jpg",
+      atm3:  "sundaze/public/dining.jpg",
+      atm4:  "sundaze/public/outdoor.jpg",
+      atm5:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr (4).jpg",
+      atm6:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr (6).jpg",
+      exp1:  "sundaze/public/Halo warga Cirebon!Kalo kamu lagi nyari tempat pelarian dari hiruk pikuk duniawi, aku rekomendas (4).jpg",
+      exp2:  "sundaze/public/Cuma pengen tau aja sih kalo ke Sundaze dimanakah tempat favorit kamu Coba jawab dan kasih alas (1).webp",
+      exp3:  "sundaze/public/Halo warga Cirebon!Kalo kamu lagi nyari tempat pelarian dari hiruk pikuk duniawi, aku rekomendas (2).jpg",
+      visit: "sundaze/public/Halo warga Cirebon!Kalo kamu lagi nyari tempat pelarian dari hiruk pikuk duniawi, aku rekomendas (5).jpg",
+    };
+
+    // Apply all photo paths
+    Object.entries(P).forEach(([key, src]) => {
+      const el = document.getElementById(key + 'Img');
+      if (el) el.src = src;
+    });
+
+    // ── Scroll progress + nav ──
+    const prog = document.getElementById('sdProgress');
+    const nav  = document.getElementById('sdNav');
+    window.addEventListener('scroll', () => {
+      const pct = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;
+      prog.style.width = pct + '%';
+      nav.classList.toggle('scrolled', window.scrollY > 30);
+    }, { passive: true });
+
+    // ── Reveal on scroll ──
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -36px 0px' });
+    document.querySelectorAll('.sd-reveal').forEach(el => obs.observe(el));
+
+    // ── Menu tabs with real category filtering ──
+    function filterMenu(cat) {
+      document.querySelectorAll('.sd-menu-card').forEach(card => {
+        card.style.display = card.dataset.category === cat ? '' : 'none';
+      });
+    }
+    filterMenu('drinks');
+    document.querySelectorAll('.sd-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.sd-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        filterMenu(tab.dataset.tab);
+      });
+    });
+  </script>
+
+  <!-- ========== MOBILE BOTTOM BAR ========== -->
+  <div class="sd-mobile-bar" id="sdMobileBar">
+    <a href="https://www.instagram.com/sundazecoffeeeatery/" target="_blank" rel="noopener" class="sd-mbar-btn sd-mbar-ig">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+      <span>Instagram</span>
+    </a>
+    <a href="https://www.tiktok.com/@sundazecoffeeandeatery_" target="_blank" rel="noopener" class="sd-mbar-btn sd-mbar-tiktok">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.34 6.34 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.72a8.17 8.17 0 0 0 4.77 1.52V6.79a4.85 4.85 0 0 1-1-.1z"/></svg>
+      <span>TikTok</span>
+    </a>
+    <a href="#visit" class="sd-mbar-btn sd-mbar-visit">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      <span>Visit Us</span>
+    </a>
+  </div>
+
+</body>
+</html>
