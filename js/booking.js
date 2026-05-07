@@ -415,7 +415,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const ini = getInitials(b.name);
         return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--bg-4);color:var(--white);font-weight:800;font-size:1.2rem;letter-spacing:.06em;">${ini}</div>`;
       }
-      const pos = String(b.id) === 'tegal-yafi' ? 'object-fit:cover;object-position:80% center;' : '';
+      const _posMap = { 'tegal-yafi': '80% center', 'tegal-wawan': 'center top' };
+      const pos = _posMap[String(b.id)] ? `object-fit:cover;object-position:${_posMap[String(b.id)]};` : '';
       const styleAttr = pos ? ` style="${pos}"` : '';
       return `<img src="${img}" alt="${b.name}" loading="lazy" referrerpolicy="no-referrer"${styleAttr} onerror="this.onerror=null;this.src='Brand_assets/Kapster1.jpg';" />`;
     }
