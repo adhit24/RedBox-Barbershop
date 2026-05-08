@@ -123,7 +123,7 @@ section{padding:100px 0}
   position:relative;display:flex;align-items:center;
   background:var(--bg-3);border:1px solid var(--w10);
   border-radius:50px;padding:5px;
-  margin-left:24px;margin-right:auto;
+  margin-left:12px;margin-right:auto;
 }
 .nav-pill-track{
   position:absolute;background:var(--red);border-radius:50px;
@@ -160,6 +160,7 @@ section{padding:100px 0}
   font-size:.85rem;font-weight:600;
   padding:10px 22px;border-radius:var(--radius);
   transition:var(--transition);white-space:nowrap;
+  margin-left:12px;
 }
 .btn-book-nav:hover{background:var(--red-hover);transform:translateY(-1px)}
 
@@ -170,7 +171,7 @@ section{padding:100px 0}
   font-size:.85rem;font-weight:600;
   padding:9px 16px;border-radius:var(--radius);
   transition:var(--transition);white-space:nowrap;
-  gap:6px;margin-left:10px;
+  gap:6px;margin-left:24px;
 }
 .btn-member-nav:hover{border-color:var(--w50);color:var(--white);background:var(--w05);transform:translateY(-1px)}
 .btn-member-nav svg{width:18px;height:18px}
