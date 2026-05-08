@@ -153,6 +153,8 @@ section{padding:100px 0}
 }
 .nav-sundaze:hover{color:#F5F1E8 !important;}
 
+.nav-menu-footer{display:none}
+
 .btn-book-nav{
   background:var(--red);color:var(--white);
   font-size:.85rem;font-weight:600;
