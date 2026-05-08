@@ -213,6 +213,8 @@
     <div class="sect-label">Overview</div>
     <a href="#" class="active" data-page="status">Status & OAuth</a>
     <a href="#" data-page="sync">Sync</a>
+    <div class="sect-label">Orders</div>
+    <a href="#" data-page="orders">Online Orders</a>
     <div class="sect-label">Configuration</div>
     <a href="#" data-page="mapping">Item Mapping</a>
     <a href="#" data-page="guide">Setup Guide</a>
@@ -326,6 +328,59 @@
       </div>
     </div>
 
+    <!-- ── ONLINE ORDERS PAGE ── -->
+    <div class="page" id="page-orders">
+      <h2>Online Orders</h2>
+      <p class="page-desc">Kelola reservasi dari website. Semua order yang masuk dari booking online tampil di sini.</p>
+
+      <div class="alert alert-warning show" id="alertProdukTerjual">
+        <strong>⚠ Catatan Rekap Produk Terjual Moka:</strong><br>
+        Order online hanya masuk ke <em>Produk Terjual</em> di Moka jika kasir memproses <strong>pembayaran melalui POS terminal</strong>
+        (buka bill → pilih metode bayar → close). Jika kasir hanya klik "Complete" di layar Online Orders Moka tanpa buka bill,
+        transaksi <strong>tidak tercatat</strong> di rekap shift. Pastikan alur kasir: <strong>Accept → Buka di POS → Proses Bayar → Close Bill</strong>.
+      </div>
+
+      <div id="alertOrders" class="alert"></div>
+
+      <div class="section">
+        <div class="section-title">
+          Filter
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="ordersOutletSel" class="inline-select">
+              <option value="">Semua Cabang</option>
+            </select>
+            <select id="ordersStatusSel" class="inline-select">
+              <option value="">Semua Status</option>
+              <option value="reserved">Reserved</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <input type="date" id="ordersDate" class="inline-select" style="padding:4px 8px">
+            <button class="btn btn-blue" id="btnLoadOrders" style="font-size:.8rem;padding:6px 14px">↻ Muat</button>
+          </div>
+        </div>
+
+        <table id="ordersTable">
+          <thead>
+            <tr>
+              <th>Waktu</th>
+              <th>Pelanggan</th>
+              <th>Kapster</th>
+              <th>Layanan</th>
+              <th>Cabang</th>
+              <th>Status</th>
+              <th>Moka ID</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody">
+            <tr><td colspan="8" class="empty">Klik "Muat" untuk memuat data</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ── GUIDE PAGE ── -->
     <div class="page" id="page-guide">
       <h2>Setup Guide</h2>
@@ -427,6 +482,7 @@ document.querySelectorAll('.sidebar a[data-page]').forEach(a => {
     document.getElementById('page-' + page)?.classList.add('active');
     if (page === 'status')  loadStatus();
     if (page === 'sync')    loadSyncLogs();
+    if (page === 'orders')  initOrdersPage();
     if (page === 'mapping') { /* user clicks Load */ }
   });
 });
@@ -717,6 +773,150 @@ document.getElementById('btnSaveMappings')?.addEventListener('click', async () =
     btn.innerHTML = '💾 Simpan Mapping';
   }
 });
+
+// ── ONLINE ORDERS ─────────────────────────────────────────────
+
+async function loadOnlineOrders() {
+  const btn       = document.getElementById('btnLoadOrders');
+  const tbody     = document.getElementById('ordersBody');
+  const outletVal = document.getElementById('ordersOutletSel')?.value;
+  const statusVal = document.getElementById('ordersStatusSel')?.value;
+  const dateVal   = document.getElementById('ordersDate')?.value;
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>';
+  hideAlert('alertOrders');
+  tbody.innerHTML = '<tr><td colspan="8" class="empty"><span class="spinner"></span> Memuat…</td></tr>';
+
+  try {
+    const qs = new URLSearchParams({ source: 'web', limit: '200' });
+    if (outletVal) qs.set('outletId', outletVal);
+    if (statusVal) qs.set('status', statusVal);
+    if (dateVal)   qs.set('date', dateVal);
+
+    const res  = await apiFetch('/api/schedules?' + qs);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal memuat');
+
+    const schedules = data.schedules || [];
+    if (!schedules.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">Tidak ada order ditemukan</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = schedules.map(s => {
+      const startWIB = s.start_time
+        ? new Date(s.start_time).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+        : '—';
+
+      const statusBadge = {
+        reserved:    '<span class="badge badge-yellow">Reserved</span>',
+        confirmed:   '<span class="badge badge-blue">Confirmed</span>',
+        in_progress: '<span class="badge badge-blue">In Progress</span>',
+        completed:   '<span class="badge badge-green">Completed</span>',
+        cancelled:   '<span class="badge badge-red">Cancelled</span>',
+      }[s.status] || `<span class="badge badge-grey">${s.status}</span>`;
+
+      const mokaIdShort = s.external_id
+        ? (String(s.external_id).startsWith('booking:')
+            ? '<span style="color:var(--muted);font-size:.75rem">bridge</span>'
+            : `<span style="font-family:monospace;font-size:.75rem">${String(s.external_id).slice(0,10)}…</span>`)
+        : '<span style="color:var(--muted)">—</span>';
+
+      const canAct = ['reserved','confirmed','in_progress'].includes(s.status);
+      const completeBtn = canAct
+        ? `<button class="btn btn-green" style="font-size:.75rem;padding:4px 10px;margin-bottom:4px" onclick="completeOrder('${s.id}', '${(s.customer_name||'').replace(/'/g,"\\'")}')">✓ Selesai</button>`
+        : '';
+      const cancelBtn = canAct
+        ? `<button class="btn btn-red" style="font-size:.75rem;padding:4px 10px" onclick="cancelOrder('${s.id}', '${(s.customer_name||'').replace(/'/g,"\\'")}')">✕ Cancel</button>`
+        : '';
+
+      return `<tr>
+        <td style="font-size:.8rem">${startWIB}</td>
+        <td>
+          <div style="font-weight:600;font-size:.85rem">${s.customer_name || '—'}</div>
+          <div style="font-size:.75rem;color:var(--muted)">${s.customer_phone || ''}</div>
+        </td>
+        <td style="font-size:.85rem">${s.barber_name || '—'}</td>
+        <td style="font-size:.82rem">${s.service_name || '—'}</td>
+        <td style="font-size:.8rem">${s.outlet_name || '—'}</td>
+        <td>${statusBadge}</td>
+        <td>${mokaIdShort}</td>
+        <td style="white-space:nowrap">${completeBtn}${cancelBtn}</td>
+      </tr>`;
+    }).join('');
+
+    // Summary
+    const counts = schedules.reduce((acc, s) => { acc[s.status] = (acc[s.status]||0)+1; return acc; }, {});
+    const summaryText = Object.entries(counts).map(([k,v]) => `${v} ${k}`).join(' · ');
+    showAlert('alertOrders', 'info', `📋 ${schedules.length} order — ${summaryText}`);
+
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty" style="color:var(--red)">Error: ' + err.message + '</td></tr>';
+    showAlert('alertOrders', 'error', '❌ ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '↻ Muat';
+  }
+}
+
+async function completeOrder(scheduleId, customerName) {
+  if (!confirm(`Tandai order "${customerName}" sebagai SELESAI?\n\nTransaksi akan dikirim ke Moka Produk Terjual secara otomatis.`)) return;
+
+  try {
+    const res = await apiFetch('/api/schedules/' + scheduleId, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'completed' }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal menyelesaikan order');
+    showAlert('alertOrders', 'success', `✅ Order "${customerName}" selesai — transaksi dikirim ke Moka Produk Terjual.`);
+    await loadOnlineOrders();
+  } catch (err) {
+    showAlert('alertOrders', 'error', '❌ Gagal: ' + err.message);
+  }
+}
+
+async function cancelOrder(scheduleId, customerName) {
+  if (!confirm(`Cancel order untuk "${customerName}"?\n\nOrder juga akan di-cancel di Moka POS.`)) return;
+
+  try {
+    const res = await apiFetch('/api/schedules/' + scheduleId, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Gagal cancel');
+    showAlert('alertOrders', 'success', `✅ Order "${customerName}" berhasil di-cancel dan dikirim ke Moka.`);
+    await loadOnlineOrders();
+  } catch (err) {
+    showAlert('alertOrders', 'error', '❌ Cancel gagal: ' + err.message);
+  }
+}
+
+document.getElementById('btnLoadOrders')?.addEventListener('click', loadOnlineOrders);
+
+// Populate outlet selector when orders tab is opened
+async function initOrdersPage() {
+  try {
+    const res  = await apiFetch('/api/moka/status');
+    const data = await res.json();
+    const sel  = document.getElementById('ordersOutletSel');
+    if (sel) {
+      sel.innerHTML = '<option value="">Semua Cabang</option>';
+      (data.outlets || []).forEach(o => {
+        sel.innerHTML += `<option value="${o.slug}">${o.name}</option>`;
+      });
+    }
+    // Default date: today
+    const todayInput = document.getElementById('ordersDate');
+    if (todayInput && !todayInput.value) {
+      const wibNow = new Date(Date.now() + 7*3600*1000);
+      todayInput.value = wibNow.toISOString().slice(0,10);
+    }
+    await loadOnlineOrders();
+  } catch (_) { /* non-fatal */ }
+}
 
 // ── INIT ──────────────────────────────────────────────────────
 loadStatus();

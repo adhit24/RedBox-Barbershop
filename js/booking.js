@@ -701,7 +701,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (isBooked) {
         el.classList.add('unavailable');
-        el.textContent = slot + ' (Booked)';
+        // Gunakan "Tidak Tersedia" agar tidak menyesatkan pelanggan:
+        // slot bisa tidak tersedia karena jam kerja barber, bukan karena ada yang booking.
+        el.textContent = slot + ' (Tidak Tersedia)';
       } else {
         availableCount++;
         if (state.time === slot) el.classList.add('selected');

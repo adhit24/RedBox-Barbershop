@@ -112,6 +112,152 @@ async function pushScheduleToMoka(supabase, scheduleId) {
   }
 }
 
+// ── CHECKOUT PUSH: WEB → MOKA PRODUK TERJUAL ─────────────
+//
+// Called when admin marks a web reservation as 'completed'.
+// Creates a real POS transaction in Moka so it appears in Produk Terjual recap.
+// Skipped if the cashier already processed the payment through POS (source='moka' tx exists).
+
+/**
+ * Push a completed web reservation to Moka as a POS checkout transaction.
+ * This makes the booking appear in Moka's "Produk Terjual" report.
+ *
+ * Idempotent: skips if a checkout_api or moka-native transaction already exists
+ * for this schedule (avoids double-counting).
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {string} scheduleId - UUID of the completed schedule
+ */
+async function pushCheckoutToMoka(supabase, scheduleId) {
+  const logId = await _startLog(supabase, 'web_to_moka', 'checkout', scheduleId);
+
+  try {
+    // 1. Load schedule
+    const { data: sch, error: schErr } = await supabase
+      .from('schedules_full')
+      .select('*')
+      .eq('id', scheduleId)
+      .single();
+    if (schErr || !sch) throw new Error(`Schedule not found: ${scheduleId}`);
+
+    // 2. Idempotency: skip if already pushed or if cashier processed through POS
+    const { data: existingTxn } = await supabase
+      .from('transactions')
+      .select('id, source')
+      .eq('schedule_id', scheduleId)
+      .in('source', ['checkout_api', 'moka'])
+      .maybeSingle();
+    if (existingTxn) {
+      await _finishLog(supabase, logId, 'skipped', `Already has ${existingTxn.source} transaction`);
+      return { skipped: true, reason: existingTxn.source };
+    }
+
+    // 3. Resolve Moka client
+    const client = await _getClient(supabase, sch.outlet_id, sch.outlet_moka_id || sch.outlet_moka_outlet_id);
+
+    // 4. Enrich barber/service Moka fields if not exposed by view
+    if (!sch.barber_moka_employee_id && sch.barber_id) {
+      const { data: barber } = await supabase
+        .from('barbers').select('moka_employee_id').eq('id', sch.barber_id).maybeSingle();
+      sch.barber_moka_employee_id = barber?.moka_employee_id || null;
+    }
+    if (sch.service_id && (!sch.moka_variant_name || !sch.moka_category_id)) {
+      const { data: svc } = await supabase
+        .from('services').select('moka_variant_name, moka_category_id, moka_category_name')
+        .eq('id', sch.service_id).maybeSingle();
+      sch.moka_variant_name  = sch.moka_variant_name  || svc?.moka_variant_name  || null;
+      sch.moka_category_id   = sch.moka_category_id   || svc?.moka_category_id   || null;
+      sch.moka_category_name = sch.moka_category_name || svc?.moka_category_name || null;
+    }
+
+    // 5. Resolve item_id / variant_id / category from Moka items cache
+    let mokaItemId   = sch.barber_moka_employee_id ? Number(sch.barber_moka_employee_id) : null;
+    let variantId    = null;
+    let categoryId   = sch.moka_category_id   ? Number(sch.moka_category_id)   : null;
+    let categoryName = sch.moka_category_name || null;
+    const variantName = sch.moka_variant_name || sch.service_name || null;
+
+    if (sch.barber_name) {
+      try {
+        const items = await _getMokaItems(client, sch.outlet_id);
+        let bestItem = null, bestScore = 0;
+        for (const item of items) {
+          const s = _matchScore(sch.barber_name, item.name);
+          if (s > bestScore) { bestScore = s; bestItem = item; }
+        }
+        if (bestItem && bestScore >= 0.6) {
+          mokaItemId   = mokaItemId   || Number(bestItem.id);
+          categoryId   = categoryId   || (bestItem.category_id ? Number(bestItem.category_id) : null);
+          categoryName = categoryName || bestItem.category?.name || null;
+
+          if (variantName && !variantId) {
+            let bestV = null, bestVScore = 0;
+            for (const v of (bestItem.item_variants || [])) {
+              const vs = _matchScore(variantName, v.name);
+              if (vs > bestVScore) { bestVScore = vs; bestV = v; }
+            }
+            if (bestV && bestVScore >= 0.5) variantId = Number(bestV.id);
+            if (!variantId && bestItem.item_variants?.length) variantId = Number(bestItem.item_variants[0].id);
+          }
+        }
+      } catch (e) {
+        console.warn('[Checkout] Could not resolve Moka item for barber:', e.message);
+      }
+    }
+
+    const price = sch.price || 0;
+
+    const checkoutItem = {
+      item_id:   mokaItemId || 0,
+      item_name: sch.barber_name || 'Barber',
+      quantity:  1,
+      gross_sales: price,
+      net_sales:   price,
+    };
+    if (variantId)    checkoutItem.item_variant_id   = variantId;
+    if (variantName)  checkoutItem.item_variant_name = variantName;
+    if (categoryId)   checkoutItem.category_id       = categoryId;
+    if (categoryName) checkoutItem.category_name     = categoryName;
+
+    const payload = {
+      note:              `Online Booking #${scheduleId.slice(0, 8)} — ${sch.customer_name || 'Guest'}`,
+      client_created_at: sch.start_time,
+      total_gross_sales: price,
+      total_net_sales:   price,
+      total_collected:   price,
+      amount_pay:        price,
+      customer_name:     sch.customer_name  || 'Guest',
+      customer_phone:    sch.customer_phone || undefined,
+      items: [checkoutItem],
+    };
+
+    // 6. Call Moka Checkout API
+    const result = await client.createCheckout(payload);
+    const checkoutId = result?.data?.id || result?.id || `web-${scheduleId.slice(0, 8)}`;
+
+    // 7. Record transaction so cron / Pull 1 doesn't create a duplicate
+    await _insertTransaction(supabase, {
+      customerId:  sch.customer_id,
+      outletId:    sch.outlet_id,
+      scheduleId,
+      externalId:  String(checkoutId),
+      totalAmount: price,
+      source:      'checkout_api',
+      mokaPayload: result,
+      items: [{ name: variantName || sch.service_name || 'Service', price, qty: 1 }],
+    });
+
+    await _finishLog(supabase, logId, 'success', null, { checkoutId });
+    console.log(`[Checkout] Schedule ${scheduleId} → Moka checkout ${checkoutId} (Produk Terjual updated)`);
+    return { checkoutId };
+
+  } catch (err) {
+    await _finishLog(supabase, logId, 'failed', err.message);
+    console.error(`[Checkout] pushCheckoutToMoka(${scheduleId}) failed:`, err.message);
+    throw err;
+  }
+}
+
 // ── FLOW B: MOKA → WEB ────────────────────────────────────
 
 /**
@@ -207,12 +353,22 @@ async function _pullMokaToWebNow(supabase, outletId) {
     // ── Pull 3: Open (PENDING) walk-in bills from sync_bills ────────────────
     // GoShow customer yang langsung dilayani kasir (bukan via Advanced Ordering).
     // Slot harus terblokir di website segera, sebelum transaksi selesai.
+    // Query hari ini + besok (WIB) agar advance bills (misal: Jumat buat Sabtu) ikut tertangkap.
     try {
-      const todayStr  = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
-      const billsRes  = await client.getOpenBills(todayStr);
-      const openBills = billsRes?.data || [];
-      if (Array.isArray(openBills)) {
+      const WIB_MS = 7 * 60 * 60 * 1000;
+      const seenBillIds = new Set();
+      for (let daysAhead = 0; daysAhead <= 1; daysAhead++) {
+        const dateStr = new Date(Date.now() + WIB_MS + daysAhead * 86_400_000).toISOString().slice(0, 10);
+        let billsRes;
+        try { billsRes = await client.getOpenBills(dateStr); } catch (e) {
+          console.warn(`[Sync] getOpenBills(${dateStr}) skipped (${e.message})`);
+          continue;
+        }
+        const openBills = billsRes?.data || [];
+        if (!Array.isArray(openBills)) continue;
         for (const bill of openBills) {
+          if (seenBillIds.has(bill.id)) continue; // deduplicate across date queries
+          seenBillIds.add(bill.id);
           try {
             const result = await _processOpenBill(supabase, bill, outletId);
             if (result === 'skipped') skipped++;
@@ -223,29 +379,7 @@ async function _pullMokaToWebNow(supabase, outletId) {
         }
       }
     } catch (billsErr) {
-      console.warn(`[Sync] getOpenBills skipped (${billsErr.message})`);
-    }
-
-    // ── Pull 3: Open (PENDING) walk-in bills from sync_bills ────────────────
-    // GoShow customer yang langsung dilayani kasir (bukan via Advanced Ordering).
-    // Slot harus terblokir di website segera, sebelum transaksi selesai.
-    try {
-      const todayStr  = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
-      const billsRes  = await client.getOpenBills(todayStr);
-      const openBills = billsRes?.data || [];
-      if (Array.isArray(openBills)) {
-        for (const bill of openBills) {
-          try {
-            const result = await _processOpenBill(supabase, bill, outletId);
-            if (result === 'skipped') skipped++;
-            else processed++;
-          } catch (bErr) {
-            console.warn(`[Sync] Open bill ${bill.id}:`, bErr.message);
-          }
-        }
-      }
-    } catch (billsErr) {
-      console.warn(`[Sync] getOpenBills skipped (${billsErr.message})`);
+      console.warn(`[Sync] getOpenBills loop error (${billsErr.message})`);
     }
 
     _lastSyncAt.set(outletId, new Date().toISOString());
@@ -428,6 +562,49 @@ async function _processIncomingOrder(supabase, order, outletId) {
 }
 
 /**
+ * Try to extract the appointment time from a Moka bill name.
+ * Kasir convention: bill names include "HH.MM DayName" (e.g., "Satria Abdul 15.00 Sabtu").
+ * This is critical for advance bills created today for a future day's appointment.
+ *
+ * @param {string}      billName    - e.g. "Satria Abdul 15.00 Sabtu"
+ * @param {string|Date} billCreatedAt - bill creation timestamp (to resolve day → date)
+ * @returns {Date|null} appointment start time as UTC Date, or null if not parseable
+ */
+function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
+  if (!billName) return null;
+
+  // Match "HH.MM DayName" or "HH:MM DayName" anywhere in the name
+  const match = billName.match(/(\d{1,2})[.:](\d{2})\s*(minggu|senin|selasa|rabu|kamis|jumat|sabtu)/i);
+  if (!match) return null;
+
+  const hours   = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+
+  const ID_DAYS = { minggu: 0, senin: 1, selasa: 2, rabu: 3, kamis: 4, jumat: 5, sabtu: 6 };
+  const targetDow = ID_DAYS[match[3].toLowerCase()];
+  if (targetDow === undefined) return null;
+
+  // Work in WIB (UTC+7) to find the correct calendar date
+  const WIB_MS = 7 * 60 * 60 * 1000;
+  const created   = new Date(billCreatedAt || Date.now());
+  const wibBase   = new Date(created.getTime() + WIB_MS); // UTC shifted to WIB
+  const createdDow = wibBase.getUTCDay();                  // day-of-week in WIB
+
+  const daysToAdd = (targetDow - createdDow + 7) % 7;
+
+  // Target date in WIB
+  const targetWIB = new Date(wibBase.getTime() + daysToAdd * 86_400_000);
+  const y  = targetWIB.getUTCFullYear();
+  const mo = String(targetWIB.getUTCMonth() + 1).padStart(2, '0');
+  const d  = String(targetWIB.getUTCDate()).padStart(2, '0');
+  const h  = String(hours).padStart(2, '0');
+  const mi = String(minutes).padStart(2, '0');
+
+  return new Date(`${y}-${mo}-${d}T${h}:${mi}:00+07:00`);
+}
+
+/**
  * Process a single PENDING walk-in bill from sync_bills API.
  * Creates a 'reserved' schedule to block the slot on the website.
  * When the bill is later COMPLETED, _processIncomingOrder (Pull 1) will update it.
@@ -486,17 +663,41 @@ async function _processOpenBill(supabase, bill, outletId) {
     }
   }
 
+  // ── Parse appointment time from bill name ─────────────────
+  // Kasir memberi nama bill dengan format "NamaCustomer HH.MM HariIni",
+  // mis. "Satria Abdul 15.00 Sabtu". Ini adalah waktu appointment SEBENARNYA.
+  // Jika tidak ada pola ini, fall back ke bill.createdAt (GoShow langsung).
+  const parsedStart = _parseAppointmentTimeFromBillName(billName, bill.createdAt || bill.created_at);
+  const startTime   = parsedStart || new Date(bill.createdAt || bill.created_at || Date.now());
+  const endTime     = new Date(startTime.getTime() + durationMin * 60_000);
+
   // ── Idempotency: check for existing schedule ──────────────
   const { data: existing } = await supabase
-    .from('schedules').select('id, barber_id, service_name').eq('external_id', billId).maybeSingle();
+    .from('schedules').select('id, barber_id, service_name, start_time').eq('external_id', billId).maybeSingle();
 
   if (existing) {
+    const patch = {};
+
     // If barber was missing before but we resolved it now — patch it
     if (!existing.barber_id && barberId) {
-      const patch = { barber_id: barberId, notes: null };
+      patch.barber_id = barberId;
+      patch.notes = null;
       if (existing.service_name === billName && serviceName !== billName) {
         patch.service_name = serviceName;
       }
+    }
+
+    // If start_time was stored wrong (e.g. used createdAt before this fix), correct it
+    if (parsedStart) {
+      const existingMs = new Date(existing.start_time).getTime();
+      const correctMs  = parsedStart.getTime();
+      if (Math.abs(existingMs - correctMs) > 5 * 60_000) { // lebih dari 5 menit beda
+        patch.start_time = startTime.toISOString();
+        patch.end_time   = endTime.toISOString();
+      }
+    }
+
+    if (Object.keys(patch).length > 0) {
       await supabase.from('schedules').update(patch).eq('id', existing.id);
       return 'updated';
     }
@@ -504,8 +705,6 @@ async function _processOpenBill(supabase, bill, outletId) {
   }
 
   // ── Insert new schedule ───────────────────────────────────
-  const startTime = new Date(bill.createdAt || bill.created_at || Date.now());
-  const endTime   = new Date(startTime.getTime() + durationMin * 60_000);
 
   const customerId = await _resolveCustomer(supabase, {
     name:  bill.customer_name || billName || null,
@@ -879,11 +1078,13 @@ async function _getMokaItems(client, outletId) {
   if (cached && Date.now() - cached.ts < MOKA_ITEMS_CACHE_TTL) return cached.items;
   try {
     const res   = await client.getItems();
-    // BUG FIX: Moka v1/items returns { data: { item: [...], total_pages, total_count } }
-    // Key is 'item' (singular), NOT 'items'
-    const items = res?.data?.item || [];
+    // Try all known Moka v1/items response paths (consistent with schemaSync.js)
+    const rawItems = res?.data?.items || res?.data?.item
+      || (Array.isArray(res?.data) ? res.data : null)
+      || res?.items || [];
+    const items = Array.isArray(rawItems) ? rawItems : [];
     _mokaItemsCache.set(outletId, { ts: Date.now(), items });
-    return Array.isArray(items) ? items : [];
+    return items;
   } catch (err) {
     console.warn('[Sync] Could not fetch Moka items for cache:', err.message);
     return cached?.items || [];
@@ -1184,6 +1385,7 @@ function _parseDurationMins(dur) {
 
 module.exports = {
   pushScheduleToMoka,
+  pushCheckoutToMoka,
   pullMokaToWeb,
   handleWebhookEvent,
   startCronJobs,

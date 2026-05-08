@@ -25,7 +25,7 @@ const express          = require('express');
 const { randomUUID }   = require('crypto');
 
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
-const { pushScheduleToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
+const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
 const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
 
 /**
@@ -271,13 +271,13 @@ function createMokaRouter(supabase) {
   // }
   router.get('/schedules', async (req, res) => {
     try {
-      const { outletId: rawOutletId, date, status, barberId, limit = 100 } = req.query;
+      const { outletId: rawOutletId, date, status, barberId, source, limit = 100 } = req.query;
       let outletId = null;
 
       let query = supabase
         .from('schedules_full')
         .select('id,barber_id,barber_name,barber_role,customer_id,customer_name,customer_phone,service_name,price,start_time,end_time,status,source,external_id,notes,outlet_id,outlet_name')
-        .order('start_time', { ascending: true })
+        .order('start_time', { ascending: false })
         .limit(parseInt(limit, 10) || 100);
 
       if (rawOutletId) {
@@ -292,6 +292,7 @@ function createMokaRouter(supabase) {
       }
       if (status)   query = query.eq('status', status);
       if (barberId) query = query.eq('barber_id', barberId);
+      if (source)   query = query.eq('source', source);
 
       const { data, error } = await query;
       if (error) throw new Error(error.message);
@@ -328,6 +329,14 @@ function createMokaRouter(supabase) {
       if (status === 'cancelled' && data.external_id && isMokaOAuthConfigured()) {
         _cancelMokaOrder(supabase, data).catch(err => {
           console.warn('[Patch] Moka cancel failed:', err.message);
+        });
+      }
+
+      // If completing a web-origin reservation, push a POS checkout so it appears
+      // in Moka's Produk Terjual report. Fire-and-forget — response is not blocked.
+      if (status === 'completed' && data.source === 'web' && isMokaOAuthConfigured()) {
+        pushCheckoutToMoka(supabase, id).catch(err => {
+          console.warn('[Patch] Moka checkout push failed:', err.message);
         });
       }
 
@@ -673,8 +682,11 @@ function createMokaRouter(supabase) {
       const MokaClient = require('./client');
       const client = new MokaClient(supabase, outletId, mokaOutletId);
       const data = await client.getItems();
-      // BUG FIX: Moka v1/items response shape is { data: { item: [...] } } — key is singular 'item'
-      const items = data?.data?.item || [];
+      // Moka v1/items response shape varies — try all known paths (same as schemaSync.js)
+      const rawItems = data?.data?.items || data?.data?.item
+        || (Array.isArray(data?.data) ? data.data : null)
+        || data?.items || [];
+      const items = Array.isArray(rawItems) ? rawItems : [];
 
       // Also load our services to show mapping status
       const { data: services } = await supabase
@@ -877,19 +889,28 @@ function createMokaRouter(supabase) {
 // ── PRIVATE HELPERS ───────────────────────────────────────
 
 async function _refreshFreshTodayData(supabase, outletId, date) {
-  if (!outletId || !_isTodayInJakarta(date)) return null;
-  // 15s window: narrower race window between GoShow open-bill creation and web availability query
-  return maybeRefreshOutletData(supabase, outletId, { maxAgeMs: 15_000 });
+  if (!outletId) return null;
+  // Refresh untuk hari ini DAN 7 hari ke depan agar advance bills (kasir buat hari ini
+  // untuk besok/lusa) langsung terblokir saat customer melihat availability.
+  // Hari ini: window 15 detik (GoShow langsung harus segera terblokir).
+  // Besok & seterusnya: window 60 detik (advance bills kurang time-critical).
+  const daysAhead = _daysAheadInJakarta(date);
+  if (daysAhead === null || daysAhead < 0 || daysAhead > 7) return null;
+  const maxAgeMs = daysAhead === 0 ? 15_000 : 60_000;
+  return maybeRefreshOutletData(supabase, outletId, { maxAgeMs });
 }
 
-function _isTodayInJakarta(dateStr) {
-  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
-  const now = new Date();
-  const jakartaNow = new Date(now.getTime() + (7 * 60 * 60 * 1000));
-  const yyyy = jakartaNow.getUTCFullYear();
-  const mm = String(jakartaNow.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(jakartaNow.getUTCDate()).padStart(2, '0');
-  return dateStr === `${yyyy}-${mm}-${dd}`;
+/**
+ * Returns how many days ahead `dateStr` is from today (Jakarta/WIB time).
+ * Returns null if dateStr is invalid. Returns negative number if dateStr is in the past.
+ */
+function _daysAheadInJakarta(dateStr) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  const WIB_MS = 7 * 60 * 60 * 1000;
+  const nowWIB = new Date(Date.now() + WIB_MS);
+  const todayMs = Date.UTC(nowWIB.getUTCFullYear(), nowWIB.getUTCMonth(), nowWIB.getUTCDate());
+  const targetMs = new Date(`${dateStr}T00:00:00+07:00`).getTime();
+  return Math.round((targetMs - todayMs) / 86_400_000);
 }
 
 /** Accept UUID or slug, return UUID. Returns null if not found. */

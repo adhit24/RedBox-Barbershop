@@ -87,19 +87,6 @@ class MokaClient {
   }
 
   /**
-   * Fetch open (PENDING) walk-in bills from Moka POS for a given date.
-   * Used to block slots when a cashier creates a GoShow bill directly in the POS.
-   * Docs: GET /v1/outlets/{outlet_id}/sync_bills/?statuses=PENDING&start=DD/MM/YYYY&end=DD/MM/YYYY
-   */
-  async getOpenBills(dateStr) {
-    // dateStr: 'YYYY-MM-DD' → convert to 'DD/MM/YYYY'
-    const [y, m, d] = (dateStr || new Date().toISOString().slice(0, 10)).split('-');
-    const fmt = `${d}/${m}/${y}`;
-    const qs = new URLSearchParams({ statuses: 'PENDING', start: fmt, end: fmt, per_page: '100', deep: 'true' });
-    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/sync_bills/?${qs}`);
-  }
-
-  /**
    * Cancel an Advanced Order (cashier hasn't accepted yet).
    * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}/cancel
    * @param {string} mokaOrderId
@@ -151,6 +138,16 @@ class MokaClient {
   async getItems() {
     // BUG FIX: include_variants is not a valid param per spec; item_variants are returned by default
     return this._req('GET', `/v1/outlets/${this._mokaOutletId}/items`);
+  }
+
+  /**
+   * Create a POS checkout so the transaction appears in Moka Produk Terjual.
+   * Docs: POST /v1/outlets/{outlet_id}/checkouts
+   * Scope required: checkout_api (included in ALL_SCOPES for client credentials)
+   * @param {object} payload - CheckoutApi payload
+   */
+  async createCheckout(payload) {
+    return this._req('POST', `/v1/outlets/${this._mokaOutletId}/checkouts`, payload);
   }
 
   // ── PRIVATE ───────────────────────────────────────────────
