@@ -525,7 +525,7 @@
       .sd-menu-tabs {
         display: grid !important;
         grid-template-columns: repeat(3, 1fr);
-        overflow: visible !important;
+        overflow: hidden !important;
         padding: 5px !important;
         width: 100%;
       }
@@ -938,6 +938,42 @@
       .sd-footer { padding: 40px 0 24px; }
       .sd-mbar-btn { font-size: .64rem; gap: 4px; }
     }
+
+    /* ─────────────────────────────────────────────────────────────
+       MENU CAROUSEL OVERFLOW FIX
+       Root cause of mobile zoom-out: .sd-menu-grid used margin:0 -18px
+       while being overflow-x:auto — the scroll container escaped its
+       section's overflow:hidden boundary in some mobile browsers.
+       Solution: isolate clipping in a wrapper div so the scroll
+       container itself never extends beyond the viewport.
+    ───────────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      /* Wrapper extends edge-to-edge and clips all child overflow */
+      .sd-menu-carousel-wrap {
+        overflow: hidden;
+        margin: 0 -18px;
+      }
+      /* Grid = the actual scroll container; no negative margin needed */
+      .sd-menu-grid {
+        margin: 0 !important;
+        padding-left: 18px !important;
+        padding-right: 36px !important;
+      }
+      /* Reinforce section-level clipping for all horizontal carousels */
+      .sd-menu,
+      .sd-atmosphere,
+      .sd-about {
+        overflow-x: hidden;
+      }
+      /* Modern browsers: clip without creating a new scroll container */
+      @supports (overflow: clip) {
+        .sd-menu,
+        .sd-atmosphere,
+        .sd-about {
+          overflow-x: clip;
+        }
+      }
+    }
   </style>
 </head>
 <body>
@@ -1130,6 +1166,7 @@
           <span class="sd-tab" data-tab="dessert">Dessert</span>
         </div>
       </div>
+      <div class="sd-menu-carousel-wrap">
       <div class="sd-menu-grid">
 
         <!-- ── DRINKS ── -->
@@ -1266,6 +1303,7 @@
         </div>
 
       </div>
+      </div><!-- /.sd-menu-carousel-wrap -->
     </div>
   </section>
 
@@ -1353,7 +1391,7 @@
           Datang, duduk, dan biarkan SUNDAZE memeluk harimu yang panjang. Kami selalu punya kursi untukmu.
         </p>
         <div class="sd-visit-actions" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
-          <a href="#" class="sd-btn-primary">
+          <a href="https://maps.app.goo.gl/qNHM8Lkvmy3u5dmdA" target="_blank" rel="noopener" class="sd-btn-primary">
             Get Directions
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
           </a>
@@ -1465,6 +1503,9 @@
       document.querySelectorAll('.sd-menu-card').forEach(card => {
         card.style.display = card.dataset.category === cat ? '' : 'none';
       });
+      // Reset carousel scroll position on every tab switch
+      const grid = document.querySelector('.sd-menu-grid');
+      if (grid) grid.scrollLeft = 0;
     }
     filterMenu('drinks');
     document.querySelectorAll('.sd-tab').forEach(tab => {

@@ -153,7 +153,7 @@ section{padding:100px 0}
 }
 .nav-sundaze:hover{color:#F5F1E8 !important;}
 
-.nav-menu-footer{display:none}
+.nav-menu-footer{display:none !important}
 
 .btn-book-nav{
   background:var(--red);color:var(--white);
@@ -1411,6 +1411,7 @@ section{padding:100px 0}
 
   /* ── Book Now CTA inside menu ── */
   .nav-menu-footer{
+    display:block !important;
     margin-top:28px;padding:0 24px;
     opacity:0;animation:navItemIn .38s ease .34s forwards;
   }
