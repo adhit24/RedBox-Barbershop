@@ -585,6 +585,99 @@ section{padding:100px 0}
 .gallery-item:hover::after{opacity:1}
 
 /* ======================================================
+   MEMBERSHIP CTA SECTION
+====================================================== */
+.ms-cta-section{
+  background:linear-gradient(135deg,#0a0000 0%,#130202 45%,#0a0000 100%);
+  padding:80px 0;position:relative;overflow:hidden;
+  border-top:1px solid rgba(193,18,31,.15);
+  border-bottom:1px solid rgba(193,18,31,.15);
+}
+.ms-cta-section::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 60% 70% at 10% 50%,rgba(193,18,31,.1) 0%,transparent 65%),
+    radial-gradient(ellipse 40% 50% at 90% 50%,rgba(193,18,31,.06) 0%,transparent 65%);
+}
+.ms-cta-inner{
+  display:grid;grid-template-columns:1fr 1fr;gap:60px;
+  align-items:center;position:relative;
+}
+
+/* Left — copy */
+.ms-cta-badge{
+  display:inline-block;padding:5px 16px;border-radius:100px;
+  font-size:.65rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  background:rgba(193,18,31,.15);color:var(--red);
+  border:1px solid rgba(193,18,31,.3);margin-bottom:20px;
+}
+.ms-cta-headline{
+  font-family:var(--font-display);font-size:clamp(2rem,4vw,3rem);
+  font-weight:700;color:var(--white);line-height:1.15;margin:0 0 18px;
+}
+.ms-cta-sub{
+  font-size:.97rem;color:var(--w70);line-height:1.75;margin:0 0 32px;max-width:420px;
+}
+.ms-cta-btn{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:16px 36px;border-radius:14px;
+  background:linear-gradient(135deg,#C1121F,#E63946);
+  color:#fff;font-size:1rem;font-weight:700;letter-spacing:.02em;
+  border:none;cursor:pointer;
+  box-shadow:0 8px 32px rgba(193,18,31,.4),0 0 0 1px rgba(193,18,31,.3);
+  transition:all .35s cubic-bezier(.4,0,.2,1);
+  position:relative;overflow:hidden;
+}
+.ms-cta-btn::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,.12),transparent);
+  opacity:0;transition:opacity .3s;
+}
+.ms-cta-btn:hover{transform:translateY(-3px);box-shadow:0 16px 48px rgba(193,18,31,.55)}
+.ms-cta-btn:hover::before{opacity:1}
+.ms-cta-btn svg{flex-shrink:0;transition:transform .3s}
+.ms-cta-btn:hover svg{transform:translateX(4px)}
+.ms-cta-note{
+  margin-top:14px;font-size:.75rem;color:var(--w30);letter-spacing:.04em;
+}
+
+/* Right — perk cards */
+.ms-cta-right{
+  display:grid;grid-template-columns:1fr 1fr;gap:14px;
+}
+.ms-perk-card{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:18px;padding:22px 20px;
+  transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+.ms-perk-card:hover{
+  background:rgba(193,18,31,.07);border-color:rgba(193,18,31,.25);
+  transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,.3);
+}
+.ms-perk-icon{font-size:1.8rem;margin-bottom:12px;line-height:1}
+.ms-perk-card h4{
+  font-family:var(--font-accent);font-size:1rem;letter-spacing:.04em;
+  color:var(--white);margin:0 0 8px;
+}
+.ms-perk-card p{font-size:.8rem;color:var(--w50);line-height:1.6;margin:0}
+
+/* Responsive */
+@media(max-width:900px){
+  .ms-cta-inner{grid-template-columns:1fr;gap:40px}
+  .ms-cta-sub{max-width:100%}
+}
+@media(max-width:480px){
+  .ms-cta-section{padding:56px 0}
+  .ms-cta-headline{font-size:1.9rem}
+  .ms-cta-btn{width:100%;justify-content:center}
+  .ms-cta-right{grid-template-columns:1fr 1fr;gap:10px}
+  .ms-perk-card{padding:16px 14px}
+  .ms-perk-icon{font-size:1.5rem}
+  .ms-perk-card h4{font-size:.88rem}
+  .ms-perk-card p{font-size:.74rem}
+}
+
+/* ======================================================
    REVIEWS
 ====================================================== */
 .reviews{background:var(--bg-2);border-top:1px solid var(--w05)}
