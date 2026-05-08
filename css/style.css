@@ -588,20 +588,20 @@ section{padding:100px 0}
    MEMBERSHIP CTA SECTION
 ====================================================== */
 .ms-cta-section{
-  background:linear-gradient(135deg,#0a0000 0%,#130202 45%,#0a0000 100%);
+  background:#0f0101;
   padding:80px 0;position:relative;overflow:hidden;
-  border-top:1px solid rgba(193,18,31,.15);
-  border-bottom:1px solid rgba(193,18,31,.15);
+  border-top:2px solid rgba(193,18,31,.35);
+  border-bottom:2px solid rgba(193,18,31,.35);
 }
 .ms-cta-section::before{
-  content:'';position:absolute;inset:0;pointer-events:none;
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
   background:
-    radial-gradient(ellipse 60% 70% at 10% 50%,rgba(193,18,31,.1) 0%,transparent 65%),
-    radial-gradient(ellipse 40% 50% at 90% 50%,rgba(193,18,31,.06) 0%,transparent 65%);
+    radial-gradient(ellipse 70% 80% at 15% 50%,rgba(193,18,31,.18) 0%,transparent 65%),
+    radial-gradient(ellipse 50% 60% at 85% 50%,rgba(193,18,31,.1) 0%,transparent 65%);
 }
 .ms-cta-inner{
   display:grid;grid-template-columns:1fr 1fr;gap:60px;
-  align-items:center;position:relative;
+  align-items:center;position:relative;z-index:1;
 }
 
 /* Left — copy */
