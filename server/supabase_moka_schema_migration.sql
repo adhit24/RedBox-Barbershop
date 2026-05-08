@@ -18,7 +18,7 @@ ALTER TABLE services
 
 -- 3. Index untuk mempercepat lookup saat sync
 CREATE INDEX IF NOT EXISTS idx_barbers_moka_employee_id
-  ON barbers (moka_employee_id) 
+  ON barbers (moka_employee_id)    
   WHERE moka_employee_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_services_moka_variant_id

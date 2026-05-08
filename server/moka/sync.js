@@ -12,6 +12,7 @@ const { _matchScore } = require('./schemaSync');
 
 // Simple in-process lock so concurrent cron ticks don't overlap
 const _syncLock = new Set();
+const _syncPromises = new Map();
 
 // Last-pulled timestamp per outlet to fetch only new/updated orders
 const _lastSyncAt = new Map(); // outletId → ISO string
@@ -19,6 +20,9 @@ const _lastSyncAt = new Map(); // outletId → ISO string
 // Moka items (barbers + variants) cached per outlet to avoid repeated API calls
 const _mokaItemsCache = new Map(); // outletId → { ts: number, items: [] }
 const MOKA_ITEMS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const MOKA_PULL_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.MOKA_PULL_INTERVAL_MINUTES || '1', 10) || 1);
+const MOKA_RETRY_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.MOKA_RETRY_INTERVAL_MINUTES || '2', 10) || 2);
+const MOKA_ON_DEMAND_SYNC_MAX_AGE_MS = Math.max(10_000, parseInt(process.env.MOKA_ON_DEMAND_SYNC_MAX_AGE_MS || '45000', 10) || 45_000);
 
 // ── FLOW A: WEB → MOKA ────────────────────────────────────
 
@@ -151,6 +155,21 @@ async function pushScheduleToMoka(supabase, scheduleId) {
  * @returns {{ processed:number, skipped:number, errors:number }}
  */
 async function pullMokaToWeb(supabase, outletId) {
+  if (_syncPromises.has(outletId)) {
+    console.log(`[Sync] Outlet ${outletId} already syncing — joining inflight pull`);
+    return _syncPromises.get(outletId);
+  }
+
+  const run = _pullMokaToWebNow(supabase, outletId);
+  _syncPromises.set(outletId, run);
+  try {
+    return await run;
+  } finally {
+    _syncPromises.delete(outletId);
+  }
+}
+
+async function _pullMokaToWebNow(supabase, outletId) {
   if (_syncLock.has(outletId)) {
     console.log(`[Sync] Outlet ${outletId} already syncing — skipping tick`);
     return { processed: 0, skipped: 0, errors: 0 };
@@ -224,6 +243,28 @@ async function pullMokaToWeb(supabase, outletId) {
     } catch (pendingErr) {
       // Endpoint mungkin tidak tersedia di semua aplikasi Moka — abaikan error
       console.warn(`[Sync] getPendingOrders skipped (${pendingErr.message})`);
+    }
+
+    // ── Pull 3: Open (PENDING) walk-in bills from sync_bills ────────────────
+    // GoShow customer yang langsung dilayani kasir (bukan via Advanced Ordering).
+    // Slot harus terblokir di website segera, sebelum transaksi selesai.
+    try {
+      const todayStr  = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+      const billsRes  = await client.getOpenBills(todayStr);
+      const openBills = billsRes?.data || [];
+      if (Array.isArray(openBills)) {
+        for (const bill of openBills) {
+          try {
+            const result = await _processOpenBill(supabase, bill, outletId);
+            if (result === 'skipped') skipped++;
+            else processed++;
+          } catch (bErr) {
+            console.warn(`[Sync] Open bill ${bill.id}:`, bErr.message);
+          }
+        }
+      }
+    } catch (billsErr) {
+      console.warn(`[Sync] getOpenBills skipped (${billsErr.message})`);
     }
 
     _lastSyncAt.set(outletId, new Date().toISOString());
@@ -368,6 +409,73 @@ async function _processIncomingOrder(supabase, order, outletId) {
   return 'processed';
 }
 
+/**
+ * Process a single PENDING walk-in bill from sync_bills API.
+ * Creates a 'reserved' schedule to block the slot on the website.
+ * When the bill is later COMPLETED, _processIncomingOrder (Pull 1) will update it.
+ */
+async function _processOpenBill(supabase, bill, outletId) {
+  const billId    = String(bill.id);
+  const billName  = bill.name || '';
+  const billStatus = (bill.status || '').toUpperCase();
+
+  // Only process PENDING bills
+  if (billStatus !== 'PENDING') return 'skipped';
+
+  // Idempotency: skip if already in schedules
+  const { data: existing } = await supabase
+    .from('schedules').select('id').eq('external_id', billId).maybeSingle();
+  if (existing) return 'skipped';
+
+  // Resolve barber from first checkout item_id → moka_employee_id
+  const items     = bill.checkouts || bill.items || [];
+  const firstItem = items[0];
+  let barberId    = null;
+  let durationMin = 60; // default
+
+  if (firstItem?.item_id) {
+    const { data: barber } = await supabase
+      .from('barbers').select('id')
+      .eq('moka_employee_id', String(firstItem.item_id))
+      .eq('outlet_id', outletId)
+      .maybeSingle();
+    barberId = barber?.id || null;
+  }
+
+  // Determine start time: use bill createdAt (walk-in starts now)
+  const startTime = new Date(bill.createdAt || bill.created_at || Date.now());
+  const endTime   = new Date(startTime.getTime() + durationMin * 60_000);
+
+  // Resolve customer
+  const customerId = await _resolveCustomer(supabase, {
+    name:  bill.customer_name || billName || null,
+    phone: bill.customer_phone || null,
+    id:    null,
+  });
+
+  const { error: schErr } = await supabase.from('schedules').insert({
+    outlet_id:    outletId,
+    barber_id:    barberId || null,
+    customer_id:  customerId || null,
+    service_name: items.map(i => i.name || i.item_name).filter(Boolean).join(' + ') || billName,
+    price:        bill.total || 0,
+    start_time:   startTime.toISOString(),
+    end_time:     endTime.toISOString(),
+    status:       'reserved',
+    source:       'moka',
+    external_id:  billId,
+    notes:        barberId ? null : '⚠ No barber matched — assign manually',
+  });
+
+  if (schErr) {
+    // Overlap constraint = slot already taken, not an error
+    if (schErr.message?.includes('no_barber_overlap') || schErr.code === '23P01') return 'skipped';
+    throw new Error(`Open bill insert failed: ${schErr.message}`);
+  }
+
+  return 'processed';
+}
+
 // ── WEBHOOK HANDLER ────────────────────────────────────────
 
 /**
@@ -469,8 +577,8 @@ function startCronJobs(supabase) {
     return;
   }
 
-  // Cron 1: Pull Moka → Web setiap 5 menit
-  cron.schedule('*/5 * * * *', async () => {
+  // Cron 1: Pull Moka → Web sesering mungkin untuk mempercepat blok slot goshow
+  cron.schedule(`*/${MOKA_PULL_INTERVAL_MINUTES} * * * *`, async () => {
     try {
       const { data: outletIds } = await supabase
         .from('outlets').select('id').eq('is_active', true)
@@ -495,13 +603,13 @@ function startCronJobs(supabase) {
     }
   });
 
-  // Cron 2: Retry fallback — setiap 5 menit
+  // Cron 2: Retry fallback — interval lebih rapat dari default lama
   // Push real-time dilakukan saat booking dibuat. Cron ini menangani jadwal
   // yang gagal push dalam 24 jam ke depan. Dua kondisi yang perlu di-retry:
   //   (a) external_id IS NULL  → push belum pernah dicoba / gagal sebelum save
   //   (b) external_id LIKE 'booking:%' → bridge booking (dari /api/bookings)
   //       yang belum dapat Moka order ID
-  cron.schedule('*/5 * * * *', async () => {
+  cron.schedule(`*/${MOKA_RETRY_INTERVAL_MINUTES} * * * *`, async () => {
     try {
       const now     = new Date();
       const ceiling = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -562,7 +670,31 @@ function startCronJobs(supabase) {
     }
   }, 5000);
 
-  console.log('[Cron] Moka jobs scheduled: pull 5min, pre-appt push 2min, schema sync 03:00 WIB');
+  console.log(`[Cron] Moka jobs scheduled: pull ${MOKA_PULL_INTERVAL_MINUTES}min, retry ${MOKA_RETRY_INTERVAL_MINUTES}min, schema sync 03:00 WIB`);
+}
+
+function getLastSyncAt(outletId) {
+  return _lastSyncAt.get(outletId) || null;
+}
+
+async function maybeRefreshOutletData(supabase, outletId, options = {}) {
+  const maxAgeMs = Math.max(5_000, parseInt(options.maxAgeMs, 10) || MOKA_ON_DEMAND_SYNC_MAX_AGE_MS);
+  const lastSyncAt = getLastSyncAt(outletId);
+  if (lastSyncAt && (Date.now() - new Date(lastSyncAt).getTime()) < maxAgeMs) {
+    return { refreshed: false, reason: 'fresh_cache', lastSyncAt };
+  }
+
+  try {
+    const result = await pullMokaToWeb(supabase, outletId);
+    return { refreshed: true, lastSyncAt: getLastSyncAt(outletId), result };
+  } catch (err) {
+    return {
+      refreshed: false,
+      reason: 'sync_failed',
+      error: err.message,
+      lastSyncAt: getLastSyncAt(outletId),
+    };
+  }
 }
 
 // ── PRIVATE HELPERS ───────────────────────────────────────
@@ -655,6 +787,17 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
   if (categoryId)   orderItem.category_id       = Number(categoryId);
   if (categoryName) orderItem.category_name      = categoryName;
 
+  const orderItems = [orderItem];
+  const reservasiFeeItemId = process.env.MOKA_RESERVASI_FEE_ITEM_ID;
+  if (reservasiFeeItemId) {
+    orderItems.push({
+      item_id:            Number(reservasiFeeItemId),
+      item_name:          'Biaya Reservasi',
+      quantity:           1,
+      item_price_library: 10000,
+    });
+  }
+
   return {
     application_order_id:            schedule.id,
     payment_type:                    'online_booking',
@@ -668,7 +811,7 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
     accept_order_notification_url:   `${base}/api/moka/callback/accept`,
     complete_order_notification_url: `${base}/api/moka/callback/complete`,
     cancel_order_notification_url:   `${base}/api/moka/callback/cancel`,
-    order_items: [orderItem],
+    order_items: orderItems,
   };
 }
 
@@ -985,4 +1128,6 @@ module.exports = {
   handleWebhookEvent,
   startCronJobs,
   bridgeBookingToMoka,
+  maybeRefreshOutletData,
+  getLastSyncAt,
 };

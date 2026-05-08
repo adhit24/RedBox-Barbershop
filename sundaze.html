@@ -437,11 +437,6 @@
       .sd-nav-cta { display: none; }
 
       /* Hero — compact & full-screen */
-      .sd-hero-content { padding-top: 60px; }
-      .sd-hero-title { font-size: clamp(2.4rem, 10.5vw, 3.5rem); line-height: 1.1; margin-bottom: 20px; }
-      .sd-hero-sub { font-size: .88rem; line-height: 1.75; margin-bottom: 28px; max-width: 100%; }
-      .sd-hero-actions { flex-direction: column; align-items: stretch; gap: 10px; }
-      .sd-btn-primary, .sd-btn-secondary { justify-content: center; padding: 15px 20px; font-size: .88rem; }
       .sd-hero-scroll { display: none; }
       .sd-hero-eyebrow { margin-bottom: 20px; }
 
@@ -677,23 +672,22 @@
       }
 
       .sd-hero {
-        align-items: flex-end;
+        align-items: flex-start;
         min-height: 100svh;
-        padding-bottom: 34px;
+        padding-bottom: 0;
       }
       .sd-hero-overlay {
         background:
-          linear-gradient(to bottom, rgba(11,11,12,.3) 0%, rgba(11,11,12,.18) 36%, rgba(11,11,12,.94) 100%),
-          linear-gradient(to right, rgba(11,11,12,.72) 0%, rgba(11,11,12,.2) 100%);
+          linear-gradient(to bottom, rgba(11,11,12,.6) 0%, rgba(11,11,12,.35) 45%, rgba(11,11,12,.82) 100%);
       }
       .sd-hero-orb1 { display: none; }
       .sd-hero-content {
-        padding-top: 96px;
-        padding-bottom: 8px;
+        padding-top: 120px;
+        padding-bottom: 48px;
       }
       .sd-hero-eyebrow {
         gap: 10px;
-        margin-bottom: 16px;
+        margin-bottom: 18px;
       }
       .sd-eyebrow-line { width: 28px; }
       .sd-eyebrow-text {
@@ -701,21 +695,38 @@
         letter-spacing: .2em;
       }
       .sd-hero-title {
-        font-size: clamp(2.45rem, 13vw, 3.75rem);
-        line-height: 1.04;
-        margin-bottom: 18px;
+        font-size: clamp(2.2rem, 10vw, 3rem);
+        line-height: 1.08;
+        margin-bottom: 20px;
       }
       .sd-hero-sub {
-        font-size: .9rem;
+        font-size: .87rem;
         line-height: 1.72;
-        margin-bottom: 24px;
+        margin-bottom: 28px;
+        max-width: 100%;
+        color: rgba(245,241,232,.65);
       }
-      .sd-btn-primary,
-      .sd-btn-secondary {
-        min-height: 50px;
+      .sd-hero-actions {
+        flex-direction: row;
+        gap: 10px;
+      }
+      .sd-btn-primary {
+        min-height: 48px;
         border-radius: 10px;
-        white-space: normal;
-        text-align: center;
+        flex: 1;
+        justify-content: center;
+        font-size: .85rem;
+        padding: 13px 16px;
+      }
+      .sd-btn-secondary {
+        min-height: 48px;
+        border-radius: 10px;
+        flex: 0 0 auto;
+        white-space: nowrap;
+        font-size: .85rem;
+        padding: 13px 18px;
+        background: rgba(245,241,232,.08);
+        border-color: rgba(245,241,232,.2);
       }
 
       .sd-section-title {
@@ -830,7 +841,7 @@
       }
       .sd-logo-tag { display: none; }
       .sd-hero-title {
-        font-size: clamp(2.25rem, 14vw, 3rem);
+        font-size: clamp(2rem, 10vw, 2.6rem);
       }
       .sd-atm-cell,
       .sd-menu-card {
@@ -843,6 +854,89 @@
         padding-right: 6px;
         font-size: .66rem;
       }
+    }
+
+    /* ── SUNDAZE MOBILE POLISH PASS ──────────────────────────── */
+
+    /* Show/hide responsive text helpers */
+    .sd-text-mobile { display: none; }
+    .sd-text-desktop { display: inline; }
+
+    @media (max-width: 600px) {
+      /* Switch responsive text */
+      .sd-text-desktop { display: none; }
+      .sd-text-mobile { display: inline; }
+
+      /* Visit CTA: full-width stacked buttons */
+      .sd-visit-actions {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        max-width: 400px;
+        margin: 0 auto;
+      }
+      .sd-visit-actions .sd-btn-primary,
+      .sd-visit-actions .sd-btn-secondary {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
+        min-height: 50px;
+        padding: 14px 18px;
+        font-size: .9rem;
+      }
+
+      /* Visit: tighter section padding */
+      .sd-visit { padding: 64px 0; min-height: auto; }
+
+      /* About image: portrait is beautiful but limit max height on small phones */
+      .sd-about-visual {
+        max-height: 72vmax;
+      }
+
+      /* About quote: prevent overflow on narrow screens */
+      .sd-about-quote {
+        font-size: 1rem;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        line-height: 1.4;
+      }
+
+      /* Atmosphere cells: square is better on mobile than portrait */
+      .sd-atm-cell { aspect-ratio: 1 !important; }
+
+      /* Menu card name: prevent long words from overflowing */
+      .sd-menu-name { word-break: break-word; }
+
+      /* Experience section: more space between items */
+      .sd-exp-item { padding: 18px 0; }
+
+      /* Footer bottom: ensure kinarya credit wraps nicely */
+      .sd-footer-copy { font-size: .72rem; }
+
+      /* Section titles: tighter line-height */
+      .sd-section-title { line-height: 1.18; }
+
+      /* Hero subtitle: keep space above buttons */
+      .sd-hero-sub { margin-bottom: 24px; }
+
+      /* Vibe ticker: hidden on mobile (already set, ensure no layout shift) */
+      .sd-vibe { display: none; }
+
+      /* Bottom bar buttons: ensure min tap target */
+      .sd-mbar-btn { min-height: 46px; }
+    }
+
+    /* Very small phones (≤ 360px) */
+    @media (max-width: 360px) {
+      section { padding: 52px 0; }
+      .sd-hero { padding-bottom: 24px; }
+      .sd-hero-title { font-size: clamp(2.1rem, 13.5vw, 2.8rem); }
+      .sd-hero-sub { font-size: .86rem; }
+      .sd-visit { padding: 52px 0; }
+      .sd-about-visual { aspect-ratio: 4/3 !important; max-height: none; }
+      .sd-footer { padding: 40px 0 24px; }
+      .sd-mbar-btn { font-size: .64rem; gap: 4px; }
     }
   </style>
 </head>
@@ -869,7 +963,7 @@
   <!-- Photo: outdoor terrace malam, cinematic wide angle -->
   <section class="sd-hero" id="hero">
     <div class="sd-hero-bg">
-      <img class="sd-photo" id="heroImg" alt="SUNDAZE outdoor atmosphere at night" style="object-position: center 40%;" loading="eager" fetchpriority="high">
+      <img class="sd-photo" id="heroImg" alt="SUNDAZE indoor atmosphere at night" style="object-position: center 30%;" loading="eager" fetchpriority="high">
       <div class="sd-hero-overlay"></div>
       <div class="sd-hero-grain"></div>
       <div class="sd-hero-orb1"></div>
@@ -1258,12 +1352,15 @@
         <p style="font-size:1rem;color:var(--w50);margin-bottom:36px;max-width:420px;margin-left:auto;margin-right:auto;line-height:1.85;">
           Datang, duduk, dan biarkan SUNDAZE memeluk harimu yang panjang. Kami selalu punya kursi untukmu.
         </p>
-        <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+        <div class="sd-visit-actions" style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
           <a href="#" class="sd-btn-primary">
             Get Directions
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
           </a>
-          <a href="https://www.instagram.com/sundazecoffeeeatery/" target="_blank" rel="noopener" class="sd-btn-secondary">Follow @sundazecoffeeeatery</a>
+          <a href="https://www.instagram.com/sundazecoffeeeatery/" target="_blank" rel="noopener" class="sd-btn-secondary">
+            <span class="sd-text-desktop">Follow @sundazecoffeeeatery</span>
+            <span class="sd-text-mobile">Follow di Instagram</span>
+          </a>
         </div>
         <p style="margin-top:36px;font-size:.8rem;color:var(--w30);">
           Cirebon &nbsp;·&nbsp; 09:00 – 22:00 &nbsp;·&nbsp; Buka 7 hari seminggu
@@ -1326,7 +1423,7 @@
   <script>
     // ── Photo paths ──
     const P = {
-      hero:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr (5).jpg",
+      hero:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr (7).jpg",
       about: "sundaze/public/Cuma pengen tau aja sih kalo ke Sundaze dimanakah tempat favorit kamu Coba jawab dan kasih alas.webp",
       atm1:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr.jpg",
       atm2:  "sundaze/public/bar.jpg",
@@ -1336,7 +1433,7 @@
       atm6:  "sundaze/public/Butuh tempat chill yang nyaman dan estetikSay no more! Spot baru ini hadir jadi destinasi nongkr (6).jpg",
       exp1:  "sundaze/public/Halo warga Cirebon!Kalo kamu lagi nyari tempat pelarian dari hiruk pikuk duniawi, aku rekomendas (4).jpg",
       exp2:  "sundaze/public/Cuma pengen tau aja sih kalo ke Sundaze dimanakah tempat favorit kamu Coba jawab dan kasih alas (1).webp",
-      exp3:  "sundaze/public/Halo warga Cirebon!Kalo kamu lagi nyari tempat pelarian dari hiruk pikuk duniawi, aku rekomendas (2).jpg",
+      exp3:  "sundaze/public/Halo warga Cirebon!Kalo kamu lagi nyari tempat pelarian dari hiruk pikuk duniawi, aku rekomendas.jpg",
       visit: "sundaze/public/Halo warga Cirebon!Kalo kamu lagi nyari tempat pelarian dari hiruk pikuk duniawi, aku rekomendas (5).jpg",
     };
 

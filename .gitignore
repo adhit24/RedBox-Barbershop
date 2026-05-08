@@ -91,3 +91,6 @@ server/sheet.csv
 server/test_sheet.js
 
 .env*.local
+
+# Local Netlify folder
+.netlify

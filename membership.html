@@ -762,6 +762,107 @@
       padding-right: 10px;
     }
   }
+
+  /* ── MOBILE POLISH PASS ────────────────────────────────────── */
+
+  /* Override: center-align hero & section titles on mobile */
+  @media(max-width:768px) {
+    .ms-hero {
+      text-align: center;
+    }
+    .ms-hero-eyebrow {
+      justify-content: center;
+    }
+    .ms-hero-eyebrow::after {
+      display: block; /* restore right decorative line */
+    }
+    .ms-hero p {
+      text-align: center;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .ms-title {
+      text-align: center;
+    }
+    .ms-title p {
+      margin: 0 auto;
+    }
+    .ms-cta-section {
+      text-align: center;
+    }
+    .ms-cta-section p {
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* Hero actions already grid-1col — ensure SVG icon doesn't shrink */
+    .ms-hero-actions .btn-primary svg,
+    .ms-hero-actions .btn-outline svg {
+      flex-shrink: 0;
+    }
+
+    /* Steps: fix text alignment back to left inside left-aligned cards */
+    .ms-step {
+      text-align: left;
+    }
+
+    /* Tier body text: keep left-aligned */
+    .tier-body,
+    .tier-header { text-align: center; }
+
+    /* Section: slightly less vertical padding on short phones */
+    .ms-section { padding: 48px 0; }
+
+    /* Ensure point rows wrap label text instead of overflowing */
+    .ms-point-row .label {
+      line-height: 1.45;
+    }
+
+    /* FAQ: slightly larger tap area */
+    .ms-faq-q {
+      padding: 20px 0;
+    }
+    /* Allow longer FAQ answers to fully expand */
+    .ms-faq-item.open .ms-faq-a {
+      max-height: 400px;
+    }
+  }
+
+  /* Small phones (≤ 480px): tighten tier card internals */
+  @media(max-width:480px) {
+    .tier-header { padding: 24px 16px 18px; }
+    .tier-icon { width: 52px; height: 52px; font-size: 1.6rem; }
+    .tier-name { font-size: 1.18rem; }
+    .tier-range { font-size: .68rem; }
+    .tier-discount { font-size: 1.6rem; }
+    .tier-body { padding: 0 16px 20px; }
+    .tier-benefits li { font-size: .78rem; padding: 5px 0; }
+
+    /* Point system */
+    .ms-point-card { padding: 18px 14px; }
+    .ms-point-row { padding: 10px 0; }
+    .ms-point-row .label { font-size: .8rem; }
+    .ms-point-row .value { font-size: .92rem; flex: 0 0 42%; }
+
+    /* FAQ */
+    .ms-faq-q { font-size: .88rem; line-height: 1.5; }
+
+    /* CTA section */
+    .ms-cta-section h2 { font-size: 1.65rem; }
+    .ms-cta-section p { font-size: .9rem; }
+  }
+
+  /* Very small phones (≤ 370px) */
+  @media(max-width:370px) {
+    .ms-hero { padding: 80px 0 44px; }
+    .ms-hero h1 { font-size: 1.85rem; }
+    .ms-step { flex-basis: 90vw; }
+    .ms-tier, .ms-tier.featured { flex-basis: 91vw; }
+    .ms-section { padding: 40px 0; }
+    .ms-title h2 { font-size: 1.55rem; }
+    .ms-mobile-bar { gap: 6px; }
+    .ms-mbar-book, .ms-mbar-wa { font-size: .72rem; min-height: 44px; }
+  }
   </style>
 </head>
 <body>

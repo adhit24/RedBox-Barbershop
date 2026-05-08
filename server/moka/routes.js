@@ -25,7 +25,7 @@ const express          = require('express');
 const { randomUUID }   = require('crypto');
 
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
-const { pushScheduleToMoka, pullMokaToWeb, handleWebhookEvent }       = require('./sync');
+const { pushScheduleToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
 const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
 
 /**
@@ -61,6 +61,8 @@ function createMokaRouter(supabase) {
       const outletId = await _resolveOutletId(supabase, rawOutletId);
       if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
 
+      await _refreshFreshTodayData(supabase, outletId, date);
+
       // Resolve duration
       let duration = durationMinutes ? parseInt(durationMinutes, 10) : null;
       if (!duration && serviceId) {
@@ -77,7 +79,13 @@ function createMokaRouter(supabase) {
         barberId:        barberId || null,
       });
 
-      res.json({ date, outletId, durationMinutes: duration, slots });
+      res.json({
+        date,
+        outletId,
+        durationMinutes: duration,
+        slots,
+        lastSyncAt: getLastSyncAt(outletId),
+      });
     } catch (err) {
       _serverError(res, err);
     }
@@ -247,6 +255,7 @@ function createMokaRouter(supabase) {
   router.get('/schedules', async (req, res) => {
     try {
       const { outletId: rawOutletId, date, status, barberId, limit = 100 } = req.query;
+      let outletId = null;
 
       let query = supabase
         .from('schedules_full')
@@ -255,8 +264,9 @@ function createMokaRouter(supabase) {
         .limit(parseInt(limit, 10) || 100);
 
       if (rawOutletId) {
-        const outletId = await _resolveOutletId(supabase, rawOutletId);
+        outletId = await _resolveOutletId(supabase, rawOutletId);
         if (outletId) query = query.eq('outlet_id', outletId);
+        if (outletId) await _refreshFreshTodayData(supabase, outletId, date);
       }
       if (date) {
         const dayStart = `${date}T00:00:00+07:00`;
@@ -269,7 +279,7 @@ function createMokaRouter(supabase) {
       const { data, error } = await query;
       if (error) throw new Error(error.message);
 
-      res.json({ schedules: data || [] });
+      res.json({ schedules: data || [], lastSyncAt: outletId ? getLastSyncAt(outletId) : null });
     } catch (err) {
       _serverError(res, err);
     }
@@ -769,6 +779,21 @@ function createMokaRouter(supabase) {
 }
 
 // ── PRIVATE HELPERS ───────────────────────────────────────
+
+async function _refreshFreshTodayData(supabase, outletId, date) {
+  if (!outletId || !_isTodayInJakarta(date)) return null;
+  return maybeRefreshOutletData(supabase, outletId, { maxAgeMs: 45_000 });
+}
+
+function _isTodayInJakarta(dateStr) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const now = new Date();
+  const jakartaNow = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+  const yyyy = jakartaNow.getUTCFullYear();
+  const mm = String(jakartaNow.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(jakartaNow.getUTCDate()).padStart(2, '0');
+  return dateStr === `${yyyy}-${mm}-${dd}`;
+}
 
 /** Accept UUID or slug, return UUID. Returns null if not found. */
 async function _resolveOutletId(supabase, raw) {

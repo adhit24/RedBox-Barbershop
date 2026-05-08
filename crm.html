@@ -46,6 +46,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         Revenue
       </button>
+      <button class="sb-link" data-view="membership">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8L6 7h12z"/><circle cx="12" cy="14" r="2"/></svg>
+        Membership
+      </button>
     </nav>
     <div class="sb-bottom">
       <a href="index.html" class="sb-back">
@@ -269,6 +273,115 @@
       </div>
     </div>
 
+    <!-- ===== VIEW: MEMBERSHIP ===== -->
+    <div class="crm-view" id="view-membership">
+
+      <div class="mem-stats-row" id="memStatsRow">
+        <div class="mem-stat-card">
+          <span class="mem-stat-val" id="msTotalMembers">—</span>
+          <span class="mem-stat-label">Total Member</span>
+        </div>
+        <div class="mem-stat-card active">
+          <span class="mem-stat-val" id="msActiveMembers">—</span>
+          <span class="mem-stat-label">Aktif</span>
+        </div>
+        <div class="mem-stat-card inactive">
+          <span class="mem-stat-val" id="msInactiveMembers">—</span>
+          <span class="mem-stat-label">Belum Aktif</span>
+        </div>
+        <div class="mem-stat-card month">
+          <span class="mem-stat-val" id="msThisMonth">—</span>
+          <span class="mem-stat-label">Aktivasi Bulan Ini</span>
+        </div>
+      </div>
+
+      <!-- ACTIVATE FORM -->
+      <div class="mem-section">
+        <h3 class="mem-section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Aktivasi Member Baru
+        </h3>
+        <div class="mem-activate-form">
+          <div class="mem-search-row">
+            <input type="text" id="memSearchInput" placeholder="Cari email atau kode referral member..." />
+            <button class="btn-mem-search" id="memSearchBtn">Cari</button>
+          </div>
+          <!-- Member found card -->
+          <div class="mem-found-card" id="memFoundCard" style="display:none">
+            <div class="mem-found-info">
+              <div class="mem-found-avatar" id="memFoundAvatar">?</div>
+              <div>
+                <p class="mem-found-name" id="memFoundName">—</p>
+                <p class="mem-found-email" id="memFoundEmail">—</p>
+                <p class="mem-found-ref" id="memFoundRef">—</p>
+              </div>
+              <span class="mem-found-badge" id="memFoundBadge">—</span>
+            </div>
+            <div class="mem-activate-opts" id="memActivateOpts">
+              <div class="mem-opt-row">
+                <label>Cabang</label>
+                <select id="memBranch">
+                  <option value="bypass">Bypass</option>
+                  <option value="samadikun">Samadikun</option>
+                  <option value="tegal">Tegal</option>
+                  <option value="csb">CSB</option>
+                  <option value="sumber">Sumber</option>
+                </select>
+              </div>
+              <div class="mem-opt-row">
+                <label>Metode Bayar</label>
+                <select id="memPayMethod">
+                  <option value="cash">Cash / Tunai</option>
+                  <option value="qris">QRIS</option>
+                  <option value="transfer">Transfer Bank</option>
+                </select>
+              </div>
+              <button class="btn-mem-activate" id="memActivateBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Aktivasi Membership — Rp 100.000
+              </button>
+            </div>
+            <div class="mem-already-active" id="memAlreadyActive" style="display:none">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Membership sudah aktif
+            </div>
+          </div>
+          <div class="mem-not-found" id="memNotFound" style="display:none">
+            Member tidak ditemukan. Pastikan member sudah mendaftar terlebih dahulu di website.
+          </div>
+        </div>
+      </div>
+
+      <!-- RECENT ACTIVATIONS -->
+      <div class="mem-section">
+        <h3 class="mem-section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Aktivasi Terbaru
+        </h3>
+        <div class="mem-table-wrap">
+          <table class="mem-table">
+            <thead><tr><th>Nama</th><th>Email</th><th>Cabang</th><th>Bayar</th><th>Tanggal</th><th>Status</th></tr></thead>
+            <tbody id="memActivationsBody"><tr><td colspan="6" class="mem-empty">Memuat...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ALL MEMBERS TABLE -->
+      <div class="mem-section">
+        <h3 class="mem-section-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          Semua Member
+        </h3>
+        <div class="mem-table-wrap">
+          <table class="mem-table">
+            <thead><tr><th>Nama</th><th>Email</th><th>Status</th><th>Tier</th><th>Poin</th><th>Kunjungan</th><th>Bergabung</th></tr></thead>
+            <tbody id="memAllBody"><tr><td colspan="7" class="mem-empty">Memuat...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /view-membership -->
+
   </main>
 
   <!-- ===== MODAL: ADD/EDIT BOOKING ===== -->
@@ -355,6 +468,7 @@
       </div>
       <div class="modal-body" id="detailBody"></div>
       <div class="modal-foot">
+        <button class="btn-outline" id="detailEdit">✏️ Edit</button>
         <button class="btn-red" id="detailConfirm">✅ Confirm</button>
         <button class="btn-yellow" id="detailDeny">⛔ Deny</button>
         <button class="btn-danger" id="detailCancel">❌ Cancel</button>

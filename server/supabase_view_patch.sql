@@ -21,7 +21,7 @@ CREATE VIEW schedules_full AS
     o.moka_outlet_id     AS outlet_moka_id,
     svc.moka_item_id,
     svc.moka_category_id,
-    svc.moka_category_name,
+    svc.moka_category_name,       
     svc.moka_variant_name
   FROM  schedules s
   LEFT JOIN barbers   b   ON s.barber_id   = b.id

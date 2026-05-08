@@ -360,13 +360,36 @@ async function autoMarkDoneIfNeeded(bookings, persistLocal) {
 async function hasConflict(barber, date, time, durationStr = '60 menit', excludeId = null) {
   if (barber === 'any') return false;
   const newStart = timeToMins(time), newEnd = newStart + parseDuration(durationStr);
+
+  // Check legacy bookings table
   const bookings = await apiGetBookings();
-  return bookings.some(b => {
+  const legacyHit = bookings.some(b => {
     const bb = b.barber_id || b.barber;
     if (b.id === excludeId || bb !== barber || dateKey(b.date) !== date || b.status === 'cancelled') return false;
     const bStart = timeToMins(timeKey(b.time)), bEnd = bStart + parseDuration(b.duration);
     return (newStart < bEnd) && (bStart < newEnd);
   });
+  if (legacyHit) return true;
+
+  // Also check schedules table (Moka walk-ins & online bookings)
+  try {
+    const res = await fetch(
+      `${API_URL}/schedules?barberId=${encodeURIComponent(barber)}&date=${date}&limit=50`,
+      { headers: apiHeaders(), signal: AbortSignal.timeout(3000) }
+    );
+    if (!res.ok) return false;
+    const { schedules } = await res.json();
+    const newStartMs = new Date(`${date}T${time.slice(0, 5)}:00+07:00`).getTime();
+    const newEndMs   = newStartMs + parseDuration(durationStr) * 60_000;
+    return (schedules || []).some(s => {
+      if (s.status === 'cancelled' || s.status === 'rejected') return false;
+      const sStart = new Date(s.start_time).getTime();
+      const sEnd   = new Date(s.end_time).getTime();
+      return (newStartMs < sEnd) && (sStart < newEndMs);
+    });
+  } catch {
+    return false; // non-fatal — jangan block booking jika schedules check gagal
+  }
 }
 
 function hasConflictSync(bookings, barber, date, time, durationStr, excludeId) {
@@ -509,25 +532,67 @@ async function renderDayDetail(dateStr) {
   if (!card || !timeline) return;
   card.style.display = '';
   title.textContent = 'Schedule — ' + fmtDate(dateStr);
+
   const allBookings = await apiGetBookings();
   if (!allBookings) return renderLockedState();
   const bookings = allBookings.filter(b => dateKey(b.date) === dateStr && b.status !== 'cancelled');
+
+  // Also load Moka walk-ins & online schedules for the day
+  let mokaSched = [];
+  try {
+    const res = await fetch(`${API_URL}/schedules?date=${dateStr}&limit=100`, { headers: apiHeaders(), signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const { schedules } = await res.json();
+      // Exclude schedules already bridged from bookings (they'd have external_id = booking:<uuid>)
+      mokaSched = (schedules || []).filter(s =>
+        s.status !== 'cancelled' && s.status !== 'rejected' && !String(s.external_id || '').startsWith('booking:')
+      );
+    }
+  } catch { /* non-fatal */ }
+
   const barberFilter = document.getElementById('calBarberFilter')?.value || 'all';
+
   const timelineItems = await Promise.all(TIME_SLOTS.map(async slot => {
-    const slotBookings = bookings.filter(b => timeKey(b.time) === slot && (barberFilter === 'all' || (b.barber_id || b.barber) === barberFilter));
-    if (slotBookings.length > 0) {
-      const cards = await Promise.all(slotBookings.map(async bk => {
-        const barberName = await getBarberName(bk.barber_id || bk.barber);
-        return `<div class="tl-booking tl-cell occupied" data-id="${esc(bk.id)}" style="cursor:pointer">
-            <div class="tl-bname">${esc(bk.name)}</div>
-            <div class="tl-bmeta">${esc(bk.service)} · ${esc(barberName)} · <span class="slot-status status-${esc(bk.status)}" style="font-size:.65rem;padding:1px 6px">${esc(bk.status)}</span></div>
-          </div>`;
+    const slotHour = slot; // e.g. "10:00"
+
+    // Website bookings matching this slot
+    const slotBookings = bookings.filter(b =>
+      timeKey(b.time) === slot &&
+      (barberFilter === 'all' || (b.barber_id || b.barber) === barberFilter)
+    );
+
+    // Moka walk-ins whose start_time falls in this slot (±30 min window)
+    const slotMoka = mokaSched.filter(s => {
+      const startWIB = new Date(s.start_time).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', hour12: false });
+      return startWIB === slotHour && (barberFilter === 'all' || s.barber_id === barberFilter);
+    });
+
+    const allSlotItems = [...slotBookings.map(b => ({ type: 'booking', data: b })), ...slotMoka.map(s => ({ type: 'moka', data: s }))];
+
+    if (allSlotItems.length > 0) {
+      const cards = await Promise.all(allSlotItems.map(async item => {
+        if (item.type === 'booking') {
+          const bk = item.data;
+          const barberName = await getBarberName(bk.barber_id || bk.barber);
+          return `<div class="tl-booking tl-cell occupied" data-id="${esc(bk.id)}" style="cursor:pointer">
+              <div class="tl-bname">${esc(bk.name)}</div>
+              <div class="tl-bmeta">${esc(bk.service)} · ${esc(barberName)} · <span class="slot-status status-${esc(bk.status)}" style="font-size:.65rem;padding:1px 6px">${esc(bk.status)}</span></div>
+            </div>`;
+        } else {
+          const s = item.data;
+          const src = s.source === 'moka' ? '🏪 Walk-in' : '🌐 Online';
+          return `<div class="tl-booking tl-cell occupied" style="border-left:3px solid #f59e0b;cursor:default">
+              <div class="tl-bname">${esc(s.customer_name || 'Walk-in')} <span style="font-size:.65rem;color:#f59e0b">${src}</span></div>
+              <div class="tl-bmeta">${esc(s.service_name || '—')} · ${esc(s.barber_name || '—')} · <span class="slot-status status-${esc(s.status)}" style="font-size:.65rem;padding:1px 6px">${esc(s.status)}</span></div>
+            </div>`;
+        }
       }));
       return `<div class="timeline-row">
         <div class="tl-time">${esc(slot)}</div>
         <div class="tl-cell" style="flex-direction:column;gap:4px">${cards.join('')}</div>
       </div>`;
     }
+
     return `<div class="timeline-row">
       <div class="tl-time">${esc(slot)}</div>
       <div class="tl-cell">
@@ -536,8 +601,9 @@ async function renderDayDetail(dateStr) {
       </div>
     </div>`;
   }));
+
   timeline.innerHTML = timelineItems.join('');
-  timeline.querySelectorAll('.tl-booking.occupied').forEach(card => card.addEventListener('click', () => openDetailModal(card.dataset.id)));
+  timeline.querySelectorAll('.tl-booking[data-id]').forEach(card => card.addEventListener('click', () => openDetailModal(card.dataset.id)));
   timeline.querySelectorAll('.tl-add-btn').forEach(btn => btn.addEventListener('click', () => openBookingModal(null, btn.dataset.date, btn.dataset.time)));
 }
 
@@ -1024,6 +1090,7 @@ async function openDetailModal(id) {
 
 document.getElementById('detailClose')?.addEventListener('click', () => document.getElementById('detailModal').style.display = 'none');
 document.getElementById('detailModal')?.addEventListener('click', e => { if (e.target === document.getElementById('detailModal')) document.getElementById('detailModal').style.display = 'none'; });
+document.getElementById('detailEdit')?.addEventListener('click', () => { document.getElementById('detailModal').style.display = 'none'; openBookingModal(detailBookingId); });
 document.getElementById('detailConfirm')?.addEventListener('click', async () => { await confirmBooking(detailBookingId); document.getElementById('detailModal').style.display = 'none'; });
 document.getElementById('detailDeny')?.addEventListener('click', async () => { await denyBooking(detailBookingId); document.getElementById('detailModal').style.display = 'none'; });
 document.getElementById('detailCancel')?.addEventListener('click', async () => { await cancelBooking(detailBookingId); document.getElementById('detailModal').style.display = 'none'; });
@@ -1237,3 +1304,230 @@ async function init() {
   }, 60000);
 }
 init();
+
+// ============================================================
+// MEMBERSHIP MODULE
+// ============================================================
+const SB_URL  = 'https://gtiggsilfcivuzowaexq.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0aWdnc2lsZmNpdnV6b3dhZXhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzA1OTMsImV4cCI6MjA5MjM0NjU5M30.GKq79uI5i_B31vi4McEGuqRZEJjPIrY5QKyK0LQEA4o';
+
+async function sbMem(path, opts = {}) {
+  const res = await fetch(SB_URL + '/rest/v1/' + path, {
+    ...opts,
+    headers: {
+      'apikey': SB_ANON,
+      'Authorization': 'Bearer ' + SB_ANON,
+      'Content-Type': 'application/json',
+      'Prefer': opts.prefer || 'return=representation',
+      ...(opts.headers || {})
+    }
+  });
+  if (!res.ok && res.status !== 406) {
+    console.error('sbMem error', res.status, await res.text().catch(()=>''));
+    return null;
+  }
+  return res.json().catch(() => null);
+}
+
+let _memCurrentKey = null; // user_key of currently found member
+
+async function initMembershipView() {
+  await loadMemStats();
+  await loadRecentActivations();
+  await loadAllMembers();
+}
+
+async function loadMemStats() {
+  const all = await sbMem('member_profiles?select=membership_status,membership_activated_at');
+  if (!all) return;
+  const total    = all.length;
+  const active   = all.filter(r => r.membership_status === 'ACTIVE').length;
+  const inactive = total - active;
+  const now      = new Date();
+  const thisMonth= all.filter(r => {
+    if (!r.membership_activated_at) return false;
+    const d = new Date(r.membership_activated_at);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+  document.getElementById('msTotalMembers').textContent  = total;
+  document.getElementById('msActiveMembers').textContent = active;
+  document.getElementById('msInactiveMembers').textContent = inactive;
+  document.getElementById('msThisMonth').textContent     = thisMonth;
+}
+
+async function searchMember(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return;
+  const card     = document.getElementById('memFoundCard');
+  const notFound = document.getElementById('memNotFound');
+  card.style.display = 'none';
+  notFound.style.display = 'none';
+  _memCurrentKey = null;
+
+  // Search by email (exact) OR referral_code (case-insensitive)
+  const byEmail = await sbMem(`member_profiles?user_key=eq.${encodeURIComponent(query.trim())}&select=*`);
+  const byRef   = await sbMem(`member_profiles?referral_code=ilike.${encodeURIComponent(q)}&select=*`);
+  const rows    = (byEmail && byEmail.length) ? byEmail : (byRef && byRef.length ? byRef : null);
+
+  if (!rows || !rows.length) { notFound.style.display = 'block'; return; }
+  const r = rows[0];
+  _memCurrentKey = r.user_key;
+
+  const initials = (r.full_name || r.email || '?').split(' ').map(s=>s[0]).join('').substring(0,2).toUpperCase();
+  document.getElementById('memFoundAvatar').textContent = initials;
+  document.getElementById('memFoundName').textContent   = r.full_name || '(Nama belum diisi)';
+  document.getElementById('memFoundEmail').textContent  = r.email;
+  document.getElementById('memFoundRef').textContent    = 'Referral: ' + (r.referral_code || '—');
+
+  const badge = document.getElementById('memFoundBadge');
+  const opts  = document.getElementById('memActivateOpts');
+  const already = document.getElementById('memAlreadyActive');
+
+  if (r.membership_status === 'ACTIVE') {
+    badge.textContent = '✓ AKTIF';
+    badge.className = 'mem-found-badge status-active';
+    opts.style.display   = 'none';
+    already.style.display= 'flex';
+  } else {
+    badge.textContent = 'BELUM AKTIF';
+    badge.className = 'mem-found-badge status-inactive';
+    opts.style.display   = 'block';
+    already.style.display= 'none';
+  }
+  card.style.display = 'block';
+}
+
+async function activateMember() {
+  if (!_memCurrentKey) return;
+  const branch = document.getElementById('memBranch').value;
+  const payMethod = document.getElementById('memPayMethod').value;
+  const btn = document.getElementById('memActivateBtn');
+  btn.disabled = true;
+  btn.textContent = 'Memproses...';
+
+  const now = new Date().toISOString();
+
+  // 1. UPSERT member profile → ACTIVE
+  const patchOk = await sbMem('member_profiles', {
+    method: 'POST',
+    headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({
+      user_key: _memCurrentKey,
+      membership_status: 'ACTIVE',
+      membership_activated_at: now,
+      total_points: 50,
+      current_tier: 'bronze'
+    })
+  });
+
+  // 2. Record activation
+  await sbMem('member_activations', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: JSON.stringify({
+      user_key: _memCurrentKey,
+      amount: 100000,
+      payment_method: payMethod,
+      status: 'completed',
+      confirmed_by: 'admin-' + branch
+    })
+  });
+
+  // 3. Add bonus points transaction
+  await sbMem('member_point_transactions', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: JSON.stringify({
+      user_key: _memCurrentKey,
+      activity: '🎉 Bonus aktivasi membership — Welcome to the Club!',
+      points: 50,
+      transaction_type: 'bonus'
+    })
+  });
+
+  if (patchOk !== null) {
+    showToast('✓ Membership berhasil diaktifkan! Member mendapat +50 poin bonus.', 'success');
+    // Refresh UI
+    document.getElementById('memFoundBadge').textContent = '✓ AKTIF';
+    document.getElementById('memFoundBadge').className = 'mem-found-badge status-active';
+    document.getElementById('memActivateOpts').style.display = 'none';
+    document.getElementById('memAlreadyActive').style.display = 'flex';
+    await loadMemStats();
+    await loadRecentActivations();
+    await loadAllMembers();
+  } else {
+    showToast('Gagal mengaktifkan. Coba lagi.', 'error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktivasi Membership — Rp 100.000';
+}
+
+async function loadRecentActivations() {
+  const rows = await sbMem(
+    'member_activations?select=user_key,amount,payment_method,status,confirmed_by,created_at&order=created_at.desc&limit=20'
+  );
+  const tbody = document.getElementById('memActivationsBody');
+  if (!tbody) return;
+  if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="mem-empty">Belum ada aktivasi</td></tr>'; return; }
+
+  // Fetch matching profiles for names
+  const keys = [...new Set(rows.map(r=>r.user_key))];
+  const profiles = await sbMem(`member_profiles?user_key=in.(${keys.map(k=>encodeURIComponent(k)).join(',')})&select=user_key,full_name`).catch(()=>null);
+  const nameMap = {};
+  (profiles || []).forEach(p => { nameMap[p.user_key] = p.full_name || p.user_key; });
+
+  tbody.innerHTML = rows.map(r => {
+    const branch = (r.confirmed_by || '').replace('admin-','');
+    const date   = new Date(r.created_at).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
+    const statusBadge = r.status === 'completed'
+      ? '<span class="mem-badge-ok">✓ Selesai</span>'
+      : `<span class="mem-badge-pend">${esc(r.status)}</span>`;
+    return `<tr>
+      <td>${esc(nameMap[r.user_key] || '—')}</td>
+      <td class="mem-td-sm">${esc(r.user_key)}</td>
+      <td>${esc(branch || '—')}</td>
+      <td>${esc(r.payment_method || '—')}</td>
+      <td>${date}</td>
+      <td>${statusBadge}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadAllMembers() {
+  const rows = await sbMem('member_profiles?select=full_name,email,membership_status,current_tier,total_points,total_visits,created_at&order=created_at.desc');
+  const tbody = document.getElementById('memAllBody');
+  if (!tbody) return;
+  if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="mem-empty">Belum ada member</td></tr>'; return; }
+  const TIER_ICONS = { bronze:'🥉', silver:'🥈', gold:'🥇', platinum:'💎' };
+  tbody.innerHTML = rows.map(r => {
+    const statusBadge = r.membership_status === 'ACTIVE'
+      ? '<span class="mem-badge-ok">Aktif</span>'
+      : '<span class="mem-badge-pend">Belum Aktif</span>';
+    const join = new Date(r.created_at).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
+    return `<tr>
+      <td>${esc(r.full_name || '—')}</td>
+      <td class="mem-td-sm">${esc(r.email)}</td>
+      <td>${statusBadge}</td>
+      <td>${TIER_ICONS[r.current_tier]||''} ${esc(r.current_tier||'bronze')}</td>
+      <td>${r.total_points ?? 0}</td>
+      <td>${r.total_visits ?? 0}</td>
+      <td>${join}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Hook into view switcher
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.sb-link[data-view="membership"]').forEach(btn => {
+    btn.addEventListener('click', initMembershipView);
+  });
+
+  document.getElementById('memSearchBtn')?.addEventListener('click', () => {
+    searchMember(document.getElementById('memSearchInput').value);
+  });
+  document.getElementById('memSearchInput')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') searchMember(e.target.value);
+  });
+  document.getElementById('memActivateBtn')?.addEventListener('click', activateMember);
+});

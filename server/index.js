@@ -405,13 +405,34 @@ async function hasOverlapSupabase({ barberId, date, time, duration, excludeId = 
   if (!barberId || barberId === 'any') return false;
   const newStart = timeToMinsStr(time);
   const newEnd = newStart + parseDurationMins(duration);
+
+  // Check legacy bookings table
   let q = supabase.from('bookings').select('id,time,duration').eq('barber_id', barberId).eq('date', date).neq('status', 'cancelled');
   if (excludeId) q = q.neq('id', excludeId);
-  const { data } = await q;
-  return (data || []).some(b => {
+  const { data: legacyRows } = await q;
+  if ((legacyRows || []).some(b => {
     const bStart = timeToMinsStr(b.time);
     const bEnd = bStart + parseDurationMins(b.duration);
     return (newStart < bEnd) && (bStart < newEnd);
+  })) return true;
+
+  // Also check schedules table (includes Moka walk-ins)
+  const dayStart = `${date}T00:00:00+07:00`;
+  const dayEnd   = `${date}T23:59:59+07:00`;
+  const { data: schedRows } = await supabase
+    .from('schedules')
+    .select('start_time, end_time')
+    .eq('barber_id', barberId)
+    .gte('start_time', dayStart)
+    .lte('start_time', dayEnd)
+    .not('status', 'in', '("cancelled","rejected")');
+
+  const newStartMs = new Date(`${date}T${String(time).slice(0,5)}:00+07:00`).getTime();
+  const newEndMs   = newStartMs + parseDurationMins(duration) * 60_000;
+  return (schedRows || []).some(s => {
+    const sStart = new Date(s.start_time).getTime();
+    const sEnd   = new Date(s.end_time).getTime();
+    return (newStartMs < sEnd) && (sStart < newEndMs);
   });
 }
 

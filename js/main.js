@@ -4,6 +4,287 @@
 // ================================================
 document.addEventListener('DOMContentLoaded', () => {
 
+  // ---- AUTH MODAL — Premium Polish with Spring Animations ----
+  const modalOverlay = document.getElementById('loginModal');
+  const memberBtn = document.getElementById('memberBtn');
+  const modalClose = document.getElementById('modalClose');
+  const loginForm = document.getElementById('loginForm');
+  const loginFormContainer = document.getElementById('loginFormContainer');
+  const signupSuccess = document.getElementById('signupSuccess');
+  const googleLoginBtn = document.getElementById('googleLoginBtn');
+  const successCtaBtn = document.getElementById('successCtaBtn');
+  const confettiContainer = document.getElementById('confettiContainer');
+  const loginModeBtn = document.getElementById('loginModeBtn');
+  const signupModeBtn = document.getElementById('signupModeBtn');
+  const authTitle = document.getElementById('authTitle');
+  const nameField = document.getElementById('nameField');
+  const benefitsList = document.getElementById('benefitsList');
+  const googleBtnText = document.getElementById('googleBtnText');
+  const submitBtnText = document.getElementById('submitBtnText');
+  const authIcon = document.getElementById('authIcon');
+
+  let currentMode = 'login';
+
+  // ---- Staggered entrance animation for modal body children ----
+  function animateBodyEntrance(container) {
+    if (!container) return;
+    const children = container.querySelectorAll('.modal-body > *');
+    children.forEach((child, i) => {
+      child.style.opacity = '0';
+      child.style.transform = 'translateY(12px)';
+      child.style.transition = 'none';
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          child.style.transition = `opacity .4s cubic-bezier(.4,0,.2,1) ${i * 0.06}s, transform .4s cubic-bezier(.175,.885,.32,1.275) ${i * 0.06}s`;
+          child.style.opacity = '1';
+          child.style.transform = 'translateY(0)';
+        });
+      });
+    });
+  }
+
+  // ---- Re-trigger CSS animations on header (icon pop, title slide) ----
+  function retriggerHeaderAnimations() {
+    if (authIcon) {
+      authIcon.style.animation = 'none';
+      authIcon.offsetHeight;
+      authIcon.style.animation = 'iconPop .5s cubic-bezier(.175,.885,.32,1.275) .15s both';
+    }
+    if (authTitle) {
+      authTitle.style.animation = 'none';
+      authTitle.offsetHeight;
+      authTitle.style.animation = 'titleSlide .4s cubic-bezier(.4,0,.2,1) .2s both';
+    }
+  }
+
+  // ---- Toggle Login / Signup Mode ----
+  function setAuthMode(mode) {
+    currentMode = mode;
+    if (loginModeBtn && signupModeBtn) {
+      loginModeBtn.classList.toggle('active', mode === 'login');
+      signupModeBtn.classList.toggle('active', mode === 'signup');
+    }
+    if (authTitle) {
+      authTitle.textContent = mode === 'login' ? 'MASUK' : 'DAFTAR';
+      authTitle.style.animation = 'none';
+      authTitle.offsetHeight;
+      authTitle.style.animation = 'titleSlide .3s cubic-bezier(.4,0,.2,1) both';
+    }
+    if (googleBtnText) googleBtnText.textContent = mode === 'login' ? 'Login dengan Google' : 'Daftar dengan Google';
+    if (submitBtnText) submitBtnText.textContent = mode === 'login' ? 'Masuk Sekarang' : 'Daftar & Gabung';
+    if (nameField) nameField.classList.toggle('show', mode === 'signup');
+    if (benefitsList) benefitsList.style.display = mode === 'signup' ? '' : 'none';
+    const userNameInput = document.getElementById('userName');
+    if (userNameInput) userNameInput.required = mode === 'signup';
+  }
+
+  if (loginModeBtn) loginModeBtn.addEventListener('click', () => setAuthMode('login'));
+  if (signupModeBtn) signupModeBtn.addEventListener('click', () => setAuthMode('signup'));
+
+  // ---- Open Modal ----
+  if (memberBtn && modalOverlay) {
+    memberBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      resetModalState();
+      modalOverlay.classList.add('active');
+      document.body.style.overflow = 'hidden';
+      retriggerHeaderAnimations();
+      setTimeout(() => animateBodyEntrance(loginFormContainer), 100);
+    });
+  }
+
+  // ---- Close Modal (with ESC key support) ----
+  function closeModal() {
+    if (!modalOverlay) return;
+    modalOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+    setTimeout(resetModalState, 400);
+  }
+  if (modalClose) modalClose.addEventListener('click', closeModal);
+  if (modalOverlay) {
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modalOverlay && modalOverlay.classList.contains('active')) closeModal();
+  });
+
+  // ---- Reset State ----
+  function resetModalState() {
+    if (loginFormContainer) loginFormContainer.style.display = '';
+    if (signupSuccess) signupSuccess.style.display = 'none';
+    if (confettiContainer) confettiContainer.style.display = 'none';
+    if (loginForm) loginForm.reset();
+    setAuthMode('login');
+  }
+
+  // ---- Confetti — multi-burst celebration ----
+  function triggerConfetti() {
+    if (typeof window.confetti === 'function') {
+      const colors = ['#C1121F', '#FBBF24', '#CD7F32', '#9CA3AF', '#FFFFFF'];
+      // Initial big burst
+      window.confetti({ particleCount: 80, spread: 100, origin: { y: 0.55 }, colors, startVelocity: 45 });
+      // Side streams
+      const end = Date.now() + 2500;
+      (function frame() {
+        window.confetti({ particleCount: 3, angle: 60, spread: 50, origin: { x: 0, y: 0.6 }, colors, startVelocity: 35 });
+        window.confetti({ particleCount: 3, angle: 120, spread: 50, origin: { x: 1, y: 0.6 }, colors, startVelocity: 35 });
+        if (Date.now() < end) requestAnimationFrame(frame);
+      })();
+      // Delayed secondary burst
+      setTimeout(() => {
+        window.confetti({ particleCount: 50, spread: 120, origin: { y: 0.7 }, colors, startVelocity: 30 });
+      }, 800);
+    } else {
+      if (!confettiContainer) return;
+      confettiContainer.style.display = 'block';
+      const confettis = confettiContainer.querySelectorAll('.confetti');
+      confettis.forEach((c, i) => {
+        c.style.animation = 'none';
+        c.offsetHeight;
+        c.style.animation = 'confetti-fall 3s ease-out forwards';
+        c.style.animationDelay = `${i * 0.1}s`;
+      });
+      setTimeout(() => { confettiContainer.style.display = 'none'; }, 3500);
+    }
+  }
+
+  // ---- Show Success with staggered animation ----
+  function showSignupSuccess(email, userName) {
+    if (loginFormContainer) loginFormContainer.style.display = 'none';
+    if (signupSuccess) {
+      signupSuccess.style.display = '';
+      const emailEl = document.getElementById('successUserEmail');
+      const nameEl = document.getElementById('successUserName');
+      if (emailEl) emailEl.textContent = email || 'member@redbox.com';
+      if (nameEl) {
+        const displayName = userName || (email ? email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Member');
+        nameEl.textContent = currentMode === 'signup' ? `Selamat ${displayName}!` : `Selamat Datang ${displayName}!`;
+      }
+    }
+    setTimeout(triggerConfetti, 200);
+  }
+
+  // ---- Form Submit ----
+  if (loginForm) {
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail')?.value || 'member@redbox.com';
+      const userName = document.getElementById('userName')?.value || '';
+      showSignupSuccess(email, userName);
+    });
+  }
+
+  // ---- Google OAuth — Real Integration ----
+  const GOOGLE_CLIENT_ID = '759053243482-n8jnskp5utahfdclhjhnvkjhrc4p2tun.apps.googleusercontent.com';
+
+  // Decode JWT payload (no library needed)
+  function decodeJwt(token) {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      return JSON.parse(decodeURIComponent(atob(base64).split('').map(c =>
+        '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+      ).join('')));
+    } catch (e) { return null; }
+  }
+
+  // Handle Google credential response
+  function handleGoogleCredential(response) {
+    const user = decodeJwt(response.credential);
+    if (user) {
+      // Save to localStorage
+      localStorage.setItem('redbox_user', JSON.stringify({
+        name: user.name,
+        email: user.email,
+        picture: user.picture,
+        loggedIn: true,
+        loginTime: Date.now()
+      }));
+      showSignupSuccess(user.email, user.given_name || user.name);
+    }
+  }
+
+  // Initialize Google Identity Services when library loads
+  function initGoogleSignIn() {
+    if (typeof google === 'undefined' || !google.accounts) return;
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+      auto_select: false,
+      cancel_on_tap_outside: true
+    });
+  }
+
+  // Wait for GIS library to load, then initialize
+  if (typeof google !== 'undefined' && google.accounts) {
+    initGoogleSignIn();
+  } else {
+    window.addEventListener('load', () => {
+      setTimeout(initGoogleSignIn, 500);
+    });
+  }
+
+  // Custom Google button → trigger Google One Tap / popup
+  if (googleLoginBtn) {
+    googleLoginBtn.addEventListener('click', () => {
+      if (typeof google !== 'undefined' && google.accounts) {
+        google.accounts.id.prompt((notification) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            // Fallback: use token client for popup consent
+            const tokenClient = google.accounts.oauth2.initTokenClient({
+              client_id: GOOGLE_CLIENT_ID,
+              scope: 'email profile',
+              callback: (tokenResponse) => {
+                if (tokenResponse.access_token) {
+                  // Fetch user info with access token
+                  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+                  })
+                  .then(res => res.json())
+                  .then(user => {
+                    localStorage.setItem('redbox_user', JSON.stringify({
+                      name: user.name,
+                      email: user.email,
+                      picture: user.picture,
+                      loggedIn: true,
+                      loginTime: Date.now()
+                    }));
+                    showSignupSuccess(user.email, user.given_name || user.name);
+                  })
+                  .catch(() => showSignupSuccess('member@redbox.com', ''));
+                }
+              }
+            });
+            tokenClient.requestAccessToken();
+          }
+        });
+      } else {
+        alert('Google Sign-In belum siap. Coba refresh halaman.');
+      }
+    });
+  }
+
+  // ---- Success CTA → Member Dashboard ----
+  if (successCtaBtn) {
+    successCtaBtn.addEventListener('click', () => {
+      window.location.href = 'member-dashboard.html';
+    });
+  }
+
+  // ---- If already logged in, update Member button ----
+  const existingUser = JSON.parse(localStorage.getItem('redbox_user') || 'null');
+  if (existingUser && existingUser.loggedIn && memberBtn) {
+    const btnSpan = memberBtn.querySelector('span');
+    if (btnSpan) btnSpan.textContent = existingUser.name ? existingUser.name.split(' ')[0] : 'Dashboard';
+    memberBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      window.location.href = 'member-dashboard.html';
+    }, true);
+  }
+
   // ---- GLOBAL UTILS ----
   const revealObs = new IntersectionObserver((entries) => {
     entries.forEach(e => {
@@ -16,6 +297,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const sections = document.querySelectorAll('section[id]');
   const navLinks = document.querySelectorAll('.nav-link');
 
+  function updateNavPill() {
+    const activeLink = document.querySelector('#navPillWrapper .nav-link.active');
+    const track = document.getElementById('navPillTrack');
+    const wrapper = document.getElementById('navPillWrapper');
+    if (!activeLink || !track || !wrapper) return;
+    const wRect = wrapper.getBoundingClientRect();
+    const lRect = activeLink.getBoundingClientRect();
+    track.style.left   = (lRect.left - wRect.left) + 'px';
+    track.style.top    = (lRect.top  - wRect.top)  + 'px';
+    track.style.width  = lRect.width  + 'px';
+    track.style.height = lRect.height + 'px';
+  }
+
   window.addEventListener('scroll', () => {
     navbar.classList.toggle('scrolled', window.scrollY > 50);
     // Active nav link
@@ -26,7 +320,12 @@ document.addEventListener('DOMContentLoaded', () => {
     navLinks.forEach(l => {
       l.classList.toggle('active', l.getAttribute('href') === '#' + current);
     });
+    updateNavPill();
   }, { passive: true });
+
+  updateNavPill();
+  window.addEventListener('load', updateNavPill);
+  window.addEventListener('resize', updateNavPill);
 
   // ---- HAMBURGER ----
   const hamburger = document.getElementById('hamburger');
