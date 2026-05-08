@@ -447,9 +447,7 @@ async function _processIncomingOrder(supabase, order, outletId) {
   }
 
   // 2. Determine start time
-  const orderTime = new Date(
-    order.transaction_time || order.created_at || order.updated_at || Date.now()
-  );
+  const orderTime = _safeDate(order.transaction_time, order.created_at, order.updated_at);
 
   // 3. Map order items → duration + amount
   // Moka Report API returns items in `checkouts[]`; Advanced Ordering uses `order_items`
@@ -587,7 +585,7 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
 
   // Work in WIB (UTC+7) to find the correct calendar date
   const WIB_MS = 7 * 60 * 60 * 1000;
-  const created   = new Date(billCreatedAt || Date.now());
+  const created   = _safeDate(billCreatedAt);
   const wibBase   = new Date(created.getTime() + WIB_MS); // UTC shifted to WIB
   const createdDow = wibBase.getUTCDay();                  // day-of-week in WIB
 
@@ -668,7 +666,7 @@ async function _processOpenBill(supabase, bill, outletId) {
   // mis. "Satria Abdul 15.00 Sabtu". Ini adalah waktu appointment SEBENARNYA.
   // Jika tidak ada pola ini, fall back ke bill.createdAt (GoShow langsung).
   const parsedStart = _parseAppointmentTimeFromBillName(billName, bill.createdAt || bill.created_at);
-  const startTime   = parsedStart || new Date(bill.createdAt || bill.created_at || Date.now());
+  const startTime   = parsedStart || _safeDate(bill.createdAt, bill.created_at);
   const endTime     = new Date(startTime.getTime() + durationMin * 60_000);
 
   // ── Idempotency: check for existing schedule ──────────────
@@ -1220,6 +1218,32 @@ async function _insertTransaction(supabase, {
   }
 
   return txn;
+}
+
+/**
+ * Robust date parser — handles ISO strings with +0700 (no-colon) timezone,
+ * Unix timestamps in seconds, and falls back to now() if everything fails.
+ */
+function _safeDate(...vals) {
+  for (const v of vals) {
+    if (v === null || v === undefined || v === '') continue;
+    // Direct parse (standard ISO, ms timestamp number)
+    let d = new Date(v);
+    if (!isNaN(d.getTime())) return d;
+    // Fix +0700 / -0700 → +07:00 / -07:00 (Moka API timezone format)
+    if (typeof v === 'string') {
+      const fixed = v.replace(/([+-])(\d{2})(\d{2})$/, '$1$2:$3');
+      d = new Date(fixed);
+      if (!isNaN(d.getTime())) return d;
+    }
+    // Unix seconds (Moka sometimes returns epoch seconds as number/string)
+    const n = Number(v);
+    if (!isNaN(n) && n > 0) {
+      d = new Date(n > 1e12 ? n : n * 1000);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  return new Date(); // fallback to now
 }
 
 async function _startLog(supabase, direction, entityType, entityId) {
