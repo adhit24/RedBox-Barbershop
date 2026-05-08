@@ -298,15 +298,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   box-shadow:0 8px 28px rgba(193,18,31,.45);
 }
 
-/* Desktop enhancement — restore side-by-side password row only on large screens */
-@media(min-width:768px){
-  .password-row,.address-row{flex-direction:row;align-items:stretch}
-  .password-row input,.address-row input{flex:1;width:auto}
-  .btn-change-pw,.btn-add-address{width:auto;white-space:nowrap;padding:12px 20px}
-  .btn-save-account{width:auto;align-self:center;min-width:200px}
-  .form-row{flex-direction:row}
-  .form-row .form-field{flex:1}
-}
+/* Form stays single-column at all sizes — mobile-first, no row restore */
 
 /* ---- Empty State ---- */
 .empty-state{
