@@ -454,7 +454,7 @@
       .sd-atm-cell { aspect-ratio: 1; }
       .sd-atmosphere-header { margin-bottom: 32px; }
 
-      /* Menu — horizontal swipe carousel */
+      /* Menu — 2-column grid on mobile */
       .sd-menu-header { margin-bottom: 28px; }
       .sd-menu-tabs {
         overflow-x: auto; -webkit-overflow-scrolling: touch;
@@ -463,13 +463,9 @@
       .sd-menu-tabs::-webkit-scrollbar { display: none; }
       .sd-tab { white-space: nowrap; }
       .sd-menu-grid {
-        display: flex; gap: 14px; overflow-x: auto;
-        scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
-        scrollbar-width: none; padding-bottom: 8px;
-        margin: 0 -18px; padding-left: 18px; padding-right: 18px;
+        display: grid; grid-template-columns: 1fr 1fr;
+        gap: 12px; padding-bottom: 8px;
       }
-      .sd-menu-grid::-webkit-scrollbar { display: none; }
-      .sd-menu-card { flex: 0 0 78vw; scroll-snap-align: start; }
 
       /* Experience */
       .sd-exp-visual { display: none; }
@@ -482,7 +478,7 @@
       .sd-visit { padding: 72px 0; }
 
       /* Footer */
-      .sd-footer { padding: 48px 0 28px; }
+      .sd-footer { padding: 28px 0 16px; }
       .sd-footer-bottom { flex-direction: column; gap: 12px; text-align: center; }
       .sd-footer-socials { justify-content: center; }
 
@@ -491,11 +487,7 @@
     }
 
     @media (max-width: 390px) {
-      .sd-about-pillars { grid-template-columns: 1fr; }
       .sd-section-title { font-size: clamp(1.65rem, 8vw, 2.2rem); }
-      .sd-menu-card { flex: 0 0 85vw; }
-      .sd-atm-grid { grid-template-columns: 1fr; }
-      .sd-atm-cell { aspect-ratio: 4/3 !important; }
     }
 
     /* ══════════════════════════════════════════════
@@ -540,20 +532,14 @@
         justify-content: center;
       }
 
-      /* Menu carousel: peek next card at right edge */
-      .sd-menu-grid {
-        padding-right: 36px !important;
-        will-change: scroll-position;
-        overscroll-behavior-x: contain;
-      }
-      .sd-menu-card { flex: 0 0 74vw !important; border-radius: 12px; }
+      .sd-menu-card { border-radius: 12px; }
       .sd-menu-img  { aspect-ratio: 3/2; }
       .sd-menu-body { padding: 14px 16px 18px; }
       .sd-menu-name { font-size: 1rem; margin-bottom: 5px; }
       .sd-menu-desc { font-size: .8rem; line-height: 1.6; margin-bottom: 10px; }
 
-      /* Atmosphere: portrait cells — more dramatic */
-      .sd-atm-cell { aspect-ratio: 2/3 !important; border-radius: 10px; }
+      /* Atmosphere: square cells in grid */
+      .sd-atm-cell { aspect-ratio: 1 !important; border-radius: 10px; }
       .sd-atm-label { font-size: .6rem; padding: 4px 9px; }
       .sd-atm-inner { padding: 14px; }
 
@@ -572,7 +558,7 @@
       .sd-visit-content h2 { font-size: clamp(2.2rem, 9vw, 3rem) !important; }
 
       /* Footer: centered on mobile */
-      .sd-footer-top   { gap: 28px; }
+      .sd-footer-top   { gap: 16px; }
       .sd-footer-name  { font-size: 1.5rem; letter-spacing: .15em; }
       .sd-footer-tagline { font-size: .78rem; }
       .sd-footer-col   { text-align: center; }
@@ -752,45 +738,26 @@
       }
       .sd-about-frame { inset: 12px; }
       .sd-about-pillars {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 10px;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        margin: 0 -18px;
-        padding: 0 18px 6px;
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch;
       }
-      .sd-about-pillars::-webkit-scrollbar { display: none; }
       .sd-pillar {
-        flex: 0 0 76%;
-        scroll-snap-align: start;
-        min-height: 122px;
+        min-height: 110px;
       }
 
       .sd-atm-grid {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 10px;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        margin: 0 -18px;
-        padding: 0 18px 8px;
-        scrollbar-width: none;
-        -webkit-overflow-scrolling: touch;
       }
-      .sd-atm-grid::-webkit-scrollbar { display: none; }
       .sd-atm-cell {
-        flex: 0 0 72vw;
-        scroll-snap-align: start;
-        aspect-ratio: 3/4 !important;
+        aspect-ratio: 1 !important;
       }
 
       .sd-menu-grid {
         gap: 12px;
         padding-bottom: 12px;
-      }
-      .sd-menu-card {
-        flex-basis: 80vw !important;
       }
       .sd-menu-img { aspect-ratio: 4/3; }
       .sd-menu-img-tag {
@@ -810,7 +777,7 @@
         display: flex;
         align-items: center;
       }
-      .sd-footer { padding-bottom: 32px; }
+      .sd-footer { padding-bottom: 20px; }
       .sd-kinarya-credit {
         flex-wrap: wrap;
         text-align: center;
@@ -843,11 +810,6 @@
       .sd-hero-title {
         font-size: clamp(2rem, 10vw, 2.6rem);
       }
-      .sd-atm-cell,
-      .sd-menu-card {
-        flex-basis: 86vw !important;
-      }
-      .sd-pillar { flex-basis: 84%; }
       .sd-mbar-btn {
         gap: 4px;
         padding-left: 6px;
@@ -935,31 +897,12 @@
       .sd-hero-sub { font-size: .86rem; }
       .sd-visit { padding: 52px 0; }
       .sd-about-visual { aspect-ratio: 4/3 !important; max-height: none; }
-      .sd-footer { padding: 40px 0 24px; }
+      .sd-footer { padding: 20px 0 12px; }
       .sd-mbar-btn { font-size: .64rem; gap: 4px; }
     }
 
-    /* ─────────────────────────────────────────────────────────────
-       MENU CAROUSEL OVERFLOW FIX
-       Root cause of mobile zoom-out: .sd-menu-grid used margin:0 -18px
-       while being overflow-x:auto — the scroll container escaped its
-       section's overflow:hidden boundary in some mobile browsers.
-       Solution: isolate clipping in a wrapper div so the scroll
-       container itself never extends beyond the viewport.
-    ───────────────────────────────────────────────────────────── */
     @media (max-width: 600px) {
-      /* Wrapper extends edge-to-edge and clips all child overflow */
-      .sd-menu-carousel-wrap {
-        overflow: hidden;
-        margin: 0 -18px;
-      }
-      /* Grid = the actual scroll container; no negative margin needed */
-      .sd-menu-grid {
-        margin: 0 !important;
-        padding-left: 18px !important;
-        padding-right: 36px !important;
-      }
-      /* Reinforce section-level clipping for all horizontal carousels */
+      /* Reinforce section-level clipping */
       .sd-menu,
       .sd-atmosphere,
       .sd-about {
@@ -1198,7 +1141,7 @@
 
         <div class="sd-menu-card sd-reveal sd-reveal-delay-2" data-category="drinks">
           <div class="sd-menu-img">
-            <img class="sd-photo" src="sundaze/public/kopyor.webp" alt="Coffee Collection" style="object-position:center 40%">
+            <img class="sd-photo" src="sundaze/public/collection.webp" alt="Coffee Collection" style="object-position:center 40%">
             <div class="sd-menu-img-overlay"></div>
             <span class="sd-menu-img-tag">Popular</span>
           </div>
@@ -1258,6 +1201,32 @@
           <div class="sd-menu-body">
             <h3 class="sd-menu-name">Makan Siang di Sundaze</h3>
             <p class="sd-menu-desc">Lunch bukan sekadar mengisi perut. Di Sundaze, makan siang adalah waktu untuk meluangkan diri dan menikmati momen.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Food</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-3" data-category="food" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/Masih gak bisa move on dari lezatnya isian burger ini ✨tiap gigitan punya ceritanya sendiri, cr.webp" alt="Chicken Burger" style="object-position:center 50%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Burger</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Chicken Burger</h3>
+            <p class="sd-menu-desc">Ayam crispy juicy dengan saus spesial, selada renyah, dan roti brioche — setiap gigitan punya ceritanya sendiri.</p>
+            <div class="sd-menu-footer"><span class="sd-menu-badge">Food</span></div>
+          </div>
+        </div>
+
+        <div class="sd-menu-card sd-reveal sd-reveal-delay-4" data-category="food" style="display:none">
+          <div class="sd-menu-img">
+            <img class="sd-photo" src="sundaze/public/Masih gak bisa move on dari lezatnya isian burger ini ✨tiap gigitan punya ceritanya sendiri, cr (1).webp" alt="Beef Cheese Burger" style="object-position:center 50%">
+            <div class="sd-menu-img-overlay"></div>
+            <span class="sd-menu-img-tag">Burger</span>
+          </div>
+          <div class="sd-menu-body">
+            <h3 class="sd-menu-name">Beef Cheese Burger</h3>
+            <p class="sd-menu-desc">Patty daging sapi tebal, lelehan keju melimpah, dan saus rahasia Sundaze — kombinasi yang bikin susah move on.</p>
             <div class="sd-menu-footer"><span class="sd-menu-badge">Food</span></div>
           </div>
         </div>
