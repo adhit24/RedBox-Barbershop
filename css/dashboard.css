@@ -3,6 +3,9 @@
    Dark premium theme with tier progress
    ================================================ */
 
+/* Prevent horizontal overflow / zoom-out on mobile */
+html, body { overflow-x: hidden; max-width: 100vw; }
+
 /* ---- Breadcrumb ---- */
 .dash-breadcrumb{
   padding:100px 0 0;background:var(--bg);
@@ -927,12 +930,40 @@
   .points-summary{flex-direction:column}
   .points-balance{border-right:none;border-bottom:1px solid var(--w10);padding-bottom:16px}
 }
+@media(max-width:600px){
+  /* Prevent form overflow */
+  .password-row, .address-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .btn-change-pw, .btn-add-address {
+    width: 100%;
+    text-align: center;
+    white-space: normal;
+  }
+  .account-form { gap: 16px; }
+  .form-field input, .form-field select {
+    font-size: .88rem;
+    padding: 11px 14px;
+  }
+  .btn-save-account {
+    width: 100%;
+    min-width: 0;
+    align-self: stretch;
+    padding: 14px;
+  }
+  .gender-toggle { gap: 6px; }
+  .gender-btn { padding: 11px 8px; font-size: .82rem; }
+}
+
 @media(max-width:480px){
   .tier-explain-grid{grid-template-columns:1fr}
   .profile-stats{flex-direction:column}
   .stat-box{min-width:auto}
-  .dash-panel{padding:20px 16px}
-  .tier-card{padding:20px 16px}
+  .dash-panel{padding:20px 14px}
+  .tier-card{padding:20px 14px}
   .tier-node-label{font-size:.6rem}
   .referral-code{font-size:1.1rem}
+  .panel-title{font-size:1.2rem;margin-bottom:20px}
+  .form-field input, .form-field select{padding:10px 12px;font-size:.85rem}
 }
