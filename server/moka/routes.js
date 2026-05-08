@@ -713,8 +713,8 @@ function createMokaRouter(supabase) {
   });
 
   // ── POST /api/moka/map-items ──────────────────────────────
-  // Save Moka item → service mappings.
-  // Body: { mappings: [{ serviceId: "uuid", mokaItemId: "123", mokaCategoryId: "456", mokaCategoryName: "..." }] }
+  // Save Moka item → service mappings + price + duration.
+  // Body: { mappings: [{ serviceId, mokaItemId?, mokaCategoryId?, mokaCategoryName?, price?, durationMinutes? }] }
   router.post('/moka/map-items', async (req, res) => {
     try {
       const { mappings } = req.body || {};
@@ -723,19 +723,31 @@ function createMokaRouter(supabase) {
 
       const results = [];
       for (const m of mappings) {
-        const { serviceId, mokaItemId, mokaCategoryId, mokaCategoryName } = m;
-        if (!serviceId || !mokaItemId) {
-          results.push({ serviceId, mokaItemId, status: 'skipped_missing_fields' });
+        const { serviceId, mokaItemId, mokaCategoryId, mokaCategoryName, price, durationMinutes } = m;
+        if (!serviceId) {
+          results.push({ serviceId, status: 'skipped_missing_fields' });
+          continue;
+        }
+
+        const updateData = {};
+        if (mokaItemId) {
+          updateData.moka_item_id      = String(mokaItemId);
+          updateData.moka_category_id  = mokaCategoryId  ? String(mokaCategoryId)  : null;
+          updateData.moka_category_name= mokaCategoryName || null;
+        }
+        if (price != null && !isNaN(price) && price >= 0)
+          updateData.price = price;
+        if (durationMinutes != null && !isNaN(durationMinutes) && durationMinutes > 0)
+          updateData.duration_minutes = durationMinutes;
+
+        if (!Object.keys(updateData).length) {
+          results.push({ serviceId, mokaItemId, status: 'skipped_no_changes' });
           continue;
         }
 
         const { error } = await supabase
           .from('services')
-          .update({
-            moka_item_id:      String(mokaItemId),
-            moka_category_id:  mokaCategoryId ? String(mokaCategoryId) : null,
-            moka_category_name:mokaCategoryName || null,
-          })
+          .update(updateData)
           .eq('id', serviceId);
 
         results.push({ serviceId, mokaItemId, status: error ? 'error' : 'ok', error: error?.message });

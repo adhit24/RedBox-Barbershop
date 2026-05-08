@@ -699,8 +699,20 @@ function renderMappingTable() {
 
     return `<tr data-service-id="${svc.id}">
       <td><strong>${svc.name}</strong></td>
-      <td style="font-size:.82rem">Rp ${(svc.price || 0).toLocaleString('id-ID')}</td>
-      <td style="font-size:.82rem">${svc.duration_minutes || '?'} mnt</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:.78rem;color:var(--muted)">Rp</span>
+          <input type="number" min="0" step="1000" class="inline-select svc-price" data-service-id="${svc.id}"
+            value="${svc.price || ''}" placeholder="0" style="width:90px;padding:3px 6px;font-size:.82rem">
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:4px">
+          <input type="number" min="1" max="480" class="inline-select svc-duration" data-service-id="${svc.id}"
+            value="${svc.duration_minutes || ''}" placeholder="30" style="width:54px;padding:3px 6px;font-size:.82rem">
+          <span style="font-size:.78rem;color:var(--muted)">mnt</span>
+        </div>
+      </td>
       <td>
         <select class="inline-select moka-item-sel" data-service-id="${svc.id}" style="width:100%;max-width:280px">
           <option value="">— Pilih item Moka —</option>
@@ -729,22 +741,36 @@ function renderMappingTable() {
 document.getElementById('btnSaveMappings')?.addEventListener('click', async () => {
   const btn = document.getElementById('btnSaveMappings');
   hideAlert('alertMap');
+
+  // Kumpulkan SEMUA baris — Moka mapping opsional, price+duration selalu disimpan
   const mappings = [];
-  document.querySelectorAll('.moka-item-sel').forEach(sel => {
-    const val = sel.value;
-    if (!val) return;
+  document.querySelectorAll('tr[data-service-id]').forEach(row => {
+    const svcId = row.dataset.serviceId;
+    const sel      = row.querySelector('.moka-item-sel');
+    const priceEl  = row.querySelector('.svc-price');
+    const durEl    = row.querySelector('.svc-duration');
+
+    const val = sel?.value || '';
     const [mokaItemId, mokaCategoryId, mokaCategoryName] = val.split('|');
-    if (!mokaItemId) return;
+
+    const price    = priceEl  && priceEl.value  !== '' ? parseInt(priceEl.value,  10) : null;
+    const duration = durEl    && durEl.value    !== '' ? parseInt(durEl.value,    10) : null;
+
+    // Skip baris yang tidak punya perubahan apapun
+    if (!mokaItemId && price === null && duration === null) return;
+
     mappings.push({
-      serviceId: sel.dataset.serviceId,
-      mokaItemId,
-      mokaCategoryId: mokaCategoryId || null,
+      serviceId:        svcId,
+      mokaItemId:       mokaItemId || null,
+      mokaCategoryId:   mokaCategoryId  || null,
       mokaCategoryName: mokaCategoryName || null,
+      price,
+      durationMinutes:  duration,
     });
   });
 
   if (!mappings.length) {
-    showAlert('alertMap', 'warning', '⚠ Tidak ada mapping yang dipilih.');
+    showAlert('alertMap', 'warning', '⚠ Tidak ada perubahan untuk disimpan.');
     return;
   }
 
@@ -758,10 +784,9 @@ document.getElementById('btnSaveMappings')?.addEventListener('click', async () =
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Gagal menyimpan');
     const ok = (data.results || []).filter(r => r.status === 'ok').length;
-    showAlert('alertMap', 'success', `✅ ${ok} dari ${mappings.length} mapping disimpan.`);
-    // Update status badges
+    showAlert('alertMap', 'success', `✅ ${ok} layanan disimpan (harga, durasi, dan mapping Moka).`);
     (data.results || []).forEach(r => {
-      if (r.status === 'ok') {
+      if (r.status === 'ok' && r.mokaItemId) {
         const badge = document.getElementById(`mapStatus-${r.serviceId}`);
         if (badge) { badge.textContent = '✓ mapped'; badge.className = 'badge badge-green'; }
       }
