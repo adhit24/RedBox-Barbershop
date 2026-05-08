@@ -75,34 +75,11 @@ async function pushScheduleToMoka(supabase, scheduleId) {
       sch.moka_variant_name = svc?.moka_variant_name || null;
     }
 
-    // 3. Upsert customer in Moka
-    let mokaCustomerId = null;
-    if (sch.customer_phone) {
-      try {
-        const mokaCustomer = await client.upsertCustomer({
-          name:  sch.customer_name  || 'Guest',
-          phone: sch.customer_phone,
-          email: sch.customer_email || undefined,
-        });
-        mokaCustomerId = mokaCustomer?.data?.id || mokaCustomer?.id;
-
-        // Persist Moka customer ID back onto our customer row
-        if (mokaCustomerId && sch.customer_id) {
-          await supabase.from('customers')
-            .update({
-              moka_customer_id: mokaCustomerId,
-              phone_e164: sch.customer_phone || null,
-            })
-            .eq('id', sch.customer_id);
-        }
-      } catch (custErr) {
-        console.warn('[Sync] Could not upsert Moka customer:', custErr.message);
-        // Non-fatal — continue without Moka customer_id
-      }
-    }
+    // 3. Customer upsert removed — POST /v2/customers not in Moka API spec.
+    //    Customer is identified in Moka via customer_name + customer_phone_number in the order.
 
     // 4. Create Moka order
-    const orderPayload = await _buildMokaOrderPayload(sch, mokaCustomerId, client);
+    const orderPayload = await _buildMokaOrderPayload(sch, client);
     const mokaOrder    = await client.createOrder(orderPayload);
     const mokaOrderId  = mokaOrder?.data?.id || mokaOrder?.id;
 
@@ -200,7 +177,9 @@ async function _pullMokaToWebNow(supabase, outletId) {
       || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const response  = await client.getOrders({ updatedSince: since, limit: 100 });
-    const rawOrders = response?.data || response?.orders || [];
+    // BUG FIX: v3 response shape is { data: { payments: [], next_url, completed } }
+    // response.data is an object, not an array — must access data.payments
+    const rawOrders = response?.data?.payments || [];
     const orders    = Array.isArray(rawOrders) ? rawOrders : [];
 
     for (const order of orders) {
@@ -222,27 +201,29 @@ async function _pullMokaToWebNow(supabase, outletId) {
       }
     }
 
-    // ── Pull 2: Pending Advanced Orders ─────────────────────────────────────
-    // Walk-in yang masih HOLD/in-progress belum muncul di Report API.
-    // Kita tarik dari Advanced Ordering list agar slot-nya terblokir di web.
+    // Pull 2 REMOVED: GET /v1/advanced_orderings/orders does not exist in Moka API spec.
+    // Walk-in pending slots are covered by Pull 3 (sync_bills) below.
+
+    // ── Pull 3: Open (PENDING) walk-in bills from sync_bills ────────────────
+    // GoShow customer yang langsung dilayani kasir (bukan via Advanced Ordering).
+    // Slot harus terblokir di website segera, sebelum transaksi selesai.
     try {
-      const pendingRes   = await client.getPendingOrders();
-      const pendingOrders = pendingRes?.data || pendingRes?.orders || [];
-      if (Array.isArray(pendingOrders)) {
-        for (const order of pendingOrders) {
+      const todayStr  = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+      const billsRes  = await client.getOpenBills(todayStr);
+      const openBills = billsRes?.data || [];
+      if (Array.isArray(openBills)) {
+        for (const bill of openBills) {
           try {
-            const result = await _processIncomingOrder(supabase, order, outletId);
+            const result = await _processOpenBill(supabase, bill, outletId);
             if (result === 'skipped') skipped++;
             else processed++;
-          } catch (pErr) {
-            // Non-fatal — continue
-            console.warn(`[Sync] Pending order ${order.id}:`, pErr.message);
+          } catch (bErr) {
+            console.warn(`[Sync] Open bill ${bill.id}:`, bErr.message);
           }
         }
       }
-    } catch (pendingErr) {
-      // Endpoint mungkin tidak tersedia di semua aplikasi Moka — abaikan error
-      console.warn(`[Sync] getPendingOrders skipped (${pendingErr.message})`);
+    } catch (billsErr) {
+      console.warn(`[Sync] getOpenBills skipped (${billsErr.message})`);
     }
 
     // ── Pull 3: Open (PENDING) walk-in bills from sync_bills ────────────────
@@ -292,7 +273,10 @@ async function _pullMokaToWebNow(supabase, outletId) {
  */
 async function _processIncomingOrder(supabase, order, outletId) {
   const mokaOrderId  = String(order.id || order.order_id);
-  const mokaStatus   = (order.transaction_status || order.status || 'COMPLETED').toUpperCase();
+  // BUG FIX: v3 payments have no 'transaction_status' field.
+  // v3 only returns settled transactions; detect voids via is_deleted / is_refunded flags.
+  const isVoid      = Boolean(order.is_deleted || order.is_refunded);
+  const mokaStatus  = isVoid ? 'VOID' : 'COMPLETED';
 
   // 1. Check if we already have a schedule for this order
   const { data: existing } = await supabase
@@ -391,7 +375,41 @@ async function _processIncomingOrder(supabase, order, outletId) {
     .select()
     .single();
 
-  if (schErr) throw new Error(`Schedule insert failed: ${schErr.message}`);
+  if (schErr) {
+    // Overlap constraint: open bill already blocked this slot.
+    // If this is a completed transaction, upgrade the existing open-bill reservation.
+    if ((schErr.code === '23P01' || schErr.message?.includes('no_barber_overlap'))
+        && scheduleStatus === 'completed' && barberId) {
+      const { data: openBillSch } = await supabase
+        .from('schedules')
+        .select('id')
+        .eq('outlet_id', outletId)
+        .eq('barber_id', barberId)
+        .eq('source', 'moka')
+        .eq('status', 'reserved')
+        .gte('start_time', startTime.toISOString())
+        .lt('start_time', endTime.toISOString())
+        .maybeSingle();
+      if (openBillSch) {
+        await supabase.from('schedules').update({
+          status:      'completed',
+          external_id: mokaOrderId,
+        }).eq('id', openBillSch.id);
+        await _insertTransaction(supabase, {
+          customerId, outletId,
+          scheduleId:  openBillSch.id,
+          externalId:  mokaOrderId,
+          totalAmount,
+          source:      'moka',
+          mokaPayload: order,
+          items:       mappedItems,
+        });
+        return 'updated';
+      }
+      return 'skipped';
+    }
+    throw new Error(`Schedule insert failed: ${schErr.message}`);
+  }
 
   // 7. Insert transaction (only for completed orders — HOLD transactions haven't been paid)
   if (scheduleStatus === 'completed') {
@@ -415,38 +433,80 @@ async function _processIncomingOrder(supabase, order, outletId) {
  * When the bill is later COMPLETED, _processIncomingOrder (Pull 1) will update it.
  */
 async function _processOpenBill(supabase, bill, outletId) {
-  const billId    = String(bill.id);
-  const billName  = bill.name || '';
+  const billId     = String(bill.id);
+  const billName   = bill.name || '';
   const billStatus = (bill.status || '').toUpperCase();
 
   // Only process PENDING bills
   if (billStatus !== 'PENDING') return 'skipped';
 
-  // Idempotency: skip if already in schedules
-  const { data: existing } = await supabase
-    .from('schedules').select('id').eq('external_id', billId).maybeSingle();
-  if (existing) return 'skipped';
-
-  // Resolve barber from first checkout item_id → moka_employee_id
-  const items     = bill.checkouts || bill.items || [];
-  const firstItem = items[0];
+  // ── Resolve barber + service FIRST (needed for both insert and update paths) ─
+  const items = bill.billDetail?.items || bill.checkouts || bill.items || [];
   let barberId    = null;
-  let durationMin = 60; // default
+  let durationMin = 30;
+  let serviceName = billName;
+  let totalPrice  = bill.totalPrice || bill.total || 0;
 
-  if (firstItem?.item_id) {
+  for (const item of items) {
+    const mokaItemId = String(item.id || item.item_id || '');
+    if (!mokaItemId) continue;
+
     const { data: barber } = await supabase
       .from('barbers').select('id')
-      .eq('moka_employee_id', String(firstItem.item_id))
+      .eq('moka_employee_id', mokaItemId)
       .eq('outlet_id', outletId)
       .maybeSingle();
-    barberId = barber?.id || null;
+
+    if (barber) {
+      barberId = barber.id;
+      const variantName = item.item_variants?.name || item.variant_name || null;
+      if (variantName) serviceName = variantName;
+      if (!totalPrice && item.item_variants?.price) totalPrice = item.item_variants.price;
+      break;
+    }
   }
 
-  // Determine start time: use bill createdAt (walk-in starts now)
+  if (!barberId) {
+    const nonBarberNames = items.map(i => i.item_variants?.name || i.name || i.item_name).filter(Boolean);
+    if (nonBarberNames.length) serviceName = nonBarberNames.join(' + ');
+  }
+
+  // Resolve service duration
+  if (serviceName && serviceName !== billName) {
+    const { data: svcByVariant } = await supabase
+      .from('services').select('duration_minutes')
+      .ilike('moka_variant_name', serviceName).maybeSingle();
+    if (svcByVariant?.duration_minutes) {
+      durationMin = svcByVariant.duration_minutes;
+    } else {
+      const { data: svcByName } = await supabase
+        .from('services').select('duration_minutes')
+        .ilike('name', serviceName).maybeSingle();
+      if (svcByName?.duration_minutes) durationMin = svcByName.duration_minutes;
+    }
+  }
+
+  // ── Idempotency: check for existing schedule ──────────────
+  const { data: existing } = await supabase
+    .from('schedules').select('id, barber_id, service_name').eq('external_id', billId).maybeSingle();
+
+  if (existing) {
+    // If barber was missing before but we resolved it now — patch it
+    if (!existing.barber_id && barberId) {
+      const patch = { barber_id: barberId, notes: null };
+      if (existing.service_name === billName && serviceName !== billName) {
+        patch.service_name = serviceName;
+      }
+      await supabase.from('schedules').update(patch).eq('id', existing.id);
+      return 'updated';
+    }
+    return 'skipped';
+  }
+
+  // ── Insert new schedule ───────────────────────────────────
   const startTime = new Date(bill.createdAt || bill.created_at || Date.now());
   const endTime   = new Date(startTime.getTime() + durationMin * 60_000);
 
-  // Resolve customer
   const customerId = await _resolveCustomer(supabase, {
     name:  bill.customer_name || billName || null,
     phone: bill.customer_phone || null,
@@ -457,8 +517,8 @@ async function _processOpenBill(supabase, bill, outletId) {
     outlet_id:    outletId,
     barber_id:    barberId || null,
     customer_id:  customerId || null,
-    service_name: items.map(i => i.name || i.item_name).filter(Boolean).join(' + ') || billName,
-    price:        bill.total || 0,
+    service_name: serviceName || billName,
+    price:        totalPrice,
     start_time:   startTime.toISOString(),
     end_time:     endTime.toISOString(),
     status:       'reserved',
@@ -468,7 +528,6 @@ async function _processOpenBill(supabase, bill, outletId) {
   });
 
   if (schErr) {
-    // Overlap constraint = slot already taken, not an error
     if (schErr.message?.includes('no_barber_overlap') || schErr.code === '23P01') return 'skipped';
     throw new Error(`Open bill insert failed: ${schErr.message}`);
   }
@@ -721,7 +780,7 @@ async function _getClient(supabase, outletId, mokaOutletId) {
  * @param {MokaClient|null} client - used to resolve variant ID from item cache
  * @returns {object}
  */
-async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
+async function _buildMokaOrderPayload(schedule, client) {
   const base = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
 
   const note = [
@@ -803,11 +862,11 @@ async function _buildMokaOrderPayload(schedule, mokaCustomerId, client) {
     payment_type:                    'online_booking',
     customer_name:                   schedule.customer_name  || 'Guest',
     note:                            note.slice(0, 255),
-    customer_id:                     mokaCustomerId          || undefined,
+    // BUG FIX: customer_id is NOT in Moka Order spec — removed.
+    // Customer identified via customer_name + customer_phone_number.
     customer_phone_number:           schedule.customer_phone || undefined,
     client_created_at:               schedule.start_time,
-    // Keep order alive for 2 hours in case cashier is slow to respond
-    auto_cancel_in_seconds:          7200,
+    // BUG FIX: auto_cancel_in_seconds is NOT in Moka Order spec — removed.
     accept_order_notification_url:   `${base}/api/moka/callback/accept`,
     complete_order_notification_url: `${base}/api/moka/callback/complete`,
     cancel_order_notification_url:   `${base}/api/moka/callback/cancel`,
@@ -820,8 +879,9 @@ async function _getMokaItems(client, outletId) {
   if (cached && Date.now() - cached.ts < MOKA_ITEMS_CACHE_TTL) return cached.items;
   try {
     const res   = await client.getItems();
-    // Moka v1/items returns { data: { items: [...] } }
-    const items = res?.data?.items || res?.data || res?.items || [];
+    // BUG FIX: Moka v1/items returns { data: { item: [...], total_pages, total_count } }
+    // Key is 'item' (singular), NOT 'items'
+    const items = res?.data?.item || [];
     _mokaItemsCache.set(outletId, { ts: Date.now(), items });
     return Array.isArray(items) ? items : [];
   } catch (err) {

@@ -67,14 +67,20 @@ async function getAvailableSlots(supabase, {
     .gte('start_time', dayStart)
     .lte('end_time',   dayEnd);
 
-  // Group busy slots by barber
+  // Group busy slots by barber; collect null-barber (unmatched GoShow) as outlet-wide blocks
   const busyMap = {};
+  const outletWideBlocks = []; // blocks that apply to ALL barbers (GoShow with unresolved barber)
   for (const s of existing || []) {
-    if (!busyMap[s.barber_id]) busyMap[s.barber_id] = [];
-    busyMap[s.barber_id].push({
+    const block = {
       start: new Date(s.start_time).getTime(),
       end:   new Date(s.end_time).getTime(),
-    });
+    };
+    if (s.barber_id === null) {
+      outletWideBlocks.push(block);
+    } else {
+      if (!busyMap[s.barber_id]) busyMap[s.barber_id] = [];
+      busyMap[s.barber_id].push(block);
+    }
   }
 
   // ── 4. Generate slots ──────────────────────────────────────
@@ -115,8 +121,9 @@ async function getAvailableSlots(supabase, {
         continue;
       }
 
-      // Check overlap against all existing schedules for this barber
-      const isBusy = busy.some(b => slotStart < b.end && slotEnd > b.start);
+      // Check overlap against barber-specific AND outlet-wide (unmatched GoShow) blocks
+      const isBusy = busy.some(b => slotStart < b.end && slotEnd > b.start)
+                  || outletWideBlocks.some(b => slotStart < b.end && slotEnd > b.start);
 
       if (!isBusy) {
         slots.push({

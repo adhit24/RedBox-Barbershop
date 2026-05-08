@@ -1036,7 +1036,7 @@ document.getElementById('modalSave')?.addEventListener('click', async () => {
   const date     = document.getElementById('mDate').value;
   const time     = document.getElementById('mTime').value;
   const location = document.getElementById('mLocation').value;
-  const status   = document.getElementById('mStatus').value;
+  const status   = document.getElementById('mStatus').value || 'pending';
   const notes    = document.getElementById('mNotes').value.trim();
 
   if (!name || !wa || !serviceId || !date || !time) { alert('Harap isi semua field yang wajib.'); return; }

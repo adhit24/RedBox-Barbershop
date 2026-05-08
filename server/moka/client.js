@@ -32,11 +32,16 @@ class MokaClient {
    * @param {number}  [opts.limit=100]
    * @param {number}  [opts.page=1]
    */
-  async getOrders({ updatedSince, limit = 100, page = 1 } = {}) {
+  async getOrders({ updatedSince, limit = 100 } = {}) {
     // Uses Report API (v3) to pull completed transactions for Moka → Web sync.
     // Docs: GET /v3/outlets/{outlet_id}/reports/get_latest_transactions
-    const qs = new URLSearchParams({ limit: String(limit), page: String(page) });
-    if (updatedSince) qs.set('updated_since', updatedSince);
+    // Spec params: per_page (not limit), since (float Epoch, not ISO string), no page param
+    const qs = new URLSearchParams({ per_page: String(limit) });
+    if (updatedSince) {
+      // BUG FIX: spec param name is 'since' (not 'updated_since'), type is float Unix Epoch seconds
+      const epoch = Math.floor(new Date(updatedSince).getTime() / 1000);
+      qs.set('since', String(epoch));
+    }
     return this._req('GET', `/v3/outlets/${this._mokaOutletId}/reports/get_latest_transactions?${qs}`);
   }
 
@@ -60,12 +65,25 @@ class MokaClient {
   }
 
   /**
-   * List pending Advanced Orders (status=pending/accepted/in_progress).
-   * Used to block slots occupied by walk-in customers not yet paid.
-   * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders
+   * BUG FIX: GET /v1/advanced_orderings/orders does NOT exist in Moka API spec
+   * (only POST exists for that path). Walk-in pending slots are covered by
+   * getOpenBills() via sync_bills API. This method is a no-op stub.
    */
   async getPendingOrders() {
-    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders?status=pending,accepted,in_progress`);
+    return { data: [] };
+  }
+
+  /**
+   * Fetch open (PENDING) walk-in bills from Moka POS for a given date.
+   * Used to block slots when a cashier creates a GoShow bill directly in the POS.
+   * Docs: GET /v1/outlets/{outlet_id}/sync_bills/?statuses=PENDING&start=DD/MM/YYYY&end=DD/MM/YYYY
+   */
+  async getOpenBills(dateStr) {
+    // dateStr: 'YYYY-MM-DD' → convert to 'DD/MM/YYYY'
+    const [y, m, d] = (dateStr || new Date().toISOString().slice(0, 10)).split('-');
+    const fmt = `${d}/${m}/${y}`;
+    const qs = new URLSearchParams({ statuses: 'PENDING', start: fmt, end: fmt, per_page: '100', deep: 'true' });
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/sync_bills/?${qs}`);
   }
 
   /**
@@ -94,32 +112,35 @@ class MokaClient {
   }
 
   /**
-   * @deprecated Use cancelOrder() instead — kept for backward compat
+   * @deprecated Use cancelOrder() directly. PATCH endpoint not in Moka API spec.
    */
   async updateOrder(mokaOrderId, patch) {
     if (patch?.status === 'CANCELLED') {
       return this.cancelOrder(mokaOrderId);
     }
-    return this._req('PATCH', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`, patch);
+    // BUG FIX: PATCH /advanced_orderings/orders/{id} is not in Moka API spec — skip silently
+    console.warn(`[MokaClient] updateOrder() with non-cancel patch ignored (PATCH not in API spec)`);
+    return null;
   }
 
   // ── CUSTOMERS ─────────────────────────────────────────────
 
   /**
-   * Upsert a customer in Moka. Returns Moka customer object.
-   * @param {{ name:string, phone:string, email?:string }} payload
+   * BUG FIX: POST /v2/outlets/{id}/customers does NOT exist in Moka API spec.
+   * The only customer endpoint is GET /v1/businesses/{business_id}/customers.
+   * Customer identity is conveyed via customer_name + customer_phone_number in
+   * the order payload — no separate customer creation step needed.
    */
-  async upsertCustomer(payload) {
-    return this._req('POST', `/v2/outlets/${this._mokaOutletId}/customers`, payload);
+  async upsertCustomer(_payload) {
+    return null;
   }
 
   /**
-   * Find a Moka customer by phone number.
-   * @param {string} phoneE164
+   * BUG FIX: GET /v2/outlets/{id}/customers does NOT exist in Moka API spec.
+   * @deprecated — no outlet-level customer search endpoint available
    */
-  async findCustomerByPhone(phoneE164) {
-    const qs = new URLSearchParams({ phone: phoneE164 });
-    return this._req('GET', `/v2/outlets/${this._mokaOutletId}/customers?${qs}`);
+  async findCustomerByPhone(_phoneE164) {
+    return null;
   }
 
   // ── PRODUCTS / ITEMS ──────────────────────────────────────
@@ -128,7 +149,8 @@ class MokaClient {
    * Fetch the outlet's item list (for service→Moka item mapping).
    */
   async getItems() {
-    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/items?include_variants=true`);
+    // BUG FIX: include_variants is not a valid param per spec; item_variants are returned by default
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/items`);
   }
 
   // ── PRIVATE ───────────────────────────────────────────────
@@ -183,16 +205,10 @@ class MokaClient {
   // ── Business Methods ─────────────────────────────────────
 
   /**
-   * Find a Moka customer by phone, returns first match or null.
+   * BUG FIX: GET /v2/outlets/{id}/customers does not exist in Moka API spec.
+   * Returns passthrough so callers still get customer_name/phone for the order payload.
    */
   async createCustomer(customerData) {
-    try {
-      const qs = new URLSearchParams({ phone: customerData.phone || '' });
-      const res = await this._req('GET', `/v2/outlets/${this._mokaOutletId}/customers?${qs}`);
-      const customers = res?.data?.customers || res?.customers || [];
-      if (customers.length > 0) return customers[0];
-    } catch (_) {}
-    // Return a passthrough object so callers get a usable customer_name/phone
     return { customer_name: customerData.customer_name, phone: customerData.phone };
   }
 

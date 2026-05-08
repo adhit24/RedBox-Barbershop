@@ -164,6 +164,23 @@ function createMokaRouter(supabase) {
       if (!free)
         return res.status(409).json({ error: 'Slot already booked — choose a different time or barber' });
 
+      // ── Check outlet-wide GoShow blocks (open bills with unresolved barber) ──
+      // The check_barber_overlap RPC only matches by specific barber_id, so
+      // schedules inserted with barber_id=null from unmatched Moka open bills
+      // would slip through. We catch them here explicitly.
+      const { data: outletBlocks } = await supabase
+        .from('schedules')
+        .select('id')
+        .eq('outlet_id', outletId)
+        .is('barber_id', null)
+        .not('status', 'in', '("cancelled","completed")')
+        .lt('start_time', endTime)
+        .gt('end_time', startTime)
+        .limit(1);
+
+      if (outletBlocks?.length > 0)
+        return res.status(409).json({ error: 'Slot blocked by walk-in (GoShow) — choose a different time' });
+
       // ── Upsert customer ─────────────────────────────────────
       const phone = _normalizePhone(customer.phone);
       let customerId = null;
@@ -454,9 +471,12 @@ function createMokaRouter(supabase) {
 
   // ── POST /api/moka/sync ───────────────────────────────────
   // Manual trigger for Moka → Web pull sync.
-  // Body (optional): { "outletId": "uuid-or-slug" }
+  // Body (optional): { "outletId": "uuid-or-slug", "wait": true }
   // If omitted, syncs ALL authorized outlets.
   // Auth: Bearer <CRON_SECRET> header required (or adminAuth for dashboard use)
+  //
+  // Default: respond 202 immediately, sync runs in background.
+  // Pass "wait": true in body to wait for sync completion (manual use only).
   router.post('/moka/sync', async (req, res) => {
     const cronSecret = process.env.CRON_SECRET;
     if (cronSecret) {
@@ -467,29 +487,39 @@ function createMokaRouter(supabase) {
       }
     }
     try {
-      const { outletId: rawOutletId } = req.body || {};
-      const results = [];
+      const { outletId: rawOutletId, wait = false } = req.body || {};
 
-      if (rawOutletId) {
-        const outletId = await _resolveOutletId(supabase, rawOutletId);
-        if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
-
-        const result = await pullMokaToWeb(supabase, outletId);
-        results.push({ outletId, ...result });
-      } else {
-        // Sync all outlets that have tokens
-        const { data: tokens } = await supabase
-          .from('moka_tokens').select('outlet_id');
-
-        for (const t of tokens || []) {
-          const result = await pullMokaToWeb(supabase, t.outlet_id).catch(err => ({
-            error: err.message, processed: 0, skipped: 0, errors: 1,
-          }));
-          results.push({ outletId: t.outlet_id, ...result });
+      const _runSync = async () => {
+        const results = [];
+        if (rawOutletId) {
+          const outletId = await _resolveOutletId(supabase, rawOutletId);
+          if (!outletId) return [{ error: `Outlet not found: ${rawOutletId}` }];
+          const result = await pullMokaToWeb(supabase, outletId);
+          results.push({ outletId, ...result });
+        } else {
+          const { data: tokens } = await supabase
+            .from('moka_tokens').select('outlet_id');
+          for (const t of tokens || []) {
+            const result = await pullMokaToWeb(supabase, t.outlet_id).catch(err => ({
+              error: err.message, processed: 0, skipped: 0, errors: 1,
+            }));
+            results.push({ outletId: t.outlet_id, ...result });
+          }
         }
+        return results;
+      };
+
+      if (wait) {
+        // Blocking mode — for manual calls that need the result
+        const results = await _runSync();
+        return res.json({ message: 'Sync complete', results });
       }
 
-      res.json({ message: 'Sync complete', results });
+      // Non-blocking: respond immediately so cron callers (cron-job.org) don't timeout.
+      // Vercel Fluid Compute keeps the function alive until the promise settles.
+      res.status(202).json({ message: 'Sync started', status: 'processing' });
+      _runSync().catch(err => console.error('[Sync] Background sync error:', err.message));
+
     } catch (err) {
       _serverError(res, err);
     }
@@ -643,7 +673,8 @@ function createMokaRouter(supabase) {
       const MokaClient = require('./client');
       const client = new MokaClient(supabase, outletId, mokaOutletId);
       const data = await client.getItems();
-      const items = data?.data || data?.items || data || [];
+      // BUG FIX: Moka v1/items response shape is { data: { item: [...] } } — key is singular 'item'
+      const items = data?.data?.item || [];
 
       // Also load our services to show mapping status
       const { data: services } = await supabase
@@ -745,6 +776,71 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── GET /api/moka/open-bills ──────────────────────────────
+  // Tampilkan Open Bills (PENDING) dari Moka hari ini untuk semua outlet.
+  // Digunakan admin untuk memverifikasi apakah slot walk-in sudah terblokir.
+  // Query: outletId (optional), date (YYYY-MM-DD, default hari ini)
+  router.get('/moka/open-bills', async (req, res) => {
+    try {
+      if (!isMokaOAuthConfigured())
+        return res.status(503).json({ error: 'Moka OAuth not configured' });
+
+      const { outletId: rawOutletId, date } = req.query;
+      const todayStr = date || new Date().toISOString().slice(0, 10);
+
+      // Resolve outlets to check
+      let outlets = [];
+      if (rawOutletId) {
+        const outletId = await _resolveOutletId(supabase, rawOutletId);
+        if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+        const { data: o } = await supabase.from('outlets').select('id, name, moka_outlet_id').eq('id', outletId).single();
+        if (o) outlets = [o];
+      } else {
+        const { data } = await supabase
+          .from('outlets').select('id, name, moka_outlet_id').eq('is_active', true).not('moka_outlet_id', 'is', null);
+        outlets = data || [];
+      }
+
+      const results = [];
+      for (const outlet of outlets) {
+        try {
+          const MokaClient = require('./client');
+          const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
+          const billsRes  = await client.getOpenBills(todayStr);
+          const openBills = billsRes?.data || [];
+
+          // Also load matching schedules from our DB
+          const billIds = (Array.isArray(openBills) ? openBills : []).map(b => String(b.id));
+          const { data: schedules } = billIds.length
+            ? await supabase.from('schedules').select('id, external_id, barber_id, service_name, start_time, end_time, status').in('external_id', billIds)
+            : { data: [] };
+          const syncedIds = new Set((schedules || []).map(s => s.external_id));
+
+          results.push({
+            outletId:     outlet.id,
+            outletName:   outlet.name,
+            date:         todayStr,
+            openBills:    (Array.isArray(openBills) ? openBills : []).map(b => ({
+              id:           b.id,
+              name:         b.name,
+              status:       b.status,
+              createdAt:    b.createdAt || b.created_at,
+              totalPrice:   b.totalPrice || b.total,
+              itemCount:    (b.billDetail?.items || b.items || []).length,
+              blockedInWeb: syncedIds.has(String(b.id)),
+            })),
+          });
+        } catch (outletErr) {
+          results.push({ outletId: outlet.id, outletName: outlet.name, error: outletErr.message });
+        }
+      }
+
+      res.json({ date: todayStr, results });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   // ── POST /api/moka/sync-schema ────────────────────────────
   // Sinkronisasi data Moka (items/barbers + variants/services) ke Supabase.
   // Dipanggil: manual, atau cron harian jam 03:00 WIB.
@@ -782,7 +878,8 @@ function createMokaRouter(supabase) {
 
 async function _refreshFreshTodayData(supabase, outletId, date) {
   if (!outletId || !_isTodayInJakarta(date)) return null;
-  return maybeRefreshOutletData(supabase, outletId, { maxAgeMs: 45_000 });
+  // 15s window: narrower race window between GoShow open-bill creation and web availability query
+  return maybeRefreshOutletData(supabase, outletId, { maxAgeMs: 15_000 });
 }
 
 function _isTodayInJakarta(dateStr) {
@@ -822,7 +919,8 @@ async function _cancelMokaOrder(supabase, schedule) {
     .from('outlets').select('id, moka_outlet_id').eq('id', schedule.outlet_id).single();
   if (!outlet?.moka_outlet_id) return;
   const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
-  await client.updateOrder(schedule.external_id, { status: 'CANCELLED' });
+  // BUG FIX: use cancelOrder() directly — PATCH not in Moka API spec
+  await client.cancelOrder(schedule.external_id, 'CUSTOMER#Cancelled by admin');
 }
 
 function _serverError(res, err) {

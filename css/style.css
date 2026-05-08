@@ -163,13 +163,14 @@ section{padding:100px 0}
 
 .btn-member-nav{
   display:flex;align-items:center;justify-content:center;
-  background:var(--red);color:var(--white);
+  background:transparent;color:var(--w80);
+  border:1.5px solid var(--w20);
   font-size:.85rem;font-weight:600;
-  padding:10px 18px;border-radius:var(--radius);
+  padding:9px 16px;border-radius:var(--radius);
   transition:var(--transition);white-space:nowrap;
-  gap:6px;margin-right:12px;
+  gap:6px;margin-left:10px;
 }
-.btn-member-nav:hover{background:var(--red-hover);transform:translateY(-1px)}
+.btn-member-nav:hover{border-color:var(--w50);color:var(--white);background:var(--w05);transform:translateY(-1px)}
 .btn-member-nav svg{width:18px;height:18px}
 
 .crm-nav-link{
@@ -1310,6 +1311,22 @@ section{padding:100px 0}
   .carousel-arrow{display:none}
 }
 
+/* Medium desktop — navbar compress agar tidak overflow */
+@media(max-width:1200px){
+  .nav-link{padding:8px 10px;font-size:.78rem}
+  .nav-icon{display:none}
+  .nav-pill-wrapper{margin-left:16px}
+  .btn-book-nav{padding:9px 16px;font-size:.8rem}
+  .btn-member-nav{padding:8px 12px;font-size:.8rem}
+  .nav-brand{font-size:1.2rem}
+}
+
+/* Narrow desktop/tablet — sembunyikan Book Now dari navbar, tampilkan sticky CTA */
+@media(max-width:1100px){
+  .btn-book-nav{display:none}
+  .mobile-sticky-cta{display:block}
+}
+
 /* Mobile menu stagger animation */
 @keyframes navItemIn{
   from{opacity:0;transform:translateY(14px)}
@@ -1408,7 +1425,7 @@ section{padding:100px 0}
 
   /* ── Right-side controls ── */
   .btn-book-nav{display:none}
-  .btn-member-nav{padding:9px 12px;margin-right:4px;min-width:42px;min-height:42px;border-radius:10px}
+  .btn-member-nav{padding:9px 12px;margin-left:0;margin-right:4px;min-width:42px;min-height:42px;border-radius:10px;border-color:var(--w15)}
   .btn-member-nav span{display:none}
   .btn-member-nav svg{width:20px;height:20px}
 
