@@ -461,10 +461,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================
   // LOGOUT
   // ============================================================
-  document.getElementById('logoutBtn')?.addEventListener('click', () => {
+  function doLogout() {
     localStorage.removeItem('redbox_user');
     window.location.href = 'index.html';
-  });
+  }
+  document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
+  document.getElementById('mobileLogoutBtn')?.addEventListener('click', doLogout);
 
   // ============================================================
   // HAMBURGER (mobile)
