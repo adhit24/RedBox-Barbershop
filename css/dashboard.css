@@ -166,9 +166,14 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 /* ---- Dashboard Main Layout ---- */
 .dash-main{
   padding:0 0 60px;background:var(--bg);min-height:60vh;
+  overflow-x:hidden;width:100%;
 }
 .dash-layout{
-  display:grid;grid-template-columns:260px 1fr;gap:24px;
+  display:grid;grid-template-columns:1fr;gap:16px;
+  width:100%;min-width:0;
+}
+@media(min-width:900px){
+  .dash-layout{grid-template-columns:260px 1fr;gap:24px}
 }
 
 /* Sidebar */
@@ -197,13 +202,16 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .dash-nav-logout svg{color:#ef4444}
 
 /* Content Panels */
-.dash-content{min-height:400px}
+.dash-content{min-height:400px;min-width:0;width:100%}
 .dash-panel{
   display:none;
   background:var(--bg-2);border:1px solid var(--w10);
-  border-radius:20px;padding:32px;
+  border-radius:20px;padding:20px 16px;
   animation:panelIn .4s cubic-bezier(.4,0,.2,1);
+  overflow:hidden;width:100%;box-sizing:border-box;
 }
+@media(min-width:600px){.dash-panel{padding:28px 24px}}
+@media(min-width:900px){.dash-panel{padding:32px}}
 .dash-panel.active{display:block}
 @keyframes panelIn{
   from{opacity:0;transform:translateY(10px)}
@@ -214,16 +222,28 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   color:var(--white);margin:0 0 28px;
 }
 
-/* ---- Account Form ---- */
-.account-form{display:flex;flex-direction:column;gap:20px}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.form-field{display:flex;flex-direction:column;gap:6px}
-.form-field.full-width{grid-column:1/-1}
+/* ---- Account Form — MOBILE FIRST ---- */
+.account-form{
+  display:flex;flex-direction:column;gap:16px;
+  width:100%;box-sizing:border-box;
+}
+/* Single column by default — two columns only on wide screens */
+.form-row{
+  display:flex;flex-direction:column;gap:16px;
+  width:100%;box-sizing:border-box;
+}
+.form-field{
+  display:flex;flex-direction:column;gap:6px;
+  width:100%;box-sizing:border-box;min-width:0;
+}
+.form-field.full-width{width:100%}
 .form-field label{
   font-size:.7rem;font-weight:700;letter-spacing:.06em;
   color:var(--w50);text-transform:uppercase;
 }
+/* Inputs: explicit 100% width + box-sizing to prevent overflow */
 .form-field input, .form-field select{
+  width:100%;box-sizing:border-box;min-width:0;
   padding:12px 16px;background:#181818;
   border:1.5px solid rgba(255,255,255,.1);border-radius:12px;
   color:#fff;font-size:.9rem;font-family:var(--font-body);
@@ -234,11 +254,11 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   box-shadow:0 0 0 3px rgba(193,18,31,.1);
 }
 .form-field select option{background-color:#181818;color:#fff}
-.form-field input::placeholder{color:var(--w30)}
+.form-field input::placeholder{color:var(--w30);font-size:.82rem}
 .form-field input[readonly]{opacity:.6;cursor:not-allowed}
 .form-field input:disabled{opacity:.4;cursor:not-allowed}
 
-.gender-toggle{display:flex;gap:8px}
+.gender-toggle{display:flex;gap:8px;width:100%}
 .gender-btn{
   flex:1;padding:12px;border-radius:12px;
   background:var(--bg-3);border:1.5px solid var(--w10);
@@ -248,11 +268,16 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .gender-btn.active{border-color:var(--red);color:var(--white);background:rgba(193,18,31,.1)}
 .gender-btn:hover:not(.active){border-color:var(--w30)}
 
-.password-row,.address-row{display:flex;gap:10px;align-items:stretch}
-.password-row input,.address-row input{flex:1}
+/* Password & address rows — stacked vertically (mobile-first) */
+.password-row,.address-row{
+  display:flex;flex-direction:column;gap:8px;
+  width:100%;box-sizing:border-box;
+}
+.password-row input,.address-row input{width:100%;min-width:0}
 .btn-change-pw,.btn-add-address{
-  padding:12px 20px;border-radius:12px;font-size:.78rem;font-weight:700;
-  white-space:nowrap;letter-spacing:.04em;
+  width:100%;padding:12px 16px;border-radius:12px;
+  font-size:.82rem;font-weight:700;letter-spacing:.04em;
+  text-align:center;white-space:normal;
   background:var(--bg-4);border:1.5px solid var(--w10);color:var(--white);
   cursor:pointer;transition:all .3s ease;
 }
@@ -261,17 +286,26 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 }
 
 .btn-save-account{
-  padding:16px 32px;border-radius:14px;
+  width:100%;padding:15px 24px;border-radius:14px;
   background:linear-gradient(135deg,#C1121F,#E63946);
-  color:#fff;font-size:1rem;font-weight:700;
-  border:none;cursor:pointer;align-self:center;
+  color:#fff;font-size:.95rem;font-weight:700;
+  border:none;cursor:pointer;
   transition:all .35s cubic-bezier(.4,0,.2,1);
   box-shadow:0 4px 16px rgba(193,18,31,.3);
-  min-width:200px;
 }
 .btn-save-account:hover{
   transform:translateY(-2px);
   box-shadow:0 8px 28px rgba(193,18,31,.45);
+}
+
+/* Desktop enhancement — restore side-by-side password row only on large screens */
+@media(min-width:768px){
+  .password-row,.address-row{flex-direction:row;align-items:stretch}
+  .password-row input,.address-row input{flex:1;width:auto}
+  .btn-change-pw,.btn-add-address{width:auto;white-space:nowrap;padding:12px 20px}
+  .btn-save-account{width:auto;align-self:center;min-width:200px}
+  .form-row{flex-direction:row}
+  .form-row .form-field{flex:1}
 }
 
 /* ---- Empty State ---- */
@@ -907,10 +941,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 
 /* ---- Responsive ---- */
 @media(max-width:900px){
-  .dash-layout{grid-template-columns:1fr}
-  .dash-sidebar{
-    position:relative;top:0;
-  }
+  .dash-sidebar{position:relative;top:0}
   .dash-nav{
     flex-direction:row;overflow-x:auto;
     scrollbar-width:none;padding:8px;gap:2px;
@@ -925,45 +956,18 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   .dash-nav-divider{display:none}
   .profile-card{flex-direction:column;align-items:flex-start}
   .profile-stats{width:100%;justify-content:space-between}
-  .form-row{grid-template-columns:1fr}
   .tier-explain-grid{grid-template-columns:repeat(2,1fr)}
   .points-summary{flex-direction:column}
   .points-balance{border-right:none;border-bottom:1px solid var(--w10);padding-bottom:16px}
 }
-@media(max-width:600px){
-  /* Prevent form overflow */
-  .password-row, .address-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .btn-change-pw, .btn-add-address {
-    width: 100%;
-    text-align: center;
-    white-space: normal;
-  }
-  .account-form { gap: 16px; }
-  .form-field input, .form-field select {
-    font-size: .88rem;
-    padding: 11px 14px;
-  }
-  .btn-save-account {
-    width: 100%;
-    min-width: 0;
-    align-self: stretch;
-    padding: 14px;
-  }
-  .gender-toggle { gap: 6px; }
-  .gender-btn { padding: 11px 8px; font-size: .82rem; }
-}
-
 @media(max-width:480px){
   .tier-explain-grid{grid-template-columns:1fr}
   .profile-stats{flex-direction:column}
   .stat-box{min-width:auto}
-  .dash-panel{padding:20px 14px}
   .tier-card{padding:20px 14px}
   .tier-node-label{font-size:.6rem}
   .referral-code{font-size:1.1rem}
   .panel-title{font-size:1.2rem;margin-bottom:20px}
-  .form-field input, .form-field select{padding:10px 12px;font-size:.85rem}
+  .form-field input,.form-field select{padding:10px 12px;font-size:.85rem}
+  .gender-btn{padding:10px 6px;font-size:.8rem}
 }
