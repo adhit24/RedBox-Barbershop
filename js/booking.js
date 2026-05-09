@@ -563,7 +563,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 durationMinutes: durMins,
               });
               if (state.barber?.id && state.barber.id !== 'any') params.set('barberId', state.barber.id);
-              const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(4000) });
+              const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(12000) });
               if (res.ok) {
                 const json = await res.json();
                 mokaAvailableSlots = json.slots || [];

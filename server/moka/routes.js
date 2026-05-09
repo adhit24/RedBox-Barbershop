@@ -478,6 +478,37 @@ function createMokaRouter(supabase) {
     });
   }
 
+  // ── GET /api/moka/cron ───────────────────────────────────
+  // Vercel Cron Job endpoint — called by Vercel platform every minute.
+  // No auth needed (Vercel adds x-vercel-cron header automatically).
+  // Responds 200 immediately; sync runs in background so cron doesn't timeout.
+  router.get('/moka/cron', async (req, res) => {
+    // Only allow calls from Vercel cron or CRON_SECRET bearer
+    const cronSecret = process.env.CRON_SECRET;
+    const isVercelCron = req.headers['x-vercel-cron'] === '1';
+    const auth = req.headers['authorization'] || '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!isVercelCron && cronSecret && token !== cronSecret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    res.status(200).json({ message: 'Cron sync triggered', ts: new Date().toISOString() });
+
+    // Run sync for all outlets in background
+    setImmediate(async () => {
+      try {
+        const { data: tokens } = await supabase.from('moka_tokens').select('outlet_id');
+        for (const t of tokens || []) {
+          await pullMokaToWeb(supabase, t.outlet_id).catch(err =>
+            console.error(`[Cron] Outlet ${t.outlet_id}:`, err.message)
+          );
+        }
+      } catch (err) {
+        console.error('[Cron] Sync error:', err.message);
+      }
+    });
+  });
+
   // ── POST /api/moka/sync ───────────────────────────────────
   // Manual trigger for Moka → Web pull sync.
   // Body (optional): { "outletId": "uuid-or-slug", "wait": true }

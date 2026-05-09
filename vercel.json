@@ -6,6 +6,12 @@
       "includeFiles": "server/**"
     }
   },
+  "crons": [
+    {
+      "path": "/api/moka/cron",
+      "schedule": "* * * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/[...path]" }
   ],
