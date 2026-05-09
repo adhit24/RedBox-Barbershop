@@ -61,7 +61,7 @@ function createMokaRouter(supabase) {
       const outletId = await _resolveOutletId(supabase, rawOutletId);
       if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
 
-      await _refreshFreshTodayData(supabase, outletId, date);
+      _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
 
       // Resolve duration
       let duration = durationMinutes ? parseInt(durationMinutes, 10) : null;
@@ -283,7 +283,7 @@ function createMokaRouter(supabase) {
       if (rawOutletId) {
         outletId = await _resolveOutletId(supabase, rawOutletId);
         if (outletId) query = query.eq('outlet_id', outletId);
-        if (outletId) await _refreshFreshTodayData(supabase, outletId, date);
+        if (outletId) _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
       }
       if (date) {
         const dayStart = `${date}T00:00:00+07:00`;
