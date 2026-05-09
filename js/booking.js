@@ -13,14 +13,13 @@ let USE_API = true; // API selalu aktif — live site selalu punya server
 let apiBookings = []; // Cache for server-side bookings to detect conflicts (legacy fallback)
 let mokaAvailableSlots = []; // Slots from /api/availability (includes Moka walk-ins)
 let mokaAvailabilityActive = false; // true when new availability API responded successfully
+let fallbackBusyRanges = []; // Used when /api/availability fails: blocks from /api/schedules
 
 async function detectApiMode() {
   try {
     const res = await fetch(API_URL + '/health', { signal: AbortSignal.timeout(2000) });
-    USE_API = res.ok;
-  } catch {
-    USE_API = false;
-  }
+    if (res.ok) USE_API = true;
+  } catch {}
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -480,6 +479,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         proPickGrid.querySelectorAll('.pro-pick-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
         state.barber = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
+        mokaAvailabilityActive = false;
+        mokaAvailableSlots = [];
+        fallbackBusyRanges = [];
 
         // Auto-select branch if available
         if (card.dataset.branch && card.dataset.branch !== 'any') {
@@ -567,6 +569,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           state.time = null;
           mokaAvailabilityActive = false;
           mokaAvailableSlots = [];
+          fallbackBusyRanges = [];
 
           if (USE_API) {
             // ── Primary: /api/availability (includes Moka walk-ins realtime) ──
@@ -586,6 +589,30 @@ document.addEventListener('DOMContentLoaded', async () => {
               }
             } catch (e) {
               console.warn('[Availability] Moka slot API unavailable, falling back to bookings API', e.message);
+            }
+
+            // ── Secondary: /api/schedules (blocks from schedules table) ──
+            // Always try to load, so we can enforce blocking even if /availability is stale.
+            if (state.barber?.id && state.barber.id !== 'any') {
+              try {
+                const params = new URLSearchParams({
+                  outletId: state.location || 'bypass',
+                  date:     dateStr,
+                  barberId: state.barber.id,
+                  limit:    '250',
+                });
+                const res = await fetch(`${API_URL}/schedules?${params}`, { signal: AbortSignal.timeout(8000) });
+                if (res.ok) {
+                  const json = await res.json();
+                  const scheds = json.schedules || [];
+                  fallbackBusyRanges = scheds
+                    .filter(s => s && s.status !== 'cancelled' && s.start_time && s.end_time)
+                    .map(s => ({ start: new Date(s.start_time).getTime(), end: new Date(s.end_time).getTime() }))
+                    .filter(r => Number.isFinite(r.start) && Number.isFinite(r.end) && r.end > r.start);
+                }
+              } catch (e) {
+                fallbackBusyRanges = [];
+              }
             }
 
             // ── Fallback: old /api/bookings endpoint ─────────────────────────
@@ -709,10 +736,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       el.textContent = slot;
 
       // If new Moka availability API responded: trust it as source-of-truth.
-      // Otherwise fall back to local + legacy API conflict check.
-      const isBooked = mokaAvailabilityActive
-        ? !mokaFreeSet.has(slot)
-        : hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
+      // Otherwise fall back to schedules blocks, then local + legacy API conflict check.
+      const isBooked = (() => {
+        if (state.barber?.id && state.barber.id !== 'any' && fallbackBusyRanges && fallbackBusyRanges.length) {
+          const durMins = _parseDurToMins(state.service?.duration);
+          const slotStartMs = new Date(`${state.date}T${slot}:00+07:00`).getTime();
+          const slotEndMs   = slotStartMs + durMins * 60_000;
+          if (fallbackBusyRanges.some(b => slotStartMs < b.end && slotEndMs > b.start)) return true;
+        }
+        if (mokaAvailabilityActive) return !mokaFreeSet.has(slot);
+        return hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
+      })();
 
       if (isBooked) {
         el.classList.add('unavailable');

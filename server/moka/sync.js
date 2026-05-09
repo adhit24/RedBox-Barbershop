@@ -611,22 +611,29 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
   // Pattern C (NEW — highest priority): "DD/MM HH.MM" or "DD/MM HH:MM" — explicit date
   // Kasir format: "ARIF 09/05 18.30 ONOY" → 9 May at 18:30 WIB
   // Lebih presisi dari Pattern A/B karena tanggal tidak ambigu.
-  const matchWithDate = billName.match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})[.:](\d{2})/);
+  const matchWithDate = billName.match(/(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\s+(\d{1,2})[.:](\d{2})/);
   if (matchWithDate) {
     const day     = parseInt(matchWithDate[1], 10);
     const month   = parseInt(matchWithDate[2], 10);
-    const hours   = parseInt(matchWithDate[3], 10);
-    const minutes = parseInt(matchWithDate[4], 10);
+    const yearStr = matchWithDate[3] ? String(matchWithDate[3]).trim() : '';
+    const hours   = parseInt(matchWithDate[4], 10);
+    const minutes = parseInt(matchWithDate[5], 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31 &&
         hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
       let year = wibBase.getUTCFullYear();
+      if (yearStr) {
+        const rawYear = parseInt(yearStr, 10);
+        if (!Number.isNaN(rawYear)) {
+          year = yearStr.length === 2 ? (2000 + rawYear) : rawYear;
+        }
+      }
       const mo = String(month).padStart(2, '0');
       const d  = String(day).padStart(2, '0');
       const h  = String(hours).padStart(2, '0');
       const mi = String(minutes).padStart(2, '0');
       let candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
       // Tanggal sudah lewat lebih dari 1 hari → booking untuk tahun depan (e.g. Des → Jan)
-      if (candidate.getTime() < wibBase.getTime() - 86_400_000) {
+      if (!yearStr && candidate.getTime() < wibBase.getTime() - 86_400_000) {
         year += 1;
         candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
       }
@@ -690,7 +697,7 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
  */
 function _parseBarberHintFromBillName(billName) {
   if (!billName) return null;
-  const m = billName.match(/\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}\s+(.*)/);
+  const m = billName.match(/\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\s+\d{1,2}[.:]\d{2}\s+(.*)/);
   const hint = m ? m[1].trim() : null;
   return hint || null;
 }
@@ -1001,7 +1008,7 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   // Untuk format terstruktur "CUSTOMER DD/MM HH.MM BARBER", ekstrak nama customer
   // dari bagian sebelum tanggal. Tanpa ini, billName penuh ("ARIF 09/05 18.30 ONOY")
   // tersimpan sebagai nama customer — tidak ideal untuk CRM.
-  const structuredNameMatch = billName.match(/^(.+?)\s+\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}/);
+  const structuredNameMatch = billName.match(/^(.+?)\s+\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\s+\d{1,2}[.:]\d{2}/);
   const resolvedCustomerName = structuredNameMatch
     ? structuredNameMatch[1].trim()
     : (bill.customer_name || billName || null);

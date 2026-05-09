@@ -952,7 +952,7 @@ function createMokaRouter(supabase) {
                 createdAt:    b.createdAt || b.created_at,
                 totalPrice:   b.totalPrice || b.total || bd?.bill_total_amount || bd?.bill_sub_total_amount,
                 itemCount:    (bd?.items || b.items || []).length,
-                blockedInWeb: !!sch,
+                blockedInWeb: !!sch && sch.status !== 'cancelled',
                 schedule: sch ? {
                   id:         sch.id,
                   status:     sch.status,
