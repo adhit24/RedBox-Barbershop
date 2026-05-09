@@ -56,6 +56,9 @@ async function getAvailableSlots(supabase, {
   const workingHoursMap = _indexBy(hours || [], 'barber_id');
 
   // ── 3. Load existing schedules for the day ─────────────────
+  // Use overlap semantics: any schedule whose window intersects [dayStart, dayEnd].
+  // This catches advance bills where start_time was set to bill.createdAt (a prior day)
+  // but end_time (createdAt + durationMin) still falls on or after today.
   const dayStart = `${date}T00:00:00+07:00`;
   const dayEnd   = `${date}T23:59:59+07:00`;
 
@@ -64,8 +67,8 @@ async function getAvailableSlots(supabase, {
     .select('barber_id, start_time, end_time')
     .eq('outlet_id', outletId)
     .not('status', 'in', '("cancelled")')
-    .gte('start_time', dayStart)
-    .lte('end_time',   dayEnd);
+    .lt('start_time', dayEnd)    // schedule starts before end-of-day
+    .gt('end_time',   dayStart); // schedule ends after start-of-day
 
   // Group busy slots by barber; collect null-barber (unmatched GoShow) as outlet-wide blocks
   const busyMap = {};

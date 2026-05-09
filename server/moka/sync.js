@@ -657,7 +657,7 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   const billDetail = bill.billDetail || bill.bill_detail || null;
   const items = billDetail?.items || bill.checkouts || bill.items || [];
   let barberId    = null;
-  let durationMin = 30;
+  let durationMin = 60; // 60-min safe default — most barbershop services take 45-90 min
   let serviceName = billName;
   let totalPrice  = bill.totalPrice || bill.total
                  || billDetail?.bill_total_amount || billDetail?.bill_sub_total_amount || 0;
@@ -750,8 +750,8 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     console.log(`[Sync] Open bill ${billId} ("${billName}") → no barber match; will insert as outlet-wide block`);
   }
 
-  // Resolve service duration
-  if (serviceName && serviceName !== billName) {
+  // Resolve service duration — always try, even when serviceName === billName
+  if (serviceName) {
     const { data: svcByVariant } = await supabase
       .from('services').select('duration_minutes')
       .ilike('moka_variant_name', serviceName).maybeSingle();
@@ -762,6 +762,18 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
         .from('services').select('duration_minutes')
         .ilike('name', serviceName).maybeSingle();
       if (svcByName?.duration_minutes) durationMin = svcByName.duration_minutes;
+    }
+  }
+  // Fallback: if still at default (no service matched), cap to max known service duration
+  // so the open bill blocks conservatively rather than using an arbitrary number.
+  if (durationMin === 60) {
+    const { data: maxSvc } = await supabase
+      .from('services').select('duration_minutes')
+      .eq('is_active', true)
+      .order('duration_minutes', { ascending: false })
+      .limit(1).maybeSingle();
+    if (maxSvc?.duration_minutes && maxSvc.duration_minutes > 60) {
+      durationMin = maxSvc.duration_minutes;
     }
   }
 
@@ -775,7 +787,7 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
 
   // ── Idempotency: check for existing schedule ──────────────
   const { data: existing } = await supabase
-    .from('schedules').select('id, barber_id, service_name, start_time').eq('external_id', billId).maybeSingle();
+    .from('schedules').select('id, barber_id, service_name, start_time, end_time').eq('external_id', billId).maybeSingle();
 
   if (existing) {
     const patch = {};
@@ -796,6 +808,16 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
       if (Math.abs(existingMs - correctMs) > 5 * 60_000) { // lebih dari 5 menit beda
         patch.start_time = startTime.toISOString();
         patch.end_time   = endTime.toISOString();
+      }
+    }
+
+    // Correct end_time if stored duration is shorter than what we now compute.
+    // This fixes old records created before the 60-min default was in place (were 30 min).
+    // Only extend; never shrink — avoids overwriting a correctly-resolved duration.
+    if (!patch.end_time) {
+      const existingEndMs = new Date(existing.end_time).getTime();
+      if (endTime.getTime() > existingEndMs + 5 * 60_000) {
+        patch.end_time = endTime.toISOString();
       }
     }
 
