@@ -298,7 +298,12 @@
 }
 .time-slot:hover{border-color:var(--red);color:var(--white)}
 .time-slot.selected{background:var(--red);border-color:var(--red);color:var(--white)}
-.time-slot.unavailable{opacity:.25;cursor:not-allowed;text-decoration:line-through}
+.time-slot.unavailable{
+  opacity:.55;cursor:not-allowed;
+  text-decoration:line-through;text-decoration-color:#e53e3e;text-decoration-thickness:2px;
+  color:#e53e3e;border-color:rgba(229,62,62,.25);background:rgba(229,62,62,.06);
+  pointer-events:none;
+}
 
 /* ======================================================
    STEP 4 — FORM

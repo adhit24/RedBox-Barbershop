@@ -24,6 +24,17 @@ const MOKA_PULL_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.MOKA_PULL_IN
 const MOKA_RETRY_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.MOKA_RETRY_INTERVAL_MINUTES || '2', 10) || 2);
 const MOKA_ON_DEMAND_SYNC_MAX_AGE_MS = Math.max(10_000, parseInt(process.env.MOKA_ON_DEMAND_SYNC_MAX_AGE_MS || '45000', 10) || 45_000);
 
+// Buffer (menit) ditambahkan ke end_time setiap Open Bill walk-in,
+// agar kapster punya waktu transisi/cleanup sebelum customer berikut.
+// Tujuan utama: mencegah double-booking goshow vs reservasi web.
+const MOKA_OPENBILL_BUFFER_MIN = Math.max(0, parseInt(process.env.MOKA_OPENBILL_BUFFER_MIN || '10', 10) || 0);
+
+// Auto-expire stale "reserved" Open Bill schedules: jika kasir lupa close
+// bill di MokaPOS, slot kapster bisa terblokir selamanya. Setelah
+// (start_time + estimasi_durasi + safety_window) lewat, schedule otomatis
+// di-mark cancelled supaya web booking bisa pakai slot itu lagi.
+const MOKA_OPENBILL_STALE_HOURS = Math.max(1, parseInt(process.env.MOKA_OPENBILL_STALE_HOURS || '4', 10) || 4);
+
 // ── FLOW A: WEB → MOKA ────────────────────────────────────
 
 /**
@@ -381,6 +392,13 @@ async function _pullMokaToWebNow(supabase, outletId) {
         if (!openBills.length) {
           console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) returned 0 PENDING bills for outlet ${outletId}`);
         } else {
+          // FIFO: sort by createdAt ASC supaya queue order benar saat
+          // 1 kapster melayani multiple goshow customer berurutan.
+          openBills.sort((a, b) => {
+            const ta = new Date(a.createdAt || a.created_at || 0).getTime();
+            const tb = new Date(b.createdAt || b.created_at || 0).getTime();
+            return ta - tb;
+          });
           console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) → ${openBills.length} PENDING bill(s) for outlet ${outletId}`);
           for (const bill of openBills) {
             try {
@@ -590,20 +608,51 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
   const created  = _safeDate(billCreatedAt);
   const wibBase  = new Date(created.getTime() + WIB_MS);
 
-  // Pattern A: "HH.MM DayName" or "HH:MM DayName" — advance bill with explicit day
-  // e.g. "Satria Abdul 15.00 Sabtu" → Saturday at 15:00
-  const matchWithDay = billName.match(/(\d{1,2})[.:](\d{2})\s*(minggu|senin|selasa|rabu|kamis|jumat|sabtu)/i);
+  // Pattern C (NEW — highest priority): "DD/MM HH.MM" or "DD/MM HH:MM" — explicit date
+  // Kasir format: "ARIF 09/05 18.30 ONOY" → 9 May at 18:30 WIB
+  // Lebih presisi dari Pattern A/B karena tanggal tidak ambigu.
+  const matchWithDate = billName.match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})[.:](\d{2})/);
+  if (matchWithDate) {
+    const day     = parseInt(matchWithDate[1], 10);
+    const month   = parseInt(matchWithDate[2], 10);
+    const hours   = parseInt(matchWithDate[3], 10);
+    const minutes = parseInt(matchWithDate[4], 10);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31 &&
+        hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+      let year = wibBase.getUTCFullYear();
+      const mo = String(month).padStart(2, '0');
+      const d  = String(day).padStart(2, '0');
+      const h  = String(hours).padStart(2, '0');
+      const mi = String(minutes).padStart(2, '0');
+      let candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
+      // Tanggal sudah lewat lebih dari 1 hari → booking untuk tahun depan (e.g. Des → Jan)
+      if (candidate.getTime() < wibBase.getTime() - 86_400_000) {
+        year += 1;
+        candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
+      }
+      return candidate;
+    }
+  }
+
+  // Pattern A: "HH.MM DayName" or "DayName HH.MM" — advance bill with day name (either order)
+  // e.g. "Satria Abdul 15.00 Sabtu" atau "Budiono minggu 10.00 bob"
+  const ID_DAYS = { minggu: 0, senin: 1, selasa: 2, rabu: 3, kamis: 4, jumat: 5, sabtu: 6 };
+  const matchWithDay =
+    billName.match(/(\d{1,2})[.:](\d{2})\s*(minggu|senin|selasa|rabu|kamis|jumat|sabtu)/i) ||
+    billName.match(/(minggu|senin|selasa|rabu|kamis|jumat|sabtu)\s+(\d{1,2})[.:](\d{2})/i);
   if (matchWithDay) {
-    const hours   = parseInt(matchWithDay[1], 10);
-    const minutes = parseInt(matchWithDay[2], 10);
+    // Normalise: grup 1&2 = jam&menit jika format TIME DAY, atau 2&3 jika format DAY TIME
+    const isTimeThenDay = /^\d/.test(matchWithDay[1]);
+    const hours   = parseInt(isTimeThenDay ? matchWithDay[1] : matchWithDay[2], 10);
+    const minutes = parseInt(isTimeThenDay ? matchWithDay[2] : matchWithDay[3], 10);
+    const dayStr  = (isTimeThenDay ? matchWithDay[3] : matchWithDay[1]).toLowerCase();
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
 
-    const ID_DAYS = { minggu: 0, senin: 1, selasa: 2, rabu: 3, kamis: 4, jumat: 5, sabtu: 6 };
-    const targetDow  = ID_DAYS[matchWithDay[3].toLowerCase()];
+    const targetDow  = ID_DAYS[dayStr];
     if (targetDow === undefined) return null;
 
     const createdDow = wibBase.getUTCDay();
-    const daysToAdd  = (targetDow - createdDow + 7) % 7;
+    const daysToAdd  = (targetDow - createdDow + 7) % 7 || 7; // 0 → 7 agar tidak ke hari ini yg sudah lewat
     const targetWIB  = new Date(wibBase.getTime() + daysToAdd * 86_400_000);
 
     const y  = targetWIB.getUTCFullYear();
@@ -657,33 +706,44 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   const billDetail = bill.billDetail || bill.bill_detail || null;
   const items = billDetail?.items || bill.checkouts || bill.items || [];
   let barberId    = null;
-  let durationMin = 60; // 60-min safe default — most barbershop services take 45-90 min
   let serviceName = billName;
   let totalPrice  = bill.totalPrice || bill.total
                  || billDetail?.bill_total_amount || billDetail?.bill_sub_total_amount || 0;
   if (typeof totalPrice === 'string') totalPrice = parseFloat(totalPrice) || 0;
 
   // Pass 1: match by item ID (parent item ID = barber's moka_employee_id)
+  // Walk SEMUA items — bukan cuma pertama — supaya kita bisa:
+  //   • find barberId dari item match pertama
+  //   • collect SEMUA variant names (utk concat service display)
+  //   • sum durasi setiap variant individually di Pass 4 (lebih akurat
+  //     daripada lookup string "Hair Cut + Fade" yang tidak ada di DB)
+  const collectedVariantNames = []; // urutan order seperti di bill
+  let priceFromItems = 0;
   for (const item of items) {
     const mokaItemId = String(item.item_id || item.id || '');
-    if (!mokaItemId) continue;
 
-    const { data: barber } = await supabase
-      .from('barbers').select('id')
-      .eq('moka_employee_id', mokaItemId)
-      .eq('outlet_id', outletId)
-      .maybeSingle();
-
-    if (barber) {
-      barberId = barber.id;
-      // item_variants is an ARRAY in Moka responses (per API spec example)
-      const variantArr  = Array.isArray(item.item_variants) ? item.item_variants : [];
-      const variantName = variantArr[0]?.name || item.variant_name || null;
-      if (variantName) serviceName = variantName;
-      if (!totalPrice && variantArr[0]?.price) totalPrice = Number(variantArr[0].price) || 0;
-      break;
+    // Resolve barber from first matching item
+    if (!barberId && mokaItemId) {
+      const { data: barber } = await supabase
+        .from('barbers').select('id')
+        .eq('moka_employee_id', mokaItemId)
+        .eq('outlet_id', outletId)
+        .maybeSingle();
+      if (barber) barberId = barber.id;
     }
+
+    // Collect variant info (every item, not just first)
+    const variantArr  = Array.isArray(item.item_variants) ? item.item_variants : [];
+    const variantName = variantArr[0]?.name || item.variant_name || item.item_variant_name || null;
+    if (variantName) collectedVariantNames.push(variantName);
+    if (variantArr[0]?.price) priceFromItems += Number(variantArr[0].price) || 0;
+    else if (item.price) priceFromItems += Number(item.price) || 0;
   }
+
+  if (collectedVariantNames.length) {
+    serviceName = collectedVariantNames.join(' + ');
+  }
+  if (!totalPrice && priceFromItems) totalPrice = priceFromItems;
 
   // Pass 2 (fallback): if no item-id match, try fuzzy match on bill name vs barber names.
   // Kasir sering menulis nama barber di bill name, mis. "Abdul 15.00 Sabtu" / "Abdul Goshow".
@@ -750,8 +810,35 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     console.log(`[Sync] Open bill ${billId} ("${billName}") → no barber match; will insert as outlet-wide block`);
   }
 
-  // Resolve service duration — always try, even when serviceName === billName
-  if (serviceName) {
+  // ── Pass 4: Resolve service duration ─────────────────────────────────
+  // SUM durasi PER variant, bukan sekedar lookup gabungan string.
+  // Contoh: bill "Hair Cut + Hair Fade Cut" → 45 + 60 = 105 menit.
+  // Tanpa ini, slot kapster ke-blok kurang dari durasi sebenarnya
+  // dan web booking bisa tetap konflik dengan walk-in.
+  let durationMin = 0;
+  let resolvedDurations = 0;
+
+  for (const variantName of collectedVariantNames) {
+    let svcDur = null;
+    const { data: svcByVariant } = await supabase
+      .from('services').select('duration_minutes')
+      .ilike('moka_variant_name', variantName).maybeSingle();
+    if (svcByVariant?.duration_minutes) {
+      svcDur = svcByVariant.duration_minutes;
+    } else {
+      const { data: svcByName } = await supabase
+        .from('services').select('duration_minutes')
+        .ilike('name', variantName).maybeSingle();
+      if (svcByName?.duration_minutes) svcDur = svcByName.duration_minutes;
+    }
+    if (svcDur) {
+      durationMin += svcDur;
+      resolvedDurations++;
+    }
+  }
+
+  // Fallback A: tidak ada variant match → coba lookup billName as a whole
+  if (durationMin === 0 && serviceName) {
     const { data: svcByVariant } = await supabase
       .from('services').select('duration_minutes')
       .ilike('moka_variant_name', serviceName).maybeSingle();
@@ -764,38 +851,85 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
       if (svcByName?.duration_minutes) durationMin = svcByName.duration_minutes;
     }
   }
-  // Fallback: if still at default (no service matched), cap to max known service duration
-  // so the open bill blocks conservatively rather than using an arbitrary number.
-  if (durationMin === 60) {
+
+  // Fallback B: masih nol → 60 menit safe default
+  if (durationMin === 0) durationMin = 60;
+
+  // Fallback C: jika sebagian variant tidak ke-resolve, pakai max-known-duration
+  // sebagai safety: lebih baik over-block sedikit daripada under-block dan
+  // bikin double booking.
+  if (collectedVariantNames.length > 0 && resolvedDurations < collectedVariantNames.length) {
     const { data: maxSvc } = await supabase
       .from('services').select('duration_minutes')
       .eq('is_active', true)
       .order('duration_minutes', { ascending: false })
       .limit(1).maybeSingle();
-    if (maxSvc?.duration_minutes && maxSvc.duration_minutes > 60) {
-      durationMin = maxSvc.duration_minutes;
-    }
+    const fallbackPerUnresolved = maxSvc?.duration_minutes || 60;
+    durationMin += (collectedVariantNames.length - resolvedDurations) * fallbackPerUnresolved;
   }
+
+  // Tambah buffer transisi (cleanup kapster) ke total.
+  durationMin += MOKA_OPENBILL_BUFFER_MIN;
 
   // ── Parse appointment time from bill name ─────────────────
   // Kasir memberi nama bill dengan format "NamaCustomer HH.MM HariIni",
   // mis. "Satria Abdul 15.00 Sabtu". Ini adalah waktu appointment SEBENARNYA.
   // Jika tidak ada pola ini, fall back ke bill.createdAt (GoShow langsung).
   const parsedStart = _parseAppointmentTimeFromBillName(billName, bill.createdAt || bill.created_at);
-  const startTime   = parsedStart || _safeDate(bill.createdAt, bill.created_at);
-  const endTime     = new Date(startTime.getTime() + durationMin * 60_000);
+  let startTime     = parsedStart || _safeDate(bill.createdAt, bill.created_at);
+  let endTime       = new Date(startTime.getTime() + durationMin * 60_000);
 
   // ── Idempotency: check for existing schedule ──────────────
+  // PENTING: idempotency check HARUS dilakukan SEBELUM queue logic, karena
+  // queue logic hanya untuk insert baru. Tanpa ini, sync rerun akan
+  // mendorong existing schedule ke depan tiap iterasi (infinite drift).
   const { data: existing } = await supabase
-    .from('schedules').select('id, barber_id, service_name, start_time, end_time').eq('external_id', billId).maybeSingle();
+    .from('schedules').select('id, barber_id, service_name, start_time, end_time, status').eq('external_id', billId).maybeSingle();
+
+  // ── GOSHOW QUEUE: 1 kapster untuk multiple orang ────────────
+  // HANYA untuk INSERT BARU (existing == null). Skenario: kasir buat Bill A
+  // jam 14:00 (Bob, 60m → end 15:10) lalu Bill B jam 14:05 (Bob, 45m).
+  // Tanpa logika ini, Bill B akan ditolak oleh constraint no_barber_overlap.
+  // Solusi: kalau goshow (parsedStart=null) dan barber_id sama sudah punya
+  // schedule reserved aktif, geser startTime Bill B = end_time Bill A.
+  //
+  // BERLAKU untuk goshow saja. Advance booking ("Adit 15.00 Sabtu") tetap
+  // dihormati — tidak digeser ke antrian.
+  if (!existing && !parsedStart && barberId) {
+    const { data: queueAhead } = await supabase
+      .from('schedules')
+      .select('id, end_time, external_id')
+      .eq('barber_id', barberId)
+      .eq('source', 'moka')
+      .eq('status', 'reserved')
+      .neq('external_id', billId)               // exclude diri sendiri
+      .gt('end_time', startTime.toISOString())  // masih akan/sedang aktif
+      .order('end_time', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (queueAhead?.end_time) {
+      const queuedStart = new Date(queueAhead.end_time);
+      console.log(`[Sync] Open bill ${billId} (goshow queue) → di-queue setelah ${queueAhead.external_id}: ${startTime.toISOString()} → ${queuedStart.toISOString()}`);
+      startTime = queuedStart;
+      endTime   = new Date(startTime.getTime() + durationMin * 60_000);
+    }
+  }
 
   if (existing) {
     const patch = {};
 
+    // Reactivate jika bill masih PENDING di Moka tapi schedule di-cancel stale cleanup.
+    // Tanpa ini, slot tidak pernah bisa diblok lagi setelah di-cancel.
+    if (existing.status === 'cancelled') {
+      patch.status = 'reserved';
+      patch.notes  = null;
+    }
+
     // If barber was missing before but we resolved it now — patch it
     if (!existing.barber_id && barberId) {
       patch.barber_id = barberId;
-      patch.notes = null;
+      if (!patch.notes) patch.notes = null;
       if (existing.service_name === billName && serviceName !== billName) {
         patch.service_name = serviceName;
       }
@@ -830,8 +964,16 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
 
   // ── Insert new schedule ───────────────────────────────────
 
+  // Untuk format terstruktur "CUSTOMER DD/MM HH.MM BARBER", ekstrak nama customer
+  // dari bagian sebelum tanggal. Tanpa ini, billName penuh ("ARIF 09/05 18.30 ONOY")
+  // tersimpan sebagai nama customer — tidak ideal untuk CRM.
+  const structuredNameMatch = billName.match(/^(.+?)\s+\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}/);
+  const resolvedCustomerName = structuredNameMatch
+    ? structuredNameMatch[1].trim()
+    : (bill.customer_name || billName || null);
+
   const customerId = await _resolveCustomer(supabase, {
-    name:  bill.customer_name || billName || null,
+    name:  resolvedCustomerName,
     phone: bill.customer_phone || null,
     id:    null,
   });
@@ -1029,7 +1171,34 @@ function startCronJobs(supabase) {
     }
   });
 
-  // Cron 3: Schema sync harian jam 03:00 WIB (20:00 UTC)
+  // Cron 3: Auto-expire stale reserved Open Bill schedules.
+  // Skenario: kasir membuat open bill jam 14:00 (durasi 60m + buffer 10m → end 15:10),
+  // tapi LUPA close bill di MokaPOS sampai akhir hari. Tanpa cron ini, schedule
+  // tetap "reserved" → slot kapster terblokir selamanya di web booking.
+  //
+  // Logika: jika end_time + safety_window (default 4 jam) sudah lewat dan status
+  // masih 'reserved' & source='moka', mark cancelled.
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      const cutoff = new Date(Date.now() - MOKA_OPENBILL_STALE_HOURS * 60 * 60 * 1000).toISOString();
+      const { data: stale, error } = await supabase
+        .from('schedules')
+        .update({ status: 'cancelled', notes: '[auto] stale open bill — kasir lupa close di MokaPOS' })
+        .eq('source', 'moka')
+        .eq('status', 'reserved')
+        .lt('end_time', cutoff)
+        .select('id');
+      if (error) {
+        console.error('[Cron] Stale open-bill expire error:', error.message);
+      } else if (stale?.length) {
+        console.log(`[Cron] Auto-expired ${stale.length} stale reserved open-bill schedule(s)`);
+      }
+    } catch (err) {
+      console.error('[Cron] Stale open-bill expire error:', err.message);
+    }
+  });
+
+  // Cron 4: Schema sync harian jam 03:00 WIB (20:00 UTC)
   cron.schedule('0 20 * * *', async () => {
     console.log('[Cron] Daily schema sync starting…');
     try {
@@ -1052,7 +1221,7 @@ function startCronJobs(supabase) {
     }
   }, 5000);
 
-  console.log(`[Cron] Moka jobs scheduled: pull ${MOKA_PULL_INTERVAL_MINUTES}min, retry ${MOKA_RETRY_INTERVAL_MINUTES}min, schema sync 03:00 WIB`);
+  console.log(`[Cron] Moka jobs scheduled: pull ${MOKA_PULL_INTERVAL_MINUTES}min, retry ${MOKA_RETRY_INTERVAL_MINUTES}min, stale-bill expire 15min (window ${MOKA_OPENBILL_STALE_HOURS}h, buffer ${MOKA_OPENBILL_BUFFER_MIN}m), schema sync 03:00 WIB`);
 }
 
 function getLastSyncAt(outletId) {
