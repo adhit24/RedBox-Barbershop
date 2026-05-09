@@ -353,41 +353,48 @@ async function _pullMokaToWebNow(supabase, outletId) {
     // ── Pull 3: Open (PENDING) walk-in bills from sync_bills ────────────────
     // GoShow customer yang langsung dilayani kasir (bukan via Advanced Ordering).
     // Slot harus terblokir di website segera, sebelum transaksi selesai.
-    // Query hari ini + besok (WIB) agar advance bills (misal: Jumat buat Sabtu) ikut tertangkap.
+    //
+    // BUG FIX: start/end filter by bill *creation date*, not appointment date.
+    // Advance bills (e.g. "Onoy 14:00 Sabtu" created on Friday evening for Saturday)
+    // were missed because querying only today excluded bills created yesterday.
+    // Fix: query 7 days back → tomorrow in a single call to catch all advance bills.
     try {
       const WIB_MS = 7 * 60 * 60 * 1000;
-      const seenBillIds = new Set();
-      for (let daysAhead = 0; daysAhead <= 1; daysAhead++) {
-        const dateStr = new Date(Date.now() + WIB_MS + daysAhead * 86_400_000).toISOString().slice(0, 10);
-        let billsRes;
-        try { billsRes = await client.getOpenBills(dateStr); } catch (e) {
-          console.warn(`[Sync] getOpenBills(${dateStr}) skipped (${e.message})`);
-          continue;
-        }
+      const nowWIB      = Date.now() + WIB_MS;
+      const startWIB    = new Date(nowWIB - 7 * 86_400_000).toISOString().slice(0, 10);
+      const tomorrowWIB = new Date(nowWIB + 86_400_000).toISOString().slice(0, 10);
+
+      let billsRes;
+      try {
+        billsRes = await client.getOpenBills(startWIB, tomorrowWIB);
+      } catch (e) {
+        console.warn(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) skipped (${e.message})`);
+        billsRes = null;
+      }
+
+      if (billsRes) {
         // Moka may return data as array (multi-bill) or object (single-bill) — normalize.
-        const rawData = billsRes?.data;
+        const rawData  = billsRes?.data;
         const openBills = Array.isArray(rawData) ? rawData
                         : (rawData && typeof rawData === 'object' && rawData.id) ? [rawData]
                         : [];
         if (!openBills.length) {
-          console.log(`[Sync] getOpenBills(${dateStr}) returned 0 PENDING bills for outlet ${outletId}`);
-          continue;
-        }
-        console.log(`[Sync] getOpenBills(${dateStr}) → ${openBills.length} PENDING bill(s) for outlet ${outletId}`);
-        for (const bill of openBills) {
-          if (seenBillIds.has(bill.id)) continue; // deduplicate across date queries
-          seenBillIds.add(bill.id);
-          try {
-            const result = await _processOpenBill(supabase, bill, outletId, client);
-            if (result === 'skipped') skipped++;
-            else processed++;
-          } catch (bErr) {
-            console.warn(`[Sync] Open bill ${bill.id}:`, bErr.message);
+          console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) returned 0 PENDING bills for outlet ${outletId}`);
+        } else {
+          console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) → ${openBills.length} PENDING bill(s) for outlet ${outletId}`);
+          for (const bill of openBills) {
+            try {
+              const result = await _processOpenBill(supabase, bill, outletId, client);
+              if (result === 'skipped') skipped++;
+              else processed++;
+            } catch (bErr) {
+              console.warn(`[Sync] Open bill ${bill.id}:`, bErr.message);
+            }
           }
         }
       }
     } catch (billsErr) {
-      console.warn(`[Sync] getOpenBills loop error (${billsErr.message})`);
+      console.warn(`[Sync] getOpenBills error (${billsErr.message})`);
     }
 
     _lastSyncAt.set(outletId, new Date().toISOString());
@@ -579,35 +586,52 @@ async function _processIncomingOrder(supabase, order, outletId) {
 function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
   if (!billName) return null;
 
-  // Match "HH.MM DayName" or "HH:MM DayName" anywhere in the name
-  const match = billName.match(/(\d{1,2})[.:](\d{2})\s*(minggu|senin|selasa|rabu|kamis|jumat|sabtu)/i);
-  if (!match) return null;
-
-  const hours   = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
-
-  const ID_DAYS = { minggu: 0, senin: 1, selasa: 2, rabu: 3, kamis: 4, jumat: 5, sabtu: 6 };
-  const targetDow = ID_DAYS[match[3].toLowerCase()];
-  if (targetDow === undefined) return null;
-
-  // Work in WIB (UTC+7) to find the correct calendar date
   const WIB_MS = 7 * 60 * 60 * 1000;
-  const created   = _safeDate(billCreatedAt);
-  const wibBase   = new Date(created.getTime() + WIB_MS); // UTC shifted to WIB
-  const createdDow = wibBase.getUTCDay();                  // day-of-week in WIB
+  const created  = _safeDate(billCreatedAt);
+  const wibBase  = new Date(created.getTime() + WIB_MS);
 
-  const daysToAdd = (targetDow - createdDow + 7) % 7;
+  // Pattern A: "HH.MM DayName" or "HH:MM DayName" — advance bill with explicit day
+  // e.g. "Satria Abdul 15.00 Sabtu" → Saturday at 15:00
+  const matchWithDay = billName.match(/(\d{1,2})[.:](\d{2})\s*(minggu|senin|selasa|rabu|kamis|jumat|sabtu)/i);
+  if (matchWithDay) {
+    const hours   = parseInt(matchWithDay[1], 10);
+    const minutes = parseInt(matchWithDay[2], 10);
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
 
-  // Target date in WIB
-  const targetWIB = new Date(wibBase.getTime() + daysToAdd * 86_400_000);
-  const y  = targetWIB.getUTCFullYear();
-  const mo = String(targetWIB.getUTCMonth() + 1).padStart(2, '0');
-  const d  = String(targetWIB.getUTCDate()).padStart(2, '0');
-  const h  = String(hours).padStart(2, '0');
-  const mi = String(minutes).padStart(2, '0');
+    const ID_DAYS = { minggu: 0, senin: 1, selasa: 2, rabu: 3, kamis: 4, jumat: 5, sabtu: 6 };
+    const targetDow  = ID_DAYS[matchWithDay[3].toLowerCase()];
+    if (targetDow === undefined) return null;
 
-  return new Date(`${y}-${mo}-${d}T${h}:${mi}:00+07:00`);
+    const createdDow = wibBase.getUTCDay();
+    const daysToAdd  = (targetDow - createdDow + 7) % 7;
+    const targetWIB  = new Date(wibBase.getTime() + daysToAdd * 86_400_000);
+
+    const y  = targetWIB.getUTCFullYear();
+    const mo = String(targetWIB.getUTCMonth() + 1).padStart(2, '0');
+    const d  = String(targetWIB.getUTCDate()).padStart(2, '0');
+    const h  = String(hours).padStart(2, '0');
+    const mi = String(minutes).padStart(2, '0');
+    return new Date(`${y}-${mo}-${d}T${h}:${mi}:00+07:00`);
+  }
+
+  // Pattern B: "HH.MM" or "HH:MM" without day name — same-day GoShow
+  // e.g. "-justin abdul 16.00" → today at 16:00 (using createdAt date in WIB)
+  // Only accept business-hours range (8–22) to avoid matching dates or prices.
+  const matchTimeOnly = billName.match(/\b(\d{1,2})[.:](\d{2})\b/);
+  if (matchTimeOnly) {
+    const hours   = parseInt(matchTimeOnly[1], 10);
+    const minutes = parseInt(matchTimeOnly[2], 10);
+    if (hours >= 8 && hours <= 22 && minutes >= 0 && minutes <= 59) {
+      const y  = wibBase.getUTCFullYear();
+      const mo = String(wibBase.getUTCMonth() + 1).padStart(2, '0');
+      const d  = String(wibBase.getUTCDate()).padStart(2, '0');
+      const h  = String(hours).padStart(2, '0');
+      const mi = String(minutes).padStart(2, '0');
+      return new Date(`${y}-${mo}-${d}T${h}:${mi}:00+07:00`);
+    }
+  }
+
+  return null;
 }
 
 /**

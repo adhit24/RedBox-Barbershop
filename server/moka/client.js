@@ -74,15 +74,21 @@ class MokaClient {
   }
 
   /**
-   * Fetch open (PENDING) walk-in bills from Moka POS for a given date.
+   * Fetch open (PENDING) walk-in bills from Moka POS for a date range.
    * Used to block slots when a cashier creates a GoShow bill directly in the POS.
    * Docs: GET /v1/outlets/{outlet_id}/sync_bills/?statuses=PENDING&start=DD/MM/YYYY&end=DD/MM/YYYY
+   *
+   * IMPORTANT: `start`/`end` filter by bill *creation date* (not appointment date).
+   * Advance bills (e.g. created Friday for Saturday) require a wider lookback window.
+   *
+   * @param {string} startDateStr - 'YYYY-MM-DD'
+   * @param {string} [endDateStr] - 'YYYY-MM-DD', defaults to startDateStr
    */
-  async getOpenBills(dateStr) {
-    // dateStr: 'YYYY-MM-DD' → convert to 'DD/MM/YYYY'
-    const [y, m, d] = (dateStr || new Date().toISOString().slice(0, 10)).split('-');
-    const fmt = `${d}/${m}/${y}`;
-    const qs = new URLSearchParams({ statuses: 'PENDING', start: fmt, end: fmt, per_page: '100', deep: 'true' });
+  async getOpenBills(startDateStr, endDateStr = null) {
+    const toFmt = (s) => { const [y, m, d] = (s || '').split('-'); return `${d}/${m}/${y}`; };
+    const startFmt = toFmt(startDateStr || new Date().toISOString().slice(0, 10));
+    const endFmt   = toFmt(endDateStr   || startDateStr || new Date().toISOString().slice(0, 10));
+    const qs = new URLSearchParams({ statuses: 'PENDING', start: startFmt, end: endFmt, per_page: '200', deep: 'true' });
     return this._req('GET', `/v1/outlets/${this._mokaOutletId}/sync_bills/?${qs}`);
   }
 
