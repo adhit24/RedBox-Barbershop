@@ -935,14 +935,16 @@ function createMokaRouter(supabase) {
           const { data: schedules } = billIds.length
             ? await supabase.from('schedules').select('id, external_id, barber_id, service_name, start_time, end_time, status').in('external_id', billIds)
             : { data: [] };
-          const syncedIds = new Set((schedules || []).map(s => s.external_id));
+          const scheduleMap = {};
+          for (const s of schedules || []) scheduleMap[s.external_id] = s;
 
           results.push({
             outletId:     outlet.id,
             outletName:   outlet.name,
             date:         todayStr,
             openBills:    openBills.map(b => {
-              const bd = b.billDetail || b.bill_detail || null;
+              const bd  = b.billDetail || b.bill_detail || null;
+              const sch = scheduleMap[String(b.id)] || null;
               return {
                 id:           b.id,
                 name:         b.name,
@@ -950,7 +952,14 @@ function createMokaRouter(supabase) {
                 createdAt:    b.createdAt || b.created_at,
                 totalPrice:   b.totalPrice || b.total || bd?.bill_total_amount || bd?.bill_sub_total_amount,
                 itemCount:    (bd?.items || b.items || []).length,
-                blockedInWeb: syncedIds.has(String(b.id)),
+                blockedInWeb: !!sch,
+                schedule: sch ? {
+                  id:         sch.id,
+                  status:     sch.status,
+                  barber_id:  sch.barber_id,
+                  start_time: sch.start_time,
+                  end_time:   sch.end_time,
+                } : null,
               };
             }),
           });
