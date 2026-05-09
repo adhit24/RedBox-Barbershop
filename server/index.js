@@ -539,6 +539,57 @@ function dedupeBarberRecords(barbers = []) {
   return Array.from(byKey.values());
 }
 
+function _dedupeByIdPreferRichest(barbers = []) {
+  const byId = new Map();
+  for (const b of (barbers || [])) {
+    if (!b?.id) continue;
+    const existing = byId.get(b.id);
+    if (!existing || barberRecordScore(b) > barberRecordScore(existing)) byId.set(b.id, b);
+  }
+  return Array.from(byId.values());
+}
+
+async function _remapBarberIdsFromSupabase(barbers = []) {
+  if (!supabase || DB_TYPE !== 'supabase') return barbers;
+  const { data: sbBarbers, error } = await supabase
+    .from('barbers')
+    .select('id,name,branch,is_active')
+    .eq('is_active', true);
+  if (error) return barbers;
+
+  const byBranch = new Map();
+  for (const b of sbBarbers || []) {
+    const br = branchSlug(b.branch);
+    if (!byBranch.has(br)) byBranch.set(br, []);
+    byBranch.get(br).push(b);
+  }
+
+  const out = [];
+  for (const b of barbers || []) {
+    const br = branchSlug(b.branch);
+    const candidates = byBranch.get(br) || [];
+    const incomingId = String(b.id || '').trim();
+    if (incomingId && candidates.some(x => String(x.id) === incomingId)) {
+      out.push(b);
+      continue;
+    }
+
+    const nIncoming = normName(b.name);
+    let match = candidates.find(x => normName(x.name) === nIncoming) || null;
+    if (!match && nIncoming && nIncoming.length >= 3) {
+      const broad = candidates.filter(x => {
+        const n = normName(x.name);
+        return n === nIncoming || n.includes(nIncoming) || nIncoming.includes(n);
+      });
+      if (broad.length === 1) match = broad[0];
+    }
+
+    out.push(match ? { ...b, id: match.id } : b);
+  }
+
+  return _dedupeByIdPreferRichest(out);
+}
+
 async function syncBarbersToDatabases(barbers = [], source = 'unknown') {
   const incoming = dedupeBarberRecords(barbers || []).filter(b => b.id && b.name);
   if (!incoming.length) return { source, imported_mysql: 0, imported_supabase: 0, deactivated_demo: 0 };
@@ -1061,10 +1112,11 @@ app.get('/api/barbers', async (req, res) => {
     try {
       const airtableResult = await fetchBarbersFromAirtable();
       const normalized = dedupeBarberRecords(airtableResult.data || []).filter(b => b.is_active);
-      if (normalized.length) {
-        barbersCache = { data: normalized, timestamp: Date.now() };
+      const remapped = await _remapBarberIdsFromSupabase(normalized);
+      if (remapped.length) {
+        barbersCache = { data: remapped, timestamp: Date.now() };
         res.setHeader('x-barbers-source', 'airtable');
-        return res.json({ data: normalized });
+        return res.json({ data: remapped });
       }
     } catch (airtableError) {
       console.error('Airtable barbers fetch failed:', airtableError?.message || airtableError);
