@@ -831,10 +831,14 @@ function createMokaRouter(supabase) {
           const MokaClient = require('./client');
           const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
           const billsRes  = await client.getOpenBills(todayStr);
-          const openBills = billsRes?.data || [];
+          // Normalize: Moka may return data as array (multi) or single object
+          const rawData = billsRes?.data;
+          const openBills = Array.isArray(rawData) ? rawData
+                          : (rawData && typeof rawData === 'object' && rawData.id) ? [rawData]
+                          : [];
 
           // Also load matching schedules from our DB
-          const billIds = (Array.isArray(openBills) ? openBills : []).map(b => String(b.id));
+          const billIds = openBills.map(b => String(b.id));
           const { data: schedules } = billIds.length
             ? await supabase.from('schedules').select('id, external_id, barber_id, service_name, start_time, end_time, status').in('external_id', billIds)
             : { data: [] };
@@ -844,15 +848,18 @@ function createMokaRouter(supabase) {
             outletId:     outlet.id,
             outletName:   outlet.name,
             date:         todayStr,
-            openBills:    (Array.isArray(openBills) ? openBills : []).map(b => ({
-              id:           b.id,
-              name:         b.name,
-              status:       b.status,
-              createdAt:    b.createdAt || b.created_at,
-              totalPrice:   b.totalPrice || b.total,
-              itemCount:    (b.billDetail?.items || b.items || []).length,
-              blockedInWeb: syncedIds.has(String(b.id)),
-            })),
+            openBills:    openBills.map(b => {
+              const bd = b.billDetail || b.bill_detail || null;
+              return {
+                id:           b.id,
+                name:         b.name,
+                status:       b.status,
+                createdAt:    b.createdAt || b.created_at,
+                totalPrice:   b.totalPrice || b.total || bd?.bill_total_amount || bd?.bill_sub_total_amount,
+                itemCount:    (bd?.items || b.items || []).length,
+                blockedInWeb: syncedIds.has(String(b.id)),
+              };
+            }),
           });
         } catch (outletErr) {
           results.push({ outletId: outlet.id, outletName: outlet.name, error: outletErr.message });

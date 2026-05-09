@@ -364,13 +364,21 @@ async function _pullMokaToWebNow(supabase, outletId) {
           console.warn(`[Sync] getOpenBills(${dateStr}) skipped (${e.message})`);
           continue;
         }
-        const openBills = billsRes?.data || [];
-        if (!Array.isArray(openBills)) continue;
+        // Moka may return data as array (multi-bill) or object (single-bill) — normalize.
+        const rawData = billsRes?.data;
+        const openBills = Array.isArray(rawData) ? rawData
+                        : (rawData && typeof rawData === 'object' && rawData.id) ? [rawData]
+                        : [];
+        if (!openBills.length) {
+          console.log(`[Sync] getOpenBills(${dateStr}) returned 0 PENDING bills for outlet ${outletId}`);
+          continue;
+        }
+        console.log(`[Sync] getOpenBills(${dateStr}) → ${openBills.length} PENDING bill(s) for outlet ${outletId}`);
         for (const bill of openBills) {
           if (seenBillIds.has(bill.id)) continue; // deduplicate across date queries
           seenBillIds.add(bill.id);
           try {
-            const result = await _processOpenBill(supabase, bill, outletId);
+            const result = await _processOpenBill(supabase, bill, outletId, client);
             if (result === 'skipped') skipped++;
             else processed++;
           } catch (bErr) {
@@ -606,8 +614,12 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
  * Process a single PENDING walk-in bill from sync_bills API.
  * Creates a 'reserved' schedule to block the slot on the website.
  * When the bill is later COMPLETED, _processIncomingOrder (Pull 1) will update it.
+ *
+ * @param {object} bill   - sync_bills entry from Moka
+ * @param {string} outletId
+ * @param {MokaClient} [client] - optional, used for variant→item lookup fallback
  */
-async function _processOpenBill(supabase, bill, outletId) {
+async function _processOpenBill(supabase, bill, outletId, client = null) {
   const billId     = String(bill.id);
   const billName   = bill.name || '';
   const billStatus = (bill.status || '').toUpperCase();
@@ -616,14 +628,20 @@ async function _processOpenBill(supabase, bill, outletId) {
   if (billStatus !== 'PENDING') return 'skipped';
 
   // ── Resolve barber + service FIRST (needed for both insert and update paths) ─
-  const items = bill.billDetail?.items || bill.checkouts || bill.items || [];
+  // Moka response: schema docs use 'bill_detail' (snake_case), but actual API
+  // returns 'billDetail' (camelCase) per the example payload. Support both.
+  const billDetail = bill.billDetail || bill.bill_detail || null;
+  const items = billDetail?.items || bill.checkouts || bill.items || [];
   let barberId    = null;
   let durationMin = 30;
   let serviceName = billName;
-  let totalPrice  = bill.totalPrice || bill.total || 0;
+  let totalPrice  = bill.totalPrice || bill.total
+                 || billDetail?.bill_total_amount || billDetail?.bill_sub_total_amount || 0;
+  if (typeof totalPrice === 'string') totalPrice = parseFloat(totalPrice) || 0;
 
+  // Pass 1: match by item ID (parent item ID = barber's moka_employee_id)
   for (const item of items) {
-    const mokaItemId = String(item.id || item.item_id || '');
+    const mokaItemId = String(item.item_id || item.id || '');
     if (!mokaItemId) continue;
 
     const { data: barber } = await supabase
@@ -634,16 +652,78 @@ async function _processOpenBill(supabase, bill, outletId) {
 
     if (barber) {
       barberId = barber.id;
-      const variantName = item.item_variants?.name || item.variant_name || null;
+      // item_variants is an ARRAY in Moka responses (per API spec example)
+      const variantArr  = Array.isArray(item.item_variants) ? item.item_variants : [];
+      const variantName = variantArr[0]?.name || item.variant_name || null;
       if (variantName) serviceName = variantName;
-      if (!totalPrice && item.item_variants?.price) totalPrice = item.item_variants.price;
+      if (!totalPrice && variantArr[0]?.price) totalPrice = Number(variantArr[0].price) || 0;
       break;
     }
   }
 
+  // Pass 2 (fallback): if no item-id match, try fuzzy match on bill name vs barber names.
+  // Kasir sering menulis nama barber di bill name, mis. "Abdul 15.00 Sabtu" / "Abdul Goshow".
+  if (!barberId && billName) {
+    try {
+      const { _matchScore } = require('./schemaSync');
+      const { data: outletBarbers } = await supabase
+        .from('barbers').select('id, name')
+        .eq('outlet_id', outletId).eq('is_active', true);
+      let bestId = null, bestScore = 0;
+      for (const b of outletBarbers || []) {
+        if (!b.name) continue;
+        // Score nama barber sebagai substring di bill name (case-insensitive token match)
+        const bnLower = billName.toLowerCase();
+        const tokens  = String(b.name).toLowerCase().split(/\s+/).filter(t => t.length >= 3);
+        const tokenHit = tokens.some(t => bnLower.includes(t));
+        const score = tokenHit ? 0.9 : _matchScore(billName, b.name);
+        if (score > bestScore) { bestScore = score; bestId = b.id; }
+      }
+      if (bestScore >= 0.5) {
+        barberId = bestId;
+        console.log(`[Sync] Open bill ${billId}: barber resolved by name match "${billName}" → ${bestId} (score ${bestScore.toFixed(2)})`);
+      }
+    } catch (e) {
+      console.warn(`[Sync] Open bill ${billId} fuzzy barber match failed:`, e.message);
+    }
+  }
+
+  // Pass 3 (fallback): if still no match and we have a client, look up variant ID against
+  // the items library to find the parent item (barber). Useful when bill items only contain
+  // variant IDs without parent context.
+  if (!barberId && client) {
+    try {
+      const mokaItems = await _getMokaItems(client, outletId);
+      for (const item of items) {
+        const variantId = String(item.id || '');
+        if (!variantId) continue;
+        const parent = mokaItems.find(mi =>
+          (mi.item_variants || []).some(v => String(v.id) === variantId)
+        );
+        if (parent) {
+          const { data: barber } = await supabase
+            .from('barbers').select('id')
+            .eq('moka_employee_id', String(parent.id))
+            .eq('outlet_id', outletId)
+            .maybeSingle();
+          if (barber) {
+            barberId = barber.id;
+            console.log(`[Sync] Open bill ${billId}: barber resolved by variant→parent lookup → ${barber.id}`);
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(`[Sync] Open bill ${billId} variant→parent lookup failed:`, e.message);
+    }
+  }
+
   if (!barberId) {
-    const nonBarberNames = items.map(i => i.item_variants?.name || i.name || i.item_name).filter(Boolean);
+    const nonBarberNames = items
+      .map(i => (Array.isArray(i.item_variants) ? i.item_variants[0]?.name : null) || i.name || i.item_name)
+      .filter(Boolean);
     if (nonBarberNames.length) serviceName = nonBarberNames.join(' + ');
+    console.log(`[Sync] Open bill ${billId} ("${billName}") → no barber match; will insert as outlet-wide block`);
   }
 
   // Resolve service duration
