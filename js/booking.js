@@ -9,7 +9,7 @@ const API_URL = (() => {
   }
   return `${window.location.protocol}//${window.location.host}/api`;
 })();
-let USE_API = false;
+let USE_API = true; // API selalu aktif — live site selalu punya server
 let apiBookings = []; // Cache for server-side bookings to detect conflicts (legacy fallback)
 let mokaAvailableSlots = []; // Slots from /api/availability (includes Moka walk-ins)
 let mokaAvailabilityActive = false; // true when new availability API responded successfully
@@ -17,7 +17,7 @@ let mokaAvailabilityActive = false; // true when new availability API responded 
 async function detectApiMode() {
   try {
     const res = await fetch(API_URL + '/health', { signal: AbortSignal.timeout(2000) });
-    if (res.ok) USE_API = true;
+    USE_API = res.ok;
   } catch {
     USE_API = false;
   }
@@ -358,6 +358,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const json = await res.json();
       allBarbers = json.data || [];
 
+      // Fetch today's working status and merge into barber objects
+      try {
+        const todayWIB = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const statusRes = await fetch(`${API_URL}/barbers/today-status?date=${todayWIB}`);
+        if (statusRes.ok) {
+          const statusJson = await statusRes.json();
+          const statusMap = {};
+          for (const s of statusJson.barbers || []) statusMap[s.id] = s.isWorking;
+          allBarbers = allBarbers.map(b => ({ ...b, isWorking: statusMap[b.id] ?? true }));
+        }
+      } catch (_) { /* non-critical — default all barbers to working */ }
+
       if (preBarber) {
         const found = allBarbers.find(b => String(b.id) === String(preBarber));
         if (found?.branch) currentBranchFilter = found.branch;
@@ -434,6 +446,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     proPickGrid.innerHTML = `
       ${(filtered.length ? filtered : [{ __empty: true }]).map(b => b.__empty ? emptyCard : `
           <div class="pro-pick-card ${state.barber?.id === b.id ? 'selected' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
+            <div class="barber-status-badge ${b.isWorking === false ? 'off-duty' : 'available'}">
+              <span class="status-dot"></span><span>${b.isWorking === false ? 'Off Duty' : 'Available'}</span>
+            </div>
             <div class="pro-pick-img">${proImgHtml(b)}</div>
             <div class="pro-pick-info">
               <h4>${b.name}</h4>

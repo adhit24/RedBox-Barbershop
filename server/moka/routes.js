@@ -649,6 +649,68 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── GET /api/barbers/today-status ────────────────────────
+  // Returns isWorking flag for each barber for a given date.
+  // Query: date (YYYY-MM-DD, default today WIB), outletId (optional)
+  // Response: { date, dayOfWeek, barbers: [{ id, isWorking }] }
+  router.get('/barbers/today-status', async (req, res) => {
+    try {
+      let { date, outletId: rawOutletId } = req.query;
+
+      if (!date) {
+        const wibNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+        date = wibNow.toISOString().slice(0, 10);
+      }
+
+      const dayOfWeek = new Date(`${date}T12:00:00Z`).getUTCDay(); // 0=Sun…6=Sat
+      const SHORT_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      const ID_DAYS    = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+
+      let barbersQuery = supabase
+        .from('barbers')
+        .select('id, work_days')
+        .eq('is_active', true);
+
+      if (rawOutletId) {
+        const outletId = await _resolveOutletId(supabase, rawOutletId);
+        if (outletId) barbersQuery = barbersQuery.eq('outlet_id', outletId);
+      }
+
+      const { data: barbers, error: barbersErr } = await barbersQuery;
+      if (barbersErr) throw new Error(barbersErr.message);
+
+      const barberIds = (barbers || []).map(b => b.id);
+      const { data: hours } = barberIds.length
+        ? await supabase
+            .from('barber_working_hours')
+            .select('barber_id, is_off')
+            .in('barber_id', barberIds)
+            .eq('day_of_week', dayOfWeek)
+        : { data: [] };
+
+      const hoursByBarber = {};
+      for (const h of hours || []) hoursByBarber[h.barber_id] = h;
+
+      const result = (barbers || []).map(b => {
+        const wh = hoursByBarber[b.id];
+        let isWorking;
+        if (wh !== undefined) {
+          isWorking = !wh.is_off;
+        } else {
+          const workDays = b.work_days || [];
+          isWorking = !workDays.length
+            || workDays.includes(SHORT_DAYS[dayOfWeek])
+            || workDays.includes(ID_DAYS[dayOfWeek]);
+        }
+        return { id: b.id, isWorking };
+      });
+
+      res.json({ date, dayOfWeek, barbers: result });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   // ── GET /api/outlets ─────────────────────────────────────
   // List all active outlets (useful for front-end dropdowns)
   router.get('/outlets', async (_req, res) => {
