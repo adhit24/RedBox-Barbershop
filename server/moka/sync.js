@@ -684,6 +684,18 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
 }
 
 /**
+ * For structured bill names "CUSTOMER DD/MM HH.MM BARBER", extract the barber
+ * name hint = text after the time pattern. Returns null for unstructured names.
+ * Example: "bayu 10/05 12.00 abdul" → "abdul"
+ */
+function _parseBarberHintFromBillName(billName) {
+  if (!billName) return null;
+  const m = billName.match(/\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}\s+(.*)/);
+  const hint = m ? m[1].trim() : null;
+  return hint || null;
+}
+
+/**
  * Process a single PENDING walk-in bill from sync_bills API.
  * Creates a 'reserved' schedule to block the slot on the website.
  * When the bill is later COMPLETED, _processIncomingOrder (Pull 1) will update it.
@@ -745,8 +757,10 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   }
   if (!totalPrice && priceFromItems) totalPrice = priceFromItems;
 
-  // Pass 2 (fallback): if no item-id match, try fuzzy match on bill name vs barber names.
-  // Kasir sering menulis nama barber di bill name, mis. "Abdul 15.00 Sabtu" / "Abdul Goshow".
+  // Pass 2 (fallback): if no item-id match, try barber name from bill.
+  // For structured format "CUSTOMER DD/MM HH.MM BARBER", extract barber from
+  // text AFTER the time pattern — exact position, high confidence.
+  // Fall back to full-name fuzzy scan only for unstructured bill names.
   if (!barberId && billName) {
     try {
       const { _matchScore } = require('./schemaSync');
@@ -754,18 +768,30 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
         .from('barbers').select('id, name')
         .eq('outlet_id', outletId).eq('is_active', true);
       let bestId = null, bestScore = 0;
+      const barberHint = _parseBarberHintFromBillName(billName);
       for (const b of outletBarbers || []) {
         if (!b.name) continue;
-        // Score nama barber sebagai substring di bill name (case-insensitive token match)
-        const bnLower = billName.toLowerCase();
-        const tokens  = String(b.name).toLowerCase().split(/\s+/).filter(t => t.length >= 3);
-        const tokenHit = tokens.some(t => bnLower.includes(t));
-        const score = tokenHit ? 0.9 : _matchScore(billName, b.name);
+        let score;
+        if (barberHint) {
+          // Structured: match only against the hint token (not full bill name)
+          const hintLower   = barberHint.toLowerCase();
+          const barberLower = b.name.toLowerCase();
+          const tokens = barberLower.split(/\s+/).filter(t => t.length >= 2);
+          const tokenHit = tokens.some(t => hintLower.includes(t));
+          score = tokenHit ? 0.95 : _matchScore(barberHint, b.name);
+        } else {
+          // Unstructured: fall back to scanning full bill name
+          const bnLower  = billName.toLowerCase();
+          const tokens   = String(b.name).toLowerCase().split(/\s+/).filter(t => t.length >= 3);
+          const tokenHit = tokens.some(t => bnLower.includes(t));
+          score = tokenHit ? 0.9 : _matchScore(billName, b.name);
+        }
         if (score > bestScore) { bestScore = score; bestId = b.id; }
       }
-      if (bestScore >= 0.5) {
+      const threshold = barberHint ? 0.4 : 0.5;
+      if (bestScore >= threshold) {
         barberId = bestId;
-        console.log(`[Sync] Open bill ${billId}: barber resolved by name match "${billName}" → ${bestId} (score ${bestScore.toFixed(2)})`);
+        console.log(`[Sync] Open bill ${billId}: barber resolved by name match "${billName}" → ${bestId} (score ${bestScore.toFixed(2)}, hint="${barberHint || 'full'}")`);
       }
     } catch (e) {
       console.warn(`[Sync] Open bill ${billId} fuzzy barber match failed:`, e.message);
@@ -933,6 +959,14 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
       if (existing.service_name === billName && serviceName !== billName) {
         patch.service_name = serviceName;
       }
+    }
+
+    // If structured hint resolves a DIFFERENT barber than stored — correct it.
+    // Structured hint is high-confidence (fixed position after DD/MM HH.MM in bill name).
+    const structuredHint = _parseBarberHintFromBillName(billName);
+    if (structuredHint && barberId && existing.barber_id && existing.barber_id !== barberId) {
+      patch.barber_id = barberId;
+      console.log(`[Sync] Open bill ${billId}: correcting barber ${existing.barber_id} → ${barberId} (structured hint "${structuredHint}")`);
     }
 
     // If start_time was stored wrong (e.g. used createdAt before this fix), correct it
