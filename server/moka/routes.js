@@ -91,6 +91,114 @@ function createMokaRouter(supabase) {
     }
   });
 
+  router.get('/slot-blockers', async (req, res) => {
+    try {
+      const { outletId: rawOutletId, date, barberId, durationMinutes, slots } = req.query;
+
+      if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+      if (!barberId) return res.status(400).json({ error: 'barberId is required' });
+
+      const outletId = await _resolveOutletId(supabase, rawOutletId);
+      if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+      let outletSlug = null;
+      try {
+        const { data: o } = await supabase.from('outlets').select('slug').eq('id', outletId).single();
+        outletSlug = o?.slug || null;
+      } catch {}
+
+      const duration = Math.max(1, parseInt(durationMinutes, 10) || 60);
+
+      const slotTimes = (() => {
+        if (slots) {
+          return String(slots)
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => /^\d{2}:\d{2}$/.test(s));
+        }
+        const end = outletSlug === 'csb' ? 21 : 20;
+        const arr = [];
+        for (let h = 10; h <= end; h++) arr.push(String(h).padStart(2, '0') + ':00');
+        return arr;
+      })();
+
+      const dayStart = `${date}T00:00:00+07:00`;
+      const dayEnd   = `${date}T23:59:59+07:00`;
+
+      _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
+
+      const [{ data: schedules }, { data: outletWide }, { data: legacyBookings }] = await Promise.all([
+        supabase
+          .from('schedules')
+          .select('id, barber_id, start_time, end_time, status, source, external_id, service_name, notes, outlet_id')
+          .eq('outlet_id', outletId)
+          .eq('barber_id', barberId)
+          .not('status', 'in', '("cancelled")')
+          .lt('start_time', dayEnd)
+          .gt('end_time', dayStart),
+        supabase
+          .from('schedules')
+          .select('id, barber_id, start_time, end_time, status, source, external_id, service_name, notes, outlet_id')
+          .eq('outlet_id', outletId)
+          .is('barber_id', null)
+          .not('status', 'in', '("cancelled")')
+          .lt('start_time', dayEnd)
+          .gt('end_time', dayStart),
+        supabase
+          .from('bookings')
+          .select('id, barber_id, date, time, duration, status, service')
+          .eq('date', date)
+          .eq('barber_id', barberId)
+          .not('status', 'in', '("cancelled","rejected")'),
+      ]);
+
+      const bookingRanges = (legacyBookings || [])
+        .map(b => {
+          const t = String(b.time || '').slice(0, 5);
+          if (!t || !/^\d{2}:\d{2}$/.test(t)) return null;
+          const start = _timeStrToMs(date, t);
+          const dur   = _parseDurationStr(b.duration);
+          return { ...b, start, end: start + dur * 60_000, durationMinutes: dur };
+        })
+        .filter(Boolean);
+
+      const results = slotTimes.map(t => {
+        const start = _timeStrToMs(date, t);
+        const end   = start + duration * 60_000;
+        const hits = {
+          schedules: (schedules || []).filter(s => start < new Date(s.end_time).getTime() && end > new Date(s.start_time).getTime()),
+          outletWide: (outletWide || []).filter(s => start < new Date(s.end_time).getTime() && end > new Date(s.start_time).getTime()),
+          bookings: bookingRanges.filter(b => start < b.end && end > b.start).map(b => ({
+            id: b.id,
+            date: b.date,
+            time: String(b.time || '').slice(0, 5),
+            duration: b.duration,
+            durationMinutes: b.durationMinutes,
+            status: b.status,
+            service: b.service,
+          })),
+        };
+        const blocked = hits.schedules.length > 0 || hits.outletWide.length > 0 || hits.bookings.length > 0;
+        return { time: t, start: new Date(start).toISOString(), end: new Date(end).toISOString(), blocked, hits };
+      });
+
+      res.json({
+        outletId,
+        outletSlug,
+        barberId,
+        date,
+        durationMinutes: duration,
+        slotTimes,
+        results,
+        lastSyncAt: getLastSyncAt(outletId),
+      });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   // ── POST /api/reservations ────────────────────────────────
   // Creates a schedule, then asynchronously pushes to Moka.
   //
@@ -1053,6 +1161,19 @@ function _normalizePhone(raw) {
   if (digits.startsWith('62')) return `+${digits}`;
   if (digits.startsWith('0'))  return `+62${digits.slice(1)}`;
   return `+62${digits}`;
+}
+
+function _timeStrToMs(dateStr, timeStr) {
+  const [h, m] = String(timeStr).split(':').map(Number);
+  return new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+07:00`).getTime();
+}
+
+function _parseDurationStr(dur) {
+  if (!dur) return 30;
+  const s = String(dur).toLowerCase().trim();
+  if (s.includes('jam')) return Math.round((parseFloat(s) || 1) * 60);
+  const m = parseInt(s, 10);
+  return (Number.isFinite(m) && m > 0) ? m : 30;
 }
 
 async function _cancelMokaOrder(supabase, schedule) {
