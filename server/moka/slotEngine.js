@@ -86,6 +86,29 @@ async function getAvailableSlots(supabase, {
     }
   }
 
+  // ── 3b. Also include legacy bookings (web bookings not yet bridged to schedules) ──
+  // The bridge from /api/bookings → schedules runs fire-and-forget and can fail.
+  // Querying bookings directly here ensures web bookings always block slots.
+  const barberIds = barbers.map(b => b.id);
+  if (barberIds.length) {
+    const { data: legacyBookings } = await supabase
+      .from('bookings')
+      .select('barber_id, date, time, duration')
+      .in('barber_id', barberIds)
+      .eq('date', date)
+      .not('status', 'in', '("cancelled","rejected")');
+
+    for (const b of legacyBookings || []) {
+      if (!b.barber_id || !b.time) continue;
+      const timeStr = String(b.time).slice(0, 5);
+      const startMs = _timeStrToMs(date, timeStr);
+      const durMins = _parseDurationStr(b.duration);
+      const endMs   = startMs + durMins * 60_000;
+      if (!busyMap[b.barber_id]) busyMap[b.barber_id] = [];
+      busyMap[b.barber_id].push({ start: startMs, end: endMs });
+    }
+  }
+
   // ── 4. Generate slots ──────────────────────────────────────
   const slots = [];
   const now   = Date.now();
@@ -196,6 +219,15 @@ function _indexBy(arr, key) {
   const map = {};
   for (const item of arr) map[item[key]] = item;
   return map;
+}
+
+/** Parse duration strings like "60 menit", "1.5 jam", "45" → integer minutes */
+function _parseDurationStr(dur) {
+  if (!dur) return 30;
+  const s = String(dur).toLowerCase().trim();
+  if (s.includes('jam')) return Math.round((parseFloat(s) || 1) * 60);
+  const m = parseInt(s, 10);
+  return (Number.isFinite(m) && m > 0) ? m : 30;
 }
 
 module.exports = { getAvailableSlots, isSlotAvailable };
