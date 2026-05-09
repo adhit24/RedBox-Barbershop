@@ -27,7 +27,8 @@ const MOKA_ON_DEMAND_SYNC_MAX_AGE_MS = Math.max(10_000, parseInt(process.env.MOK
 // Buffer (menit) ditambahkan ke end_time setiap Open Bill walk-in,
 // agar kapster punya waktu transisi/cleanup sebelum customer berikut.
 // Tujuan utama: mencegah double-booking goshow vs reservasi web.
-const MOKA_OPENBILL_BUFFER_MIN = Math.max(0, parseInt(process.env.MOKA_OPENBILL_BUFFER_MIN || '10', 10) || 0);
+// NOTE: slot booking di website tersedia per jam, jadi kita TIDAK menambahkan buffer menit.
+const MOKA_OPENBILL_BUFFER_MIN = 0;
 
 // Auto-expire stale "reserved" Open Bill schedules: jika kasir lupa close
 // bill di MokaPOS, slot kapster bisa terblokir selamanya. Setelah
@@ -992,6 +993,15 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     if (!patch.end_time) {
       const existingEndMs = new Date(existing.end_time).getTime();
       if (endTime.getTime() > existingEndMs + 5 * 60_000) {
+        patch.end_time = endTime.toISOString();
+      }
+    }
+
+    // Jika sebelumnya ada buffer, dan sekarang buffer = 0, maka end_time lama bisa terlalu panjang.
+    // Untuk open-bill schedules, kita boleh shrink supaya slot per jam tidak ikut terblokir.
+    if (!patch.end_time) {
+      const existingEndMs = new Date(existing.end_time).getTime();
+      if (endTime.getTime() < existingEndMs - 5 * 60_000) {
         patch.end_time = endTime.toISOString();
       }
     }
