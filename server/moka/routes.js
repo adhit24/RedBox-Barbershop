@@ -93,7 +93,7 @@ function createMokaRouter(supabase) {
 
   router.get('/slot-blockers', async (req, res) => {
     try {
-      const { outletId: rawOutletId, date, barberId, durationMinutes, slots } = req.query;
+      const { outletId: rawOutletId, date, barberId, durationMinutes, slots, onlyBlocked, summary } = req.query;
 
       if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
@@ -184,6 +184,40 @@ function createMokaRouter(supabase) {
         return { time: t, start: new Date(start).toISOString(), end: new Date(end).toISOString(), blocked, hits };
       });
 
+      const onlyBlockedBool = String(onlyBlocked || '').toLowerCase() === 'true' || String(onlyBlocked || '') === '1';
+      const summaryBool = String(summary || '').toLowerCase() === 'true' || String(summary || '') === '1';
+
+      const filteredResults = onlyBlockedBool ? results.filter(r => r.blocked) : results;
+      const finalResults = summaryBool
+        ? filteredResults.map(r => ({
+            time: r.time,
+            blocked: r.blocked,
+            blockedBy: {
+              schedules: r.hits.schedules.map(s => ({
+                id: s.id,
+                status: s.status,
+                source: s.source,
+                external_id: s.external_id,
+                service_name: s.service_name,
+                start_time: s.start_time,
+                end_time: s.end_time,
+                notes: s.notes,
+              })),
+              outletWide: r.hits.outletWide.map(s => ({
+                id: s.id,
+                status: s.status,
+                source: s.source,
+                external_id: s.external_id,
+                service_name: s.service_name,
+                start_time: s.start_time,
+                end_time: s.end_time,
+                notes: s.notes,
+              })),
+              bookings: r.hits.bookings,
+            },
+          }))
+        : filteredResults;
+
       res.json({
         outletId,
         outletSlug,
@@ -191,7 +225,7 @@ function createMokaRouter(supabase) {
         date,
         durationMinutes: duration,
         slotTimes,
-        results,
+        results: finalResults,
         lastSyncAt: getLastSyncAt(outletId),
       });
     } catch (err) {
@@ -223,6 +257,8 @@ function createMokaRouter(supabase) {
         outletId: outlet.id,
         date: d,
         barberId,
+        onlyBlocked: '1',
+        summary: '1',
       });
       if (durationMinutes) qs.set('durationMinutes', String(durationMinutes));
       if (slots) qs.set('slots', String(slots));
