@@ -859,8 +859,10 @@ app.get('/api/bookings', async (req, res) => {
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
-  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment } = req.body;
+  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status } = req.body;
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
+  const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
+  const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
 
   if (!name || !wa || !service || !date || !time) {
     return res.status(400).json({ error: 'Missing required fields: name, wa, service, date, time' });
@@ -875,7 +877,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
   if (DB_TYPE === 'supabase') {
     try {
       // 1. Cek overlap terlebih dahulu
-      if (await hasOverlapSupabase({ barberId: barber_id, date, time, duration })) {
+      if (await hasOverlapSupabase({ barberId: normalizedBarberId, date, time, duration })) {
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
@@ -883,7 +885,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       const { data, error } = await supabase.from('bookings').insert([{
         id: bookingId, name, wa, service_id: service_id || '', service, price: price || 0,
         duration: duration || '', barber_id: normalizedBarberId, date, time,
-        location: location || 'bypass', notes: notes || '', payment: payment || ''
+        location: location || 'bypass', status: desiredStatus, notes: notes || '', payment: payment || ''
       }]).select().single();
       if (error) return res.status(500).json({ error: error.message });
 
@@ -896,14 +898,19 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // Sync to Airtable
       syncBookingToAirtable(data);
 
-      // Bridge to Moka schedules table (non-blocking)
-      if (supabase) {
-        require('./moka/sync').bridgeBookingToMoka(supabase, data)
-          .then(r => console.log(`[Moka Bridge] booking ${data.id} →`, r))
-          .catch(e => console.warn(`[Moka Bridge] booking ${data.id} failed:`, e.message));
+      // Auto-book: untuk booking dari public website, status langsung CONFIRMED
+      // dan langsung dibridge ke schedules + push ke Moka (non-blocking untuk admin draft).
+      if (supabase && desiredStatus === 'confirmed') {
+        try {
+          const r = await require('./moka/sync').bridgeBookingToMoka(supabase, data);
+          return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync });
+        } catch (e) {
+          console.warn(`[Moka Bridge] booking ${data.id} failed:`, e.message);
+          return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: 'failed' });
+        }
       }
 
-      return res.status(201).json({ data });
+      return res.status(201).json({ data, autoBooked: desiredStatus === 'confirmed' });
     } catch (err) {
       console.error('Supabase POST Error:', err);
       return res.status(500).json({ error: err.message });
@@ -921,14 +928,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       }
 
       // 2. Overlap check
-      if (await hasOverlapMysql({ barberId: barber_id, date, time, duration })) {
+      if (await hasOverlapMysql({ barberId: normalizedBarberId, date, time, duration })) {
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
       // 3. Insert Booking
       await mysqlPool.execute(
-        `INSERT INTO bookings (id, customer_id, name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [bookingId, customerId, name, wa, service_id || '', service, price || 0, duration || '', normalizedBarberId, date, time, location || 'bypass', notes || '', payment || '']
+        `INSERT INTO bookings (id, customer_id, name, wa, service_id, service, price, duration, barber_id, date, time, location, status, notes, payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [bookingId, customerId, name, wa, service_id || '', service, price || 0, duration || '', normalizedBarberId, date, time, location || 'bypass', desiredStatus, notes || '', payment || '']
       );
 
       const [newBooking] = await mysqlPool.execute(
@@ -941,14 +948,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
 
       syncBookingToAirtable(newBooking[0]);
       let moka = null;
-      if (shouldPushBookingToMokaOnCreate(newBooking[0]?.location)) {
+      if (desiredStatus === 'confirmed' && shouldPushBookingToMokaOnCreate(newBooking[0]?.location)) {
         try {
           moka = await pushConfirmedBookingToMoka(newBooking[0]);
         } catch (e) {
           moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
         }
       }
-      res.status(201).json({ data: newBooking[0], moka });
+      res.status(201).json({ data: newBooking[0], moka, autoBooked: desiredStatus === 'confirmed' });
     } catch (error) {
       console.error('MySQL Error:', error);
       res.status(500).json({ error: error.message });

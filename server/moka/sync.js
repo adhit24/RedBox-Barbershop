@@ -1686,6 +1686,9 @@ async function bridgeBookingToMoka(supabase, booking) {
   // Encode payment method in notes so it reaches the Moka cashier
   const paymentNote = _formatPaymentNote(booking.payment);
   const combinedNotes = [paymentNote, booking.notes].filter(Boolean).join(' | ');
+  const scheduleStatus = String(booking.status || '').toLowerCase() === 'confirmed'
+    ? 'confirmed'
+    : 'reserved';
 
   const { data: schedule, error: schErr } = await supabase
     .from('schedules')
@@ -1698,7 +1701,7 @@ async function bridgeBookingToMoka(supabase, booking) {
       price:        Number(booking.price) || 0,
       start_time:   startTime,
       end_time:     endTime,
-      status:       'reserved',
+      status:       scheduleStatus,
       source:       'web',
       external_id:  legacyRef,
       notes:        combinedNotes || null,

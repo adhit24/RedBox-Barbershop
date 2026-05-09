@@ -394,7 +394,7 @@ function createMokaRouter(supabase) {
           price,
           start_time:   startTime,
           end_time:     endTime,
-          status:       'reserved',
+          status:       'confirmed',
           source:       'web',
           notes:        notes || null,
         })
