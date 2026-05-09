@@ -199,6 +199,40 @@ function createMokaRouter(supabase) {
     }
   });
 
+  router.get('/slot-blockers/yudha-csb', async (req, res) => {
+    try {
+      const { date, durationMinutes, slots } = req.query;
+      const d = date || new Date().toISOString().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+
+      const { data: outlet } = await supabase.from('outlets').select('id').eq('slug', 'csb').single();
+      if (!outlet?.id) return res.status(404).json({ error: 'Outlet not found: csb' });
+
+      const { data: barbers } = await supabase
+        .from('barbers')
+        .select('id,name')
+        .eq('outlet_id', outlet.id)
+        .eq('is_active', true)
+        .ilike('name', '%yudha%')
+        .limit(3);
+
+      const barberId = barbers?.[0]?.id || null;
+      if (!barberId) return res.status(404).json({ error: 'Barber not found: yudha (csb)' });
+
+      const qs = new URLSearchParams({
+        outletId: outlet.id,
+        date: d,
+        barberId,
+      });
+      if (durationMinutes) qs.set('durationMinutes', String(durationMinutes));
+      if (slots) qs.set('slots', String(slots));
+
+      res.redirect(302, `/api/slot-blockers?${qs.toString()}`);
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   // ── POST /api/reservations ────────────────────────────────
   // Creates a schedule, then asynchronously pushes to Moka.
   //
