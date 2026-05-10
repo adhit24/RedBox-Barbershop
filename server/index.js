@@ -29,7 +29,10 @@ const MOKA_ACCESS_TOKEN = String(process.env.MOKA_ACCESS_TOKEN || process.env.MO
 const MOKA_OUTLET_ID = String(process.env.MOKA_OUTLET_ID || '').trim();
 const MOKA_OUTLET_ID_BYPASS = String(process.env.MOKA_OUTLET_ID_BYPASS || '').trim();
 const MOKA_PUSH_ON_BOOKING = String(process.env.MOKA_PUSH_ON_BOOKING || '').trim() === '1';
-const MOKA_PUSH_BRANCHES = String(process.env.MOKA_PUSH_BRANCHES || 'bypass').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+const MOKA_PUSH_BRANCHES = String(process.env.MOKA_PUSH_BRANCHES || 'bypass,samadikun,csb,sumber,tegal')
+  .split(',')
+  .map(s => s.trim().toLowerCase())
+  .filter(Boolean);
 const MOKA_DEFAULT_ITEM_ID = String(process.env.MOKA_DEFAULT_ITEM_ID || '').trim();
 const MOKA_DEFAULT_CATEGORY_ID = String(process.env.MOKA_DEFAULT_CATEGORY_ID || '').trim();
 const MOKA_DEFAULT_CATEGORY_NAME = String(process.env.MOKA_DEFAULT_CATEGORY_NAME || 'Services').trim();
