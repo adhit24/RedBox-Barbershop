@@ -46,6 +46,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
+  let activeLoadSeq = 0;
+
   function todayStr() {
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -219,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    // Pre-select from URL - Go directly to Step 2 since service is pre-selected from homepage
+    // Pre-select from URL - Go directly to Step 2 (Professional) since service is pre-selected from homepage
     if (preService) {
       const preItem = svcList.querySelector('[data-service="' + preService + '"]');
       if (preItem) {
@@ -251,7 +253,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── STEP NAVIGATION ─────────────────────────
   function goToStep(n) {
-    // Logic: Skip step 2 (Professional) if pre-selected from URL
+    // Logic: Skip step 2 (Professional) if barber pre-selected from URL
+    // Step 2 = Professional, Step 3 = Date & Time
     if (n === 2 && preBarber && state.barber) {
       goToStep(3);
       return;
@@ -291,18 +294,133 @@ document.addEventListener('DOMContentLoaded', async () => {
       s.classList.toggle('done', sn < n);
     });
 
+    if (n === 2) {
+      // Step 2: Professional - fetch and render barbers
+      fetchAndRenderBarbers();
+      document.getElementById('step2Next').disabled = !state.barber;
+      updateSidebar();
+    }
+
     if (n === 3) {
+      // Step 3: Date & Time - build calendar with barber-specific availability
       if (!state.date) {
         state.date = todayStr();
       }
+      // Clear old data to prevent stale displays
+      fallbackBusyRanges = [];
+      mokaAvailabilityActive = false;
+      mokaAvailableSlots = [];
       buildCalendar();
-      buildTimeGrid();
+      buildTimeGrid([]); // Pass empty initially, will load on date click
       const ts = document.getElementById('timeSection');
       if (ts) ts.style.display = '';
-      document.getElementById('step3Next').disabled = true;
+      document.getElementById('step3Next').disabled = !(state.date && state.time);
       updateSidebar();
+      
+      // Check if selected barber is off duty on the selected date
+      checkBarberOffDuty();
+
+      if (state.date) {
+        loadAndRenderDate(state.date);
+      }
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function loadAndRenderDate(dateStr, dayEl = null) {
+    const seq = ++activeLoadSeq;
+
+    state.date = dateStr;
+    state.time = null;
+    mokaAvailabilityActive = false;
+    mokaAvailableSlots = [];
+    fallbackBusyRanges = [];
+
+    const timeSection = document.getElementById('timeSection');
+    const timeGrid = document.getElementById('timeGrid');
+    if (timeSection) timeSection.style.display = '';
+    if (timeGrid) {
+      timeGrid.innerHTML = '<div class="time-grid-loading">Memuat jadwal...</div>';
+    }
+    document.getElementById('step3Next').disabled = true;
+
+    const dayEls = document.querySelectorAll('.cal-day');
+    dayEls.forEach(d => d.classList.remove('loading'));
+    const selectedEl = dayEl || Array.from(dayEls).find(e => e.classList.contains('selected'));
+    if (selectedEl) selectedEl.classList.add('loading');
+
+    await new Promise(resolve => requestAnimationFrame(resolve));
+
+    if (USE_API) {
+      const durMins = _parseDurToMins(state.service?.duration);
+      const promises = [];
+
+      promises.push((async () => {
+        try {
+          const params = new URLSearchParams({
+            outletId: state.location || 'bypass',
+            date: dateStr,
+            durationMinutes: durMins,
+            barberId: state.barber?.id,
+          });
+          const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(12000) });
+          if (res.ok) {
+            const json = await res.json();
+            mokaAvailableSlots = json.slots || [];
+            mokaAvailabilityActive = true;
+          }
+        } catch (e) {
+          console.warn('[Availability] Moka slot API unavailable', e.message);
+        }
+      })());
+
+      if (state.barber?.id) {
+        promises.push((async () => {
+          try {
+            const outletId = state.location || 'bypass';
+            const sRes = await fetch(
+              `${API_URL}/schedules?outletId=${outletId}&date=${dateStr}&barberId=${state.barber.id}`,
+              { signal: AbortSignal.timeout(8000) }
+            );
+            if (sRes.ok) {
+              const sJson = await sRes.json();
+              if (sJson.schedules && sJson.schedules.length > 0) {
+                fallbackBusyRanges = sJson.schedules
+                  .map(s => {
+                    const start = _parseDateTimeToMs(s.start_time);
+                    const end = _parseDateTimeToMs(s.end_time);
+                    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+                    return { start, end };
+                  })
+                  .filter(Boolean);
+              } else {
+                fallbackBusyRanges = [];
+              }
+            }
+          } catch (e) {
+            console.warn('[Schedules] Fetch error:', e.message);
+          }
+        })());
+      }
+
+      await Promise.all(promises);
+    }
+
+    if (seq !== activeLoadSeq) return;
+
+    if (selectedEl) selectedEl.classList.remove('loading');
+
+    requestAnimationFrame(() => {
+      if (seq !== activeLoadSeq) return;
+      const currentBusyRanges = fallbackBusyRanges && fallbackBusyRanges.length > 0
+        ? [...fallbackBusyRanges]
+        : [];
+      buildCalendar();
+      buildTimeGrid(currentBusyRanges);
+      updateSidebar();
+    });
+
+    checkBarberOffDuty();
   }
 
   // ── SIDEBAR ─────────────────────────────────
@@ -339,7 +457,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // ── STEP 2: PROFESSIONAL (Dynamic Rendering) ──
+  // ── STEP 3: PROFESSIONAL (Dynamic Rendering) ──
   const proPickGrid = document.getElementById('proPickGrid');
   const proBranchFilter = document.getElementById('proBranchFilter');
   let allBarbers = [];
@@ -356,18 +474,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch(`${API_URL}/barbers`);
       const json = await res.json();
       allBarbers = json.data || [];
-
-      // Fetch today's working status and merge into barber objects
-      try {
-        const todayWIB = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const statusRes = await fetch(`${API_URL}/barbers/today-status?date=${todayWIB}`);
-        if (statusRes.ok) {
-          const statusJson = await statusRes.json();
-          const statusMap = {};
-          for (const s of statusJson.barbers || []) statusMap[s.id] = s.isWorking;
-          allBarbers = allBarbers.map(b => ({ ...b, isWorking: statusMap[b.id] ?? true }));
-        }
-      } catch (_) { /* non-critical — default all barbers to working */ }
 
       if (preBarber) {
         const found = allBarbers.find(b => String(b.id) === String(preBarber));
@@ -445,9 +551,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     proPickGrid.innerHTML = `
       ${(filtered.length ? filtered : [{ __empty: true }]).map(b => b.__empty ? emptyCard : `
           <div class="pro-pick-card ${state.barber?.id === b.id ? 'selected' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
-            <div class="barber-status-badge ${b.isWorking === false ? 'off-duty' : 'available'}">
-              <span class="status-dot"></span><span>${b.isWorking === false ? 'Off Duty' : 'Available'}</span>
-            </div>
             <div class="pro-pick-img">${proImgHtml(b)}</div>
             <div class="pro-pick-info">
               <h4>${b.name}</h4>
@@ -509,6 +612,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const preCard = proPickGrid.querySelector(`[data-barber="${preBarber}"]`);
       if (preCard) {
         preCard.click();
+        
+        // Auto-advance to Step 3 (Date & Time) if service is already selected
+        // This happens when user comes from homepage with both service and barber pre-selected
+        if (state.service && state.barber) {
+          setTimeout(() => {
+            goToStep(3);
+          }, 100);
+        }
       }
     }
   }
@@ -524,12 +635,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.step-back').forEach(btn => {
     btn.addEventListener('click', () => {
       let target = parseInt(btn.dataset.target);
-      
-      // If we are on step 3 and a barber was pre-selected, go back to step 1
-      if (target === 2 && preBarber && state.barber) {
-        target = 1;
-      }
-      
       goToStep(target);
     });
   });
@@ -565,75 +670,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (d === today.getDate() && m === today.getMonth() && y === today.getFullYear()) el.classList.add('today');
         if (state.date === dateStr) el.classList.add('selected');
         el.addEventListener('click', async () => {
-          state.date = dateStr;
-          state.time = null;
-          mokaAvailabilityActive = false;
-          mokaAvailableSlots = [];
-          fallbackBusyRanges = [];
-
-          if (USE_API) {
-            // ── Primary: /api/availability (includes Moka walk-ins realtime) ──
-            try {
-              const durMins = _parseDurToMins(state.service?.duration);
-              const params = new URLSearchParams({
-                outletId: state.location || 'bypass',
-                date:     dateStr,
-                durationMinutes: durMins,
-              });
-              if (state.barber?.id && state.barber.id !== 'any') params.set('barberId', state.barber.id);
-              const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(12000) });
-              if (res.ok) {
-                const json = await res.json();
-                mokaAvailableSlots = json.slots || [];
-                mokaAvailabilityActive = true;
-              }
-            } catch (e) {
-              console.warn('[Availability] Moka slot API unavailable, falling back to bookings API', e.message);
-            }
-
-            // ── Secondary: /api/schedules (blocks from schedules table) ──
-            // Always try to load, so we can enforce blocking even if /availability is stale.
-            if (state.barber?.id && state.barber.id !== 'any') {
-              try {
-                const params = new URLSearchParams({
-                  outletId: state.location || 'bypass',
-                  date:     dateStr,
-                  barberId: state.barber.id,
-                  limit:    '250',
-                });
-                const res = await fetch(`${API_URL}/schedules?${params}`, { signal: AbortSignal.timeout(8000) });
-                if (res.ok) {
-                  const json = await res.json();
-                  const scheds = json.schedules || [];
-                  fallbackBusyRanges = scheds
-                    .filter(s => s && s.status !== 'cancelled' && s.start_time && s.end_time)
-                    .map(s => ({ start: new Date(s.start_time).getTime(), end: new Date(s.end_time).getTime() }))
-                    .filter(r => Number.isFinite(r.start) && Number.isFinite(r.end) && r.end > r.start);
-                }
-              } catch (e) {
-                fallbackBusyRanges = [];
-              }
-            }
-
-            // ── Fallback: old /api/bookings endpoint ─────────────────────────
-            if (!mokaAvailabilityActive && state.barber?.id && state.barber.id !== 'any') {
-              try {
-                const res = await fetch(`${API_URL}/bookings?date=${dateStr}&barber_id=${state.barber.id}`, { signal: AbortSignal.timeout(3000) });
-                if (res.ok) {
-                  const json = await res.json();
-                  apiBookings = json.data || [];
-                }
-              } catch (e) {
-                console.warn('Failed to fetch API bookings for conflict check', e);
-              }
-            }
-          }
-
-          buildCalendar();
-          buildTimeGrid();
-          document.getElementById('timeSection').style.display = '';
-          document.getElementById('step3Next').disabled = true;
-          updateSidebar();
+          if (el.classList.contains('loading')) return;
+          
+          loadAndRenderDate(dateStr, el);
         });
       }
       grid.appendChild(el);
@@ -658,6 +697,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!isNaN(m)) mins = m * 60;
     }
     return mins;
+  }
+
+  function _parseDateTimeToMs(value) {
+    if (value == null) return NaN;
+    if (typeof value === 'number') return value;
+    if (value instanceof Date) return value.getTime();
+
+    const raw = String(value).trim();
+    if (!raw) return NaN;
+
+    let ms = new Date(raw).getTime();
+    if (Number.isFinite(ms)) return ms;
+
+    let s = raw;
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(s)) {
+      s = s.replace(' ', 'T');
+    }
+    if (/[+-]\d{2}$/.test(s)) {
+      s = `${s}:00`;
+    }
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(s)) {
+      s = `${s}+07:00`;
+    }
+
+    ms = new Date(s).getTime();
+    return ms;
   }
 
   // Convert service duration string ("45 menit", "1.5 jam") → integer minutes
@@ -702,9 +767,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  function buildTimeGrid() {
+  // ── Check if selected barber is off duty on selected date ──
+  async function checkBarberOffDuty() {
+    const warningEl = document.getElementById('barberOffWarning');
+    const barberNameEl = document.getElementById('offDutyBarberName');
+    if (!warningEl || !state.barber?.id || !state.date) return;
+
+    try {
+      const res = await fetch(`${API_URL}/barbers/today-status?date=${state.date}`);
+      if (!res.ok) {
+        warningEl.style.display = 'none';
+        return;
+      }
+      const json = await res.json();
+      const barberStatus = json.barbers?.find(b => String(b.id) === String(state.barber.id));
+      
+      if (barberStatus && !barberStatus.isWorking) {
+        // Barber is off duty - show warning
+        barberNameEl.textContent = state.barber.name;
+        warningEl.style.display = 'block';
+        // Optionally disable continue button
+        document.getElementById('step3Next').disabled = true;
+      } else {
+        // Barber is working - hide warning
+        warningEl.style.display = 'none';
+      }
+    } catch (e) {
+      console.warn('[Off Duty Check] Failed to check barber status:', e.message);
+      warningEl.style.display = 'none';
+    }
+  }
+
+  // Cache for API responses to avoid redundant calls
+  const apiCache = new Map();
+  const CACHE_TTL = 30000; // 30 seconds
+
+  function getCached(key) {
+    const cached = apiCache.get(key);
+    if (!cached) return null;
+    if (Date.now() - cached.timestamp > CACHE_TTL) {
+      apiCache.delete(key);
+      return null;
+    }
+    return cached.data;
+  }
+
+  function setCached(key, data) {
+    apiCache.set(key, { data, timestamp: Date.now() });
+  }
+
+  function buildTimeGrid(busyRanges = fallbackBusyRanges) {
     const grid = document.getElementById('timeGrid');
     if (!grid) return;
+    
     const slotsDefault = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
     const slotsCsb     = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
     const slots = state.location === 'csb' ? slotsCsb : slotsDefault;
@@ -712,64 +827,110 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isToday = state.date === today;
     const floorHourMins = Math.floor(currentLocalMins() / 60) * 60;
     const visibleSlots = isToday ? slots.filter(s => timeToMins(s) > floorHourMins) : slots;
-    grid.innerHTML = '';
+    
+    // Use DocumentFragment for batch DOM updates
+    const fragment = document.createDocumentFragment();
+    
     if (!visibleSlots.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1;color:var(--w50);font-size:.85rem;padding:8px 2px">Tidak ada jam tersedia untuk hari ini. Silakan pilih tanggal lain.</div>';
+      const emptyMsg = document.createElement('div');
+      emptyMsg.style.cssText = 'grid-column:1/-1;color:var(--w50);font-size:.85rem;padding:8px 2px';
+      emptyMsg.textContent = 'Tidak ada jam tersedia untuk hari ini. Silakan pilih tanggal lain.';
+      fragment.appendChild(emptyMsg);
+      grid.innerHTML = '';
+      grid.appendChild(fragment);
       return;
     }
-    // Build a Set of available slot start-times (HH:MM WIB) from Moka API
+    
+    // Pre-calculate: Build Set of available slot start-times from Moka API
     const mokaFreeSet = new Set();
     if (mokaAvailabilityActive) {
       for (const s of mokaAvailableSlots) {
-        // s.start is ISO8601; extract HH:MM in WIB (UTC+7)
         const d = new Date(s.start);
         const wibH = String((d.getUTCHours() + 7) % 24).padStart(2, '0');
         const wibM = String(d.getUTCMinutes()).padStart(2, '0');
         mokaFreeSet.add(`${wibH}:${wibM}`);
       }
     }
+    
+    // Pre-calculate busy ranges check (avoid creating Date objects in loop)
+    const hasBusyRanges = state.barber?.id && state.barber.id !== 'any' && busyRanges && busyRanges.length;
+    const durMins = hasBusyRanges ? _parseDurToMins(state.service?.duration) : 0;
+    
+    console.log('[TimeGrid] Building for', state.barber?.name, 'on', state.date);
+    console.log('[TimeGrid] hasBusyRanges:', hasBusyRanges, 'busyRanges:', busyRanges);
 
     let availableCount = 0;
+    
+    // Batch create all slot elements
     visibleSlots.forEach(slot => {
       const el = document.createElement('div');
       el.className = 'time-slot';
       el.textContent = slot;
 
-      // If new Moka availability API responded: trust it as source-of-truth.
-      // Otherwise fall back to schedules blocks, then local + legacy API conflict check.
-      const isBooked = (() => {
-        if (state.barber?.id && state.barber.id !== 'any' && fallbackBusyRanges && fallbackBusyRanges.length) {
-          const durMins = _parseDurToMins(state.service?.duration);
-          const slotStartMs = new Date(`${state.date}T${slot}:00+07:00`).getTime();
-          const slotEndMs   = slotStartMs + durMins * 60_000;
-          if (fallbackBusyRanges.some(b => slotStartMs < b.end && slotEndMs > b.start)) return true;
+      // Optimized isBooked check
+      let isBooked = false;
+      
+      if (hasBusyRanges) {
+        // Pre-calculate slot timestamps once
+        const slotStartMs = new Date(`${state.date}T${slot}:00+07:00`).getTime();
+        const slotEndMs = slotStartMs + durMins * 60_000;
+        // Check against busy ranges
+        for (let i = 0; i < busyRanges.length; i++) {
+          const b = busyRanges[i];
+          if (slotStartMs < b.end && slotEndMs > b.start) {
+            isBooked = true;
+            break;
+          }
         }
-        if (mokaAvailabilityActive) return !mokaFreeSet.has(slot);
-        return hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
-      })();
+      }
+      
+      if (!isBooked && mokaAvailabilityActive) {
+        isBooked = !mokaFreeSet.has(slot);
+      }
+      
+      if (!isBooked && !mokaAvailabilityActive) {
+        isBooked = hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
+      }
 
       if (isBooked) {
         el.classList.add('unavailable');
-        el.textContent = slot;
       } else {
         availableCount++;
         if (state.time === slot) el.classList.add('selected');
-        el.addEventListener('click', () => {
-          state.time = slot;
-          document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('selected'));
-          el.classList.add('selected');
-          document.getElementById('step3Next').disabled = false;
-          updateSidebar();
-        });
+        
+        // Use delegated event handling for better performance
+        el.dataset.slot = slot;
       }
-      grid.appendChild(el);
+      
+      fragment.appendChild(el);
     });
+    
+    // Single DOM write for all slots
+    grid.innerHTML = '';
+    grid.appendChild(fragment);
+    
+    // Add single delegated click handler
+    if (!grid.dataset.rbClickBound) {
+      grid.dataset.rbClickBound = '1';
+      grid.addEventListener('click', function timeSlotClickHandler(e) {
+        const slotEl = e.target.closest('.time-slot:not(.unavailable)');
+        if (!slotEl) return;
+        
+        const slot = slotEl.dataset.slot;
+        if (!slot) return;
+        
+        state.time = slot;
+        grid.querySelectorAll('.time-slot').forEach(s => s.classList.remove('selected'));
+        slotEl.classList.add('selected');
+        document.getElementById('step3Next').disabled = false;
+        updateSidebar();
+      });
+    }
+    
+    // Show message if no slots available
     if (isToday && availableCount === 0) {
       const note = document.createElement('div');
-      note.style.gridColumn = '1/-1';
-      note.style.color = 'var(--w50)';
-      note.style.fontSize = '.85rem';
-      note.style.padding = '8px 2px';
+      note.style.cssText = 'grid-column:1/-1;color:var(--w50);font-size:.85rem;padding:8px 2px';
       note.textContent = 'Semua slot hari ini sudah booked. Silakan pilih tanggal lain.';
       grid.appendChild(note);
       document.getElementById('step3Next').disabled = true;
@@ -850,7 +1011,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
     if (hasConflict(state.barber?.id, state.date, state.time, state.service?.duration)) {
       alert('Mohon maaf, kapster ' + state.barber?.name + ' baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');
-      goToStep(3); // Go back to calendar step
+      goToStep(3); // Go back to Date & Time step
       return;
     }
 
@@ -912,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const errData = await res.json();
           if (res.status === 409) {
             alert('Mohon maaf: ' + errData.error);
-            goToStep(3); // Go back to calendar
+            goToStep(3); // Go back to Date & Time
             return;
           }
           alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));

@@ -136,7 +136,7 @@
         <div class="book-step" id="step2">
           <div class="step-head">
             <h2>Pick Your Professional</h2>
-            <p>Select your preferred barber or choose "Anyone Available".</p>
+            <p>Select your preferred barber for the service.</p>
           </div>
 
           <!-- Branch Filter for Professionals -->
@@ -167,6 +167,18 @@
             <h2>Choose Date &amp; Time</h2>
             <p>Pick a convenient date and time from available slots.</p>
           </div>
+          
+          <!-- Warning notification for off-duty barber -->
+          <div class="barber-off-warning" id="barberOffWarning" style="display:none;">
+            <div class="warning-content">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              <div class="warning-text">
+                <strong>Perhatian:</strong> <span id="offDutyBarberName"></span> sedang <strong>OFF DUTY</strong> pada tanggal yang dipilih.
+                <br>Silakan pilih tanggal lain atau ganti kapster.
+              </div>
+            </div>
+          </div>
+
           <div class="cal-wrap">
             <div class="cal-header">
               <button class="cal-nav" id="calPrev" aria-label="Previous month">‹</button>
