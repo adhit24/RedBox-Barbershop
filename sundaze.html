@@ -375,6 +375,78 @@
     }
     .sd-visit-content { position: relative; z-index: 2; }
 
+    /* ── BOOK A TABLE ── */
+    .sd-book {
+      position: relative; padding: 120px 0; overflow: hidden;
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(196,122,44,.12) 0%, transparent 55%),
+        radial-gradient(ellipse at 80% 70%, rgba(217,164,65,.08) 0%, transparent 55%),
+        linear-gradient(180deg, var(--black) 0%, var(--charcoal) 100%);
+      border-top: 1px solid var(--w08);
+      border-bottom: 1px solid var(--w08);
+    }
+    .sd-book::before {
+      content: ''; position: absolute; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 200px; opacity: .02; pointer-events: none;
+    }
+    .sd-book-inner {
+      position: relative; z-index: 2;
+      max-width: 720px; margin: 0 auto; text-align: center;
+      padding: 56px 32px; border-radius: 20px;
+      background: linear-gradient(145deg, rgba(217,164,65,.08) 0%, rgba(196,122,44,.04) 100%);
+      border: 1px solid var(--gold-30);
+      box-shadow: 0 20px 60px rgba(0,0,0,.4), inset 0 1px 0 rgba(245,241,232,.05);
+    }
+    .sd-book-inner::before {
+      content: ''; position: absolute;
+      top: -1px; left: 50%; transform: translateX(-50%);
+      width: 80px; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    }
+    .sd-book-title {
+      font-family: var(--font-serif);
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 400; line-height: 1.1;
+      color: var(--cream); margin-bottom: 18px;
+    }
+    .sd-book-title em { color: var(--gold); font-style: italic; }
+    .sd-book-sub {
+      font-size: 1rem; color: var(--w70);
+      max-width: 480px; margin: 0 auto 42px;
+      line-height: 1.85;
+    }
+    .sd-book-btn {
+      display: inline-flex; align-items: center; gap: 14px;
+      padding: 18px 38px;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--orange) 100%);
+      color: var(--black);
+      font-size: .95rem; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; border-radius: 10px;
+      transition: all .35s var(--ease);
+      box-shadow: 0 8px 24px rgba(217,164,65,.3), 0 2px 6px rgba(196,122,44,.2);
+      position: relative; overflow: hidden;
+    }
+    .sd-book-btn::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,.25) 50%, transparent 60%);
+      transform: translateX(-100%); transition: transform .6s var(--ease);
+    }
+    .sd-book-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(217,164,65,.45), 0 4px 10px rgba(196,122,44,.3);
+    }
+    .sd-book-btn:hover::after { transform: translateX(100%); }
+    .sd-book-btn svg { width: 20px; height: 20px; transition: transform .3s ease; }
+    .sd-book-btn:hover svg { transform: translate(3px, -3px); }
+    .sd-book-meta {
+      display: flex; justify-content: center; gap: 28px; flex-wrap: wrap;
+      margin-top: 32px; font-size: .78rem; color: var(--w50);
+      letter-spacing: .05em;
+    }
+    .sd-book-meta-item { display: inline-flex; align-items: center; gap: 6px; }
+    .sd-book-meta-item svg { width: 14px; height: 14px; color: var(--gold); }
+
     /* ── FOOTER ── */
     .sd-footer { background: var(--black); padding: 72px 0 40px; border-top: 1px solid var(--w08); }
     .sd-footer-top { display: grid; grid-template-columns: 1.8fr 1fr 1fr; gap: 56px; margin-bottom: 56px; }
@@ -476,6 +548,11 @@
 
       /* Visit */
       .sd-visit { padding: 72px 0; }
+
+      /* Book */
+      .sd-book { padding: 72px 0; }
+      .sd-book-inner { padding: 40px 24px; border-radius: 16px; }
+      .sd-book-meta { gap: 16px; font-size: .72rem; }
 
       /* Footer */
       .sd-footer { padding: 28px 0 16px; }
@@ -605,6 +682,11 @@
       }
       .sd-mbar-visit {
         background: var(--orange); color: var(--cream);
+      }
+      .sd-mbar-book {
+        background: linear-gradient(135deg, var(--gold) 0%, var(--orange) 100%);
+        color: var(--black); font-weight: 700;
+        box-shadow: 0 4px 12px rgba(217,164,65,.35);
       }
     }
 
@@ -849,6 +931,10 @@
 
       /* Visit: tighter section padding */
       .sd-visit { padding: 64px 0; min-height: auto; }
+      .sd-book { padding: 56px 0; }
+      .sd-book-inner { padding: 32px 20px; }
+      .sd-book-btn { padding: 16px 28px; font-size: .85rem; }
+      .sd-book-meta { flex-direction: column; align-items: center; gap: 10px; margin-top: 24px; }
 
       /* About image: portrait is beautiful but limit max height on small phones */
       .sd-about-visual {
@@ -934,7 +1020,7 @@
         <span class="sd-logo-name">SUNDAZE</span>
         <span class="sd-logo-tag">Coffee &amp; Eatery</span>
       </div>
-      <a href="#visit" class="sd-nav-cta">Visit Us</a>
+      <a href="#book" class="sd-nav-cta">Book a Table</a>
     </div>
   </nav>
 
@@ -1343,6 +1429,44 @@
     </div>
   </section>
 
+  <!-- ========== BOOK A TABLE ========== -->
+  <section class="sd-book" id="book">
+    <div class="container">
+      <div class="sd-book-inner sd-reveal">
+        <div class="sd-eyebrow-label" style="justify-content:center;">Reserve Your Table</div>
+        <h2 class="sd-book-title">
+          Save your spot, <em>stay unhurried.</em>
+        </h2>
+        <p class="sd-book-sub">
+          Pesan meja dengan mudah lewat sistem reservasi online kami. Pilih tanggal, jam,
+          dan jumlah tamu — biar meja favoritmu menunggumu datang.
+        </p>
+        <a href="https://reserve.millehub.com/?40f246b5489945b6b562795bca77bc54"
+           target="_blank" rel="noopener"
+           class="sd-book-btn">
+          Book Now
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 17 17 7M8 7h9v9"/>
+          </svg>
+        </a>
+        <div class="sd-book-meta">
+          <span class="sd-book-meta-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            Pilih tanggal &amp; jam
+          </span>
+          <span class="sd-book-meta-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Atur jumlah tamu
+          </span>
+          <span class="sd-book-meta-item">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+            Konfirmasi instan
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ========== VISIT CTA ========== -->
   <!-- Background: wide outdoor terrace -->
   <section class="sd-visit" id="visit">
@@ -1496,9 +1620,9 @@
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1V9.01a6.34 6.34 0 0 0-.79-.05 6.34 6.34 0 0 0-6.34 6.34 6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.33-6.34V8.72a8.17 8.17 0 0 0 4.77 1.52V6.79a4.85 4.85 0 0 1-1-.1z"/></svg>
       <span>TikTok</span>
     </a>
-    <a href="#visit" class="sd-mbar-btn sd-mbar-visit">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-      <span>Visit Us</span>
+    <a href="https://reserve.millehub.com/?40f246b5489945b6b562795bca77bc54" target="_blank" rel="noopener" class="sd-mbar-btn sd-mbar-book">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+      <span>Book Now</span>
     </a>
   </div>
 
