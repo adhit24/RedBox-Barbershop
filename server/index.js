@@ -119,9 +119,28 @@ async function pushConfirmedBookingToMoka(booking) {
   }
 
   try {
-    const memorySupabase = createInMemorySupabase();
-    const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
-    const client = new MokaClient(memorySupabase, 'default-outlet', outletId);
+    const sb = supabase || createInMemorySupabase();
+
+    const locSlug = String(booking?.location || 'bypass').trim().toLowerCase() || 'bypass';
+    let outletId = 'default-outlet';
+    let mokaOutletId = String(process.env.MOKA_OUTLET_ID || '').trim();
+
+    if (sb && typeof sb.from === 'function') {
+      const { data: bySlug } = await sb
+        .from('outlets')
+        .select('id, slug, moka_outlet_id')
+        .eq('slug', locSlug)
+        .maybeSingle();
+      const outlet = bySlug || null;
+      if (outlet?.id) outletId = outlet.id;
+      if (outlet?.moka_outlet_id) mokaOutletId = String(outlet.moka_outlet_id);
+    }
+
+    if (!mokaOutletId) {
+      return { ok: false, skipped: true, reason: 'no_moka_outlet_id_configured', location: locSlug };
+    }
+
+    const client = new MokaClient(sb, outletId, mokaOutletId);
 
     const customerPayload = {
       customer_name: String(booking?.name || '').trim(),
@@ -139,7 +158,7 @@ async function pushConfirmedBookingToMoka(booking) {
     }
 
     const orderPayload = {
-      outlet_id: outletId,
+      outlet_id: mokaOutletId,
       external_ref: String(booking?.id || '').trim(),
       booking_time: bookingTimeIso({ date: booking?.date, time: booking?.time }),
       customer: {
