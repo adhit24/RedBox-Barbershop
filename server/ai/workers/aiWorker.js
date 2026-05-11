@@ -67,6 +67,10 @@ aiQueue.process(async (job) => {
         );
         break;
         
+      case 'full_analysis':
+        result = await aiService.fullAnalysis(imageUrl);
+        break;
+        
       default:
         throw new Error(`Unknown service type: ${serviceType}`);
     }

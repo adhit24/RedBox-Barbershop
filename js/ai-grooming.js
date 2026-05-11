@@ -65,7 +65,7 @@ class AIGroomingService {
   }
 
   // Upload image for analysis
-  async uploadImage(file, serviceType = 'face_analysis') {
+  async uploadImage(file, serviceType = 'full_analysis') {
     try {
       this.lastServiceType = serviceType;
       // Convert file to base64 for Vercel serverless functions
@@ -317,17 +317,10 @@ class AIGroomingUI {
       analyzeBtn.addEventListener('click', () => this.startAnalysis());
     }
 
-    // Service type selection
-    document.querySelectorAll('.ai-service-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => this.selectServiceType(e.target.dataset.service));
-    });
-
-    // Feature cards
+    // Feature cards - scroll to upload on click
     document.querySelectorAll('.ai-feature-card').forEach(card => {
       card.addEventListener('click', () => {
-        const serviceType = card.dataset.service;
         this.scrollToUpload();
-        this.selectServiceType(serviceType);
       });
     });
   }
@@ -385,7 +378,7 @@ class AIGroomingUI {
     if (analyzeBtn) {
       analyzeBtn.disabled = false;
       if (this.aiService.isAuthenticated()) {
-        analyzeBtn.textContent = 'Start AI Analysis';
+        analyzeBtn.textContent = 'Generate';
         this.hideError(); // Clear any login error
       } else {
         analyzeBtn.textContent = 'Login to Continue';
@@ -408,27 +401,6 @@ class AIGroomingUI {
     reader.readAsDataURL(file);
   }
 
-  selectServiceType(type) {
-    this.selectedService = type;
-    
-    // Update UI
-    document.querySelectorAll('.ai-service-btn').forEach(btn => {
-      btn.classList.remove('active');
-      if (btn.dataset.service === type) btn.classList.add('active');
-    });
-
-    // Show service description
-    const descriptions = {
-      face_analysis: 'Analyze your face shape, skin tone, and get personalized recommendations',
-      hairstyle: 'Get 3 hairstyle recommendations based on your face shape',
-      outfit: 'Color analysis and outfit recommendations for your skin tone',
-      preview: 'Generate AI preview of your new look (uses 2 credits)'
-    };
-
-    const descEl = document.getElementById('ai-service-description');
-    if (descEl) descEl.textContent = descriptions[type] || '';
-  }
-
   scrollToUpload() {
     const uploadSection = document.getElementById('ai-upload-section');
     if (uploadSection) {
@@ -447,7 +419,7 @@ class AIGroomingUI {
       return;
     }
 
-    const serviceType = this.selectedService || 'face_analysis';
+    const serviceType = 'full_analysis';
     
     try {
       this.showLoading('Uploading image...');
@@ -516,6 +488,9 @@ class AIGroomingUI {
 
     // Render based on service type
     switch (results.serviceType) {
+      case 'full_analysis':
+        this.renderFullAnalysis(results.results);
+        break;
       case 'face_analysis':
         this.renderFaceAnalysis(results.results);
         break;
@@ -532,6 +507,173 @@ class AIGroomingUI {
 
     // Scroll to results
     resultsContainer.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  renderFullAnalysis(results) {
+    const container = document.getElementById('ai-results-content');
+    if (!container) return;
+
+    const r = results || {};
+    const color = r.personalColor || {};
+    const outfit = r.outfit || {};
+    const eyewear = r.eyewear || {};
+    const skincare = r.skincare || {};
+    const hair = r.hairstyle || {};
+
+    const sectionTitle = (icon, title) =>
+      `<div class="ai-section-header"><span class="ai-section-icon">${icon}</span><h3>${title}</h3></div>`;
+
+    const colorSwatches = (items, label) => {
+      if (!items || !items.length) return '';
+      return `<div class="ai-color-row">${items.map(c => `
+        <div class="ai-swatch-item">
+          <div class="ai-swatch" style="background:${c.hex}"></div>
+          <span class="ai-swatch-name">${c.name}</span>
+          <span class="ai-swatch-label">${c.label}</span>
+        </div>`).join('')}</div>`;
+    };
+
+    const html = `
+      <div class="ai-full-results">
+
+        <!-- 1. PERSONAL COLOR -->
+        <div class="ai-result-card">
+          ${sectionTitle('🎨', 'Personal Color Analysis')}
+          <div class="ai-color-season">
+            <span class="ai-season-badge">${color.colorSeason || '—'}</span>
+            <p>${color.colorSeasonDescription || ''}</p>
+          </div>
+          <div class="ai-color-block">
+            <h4>Best Colors</h4>
+            ${colorSwatches(color.bestColors, 'best')}
+          </div>
+          <div class="ai-color-block">
+            <h4>Colors to Avoid</h4>
+            ${colorSwatches(color.avoidColors, 'avoid')}
+          </div>
+          ${color.outfitFormula ? `<p class="ai-formula"><strong>Formula:</strong> ${color.outfitFormula}</p>` : ''}
+        </div>
+
+        <!-- 2. OUTFIT BY FACE SHAPE -->
+        <div class="ai-result-card">
+          ${sectionTitle('👔', 'Outfit Recommendations')}
+          <p class="ai-face-tag">Face Shape: <strong>${outfit.faceShape || '—'}</strong> — ${outfit.faceShapeDescription || ''}</p>
+          <div class="ai-outfit-grid">
+            ${(outfit.recommendedOutfits || []).map(o => `
+              <div class="ai-outfit-card">
+                <div class="ai-outfit-rank">#${o.rank}</div>
+                <h4>${o.name} <span class="ai-tag">${o.occasion}</span></h4>
+                <ul class="ai-outfit-items">
+                  ${(o.items || []).map(i => `
+                    <li><span class="ai-piece-dot" style="background:${i.color}"></span><strong>${i.piece}:</strong> ${i.description}</li>
+                  `).join('')}
+                </ul>
+                <p class="ai-why">${o.whyItWorks}</p>
+                <span class="ai-style-keyword">${o.styleKeyword}</span>
+              </div>
+            `).join('')}
+          </div>
+          ${(outfit.avoidOutfits || []).length ? `
+            <div class="ai-avoid-section">
+              <h4>Avoid</h4>
+              <ul>${(outfit.avoidOutfits || []).map(a => `<li><strong>${a.style}:</strong> ${a.reason}</li>`).join('')}</ul>
+            </div>` : ''}
+        </div>
+
+        <!-- 3. EYEWEAR -->
+        <div class="ai-result-card">
+          ${sectionTitle('🕶️', 'Eyewear Recommendations')}
+          <div class="ai-eyewear-grid">
+            ${(eyewear.recommendations || []).map(e => `
+              <div class="ai-eyewear-card">
+                <span class="ai-eyewear-cat">${e.category}</span>
+                <h4>${e.name}</h4>
+                <p><strong>Frame:</strong> ${e.frameShape} · ${e.material}</p>
+                <p><strong>Colors:</strong> ${(e.recommendedColors || []).join(', ')}</p>
+                <p class="ai-why">${e.whyItSuits}</p>
+                <p><em>${e.bestFor}</em></p>
+                <div class="ai-score-bar">
+                  <div class="ai-score-fill" style="width:${e.suitabilityScore || 80}%"></div>
+                  <span>${e.suitabilityScore || 80}% match</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          ${(eyewear.avoidFrames || []).length ? `
+            <div class="ai-avoid-section">
+              <h4>Avoid</h4>
+              <ul>${(eyewear.avoidFrames || []).map(a => `<li><strong>${a.style}:</strong> ${a.reason}</li>`).join('')}</ul>
+            </div>` : ''}
+          ${eyewear.proTip ? `<p class="ai-pro-tip">💡 ${eyewear.proTip}</p>` : ''}
+        </div>
+
+        <!-- 4. SKINCARE -->
+        <div class="ai-result-card">
+          ${sectionTitle('✨', 'Skincare Analysis & Routine')}
+          <div class="ai-skin-profile">
+            <span class="ai-tag">${skincare.skinProfile?.type || '—'}</span>
+            <span class="ai-tag">${skincare.skinProfile?.tone || '—'} skin</span>
+            <span class="ai-tag">${skincare.skinProfile?.hydrationLevel || '—'}</span>
+          </div>
+          <div class="ai-concerns">
+            ${(skincare.concerns || []).map(c => `
+              <div class="ai-concern-item">
+                <strong>${c.issue}</strong>
+                <span class="ai-severity ai-severity-${c.severity}">${c.severity}</span>
+                <p>${c.tip}</p>
+              </div>
+            `).join('')}
+          </div>
+          <div class="ai-routines">
+            <div class="ai-routine-block">
+              <h4>☀️ Morning Routine</h4>
+              <ol>${(skincare.morningRoutine || []).map(s => `<li><strong>${s.product}</strong> — ${s.purpose} <em>(${s.duration})</em></li>`).join('')}</ol>
+            </div>
+            <div class="ai-routine-block">
+              <h4>🌙 Evening Routine</h4>
+              <ol>${(skincare.eveningRoutine || []).map(s => `<li><strong>${s.product}</strong> — ${s.purpose} <em>(${s.duration})</em></li>`).join('')}</ol>
+            </div>
+          </div>
+          ${(skincare.lifestyleTips || []).length ? `
+            <div class="ai-lifestyle-tips">
+              <h4>Lifestyle Tips</h4>
+              <ul>${(skincare.lifestyleTips || []).map(t => `<li>${t}</li>`).join('')}</ul>
+            </div>` : ''}
+          ${skincare.expectedResults ? `<p class="ai-expected">📅 ${skincare.expectedResults}</p>` : ''}
+        </div>
+
+        <!-- 5. HAIRSTYLE -->
+        <div class="ai-result-card">
+          ${sectionTitle('💈', 'Hairstyle Recommendations')}
+          <div class="ai-hairstyle-grid">
+            ${(hair.recommendations || []).map(h => `
+              <div class="ai-hairstyle-card">
+                <div class="ai-hairstyle-rank">#${h.rank}</div>
+                <span class="ai-tag">${h.category}</span>
+                <h4>${h.name}</h4>
+                <p>${h.description}</p>
+                <p class="ai-why">${h.whyItSuits}</p>
+                <p><strong>Products:</strong> ${(h.stylingProducts || []).join(', ')}</p>
+                <p><strong>Maintenance:</strong> ${h.maintenanceLevel} · ${h.maintenanceFrequency}</p>
+                <div class="ai-score-bar">
+                  <div class="ai-score-fill" style="width:${h.suitabilityScore || 80}%"></div>
+                  <span>${h.suitabilityScore || 80}% match</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+          ${(hair.avoidHairstyles || []).length ? `
+            <div class="ai-avoid-section">
+              <h4>Hairstyles to Avoid</h4>
+              <ul>${(hair.avoidHairstyles || []).map(a => `<li><strong>${a.style}</strong> (${a.category}): ${a.reason}</li>`).join('')}</ul>
+            </div>` : ''}
+          ${hair.barberTip ? `<p class="ai-pro-tip">💈 Barber Tip: ${hair.barberTip}</p>` : ''}
+        </div>
+
+      </div>
+    `;
+
+    container.innerHTML = html;
   }
 
   renderFaceAnalysis(analysis) {
@@ -791,7 +933,7 @@ class AIGroomingUI {
     if (resultsSection) resultsSection.style.display = 'none';
     if (analyzeBtn) {
       analyzeBtn.disabled = true;
-      analyzeBtn.textContent = 'Select Image First';
+      analyzeBtn.textContent = 'Generate';
     }
 
     this.hideLoading();

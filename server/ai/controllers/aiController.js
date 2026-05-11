@@ -23,7 +23,7 @@ const aiController = {
       const outletId = req.user.outlet_id;
 
       // Validate service type
-      const validTypes = ['face_analysis', 'hairstyle', 'outfit', 'preview'];
+      const validTypes = ['face_analysis', 'hairstyle', 'outfit', 'preview', 'full_analysis'];
       if (!validTypes.includes(serviceType)) {
         return res.status(400).json({ error: 'Invalid service type' });
       }

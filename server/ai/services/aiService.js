@@ -160,6 +160,55 @@ class AIService {
     };
   }
 
+  // Run a single prompt against the image and parse JSON response
+  async _runPrompt(promptText, imageUrl) {
+    const response = await openai.responses.create({
+      model: 'gpt-4.1-mini',
+      input: [
+        {
+          role: 'user',
+          content: [
+            { type: 'input_text', text: promptText },
+            { type: 'input_image', image_url: imageUrl, detail: 'high' }
+          ]
+        }
+      ]
+    });
+    const outputText = response.output_text || '';
+    const jsonMatch = outputText.match(/\{[\s\S]*\}/);
+    return {
+      data: jsonMatch ? JSON.parse(jsonMatch[0]) : {},
+      tokens: response.usage?.total_tokens || 0
+    };
+  }
+
+  // Full analysis: all 5 prompts in parallel
+  async fullAnalysis(imageUrl) {
+    const startTime = Date.now();
+
+    const [colorResult, outfitResult, eyewearResult, skincareResult, hairstyleResult] = await Promise.all([
+      this._runPrompt(PROMPTS.personalColorAnalysis, imageUrl),
+      this._runPrompt(PROMPTS.outfitByFaceShape, imageUrl),
+      this._runPrompt(PROMPTS.eyewearRecommendation, imageUrl),
+      this._runPrompt(PROMPTS.skincareAnalysis, imageUrl),
+      this._runPrompt(PROMPTS.hairstyleVisual, imageUrl)
+    ]);
+
+    const totalTokens = colorResult.tokens + outfitResult.tokens + eyewearResult.tokens + skincareResult.tokens + hairstyleResult.tokens;
+
+    return {
+      personalColor: colorResult.data,
+      outfit: outfitResult.data,
+      eyewear: eyewearResult.data,
+      skincare: skincareResult.data,
+      hairstyle: hairstyleResult.data,
+      model: 'gpt-4.1-mini',
+      tokens: totalTokens,
+      processingTime: Date.now() - startTime,
+      cost: this.estimateCost('gpt-4.1-mini', totalTokens)
+    };
+  }
+
   // Cost estimation
   estimateCost(model, tokens) {
     // gpt-4.1-mini: ~$0.40 per 1M tokens
@@ -178,6 +227,8 @@ class AIService {
       case 'preview':
         const analysis = await this.analyzeFace(imageUrl);
         return this.generatePreview(imageUrl, analysis.analysis, preferences.transformationType);
+      case 'full_analysis':
+        return this.fullAnalysis(imageUrl);
       default:
         throw new Error(`Unknown service type: ${serviceType}`);
     }
