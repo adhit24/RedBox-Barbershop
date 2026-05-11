@@ -1417,6 +1417,10 @@ app.get('/api/admin/moka-health', adminAuth, async (req, res) => {
   }
 });
 
+app.all('/api/ai/upload', (req, res) => {
+  return res.redirect(308, '/api/ai/upload.js');
+});
+
 // ── MOKA INTEGRATION ROUTER ──────────────────────────────
 // Registers: /api/availability, /api/reservations, /api/schedules,
 //            /api/outlets, /api/services, /api/moka/*
