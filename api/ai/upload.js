@@ -32,7 +32,7 @@ module.exports = async function handler(req, res) {
       uploadId: uploadId,
       status: 'pending',
       message: 'Upload received (database storage disabled for testing)',
-      serviceType: serviceType || 'face-analysis',
+      serviceType: serviceType || 'face_analysis',
       imageSize: image.length
     });
 

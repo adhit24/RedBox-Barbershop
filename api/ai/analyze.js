@@ -25,47 +25,94 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'No uploadId provided' });
     }
 
-    // Return mock result for testing (without OpenAI for now)
-    const mockResult = {
-      faceShape: 'Oval',
-      faceShapeDescription: 'Your face has a balanced oval shape, which is versatile for many hairstyles.',
-      recommendations: {
-        hairstyles: [
-          {
-            name: 'Classic Pompadour',
-            description: 'A timeless style that works perfectly with your face shape',
-            suitability: 95
-          },
+    const resolvedServiceType = serviceType || 'face_analysis';
+
+    let mockResult;
+    if (resolvedServiceType === 'hairstyle') {
+      mockResult = {
+        recommendations: [
           {
             name: 'Textured Crop',
-            description: 'Modern and low-maintenance option',
-            suitability: 90
+            description: 'Modern, clean, and easy to maintain.',
+            category: 'modern',
+            confidence: 90,
+            maintenance: { level: 'low' }
           },
           {
-            name: 'Side Part',
-            description: 'Professional and clean look',
-            suitability: 88
+            name: 'Classic Side Part',
+            description: 'Timeless style for a sharp, professional look.',
+            category: 'classic',
+            confidence: 86,
+            maintenance: { level: 'medium' }
+          },
+          {
+            name: 'Short Quiff',
+            description: 'Adds height and structure without being too bold.',
+            category: 'modern',
+            confidence: 82,
+            maintenance: { level: 'medium' }
           }
         ],
-        outfits: [
+        generalAdvice: 'Pilih style yang sesuai jenis rambut, lalu minta barber rapihkan garis rambut dan fade sesuai preferensi.'
+      };
+    } else if (resolvedServiceType === 'outfit') {
+      mockResult = {
+        colorAnalysis: {
+          skinTone: 'Medium',
+          bestColors: ['Navy', 'White', 'Olive'],
+          recommendedColors: [
+            { name: 'Navy', hex: '#0B1F3B' },
+            { name: 'Olive', hex: '#556B2F' },
+            { name: 'Off White', hex: '#F3F2ED' }
+          ]
+        },
+        outfitRecommendations: [
           {
-            style: 'Smart Casual',
-            description: 'Perfect for your look',
-            items: ['Blazer', 'Chinos', 'Clean sneakers']
+            occasion: 'Smart Casual',
+            description: 'Clean & versatile for hangouts or date night.',
+            items: ['Oxford shirt', 'Chinos', 'Leather sneakers']
+          },
+          {
+            occasion: 'Work',
+            description: 'Sharp but not too formal.',
+            items: ['Polo', 'Slim trousers', 'Loafers']
           }
-        ]
-      },
-      groomingTips: [
-        'Keep your beard well-trimmed',
-        'Use matte finish products',
-        'Regular barber visits every 3 weeks'
-      ]
-    };
+        ],
+        groomingTips: ['Pakai parfum fresh/clean', 'Rapihkan alis & beard line', 'Gunakan matte product untuk rambut']
+      };
+    } else if (resolvedServiceType === 'preview') {
+      mockResult = {
+        originalImageUrl: '',
+        generatedImageBase64: null
+      };
+    } else {
+      mockResult = {
+        faceShape: 'Oval',
+        faceShapeDescription: 'Your face has a balanced oval shape, which is versatile for many hairstyles.',
+        skinTone: 'Medium',
+        skinUndertone: 'Warm',
+        skinRecommendations: ['Use sunscreen daily', 'Stay hydrated'],
+        recommendations: {
+          haircuts: [
+            { name: 'Classic Pompadour', description: 'Timeless shape with volume', confidence: 90 },
+            { name: 'Textured Crop', description: 'Modern and low-maintenance', confidence: 88 },
+            { name: 'Side Part', description: 'Clean, professional', confidence: 85 }
+          ],
+          beardStyles: [
+            { name: 'Short Boxed Beard', description: 'Defines jawline cleanly', confidence: 86 },
+            { name: 'Stubble', description: 'Low effort, sharp look', confidence: 80 }
+          ]
+        },
+        processingTime: 2.5,
+        model: 'mock'
+      };
+    }
 
     return res.status(200).json({
       uploadId: uploadId,
       status: 'completed',
       results: mockResult,
+      serviceType: resolvedServiceType,
       message: 'AI analysis completed (mock data for testing)'
     });
 

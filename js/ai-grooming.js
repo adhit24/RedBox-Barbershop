@@ -67,6 +67,7 @@ class AIGroomingService {
   // Upload image for analysis
   async uploadImage(file, serviceType = 'face_analysis') {
     try {
+      this.lastServiceType = serviceType;
       // Convert file to base64 for Vercel serverless functions
       const base64Image = await this._fileToBase64(file);
       
@@ -103,7 +104,7 @@ class AIGroomingService {
   }
 
   // Start AI analysis
-  async startAnalysis(uploadId) {
+  async startAnalysis(uploadId, serviceType) {
     try {
       const response = await fetch(`${this.API_BASE}/analyze`, {
         method: 'POST',
@@ -111,7 +112,7 @@ class AIGroomingService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.token}`
         },
-        body: JSON.stringify({ uploadId })
+        body: JSON.stringify({ uploadId, serviceType })
       });
 
       if (!response.ok) {
@@ -119,7 +120,9 @@ class AIGroomingService {
         throw new Error(error.error || 'Analysis failed');
       }
 
-      return await response.json();
+      const data = await response.json();
+      if (data && !data.serviceType && serviceType) data.serviceType = serviceType;
+      return data;
 
     } catch (error) {
       console.error('Analysis error:', error);
@@ -136,11 +139,13 @@ class AIGroomingService {
         }
       });
 
+      if (response.status === 404) {
+        return { uploadId, status: 'missing' };
+      }
       if (!response.ok) throw new Error('Status check failed');
       return await response.json();
 
     } catch (error) {
-      console.error('Status check error:', error);
       return null;
     }
   }
@@ -177,6 +182,21 @@ class AIGroomingService {
           }
 
           onProgress?.(status);
+
+          if (status.status === 'missing') {
+            const fallback = await this.startAnalysis(uploadId, this.lastServiceType);
+            if (fallback && fallback.status === 'completed' && fallback.results) {
+              clearInterval(checkInterval);
+              resolve({
+                uploadId,
+                status: 'completed',
+                serviceType: fallback.serviceType || this.lastServiceType,
+                results: fallback.results,
+                message: fallback.message,
+              });
+              return;
+            }
+          }
 
           if (status.status === 'completed') {
             clearInterval(checkInterval);
@@ -438,7 +458,17 @@ class AIGroomingUI {
       this.showLoading('Starting AI analysis...');
       
       // Start analysis
-      await this.aiService.startAnalysis(upload.uploadId);
+      const analysis = await this.aiService.startAnalysis(upload.uploadId, serviceType);
+      if (analysis && analysis.status === 'completed' && analysis.results) {
+        this.displayResults({
+          uploadId: upload.uploadId,
+          status: 'completed',
+          serviceType,
+          results: analysis.results,
+          message: analysis.message,
+        });
+        return;
+      }
       
       this.showLoading('AI is analyzing your photo...');
       
