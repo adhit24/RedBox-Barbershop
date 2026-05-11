@@ -56,6 +56,7 @@ module.exports = async function handler(req, res) {
           recommendedOutfits: [
             {
               rank: 1, name: 'Smart Casual', occasion: 'Daily',
+              imageUrl: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?w=300&h=400&fit=crop&auto=format',
               items: [
                 { piece: 'Top', description: 'White linen button-up, slim fit', color: '#FFFFFF', colorName: 'White' },
                 { piece: 'Bottom', description: 'Dark navy chinos, tapered', color: '#1B3A6B', colorName: 'Navy' },
@@ -67,6 +68,7 @@ module.exports = async function handler(req, res) {
             },
             {
               rank: 2, name: 'Urban Street', occasion: 'Social',
+              imageUrl: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=300&h=400&fit=crop&auto=format',
               items: [
                 { piece: 'Top', description: 'Olive oversized graphic tee', color: '#6B7B3A', colorName: 'Olive' },
                 { piece: 'Bottom', description: 'Beige cargo pants, relaxed', color: '#C9B99A', colorName: 'Beige' },
@@ -75,6 +77,18 @@ module.exports = async function handler(req, res) {
               ],
               whyItWorks: 'Earthy tones echo warm undertones, relaxed silhouette works well.',
               styleKeyword: 'Relaxed'
+            },
+            {
+              rank: 3, name: 'Semi Formal', occasion: 'Office / Event',
+              imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=400&fit=crop&auto=format',
+              items: [
+                { piece: 'Top', description: 'Camel fitted turtleneck', color: '#C19A6B', colorName: 'Camel' },
+                { piece: 'Bottom', description: 'Charcoal slim trousers', color: '#3C3C3C', colorName: 'Charcoal' },
+                { piece: 'Shoes', description: 'Oxford leather shoes, cognac', color: '#8B4513', colorName: 'Cognac' },
+                { piece: 'Accessory', description: 'Leather belt, matching shoes', color: '#8B4513', colorName: 'Cognac' }
+              ],
+              whyItWorks: 'Warm camel echoes skin undertone, elevated and polished look.',
+              styleKeyword: 'Elevated'
             }
           ],
           avoidOutfits: [
@@ -93,7 +107,8 @@ module.exports = async function handler(req, res) {
               recommendedColors: ['Gold', 'Gunmetal'],
               whyItSuits: 'Teardrop shape adds definition without competing with oval face.',
               bestFor: 'Casual outings, traveling, social events',
-              suitabilityScore: 92
+              suitabilityScore: 92,
+              imageUrl: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=280&h=200&fit=crop&auto=format'
             },
             {
               rank: 2, category: 'Sport', name: 'Wrap-Around Sport',
@@ -101,7 +116,8 @@ module.exports = async function handler(req, res) {
               recommendedColors: ['Matte Black', 'Dark Navy'],
               whyItSuits: 'Secure fit, bold frame contrasts balanced proportions cleanly.',
               bestFor: 'Sports, outdoor activities, gym',
-              suitabilityScore: 87
+              suitabilityScore: 87,
+              imageUrl: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=280&h=200&fit=crop&auto=format'
             },
             {
               rank: 3, category: 'Classic', name: 'Rectangle Frame',
@@ -109,12 +125,15 @@ module.exports = async function handler(req, res) {
               recommendedColors: ['Tortoise', 'Black'],
               whyItSuits: 'Structured angles complement soft oval contours perfectly.',
               bestFor: 'Office, formal occasions, everyday wear',
-              suitabilityScore: 90
+              suitabilityScore: 90,
+              imageUrl: 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=280&h=200&fit=crop&auto=format'
             }
           ],
           avoidFrames: [
-            { style: 'Round Wire Frame', reason: 'Amplifies softness, removes facial structure' },
-            { style: 'Oversized Cat-Eye', reason: 'Overwhelms balanced proportions' }
+            { style: 'Round Wire Frame', reason: 'Amplifies softness, removes facial structure',
+              imageUrl: 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=200&h=140&fit=crop&auto=format' },
+            { style: 'Oversized Cat-Eye', reason: 'Overwhelms balanced proportions',
+              imageUrl: 'https://images.unsplash.com/photo-1553735945-be0f07455df6?w=200&h=140&fit=crop&auto=format' }
           ],
           proTip: 'For oval faces, choose frames as wide as or slightly wider than your cheekbones.'
         },
@@ -157,7 +176,8 @@ module.exports = async function handler(req, res) {
               whyItSuits: 'Adds height and softens the oval face naturally.',
               stylingProducts: ['Matte Clay', 'Sea Salt Spray'],
               maintenanceLevel: 'medium', maintenanceFrequency: 'Every 3-4 weeks',
-              stylingTime: '5 minutes daily', suitabilityScore: 94
+              stylingTime: '5 minutes daily', suitabilityScore: 94,
+              imageUrl: 'https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=300&h=300&fit=crop&auto=format'
             },
             {
               rank: 2, category: 'Classic', name: 'Classic Pompadour',
@@ -165,7 +185,8 @@ module.exports = async function handler(req, res) {
               whyItSuits: 'Elongates proportions and highlights facial structure.',
               stylingProducts: ['Strong Hold Pomade', 'Hair Dryer'],
               maintenanceLevel: 'high', maintenanceFrequency: 'Every 2-3 weeks',
-              stylingTime: '10 minutes daily', suitabilityScore: 88
+              stylingTime: '10 minutes daily', suitabilityScore: 88,
+              imageUrl: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=300&h=300&fit=crop&auto=format'
             },
             {
               rank: 3, category: 'Modern Fade', name: 'Textured Crop Fade',
@@ -173,7 +194,8 @@ module.exports = async function handler(req, res) {
               whyItSuits: 'Clean, modern, low-effort look that frames the face well.',
               stylingProducts: ['Matte Wax', 'Light Hold Spray'],
               maintenanceLevel: 'low', maintenanceFrequency: 'Every 3-4 weeks',
-              stylingTime: '3 minutes daily', suitabilityScore: 91
+              stylingTime: '3 minutes daily', suitabilityScore: 91,
+              imageUrl: 'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=300&h=300&fit=crop&auto=format'
             },
             {
               rank: 4, category: 'Versatile', name: 'Side Part',
@@ -181,13 +203,17 @@ module.exports = async function handler(req, res) {
               whyItSuits: 'Universally flattering, balanced and professional.',
               stylingProducts: ['Medium Hold Pomade'],
               maintenanceLevel: 'low', maintenanceFrequency: 'Every 4 weeks',
-              stylingTime: '5 minutes daily', suitabilityScore: 86
+              stylingTime: '5 minutes daily', suitabilityScore: 86,
+              imageUrl: 'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=300&h=300&fit=crop&auto=format'
             }
           ],
           avoidHairstyles: [
-            { style: 'Bowl Cut', reason: 'Widens face horizontally, loses definition', category: 'Shape Issue' },
-            { style: 'Very Long Undercut', reason: 'Top-heavy, unbalances facial proportions', category: 'Proportion Issue' },
-            { style: 'Slick Back Flat', reason: 'Exposes full forehead without volume balance', category: 'Feature Issue' }
+            { style: 'Bowl Cut', reason: 'Widens face horizontally, loses definition', category: 'Shape Issue',
+              imageUrl: 'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?w=200&h=200&fit=crop&auto=format' },
+            { style: 'Very Long Undercut', reason: 'Top-heavy, unbalances facial proportions', category: 'Proportion Issue',
+              imageUrl: 'https://images.unsplash.com/photo-1622253694242-abeb37a33e97?w=200&h=200&fit=crop&auto=format' },
+            { style: 'Slick Back Flat', reason: 'Exposes full forehead without volume balance', category: 'Feature Issue',
+              imageUrl: 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=200&h=200&fit=crop&auto=format' }
           ],
           barberTip: 'Ask for a medium fade with texture on top — scissor cut over comb for a natural finish.',
           groomingEssentials: ['Matte Clay', 'Fine-tooth Comb', 'Hair Dryer']

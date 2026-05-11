@@ -397,6 +397,7 @@ class AIGroomingUI {
       preview.src = e.target.result;
       preview.style.display = 'block';
       if (placeholder) placeholder.style.display = 'none';
+      this.userPhotoUrl = e.target.result; // store for results display
     };
     reader.readAsDataURL(file);
   }
@@ -550,26 +551,23 @@ class AIGroomingUI {
       </div>
       ${color.outfitFormula ? `<div class="ai-color-formula">✦ Formula: ${color.outfitFormula}</div>` : ''}`;
 
-    // 2. Outfit
+    // 2. Outfit — visual photo grid
     const outfitHTML = `
-      <p style="font-size:0.85rem;color:var(--text-sec);margin-bottom:16px">
-        Face Shape: <strong style="color:var(--white)">${outfit.faceShape || '—'}</strong> — ${outfit.faceShapeDescription || ''}
-      </p>
-      <div class="ai-outfit-infographic">
+      <p class="ai-section-sub">Face Shape: <strong>${outfit.faceShape || '—'}</strong> — ${outfit.faceShapeDescription || ''}</p>
+      <div class="ai-photo-grid ai-photo-grid-3">
         ${(outfit.recommendedOutfits || []).map(o => `
-          <div class="ai-outfit-item">
-            <div class="ai-outfit-rank-badge">#${o.rank}</div>
-            <div class="ai-outfit-info">
-              <h4>${o.name}</h4>
-              <div class="ai-outfit-occasion">${o.occasion}</div>
-              <div class="ai-outfit-pieces">
-                ${(o.items || []).map(i => `
-                  <span class="ai-outfit-piece">
-                    <span class="ai-outfit-piece-dot" style="background:${i.color}"></span>
-                    ${i.piece}: ${i.description}
-                  </span>`).join('')}
+          <div class="ai-photo-card">
+            <div class="ai-photo-card-img-wrap">
+              ${o.imageUrl ? `<img src="${o.imageUrl}" alt="${o.name}" class="ai-photo-card-img" loading="lazy" />` : '<div class="ai-photo-card-placeholder">👔</div>'}
+              <span class="ai-photo-card-rank">#${o.rank}</span>
+            </div>
+            <div class="ai-photo-card-body">
+              <div class="ai-photo-card-name">${o.name}</div>
+              <div class="ai-photo-card-occasion">${o.occasion}</div>
+              <div class="ai-photo-card-pieces">
+                ${(o.items || []).map(i => `<span class="ai-outfit-piece"><span class="ai-outfit-piece-dot" style="background:${i.color}"></span>${i.piece}</span>`).join('')}
               </div>
-              <div class="ai-outfit-why">${o.whyItWorks}</div>
+              <div class="ai-photo-card-why">${o.whyItWorks}</div>
             </div>
           </div>`).join('')}
       </div>
@@ -582,27 +580,40 @@ class AIGroomingUI {
           </div>
         </div>` : ''}`;
 
-    // 3. Eyewear
+    // 3. Eyewear — visual photo grid
     const eyewearHTML = `
-      <div class="ai-eyewear-grid">
+      <div class="ai-section-sub-label">RECOMMENDED</div>
+      <div class="ai-photo-grid ai-photo-grid-3">
         ${(eyewear.recommendations || []).map(e => `
-          <div class="ai-eyewear-card">
-            <div class="ai-eyewear-category">${e.category}</div>
-            <div class="ai-eyewear-name">${e.name}</div>
-            <div class="ai-eyewear-score">${e.suitabilityScore || 80}% match</div>
-            <div class="ai-eyewear-why">${e.whyItSuits}</div>
-            <div class="ai-eyewear-colors">
-              ${(e.recommendedColors || []).map(c => `<span class="ai-eyewear-color-tag">${c}</span>`).join('')}
+          <div class="ai-photo-card">
+            <div class="ai-photo-card-img-wrap ai-photo-card-img-wide">
+              ${e.imageUrl ? `<img src="${e.imageUrl}" alt="${e.name}" class="ai-photo-card-img" loading="lazy" />` : '<div class="ai-photo-card-placeholder">🕶️</div>'}
+              <span class="ai-photo-card-score">${e.suitabilityScore || 80}%</span>
+            </div>
+            <div class="ai-photo-card-body">
+              <div class="ai-photo-card-category">${e.category}</div>
+              <div class="ai-photo-card-name">${e.name}</div>
+              <div class="ai-eyewear-colors">
+                ${(e.recommendedColors || []).map(c => `<span class="ai-eyewear-color-tag">${c}</span>`).join('')}
+              </div>
+              <div class="ai-photo-card-why">${e.whyItSuits}</div>
             </div>
           </div>`).join('')}
       </div>
       ${(eyewear.avoidFrames || []).length ? `
-        <div class="ai-outfit-avoid">
-          <label>Avoid Frames</label>
-          <div class="ai-avoid-list">
-            ${(eyewear.avoidFrames || []).map(a => `
-              <div class="ai-avoid-item"><span class="ai-avoid-x">✕</span><span><strong>${a.style}</strong> — ${a.reason}</span></div>`).join('')}
-          </div>
+        <div class="ai-section-sub-label" style="color:var(--red);margin-top:20px">AVOID</div>
+        <div class="ai-photo-grid ai-photo-grid-3">
+          ${(eyewear.avoidFrames || []).map(a => `
+            <div class="ai-photo-card ai-photo-card-avoid">
+              <div class="ai-photo-card-img-wrap ai-photo-card-img-wide">
+                ${a.imageUrl ? `<img src="${a.imageUrl}" alt="${a.style}" class="ai-photo-card-img" loading="lazy" />` : '<div class="ai-photo-card-placeholder">🚫</div>'}
+                <span class="ai-photo-avoid-x">✕</span>
+              </div>
+              <div class="ai-photo-card-body">
+                <div class="ai-photo-card-name">${a.style}</div>
+                <div class="ai-photo-card-why">${a.reason}</div>
+              </div>
+            </div>`).join('')}
         </div>` : ''}
       ${eyewear.proTip ? `<div class="ai-eyewear-protip">💡 ${eyewear.proTip}</div>` : ''}`;
 
@@ -642,37 +653,65 @@ class AIGroomingUI {
           </ul>
         </div>` : ''}`;
 
-    // 5. Hairstyle
+    // 5. Hairstyle — visual photo grid
     const hairHTML = `
-      <div class="ai-hair-grid">
+      <div class="ai-section-sub-label">RECOMMENDED HAIRCUTS</div>
+      <div class="ai-photo-grid ai-photo-grid-4">
         ${(hair.recommendations || []).map(h => `
-          <div class="ai-hair-card">
-            <span class="ai-hair-rank">${h.rank}</span>
-            <div class="ai-hair-category">${h.category}</div>
-            <div class="ai-hair-name">${h.name}</div>
-            <div class="ai-hair-desc">${h.description}</div>
-            <div class="ai-hair-score-bar">
-              <div class="ai-hair-score-fill" style="width:${h.suitabilityScore || 80}%"></div>
+          <div class="ai-photo-card">
+            <div class="ai-photo-card-img-wrap">
+              ${h.imageUrl ? `<img src="${h.imageUrl}" alt="${h.name}" class="ai-photo-card-img" loading="lazy" />` : '<div class="ai-photo-card-placeholder">💈</div>'}
+              <span class="ai-photo-card-rank">#${h.rank}</span>
+              <span class="ai-photo-card-score">${h.suitabilityScore || 80}%</span>
             </div>
-            <div class="ai-hair-score-label">${h.suitabilityScore || 80}% match</div>
-            <div class="ai-hair-maintenance">
-              <span class="ai-hair-tag">${h.maintenanceLevel}</span>
-              <span class="ai-hair-tag">${h.maintenanceFrequency}</span>
+            <div class="ai-photo-card-body">
+              <div class="ai-photo-card-category">${h.category}</div>
+              <div class="ai-photo-card-name">${h.name}</div>
+              <div class="ai-hair-score-bar">
+                <div class="ai-hair-score-fill" style="width:${h.suitabilityScore || 80}%"></div>
+              </div>
+              <div class="ai-hair-maintenance">
+                <span class="ai-hair-tag">${h.maintenanceLevel}</span>
+                <span class="ai-hair-tag">${h.maintenanceFrequency}</span>
+              </div>
             </div>
           </div>`).join('')}
       </div>
       ${(hair.avoidHairstyles || []).length ? `
-        <div class="ai-hair-avoid">
-          <label>Hair to Avoid</label>
-          <div class="ai-hair-avoid-list">
-            ${(hair.avoidHairstyles || []).map(a => `
-              <div class="ai-hair-avoid-item"><span class="ai-avoid-x">✕</span><span><strong>${a.style}</strong> — ${a.reason}</span></div>`).join('')}
-          </div>
+        <div class="ai-section-sub-label" style="color:var(--red);margin-top:24px">HAIRSTYLE TO AVOID</div>
+        <div class="ai-photo-grid ai-photo-grid-3">
+          ${(hair.avoidHairstyles || []).map(a => `
+            <div class="ai-photo-card ai-photo-card-avoid">
+              <div class="ai-photo-card-img-wrap">
+                ${a.imageUrl ? `<img src="${a.imageUrl}" alt="${a.style}" class="ai-photo-card-img" loading="lazy" />` : '<div class="ai-photo-card-placeholder">🚫</div>'}
+                <span class="ai-photo-avoid-x">✕</span>
+              </div>
+              <div class="ai-photo-card-body">
+                <div class="ai-photo-card-name">${a.style}</div>
+                <div class="ai-photo-card-why">${a.reason}</div>
+              </div>
+            </div>`).join('')}
         </div>` : ''}
       ${hair.barberTip ? `<div class="ai-barber-tip">💈 ${hair.barberTip}</div>` : ''}`;
 
+    const userPhoto = this.userPhotoUrl
+      ? `<img class="ai-user-photo" src="${this.userPhotoUrl}" alt="Your photo" />`
+      : '';
+
     container.innerHTML = `
       <div class="ai-full-results">
+
+        <!-- User photo header -->
+        ${userPhoto ? `<div class="ai-user-photo-header">
+          <div class="ai-user-photo-wrap">${userPhoto}<span class="ai-user-photo-label">Your Photo</span></div>
+          <div class="ai-user-summary">
+            <div class="ai-user-summary-tag">${color.colorSeason || 'Autumn'} Type</div>
+            <div class="ai-user-summary-tag">${outfit.faceShape || 'Oval'} Face</div>
+            <div class="ai-user-summary-tag">${skincare.skinProfile?.type || 'Combination'} Skin</div>
+            <div class="ai-user-summary-tag">${hair.currentHair?.texture || 'Straight'} Hair</div>
+          </div>
+        </div>` : ''}
+
         ${block('1', '🎨', 'Personal Color & Skin Analysis', colorHTML)}
         ${block('2', '👔', 'Outfit Recommendations', outfitHTML)}
         ${block('3', '🕶️', 'Eyewear Recommendations', eyewearHTML)}
