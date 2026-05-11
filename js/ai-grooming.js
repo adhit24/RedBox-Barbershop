@@ -520,160 +520,165 @@ class AIGroomingUI {
     const skincare = r.skincare || {};
     const hair = r.hairstyle || {};
 
-    const sectionTitle = (icon, title) =>
-      `<div class="ai-section-header"><span class="ai-section-icon">${icon}</span><h3>${title}</h3></div>`;
-
-    const colorSwatches = (items, label) => {
-      if (!items || !items.length) return '';
-      return `<div class="ai-color-row">${items.map(c => `
-        <div class="ai-swatch-item">
-          <div class="ai-swatch" style="background:${c.hex}"></div>
-          <span class="ai-swatch-name">${c.name}</span>
-          <span class="ai-swatch-label">${c.label}</span>
-        </div>`).join('')}</div>`;
-    };
-
-    const html = `
-      <div class="ai-full-results">
-
-        <!-- 1. PERSONAL COLOR -->
-        <div class="ai-result-card">
-          ${sectionTitle('🎨', 'Personal Color Analysis')}
-          <div class="ai-color-season">
-            <span class="ai-season-badge">${color.colorSeason || '—'}</span>
-            <p>${color.colorSeasonDescription || ''}</p>
-          </div>
-          <div class="ai-color-block">
-            <h4>Best Colors</h4>
-            ${colorSwatches(color.bestColors, 'best')}
-          </div>
-          <div class="ai-color-block">
-            <h4>Colors to Avoid</h4>
-            ${colorSwatches(color.avoidColors, 'avoid')}
-          </div>
-          ${color.outfitFormula ? `<p class="ai-formula"><strong>Formula:</strong> ${color.outfitFormula}</p>` : ''}
+    const block = (num, icon, title, body) => `
+      <div class="ai-section-block">
+        <div class="ai-section-header">
+          <span class="ai-section-num">${num}</span>
+          <h3>${icon} ${title}</h3>
         </div>
+        <div class="ai-section-body">${body}</div>
+      </div>`;
 
-        <!-- 2. OUTFIT BY FACE SHAPE -->
-        <div class="ai-result-card">
-          ${sectionTitle('👔', 'Outfit Recommendations')}
-          <p class="ai-face-tag">Face Shape: <strong>${outfit.faceShape || '—'}</strong> — ${outfit.faceShapeDescription || ''}</p>
-          <div class="ai-outfit-grid">
-            ${(outfit.recommendedOutfits || []).map(o => `
-              <div class="ai-outfit-card">
-                <div class="ai-outfit-rank">#${o.rank}</div>
-                <h4>${o.name} <span class="ai-tag">${o.occasion}</span></h4>
-                <ul class="ai-outfit-items">
-                  ${(o.items || []).map(i => `
-                    <li><span class="ai-piece-dot" style="background:${i.color}"></span><strong>${i.piece}:</strong> ${i.description}</li>
-                  `).join('')}
-                </ul>
-                <p class="ai-why">${o.whyItWorks}</p>
-                <span class="ai-style-keyword">${o.styleKeyword}</span>
+    const swatches = (items) => (items || []).map(c => `
+      <div class="ai-swatch" style="background:${c.hex}" title="${c.name} — ${c.label}">
+        <span class="ai-swatch-tip">${c.name}</span>
+      </div>`).join('');
+
+    // 1. Personal Color
+    const colorHTML = `
+      <div class="ai-color-season">🎨 ${color.colorSeason || '—'}</div>
+      <p style="font-size:0.85rem;color:var(--text-sec);margin:4px 0 16px">${color.colorSeasonDescription || ''}</p>
+      <div class="ai-color-grid">
+        <div class="ai-color-group">
+          <label>Best Colors</label>
+          <div class="ai-swatches">${swatches(color.bestColors)}</div>
+        </div>
+        <div class="ai-color-group">
+          <label>Avoid Colors</label>
+          <div class="ai-swatches">${swatches(color.avoidColors)}</div>
+        </div>
+      </div>
+      ${color.outfitFormula ? `<div class="ai-color-formula">✦ Formula: ${color.outfitFormula}</div>` : ''}`;
+
+    // 2. Outfit
+    const outfitHTML = `
+      <p style="font-size:0.85rem;color:var(--text-sec);margin-bottom:16px">
+        Face Shape: <strong style="color:var(--white)">${outfit.faceShape || '—'}</strong> — ${outfit.faceShapeDescription || ''}
+      </p>
+      <div class="ai-outfit-infographic">
+        ${(outfit.recommendedOutfits || []).map(o => `
+          <div class="ai-outfit-item">
+            <div class="ai-outfit-rank-badge">#${o.rank}</div>
+            <div class="ai-outfit-info">
+              <h4>${o.name}</h4>
+              <div class="ai-outfit-occasion">${o.occasion}</div>
+              <div class="ai-outfit-pieces">
+                ${(o.items || []).map(i => `
+                  <span class="ai-outfit-piece">
+                    <span class="ai-outfit-piece-dot" style="background:${i.color}"></span>
+                    ${i.piece}: ${i.description}
+                  </span>`).join('')}
               </div>
-            `).join('')}
+              <div class="ai-outfit-why">${o.whyItWorks}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+      ${(outfit.avoidOutfits || []).length ? `
+        <div class="ai-outfit-avoid">
+          <label>Avoid</label>
+          <div class="ai-avoid-list">
+            ${(outfit.avoidOutfits || []).map(a => `
+              <div class="ai-avoid-item"><span class="ai-avoid-x">✕</span><span><strong>${a.style}</strong> — ${a.reason}</span></div>`).join('')}
           </div>
-          ${(outfit.avoidOutfits || []).length ? `
-            <div class="ai-avoid-section">
-              <h4>Avoid</h4>
-              <ul>${(outfit.avoidOutfits || []).map(a => `<li><strong>${a.style}:</strong> ${a.reason}</li>`).join('')}</ul>
-            </div>` : ''}
-        </div>
+        </div>` : ''}`;
 
-        <!-- 3. EYEWEAR -->
-        <div class="ai-result-card">
-          ${sectionTitle('🕶️', 'Eyewear Recommendations')}
-          <div class="ai-eyewear-grid">
-            ${(eyewear.recommendations || []).map(e => `
-              <div class="ai-eyewear-card">
-                <span class="ai-eyewear-cat">${e.category}</span>
-                <h4>${e.name}</h4>
-                <p><strong>Frame:</strong> ${e.frameShape} · ${e.material}</p>
-                <p><strong>Colors:</strong> ${(e.recommendedColors || []).join(', ')}</p>
-                <p class="ai-why">${e.whyItSuits}</p>
-                <p><em>${e.bestFor}</em></p>
-                <div class="ai-score-bar">
-                  <div class="ai-score-fill" style="width:${e.suitabilityScore || 80}%"></div>
-                  <span>${e.suitabilityScore || 80}% match</span>
+    // 3. Eyewear
+    const eyewearHTML = `
+      <div class="ai-eyewear-grid">
+        ${(eyewear.recommendations || []).map(e => `
+          <div class="ai-eyewear-card">
+            <div class="ai-eyewear-category">${e.category}</div>
+            <div class="ai-eyewear-name">${e.name}</div>
+            <div class="ai-eyewear-score">${e.suitabilityScore || 80}% match</div>
+            <div class="ai-eyewear-why">${e.whyItSuits}</div>
+            <div class="ai-eyewear-colors">
+              ${(e.recommendedColors || []).map(c => `<span class="ai-eyewear-color-tag">${c}</span>`).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
+      ${(eyewear.avoidFrames || []).length ? `
+        <div class="ai-outfit-avoid">
+          <label>Avoid Frames</label>
+          <div class="ai-avoid-list">
+            ${(eyewear.avoidFrames || []).map(a => `
+              <div class="ai-avoid-item"><span class="ai-avoid-x">✕</span><span><strong>${a.style}</strong> — ${a.reason}</span></div>`).join('')}
+          </div>
+        </div>` : ''}
+      ${eyewear.proTip ? `<div class="ai-eyewear-protip">💡 ${eyewear.proTip}</div>` : ''}`;
+
+    // 4. Skincare
+    const skincareHTML = `
+      <div class="ai-skincare-grid">
+        <div class="ai-skincare-col">
+          <label>☀️ Morning Routine</label>
+          <div class="ai-routine-steps">
+            ${(skincare.morningRoutine || []).map(s => `
+              <div class="ai-routine-step">
+                <span class="ai-step-num">${s.step}</span>
+                <div class="ai-step-info">
+                  <strong>${s.product}</strong>
+                  <span>${s.purpose}</span>
                 </div>
-              </div>
-            `).join('')}
+              </div>`).join('')}
           </div>
-          ${(eyewear.avoidFrames || []).length ? `
-            <div class="ai-avoid-section">
-              <h4>Avoid</h4>
-              <ul>${(eyewear.avoidFrames || []).map(a => `<li><strong>${a.style}:</strong> ${a.reason}</li>`).join('')}</ul>
-            </div>` : ''}
-          ${eyewear.proTip ? `<p class="ai-pro-tip">💡 ${eyewear.proTip}</p>` : ''}
         </div>
-
-        <!-- 4. SKINCARE -->
-        <div class="ai-result-card">
-          ${sectionTitle('✨', 'Skincare Analysis & Routine')}
-          <div class="ai-skin-profile">
-            <span class="ai-tag">${skincare.skinProfile?.type || '—'}</span>
-            <span class="ai-tag">${skincare.skinProfile?.tone || '—'} skin</span>
-            <span class="ai-tag">${skincare.skinProfile?.hydrationLevel || '—'}</span>
-          </div>
-          <div class="ai-concerns">
+        <div class="ai-skincare-col">
+          <label>Skin Concerns</label>
+          <div class="ai-concerns-list">
             ${(skincare.concerns || []).map(c => `
               <div class="ai-concern-item">
-                <strong>${c.issue}</strong>
-                <span class="ai-severity ai-severity-${c.severity}">${c.severity}</span>
-                <p>${c.tip}</p>
-              </div>
-            `).join('')}
+                <div class="ai-concern-name">${c.issue}</div>
+                <span class="ai-concern-severity ${c.severity}">${c.severity}</span>
+                <div class="ai-concern-tip">${c.tip}</div>
+              </div>`).join('')}
           </div>
-          <div class="ai-routines">
-            <div class="ai-routine-block">
-              <h4>☀️ Morning Routine</h4>
-              <ol>${(skincare.morningRoutine || []).map(s => `<li><strong>${s.product}</strong> — ${s.purpose} <em>(${s.duration})</em></li>`).join('')}</ol>
-            </div>
-            <div class="ai-routine-block">
-              <h4>🌙 Evening Routine</h4>
-              <ol>${(skincare.eveningRoutine || []).map(s => `<li><strong>${s.product}</strong> — ${s.purpose} <em>(${s.duration})</em></li>`).join('')}</ol>
-            </div>
-          </div>
-          ${(skincare.lifestyleTips || []).length ? `
-            <div class="ai-lifestyle-tips">
-              <h4>Lifestyle Tips</h4>
-              <ul>${(skincare.lifestyleTips || []).map(t => `<li>${t}</li>`).join('')}</ul>
-            </div>` : ''}
-          ${skincare.expectedResults ? `<p class="ai-expected">📅 ${skincare.expectedResults}</p>` : ''}
         </div>
-
-        <!-- 5. HAIRSTYLE -->
-        <div class="ai-result-card">
-          ${sectionTitle('💈', 'Hairstyle Recommendations')}
-          <div class="ai-hairstyle-grid">
-            ${(hair.recommendations || []).map(h => `
-              <div class="ai-hairstyle-card">
-                <div class="ai-hairstyle-rank">#${h.rank}</div>
-                <span class="ai-tag">${h.category}</span>
-                <h4>${h.name}</h4>
-                <p>${h.description}</p>
-                <p class="ai-why">${h.whyItSuits}</p>
-                <p><strong>Products:</strong> ${(h.stylingProducts || []).join(', ')}</p>
-                <p><strong>Maintenance:</strong> ${h.maintenanceLevel} · ${h.maintenanceFrequency}</p>
-                <div class="ai-score-bar">
-                  <div class="ai-score-fill" style="width:${h.suitabilityScore || 80}%"></div>
-                  <span>${h.suitabilityScore || 80}% match</span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-          ${(hair.avoidHairstyles || []).length ? `
-            <div class="ai-avoid-section">
-              <h4>Hairstyles to Avoid</h4>
-              <ul>${(hair.avoidHairstyles || []).map(a => `<li><strong>${a.style}</strong> (${a.category}): ${a.reason}</li>`).join('')}</ul>
-            </div>` : ''}
-          ${hair.barberTip ? `<p class="ai-pro-tip">💈 Barber Tip: ${hair.barberTip}</p>` : ''}
-        </div>
-
       </div>
-    `;
+      ${(skincare.lifestyleTips || []).length ? `
+        <div class="ai-skincare-tips">
+          <label>Lifestyle Tips</label>
+          <ul class="ai-tips-list">
+            ${skincare.lifestyleTips.map(t => `<li>${t}</li>`).join('')}
+          </ul>
+        </div>` : ''}`;
 
-    container.innerHTML = html;
+    // 5. Hairstyle
+    const hairHTML = `
+      <div class="ai-hair-grid">
+        ${(hair.recommendations || []).map(h => `
+          <div class="ai-hair-card">
+            <span class="ai-hair-rank">${h.rank}</span>
+            <div class="ai-hair-category">${h.category}</div>
+            <div class="ai-hair-name">${h.name}</div>
+            <div class="ai-hair-desc">${h.description}</div>
+            <div class="ai-hair-score-bar">
+              <div class="ai-hair-score-fill" style="width:${h.suitabilityScore || 80}%"></div>
+            </div>
+            <div class="ai-hair-score-label">${h.suitabilityScore || 80}% match</div>
+            <div class="ai-hair-maintenance">
+              <span class="ai-hair-tag">${h.maintenanceLevel}</span>
+              <span class="ai-hair-tag">${h.maintenanceFrequency}</span>
+            </div>
+          </div>`).join('')}
+      </div>
+      ${(hair.avoidHairstyles || []).length ? `
+        <div class="ai-hair-avoid">
+          <label>Hair to Avoid</label>
+          <div class="ai-hair-avoid-list">
+            ${(hair.avoidHairstyles || []).map(a => `
+              <div class="ai-hair-avoid-item"><span class="ai-avoid-x">✕</span><span><strong>${a.style}</strong> — ${a.reason}</span></div>`).join('')}
+          </div>
+        </div>` : ''}
+      ${hair.barberTip ? `<div class="ai-barber-tip">💈 ${hair.barberTip}</div>` : ''}`;
+
+    container.innerHTML = `
+      <div class="ai-full-results">
+        ${block('1', '🎨', 'Personal Color & Skin Analysis', colorHTML)}
+        ${block('2', '👔', 'Outfit Recommendations', outfitHTML)}
+        ${block('3', '🕶️', 'Eyewear Recommendations', eyewearHTML)}
+        ${block('4', '✨', 'Skincare Routine', skincareHTML)}
+        ${block('5', '💈', 'Hair Recommendations', hairHTML)}
+      </div>`;
   }
 
   renderFaceAnalysis(analysis) {
