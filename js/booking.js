@@ -407,18 +407,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       await Promise.all(promises);
 
       const isToday = dateStr === todayStr();
-      const needsRetry = isToday && barberIdFixed && barberIdFixed !== 'any' && (!fallbackBusyRanges || fallbackBusyRanges.length === 0);
-      if (needsRetry) {
-        const retryFetch = async (attempt) => {
+      const shouldPollToday = isToday && barberIdFixed && barberIdFixed !== 'any';
+      if (shouldPollToday) {
+        const startedAt = Date.now();
+        const maxMs = 14_000;
+        const pollOnce = async () => {
           if (seq !== activeLoadSeq) return;
+          if (Date.now() - startedAt > maxMs) return;
           try {
-            await new Promise(r => setTimeout(r, attempt === 1 ? 1200 : 1600));
-            if (seq !== activeLoadSeq) return;
             const sRes = await fetch(
               `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}&_t=${Date.now()}`,
               { signal: AbortSignal.timeout(8000) }
             );
-            if (!sRes.ok) return;
+            if (!sRes.ok) {
+              setTimeout(pollOnce, 2200);
+              return;
+            }
+
             const sJson = await sRes.json();
             const nextRanges = (sJson.schedules || [])
               .map(s => {
@@ -431,18 +436,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (seq !== activeLoadSeq) return;
             if (nextRanges.length > 0) {
+              const prevLen = fallbackBusyRanges ? fallbackBusyRanges.length : 0;
               fallbackBusyRanges = nextRanges;
-              requestAnimationFrame(() => {
-                if (seq !== activeLoadSeq) return;
-                buildTimeGrid([...fallbackBusyRanges]);
-                updateSidebar();
-              });
+              if (prevLen !== nextRanges.length) {
+                requestAnimationFrame(() => {
+                  if (seq !== activeLoadSeq) return;
+                  buildTimeGrid([...fallbackBusyRanges]);
+                  updateSidebar();
+                });
+              }
               return;
             }
           } catch {}
-          if (attempt < 2) retryFetch(attempt + 1);
+
+          setTimeout(pollOnce, 2200);
         };
-        retryFetch(1);
+
+        const needsImmediatePoll = !fallbackBusyRanges || fallbackBusyRanges.length === 0;
+        if (needsImmediatePoll) {
+          setTimeout(pollOnce, 900);
+        }
       }
     }
 
