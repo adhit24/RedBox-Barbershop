@@ -486,6 +486,7 @@ class AIGroomingUI {
       this.displayResults(results);
       
     } catch (error) {
+      this.hideLoading();
       console.error('Analysis error:', error);
       
       // Special handling for local testing period (until May 16, 2026)
@@ -502,6 +503,8 @@ class AIGroomingUI {
   displayResults(results) {
     this.currentStep = 'results';
     
+    this.hideLoading();
+
     const resultsContainer = document.getElementById('ai-results');
     if (!resultsContainer) return;
 
@@ -709,7 +712,18 @@ class AIGroomingUI {
     const loadingEl = document.getElementById('ai-loading');
     if (loadingEl) {
       loadingEl.style.display = 'flex';
-      loadingEl.querySelector('.ai-loading-text').textContent = message;
+      const textEl = loadingEl.querySelector('.ai-loading-text');
+      if (textEl) textEl.textContent = message;
+    }
+
+    const loadingInner = document.querySelector('#ai-loading .ai-loading-inner');
+    const preview = document.getElementById('ai-image-preview');
+    if (loadingInner && preview && preview.src) {
+      if (!this._aiPreviewOriginalParent) this._aiPreviewOriginalParent = preview.parentElement;
+      preview.style.display = 'block';
+      if (preview.parentElement !== loadingInner) {
+        loadingInner.insertBefore(preview, loadingInner.firstChild);
+      }
     }
 
     // Hide other sections
@@ -722,6 +736,12 @@ class AIGroomingUI {
   hideLoading() {
     const loadingEl = document.getElementById('ai-loading');
     if (loadingEl) loadingEl.style.display = 'none';
+
+    const preview = document.getElementById('ai-image-preview');
+    const originalParent = this._aiPreviewOriginalParent;
+    if (preview && originalParent && preview.parentElement !== originalParent) {
+      originalParent.appendChild(preview);
+    }
   }
 
   showError(message) {
