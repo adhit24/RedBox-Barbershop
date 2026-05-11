@@ -25,9 +25,9 @@ class AIGroomingService {
     if (userData) {
       try {
         const user = JSON.parse(userData);
-        // For testing, we'll accept any logged-in user
-        if (user && user.id) {
-          return user.token || 'member-token-' + user.id;
+        // Accept any logged-in user (main app stores loggedIn: true)
+        if (user && (user.loggedIn || user.id || user.email)) {
+          return user.token || 'member-token-' + (user.id || user.email || 'user');
         }
       } catch (e) {
         console.log('Error parsing user data:', e);
