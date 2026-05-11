@@ -4,8 +4,21 @@
     "api/[...path].js": {
       "maxDuration": 30,
       "includeFiles": "server/**"
+    },
+    "api/ai/analyze.js": {
+      "maxDuration": 30,
+      "includeFiles": "server/**"
+    },
+    "api/ai/upload.js": {
+      "maxDuration": 30,
+      "includeFiles": "server/**"
     }
   },
+  "rewrites": [
+    { "source": "/api/ai/analyze", "destination": "/api/ai/analyze.js" },
+    { "source": "/api/ai/upload",  "destination": "/api/ai/upload.js" },
+    { "source": "/api/(.*)",       "destination": "/api/[...path].js" }
+  ],
   "headers": [
     {
       "source": "/Brand_assets/(.*)",
