@@ -1,0 +1,25 @@
+{
+  "name": "redbox-ai-grooming",
+  "version": "1.0.0",
+  "description": "AI Grooming Assistant for Redbox Barbershop",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test-local.js",
+    "worker": "node workers/aiWorker.js",
+    "dev": "nodemon workers/aiWorker.js"
+  },
+  "dependencies": {
+    "openai": "^4.85.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "bull": "^4.16.0",
+    "ioredis": "^5.5.0",
+    "sharp": "^0.33.5",
+    "multer": "^1.4.5-lts.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

@@ -11,6 +11,88 @@
   overflow: hidden;
 }
 
+/* ---- DEV NOTICE BANNER ---- */
+.ai-dev-notice {
+  margin-bottom: 40px;
+  position: relative;
+  z-index: 1;
+}
+
+.ai-dev-notice-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.ai-powered-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, rgba(193, 18, 31, 0.1) 0%, rgba(193, 18, 31, 0.05) 100%);
+  border: 1px solid rgba(193, 18, 31, 0.2);
+  padding: 12px 20px;
+  border-radius: 50px;
+  backdrop-filter: blur(10px);
+}
+
+.ai-powered-icon {
+  font-size: 1.1rem;
+}
+
+.ai-powered-badge span {
+  font-size: 0.85rem;
+  color: var(--w70, #b0b0b0);
+}
+
+.ai-powered-badge strong {
+  color: var(--white);
+  font-weight: 600;
+}
+
+/* ---- MEMBER PROMO (clean) ---- */
+.ai-promo-badge {
+  display: inline-block;
+  background: var(--red);
+  color: var(--white);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 4px 14px;
+  border-radius: 50px;
+  margin-bottom: 15px;
+}
+
+.ai-promo-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 36px;
+  background: linear-gradient(135deg, var(--red) 0%, #8B0000 100%);
+  border: none;
+  border-radius: 50px;
+  color: var(--white);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 8px 30px rgba(193, 18, 31, 0.3);
+}
+
+.ai-promo-btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(193, 18, 31, 0.4);
+}
+
+/* ---- SVG Upload Icon ---- */
+.ai-upload-icon-svg {
+  color: var(--red);
+  opacity: 0.7;
+  margin-bottom: 5px;
+}
+
 /* ---- AI BADGES ROW ---- */
 .ai-badges-row {
   display: flex;
