@@ -6,9 +6,6 @@
       "includeFiles": "server/**"
     }
   },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/[...path]" }
-  ],
   "headers": [
     {
       "source": "/Brand_assets/(.*)",
