@@ -353,15 +353,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (USE_API) {
       const durMins = _parseDurToMins(state.service?.duration);
+      const outletIdFixed = state.location || 'bypass';
+      const barberIdFixed = state.barber?.id || null;
       const promises = [];
 
       promises.push((async () => {
         try {
           const params = new URLSearchParams({
-            outletId: state.location || 'bypass',
+            outletId: outletIdFixed,
             date: dateStr,
             durationMinutes: durMins,
-            barberId: state.barber?.id,
+            barberId: barberIdFixed,
           });
           const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(12000) });
           if (res.ok) {
@@ -374,12 +376,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       })());
 
-      if (state.barber?.id) {
+      if (barberIdFixed) {
         promises.push((async () => {
           try {
-            const outletId = state.location || 'bypass';
             const sRes = await fetch(
-              `${API_URL}/schedules?outletId=${outletId}&date=${dateStr}&barberId=${state.barber.id}`,
+              `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}`,
               { signal: AbortSignal.timeout(8000) }
             );
             if (sRes.ok) {
@@ -404,6 +405,45 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       await Promise.all(promises);
+
+      const isToday = dateStr === todayStr();
+      const needsRetry = isToday && barberIdFixed && barberIdFixed !== 'any' && (!fallbackBusyRanges || fallbackBusyRanges.length === 0);
+      if (needsRetry) {
+        const retryFetch = async (attempt) => {
+          if (seq !== activeLoadSeq) return;
+          try {
+            await new Promise(r => setTimeout(r, attempt === 1 ? 1200 : 1600));
+            if (seq !== activeLoadSeq) return;
+            const sRes = await fetch(
+              `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}&_t=${Date.now()}`,
+              { signal: AbortSignal.timeout(8000) }
+            );
+            if (!sRes.ok) return;
+            const sJson = await sRes.json();
+            const nextRanges = (sJson.schedules || [])
+              .map(s => {
+                const start = _parseDateTimeToMs(s.start_time);
+                const end = _parseDateTimeToMs(s.end_time);
+                if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+                return { start, end };
+              })
+              .filter(Boolean);
+
+            if (seq !== activeLoadSeq) return;
+            if (nextRanges.length > 0) {
+              fallbackBusyRanges = nextRanges;
+              requestAnimationFrame(() => {
+                if (seq !== activeLoadSeq) return;
+                buildTimeGrid([...fallbackBusyRanges]);
+                updateSidebar();
+              });
+              return;
+            }
+          } catch {}
+          if (attempt < 2) retryFetch(attempt + 1);
+        };
+        retryFetch(1);
+      }
     }
 
     if (seq !== activeLoadSeq) return;
