@@ -12,6 +12,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css?v=2" />
   <link rel="stylesheet" href="css/animations.css?v=2" />
+  <link rel="stylesheet" href="css/ai-section.css?v=1" />
+  <link rel="stylesheet" href="css/ai-interactive.css?v=1" />
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -258,6 +260,138 @@
 
   <hr class="rb-divider" aria-hidden="true">
 
+  <section class="ai-grooming" id="ai">
+    <div class="container">
+      <div class="section-header center">
+        <h2 class="section-title">AI Grooming Assistant</h2>
+        <span class="rb-title-line" aria-hidden="true"></span>
+        <p class="section-sub">Upload foto dan dapatkan rekomendasi grooming, hairstyle, dan style yang cocok untuk kamu.</p>
+      </div>
+
+      <div class="ai-badges-row">
+        <div class="ai-dev-badge">
+          <span class="ai-dev-icon-small">🧠</span>
+          <div class="ai-dev-text">
+            <div class="ai-dev-title">AI Powered</div>
+            <div class="ai-dev-subtitle">Personalized recommendations</div>
+          </div>
+        </div>
+        <div class="ai-privacy-badge">
+          <span class="ai-privacy-icon">🔒</span>
+          <div class="ai-privacy-text">
+            <div class="ai-privacy-title">Private</div>
+            <div class="ai-privacy-subtitle">Hasil hanya untuk kamu</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-features-grid">
+        <div class="ai-feature-card" data-service="face_analysis">
+          <div class="ai-feature-icon">👤</div>
+          <h3>Face Analysis</h3>
+          <p>Deteksi bentuk wajah + rekomendasi haircut & beard yang paling cocok.</p>
+        </div>
+        <div class="ai-feature-card" data-service="hairstyle">
+          <div class="ai-feature-icon">💇</div>
+          <h3>Hairstyle</h3>
+          <p>3 rekomendasi hairstyle yang sesuai fitur wajah dan vibe kamu.</p>
+        </div>
+        <div class="ai-feature-card" data-service="outfit">
+          <div class="ai-feature-icon">👔</div>
+          <h3>Outfit</h3>
+          <p>Color analysis + ide outfit biar style kamu makin solid.</p>
+        </div>
+        <div class="ai-feature-card" data-service="preview">
+          <div class="ai-feature-icon">✨</div>
+          <h3>AI Preview</h3>
+          <p>Preview look baru sebelum kamu eksekusi di kursi barber.</p>
+        </div>
+      </div>
+
+      <div class="ai-member-promo">
+        <div class="ai-promo-card">
+          <h3 class="ai-promo-title">Fitur AI untuk Member</h3>
+          <p class="ai-promo-sub">Login sebagai member untuk mulai upload foto dan dapatkan rekomendasi AI.</p>
+          <div class="ai-promo-actions">
+            <button class="ai-promo-btn" onclick="document.getElementById('loginModal')?.classList.add('active')">Login</button>
+            <a class="ai-promo-secondary" href="membership.html">Daftar Membership</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-upload-section ai-reveal" id="ai-upload-section" style="display:none">
+        <div class="ai-upload-card">
+          <h3 class="ai-upload-title">Coba AI Grooming Sekarang</h3>
+          <p class="ai-upload-subtitle">Upload foto wajah dan dapatkan analisis instan</p>
+
+          <div class="ai-service-selector">
+            <p class="ai-selector-label">Pilih layanan AI:</p>
+            <div class="ai-service-buttons">
+              <button class="ai-service-btn active" data-service="face_analysis" type="button">
+                <span class="ai-btn-icon">👤</span>
+                <span>Face Analysis</span>
+              </button>
+              <button class="ai-service-btn" data-service="hairstyle" type="button">
+                <span class="ai-btn-icon">💇</span>
+                <span>Hairstyle</span>
+              </button>
+              <button class="ai-service-btn" data-service="outfit" type="button">
+                <span class="ai-btn-icon">👔</span>
+                <span>Outfit</span>
+              </button>
+              <button class="ai-service-btn" data-service="preview" type="button">
+                <span class="ai-btn-icon">✨</span>
+                <span>AI Preview</span>
+              </button>
+            </div>
+            <p class="ai-service-description" id="ai-service-description">Analyze your face shape, skin tone, and get personalized recommendations</p>
+          </div>
+
+          <div class="ai-upload-zone" id="ai-upload-zone">
+            <input type="file" id="ai-upload-input" accept="image/*" hidden />
+
+            <div class="ai-upload-placeholder" id="ai-upload-placeholder">
+              <div class="ai-upload-icon">📷</div>
+              <div class="ai-upload-text">Drop foto di sini</div>
+              <div class="ai-upload-hint">atau klik tombol Upload</div>
+              <button class="ai-upload-btn" id="ai-upload-btn" type="button">Upload Foto</button>
+              <div class="ai-upload-formats">JPG / PNG / WebP · Max 10MB</div>
+            </div>
+
+            <img id="ai-image-preview" class="ai-image-preview" alt="Preview" style="display:none" />
+          </div>
+
+          <div class="ai-error" id="ai-error" style="display:none"></div>
+
+          <button class="ai-analyze-btn" id="ai-analyze-btn" type="button" disabled>Select Image First</button>
+        </div>
+      </div>
+
+      <div class="ai-loading" id="ai-loading" style="display:none">
+        <div class="ai-loading-inner">
+          <div class="ai-loading-spinner"></div>
+          <div class="ai-loading-text">Loading...</div>
+        </div>
+      </div>
+
+      <div class="ai-results" id="ai-results" style="display:none">
+        <div class="ai-results-card">
+          <div class="ai-results-header">
+            <h3>Hasil AI</h3>
+            <button class="ai-results-reset" type="button" onclick="window.aiGrooming?.reset()">Coba Lagi</button>
+          </div>
+          <div id="ai-results-content"></div>
+          <div class="ai-results-actions">
+            <button class="ai-results-book" type="button" onclick="window.aiGrooming?.bookAppointment()">Book Appointment</button>
+            <button class="ai-results-download" type="button" onclick="window.aiGrooming?.downloadPreview()">Download Preview</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="rb-divider" aria-hidden="true">
+
   <!-- ========== REVIEWS ========== -->
   <section class="reviews" id="reviews">
     <div class="container">
@@ -492,6 +626,7 @@
 
   <script src="js/services-data.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/ai-grooming.js"></script>
   <script type="module" src="js/animations.js"></script>
 </body>
 </html>
