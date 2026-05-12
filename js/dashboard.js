@@ -41,15 +41,15 @@ document.addEventListener('DOMContentLoaded', () => {
   ];
 
   const REWARDS = [
-    { id:'r1', tier:'bronze',   name:'Free Drink',          desc:'Minuman gratis setiap kunjungan ke barbershop.',         cost:0,   icon:'☕', type:'benefit' },
-    { id:'r2', tier:'bronze',   name:'Diskon Produk 5%',    desc:'Diskon 5% untuk semua pembelian produk grooming.',        cost:100, icon:'🧴', type:'redeem'  },
-    { id:'r3', tier:'silver',   name:'Free Hair Wash',       desc:'Layanan cuci rambut gratis satu kali.',                  cost:150, icon:'💧', type:'redeem'  },
-    { id:'r4', tier:'silver',   name:'Diskon Haircut 5%',   desc:'Diskon 5% untuk layanan haircut.',                       cost:200, icon:'✂️', type:'redeem'  },
-    { id:'r5', tier:'gold',     name:'Priority Barber',      desc:'Pilih barber favorit tanpa antre.',                     cost:0,   icon:'⭐', type:'benefit' },
-    { id:'r6', tier:'gold',     name:'Free Haircut',         desc:'Haircut gratis setelah 10 kunjungan.',                  cost:500, icon:'🏆', type:'redeem'  },
-    { id:'r7', tier:'platinum', name:'VIP Booking Lane',     desc:'Booking prioritas tanpa batasan waktu.',                cost:0,   icon:'💎', type:'benefit' },
-    { id:'r8', tier:'platinum', name:'Free Premium Treatment','desc':'Treatment premium gratis setiap bulan.',              cost:0,   icon:'👑', type:'benefit' },
-    { id:'r9', tier:'platinum', name:'Exclusive Merch',      desc:'Merchandise eksklusif Redbox untuk Platinum members.',  cost:800, icon:'🎁', type:'redeem'  },
+    { id:'r1', tier:'bronze',   name:'Mug Redbox For Free',              desc:'Dapatkan mug eksklusif Redbox secara gratis.',                          cost:75,  icon:'☕', type:'redeem' },
+    { id:'r2', tier:'bronze',   name:'Free Redbox Oilbased Mini',        desc:'Dapatkan produk oilbased mini eksklusif Redbox secara gratis.',         cost:75,  icon:'🧴', type:'redeem' },
+    { id:'r3', tier:'silver',   name:'Free Baileys Coffee',              desc:'Nikmati segelas Baileys Coffee gratis dari Redbox.',                    cost:100, icon:'🍵', type:'redeem' },
+    { id:'r4', tier:'silver',   name:'Free Express Cleaning (All Varians)', desc:'Layanan express cleaning untuk semua varian secara gratis.',         cost:100, icon:'✨', type:'redeem' },
+    { id:'r5', tier:'silver',   name:'Cashback 50% Haircut Regular',     desc:'Dapatkan cashback 50% untuk layanan Haircut Regular.',                  cost:100, icon:'✂️', type:'redeem' },
+    { id:'r6', tier:'gold',     name:'Cashback 50% Haircut Premium (CSB)', desc:'Dapatkan cashback 50% untuk layanan Haircut Premium Classic Style Barber.', cost:125, icon:'💈', type:'redeem' },
+    { id:'r7', tier:'gold',     name:'Free Haircut / Fadecut',           desc:'Haircut atau Fadecut gratis pilihan kamu.',                             cost:200, icon:'🏆', type:'redeem' },
+    { id:'r8', tier:'platinum', name:'Free Gentlemen Grooming',          desc:'Layanan Gentlemen Grooming lengkap gratis untukmu.',                    cost:250, icon:'👑', type:'redeem' },
+    { id:'r9', tier:'platinum', name:'Free Fadecut Grooming',            desc:'Layanan Fadecut Grooming eksklusif gratis untukmu.',                    cost:250, icon:'💎', type:'redeem' },
   ];
 
   const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -493,130 +493,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   window.addEventListener('load', updateNavPill);
   window.addEventListener('resize', updateNavPill);
-
-  // ============================================================
-  // REVIEWS MODULE
-  // ============================================================
-  let _rvRating = 0;
-
-  // Populate barber select in review form (reuse barbers from DB)
-  (async () => {
-    const sel = document.getElementById('rvBarber');
-    if (!sel) return;
-    const barbers = await sbFetch('barbers?is_active=eq.true&select=name&order=name');
-    if (!barbers || !barbers.length) { sel.innerHTML = '<option value="">Pilih barber</option>'; return; }
-    sel.innerHTML = '<option value="">— Pilih barber —</option>' +
-      barbers.map(b => `<option value="${b.name}">${b.name}</option>`).join('');
-  })();
-
-  // Star rating interaction
-  const starBtns = document.querySelectorAll('#starRating .star');
-  starBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      _rvRating = parseInt(btn.dataset.val);
-      document.getElementById('rvRating').value = _rvRating;
-      starBtns.forEach(s => s.classList.toggle('active', parseInt(s.dataset.val) <= _rvRating));
-    });
-    btn.addEventListener('mouseenter', () => {
-      const v = parseInt(btn.dataset.val);
-      starBtns.forEach(s => s.classList.toggle('hover', parseInt(s.dataset.val) <= v));
-    });
-    btn.addEventListener('mouseleave', () => {
-      starBtns.forEach(s => s.classList.remove('hover'));
-    });
-  });
-
-  // Char count
-  document.getElementById('rvComment')?.addEventListener('input', function() {
-    const el = document.getElementById('rvCharCount');
-    if (el) el.textContent = this.value.length;
-  });
-
-  // Load reviews from Supabase
-  async function loadReviews() {
-    const key = userData.email || userData.sub;
-    if (!key) return;
-    const rows = await sbFetch(
-      `member_reviews?user_key=eq.${encodeURIComponent(key)}&order=created_at.desc&select=*`
-    );
-    const list  = document.getElementById('reviewList');
-    const empty = document.getElementById('reviewEmpty');
-    const count = document.getElementById('reviewCount');
-    if (!list) return;
-
-    if (!rows || !rows.length) {
-      if (empty) empty.style.display = 'flex';
-      if (count) count.textContent = '0';
-      return;
-    }
-    if (empty) empty.style.display = 'none';
-    if (count) count.textContent = rows.length;
-
-    const cards = rows.map(r => {
-      const stars = '★'.repeat(r.rating) + '☆'.repeat(5 - r.rating);
-      const date  = new Date(r.created_at).toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' });
-      return `<div class="review-card">
-        <div class="rv-card-head">
-          <div class="rv-barber-info">
-            <span class="rv-barber-name">${r.barber_name || '—'}</span>
-            <span class="rv-service-tag">${r.service || ''}</span>
-          </div>
-          <div class="rv-stars">${stars}</div>
-        </div>
-        <p class="rv-comment">${r.comment || ''}</p>
-        <span class="rv-date">${date}</span>
-      </div>`;
-    }).join('');
-
-    // Remove existing cards (keep empty state node)
-    list.querySelectorAll('.review-card').forEach(n => n.remove());
-    list.insertAdjacentHTML('beforeend', cards);
-  }
-
-  // Submit review
-  document.getElementById('reviewForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const key     = userData.email || userData.sub;
-    const barber  = document.getElementById('rvBarber')?.value;
-    const service = document.getElementById('rvService')?.value?.trim();
-    const rating  = parseInt(document.getElementById('rvRating')?.value || '0');
-    const comment = document.getElementById('rvComment')?.value?.trim();
-
-    if (!barber)  { showToast('Pilih barber terlebih dahulu.', 'error'); return; }
-    if (!service) { showToast('Isi nama layanan.', 'error'); return; }
-    if (rating < 1) { showToast('Pilih rating bintang.', 'error'); return; }
-    if (!comment) { showToast('Tulis komentar singkat.', 'error'); return; }
-
-    const btn = document.getElementById('btnSubmitReview');
-    if (btn) { btn.disabled = true; btn.textContent = 'Mengirim...'; }
-
-    const res = await sbFetch('member_reviews', {
-      method: 'POST', prefer: 'return=minimal',
-      body: JSON.stringify({ user_key: key, barber_name: barber, service, rating, comment })
-    });
-
-    if (res !== null) {
-      showToast('✓ Ulasan berhasil dikirim! Terima kasih.', 'success');
-      // Reset form
-      document.getElementById('reviewForm').reset();
-      _rvRating = 0;
-      document.getElementById('rvRating').value = '0';
-      document.getElementById('rvCharCount').textContent = '0';
-      starBtns.forEach(s => s.classList.remove('active','hover'));
-      await loadReviews();
-    } else {
-      showToast('Gagal mengirim ulasan. Coba lagi.', 'error');
-    }
-
-    if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> Kirim Ulasan'; }
-  });
-
-  // Load reviews when tab opened
-  document.querySelectorAll('.nav-link[data-tab="reviews"]').forEach(el => {
-    el.addEventListener('click', loadReviews);
-  });
-  // Also load on init if already on reviews tab
-  if (document.getElementById('panel-reviews')?.classList.contains('active')) loadReviews();
 
   // ============================================================
   // CHANGE PASSWORD

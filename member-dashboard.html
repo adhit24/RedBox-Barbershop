@@ -228,10 +228,6 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <span>Riwayat Kunjungan</span>
           </button>
-          <button class="dash-nav-item" data-tab="reviews">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span>Ulasan</span>
-          </button>
           <button class="dash-nav-item" data-tab="points">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             <span>Riwayat Poin</span>
@@ -321,61 +317,6 @@
           </div>
           <div class="bookings-list" id="bookingsList" style="display:none">
             <!-- Dynamically populated -->
-          </div>
-        </div>
-
-        <!-- Tab: Reviews -->
-        <div class="dash-panel" id="panel-reviews">
-          <h2 class="panel-title">Ulasan Saya</h2>
-
-          <!-- Write review form -->
-          <div class="review-form-wrap">
-            <h3 class="review-form-title">Tulis Ulasan Baru</h3>
-            <form id="reviewForm" class="review-form">
-              <div class="review-form-row">
-                <div class="review-field">
-                  <label>Barber</label>
-                  <select id="rvBarber">
-                    <option value="">Memuat barber...</option>
-                  </select>
-                </div>
-                <div class="review-field">
-                  <label>Layanan</label>
-                  <input type="text" id="rvService" placeholder="cth: Haircut Classic, Creambath..." maxlength="80" />
-                </div>
-              </div>
-              <div class="review-field">
-                <label>Rating</label>
-                <div class="star-rating" id="starRating">
-                  <button type="button" class="star" data-val="1">★</button>
-                  <button type="button" class="star" data-val="2">★</button>
-                  <button type="button" class="star" data-val="3">★</button>
-                  <button type="button" class="star" data-val="4">★</button>
-                  <button type="button" class="star" data-val="5">★</button>
-                </div>
-                <input type="hidden" id="rvRating" value="0" />
-              </div>
-              <div class="review-field">
-                <label>Komentar</label>
-                <textarea id="rvComment" rows="3" placeholder="Ceritakan pengalaman kamu..." maxlength="500"></textarea>
-                <span class="rv-char-count"><span id="rvCharCount">0</span>/500</span>
-              </div>
-              <button type="submit" class="btn-submit-review" id="btnSubmitReview">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                Kirim Ulasan
-              </button>
-            </form>
-          </div>
-
-          <!-- Review list -->
-          <div class="review-list-wrap">
-            <h3 class="review-list-title">Ulasan Saya (<span id="reviewCount">0</span>)</h3>
-            <div id="reviewList" class="review-list">
-              <div class="empty-state" id="reviewEmpty">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                <p>Belum ada ulasan. Jadilah yang pertama memberi rating!</p>
-              </div>
-            </div>
           </div>
         </div>
 

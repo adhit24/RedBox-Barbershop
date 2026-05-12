@@ -5,10 +5,17 @@
     "node": "22.x"
   },
   "workspaces": [
-    "server"
+    "server",
+    "frontend"
   ],
   "scripts": {
     "start": "npm --workspace server run start",
-    "dev": "npm --workspace server run dev"
+    "dev": "npm --workspace server run dev",
+    "dev:frontend": "npm --workspace frontend run dev",
+    "dev:all": "npm-run-all --parallel dev dev:frontend"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.105.4"
   }
 }
