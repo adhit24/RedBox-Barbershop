@@ -1,3 +1,4 @@
+npx skills add mblode/agent-skills@ui-animation
 -- =============================================
 -- AI GROOMING ASSISTANT DATABASE SCHEMA
 -- =============================================

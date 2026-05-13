@@ -1,0 +1,34 @@
+{
+  "faq": [
+    {
+      "question": "Jam buka",
+      "keywords": ["jam buka", "buka jam", "open", "tutup", "jam operasional"],
+      "answer": "Kami buka setiap hari jam 10.00 – 22.00 WIB ✂️"
+    },
+    {
+      "question": "Lokasi",
+      "keywords": ["lokasi", "alamat", "dimana", "maps", "gps", "tempatnya"],
+      "answer": "RedBox Barbershop ada di:\n📍 Jl. Contoh No. 123, Kota\n\nBisa cek Maps ya kak 👇\nhttps://maps.google.com"
+    },
+    {
+      "question": "Booking",
+      "keywords": ["booking", "reservasi", "jadwal", "pesan tempat", "daftar", "antrian"],
+      "answer": "Yuk booking sekarang! Ketik *booking* dan aku bantu prosesnya 😊"
+    },
+    {
+      "question": "Parkir",
+      "keywords": ["parkir", "motor", "mobil"],
+      "answer": "Tersedia parkir gratis di depan outlet kak 🚗🏍️"
+    },
+    {
+      "question": "Metode pembayaran",
+      "keywords": ["bayar", "pembayaran", "transfer", "qris", "tunai", "cash", "debit", "kredit"],
+      "answer": "Kami terima:\n💵 Tunai\n📱 QRIS (semua e-wallet)\n💳 Debit/Kredit"
+    },
+    {
+      "question": "Walk-in",
+      "keywords": ["walk in", "langsung datang", "tanpa booking", "bisa langsung"],
+      "answer": "Bisa langsung datang kak! Tapi booking dulu lebih aman biar nggak antri lama 😊"
+    }
+  ]
+}

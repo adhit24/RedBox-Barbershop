@@ -1363,3 +1363,255 @@ _fileToBase64(file) {
 ---
 
 **End of Session — AI Grooming Production Deployment ✅**
+
+---
+
+# Sesi Pengembangan: GPT-Image-2 Integration + AI Hairstyle Feature + WhatsApp AI Assistant
+
+**Tanggal:** 12 Mei 2026
+**Project:** RedBox Barbershop — AI Feature Development
+**Developer:** Adhitya (adhit24)
+**AI Assistant:** Cascade (Windsurf)
+
+---
+
+## 59. GPT-Image-2 Integration (Lanjutan Sesi Sebelumnya)
+
+### 59.1 Konteks
+
+Model target: `gpt-image-2-2026-04-21` untuk image generation di `server/ai/services/aiService.js`.
+
+### 59.2 Perubahan Final `generatePreview`
+
+```javascript
+// server/ai/services/aiService.js (lines 109-130)
+async generatePreview(imageUrl, analysis, transformationType = 'modern_gentleman') {
+  const startTime = Date.now();
+  const prompt = PROMPTS.previewGeneration(analysis, transformationType);
+
+  const response = await openai.images.generate({
+    model: 'gpt-image-2-2026-04-21',
+    prompt: `Photorealistic hairstyle makeover image. ${prompt}`,
+    n: 1,
+    size: '1024x1024'
+  });
+
+  const generatedImageBase64 = response.data?.[0]?.b64_json || null;
+  return {
+    generatedImageBase64,
+    model: 'gpt-image-2-2026-04-21',
+    processingTime: Date.now() - startTime,
+    cost: 0.08
+  };
+}
+```
+
+### 59.3 Test Script
+
+File `server/ai/test-image-gen.js` dibuat untuk isolasi test image generation.
+
+### 59.4 Status
+
+- ✅ Code sudah benar — `openai.images.generate()` tanpa `response_format` parameter
+- ⏳ API call tetap error **"Billing hard limit reached"** — kuota OpenAI reset tanggal **14 Mei 2026**
+- Restore file: `server/check-dodi-schedule.js` yang tidak sengaja tertimpa konten lain → berhasil di-restore via `git checkout af95fea -- server/check-dodi-schedule.js`
+
+---
+
+## 60. AI Hairstyle Analysis Feature (Next.js Frontend)
+
+### 60.1 Objective
+
+Build fitur AI Hairstyle Analysis menggunakan GPT-4o-mini Vision API dengan UI premium dark luxury barbershop.
+
+### 60.2 Files Created
+
+| File | Deskripsi |
+|------|-----------|
+| `frontend/src/app/api/ai-hairstyle/route.ts` | API Route Next.js — GPT-4o-mini Vision |
+| `frontend/src/app/ai-hairstyle/types.ts` | TypeScript interfaces |
+| `frontend/src/app/ai-hairstyle/components/ImageUpload.tsx` | Drag & drop + auto compression |
+| `frontend/src/app/ai-hairstyle/components/HairstyleResult.tsx` | Premium infographic result UI |
+| `frontend/src/app/ai-hairstyle/page.tsx` | Main page dengan anti-spam + cooldown |
+| `frontend/vercel.json` | Vercel config untuk Next.js |
+
+### 60.3 Cost Protection (dari `rules_ai.md`)
+
+| Rule | Implementasi |
+|------|-------------|
+| Image compression | Max **768px**, quality **0.75** (≈0.4MB) |
+| Anti-spam | Max **3x per session** via `localStorage` |
+| Cooldown | **30 detik** setelah setiap analyze |
+| Token limit | `detail: 'low'` + `max_tokens: 800` |
+| No HD output | GPT-4o-mini Vision `detail: low` |
+
+### 60.4 AI Response JSON Structure
+
+```json
+{
+  "face_shape": "Oval",
+  "hair_type": "Straight / Slightly Wavy",
+  "hair_thickness": "Medium",
+  "hair_density": "Medium",
+  "current_hair_condition": "string",
+  "recommended_hairstyles": ["Two Block", "Comma Hair", "Textured Crop", "Classic Taper"],
+  "avoid_hairstyles": ["Bowl Cut", "Flat Fringe"],
+  "styling_tips": ["Keep sides tapered", "Use matte clay", "Add texture on top"],
+  "recommended_products": ["Matte Clay", "Sea Salt Spray"],
+  "recommended_hair_colors": ["Natural Black", "Dark Brown"],
+  "barber_instruction": "string",
+  "confidence_score": 87
+}
+```
+
+### 60.5 Middleware Fix
+
+`frontend/src/middleware.ts` — tambah exclude untuk `/ai-hairstyle` dan `/api/ai-hairstyle` agar tidak di-intercept Supabase auth middleware:
+
+```typescript
+"/((?!_next/static|_next/image|favicon.ico|ai-hairstyle|api/ai-hairstyle|.*\\.(?:svg|png|...)$).*)"
+```
+
+### 60.6 Environment Variables
+
+`frontend/.env.local` — ditambahkan:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `OPENAI_API_KEY` (single line, 179 chars)
+
+### 60.7 Status
+
+- ✅ UI berjalan di `http://localhost:3000/ai-hairstyle`
+- ✅ Foto upload, drag & drop, compression, loading state — semua berfungsi
+- ⚠️ API call ke OpenAI error **429 quota exceeded** — tunggu reset 14 Mei 2026
+- ✅ Deploy ke Vercel: **https://redbox-ai-frontend.vercel.app/ai-hairstyle**
+
+---
+
+## 61. WhatsApp AI Assistant (New Module)
+
+### 61.1 Objective
+
+Build production-ready WhatsApp AI chatbot untuk RedBox Barbershop dengan arsitektur 12 phase.
+
+### 61.2 Lokasi
+
+`server/whatsapp-ai/`
+
+### 61.3 Struktur
+
+```
+server/whatsapp-ai/
+ ├── app.js                     # Express server (port 3001)
+ ├── config/index.js            # Semua config & env
+ ├── routes/webhook.js          # POST /webhook + GET /webhook
+ ├── controllers/webhookController.js
+ ├── services/
+ │   ├── messageHandler.js      # Orchestrator — routing pesan
+ │   ├── whatsappService.js     # Send text + retry (2x)
+ │   ├── aiService.js           # GPT-4o-mini + short context memory
+ │   ├── bookingService.js      # State machine 5-step booking flow
+ │   ├── knowledgeService.js    # Load JSON knowledge base
+ │   └── escalationService.js   # Human handoff logic
+ ├── prompts/system.txt         # AI personality prompt
+ ├── knowledge/
+ │   ├── services.json          # 8 layanan + harga
+ │   └── faq.json               # 6 FAQ entry + keywords
+ ├── middleware/
+ │   ├── rateLimiter.js         # Max 5 msg/menit per user
+ │   └── costGuard.js           # Cooldown 3s + daily limit 30x AI
+ ├── utils/logger.js            # File log per hari (5 tipe log)
+ ├── .env                       # API keys
+ ├── .env.example
+ └── README.md
+```
+
+### 61.4 Message Routing (Zero-cost first)
+
+```
+Incoming WA message
+  → rateLimiter (max 5/menit)
+  → Booking flow active? → bookingService (0 token)
+  → Escalation keywords? → admin handoff (0 token)
+  → Keyword match (harga/booking)? → direct reply (0 token)
+  → FAQ match? → direct reply (0 token)
+  → Greeting? → template reply (0 token)
+  → costGuard (cooldown + daily limit)
+  → GPT-4o-mini (max 300 tokens)
+```
+
+### 61.5 Booking Flow (5 Steps)
+
+1. Tanya nama
+2. Tanya layanan (tampilkan menu 8 layanan)
+3. Tanya tanggal
+4. Tanya jam
+5. Summary + konfirmasi → simpan ke log
+
+### 61.6 Cost Protection
+
+| Layer | Config |
+|-------|--------|
+| Rate limit | Max 5 msg/menit per user |
+| Cooldown | 3 detik antar AI call |
+| Daily limit | Max 30 AI calls/user/hari |
+| Context | Max 6 messages per user |
+| Max tokens | 300 per response |
+| Zero-cost routing | Keyword + FAQ + Booking = 0 token |
+
+### 61.7 Human Escalation Keywords
+
+`komplain, refund, marah, kecewa, tipu, bohong, minta uang kembali, lapor`
+
+Saat trigger → reply empati + notif admin via WA (`ADMIN_WHATSAPP` env var).
+
+### 61.8 Logging
+
+| File | Isi |
+|------|-----|
+| `messages-YYYY-MM-DD.log` | Semua in/out messages |
+| `tokens-YYYY-MM-DD.log` | Token usage per user |
+| `bookings-YYYY-MM-DD.log` | Confirmed bookings (JSON) |
+| `escalations-YYYY-MM-DD.log` | Human escalations |
+| `errors-YYYY-MM-DD.log` | Errors per service |
+
+### 61.9 Setup WhatsApp Cloud API
+
+1. Buka https://developers.facebook.com/apps/ → Buat App WhatsApp
+2. Ambil `WA_PHONE_NUMBER_ID` dan `WA_ACCESS_TOKEN`
+3. Set webhook: `https://your-domain.com/webhook`
+4. Set `WA_VERIFY_TOKEN` sama dengan di `.env`
+5. Subscribe event: `messages`
+6. Local testing: pakai ngrok `ngrok http 3001`
+
+### 61.10 Status
+
+- ✅ Semua module installed (`npm install` — 122 packages)
+- ✅ Semua file syntax valid (module load test passed)
+- ✅ `.env` sudah dibuat dengan `OPENAI_API_KEY`
+- ⏳ Menunggu WhatsApp Cloud API credentials (`WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`) dari Meta Developer Portal
+
+---
+
+## 62. Deployment Hari Ini
+
+| Project | URL | Status |
+|---------|-----|--------|
+| Frontend Next.js (AI Hairstyle) | https://redbox-ai-frontend.vercel.app | ✅ LIVE |
+| AI Hairstyle Page | https://redbox-ai-frontend.vercel.app/ai-hairstyle | ✅ LIVE |
+| Root project (static + API) | https://www.redboxbarbershop.com | ✅ Tidak diubah |
+| WhatsApp AI Backend | `server/whatsapp-ai/` | ⏳ Local only — belum deploy |
+
+---
+
+## 63. Pending Items
+
+| Item | Keterangan |
+|------|-----------|
+| OpenAI quota reset | Tanggal **14 Mei 2026** — test `test-image-gen.js` dan AI Hairstyle full flow |
+| WhatsApp credentials | Daftar di Meta Developer Portal → isi `WA_PHONE_NUMBER_ID` + `WA_ACCESS_TOKEN` |
+| WhatsApp AI deploy | Setelah credentials siap → deploy ke Render/Railway/VPS |
+
+---
+
+**End of Session — AI Hairstyle + WhatsApp AI Assistant completed ✅**

@@ -1,0 +1,12 @@
+{
+  "services": [
+    { "name": "Haircut", "price": "75k", "duration": "30 menit", "description": "Potong rambut standar" },
+    { "name": "Haircut + Wash", "price": "95k", "duration": "45 menit", "description": "Potong + cuci rambut" },
+    { "name": "Two Block", "price": "85k", "duration": "40 menit", "description": "Korean style two block cut" },
+    { "name": "Fade Cut", "price": "90k", "duration": "40 menit", "description": "Clean fade dengan mesin" },
+    { "name": "Hairspa", "price": "120k", "duration": "60 menit", "description": "Perawatan rambut intensif" },
+    { "name": "Coloring", "price": "mulai 200k", "duration": "90 menit", "description": "Pewarnaan rambut" },
+    { "name": "Beard Trim", "price": "45k", "duration": "20 menit", "description": "Cukur dan rapikan jenggot" },
+    { "name": "Combo (Haircut + Beard)", "price": "110k", "duration": "50 menit", "description": "Potong rambut + jenggot" }
+  ]
+}

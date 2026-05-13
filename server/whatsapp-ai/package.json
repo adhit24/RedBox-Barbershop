@@ -1,0 +1,20 @@
+{
+  "name": "redbox-whatsapp-ai",
+  "version": "1.0.0",
+  "description": "WhatsApp AI Assistant for RedBox Barbershop",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-cron": "^4.2.1",
+    "openai": "^4.47.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

@@ -505,6 +505,102 @@
     font-size: .95rem;
   }
 
+  /* ---- FEATURE CARDS ---- */
+  .ms-feature-section {
+    padding: 80px 0 60px;
+    background: var(--bg);
+  }
+  .ms-feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    max-width: 936px;
+    margin: 0 auto;
+  }
+  .ms-fc-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity .8s ease, transform .8s ease;
+  }
+  .ms-fc-wrap.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .ms-fc-wrap:nth-child(2) { transition-delay: .1s; }
+  .ms-fc-wrap:nth-child(3) { transition-delay: .2s; }
+  .ms-fc-glow {
+    position: absolute;
+    inset: 0;
+    border-radius: 40px;
+    opacity: .6;
+    pointer-events: none;
+    filter: blur(45px);
+    z-index: 0;
+  }
+  .ms-fc-card {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    border-radius: 40px;
+    overflow: hidden;
+    border: 8px solid transparent;
+  }
+  .ms-fc-inner {
+    width: 100%;
+    height: 100%;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 260px;
+  }
+  .ms-fc-icon {
+    color: rgba(255,255,255,.9);
+    margin-bottom: auto;
+  }
+  .ms-fc-icon svg {
+    width: 32px;
+    height: 32px;
+    stroke-width: 2.5;
+  }
+  .ms-fc-bottom { display: flex; flex-direction: column; }
+  .ms-fc-step-num {
+    font-family: var(--font-accent);
+    font-size: 2.2rem;
+    color: rgba(255,255,255,.12);
+    line-height: 1;
+    margin-bottom: 8px;
+    letter-spacing: .04em;
+  }
+  .ms-fc-title {
+    font-family: var(--font-body);
+    font-size: 1.2rem;
+    font-weight: 500;
+    color: #fff;
+    margin-bottom: 10px;
+    letter-spacing: -.02em;
+  }
+  .ms-fc-desc {
+    font-size: .875rem;
+    line-height: 1.6;
+    color: #9CA3AF;
+    font-weight: 400;
+  }
+  @media(max-width:900px) {
+    .ms-feature-grid { grid-template-columns: 1fr; gap: 28px; }
+    .ms-fc-inner { min-height: 220px; }
+  }
+  @media(max-width:480px) {
+    .ms-feature-section { padding: 56px 0 40px; }
+    .ms-fc-inner { min-height: 200px; padding: 22px; }
+    .ms-fc-title { font-size: 1.05rem; }
+  }
+
   /* ---- RESPONSIVE ---- */
   @media(max-width:1024px) {
     .ms-tiers { grid-template-columns: repeat(2, 1fr); }
@@ -852,6 +948,20 @@
     .ms-mbar-book, .ms-mbar-wa { font-size: .72rem; min-height: 44px; }
   }
   </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const cards = document.querySelectorAll('.ms-fc-wrap');
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.15 });
+      cards.forEach(c => observer.observe(c));
+    });
+  </script>
 </head>
 <body>
 
@@ -924,39 +1034,129 @@
     </div>
   </section>
 
+  <!-- ========== FEATURE CARDS ========== -->
+  <section class="ms-feature-section">
+    <div class="container">
+      <div class="ms-title" style="margin-bottom:40px">
+        <span class="eyebrow">KENAPA MEMBERSHIP</span>
+        <h2>Tiga Keistimewaan Utama</h2>
+        <p>Sistem poin, tier eksklusif, dan reward nyata — semua dalam satu kartu membership</p>
+      </div>
+      <div class="ms-feature-grid">
+
+        <!-- Card 1: Poin System -->
+        <div class="ms-fc-wrap">
+          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#FF3D77 0%,#FFB1CE 45%,#FF9D3C 100%)"></div>
+          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#FF3D77 0%,#FFB1CE 45%,#FF9D3C 100%) border-box">
+            <div class="ms-fc-inner">
+              <div class="ms-fc-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </div>
+              <div class="ms-fc-bottom">
+                <div class="ms-fc-title">Sistem Poin</div>
+                <div class="ms-fc-desc">Setiap Rp 10.000 transaksi = 1 poin. Poin bertambah otomatis setiap kunjungan, birthday bonus, dan referral teman.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Tier Level -->
+        <div class="ms-fc-wrap">
+          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%)"></div>
+          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%) border-box">
+            <div class="ms-fc-inner">
+              <div class="ms-fc-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="5"/><polyline points="20 12 20 22 4 22 4 12"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+              </div>
+              <div class="ms-fc-bottom">
+                <div class="ms-fc-title">Tier Eksklusif</div>
+                <div class="ms-fc-desc">Naik level dari Bronze ke Platinum secara otomatis. Setiap tier membuka privilege lebih besar — diskon, priority booking, hingga free service.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 3: Redeem Reward -->
+        <div class="ms-fc-wrap">
+          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#4361EE 0%,#E0AEFF 45%,#F72585 100%)"></div>
+          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#4361EE 0%,#E0AEFF 45%,#F72585 100%) border-box">
+            <div class="ms-fc-inner">
+              <div class="ms-fc-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              </div>
+              <div class="ms-fc-bottom">
+                <div class="ms-fc-title">Redeem Reward</div>
+                <div class="ms-fc-desc">Tukar poin untuk mug eksklusif, free haircut, grooming gratis, hingga cashback 50%. Reward nyata, bukan sekedar poin yang menumpuk.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
   <!-- ========== HOW IT WORKS ========== -->
-  <section class="ms-section">
+  <section class="ms-section ms-section-alt">
     <div class="container">
       <div class="ms-title">
         <span class="eyebrow">CARA KERJA</span>
         <h2>Sederhana & Menguntungkan</h2>
         <p>Tiga langkah mudah untuk memaksimalkan setiap kunjunganmu di Redbox</p>
       </div>
-      <div class="ms-steps">
-        <div class="ms-step">
-          <div class="ms-step-num">01</div>
-          <div class="ms-step-icon">
-            <svg width="26" height="26" fill="none" stroke="#C1121F" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <div class="ms-feature-grid">
+
+        <!-- Step 1 -->
+        <div class="ms-fc-wrap">
+          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%)"></div>
+          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%) border-box">
+            <div class="ms-fc-inner">
+              <div class="ms-fc-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <div class="ms-fc-bottom">
+                <div class="ms-fc-step-num">01</div>
+                <div class="ms-fc-title">Daftar Member Gratis</div>
+                <div class="ms-fc-desc">Buat booking pertamamu dan berikan nomor WhatsApp. Akun membership otomatis aktif tanpa biaya apapun.</div>
+              </div>
+            </div>
           </div>
-          <h3>Daftar Member Gratis</h3>
-          <p>Buat booking pertamamu dan berikan nomor WhatsApp. Akun membership otomatis aktif tanpa biaya apapun.</p>
         </div>
-        <div class="ms-step">
-          <div class="ms-step-num">02</div>
-          <div class="ms-step-icon">
-            <svg width="26" height="26" fill="none" stroke="#C1121F" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+
+        <!-- Step 2 -->
+        <div class="ms-fc-wrap">
+          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#064E3B 0%,#34D399 45%,#6EE7B7 100%)"></div>
+          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#064E3B 0%,#34D399 45%,#6EE7B7 100%) border-box">
+            <div class="ms-fc-inner">
+              <div class="ms-fc-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              </div>
+              <div class="ms-fc-bottom">
+                <div class="ms-fc-step-num">02</div>
+                <div class="ms-fc-title">Kumpulkan Poin</div>
+                <div class="ms-fc-desc">Setiap Rp 10.000 transaksi = 1 poin. Bonus poin untuk referral teman dan di bulan ulang tahunmu.</div>
+              </div>
+            </div>
           </div>
-          <h3>Kumpulkan Poin</h3>
-          <p>Setiap Rp 10.000 transaksi = 1 poin. Bonus poin untuk referral teman dan di bulan ulang tahunmu.</p>
         </div>
-        <div class="ms-step">
-          <div class="ms-step-num">03</div>
-          <div class="ms-step-icon">
-            <svg width="26" height="26" fill="none" stroke="#C1121F" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+
+        <!-- Step 3 -->
+        <div class="ms-fc-wrap">
+          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#4361EE 0%,#C4B5FD 45%,#F9A8D4 100%)"></div>
+          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#4361EE 0%,#C4B5FD 45%,#F9A8D4 100%) border-box">
+            <div class="ms-fc-inner">
+              <div class="ms-fc-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              </div>
+              <div class="ms-fc-bottom">
+                <div class="ms-fc-step-num">03</div>
+                <div class="ms-fc-title">Nikmati Keistimewaan</div>
+                <div class="ms-fc-desc">Tukarkan poin untuk diskon & layanan gratis. Tier naik otomatis seiring akumulasi poinmu.</div>
+              </div>
+            </div>
           </div>
-          <h3>Nikmati Keistimewaan</h3>
-          <p>Tukarkan poin untuk diskon & layanan gratis. Tier naik otomatis seiring akumulasi poinmu.</p>
         </div>
+
       </div>
     </div>
   </section>

@@ -106,26 +106,24 @@ class AIService {
     };
   }
 
-  // Use gpt-image-2 for generation (latest model)
+  // Use gpt-image-2-2026-04-21 via Images API
   async generatePreview(imageUrl, analysis, transformationType = 'modern_gentleman') {
     const startTime = Date.now();
     
     const prompt = PROMPTS.previewGeneration(analysis, transformationType);
     
-    const response = await openai.responses.create({
-      model: 'gpt-4.1-mini',
-      input: `Generate a photorealistic hairstyle makeover image. ${prompt}`,
-      tools: [{ type: 'image_generation' }]
+    const response = await openai.images.generate({
+      model: 'gpt-image-2-2026-04-21',
+      prompt: `Photorealistic hairstyle makeover image. ${prompt}`,
+      n: 1,
+      size: '1024x1024'
     });
     
-    // Extract generated image from response
-    const imageData = response.output
-      .filter(output => output.type === 'image_generation_call')
-      .map(output => output.result);
+    const generatedImageBase64 = response.data?.[0]?.b64_json || null;
     
     return {
-      generatedImageBase64: imageData[0] || null,
-      model: 'gpt-image-2',
+      generatedImageBase64,
+      model: 'gpt-image-2-2026-04-21',
       processingTime: Date.now() - startTime,
       cost: 0.08 // Fixed cost for image generation
     };
