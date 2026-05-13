@@ -14,6 +14,16 @@
       "includeFiles": "server/**"
     }
   },
+  "redirects": [
+    { "source": "/",               "destination": "/maintenance.html", "permanent": false },
+    { "source": "/index.html",     "destination": "/maintenance.html", "permanent": false },
+    { "source": "/booking.html",   "destination": "/maintenance.html", "permanent": false },
+    { "source": "/membership.html","destination": "/maintenance.html", "permanent": false },
+    { "source": "/products.html",  "destination": "/maintenance.html", "permanent": false },
+    { "source": "/packages.html",  "destination": "/maintenance.html", "permanent": false },
+    { "source": "/crm.html",       "destination": "/maintenance.html", "permanent": false },
+    { "source": "/sundaze.html",   "destination": "/maintenance.html", "permanent": false }
+  ],
   "rewrites": [
     { "source": "/api/ai/analyze", "destination": "/api/ai/analyze.js" },
     { "source": "/api/ai/upload",  "destination": "/api/ai/upload.js" },
