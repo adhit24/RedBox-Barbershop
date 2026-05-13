@@ -190,6 +190,25 @@
       h1 { font-size: clamp(2.8rem, 14vw, 4rem); }
       p.sub { font-size: .86rem; }
     }
+
+    /* Kinarya credit */
+    .kinarya-credit {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: 100%; margin-top: 10px; padding-top: 14px;
+      border-top: 1px solid rgba(255,255,255,.05);
+      font-size: .68rem; letter-spacing: .05em; color: rgba(255,255,255,.25);
+    }
+    .kinarya-credit a {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: rgba(255,255,255,.25); font-weight: 500;
+      text-decoration: none;
+      transition: color .25s;
+    }
+    .kinarya-credit a:hover { color: rgba(255,255,255,.6); }
+    .kinarya-credit img {
+      width: 16px; height: 16px; border-radius: 3px;
+      opacity: .4; display: inline-block; vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -233,7 +252,8 @@
       Booking via WhatsApp
     </a>
 
-    <p class="footer-note">© 2026 Redbox Barbershop · Cirebon &amp; Tegal &nbsp;·&nbsp; Powered by <a href="https://kinaryaloka.com" target="_blank" rel="noopener" style="color:rgba(255,255,255,.4);text-decoration:underline;text-underline-offset:3px;transition:color .2s" onmouseover="this.style.color='#C1121F'" onmouseout="this.style.color='rgba(255,255,255,.4)'">Kinaryaloka</a></p>
+    <p class="footer-note">© 2026 Redbox Barbershop · Cirebon &amp; Tegal</p>
+    <div class="kinarya-credit"><a href="https://kinaryaloka-digital.vercel.app/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
   </div>
 </body>
 </html>
