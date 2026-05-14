@@ -131,16 +131,24 @@ class MokaClient {
   }
 
   /**
-   * Discover the Moka business ID by calling profile / outlet endpoints.
+   * Discover the correct Moka business/outlet ID by probing multiple endpoints.
    * Returns raw responses from each probe so caller can extract the correct ID.
    */
   async discoverBusinessId() {
     const results = {};
+    const envOutletId = process.env.MOKA_OUTLET_ID || null;
     const probes = [
-      { key: 'profile',       path: '/v1/profile' },
-      { key: 'me',            path: '/v1/me' },
-      { key: 'outlet_detail', path: `/v1/outlets/${this._mokaOutletId}` },
+      { key: 'v1_profile',                path: '/v1/profile' },
+      { key: 'v2_profile',                path: '/v2/profile' },
+      { key: 'v1_outlet_db',              path: `/v1/outlets/${this._mokaOutletId}` },
+      { key: 'v1_outlet_customers_db',    path: `/v1/outlets/${this._mokaOutletId}/customers?page=1&per_page=5` },
+      { key: 'v2_outlet_customers_db',    path: `/v2/outlets/${this._mokaOutletId}/customers?page=1&per_page=5` },
     ];
+    if (envOutletId && envOutletId !== this._mokaOutletId) {
+      probes.push({ key: 'v1_outlet_env',           path: `/v1/outlets/${envOutletId}` });
+      probes.push({ key: 'v1_outlet_customers_env', path: `/v1/outlets/${envOutletId}/customers?page=1&per_page=5` });
+      probes.push({ key: 'v1_businesses_env',       path: `/v1/businesses/${envOutletId}/customers?page=1&per_page=5` });
+    }
     for (const { key, path } of probes) {
       try {
         results[key] = await this._req('GET', path);

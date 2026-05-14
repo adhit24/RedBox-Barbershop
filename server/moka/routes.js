@@ -805,6 +805,7 @@ function createMokaRouter(supabase) {
       res.json({
         outlet_slug: outlet.slug,
         moka_outlet_id_in_db: outlet.moka_outlet_id,
+        moka_outlet_id_env: process.env.MOKA_OUTLET_ID || null,
         moka_business_id_env: process.env.MOKA_BUSINESS_ID || null,
         token_info: tokenInfo,
         probe_results: probeResults,
