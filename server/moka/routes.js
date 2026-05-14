@@ -783,6 +783,37 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── GET /api/moka/discover-business-id ────────────────────
+  // Probe Moka API to find the correct business_id for customer sync.
+  router.get('/moka/discover-business-id', async (req, res) => {
+    try {
+      if (!isMokaOAuthConfigured())
+        return res.status(503).json({ error: 'Moka OAuth not configured' });
+
+      const { data: outlets } = await supabase
+        .from('outlets').select('id, slug, moka_outlet_id').eq('is_active', true).not('moka_outlet_id', 'is', null).limit(1);
+      const outlet = outlets?.[0];
+      if (!outlet) return res.status(404).json({ error: 'No outlet with moka_outlet_id found' });
+
+      const MokaClient = require('./client');
+      const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
+      const probeResults = await client.discoverBusinessId();
+
+      const { getTokenInfo: getTI } = require('./oauth');
+      const tokenInfo = await getTI(supabase, outlet.id).catch(e => ({ error: e.message }));
+
+      res.json({
+        outlet_slug: outlet.slug,
+        moka_outlet_id_in_db: outlet.moka_outlet_id,
+        moka_business_id_env: process.env.MOKA_BUSINESS_ID || null,
+        token_info: tokenInfo,
+        probe_results: probeResults,
+      });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   // ── POST /api/moka/test-customer ───────────────────────────
   // Test Moka customer creation
   router.post('/moka/test-customer', async (req, res) => {

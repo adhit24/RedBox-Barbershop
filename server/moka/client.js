@@ -131,6 +131,27 @@ class MokaClient {
   }
 
   /**
+   * Discover the Moka business ID by calling profile / outlet endpoints.
+   * Returns raw responses from each probe so caller can extract the correct ID.
+   */
+  async discoverBusinessId() {
+    const results = {};
+    const probes = [
+      { key: 'profile',       path: '/v1/profile' },
+      { key: 'me',            path: '/v1/me' },
+      { key: 'outlet_detail', path: `/v1/outlets/${this._mokaOutletId}` },
+    ];
+    for (const { key, path } of probes) {
+      try {
+        results[key] = await this._req('GET', path);
+      } catch (err) {
+        results[key] = { error: err.message, status: err.status };
+      }
+    }
+    return results;
+  }
+
+  /**
    * BUG FIX: POST /v2/outlets/{id}/customers does NOT exist in Moka API spec.
    * Customer identity is conveyed via customer_name + customer_phone_number in
    * the order payload — no separate customer creation step needed.
