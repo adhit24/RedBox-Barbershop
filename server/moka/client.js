@@ -119,8 +119,19 @@ class MokaClient {
   // ── CUSTOMERS ─────────────────────────────────────────────
 
   /**
+   * Fetch one page of customers from Moka business API.
+   * Endpoint: GET /v1/businesses/{business_id}/customers
+   * business_id = MOKA_BUSINESS_ID env var, falls back to moka_outlet_id.
+   * @param {{ page?: number, perPage?: number }} opts
+   */
+  async getCustomers({ page = 1, perPage = 100 } = {}) {
+    const businessId = process.env.MOKA_BUSINESS_ID || this._mokaOutletId;
+    const qs = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+    return this._req('GET', `/v1/businesses/${businessId}/customers?${qs}`);
+  }
+
+  /**
    * BUG FIX: POST /v2/outlets/{id}/customers does NOT exist in Moka API spec.
-   * The only customer endpoint is GET /v1/businesses/{business_id}/customers.
    * Customer identity is conveyed via customer_name + customer_phone_number in
    * the order payload — no separate customer creation step needed.
    */
@@ -130,7 +141,7 @@ class MokaClient {
 
   /**
    * BUG FIX: GET /v2/outlets/{id}/customers does NOT exist in Moka API spec.
-   * @deprecated — no outlet-level customer search endpoint available
+   * @deprecated — use getCustomers() for business-level customer list
    */
   async findCustomerByPhone(_phoneE164) {
     return null;
