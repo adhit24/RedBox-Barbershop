@@ -24,9 +24,10 @@ module.exports = async function handler(req, res) {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    // Enforce per-member quota: max 2 analyses
+    // Enforce per-member quota: max 2 analyses (whitelisted accounts are unlimited)
+    const UNLIMITED_EMAILS = ['adhit24@gmail.com'];
     const MAX_USES = 2;
-    if (userEmail) {
+    if (userEmail && !UNLIMITED_EMAILS.includes(userEmail)) {
       const { count, error: countError } = await supabase
         .from('ai_uploads')
         .select('id', { count: 'exact', head: true })
