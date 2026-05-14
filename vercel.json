@@ -24,14 +24,28 @@
     "api/wa/webhook.js": {
       "maxDuration": 30,
       "includeFiles": "server/**"
+    },
+    "api/cron/reminders.js": {
+      "maxDuration": 60,
+      "includeFiles": "server/**"
+    },
+    "api/cron/birthday.js": {
+      "maxDuration": 60,
+      "includeFiles": "server/**"
     }
   },
+  "crons": [
+    { "path": "/api/cron/reminders", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/birthday",  "schedule": "0 1 * * *" }
+  ],
   "rewrites": [
     { "source": "/api/ai/analyze",        "destination": "/api/ai/analyze.js" },
     { "source": "/api/ai/upload",         "destination": "/api/ai/upload.js" },
     { "source": "/api/ai/hairstyle",      "destination": "/api/ai/hairstyle.js" },
     { "source": "/api/ai/generate-image", "destination": "/api/ai/generate-image.js" },
     { "source": "/api/wa/webhook",        "destination": "/api/wa/webhook.js" },
+    { "source": "/api/cron/reminders",   "destination": "/api/cron/reminders.js" },
+    { "source": "/api/cron/birthday",    "destination": "/api/cron/birthday.js" },
     { "source": "/api/(.*)",              "destination": "/api/[...path].js" }
   ],
   "headers": [
