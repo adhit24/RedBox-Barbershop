@@ -75,17 +75,13 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end();
 
   const secret      = process.env.CRON_SECRET;
-  const adminToken  = process.env.ADMIN_TOKEN;
   const authHeader  = req.headers['authorization'];
   const xAdminToken = req.headers['x-admin-token'];
 
-  const validCron  = secret     && authHeader  === `Bearer ${secret}`;
-  const validAdmin = adminToken && xAdminToken === adminToken;
-
-  if (secret || adminToken) {
-    if (!validCron && !validAdmin) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+  // Accept: Authorization: Bearer <CRON_SECRET>  OR  x-admin-token: <CRON_SECRET>
+  if (secret) {
+    const ok = authHeader === `Bearer ${secret}` || xAdminToken === secret;
+    if (!ok) return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const dryRun  = req.query.dry_run === '1' || req.body?.dry_run === true;
