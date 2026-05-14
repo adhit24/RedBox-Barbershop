@@ -699,8 +699,9 @@ function createMokaRouter(supabase) {
     const cronSecret = process.env.CRON_SECRET;
     if (cronSecret) {
       const auth = req.headers['authorization'] || '';
-      const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-      if (token !== cronSecret) {
+      const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+      const xToken = req.headers['x-admin-token'] || '';
+      if (bearer !== cronSecret && xToken !== cronSecret) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
     }

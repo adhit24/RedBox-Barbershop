@@ -779,8 +779,9 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, '..')));
 
 function adminAuth(req, res, next) {
-  const token = req.headers['x-admin-token'];
-  if (!token || token !== process.env.ADMIN_PASSWORD) return res.status(401).json({ error: 'Unauthorized' });
+  const token = req.headers['x-admin-token'] || '';
+  const validTokens = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
+  if (!token || !validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 
