@@ -6,17 +6,22 @@
       "includeFiles": "server/**"
     },
     "api/ai/analyze.js": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "includeFiles": "server/**"
     },
     "api/ai/upload.js": {
       "maxDuration": 30,
       "includeFiles": "server/**"
+    },
+    "api/ai/hairstyle.js": {
+      "maxDuration": 60,
+      "includeFiles": "server/**"
     }
   },
   "rewrites": [
-    { "source": "/api/ai/analyze", "destination": "/api/ai/analyze.js" },
-    { "source": "/api/ai/upload",  "destination": "/api/ai/upload.js" },
+    { "source": "/api/ai/analyze",   "destination": "/api/ai/analyze.js" },
+    { "source": "/api/ai/upload",    "destination": "/api/ai/upload.js" },
+    { "source": "/api/ai/hairstyle", "destination": "/api/ai/hairstyle.js" },
     { "source": "/api/(.*)",       "destination": "/api/[...path].js" }
   ],
   "headers": [

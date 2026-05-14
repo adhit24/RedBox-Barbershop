@@ -509,9 +509,8 @@ class AIGroomingUI {
     // Store results in sessionStorage then redirect to results page
     try {
       sessionStorage.setItem('ai_results', JSON.stringify(results));
-      if (this.userPhotoUrl) {
-        sessionStorage.setItem('ai_user_photo', this.userPhotoUrl);
-      }
+      if (results.uploadId) sessionStorage.setItem('ai_upload_id', results.uploadId);
+      if (this.userPhotoUrl) sessionStorage.setItem('ai_user_photo', this.userPhotoUrl);
     } catch (e) {
       console.error('sessionStorage error:', e);
     }
