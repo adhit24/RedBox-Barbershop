@@ -1,314 +1,220 @@
-// Vercel Serverless Function for AI Analysis - Simple version
+/**
+ * Vercel Serverless — POST /api/ai/analyze
+ * Fetches image from ai_uploads, calls OpenAI vision, saves & returns results
+ */
+
+const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
+
+const COMBINED_PROMPT = `You are a professional men's grooming consultant for RedBox Barbershop Indonesia.
+Analyze this photo carefully and return ONLY a valid JSON object — no markdown, no explanation, no code block.
+Replace ALL example values with real analysis of THIS specific person's face, skin, and hair.
+
+Required JSON structure:
+{
+  "subject": {
+    "gender": "male",
+    "age_range": "17-22",
+    "ethnicity_visual": "asian|caucasian|african|latin|middle_eastern",
+    "face_shape": {
+      "type": "oval|round|square|heart|diamond|oblong",
+      "confidence": 0.90
+    },
+    "skin": {
+      "type": "combination|oily|dry|normal",
+      "tone": "warm_neutral|cool|warm|neutral",
+      "undertone": "warm|cool|neutral",
+      "concerns": ["slightly_dull", "minor_acne_marks", "mild_dehydration"]
+    },
+    "hair": {
+      "type": "straight|wavy|curly|coily",
+      "density": "thin|medium|medium_thick|thick",
+      "volume": "low|medium|high",
+      "current_length": "short|medium|long",
+      "natural_texture": "smooth|soft_wave|coarse"
+    }
+  },
+  "personal_color_analysis": {
+    "season": "deep_autumn|bright_spring|cool_summer|deep_winter|warm_autumn|soft_summer",
+    "summary_tags": ["warm", "deep", "muted"],
+    "best_colors": [
+      {"name": "Forest Green", "hex": "#2E4A32", "score": 96},
+      {"name": "Navy", "hex": "#1F2A44", "score": 94},
+      {"name": "Burgundy", "hex": "#5B1F2A", "score": 91},
+      {"name": "Teal", "hex": "#0F4C5C", "score": 90}
+    ],
+    "okay_colors": [
+      {"name": "Olive", "hex": "#6B6F3B"},
+      {"name": "Taupe", "hex": "#8A7B70"},
+      {"name": "Muted Sage", "hex": "#88907D"}
+    ],
+    "avoid_colors": [
+      {"name": "Pastel Pink", "hex": "#F4C7D9"},
+      {"name": "Lavender", "hex": "#D8C7F7"},
+      {"name": "Cool Gray", "hex": "#BFC3C8"}
+    ]
+  },
+  "outfit_recommendation": {
+    "recommended_styles": [
+      {
+        "title": "Smart Casual",
+        "score": 95,
+        "top": "Olive Shirt",
+        "bottom": "Cream Trousers",
+        "shoes": "Brown Loafers",
+        "fit": "Tailored"
+      },
+      {
+        "title": "Korean Casual",
+        "score": 93,
+        "top": "Teal Overshirt",
+        "bottom": "Black Straight Pants",
+        "shoes": "White Sneakers",
+        "fit": "Relaxed Clean"
+      },
+      {
+        "title": "Semi Formal",
+        "score": 90,
+        "top": "Navy Blazer",
+        "bottom": "Dark Slacks",
+        "shoes": "Derby Black",
+        "fit": "Structured"
+      }
+    ],
+    "avoid_styles": ["Oversized Neon", "Chaotic Patterns", "Extreme Baggy Fit", "High Contrast Pastel"]
+  },
+  "eyewear_analysis": {
+    "recommended": [
+      {"model": "Wayfarer", "score": 94, "material": "Acetate", "frame_color": "Black"},
+      {"model": "Korean Metal Frame", "score": 91, "material": "Metal", "frame_color": "Silver"},
+      {"model": "Rectangle Frame", "score": 89, "material": "Mixed", "frame_color": "Gunmetal"}
+    ],
+    "avoid": [
+      {"model": "Oversized Square", "reason": "Overwhelms face proportion"},
+      {"model": "Tiny Round", "reason": "Imbalanced with face width"}
+    ]
+  },
+  "skin_analysis": {
+    "overall_score": 78,
+    "concerns": [
+      {"type": "Dehydration", "severity": "mild"},
+      {"type": "Uneven Tone", "severity": "mild"},
+      {"type": "Minor Acne Marks", "severity": "low"}
+    ],
+    "goals": ["Brighter Skin", "Healthy Glow", "Hydration", "Oil Balance"],
+    "routine": {
+      "morning": ["Gentle Cleanser", "Hydrating Toner", "Vitamin C Serum", "Moisturizer", "SPF 50"],
+      "night": ["Cleanser", "Niacinamide Serum", "Moisturizer", "Spot Treatment"]
+    },
+    "ingredients": ["Niacinamide", "Hyaluronic Acid", "Vitamin C", "Zinc PCA"]
+  },
+  "hairstyle_analysis": {
+    "recommended_styles": [
+      {"name": "Textured Side Part", "score": 96, "maintenance": "medium", "match_reason": "Adds structure to face"},
+      {"name": "Korean Comma Hair", "score": 94, "maintenance": "medium", "match_reason": "Balances face shape"},
+      {"name": "Two Block", "score": 91, "maintenance": "easy", "match_reason": "Enhances natural texture"},
+      {"name": "Classic Taper", "score": 89, "maintenance": "easy", "match_reason": "Clean and professional"}
+    ],
+    "avoid_styles": [
+      {"name": "Bowl Cut", "reason": "Flattens face vertically"},
+      {"name": "Extreme Skin Fade", "reason": "Too aggressive for face shape"}
+    ],
+    "styling_products": ["Matte Clay", "Sea Salt Spray", "Texture Powder"]
+  }
+}`;
+
 module.exports = async function handler(req, res) {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
-  // Health check endpoint
-  if (req.method === 'GET') {
-    return res.status(200).json({ status: 'ok', service: 'AI Analysis', method: req.method });
-  }
-  
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed', method: req.method });
-  }
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method === 'GET') return res.status(200).json({ status: 'ok', service: 'AI Analyze' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const startTime = Date.now();
 
   try {
-    const { uploadId, serviceType } = req.body || {};
-    
-    if (!uploadId) {
-      return res.status(400).json({ error: 'No uploadId provided' });
+    const { uploadId, serviceType = 'full_analysis' } = req.body || {};
+    if (!uploadId) return res.status(400).json({ error: 'uploadId required' });
+
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_KEY
+    );
+
+    // Get image URL from ai_uploads
+    const { data: upload, error: fetchError } = await supabase
+      .from('ai_uploads')
+      .select('id, original_image_url, service_type, status')
+      .eq('id', uploadId)
+      .single();
+
+    if (fetchError || !upload) {
+      return res.status(404).json({ error: 'Upload not found' });
     }
 
-    const resolvedServiceType = serviceType || 'full_analysis';
+    // Mark as processing
+    await supabase
+      .from('ai_uploads')
+      .update({ status: 'processing' })
+      .eq('id', uploadId);
 
-    let mockResult;
-    if (resolvedServiceType === 'full_analysis') {
-      mockResult = {
-        personalColor: {
-          skinAnalysis: { tone: 'medium', undertone: 'warm', type: 'combination', texture: 'normal', notes: 'Healthy complexion with warm golden undertones.' },
-          colorSeason: 'Autumn',
-          colorSeasonDescription: 'Warm, earthy tones complement your golden-warm complexion best.',
-          bestColors: [
-            { name: 'Navy Blue', hex: '#1B3A6B', label: 'Power & Trust' },
-            { name: 'Warm White', hex: '#FAF0E6', label: 'Fresh & Clean' },
-            { name: 'Olive Green', hex: '#6B7B3A', label: 'Natural Harmony' },
-            { name: 'Terracotta', hex: '#C17D5A', label: 'Warmth & Depth' },
-            { name: 'Camel', hex: '#C19A6B', label: 'Sophisticated' },
-            { name: 'Burgundy', hex: '#800020', label: 'Bold Statement' }
-          ],
-          avoidColors: [
-            { name: 'Neon Yellow', hex: '#FFFF00', label: 'Washes Out' },
-            { name: 'Icy Pink', hex: '#FFB6C1', label: 'Clashes Undertone' },
-            { name: 'Bright Orange', hex: '#FF6600', label: 'Overpowers' },
-            { name: 'Cool Grey', hex: '#A9A9A9', label: 'Dulls Complexion' }
-          ],
-          outfitFormula: 'Navy top + Khaki chinos + White leather sneakers'
-        },
-        outfit: {
-          faceShape: 'Oval',
-          faceShapeDescription: 'Balanced proportions — most styles work well.',
-          recommendedOutfits: [
-            {
-              rank: 1, name: 'Smart Casual', occasion: 'Daily',
-              imageUrl: 'https://images.unsplash.com/photo-1617137968427-85924c800a22?w=300&h=400&fit=crop&auto=format',
-              items: [
-                { piece: 'Top', description: 'White linen button-up, slim fit', color: '#FFFFFF', colorName: 'White' },
-                { piece: 'Bottom', description: 'Dark navy chinos, tapered', color: '#1B3A6B', colorName: 'Navy' },
-                { piece: 'Shoes', description: 'White leather sneakers', color: '#F5F5F5', colorName: 'Off-White' },
-                { piece: 'Accessory', description: 'Minimalist silver watch', color: '#C0C0C0', colorName: 'Silver' }
-              ],
-              whyItWorks: 'Clean contrast flatters warm skin and oval face.',
-              styleKeyword: 'Clean'
-            },
-            {
-              rank: 2, name: 'Urban Street', occasion: 'Social',
-              imageUrl: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=300&h=400&fit=crop&auto=format',
-              items: [
-                { piece: 'Top', description: 'Olive oversized graphic tee', color: '#6B7B3A', colorName: 'Olive' },
-                { piece: 'Bottom', description: 'Beige cargo pants, relaxed', color: '#C9B99A', colorName: 'Beige' },
-                { piece: 'Shoes', description: 'Black chunky sneakers', color: '#1A1A1A', colorName: 'Black' },
-                { piece: 'Accessory', description: 'Bucket hat, neutral tone', color: '#A8915A', colorName: 'Tan' }
-              ],
-              whyItWorks: 'Earthy tones echo warm undertones, relaxed silhouette works well.',
-              styleKeyword: 'Relaxed'
-            },
-            {
-              rank: 3, name: 'Semi Formal', occasion: 'Office / Event',
-              imageUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=400&fit=crop&auto=format',
-              items: [
-                { piece: 'Top', description: 'Camel fitted turtleneck', color: '#C19A6B', colorName: 'Camel' },
-                { piece: 'Bottom', description: 'Charcoal slim trousers', color: '#3C3C3C', colorName: 'Charcoal' },
-                { piece: 'Shoes', description: 'Oxford leather shoes, cognac', color: '#8B4513', colorName: 'Cognac' },
-                { piece: 'Accessory', description: 'Leather belt, matching shoes', color: '#8B4513', colorName: 'Cognac' }
-              ],
-              whyItWorks: 'Warm camel echoes skin undertone, elevated and polished look.',
-              styleKeyword: 'Elevated'
-            }
-          ],
-          avoidOutfits: [
-            { style: 'Oversized All-Black', reason: 'Too heavy, erases facial warmth and definition' },
-            { style: 'Neon Colorblocking', reason: 'Clashes with warm undertone, overwhelms features' }
-          ],
-          stylePersonality: 'The Modern Gentleman'
-        },
-        eyewear: {
-          faceShape: 'Oval',
-          faceMeasurements: { foreheadWidth: 'medium', cheekboneWidth: 'average', jawlineShape: 'soft' },
-          recommendations: [
-            {
-              rank: 1, category: 'Style', name: 'Aviator',
-              frameShape: 'Teardrop', material: 'Metal',
-              recommendedColors: ['Gold', 'Gunmetal'],
-              whyItSuits: 'Teardrop shape adds definition without competing with oval face.',
-              bestFor: 'Casual outings, traveling, social events',
-              suitabilityScore: 92,
-              imageUrl: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=280&h=200&fit=crop&auto=format'
-            },
-            {
-              rank: 2, category: 'Sport', name: 'Wrap-Around Sport',
-              frameShape: 'Wrap', material: 'TR90',
-              recommendedColors: ['Matte Black', 'Dark Navy'],
-              whyItSuits: 'Secure fit, bold frame contrasts balanced proportions cleanly.',
-              bestFor: 'Sports, outdoor activities, gym',
-              suitabilityScore: 87,
-              imageUrl: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=280&h=200&fit=crop&auto=format'
-            },
-            {
-              rank: 3, category: 'Classic', name: 'Rectangle Frame',
-              frameShape: 'Rectangle', material: 'Acetate',
-              recommendedColors: ['Tortoise', 'Black'],
-              whyItSuits: 'Structured angles complement soft oval contours perfectly.',
-              bestFor: 'Office, formal occasions, everyday wear',
-              suitabilityScore: 90,
-              imageUrl: 'https://images.unsplash.com/photo-1574258495973-f010dfbb5371?w=280&h=200&fit=crop&auto=format'
-            }
-          ],
-          avoidFrames: [
-            { style: 'Round Wire Frame', reason: 'Amplifies softness, removes facial structure',
-              imageUrl: 'https://images.unsplash.com/photo-1508296695146-257a814070b4?w=200&h=140&fit=crop&auto=format' },
-            { style: 'Oversized Cat-Eye', reason: 'Overwhelms balanced proportions',
-              imageUrl: 'https://images.unsplash.com/photo-1553735945-be0f07455df6?w=200&h=140&fit=crop&auto=format' }
-          ],
-          proTip: 'For oval faces, choose frames as wide as or slightly wider than your cheekbones.'
-        },
-        skincare: {
-          skinProfile: { type: 'combination', tone: 'medium', undertone: 'warm', texture: 'normal', hydrationLevel: 'well-hydrated' },
-          concerns: [
-            { issue: 'Uneven Skin Tone', severity: 'mild', tip: 'Vitamin C serum daily in the morning' },
-            { issue: 'Enlarged Pores', severity: 'mild', tip: 'Niacinamide serum + gentle exfoliation 2x/week' },
-            { issue: 'Dullness', severity: 'moderate', tip: 'AHA toner twice a week for cell turnover' }
-          ],
-          morningRoutine: [
-            { step: 1, product: 'Gentle Foam Cleanser', purpose: 'Remove overnight sebum', duration: '60 sec' },
-            { step: 2, product: 'Vitamin C Serum', purpose: 'Brighten and antioxidant protection', duration: '30 sec' },
-            { step: 3, product: 'Lightweight Moisturizer', purpose: 'Hydrate and seal', duration: '30 sec' },
-            { step: 4, product: 'SPF 30+ Sunscreen', purpose: 'UV protection', duration: '30 sec' }
-          ],
-          eveningRoutine: [
-            { step: 1, product: 'Oil-Based Cleanser', purpose: 'Remove sunscreen & pollutants', duration: '60 sec' },
-            { step: 2, product: 'Foam Cleanser', purpose: 'Deep clean', duration: '60 sec' },
-            { step: 3, product: 'Niacinamide Serum', purpose: 'Pore refinement and brightness', duration: '30 sec' },
-            { step: 4, product: 'Retinol Cream (2-3x/week)', purpose: 'Cell renewal', duration: '30 sec' },
-            { step: 5, product: 'Rich Night Moisturizer', purpose: 'Overnight repair', duration: '30 sec' }
-          ],
-          lifestyleTips: [
-            'Drink 2L water daily for cellular hydration',
-            'Sleep 7-8 hours to reduce cortisol and skin inflammation',
-            'Avoid sugar-heavy diets to prevent glycation and dullness',
-            'Wash pillowcase twice a week to prevent bacteria transfer'
-          ],
-          weeklyTreatment: 'Exfoliating mask 1-2x/week for cell turnover',
-          expectedResults: 'Visible improvement in brightness and texture within 4-6 weeks'
-        },
-        hairstyle: {
-          currentHair: { texture: 'straight', density: 'medium', length: 'short', currentStyle: 'Clean short cut with natural parting' },
-          faceShape: 'Oval',
-          recommendations: [
-            {
-              rank: 1, category: 'Korean', name: 'Two-Block Cut',
-              description: 'Short sides with textured volume on top, signature K-style look.',
-              whyItSuits: 'Adds height and softens the oval face naturally.',
-              stylingProducts: ['Matte Clay', 'Sea Salt Spray'],
-              maintenanceLevel: 'medium', maintenanceFrequency: 'Every 3-4 weeks',
-              stylingTime: '5 minutes daily', suitabilityScore: 94,
-              imageUrl: 'https://images.unsplash.com/photo-1621605815971-fbc98d665033?w=300&h=300&fit=crop&auto=format'
-            },
-            {
-              rank: 2, category: 'Classic', name: 'Classic Pompadour',
-              description: 'Volume swept back and up from the forehead, clean fade sides.',
-              whyItSuits: 'Elongates proportions and highlights facial structure.',
-              stylingProducts: ['Strong Hold Pomade', 'Hair Dryer'],
-              maintenanceLevel: 'high', maintenanceFrequency: 'Every 2-3 weeks',
-              stylingTime: '10 minutes daily', suitabilityScore: 88,
-              imageUrl: 'https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=300&h=300&fit=crop&auto=format'
-            },
-            {
-              rank: 3, category: 'Modern Fade', name: 'Textured Crop Fade',
-              description: 'Short textured top with skin or low fade on the sides.',
-              whyItSuits: 'Clean, modern, low-effort look that frames the face well.',
-              stylingProducts: ['Matte Wax', 'Light Hold Spray'],
-              maintenanceLevel: 'low', maintenanceFrequency: 'Every 3-4 weeks',
-              stylingTime: '3 minutes daily', suitabilityScore: 91,
-              imageUrl: 'https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=300&h=300&fit=crop&auto=format'
-            },
-            {
-              rank: 4, category: 'Versatile', name: 'Side Part',
-              description: 'Defined side part with tapered sides, works formal or casual.',
-              whyItSuits: 'Universally flattering, balanced and professional.',
-              stylingProducts: ['Medium Hold Pomade'],
-              maintenanceLevel: 'low', maintenanceFrequency: 'Every 4 weeks',
-              stylingTime: '5 minutes daily', suitabilityScore: 86,
-              imageUrl: 'https://images.unsplash.com/photo-1580618672591-eb180b1a973f?w=300&h=300&fit=crop&auto=format'
-            }
-          ],
-          avoidHairstyles: [
-            { style: 'Bowl Cut', reason: 'Widens face horizontally, loses definition', category: 'Shape Issue',
-              imageUrl: 'https://images.unsplash.com/photo-1634712282287-14ed57b9cc89?w=200&h=200&fit=crop&auto=format' },
-            { style: 'Very Long Undercut', reason: 'Top-heavy, unbalances facial proportions', category: 'Proportion Issue',
-              imageUrl: 'https://images.unsplash.com/photo-1622253694242-abeb37a33e97?w=200&h=200&fit=crop&auto=format' },
-            { style: 'Slick Back Flat', reason: 'Exposes full forehead without volume balance', category: 'Feature Issue',
-              imageUrl: 'https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=200&h=200&fit=crop&auto=format' }
-          ],
-          barberTip: 'Ask for a medium fade with texture on top — scissor cut over comb for a natural finish.',
-          groomingEssentials: ['Matte Clay', 'Fine-tooth Comb', 'Hair Dryer']
+    // Call OpenAI with vision
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 4000,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: COMBINED_PROMPT },
+            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'high' } }
+          ]
         }
-      };
-    } else if (resolvedServiceType === 'hairstyle') {
-      mockResult = {
-        recommendations: [
-          {
-            name: 'Textured Crop',
-            description: 'Modern, clean, and easy to maintain.',
-            category: 'modern',
-            confidence: 90,
-            maintenance: { level: 'low' }
-          },
-          {
-            name: 'Classic Side Part',
-            description: 'Timeless style for a sharp, professional look.',
-            category: 'classic',
-            confidence: 86,
-            maintenance: { level: 'medium' }
-          },
-          {
-            name: 'Short Quiff',
-            description: 'Adds height and structure without being too bold.',
-            category: 'modern',
-            confidence: 82,
-            maintenance: { level: 'medium' }
-          }
-        ],
-        generalAdvice: 'Pilih style yang sesuai jenis rambut, lalu minta barber rapihkan garis rambut dan fade sesuai preferensi.'
-      };
-    } else if (resolvedServiceType === 'outfit') {
-      mockResult = {
-        colorAnalysis: {
-          skinTone: 'Medium',
-          bestColors: ['Navy', 'White', 'Olive'],
-          recommendedColors: [
-            { name: 'Navy', hex: '#0B1F3B' },
-            { name: 'Olive', hex: '#556B2F' },
-            { name: 'Off White', hex: '#F3F2ED' }
-          ]
-        },
-        outfitRecommendations: [
-          {
-            occasion: 'Smart Casual',
-            description: 'Clean & versatile for hangouts or date night.',
-            items: ['Oxford shirt', 'Chinos', 'Leather sneakers']
-          },
-          {
-            occasion: 'Work',
-            description: 'Sharp but not too formal.',
-            items: ['Polo', 'Slim trousers', 'Loafers']
-          }
-        ],
-        groomingTips: ['Pakai parfum fresh/clean', 'Rapihkan alis & beard line', 'Gunakan matte product untuk rambut']
-      };
-    } else if (resolvedServiceType === 'preview') {
-      mockResult = {
-        originalImageUrl: '',
-        generatedImageBase64: null
-      };
-    } else {
-      mockResult = {
-        faceShape: 'Oval',
-        faceShapeDescription: 'Your face has a balanced oval shape, which is versatile for many hairstyles.',
-        skinTone: 'Medium',
-        skinUndertone: 'Warm',
-        skinRecommendations: ['Use sunscreen daily', 'Stay hydrated'],
-        recommendations: {
-          haircuts: [
-            { name: 'Classic Pompadour', description: 'Timeless shape with volume', confidence: 90 },
-            { name: 'Textured Crop', description: 'Modern and low-maintenance', confidence: 88 },
-            { name: 'Side Part', description: 'Clean, professional', confidence: 85 }
-          ],
-          beardStyles: [
-            { name: 'Short Boxed Beard', description: 'Defines jawline cleanly', confidence: 86 },
-            { name: 'Stubble', description: 'Low effort, sharp look', confidence: 80 }
-          ]
-        },
-        processingTime: 2.5,
-        model: 'mock'
-      };
-    }
-
-    return res.status(200).json({
-      uploadId: uploadId,
-      status: 'completed',
-      results: mockResult,
-      serviceType: resolvedServiceType,
-      message: 'AI analysis completed (mock data for testing)'
+      ]
     });
 
-  } catch (error) {
-    console.error('Analysis error:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    const rawText = completion.choices[0]?.message?.content || '';
+    const tokens = completion.usage?.total_tokens || 0;
+
+    // Parse JSON from response
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      await supabase.from('ai_uploads').update({ status: 'failed', error_message: 'No JSON in response' }).eq('id', uploadId);
+      return res.status(500).json({ error: 'AI returned invalid response' });
+    }
+
+    const analysisResult = JSON.parse(jsonMatch[0]);
+    const processingTime = Date.now() - startTime;
+
+    // Save results
+    await supabase.from('ai_results').insert({
+      upload_id: uploadId,
+      analysis_result: analysisResult,
+      model_used: 'gpt-4o-mini',
+      tokens_used: tokens,
+      processing_time_ms: processingTime
+    });
+
+    // Mark upload as completed
+    await supabase
+      .from('ai_uploads')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', uploadId);
+
+    return res.status(200).json({
+      uploadId,
+      status: 'completed',
+      serviceType,
+      results: analysisResult,
+      meta: { model: 'gpt-4o-mini', tokens, processingTime }
+    });
+
+  } catch (err) {
+    console.error('[AI Analyze] Error:', err.message);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
   }
-}
+};
