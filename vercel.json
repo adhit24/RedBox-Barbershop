@@ -20,6 +20,10 @@
     "api/ai/generate-image.js": {
       "maxDuration": 120,
       "includeFiles": "server/**"
+    },
+    "api/wa/webhook.js": {
+      "maxDuration": 30,
+      "includeFiles": "server/**"
     }
   },
   "rewrites": [
@@ -27,6 +31,7 @@
     { "source": "/api/ai/upload",         "destination": "/api/ai/upload.js" },
     { "source": "/api/ai/hairstyle",      "destination": "/api/ai/hairstyle.js" },
     { "source": "/api/ai/generate-image", "destination": "/api/ai/generate-image.js" },
+    { "source": "/api/wa/webhook",        "destination": "/api/wa/webhook.js" },
     { "source": "/api/(.*)",              "destination": "/api/[...path].js" }
   ],
   "headers": [
