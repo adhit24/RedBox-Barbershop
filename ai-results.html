@@ -274,6 +274,14 @@
     .skin-score-label { font-size: .75rem; color: var(--text-dim); }
     .skin-goals { display: flex; flex-wrap: wrap; gap: 6px; }
     .ai-outfit-piece { display: inline-flex; align-items: center; gap: 4px; font-size: .72rem; color: var(--text-sec); margin-right: 4px; }
+    .gen-img-slot { width: 100%; height: 100%; position: relative; background: #1c1c1c; overflow: hidden; min-height: 80px; }
+    .gen-img-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .gen-img-error { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 2rem; color: rgba(255,255,255,.1); }
+    .hair-length-img-slot { width: 100%; aspect-ratio: 3/4; overflow: hidden; position: relative; background: #1c1c1c; border-radius: 8px 8px 0 0; }
+    .hair-length-img-slot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hair-length-card { background: #1a1a1a; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 0; }
+    .hair-length-card.active { border-color: rgba(255,255,255,.3); background: #222; }
+    .hair-length-card-info { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 16px; }
 
     /* RESPONSIVE */
     @media (max-width: 640px) {
@@ -446,8 +454,8 @@
             return `
             <div class="ai-photo-card">
               <div class="ai-photo-card-img-wrap">
-                <div class="ai-photo-card-placeholder">👔</div>
-                <span class="ai-photo-card-score">${o.score || o.rank ? (o.score || '') + '%' : ''}</span>
+                <div class="gen-img-slot" id="outfit-img-${i}"><div class="hair-img-shimmer"></div></div>
+                <span class="ai-photo-card-score">${o.score ? o.score + '%' : ''}</span>
               </div>
               <div class="ai-photo-card-body">
                 <div class="ai-photo-card-name">${o.title || o.name}</div>
@@ -483,7 +491,7 @@
             return `
             <div class="ai-photo-card">
               <div class="ai-photo-card-img-wrap ai-photo-card-img-wide">
-                <div class="ai-photo-card-placeholder">🕶️</div>
+                <div class="gen-img-slot" id="eyewear-img-${i}"><div class="hair-img-shimmer"></div></div>
                 <span class="ai-photo-card-score">${e.score || e.suitabilityScore || 80}%</span>
               </div>
               <div class="ai-photo-card-body">
@@ -658,16 +666,15 @@
           <div class="hair-length-section">
             <div class="hair-section-title">Hair Length Guide</div>
             <div class="hair-length-cards">
-              ${lengthOptions.map(l=>`
+              ${lengthOptions.map((l,i)=>`
                 <div class="hair-length-card${l.active?' active':''}">
-                  <div class="hair-length-silhouette">
-                    <svg width="40" height="56" viewBox="0 0 40 56" fill="none">
-                      <ellipse cx="20" cy="18" rx="12" ry="14" stroke="rgba(255,255,255,.4)" stroke-width="1.5"/>
-                      <path d="${l.name==='SHORT'?'M10 30 Q20 38 30 30':l.name==='MEDIUM'?'M8 30 Q20 46 32 30':'M6 30 Q20 54 34 30'}" stroke="rgba(255,255,255,.4)" stroke-width="1.5" fill="none"/>
-                    </svg>
+                  <div class="hair-length-img-slot" id="hairlen-img-${i}">
+                    <div class="hair-img-shimmer"></div>
                   </div>
-                  <div class="hair-length-name">${l.name}</div>
-                  <div class="hair-length-range">${l.range}</div>
+                  <div class="hair-length-card-info">
+                    <div class="hair-length-name">${l.name}</div>
+                    <div class="hair-length-range">${l.range}</div>
+                  </div>
                 </div>`).join('')}
             </div>
           </div>
@@ -723,7 +730,10 @@
         </div>`;
 
       const uploadId = (() => { try { return sessionStorage.getItem('ai_upload_id'); } catch(e) { return null; } })();
-      if (uploadId) loadHairstyleImages(uploadId, hair);
+      if (uploadId) {
+        loadHairstyleImages(uploadId, hair);
+        loadGeneratedImages(uploadId, outfit, eyewear, lengthOptions);
+      }
     });
 
     async function loadHairstyleImages(uploadId, hair) {
@@ -768,6 +778,62 @@
       const CONCURRENCY = 3;
       for (let i = 0; i < slots.length; i += CONCURRENCY) {
         await Promise.allSettled(slots.slice(i, i + CONCURRENCY).map(fetchOne));
+      }
+    }
+
+    async function loadGeneratedImages(uploadId, outfit, eyewear, lengthOptions) {
+      const GEN_API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:3001/api/ai/generate-image'
+        : '/api/ai/generate-image';
+
+      const outfitRecs = outfit.recommended_styles || outfit.recommendedOutfits || [];
+      const eyewearRecs = eyewear.recommended || eyewear.recommendations || [];
+
+      async function genOne(elId, prompt, cacheKey, fallbackIcon) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        try {
+          const res = await fetch(GEN_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, cacheKey }),
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || 'Failed');
+          el.innerHTML = `<img src="${json.imageUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" />`;
+        } catch(err) {
+          el.innerHTML = `<div class="gen-img-error">${fallbackIcon}</div>`;
+          console.error('[GenImg] ' + elId + ':', err.message);
+        }
+      }
+
+      const slots = [
+        // Outfit images
+        ...outfitRecs.map((o, i) => ({
+          elId: `outfit-img-${i}`,
+          prompt: `Professional men's fashion editorial photo. ${o.title || ''} style: ${o.top || ''} shirt, ${o.bottom || ''}, ${o.shoes || ''} shoes. ${o.fit || 'modern'} fit. Clean dark studio background. High-end fashion photography, sharp focus.`,
+          cacheKey: `outfit/${uploadId}/style-${i}`,
+          icon: '👔',
+        })),
+        // Eyewear images
+        ...eyewearRecs.map((e, i) => ({
+          elId: `eyewear-img-${i}`,
+          prompt: `Professional product photography. ${e.model || 'eyewear'} glasses frame, ${e.frame_color || ''} ${e.material || ''} material. Clean white studio background, sharp focus, luxury product shot, high detail.`,
+          cacheKey: `eyewear/${uploadId}/frame-${i}`,
+          icon: '🕶️',
+        })),
+        // Hair length images
+        ...(lengthOptions || []).map((l, i) => ({
+          elId: `hairlen-img-${i}`,
+          prompt: `Professional barbershop editorial photo. Men's ${l.name.toLowerCase()} hair (${l.range}), clean well-styled cut, dark studio background, professional grooming photography, sharp focus.`,
+          cacheKey: `hairlen/${uploadId}/${l.name.toLowerCase()}`,
+          icon: '💈',
+        })),
+      ];
+
+      const CONCURRENCY = 3;
+      for (let i = 0; i < slots.length; i += CONCURRENCY) {
+        await Promise.allSettled(slots.slice(i, i + CONCURRENCY).map(s => genOne(s.elId, s.prompt, s.cacheKey, s.icon)));
       }
     }
   </script>
