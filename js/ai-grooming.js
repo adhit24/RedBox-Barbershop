@@ -266,36 +266,66 @@ class AIGroomingUI {
     this.checkMembershipStatus();
   }
 
-  // Check if user is logged in/member and toggle UI sections
+  _getMemberState() {
+    try {
+      const userData = JSON.parse(localStorage.getItem('redbox_user') || 'null');
+      if (!userData || !userData.loggedIn) return 'guest';
+      const memberData = JSON.parse(localStorage.getItem('redbox_member') || 'null');
+      if (memberData && memberData.membership_status === 'ACTIVE') return 'active_member';
+      return 'logged_in';
+    } catch (e) {
+      return 'guest';
+    }
+  }
+
+  _getGateHTML(state) {
+    if (state === 'guest') {
+      return `
+        <div class="ai-locked-preview">
+          <div class="ai-locked-overlay">
+            <div class="ai-locked-icon">🔒</div>
+            <h3 class="ai-locked-title">Fitur Khusus Member</h3>
+            <p class="ai-locked-text">Login atau daftar sebagai member RedBox untuk menggunakan AI Grooming Consultant secara gratis.</p>
+            <button class="ai-locked-btn" id="ai-gate-login-btn">Login / Daftar Member</button>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="ai-locked-preview">
+        <div class="ai-locked-overlay">
+          <div class="ai-locked-icon">👑</div>
+          <h3 class="ai-locked-title">Aktifkan Membership</h3>
+          <p class="ai-locked-text">Fitur AI Grooming tersedia untuk member aktif RedBox. Aktifkan membership kamu di dashboard member.</p>
+          <a href="member-dashboard.html" class="ai-locked-btn">Ke Dashboard Member</a>
+        </div>
+      </div>`;
+  }
+
+  _bindGateEvents(container) {
+    const loginBtn = container.querySelector('#ai-gate-login-btn');
+    if (loginBtn) {
+      loginBtn.addEventListener('click', () => {
+        const memberBtn = document.getElementById('memberBtn');
+        if (memberBtn) memberBtn.click();
+      });
+    }
+  }
+
   checkMembershipStatus() {
-    const isMember = this.aiService.isAuthenticated();
-    
-    // Get UI sections
-    const memberPromoSection = document.querySelector('.ai-member-promo');
+    const state = this._getMemberState();
+    const promoSection = document.getElementById('ai-member-promo');
     const uploadSection = document.getElementById('ai-upload-section');
-    const lockedPreview = document.querySelector('.ai-locked-preview');
-    
-    if (isMember) {
-      // User is logged in - hide promo, show upload
-      if (memberPromoSection) {
-        memberPromoSection.style.display = 'none';
-      }
-      if (uploadSection) {
-        uploadSection.style.display = 'block';
-      }
-      if (lockedPreview) {
-        lockedPreview.style.display = 'none';
-      }
-      console.log('[AI Grooming] Member detected - showing upload section');
+
+    if (state === 'active_member') {
+      if (promoSection) promoSection.style.display = 'none';
+      if (uploadSection) uploadSection.style.display = 'block';
     } else {
-      // User not logged in - show promo, hide upload
-      if (memberPromoSection) {
-        memberPromoSection.style.display = 'block';
+      if (uploadSection) uploadSection.style.display = 'none';
+      if (promoSection) {
+        promoSection.innerHTML = this._getGateHTML(state);
+        promoSection.style.display = 'block';
+        this._bindGateEvents(promoSection);
       }
-      if (uploadSection) {
-        uploadSection.style.display = 'none';
-      }
-      console.log('[AI Grooming] Non-member detected - showing promo section');
     }
   }
 
@@ -474,40 +504,19 @@ class AIGroomingUI {
   }
 
   displayResults(results) {
-    this.currentStep = 'results';
-    
     this.hideLoading();
 
-    const resultsContainer = document.getElementById('ai-results');
-    if (!resultsContainer) return;
-
-    resultsContainer.style.display = 'block';
-    
-    // Hide upload section
-    const uploadSection = document.getElementById('ai-upload-section');
-    if (uploadSection) uploadSection.style.display = 'none';
-
-    // Render based on service type
-    switch (results.serviceType) {
-      case 'full_analysis':
-        this.renderFullAnalysis(results.results);
-        break;
-      case 'face_analysis':
-        this.renderFaceAnalysis(results.results);
-        break;
-      case 'hairstyle':
-        this.renderHairstyleResults(results.results);
-        break;
-      case 'outfit':
-        this.renderOutfitResults(results.results);
-        break;
-      case 'preview':
-        this.renderPreviewResults(results.results);
-        break;
+    // Store results in sessionStorage then redirect to results page
+    try {
+      sessionStorage.setItem('ai_results', JSON.stringify(results));
+      if (this.userPhotoUrl) {
+        sessionStorage.setItem('ai_user_photo', this.userPhotoUrl);
+      }
+    } catch (e) {
+      console.error('sessionStorage error:', e);
     }
 
-    // Scroll to results
-    resultsContainer.scrollIntoView({ behavior: 'smooth' });
+    window.location.href = '/ai-results.html';
   }
 
   renderFullAnalysis(results) {

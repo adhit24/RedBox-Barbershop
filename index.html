@@ -115,39 +115,11 @@
   <section class="ai-grooming" id="ai">
     <div class="container">
 
-      <!-- Dev Notice Banner -->
-      <div class="ai-dev-notice">
-        <div class="ai-dev-notice-inner">
-          <div class="ai-dev-badge">
-            <span class="ai-dev-icon-small">🛠</span>
-            <div class="ai-dev-text">
-              <div class="ai-dev-title">Fitur ini sedang kami lakukan penyesuaian</div>
-              <div class="ai-dev-subtitle">Stay tune untuk pengalaman AI grooming terbaik!</div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- Member Gate — JS populates & shows for non-members -->
+      <div class="ai-member-promo" id="ai-member-promo" style="display:none"></div>
 
-      <!-- COMING SOON — fitur dinonaktifkan sementara -->
-      <div class="ai-coming-soon-block">
-        <div class="ai-coming-soon-icon">🛠️</div>
-        <h3 class="ai-coming-soon-title">Segera Hadir</h3>
-        <p class="ai-coming-soon-desc">Fitur AI Grooming sedang dalam pengembangan akhir.<br>Kami sedang menyempurnakan pengalaman terbaik untuk kamu.</p>
-        <div class="ai-coming-soon-tags">
-          <span>👤 Face Analysis</span>
-          <span>💇 Hairstyle</span>
-          <span>👔 Outfit</span>
-          <span>🕶️ Eyewear</span>
-          <span>✨ Skincare</span>
-        </div>
-        <a class="ai-coming-soon-btn" href="booking.html">Book Now — Layanan Manual Tersedia</a>
-      </div>
-
-      <!-- Member Promo (non-logged-in) — DISABLED -->
-      <div class="ai-member-promo" style="display:none"></div>
-
-      <!-- Upload Section (members only) — DISABLED -->
-      <div class="ai-upload-section" id="ai-upload-section" style="display:none !important">
+      <!-- Upload Section — shown only for active members -->
+      <div class="ai-upload-section" id="ai-upload-section" style="display:none">
         <div class="ai-upload-card">
           <h3 class="ai-upload-title">Coba AI Grooming Sekarang</h3>
           <p class="ai-upload-subtitle">Upload foto wajah dan dapatkan analisis AI instan</p>
@@ -186,8 +158,8 @@
         </div>
       </div>
 
-      <!-- Loading — DISABLED -->
-      <div class="ai-loading" id="ai-loading" style="display:none !important">
+      <!-- Loading -->
+      <div class="ai-loading" id="ai-loading" style="display:none">
         <div class="ai-loading-inner">
           <div class="ai-loading-spinner"></div>
           <div class="ai-loading-text">Menganalisis...</div>
@@ -195,8 +167,8 @@
         </div>
       </div>
 
-      <!-- Results — DISABLED -->
-      <div class="ai-results" id="ai-results" style="display:none !important">
+      <!-- Results (hidden — redirect to ai-results.html) -->
+      <div class="ai-results" id="ai-results" style="display:none">
         <div class="ai-results-card">
           <div class="ai-results-header">
             <h3>Hasil AI</h3>
