@@ -1,221 +1,178 @@
 /**
  * Vercel Serverless — POST /api/wa/webhook
- * Fonnte WhatsApp webhook — RedBox Barbershop assistant
- * Tone: casual Indonesian, warm, human-like, conversational
+ * Fonnte WhatsApp webhook — RedBox Barbershop AI Assistant
+ * Powered by OpenAI gpt-4o-mini with per-user conversation memory.
  */
 
 const { sendWA } = require('../../server/services/fonnte');
+const OpenAI = require('openai');
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Conversation Memory ───────────────────────────────────────────────────────
+// In-memory cache keyed by sender number. Persists across warm invocations.
+// Resets on cold start — acceptable for a barbershop bot.
+const conversationCache = new Map(); // sender → [{role, content}]
+const MAX_HISTORY = 12; // max messages kept per user (6 exchanges)
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min inactivity clears context
+const cacheTimestamps = new Map(); // sender → last activity timestamp
 
-const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-const has = (text, keywords) => keywords.some(k => text.includes(k));
-
-function timeGreet() {
-  const h = new Date().getHours();
-  return h < 11 ? 'pagi' : h < 15 ? 'siang' : h < 18 ? 'sore' : 'malam';
+function getHistory(sender) {
+  // Auto-expire inactive conversations
+  const lastActive = cacheTimestamps.get(sender) || 0;
+  if (Date.now() - lastActive > CACHE_TTL_MS) {
+    conversationCache.delete(sender);
+    cacheTimestamps.delete(sender);
+  }
+  return conversationCache.get(sender) || [];
 }
 
-function firstName(name) {
-  return (name || 'Kak').split(' ')[0];
+function pushHistory(sender, role, content) {
+  const hist = getHistory(sender);
+  hist.push({ role, content });
+  // Trim to keep last MAX_HISTORY messages
+  if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
+  conversationCache.set(sender, hist);
+  cacheTimestamps.set(sender, Date.now());
 }
 
-// ── Responses ─────────────────────────────────────────────────────────────────
+// ── System Prompt ─────────────────────────────────────────────────────────────
 
-function replyGreeting(name) {
-  const fn = firstName(name);
-  const t = timeGreet();
-  const opener = pick([
-    `Haii kak ${fn}! Selamat ${t} ya ✨`,
-    `Yoo kak ${fn}! 👋 Selamat ${t}~`,
-    `Halo kak ${fn}! Selamat ${t} 🌟`,
-    `Haloo kak ${fn}~ Selamat ${t} ya 😄`,
-  ]);
-  const body = pick([
-    `Lagi mau potong atau ada yang ditanyain dulu?`,
-    `Ada yang bisa aku bantu hari ini? ✂️`,
-    `Mau booking, nanya harga, atau gimana nih? Santai aja kak 😊`,
-    `Siap melayani kak! Mau ngapain dulu nih? 😁`,
-  ]);
-  return `${opener}\n\n${body}`;
+function buildSystemPrompt() {
+  const now = new Date();
+  const wibOffset = 7 * 60 * 60 * 1000;
+  const wib = new Date(now.getTime() + wibOffset);
+  const dateStr = wib.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = wib.toTimeString().slice(0, 5);
+
+  return `Kamu adalah asisten virtual RedBox Barbershop bernama "Reddy" — ramah, santai, natural, dan helpful.
+Gunakan bahasa Indonesia casual sehari-hari. Boleh pakai emoji tapi jangan berlebihan.
+Jangan terlalu formal. Jawab singkat dan padat, kecuali memang perlu detail.
+
+Informasi saat ini: ${dateStr}, pukul ${timeStr} WIB.
+
+=== TENTANG REDBOX BARBERSHOP ===
+RedBox Barbershop adalah barbershop premium di Cirebon dengan beberapa cabang.
+
+OUTLET & LOKASI:
+• Bypass (pusat) — Jl. Bypass Kedawung, Cirebon | 10.00–22.00 setiap hari
+• Samadikun — Jl. Samadikun, Cirebon | 10.00–21.00
+• CSB Mall — Inside CSB Mall, Cirebon | 10.00–21.00
+• Sumber — Jl. Raya Sumber, Cirebon | 10.00–21.00
+• Tegal — Jl. Raya Tegal | 10.00–21.00
+
+LAYANAN & HARGA:
+• Haircut — Rp 75.000 (~30 menit)
+• Haircut + Wash — Rp 95.000 (~45 menit)
+• Two Block — Rp 85.000 (~40 menit) ← paling populer
+• Fade Cut — Rp 90.000 (~40 menit)
+• Hairspa — Rp 120.000 (~60 menit)
+• Coloring — mulai Rp 200.000 (~90 menit)
+• Beard Trim — Rp 45.000 (~20 menit)
+• Combo (Haircut + Beard) — Rp 110.000 (~50 menit)
+
+BOOKING:
+Link booking online: redboxbarbershop.com/booking.html
+Pilih layanan → pilih barber → pilih slot waktu → konfirmasi otomatis.
+Walk-in juga boleh tapi bisa antri.
+
+PEMBAYARAN: Cash, QRIS (semua e-wallet), Debit, Kredit.
+PARKIR: Gratis, luas, bisa motor dan mobil.
+
+=== PANDUAN MENJAWAB ===
+- Kalau ditanya soal booking, berikan link dan jelaskan caranya singkat.
+- Kalau ditanya lokasi/cabang tertentu, sebutkan yang paling relevan.
+- Kalau customer komplain atau ada masalah, minta maaf dulu lalu tawarkan solusi.
+- Kalau pertanyaan di luar topik barbershop, tetap bantu semampu mungkin tapi fokuskan ke layanan RedBox.
+- Kalau customer minta ngobrol dengan admin/CS manusia, beritahu bahwa kamu akan sampaikan ke tim dan minta mereka tunggu.
+- JANGAN mengarang informasi yang tidak ada di atas (misal promo yang tidak disebutkan).
+- Kalau tidak yakin dengan info tertentu (misal stok, barber tertentu), sarankan untuk langsung kontak outlet atau cek website.`;
 }
 
-function replyServices() {
-  return pick([
-    `Nih kak, ini yang kita punya 💈\n\n✂️ *Haircut* — 75k (30 menit)\n✂️ *Haircut + Wash* — 95k (45 menit)\n🔥 *Two Block* — 85k (40 menit) ← paling hits!\n⚡ *Fade Cut* — 90k (40 menit)\n💆 *Hairspa* — 120k (60 menit)\n🎨 *Coloring* — mulai 200k (90 menit)\n🧔 *Beard Trim* — 45k (20 menit)\n💥 *Combo (Haircut + Beard)* — 110k (50 menit)\n\nAda yang mau dicoba kak? Aku bisa saranin juga lho 😄`,
-    `Boleh, ini daftar layanannya kak 👇\n\n✂️ *Haircut* — 75rb\n✂️ *Haircut + Wash* — 95rb\n🔥 *Two Block* — 85rb (banyak yang request ini!)\n⚡ *Fade Cut* — 90rb\n💆 *Hairspa* — 120rb\n🎨 *Coloring* — mulai 200rb\n🧔 *Beard Trim* — 45rb\n💥 *Combo Hair + Beard* — 110rb\n\nSemua udah include treatment ya kak! Mau pilih yang mana? 😊`,
-  ]);
+// ── OpenAI Chat ───────────────────────────────────────────────────────────────
+
+let openaiClient = null;
+
+function getOpenAI() {
+  if (!openaiClient && process.env.OPENAI_API_KEY) {
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openaiClient;
 }
 
-function replyBooking() {
-  return pick([
-    `Yuk booking sekarang kak! 📅\n\nTinggal klik link ini:\n👉 *redboxbarbershop.com/booking.html*\n\nPilih layanan → pilih barber → pilih jadwal → done! Gampang banget kok 😄\n\nMau aku jelasin caranya dulu nggak?`,
-    `Oke siap! Booking bisa langsung dari sini kak 👇\n\n🔗 *redboxbarbershop.com/booking.html*\n\nNantinya tinggal pilih layanan, barber, sama slot waktu yang kosong. Biasanya prosesnya cuma 2 menit doang!\n\nAda pertanyaan soal booking? 😊`,
-    `Bisa kak! Ini link bookingnya:\n👉 *redboxbarbershop.com/booking.html*\n\nOh iya, booking lebih enak daripada langsung datang — nggak perlu antri lama 😉\n\nMau hari apa rencananya?`,
-  ]);
+async function callOpenAI(sender, userMessage, name) {
+  const openai = getOpenAI();
+  if (!openai) throw new Error('OPENAI_API_KEY not set');
+
+  const history = getHistory(sender);
+
+  const messages = [
+    { role: 'system', content: buildSystemPrompt() },
+    // Inject customer name as context if first message
+    ...(history.length === 0 && name && name !== 'Kak'
+      ? [{ role: 'system', content: `Nama customer ini: ${name}. Sapa dengan nama panggilannya.` }]
+      : []),
+    ...history,
+    { role: 'user', content: userMessage },
+  ];
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages,
+    max_tokens: 400,
+    temperature: 0.75,
+  });
+
+  const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf, ada gangguan teknis. Coba lagi ya kak 🙏';
+
+  // Save to history
+  pushHistory(sender, 'user', userMessage);
+  pushHistory(sender, 'assistant', reply);
+
+  return reply;
 }
 
-function replyLocation() {
-  return pick([
-    `Lokasinya gampang kok kak 😄\n\n📍 Jl. Bypass Kedawung, Cirebon\n🕐 Buka setiap hari — *10.00 s/d 22.00 WIB*\n\nParkirnya luas, tenang aja! 🚗🏍️\n\nMau aku kirimin link Maps-nya juga?`,
-    `RedBox ada di sini kak 👇\n\n📍 *Jl. Bypass Kedawung, Cirebon*\nBuka *10.00–22.00* setiap hari (termasuk hari libur!)\n\nParkir gratis ya kak, jangan khawatir 😊\n\nMau booking dulu sebelum kesini biar nggak nunggu lama?`,
-  ]);
-}
+// ── Fallback (keyword-based) ──────────────────────────────────────────────────
+// Used only when OpenAI is unavailable or times out.
 
-function replyHours() {
-  return pick([
-    `Kita buka setiap hari kak! ✅\n\n🕐 *Jam 10.00 – 22.00 WIB*\nTermasuk Sabtu, Minggu, dan hari libur nasional juga tetap buka 💪\n\nMau langsung datang atau booking dulu?`,
-    `Jam operasionalnya:\n⏰ *10 pagi – 10 malem* (setiap hari ya kak, no day off! 😄)\n\nKalau mau aman, booking dulu biar dapat slot yang pas 😊`,
-  ]);
-}
-
-function replyPayment() {
-  return pick([
-    `Soal bayar, fleksibel banget kak 😊\n\n💵 *Tunai / Cash*\n📱 *QRIS* — GoPay, OVO, Dana, Shopee, semua bisa!\n💳 *Debit / Kredit*\n\nTinggal pilih yang paling nyaman! Ada lagi yang mau ditanyain?`,
-    `Kami terima semua cara bayar kak! 🙌\n\n✅ Cash\n✅ QRIS (semua e-wallet)\n✅ Debit & Kredit\n\nJadi nggak perlu khawatir soal pembayaran 😄`,
-  ]);
-}
-
-function replyParking() {
-  return pick([
-    `Tenang kak, parkir gratis dan lumayan luas kok! 🚗🏍️\nAman buat motor maupun mobil.\n\nAda yang mau ditanyain lagi?`,
-    `Ada parkir gratis di depan outlet kak, jadi nggak usah khawatir 😊 Bisa motor atau mobil.\n\nMau sekalian booking?`,
-  ]);
-}
-
-function replyWalkin() {
-  return pick([
-    `Bisa langsung datang kok kak! Walk-in welcome 😊\n\nTapi kalau mau lebih santai dan nggak nunggu lama,断然 booking dulu lebih aman.\n\nMau aku kasih link bookingnya?`,
-    `Walk-in bisa kak, tenang aja! Tapi saran aku mending booking dulu — biar kamu tinggal dateng langsung masuk, nggak perlu antri 😄\n\nBookingnya di sini: *redboxbarbershop.com/booking.html*`,
-  ]);
-}
-
-function replyRecommend(name) {
-  const fn = firstName(name);
-  return pick([
-    `Ooh mau rekomendasi? Aku saranin *Two Block* kak ${fn} — ini yang paling banyak diminta sekarang dan hasilnya clean banget 🔥\n\nKalau mau yang lebih low maintenance, *Fade Cut* juga oke banget. Nggak perlu sering-sering ke barber!\n\nMau tau lebih detail yang mana?`,
-    `Kalau lagi tren sekarang sih *Two Block* kak — kayak gaya Korea gitu, cocok buat wajah oval maupun kotak 😄\n\nAlternativenya *Fade Cut* — clean, rapi, dan tahan lama.\n\nMau booking salah satunya? 😊`,
-  ]);
-}
-
-function replyDuration() {
-  return `Tergantung layanannya kak:\n\n⚡ *Beard Trim* — ~20 menit\n✂️ *Haircut* — ~30 menit\n✂️ *Haircut + Wash / Two Block / Fade* — ~40 menit\n💥 *Combo Hair+Beard* — ~50 menit\n💆 *Hairspa* — ~60 menit\n🎨 *Coloring* — ~90 menit\n\nJadi kalau ada keperluan setelah itu, bisa estimasi waktunya dari sini ya kak 😊`;
-}
-
-function replyPromo() {
-  return pick([
-    `Promo terbaru bisa dicek langsung di website ya kak! 🎉\n👉 *redboxbarbershop.com*\n\nAtau follow sosmed kita buat dapet info promo yang paling fresh 😄`,
-    `Wah kebetulan banget nanya promo! 😄\nInfo promo terkini ada di website:\n🔗 *redboxbarbershop.com*\n\nKadang ada flash promo juga, jadi stay tune ya kak! 🔔`,
-  ]);
-}
-
-function replyThanks(name) {
-  const fn = firstName(name);
-  return pick([
-    `Sama-sama kak ${fn}! 😊 Kalau ada yang lain jangan ragu tanya ya. Sampai ketemu di RedBox! ✂️✨`,
-    `Siap kak ${fn}! 🙌 Senang bisa bantu. Ditunggu kedatangannya ya, nanti pasti puas! 💈`,
-    `Tentu kak ${fn}! Kalau butuh apa-apa, aku selalu di sini 😄 Jangan lupa booking ya biar nggak antri~`,
-  ]);
-}
-
-function replyAfterBooking(name) {
-  const fn = firstName(name);
-  return pick([
-    `Keren kak ${fn}! Abis booking langsung konfirmasi otomatis ya 😊 Kalau ada yang perlu diubah jadwalnya, kabarin aku aja!\n\nSampai ketemu di RedBox! ✂️`,
-    `Nice! Nanti dateng langsung bisa masuk aja kak ${fn}, nggak perlu nunggu lama 💪 See you! 🙏`,
-  ]);
-}
-
-function replyUnknown(name) {
-  const fn = firstName(name);
-  return pick([
-    `Hmm aku belum ngerti maksudnya kak ${fn} 😅 Coba tanya dengan kata lain ya?\n\nOr mau aku bantu soal:\n• *harga* layanan\n• *booking* jadwal\n• *lokasi* & jam buka\n• rekomendasi gaya rambut`,
-    `Wah aku kurang paham nih kak ${fn} 😅\n\nCoba ketik salah satu ini ya:\n🔹 *harga* — lihat daftar layanan\n🔹 *booking* — reservasi\n🔹 *lokasi* — alamat & jam buka\n🔹 *rekomendasi* — saranin gaya`,
-    `Maaf kak ${fn}, aku belum nangkep 🙏 Mungkin bisa tanya lagi dengan cara lain?\n\nKalau butuh langsung ngobrol sama tim kami, ketik *admin* ya!`,
-  ]);
-}
-
-function replyAdmin(name) {
-  const fn = firstName(name);
-  return `Oke kak ${fn}, aku sambungin ke tim kami ya 😊\n\nSebentar ditunggu, ada yang bisa aku bantu dulu sambil nunggu?`;
-}
-
-// ── Intent Detection ──────────────────────────────────────────────────────────
-
-function detectIntent(text) {
+function fallbackReply(text, name) {
   const t = text.toLowerCase();
+  const fn = (name || 'Kak').split(' ')[0];
+  const has = (kws) => kws.some(k => t.includes(k));
 
-  if (has(t, ['halo', 'hai', 'hi ', 'hello', 'hei', 'hey', 'pagi', 'siang', 'sore', 'malam', 'assalam', 'selamat', 'permisi', 'hallo', 'haloo']))
-    return 'greeting';
+  if (has(['halo','hai','hi ','hello','hei','hey','pagi','siang','sore','malam','selamat']))
+    return `Haii kak ${fn}! 👋 Ada yang bisa aku bantu?\n\nMau booking, nanya harga, atau info lokasi? 😊`;
+  if (has(['harga','berapa','layanan','menu','paket','price']))
+    return `Ini layanan RedBox kak 💈\n\n✂️ Haircut — 75rb\n✂️ Haircut+Wash — 95rb\n🔥 Two Block — 85rb\n⚡ Fade Cut — 90rb\n💆 Hairspa — 120rb\n🎨 Coloring — mulai 200rb\n🧔 Beard Trim — 45rb\n💥 Combo — 110rb\n\nMau booking? 😄`;
+  if (has(['booking','reservasi','jadwal','pesan']))
+    return `Booking online di sini ya kak 📅\n👉 *redboxbarbershop.com/booking.html*\n\nPilih layanan → barber → slot waktu. Mudah banget!`;
+  if (has(['lokasi','alamat','dimana','maps']))
+    return `Ada beberapa cabang kak 📍\n• Bypass (pusat) — Jl. Bypass Kedawung\n• Samadikun, CSB Mall, Sumber, Tegal\n\nBuka 10.00–22.00 setiap hari 😊`;
+  if (has(['makasih','terima kasih','thanks','thx']))
+    return `Sama-sama kak ${fn}! Kalau ada yang lain jangan ragu tanya ya 😊✂️`;
 
-  if (has(t, ['makasih', 'terima kasih', 'thanks', 'thx', 'tq ', 'tq!', 'oke makasih', 'ok makasih', 'udah cukup', 'gitu aja', 'udah deh']))
-    return 'thanks';
-
-  if (has(t, ['admin', 'cs ', 'customer service', 'manusia', 'staff', 'orang asli', 'langsung ngobrol']))
-    return 'admin';
-
-  if (has(t, ['rekomendasi', 'rekomen', 'saranin', 'suggest', 'bagus mana', 'yang bagus', 'cocok buat', 'enak mana', 'pilih mana', 'mending mana']))
-    return 'recommend';
-
-  if (has(t, ['berapa lama', 'lama ga', 'lama nggak', 'estimasi', 'durasinya', 'waktunya', 'cepet ga', 'cepat ga']))
-    return 'duration';
-
-  if (has(t, ['harga', 'price', 'tarif', 'biaya', 'berapa', 'mahal', 'murah', 'layanan', 'services', 'menu', 'paket', 'list']))
-    return 'services';
-
-  if (has(t, ['mau cukur', 'mau potong', 'pengen potong', 'pengen cukur', 'mau booking', 'mau reservasi', 'booking', 'reservasi', 'jadwal', 'pesan tempat', 'daftar', 'antrian', 'slot']))
-    return 'booking';
-
-  if (has(t, ['selesai booking', 'udah booking', 'baru aja booking', 'habis booking', 'konfirmasi']))
-    return 'after_booking';
-
-  if (has(t, ['lokasi', 'alamat', 'dimana', 'maps', 'gps', 'tempatnya', 'di mana', 'adanya dimana']))
-    return 'location';
-
-  if (has(t, ['jam buka', 'buka jam', 'jam berapa', 'tutup', 'jam operasional', 'open', 'buka kapan', 'masih buka']))
-    return 'hours';
-
-  if (has(t, ['bayar', 'pembayaran', 'transfer', 'qris', 'tunai', 'cash', 'debit', 'kredit', 'gopay', 'ovo', 'dana', 'shopee']))
-    return 'payment';
-
-  if (has(t, ['parkir', 'motor', 'mobil', 'parkirnya']))
-    return 'parking';
-
-  if (has(t, ['walk in', 'langsung datang', 'tanpa booking', 'bisa langsung', 'nggak perlu booking', 'ga perlu booking']))
-    return 'walkin';
-
-  if (has(t, ['promo', 'diskon', 'discount', 'voucher', 'potongan', 'murah', 'cashback']))
-    return 'promo';
-
-  return 'unknown';
+  return `Maaf kak ${fn}, aku lagi gangguan sedikit 😅 Coba tanya lagi ya, atau kunjungi *redboxbarbershop.com* untuk info lengkap!`;
 }
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
 async function handleMessage({ from, name, text }) {
-  const intent = detectIntent(text);
+  let reply;
 
-  // Small typing delay feel (optional, skip if too slow for serverless)
-  // await new Promise(r => setTimeout(r, 800));
+  try {
+    // Try OpenAI first (with 8 second timeout)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
-  switch (intent) {
-    case 'greeting':      return sendWA(from, replyGreeting(name));
-    case 'thanks':        return sendWA(from, replyThanks(name));
-    case 'admin':         return sendWA(from, replyAdmin(name));
-    case 'recommend':     return sendWA(from, replyRecommend(name));
-    case 'duration':      return sendWA(from, replyDuration());
-    case 'services':      return sendWA(from, replyServices());
-    case 'booking':       return sendWA(from, replyBooking());
-    case 'after_booking': return sendWA(from, replyAfterBooking(name));
-    case 'location':      return sendWA(from, replyLocation());
-    case 'hours':         return sendWA(from, replyHours());
-    case 'payment':       return sendWA(from, replyPayment());
-    case 'parking':       return sendWA(from, replyParking());
-    case 'walkin':        return sendWA(from, replyWalkin());
-    case 'promo':         return sendWA(from, replyPromo());
-    default:              return sendWA(from, replyUnknown(name));
+    try {
+      reply = await callOpenAI(from, text, name);
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (err) {
+    console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
+    reply = fallbackReply(text, name);
   }
+
+  return sendWA(from, reply);
 }
 
 // ── Webhook Entry ─────────────────────────────────────────────────────────────
@@ -226,7 +183,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET')     return res.status(200).json({ status: 'ok', service: 'RedBox WA Bot' });
+  if (req.method === 'GET')     return res.status(200).json({ status: 'ok', service: 'RedBox WA Bot (AI)' });
   if (req.method !== 'POST')   return res.status(405).end();
 
   try {
@@ -236,11 +193,12 @@ module.exports = async function handler(req, res) {
     if (type && type !== 'text') return res.status(200).json({ status: 'ignored' });
     if (!sender || !message)     return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
 
+    // Respond to Fonnte immediately, then process async
+    res.status(200).json({ status: 'ok' });
     await handleMessage({ from: sender, name: name || 'Kak', text: message });
-    return res.status(200).json({ status: 'ok' });
 
   } catch (err) {
-    console.error('[WA Bot] Error:', err.message);
-    return res.status(200).json({ status: 'error' }); // always 200 to avoid Fonnte retry storm
+    console.error('[WA Bot] Fatal error:', err.message);
+    if (!res.headersSent) res.status(200).json({ status: 'error' });
   }
 };
