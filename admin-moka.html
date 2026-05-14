@@ -286,6 +286,27 @@
 
       <div class="section">
         <div class="section-title">
+          Sync Customers dari Moka
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" id="btnSyncCustomersDry" style="font-size:.82rem;padding:6px 14px">
+              🔍 Test (dry run)
+            </button>
+            <button class="btn btn-green" id="btnSyncCustomers">
+              👥 Sync Customers Sekarang
+            </button>
+          </div>
+        </div>
+        <p style="font-size:.84rem;color:var(--muted);margin-bottom:12px">
+          Pull semua data customer dari Moka POS dan simpan ke database Supabase.
+          <strong>Test</strong> hanya menghitung tanpa mengubah data.
+        </p>
+        <div id="alertSyncCustomers" class="alert"></div>
+        <div id="syncCustomersResult" style="display:none;background:var(--border);border-radius:8px;padding:14px;margin-top:10px;font-size:.85rem;line-height:1.7">
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
           Sync Logs
           <button class="btn btn-ghost" id="btnRefreshLogs" style="font-size:.8rem;padding:6px 12px">↻ Refresh</button>
         </div>
@@ -644,6 +665,65 @@ document.getElementById('btnSync')?.addEventListener('click', async () => {
 });
 
 document.getElementById('btnRefreshLogs')?.addEventListener('click', loadSyncLogs);
+
+// ── SYNC CUSTOMERS ────────────────────────────────────────────
+
+async function runSyncCustomers(dryRun) {
+  const btnDry  = document.getElementById('btnSyncCustomersDry');
+  const btnReal = document.getElementById('btnSyncCustomers');
+  const result  = document.getElementById('syncCustomersResult');
+  const btn     = dryRun ? btnDry : btnReal;
+
+  btn.disabled = true;
+  btnDry.disabled = true;
+  btnReal.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> ' + (dryRun ? 'Mengecek…' : 'Syncing…');
+  hideAlert('alertSyncCustomers');
+  result.style.display = 'none';
+
+  try {
+    const url = '/api/moka/sync-customers' + (dryRun ? '?dry_run=1' : '');
+    const res = await fetch(API_BASE + url, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + ADMIN_TOKEN },
+    });
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    if (dryRun) {
+      result.style.display = 'block';
+      result.innerHTML = `
+        <strong>Hasil Test (dry run):</strong><br>
+        📊 Total customer di Moka: <strong>${data.total_from_moka ?? '?'}</strong><br>
+        <em style="color:var(--muted)">Data belum diubah. Klik "Sync Customers Sekarang" untuk menyimpan ke database.</em>
+        ${data.sample?.length ? `<br><br><strong>Sample 3 customer pertama:</strong><br><pre style="font-size:.78rem;margin-top:6px;overflow:auto">${JSON.stringify(data.sample, null, 2)}</pre>` : ''}
+      `;
+      showAlert('alertSyncCustomers', 'info',
+        `🔍 Dry run selesai — ${data.total_from_moka ?? 0} customer ditemukan di Moka`);
+    } else {
+      result.style.display = 'block';
+      result.innerHTML = `
+        <strong>Hasil Sync:</strong><br>
+        ✅ Berhasil disinkron: <strong>${data.synced ?? 0}</strong> customer<br>
+        ❌ Gagal: <strong>${data.failed ?? 0}</strong><br>
+        📊 Total dari Moka: <strong>${data.total_from_moka ?? 0}</strong>
+      `;
+      showAlert('alertSyncCustomers', 'success',
+        `✅ Sync selesai! ${data.synced ?? 0} customer berhasil disimpan ke Supabase.`);
+    }
+  } catch (err) {
+    showAlert('alertSyncCustomers', 'error', '❌ Gagal: ' + err.message);
+  } finally {
+    btnDry.disabled  = false;
+    btnReal.disabled = false;
+    btnDry.innerHTML  = '🔍 Test (dry run)';
+    btnReal.innerHTML = '👥 Sync Customers Sekarang';
+  }
+}
+
+document.getElementById('btnSyncCustomersDry')?.addEventListener('click',  () => runSyncCustomers(true));
+document.getElementById('btnSyncCustomers')?.addEventListener('click',     () => runSyncCustomers(false));
 
 // ── ITEM MAPPING ──────────────────────────────────────────────
 let mokaItemsList = [];
