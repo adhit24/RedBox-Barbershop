@@ -137,18 +137,22 @@ class MokaClient {
   async discoverBusinessId() {
     const results = {};
     const envOutletId = process.env.MOKA_OUTLET_ID || null;
-    const probes = [
-      { key: 'v1_profile',                path: '/v1/profile' },
-      { key: 'v2_profile',                path: '/v2/profile' },
-      { key: 'v1_outlet_db',              path: `/v1/outlets/${this._mokaOutletId}` },
-      { key: 'v1_outlet_customers_db',    path: `/v1/outlets/${this._mokaOutletId}/customers?page=1&per_page=5` },
-      { key: 'v2_outlet_customers_db',    path: `/v2/outlets/${this._mokaOutletId}/customers?page=1&per_page=5` },
-    ];
-    if (envOutletId && envOutletId !== this._mokaOutletId) {
-      probes.push({ key: 'v1_outlet_env',           path: `/v1/outlets/${envOutletId}` });
-      probes.push({ key: 'v1_outlet_customers_env', path: `/v1/outlets/${envOutletId}/customers?page=1&per_page=5` });
-      probes.push({ key: 'v1_businesses_env',       path: `/v1/businesses/${envOutletId}/customers?page=1&per_page=5` });
+    const ids = [...new Set([this._mokaOutletId, envOutletId].filter(Boolean))];
+
+    const probes = [];
+    for (const id of ids) {
+      // v3 report — this is the endpoint used by order sync (most likely to work)
+      probes.push({ key: `v3_report_${id}`, path: `/v3/outlets/${id}/reports/get_latest_transactions?per_page=1` });
+      // v1 customer endpoints
+      probes.push({ key: `v1_customers_${id}`,   path: `/v1/outlets/${id}/customers?page=1&per_page=5` });
+      probes.push({ key: `v1_businesses_${id}`,  path: `/v1/businesses/${id}/customers?page=1&per_page=5` });
+      // v3 customer variants
+      probes.push({ key: `v3_customers_${id}`,   path: `/v3/outlets/${id}/customers?page=1&per_page=5` });
     }
+    // generic profile probes
+    probes.push({ key: 'v1_profile', path: '/v1/profile' });
+    probes.push({ key: 'v2_profile', path: '/v2/profile' });
+
     for (const { key, path } of probes) {
       try {
         results[key] = await this._req('GET', path);
