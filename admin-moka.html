@@ -212,7 +212,8 @@
   <nav class="sidebar">
     <div class="sect-label">Overview</div>
     <a href="#" class="active" data-page="status">Status & OAuth</a>
-    <a href="#" data-page="sync">Sync</a>
+    <a href="#" data-page="sync">Sync Orders</a>
+    <a href="#" data-page="customers">👥 Customers</a>
     <div class="sect-label">Orders</div>
     <a href="#" data-page="orders">Online Orders</a>
     <div class="sect-label">Configuration</div>
@@ -313,6 +314,42 @@
         <table>
           <thead><tr><th>Waktu</th><th>Arah</th><th>Tipe</th><th>Status</th><th>Pesan</th></tr></thead>
           <tbody id="syncLogsBody"><tr><td colspan="5" class="empty">Belum ada log</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── CUSTOMERS PAGE ── -->
+    <div class="page" id="page-customers">
+      <h2>Customers dari Moka</h2>
+      <p class="page-desc">Pull semua data customer dari Moka POS dan sync ke database Supabase.</p>
+
+      <div id="alertCustomers" class="alert"></div>
+
+      <div class="section">
+        <div class="section-title">
+          Sync Customer
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost" id="btnCustDry" style="font-size:.82rem;padding:6px 14px">
+              🔍 Test (dry run)
+            </button>
+            <button class="btn btn-green" id="btnCustSync">
+              👥 Sync Sekarang
+            </button>
+          </div>
+        </div>
+        <p style="font-size:.84rem;color:var(--muted);margin-bottom:12px">
+          <b>Test</b> hanya menghitung customer di Moka tanpa mengubah database.<br>
+          <b>Sync</b> menyimpan semua customer Moka ke tabel <code>customers</code> di Supabase.
+        </p>
+        <div id="custResult" style="display:none;background:var(--border);border-radius:8px;padding:14px;margin-top:10px;font-size:.85rem;line-height:1.8"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Data Customer Tersimpan</div>
+        <div id="custCount" style="font-size:.9rem;color:var(--muted);margin-bottom:10px">Memuat…</div>
+        <table id="custTable">
+          <thead><tr><th>Nama</th><th>No WA</th><th>Email</th><th>Ulang Tahun</th><th>Sumber</th></tr></thead>
+          <tbody id="custBody"><tr><td colspan="5" class="empty">Belum ada data</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -501,10 +538,11 @@ document.querySelectorAll('.sidebar a[data-page]').forEach(a => {
     document.querySelectorAll('.page').forEach(x => x.classList.remove('active'));
     a.classList.add('active');
     document.getElementById('page-' + page)?.classList.add('active');
-    if (page === 'status')  loadStatus();
-    if (page === 'sync')    loadSyncLogs();
-    if (page === 'orders')  initOrdersPage();
-    if (page === 'mapping') { /* user clicks Load */ }
+    if (page === 'status')    loadStatus();
+    if (page === 'sync')      loadSyncLogs();
+    if (page === 'customers') loadCustomersPage();
+    if (page === 'orders')    initOrdersPage();
+    if (page === 'mapping')   { /* user clicks Load */ }
   });
 });
 
@@ -724,6 +762,84 @@ async function runSyncCustomers(dryRun) {
 
 document.getElementById('btnSyncCustomersDry')?.addEventListener('click',  () => runSyncCustomers(true));
 document.getElementById('btnSyncCustomers')?.addEventListener('click',     () => runSyncCustomers(false));
+
+// ── CUSTOMERS PAGE ────────────────────────────────────────────
+
+async function loadCustomersPage() {
+  document.getElementById('custCount').textContent = 'Memuat…';
+  document.getElementById('custBody').innerHTML = '<tr><td colspan="5" class="empty">Memuat…</td></tr>';
+
+  try {
+    // Ambil data customer dari Supabase via admin API
+    const res = await apiFetch('/api/customers?limit=100');
+    const data = await res.json();
+    const list = data.customers || data.data || data || [];
+
+    document.getElementById('custCount').textContent = `Total: ${list.length} customer tersimpan`;
+
+    if (!list.length) {
+      document.getElementById('custBody').innerHTML = '<tr><td colspan="5" class="empty">Belum ada customer — klik "Sync Sekarang" dulu</td></tr>';
+      return;
+    }
+
+    document.getElementById('custBody').innerHTML = list.map(c => `
+      <tr>
+        <td>${c.name || '—'}</td>
+        <td>${c.wa || c.phone_e164 || '—'}</td>
+        <td>${c.email || '—'}</td>
+        <td>${c.birthday || '—'}</td>
+        <td><span style="font-size:.75rem;padding:2px 8px;border-radius:999px;background:${c.source === 'moka' ? 'rgba(52,152,219,.2)' : 'rgba(46,204,113,.2)'}">
+          ${c.source || 'web'}</span></td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    document.getElementById('custCount').textContent = 'Gagal memuat';
+    document.getElementById('custBody').innerHTML = `<tr><td colspan="5" class="empty">Error: ${err.message}</td></tr>`;
+  }
+}
+
+async function runCustSync(dryRun) {
+  const btnDry  = document.getElementById('btnCustDry');
+  const btnReal = document.getElementById('btnCustSync');
+  const result  = document.getElementById('custResult');
+  const btn     = dryRun ? btnDry : btnReal;
+
+  btnDry.disabled = true;
+  btnReal.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> ' + (dryRun ? 'Mengecek…' : 'Syncing…');
+  hideAlert('alertCustomers');
+  result.style.display = 'none';
+
+  try {
+    const url = '/api/moka/sync-customers' + (dryRun ? '?dry_run=1' : '');
+    const res = await fetch(API_BASE + url, {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + ADMIN_TOKEN, 'x-admin-token': ADMIN_TOKEN },
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    result.style.display = 'block';
+    if (dryRun) {
+      result.innerHTML = `🔍 <b>Dry run selesai</b><br>📊 Customer di Moka: <b>${data.total_from_moka ?? 0}</b><br><em style="color:var(--muted)">Belum ada yang diubah. Klik "Sync Sekarang" untuk menyimpan.</em>`;
+      showAlert('alertCustomers', 'info', `🔍 Ditemukan ${data.total_from_moka ?? 0} customer di Moka`);
+    } else {
+      result.innerHTML = `✅ <b>Sync selesai!</b><br>👥 Berhasil disimpan: <b>${data.synced ?? 0}</b> customer<br>❌ Gagal: <b>${data.failed ?? 0}</b><br>📊 Total dari Moka: <b>${data.total_from_moka ?? 0}</b>`;
+      showAlert('alertCustomers', 'success', `✅ ${data.synced ?? 0} customer berhasil disimpan ke Supabase!`);
+      await loadCustomersPage();
+    }
+  } catch (err) {
+    showAlert('alertCustomers', 'error', '❌ Gagal: ' + err.message);
+  } finally {
+    btnDry.disabled  = false;
+    btnReal.disabled = false;
+    btnDry.innerHTML  = '🔍 Test (dry run)';
+    btnReal.innerHTML = '👥 Sync Sekarang';
+  }
+}
+
+document.getElementById('btnCustDry')?.addEventListener('click',  () => runCustSync(true));
+document.getElementById('btnCustSync')?.addEventListener('click', () => runCustSync(false));
 
 // ── ITEM MAPPING ──────────────────────────────────────────────
 let mokaItemsList = [];
