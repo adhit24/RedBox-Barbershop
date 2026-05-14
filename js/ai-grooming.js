@@ -38,6 +38,13 @@ class AIGroomingService {
     return localStorage.getItem('auth_token') || localStorage.getItem('sb-token');
   }
 
+  _getUserEmail() {
+    try {
+      const user = JSON.parse(localStorage.getItem('redbox_user') || 'null');
+      return user?.email || null;
+    } catch (e) { return null; }
+  }
+
   // Set auth token after login
   setAuthToken(token) {
     this.token = token;
@@ -80,13 +87,15 @@ class AIGroomingService {
         body: JSON.stringify({
           image: base64Image,
           serviceType: serviceType,
-          fileName: file.name
+          userEmail: this._getUserEmail(),
         })
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Upload failed');
+        const errData = await response.json();
+        const err = new Error(errData.message || errData.error || 'Upload failed');
+        err.statusCode = response.status;
+        throw err;
       }
 
       const data = await response.json();
@@ -491,9 +500,10 @@ class AIGroomingUI {
     } catch (error) {
       this.hideLoading();
       console.error('Analysis error:', error);
-      
-      // Special handling for local testing period (until May 16, 2026)
-      if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+
+      if (error.statusCode === 429 || error.message?.includes('Limit reached') || error.message?.includes('Kamu sudah')) {
+        this.showError(error.message || 'Kamu sudah mencapai batas maksimal 2x analisis AI.');
+      } else if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
         this.showError('⚠️ Server belum siap. Pastikan backend running (node server/index.js)');
       } else if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
         this.showError('Silakan login terlebih dahulu untuk menggunakan fitur AI');
