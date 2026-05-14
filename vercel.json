@@ -14,7 +14,7 @@
       "includeFiles": "server/**"
     },
     "api/ai/hairstyle.js": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "includeFiles": "server/**"
     }
   },
