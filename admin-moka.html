@@ -821,7 +821,16 @@ async function runCustSync(dryRun) {
 
     result.style.display = 'block';
     if (dryRun) {
-      result.innerHTML = `🔍 <b>Dry run selesai</b><br>📊 Customer di Moka: <b>${data.total_from_moka ?? 0}</b><br><em style="color:var(--muted)">Belum ada yang diubah. Klik "Sync Sekarang" untuk menyimpan.</em>`;
+      let debugHtml = '';
+      if ((data.total_from_moka ?? 0) === 0) {
+        debugHtml += `<br><small style="color:var(--muted)">Business ID dipakai: <code>${data.business_id_used ?? '-'}</code></small>`;
+        if (data.debug_first_page_error) {
+          debugHtml += `<br><small style="color:#e74c3c">Error dari Moka: HTTP ${data.debug_first_page_error.status} — ${data.debug_first_page_error.message}</small>`;
+        } else if (data.debug_first_page !== null) {
+          debugHtml += `<br><small style="color:var(--muted)">Raw response Moka:<br><code style="font-size:.75rem;word-break:break-all">${JSON.stringify(data.debug_first_page).slice(0,400)}</code></small>`;
+        }
+      }
+      result.innerHTML = `🔍 <b>Dry run selesai</b><br>📊 Customer di Moka: <b>${data.total_from_moka ?? 0}</b>${debugHtml}<br><em style="color:var(--muted)">Belum ada yang diubah. Klik "Sync Sekarang" untuk menyimpan.</em>`;
       showAlert('alertCustomers', 'info', `🔍 Ditemukan ${data.total_from_moka ?? 0} customer di Moka`);
     } else {
       result.innerHTML = `✅ <b>Sync selesai!</b><br>👥 Berhasil disimpan: <b>${data.synced ?? 0}</b> customer<br>❌ Gagal: <b>${data.failed ?? 0}</b><br>📊 Total dari Moka: <b>${data.total_from_moka ?? 0}</b>`;

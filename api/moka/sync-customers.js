@@ -35,7 +35,7 @@ function toMMDD(birthday) {
 }
 
 // Paginate through all Moka customers for a given outlet
-async function fetchAllMokaCustomers(client) {
+async function fetchAllMokaCustomers(client, debugRef = null) {
   const customers = [];
   let page = 1;
   let totalPages = 1;
@@ -48,10 +48,14 @@ async function fetchAllMokaCustomers(client) {
       // 404 / 403 — business ID mismatch or no access; stop gracefully
       if (err.status === 404 || err.status === 403) {
         console.warn(`[SyncCustomers] getCustomers page ${page}: HTTP ${err.status} — stopping pagination`);
+        if (debugRef && page === 1) debugRef.firstPageError = { status: err.status, message: err.message, details: err.details };
         break;
       }
       throw err;
     }
+
+    // Capture raw first page for debugging
+    if (debugRef && page === 1) debugRef.firstPageRaw = json;
 
     // Moka can return: { data: { customers: [...], meta: {...} } }
     //               or: { data: [...], meta: {...} }
@@ -115,15 +119,20 @@ module.exports = async function handler(req, res) {
     const primary = outlets[0];
     const client  = new MokaClient(supabase, primary.id, primary.moka_outlet_id);
 
-    console.log(`[SyncCustomers] Fetching from Moka (businessId=${process.env.MOKA_BUSINESS_ID || primary.moka_outlet_id})...`);
-    const mokaCustomers = await fetchAllMokaCustomers(client);
+    const businessId = process.env.MOKA_BUSINESS_ID || primary.moka_outlet_id;
+    console.log(`[SyncCustomers] Fetching from Moka (businessId=${businessId})...`);
+    const debug = {};
+    const mokaCustomers = await fetchAllMokaCustomers(client, debug);
     console.log(`[SyncCustomers] Total dari Moka: ${mokaCustomers.length} customers`);
 
     if (dryRun) {
       return res.status(200).json({
         dry_run: true,
+        business_id_used: businessId,
         total_from_moka: mokaCustomers.length,
         sample: mokaCustomers.slice(0, 3),
+        debug_first_page: debug.firstPageRaw ?? null,
+        debug_first_page_error: debug.firstPageError ?? null,
       });
     }
 
