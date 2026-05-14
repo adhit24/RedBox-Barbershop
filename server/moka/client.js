@@ -120,14 +120,26 @@ class MokaClient {
 
   /**
    * Fetch one page of customers from Moka business API.
-   * Endpoint: GET /v1/businesses/{business_id}/customers
-   * business_id = MOKA_BUSINESS_ID env var, falls back to moka_outlet_id.
+   * NOTE: This endpoint returns 404 for client_credentials tokens.
+   * Use getTransactionPage() + extract customer fields instead.
    * @param {{ page?: number, perPage?: number }} opts
    */
   async getCustomers({ page = 1, perPage = 100 } = {}) {
     const businessId = process.env.MOKA_BUSINESS_ID || this._mokaOutletId;
     const qs = new URLSearchParams({ page: String(page), per_page: String(perPage) });
     return this._req('GET', `/v1/businesses/${businessId}/customers?${qs}`);
+  }
+
+  /**
+   * Fetch one page of transactions from v3 report API.
+   * Customer data (customer_id, customer_name, customer_phone, customer_email)
+   * is embedded in each payment — use this to build the customer list.
+   * @param {{ sinceEpoch?: number|null, limit?: number }} opts
+   */
+  async getTransactionPage({ sinceEpoch = null, limit = 100 } = {}) {
+    const qs = new URLSearchParams({ per_page: String(limit) });
+    if (sinceEpoch !== null) qs.set('since', String(sinceEpoch));
+    return this._req('GET', `/v3/outlets/${this._mokaOutletId}/reports/get_latest_transactions?${qs}`);
   }
 
   /**

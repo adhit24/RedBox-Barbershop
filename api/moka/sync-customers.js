@@ -2,6 +2,10 @@
  * POST /api/moka/sync-customers  — pull semua customer dari Moka → Supabase
  * Bisa dipanggil manual dari admin panel atau via cron harian.
  *
+ * Moka tidak mengekspos customer list API via client_credentials OAuth.
+ * Customer data diambil dari transaction history (v3 report API) — setiap
+ * payment record menyertakan customer_id, customer_name, customer_phone, customer_email.
+ *
  * Query params:
  *   outlet   (optional) — slug outlet, default semua outlet aktif
  *   dry_run  (optional) — '1' hanya hitung, tidak upsert
@@ -10,7 +14,9 @@
 const { createClient } = require('@supabase/supabase-js');
 const MokaClient = require('../../server/moka/client');
 
-const BATCH_SIZE = 50;
+const BATCH_SIZE    = 50;
+const PAGE_DELAY_MS = 150;
+const MAX_BUDGET_MS = 90_000; // stop scanning if approaching Vercel 120s timeout
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -24,53 +30,61 @@ function toE164(phone) {
   return null;
 }
 
-// Moka birthday comes as "YYYY-MM-DD" or null — convert to MM-DD for our birthday cron
-function toMMDD(birthday) {
-  if (!birthday) return null;
-  const m = String(birthday).match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (m) return `${m[2]}-${m[3]}`;
-  const m2 = String(birthday).match(/^(\d{2})-(\d{2})$/);
-  if (m2) return birthday;
-  return null;
-}
+// Extract unique customers from all transaction pages for one outlet.
+// Stops when: all pages fetched, 404/403 error, or time budget exceeded.
+async function fetchCustomersFromTransactions(client, mokaOutletId, startTime) {
+  const customerMap = new Map(); // moka_customer_id → customer data
+  let sinceEpoch = null;
+  let pageCount  = 0;
 
-// Paginate through all Moka customers for a given outlet
-async function fetchAllMokaCustomers(client, debugRef = null) {
-  const customers = [];
-  let page = 1;
-  let totalPages = 1;
+  while (true) {
+    if (Date.now() - startTime > MAX_BUDGET_MS) {
+      console.warn(`[SyncCustomers] ${mokaOutletId}: time budget hit after ${pageCount} pages`);
+      break;
+    }
 
-  do {
     let json;
     try {
-      json = await client.getCustomers({ page, perPage: 100 });
+      json = await client.getTransactionPage({ sinceEpoch, limit: 100 });
     } catch (err) {
-      // 404 / 403 — business ID mismatch or no access; stop gracefully
       if (err.status === 404 || err.status === 403) {
-        console.warn(`[SyncCustomers] getCustomers page ${page}: HTTP ${err.status} — stopping pagination`);
-        if (debugRef && page === 1) debugRef.firstPageError = { status: err.status, message: err.message, details: err.details };
+        console.warn(`[SyncCustomers] ${mokaOutletId} page ${pageCount}: HTTP ${err.status} — stopping`);
         break;
       }
       throw err;
     }
 
-    // Capture raw first page for debugging
-    if (debugRef && page === 1) debugRef.firstPageRaw = json;
+    const payments = json?.data?.payments ?? [];
+    for (const p of payments) {
+      if (p.customer_id) {
+        const cid = String(p.customer_id);
+        if (!customerMap.has(cid)) {
+          customerMap.set(cid, {
+            moka_customer_id: cid,
+            name:  (p.customer_name  || 'Unknown').trim(),
+            phone: p.customer_phone  || null,
+            email: p.customer_email  || null,
+          });
+        }
+      }
+    }
 
-    // Moka can return: { data: { customers: [...], meta: {...} } }
-    //               or: { data: [...], meta: {...} }
-    const rows = json?.data?.customers ?? json?.data ?? [];
-    const meta = json?.data?.meta     ?? json?.meta  ?? {};
+    pageCount++;
 
-    if (Array.isArray(rows)) customers.push(...rows);
+    if (json?.data?.completed) break;
+    if (!payments.length) break; // safety: empty page
 
-    totalPages = Number(meta.total_pages ?? meta.last_page ?? 1) || 1;
+    // Extract next `since` epoch from pagination URL
+    const nextUrl = json?.data?.next_url || '';
+    const m = nextUrl.match(/[?&]since=([0-9.]+)/);
+    if (!m) break;
+    sinceEpoch = parseFloat(m[1]);
 
-    if (page < totalPages) await new Promise(r => setTimeout(r, 250)); // gentle rate limit
-    page++;
-  } while (page <= totalPages);
+    await new Promise(r => setTimeout(r, PAGE_DELAY_MS));
+  }
 
-  return customers;
+  console.log(`[SyncCustomers] Outlet ${mokaOutletId}: ${pageCount} pages → ${customerMap.size} unique customers`);
+  return Array.from(customerMap.values());
 }
 
 // ── Handler ──────────────────────────────────────────────────────
@@ -88,8 +102,9 @@ module.exports = async function handler(req, res) {
     if (!ok) return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const dryRun  = req.query.dry_run === '1' || req.body?.dry_run === true;
+  const dryRun   = req.query.dry_run === '1' || req.body?.dry_run === true;
   const onlySlug = req.query.outlet || req.body?.outlet || null;
+  const startTime = Date.now();
 
   const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -114,30 +129,34 @@ module.exports = async function handler(req, res) {
 
     console.log(`[SyncCustomers] Outlets: ${outlets.map(o => o.slug).join(', ')}`);
 
-    // 2. Fetch semua customer dari Moka
-    // Customer endpoint adalah business-level — cukup panggil sekali via outlet pertama
-    const primary = outlets[0];
-    const client  = new MokaClient(supabase, primary.id, primary.moka_outlet_id);
+    // 2. Collect customers from all outlets via transaction history
+    const globalMap = new Map();
+    for (const outlet of outlets) {
+      const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
+      const customers = await fetchCustomersFromTransactions(client, outlet.moka_outlet_id, startTime);
+      for (const c of customers) {
+        if (!globalMap.has(c.moka_customer_id)) globalMap.set(c.moka_customer_id, c);
+      }
+      if (Date.now() - startTime > MAX_BUDGET_MS) {
+        console.warn('[SyncCustomers] Time budget hit — stopping outlet loop early');
+        break;
+      }
+    }
 
-    const businessId = process.env.MOKA_BUSINESS_ID || primary.moka_outlet_id;
-    console.log(`[SyncCustomers] Fetching from Moka (businessId=${businessId})...`);
-    const debug = {};
-    const mokaCustomers = await fetchAllMokaCustomers(client, debug);
-    console.log(`[SyncCustomers] Total dari Moka: ${mokaCustomers.length} customers`);
+    const mokaCustomers = Array.from(globalMap.values());
+    console.log(`[SyncCustomers] Total unik dari ${outlets.length} outlet: ${mokaCustomers.length} customers`);
 
     if (dryRun) {
       return res.status(200).json({
-        dry_run: true,
-        business_id_used: businessId,
+        dry_run:         true,
         total_from_moka: mokaCustomers.length,
-        sample: mokaCustomers.slice(0, 3),
-        debug_first_page: debug.firstPageRaw ?? null,
-        debug_first_page_error: debug.firstPageError ?? null,
+        outlets_scanned: outlets.map(o => o.slug),
+        sample:          mokaCustomers.slice(0, 5),
       });
     }
 
     if (!mokaCustomers.length) {
-      return res.status(200).json({ synced: 0, total_from_moka: 0, note: 'Moka returned 0 customers' });
+      return res.status(200).json({ synced: 0, total_from_moka: 0, note: 'No customers found in transactions' });
     }
 
     // 3. Upsert ke Supabase dalam batch
@@ -147,23 +166,18 @@ module.exports = async function handler(req, res) {
     for (let i = 0; i < mokaCustomers.length; i += BATCH_SIZE) {
       const batch = mokaCustomers.slice(i, i + BATCH_SIZE);
 
-      const rows = batch
-        .filter(c => c?.id)
-        .map(c => {
-          const phone = toE164(c.phone_number || c.phone);
-          const waRaw = phone ? phone.replace('+', '') : null;
-          return {
-            name:             (c.name || c.customer_name || 'Unknown').trim(),
-            wa:               waRaw,
-            phone_e164:       phone,
-            email:            c.email || null,
-            birthday:         toMMDD(c.birthday || c.birth_date),
-            source:           'moka',
-            moka_customer_id: String(c.id),
-          };
-        });
-
-      if (!rows.length) continue;
+      const rows = batch.map(c => {
+        const phone = toE164(c.phone);
+        const waRaw = phone ? phone.replace('+', '') : null;
+        return {
+          name:             c.name,
+          wa:               waRaw,
+          phone_e164:       phone,
+          email:            c.email || null,
+          source:           'moka',
+          moka_customer_id: c.moka_customer_id,
+        };
+      });
 
       const { error: upsertErr } = await supabase
         .from('customers')
@@ -174,22 +188,19 @@ module.exports = async function handler(req, res) {
         totalFailed += rows.length;
       } else {
         totalSynced += rows.length;
-        console.log(`[SyncCustomers] Batch ${i}–${i + rows.length} OK (${rows.length} rows)`);
+        console.log(`[SyncCustomers] Batch ${i}–${i + rows.length} OK`);
       }
 
-      // Lanjut link customer Moka ke customer web yang sudah ada lewat phone_e164
-      // agar data tidak duplikat (web customer yang belum punya moka_customer_id)
-      const phoneBatch = rows
-        .filter(r => r.phone_e164 && r.moka_customer_id)
-        .map(r => ({ phone_e164: r.phone_e164, moka_customer_id: r.moka_customer_id }));
-
-      for (const { phone_e164, moka_customer_id } of phoneBatch) {
-        await supabase
-          .from('customers')
-          .update({ moka_customer_id, source: 'moka' })
-          .eq('phone_e164', phone_e164)
-          .is('moka_customer_id', null)
-          .then(() => {});  // fire-and-forget, ignore errors
+      // Link ke existing web customers by phone_e164
+      for (const r of rows) {
+        if (r.phone_e164 && r.moka_customer_id) {
+          await supabase
+            .from('customers')
+            .update({ moka_customer_id: r.moka_customer_id, source: 'moka' })
+            .eq('phone_e164', r.phone_e164)
+            .is('moka_customer_id', null)
+            .then(() => {});
+        }
       }
     }
 
