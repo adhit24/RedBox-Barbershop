@@ -685,12 +685,12 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ uploadId, hairstyleName: slot.hairstyleName, hairstyleDescription: slot.hairstyleDescription }),
           });
-          if (!res.ok) throw new Error('status ' + res.status);
-          const { imageUrl } = await res.json();
-          el.innerHTML = `<img src="${imageUrl}" alt="${slot.hairstyleName}" />`;
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error + (json.detail ? ': ' + json.detail : ''));
+          el.innerHTML = `<img src="${json.imageUrl}" alt="${slot.hairstyleName}" />`;
         } catch(err) {
           el.innerHTML = `<div class="hair-img-error">💈</div>`;
-          console.warn('[HairstyleImg]', slot.hairstyleName, err.message);
+          console.error('[HairstyleImg] ' + slot.hairstyleName + ':', err.message);
         }
       }
 
