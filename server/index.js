@@ -1456,7 +1456,8 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
           const path = nextUrl.replace(/^https?:\/\/[^/]+/, '');
           response = await client._req('GET', path);
         } else {
-          response = await client.getTransactionPage({ sinceEpoch: 0, limit: 100 });
+          // No 'since' param — Moka returns latest transactions then next_url for older pages
+          response = await client.getTransactionPage({ sinceEpoch: null, limit: 100 });
         }
       } catch (err) {
         allResults.push({ outlet_id, error: `Page ${page}: ${err.message}` });
