@@ -4,7 +4,7 @@
  * Powered by OpenAI gpt-4o-mini with per-user conversation memory.
  */
 
-const { sendWA, getDeviceInfo, checkMessageStatus } = require('../../server/services/fonnte');
+const { sendWA, getDeviceInfo } = require('../../server/services/fonnte');
 const OpenAI = require('openai');
 
 const INSTANCE_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -15,6 +15,9 @@ function pushDebug(entry) {
   debugLog.unshift({ ts: new Date().toISOString(), instance_id: INSTANCE_ID, ...entry });
   if (debugLog.length > 10) debugLog.pop();
 }
+
+const messageStatusCache = new Map();
+const STATUS_TTL_MS = 2 * 60 * 60 * 1000;
 
 // ── Conversation Memory ───────────────────────────────────────────────────────
 const conversationCache = new Map(); // sender → [{role, content}]
@@ -328,6 +331,16 @@ function coerceBody(body) {
   return {};
 }
 
+function cacheMessageStatus(id, payload) {
+  const msgId = String(id || '').trim();
+  if (!msgId) return;
+  const now = Date.now();
+  for (const [k, v] of messageStatusCache.entries()) {
+    if (!v?.ts || now - v.ts > STATUS_TTL_MS) messageStatusCache.delete(k);
+  }
+  messageStatusCache.set(msgId, { ts: now, ...payload });
+}
+
 // ── Webhook Entry ─────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
@@ -369,9 +382,15 @@ module.exports = async function handler(req, res) {
       }
 
       if (req.query.msg_status_id) {
-        const st = await checkMessageStatus(req.query.msg_status_id);
-        pushDebug({ step: 'msg_status', id: String(req.query.msg_status_id), status: st?.message_status || st?.status });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, message_status: st });
+        const msgId = String(req.query.msg_status_id);
+        const cached = messageStatusCache.get(msgId) || null;
+        pushDebug({ step: 'msg_status', id: msgId, cached: !!cached });
+        return res.status(200).json({
+          status: 'ok',
+          instance_id: INSTANCE_ID,
+          message_status: cached,
+          note: 'Fonnte /status API deprecated. Gunakan webhookstatus ke endpoint ini agar status tersimpan di cache.',
+        });
       }
 
       if (req.query.send_to && req.query.send_msg) {
@@ -409,6 +428,15 @@ module.exports = async function handler(req, res) {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const rawBody = coerceBody(req.body);
     const body = rawBody && rawBody.data && typeof rawBody.data === 'object' ? rawBody.data : rawBody;
+
+    const statusId = body.id || body.message_id || body.msgid || body.messageId;
+    const messageStatus = body.message_status || body.status;
+    const statusTarget = body.target || body.to || body.number || body.phone;
+    if (messageStatus && statusId && !body.message && !body.text) {
+      cacheMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
+      pushDebug({ step: 'webhook_status', id: String(statusId), message_status: String(messageStatus), target: Array.isArray(statusTarget) ? statusTarget[0] : statusTarget });
+      return res.status(200).json({ status: 'ok' });
+    }
 
     const sender = body.sender || body.from || body.number || body.phone || body.target;
     const name = body.name || body.pushName || body.senderName;
