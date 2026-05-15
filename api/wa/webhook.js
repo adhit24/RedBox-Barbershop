@@ -598,7 +598,23 @@ module.exports = async function handler(req, res) {
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const rawBody = await coerceBody(req.body, req);
-    const body = rawBody && rawBody.data && typeof rawBody.data === 'object' ? rawBody.data : rawBody;
+    let body = rawBody;
+    if (rawBody && rawBody.data) {
+      if (typeof rawBody.data === 'object') {
+        body = rawBody.data;
+      } else if (typeof rawBody.data === 'string') {
+        try {
+          const parsed = JSON.parse(rawBody.data);
+          if (parsed && typeof parsed === 'object') body = parsed;
+        } catch {}
+      }
+    }
+    if (body === rawBody && rawBody && rawBody.payload && typeof rawBody.payload === 'string') {
+      try {
+        const parsed = JSON.parse(rawBody.payload);
+        if (parsed && typeof parsed === 'object') body = parsed;
+      } catch {}
+    }
 
     const statusId = body.id || body.message_id || body.msgid || body.messageId;
     const messageStatus = body.message_status || body.status;
