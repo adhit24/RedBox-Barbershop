@@ -6,6 +6,7 @@
 
 const { sendWA, getDeviceInfo } = require('../../server/services/fonnte');
 const OpenAI = require('openai');
+const { createClient } = require('@supabase/supabase-js');
 
 const INSTANCE_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const BOOT_TS = Date.now();
@@ -18,6 +19,16 @@ function pushDebug(entry) {
 
 const messageStatusCache = new Map();
 const STATUS_TTL_MS = 2 * 60 * 60 * 1000;
+
+let supabaseClient = null;
+function getSupabase() {
+  if (supabaseClient) return supabaseClient;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+  supabaseClient = createClient(url, key);
+  return supabaseClient;
+}
 
 // ── Conversation Memory ───────────────────────────────────────────────────────
 const conversationCache = new Map(); // sender → [{role, content}]
@@ -341,6 +352,52 @@ function cacheMessageStatus(id, payload) {
   messageStatusCache.set(msgId, { ts: now, ...payload });
 }
 
+async function persistMessageStatus(id, payload) {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const msgId = String(id || '').trim();
+  if (!msgId) return null;
+
+  try {
+    const record = {
+      message_id: msgId,
+      message_status: payload?.message_status ? String(payload.message_status) : null,
+      target: payload?.target ? String(payload.target) : null,
+      payload: payload?.raw || payload || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await sb
+      .from('wa_message_status')
+      .upsert(record, { onConflict: 'message_id' })
+      .select('message_id')
+      .maybeSingle();
+    if (error) return { status: false, error: error.message };
+    return { status: true, data };
+  } catch (e) {
+    return { status: false, error: e?.message || String(e) };
+  }
+}
+
+async function getPersistedMessageStatus(id) {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const msgId = String(id || '').trim();
+  if (!msgId) return null;
+
+  try {
+    const { data, error } = await sb
+      .from('wa_message_status')
+      .select('message_id,message_status,target,payload,updated_at')
+      .eq('message_id', msgId)
+      .maybeSingle();
+    if (error) return null;
+    return data || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Webhook Entry ─────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
@@ -384,12 +441,13 @@ module.exports = async function handler(req, res) {
       if (req.query.msg_status_id) {
         const msgId = String(req.query.msg_status_id);
         const cached = messageStatusCache.get(msgId) || null;
+        const persisted = await getPersistedMessageStatus(msgId);
         pushDebug({ step: 'msg_status', id: msgId, cached: !!cached });
         return res.status(200).json({
           status: 'ok',
           instance_id: INSTANCE_ID,
-          message_status: cached,
-          note: 'Fonnte /status API deprecated. Gunakan webhookstatus ke endpoint ini agar status tersimpan di cache.',
+          message_status: cached || persisted,
+          note: 'Fonnte /status API deprecated. Endpoint ini membaca cache per-instance atau Supabase (jika tabel wa_message_status ada).',
         });
       }
 
@@ -434,6 +492,7 @@ module.exports = async function handler(req, res) {
     const statusTarget = body.target || body.to || body.number || body.phone;
     if (messageStatus && statusId && !body.message && !body.text) {
       cacheMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
+      await persistMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
       pushDebug({ step: 'webhook_status', id: String(statusId), message_status: String(messageStatus), target: Array.isArray(statusTarget) ? statusTarget[0] : statusTarget });
       return res.status(200).json({ status: 'ok' });
     }
