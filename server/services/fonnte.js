@@ -48,7 +48,7 @@ async function sendWA(to, message) {
     return data;
   } catch (err) {
     console.error('[Fonnte] Request error:', err.message);
-    return null;
+    return { status: false, error: err.message };
   }
 }
 
