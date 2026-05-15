@@ -1423,126 +1423,113 @@ app.all('/api/ai/upload', (req, res) => {
 });
 
 // ── POST /api/admin/sync-customers-full ──────────────────────────────────────
-// Full historical customer pull from Moka: paginate ALL transactions,
-// group by customer, aggregate visits/total_spent/last_visit/points.
-// Uses bulk upsert (single DB round-trip) to avoid per-row timeout.
-// Points formula: visits × 10
+// Chunk-based historical customer pull from Moka.
+// Body: { outlet_id?, next_url?, max_pages? (default 4) }
+// Returns: { done, next_url, outlet_id, pages_fetched, customers_found, upserted, error? }
+// Caller chains calls until done=true.
 app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
 
-  const { data: tokens } = await supabase.from('moka_tokens').select('outlet_id');
-  if (!tokens?.length) return res.status(400).json({ error: 'No Moka outlets configured' });
+  const { next_url: startNextUrl, max_pages = 4 } = req.body || {};
+  let { outlet_id: rawOutletId } = req.body || {};
 
   const MokaClient = require('./moka/client');
-  const allResults = [];
 
-  for (const { outlet_id } of tokens) {
-    const { data: outlet } = await supabase.from('outlets')
-      .select('id, moka_outlet_id').eq('id', outlet_id).maybeSingle();
-    if (!outlet?.moka_outlet_id) {
-      allResults.push({ outlet_id, error: 'no moka_outlet_id' });
-      continue;
+  // If no outlet_id given, pick the first authorized one
+  if (!rawOutletId) {
+    const { data: tokens } = await supabase.from('moka_tokens').select('outlet_id').limit(1);
+    rawOutletId = tokens?.[0]?.outlet_id;
+  }
+  if (!rawOutletId) return res.status(400).json({ error: 'No Moka outlets configured' });
+
+  const { data: outlet } = await supabase.from('outlets')
+    .select('id, moka_outlet_id').eq('id', rawOutletId).maybeSingle();
+  if (!outlet?.moka_outlet_id) return res.status(400).json({ error: 'Outlet has no moka_outlet_id' });
+
+  const client = new MokaClient(supabase, rawOutletId, outlet.moka_outlet_id);
+  const customerMap = new Map();
+  let nextUrl = startNextUrl || null;
+  let page = 0;
+
+  // Fetch up to max_pages from Moka
+  do {
+    let response;
+    try {
+      if (nextUrl) {
+        const path = nextUrl.replace(/^https?:\/\/[^/]+/, '');
+        response = await client._req('GET', path);
+      } else {
+        response = await client.getTransactionPage({ sinceEpoch: null, limit: 100 });
+      }
+    } catch (err) {
+      return res.json({ done: true, outlet_id: rawOutletId, pages_fetched: page, customers_found: 0, upserted: 0, error: err.message });
     }
 
-    const client = new MokaClient(supabase, outlet_id, outlet.moka_outlet_id);
+    const payments = Array.isArray(response?.data?.payments) ? response.data.payments : [];
+    nextUrl = response?.data?.next_url || null;
+    page++;
 
-    // Step 1: paginate ALL transactions from Moka (in-memory aggregation)
-    const customerMap = new Map(); // wa → { name, email, mokaId, wa, phone_e164, visits, total_spent, last_visit }
-    let nextUrl = null, page = 0;
+    for (const p of payments) {
+      if (p.is_deleted || p.is_refunded) continue;
+      const rawPhone = String(p.customer_phone_number || p.customer_phone || '').trim();
+      const cName    = String(p.customer_name  || p.name  || '').trim();
+      const cEmail   = String(p.customer_email || p.email || '').trim();
+      const cId      = String(p.customer_id    || '').trim();
+      const amount   = Number(p.total_collected || 0);
+      const txTime   = p.transaction_time || p.created_at || null;
 
-    do {
-      let response;
-      try {
-        if (nextUrl) {
-          const path = nextUrl.replace(/^https?:\/\/[^/]+/, '');
-          response = await client._req('GET', path);
-        } else {
-          response = await client.getTransactionPage({ sinceEpoch: null, limit: 100 });
-        }
-      } catch (err) {
-        allResults.push({ outlet_id, error: `Page ${page}: ${err.message}` });
-        response = null;
-        break;
+      let wa = rawPhone.replace(/\D/g, '');
+      if (wa.startsWith('0')) wa = '62' + wa.slice(1);
+      else if (wa && !wa.startsWith('62')) wa = '62' + wa;
+      const key = wa || cId;
+      if (!key) continue;
+
+      if (!customerMap.has(key)) {
+        customerMap.set(key, { name: cName, email: cEmail || null, mokaId: cId || null, wa, phone_e164: wa ? `+${wa}` : null, visits: 0, total_spent: 0, last_visit: null });
       }
-
-      const payments = Array.isArray(response?.data?.payments) ? response.data.payments : [];
-      nextUrl = response?.data?.next_url || null;
-      page++;
-
-      for (const p of payments) {
-        if (p.is_deleted || p.is_refunded) continue;
-
-        const rawPhone = String(p.customer_phone_number || p.customer_phone || '').trim();
-        const cName    = String(p.customer_name  || p.name  || '').trim();
-        const cEmail   = String(p.customer_email || p.email || '').trim();
-        const cId      = String(p.customer_id    || '').trim();
-        const amount   = Number(p.total_collected || 0);
-        const txTime   = p.transaction_time || p.created_at || null;
-
-        let wa = rawPhone.replace(/\D/g, '');
-        if (wa.startsWith('0')) wa = '62' + wa.slice(1);
-        else if (wa && !wa.startsWith('62')) wa = '62' + wa;
-        const phone_e164 = wa ? `+${wa}` : null;
-
-        const key = wa || cId || cEmail;
-        if (!key) continue;
-
-        if (!customerMap.has(key)) {
-          customerMap.set(key, { name: cName, email: cEmail || null, mokaId: cId || null, wa, phone_e164, visits: 0, total_spent: 0, last_visit: null });
-        }
-        const c = customerMap.get(key);
-        if (cName && !c.name)   c.name   = cName;
-        if (cEmail && !c.email) c.email  = cEmail;
-        if (cId && !c.mokaId)   c.mokaId = cId;
-        c.visits++;
-        c.total_spent += amount;
-        if (txTime && (!c.last_visit || txTime > c.last_visit)) c.last_visit = txTime;
-      }
-
-      if (!nextUrl || payments.length === 0) break;
-    } while (page < 200);
-
-    if (!customerMap.size) {
-      allResults.push({ outlet_id, moka_outlet_id: outlet.moka_outlet_id, pages_fetched: page, unique_customers_in_moka: 0, upserted: 0, errors: 0 });
-      continue;
+      const c = customerMap.get(key);
+      if (cName && !c.name)   c.name   = cName;
+      if (cEmail && !c.email) c.email  = cEmail;
+      if (cId && !c.mokaId)   c.mokaId = cId;
+      c.visits++;
+      c.total_spent += amount;
+      if (txTime && (!c.last_visit || txTime > c.last_visit)) c.last_visit = txTime;
     }
 
-    // Step 2: bulk upsert — single round-trip to Supabase
+    if (!nextUrl || payments.length === 0) break;
+  } while (page < max_pages);
+
+  const done = !nextUrl;
+
+  // Bulk upsert found customers
+  let upserted = 0;
+  let upsertError = null;
+  if (customerMap.size) {
     const rows = Array.from(customerMap.values()).map(c => ({
-      name:            c.name || 'Moka Customer',
-      wa:              c.wa || '',
-      phone_e164:      c.phone_e164 || null,
-      email:           c.email || null,
-      source:          'moka',
-      moka_customer_id: c.mokaId || null,
-      visits:          c.visits,
-      total_spent:     c.total_spent,
-      last_visit:      c.last_visit || null,
-      points:          c.visits * 10,
-      updated_at:      new Date().toISOString(),
+      name: c.name || 'Moka Customer', wa: c.wa || '',
+      phone_e164: c.phone_e164 || null, email: c.email || null,
+      source: 'moka', moka_customer_id: c.mokaId || null,
+      visits: c.visits, total_spent: c.total_spent,
+      last_visit: c.last_visit || null, points: c.visits * 10,
+      updated_at: new Date().toISOString(),
     }));
 
-    // Try with points column first; if column missing, retry without it
-    let { error: upsertErr } = await supabase.from('customers')
+    let { error } = await supabase.from('customers')
       .upsert(rows, { onConflict: 'wa', ignoreDuplicates: false });
-
-    if (upsertErr && upsertErr.message.includes('points')) {
-      const rowsNoPts = rows.map(({ points: _p, ...r }) => r);
-      const { error: err2 } = await supabase.from('customers')
-        .upsert(rowsNoPts, { onConflict: 'wa', ignoreDuplicates: false });
-      upsertErr = err2;
+    if (error?.message?.includes('points')) {
+      const r2 = rows.map(({ points: _, ...rest }) => rest);
+      ({ error } = await supabase.from('customers').upsert(r2, { onConflict: 'wa', ignoreDuplicates: false }));
     }
-
-    allResults.push({
-      outlet_id, moka_outlet_id: outlet.moka_outlet_id,
-      pages_fetched: page,
-      unique_customers_in_moka: customerMap.size,
-      upserted: upsertErr ? 0 : rows.length,
-      errors: upsertErr ? upsertErr.message : 0,
-    });
+    upserted = error ? 0 : rows.length;
+    if (error) upsertError = error.message;
   }
 
-  return res.json({ success: true, results: allResults });
+  return res.json({
+    done, next_url: nextUrl || null, outlet_id: rawOutletId,
+    moka_outlet_id: outlet.moka_outlet_id,
+    pages_fetched: page, customers_found: customerMap.size,
+    upserted, ...(upsertError ? { error: upsertError } : {}),
+  });
 });
 
 // ── MEMBER AUTH (OTP via WhatsApp) ───────────────────────────────────────────
