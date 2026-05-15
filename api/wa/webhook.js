@@ -193,9 +193,8 @@ module.exports = async function handler(req, res) {
     if (type && type !== 'text') return res.status(200).json({ status: 'ignored' });
     if (!sender || !message)     return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
 
-    // Respond to Fonnte immediately, then process async
-    res.status(200).json({ status: 'ok' });
     await handleMessage({ from: sender, name: name || 'Kak', text: message });
+    return res.status(200).json({ status: 'ok' });
 
   } catch (err) {
     console.error('[WA Bot] Fatal error:', err.message);
