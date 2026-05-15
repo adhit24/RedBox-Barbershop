@@ -22,7 +22,7 @@
       "includeFiles": "server/**"
     },
     "api/wa/webhook.js": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "includeFiles": "server/**"
     },
     "api/cron/reminders.js": {

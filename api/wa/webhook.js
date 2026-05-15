@@ -243,10 +243,15 @@ async function callOpenAI(sender, userMessage, name, signal) {
     { role: 'user', content: userMessage },
   ];
 
-  const completion = await openai.chat.completions.create(
-    { model: 'gpt-4o-mini', messages, max_tokens: 400, temperature: 0.75 },
+  // Promise.race untuk timeout yang reliable — AbortController saja tidak cukup di Vercel
+  const openaiCall = openai.chat.completions.create(
+    { model: 'gpt-4o-mini', messages, max_tokens: 250, temperature: 0.7 },
     { signal }
   );
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('OpenAI timeout 7s')), 7000)
+  );
+  const completion = await Promise.race([openaiCall, timeoutPromise]);
 
   const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf, ada gangguan teknis. Coba lagi ya kak 🙏';
 
