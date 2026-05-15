@@ -8,12 +8,29 @@ const { sendWA } = require('../../server/services/fonnte');
 const OpenAI = require('openai');
 
 // ── Conversation Memory ───────────────────────────────────────────────────────
-// In-memory cache keyed by sender number. Persists across warm invocations.
-// Resets on cold start — acceptable for a barbershop bot.
 const conversationCache = new Map(); // sender → [{role, content}]
-const MAX_HISTORY = 12; // max messages kept per user (6 exchanges)
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min inactivity clears context
-const cacheTimestamps = new Map(); // sender → last activity timestamp
+const MAX_HISTORY = 12;
+const CACHE_TTL_MS = 30 * 60 * 1000;
+const cacheTimestamps = new Map();
+
+// ── Dedup — cegah pesan yang sama diproses dua kali (Fonnte retry) ────────────
+const processedIds = new Set();
+const DEDUP_TTL_MS = 5 * 60 * 1000; // hapus ID lama setelah 5 menit
+const processedTimestamps = new Map();
+
+function isDuplicate(msgId) {
+  if (!msgId) return false;
+  const key = String(msgId);
+  if (processedIds.has(key)) return true;
+  // Bersihkan ID lama
+  const now = Date.now();
+  for (const [id, ts] of processedTimestamps) {
+    if (now - ts > DEDUP_TTL_MS) { processedIds.delete(id); processedTimestamps.delete(id); }
+  }
+  processedIds.add(key);
+  processedTimestamps.set(key, now);
+  return false;
+}
 
 function getHistory(sender) {
   // Auto-expire inactive conversations
@@ -317,13 +334,26 @@ module.exports = async function handler(req, res) {
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const body = req.body || {};
-    const { sender, name, message, type, device } = body;
+    const { sender, name, message, type, device, id } = body;
+
+    // Log raw body untuk diagnose field Fonnte (sembunyikan message panjang)
+    console.log('[WA Bot] Raw payload:', JSON.stringify({ ...body, message: body.message?.slice(0, 60) }));
+
+    // Dedup — abaikan jika pesan ID ini sudah pernah diproses (Fonnte retry)
+    if (isDuplicate(id)) {
+      console.log('[WA Bot] Duplicate message ignored, id:', id);
+      return res.status(200).json({ status: 'ignored', reason: 'duplicate' });
+    }
 
     // Filter pesan keluar (dikirim oleh bot sendiri) — Fonnte kirim webhook untuk outgoing juga
     const isFromMe = body.isFromMe === true || body.isFromMe === 1
       || body.is_from_me === true || body.is_from_me === 1
+      || body.fromMe === true || body.fromMe === 1
       || (device && sender && String(sender) === String(device));
-    if (isFromMe) return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
+    if (isFromMe) {
+      console.log('[WA Bot] Ignored outgoing message, fields:', JSON.stringify({ isFromMe: body.isFromMe, fromMe: body.fromMe, sender, device }));
+      return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
+    }
 
     console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: message?.slice(0, 80) }));
 
