@@ -1456,32 +1456,67 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
   let nextUrl = startNextUrl || null;
   let page = 0;
 
-  // Fetch up to max_pages from Moka
+  // ── Strategy 1: business customers endpoint (direct list, no transactions needed)
+  // ── Strategy 2: outlet customers endpoint
+  // ── Strategy 3: v3 transaction report (extract customers embedded in payments)
+  const businessId = mokaOutletId; // Moka business ID often same as outlet ID
+  const strategies = [
+    { label: 'v1_biz_customers',    path: `/v1/businesses/${businessId}/customers?page=${nextUrl||1}&per_page=100` },
+    { label: 'v1_outlet_customers', path: `/v1/outlets/${mokaOutletId}/customers?page=${nextUrl||1}&per_page=100` },
+    { label: 'v3_transactions',     path: nextUrl ? nextUrl.replace(/^https?:\/\/[^/]+/, '') : `/v3/outlets/${mokaOutletId}/reports/get_latest_transactions?per_page=100` },
+  ];
+
+  let workingStrategy = req.body.strategy || null;
+  let apiError = null;
+
+  // Fetch up to max_pages using the working strategy
   do {
-    let response;
-    try {
-      if (nextUrl) {
-        const path = nextUrl.replace(/^https?:\/\/[^/]+/, '');
-        response = await client._req('GET', path);
-      } else {
-        response = await client.getTransactionPage({ sinceEpoch: null, limit: 100 });
+    let response = null;
+    const tryStrategies = workingStrategy ? [{ label: workingStrategy, path: strategies.find(s => s.label === workingStrategy)?.path || '' }] : strategies;
+
+    for (const s of tryStrategies) {
+      try {
+        const tryPath = page > 0 ? (nextUrl ? nextUrl.replace(/^https?:\/\/[^/]+/, '') : s.path) : s.path;
+        response = await client._req('GET', tryPath);
+        workingStrategy = s.label;
+        apiError = null;
+        break;
+      } catch (err) {
+        apiError = `${s.label}: ${err.message}`;
+        response = null;
       }
-    } catch (err) {
-      return res.json({ done: true, outlet_id: rawOutletId, pages_fetched: page, customers_found: 0, upserted: 0, error: err.message });
     }
 
-    const payments = Array.isArray(response?.data?.payments) ? response.data.payments : [];
-    nextUrl = response?.data?.next_url || null;
+    if (!response) break;
     page++;
 
-    for (const p of payments) {
+    // Parse response — each strategy returns different shape
+    let customers = [];
+    let payments  = [];
+    if (workingStrategy === 'v3_transactions') {
+      payments = Array.isArray(response?.data?.payments) ? response.data.payments : [];
+      nextUrl  = response?.data?.next_url || null;
+    } else {
+      // v1 customer endpoints: { data: { customers: [...] } } or { data: [...] }
+      const raw = response?.data?.customers || response?.data || response?.customers || [];
+      customers = Array.isArray(raw) ? raw : [];
+      const meta = response?.meta || response?.data?.meta || {};
+      const total = meta.total_count || meta.total || customers.length;
+      const perPage = meta.per_page || 100;
+      const currentPage = meta.current_page || page;
+      nextUrl = currentPage * perPage < total ? String(currentPage + 1) : null;
+    }
+
+    // Aggregate customers from whichever source
+    const items = workingStrategy === 'v3_transactions' ? payments : customers;
+    for (const p of items) {
       if (p.is_deleted || p.is_refunded) continue;
-      const rawPhone = String(p.customer_phone_number || p.customer_phone || '').trim();
-      const cName    = String(p.customer_name  || p.name  || '').trim();
+      const rawPhone = String(p.customer_phone_number || p.customer_phone || p.phone_number || p.phone || '').trim();
+      const cName    = String(p.customer_name  || p.name  || p.full_name || '').trim();
       const cEmail   = String(p.customer_email || p.email || '').trim();
-      const cId      = String(p.customer_id    || '').trim();
-      const amount   = Number(p.total_collected || 0);
-      const txTime   = p.transaction_time || p.created_at || null;
+      const cId      = String(p.customer_id    || p.id    || '').trim();
+      const amount   = Number(p.total_collected || p.total_transaction || 0);
+      const txTime   = p.transaction_time || p.last_transaction_at || p.created_at || null;
 
       let wa = rawPhone.replace(/\D/g, '');
       if (wa.startsWith('0')) wa = '62' + wa.slice(1);
@@ -1496,12 +1531,14 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       if (cName && !c.name)   c.name   = cName;
       if (cEmail && !c.email) c.email  = cEmail;
       if (cId && !c.mokaId)   c.mokaId = cId;
-      c.visits++;
-      c.total_spent += amount;
+      if (workingStrategy === 'v3_transactions') {
+        c.visits++;
+        c.total_spent += amount;
+      }
       if (txTime && (!c.last_visit || txTime > c.last_visit)) c.last_visit = txTime;
     }
 
-    if (!nextUrl || payments.length === 0) break;
+    if (!nextUrl || items.length === 0) break;
   } while (page < max_pages);
 
   const done = !nextUrl;
@@ -1533,7 +1570,9 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     done, next_url: nextUrl || null, outlet_id: rawOutletId,
     moka_outlet_id: mokaOutletId,
     pages_fetched: page, customers_found: customerMap.size,
-    upserted, ...(upsertError ? { error: upsertError } : {}),
+    upserted, strategy_used: workingStrategy,
+    ...(upsertError ? { error: upsertError } : {}),
+    ...(apiError && !workingStrategy ? { api_error: apiError } : {}),
   });
 });
 
