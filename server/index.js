@@ -1423,8 +1423,9 @@ app.all('/api/ai/upload', (req, res) => {
 });
 
 // ── POST /api/admin/sync-customers-full ──────────────────────────────────────
-// Full historical customer pull from Moka: paginate ALL transactions since epoch 0,
-// group by customer, aggregate visits/total_spent/last_visit, calculate points.
+// Full historical customer pull from Moka: paginate ALL transactions,
+// group by customer, aggregate visits/total_spent/last_visit/points.
+// Uses bulk upsert (single DB round-trip) to avoid per-row timeout.
 // Points formula: visits × 10
 app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
@@ -1445,8 +1446,8 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
 
     const client = new MokaClient(supabase, outlet_id, outlet.moka_outlet_id);
 
-    // Step 1: paginate ALL transactions from Moka
-    const customerMap = new Map(); // phone_e164 → { name, email, mokaId, visits, total_spent, last_visit }
+    // Step 1: paginate ALL transactions from Moka (in-memory aggregation)
+    const customerMap = new Map(); // wa → { name, email, mokaId, wa, phone_e164, visits, total_spent, last_visit }
     let nextUrl = null, page = 0;
 
     do {
@@ -1456,11 +1457,11 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
           const path = nextUrl.replace(/^https?:\/\/[^/]+/, '');
           response = await client._req('GET', path);
         } else {
-          // No 'since' param — Moka returns latest transactions then next_url for older pages
           response = await client.getTransactionPage({ sinceEpoch: null, limit: 100 });
         }
       } catch (err) {
         allResults.push({ outlet_id, error: `Page ${page}: ${err.message}` });
+        response = null;
         break;
       }
 
@@ -1469,30 +1470,29 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       page++;
 
       for (const p of payments) {
-        if (p.is_deleted || p.is_refunded) continue; // skip voided
+        if (p.is_deleted || p.is_refunded) continue;
 
         const rawPhone = String(p.customer_phone_number || p.customer_phone || '').trim();
-        const cName    = String(p.customer_name || p.name || '').trim();
+        const cName    = String(p.customer_name  || p.name  || '').trim();
         const cEmail   = String(p.customer_email || p.email || '').trim();
-        const cId      = String(p.customer_id || '').trim();
+        const cId      = String(p.customer_id    || '').trim();
         const amount   = Number(p.total_collected || 0);
         const txTime   = p.transaction_time || p.created_at || null;
 
-        // Normalize phone
         let wa = rawPhone.replace(/\D/g, '');
         if (wa.startsWith('0')) wa = '62' + wa.slice(1);
         else if (wa && !wa.startsWith('62')) wa = '62' + wa;
         const phone_e164 = wa ? `+${wa}` : null;
 
-        const key = phone_e164 || cId || cEmail;
+        const key = wa || cId || cEmail;
         if (!key) continue;
 
         if (!customerMap.has(key)) {
           customerMap.set(key, { name: cName, email: cEmail || null, mokaId: cId || null, wa, phone_e164, visits: 0, total_spent: 0, last_visit: null });
         }
         const c = customerMap.get(key);
-        if (cName && !c.name)  c.name  = cName;
-        if (cEmail && !c.email) c.email = cEmail;
+        if (cName && !c.name)   c.name   = cName;
+        if (cEmail && !c.email) c.email  = cEmail;
         if (cId && !c.mokaId)   c.mokaId = cId;
         c.visits++;
         c.total_spent += amount;
@@ -1502,80 +1502,43 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       if (!nextUrl || payments.length === 0) break;
     } while (page < 200);
 
-    // Step 2: upsert each customer into DB
-    let inserted = 0, updated = 0, errors = 0;
+    if (!customerMap.size) {
+      allResults.push({ outlet_id, moka_outlet_id: outlet.moka_outlet_id, pages_fetched: page, unique_customers_in_moka: 0, upserted: 0, errors: 0 });
+      continue;
+    }
 
-    for (const [, c] of customerMap) {
-      const points = c.visits * 10;
+    // Step 2: bulk upsert — single round-trip to Supabase
+    const rows = Array.from(customerMap.values()).map(c => ({
+      name:            c.name || 'Moka Customer',
+      wa:              c.wa || '',
+      phone_e164:      c.phone_e164 || null,
+      email:           c.email || null,
+      source:          'moka',
+      moka_customer_id: c.mokaId || null,
+      visits:          c.visits,
+      total_spent:     c.total_spent,
+      last_visit:      c.last_visit || null,
+      points:          c.visits * 10,
+      updated_at:      new Date().toISOString(),
+    }));
 
-      // Lookup existing by moka_customer_id, then phone_e164
-      let existingId = null;
-      if (c.mokaId) {
-        const { data } = await supabase.from('customers').select('id').eq('moka_customer_id', c.mokaId).maybeSingle();
-        if (data) existingId = data.id;
-      }
-      if (!existingId && c.phone_e164) {
-        const { data } = await supabase.from('customers').select('id').eq('phone_e164', c.phone_e164).maybeSingle();
-        if (data) existingId = data.id;
-      }
+    // Try with points column first; if column missing, retry without it
+    let { error: upsertErr } = await supabase.from('customers')
+      .upsert(rows, { onConflict: 'wa', ignoreDuplicates: false });
 
-      const baseUpdate = {
-        moka_customer_id: c.mokaId || null,
-        source: 'moka',
-        visits: c.visits,
-        total_spent: c.total_spent,
-        last_visit: c.last_visit || null,
-        ...(c.email ? { email: c.email } : {}),
-        updated_at: new Date().toISOString(),
-      };
-      // points column only if DDL was already run
-      const withPoints = { ...baseUpdate, points };
-
-      if (existingId) {
-        const { error } = await supabase.from('customers').update(withPoints).eq('id', existingId);
-        if (error && error.message.includes('points')) {
-          // points column not yet created — update without it
-          await supabase.from('customers').update(baseUpdate).eq('id', existingId);
-        }
-        updated++;
-      } else {
-        const { error } = await supabase.from('customers').insert({
-          name: c.name || 'Moka Customer',
-          wa: c.wa || '',
-          phone_e164: c.phone_e164 || null,
-          email: c.email || null,
-          source: 'moka',
-          moka_customer_id: c.mokaId || null,
-          visits: c.visits,
-          total_spent: c.total_spent,
-          last_visit: c.last_visit || null,
-          points,
-        });
-        if (error) {
-          if (error.message.includes('points')) {
-            // retry without points column
-            await supabase.from('customers').insert({
-              name: c.name || 'Moka Customer',
-              wa: c.wa || '',
-              phone_e164: c.phone_e164 || null,
-              email: c.email || null,
-              source: 'moka',
-              moka_customer_id: c.mokaId || null,
-              visits: c.visits,
-              total_spent: c.total_spent,
-              last_visit: c.last_visit || null,
-            }).catch(() => {});
-          } else { errors++; continue; }
-        }
-        inserted++;
-      }
+    if (upsertErr && upsertErr.message.includes('points')) {
+      const rowsNoPts = rows.map(({ points: _p, ...r }) => r);
+      const { error: err2 } = await supabase.from('customers')
+        .upsert(rowsNoPts, { onConflict: 'wa', ignoreDuplicates: false });
+      upsertErr = err2;
     }
 
     allResults.push({
       outlet_id, moka_outlet_id: outlet.moka_outlet_id,
       pages_fetched: page,
       unique_customers_in_moka: customerMap.size,
-      inserted, updated, errors,
+      upserted: upsertErr ? 0 : rows.length,
+      errors: upsertErr ? upsertErr.message : 0,
     });
   }
 
