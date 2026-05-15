@@ -98,7 +98,7 @@ function getOpenAI() {
   return openaiClient;
 }
 
-async function callOpenAI(sender, userMessage, name) {
+async function callOpenAI(sender, userMessage, name, signal) {
   const openai = getOpenAI();
   if (!openai) throw new Error('OPENAI_API_KEY not set');
 
@@ -106,7 +106,6 @@ async function callOpenAI(sender, userMessage, name) {
 
   const messages = [
     { role: 'system', content: buildSystemPrompt() },
-    // Inject customer name as context if first message
     ...(history.length === 0 && name && name !== 'Kak'
       ? [{ role: 'system', content: `Nama customer ini: ${name}. Sapa dengan nama panggilannya.` }]
       : []),
@@ -114,16 +113,13 @@ async function callOpenAI(sender, userMessage, name) {
     { role: 'user', content: userMessage },
   ];
 
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
-    messages,
-    max_tokens: 400,
-    temperature: 0.75,
-  });
+  const completion = await openai.chat.completions.create(
+    { model: 'gpt-4o-mini', messages, max_tokens: 400, temperature: 0.75 },
+    { signal }
+  );
 
   const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf, ada gangguan teknis. Coba lagi ya kak 🙏';
 
-  // Save to history
   pushHistory(sender, 'user', userMessage);
   pushHistory(sender, 'assistant', reply);
 
@@ -158,12 +154,10 @@ async function handleMessage({ from, name, text }) {
   let reply;
 
   try {
-    // Try OpenAI first (with 8 second timeout)
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
+    const timeout = setTimeout(() => controller.abort(), 9000);
     try {
-      reply = await callOpenAI(from, text, name);
+      reply = await callOpenAI(from, text, name, controller.signal);
     } finally {
       clearTimeout(timeout);
     }
