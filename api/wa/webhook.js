@@ -217,7 +217,9 @@ module.exports = async function handler(req, res) {
 
     console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: message?.slice(0, 80) }));
 
-    if (type && type !== 'text') return res.status(200).json({ status: 'ignored', type });
+    // Only block clear media types; allow text, chat, conversation, undefined, etc.
+    const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'gif', 'ptt'];
+    if (type && MEDIA_TYPES.includes(type)) return res.status(200).json({ status: 'ignored', type });
     if (!sender || !message)     return res.status(200).json({ status: 'ignored', reason: 'missing fields', body });
 
     const t0 = Date.now();
