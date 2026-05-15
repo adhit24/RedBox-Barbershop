@@ -398,6 +398,24 @@ async function getPersistedMessageStatus(id) {
   }
 }
 
+async function dumpPersistedStatuses(limit = 20) {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const n = Math.max(1, Math.min(50, Number(limit) || 20));
+
+  try {
+    const { data, error } = await sb
+      .from('wa_message_status')
+      .select('message_id,message_status,target,updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(n);
+    if (error) return { status: false, error: error.message };
+    return { status: true, data: data || [] };
+  } catch (e) {
+    return { status: false, error: e?.message || String(e) };
+  }
+}
+
 // ── Webhook Entry ─────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
@@ -436,6 +454,12 @@ module.exports = async function handler(req, res) {
         const info = await getDeviceInfo();
         pushDebug({ step: 'device_info', device_status: info?.device_status, status: info?.status });
         return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, device: info });
+      }
+
+      if (req.query.db_dump === '1') {
+        const result = await dumpPersistedStatuses(req.query.limit);
+        pushDebug({ step: 'db_dump', ok: !!result?.status });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, supabase: !!getSupabase(), result });
       }
 
       if (req.query.msg_status_id) {
@@ -490,10 +514,19 @@ module.exports = async function handler(req, res) {
     const statusId = body.id || body.message_id || body.msgid || body.messageId;
     const messageStatus = body.message_status || body.status;
     const statusTarget = body.target || body.to || body.number || body.phone;
-    if (messageStatus && statusId && !body.message && !body.text) {
+    const likelyStatusWebhook = !!messageStatus && !!statusId
+      && !body.sender && !body.from && !body.name && !body.pushName
+      && (!!body.target || !!body.to);
+    if (likelyStatusWebhook) {
       cacheMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
-      await persistMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
-      pushDebug({ step: 'webhook_status', id: String(statusId), message_status: String(messageStatus), target: Array.isArray(statusTarget) ? statusTarget[0] : statusTarget });
+      const persisted = await persistMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
+      pushDebug({
+        step: 'webhook_status',
+        id: String(statusId),
+        message_status: String(messageStatus),
+        target: Array.isArray(statusTarget) ? statusTarget[0] : statusTarget,
+        persisted: persisted?.status ?? null,
+      });
       return res.status(200).json({ status: 'ok' });
     }
 
