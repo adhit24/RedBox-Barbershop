@@ -251,7 +251,7 @@ async function callOpenAI(sender, userMessage, name, signal) {
     { signal }
   );
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('OpenAI timeout 7s')), 7000)
+    setTimeout(() => reject(new Error('OpenAI timeout 18s')), 18000)
   );
   const completion = await Promise.race([openaiCall, timeoutPromise]);
 
@@ -290,10 +290,11 @@ function fallbackReply(text, name) {
 async function handleMessage({ from, name, text }) {
   let reply;
   let used = 'openai';
+  let error = null;
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 9000);
+    const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       reply = await callOpenAI(from, text, name, controller.signal);
     } finally {
@@ -303,10 +304,11 @@ async function handleMessage({ from, name, text }) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
     reply = fallbackReply(text, name);
     used = 'fallback';
+    error = err?.message || String(err);
   }
 
   const sendResult = await sendWA(from, reply);
-  return { used, reply, sendResult };
+  return { used, reply, sendResult, error };
 }
 
 function coerceBody(body) {
@@ -361,7 +363,15 @@ module.exports = async function handler(req, res) {
       if (req.query.ping === '1') pushDebug({ step: 'ping' });
 
       if (req.query.send_to && req.query.send_msg) {
-        const result = await sendWA(String(req.query.send_to), String(req.query.send_msg));
+        const to = String(req.query.send_to);
+        const msg = String(req.query.send_msg);
+        const normalized = to.replace(/\D/g, '').replace(/^0/, '62');
+        if (normalized.length < 10) {
+          pushDebug({ step: 'debug_send', to, error: 'invalid_target' });
+          return res.status(200).json({ status: 'error', instance_id: INSTANCE_ID, error: 'invalid_target', target: normalized });
+        }
+
+        const result = await sendWA(to, msg);
         pushDebug({ step: 'debug_send', to: String(req.query.send_to), fonnte_result: result });
         return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, result });
       }
@@ -437,6 +447,8 @@ module.exports = async function handler(req, res) {
         step: 'processing_done',
         ms,
         used: result?.used,
+        reply_preview: String(result?.reply || '').slice(0, 120),
+        error: result?.error || null,
         fonnte_result: result?.sendResult ?? null,
       });
       console.log(`[WA Bot] Done in ${ms}ms for sender=${sender}`, result);
