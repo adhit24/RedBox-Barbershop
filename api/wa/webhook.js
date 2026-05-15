@@ -179,17 +179,50 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET')     return res.status(200).json({ status: 'ok', service: 'RedBox WA Bot (AI)' });
-  if (req.method !== 'POST')   return res.status(405).end();
+
+  // ── GET: diagnostic / test endpoint ────────────────────────────────────────
+  if (req.method === 'GET') {
+    const { test_msg, test_name } = req.query;
+    const openaiReady = !!process.env.OPENAI_API_KEY;
+    const fonnteReady = !!process.env.FONNTE_TOKEN;
+
+    if (test_msg) {
+      const t0 = Date.now();
+      try {
+        const reply = await callOpenAI('__test__', test_msg, test_name || 'Tester', null);
+        return res.status(200).json({
+          status: 'ok', openai: 'ok', latency_ms: Date.now() - t0,
+          input: test_msg, reply,
+        });
+      } catch (err) {
+        return res.status(200).json({
+          status: 'error', openai: 'failed', error: err.message,
+          latency_ms: Date.now() - t0, openai_key_set: openaiReady,
+        });
+      }
+    }
+
+    return res.status(200).json({
+      status: 'ok', service: 'RedBox WA Bot (AI)',
+      openai_key_set: openaiReady, fonnte_token_set: fonnteReady,
+    });
+  }
+
+  if (req.method !== 'POST') return res.status(405).end();
 
   try {
     // Fonnte payload: { device, sender, name, message, id, type }
-    const { sender, name, message, type } = req.body || {};
+    const body = req.body || {};
+    const { sender, name, message, type } = body;
 
-    if (type && type !== 'text') return res.status(200).json({ status: 'ignored' });
-    if (!sender || !message)     return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
+    console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: message?.slice(0, 80) }));
 
+    if (type && type !== 'text') return res.status(200).json({ status: 'ignored', type });
+    if (!sender || !message)     return res.status(200).json({ status: 'ignored', reason: 'missing fields', body });
+
+    const t0 = Date.now();
     await handleMessage({ from: sender, name: name || 'Kak', text: message });
+    console.log(`[WA Bot] Done in ${Date.now() - t0}ms for sender=${sender}`);
     return res.status(200).json({ status: 'ok' });
 
   } catch (err) {
