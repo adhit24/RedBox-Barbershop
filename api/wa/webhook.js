@@ -7,10 +7,12 @@
 const { sendWA } = require('../../server/services/fonnte');
 const OpenAI = require('openai');
 
-// ── Debug log — simpan 10 request terakhir untuk diagnosa ────────────────────
+const INSTANCE_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+const BOOT_TS = Date.now();
+
 const debugLog = [];
 function pushDebug(entry) {
-  debugLog.unshift({ ts: new Date().toISOString(), ...entry });
+  debugLog.unshift({ ts: new Date().toISOString(), instance_id: INSTANCE_ID, ...entry });
   if (debugLog.length > 10) debugLog.pop();
 }
 
@@ -304,6 +306,23 @@ async function handleMessage({ from, name, text }) {
   return sendWA(from, reply);
 }
 
+function coerceBody(body) {
+  if (!body) return {};
+  if (body && typeof body === 'object' && Object.keys(body).length > 0) return body;
+  const raw = Buffer.isBuffer(body) ? body.toString('utf8') : (typeof body === 'string' ? body : '');
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {}
+  try {
+    const params = new URLSearchParams(raw);
+    const obj = {};
+    for (const [k, v] of params.entries()) obj[k] = v;
+    return obj;
+  } catch {}
+  return {};
+}
+
 // ── Webhook Entry ─────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
@@ -335,14 +354,27 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Debug log — tampilkan 10 request terakhir
     if (req.query.debug === 'redbox2026') {
-      return res.status(200).json({ received: debugLog });
+      if (req.query.ping === '1') pushDebug({ step: 'ping' });
+
+      if (req.query.send_to && req.query.send_msg) {
+        const result = await sendWA(String(req.query.send_to), String(req.query.send_msg));
+        pushDebug({ step: 'debug_send', to: String(req.query.send_to), fonnte_status: result?.status ?? result });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, result });
+      }
+
+      return res.status(200).json({
+        instance_id: INSTANCE_ID,
+        boot_ts: new Date(BOOT_TS).toISOString(),
+        received: debugLog,
+        note: 'Log ini per-instance (serverless). Kalau kosong, bisa karena request POST masuk ke instance lain.',
+      });
     }
 
     return res.status(200).json({
       status: 'ok', service: 'RedBox WA Bot (AI)',
       openai_key_set: openaiReady, fonnte_token_set: fonnteReady,
+      instance_id: INSTANCE_ID,
     });
   }
 
@@ -350,14 +382,21 @@ module.exports = async function handler(req, res) {
 
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
-    const body = req.body || {};
-    const { sender, name, message, type, device, id } = body;
+    const rawBody = coerceBody(req.body);
+    const body = rawBody && rawBody.data && typeof rawBody.data === 'object' ? rawBody.data : rawBody;
+
+    const sender = body.sender || body.from || body.number || body.phone || body.target;
+    const name = body.name || body.pushName || body.senderName;
+    const message = body.message || body.text || body.chat || body.body || body.msg;
+    const type = body.type || body.msgType || body.messageType;
+    const device = body.device || body.device_id || body.deviceId;
+    const id = body.id || body.message_id || body.msgid || body.messageId;
 
     // Simpan ke debug log
-    pushDebug({ sender, name, type, id, isFromMe: body.isFromMe, fromMe: body.fromMe, device, message: message?.slice(0, 60) });
+    pushDebug({ sender, name, type, id, isFromMe: body.isFromMe, fromMe: body.fromMe, device, message: String(message || '').slice(0, 60) });
 
     // Log raw body untuk diagnose field Fonnte
-    console.log('[WA Bot] Raw payload:', JSON.stringify({ ...body, message: body.message?.slice(0, 60) }));
+    console.log('[WA Bot] Raw payload:', JSON.stringify({ ...body, message: String(message || '').slice(0, 60) }));
 
     // Dedup — abaikan jika pesan ID ini sudah pernah diproses (Fonnte retry)
     if (isDuplicate(id)) {
@@ -375,7 +414,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
     }
 
-    console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: message?.slice(0, 80) }));
+    console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: String(message || '').slice(0, 80) }));
 
     // Only block clear media types; allow text, chat, conversation, undefined, etc.
     const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'gif', 'ptt'];
