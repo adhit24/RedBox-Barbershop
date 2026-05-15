@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login Member — Redbox Barbershop</title>
+  <meta name="description" content="Login ke akun member RedBox Barbershop menggunakan nomor WhatsApp." />
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:     #E53E3E;
+      --red-dk:  #C53030;
+      --bg:      #0A0A0A;
+      --bg2:     #111111;
+      --bg3:     #1A1A1A;
+      --border:  rgba(255,255,255,.08);
+      --text:    #F5F5F5;
+      --muted:   #888;
+      --gold:    #D4AF37;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    /* ── Card ── */
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 32px;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+
+    /* ── Logo ── */
+    .logo-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+    .logo-img {
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+      object-fit: cover;
+      border: 2px solid var(--red);
+    }
+    .logo-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 24px;
+      letter-spacing: 2px;
+      color: var(--text);
+    }
+    .logo-name span { color: var(--red); }
+    .logo-sub {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    /* ── Steps ── */
+    .steps {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 28px;
+    }
+    .step-dot {
+      flex: 1;
+      height: 3px;
+      border-radius: 99px;
+      background: var(--border);
+      transition: background .3s;
+    }
+    .step-dot.active { background: var(--red); }
+
+    /* ── Title ── */
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 22px;
+      margin-bottom: 6px;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 18px; }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .5px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 16px;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color .2s;
+      -webkit-appearance: none;
+    }
+    input:focus { border-color: var(--red); }
+    input::placeholder { color: var(--muted); }
+    input[type="tel"] { letter-spacing: .5px; }
+
+    /* OTP input — besar & terpusat */
+    .otp-input {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 12px;
+      text-align: center;
+      padding: 16px;
+    }
+
+    /* ── Button ── */
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .1s;
+      font-family: 'Inter', sans-serif;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn-primary {
+      background: var(--red);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--red-dk); }
+    .btn-primary:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 10px;
+      margin-top: 8px;
+    }
+    .btn-ghost:hover { color: var(--text); }
+
+    /* ── Alert ── */
+    .alert {
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      line-height: 1.5;
+      display: none;
+    }
+    .alert.show { display: block; }
+    .alert-error { background: rgba(229,62,62,.15); border: 1px solid rgba(229,62,62,.3); color: #fc8181; }
+    .alert-success { background: rgba(72,187,120,.12); border: 1px solid rgba(72,187,120,.25); color: #68d391; }
+    .alert-info { background: rgba(66,153,225,.12); border: 1px solid rgba(66,153,225,.25); color: #90cdf4; }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Resend timer ── */
+    .resend-wrap {
+      text-align: center;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .resend-wrap a {
+      color: var(--red);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .resend-wrap a:hover { text-decoration: underline; }
+    .resend-wrap a.disabled { color: var(--muted); pointer-events: none; }
+
+    /* ── Footer ── */
+    .card-footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .card-footer a { color: var(--text); text-decoration: none; }
+    .card-footer a:hover { color: var(--red); }
+
+    /* ── Phone display ── */
+    .phone-display {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .phone-display .wa-icon { font-size: 20px; }
+    .phone-display .wa-num { font-weight: 600; flex: 1; }
+    .phone-display .change-link {
+      color: var(--red);
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    @media (max-width: 480px) {
+      .login-card { padding: 32px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="login-card">
+
+  <!-- Logo -->
+  <div class="logo-wrap">
+    <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" class="logo-img" />
+    <div class="logo-name">Redbox<span>Barbershop</span></div>
+    <div class="logo-sub">Member Portal</div>
+  </div>
+
+  <!-- Progress dots -->
+  <div class="steps">
+    <div class="step-dot active" id="dot1"></div>
+    <div class="step-dot" id="dot2"></div>
+  </div>
+
+  <!-- Alert -->
+  <div class="alert" id="alertBox"></div>
+
+  <!-- ── STEP 1: Phone ── -->
+  <div id="step1">
+    <div class="card-title">Masuk ke Akun Member</div>
+    <div class="card-desc">Masukkan nomor WhatsApp yang terdaftar sebagai member RedBox. Kami akan kirim kode OTP.</div>
+
+    <form id="phoneForm" onsubmit="return false;">
+      <div class="form-group">
+        <label>Nomor WhatsApp</label>
+        <input
+          type="tel"
+          id="phoneInput"
+          placeholder="08123456789"
+          inputmode="numeric"
+          autocomplete="tel"
+          maxlength="15"
+        />
+      </div>
+      <button class="btn btn-primary" id="sendOtpBtn" onclick="sendOtp()">
+        Kirim Kode OTP via WhatsApp
+      </button>
+    </form>
+  </div>
+
+  <!-- ── STEP 2: OTP ── -->
+  <div id="step2" style="display:none;">
+    <div class="card-title">Masukkan Kode OTP</div>
+    <div class="card-desc">Kode OTP 6 digit sudah dikirim ke:</div>
+
+    <div class="phone-display">
+      <span class="wa-icon">📱</span>
+      <span class="wa-num" id="phoneDisplay"></span>
+      <span class="change-link" onclick="backToStep1()">Ganti</span>
+    </div>
+
+    <form id="otpForm" onsubmit="return false;">
+      <div class="form-group">
+        <label>Kode OTP</label>
+        <input
+          type="tel"
+          id="otpInput"
+          class="otp-input"
+          placeholder="——————"
+          inputmode="numeric"
+          maxlength="6"
+          autocomplete="one-time-code"
+        />
+      </div>
+      <button class="btn btn-primary" id="verifyBtn" onclick="verifyOtp()">
+        Masuk ke Dashboard
+      </button>
+    </form>
+
+    <div class="resend-wrap">
+      <span id="resendTimer">Kirim ulang dalam <b id="countdown">60</b>s</span>
+      <span id="resendLink" style="display:none;">
+        Tidak menerima OTP? <a onclick="resendOtp()">Kirim ulang</a>
+      </span>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="card-footer">
+    Belum jadi member? <a href="membership.html">Info Membership</a>
+    &nbsp;·&nbsp;
+    <a href="index.html">Kembali ke Home</a>
+  </div>
+
+</div>
+
+<script>
+const API = '';  // same origin
+
+let currentPhone = '';
+let countdownInterval = null;
+
+// ── Helpers ──────────────────────────────────────────────────
+function showAlert(msg, type = 'error') {
+  const el = document.getElementById('alertBox');
+  el.className = `alert alert-${type} show`;
+  el.textContent = msg;
+}
+function hideAlert() {
+  document.getElementById('alertBox').className = 'alert';
+}
+function setLoading(btnId, loading, defaultText) {
+  const btn = document.getElementById(btnId);
+  if (loading) {
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Mengirim...`;
+  } else {
+    btn.disabled = false;
+    btn.textContent = defaultText;
+  }
+}
+
+function normalizePhone(p) {
+  let d = String(p).replace(/\D/g, '');
+  if (d.startsWith('0')) d = '62' + d.slice(1);
+  if (!d.startsWith('62')) d = '62' + d;
+  return d;
+}
+
+// ── Step 1: Kirim OTP ────────────────────────────────────────
+async function sendOtp() {
+  hideAlert();
+  const raw = document.getElementById('phoneInput').value.trim();
+  if (!raw) { showAlert('Masukkan nomor WhatsApp dulu ya kak.'); return; }
+
+  setLoading('sendOtpBtn', true, 'Kirim Kode OTP via WhatsApp');
+  try {
+    const res = await fetch('/api/auth/otp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: raw })
+    });
+    const data = await res.json();
+    if (!res.ok) { showAlert(data.error || 'Gagal kirim OTP.'); return; }
+
+    currentPhone = raw;
+    document.getElementById('phoneDisplay').textContent = raw;
+    showStep2();
+    showAlert('Kode OTP dikirim ke WhatsApp kamu! ✅', 'success');
+    startCountdown();
+    setTimeout(() => document.getElementById('otpInput').focus(), 200);
+
+  } catch (e) {
+    showAlert('Koneksi error. Coba lagi.');
+  } finally {
+    setLoading('sendOtpBtn', false, 'Kirim Kode OTP via WhatsApp');
+  }
+}
+
+// ── Step 2: Verifikasi OTP ───────────────────────────────────
+async function verifyOtp() {
+  hideAlert();
+  const code = document.getElementById('otpInput').value.trim();
+  if (code.length !== 6) { showAlert('Masukkan 6 digit kode OTP.'); return; }
+
+  const verifyBtn = document.getElementById('verifyBtn');
+  verifyBtn.disabled = true;
+  verifyBtn.innerHTML = `<span class="spinner"></span> Memverifikasi...`;
+
+  try {
+    const res = await fetch('/api/auth/otp/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: currentPhone, code })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showAlert(data.error || 'Kode OTP salah.');
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = 'Masuk ke Dashboard';
+      return;
+    }
+
+    // Simpan session + data member ke localStorage
+    localStorage.setItem('rb_member_token', data.token);
+
+    const c = data.customer || {};
+    // Populate redbox_user (kompatibel dengan dashboard existing)
+    localStorage.setItem('redbox_user', JSON.stringify({
+      loggedIn: true,
+      name: c.name || 'Member',
+      phone: c.wa || currentPhone,
+      picture: null
+    }));
+
+    // Populate redbox_member dari data Supabase
+    const tier = (c.tier || 'BRONZE').toLowerCase();
+    const memberObj = {
+      points: c.points || 0,
+      visits: c.visits || 0,
+      reviews: 0,
+      phone: c.wa || normalizePhone(currentPhone),
+      birthdate: c.birth_date || '',
+      gender: c.gender || 'male',
+      address: c.address || '',
+      favBarber: c.fav_barber || '',
+      email: c.email || '',
+      referralCode: c.referral_code || '',
+      referralCount: 0,
+      referralPoints: 0,
+      joinDate: c.created_at || new Date().toISOString(),
+      membership_status: c.membership_status || 'INACTIVE',
+      membership_activated_at: c.membership_activated_at || null,
+      pointsHistory: [],
+      totalSpent: c.total_spent || 0,
+      lastVisit: c.last_visit || null,
+      tier: tier
+    };
+    localStorage.setItem('redbox_member', JSON.stringify(memberObj));
+
+    showAlert('Login berhasil! Mengalihkan ke dashboard... 🎉', 'success');
+    setTimeout(() => { window.location.href = 'member-dashboard.html'; }, 1200);
+
+  } catch (e) {
+    showAlert('Koneksi error. Coba lagi.');
+    verifyBtn.disabled = false;
+    verifyBtn.textContent = 'Masuk ke Dashboard';
+  }
+}
+
+// ── Resend OTP ───────────────────────────────────────────────
+async function resendOtp() {
+  hideAlert();
+  document.getElementById('resendLink').style.display = 'none';
+  document.getElementById('resendTimer').style.display = 'inline';
+  document.getElementById('otpInput').value = '';
+
+  try {
+    const res = await fetch('/api/auth/otp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: currentPhone })
+    });
+    const data = await res.json();
+    if (!res.ok) { showAlert(data.error || 'Gagal kirim ulang OTP.'); return; }
+    showAlert('OTP baru sudah dikirim! ✅', 'success');
+    startCountdown();
+  } catch (e) {
+    showAlert('Koneksi error. Coba lagi.');
+  }
+}
+
+// ── Navigation ───────────────────────────────────────────────
+function showStep2() {
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('step2').style.display = 'block';
+  document.getElementById('dot2').classList.add('active');
+}
+
+function backToStep1() {
+  hideAlert();
+  if (countdownInterval) clearInterval(countdownInterval);
+  document.getElementById('step1').style.display = 'block';
+  document.getElementById('step2').style.display = 'none';
+  document.getElementById('dot2').classList.remove('active');
+  document.getElementById('otpInput').value = '';
+}
+
+// ── Countdown timer ──────────────────────────────────────────
+function startCountdown(seconds = 60) {
+  if (countdownInterval) clearInterval(countdownInterval);
+  let s = seconds;
+  document.getElementById('countdown').textContent = s;
+  document.getElementById('resendTimer').style.display = 'inline';
+  document.getElementById('resendLink').style.display = 'none';
+
+  countdownInterval = setInterval(() => {
+    s--;
+    document.getElementById('countdown').textContent = s;
+    if (s <= 0) {
+      clearInterval(countdownInterval);
+      document.getElementById('resendTimer').style.display = 'none';
+      document.getElementById('resendLink').style.display = 'inline';
+    }
+  }, 1000);
+}
+
+// ── Auto-submit OTP when 6 digits entered ────────────────────
+document.getElementById('otpInput').addEventListener('input', function() {
+  const v = this.value.replace(/\D/g, '');
+  this.value = v;
+  if (v.length === 6) {
+    setTimeout(verifyOtp, 200);
+  }
+});
+
+// ── Enter key support ────────────────────────────────────────
+document.getElementById('phoneInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') sendOtp();
+});
+document.getElementById('otpInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') verifyOtp();
+});
+
+// ── Auto-redirect jika sudah login ──────────────────────────
+(async function checkExistingSession() {
+  const token = localStorage.getItem('rb_member_token');
+  if (!token) return;
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { 'X-Member-Token': token }
+    });
+    if (res.ok) {
+      window.location.href = 'member-dashboard.html';
+    } else {
+      localStorage.removeItem('rb_member_token');
+    }
+  } catch {}
+})();
+</script>
+
+</body>
+</html>

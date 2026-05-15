@@ -25,8 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---- Check login state ----
   const userData = JSON.parse(localStorage.getItem('redbox_user') || 'null');
-  if (!userData || !userData.loggedIn) {
-    window.location.href = 'index.html';
+  const rbToken = localStorage.getItem('rb_member_token');
+  if (!rbToken && (!userData || !userData.loggedIn)) {
+    window.location.href = 'member-login.html';
     return;
   }
 
@@ -370,13 +371,30 @@ document.addEventListener('DOMContentLoaded', () => {
       memberData.favBarber = accBarber?.value|| '';
       if (accName?.value) { userData.name = accName.value; localStorage.setItem('redbox_user', JSON.stringify(userData)); if (profileName) profileName.textContent = accName.value; }
       save();
-      // Supabase sync
-      const key = userData.email || userData.sub;
-      if (key) {
-        await sbFetch(`member_profiles?user_key=eq.${encodeURIComponent(key)}`, {
-          method: 'PATCH', prefer: 'return=minimal',
-          body: JSON.stringify({ full_name: userData.name, phone: memberData.phone, birthdate: memberData.birthdate, address: memberData.address, fav_barber: memberData.favBarber })
-        });
+      const tok = localStorage.getItem('rb_member_token');
+      if (tok) {
+        // OTP member: save via server API
+        await fetch('/api/auth/me', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+          body: JSON.stringify({
+            name: userData.name,
+            email: memberData.email || '',
+            birth_date: memberData.birthdate || '',
+            gender: memberData.gender || 'male',
+            address: memberData.address || '',
+            fav_barber: memberData.favBarber || ''
+          })
+        }).catch(err => console.error('[Auth] Save profile error:', err.message));
+      } else {
+        // Google/email member: save via Supabase direct
+        const key = userData.email || userData.sub;
+        if (key) {
+          await sbFetch(`member_profiles?user_key=eq.${encodeURIComponent(key)}`, {
+            method: 'PATCH', prefer: 'return=minimal',
+            body: JSON.stringify({ full_name: userData.name, phone: memberData.phone, birthdate: memberData.birthdate, address: memberData.address, fav_barber: memberData.favBarber })
+          });
+        }
       }
       const btn = accountForm.querySelector('.btn-save-account');
       if (btn) { const orig = btn.textContent; btn.textContent = '✓ Tersimpan!'; btn.style.background = '#22c55e'; setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 2000); }
@@ -462,8 +480,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // LOGOUT
   // ============================================================
   function doLogout() {
-    localStorage.removeItem('redbox_user');
-    window.location.href = 'index.html';
+    const tok = localStorage.getItem('rb_member_token');
+    if (tok) {
+      fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + tok } }).catch(() => {});
+      localStorage.removeItem('rb_member_token');
+      localStorage.removeItem('redbox_user');
+      localStorage.removeItem('redbox_member');
+      window.location.href = 'member-login.html';
+    } else {
+      localStorage.removeItem('redbox_user');
+      window.location.href = 'index.html';
+    }
   }
   document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
   document.getElementById('mobileLogoutBtn')?.addEventListener('click', doLogout);
@@ -545,6 +572,73 @@ document.addEventListener('DOMContentLoaded', () => {
   // SUPABASE FULL SYNC (initial load — remote is source of truth)
   // ============================================================
   (async () => {
+    const tok = localStorage.getItem('rb_member_token');
+
+    if (tok) {
+      // ── OTP session: validate token + refresh data from server ──
+      try {
+        const res = await fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + tok } });
+        if (res.status === 401) {
+          localStorage.removeItem('rb_member_token');
+          localStorage.removeItem('redbox_user');
+          localStorage.removeItem('redbox_member');
+          window.location.href = 'member-login.html';
+          return;
+        }
+        if (res.ok) {
+          const { customer: c } = await res.json();
+          if (c) {
+            userData.name = c.name || userData.name;
+            localStorage.setItem('redbox_user', JSON.stringify(userData));
+
+            memberData.points                 = c.points               ?? memberData.points;
+            memberData.visits                 = c.visits               ?? memberData.visits;
+            memberData.phone                  = c.wa                   || memberData.phone;
+            memberData.birthdate              = c.birth_date           || memberData.birthdate;
+            memberData.gender                 = c.gender               || memberData.gender;
+            memberData.address                = c.address              || memberData.address;
+            memberData.favBarber              = c.fav_barber           || memberData.favBarber;
+            memberData.email                  = c.email                || memberData.email || '';
+            memberData.membership_status      = c.membership_status    || memberData.membership_status;
+            memberData.membership_activated_at= c.membership_activated_at || memberData.membership_activated_at;
+            if (c.referral_code) memberData.referralCode = c.referral_code;
+            save();
+
+            // Re-render UI with fresh data
+            if (profileName) profileName.textContent = userData.name || 'Member Redbox';
+            const isACTIVE = memberData.membership_status === 'ACTIVE';
+            const pts = isACTIVE ? memberData.points : 0;
+            animateCount(statPoints, pts, 800);
+            animateCount(statVisits, memberData.visits, 600);
+            const t2 = getCurrentTier(pts);
+            if (tierBadge)     tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
+            if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} — ${t2.name}` : 'Membership Belum Aktif';
+            if (cardTier)      cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
+            if (memberStatusBadge) {
+              memberStatusBadge.textContent = isACTIVE ? '✓ Membership Aktif' : 'Membership Belum Aktif';
+              memberStatusBadge.className = 'member-status-badge ' + (isACTIVE ? 'active' : 'inactive');
+            }
+            if (physCardWrap) {
+              physCardWrap.classList.toggle('inactive', !isACTIVE);
+              if (physCardHint) physCardHint.textContent = isACTIVE ? '✓ Kartu fisik kamu sudah aktif' : 'Aktivasi untuk dapatkan kartu fisik eksklusif ini';
+            }
+            if (accName)   accName.value   = userData.name     || '';
+            if (accPhone)  accPhone.value  = memberData.phone  || '';
+            if (accEmail)  accEmail.value  = memberData.email  || '';
+            if (accAddr)   accAddr.value   = memberData.address|| '';
+            if (accBirth)  accBirth.value  = memberData.birthdate || '';
+            if (accBarber && memberData.favBarber) accBarber.value = memberData.favBarber;
+            if (refCodeEl) refCodeEl.textContent = memberData.referralCode;
+            document.querySelectorAll('.gender-btn').forEach(b => b.classList.toggle('active', b.dataset.gender === memberData.gender));
+          }
+        }
+      } catch (err) {
+        console.warn('[Auth] Token validation error:', err.message);
+      }
+      return; // OTP members skip Supabase direct path
+    }
+
+    // ── Google/email members: Supabase direct sync ──
     const key = userData.email || userData.sub;
     if (!key) return;
 

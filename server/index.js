@@ -1422,6 +1422,180 @@ app.all('/api/ai/upload', (req, res) => {
   return res.redirect(308, '/api/ai/upload.js');
 });
 
+// ── MEMBER AUTH (OTP via WhatsApp) ───────────────────────────────────────────
+{
+  const { sendWA: sendWAFonnte } = require('./services/fonnte');
+
+  function normalizeWa(phone) {
+    return String(phone || '').replace(/\D/g, '').replace(/^0/, '62');
+  }
+
+  function generateReferralCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'RBX';
+    for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+  }
+
+  // POST /api/auth/otp/send
+  app.post('/api/auth/otp/send', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
+    const { phone } = req.body || {};
+    if (!phone) return res.status(400).json({ error: 'Nomor HP wajib diisi' });
+
+    const wa = normalizeWa(phone);
+    if (wa.length < 10 || !wa.startsWith('62')) {
+      return res.status(400).json({ error: 'Format nomor HP tidak valid (contoh: 08123456789)' });
+    }
+
+    // Cek customer terdaftar
+    const { data: customer } = await supabase
+      .from('customers').select('id, name, wa').eq('wa', wa).maybeSingle();
+    if (!customer) {
+      return res.status(404).json({
+        error: 'Nomor tidak terdaftar sebagai member. Silakan kunjungi outlet untuk mendaftar.'
+      });
+    }
+
+    // Rate limit: max 3 OTP per 10 menit
+    const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { count } = await supabase.from('otp_codes')
+      .select('*', { count: 'exact', head: true })
+      .eq('phone', wa).gte('created_at', since);
+    if (count >= 3) {
+      return res.status(429).json({ error: 'Terlalu banyak percobaan. Tunggu 10 menit ya kak.' });
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await supabase.from('otp_codes').insert({ phone: wa, code, expires_at: expiresAt });
+
+    const firstName = (customer.name || 'Kak').split(' ')[0];
+    const msg = `Halo kak ${firstName}! 👋\n\nKode OTP login Member RedBox Barbershop:\n\n*${code}*\n\nBerlaku 10 menit. Jangan bagikan ke siapapun ya! 🔒\n\nRedBox Barbershop — Sharp Cuts, Bold Style ✂️`;
+
+    try {
+      await sendWAFonnte(wa, msg);
+    } catch (e) {
+      console.error('[OTP] sendWA error:', e.message);
+      return res.status(500).json({ error: 'Gagal kirim OTP ke WhatsApp. Coba lagi.' });
+    }
+
+    console.log(`[OTP] Sent to ${wa}`);
+    return res.json({ success: true, message: 'Kode OTP sudah dikirim ke WhatsApp kamu 🎉' });
+  });
+
+  // POST /api/auth/otp/verify
+  app.post('/api/auth/otp/verify', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
+    const { phone, code } = req.body || {};
+    if (!phone || !code) return res.status(400).json({ error: 'Phone dan kode OTP wajib diisi' });
+
+    const wa = normalizeWa(phone);
+
+    const { data: otp } = await supabase
+      .from('otp_codes')
+      .select('id, attempts')
+      .eq('phone', wa)
+      .eq('code', String(code).trim())
+      .is('verified_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!otp) {
+      // Increment attempts on latest OTP
+      const { data: latest } = await supabase.from('otp_codes')
+        .select('id, attempts').eq('phone', wa).is('verified_at', null)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (latest) {
+        await supabase.from('otp_codes')
+          .update({ attempts: (latest.attempts || 0) + 1 }).eq('id', latest.id);
+      }
+      return res.status(401).json({ error: 'Kode OTP salah atau sudah expired' });
+    }
+
+    await supabase.from('otp_codes')
+      .update({ verified_at: new Date().toISOString() }).eq('id', otp.id);
+
+    // Get/update customer — ensure referral_code exists
+    let { data: customer } = await supabase.from('customers').select('*').eq('wa', wa).maybeSingle();
+    if (customer && !customer.referral_code) {
+      const refCode = generateReferralCode();
+      const { data: updated } = await supabase.from('customers')
+        .update({ referral_code: refCode }).eq('wa', wa).select().single();
+      customer = updated || customer;
+    }
+
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase.from('member_sessions').insert({ customer_wa: wa, token, expires_at: expiresAt });
+
+    console.log(`[OTP] Login success: ${wa}`);
+    return res.json({ success: true, token, customer });
+  });
+
+  // GET /api/auth/me — validasi token, return customer data
+  app.get('/api/auth/me', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || req.headers['x-member-token'];
+    if (!token) return res.status(401).json({ error: 'Login diperlukan' });
+
+    const { data: session } = await supabase.from('member_sessions')
+      .select('customer_wa').eq('token', token)
+      .gt('expires_at', new Date().toISOString()).maybeSingle();
+    if (!session) return res.status(401).json({ error: 'Session expired, silakan login ulang' });
+
+    const { data: customer } = await supabase.from('customers')
+      .select('*').eq('wa', session.customer_wa).maybeSingle();
+    return res.json({ customer: customer || null });
+  });
+
+  // PATCH /api/auth/me — update profil member
+  app.patch('/api/auth/me', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || req.headers['x-member-token'];
+    if (!token) return res.status(401).json({ error: 'Login diperlukan' });
+
+    const { data: session } = await supabase.from('member_sessions')
+      .select('customer_wa').eq('token', token)
+      .gt('expires_at', new Date().toISOString()).maybeSingle();
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+
+    const allowed = ['name', 'email', 'birth_date', 'gender', 'address', 'fav_barber'];
+    const updates = {};
+    for (const f of allowed) {
+      if (req.body[f] !== undefined) updates[f] = req.body[f];
+    }
+    // Sync birthday MM-DD dari birth_date untuk cron ulang tahun
+    if (updates.birth_date) {
+      const d = new Date(updates.birth_date);
+      if (!isNaN(d)) {
+        const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(d.getUTCDate()).padStart(2, '0');
+        updates.birthday = `${mm}-${dd}`;
+      }
+    }
+
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'Tidak ada field yang diupdate' });
+    updates.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabase.from('customers')
+      .update(updates).eq('wa', session.customer_wa).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ customer: data });
+  });
+
+  // POST /api/auth/logout
+  app.post('/api/auth/logout', async (req, res) => {
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || req.headers['x-member-token'];
+    if (token && supabase) {
+      await supabase.from('member_sessions').delete().eq('token', token).catch(() => {});
+    }
+    return res.json({ success: true });
+  });
+}
+
 // ── MOKA INTEGRATION ROUTER ──────────────────────────────
 // Registers: /api/availability, /api/reservations, /api/schedules,
 //            /api/outlets, /api/services, /api/moka/*
