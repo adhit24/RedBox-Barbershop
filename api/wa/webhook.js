@@ -514,10 +514,13 @@ module.exports = async function handler(req, res) {
     const statusId = body.id || body.message_id || body.msgid || body.messageId;
     const messageStatus = body.message_status || body.status;
     const statusTarget = body.target || body.to || body.number || body.phone;
+    const hasIncomingMessageField = body.message || body.text || body.chat || body.body || body.msg;
     const likelyStatusWebhook = !!messageStatus && !!statusId
-      && !body.sender && !body.from && !body.name && !body.pushName
-      && (!!body.target || !!body.to);
-    if (likelyStatusWebhook) {
+      && !hasIncomingMessageField
+      && !body.sender && !body.from && !body.name && !body.pushName;
+    const likelyFonnteStatusWebhook = likelyStatusWebhook
+      || (!!statusId && !!body.status && (!!body.stateid || !!body.state) && !hasIncomingMessageField);
+    if (likelyFonnteStatusWebhook) {
       cacheMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
       const persisted = await persistMessageStatus(statusId, { message_status: messageStatus, target: statusTarget, reason: body.reason, raw: body });
       pushDebug({
