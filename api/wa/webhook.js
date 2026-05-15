@@ -383,9 +383,13 @@ module.exports = async function handler(req, res) {
     // Await tetap dijalankan agar Vercel tidak freeze sebelum proses selesai
     const t0 = Date.now();
     try {
-      await handleMessage({ from: sender, name: name || 'Kak', text: message });
-      console.log(`[WA Bot] Done in ${Date.now() - t0}ms for sender=${sender}`);
+      pushDebug({ step: 'processing_start', sender, message: message?.slice(0, 40) });
+      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message });
+      const ms = Date.now() - t0;
+      pushDebug({ step: 'processing_done', ms, fonnte_status: result?.status ?? result });
+      console.log(`[WA Bot] Done in ${ms}ms for sender=${sender}`, result);
     } catch (err) {
+      pushDebug({ step: 'processing_error', error: err.message });
       console.error('[WA Bot] Process error:', err.message);
     }
 
