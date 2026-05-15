@@ -7,6 +7,13 @@
 const { sendWA } = require('../../server/services/fonnte');
 const OpenAI = require('openai');
 
+// ── Debug log — simpan 10 request terakhir untuk diagnosa ────────────────────
+const debugLog = [];
+function pushDebug(entry) {
+  debugLog.unshift({ ts: new Date().toISOString(), ...entry });
+  if (debugLog.length > 10) debugLog.pop();
+}
+
 // ── Conversation Memory ───────────────────────────────────────────────────────
 const conversationCache = new Map(); // sender → [{role, content}]
 const MAX_HISTORY = 12;
@@ -323,6 +330,11 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // Debug log — tampilkan 10 request terakhir
+    if (req.query.debug === 'redbox2026') {
+      return res.status(200).json({ received: debugLog });
+    }
+
     return res.status(200).json({
       status: 'ok', service: 'RedBox WA Bot (AI)',
       openai_key_set: openaiReady, fonnte_token_set: fonnteReady,
@@ -336,7 +348,10 @@ module.exports = async function handler(req, res) {
     const body = req.body || {};
     const { sender, name, message, type, device, id } = body;
 
-    // Log raw body untuk diagnose field Fonnte (sembunyikan message panjang)
+    // Simpan ke debug log
+    pushDebug({ sender, name, type, id, isFromMe: body.isFromMe, fromMe: body.fromMe, device, message: message?.slice(0, 60) });
+
+    // Log raw body untuk diagnose field Fonnte
     console.log('[WA Bot] Raw payload:', JSON.stringify({ ...body, message: body.message?.slice(0, 60) }));
 
     // Dedup — abaikan jika pesan ID ini sudah pernah diproses (Fonnte retry)
