@@ -325,21 +325,102 @@ async function handleMessage({ from, name, text }) {
   return { used, reply, sendResult, error };
 }
 
-function coerceBody(body) {
-  if (!body) return {};
+function parseMultipartFormData(buffer, contentType) {
+  const m = String(contentType || '').match(/boundary=([^;]+)/i);
+  const boundary = m ? m[1].trim().replace(/^"|"$/g, '') : '';
+  if (!boundary) return {};
+
+  const raw = buffer.toString('utf8');
+  const delimiter = `--${boundary}`;
+  const parts = raw.split(delimiter);
+  const out = {};
+
+  for (const part of parts) {
+    const p = part.trim();
+    if (!p || p === '--') continue;
+    const sepIndex = p.indexOf('\r\n\r\n');
+    if (sepIndex < 0) continue;
+    const headerBlock = p.slice(0, sepIndex);
+    let value = p.slice(sepIndex + 4);
+    value = value.replace(/\r\n$/, '');
+
+    const nameMatch = headerBlock.match(/name="([^"]+)"/i);
+    if (!nameMatch) continue;
+    const fieldName = nameMatch[1];
+    out[fieldName] = value;
+  }
+
+  return out;
+}
+
+async function readRawBody(req, limitBytes = 1024 * 1024) {
+  return await new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > limitBytes) {
+        reject(new Error('body_too_large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+async function coerceBody(body, req) {
   if (body && typeof body === 'object' && Object.keys(body).length > 0) return body;
-  const raw = Buffer.isBuffer(body) ? body.toString('utf8') : (typeof body === 'string' ? body : '');
-  if (!raw) return {};
+
+  if (Buffer.isBuffer(body)) {
+    const raw = body.toString('utf8');
+    try { return JSON.parse(raw); } catch {}
+    try {
+      const params = new URLSearchParams(raw);
+      const obj = {};
+      for (const [k, v] of params.entries()) obj[k] = v;
+      return obj;
+    } catch {}
+    return {};
+  }
+
+  if (typeof body === 'string' && body.trim()) {
+    const raw = body;
+    try { return JSON.parse(raw); } catch {}
+    try {
+      const params = new URLSearchParams(raw);
+      const obj = {};
+      for (const [k, v] of params.entries()) obj[k] = v;
+      return obj;
+    } catch {}
+    return {};
+  }
+
+  if (!req) return {};
+
   try {
-    return JSON.parse(raw);
-  } catch {}
-  try {
-    const params = new URLSearchParams(raw);
-    const obj = {};
-    for (const [k, v] of params.entries()) obj[k] = v;
-    return obj;
-  } catch {}
-  return {};
+    const contentType = String(req.headers['content-type'] || '');
+    const buf = await readRawBody(req);
+    if (!buf || buf.length === 0) return {};
+
+    if (contentType.toLowerCase().includes('multipart/form-data')) {
+      return parseMultipartFormData(buf, contentType);
+    }
+
+    const raw = buf.toString('utf8');
+    try { return JSON.parse(raw); } catch {}
+    try {
+      const params = new URLSearchParams(raw);
+      const obj = {};
+      for (const [k, v] of params.entries()) obj[k] = v;
+      return obj;
+    } catch {}
+    return {};
+  } catch {
+    return {};
+  }
 }
 
 function cacheMessageStatus(id, payload) {
@@ -462,6 +543,14 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, supabase: !!getSupabase(), result });
       }
 
+      if (req.query.db_test === '1') {
+        const testId = `test_${Date.now()}`;
+        const persisted = await persistMessageStatus(testId, { message_status: 'test', target: 'test', raw: { test: true } });
+        const fetched = await getPersistedMessageStatus(testId);
+        pushDebug({ step: 'db_test', persisted: persisted?.status ?? null, fetched: !!fetched });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, supabase: !!getSupabase(), persisted, fetched });
+      }
+
       if (req.query.msg_status_id) {
         const msgId = String(req.query.msg_status_id);
         const cached = messageStatusCache.get(msgId) || null;
@@ -508,7 +597,7 @@ module.exports = async function handler(req, res) {
 
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
-    const rawBody = coerceBody(req.body);
+    const rawBody = await coerceBody(req.body, req);
     const body = rawBody && rawBody.data && typeof rawBody.data === 'object' ? rawBody.data : rawBody;
 
     const statusId = body.id || body.message_id || body.msgid || body.messageId;
