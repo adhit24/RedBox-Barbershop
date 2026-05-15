@@ -132,17 +132,26 @@ PARKIR: Gratis, luas, bisa motor & mobil.
 • Bisa lihat portofolio? Cek Instagram RedBox Barbershop untuk inspirasi gaya.
 • Apakah ada promo? Promo bisa berubah — tanya ke outlet terdekat untuk info terkini.
 
+=== INFO KAPSTER ===
+Daftar kapster tersedia berbeda per cabang dan bisa dilihat langsung saat booking online.
+Kalau ditanya "kapster siapa saja" atau "kapster available" → arahkan ke halaman booking:
+"Untuk lihat kapster yang tersedia, Kak bisa langsung pilih di halaman booking: redboxbarbershop.com/booking.html — tinggal pilih cabang dan tanggal, kapster yang available langsung muncul 👌"
+Jangan mengarang nama kapster yang tidak ada di data ini.
+
 === CARA MENJAWAB — IKUTI KETAT ===
-- Langsung jawab pertanyaannya. JANGAN balas pertanyaan dengan pertanyaan balik dulu.
+- Jawab CEPAT dan JELAS — langsung ke intinya, tidak perlu basa-basi panjang.
+- JANGAN gunakan format markdown seperti [teks](url) atau **bold** — WhatsApp tidak render markdown.
+- Tulis URL polos saja: redboxbarbershop.com/booking.html (BUKAN dalam format link markdown)
 - "booking/reservasi/pesan/jadwal/mau potong/mau cukur" → kasih link: redboxbarbershop.com/booking.html
-- "harga/berapa/menu/layanan/paket" → sebutkan daftar harga relevan (jangan dump semua sekaligus, ringkas dulu)
+- "harga/berapa/menu/layanan/paket" → sebutkan daftar harga relevan, ringkas dan langsung
 - "lokasi/alamat/dimana/cabang" → sebutkan semua outlet beserta lokasinya
 - "nomor/kontak/wa outlet" → berikan nomor WA cabang yang ditanyakan
 - "jam/buka/tutup/operasional" → sebutkan jam per outlet
-- "paket/grooming package" → jelaskan paket yang tersedia beserta isinya
-- Salam pembuka → balas singkat + tanya kebutuhan mereka
+- "paket/grooming package" → jelaskan paket beserta isinya
+- "kapster/barber/siapa yang available" → arahkan ke halaman booking (lihat panduan kapster di atas)
+- Salam pembuka → gunakan sapaan resmi yang sudah ditentukan
 - JANGAN mengarang info yang tidak ada di data di atas.
-- Kalau tidak yakin (misal: kapster tersedia hari ini, antrian sekarang), sarankan hubungi outlet langsung via WA.`;
+- Kalau tidak tahu (antrian saat ini, promo hari ini) → sarankan hubungi outlet via WA.`;
 }
 
 // ── OpenAI Chat ───────────────────────────────────────────────────────────────
@@ -287,11 +296,14 @@ module.exports = async function handler(req, res) {
     // Respond 200 immediately — Fonnte timeout ~5s, jangan tunggu OpenAI selesai
     res.status(200).json({ status: 'ok' });
 
-    // Proses async setelah response dikirim
+    // Await tetap dijalankan agar Vercel tidak freeze sebelum proses selesai
     const t0 = Date.now();
-    handleMessage({ from: sender, name: name || 'Kak', text: message })
-      .then(() => console.log(`[WA Bot] Done in ${Date.now() - t0}ms for sender=${sender}`))
-      .catch(err => console.error('[WA Bot] Process error:', err.message));
+    try {
+      await handleMessage({ from: sender, name: name || 'Kak', text: message });
+      console.log(`[WA Bot] Done in ${Date.now() - t0}ms for sender=${sender}`);
+    } catch (err) {
+      console.error('[WA Bot] Process error:', err.message);
+    }
 
   } catch (err) {
     console.error('[WA Bot] Fatal error:', err.message);
