@@ -914,38 +914,81 @@ class AIGroomingUI {
 
   showLoading(message) {
     const loadingEl = document.getElementById('ai-loading');
-    if (loadingEl) {
-      loadingEl.style.display = 'flex';
-      const textEl = loadingEl.querySelector('.ai-loading-text');
-      if (textEl) textEl.textContent = message;
-    }
+    if (!loadingEl) return;
 
-    const loadingInner = document.querySelector('#ai-loading .ai-loading-inner');
-    const preview = document.getElementById('ai-image-preview');
-    if (loadingInner && preview && preview.src) {
-      if (!this._aiPreviewOriginalParent) this._aiPreviewOriginalParent = preview.parentElement;
-      preview.style.display = 'block';
-      if (preview.parentElement !== loadingInner) {
-        loadingInner.insertBefore(preview, loadingInner.firstChild);
-      }
-    }
+    loadingEl.style.display = 'flex';
 
     // Hide other sections
     const uploadSection = document.getElementById('ai-upload-section');
     const resultsSection = document.getElementById('ai-results');
     if (uploadSection) uploadSection.style.display = 'none';
     if (resultsSection) resultsSection.style.display = 'none';
+
+    // Show user photo inside scanner
+    const photoSlot = document.getElementById('ai-loading-photo');
+    const preview = document.getElementById('ai-image-preview');
+    if (photoSlot && preview && preview.src && preview.src !== window.location.href) {
+      const existingImg = photoSlot.querySelector('img');
+      if (!existingImg) {
+        const img = document.createElement('img');
+        img.src = preview.src;
+        img.alt = 'Foto kamu';
+        photoSlot.innerHTML = '';
+        photoSlot.appendChild(img);
+      }
+    }
+
+    // Update loading text with re-trigger animation
+    const textEl = document.getElementById('ai-loading-text');
+    if (textEl) {
+      textEl.style.animation = 'none';
+      textEl.textContent = message;
+      // Force reflow so animation restarts
+      void textEl.offsetWidth;
+      textEl.style.animation = '';
+    }
+
+    // Step + progress mapping
+    const stepMap = [
+      { keywords: ['upload', 'mengupload'],       step: 0, pct: 10 },
+      { keywords: ['mulai', 'starting', 'analisis', 'analyzing', 'memproses'], step: 1, pct: 45 },
+      { keywords: ['processing', 'progress'],      step: 1, pct: null },
+      { keywords: ['selesai', 'done', 'complete'], step: 2, pct: 100 },
+    ];
+
+    const lower = (message || '').toLowerCase();
+    let activeStep = 0;
+    let progressPct = 5;
+
+    for (const entry of stepMap) {
+      if (entry.keywords.some(k => lower.includes(k))) {
+        activeStep = entry.step;
+        if (entry.pct !== null) progressPct = entry.pct;
+        // Extract numeric progress from message like "Processing... 72%"
+        if (entry.pct === null) {
+          const m = lower.match(/(\d+)\s*%/);
+          if (m) progressPct = Math.min(parseInt(m[1], 10), 95);
+        }
+        break;
+      }
+    }
+
+    // Update step classes
+    loadingEl.querySelectorAll('.ail-step').forEach(el => {
+      const s = parseInt(el.dataset.step, 10);
+      el.classList.remove('active', 'done');
+      if (s < activeStep) el.classList.add('done');
+      else if (s === activeStep) el.classList.add('active');
+    });
+
+    // Update progress bar
+    const fill = document.getElementById('ai-progress-fill');
+    if (fill) fill.style.width = progressPct + '%';
   }
 
   hideLoading() {
     const loadingEl = document.getElementById('ai-loading');
     if (loadingEl) loadingEl.style.display = 'none';
-
-    const preview = document.getElementById('ai-image-preview');
-    const originalParent = this._aiPreviewOriginalParent;
-    if (preview && originalParent && preview.parentElement !== originalParent) {
-      originalParent.appendChild(preview);
-    }
   }
 
   showError(message) {

@@ -162,8 +162,43 @@
       <!-- Loading -->
       <div class="ai-loading" id="ai-loading" style="display:none">
         <div class="ai-loading-inner">
-          <div class="ai-loading-spinner"></div>
-          <div class="ai-loading-text">Menganalisis...</div>
+          <!-- Scanner -->
+          <div class="ail-scanner">
+            <div class="ail-pulse"></div>
+            <div class="ail-pulse ail-pulse--2"></div>
+            <svg class="ail-rings" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="70" cy="70" r="66" stroke="rgba(255,255,255,.05)" stroke-width="2"/>
+              <circle class="ail-arc" cx="70" cy="70" r="66" stroke="#C1121F" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="80 335"/>
+              <circle cx="70" cy="70" r="54" stroke="rgba(255,255,255,.04)" stroke-width="1.5"/>
+              <circle class="ail-arc-inner" cx="70" cy="70" r="54" stroke="rgba(193,18,31,.3)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="45 295"/>
+            </svg>
+            <div class="ail-photo" id="ai-loading-photo">
+              <span class="ail-photo-placeholder">AI</span>
+            </div>
+          </div>
+          <!-- Progress bar -->
+          <div class="ail-progress">
+            <div class="ail-progress-fill" id="ai-progress-fill"></div>
+          </div>
+          <!-- Steps -->
+          <div class="ail-steps">
+            <div class="ail-step active" data-step="0">
+              <span class="ail-step-dot"></span>
+              <span class="ail-step-lbl">Upload</span>
+            </div>
+            <div class="ail-step-line"></div>
+            <div class="ail-step" data-step="1">
+              <span class="ail-step-dot"></span>
+              <span class="ail-step-lbl">Analisis</span>
+            </div>
+            <div class="ail-step-line"></div>
+            <div class="ail-step" data-step="2">
+              <span class="ail-step-dot"></span>
+              <span class="ail-step-lbl">Selesai</span>
+            </div>
+          </div>
+          <!-- Text -->
+          <div class="ai-loading-text" id="ai-loading-text">Mengupload foto...</div>
           <div class="ai-loading-subtext">AI sedang memproses foto kamu</div>
         </div>
       </div>

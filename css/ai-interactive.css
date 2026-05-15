@@ -1105,40 +1105,241 @@
   font-size: 0.95rem;
 }
 
-/* Loading State */
+/* Loading State — Scanner Animation */
 .ai-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 40px;
+  padding: 52px 40px;
   text-align: center;
 }
 
-.ai-loading-spinner {
-  width: 60px;
-  height: 60px;
-  border: 4px solid var(--surface);
-  border-top-color: var(--red);
+.ai-loading-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+/* Scanner ring container */
+.ail-scanner {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Pulse rings */
+.ail-pulse {
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
-  animation: ai-spin 1s linear infinite;
-  margin-bottom: 25px;
+  border: 1.5px solid rgba(193, 18, 31, 0.35);
+  animation: ail-pulse-out 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+.ail-pulse--2 {
+  animation-delay: 1s;
 }
 
-@keyframes ai-spin {
-  to { transform: rotate(360deg); }
+@keyframes ail-pulse-out {
+  0%   { transform: scale(1);    opacity: .7; }
+  100% { transform: scale(1.55); opacity: 0; }
 }
 
+/* SVG rings — fill entire container */
+.ail-rings {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: center;
+}
+
+/* Outer rotating arc */
+.ail-arc {
+  transform-origin: 70px 70px;
+  animation: ail-spin-cw 1.3s linear infinite;
+}
+
+/* Inner counter-rotating arc */
+.ail-arc-inner {
+  transform-origin: 70px 70px;
+  animation: ail-spin-ccw 2.1s linear infinite;
+}
+
+@keyframes ail-spin-cw  { to { transform: rotate(360deg);  } }
+@keyframes ail-spin-ccw { to { transform: rotate(-360deg); } }
+
+/* Photo slot in the center */
+.ail-photo {
+  position: relative;
+  z-index: 2;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(193, 18, 31, 0.4);
+}
+
+.ail-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ail-photo-placeholder {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: rgba(193, 18, 31, 0.5);
+}
+
+/* Scan line sweep */
+.ail-photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(193, 18, 31, 0.18) 50%,
+    transparent 100%
+  );
+  animation: ail-scan 1.6s ease-in-out infinite;
+}
+
+@keyframes ail-scan {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100%);  }
+}
+
+/* Progress bar */
+.ail-progress {
+  width: 180px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ail-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #C1121F 0%, #ff3a48 100%);
+  border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.ail-progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  background-size: 60px 100%;
+  animation: ail-shimmer 1.2s linear infinite;
+}
+
+@keyframes ail-shimmer {
+  from { transform: translateX(-60px); }
+  to   { transform: translateX(180px); }
+}
+
+/* Step indicators */
+.ail-steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.ail-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.35;
+  transition: opacity 0.3s ease;
+}
+
+.ail-step.active,
+.ail-step.done {
+  opacity: 1;
+}
+
+.ail-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  transition: background 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ail-step.active .ail-step-dot {
+  background: #C1121F;
+  box-shadow: 0 0 0 3px rgba(193, 18, 31, 0.25);
+  animation: ail-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.ail-step.done .ail-step-dot {
+  background: #22c55e;
+  box-shadow: none;
+}
+
+@keyframes ail-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(193, 18, 31, 0.25); }
+  50%       { box-shadow: 0 0 0 6px rgba(193, 18, 31, 0.1);  }
+}
+
+.ail-step-lbl {
+  font-size: 0.68rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-sec);
+  white-space: nowrap;
+}
+
+.ail-step.active .ail-step-lbl,
+.ail-step.done .ail-step-lbl {
+  color: var(--white);
+}
+
+.ail-step-line {
+  width: 32px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
+  margin-bottom: 14px;
+}
+
+/* Loading text */
 .ai-loading-text {
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   color: var(--white);
   font-weight: 600;
-  margin-bottom: 10px;
+  animation: ail-text-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes ail-text-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
 
 .ai-loading-subtext {
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   color: var(--text-sec);
+  margin-top: -16px;
 }
 
 /* Results Section */
@@ -1517,10 +1718,20 @@
 
 /* Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
-  .ai-loading-spinner {
-    animation: none;
+  .ail-pulse,
+  .ail-arc,
+  .ail-arc-inner,
+  .ail-photo::after,
+  .ail-progress-fill::after,
+  .ail-dot-pulse,
+  .ai-loading-text {
+    animation: none !important;
   }
-  
+
+  .ail-progress-fill {
+    transition: width 0.1s linear;
+  }
+
   .ai-confidence-fill {
     transition: none;
   }
