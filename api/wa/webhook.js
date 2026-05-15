@@ -4,7 +4,7 @@
  * Powered by OpenAI gpt-4o-mini with per-user conversation memory.
  */
 
-const { sendWA } = require('../../server/services/fonnte');
+const { sendWA, getDeviceInfo, checkMessageStatus } = require('../../server/services/fonnte');
 const OpenAI = require('openai');
 
 const INSTANCE_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -361,6 +361,18 @@ module.exports = async function handler(req, res) {
 
     if (req.query.debug === 'redbox2026') {
       if (req.query.ping === '1') pushDebug({ step: 'ping' });
+
+      if (req.query.device_info === '1') {
+        const info = await getDeviceInfo();
+        pushDebug({ step: 'device_info', device_status: info?.device_status, status: info?.status });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, device: info });
+      }
+
+      if (req.query.msg_status_id) {
+        const st = await checkMessageStatus(req.query.msg_status_id);
+        pushDebug({ step: 'msg_status', id: String(req.query.msg_status_id), status: st?.message_status || st?.status });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, message_status: st });
+      }
 
       if (req.query.send_to && req.query.send_msg) {
         const to = String(req.query.send_to);
