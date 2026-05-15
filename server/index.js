@@ -1342,6 +1342,33 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
 });
 
 // POST /api/admin/test-moka-bypass
+// ── GET /api/admin/moka-token-debug — probe what the stored token can access
+app.get('/api/admin/moka-token-debug', adminAuth, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
+  const MokaClient = require('./moka/client');
+  const outletId   = '8a55df01-8b02-4105-b248-c73f08426aaa';
+  const mokaId     = '100818';
+  const client     = new MokaClient(supabase, outletId, mokaId);
+  const probes = [
+    `/v3/outlets/${mokaId}/reports/get_latest_transactions?per_page=1`,
+    `/v1/outlets/${mokaId}/customers?page=1&per_page=1`,
+    `/v1/businesses/${mokaId}/customers?page=1&per_page=1`,
+    `/v1/outlets/${mokaId}/sync_bills/?statuses=PENDING&start=01/05/2026&end=16/05/2026&per_page=1`,
+    `/v1/profile`,
+    `/v2/profile`,
+  ];
+  const results = {};
+  for (const path of probes) {
+    try {
+      const r = await client._req('GET', path);
+      results[path] = { ok: true, keys: Object.keys(r || {}), sample: JSON.stringify(r).slice(0, 200) };
+    } catch (e) {
+      results[path] = { ok: false, error: e.message };
+    }
+  }
+  return res.json(results);
+});
+
 app.post('/api/admin/test-moka-bypass', adminAuth, async (req, res) => {
   try {
     const now = new Date();
