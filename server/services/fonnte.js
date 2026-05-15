@@ -17,18 +17,33 @@ async function sendWA(to, message) {
   const number = String(to).replace(/\D/g, '').replace(/^0/, '62');
 
   try {
-    const res = await fetch(FONNTE_API, {
-      method: 'POST',
-      headers: {
-        Authorization: token,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ target: number, message })
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    let res;
+    try {
+      res = await fetch(FONNTE_API, {
+        method: 'POST',
+        headers: {
+          Authorization: token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ target: number, message }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
 
-    const data = await res.json();
-    if (!data.status) {
-      console.error('[Fonnte] Send failed:', data);
+    const raw = await res.text();
+    let data;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = { status: false, error: 'non_json_response', raw };
+    }
+
+    if (!res.ok) {
+      return { status: false, http_status: res.status, ...data };
     }
     return data;
   } catch (err) {
