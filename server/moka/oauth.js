@@ -108,8 +108,7 @@ async function getAccessToken(supabase, outletId) {
     
     // Try save to DB (optional)
     if (supabase) {
-      supabase.from('moka_tokens').upsert(row, { onConflict: 'outlet_id' })
-        .catch(() => {});
+      try { await supabase.from('moka_tokens').upsert(row, { onConflict: 'outlet_id' }); } catch (_) {}
     }
   }
 
