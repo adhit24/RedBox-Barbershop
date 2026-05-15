@@ -267,21 +267,31 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   try {
-    // Fonnte payload: { device, sender, name, message, id, type }
+    // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const body = req.body || {};
-    const { sender, name, message, type } = body;
+    const { sender, name, message, type, device } = body;
+
+    // Filter pesan keluar (dikirim oleh bot sendiri) — Fonnte kirim webhook untuk outgoing juga
+    const isFromMe = body.isFromMe === true || body.isFromMe === 1
+      || body.is_from_me === true || body.is_from_me === 1
+      || (device && sender && String(sender) === String(device));
+    if (isFromMe) return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
 
     console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: message?.slice(0, 80) }));
 
     // Only block clear media types; allow text, chat, conversation, undefined, etc.
     const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'gif', 'ptt'];
     if (type && MEDIA_TYPES.includes(type)) return res.status(200).json({ status: 'ignored', type });
-    if (!sender || !message)     return res.status(200).json({ status: 'ignored', reason: 'missing fields', body });
+    if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
 
+    // Respond 200 immediately — Fonnte timeout ~5s, jangan tunggu OpenAI selesai
+    res.status(200).json({ status: 'ok' });
+
+    // Proses async setelah response dikirim
     const t0 = Date.now();
-    await handleMessage({ from: sender, name: name || 'Kak', text: message });
-    console.log(`[WA Bot] Done in ${Date.now() - t0}ms for sender=${sender}`);
-    return res.status(200).json({ status: 'ok' });
+    handleMessage({ from: sender, name: name || 'Kak', text: message })
+      .then(() => console.log(`[WA Bot] Done in ${Date.now() - t0}ms for sender=${sender}`))
+      .catch(err => console.error('[WA Bot] Process error:', err.message));
 
   } catch (err) {
     console.error('[WA Bot] Fatal error:', err.message);
