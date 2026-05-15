@@ -289,6 +289,7 @@ function fallbackReply(text, name) {
 
 async function handleMessage({ from, name, text }) {
   let reply;
+  let used = 'openai';
 
   try {
     const controller = new AbortController();
@@ -301,9 +302,11 @@ async function handleMessage({ from, name, text }) {
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
     reply = fallbackReply(text, name);
+    used = 'fallback';
   }
 
-  return sendWA(from, reply);
+  const sendResult = await sendWA(from, reply);
+  return { used, reply, sendResult };
 }
 
 function coerceBody(body) {
@@ -359,7 +362,7 @@ module.exports = async function handler(req, res) {
 
       if (req.query.send_to && req.query.send_msg) {
         const result = await sendWA(String(req.query.send_to), String(req.query.send_msg));
-        pushDebug({ step: 'debug_send', to: String(req.query.send_to), fonnte_status: result?.status ?? result });
+        pushDebug({ step: 'debug_send', to: String(req.query.send_to), fonnte_result: result });
         return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, result });
       }
 
@@ -430,7 +433,12 @@ module.exports = async function handler(req, res) {
       pushDebug({ step: 'processing_start', sender, message: message?.slice(0, 40) });
       const result = await handleMessage({ from: sender, name: name || 'Kak', text: message });
       const ms = Date.now() - t0;
-      pushDebug({ step: 'processing_done', ms, fonnte_status: result?.status ?? result });
+      pushDebug({
+        step: 'processing_done',
+        ms,
+        used: result?.used,
+        fonnte_result: result?.sendResult ?? null,
+      });
       console.log(`[WA Bot] Done in ${ms}ms for sender=${sender}`, result);
     } catch (err) {
       pushDebug({ step: 'processing_error', error: err.message });
