@@ -92,13 +92,16 @@ async function fetchCustomersFromTransactions(client, mokaOutletId, startTime) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).end();
 
-  const secret      = process.env.CRON_SECRET;
+  const cronSecret  = process.env.CRON_SECRET;
+  const adminPw     = process.env.ADMIN_PASSWORD;
   const authHeader  = req.headers['authorization'];
   const xAdminToken = req.headers['x-admin-token'];
 
-  // Accept: Authorization: Bearer <CRON_SECRET>  OR  x-admin-token: <CRON_SECRET>
-  if (secret) {
-    const ok = authHeader === `Bearer ${secret}` || xAdminToken === secret;
+  // Accept CRON_SECRET or ADMIN_PASSWORD via Bearer or x-admin-token
+  if (cronSecret || adminPw) {
+    const bearer = (authHeader || '').replace(/^Bearer\s+/i, '').trim();
+    const ok = (cronSecret && (bearer === cronSecret || xAdminToken === cronSecret)) ||
+               (adminPw   && (bearer === adminPw    || xAdminToken === adminPw));
     if (!ok) return res.status(401).json({ error: 'Unauthorized' });
   }
 
