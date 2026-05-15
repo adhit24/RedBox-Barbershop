@@ -449,7 +449,7 @@
 
       const outfitHTML = `
         <div class="ai-photo-grid ai-photo-grid-3">
-          ${outfitRecs.map(o => {
+          ${outfitRecs.map((o, i) => {
             const isNew = !!o.top;
             return `
             <div class="ai-photo-card">
@@ -486,7 +486,7 @@
       const eyewearHTML = `
         <div class="ai-section-sub-label">Recommended</div>
         <div class="ai-photo-grid ai-photo-grid-3">
-          ${eyewearRecs.map(e => {
+          ${eyewearRecs.map((e, i) => {
             const isNew = !!e.frame_color;
             return `
             <div class="ai-photo-card">
