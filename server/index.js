@@ -1431,22 +1431,27 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
 
   const { next_url: startNextUrl, max_pages = 4 } = req.body || {};
-  let { outlet_id: rawOutletId } = req.body || {};
+  let { outlet_id: rawOutletId, moka_outlet_id: rawMokaOutletId } = req.body || {};
 
   const MokaClient = require('./moka/client');
 
-  // If no outlet_id given, pick the first authorized one
+  // Auto-pick first authorized outlet if not specified
   if (!rawOutletId) {
     const { data: tokens } = await supabase.from('moka_tokens').select('outlet_id').limit(1);
     rawOutletId = tokens?.[0]?.outlet_id;
   }
   if (!rawOutletId) return res.status(400).json({ error: 'No Moka outlets configured' });
 
-  const { data: outlet } = await supabase.from('outlets')
-    .select('id, moka_outlet_id').eq('id', rawOutletId).maybeSingle();
-  if (!outlet?.moka_outlet_id) return res.status(400).json({ error: 'Outlet has no moka_outlet_id' });
+  // Get moka_outlet_id — accept from body (override) or look up in outlets table
+  let mokaOutletId = rawMokaOutletId || null;
+  if (!mokaOutletId) {
+    const { data: outlet } = await supabase.from('outlets')
+      .select('moka_outlet_id').eq('id', rawOutletId).maybeSingle();
+    mokaOutletId = outlet?.moka_outlet_id || null;
+  }
+  if (!mokaOutletId) return res.status(400).json({ error: 'Outlet has no moka_outlet_id — pass moka_outlet_id in body' });
 
-  const client = new MokaClient(supabase, rawOutletId, outlet.moka_outlet_id);
+  const client = new MokaClient(supabase, rawOutletId, mokaOutletId);
   const customerMap = new Map();
   let nextUrl = startNextUrl || null;
   let page = 0;
@@ -1526,7 +1531,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
 
   return res.json({
     done, next_url: nextUrl || null, outlet_id: rawOutletId,
-    moka_outlet_id: outlet.moka_outlet_id,
+    moka_outlet_id: mokaOutletId,
     pages_fetched: page, customers_found: customerMap.size,
     upserted, ...(upsertError ? { error: upsertError } : {}),
   });
