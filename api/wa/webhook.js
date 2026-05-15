@@ -322,6 +322,13 @@ async function handleMessage({ from, name, text }) {
   }
 
   const sendResult = await sendWA(from, reply);
+  if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
+    for (let i = 0; i < sendResult.id.length; i++) {
+      const msgId = sendResult.id[i];
+      const target = Array.isArray(sendResult.target) ? sendResult.target[i] : from;
+      await persistMessageStatus(msgId, { message_status: sendResult.process || 'queued', target, raw: sendResult });
+    }
+  }
   return { used, reply, sendResult, error };
 }
 
@@ -574,6 +581,13 @@ module.exports = async function handler(req, res) {
         }
 
         const result = await sendWA(to, msg);
+        if (result && Array.isArray(result.id) && result.id.length > 0) {
+          for (let i = 0; i < result.id.length; i++) {
+            const msgId = result.id[i];
+            const target = Array.isArray(result.target) ? result.target[i] : normalized;
+            await persistMessageStatus(msgId, { message_status: result.process || 'queued', target, raw: result });
+          }
+        }
         pushDebug({ step: 'debug_send', to: String(req.query.send_to), fonnte_result: result });
         return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, result });
       }
