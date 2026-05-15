@@ -55,7 +55,7 @@ const REDBOX_SERVICES = [
     icon: '🌈',
     img: 'Brand_assets/Services/Hair_Color.jpg',
     duration: '45 menit',
-    price: 135000,
+    price: 160000,
     csbPrice: 160000,
     desc: 'Pewarnaan rambut profesional dengan pilihan warna yang trendi.'
   },
