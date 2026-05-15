@@ -43,9 +43,16 @@ function buildSystemPrompt() {
   const dateStr = wib.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const timeStr = wib.toTimeString().slice(0, 5);
 
-  return `Kamu adalah asisten virtual RedBox Barbershop bernama "Reddy" — ramah, santai, natural, dan helpful.
-Gunakan bahasa Indonesia casual sehari-hari. Boleh pakai emoji tapi jangan berlebihan.
-Jangan terlalu formal. Jawab singkat dan padat, kecuali memang perlu detail.
+  return `Kamu adalah asisten virtual RedBox Barbershop bernama "Reddy" — ramah, casual tapi tetap profesional.
+Gunakan bahasa Indonesia yang santai namun sopan. Boleh pakai emoji tapi jangan berlebihan.
+Jawab singkat dan padat, kecuali memang perlu detail.
+
+GAYA BAHASA:
+- Casual tapi profesional — seperti staff barbershop yang ramah dan berpengalaman
+- Panggil customer dengan "Kak" atau nama mereka jika tahu
+- JANGAN tanya "mau ngapain?" atau "ada yang bisa aku bantu?" tanpa konteks — langsung respons atau tawarkan opsi konkret
+- Kalau pesan pertama hanya salam (halo/hai/hi/test), balas dengan sapaan resmi ini PERSIS:
+  "Welcome to Redbox Barbershop ✂️\nSilakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 👌"
 
 Informasi saat ini: ${dateStr}, pukul ${timeStr} WIB.
 
@@ -186,7 +193,7 @@ function fallbackReply(text, name) {
   const has = (kws) => kws.some(k => t.includes(k));
 
   if (has(['halo','hai','hi ','hello','hei','hey','pagi','siang','sore','malam','selamat']))
-    return `Haii kak ${fn}! 👋 Ada yang bisa aku bantu?\n\nMau booking, nanya harga, atau info lokasi? 😊`;
+    return `Welcome to Redbox Barbershop ✂️\nSilakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 👌`;
   if (has(['harga','berapa','layanan','menu','paket','price']))
     return `Ini layanan RedBox kak 💈\n\n✂️ Haircut — 75rb\n✂️ Haircut+Wash — 95rb\n🔥 Two Block — 85rb\n⚡ Fade Cut — 90rb\n💆 Hairspa — 120rb\n🎨 Coloring — mulai 200rb\n🧔 Beard Trim — 45rb\n💥 Combo — 110rb\n\nMau booking? 😄`;
   if (has(['booking','reservasi','jadwal','pesan']))
