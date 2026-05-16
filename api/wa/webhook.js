@@ -9,6 +9,23 @@ const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
 const INSTANCE_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+// ── Branch Routing ─────────────────────────────────────────────────────────────
+const BRANCH_WA = {
+  bypass:    '0818202569',
+  samadikun: '0818202589',
+  csb:       '0818202889',
+  sumber:    '0818202599',
+  tegal:     '0818268883',
+};
+
+const BRANCH_LABEL = {
+  bypass:    'RedBox Bypass (Pusat)',
+  samadikun: 'RedBox Samadikun',
+  csb:       'RedBox CSB Mall',
+  sumber:    'RedBox Sumber',
+  tegal:     'RedBox Tegal',
+};
 const BOOT_TS = Date.now();
 
 const debugLog = [];
@@ -118,6 +135,39 @@ async function clearHistory(sender) {
   try {
     await sb.from('wa_conversations').delete().eq('sender', sender);
   } catch {}
+}
+
+async function forwardBookingToBranch(booking, customerPhone) {
+  const branchKey = (booking.branch || '').toLowerCase().trim();
+  const branchWA  = BRANCH_WA[branchKey];
+  if (!branchWA) {
+    console.warn('[WA Bot] Unknown branch for forward:', branchKey);
+    return;
+  }
+
+  const label     = BRANCH_LABEL[branchKey] || branchKey;
+  const rawDigits = String(customerPhone).replace(/\D/g, '');
+  const phone     = rawDigits.startsWith('62') ? '0' + rawDigits.slice(2) : rawDigits;
+
+  const msg = [
+    `🔔 *Booking Masuk via WA Bot*`,
+    ``,
+    `📍 Cabang: *${label}*`,
+    `👤 Nama: *${booking.name || '—'}*`,
+    `✂️ Layanan: *${booking.service || '—'}*`,
+    `📅 Tanggal: *${booking.date || '—'}*`,
+    `⏰ Jam: *${booking.time || '—'} WIB*`,
+    `📱 WA Customer: *${phone}*`,
+    ``,
+    `Silakan follow up langsung ke customer ya! 🙏`,
+  ].join('\n');
+
+  try {
+    await sendWA(branchWA, msg);
+    console.log(`[WA Bot] Booking forwarded to ${label} (${branchWA})`);
+  } catch (err) {
+    console.error('[WA Bot] Failed to forward booking:', err.message);
+  }
 }
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
@@ -280,7 +330,20 @@ Jangan mengarang nama kapster yang tidak ada di data ini.
 - JANGAN mengarang info yang tidak ada di data di atas.
 - Kalau tidak tahu (antrian saat ini, promo hari ini) → sarankan hubungi outlet via WA.
 - Kalau customer sudah jelas mau layanan tertentu, SELALU tutup dengan ajakan booking: "Mau langsung booking? redboxbarbershop.com/booking.html"
-- Jangan terlalu panjang — maksimal 3-4 baris per pesan, kecuali customer minta detail lengkap.`;
+- Jangan terlalu panjang — maksimal 3-4 baris per pesan, kecuali customer minta detail lengkap.
+
+=== DISPATCH BOOKING KE CABANG LAIN ===
+Jika customer JELAS ingin booking di cabang selain Bypass (samadikun / csb / sumber / tegal):
+1. Kumpulkan 4 info yang belum diketahui: nama lengkap, layanan, tanggal, jam pilihan
+2. Tanya satu per satu secara natural — jangan semua sekaligus
+3. Setelah SEMUA info terkumpul, konfirmasi dulu ke customer dengan ringkasan:
+   "Oke kak, jadi booking kamu di [Cabang], [Layanan], [Tanggal] jam [Jam] WIB ya? Betul?"
+4. Setelah customer konfirmasi (iya/betul/ya/ok) → balas bahwa sudah diteruskan ke cabang tujuan, lalu WAJIB tambahkan di baris terakhir reply:
+   FORWARD_BOOKING:{"branch":"csb","name":"Nama","service":"Hair Color","date":"2026-05-17","time":"14:00"}
+- Nilai branch harus tepat: bypass / samadikun / csb / sumber / tegal
+- Format date: YYYY-MM-DD. Format time: HH:MM (24 jam)
+- Jangan mengarang tanggal — tanya ke customer jika belum disebutkan
+- JANGAN tampilkan tag FORWARD_BOOKING dalam pesan ke customer — hanya untuk sistem internal`;
 }
 
 // ── OpenAI Chat ───────────────────────────────────────────────────────────────
@@ -368,6 +431,14 @@ async function handleMessage({ from, name, text }) {
     error = err?.message || String(err);
   }
 
+  // Parse FORWARD_BOOKING tag — strip dari reply customer, proses di background
+  let forwardBooking = null;
+  const fwdMatch = reply.match(/FORWARD_BOOKING:(\{[^}]+\})/);
+  if (fwdMatch) {
+    try { forwardBooking = JSON.parse(fwdMatch[1]); } catch {}
+    reply = reply.replace(/\s*FORWARD_BOOKING:\{[^}]+\}/, '').trim();
+  }
+
   const sendResult = await sendWA(from, reply);
   // Persist message status fire-and-forget — jangan block sync path
   if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
@@ -377,6 +448,14 @@ async function handleMessage({ from, name, text }) {
       persistMessageStatus(msgId, { message_status: sendResult.process || 'queued', target, raw: sendResult }).catch(() => {});
     }
   }
+
+  // Forward booking ke branch WA jika ada tag (fire-and-forget)
+  if (forwardBooking) {
+    forwardBookingToBranch(forwardBooking, from).catch(err =>
+      console.error('[WA Bot] forwardBookingToBranch error:', err.message)
+    );
+  }
+
   return { used, reply, sendResult, error };
 }
 
