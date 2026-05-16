@@ -1029,16 +1029,23 @@
   color: var(--text-sec);
 }
 
+.ai-upload-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .ai-upload-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 28px;
+  padding: 12px 22px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 50px;
   color: var(--white);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1048,6 +1055,16 @@
   background: var(--red);
   border-color: var(--red);
   transform: translateY(-2px);
+}
+
+.ai-selfie-btn {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.ai-selfie-btn:hover {
+  background: var(--red);
+  border-color: var(--red);
 }
 
 .ai-upload-formats {

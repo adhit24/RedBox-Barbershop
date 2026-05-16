@@ -342,6 +342,8 @@ class AIGroomingUI {
     // Upload buttons
     const uploadInput = document.getElementById('ai-upload-input');
     const uploadBtn = document.getElementById('ai-upload-btn');
+    const selfieInput = document.getElementById('ai-selfie-input');
+    const selfieBtn = document.getElementById('ai-selfie-btn');
     const analyzeBtn = document.getElementById('ai-analyze-btn');
 
     if (uploadInput) {
@@ -350,6 +352,14 @@ class AIGroomingUI {
 
     if (uploadBtn) {
       uploadBtn.addEventListener('click', () => uploadInput?.click());
+    }
+
+    if (selfieInput) {
+      selfieInput.addEventListener('change', (e) => this.handleFileSelect(e));
+    }
+
+    if (selfieBtn) {
+      selfieBtn.addEventListener('click', () => selfieInput?.click());
     }
 
     if (analyzeBtn) {
