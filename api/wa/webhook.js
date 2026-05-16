@@ -31,9 +31,17 @@ function getSupabase() {
 }
 
 // ── Conversation Memory ───────────────────────────────────────────────────────
+// In-memory cache + Supabase persistence untuk continuity lintas serverless instance.
+//
+// DDL (run di Supabase SQL Editor):
+//   create table if not exists wa_conversations (
+//     sender text primary key,
+//     history jsonb not null default '[]',
+//     updated_at timestamptz not null default now()
+//   );
 const conversationCache = new Map(); // sender → [{role, content}]
 const MAX_HISTORY = 12;
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
 const cacheTimestamps = new Map();
 
 // ── Dedup — cegah pesan yang sama diproses dua kali (Fonnte retry) ────────────
@@ -55,23 +63,61 @@ function isDuplicate(msgId) {
   return false;
 }
 
-function getHistory(sender) {
-  // Auto-expire inactive conversations
+async function getHistory(sender) {
   const lastActive = cacheTimestamps.get(sender) || 0;
-  if (Date.now() - lastActive > CACHE_TTL_MS) {
-    conversationCache.delete(sender);
-    cacheTimestamps.delete(sender);
+  if (Date.now() - lastActive <= CACHE_TTL_MS && conversationCache.has(sender)) {
+    return conversationCache.get(sender);
   }
-  return conversationCache.get(sender) || [];
+  // Cache miss — coba load dari Supabase (lintas serverless instance)
+  // Timeout 4s agar Lambda tidak hang jika Supabase lambat
+  const sb = getSupabase();
+  if (sb && !sender.startsWith('__')) {
+    try {
+      const queryPromise = sb
+        .from('wa_conversations')
+        .select('history,updated_at')
+        .eq('sender', sender)
+        .maybeSingle();
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ data: null, error: 'timeout' }), 2000));
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+      if (!error && data && Array.isArray(data.history)) {
+        const age = Date.now() - new Date(data.updated_at).getTime();
+        if (age < CACHE_TTL_MS) {
+          conversationCache.set(sender, data.history);
+          cacheTimestamps.set(sender, Date.now());
+          return data.history;
+        }
+      }
+      if (error === 'timeout') console.warn('[WA Bot] getHistory Supabase timeout for', sender);
+    } catch {}
+  }
+  conversationCache.set(sender, []);
+  cacheTimestamps.set(sender, Date.now());
+  return [];
 }
 
-function pushHistory(sender, role, content) {
-  const hist = getHistory(sender);
-  hist.push({ role, content });
-  // Trim to keep last MAX_HISTORY messages
-  if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY);
-  conversationCache.set(sender, hist);
-  cacheTimestamps.set(sender, Date.now());
+async function saveHistoryToSupabase(sender, history) {
+  const sb = getSupabase();
+  if (!sb || sender.startsWith('__')) return;
+  try {
+    const { error } = await sb.from('wa_conversations').upsert(
+      { sender, history, updated_at: new Date().toISOString() },
+      { onConflict: 'sender' }
+    );
+    if (error) console.error('[WA Bot] saveHistory error:', error.message);
+  } catch (e) {
+    console.error('[WA Bot] saveHistory exception:', e?.message || e);
+  }
+}
+
+async function clearHistory(sender) {
+  conversationCache.delete(sender);
+  cacheTimestamps.delete(sender);
+  const sb = getSupabase();
+  if (!sb) return;
+  try {
+    await sb.from('wa_conversations').delete().eq('sender', sender);
+  } catch {}
 }
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
@@ -91,8 +137,9 @@ GAYA BAHASA:
 - Casual tapi profesional — seperti staff barbershop yang ramah dan berpengalaman
 - Panggil customer dengan "Kak" atau nama mereka jika tahu
 - JANGAN tanya "mau ngapain?" atau "ada yang bisa aku bantu?" tanpa konteks — langsung respons atau tawarkan opsi konkret
-- Kalau pesan pertama hanya salam (halo/hai/hi/test), balas dengan sapaan resmi ini PERSIS:
+- Kalau ini pesan PERTAMA dalam sesi (tidak ada history sebelumnya) dan isinya hanya salam (halo/hai/hi/test/tes), balas dengan sapaan resmi ini PERSIS:
   "Welcome to Redbox Barbershop ✂️\nSilakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 👌"
+- Kalau sudah ada percakapan sebelumnya dan customer kirim salam lagi, JANGAN ulangi sapaan formal — respons natural seperti "Ada lagi yang bisa aku bantu Kak? 😊" atau langsung jawab kebutuhan barunya
 
 Informasi saat ini: ${dateStr}, pukul ${timeStr} WIB.
 
@@ -116,7 +163,7 @@ CATATAN HARGA: Harga di CSB Mall sedikit lebih tinggi dibanding cabang lain.
 • Hair and Fade Cut — Rp 95.000 / Rp 130.000 (60 menit) — fade dengan shade & degradasi
 • Hair Tattoo Single Side — Rp 45.000 / Rp 55.000 (15 menit) — desain seni 1 sisi
 • Hair Tattoo Double Side — Rp 75.000 / Rp 85.000 (30 menit) — desain seni 2 sisi
-• Hair Color — Rp 135.000 / Rp 160.000 (45 menit) — pewarnaan profesional
+• Hair Color — Rp 160.000 / Rp 160.000 (45 menit) — pewarnaan profesional
 • Hair Bleaching — Rp 360.000 / Rp 370.000 (3 jam) — pemutihan sebelum coloring
 • Hair Highlighting — Rp 310.000 / Rp 320.000 (3 jam) — highlight dimensi & kilau
 • Hair Curly — Rp 310.000 / Rp 320.000 (90 menit) — pengeritingan rambut
@@ -178,7 +225,7 @@ Pahami maksud customer meski kata-katanya tidak eksak. Petakan ke layanan yang t
 RAMBUT:
 - "cukur rambut" / "potong rambut" / "pangkas" / "trim rambut" / "rapiin rambut" → Hair Cut (Rp 85.000)
 - "fade" / "cukur fade" / "undercut" / "potongan degradasi" → Hair and Fade Cut (Rp 95.000)
-- "cat rambut" / "warnain rambut" / "coloring" / "semir" → Hair Color (Rp 135.000)
+- "cat rambut" / "warnain rambut" / "coloring" / "semir" → Hair Color (Rp 160.000)
 - "bleaching" / "lighten" / "putihin rambut" → Hair Bleaching (Rp 360.000)
 - "highlight" / "streak" / "ombre" → Hair Highlighting (Rp 310.000)
 - "keriting" / "perm" / "curl" → Hair Curly (Rp 310.000)
@@ -221,7 +268,8 @@ Jangan mengarang nama kapster yang tidak ada di data ini.
 - Jawab CEPAT dan JELAS — langsung ke intinya, tidak perlu basa-basi panjang.
 - JANGAN gunakan format markdown seperti [teks](url) atau **bold** — WhatsApp tidak render markdown.
 - Tulis URL polos saja: redboxbarbershop.com/booking.html (BUKAN dalam format link markdown)
-- "booking/reservasi/pesan/jadwal/mau potong/mau cukur" → kasih link: redboxbarbershop.com/booking.html
+- "booking/reservasi/pesan/jadwal/mau potong/mau cukur/mau ke sana" → tanya dulu cabang mana yang dituju (kalau belum disebut), baru kasih link booking: redboxbarbershop.com/booking.html
+- Kalau customer sudah sebut cabang tertentu, langsung kasih link tanpa tanya lagi
 - "harga/berapa/menu/layanan/paket" → sebutkan daftar harga relevan, ringkas dan langsung
 - "lokasi/alamat/dimana/cabang" → sebutkan semua outlet beserta lokasinya
 - "nomor/kontak/wa outlet" → berikan nomor WA cabang yang ditanyakan
@@ -230,7 +278,9 @@ Jangan mengarang nama kapster yang tidak ada di data ini.
 - "kapster/barber/siapa yang available" → arahkan ke halaman booking (lihat panduan kapster di atas)
 - Salam pembuka → gunakan sapaan resmi yang sudah ditentukan
 - JANGAN mengarang info yang tidak ada di data di atas.
-- Kalau tidak tahu (antrian saat ini, promo hari ini) → sarankan hubungi outlet via WA.`;
+- Kalau tidak tahu (antrian saat ini, promo hari ini) → sarankan hubungi outlet via WA.
+- Kalau customer sudah jelas mau layanan tertentu, SELALU tutup dengan ajakan booking: "Mau langsung booking? redboxbarbershop.com/booking.html"
+- Jangan terlalu panjang — maksimal 3-4 baris per pesan, kecuali customer minta detail lengkap.`;
 }
 
 // ── OpenAI Chat ───────────────────────────────────────────────────────────────
@@ -244,11 +294,11 @@ function getOpenAI() {
   return openaiClient;
 }
 
-async function callOpenAI(sender, userMessage, name, signal) {
+async function callOpenAI(sender, userMessage, name) {
   const openai = getOpenAI();
   if (!openai) throw new Error('OPENAI_API_KEY not set');
 
-  const history = getHistory(sender);
+  const history = await getHistory(sender);
 
   const messages = [
     { role: 'system', content: buildSystemPrompt() },
@@ -259,20 +309,23 @@ async function callOpenAI(sender, userMessage, name, signal) {
     { role: 'user', content: userMessage },
   ];
 
-  // Promise.race untuk timeout yang reliable — AbortController saja tidak cukup di Vercel
+  // Timeout 8s — Lambda dalam state sinkron (sebelum res.json) lebih cepat dari post-response
   const openaiCall = openai.chat.completions.create(
-    { model: 'gpt-4o-mini', messages, max_tokens: 250, temperature: 0.7 },
-    { signal }
+    { model: 'gpt-4o-mini', messages, max_tokens: 380, temperature: 0.7 }
   );
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('OpenAI timeout 18s')), 18000)
+    setTimeout(() => reject(new Error('OpenAI timeout 8s')), 8000)
   );
   const completion = await Promise.race([openaiCall, timeoutPromise]);
 
   const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf, ada gangguan teknis. Coba lagi ya kak 🙏';
 
-  pushHistory(sender, 'user', userMessage);
-  pushHistory(sender, 'assistant', reply);
+  // Simpan ke cache sekarang, Supabase fire-and-forget (jangan block sync path)
+  const updated = [...history, { role: 'user', content: userMessage }, { role: 'assistant', content: reply }];
+  const trimmed = updated.length > MAX_HISTORY ? updated.slice(updated.length - MAX_HISTORY) : updated;
+  conversationCache.set(sender, trimmed);
+  cacheTimestamps.set(sender, Date.now());
+  saveHistoryToSupabase(sender, trimmed).catch(e => console.error('[WA Bot] saveHistory error:', e?.message));
 
   return reply;
 }
@@ -288,15 +341,15 @@ function fallbackReply(text, name) {
   if (has(['halo','hai','hi ','hello','hei','hey','pagi','siang','sore','malam','selamat']))
     return `Welcome to Redbox Barbershop ✂️\nSilakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 👌`;
   if (has(['harga','berapa','layanan','menu','paket','price']))
-    return `Ini layanan RedBox kak 💈\n\n✂️ Haircut — 75rb\n✂️ Haircut+Wash — 95rb\n🔥 Two Block — 85rb\n⚡ Fade Cut — 90rb\n💆 Hairspa — 120rb\n🎨 Coloring — mulai 200rb\n🧔 Beard Trim — 45rb\n💥 Combo — 110rb\n\nMau booking? 😄`;
-  if (has(['booking','reservasi','jadwal','pesan']))
-    return `Booking online di sini ya kak 📅\n👉 *redboxbarbershop.com/booking.html*\n\nPilih layanan → barber → slot waktu. Mudah banget!`;
-  if (has(['lokasi','alamat','dimana','maps']))
-    return `Ada beberapa cabang kak 📍\n• Bypass (pusat) — Jl. Bypass Kedawung\n• Samadikun, CSB Mall, Sumber, Tegal\n\nBuka 10.00–22.00 setiap hari 😊`;
+    return `Layanan RedBox Barbershop 💈\n\n✂️ Hair Cut — Rp 85.000\n✂️ Hair & Fade Cut — Rp 95.000\n🪒 Shaving — Rp 40.000\n💆 Men Massage — Rp 145.000\n👑 Noble Grooming — Rp 140.000\n👑 Royal Grooming — Rp 305.000\n\nInfo lengkap & booking: redboxbarbershop.com/booking.html`;
+  if (has(['booking','reservasi','jadwal','pesan','mau potong','mau cukur']))
+    return `Booking online di sini ya Kak 📅\nredboxbarbershop.com/booking.html\n\nPilih layanan → kapster → slot waktu. Mudah!`;
+  if (has(['lokasi','alamat','dimana','maps','cabang']))
+    return `Cabang RedBox Barbershop 📍\n• Bypass (pusat) — Jl. Bypass Kedawung | 10.00–22.00\n• Samadikun — Jl. Samadikun | 10.00–21.00\n• CSB Mall — Lt. 1 | 10.00–21.00\n• Sumber — Jl. Raya Sumber | 10.00–21.00\n• Tegal — Jl. Raya Tegal | 10.00–21.00`;
   if (has(['makasih','terima kasih','thanks','thx']))
-    return `Sama-sama kak ${fn}! Kalau ada yang lain jangan ragu tanya ya 😊✂️`;
+    return `Sama-sama Kak ${fn}! Kalau ada yang lain jangan ragu tanya ya 😊✂️`;
 
-  return `Maaf kak ${fn}, aku lagi gangguan sedikit 😅 Coba tanya lagi ya, atau kunjungi *redboxbarbershop.com* untuk info lengkap!`;
+  return `Maaf Kak ${fn}, ada gangguan sebentar 😅 Silakan coba lagi atau kunjungi redboxbarbershop.com untuk info lengkap!`;
 }
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
@@ -307,13 +360,7 @@ async function handleMessage({ from, name, text }) {
   let error = null;
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    try {
-      reply = await callOpenAI(from, text, name, controller.signal);
-    } finally {
-      clearTimeout(timeout);
-    }
+    reply = await callOpenAI(from, text, name);
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
     reply = fallbackReply(text, name);
@@ -322,11 +369,12 @@ async function handleMessage({ from, name, text }) {
   }
 
   const sendResult = await sendWA(from, reply);
+  // Persist message status fire-and-forget — jangan block sync path
   if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
     for (let i = 0; i < sendResult.id.length; i++) {
       const msgId = sendResult.id[i];
       const target = Array.isArray(sendResult.target) ? sendResult.target[i] : from;
-      await persistMessageStatus(msgId, { message_status: sendResult.process || 'queued', target, raw: sendResult });
+      persistMessageStatus(msgId, { message_status: sendResult.process || 'queued', target, raw: sendResult }).catch(() => {});
     }
   }
   return { used, reply, sendResult, error };
@@ -522,7 +570,7 @@ module.exports = async function handler(req, res) {
     if (test_msg) {
       const t0 = Date.now();
       try {
-        const reply = await callOpenAI('__test__', test_msg, test_name || 'Tester', null);
+        const reply = await callOpenAI('__test__', test_msg, test_name || 'Tester');
         return res.status(200).json({
           status: 'ok', openai: 'ok', latency_ms: Date.now() - t0,
           input: test_msg, reply,
@@ -569,6 +617,20 @@ module.exports = async function handler(req, res) {
           message_status: cached || persisted,
           note: 'Fonnte /status API deprecated. Endpoint ini membaca cache per-instance atau Supabase (jika tabel wa_message_status ada).',
         });
+      }
+
+      if (req.query.conv_dump) {
+        const target = String(req.query.conv_dump);
+        const hist = await getHistory(target);
+        pushDebug({ step: 'conv_dump', sender: target, messages: hist.length });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, sender: target, history: hist });
+      }
+
+      if (req.query.reset_history) {
+        const target = String(req.query.reset_history);
+        await clearHistory(target);
+        pushDebug({ step: 'reset_history', sender: target });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, sender: target, cleared: true });
       }
 
       if (req.query.send_to && req.query.send_msg) {
@@ -685,13 +747,19 @@ module.exports = async function handler(req, res) {
 
     // Only block clear media types; allow text, chat, conversation, undefined, etc.
     const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'gif', 'ptt'];
-    if (type && MEDIA_TYPES.includes(type)) return res.status(200).json({ status: 'ignored', type });
+    if (type && MEDIA_TYPES.includes(type)) {
+      // Balas agar customer tahu pesan mereka diterima, tapi bot tidak bisa proses media
+      res.status(200).json({ status: 'ok' });
+      const mediaReply = type === 'sticker'
+        ? `Terima kasih sticker-nya Kak 😄 Ada yang bisa aku bantu? Booking, info layanan, atau tanya harga?`
+        : `Maaf Kak, aku belum bisa baca ${type === 'image' ? 'gambar' : type === 'audio' || type === 'ptt' ? 'pesan suara' : 'file'} ya 🙏 Silakan ketik pertanyaan Kakak, aku siap bantu!`;
+      sendWA(sender, mediaReply).catch(() => {});
+      return;
+    }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
 
-    // Respond 200 immediately — Fonnte timeout ~5s, jangan tunggu OpenAI selesai
-    res.status(200).json({ status: 'ok' });
-
-    // Await tetap dijalankan agar Vercel tidak freeze sebelum proses selesai
+    // Proses AI + kirim WA DULU (sebelum res.json) — Lambda dalam state sinkron = network lebih cepat.
+    // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
     const t0 = Date.now();
     try {
       pushDebug({ step: 'processing_start', sender, message: message?.slice(0, 40) });
@@ -710,6 +778,10 @@ module.exports = async function handler(req, res) {
       pushDebug({ step: 'processing_error', error: err.message });
       console.error('[WA Bot] Process error:', err.message);
     }
+
+    // Balas 200 ke Fonnte setelah proses selesai.
+    // Kalau total > ~10s, Fonnte mungkin timeout duluan — tapi customer tetap terima balasan via sendWA.
+    if (!res.headersSent) res.status(200).json({ status: 'ok' });
 
   } catch (err) {
     console.error('[WA Bot] Fatal error:', err.message);
