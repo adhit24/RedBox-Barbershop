@@ -1326,7 +1326,8 @@ async function sbMem(path, opts = {}) {
     console.error('sbMem error', res.status, await res.text().catch(()=>''));
     return null;
   }
-  return res.json().catch(() => null);
+  if (res.status === 204 || res.status === 205) return true;
+  return res.json().catch(() => true);
 }
 
 let _memCurrentKey = null; // user_key of currently found member
@@ -1407,16 +1408,16 @@ async function activateMember() {
 
   const now = new Date().toISOString();
 
-  // 1. UPSERT member profile → ACTIVE
-  const patchOk = await sbMem('member_profiles', {
-    method: 'POST',
-    headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+  // 1. PATCH member profile → ACTIVE
+  const patchOk = await sbMem(`member_profiles?user_key=eq.${encodeURIComponent(_memCurrentKey)}`, {
+    method: 'PATCH',
+    headers: { 'Prefer': 'return=minimal' },
     body: JSON.stringify({
-      user_key: _memCurrentKey,
       membership_status: 'ACTIVE',
       membership_activated_at: now,
       total_points: 50,
-      current_tier: 'bronze'
+      current_tier: 'bronze',
+      updated_at: now
     })
   });
 
