@@ -1135,12 +1135,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('Booking synced to Supabase');
         savedToApi = true;
       } catch(e) {
-        console.warn('API sync failed, checking offline fallback', e);
+        console.warn('API sync failed', e);
+      }
+
+      if (!savedToApi) {
+        alert('Koneksi ke server gagal. Silakan cek koneksi internet dan coba lagi.');
+        return;
       }
     }
 
-    // Local fallback hanya untuk mode offline / server tidak terjangkau
-    if (!USE_API || !savedToApi) {
+    // Local fallback hanya untuk mode offline / dev (USE_API = false)
+    if (!USE_API) {
       try {
         const existing = JSON.parse(localStorage.getItem('rb_bookings') || '[]');
         existing.push({

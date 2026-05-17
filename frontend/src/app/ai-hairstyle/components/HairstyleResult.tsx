@@ -1,6 +1,6 @@
 'use client';
 
-import { HairstyleAnalysis } from '../types';
+import { HairstyleAnalysis, RedboxProduct } from '../types';
 
 interface Props {
   data: HairstyleAnalysis;
@@ -8,179 +8,248 @@ interface Props {
   onReset: () => void;
 }
 
-const FACE_SHAPE_DESC: Record<string, string> = {
-  Oval: 'Balanced proportions — most styles work well.',
-  Round: 'Add height on top, keep sides tight.',
-  Square: 'Soften angles with textured, layered styles.',
-  Heart: 'Balance a wider forehead with volume at jaw.',
-  Diamond: 'Add width at forehead and chin.',
-  Oblong: 'Add width on sides, avoid extra height.',
-  Triangle: 'Volume on top balances wider jaw.',
-};
-
-function Badge({ label, variant = 'default' }: { label: string; variant?: 'default' | 'gold' | 'red' | 'blue' }) {
-  const styles = {
-    default: 'bg-zinc-800 text-zinc-300 border border-zinc-700',
-    gold: 'bg-amber-500/10 text-amber-400 border border-amber-500/30',
-    red: 'bg-red-500/10 text-red-400 border border-red-500/30',
-    blue: 'bg-blue-500/10 text-blue-400 border border-blue-500/30',
-  };
-  return (
-    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${styles[variant]}`}>
-      {label}
-    </span>
-  );
-}
-
-function Section({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-      <h3 className="flex items-center gap-2 text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-4">
-        <span>{icon}</span> {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
-
 export default function HairstyleResult({ data, previewUrl, onReset }: Props) {
-  const faceDesc = FACE_SHAPE_DESC[data.face_shape] || 'Unique face shape with specific style needs.';
+  const topRec = data.recommendations[0];
+
+  const heroBadges = [
+    data.faceShape.charAt(0).toUpperCase() + data.faceShape.slice(1) + ' Face',
+    data.currentHair.texture.charAt(0).toUpperCase() + data.currentHair.texture.slice(1) + ' Hair',
+    data.currentHair.density.charAt(0).toUpperCase() + data.currentHair.density.slice(1) + ' Density',
+  ];
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full bg-black text-white overflow-hidden" style={{ fontFamily: 'system-ui, sans-serif' }}>
 
-      {/* Header card */}
-      <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-800 border border-zinc-800 rounded-2xl p-5">
-        <div className="flex items-center gap-4">
-          <div className="relative flex-shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previewUrl} alt="Portrait" className="w-20 h-20 rounded-xl object-cover ring-2 ring-amber-500/40" />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center">
-              <svg className="w-3 h-3 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
+      {/* ── HERO ─────────────────────────────────────────────── */}
+      <section className="relative w-full" style={{ height: '92vh' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={previewUrl}
+          alt="Portrait"
+          className="absolute inset-0 w-full h-full object-cover object-top"
+        />
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, #000 0%, rgba(0,0,0,0.45) 50%, transparent 100%)' }} />
+
+        <div className="absolute bottom-0 left-0 right-0 p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <div style={{ width: 40, height: 1, background: '#ef4444' }} />
+            <p className="text-[11px] tracking-[0.3em] uppercase text-zinc-400">AI Grooming Analysis</p>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div>
-                <p className="text-xs text-amber-500 font-medium tracking-widest uppercase mb-1">AI Analysis Complete</p>
-                <h2 className="text-white font-bold text-lg leading-tight">Hair Profile</h2>
+
+          <h1 className="font-black leading-none tracking-tight" style={{ fontSize: 'clamp(3rem, 12vw, 5rem)' }}>
+            YOUR BEST
+            <span className="block" style={{ color: '#ef4444' }}>LOOK</span>
+          </h1>
+
+          <div className="flex flex-wrap gap-2 mt-5">
+            {heroBadges.map((badge) => (
+              <div
+                key={badge}
+                className="rounded-full px-4 py-2"
+                style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(8px)' }}
+              >
+                <p className="text-sm font-medium text-zinc-200">{badge}</p>
               </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-amber-400">{data.confidence_score}<span className="text-base text-zinc-500">%</span></p>
-                <p className="text-xs text-zinc-500">Confidence</p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
+      </section>
 
-        {/* Confidence bar */}
-        <div className="mt-4">
-          <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+      {/* ── BEST HAIRSTYLES ──────────────────────────────────── */}
+      <section className="px-5 py-14">
+        <div className="mb-8">
+          <p className="text-sm tracking-[0.25em] uppercase mb-3" style={{ color: '#ef4444' }}>Recommended</p>
+          <h2 className="font-black tracking-tight leading-none" style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)' }}>
+            BEST
+            <span className="block text-zinc-500">HAIRSTYLES</span>
+          </h2>
+        </div>
+
+        <div className="flex flex-col gap-6">
+          {data.recommendations.map((rec) => (
             <div
-              className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-1000"
-              style={{ width: `${data.confidence_score}%` }}
-            />
-          </div>
-        </div>
-      </div>
+              key={rec.rank}
+              className="relative overflow-hidden"
+              style={{ borderRadius: 28, background: '#111' }}
+            >
+              <div className="relative overflow-hidden" style={{ aspectRatio: '4/5' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt={rec.name}
+                  className="w-full h-full object-cover object-top"
+                  style={{ filter: 'brightness(0.8) saturate(0.85)' }}
+                />
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, #000 0%, rgba(0,0,0,0.1) 50%, transparent 100%)' }} />
 
-      {/* Face & Hair Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Face Shape</p>
-          <p className="text-white font-bold text-lg">{data.face_shape}</p>
-          <p className="text-zinc-500 text-xs mt-1 leading-relaxed">{faceDesc}</p>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Hair Type</p>
-          <p className="text-white font-bold text-base leading-tight">{data.hair_type}</p>
-          <div className="flex gap-2 mt-2 flex-wrap">
-            <Badge label={data.hair_thickness} variant="blue" />
-            <Badge label={`Density: ${data.hair_density}`} />
-          </div>
-        </div>
-      </div>
+                {/* Score chip top-right */}
+                <div
+                  className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-1.5"
+                  style={{ background: 'rgba(0,0,0,0.6)', borderRadius: 99, backdropFilter: 'blur(8px)' }}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <p className="text-xs font-bold text-white">{rec.suitabilityScore}% Match</p>
+                </div>
 
-      {/* Current condition */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
-        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Current Condition</p>
-        <p className="text-zinc-300 text-sm leading-relaxed">{data.current_hair_condition}</p>
-      </div>
-
-      {/* Recommended hairstyles */}
-      <Section title="Recommended Styles" icon="✂️">
-        <div className="flex flex-wrap gap-2">
-          {data.recommended_hairstyles.map((style, i) => (
-            <div key={i} className="flex items-center gap-2 bg-zinc-800/60 border border-amber-500/20 rounded-xl px-3 py-2">
-              <span className="text-amber-500 text-xs font-bold">#{i + 1}</span>
-              <span className="text-white text-sm font-medium">{style}</span>
+                <div className="absolute bottom-0 left-0 right-0 p-5">
+                  <div className="inline-flex rounded-full px-4 py-1.5 mb-3" style={{ background: '#ef4444' }}>
+                    <p className="text-xs font-bold uppercase tracking-wider text-white">{rec.category}</p>
+                  </div>
+                  <h3 className="font-black leading-none tracking-tight" style={{ fontSize: 'clamp(1.8rem, 7vw, 3rem)' }}>
+                    {rec.name}
+                  </h3>
+                  <p className="text-zinc-400 text-sm mt-1">{rec.whyItSuits}</p>
+                </div>
+              </div>
             </div>
           ))}
         </div>
-      </Section>
+      </section>
 
-      {/* Avoid hairstyles */}
-      <Section title="Avoid These Styles" icon="⚠️">
-        <div className="flex flex-wrap gap-2">
-          {data.avoid_hairstyles.map((style, i) => (
-            <Badge key={i} label={style} variant="red" />
+      {/* ── HAIRSTYLES TO AVOID ──────────────────────────────── */}
+      <section className="px-5 pb-14" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="mb-8 pt-14">
+          <p className="text-sm tracking-[0.25em] uppercase mb-3" style={{ color: '#ef4444' }}>Avoid</p>
+          <h2 className="font-black tracking-tight leading-none" style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)' }}>
+            SKIP
+            <span className="block text-zinc-500">THESE CUTS</span>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          {data.avoidHairstyles.map((avoid, i) => (
+            <div key={i} className="relative overflow-hidden" style={{ borderRadius: 20 }}>
+              <div className="relative overflow-hidden" style={{ aspectRatio: '3/4' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={previewUrl}
+                  alt={avoid.style}
+                  className="w-full h-full object-cover object-top"
+                  style={{ filter: 'brightness(0.45) saturate(0.3) sepia(0.4)' }}
+                />
+                <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(120,0,0,0.75) 0%, transparent 60%)' }} />
+
+                {/* X badge */}
+                <div
+                  className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center"
+                  style={{ background: '#ef4444', borderRadius: '50%' }}
+                >
+                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+
+                <div className="absolute bottom-0 left-0 right-0 px-2 pb-2">
+                  <p className="text-white font-black text-[10px] leading-tight uppercase">{avoid.style}</p>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
-      </Section>
+      </section>
 
-      {/* Styling tips */}
-      <Section title="Styling Tips" icon="💡">
-        <ul className="space-y-2">
-          {data.styling_tips.map((tip, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm text-zinc-300">
-              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs flex items-center justify-center font-bold mt-0.5">
-                {i + 1}
-              </span>
-              {tip}
-            </li>
+      {/* ── STYLING STEPS ────────────────────────────────────── */}
+      <section className="px-5 pb-14" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="mb-8 pt-14">
+          <p className="text-sm tracking-[0.25em] uppercase mb-3" style={{ color: '#ef4444' }}>How To Style</p>
+          <h2 className="font-black tracking-tight leading-none" style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)' }}>
+            DAILY
+            <span className="block text-zinc-500">ROUTINE</span>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { icon: '💨', step: '01', label: 'Blow Dry', sub: 'Towel dry then blow dry for volume' },
+            { icon: '✋', step: '02', label: 'Apply Product', sub: 'Work pomade/clay through damp hair' },
+            { icon: '✂️', step: '03', label: 'Shape & Style', sub: 'Lift roots, define your cut' },
+            { icon: '⏱', step: '04', label: 'Finish', sub: 'Light hold spray to set all day' },
+          ].map((s) => (
+            <div key={s.step} className="p-4" style={{ background: '#111', borderRadius: 24 }}>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-2xl">{s.icon}</span>
+                <span className="text-zinc-700 font-black text-lg">{s.step}</span>
+              </div>
+              <p className="text-white font-black text-base leading-tight">{s.label}</p>
+              <p className="text-zinc-500 text-xs mt-1 leading-snug">{s.sub}</p>
+            </div>
           ))}
-        </ul>
-      </Section>
+        </div>
 
-      {/* Products & Colors — 2 col */}
-      <div className="grid grid-cols-2 gap-3">
-        <Section title="Products" icon="🧴">
-          <div className="flex flex-col gap-2">
-            {data.recommended_products.map((p, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-                <span className="text-zinc-300 text-xs">{p}</span>
-              </div>
+        {topRec && (
+          <div
+            className="mt-4 p-4 flex items-start gap-3"
+            style={{ background: '#111', borderRadius: 24, border: '1px solid rgba(239,68,68,0.2)' }}
+          >
+            <span className="text-xl flex-shrink-0">✂️</span>
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#ef4444' }}>Tell Your Barber</p>
+              <p className="text-white text-sm leading-snug italic">&ldquo;{data.barberTip}&rdquo;</p>
+              <p className="text-zinc-600 text-xs mt-1">{topRec.maintenanceFrequency} trim · {topRec.stylingTime} styling</p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── REDBOX PRODUCTS UPSELL ───────────────────────────── */}
+      {data.recommendedProducts && data.recommendedProducts.length > 0 && (
+        <section className="px-5 pb-14" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="mb-8 pt-14">
+            <p className="text-sm tracking-[0.25em] uppercase mb-3" style={{ color: '#ef4444' }}>Shop Now</p>
+            <h2 className="font-black tracking-tight leading-none" style={{ fontSize: 'clamp(2.5rem, 10vw, 4rem)' }}>
+              YOUR
+              <span className="block text-zinc-500">PRODUCTS</span>
+            </h2>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            {data.recommendedProducts.map((product: RedboxProduct) => (
+              <a
+                key={product.id}
+                href={product.shopeeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-4 p-4 transition-all active:scale-[0.98]"
+                style={{ background: '#111', borderRadius: 24, border: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <div
+                  className="flex-shrink-0 flex items-center justify-center text-2xl"
+                  style={{ width: 56, height: 56, background: '#1a1a1a', borderRadius: 16 }}
+                >
+                  {product.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-black text-sm leading-tight">{product.name}</p>
+                  <p className="text-zinc-500 text-xs mt-0.5 capitalize">
+                    {product.type}{product.hold ? ` · ${product.hold} hold` : ''}{product.base ? ` · ${product.base} base` : ''}
+                  </p>
+                </div>
+                <div
+                  className="flex-shrink-0 px-4 py-2"
+                  style={{ background: '#ef4444', borderRadius: 99 }}
+                >
+                  <p className="text-white text-xs font-black uppercase">Buy</p>
+                </div>
+              </a>
             ))}
           </div>
-        </Section>
-        <Section title="Hair Colors" icon="🎨">
-          <div className="flex flex-col gap-2">
-            {data.recommended_hair_colors.map((c, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-                <span className="text-zinc-300 text-xs">{c}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      </div>
 
-      {/* Barber instruction */}
-      <div className="bg-gradient-to-r from-amber-950/40 to-zinc-900 border border-amber-500/30 rounded-2xl p-5">
-        <p className="text-xs text-amber-500 font-semibold uppercase tracking-widest mb-2">Tell Your Barber</p>
-        <p className="text-white text-sm leading-relaxed italic">&ldquo;{data.barber_instruction}&rdquo;</p>
-      </div>
+          <p className="text-zinc-700 text-[11px] text-center mt-4">
+            Redbox Barbershop · Official Shopee Store
+          </p>
+        </section>
+      )}
 
-      {/* Reset button */}
-      <button
-        onClick={onReset}
-        className="w-full py-4 rounded-2xl border border-zinc-700 text-zinc-400 text-sm font-medium hover:border-zinc-600 hover:text-white transition-colors"
-      >
-        Analyze Another Photo
-      </button>
+      {/* ── RESET ────────────────────────────────────────────── */}
+      <div className="px-5 pb-10">
+        <button
+          onClick={onReset}
+          className="w-full py-4 font-bold text-sm transition-colors"
+          style={{ borderRadius: 99, border: '1px solid rgba(255,255,255,0.1)', color: '#71717a' }}
+        >
+          ↩ Analisis Ulang
+        </button>
+      </div>
     </div>
   );
 }

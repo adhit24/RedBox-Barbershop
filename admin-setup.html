@@ -139,7 +139,7 @@
         <li>Click <strong>Console</strong> tab</li>
         <li>Copy & paste this code:
           <div style="background: #1a1a1a; padding: 8px; margin: 8px 0; border-radius: 4px; overflow-x: auto;">
-            <code>localStorage.setItem('rb_admin_token', 'redbox_admin_2024')</code>
+            <code>localStorage.setItem('rb_admin_token', 'YOUR_ADMIN_PASSWORD')</code>
           </div>
         </li>
         <li>Press <code>Enter</code></li>
@@ -185,7 +185,9 @@
     }
 
     function quickSetup() {
-      setAdminToken('redbox_admin_2024');
+      const token = prompt('Masukkan ADMIN_PASSWORD yang di-set di server (env var):');
+      if (!token) return;
+      setAdminToken(token);
       updateTokenStatus();
       alert('✅ Admin token saved!\n\nNow opening CRM Dashboard...');
       openCRM();

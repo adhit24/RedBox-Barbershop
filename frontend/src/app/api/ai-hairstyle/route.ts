@@ -1,36 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const REDBOX_PRODUCTS = [
+  { id: 'clay-80', name: 'RedBox Clay 80g', type: 'clay', hold: 'light', base: 'water', size: '80g', emoji: '🪨', shopeeUrl: 'https://id.shp.ee/9ommEZPf' },
+  { id: 'water-base-80', name: 'RedBox Water Base Pomade 80g', type: 'pomade', hold: 'light', base: 'water', size: '80g', emoji: '💧', shopeeUrl: 'https://id.shp.ee/9ommEZPf' },
+  { id: 'water-base-30', name: 'RedBox Water Base Pomade 30g', type: 'pomade', hold: 'light', base: 'water', size: '30g', emoji: '💧', shopeeUrl: 'https://id.shp.ee/9ommEZPf' },
+  { id: 'oil-base-80', name: 'RedBox Oil Base Pomade 80g', type: 'pomade', hold: 'light', base: 'oil', size: '80g', emoji: '✨', shopeeUrl: 'https://id.shp.ee/9ommEZPf' },
+  { id: 'oil-base-30', name: 'RedBox Oil Base Pomade 30g', type: 'pomade', hold: 'light', base: 'oil', size: '30g', emoji: '✨', shopeeUrl: 'https://id.shp.ee/9ommEZPf' },
+  { id: 'parfum-eleft', name: 'W-Mate E Left Heree 30ml', type: 'parfum', hold: null, base: null, size: '30ml', emoji: '🌿', shopeeUrl: 'https://id.shp.ee/9ommEZPf' },
+  { id: 'parfum-psyhi', name: 'W-Mate Psyhi 30ml', type: 'parfum', hold: null, base: null, size: '30ml', emoji: '🍊', shopeeUrl: 'https://id.shp.ee/9ommEZPf' },
+];
 
-const SYSTEM_PROMPT = `You are a professional barber and hair stylist with 15+ years of experience specializing in men's grooming. 
-
-Analyze the provided portrait image and return ONLY a valid JSON object with exactly this structure — no markdown, no explanation, no extra text:
-
-{
-  "face_shape": "string (Oval/Round/Square/Heart/Diamond/Oblong/Triangle)",
-  "hair_type": "string (e.g. Straight / Slightly Wavy)",
-  "hair_thickness": "string (Thin/Medium/Thick)",
-  "hair_density": "string (Low/Medium/High)",
-  "current_hair_condition": "string (brief description)",
-  "recommended_hairstyles": ["array of 4-5 hairstyle names"],
-  "avoid_hairstyles": ["array of 2-3 hairstyle names to avoid"],
-  "styling_tips": ["array of 3-4 actionable tips"],
-  "recommended_products": ["array of 2-3 product types"],
-  "recommended_hair_colors": ["array of 2-3 color options"],
-  "barber_instruction": "string (one sentence to tell your barber)",
-  "confidence_score": number (0-100)
+function getRecommendedProducts(faceShape: string, texture: string, density: string) {
+  const products = [];
+  if (texture === 'straight' || texture === 'wavy') {
+    products.push(REDBOX_PRODUCTS.find(p => p.id === 'clay-80')!);
+    products.push(REDBOX_PRODUCTS.find(p => p.id === 'water-base-80')!);
+  } else {
+    products.push(REDBOX_PRODUCTS.find(p => p.id === 'oil-base-80')!);
+    products.push(REDBOX_PRODUCTS.find(p => p.id === 'water-base-80')!);
+  }
+  products.push(REDBOX_PRODUCTS.find(p => p.id === 'parfum-eleft')!);
+  void faceShape; void density;
+  return products.filter(Boolean);
 }
 
-Rules:
-- Analyze only hair and face shape — do NOT comment on identity, race, or personal appearance beyond hair
-- Be specific and practical
-- Keep all text concise, 5 words max per item in arrays
-- Return ONLY the JSON, nothing else`;
+const SYSTEM_PROMPT = `You are a professional barber. Analyze this portrait and return ONLY valid JSON, no markdown, no extra text:
+
+{
+  "currentHair": {
+    "texture": "straight|wavy|curly|coily",
+    "density": "thin|medium|thick",
+    "length": "short|medium|long",
+    "currentStyle": "5 words max"
+  },
+  "faceShape": "oval|round|square|heart|diamond|oblong|triangle",
+  "recommendations": [
+    {
+      "rank": 1,
+      "category": "Korean|Classic|Modern Fade|Versatile|Textured",
+      "name": "Hairstyle Name",
+      "description": "10 words max",
+      "whyItSuits": "8 words max",
+      "maintenanceLevel": "low|medium|high",
+      "maintenanceFrequency": "Every X weeks",
+      "stylingTime": "X min daily",
+      "suitabilityScore": 90
+    }
+  ],
+  "avoidHairstyles": [
+    { "style": "Name", "reason": "8 words max", "category": "Shape|Proportion|Feature Issue" }
+  ],
+  "barberTip": "One sentence for barber"
+}
+
+Return exactly 4 recommendations and 3 avoidHairstyles. All text concise. No extra fields.`;
 
 export async function POST(req: NextRequest) {
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json({ error: 'AI service not configured' }, { status: 500 });
+  }
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
   try {
     const formData = await req.formData();
     const imageFile = formData.get('image') as File;
@@ -54,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      max_tokens: 800,
+      max_tokens: 600,
       messages: [
         {
           role: 'user',
@@ -84,9 +115,15 @@ export async function POST(req: NextRequest) {
 
     const result = JSON.parse(jsonMatch[0]);
 
+    const recommendedProducts = getRecommendedProducts(
+      result.faceShape || '',
+      result.currentHair?.texture || '',
+      result.currentHair?.density || ''
+    );
+
     return NextResponse.json({
       success: true,
-      data: result,
+      data: { ...result, recommendedProducts },
       tokens_used: response.usage?.total_tokens || 0,
     });
   } catch (error: unknown) {

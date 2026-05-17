@@ -1,16 +1,46 @@
+export interface RedboxProduct {
+  id: string;
+  name: string;
+  type: string;
+  hold: string | null;
+  base: string | null;
+  size: string;
+  emoji: string;
+  shopeeUrl: string;
+}
+
+export interface HairstyleRecommendation {
+  rank: number;
+  category: string;
+  name: string;
+  description: string;
+  whyItSuits: string;
+  stylingProducts: string[];
+  maintenanceLevel: 'low' | 'medium' | 'high';
+  maintenanceFrequency: string;
+  stylingTime: string;
+  suitabilityScore: number;
+}
+
+export interface AvoidHairstyle {
+  style: string;
+  reason: string;
+  category: string;
+}
+
 export interface HairstyleAnalysis {
-  face_shape: string;
-  hair_type: string;
-  hair_thickness: string;
-  hair_density: string;
-  current_hair_condition: string;
-  recommended_hairstyles: string[];
-  avoid_hairstyles: string[];
-  styling_tips: string[];
-  recommended_products: string[];
-  recommended_hair_colors: string[];
-  barber_instruction: string;
-  confidence_score: number;
+  currentHair: {
+    texture: string;
+    density: string;
+    length: string;
+    currentStyle: string;
+  };
+  faceShape: string;
+  recommendations: HairstyleRecommendation[];
+  avoidHairstyles: AvoidHairstyle[];
+  barberTip: string;
+  groomingEssentials?: string[];
+  recommendedProducts?: RedboxProduct[];
 }
 
 export type AnalysisState = 'idle' | 'uploading' | 'analyzing' | 'done' | 'error';

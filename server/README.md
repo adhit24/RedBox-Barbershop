@@ -69,7 +69,7 @@ AIRTABLE_TABLE_NAME=Bookings
 AIRTABLE_BARBERS_TABLE_NAME=Barbers
 
 PORT=3001
-ADMIN_PASSWORD=redbox_admin_2024
+ADMIN_PASSWORD=ganti_dengan_password_kuat_anda
 ```
 
 ---

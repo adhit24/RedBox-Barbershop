@@ -21,7 +21,7 @@ export default function AIHairstylePage() {
 
   useEffect(() => {
     const stored = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
-    setUsageCount(stored);
+    if (stored > 0) setUsageCount(stored);
   }, []);
 
   const startCooldown = useCallback(() => {

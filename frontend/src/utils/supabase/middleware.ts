@@ -4,7 +4,12 @@ import { type NextRequest, NextResponse } from "next/server";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-export const createClient = (request: NextRequest) => {
+export const createClient = async (request: NextRequest) => {
+  // If Supabase env vars are not configured, skip auth middleware
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.next({ request: { headers: request.headers } });
+  }
+
   // Create an unmodified response
   let supabaseResponse = NextResponse.next({
     request: {
@@ -13,8 +18,8 @@ export const createClient = (request: NextRequest) => {
   });
 
   const supabase = createServerClient(
-    supabaseUrl!,
-    supabaseKey!,
+    supabaseUrl,
+    supabaseKey,
     {
       cookies: {
         getAll() {
@@ -32,6 +37,8 @@ export const createClient = (request: NextRequest) => {
       },
     },
   );
+
+  await supabase.auth.getUser();
 
   return supabaseResponse
 };

@@ -772,7 +772,11 @@ app.use(cors({
 app.use(express.json());
 
 app.use((req, res, next) => {
-  try { console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - body: ${JSON.stringify(req.body || {})}`); } catch (e) {}
+  try {
+    const { phone, wa_number, name, customer_name, otp, token, password, notes, ...safeBody } = req.body || {};
+    const filtered = Object.fromEntries(Object.entries(safeBody).filter(([k]) => !/^customer_/i.test(k)));
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - body: ${JSON.stringify(filtered)}`);
+  } catch (e) {}
   next();
 });
 
@@ -837,7 +841,7 @@ app.get('/api/bookings', async (req, res) => {
 
   if (DB_TYPE === 'supabase') {
     const tableName = isAdmin ? 'booking_full' : 'bookings';
-    const selectCols = isAdmin ? '*' : 'id,date,time,duration,barber_id,status';
+    const selectCols = isAdmin ? '*' : 'date,time,duration,barber_id,status';
     let q = supabase.from(tableName).select(selectCols).order('date', { ascending: false }).order('time', { ascending: true }).range(Number(offset), Number(offset) + Number(limit) - 1);
     if (date) q = q.eq('date', date);
     if (bid && bid !== 'all' && bid !== 'any') q = q.eq('barber_id', bid);
@@ -852,7 +856,7 @@ app.get('/api/bookings', async (req, res) => {
       ? `b.id, b.customer_id, b.name, b.wa, b.service_id, b.service, b.price, b.duration,
              b.barber_id, DATE_FORMAT(b.date, '%Y-%m-%d') AS date, TIME_FORMAT(b.time, '%H:%i') AS time,
              b.location, b.status, b.notes, b.payment, b.created_at, b.updated_at, br.name AS barber_name`
-      : `b.id, DATE_FORMAT(b.date, '%Y-%m-%d') AS date, TIME_FORMAT(b.time, '%H:%i') AS time,
+      : `DATE_FORMAT(b.date, '%Y-%m-%d') AS date, TIME_FORMAT(b.time, '%H:%i') AS time,
              b.duration, b.barber_id, b.status`;
     let sql = `SELECT ${selectCols} FROM bookings b LEFT JOIN barbers br ON b.barber_id = br.id WHERE 1=1`;
     const params = [];
