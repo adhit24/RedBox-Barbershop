@@ -1415,7 +1415,7 @@ async function activateMember() {
     body: JSON.stringify({
       membership_status: 'ACTIVE',
       membership_activated_at: now,
-      total_points: 50,
+      total_points: 0,
       current_tier: 'bronze',
       updated_at: now
     })
@@ -1434,20 +1434,8 @@ async function activateMember() {
     })
   });
 
-  // 3. Add bonus points transaction
-  await sbMem('member_point_transactions', {
-    method: 'POST',
-    prefer: 'return=minimal',
-    body: JSON.stringify({
-      user_key: _memCurrentKey,
-      activity: '🎉 Bonus aktivasi membership — Welcome to the Club!',
-      points: 50,
-      transaction_type: 'bonus'
-    })
-  });
-
   if (patchOk !== null) {
-    showToast('✓ Membership berhasil diaktifkan! Member mendapat +50 poin bonus.', 'success');
+    showToast('✓ Membership berhasil diaktifkan!', 'success');
     // Refresh UI
     document.getElementById('memFoundBadge').textContent = '✓ AKTIF';
     document.getElementById('memFoundBadge').className = 'mem-found-badge status-active';
