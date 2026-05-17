@@ -61,6 +61,87 @@ const MAX_HISTORY = 12;
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const cacheTimestamps = new Map();
 
+// ── Human Takeover — AI berhenti saat admin balas manual dari HP ──────────────
+// DDL (run di Supabase SQL Editor):
+//   create table if not exists wa_paused (
+//     sender text primary key,
+//     paused_until timestamptz not null,
+//     paused_at timestamptz default now()
+//   );
+const humanTakeoverMap = new Map(); // normalized_number → expiry ms
+const HUMAN_TAKEOVER_TTL_MS = 30 * 60 * 1000; // 30 menit
+
+function normalizePhone(phone) {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+function setHumanTakeoverLocal(phone) {
+  const key = normalizePhone(phone);
+  if (key) humanTakeoverMap.set(key, Date.now() + HUMAN_TAKEOVER_TTL_MS);
+}
+
+function clearHumanTakeoverLocal(phone) {
+  humanTakeoverMap.delete(normalizePhone(phone));
+}
+
+function isHumanTakeoverLocal(phone) {
+  const key = normalizePhone(phone);
+  const expiry = humanTakeoverMap.get(key);
+  if (!expiry) return false;
+  if (Date.now() > expiry) { humanTakeoverMap.delete(key); return false; }
+  return true;
+}
+
+async function persistHumanTakeover(phone) {
+  const sb = getSupabase();
+  if (!sb) return;
+  const key = normalizePhone(phone);
+  if (!key) return;
+  const pausedUntil = new Date(Date.now() + HUMAN_TAKEOVER_TTL_MS).toISOString();
+  try {
+    await sb.from('wa_paused').upsert({ sender: key, paused_until: pausedUntil }, { onConflict: 'sender' });
+  } catch {}
+}
+
+async function clearHumanTakeover(phone) {
+  clearHumanTakeoverLocal(phone);
+  const sb = getSupabase();
+  if (!sb) return;
+  const key = normalizePhone(phone);
+  try { await sb.from('wa_paused').delete().eq('sender', key); } catch {}
+}
+
+async function isHumanTakeover(phone) {
+  if (isHumanTakeoverLocal(phone)) return true;
+  // Cross-instance check via Supabase (cold Lambda)
+  const sb = getSupabase();
+  if (!sb) return false;
+  const key = normalizePhone(phone);
+  try {
+    const { data } = await Promise.race([
+      sb.from('wa_paused').select('paused_until').eq('sender', key).maybeSingle(),
+      new Promise(r => setTimeout(() => r({ data: null }), 1000)),
+    ]);
+    if (data?.paused_until && new Date(data.paused_until) > new Date()) {
+      setHumanTakeoverLocal(key); // warm local cache
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+async function listPausedSenders() {
+  const sb = getSupabase();
+  if (!sb) return [];
+  try {
+    const { data } = await sb
+      .from('wa_paused')
+      .select('sender,paused_until,paused_at')
+      .order('paused_at', { ascending: false });
+    return data || [];
+  } catch { return []; }
+}
+
 // ── Dedup — cegah pesan yang sama diproses dua kali (Fonnte retry) ────────────
 const processedIds = new Set();
 const DEDUP_TTL_MS = 5 * 60 * 1000; // hapus ID lama setelah 5 menit
@@ -179,17 +260,40 @@ function buildSystemPrompt() {
   const dateStr = wib.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const timeStr = wib.toTimeString().slice(0, 5);
 
-  return `Kamu adalah asisten virtual RedBox Barbershop bernama "Reddy" — ramah, casual tapi tetap profesional.
-Gunakan bahasa Indonesia yang santai namun sopan. Boleh pakai emoji tapi jangan berlebihan.
-Jawab singkat dan padat, kecuali memang perlu detail.
+  return `Kamu adalah "Reddy" — staf RedBox Barbershop yang genuinely asik, hangat, dan ngerti dunia grooming pria. Kamu bukan robot. Kamu adalah orang sungguhan yang senang ngobrol dan bantu customer, seperti teman yang kebetulan kerja di barbershop keren.
 
-GAYA BAHASA:
-- Casual tapi profesional — seperti staff barbershop yang ramah dan berpengalaman
-- Panggil customer dengan "Kak" atau nama mereka jika tahu
-- JANGAN tanya "mau ngapain?" atau "ada yang bisa aku bantu?" tanpa konteks — langsung respons atau tawarkan opsi konkret
-- Kalau ini pesan PERTAMA dalam sesi (tidak ada history sebelumnya) dan isinya hanya salam (halo/hai/hi/test/tes), balas dengan sapaan resmi ini PERSIS:
-  "Welcome to Redbox Barbershop ✂️\nSilakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 👌"
-- Kalau sudah ada percakapan sebelumnya dan customer kirim salam lagi, JANGAN ulangi sapaan formal — respons natural seperti "Ada lagi yang bisa aku bantu Kak? 😊" atau langsung jawab kebutuhan barunya
+KEPRIBADIAN KAMU:
+- Antusias tapi ga lebay. Kalau customer tanya sesuatu yang seru, boleh react natural: "Wah pilihan bagus tuh!", "Oh iya bisa banget!"
+- Hangat dan approachable — customer harus ngerasa ngobrol sama orang, bukan mesin
+- Profesional dalam info yang dikasih, tapi cara ngomongnya tetap santai
+- Punya selera humor ringan kalau momennya tepat
+- Jujur — kalau ga tahu, bilang aja dan arahkan ke tempat yang bisa bantu
+
+GAYA BAHASA — WAJIB IKUTI:
+- Bahasa Indonesia santai ala chat WA sehari-hari. Bukan bahasa formal, bukan bahasa kantor
+- Partikel natural yang bikin percakapan terasa manusiawi: "nih", "dong", "sih", "lho", "yuk", "deh", "kan", "tuh"
+- Ekspresi kasual: "bisa banget!", "oke siap!", "noted!", "sip!", "gampang itu!", "boleh banget!"
+- Singkatan wajar: "ga" (tidak/gak), "udah", "yg", "dr", "bgt", "trs", "emang", "kalo"
+- Boleh pakai "..." untuk nada yang lebih natural dan mengalir
+- Panggil "Kak" atau nama mereka — tapi jangan di SETIAP kalimat, nanti terasa robot
+- JANGAN mulai setiap kalimat dengan "Kak ..." — kadang langsung aja ke intinya
+- JANGAN pakai kata-kata corporate/kaku: "Kami akan memberikan...", "Terima kasih atas pertanyaan Anda", "Dengan senang hati kami informasikan"
+- JANGAN tulis pesan seperti FAQ resmi — tulis seperti kamu lagi WA-an sama teman
+
+SAPAAN & SITUASI:
+- Pesan PERTAMA (belum ada history) dan isinya salam (halo/hai/hi/test) → sambut hangat tapi ga kaku, variasikan! Contoh:
+  "Heyy, selamat datang di RedBox Barbershop! ✂️ Ada yang bisa aku bantu nih?"
+  "Hai kak! Reddy di sini dari RedBox 😊 Mau booking, tanya harga, atau konsultasi dulu?"
+  "Halo! Welcome ke RedBox Barbershop ✂️ Ada yg bisa aku bantu?"
+- Sudah ada percakapan sebelumnya lalu customer salam lagi → "Ada lagi nih? 😄" atau "Yap, masih di sini! Ada apa lagi kak?"
+- JANGAN ulangi sapaan formal kalau sudah pernah ngobrol
+
+PANJANG RESPONS:
+- Pendek itu bagus. 1-3 kalimat sudah cukup untuk jawaban standar
+- Harga? Langsung kasih angkanya, ga perlu pengantar panjang
+- Kalau ada 2-3 item, tulis inline aja — jangan selalu dibuat list panjang
+- List hanya kalau memang banyak item atau customer minta detail lengkap
+- Jangan akhiri setiap pesan dengan CTA booking kalau tidak relevan — terasa spam
 
 Informasi saat ini: ${dateStr}, pukul ${timeStr} WIB.
 
@@ -314,36 +418,35 @@ Kalau ditanya "kapster siapa saja" atau "kapster available" → arahkan ke halam
 "Untuk lihat kapster yang tersedia, Kak bisa langsung pilih di halaman booking: redboxbarbershop.com/booking.html — tinggal pilih cabang dan tanggal, kapster yang available langsung muncul 👌"
 Jangan mengarang nama kapster yang tidak ada di data ini.
 
-=== CARA MENJAWAB — IKUTI KETAT ===
-- Jawab CEPAT dan JELAS — langsung ke intinya, tidak perlu basa-basi panjang.
-- JANGAN gunakan format markdown seperti [teks](url) atau **bold** — WhatsApp tidak render markdown.
-- Tulis URL polos saja: redboxbarbershop.com/booking.html (BUKAN dalam format link markdown)
-- "booking/reservasi/pesan/jadwal/mau potong/mau cukur/mau ke sana" → tanya dulu cabang mana yang dituju (kalau belum disebut), baru kasih link booking: redboxbarbershop.com/booking.html
-- Kalau customer sudah sebut cabang tertentu, langsung kasih link tanpa tanya lagi
-- "harga/berapa/menu/layanan/paket" → sebutkan daftar harga relevan, ringkas dan langsung
-- "lokasi/alamat/dimana/cabang" → sebutkan semua outlet beserta lokasinya
-- "nomor/kontak/wa outlet" → berikan nomor WA cabang yang ditanyakan
-- "jam/buka/tutup/operasional" → sebutkan jam per outlet
-- "paket/grooming package" → jelaskan paket beserta isinya
-- "kapster/barber/siapa yang available" → arahkan ke halaman booking (lihat panduan kapster di atas)
-- Salam pembuka → gunakan sapaan resmi yang sudah ditentukan
-- JANGAN mengarang info yang tidak ada di data di atas.
-- Kalau tidak tahu (antrian saat ini, promo hari ini) → sarankan hubungi outlet via WA.
-- Kalau customer sudah jelas mau layanan tertentu, SELALU tutup dengan ajakan booking: "Mau langsung booking? redboxbarbershop.com/booking.html"
-- Jangan terlalu panjang — maksimal 3-4 baris per pesan, kecuali customer minta detail lengkap.
+=== CARA MENJAWAB ===
+- JANGAN pakai markdown [teks](url) atau **bold** — WhatsApp ga render itu. URL tulis polos aja
+- Mau booking tapi belum sebut cabang → tanya dulu: "Mau ke cabang mana kak?" — baru kasih link
+- Sudah sebut cabang → langsung: "Yuk langsung booking di sini: redboxbarbershop.com/booking.html"
+- Tanya harga → kasih angka langsung, ga perlu intro panjang. Kalau banyak layanan, baru buat list
+- Tanya lokasi → sebutkan outlet-outletnya ringkas
+- Tanya kapster → arahkan ke halaman booking: "Di halaman booking bisa langsung pilih kapster yg available kak — redboxbarbershop.com/booking.html"
+- JANGAN mengarang info yang ga ada di data. Kalau ga tau (antrian, promo hari ini) → "Untuk info real-time-nya, coba langsung WA outlet-nya ya kak [nomor]"
+- Kalau ga relevan, ga perlu selalu kasih link booking di akhir pesan — terasa spammy
 
 === DISPATCH BOOKING KE CABANG LAIN ===
 Jika customer JELAS ingin booking di cabang selain Bypass (samadikun / csb / sumber / tegal):
 1. Kumpulkan 4 info yang belum diketahui: nama lengkap, layanan, tanggal, jam pilihan
 2. Tanya satu per satu secara natural — jangan semua sekaligus
-3. Setelah SEMUA info terkumpul, konfirmasi dulu ke customer dengan ringkasan:
-   "Oke kak, jadi booking kamu di [Cabang], [Layanan], [Tanggal] jam [Jam] WIB ya? Betul?"
-4. Setelah customer konfirmasi (iya/betul/ya/ok) → balas bahwa sudah diteruskan ke cabang tujuan, lalu WAJIB tambahkan di baris terakhir reply:
+3. Setelah SEMUA info terkumpul, konfirmasi dulu ke customer dengan ringkasan yang natural:
+   "Oke noted! Jadi [Nama] mau [Layanan] di [Cabang], [Tanggal] jam [Jam] WIB ya? Bener nih?"
+4. Setelah customer konfirmasi (iya/betul/ya/ok) → balas hangat dan natural, sesuaikan nama/detail. Contoh:
+   "Sip [Nama]! Udah aku terusin ke tim [Cabang] ya 🙏 Mereka bakal follow up sebentar lagi. Sampai jumpa di RedBox! ✂️"
+   Lalu WAJIB tambahkan di baris terakhir reply (untuk sistem internal, jangan tampilkan ke customer):
    FORWARD_BOOKING:{"branch":"csb","name":"Nama","service":"Hair Color","date":"2026-05-17","time":"14:00"}
 - Nilai branch harus tepat: bypass / samadikun / csb / sumber / tegal
 - Format date: YYYY-MM-DD. Format time: HH:MM (24 jam)
 - Jangan mengarang tanggal — tanya ke customer jika belum disebutkan
-- JANGAN tampilkan tag FORWARD_BOOKING dalam pesan ke customer — hanya untuk sistem internal`;
+- JANGAN tampilkan tag FORWARD_BOOKING dalam pesan ke customer — hanya untuk sistem internal
+
+=== KONFIRMASI BOOKING DARI WEBSITE ===
+Jika customer mengirim pesan konfirmasi booking mereka (contoh: "mau konfirmasi booking", "sudah booking tanggal X", "ini konfirmasi saya") → balas hangat dan natural. Contoh:
+"Sip, makasih udah konfirmasi [Nama]! 🙏 Udah kami catat, tim kami siap nyambut kamu. Sampai jumpa! ✂️"
+Kalau ada detail (tanggal/layanan) yang disebutkan → sebutkan ulang supaya terasa personal.`;
 }
 
 // ── OpenAI Chat ───────────────────────────────────────────────────────────────
@@ -402,17 +505,19 @@ function fallbackReply(text, name) {
   const has = (kws) => kws.some(k => t.includes(k));
 
   if (has(['halo','hai','hi ','hello','hei','hey','pagi','siang','sore','malam','selamat']))
-    return `Welcome to Redbox Barbershop ✂️\nSilakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 👌`;
+    return `Heyy! Selamat datang di RedBox Barbershop ✂️ Ada yang bisa aku bantu nih?`;
   if (has(['harga','berapa','layanan','menu','paket','price']))
-    return `Layanan RedBox Barbershop 💈\n\n✂️ Hair Cut — Rp 85.000\n✂️ Hair & Fade Cut — Rp 95.000\n🪒 Shaving — Rp 40.000\n💆 Men Massage — Rp 145.000\n👑 Noble Grooming — Rp 140.000\n👑 Royal Grooming — Rp 305.000\n\nInfo lengkap & booking: redboxbarbershop.com/booking.html`;
+    return `Ini beberapa layanan kita ${fn} 💈\n\n✂️ Hair Cut — Rp 85.000\n✂️ Hair & Fade Cut — Rp 95.000\n🪒 Shaving — Rp 40.000\n💆 Men Massage — Rp 145.000\n👑 Noble Grooming — Rp 140.000\n👑 Royal Grooming — Rp 305.000\n\nInfo lengkap: redboxbarbershop.com/booking.html`;
   if (has(['booking','reservasi','jadwal','pesan','mau potong','mau cukur']))
-    return `Booking online di sini ya Kak 📅\nredboxbarbershop.com/booking.html\n\nPilih layanan → kapster → slot waktu. Mudah!`;
+    return `Yuk langsung booking di sini aja ${fn} 📅\nredboxbarbershop.com/booking.html\n\nTinggal pilih layanan, kapster, sama slot waktu — gampang!`;
   if (has(['lokasi','alamat','dimana','maps','cabang']))
-    return `Cabang RedBox Barbershop 📍\n• Bypass (pusat) — Jl. Bypass Kedawung | 10.00–22.00\n• Samadikun — Jl. Samadikun | 10.00–21.00\n• CSB Mall — Lt. 1 | 10.00–21.00\n• Sumber — Jl. Raya Sumber | 10.00–21.00\n• Tegal — Jl. Raya Tegal | 10.00–21.00`;
+    return `Cabang RedBox ada di sini ${fn} 📍\n• Bypass (pusat) — Jl. Bypass Kedawung | 10.00–22.00\n• Samadikun — Jl. Samadikun | 10.00–21.00\n• CSB Mall — Lt. 1 | 10.00–21.00\n• Sumber — Jl. Raya Sumber | 10.00–21.00\n• Tegal — Jl. Raya Tegal | 10.00–21.00`;
+  if (has(['konfirmasi booking','konfirmasi bkng','sudah booking','mau konfirmasi','ini konfirmasi']))
+    return `Sip, makasih udah konfirmasi ${fn}! 🙏 Udah kami catat nih, sampai jumpa di RedBox! ✂️`;
   if (has(['makasih','terima kasih','thanks','thx']))
-    return `Sama-sama Kak ${fn}! Kalau ada yang lain jangan ragu tanya ya 😊✂️`;
+    return `Sama-sama ${fn}! Kalau ada yg lain, aku di sini 😊`;
 
-  return `Maaf Kak ${fn}, ada gangguan sebentar 😅 Silakan coba lagi atau kunjungi redboxbarbershop.com untuk info lengkap!`;
+  return `Aduh ${fn}, ada gangguan dikit nih 😅 Coba lagi sebentar ya, atau cek redboxbarbershop.com buat info lengkap!`;
 }
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
@@ -712,6 +817,18 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, sender: target, cleared: true });
       }
 
+      if (req.query.paused_list === '1') {
+        const list = await listPausedSenders();
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, paused: list });
+      }
+
+      if (req.query.resume_ai) {
+        const target = String(req.query.resume_ai);
+        await clearHumanTakeover(target);
+        pushDebug({ step: 'resume_ai', target });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, target, resumed: true });
+      }
+
       if (req.query.send_to && req.query.send_msg) {
         const to = String(req.query.send_to);
         const msg = String(req.query.send_msg);
@@ -818,6 +935,16 @@ module.exports = async function handler(req, res) {
       || body.fromMe === true || body.fromMe === 1
       || (device && sender && String(sender) === String(device));
     if (isFromMe) {
+      // Human takeover: admin balas manual dari HP → pause AI untuk customer tersebut
+      const rawTarget = body.target || body.to || body.recipient;
+      const deviceNum = normalizePhone(device);
+      const targetNum = normalizePhone(rawTarget);
+      if (targetNum && targetNum.length >= 8 && targetNum !== deviceNum) {
+        setHumanTakeoverLocal(targetNum);
+        persistHumanTakeover(targetNum).catch(() => {});
+        console.log(`[WA Bot] Human takeover set for ${targetNum} — admin replied manually`);
+        pushDebug({ step: 'human_takeover_set', target: targetNum });
+      }
       console.log('[WA Bot] Ignored outgoing message, fields:', JSON.stringify({ isFromMe: body.isFromMe, fromMe: body.fromMe, sender, device }));
       return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
     }
@@ -836,6 +963,14 @@ module.exports = async function handler(req, res) {
       return;
     }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
+
+    // Human takeover check — skip AI jika admin sedang handle manual
+    const humanActive = await isHumanTakeover(sender);
+    if (humanActive) {
+      pushDebug({ step: 'human_takeover_active', sender });
+      console.log(`[WA Bot] AI paused for ${sender} — human takeover active`);
+      return res.status(200).json({ status: 'ignored', reason: 'human_takeover' });
+    }
 
     // Proses AI + kirim WA DULU (sebelum res.json) — Lambda dalam state sinkron = network lebih cepat.
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
