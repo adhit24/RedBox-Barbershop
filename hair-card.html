@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hair Analysis Card — Redbox Barbershop</title>
+  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --red: #C1121F;
+      --green: #2a7a3a;
+      --green-bright: #4ade80;
+      --dark: #080808;
+      --card: #111111;
+      --card2: #161616;
+      --border: rgba(255,255,255,.07);
+      --white: #F0F0F0;
+      --dim: rgba(255,255,255,.45);
+      --dimmer: rgba(255,255,255,.28);
+    }
+
+    body {
+      background: #030303;
+      color: var(--white);
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px 40px;
+    }
+
+    /* ── PAGE HEADER ── */
+    .page-nav {
+      width: 100%;
+      max-width: 860px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0 18px;
+    }
+    .page-nav-logo { display:flex; align-items:center; gap:8px; text-decoration:none; }
+    .page-nav-logo img { width:28px; height:28px; border-radius:5px; object-fit:cover; }
+    .page-nav-logo span { font-family:'Bebas Neue',sans-serif; font-size:1.1rem; letter-spacing:.08em; color:var(--white); }
+    .page-nav-logo em { color:var(--red); font-style:normal; }
+    .page-nav-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .page-nav-btn { padding:8px 18px; border-radius:99px; font-size:.72rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:5px; transition:all .2s; }
+    .btn-ghost { background:transparent; color:var(--dim); border:1px solid var(--border); }
+    .btn-ghost:hover { color:var(--white); border-color:rgba(255,255,255,.2); }
+    .btn-red { background:var(--red); color:#fff; }
+    .btn-red:hover { opacity:.88; }
+    .btn-green { background:#166534; color:#86efac; border:1px solid #166534; }
+    .btn-green:hover { background:#15803d; }
+    .btn-green:disabled { opacity:.5; cursor:not-allowed; }
+
+    /* ── CARD WRAPPER ── */
+    .card-wrap {
+      width: 100%;
+      max-width: 860px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--dark);
+      box-shadow: 0 8px 60px rgba(0,0,0,.8);
+      position: relative;
+    }
+
+    /* ── TOP SECTION: Portrait + Analysis ── */
+    .card-top {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      min-height: 380px;
+    }
+
+    /* Portrait */
+    .portrait-col {
+      position: relative;
+      background: #0a0a0a;
+      overflow: hidden;
+    }
+    .portrait-col img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top center;
+      display: block;
+      min-height: 380px;
+    }
+    .portrait-placeholder {
+      width: 100%;
+      min-height: 380px;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 3rem;
+      color: rgba(255,255,255,.08);
+    }
+    .face-shape-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 24px 14px 14px;
+      background: linear-gradient(to top, rgba(0,0,0,.95) 60%, transparent);
+    }
+    .face-shape-label {
+      font-size: .5rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      color: rgba(255,255,255,.45);
+      text-transform: uppercase;
+      line-height: 1;
+      margin-bottom: 3px;
+    }
+    .face-shape-value {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.6rem;
+      letter-spacing: .05em;
+      color: #fff;
+      line-height: 1;
+    }
+
+    /* Analysis Column */
+    .analysis-col {
+      padding: 20px 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border-left: 1px solid var(--border);
+    }
+    .card-main-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.9rem;
+      letter-spacing: .06em;
+      color: #fff;
+      line-height: 1;
+    }
+
+    /* Characteristics row */
+    .section-micro-label {
+      font-size: .48rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.35);
+      margin-bottom: 8px;
+    }
+    .char-icons-row {
+      display: flex;
+      gap: 10px;
+    }
+    .char-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+      flex: 1;
+    }
+    .char-icon-box {
+      width: 48px;
+      height: 48px;
+      background: #1a1a1a;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      border: 1px solid rgba(255,255,255,.06);
+    }
+    .char-label {
+      font-size: .42rem;
+      font-weight: 700;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.55);
+      text-align: center;
+      line-height: 1.3;
+      max-width: 60px;
+    }
+
+    /* Hair type row */
+    .hair-meta-block { display: flex; flex-direction: column; gap: 8px; }
+    .hair-meta-row { display: flex; align-items: center; gap: 10px; }
+    .meta-label {
+      font-size: .46rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.3);
+      min-width: 110px;
+    }
+    .meta-value {
+      font-size: .58rem;
+      font-weight: 600;
+      color: rgba(255,255,255,.8);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    /* Thickness dots */
+    .thickness-dots { display: flex; gap: 4px; align-items: center; }
+    .thickness-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .thickness-dot.filled { background: #2a7a3a; border-color: #2a7a3a; }
+
+    /* Length slider */
+    .length-slider-wrap { display: flex; flex-direction: column; gap: 5px; }
+    .length-bar-wrap { position: relative; height: 4px; background: rgba(255,255,255,.1); border-radius: 2px; }
+    .length-bar-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #166534, #4ade80); transition: width .4s ease; }
+    .length-bar-knob {
+      position: absolute;
+      top: 50%;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #4ade80;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 6px rgba(74,222,128,.5);
+    }
+    .length-labels { display: flex; justify-content: space-between; }
+    .length-lbl { font-size: .4rem; color: rgba(255,255,255,.25); font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+    .length-lbl.active { color: #4ade80; font-weight: 700; }
+
+    /* ── RECOMMENDED HAIRSTYLES SECTION ── */
+    .rec-section {
+      background: #0e1a10;
+      padding: 14px 16px;
+      border-top: 1px solid rgba(42,122,58,.3);
+    }
+    .rec-section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .rec-badge {
+      width: 20px; height: 20px;
+      background: #166534;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .6rem; font-weight: 700; color: #86efac;
+      flex-shrink: 0;
+    }
+    .rec-section-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.05rem;
+      letter-spacing: .1em;
+      color: #86efac;
+    }
+    .hair-photos-row {
+      display: grid;
+      gap: 8px;
+    }
+    .hair-photos-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .hair-photos-row.cols-5 { grid-template-columns: repeat(5, 1fr); }
+    .hair-photo-item {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .hair-photo-slot {
+      width: 100%;
+      aspect-ratio: 3/4;
+      border-radius: 7px;
+      overflow: hidden;
+      background: #1a1a1a;
+      position: relative;
+    }
+    .hair-photo-slot img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .hair-photo-shimmer {
+      width: 100%; height: 100%;
+      background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+      background-size: 200% 100%;
+      animation: sh 1.4s ease-in-out infinite;
+    }
+    @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    .hair-check-mark {
+      position: absolute;
+      bottom: 5px; right: 5px;
+      width: 18px; height: 18px;
+      background: #166534;
+      border: 2px solid #4ade80;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .55rem; font-weight: 800;
+      color: #86efac;
+      z-index: 2;
+    }
+    .hair-x-mark {
+      position: absolute;
+      bottom: 5px; right: 5px;
+      width: 18px; height: 18px;
+      background: rgba(193,18,31,.9);
+      border: 2px solid #ef4444;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .55rem; font-weight: 800;
+      color: #fff;
+      z-index: 2;
+    }
+    .hair-photo-name {
+      font-size: .46rem;
+      font-weight: 600;
+      text-align: center;
+      color: rgba(255,255,255,.6);
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+
+    /* ── AVOID SECTION ── */
+    .avoid-section {
+      background: #0f0f0f;
+      padding: 14px 16px;
+      border-top: 1px solid rgba(193,18,31,.2);
+    }
+    .avoid-section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .avoid-badge {
+      width: 20px; height: 20px;
+      background: rgba(193,18,31,.85);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .6rem; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .avoid-section-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.05rem;
+      letter-spacing: .1em;
+      color: rgba(239,68,68,.9);
+    }
+
+    /* ── BOTTOM SECTIONS: Styling Guide + Products ── */
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-top: 1px solid var(--border);
+    }
+    .guide-col {
+      padding: 14px 16px;
+      border-right: 1px solid var(--border);
+    }
+    .products-col {
+      padding: 14px 16px;
+    }
+    .col-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: .95rem;
+      letter-spacing: .1em;
+      color: rgba(255,255,255,.5);
+      margin-bottom: 12px;
+    }
+
+    /* Styling steps */
+    .steps-flow {
+      display: flex;
+      align-items: flex-start;
+      gap: 2px;
+      flex-wrap: wrap;
+    }
+    .step-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+      min-width: 60px;
+    }
+    .step-icon {
+      width: 36px; height: 36px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      border: 1px solid rgba(255,255,255,.06);
+    }
+    .step-name {
+      font-size: .44rem;
+      font-weight: 700;
+      color: rgba(255,255,255,.7);
+      text-align: center;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .step-desc {
+      font-size: .4rem;
+      color: rgba(255,255,255,.3);
+      text-align: center;
+      line-height: 1.3;
+      max-width: 60px;
+    }
+    .step-arrow {
+      font-size: .7rem;
+      color: rgba(255,255,255,.2);
+      padding-top: 12px;
+      flex-shrink: 0;
+    }
+
+    /* Products */
+    .products-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+    .product-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .product-icon {
+      width: 40px; height: 50px;
+      background: #1a1a1a;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      border: 1px solid rgba(255,255,255,.06);
+      overflow: hidden;
+    }
+    .product-icon img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .product-name {
+      font-size: .4rem;
+      font-weight: 600;
+      color: rgba(255,255,255,.5);
+      text-align: center;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      line-height: 1.3;
+    }
+
+    /* ── VERY BOTTOM: Key Tips + Hair Color ── */
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-top: 1px solid var(--border);
+      background: #0a0a0a;
+    }
+    .tips-col {
+      padding: 12px 16px;
+      border-right: 1px solid var(--border);
+    }
+    .color-rec-col {
+      padding: 12px 16px;
+    }
+    .tips-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .tip-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .tip-icon {
+      font-size: .8rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .tip-text {
+      font-size: .5rem;
+      color: rgba(255,255,255,.5);
+      line-height: 1.4;
+    }
+    .color-swatches-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .color-swatch-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+    .color-swatch {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.08);
+    }
+    .color-swatch-name {
+      font-size: .38rem;
+      color: rgba(255,255,255,.3);
+      text-align: center;
+      max-width: 36px;
+      line-height: 1.2;
+    }
+
+    /* ── LOADING / ERROR states ── */
+    .page-loading {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 60vh; gap: 16px;
+    }
+    .page-spinner {
+      width: 44px; height: 44px;
+      border: 3px solid rgba(193,18,31,.2); border-top-color: #C1121F;
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .page-error { text-align: center; padding: 80px 24px; }
+    .page-error h2 { font-size: 1.4rem; margin-bottom: 12px; }
+    .page-error p { color: rgba(255,255,255,.4); margin-bottom: 24px; font-size: .9rem; }
+
+    /* Branding bar at bottom of card */
+    .card-brand-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: #050505;
+      border-top: 1px solid rgba(193,18,31,.2);
+    }
+    .brand-bar-left {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .brand-bar-left img {
+      width: 18px; height: 18px; border-radius: 3px; object-fit: cover;
+    }
+    .brand-bar-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: .75rem;
+      letter-spacing: .08em;
+      color: rgba(255,255,255,.4);
+    }
+    .brand-bar-name em { color: rgba(193,18,31,.7); font-style: normal; }
+    .brand-bar-right {
+      font-size: .4rem;
+      color: rgba(255,255,255,.2);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    /* Download progress */
+    #download-status {
+      margin-top: 10px;
+      font-size: .72rem;
+      color: rgba(255,255,255,.4);
+      min-height: 20px;
+      text-align: center;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .card-top { grid-template-columns: 130px 1fr; }
+      .card-top .portrait-col img { min-height: 240px; }
+      .portrait-placeholder { min-height: 240px; }
+      .char-icon-box { width: 36px; height: 36px; font-size: 1rem; }
+      .hair-photos-row.cols-5 { grid-template-columns: repeat(3, 1fr); }
+      .bottom-grid, .footer-grid { grid-template-columns: 1fr; }
+      .guide-col { border-right: none; border-bottom: 1px solid var(--border); }
+      .tips-col { border-right: none; border-bottom: 1px solid var(--border); }
+      .products-row { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <nav class="page-nav">
+    <a class="page-nav-logo" href="/">
+      <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
+      <span>REDBOX <em>BARBERSHOP</em></span>
+    </a>
+    <div class="page-nav-actions">
+      <button class="page-nav-btn btn-green" id="download-btn" disabled>⬇ Download Card</button>
+      <a class="page-nav-btn btn-ghost" href="/ai-results.html">📋 Full Analysis</a>
+      <a class="page-nav-btn btn-ghost" href="/#ai">↩ Analisis Ulang</a>
+      <a class="page-nav-btn btn-red" href="/booking.html">Book Now</a>
+    </div>
+  </nav>
+
+  <div id="page-root">
+    <div class="page-loading" id="page-loading">
+      <div class="page-spinner"></div>
+      <p style="color:rgba(255,255,255,.4);font-size:.85rem">Memuat kartu analisis rambut...</p>
+    </div>
+  </div>
+
+  <div id="download-status"></div>
+
+  <script>
+    const IMG_API = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+      ? 'http://localhost:3001/api/ai/generate-image'
+      : '/api/ai/generate-image';
+
+    function slug(s) {
+      return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+
+    function fmt(s) {
+      return s ? String(s).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+    }
+
+    // ── DENSITY → dot count ──
+    function densityDots(density) {
+      const map = { thin: 1, medium: 3, medium_thick: 4, thick: 5 };
+      return map[density] || 3;
+    }
+
+    // ── LENGTH → slider position ──
+    function lengthToPercent(length) {
+      const map = { short: 20, medium: 55, long: 85 };
+      return map[length] || 55;
+    }
+    function lengthLabels(length) {
+      const labels = ['SHORT', 'MEDIUM', 'LONG'];
+      const active = length === 'short' ? 0 : length === 'long' ? 2 : 1;
+      return labels.map((l, i) => `<span class="length-lbl${i === active ? ' active' : ''}">${l}</span>`).join('');
+    }
+
+    // ── CHARACTERISTICS from hair data ──
+    function buildCharacteristics(hair, hairRecs) {
+      const chars = [];
+      const type = hair.type || '';
+      const density = hair.density || 'medium';
+      const texture = hair.natural_texture || '';
+
+      // Derive 3 characteristics
+      if (density === 'thin' || density === 'medium') {
+        chars.push({ icon: '💆', label: 'LIGHT ON\nTOP' });
+      } else if (density === 'thick' || density === 'medium_thick') {
+        chars.push({ icon: '🔝', label: 'MEDIUM VOLUME\nON TOP' });
+      } else {
+        chars.push({ icon: '🔝', label: 'MEDIUM VOLUME\nON TOP' });
+      }
+
+      if (hairRecs.length > 0 && (hairRecs[0].name || '').toLowerCase().includes('fade')) {
+        chars.push({ icon: '✂️', label: 'KEEP SIDES\nTAPERED' });
+      } else if (hairRecs.length > 0 && (hairRecs[0].name || '').toLowerCase().includes('taper')) {
+        chars.push({ icon: '✂️', label: 'KEEP SIDES\nTAPERED' });
+      } else {
+        chars.push({ icon: '✂️', label: 'KEEP SIDES\nTAPERED' });
+      }
+
+      if (type.includes('straight') || texture.includes('smooth')) {
+        chars.push({ icon: '🌊', label: 'NATURAL\nTEXTURE' });
+      } else if (type.includes('wavy') || type.includes('curly')) {
+        chars.push({ icon: '🌀', label: 'WORK WITH\nCURLY HAIR' });
+      } else {
+        chars.push({ icon: '🌊', label: 'NATURAL\nTEXTURE' });
+      }
+
+      return chars;
+    }
+
+    // ── HAIR TYPE display ──
+    function hairTypeDisplay(hair) {
+      const type = (hair.type || 'straight').replace(/_/g, ' ').toUpperCase();
+      const texture = hair.natural_texture ? ' / ' + hair.natural_texture.replace(/_/g, ' ').toUpperCase() : '';
+      return type + texture;
+    }
+
+    // ── STYLING STEPS ──
+    function defaultStylingSteps(hairType) {
+      return [
+        { icon: '💨', name: 'BLOW DRY', desc: 'Create\nvolume' },
+        { icon: '🧴', name: 'APPLY\nPRODUCT', desc: 'Lift roots,\nclay/paste' },
+        { icon: '✋', name: 'STYLE &\nSHAPE', desc: 'Shape\nnaturally' },
+        { icon: '💈', name: 'FINISH', desc: 'Light hold\nhairstyle' },
+      ];
+    }
+
+    // ── DEFAULT PRODUCTS ──
+    function buildProducts(stylingProducts) {
+      const productEmoji = {
+        'matte clay': '🪨', 'clay': '🪨',
+        'styling paste': '🫙', 'paste': '🫙',
+        'sea salt spray': '🌊', 'spray': '💨',
+        'volume powder': '✨', 'powder': '✨',
+        'pomade': '💧', 'wax': '🟤',
+        'mousse': '🫧', 'gel': '🫙',
+      };
+      const defaults = [
+        { name: 'MATTE CLAY', emoji: '🪨' },
+        { name: 'STYLING PASTE', emoji: '🫙' },
+        { name: 'SEA SALT SPRAY', emoji: '🌊' },
+        { name: 'VOLUME POWDER', emoji: '✨' },
+      ];
+      if (!stylingProducts || !stylingProducts.length) return defaults;
+      const products = stylingProducts.slice(0, 4).map(p => {
+        const name = (typeof p === 'string' ? p : p.name || p).toUpperCase();
+        const key = name.toLowerCase();
+        const emoji = Object.keys(productEmoji).find(k => key.includes(k));
+        return { name, emoji: emoji ? productEmoji[emoji] : '🧴' };
+      });
+      while (products.length < 4) products.push(defaults[products.length]);
+      return products;
+    }
+
+    // ── KEY TIPS ──
+    function buildTips(faceShape, hairType) {
+      const shape = (faceShape || 'oval').toLowerCase();
+      const tipMap = {
+        oval: [
+          { icon: '🔝', text: 'Keep sides tapered and top full for balance' },
+          { icon: '📏', text: 'Add texture by finger-combing daily' },
+          { icon: '🚫', text: 'Avoid heavy fringes covering your forehead' },
+          { icon: '🔄', text: 'Regular trim every 4-6 weeks' },
+        ],
+        round: [
+          { icon: '⬆️', text: 'Add height on top to elongate the face' },
+          { icon: '✂️', text: 'Keep sides short with clean taper or fade' },
+          { icon: '🚫', text: 'Avoid round bowl cuts or flat styles' },
+          { icon: '🔄', text: 'Regular trim every 3-4 weeks' },
+        ],
+        square: [
+          { icon: '🌊', text: 'Soften edges with textured or wavy styles' },
+          { icon: '📏', text: 'Avoid super tight sides — keep some volume' },
+          { icon: '🔝', text: 'Longer fringe adds softness to strong jaw' },
+          { icon: '🔄', text: 'Regular trim every 4-6 weeks' },
+        ],
+        heart: [
+          { icon: '⬇️', text: 'Add volume on sides to balance wide forehead' },
+          { icon: '✂️', text: 'Medium length works best for your face shape' },
+          { icon: '🚫', text: 'Avoid extra wide styles that emphasize forehead' },
+          { icon: '🔄', text: 'Regular trim every 5-6 weeks' },
+        ],
+        diamond: [
+          { icon: '📏', text: 'Add width on forehead with wispy fringe' },
+          { icon: '🌊', text: 'Textured styles complement diamond shape well' },
+          { icon: '🚫', text: 'Avoid too much height on top' },
+          { icon: '🔄', text: 'Regular trim every 4-5 weeks' },
+        ],
+      };
+      return tipMap[shape] || tipMap['oval'];
+    }
+
+    // ── HAIR COLOR SWATCHES ──
+    function buildHairColors(hairData) {
+      return [
+        { name: 'NATURAL BLACK', hex: '#1a1008' },
+        { name: 'DARK BROWN', hex: '#2d1f0e' },
+        { name: 'WARM BROWN', hex: '#5a3410' },
+        { name: 'CHESTNUT', hex: '#7b4018' },
+        { name: 'LIGHT BROWN', hex: '#9c6028' },
+      ];
+    }
+
+    // ── GENERATE SINGLE IMAGE ──
+    async function genImage(elId, prompt, cacheKey) {
+      const el = document.getElementById(elId);
+      if (!el) return;
+      try {
+        const res = await fetch(IMG_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, cacheKey }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed');
+        const slot = el.querySelector('.hair-photo-shimmer');
+        if (slot) {
+          const img = document.createElement('img');
+          img.src = json.imageUrl;
+          img.alt = '';
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+          el.replaceChild(img, slot);
+        }
+      } catch (err) {
+        const slot = el.querySelector('.hair-photo-shimmer');
+        if (slot) slot.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:rgba(255,255,255,.1);';
+        if (slot) slot.textContent = '💈';
+      }
+    }
+
+    // ── LOAD ALL HAIR IMAGES ──
+    async function loadHairImages(hairRecs, hairAvoid) {
+      const slots = [
+        ...hairRecs.slice(0, 4).map((h, i) => ({
+          elId: `rec-slot-${i}`,
+          prompt: `Korean men's hairstyle reference photo. ${h.name} style. Front view. Dark studio background. Sharp focus. Grooming magazine. Professional photography.`,
+          cacheKey: `v1/hair/rec/${slug(h.name)}`,
+        })),
+        ...hairAvoid.slice(0, 5).map((a, i) => ({
+          elId: `avoid-slot-${i}`,
+          prompt: `Men's hairstyle reference photo. ${a.name || a.style} style. Front view. Dark studio. Clean photography.`,
+          cacheKey: `v1/hair/avoid/${slug(a.name || a.style || '')}`,
+        })),
+      ];
+      const C = 3;
+      for (let i = 0; i < slots.length; i += C) {
+        await Promise.allSettled(slots.slice(i, i + C).map(s => genImage(s.elId, s.prompt, s.cacheKey)));
+      }
+
+      // Enable download after images load
+      document.getElementById('download-btn').disabled = false;
+    }
+
+    // ── BUILD CARD ──
+    function buildCard(r, userPhoto) {
+      const subject = r.subject || {};
+      const hair = r.hairstyle_analysis || r.hairstyle || {};
+      const faceShape = subject.face_shape?.type || hair.faceShape || 'oval';
+      const hairInfo = subject.hair || {};
+
+      const hairRecs = (hair.recommended_styles || hair.recommendations || []).slice(0, 4);
+      while (hairRecs.length < 4) hairRecs.push({ name: '—', match_reason: '' });
+      const hairAvoid = (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 5);
+      const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
+      while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length] });
+
+      const chars = buildCharacteristics(hairInfo, hairRecs);
+      const hairTypeTxt = hairTypeDisplay(hairInfo);
+      const density = hairInfo.density || 'medium';
+      const dotCount = densityDots(density);
+      const recLength = hairInfo.current_length || 'medium';
+      const lengthPct = lengthToPercent(recLength);
+      const steps = defaultStylingSteps(hairInfo.type);
+      const products = buildProducts(hair.styling_products);
+      const tips = buildTips(faceShape, hairInfo.type);
+      const hairColors = buildHairColors(hair);
+
+      // ── Portrait ──
+      const portraitHTML = userPhoto
+        ? `<img src="${userPhoto}" alt="Portrait" id="portrait-img" />`
+        : `<div class="portrait-placeholder">👤</div>`;
+
+      // ── Characteristics ──
+      const charsHTML = chars.map(c => `
+        <div class="char-item">
+          <div class="char-icon-box">${c.icon}</div>
+          <div class="char-label">${c.label.replace('\n', '<br>')}</div>
+        </div>
+      `).join('');
+
+      // ── Dots ──
+      const dotsHTML = [1,2,3,4,5].map(i =>
+        `<span class="thickness-dot${i <= dotCount ? ' filled' : ''}"></span>`
+      ).join('');
+
+      // ── Rec photos ──
+      const recPhotosHTML = hairRecs.map((h, i) => `
+        <div class="hair-photo-item">
+          <div class="hair-photo-slot" id="rec-slot-${i}">
+            <div class="hair-photo-shimmer"></div>
+            <span class="hair-check-mark">✓</span>
+          </div>
+          <div class="hair-photo-name">${h.name}</div>
+        </div>
+      `).join('');
+
+      // ── Avoid photos ──
+      const avoidPhotosHTML = hairAvoid.map((a, i) => `
+        <div class="hair-photo-item">
+          <div class="hair-photo-slot" id="avoid-slot-${i}">
+            <div class="hair-photo-shimmer"></div>
+            <span class="hair-x-mark">✕</span>
+          </div>
+          <div class="hair-photo-name">${a.name || a.style || '—'}</div>
+        </div>
+      `).join('');
+
+      // ── Styling steps ──
+      const stepsHTML = steps.map((s, i, arr) => `
+        <div class="step-item">
+          <div class="step-icon">${s.icon}</div>
+          <div class="step-name">${s.name.replace('\n', '<br>')}</div>
+          <div class="step-desc">${s.desc.replace('\n', '<br>')}</div>
+        </div>
+        ${i < arr.length - 1 ? '<span class="step-arrow">→</span>' : ''}
+      `).join('');
+
+      // ── Products ──
+      const productsHTML = products.map(p => `
+        <div class="product-item">
+          <div class="product-icon">${p.emoji}</div>
+          <div class="product-name">${p.name}</div>
+        </div>
+      `).join('');
+
+      // ── Tips ──
+      const tipsHTML = tips.map(t => `
+        <li class="tip-item">
+          <span class="tip-icon">${t.icon}</span>
+          <span class="tip-text">${t.text}</span>
+        </li>
+      `).join('');
+
+      // ── Hair colors ──
+      const colorsHTML = hairColors.map(c => `
+        <div class="color-swatch-item">
+          <div class="color-swatch" style="background:${c.hex}"></div>
+          <div class="color-swatch-name">${c.name}</div>
+        </div>
+      `).join('');
+
+      return `
+        <div class="card-wrap" id="hair-card">
+
+          <!-- TOP: portrait + analysis -->
+          <div class="card-top">
+            <div class="portrait-col">
+              ${portraitHTML}
+              <div class="face-shape-overlay">
+                <div class="face-shape-label">Face Shape</div>
+                <div class="face-shape-value">${faceShape.toUpperCase()}</div>
+              </div>
+            </div>
+            <div class="analysis-col">
+              <div class="card-main-title">HAIRSTYLE ANALYSIS</div>
+              <div>
+                <div class="section-micro-label">Best Hair Characteristics</div>
+                <div class="char-icons-row">${charsHTML}</div>
+              </div>
+              <div class="hair-meta-block">
+                <div class="hair-meta-row">
+                  <div class="meta-label">Hair Type</div>
+                  <div class="meta-value">${hairTypeTxt || 'STRAIGHT'}</div>
+                </div>
+                <div class="hair-meta-row">
+                  <div class="meta-label">Hair Thickness</div>
+                  <div class="thickness-dots">${dotsHTML}</div>
+                </div>
+                <div>
+                  <div class="meta-label" style="margin-bottom:6px">Recommended Length</div>
+                  <div class="length-slider-wrap">
+                    <div class="length-bar-wrap">
+                      <div class="length-bar-fill" style="width:${lengthPct}%"></div>
+                      <div class="length-bar-knob" style="left:${lengthPct}%"></div>
+                    </div>
+                    <div class="length-labels">${lengthLabels(recLength)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RECOMMENDED HAIRSTYLES -->
+          <div class="rec-section">
+            <div class="rec-section-header">
+              <div class="rec-badge">✓</div>
+              <div class="rec-section-title">RECOMMENDED HAIRSTYLES</div>
+            </div>
+            <div class="hair-photos-row cols-4">${recPhotosHTML}</div>
+          </div>
+
+          <!-- HAIRSTYLES TO AVOID -->
+          <div class="avoid-section">
+            <div class="avoid-section-header">
+              <div class="avoid-badge">✕</div>
+              <div class="avoid-section-title">HAIRSTYLES TO AVOID</div>
+            </div>
+            <div class="hair-photos-row cols-5">${avoidPhotosHTML}</div>
+          </div>
+
+          <!-- STYLING GUIDE + PRODUCTS -->
+          <div class="bottom-grid">
+            <div class="guide-col">
+              <div class="col-title">STYLING GUIDE</div>
+              <div class="steps-flow">${stepsHTML}</div>
+            </div>
+            <div class="products-col">
+              <div class="col-title">RECOMMENDED PRODUCTS</div>
+              <div class="products-row">${productsHTML}</div>
+            </div>
+          </div>
+
+          <!-- KEY TIPS + HAIR COLOR -->
+          <div class="footer-grid">
+            <div class="tips-col">
+              <div class="col-title">KEY TIPS</div>
+              <ul class="tips-list">${tipsHTML}</ul>
+            </div>
+            <div class="color-rec-col">
+              <div class="col-title">HAIR COLOR RECOMMENDATION</div>
+              <div class="color-swatches-row">${colorsHTML}</div>
+            </div>
+          </div>
+
+          <!-- BRAND BAR -->
+          <div class="card-brand-bar">
+            <div class="brand-bar-left">
+              <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
+              <span class="brand-bar-name">REDBOX <em>BARBERSHOP</em></span>
+            </div>
+            <div class="brand-bar-right">AI Grooming Analysis • redboxbarbershop.com</div>
+          </div>
+
+        </div>
+      `;
+    }
+
+    // ── MAIN INIT ──
+    document.addEventListener('DOMContentLoaded', () => {
+      const root = document.getElementById('page-root');
+      const loading = document.getElementById('page-loading');
+
+      let raw, userPhoto;
+      try {
+        raw = sessionStorage.getItem('ai_results');
+        userPhoto = sessionStorage.getItem('ai_user_photo');
+      } catch (e) {}
+
+      if (!raw) {
+        loading.remove();
+        root.innerHTML = `<div class="page-error"><h2>Tidak ada hasil ditemukan</h2><p>Upload foto terlebih dahulu di halaman utama.</p><a class="page-nav-btn btn-red" href="/#ai" style="display:inline-flex;padding:11px 24px;border-radius:99px;font-size:.8rem;font-weight:600;cursor:pointer;border:none;text-decoration:none;background:#C1121F;color:#fff;">Upload Foto</a></div>`;
+        return;
+      }
+
+      const results = JSON.parse(raw);
+      const r = results.results || results;
+
+      loading.remove();
+      root.innerHTML = buildCard(r, userPhoto);
+
+      // Load AI-generated hairstyle images
+      const hair = r.hairstyle_analysis || r.hairstyle || {};
+      const hairRecs = (hair.recommended_styles || hair.recommendations || []).slice(0, 4);
+      while (hairRecs.length < 4) hairRecs.push({ name: '—' });
+      const hairAvoid = (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 5);
+      const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
+      while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length - 1] || 'Avoid Style' });
+
+      loadHairImages(hairRecs, hairAvoid);
+    });
+
+    // ── DOWNLOAD AS PNG ──
+    document.getElementById('download-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('download-btn');
+      const status = document.getElementById('download-status');
+      const card = document.getElementById('hair-card');
+      if (!card) return;
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Generating...';
+      status.textContent = 'Menyiapkan kartu analisis...';
+
+      try {
+        const canvas = await html2canvas(card, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#080808',
+          logging: false,
+          width: card.offsetWidth,
+          height: card.offsetHeight,
+        });
+
+        const link = document.createElement('a');
+        link.download = 'redbox-hair-analysis.png';
+        link.href = canvas.toDataURL('image/png', 1.0);
+        link.click();
+
+        status.textContent = '✓ Berhasil diunduh!';
+        setTimeout(() => { status.textContent = ''; }, 3000);
+      } catch (err) {
+        status.textContent = '⚠ Gagal mengunduh — coba lagi.';
+        console.error(err);
+      }
+
+      btn.disabled = false;
+      btn.textContent = '⬇ Download Card';
+    });
+  </script>
+</body>
+</html>
