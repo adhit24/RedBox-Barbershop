@@ -51,9 +51,7 @@ function buildSoonMessage(booking) {
   const branch = branchLabel(location);
   const barberName = barbers?.name || null;
 
-  const latRule = `Maksimal keterlambatan 10 - 15 menit ya kak. Kalau lebih mohon maaf di cancel atau di reschedule jika masih ada slot.\nTerima kasih ☺️🙏`;
-
-  return `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *${branch}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*${barberName ? `\n💈 Kapster: *${barberName}*` : ''}\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄\n\n${latRule}`;
+  return `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *${branch}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*${barberName ? `\n💈 Kapster: *${barberName}*` : ''}\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄`;
 }
 
 module.exports = async function handler(req, res) {
