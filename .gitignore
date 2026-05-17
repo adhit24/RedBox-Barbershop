@@ -82,7 +82,8 @@ server/.env.*
 .lock-wscript
 .node_repl_history
 *.tgz
-.vercel
+.vercel/*
+!.vercel/project.json
 .trae
 .claude
 .DS_Store

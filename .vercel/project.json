@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_WFHLGSGUzFMqERLKINHid13Y17dc",
+  "orgId": "team_hTyYnSffO7HztQbv0f8Nov5H",
+  "projectName": "redbox-barbershop",
+  "settings": {
+    "createdAt": 1777294256294,
+    "framework": null,
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}
