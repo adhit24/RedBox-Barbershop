@@ -11,8 +11,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWA } = require('../../server/services/fonnte');
 
-const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
 /** Returns { date: 'YYYY-MM-DD', hourPrefix: 'HH' } in WIB for the *next* hour */
 function nextHourWIB() {
   const now = new Date();
@@ -41,15 +39,7 @@ function buildSoonMessage(booking) {
 
   const latRule = `Maksimal keterlambatan 10 - 15 menit ya kak. Kalau lebih mohon maaf di cancel atau di reschedule jika masih ada slot.\nTerima kasih ☺️🙏`;
 
-  return pick([
-    `Kak ${fn}! ⚡ Sebentar lagi nih!\n\n⏰ *1 jam lagi* jadwalmu di RedBox:\n✂️ *${service}* — jam *${time} WIB*\n\nUdah siap berangkat? Jangan sampai kelewatan ya kak 😄\n\n${latRule}`,
-
-    `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *RedBox Barbershop*\n⏰ Jam *${time} WIB*\n✂️ *${service}*\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄\n\n${latRule}`,
-
-    `Kak ${fn}! 👋 Ini reminder dadakan dari RedBox —\n\n⏰ *${time} WIB* — 1 jam lagi!\n✂️ *${service}*\n\nParkirnya luas kok, jadi tenang aja 😄 Kami udah nunggu! ✂️✨\n\n${latRule}`,
-
-    `Haii kak ${fn}! Waktunya deket nih~ 🕐\n\n*1 jam lagi* ada jadwal di RedBox:\n• *${service}*\n• Jam *${time} WIB*\n\n${latRule}`,
-  ]);
+  return `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *RedBox Barbershop*\n⏰ Jam *${time} WIB*\n✂️ *${service}*\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄\n\n${latRule}`;
 }
 
 module.exports = async function handler(req, res) {
