@@ -331,14 +331,19 @@ async function _pullMokaToWebNow(supabase, outletId) {
 
     // ── Pull 1: Completed transactions via Report API ──────────────────────
     // Membawa walk-in yang sudah selesai + dibayar → menjadi schedule 'completed'
+    // Wrapped in its own try/catch so a 404 (e.g. outlet not on v3 plan) does
+    // not abort Pull 3 (open bills), which is critical for double-booking prevention.
     const since = _lastSyncAt.get(outletId)
       || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const response  = await client.getOrders({ updatedSince: since, limit: 100 });
-    // BUG FIX: v3 response shape is { data: { payments: [], next_url, completed } }
-    // response.data is an object, not an array — must access data.payments
-    const rawOrders = response?.data?.payments || [];
-    const orders    = Array.isArray(rawOrders) ? rawOrders : [];
+    let orders = [];
+    try {
+      const response = await client.getOrders({ updatedSince: since, limit: 100 });
+      const rawOrders = response?.data?.payments || [];
+      orders = Array.isArray(rawOrders) ? rawOrders : [];
+    } catch (pull1Err) {
+      console.warn(`[Sync] Pull 1 (v3/reports) skipped for outlet ${outletId}: ${pull1Err.message}`);
+    }
 
     for (const order of orders) {
       try {
