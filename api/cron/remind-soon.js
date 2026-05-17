@@ -33,13 +33,27 @@ function nextHourWIB() {
   return { date, hourPrefix };
 }
 
+const BRANCH_LABELS = {
+  bypass:    'RedBox Bypass (Pusat)',
+  samadikun: 'RedBox Samadikun',
+  csb:       'RedBox CSB Mall',
+  sumber:    'RedBox Sumber',
+  tegal:     'RedBox Tegal',
+};
+
+function branchLabel(location) {
+  return BRANCH_LABELS[String(location || '').toLowerCase()] || 'RedBox Barbershop';
+}
+
 function buildSoonMessage(booking) {
-  const { name, service, time } = booking;
+  const { name, service, time, location, barbers } = booking;
   const fn = (name || 'Kak').split(' ')[0];
+  const branch = branchLabel(location);
+  const barberName = barbers?.name || null;
 
   const latRule = `Maksimal keterlambatan 10 - 15 menit ya kak. Kalau lebih mohon maaf di cancel atau di reschedule jika masih ada slot.\nTerima kasih ☺️🙏`;
 
-  return `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *RedBox Barbershop*\n⏰ Jam *${time} WIB*\n✂️ *${service}*\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄\n\n${latRule}`;
+  return `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *${branch}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*${barberName ? `\n💈 Kapster: *${barberName}*` : ''}\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄\n\n${latRule}`;
 }
 
 module.exports = async function handler(req, res) {
@@ -70,7 +84,7 @@ module.exports = async function handler(req, res) {
     // Match bookings whose time starts with the next hour (e.g. "15:")
     const { data: bookings, error } = await supabase
       .from('bookings')
-      .select('id, name, wa, service, time, date')
+      .select('id, name, wa, service, time, date, location, barbers(name)')
       .eq('date', date)
       .like('time', `${hourPrefix}:%`)
       .not('status', 'in', '("cancelled","no_show")')
