@@ -45,11 +45,10 @@ function branchLabel(location) {
   return BRANCH_LABELS[String(location || '').toLowerCase()] || 'RedBox Barbershop';
 }
 
-function buildSoonMessage(booking) {
-  const { name, service, time, location, barbers } = booking;
+function buildSoonMessage(booking, barberName) {
+  const { name, service, time, location } = booking;
   const fn = (name || 'Kak').split(' ')[0];
   const branch = branchLabel(location);
-  const barberName = barbers?.name || null;
 
   return `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *${branch}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*${barberName ? `\n💈 Kapster: *${barberName}*` : ''}\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄`;
 }
@@ -79,12 +78,15 @@ module.exports = async function handler(req, res) {
       process.env.SUPABASE_SERVICE_KEY
     );
 
-    // Match bookings whose time starts with the next hour (e.g. "15:")
+    // Match bookings in the next hour (e.g. 17:00–17:59).
+    // Use gte/lte instead of like — `time without time zone` doesn't support LIKE.
+    // barber_id fetched separately below to avoid FK join failure crashing the whole cron.
     const { data: bookings, error } = await supabase
       .from('bookings')
-      .select('id, name, wa, service, time, date, location, barbers(name)')
+      .select('id, name, wa, service, time, date, location, barber_id')
       .eq('date', date)
-      .like('time', `${hourPrefix}:%`)
+      .gte('time', `${hourPrefix}:00:00`)
+      .lte('time', `${hourPrefix}:59:59`)
       .not('status', 'in', '("cancelled","no_show")')
       .not('wa', 'is', null);
 
@@ -98,13 +100,23 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ sent: 0, date, hourPrefix });
     }
 
+    // Bulk fetch barber names — non-blocking: if it fails, reminders still send without kapster name.
+    const barberMap = {};
+    const barberIds = [...new Set(bookings.map(b => b.barber_id).filter(Boolean))];
+    if (barberIds.length) {
+      const { data: barbers } = await supabase
+        .from('barbers').select('id, name').in('id', barberIds);
+      for (const b of barbers || []) barberMap[b.id] = b.name;
+    }
+
     let sent = 0;
     let failed = 0;
 
     for (const booking of bookings) {
       if (!booking.wa) continue;
 
-      const msg = buildSoonMessage(booking);
+      const barberName = barberMap[booking.barber_id] || null;
+      const msg = buildSoonMessage(booking, barberName);
 
       try {
         await sendWA(booking.wa, msg);

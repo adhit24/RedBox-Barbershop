@@ -363,8 +363,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             outletId: outletIdFixed,
             date: dateStr,
             durationMinutes: durMins,
-            barberId: barberIdFixed,
           });
+          if (barberIdFixed) params.set('barberId', barberIdFixed);
           const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(12000) });
           if (res.ok) {
             const json = await res.json();
@@ -874,7 +874,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!grid) return;
     
     const slotsDefault = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
-    const slotsCsb     = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
+    const slotsCsb     = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
     const slots = state.location === 'csb' ? slotsCsb : slotsDefault;
     const today = todayStr();
     const isToday = state.date === today;
