@@ -990,43 +990,89 @@ async function runCustSync(dryRun) {
   const btnDry  = document.getElementById('btnCustDry');
   const btnReal = document.getElementById('btnCustSync');
   const result  = document.getElementById('custResult');
-  const btn     = dryRun ? btnDry : btnReal;
 
-  btnDry.disabled = true;
+  btnDry.disabled  = true;
   btnReal.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> ' + (dryRun ? 'Mengecek…' : 'Syncing…');
   hideAlert('alertCustomers');
   result.style.display = 'none';
 
-  try {
-    const url = '/api/moka/sync-customers' + (dryRun ? '?dry_run=1' : '');
-    const res = await fetch(API_BASE + url, {
-      method: 'GET',
-      headers: { Authorization: 'Bearer ' + ADMIN_TOKEN, 'x-admin-token': ADMIN_TOKEN },
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-
-    result.style.display = 'block';
-    if (dryRun) {
-      let debugHtml = '';
-      if ((data.total_from_moka ?? 0) === 0) {
-        debugHtml += `<br><small style="color:var(--muted)">Business ID dipakai: <code>${data.business_id_used ?? '-'}</code></small>`;
-        if (data.debug_first_page_error) {
-          debugHtml += `<br><small style="color:#e74c3c">Error dari Moka: HTTP ${data.debug_first_page_error.status} — ${data.debug_first_page_error.message}</small>`;
-        } else if (data.debug_first_page !== null) {
-          debugHtml += `<br><small style="color:var(--muted)">Raw response Moka:<br><code style="font-size:.75rem;word-break:break-all">${JSON.stringify(data.debug_first_page).slice(0,400)}</code></small>`;
-        }
-      }
-      result.innerHTML = `🔍 <b>Dry run selesai</b><br>📊 Customer di Moka: <b>${data.total_from_moka ?? 0}</b>${debugHtml}<br><em style="color:var(--muted)">Belum ada yang diubah. Klik "Sync Sekarang" untuk menyimpan.</em>`;
+  // DRY RUN — gunakan endpoint lama (cepat, hanya hitung)
+  if (dryRun) {
+    btnDry.innerHTML = '<span class="spinner"></span> Mengecek…';
+    try {
+      const res  = await fetch(API_BASE + '/api/moka/sync-customers?dry_run=1', {
+        method: 'GET',
+        headers: { Authorization: 'Bearer ' + ADMIN_TOKEN, 'x-admin-token': ADMIN_TOKEN },
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('Response bukan JSON: ' + text.slice(0,200)); }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      result.style.display = 'block';
+      result.innerHTML = `🔍 <b>Dry run selesai</b><br>📊 Customer di Moka: <b>${data.total_from_moka ?? 0}</b><br><em style="color:var(--muted)">Belum ada yang diubah. Klik "Sync Sekarang" untuk menyimpan.</em>`;
       showAlert('alertCustomers', 'info', `🔍 Ditemukan ${data.total_from_moka ?? 0} customer di Moka`);
-    } else {
-      result.innerHTML = `✅ <b>Sync selesai!</b><br>👥 Berhasil disimpan: <b>${data.synced ?? 0}</b> customer<br>❌ Gagal: <b>${data.failed ?? 0}</b><br>📊 Total dari Moka: <b>${data.total_from_moka ?? 0}</b>`;
-      showAlert('alertCustomers', 'success', `✅ ${data.synced ?? 0} customer berhasil disimpan ke Supabase!`);
-      await loadCustomersPage();
+    } catch (err) {
+      showAlert('alertCustomers', 'error', '❌ ' + err.message);
+    } finally {
+      btnDry.disabled = false;
+      btnDry.innerHTML = '🔍 Test (dry run)';
+      btnReal.disabled = false;
     }
+    return;
+  }
+
+  // REAL SYNC — chunked loop: setiap call proses ~4 halaman Moka, ulangi sampai done=true
+  btnReal.innerHTML = '<span class="spinner"></span> Syncing…';
+  result.style.display = 'block';
+  result.innerHTML = '⏳ Memulai sync chunk pertama…';
+
+  let nextUrl    = null;
+  let strategy   = null;
+  let totalUpserted = 0;
+  let totalFound    = 0;
+  let chunk = 0;
+
+  try {
+    while (true) {
+      chunk++;
+      result.innerHTML = `⏳ Chunk ${chunk} — sudah disimpan: <b>${totalUpserted}</b> customer… <em style="color:var(--muted)">(jangan tutup halaman ini)</em>`;
+
+      const body = { max_pages: 5 };
+      if (nextUrl)  body.next_url = nextUrl;
+      if (strategy) body.strategy = strategy;
+
+      const res  = await fetch(API_BASE + '/api/admin/sync-customers-full', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + ADMIN_TOKEN,
+          'x-admin-token': ADMIN_TOKEN,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('Response bukan JSON: ' + text.slice(0,200)); }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      totalUpserted += data.upserted ?? 0;
+      totalFound    += data.customers_found ?? 0;
+      if (data.strategy_used) strategy = data.strategy_used;
+      nextUrl = data.next_url || null;
+
+      if (data.done || !nextUrl) break;
+
+      // Jeda singkat antar chunk agar tidak hammering API
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    result.innerHTML = `✅ <b>Sync selesai!</b><br>👥 Total disimpan: <b>${totalUpserted}</b> customer<br>📊 Total chunk: <b>${chunk}</b>`;
+    showAlert('alertCustomers', 'success', `✅ Sync selesai! ${totalUpserted} customer tersimpan ke Supabase.`);
+    await loadCustomersPage();
   } catch (err) {
-    showAlert('alertCustomers', 'error', '❌ Gagal: ' + err.message);
+    result.innerHTML += `<br><span style="color:#e74c3c">❌ Error di chunk ${chunk}: ${err.message}</span>`;
+    showAlert('alertCustomers', 'error', '❌ Gagal di chunk ' + chunk + ': ' + err.message);
   } finally {
     btnDry.disabled  = false;
     btnReal.disabled = false;
