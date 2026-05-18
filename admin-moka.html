@@ -345,12 +345,73 @@
       </div>
 
       <div class="section">
-        <div class="section-title">Data Customer Tersimpan</div>
-        <div id="custCount" style="font-size:.9rem;color:var(--muted);margin-bottom:10px">Memuat…</div>
-        <table id="custTable">
-          <thead><tr><th>Nama</th><th>No WA</th><th>Email</th><th>Ulang Tahun</th><th>Sumber</th></tr></thead>
-          <tbody id="custBody"><tr><td colspan="5" class="empty">Belum ada data</td></tr></tbody>
+        <div class="section-title">
+          Data Customer Tersimpan
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="custSearch" placeholder="🔍 Cari nama / WA…"
+              style="background:var(--dark);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px 12px;font-size:.84rem;width:200px">
+            <select id="custSegment" class="inline-select" style="font-size:.82rem">
+              <option value="">Semua</option>
+              <option value="loyal">Loyal (≥5 visit)</option>
+              <option value="atrisk">At Risk (30-90 hari)</option>
+              <option value="lost">Lost (&gt;90 hari)</option>
+            </select>
+            <button class="btn btn-ghost" id="btnCustExport" style="font-size:.8rem;padding:5px 12px">⬇ CSV</button>
+          </div>
+        </div>
+
+        <!-- Stats summary -->
+        <div id="custStats" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+          <div style="background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center">
+            <div id="statCustTotal" style="font-size:1.5rem;font-weight:700;color:var(--blue)">—</div>
+            <div style="font-size:.78rem;color:var(--muted)">Total Customer</div>
+          </div>
+          <div style="background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center">
+            <div id="statCustMoka" style="font-size:1.5rem;font-weight:700;color:var(--green)">—</div>
+            <div style="font-size:.78rem;color:var(--muted)">Dari Moka</div>
+          </div>
+          <div style="background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center">
+            <div id="statCustMaxVisit" style="font-size:1.5rem;font-weight:700;color:var(--yellow)">—</div>
+            <div style="font-size:.78rem;color:var(--muted)">Kunjungan Tertinggi</div>
+          </div>
+          <div style="background:var(--dark);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center">
+            <div id="statCustAvgVisit" style="font-size:1.5rem;font-weight:700;color:var(--red)">—</div>
+            <div style="font-size:.78rem;color:var(--muted)">Rata-rata Visit</div>
+          </div>
+        </div>
+
+        <div id="custCount" style="font-size:.88rem;color:var(--muted);margin-bottom:10px">Memuat…</div>
+        <table id="custTable" style="font-size:.85rem">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Nama</th>
+              <th>No WA</th>
+              <th style="text-align:center">Visit</th>
+              <th style="text-align:center">Poin</th>
+              <th style="text-align:right">Total Spent</th>
+              <th>Kunjungan Terakhir</th>
+              <th>Email</th>
+              <th>Sumber</th>
+            </tr>
+          </thead>
+          <tbody id="custBody"><tr><td colspan="9" class="empty">Belum ada data</td></tr></tbody>
         </table>
+
+        <!-- Pagination -->
+        <div id="custPagination" style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:.85rem;color:var(--muted)">
+          <button class="btn btn-ghost" id="btnCustPrev" style="font-size:.8rem;padding:4px 12px" disabled>← Prev</button>
+          <span id="custPageInfo">—</span>
+          <button class="btn btn-ghost" id="btnCustNext" style="font-size:.8rem;padding:4px 12px" disabled>Next →</button>
+          <span style="margin-left:auto">Per halaman:
+            <select id="custPerPage" class="inline-select" style="font-size:.82rem">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </span>
+        </div>
       </div>
     </div>
 
@@ -765,38 +826,165 @@ document.getElementById('btnSyncCustomers')?.addEventListener('click',     () =>
 
 // ── CUSTOMERS PAGE ────────────────────────────────────────────
 
-async function loadCustomersPage() {
+let _custOffset = 0;
+let _custTotal  = 0;
+let _custSearchTimer = null;
+
+function _custPerPage() { return Number(document.getElementById('custPerPage')?.value || 100); }
+function _custSegment() { return document.getElementById('custSegment')?.value || ''; }
+function _custSearchVal() { return (document.getElementById('custSearch')?.value || '').trim(); }
+
+async function loadCustomersPage(offset = 0) {
+  _custOffset = offset;
+  const limit   = _custPerPage();
+  const search  = _custSearchVal();
+  const segment = _custSegment();
+
   document.getElementById('custCount').textContent = 'Memuat…';
-  document.getElementById('custBody').innerHTML = '<tr><td colspan="5" class="empty">Memuat…</td></tr>';
+  document.getElementById('custBody').innerHTML = `<tr><td colspan="9" class="empty"><span class="spinner"></span> Memuat data…</td></tr>`;
+  document.getElementById('btnCustPrev').disabled = true;
+  document.getElementById('btnCustNext').disabled = true;
 
   try {
-    // Ambil data customer dari Supabase via admin API
-    const res = await apiFetch('/api/customers?limit=100');
-    const data = await res.json();
-    const list = data.customers || data.data || data || [];
+    let url = `/api/customers?limit=${limit}&offset=${offset}`;
+    if (search)  url += `&search=${encodeURIComponent(search)}`;
+    if (segment) url += `&segment=${segment}`;
 
-    document.getElementById('custCount').textContent = `Total: ${list.length} customer tersimpan`;
+    const res = await apiFetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const list = data.data || data.customers || data || [];
+
+    // Total count — server may return it, otherwise estimate from current batch
+    _custTotal = data.total ?? (list.length < limit ? offset + list.length : offset + list.length + 1);
+
+    // ── Stats (only on first page, no search/segment filter) ──
+    if (offset === 0 && !search && !segment) {
+      try {
+        const statsRes = await apiFetch('/api/customers?limit=1&offset=0');
+        const statsData = await statsRes.json();
+        const allList = statsData.data || statsData.customers || [];
+        // Compute stats from current list (best-effort, real stats need dedicated endpoint)
+        const maxVisits = list.reduce((m, c) => Math.max(m, c.visits || 0), 0);
+        const avgVisits = list.length ? (list.reduce((s, c) => s + (c.visits || 0), 0) / list.length).toFixed(1) : 0;
+        const mokaCount = list.filter(c => c.source === 'moka').length;
+        document.getElementById('statCustTotal').textContent = (_custTotal).toLocaleString('id-ID');
+        document.getElementById('statCustMoka').textContent = mokaCount > 0 ? mokaCount.toLocaleString('id-ID') : '—';
+        document.getElementById('statCustMaxVisit').textContent = maxVisits;
+        document.getElementById('statCustAvgVisit').textContent = avgVisits;
+      } catch (_) {}
+    }
+
+    const startNum = offset + 1;
+    document.getElementById('custCount').textContent =
+      `Menampilkan ${startNum}–${offset + list.length} dari ${_custTotal.toLocaleString('id-ID')} customer`;
 
     if (!list.length) {
-      document.getElementById('custBody').innerHTML = '<tr><td colspan="5" class="empty">Belum ada customer — klik "Sync Sekarang" dulu</td></tr>';
+      document.getElementById('custBody').innerHTML = '<tr><td colspan="9" class="empty">Belum ada customer — klik "Sync Sekarang" dulu</td></tr>';
+      document.getElementById('custPageInfo').textContent = '0 data';
       return;
     }
 
-    document.getElementById('custBody').innerHTML = list.map(c => `
-      <tr>
-        <td>${c.name || '—'}</td>
-        <td>${c.wa || c.phone_e164 || '—'}</td>
-        <td>${c.email || '—'}</td>
-        <td>${c.birthday || '—'}</td>
-        <td><span style="font-size:.75rem;padding:2px 8px;border-radius:999px;background:${c.source === 'moka' ? 'rgba(52,152,219,.2)' : 'rgba(46,204,113,.2)'}">
-          ${c.source || 'web'}</span></td>
-      </tr>
-    `).join('');
+    const fmt = n => n ? 'Rp ' + Number(n).toLocaleString('id-ID') : '—';
+    const fmtDate = d => d ? String(d).slice(0, 10) : '—';
+    const srcColor = s => s === 'moka' ? 'rgba(52,152,219,.25)' : s === 'web' ? 'rgba(46,204,113,.25)' : 'rgba(136,136,136,.2)';
+
+    document.getElementById('custBody').innerHTML = list.map((c, i) => {
+      const visits = c.visits || 0;
+      const points = c.points ?? (visits * 10);
+      const visitBadge = visits >= 10
+        ? `<span style="background:rgba(243,156,18,.2);color:#f39c12;border-radius:4px;padding:1px 6px">${visits}</span>`
+        : visits >= 5
+          ? `<span style="background:rgba(52,152,219,.2);color:#3498db;border-radius:4px;padding:1px 6px">${visits}</span>`
+          : `${visits}`;
+      return `<tr>
+        <td style="color:var(--muted);font-size:.78rem">${offset + i + 1}</td>
+        <td><strong>${c.name || '—'}</strong></td>
+        <td style="font-size:.82rem;color:var(--muted)">${c.wa || c.phone_e164 || '—'}</td>
+        <td style="text-align:center">${visitBadge}</td>
+        <td style="text-align:center;color:var(--yellow)">${points || '—'}</td>
+        <td style="text-align:right;font-size:.82rem">${fmt(c.total_spent)}</td>
+        <td style="font-size:.8rem;color:var(--muted)">${fmtDate(c.last_visit)}</td>
+        <td style="font-size:.8rem;color:var(--muted)">${c.email || '—'}</td>
+        <td><span style="font-size:.72rem;padding:2px 7px;border-radius:999px;background:${srcColor(c.source)}">${c.source || 'web'}</span></td>
+      </tr>`;
+    }).join('');
+
+    // Pagination
+    const page    = Math.floor(offset / limit) + 1;
+    const maxPage = Math.ceil(_custTotal / limit);
+    document.getElementById('custPageInfo').textContent = `Hal ${page} / ${maxPage}`;
+    document.getElementById('btnCustPrev').disabled = offset === 0;
+    document.getElementById('btnCustNext').disabled = list.length < limit || offset + list.length >= _custTotal;
+
   } catch (err) {
     document.getElementById('custCount').textContent = 'Gagal memuat';
-    document.getElementById('custBody').innerHTML = `<tr><td colspan="5" class="empty">Error: ${err.message}</td></tr>`;
+    document.getElementById('custBody').innerHTML = `<tr><td colspan="9" class="empty">❌ Error: ${err.message}</td></tr>`;
   }
 }
+
+// Export CSV
+document.getElementById('btnCustExport')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btnCustExport');
+  btn.disabled = true;
+  btn.textContent = 'Mengambil data…';
+  try {
+    const limit = 500;
+    let offset = 0;
+    let all = [];
+    const search  = _custSearchVal();
+    const segment = _custSegment();
+    while (true) {
+      let url = `/api/customers?limit=${limit}&offset=${offset}`;
+      if (search)  url += `&search=${encodeURIComponent(search)}`;
+      if (segment) url += `&segment=${segment}`;
+      const res = await apiFetch(url);
+      const data = await res.json();
+      const batch = data.data || data.customers || [];
+      all = all.concat(batch);
+      if (batch.length < limit) break;
+      offset += limit;
+      if (offset > 20000) break; // safety cap
+    }
+    const header = 'Nama,WA,Email,Visit,Poin,Total Spent,Kunjungan Terakhir,Sumber';
+    const rows = all.map(c => [
+      `"${(c.name||'').replace(/"/g,'""')}"`,
+      c.wa || c.phone_e164 || '',
+      c.email || '',
+      c.visits || 0,
+      c.points ?? ((c.visits||0)*10),
+      c.total_spent || 0,
+      String(c.last_visit||'').slice(0,10),
+      c.source || 'web',
+    ].join(','));
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `customers_redbox_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  } catch (e) {
+    showAlert('alertCustomers', 'error', '❌ Export gagal: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '⬇ CSV';
+  }
+});
+
+// Pagination buttons
+document.getElementById('btnCustPrev')?.addEventListener('click', () => {
+  const step = _custPerPage();
+  loadCustomersPage(Math.max(0, _custOffset - step));
+});
+document.getElementById('btnCustNext')?.addEventListener('click', () => {
+  loadCustomersPage(_custOffset + _custPerPage());
+});
+document.getElementById('custPerPage')?.addEventListener('change', () => loadCustomersPage(0));
+document.getElementById('custSegment')?.addEventListener('change', () => loadCustomersPage(0));
+document.getElementById('custSearch')?.addEventListener('input', () => {
+  clearTimeout(_custSearchTimer);
+  _custSearchTimer = setTimeout(() => loadCustomersPage(0), 400);
+});
 
 async function runCustSync(dryRun) {
   const btnDry  = document.getElementById('btnCustDry');

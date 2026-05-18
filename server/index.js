@@ -1248,15 +1248,17 @@ app.get('/api/customers', adminAuth, async (req, res) => {
   const ninetyStr = localDateStr(ninetyDaysAgo);
 
   if (DB_TYPE === 'supabase') {
-    let q = supabase.from('customers').select('*').order('visits', { ascending: false }).range(Number(offset), Number(offset) + Number(limit) - 1);
+    let q = supabase.from('customers').select('*', { count: 'exact' }).order('visits', { ascending: false }).range(Number(offset), Number(offset) + Number(limit) - 1);
     if (search) q = q.or(`name.ilike.%${search}%,wa.ilike.%${search}%`);
     // Segmentasi
     if (segment === 'loyal')  q = q.gte('visits', 5);
     if (segment === 'atrisk') q = q.lt('last_visit', thirtyStr).gte('last_visit', ninetyStr);
     if (segment === 'lost')   q = q.lt('last_visit', ninetyStr);
-    const { data, error } = await q;
+    const { data, error, count } = await q;
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ data });
+    // Add computed points field (visits * 10) if not stored in DB
+    const enriched = (data || []).map(c => ({ ...c, points: c.points ?? (c.visits || 0) * 10 }));
+    return res.json({ data: enriched, total: count ?? enriched.length });
   } else {
     let sql = 'SELECT * FROM customers WHERE 1=1';
     const params = [];
