@@ -926,21 +926,23 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // Sync to Airtable
       syncBookingToAirtable(data);
 
-      // Fire-and-forget: kirim WA konfirmasi + notif admin ke semua cabang
+      // Kirim WA konfirmasi ke pelanggan + notif admin
+      // Awaited (bukan fire-and-forget) agar selesai sebelum res.end() — Vercel kills
+      // orphaned promises setelah response dikirim.
       if (desiredStatus === 'confirmed' && data.wa) {
-        (async () => {
+        let barberName = null;
+        if (data.barber_id) {
           try {
-            let barberName = null;
-            if (data.barber_id) {
-              const { data: b } = await supabase.from('barbers').select('name').eq('id', data.barber_id).single();
-              barberName = b?.name || null;
-            }
-            await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
-            notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
-          } catch (e) {
-            console.warn('[WA Confirm] failed:', e.message);
-          }
-        })();
+            const { data: b } = await supabase.from('barbers').select('name').eq('id', data.barber_id).single();
+            barberName = b?.name || null;
+          } catch (_) {}
+        }
+        try {
+          await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
+        } catch (e) {
+          console.warn('[WA Confirm] failed:', e.message);
+        }
+        notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
       }
 
       // Auto-book: untuk booking dari public website, status langsung CONFIRMED
