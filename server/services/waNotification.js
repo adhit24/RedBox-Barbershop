@@ -10,48 +10,68 @@ const { sendWA } = require('./fonnte');
 
 const ADMIN_NUMBER = process.env.WA_ADMIN_NUMBER;
 
-// 1. Notifikasi ke pelanggan setelah booking berhasil
+const BRANCH_LABELS = {
+  bypass:    'RedBox Bypass (Pusat)',
+  samadikun: 'RedBox Samadikun',
+  csb:       'RedBox CSB Mall',
+  sumber:    'RedBox Sumber',
+  tegal:     'RedBox Tegal',
+};
+
+function branchLabel(location) {
+  return BRANCH_LABELS[String(location || '').toLowerCase()] || 'RedBox Barbershop';
+}
+
+// 1. Konfirmasi booking ke pelanggan — dikirim otomatis setelah booking berhasil
 async function notifyCustomerBookingConfirmed(booking) {
-  const {
-    name, wa, service, date, time, location, barber_name, price, duration
-  } = booking;
+  const { name, wa, service, date, time, location, barber_name, price, duration } = booking;
 
-  const tanggal = formatDate(date);
-  const message = `Halo *${name}*! 👋
+  const fn     = (name || 'Kak').split(' ')[0];
+  const branch = branchLabel(location);
+  const tgl    = formatDate(date);
+  const harga  = price ? `\n💰 *Rp ${Number(price).toLocaleString('id-ID')}*` : '';
+  const durasi = duration ? `\n⏱ Durasi ±${duration}` : '';
+  const kapster = barber_name ? `\n💈 Kapster: *${barber_name}*` : '';
 
-✅ *Booking kamu berhasil dikonfirmasi!*
+  const message =
+`Haii kak *${fn}*! 👋
 
-📋 *Detail Appointment:*
-• Layanan  : ${service}${price ? ` (Rp ${Number(price).toLocaleString('id')})` : ''}
-• Tanggal  : ${tanggal}
-• Jam      : ${time} WIB
-• Lokasi   : RedBox Barbershop ${capitalize(location || '')}
-${barber_name ? `• Barber   : ${barber_name}\n` : ''}${duration ? `• Durasi   : ±${duration} menit\n` : ''}
-⚠️ Harap datang tepat waktu ya!
-Jika ada perubahan, hubungi kami segera.
+Yeay, booking kamu sudah *CONFIRMED* nih! 🎉✅
 
-Terima kasih sudah booking di *RedBox Barbershop* 🔴✂️`;
+📋 *Detail Booking:*
+✂️ ${service}${harga}${durasi}
+📅 ${tgl}
+⏰ Jam *${time} WIB*${kapster}
+📍 *${branch}*
+
+Kami udah catat jadwalnya — tinggal dateng aja kak! 😄
+
+Ada yang mau ditanyain? Mau tanya soal layanan, tips perawatan rambut, atau hal lain — aku siap bantu kapan aja! 💬✂️`;
 
   return sendWA(wa, message);
 }
 
-// 2. Reminder H-1 ke pelanggan (sehari sebelum)
+// 2. Reminder H-1 ke pelanggan (sehari sebelum) — dipakai oleh cron reminders.js
 async function notifyCustomerReminderH1(booking) {
   const { name, wa, service, date, time, location, barber_name } = booking;
 
-  const tanggal = formatDate(date);
-  const message = `Halo *${name}*! 👋
+  const fn     = (name || 'Kak').split(' ')[0];
+  const branch = branchLabel(location);
+  const tgl    = formatDate(date);
+  const kapster = barber_name ? `\n💈 Kapster: *${barber_name}*` : '';
 
-🔔 *Reminder: Besok ada jadwal kamu!*
+  const message =
+`Halo kak *${fn}*! 👋
 
-📋 *Detail Appointment:*
-• Layanan  : ${service}
-• Tanggal  : ${tanggal} (besok)
-• Jam      : ${time} WIB
-• Lokasi   : RedBox Barbershop ${capitalize(location || '')}
-${barber_name ? `• Barber   : ${barber_name}\n` : ''}
-Sampai jumpa besok! ✂️
-*RedBox Barbershop* 🔴`;
+🔔 *Reminder: Besok ada jadwal kamu di RedBox!*
+
+📅 ${tgl}
+⏰ Jam *${time} WIB*
+✂️ ${service}${kapster}
+📍 *${branch}*
+
+Dateng tepat waktu ya kak biar langsung bisa dilayani! 😊
+Sampai besok! ✂️🔴`;
 
   return sendWA(wa, message);
 }
@@ -60,23 +80,22 @@ Sampai jumpa besok! ✂️
 async function notifyAdminNewBooking(booking) {
   if (!ADMIN_NUMBER) return null;
 
-  const {
-    name, wa, service, date, time, location, barber_name, price, notes
-  } = booking;
+  const { name, wa, service, date, time, location, barber_name, price, notes } = booking;
 
-  const tanggal = formatDate(date);
-  const message = `🔔 *Booking Baru Masuk!*
+  const tgl = formatDate(date);
+  const message =
+`🔔 *Booking Baru Masuk!*
 
 👤 *Customer:*
 • Nama   : ${name}
 • WA     : ${wa}
 
 📋 *Detail:*
-• Layanan : ${service}${price ? ` (Rp ${Number(price).toLocaleString('id')})` : ''}
-• Tanggal : ${tanggal}
+• Layanan : ${service}${price ? ` (Rp ${Number(price).toLocaleString('id-ID')})` : ''}
+• Tanggal : ${tgl}
 • Jam     : ${time} WIB
-• Lokasi  : ${capitalize(location || '-')}
-${barber_name ? `• Barber  : ${barber_name}\n` : ''}${notes ? `• Catatan : ${notes}\n` : ''}
+• Lokasi  : ${branchLabel(location)}
+${barber_name ? `• Kapster : ${barber_name}\n` : ''}${notes ? `• Catatan : ${notes}\n` : ''}
 #RedBoxBooking`;
 
   return sendWA(ADMIN_NUMBER, message);
@@ -86,19 +105,15 @@ ${barber_name ? `• Barber  : ${barber_name}\n` : ''}${notes ? `• Catatan : $
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
-  const d = new Date(dateStr);
+  const d = new Date(dateStr + 'T12:00:00');
   if (isNaN(d)) return dateStr;
   return d.toLocaleDateString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 }
 
-function capitalize(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-}
-
 module.exports = {
   notifyCustomerBookingConfirmed,
   notifyCustomerReminderH1,
-  notifyAdminNewBooking
+  notifyAdminNewBooking,
 };

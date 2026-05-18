@@ -11,6 +11,7 @@ const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
 const { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured, getBarbersTableName } = require('./airtable');
+const { notifyCustomerBookingConfirmed, notifyAdminNewBooking } = require('./services/waNotification');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -925,6 +926,23 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // Sync to Airtable
       syncBookingToAirtable(data);
 
+      // Fire-and-forget: kirim WA konfirmasi + notif admin ke semua cabang
+      if (desiredStatus === 'confirmed' && data.wa) {
+        (async () => {
+          try {
+            let barberName = null;
+            if (data.barber_id) {
+              const { data: b } = await supabase.from('barbers').select('name').eq('id', data.barber_id).single();
+              barberName = b?.name || null;
+            }
+            await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
+            notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
+          } catch (e) {
+            console.warn('[WA Confirm] failed:', e.message);
+          }
+        })();
+      }
+
       // Auto-book: untuk booking dari public website, status langsung CONFIRMED
       // dan langsung dibridge ke schedules + push ke Moka (non-blocking untuk admin draft).
       if (supabase && desiredStatus === 'confirmed') {
@@ -974,6 +992,15 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       );
 
       syncBookingToAirtable(newBooking[0]);
+
+      // Fire-and-forget: kirim WA konfirmasi + notif admin ke semua cabang
+      if (desiredStatus === 'confirmed' && newBooking[0]?.wa) {
+        notifyCustomerBookingConfirmed({ ...newBooking[0], barber_name: null }).catch(e =>
+          console.warn('[WA Confirm] failed:', e.message)
+        );
+        notifyAdminNewBooking({ ...newBooking[0], barber_name: null }).catch(() => {});
+      }
+
       let moka = null;
       if (desiredStatus === 'confirmed' && shouldPushBookingToMokaOnCreate(newBooking[0]?.location)) {
         try {
