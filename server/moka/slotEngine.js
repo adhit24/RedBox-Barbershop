@@ -141,8 +141,8 @@ async function getAvailableSlots(supabase, {
       const slotStart = cursor;
       const slotEnd   = cursor + durationMinutes * 60_000;
 
-      // Skip slots already in the past (with 15 min buffer)
-      if (slotStart < now + 15 * 60_000) {
+      // Skip slots already in the past (with 5 min buffer)
+      if (slotStart < now + 5 * 60_000) {
         cursor += SLOT_INTERVAL_MIN * 60_000;
         continue;
       }
