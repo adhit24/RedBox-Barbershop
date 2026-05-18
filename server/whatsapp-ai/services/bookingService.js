@@ -93,7 +93,7 @@ const handle = (phone, name, text) => {
       session.state = STATES.AWAITING_SERVICE;
       setSession(phone, session);
       return {
-        reply: `Oke, cabang *${branch.name}* ya kak 📍\n\nLayanan apa yang mau kamu pilih?\n\n• Haircut (75k)\n• Two Block (85k)\n• Fade Cut (90k)\n• Haircut + Wash (95k)\n• Hairspa (120k)\n• Beard Trim (45k)\n• Combo (110k)\n• Coloring (mulai 200k)\n\nKetik nama layanannya ya 😊`,
+        reply: `Oke, cabang *${branch.name}* ya kak 📍\n\nLayanan apa yang mau kamu pilih?\n\n• Gentleman Grooming (95k)\n• Hair Spa (110k)\n• Hair Color (160k)\n• Shaving (40k)\n• Men Massage (145k)\n\nKetik nama layanannya ya 😊`,
         done: false
       };
     }

@@ -313,8 +313,7 @@ CATATAN HARGA: Harga di CSB Mall sedikit lebih tinggi dibanding cabang lain.
 === LAYANAN & HARGA (Harga reguler / CSB Mall) ===
 
 ✂️ HAIR:
-• Hair Cut — Rp 85.000 / Rp 120.000 (45 menit) — potongan presisi/fade modern
-• Hair and Fade Cut — Rp 95.000 / Rp 130.000 (60 menit) — fade dengan shade & degradasi
+• Gentleman Grooming — Rp 95.000 / Rp 120.000 (45 menit) — potongan presisi modern termasuk fade
 • Hair Tattoo Single Side — Rp 45.000 / Rp 55.000 (15 menit) — desain seni 1 sisi
 • Hair Tattoo Double Side — Rp 75.000 / Rp 85.000 (30 menit) — desain seni 2 sisi
 • Hair Color — Rp 160.000 / Rp 160.000 (45 menit) — pewarnaan profesional
@@ -347,7 +346,7 @@ CATATAN HARGA: Harga di CSB Mall sedikit lebih tinggi dibanding cabang lain.
 • Redbox Earl Grooming — Rp 185.000 / Rp 195.000 (90 menit)
   isi: Haircut + Face & Back Massage + Hair Spa
 • Redbox Baron Grooming — Rp 150.000 / Rp 190.000 (90 menit)
-  isi: Haircut / Fade / Long Trim
+  isi: Gentleman Grooming
 • Redbox Noble Grooming — Rp 140.000 / Rp 150.000 (90 menit)
   isi: Haircut + Face & Back Massage + Ear Singeing
 
@@ -368,7 +367,7 @@ PARKIR: Gratis, luas, bisa motor & mobil.
 • Apakah bisa walk-in? Ya, bisa. Tapi bisa antri, terutama weekend.
 • Berapa lama antri kalau walk-in? Tergantung kondisi, bisa 15–45 menit di jam sibuk.
 • Apakah bisa request kapster tertentu? Ya, saat booking online bisa pilih kapster favorit.
-• Untuk anak kecil bisa? Ya, bisa — layanan Hair Cut tersedia untuk semua usia.
+• Untuk anak kecil bisa? Ya, bisa — layanan Gentleman Grooming tersedia untuk semua usia.
 • Ada membership / loyalty? Untuk info terbaru, tanya langsung ke outlet.
 • Bisa lihat portofolio? Cek Instagram RedBox Barbershop untuk inspirasi gaya.
 • Apakah ada promo? Promo bisa berubah — tanya ke outlet terdekat untuk info terkini.
@@ -377,8 +376,7 @@ PARKIR: Gratis, luas, bisa motor & mobil.
 Pahami maksud customer meski kata-katanya tidak eksak. Petakan ke layanan yang tersedia:
 
 RAMBUT:
-- "cukur rambut" / "potong rambut" / "pangkas" / "trim rambut" / "rapiin rambut" → Hair Cut (Rp 85.000)
-- "fade" / "cukur fade" / "undercut" / "potongan degradasi" → Hair and Fade Cut (Rp 95.000)
+- "cukur rambut" / "potong rambut" / "pangkas" / "trim rambut" / "rapiin rambut" / "fade" / "cukur fade" / "undercut" / "potongan degradasi" → Gentleman Grooming (Rp 95.000)
 - "cat rambut" / "warnain rambut" / "coloring" / "semir" → Hair Color (Rp 160.000)
 - "bleaching" / "lighten" / "putihin rambut" → Hair Bleaching (Rp 360.000)
 - "highlight" / "streak" / "ombre" → Hair Highlighting (Rp 310.000)

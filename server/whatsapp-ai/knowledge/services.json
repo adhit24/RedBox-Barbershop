@@ -1,12 +1,9 @@
 {
   "services": [
-    { "name": "Haircut", "price": "75k", "duration": "30 menit", "description": "Potong rambut standar" },
-    { "name": "Haircut + Wash", "price": "95k", "duration": "45 menit", "description": "Potong + cuci rambut" },
-    { "name": "Two Block", "price": "85k", "duration": "40 menit", "description": "Korean style two block cut" },
-    { "name": "Fade Cut", "price": "90k", "duration": "40 menit", "description": "Clean fade dengan mesin" },
-    { "name": "Hairspa", "price": "120k", "duration": "60 menit", "description": "Perawatan rambut intensif" },
-    { "name": "Coloring", "price": "mulai 200k", "duration": "90 menit", "description": "Pewarnaan rambut" },
-    { "name": "Beard Trim", "price": "45k", "duration": "20 menit", "description": "Cukur dan rapikan jenggot" },
-    { "name": "Combo (Haircut + Beard)", "price": "110k", "duration": "50 menit", "description": "Potong rambut + jenggot" }
+    { "name": "Gentleman Grooming", "price": "95k", "price_csb": "120k", "duration": "45 menit", "description": "Potongan presisi modern termasuk fade" },
+    { "name": "Hair Spa", "price": "110k", "price_csb": "120k", "duration": "30 menit", "description": "Perawatan kesehatan rambut" },
+    { "name": "Hair Color", "price": "160k", "price_csb": "160k", "duration": "45 menit", "description": "Pewarnaan profesional" },
+    { "name": "Shaving", "price": "40k", "price_csb": "50k", "duration": "20 menit", "description": "Cukur jenggot/kumis standar" },
+    { "name": "Men Massage Service", "price": "145k", "price_csb": "155k", "duration": "45 menit", "description": "Pijat relaksasi" }
   ]
 }
