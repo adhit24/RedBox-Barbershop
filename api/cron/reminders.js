@@ -5,7 +5,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { sendWA } = require('../../server/services/fonnte');
+const { notifyCustomerReminderH1 } = require('../../server/services/waNotification');
 
 function tomorrowWIB() {
   const now = new Date();
@@ -18,40 +18,6 @@ function tomorrowWIB() {
   return `${y}-${m}-${d}`;
 }
 
-function dayName(dateStr) {
-  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-  const d = new Date(dateStr + 'T00:00:00');
-  return days[d.getDay()];
-}
-
-function formatDate(dateStr) {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  const [y, m, d] = dateStr.split('-');
-  return `${parseInt(d)} ${months[parseInt(m) - 1]} ${y}`;
-}
-
-const BRANCH_LABELS = {
-  bypass:    'RedBox Bypass (Pusat)',
-  samadikun: 'RedBox Samadikun',
-  csb:       'RedBox CSB Mall',
-  sumber:    'RedBox Sumber',
-  tegal:     'RedBox Tegal',
-};
-
-function branchLabel(location) {
-  return BRANCH_LABELS[String(location || '').toLowerCase()] || 'RedBox Barbershop';
-}
-
-function buildReminderMessage(booking, barberName) {
-  const { name, service, time, date, location } = booking;
-  const fn = (name || 'Kak').split(' ')[0];
-  const day = dayName(date);
-  const dateFormatted = formatDate(date);
-  const branch = branchLabel(location);
-  const barberLine = barberName ? `\n💈 Kapster: *${barberName}*` : '';
-
-  return `Haii kak ${fn}! 👋\n\nKami dari *RedBox Barbershop* mau ngingetin — besok ada jadwalmu lho!\n\n📅 *${day}, ${dateFormatted}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*${barberLine}\n📍 *${branch}*\n\nJangan sampai kelewatan ya kak! Kalau mau reschedule, bisa langsung di:\n🔗 redboxbarbershop.com/booking.html\n\nSee you tomorrow! ✂️✨`;
-}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).end();
@@ -105,14 +71,19 @@ module.exports = async function handler(req, res) {
       if (!booking.wa) continue;
 
       const barberName = barberMap[booking.barber_id] || null;
-      const msg = buildReminderMessage(booking, barberName);
 
       try {
-        await sendWA(booking.wa, msg);
-        sent++;
-        console.log(`[Reminders] Sent to ${booking.wa} (${booking.name})`);
-        // Mark as reminded to prevent duplicate sends across Vercel instances
-        await supabase.from('bookings').update({ remind_h1_sent: true }).eq('id', booking.id);
+        const result = await notifyCustomerReminderH1({ ...booking, barber_name: barberName });
+        // Fonnte returns { status: false, reason: ... } on soft failure — treat as failure
+        if (result && result.status === false) {
+          failed++;
+          console.error(`[Reminders] Fonnte rejected ${booking.wa} (${booking.name}): ${JSON.stringify(result)}`);
+        } else {
+          sent++;
+          console.log(`[Reminders] Sent to ${booking.wa} (${booking.name})`);
+          // Mark as reminded to prevent duplicate sends across Vercel instances
+          await supabase.from('bookings').update({ remind_h1_sent: true }).eq('id', booking.id);
+        }
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
         failed++;

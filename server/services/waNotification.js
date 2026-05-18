@@ -9,6 +9,9 @@
 const { sendWA } = require('./fonnte');
 
 const ADMIN_NUMBER = process.env.WA_ADMIN_NUMBER;
+if (!ADMIN_NUMBER) {
+  console.warn('[waNotification] WA_ADMIN_NUMBER env var not set — admin booking notifications will be skipped');
+}
 
 const BRANCH_LABELS = {
   bypass:    'RedBox Bypass (Pusat)',
