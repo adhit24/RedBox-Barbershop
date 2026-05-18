@@ -5,26 +5,15 @@
 const REDBOX_SERVICES = [
   // ── HAIR ──────────────────────────────────────
   {
-    id: 'haircut',
+    id: 'gentleman-grooming',
     category: 'haircut',
-    name: 'Hair Cut',
+    name: 'Gentleman Grooming',
     icon: '✂️',
     img: 'Brand_assets/Services/Hair_Cut.jpg',
-    duration: '45 menit',
-    price: 85000,
-    csbPrice: 120000,
-    desc: 'Potongan rambut presisi atau teknik fade modern untuk tampilan yang tajam.'
-  },
-  {
-    id: 'haircut-fade',
-    category: 'haircut',
-    name: 'Hair and Fade Cut',
-    icon: '✂️',
-    img: 'Brand_assets/Services/Fade_Cut.jpg',
     duration: '60 menit',
     price: 95000,
-    csbPrice: 130000,
-    desc: 'Potongan rambut presisi atau teknik fade modern untuk tampilan yang tajam dengan shade dan fade degradasi'
+    csbPrice: 120000,
+    desc: 'Paket grooming lengkap: haircut presisi + fade modern + finish styling untuk tampilan pria yang tajam dan rapi.'
   },
   {
     id: 'hair-tattoo-single',
