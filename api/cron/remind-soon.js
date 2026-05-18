@@ -81,13 +81,15 @@ module.exports = async function handler(req, res) {
     // Match bookings in the next hour (e.g. 17:00–17:59).
     // Use gte/lte instead of like — `time without time zone` doesn't support LIKE.
     // barber_id fetched separately below to avoid FK join failure crashing the whole cron.
+    // Only confirmed bookings; skip already-reminded ones (dedup across Vercel instances).
     const { data: bookings, error } = await supabase
       .from('bookings')
       .select('id, name, wa, service, time, date, location, barber_id')
       .eq('date', date)
       .gte('time', `${hourPrefix}:00:00`)
       .lte('time', `${hourPrefix}:59:59`)
-      .not('status', 'in', '("cancelled","no_show")')
+      .eq('status', 'confirmed')
+      .eq('remind_soon_sent', false)
       .not('wa', 'is', null);
 
     if (error) {
@@ -122,6 +124,8 @@ module.exports = async function handler(req, res) {
         await sendWA(booking.wa, msg);
         sent++;
         console.log(`[RemindSoon] Sent to ${booking.wa} (${booking.name}) for ${booking.time}`);
+        // Mark as reminded to prevent duplicate sends across Vercel instances
+        await supabase.from('bookings').update({ remind_soon_sent: true }).eq('id', booking.id);
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
         failed++;

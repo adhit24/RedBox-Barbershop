@@ -75,7 +75,8 @@ module.exports = async function handler(req, res) {
       .from('bookings')
       .select('id, name, wa, service, time, date, location, barber_id')
       .eq('date', tomorrow)
-      .not('status', 'in', '("cancelled","no_show")')
+      .eq('status', 'confirmed')
+      .eq('remind_h1_sent', false)
       .not('wa', 'is', null);
 
     if (error) {
@@ -110,6 +111,8 @@ module.exports = async function handler(req, res) {
         await sendWA(booking.wa, msg);
         sent++;
         console.log(`[Reminders] Sent to ${booking.wa} (${booking.name})`);
+        // Mark as reminded to prevent duplicate sends across Vercel instances
+        await supabase.from('bookings').update({ remind_h1_sent: true }).eq('id', booking.id);
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
         failed++;
