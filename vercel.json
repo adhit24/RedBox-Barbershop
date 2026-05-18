@@ -40,25 +40,31 @@
     "api/moka/sync-customers.js": {
       "maxDuration": 120,
       "includeFiles": "server/**"
+    },
+    "api/cron/expire-stale-bills.js": {
+      "maxDuration": 30,
+      "includeFiles": "server/**"
     }
   },
   "crons": [
-    { "path": "/api/cron/reminders",      "schedule": "0 3 * * *"  },
-    { "path": "/api/cron/remind-soon",    "schedule": "0 * * * *"  },
-    { "path": "/api/cron/birthday",       "schedule": "0 1 * * *"  },
-    { "path": "/api/moka/sync-customers", "schedule": "0 20 * * *" }
+    { "path": "/api/cron/reminders",          "schedule": "0 3 * * *"   },
+    { "path": "/api/cron/remind-soon",        "schedule": "0 * * * *"   },
+    { "path": "/api/cron/birthday",           "schedule": "0 1 * * *"   },
+    { "path": "/api/moka/sync-customers",     "schedule": "0 20 * * *"  },
+    { "path": "/api/cron/expire-stale-bills", "schedule": "*/15 * * * *" }
   ],
   "rewrites": [
-    { "source": "/api/ai/analyze",        "destination": "/api/ai/analyze.js" },
-    { "source": "/api/ai/upload",         "destination": "/api/ai/upload.js" },
-    { "source": "/api/ai/hairstyle",      "destination": "/api/ai/hairstyle.js" },
-    { "source": "/api/ai/generate-image", "destination": "/api/ai/generate-image.js" },
-    { "source": "/api/wa/webhook",        "destination": "/api/wa/webhook.js" },
-    { "source": "/api/cron/reminders",   "destination": "/api/cron/reminders.js" },
-    { "source": "/api/cron/birthday",     "destination": "/api/cron/birthday.js" },
-    { "source": "/api/cron/remind-soon",        "destination": "/api/cron/remind-soon.js" },
-    { "source": "/api/moka/sync-customers",     "destination": "/api/moka/sync-customers.js" },
-    { "source": "/api/(.*)",              "destination": "/api/[...path].js" }
+    { "source": "/api/ai/analyze",            "destination": "/api/ai/analyze.js" },
+    { "source": "/api/ai/upload",             "destination": "/api/ai/upload.js" },
+    { "source": "/api/ai/hairstyle",          "destination": "/api/ai/hairstyle.js" },
+    { "source": "/api/ai/generate-image",     "destination": "/api/ai/generate-image.js" },
+    { "source": "/api/wa/webhook",            "destination": "/api/wa/webhook.js" },
+    { "source": "/api/cron/reminders",        "destination": "/api/cron/reminders.js" },
+    { "source": "/api/cron/birthday",         "destination": "/api/cron/birthday.js" },
+    { "source": "/api/cron/remind-soon",      "destination": "/api/cron/remind-soon.js" },
+    { "source": "/api/cron/expire-stale-bills", "destination": "/api/cron/expire-stale-bills.js" },
+    { "source": "/api/moka/sync-customers",   "destination": "/api/moka/sync-customers.js" },
+    { "source": "/api/(.*)",                  "destination": "/api/[...path].js" }
   ],
   "headers": [
     {

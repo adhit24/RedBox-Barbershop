@@ -1229,6 +1229,27 @@ async function _refreshFreshTodayData(supabase, outletId, date) {
   const daysAhead = _daysAheadInJakarta(date);
   if (daysAhead === null || daysAhead < 0 || daysAhead > 7) return null;
   const maxAgeMs = daysAhead === 0 ? 15_000 : 60_000;
+
+  // Expire outlet-wide blocks (barber_id IS NULL) for this outlet.
+  // These block ALL barbers simultaneously — use a shorter stale window (1h after end_time)
+  // so same-day GoShow bills with unresolved barbers don't linger past service end.
+  // Fire-and-forget: errors are silently ignored (non-critical cleanup).
+  const staleHours = Math.max(1, parseInt(process.env.MOKA_OPENBILL_OUTLET_WIDE_STALE_HOURS || '1', 10) || 1);
+  const cutoff = new Date(Date.now() - staleHours * 60 * 60 * 1000).toISOString();
+  supabase
+    .from('schedules')
+    .update({ status: 'cancelled', notes: '[auto] stale outlet-wide open bill — kasir lupa close di MokaPOS' })
+    .eq('outlet_id', outletId)
+    .eq('source', 'moka')
+    .eq('status', 'reserved')
+    .is('barber_id', null)
+    .lt('end_time', cutoff)
+    .select('id')
+    .then(({ data }) => {
+      if (data?.length) console.log(`[Expire] ${data.length} stale outlet-wide block(s) for outlet ${outletId}`);
+    })
+    .catch(() => {});
+
   return maybeRefreshOutletData(supabase, outletId, { maxAgeMs });
 }
 
