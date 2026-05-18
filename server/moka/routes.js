@@ -1231,11 +1231,13 @@ async function _refreshFreshTodayData(supabase, outletId, date) {
   const maxAgeMs = daysAhead === 0 ? 15_000 : 60_000;
 
   // Expire outlet-wide blocks (barber_id IS NULL) for this outlet.
-  // These block ALL barbers simultaneously — use a shorter stale window (1h after end_time)
-  // so same-day GoShow bills with unresolved barbers don't linger past service end.
+  // Expire jika SALAH SATU: end_time sudah lewat (+ 1h) ATAU created_at sudah > 2h
+  // sehingga open bill lintas hari tidak terus memblokir semua kapster.
   // Fire-and-forget: errors are silently ignored (non-critical cleanup).
-  const staleHours = Math.max(1, parseInt(process.env.MOKA_OPENBILL_OUTLET_WIDE_STALE_HOURS || '1', 10) || 1);
-  const cutoff = new Date(Date.now() - staleHours * 60 * 60 * 1000).toISOString();
+  const staleHours    = Math.max(1, parseInt(process.env.MOKA_OPENBILL_OUTLET_WIDE_STALE_HOURS || '1', 10) || 1);
+  const unmatchedHours = Math.max(1, parseInt(process.env.MOKA_OPENBILL_UNMATCHED_HOURS || '2', 10) || 2);
+  const cutoffEnd      = new Date(Date.now() - staleHours    * 60 * 60 * 1000).toISOString();
+  const cutoffCreated  = new Date(Date.now() - unmatchedHours * 60 * 60 * 1000).toISOString();
   supabase
     .from('schedules')
     .update({ status: 'cancelled', notes: '[auto] stale outlet-wide open bill — kasir lupa close di MokaPOS' })
@@ -1243,7 +1245,7 @@ async function _refreshFreshTodayData(supabase, outletId, date) {
     .eq('source', 'moka')
     .eq('status', 'reserved')
     .is('barber_id', null)
-    .lt('end_time', cutoff)
+    .or(`end_time.lt.${cutoffEnd},created_at.lt.${cutoffCreated}`)
     .select('id')
     .then(({ data }) => {
       if (data?.length) console.log(`[Expire] ${data.length} stale outlet-wide block(s) for outlet ${outletId}`);
