@@ -15,8 +15,16 @@ async function sendWA(to, message) {
     return null;
   }
 
-  // Normalize number: remove +, leading 0 → 62
-  const number = String(to).replace(/\D/g, '').replace(/^0/, '62');
+  // Normalize to full Indonesian international format (628xxx):
+  //   "+628xxx" → strip + → "628xxx"
+  //   "08xxx"   → remove leading 0, prepend 62 → "628xxx"
+  //   "8xxx"    → no leading 0 or 62 prefix → prepend 62 → "628xxx"
+  let number = String(to).replace(/\D/g, '');
+  if (number.startsWith('0')) {
+    number = '62' + number.slice(1);
+  } else if (!number.startsWith('62')) {
+    number = '62' + number;
+  }
 
   try {
     const controller = new AbortController();
