@@ -1,16 +1,13 @@
 /**
  * Vercel Cron — GET /api/cron/reminders
  * Runs daily at 10:00 WIB (03:00 UTC).
- * Sends WhatsApp booking reminder to customers with appointments tomorrow.
+ * Sends WhatsApp H-1 booking reminder to customers with appointments tomorrow.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendWA } = require('../../server/services/fonnte');
 
-const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
 function tomorrowWIB() {
-  // WIB = UTC+7
   const now = new Date();
   const wib = new Date(now.getTime() + 7 * 60 * 60 * 1000);
   const tom = new Date(wib);
@@ -33,21 +30,30 @@ function formatDate(dateStr) {
   return `${parseInt(d)} ${months[parseInt(m) - 1]} ${y}`;
 }
 
-function buildReminderMessage(booking) {
-  const { name, service, time, date } = booking;
-  const firstName = (name || 'Kak').split(' ')[0];
+const BRANCH_LABELS = {
+  bypass:    'RedBox Bypass (Pusat)',
+  samadikun: 'RedBox Samadikun',
+  csb:       'RedBox CSB Mall',
+  sumber:    'RedBox Sumber',
+  tegal:     'RedBox Tegal',
+};
+
+function branchLabel(location) {
+  return BRANCH_LABELS[String(location || '').toLowerCase()] || 'RedBox Barbershop';
+}
+
+function buildReminderMessage(booking, barberName) {
+  const { name, service, time, date, location } = booking;
+  const fn = (name || 'Kak').split(' ')[0];
   const day = dayName(date);
   const dateFormatted = formatDate(date);
+  const branch = branchLabel(location);
+  const barberLine = barberName ? `\n💈 Kapster: *${barberName}*` : '';
 
-  return pick([
-    `Haii kak ${firstName}! 👋\n\nKami dari *RedBox Barbershop* mau ngingetin nih — besok ada jadwalmu lho!\n\n📅 *${day}, ${dateFormatted}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*\n\nJangan sampai kelewatan ya kak! Kalau mau reschedule, bisa langsung di:\n🔗 redboxbarbershop.com/booking.html\n\nSee you tomorrow! ✂️✨`,
-    `Hai kak ${firstName}! Sebelum besok dimulai, kami mau ngingetin dulu 😊\n\n🗓️ Jadwalmu besok:\n• *${day}, ${dateFormatted}* jam *${time}*\n• Layanan: *${service}*\n\nDateng tepat waktu ya kak biar langsung bisa dilayani 💈\n\nAda yang perlu diubah? Langsung chat kami aja!\nSampai besok kak! 🙏`,
-    `Psst kak ${firstName}! Jangan lupa besok ada jadwal di RedBox ya 👀✂️\n\n⏰ *${time} WIB* — ${day}, ${dateFormatted}\n💈 *${service}*\n\nKita tunggu kedatangannya kak! 😄\n\nKalau ada perubahan jadwal, kabarin kami sebelum jam 9 malem ya 🙏`,
-  ]);
+  return `Haii kak ${fn}! 👋\n\nKami dari *RedBox Barbershop* mau ngingetin — besok ada jadwalmu lho!\n\n📅 *${day}, ${dateFormatted}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*${barberLine}\n📍 *${branch}*\n\nJangan sampai kelewatan ya kak! Kalau mau reschedule, bisa langsung di:\n🔗 redboxbarbershop.com/booking.html\n\nSee you tomorrow! ✂️✨`;
 }
 
 module.exports = async function handler(req, res) {
-  // Only allow GET (Vercel cron) or requests with cron secret
   if (req.method !== 'GET') return res.status(405).end();
 
   const secret = process.env.CRON_SECRET;
@@ -67,7 +73,7 @@ module.exports = async function handler(req, res) {
 
     const { data: bookings, error } = await supabase
       .from('bookings')
-      .select('id, name, wa, service, time, date')
+      .select('id, name, wa, service, time, date, location, barber_id')
       .eq('date', tomorrow)
       .not('status', 'in', '("cancelled","no_show")')
       .not('wa', 'is', null);
@@ -82,19 +88,28 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ sent: 0, date: tomorrow });
     }
 
+    // Bulk fetch barber names — non-blocking: if it fails, reminders still send without kapster name.
+    const barberMap = {};
+    const barberIds = [...new Set(bookings.map(b => b.barber_id).filter(Boolean))];
+    if (barberIds.length) {
+      const { data: barbers } = await supabase
+        .from('barbers').select('id, name').in('id', barberIds);
+      for (const b of barbers || []) barberMap[b.id] = b.name;
+    }
+
     let sent = 0;
     let failed = 0;
 
     for (const booking of bookings) {
       if (!booking.wa) continue;
 
-      const msg = buildReminderMessage(booking);
+      const barberName = barberMap[booking.barber_id] || null;
+      const msg = buildReminderMessage(booking, barberName);
 
       try {
         await sendWA(booking.wa, msg);
         sent++;
         console.log(`[Reminders] Sent to ${booking.wa} (${booking.name})`);
-        // Small delay between sends to avoid rate limit
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
         failed++;
