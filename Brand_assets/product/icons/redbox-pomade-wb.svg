@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <circle cx="32" cy="32" r="30" fill="#1a1a1a" stroke="#C1121F" stroke-width="2"/>
+  <rect x="20" y="22" width="24" height="24" rx="5" fill="#2a2a2a" stroke="#C1121F" stroke-width="1.5"/>
+  <rect x="26" y="18" width="12" height="6" rx="2" fill="#333" stroke="#C1121F" stroke-width="1"/>
+  <circle cx="32" cy="34" r="6" fill="none" stroke="#4a9eff" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <text x="32" y="36" text-anchor="middle" font-family="Arial" font-weight="bold" font-size="5" fill="#4a9eff">WB</text>
+  <text x="32" y="50" text-anchor="middle" font-family="Arial" font-size="4" fill="#888">WATERBASED</text>
+</svg>
