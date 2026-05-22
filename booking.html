@@ -15,6 +15,18 @@
   <link rel="stylesheet" href="css/animations.css" />
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    /* Home Service Mode — hide service step from progress bar */
+    body.hs-mode .bstep[data-step="1"],
+    body.hs-mode .bstep[data-step="1"] + .bstep-line { display: none; }
+    /* Home service banner in sidebar / step bar */
+    body.hs-mode .book-steps-bar::before {
+      content: '🏠 HOME SERVICE';
+      display: block; text-align: center;
+      font-size: .65rem; font-weight: 700; letter-spacing: .12em;
+      color: #C1121F; margin-bottom: 12px;
+    }
+  </style>
 </head>
 <body class="booking-page">
 
@@ -235,6 +247,13 @@
               </select>
               <span class="form-err">Please select a location</span>
             </div>
+            <!-- HOME SERVICE: Address field (shown only when home service mode) -->
+            <div class="form-group" id="hsAddressGroup" style="display:none">
+              <label for="custAddress">Alamat Lengkap <span style="color:#C1121F">*</span> <span style="color:var(--w50);font-size:.72rem">(Home Service)</span></label>
+              <textarea id="custAddress" rows="3" placeholder="e.g. Jl. Flamboyan No.12, RT 03/RW 05, Kesambi, Kota Cirebon"></textarea>
+              <span class="form-err">Masukkan alamat lengkap untuk home service</span>
+              <p style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:6px;line-height:1.5">⚠️ Jarak maksimal 5 KM dari cabang terdekat. Tim kami akan konfirmasi via WhatsApp.</p>
+            </div>
             <div class="form-group">
               <label for="custNotes">Notes <span style="color:var(--w50)">(optional)</span></label>
               <textarea id="custNotes" rows="3" placeholder="e.g. fade pendek di samping..."></textarea>
@@ -257,7 +276,7 @@
           </div>
           <div class="confirm-box" id="confirmSummary"></div>
           <h4 class="payment-label">Select Payment Method</h4>
-          <div class="payment-grid-2">
+          <div class="payment-grid-3">
             <!-- QRIS — Full Payment -->
             <div class="pay-card pay-qris-card" data-method="qris" data-name="QRIS — Bayar Penuh">
               <div class="pay-qris-header">
@@ -267,6 +286,37 @@
               <div class="qris-img-wrap">
               </div>
             </div>
+            
+            <!-- GoPay -->
+            <div class="pay-card pay-gopay-card" data-method="gopay" data-name="GoPay">
+              <div class="pay-icon">💚</div>
+              <div><strong>GoPay</strong><span>E-wallet instant</span></div>
+            </div>
+            
+            <!-- OVO -->
+            <div class="pay-card pay-ovo-card" data-method="ovo" data-name="OVO">
+              <div class="pay-icon">🟣</div>
+              <div><strong>OVO</strong><span>E-wallet instant</span></div>
+            </div>
+            
+            <!-- DANA -->
+            <div class="pay-card pay-dana-card" data-method="dana" data-name="DANA">
+              <div class="pay-icon">🔵</div>
+              <div><strong>DANA</strong><span>E-wallet instant</span></div>
+            </div>
+            
+            <!-- ShopeePay -->
+            <div class="pay-card pay-shopeepay-card" data-method="shopeepay" data-name="ShopeePay">
+              <div class="pay-icon">🟠</div>
+              <div><strong>ShopeePay</strong><span>E-wallet instant</span></div>
+            </div>
+            
+            <!-- Credit/Debit Card -->
+            <div class="pay-card pay-card-card" data-method="card" data-name="Kartu Kredit/Debit">
+              <div class="pay-icon">💳</div>
+              <div><strong>Kartu Kredit/Debit</strong><span>Visa, Mastercard, JCB</span></div>
+            </div>
+            
             <!-- Bayar di Tempat -->
             <div class="pay-card pay-cash-card" data-method="cash" data-name="Bayar di Tempat">
               <div class="pay-icon">💵</div>
@@ -357,6 +407,20 @@
   </div>
 
   <script src="js/services-data.js"></script>
+  <script>
+    (function(){
+      const params = new URLSearchParams(window.location.search);
+      if(params.get('type') === 'homeservice'){
+        document.addEventListener('DOMContentLoaded', function(){
+          var addrGroup = document.getElementById('hsAddressGroup');
+          if(addrGroup) addrGroup.style.display = 'block';
+          var hint = document.querySelector('.book-wrapper .step-head p');
+          var bookTitle = document.querySelector('#step1 .step-head h2');
+          if(bookTitle) bookTitle.insertAdjacentHTML('afterend', '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(193,18,31,.15);border:1px solid rgba(193,18,31,.35);border-radius:99px;padding:4px 12px;font-size:.72rem;font-weight:700;color:#C1121F;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">🏠 Mode: Home Service</div>');
+        });
+      }
+    })();
+  </script>
   <script src="js/booking-success.js"></script>
   <script src="js/booking.js"></script>
   <!-- Auth Modal -->

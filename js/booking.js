@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     wa: '',
     notes: '',
     payment: null,
+    address: '',
     currentStep: 1,
     calYear: new Date().getFullYear(),
     calMonth: new Date().getMonth(),
@@ -69,6 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rawService = params.get('service');
   const preService = rawService === 'creambath' ? 'hair-spa' : rawService;
   const preBarber = params.get('barber');
+  const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
 
   // ── BUILD SERVICE LIST (category grouped + show more/less) ──
   const svcList = document.getElementById('svcList');
@@ -514,6 +516,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const proPickGrid = document.getElementById('proPickGrid');
   const proBranchFilter = document.getElementById('proBranchFilter');
   let allBarbers = [];
+  let barberOffToday = new Map(); // barber_id → true jika libur hari ini
   let currentBranchFilter = 'bypass';
 
   function setBranchActive(branch) {
@@ -524,13 +527,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function fetchAndRenderBarbers() {
     if (!proPickGrid) return;
     try {
-      const res = await fetch(`${API_URL}/barbers`);
+      const res = await fetch(`${API_URL}/barbers?_nocache=1&_t=${Date.now()}`);
       const json = await res.json();
-      allBarbers = json.data || [];
+      allBarbers = (json.data || []).filter(b => b.is_active !== false);
+
+      // Fetch today's off-duty status untuk semua barber
+      try {
+        const tsRes = await fetch(`${API_URL}/barbers/today-status?date=${todayStr()}`);
+        if (tsRes.ok) {
+          const tsJson = await tsRes.json();
+          barberOffToday = new Map();
+          for (const bs of tsJson.barbers || []) {
+            if (!bs.isWorking) barberOffToday.set(bs.id, true);
+          }
+        }
+      } catch {}
 
       if (preBarber) {
         const found = allBarbers.find(b => String(b.id) === String(preBarber));
-        if (found?.branch) currentBranchFilter = found.branch;
+        if (found && found.is_active === false) {
+          console.warn('[Booking] Barber preselected from URL is inactive, ignoring.');
+        } else if (found?.branch) {
+          currentBranchFilter = found.branch;
+        }
       }
 
       setBranchActive(currentBranchFilter);
@@ -554,7 +573,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function renderBarberCards() {
-    const filtered = allBarbers.filter(b => b.branch === currentBranchFilter);
+    const filtered = allBarbers.filter(b => b.branch === currentBranchFilter && b.is_active !== false);
 
     function getInitials(name) {
       const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -602,8 +621,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     `;
 
     proPickGrid.innerHTML = `
-      ${(filtered.length ? filtered : [{ __empty: true }]).map(b => b.__empty ? emptyCard : `
-          <div class="pro-pick-card ${state.barber?.id === b.id ? 'selected' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
+      ${(filtered.length ? filtered : [{ __empty: true }]).map(b => {
+        if (b.__empty) return emptyCard;
+        const isOff = barberOffToday.has(b.id);
+        return `
+          <div class="pro-pick-card ${state.barber?.id === b.id && !isOff ? 'selected' : ''} ${isOff ? 'barber-off' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
+            ${isOff ? '<div class="barber-status-badge off-duty"><span class="status-dot"></span>Libur Hari Ini</div>' : ''}
             <div class="pro-pick-img">${proImgHtml(b)}</div>
             <div class="pro-pick-info">
               <h4>${b.name}</h4>
@@ -614,7 +637,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               <div class="pro-pick-skills" title="${roleList(b.role)}">${roleList(b.role) || '—'}</div>
             </div>
           </div>
-        `).join('')}
+        `;
+      }).join('')}
       `;
 
       function formatBranchName(branch) {
@@ -631,7 +655,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Re-attach listeners
     proPickGrid.querySelectorAll('.pro-pick-card').forEach(card => {
       card.addEventListener('click', () => {
-        if (card.dataset.barber === 'none') return;
+        if (card.dataset.barber === 'none' || card.classList.contains('barber-off')) return;
         proPickGrid.querySelectorAll('.pro-pick-card').forEach(c => c.classList.remove('selected'));
         card.classList.add('selected');
         state.barber = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
@@ -662,16 +686,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Handle pre-selected barber from URL (only once on initial load)
     if (preBarber) {
-      const preCard = proPickGrid.querySelector(`[data-barber="${preBarber}"]`);
-      if (preCard) {
-        preCard.click();
-        
-        // Auto-advance to Step 3 (Date & Time) if service is already selected
-        // This happens when user comes from homepage with both service and barber pre-selected
-        if (state.service && state.barber) {
-          setTimeout(() => {
-            goToStep(3);
-          }, 100);
+      const preBarberData = allBarbers.find(b => String(b.id) === String(preBarber));
+      if (preBarberData && preBarberData.is_active === false) {
+        // Barber nonaktif — jangan auto-select, biarkan user pilih sendiri
+        console.warn('[Booking] Barber from URL is inactive, not auto-selecting.');
+      } else {
+        const preCard = proPickGrid.querySelector(`[data-barber="${preBarber}"]`);
+        if (preCard) {
+          preCard.click();
+          if (state.service && state.barber) {
+            setTimeout(() => {
+              goToStep(3);
+            }, 100);
+          }
         }
       }
     }
@@ -688,6 +715,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.step-back').forEach(btn => {
     btn.addEventListener('click', () => {
       let target = parseInt(btn.dataset.target);
+      if (isHomeService && target === 1) {
+        window.location.href = 'home-service.html';
+        return;
+      }
       goToStep(target);
     });
   });
@@ -1010,16 +1041,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     const custWa = document.getElementById('custWa');
     const custLoc = document.getElementById('custLocation');
     let valid = true;
+    const custAddr = document.getElementById('custAddress');
     [custName, custWa, custLoc].forEach(el => el?.closest('.form-group')?.classList.remove('has-error'));
+    if (isHomeService) custAddr?.closest('.form-group')?.classList.remove('has-error');
 
     if (!custName?.value.trim()) { custName.closest('.form-group').classList.add('has-error'); valid = false; }
     if (!custWa?.value.trim() || custWa.value.replace(/\D/g, '').length < 8) { custWa.closest('.form-group').classList.add('has-error'); valid = false; }
     if (!custLoc?.value) { custLoc.closest('.form-group').classList.add('has-error'); valid = false; }
+    if (isHomeService && !custAddr?.value.trim()) { custAddr.closest('.form-group').classList.add('has-error'); valid = false; }
     if (!valid) return;
 
     state.name = custName.value.trim();
     state.wa = custWa.value.trim();
     state.location = custLoc.value;
+    state.address = isHomeService ? (custAddr?.value.trim() || '') : '';
     state.notes = document.getElementById('custNotes')?.value.trim() || '';
     updateSidebar();
     buildConfirmSummary();
@@ -1038,6 +1073,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <div class="confirm-row"><span class="cr-label">Date</span><span class="cr-val">${state.date ? formatDate(state.date) : '—'}</span></div>
       <div class="confirm-row"><span class="cr-label">Time</span><span class="cr-val">${state.time || '—'}</span></div>
       <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
+      ${isHomeService && state.address ? `<div class="confirm-row"><span class="cr-label">Alamat</span><span class="cr-val">${state.address}</span></div>` : ''}
       <div class="confirm-row"><span class="cr-label">Name</span><span class="cr-val">${state.name}</span></div>
       <div class="confirm-row"><span class="cr-label">WhatsApp</span><span class="cr-val">+62 ${state.wa}</span></div>
       ${state.notes ? `<div class="confirm-row"><span class="cr-label">Notes</span><span class="cr-val">${state.notes}</span></div>` : ''}
@@ -1047,6 +1083,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const PAY_INFO = {
     qris: '✅ <strong>QRIS dipilih</strong> — Unduh atau screenshot QR Code di atas, lalu bayar via e-wallet / mobile banking sebelum sesi dimulai.',
+    gopay: '✅ <strong>GoPay dipilih</strong> — Pembayaran instan via GoPay. Anda akan diarahkan ke aplikasi GoPay untuk menyelesaikan pembayaran.',
+    ovo: '✅ <strong>OVO dipilih</strong> — Pembayaran instan via OVO. Anda akan diarahkan ke aplikasi OVO untuk menyelesaikan pembayaran.',
+    dana: '✅ <strong>DANA dipilih</strong> — Pembayaran instan via DANA. Anda akan diarahkan ke aplikasi DANA untuk menyelesaikan pembayaran.',
+    shopeepay: '✅ <strong>ShopeePay dipilih</strong> — Pembayaran instan via ShopeePay. Anda akan diarahkan ke aplikasi ShopeePay untuk menyelesaikan pembayaran.',
+    card: '✅ <strong>Kartu Kredit/Debit dipilih</strong> — Pembayaran aman via Visa, Mastercard, atau JCB. Anda akan diarahkan ke halaman pembayaran yang aman.',
     cash: '✅ <strong>Bayar di Tempat dipilih</strong> — Siapkan pembayaran cash atau non-cash saat tiba di barber shop.',
   };
 
@@ -1070,18 +1111,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const locLabel = document.querySelector('#custLocation [value="' + state.location + '"]')?.textContent || state.location;
     const msg = [
-      '🔴 *BOOKING REDBOX BARBERSHOP*', '',
+      isHomeService ? '🏠 *BOOKING HOME SERVICE — REDBOX BARBERSHOP*' : '🔴 *BOOKING REDBOX BARBERSHOP*', '',
       '✂️ *Service:* ' + state.service?.name,
       '⏱️ *Duration:* ' + state.service?.duration,
-      '👤 *Professional:* ' + state.barber?.name,
-      '📅 *Schedule:* ' + (state.date ? formatDate(state.date) : '—') + ' at ' + state.time,
-      '📍 *Location:* ' + locLabel,
-      '👤 *Name:* ' + state.name,
+      '👤 *Kapster:* ' + state.barber?.name,
+      '📅 *Jadwal:* ' + (state.date ? formatDate(state.date) : '—') + ' at ' + state.time,
+      '📍 *Cabang Terdekat:* ' + locLabel,
+      isHomeService && state.address ? '🏠 *Alamat Kamu:* ' + state.address : '',
+      '👤 *Nama:* ' + state.name,
       '📱 *WhatsApp:* +62' + state.wa,
-      state.notes ? '📝 *Notes:* ' + state.notes : '',
-      '💳 *Payment:* ' + state.payment?.name,
+      state.notes ? '📝 *Catatan:* ' + state.notes : '',
+      '💳 *Pembayaran:* ' + state.payment?.name,
       '', '💰 *Total:* ' + fmt(state.service?.price || 0),
-      '', '_Sharp Cuts, Bold Style_ 🔴',
+      '', isHomeService ? '_Tim Redbox akan konfirmasi via WhatsApp_ 🔴' : '_Sharp Cuts, Bold Style_ 🔴',
     ].filter(Boolean).join('\n');
 
     const branchPhones = {
@@ -1096,6 +1138,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
 
     // ── Save to CRM (localStorage + API) ──
+    const notesWithAddress = isHomeService && state.address
+      ? `[HOME SERVICE] Alamat: ${state.address}${state.notes ? '\n' + state.notes : ''}`
+      : state.notes;
     const payload = {
       name: state.name,
       wa: state.wa,
@@ -1107,7 +1152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       date: state.date,
       time: state.time,
       location: state.location,
-      notes: state.notes,
+      notes: notesWithAddress,
       payment: state.payment?.name || '',
       status: 'pending'
     };
@@ -1211,4 +1256,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   buildCalendar();
   updateSidebar();
   goToStep(1);
+
+  // ── HOME SERVICE MODE ────────────────────────
+  if (isHomeService) {
+    // Pre-set service (Gentleman Grooming @ Rp 200.000, fixed home service rate)
+    state.service = {
+      id: 'gentleman-grooming',
+      name: 'Gentleman Grooming (Home Service)',
+      price: 200000,
+      basePrice: 200000,
+      csbPrice: null,
+      duration: '60 menit',
+    };
+
+    // Show address field in step 4
+    const hsAddr = document.getElementById('hsAddressGroup');
+    if (hsAddr) hsAddr.style.display = '';
+
+    // Style: hide step 1 from bar, mark body for CSS
+    document.body.classList.add('hs-mode');
+
+    // Update sidebar hint
+    const hint = document.getElementById('sidebarHint');
+    if (hint) hint.textContent = 'Pilih kapster untuk memulai';
+
+    // Update page title
+    document.title = 'Home Service Booking — Redbox Barbershop';
+
+    // Update step 2 heading
+    const step2Head = document.querySelector('#step2 .step-head h2');
+    const step2Sub  = document.querySelector('#step2 .step-head p');
+    if (step2Head) step2Head.textContent = 'Pilih Kapster';
+    if (step2Sub)  step2Sub.textContent  = 'Pilih kapster favorit yang akan datang ke rumah kamu.';
+
+    // Jump directly to step 2 (skip service selection)
+    updateSidebar();
+    goToStep(2);
+  }
 });
