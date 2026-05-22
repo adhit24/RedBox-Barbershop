@@ -197,3 +197,52 @@ if (!prefersReduced) {
     }, { amount: 0.12 });
   }
 }
+
+// ── GALLERY SCROLL EXPAND CIRCLE ─────────────────────
+const galleryScroll = document.querySelector('.rb-gallery-scroll');
+if (galleryScroll) {
+  const photos = [...galleryScroll.querySelectorAll('.rgb-photo')];
+  const ring1 = galleryScroll.querySelector('.rgb-ring-1');
+  const ring2 = galleryScroll.querySelector('.rgb-ring-2');
+  const centerText = galleryScroll.querySelector('.rgb-center-text');
+
+  // 8 angles, starting top and going clockwise
+  const ANGLES = [-90, -45, 0, 45, 90, 135, 180, -135].map(d => d * Math.PI / 180);
+
+  const applyProgress = (progress) => {
+    const maxRadius = Math.min(window.innerWidth * 0.29, window.innerHeight * 0.27, 195);
+    const radius = progress * maxRadius;
+    photos.forEach((photo, i) => {
+      const a = ANGLES[i];
+      const x = Math.cos(a) * radius;
+      const y = Math.sin(a) * radius;
+      photo.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    });
+    const r1o = Math.min(1, progress * 4);
+    const r2o = Math.min(1, Math.max(0, progress - 0.12) * 4);
+    const cto = Math.min(1, Math.max(0, progress - 0.38) * 4);
+    if (ring1) ring1.style.opacity = r1o;
+    if (ring2) ring2.style.opacity = r2o;
+    if (centerText) centerText.style.opacity = cto;
+  };
+
+  if (prefersReduced) {
+    applyProgress(1);
+  } else {
+    let rafPending = false;
+    const onScroll = () => {
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(() => {
+        const sectionTop = galleryScroll.getBoundingClientRect().top + window.scrollY;
+        const scrolled = Math.max(0, window.scrollY - sectionTop);
+        const range = galleryScroll.offsetHeight - window.innerHeight;
+        applyProgress(range > 0 ? Math.min(1, scrolled / range) : 0);
+        rafPending = false;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    onScroll();
+  }
+}

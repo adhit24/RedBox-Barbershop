@@ -606,24 +606,66 @@ section{padding:100px 0}
 
 
 /* ======================================================
-   GALLERY
+   GALLERY — SCROLL EXPAND CIRCLE
 ====================================================== */
-.gallery{background:var(--bg);border-top:1px solid var(--w05)}
-.gallery-grid{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:12px;
+.rb-gallery-scroll{
+  position:relative;min-height:200vh;
+  background:var(--bg);border-top:1px solid var(--w05);
 }
-.gallery-item{
-  position:relative;overflow:hidden;border-radius:var(--radius-sm);
-  aspect-ratio:1;cursor:pointer;
+.rb-gallery-sticky{
+  position:sticky;top:0;height:100svh;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
 }
-.gallery-item img{width:100%;height:100%;object-fit:cover;transition:transform .5s ease}
-.gallery-item:hover img{transform:scale(1.08)}
-.gallery-item::after{
-  content:'';position:absolute;inset:0;
-  background:linear-gradient(to top,rgba(0,0,0,.5) 0%,transparent 50%);
-  opacity:0;transition:var(--transition);
+.rb-gallery-stage{
+  position:relative;width:100%;height:100%;
 }
-.gallery-item:hover::after{opacity:1}
+.rgb-main-ring{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  width:340px;height:340px;border-radius:50%;
+  border:1.5px solid transparent;
+  background:
+    linear-gradient(var(--bg),var(--bg)) padding-box,
+    linear-gradient(135deg,rgba(193,18,31,.75) 0%,rgba(193,18,31,.12) 55%,transparent 100%) border-box;
+}
+.rgb-ring{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  border-radius:50%;opacity:0;
+}
+.rgb-ring-1{width:430px;height:430px;border:1px solid rgba(255,255,255,.07)}
+.rgb-ring-2{width:520px;height:520px;border:1px solid rgba(255,255,255,.035)}
+.rgb-center-text{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  text-align:center;opacity:0;pointer-events:none;z-index:2;
+}
+.rgb-center-text h2{
+  font-family:var(--font-display);
+  font-size:clamp(1.5rem,3.5vw,2.4rem);
+  color:var(--white);line-height:1.15;font-weight:700;
+}
+.rgb-center-text span{
+  display:block;font-family:var(--font-body);
+  font-size:clamp(.6rem,1.2vw,.72rem);
+  letter-spacing:.18em;text-transform:uppercase;
+  color:var(--red);margin-top:8px;
+}
+.rgb-photo{
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  width:88px;height:88px;border-radius:50%;overflow:hidden;
+  border:2px solid rgba(255,255,255,.2);
+  box-shadow:0 4px 24px rgba(0,0,0,.55);z-index:3;
+}
+.rgb-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.rgb-photo:hover{border-color:var(--red);z-index:5}
+@media(max-width:600px){
+  .rgb-photo{width:68px;height:68px}
+  .rgb-main-ring{width:220px;height:220px}
+  .rgb-ring-1{width:280px;height:280px}
+  .rgb-ring-2{width:340px;height:340px}
+}
 
 /* ======================================================
    MEMBERSHIP CTA SECTION
@@ -1466,7 +1508,6 @@ section{padding:100px 0}
 ====================================================== */
 @media(max-width:1024px){
   .pro-grid{grid-template-columns:repeat(2,1fr)}
-  .gallery-grid{grid-template-columns:repeat(3,1fr)}
   .booking-cta-layout{grid-template-columns:1fr}
   .location-layout{grid-template-columns:1fr}
   .reviews-grid{grid-template-columns:repeat(2,1fr)}
@@ -1605,7 +1646,6 @@ section{padding:100px 0}
   .hero-scroll-indicator{display:none}
 
   .pro-grid{grid-template-columns:repeat(2,1fr);gap:12px}
-  .gallery-grid{grid-template-columns:repeat(2,1fr);gap:8px}
   .reviews-grid{
     display:flex;
     gap:12px;
@@ -1655,7 +1695,6 @@ section{padding:100px 0}
 @media(max-width:480px){
   .hero-title{font-size:clamp(2rem,14vw,3rem)}
   .svc-card{flex:0 0 260px}
-  .gallery-grid{grid-template-columns:repeat(2,1fr)}
   .pro-grid{grid-template-columns:1fr 1fr;gap:10px}
   .container{padding-left:18px;padding-right:18px}
   .nav-logo img{height:48px}
