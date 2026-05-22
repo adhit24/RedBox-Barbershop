@@ -1681,6 +1681,7 @@ section{padding:100px 0}
 .hs-highlights{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:32px}
 .hs-highlight-item{display:flex;align-items:flex-start;gap:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px 16px}
 .hs-highlight-item svg{flex-shrink:0;color:#C1121F;margin-top:2px}
+.hs-fl-icon{flex-shrink:0;width:26px;height:26px;object-fit:contain;filter:brightness(0) invert(.82);margin-top:1px;transition:filter .25s ease,transform .25s cubic-bezier(0.25,1,0.5,1)}
 .hs-highlight-item strong{display:block;font-size:.9rem;font-weight:700;color:#F0F0F0;margin-bottom:2px}
 .hs-highlight-item span{font-size:.75rem;color:rgba(255,255,255,.5)}
 .hs-actions{display:flex;gap:12px;flex-wrap:wrap}
@@ -1690,7 +1691,7 @@ section{padding:100px 0}
 .btn-hs-secondary:hover{border-color:rgba(193,18,31,.5);color:#fff}
 .hs-visual{display:flex;align-items:center;justify-content:center}
 .hs-visual-inner{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center}
-.hs-icon-main{width:120px;height:120px;opacity:.8}
+.hs-icon-main{width:120px;height:120px;object-fit:contain;filter:invert(14%) sepia(87%) saturate(4000%) hue-rotate(346deg) brightness(87%) contrast(104%);opacity:.85}
 .hs-price-bubble{position:absolute;bottom:-10px;right:-20px;background:#C1121F;border-radius:14px;padding:10px 14px;text-align:center;box-shadow:0 8px 24px rgba(193,18,31,.4)}
 .hs-price-label{display:block;font-size:.6rem;font-weight:600;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.1em;margin-bottom:2px}
 .hs-price-value{display:block;font-family:'Bebas Neue',sans-serif;font-size:1.3rem;color:#fff;letter-spacing:.04em;line-height:1}
@@ -1731,6 +1732,7 @@ section{padding:100px 0}
   cursor: default;
 }
 .hs-highlight-item:hover { border-color: rgba(193,18,31,.25); transform: translateY(-2px); }
+.hs-highlight-item:hover .hs-fl-icon { filter:invert(14%) sepia(87%) saturate(4000%) hue-rotate(346deg) brightness(87%) contrast(104%); transform:scale(1.15); }
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
