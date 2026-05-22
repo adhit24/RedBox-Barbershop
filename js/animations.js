@@ -172,6 +172,8 @@ if (!prefersReduced) {
   });
 
   // ── HOME SERVICE SECTION REVEAL ───────────────────────
+  // NOTE: elements stay visible at all times — Motion animates FROM the
+  // initial values, so content is never hidden if inView doesn't fire.
   const hsBanner = document.querySelector('.hs-banner');
   if (hsBanner) {
     const badgeWrap  = hsBanner.querySelector('.hs-badge-wrap');
@@ -179,13 +181,6 @@ if (!prefersReduced) {
     const desc       = hsBanner.querySelector('.hs-desc');
     const actions    = hsBanner.querySelector('.hs-actions');
     const highlights = [...hsBanner.querySelectorAll('.hs-highlight-item')];
-
-    [badgeWrap, title, desc, actions].filter(Boolean).forEach(el =>
-      Object.assign(el.style, { opacity: '0', transform: 'translateY(20px)' })
-    );
-    highlights.forEach(el =>
-      Object.assign(el.style, { opacity: '0', transform: 'translateY(14px)' })
-    );
 
     inView(hsBanner, () => {
       [badgeWrap, title, desc].filter(Boolean).forEach((el, i) =>
