@@ -170,4 +170,35 @@ if (!prefersReduced) {
         { delay: i * 0.06, duration: 0.55, ease: [0.22, 1, 0.36, 1] });
     }, { amount: 0.1 });
   });
+
+  // ── HOME SERVICE SECTION REVEAL ───────────────────────
+  const hsBanner = document.querySelector('.hs-banner');
+  if (hsBanner) {
+    const badgeWrap  = hsBanner.querySelector('.hs-badge-wrap');
+    const title      = hsBanner.querySelector('.hs-title');
+    const desc       = hsBanner.querySelector('.hs-desc');
+    const actions    = hsBanner.querySelector('.hs-actions');
+    const highlights = [...hsBanner.querySelectorAll('.hs-highlight-item')];
+
+    [badgeWrap, title, desc, actions].filter(Boolean).forEach(el =>
+      Object.assign(el.style, { opacity: '0', transform: 'translateY(20px)' })
+    );
+    highlights.forEach(el =>
+      Object.assign(el.style, { opacity: '0', transform: 'translateY(14px)' })
+    );
+
+    inView(hsBanner, () => {
+      [badgeWrap, title, desc].filter(Boolean).forEach((el, i) =>
+        animate(el, { opacity: [0, 1], y: [20, 0] },
+          { delay: i * 0.13, duration: 0.65, ease: [0.22, 1, 0.36, 1] })
+      );
+      highlights.forEach((el, i) =>
+        animate(el, { opacity: [0, 1], y: [14, 0] },
+          { delay: 0.28 + i * 0.09, duration: 0.55, ease: [0.22, 1, 0.36, 1] })
+      );
+      if (actions)
+        animate(actions, { opacity: [0, 1], y: [20, 0] },
+          { delay: 0.65, duration: 0.55, ease: [0.22, 1, 0.36, 1] });
+    }, { amount: 0.12 });
+  }
 }
