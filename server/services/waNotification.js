@@ -115,8 +115,34 @@ function formatDate(dateStr) {
   });
 }
 
+// 4. Review request — dikirim 30 menit setelah service selesai
+async function notifyCustomerReviewRequest(booking) {
+  const { name, wa, location, barber_name, id } = booking;
+
+  const fn     = (name || 'Kak').split(' ')[0];
+  const branch = branchLabel(location);
+  const kapster = barber_name ? `bareng *${barber_name}*` : 'di Redbox';
+  const baseUrl = process.env.APP_BASE_URL || 'https://redboxbarbershop.vercel.app';
+  const link = `${baseUrl}/review.html?b=${id}`;
+
+  const message =
+`Haii kak *${fn}*! 👋
+
+Makasih udah mampir ke *${branch}* hari ini — semoga hasilnya bikin pede makin naik ya! 💈✨
+
+Gimana pengalaman kamu ${kapster}? Feedback kamu cuma butuh *1 menit* tapi berarti banget buat kita 🙏
+
+⭐ *Kasih ulasan di sini:*
+👉 ${link}
+
+Ditunggu ya kak, dan sampai ketemu lagi di Redbox! ✂️🔴`;
+
+  return sendWA(wa, message);
+}
+
 module.exports = {
   notifyCustomerBookingConfirmed,
   notifyCustomerReminderH1,
   notifyAdminNewBooking,
+  notifyCustomerReviewRequest,
 };

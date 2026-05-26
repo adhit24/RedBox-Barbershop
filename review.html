@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ulasan — Redbox Barbershop</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <link rel="icon" href="Brand_assets/logo.png" type="image/png">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0A0A0A;
+      --bg-2:    #111111;
+      --bg-3:    #181818;
+      --bg-4:    #1E1E1E;
+      --red:     #C1121F;
+      --red-h:   #E63946;
+      --white:   #ffffff;
+      --w90:     rgba(255,255,255,.9);
+      --w70:     rgba(255,255,255,.7);
+      --w40:     rgba(255,255,255,.4);
+      --w10:     rgba(255,255,255,.1);
+      --w05:     rgba(255,255,255,.05);
+      --gold:    #F4C542;
+      --green:   #22c55e;
+      --font:    'Inter', sans-serif;
+      --display: 'Playfair Display', serif;
+      --radius:  14px;
+      --radius-sm: 8px;
+    }
+
+    html { background: var(--bg); color: var(--white); font-family: var(--font); }
+
+    body {
+      min-height: 100svh;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 16px 60px;
+    }
+
+    /* ── HEADER ── */
+    .rv-header {
+      width: 100%;
+      max-width: 480px;
+      padding: 28px 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--w05);
+    }
+    .rv-logo {
+      height: 36px;
+      width: auto;
+    }
+    .rv-brand {
+      font-family: var(--display);
+      font-size: 1.15rem;
+      letter-spacing: .02em;
+      color: var(--white);
+    }
+    .rv-brand span { color: var(--red); }
+
+    /* ── CARD ── */
+    .rv-card {
+      width: 100%;
+      max-width: 480px;
+      background: var(--bg-2);
+      border: 1px solid var(--w05);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      margin-top: 24px;
+    }
+
+    /* ── LOADING / ERROR ── */
+    .rv-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 48px 0;
+      color: var(--w70);
+      font-size: .9rem;
+    }
+    .rv-spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--w10);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .rv-error-box {
+      text-align: center;
+      padding: 40px 0;
+    }
+    .rv-error-box .rv-icon { font-size: 2.4rem; margin-bottom: 12px; }
+    .rv-error-box h3 { font-size: 1.05rem; margin-bottom: 8px; }
+    .rv-error-box p { font-size: .85rem; color: var(--w70); line-height: 1.5; }
+
+    /* ── BOOKING INFO BANNER ── */
+    .rv-booking-info {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--bg-3);
+      border: 1px solid var(--w05);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 24px;
+    }
+    .rv-kapster-avatar {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      background: var(--bg-4);
+      border: 2px solid var(--red);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .rv-kapster-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .rv-booking-meta { flex: 1; min-width: 0; }
+    .rv-booking-meta .customer { font-size: .78rem; color: var(--w40); margin-bottom: 2px; }
+    .rv-booking-meta .kapster-name {
+      font-size: .95rem; font-weight: 600; color: var(--white);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rv-booking-meta .service-name {
+      font-size: .78rem; color: var(--w70); margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .rv-branch-badge {
+      font-size: .65rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--red);
+      background: rgba(193,18,31,.1);
+      border: 1px solid rgba(193,18,31,.25);
+      border-radius: 4px;
+      padding: 3px 7px;
+      white-space: nowrap;
+    }
+
+    /* ── SECTION TITLE ── */
+    .rv-section-title {
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--w40);
+      margin-bottom: 14px;
+    }
+
+    /* ── STAR RATING ── */
+    .rv-stars {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .rv-star {
+      font-size: 2.4rem;
+      cursor: pointer;
+      color: var(--w10);
+      transition: color .15s ease, transform .15s ease;
+      line-height: 1;
+      user-select: none;
+    }
+    .rv-star.active, .rv-star.hover { color: var(--gold); }
+    .rv-star:hover { transform: scale(1.12); }
+    .rv-star-label {
+      font-size: .82rem;
+      color: var(--w70);
+      margin-top: -16px;
+      margin-bottom: 24px;
+      min-height: 18px;
+      transition: opacity .2s;
+    }
+
+    /* ── TEXTAREA ── */
+    .rv-textarea {
+      width: 100%;
+      background: var(--bg-4);
+      border: 1px solid var(--w10);
+      border-radius: var(--radius-sm);
+      color: var(--white);
+      font-family: var(--font);
+      font-size: .9rem;
+      line-height: 1.55;
+      padding: 12px 14px;
+      resize: vertical;
+      min-height: 90px;
+      outline: none;
+      transition: border-color .2s;
+      margin-bottom: 20px;
+    }
+    .rv-textarea::placeholder { color: var(--w40); }
+    .rv-textarea:focus { border-color: rgba(193,18,31,.5); }
+
+    /* ── BUTTONS ── */
+    .rv-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px 20px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font);
+      font-size: .92rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity .2s, transform .15s;
+      text-decoration: none;
+    }
+    .rv-btn:active { transform: scale(0.98); }
+    .rv-btn-primary {
+      background: var(--red);
+      color: var(--white);
+    }
+    .rv-btn-primary:hover { background: var(--red-h); }
+    .rv-btn-primary:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .rv-btn-google {
+      background: #fff;
+      color: #1a1a1a;
+      border: 1px solid rgba(0,0,0,.12);
+      margin-top: 12px;
+    }
+    .rv-btn-google:hover { background: #f5f5f5; }
+    .rv-btn-outline {
+      background: transparent;
+      color: var(--w70);
+      border: 1px solid var(--w10);
+      margin-top: 10px;
+    }
+    .rv-btn-outline:hover { border-color: var(--w40); color: var(--white); }
+
+    /* ── SUCCESS SCREEN ── */
+    .rv-success {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 8px 0;
+    }
+    .rv-success.show { display: flex; }
+    .rv-success-icon {
+      width: 64px; height: 64px;
+      background: rgba(34,197,94,.12);
+      border: 2px solid rgba(34,197,94,.3);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+    }
+    .rv-success h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .rv-success p {
+      font-size: .88rem;
+      color: var(--w70);
+      line-height: 1.55;
+      max-width: 340px;
+      margin-bottom: 28px;
+    }
+    .rv-google-cta {
+      background: var(--bg-3);
+      border: 1px solid var(--w05);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      width: 100%;
+      text-align: left;
+      margin-bottom: 16px;
+    }
+    .rv-google-cta .label {
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 6px;
+    }
+    .rv-google-cta .desc {
+      font-size: .82rem;
+      color: var(--w70);
+      line-height: 1.45;
+    }
+    .rv-stars-display {
+      display: flex;
+      gap: 4px;
+      margin: 10px 0 4px;
+    }
+    .rv-stars-display span { color: var(--gold); font-size: 1.1rem; }
+
+    /* ── ALREADY REVIEWED ── */
+    .rv-already { text-align: center; padding: 32px 0; }
+    .rv-already .icon { font-size: 2rem; margin-bottom: 12px; }
+    .rv-already h3 { font-size: 1rem; margin-bottom: 6px; }
+    .rv-already p { font-size: .85rem; color: var(--w70); line-height: 1.5; }
+
+    /* ── FOOTER ── */
+    .rv-footer {
+      margin-top: 32px;
+      text-align: center;
+      font-size: .75rem;
+      color: var(--w40);
+    }
+    .rv-footer a { color: var(--w40); text-decoration: none; }
+    .rv-footer a:hover { color: var(--white); }
+  </style>
+</head>
+<body>
+
+  <header class="rv-header">
+    <img class="rv-logo" src="Brand_assets/logo.png" alt="Redbox Logo">
+    <span class="rv-brand">RED<span>BOX</span></span>
+  </header>
+
+  <div class="rv-card" id="rvCard">
+    <!-- Loading state -->
+    <div class="rv-loading" id="rvLoading">
+      <div class="rv-spinner"></div>
+      <span>Memuat data...</span>
+    </div>
+  </div>
+
+  <footer class="rv-footer">
+    <a href="index.html">← Kembali ke beranda</a>
+  </footer>
+
+<script>
+(function () {
+  const STAR_LABELS = ['', 'Kurang memuaskan', 'Bisa lebih baik', 'Cukup puas', 'Puas banget!', 'Luar biasa! 🔥'];
+
+  const BRANCH_LABELS = {
+    bypass:    'Bypass (Pusat)',
+    samadikun: 'Samadikun',
+    sumber:    'Sumber',
+    tegal:     'Tegal',
+    csb:       'CSB Mall',
+  };
+
+  const params = new URLSearchParams(location.search);
+  const bookingId = params.get('b');
+  const card = document.getElementById('rvCard');
+
+  // ── helpers ──────────────────────────────────────────
+  function showError(title, msg) {
+    card.innerHTML = `
+      <div class="rv-error-box">
+        <div class="rv-icon">⚠️</div>
+        <h3>${title}</h3>
+        <p>${msg}</p>
+      </div>`;
+  }
+
+  function renderStars(count) {
+    return Array.from({ length: 5 }, (_, i) =>
+      `<span style="color:${i < count ? '#F4C542' : 'rgba(255,255,255,.15)'}">★</span>`
+    ).join('');
+  }
+
+  // ── Load booking data ─────────────────────────────────
+  if (!bookingId) {
+    showError('Link tidak valid', 'Link ulasan ini tidak lengkap. Pastikan kamu membuka link yang dikirim via WhatsApp.');
+    return;
+  }
+
+  fetch(`/api/reviews/booking?b=${encodeURIComponent(bookingId)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) {
+        showError('Booking tidak ditemukan', 'Link ini mungkin sudah tidak aktif atau sudah dikunjungi sebelumnya.');
+        return;
+      }
+      if (data.already_reviewed) {
+        renderAlreadyReviewed(data);
+        return;
+      }
+      renderForm(data);
+    })
+    .catch(() => showError('Gagal memuat', 'Terjadi masalah koneksi. Coba lagi beberapa saat.'));
+
+  // ── Already Reviewed ─────────────────────────────────
+  function renderAlreadyReviewed(data) {
+    const branch = BRANCH_LABELS[data.branch] || data.branch;
+    card.innerHTML = `
+      <div class="rv-already">
+        <div class="icon">✅</div>
+        <h3>Ulasan sudah dikirim</h3>
+        <p>Kamu sudah memberikan ulasan untuk kunjungan ini di Redbox ${branch}. Terima kasih!</p>
+        ${data.google_review_url ? `
+        <br>
+        <p style="font-size:.82rem;color:rgba(255,255,255,.7);margin-bottom:16px">
+          Kalau belum sempat, bantu kami di Google juga ya 🙏
+        </p>
+        <a class="rv-btn rv-btn-google" href="${data.google_review_url}" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Review di Google
+        </a>` : ''}
+      </div>`;
+  }
+
+  // ── Review Form ───────────────────────────────────────
+  function renderForm(data) {
+    const kapster = data.kapster_name || 'Kapster';
+    const branch  = BRANCH_LABELS[data.branch] || data.branch;
+    const fn      = (data.customer_name || 'Kak').split(' ')[0];
+
+    card.innerHTML = `
+      <div class="rv-booking-info">
+        <div class="rv-kapster-avatar">💈</div>
+        <div class="rv-booking-meta">
+          <div class="customer">Halo, ${fn}!</div>
+          <div class="kapster-name">${kapster}</div>
+          <div class="service-name">${data.service || ''}</div>
+        </div>
+        <span class="rv-branch-badge">${branch}</span>
+      </div>
+
+      <p class="rv-section-title">Beri rating untuk ${kapster}</p>
+
+      <div class="rv-stars" id="rvStars" role="group" aria-label="Rating bintang">
+        <span class="rv-star" data-val="1" role="button" tabindex="0" aria-label="1 bintang">★</span>
+        <span class="rv-star" data-val="2" role="button" tabindex="0" aria-label="2 bintang">★</span>
+        <span class="rv-star" data-val="3" role="button" tabindex="0" aria-label="3 bintang">★</span>
+        <span class="rv-star" data-val="4" role="button" tabindex="0" aria-label="4 bintang">★</span>
+        <span class="rv-star" data-val="5" role="button" tabindex="0" aria-label="5 bintang">★</span>
+      </div>
+      <p class="rv-star-label" id="rvStarLabel">Pilih bintang di atas</p>
+
+      <p class="rv-section-title">Ceritain pengalaman kamu (opsional)</p>
+      <textarea class="rv-textarea" id="rvComment" maxlength="500"
+        placeholder="Potongannya bagus, pelayanannya ramah... ✂️"></textarea>
+
+      <button class="rv-btn rv-btn-primary" id="rvSubmitBtn" disabled>
+        Kirim Ulasan
+      </button>
+
+      <div class="rv-success" id="rvSuccess"></div>`;
+
+    // Wire up stars
+    let selected = 0;
+    const stars = card.querySelectorAll('.rv-star');
+    const label = card.getElementById ? null : document.getElementById('rvStarLabel');
+    const starLabel = document.getElementById('rvStarLabel');
+    const submitBtn = document.getElementById('rvSubmitBtn');
+
+    function setHover(val) {
+      stars.forEach(s => {
+        const v = parseInt(s.dataset.val);
+        s.classList.toggle('active', v <= selected);
+        s.classList.toggle('hover', v <= val && v > selected);
+      });
+    }
+    function setSelected(val) {
+      selected = val;
+      stars.forEach(s => s.classList.toggle('active', parseInt(s.dataset.val) <= val));
+      starLabel.textContent = STAR_LABELS[val] || '';
+      submitBtn.disabled = val === 0;
+    }
+
+    stars.forEach(star => {
+      star.addEventListener('click', () => setSelected(parseInt(star.dataset.val)));
+      star.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') setSelected(parseInt(star.dataset.val));
+      });
+      star.addEventListener('mouseenter', () => setHover(parseInt(star.dataset.val)));
+      star.addEventListener('mouseleave', () => setHover(0));
+    });
+
+    // Submit
+    submitBtn.addEventListener('click', () => {
+      if (!selected) return;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Mengirim...';
+
+      fetch('/api/reviews/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          booking_id: bookingId,
+          rating: selected,
+          comment: document.getElementById('rvComment').value.trim() || null,
+        }),
+      })
+        .then(r => r.json())
+        .then(result => {
+          if (result.error) {
+            if (result.error.includes('Sudah')) {
+              renderAlreadyReviewed(data);
+              return;
+            }
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Kirim Ulasan';
+            alert('Gagal mengirim ulasan: ' + result.error);
+            return;
+          }
+          renderSuccess(selected, result.google_review_url || data.google_review_url);
+        })
+        .catch(() => {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Kirim Ulasan';
+          alert('Terjadi masalah koneksi. Coba lagi.');
+        });
+    });
+  }
+
+  // ── Success Screen ────────────────────────────────────
+  function renderSuccess(rating, googleUrl) {
+    card.innerHTML = `
+      <div class="rv-success show">
+        <div class="rv-success-icon">✅</div>
+        <h2>Makasih ulasannya! 🙏</h2>
+        <p>Ulasan kamu sudah kami terima dan akan membantu kami melayani lebih baik lagi.</p>
+
+        <div class="rv-stars-display">${renderStars(rating)}</div>
+        <p style="font-size:.8rem;color:rgba(255,255,255,.5);margin-bottom:24px">
+          Rating kamu: ${rating}/5
+        </p>
+
+        ${googleUrl ? `
+        <div class="rv-google-cta">
+          <div class="label">Satu langkah lagi ⭐</div>
+          <div class="desc">Bantu lebih banyak orang temukan Redbox dengan kasih ulasan di Google juga. Hanya butuh 30 detik!</div>
+        </div>
+        <a class="rv-btn rv-btn-google" href="${googleUrl}" target="_blank" rel="noopener">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          Review di Google ↗
+        </a>` : ''}
+
+        <a class="rv-btn rv-btn-outline" href="index.html">Kembali ke beranda</a>
+      </div>`;
+  }
+
+})();
+</script>
+</body>
+</html>

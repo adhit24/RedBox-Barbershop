@@ -576,8 +576,7 @@ async function _remapBarberIdsFromSupabase(barbers = []) {
   if (!supabase || DB_TYPE !== 'supabase') return barbers;
   const { data: sbBarbers, error } = await supabase
     .from('barbers')
-    .select('id,name,branch,is_active')
-    .eq('is_active', true);
+    .select('id,name,branch,is_active');
   if (error) return barbers;
 
   const byBranch = new Map();
@@ -821,9 +820,18 @@ app.get('/api/img', async (req, res) => {
 // ================================================
 // HEALTH CHECK
 // ================================================
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const airtableConfigured = process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_API_KEY !== 'your_airtable_api_key';
-  res.json({ status: 'ok', service: 'Redbox CRM API', db_type: DB_TYPE, airtable: airtableConfigured ? 'connected' : 'not_configured', timestamp: new Date().toISOString() });
+  let supabaseTest = null;
+  if (supabase && req.query.debug === '1') {
+    try {
+      const { data: allData, error } = await supabase.from('barbers').select('id, name, is_active');
+      const inactive = (allData || []).filter(b => !b.is_active);
+      const onoy = (allData || []).find(b => (b.name||'').toLowerCase().includes('onoy'));
+      supabaseTest = { supabase_url_prefix: (process.env.SUPABASE_URL||'').slice(0,40), total: allData?.length, inactive_count: inactive.length, inactive: inactive.map(b => ({id:b.id,name:b.name})), onoy, error: error?.message };
+    } catch (e) { supabaseTest = { error: e.message }; }
+  }
+  res.json({ status: 'ok', service: 'Redbox CRM API', db_type: DB_TYPE, supabase_client: !!supabase, airtable: airtableConfigured ? 'connected' : 'not_configured', timestamp: new Date().toISOString(), ...(supabaseTest ? { supabaseTest } : {}) });
 });
 
 // ================================================
@@ -904,12 +912,30 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
 
   if (DB_TYPE === 'supabase') {
     try {
-      // 1. Cek overlap terlebih dahulu
+      // 1. Validasi barber aktif (kecuali admin)
+      if (normalizedBarberId && normalizedBarberId !== 'any') {
+        const { data: barberCheck, error: barberErr } = await supabase
+          .from('barbers')
+          .select('id, is_active')
+          .eq('id', normalizedBarberId)
+          .single();
+        if (barberErr && barberErr.code !== 'PGRST116') {
+          return res.status(500).json({ error: 'Gagal memvalidasi kapster' });
+        }
+        if (!barberCheck) {
+          return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+        }
+        if (!isAdmin && barberCheck.is_active === false) {
+          return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
+        }
+      }
+
+      // 2. Cek overlap terlebih dahulu
       if (await hasOverlapSupabase({ barberId: normalizedBarberId, date, time, duration })) {
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
-      // 2. Insert booking
+      // 3. Insert booking
       const { data, error } = await supabase.from('bookings').insert([{
         id: bookingId, name, wa, service_id: service_id || '', service, price: price || 0,
         duration: duration || '', barber_id: normalizedBarberId, date, time,
@@ -964,7 +990,21 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
     }
   } else {
     try {
-      // 1. Get or Create Customer
+      // 1. Validasi barber aktif (kecuali admin)
+      if (normalizedBarberId && normalizedBarberId !== 'any') {
+        const [barberCheck] = await mysqlPool.execute(
+          'SELECT id, is_active FROM barbers WHERE id = ?',
+          [normalizedBarberId]
+        );
+        if (barberCheck.length === 0) {
+          return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+        }
+        if (!isAdmin && barberCheck[0].is_active === 0) {
+          return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
+        }
+      }
+
+      // 2. Get or Create Customer
       let customerId;
       const [customers] = await mysqlPool.execute('SELECT id FROM customers WHERE wa = ?', [wa]);
       if (customers.length > 0) {
@@ -974,12 +1014,12 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         await mysqlPool.execute('INSERT INTO customers (id, name, wa) VALUES (?, ?, ?)', [customerId, name, wa]);
       }
 
-      // 2. Overlap check
+      // 3. Overlap check
       if (await hasOverlapMysql({ barberId: normalizedBarberId, date, time, duration })) {
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
-      // 3. Insert Booking
+      // 4. Insert Booking
       await mysqlPool.execute(
         `INSERT INTO bookings (id, customer_id, name, wa, service_id, service, price, duration, barber_id, date, time, location, status, notes, payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [bookingId, customerId, name, wa, service_id || '', service, price || 0, duration || '', normalizedBarberId, date, time, location || 'bypass', desiredStatus, notes || '', payment || '']
@@ -1164,44 +1204,106 @@ app.delete('/api/bookings/:id', adminAuth, async (req, res) => {
   }
 });
 
-// GET /api/barbers
+// GET /api/barbers?include_inactive=1 (admin only)
 app.get('/api/barbers', async (req, res) => {
+  const includeInactive = req.query.include_inactive === '1' || req.query.include_inactive === 'true';
+  
+  // Jika request include_inactive, verifikasi admin auth (sama dengan adminAuth middleware)
+  if (includeInactive) {
+    const token = req.headers['x-admin-token'] || '';
+    const validTokens = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
+    if (!token || !validTokens.includes(token)) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+  
+  // Force invalidate cache jika ada ?_nocache atau barbers_cache_bust
+  if (req.query._nocache || req.query.cache_bust) {
+    barbersCache = null;
+  }
+
   if (isBarbersConfigured()) {
-    // Serve from cache if still fresh
-    if (barbersCache && (Date.now() - barbersCache.timestamp) < BARBERS_CACHE_TTL_MS) {
+    // Serve from cache if still fresh (hanya untuk aktif)
+    if (!includeInactive && barbersCache && (Date.now() - barbersCache.timestamp) < BARBERS_CACHE_TTL_MS) {
       res.setHeader('x-barbers-source', 'airtable-cache');
       return res.json({ data: barbersCache.data });
     }
     try {
+      // Ambil status aktif dari Supabase — ini AUTHORITY untuk is_active
+      let activeIdSet = null;   // null = tidak tersedia (skip filter), Set = whitelist aktif
+      let inactiveNameSet = new Set(); // fallback by name jika ID tidak match
+      if (supabase && !includeInactive) {
+        try {
+          const { data: sbActive } = await supabase.from('barbers').select('id, name, is_active');
+          if (sbActive && sbActive.length) {
+            activeIdSet = new Set();
+            for (const b of sbActive) {
+              if (b.is_active === true) activeIdSet.add(String(b.id).toLowerCase());
+              else if (b.is_active === false) inactiveNameSet.add(String(b.name || '').toLowerCase().trim());
+            }
+          }
+        } catch (e) { console.warn('[Barbers] Supabase active fetch error:', e.message); }
+      }
+
       const airtableResult = await fetchBarbersFromAirtable();
-      const normalized = dedupeBarberRecords(airtableResult.data || []).filter(b => b.is_active);
+      let normalized = dedupeBarberRecords(airtableResult.data || []);
       const remapped = await _remapBarberIdsFromSupabase(normalized);
-      if (remapped.length) {
-        barbersCache = { data: remapped, timestamp: Date.now() };
+
+      // Filter berdasarkan Supabase authority (jika tersedia)
+      let toReturn = remapped;
+      if (!includeInactive) {
+        if (activeIdSet !== null) {
+          // Filter: hanya barber yang ID-nya ada di activeIdSet, ATAU namanya tidak ada di inactiveNameSet
+          toReturn = remapped.filter(b => {
+            const id = String(b.id || '').toLowerCase();
+            const name = String(b.name || '').toLowerCase().trim();
+            if (activeIdSet.has(id)) return true;           // ID cocok dan aktif
+            if (inactiveNameSet.has(name)) return false;    // Nama ada di nonaktif
+            return b.is_active !== false;                   // Fallback ke is_active field
+          });
+        } else {
+          toReturn = remapped.filter(b => b.is_active !== false);
+        }
+      }
+      if (toReturn.length || remapped.length) {
+        if (!includeInactive) {
+          barbersCache = { data: toReturn, timestamp: Date.now() };
+        }
         res.setHeader('x-barbers-source', 'airtable');
-        return res.json({ data: remapped });
+        return res.json({ data: toReturn });
       }
     } catch (airtableError) {
       console.error('Airtable barbers fetch failed:', airtableError?.message || airtableError);
       // Return stale cache rather than wrong DB data
-      if (barbersCache) {
+      if (!includeInactive && barbersCache) {
         res.setHeader('x-barbers-source', 'airtable-cache-stale');
         return res.json({ data: barbersCache.data });
       }
-      return res.status(503).json({ error: 'Data kapster dari Airtable tidak tersedia.', details: airtableError?.message });
+      // Jika admin request dan Airtable gagal, fallback ke database
+      if (!includeInactive) {
+        return res.status(503).json({ error: 'Data kapster dari Airtable tidak tersedia.', details: airtableError?.message });
+      }
     }
   }
 
-  // Fallback ke database hanya jika Airtable tidak dikonfigurasi
+  // Fallback ke database (Supabase atau MySQL)
   if (DB_TYPE === 'supabase') {
-    const { data, error } = await supabase.from('barbers').select('*').eq('is_active', true);
+    let query = supabase.from('barbers').select('*');
+    if (!includeInactive) {
+      query = query.eq('is_active', true);
+    }
+    const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
     const normalized = dedupeBarberRecords(data || []);
     res.setHeader('x-barbers-source', 'supabase');
     return res.json({ data: normalized });
   } else {
     try {
-      const [rows] = await mysqlPool.execute('SELECT * FROM barbers WHERE is_active = 1');
+      let sql = 'SELECT * FROM barbers';
+      if (!includeInactive) {
+        sql += ' WHERE is_active = 1';
+      }
+      const [rows] = await mysqlPool.execute(sql);
       const normalized = dedupeBarberRecords(rows || []);
       res.setHeader('x-barbers-source', 'mysql');
       res.json({ data: normalized });
@@ -1209,8 +1311,12 @@ app.get('/api/barbers', async (req, res) => {
       if (process.env.BARBERS_SHEET_URL) {
         try {
           const r = await fetchBarbersFromSheet(process.env.BARBERS_SHEET_URL);
+          let data = dedupeBarberRecords(r.data || []);
+          if (!includeInactive) {
+            data = data.filter(b => b.is_active);
+          }
           res.setHeader('x-barbers-source', 'google_sheet');
-          return res.json({ data: dedupeBarberRecords(r.data || []).filter(b => b.is_active) });
+          return res.json({ data });
         } catch (sheetErr) {}
       }
       const details = error?.message || error?.code || String(error || '');
@@ -1236,6 +1342,74 @@ app.get('/api/barbers/:id/availability', async (req, res) => {
       res.json({ booked_slots: rows.map(b => b.time) });
     } catch (error) { res.status(500).json({ error: error.message }); }
   }
+});
+
+// POST /api/barbers/:id/toggle-active — Admin: aktifkan/nonaktifkan kapster
+app.post('/api/barbers/:id/toggle-active', adminAuth, async (req, res) => {
+  const { id } = req.params;
+  const { is_active } = req.body;
+  if (typeof is_active !== 'boolean') {
+    return res.status(400).json({ error: 'is_active (boolean) required' });
+  }
+  if (DB_TYPE === 'supabase') {
+    const { data, error } = await supabase
+      .from('barbers')
+      .update({ is_active })
+      .eq('id', id)
+      .select('id, name, is_active')
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+    // Invalidate barbers cache agar perubahan langsung terlihat
+    barbersCache = null;
+    return res.json({ success: true, barber: data });
+  } else {
+    try {
+      await mysqlPool.execute(
+        'UPDATE barbers SET is_active = ? WHERE id = ?',
+        [is_active ? 1 : 0, id]
+      );
+      barbersCache = null;
+      res.json({ success: true, id, is_active });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+  }
+});
+
+// POST /api/barbers/:id/today-override — Admin: override ketersediaan kapster hari ini
+// available=true  → hapus blokir, upsert working_hours is_off=false untuk hari ini
+// available=false → upsert working_hours is_off=true + insert admin-block schedule
+app.post('/api/barbers/:id/today-override', adminAuth, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
+  const { id } = req.params;
+  const { available } = req.body;
+  if (typeof available !== 'boolean') return res.status(400).json({ error: 'available (boolean) required' });
+
+  const wibNow   = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const today    = wibNow.toISOString().slice(0, 10);
+  const dayOfWeek = new Date(`${today}T12:00:00Z`).getUTCDay();
+
+  // Upsert barber_working_hours untuk hari ini (hari dalam seminggu)
+  const { error: whErr } = await supabase.from('barber_working_hours').upsert({
+    barber_id:   id,
+    day_of_week: dayOfWeek,
+    is_off:      !available,
+    open_time:   '09:00',
+    close_time:  '21:00',
+  }, { onConflict: 'barber_id,day_of_week' });
+  if (whErr) return res.status(500).json({ error: whErr.message });
+
+  if (available) {
+    // Batalkan admin-block schedules hari ini untuk kapster ini
+    await supabase.from('schedules')
+      .update({ status: 'cancelled', notes: '[auto] admin override: kapster tersedia hari ini' })
+      .eq('barber_id', id)
+      .ilike('notes', '%admin-block%')
+      .gte('start_time', `${today}T00:00:00+07:00`)
+      .lt('start_time',  `${today}T23:59:59+07:00`)
+      .neq('status', 'cancelled');
+  }
+
+  barbersCache = null;
+  res.json({ success: true, barberId: id, available, dayOfWeek, date: today });
 });
 
 // GET /api/customers
@@ -1847,6 +2021,157 @@ if (require.main === module) {
     console.log(`📋 Health check: http://localhost:${PORT}/api/health\n`);
   });
 }
+
+// ================================================
+// REVIEW SYSTEM
+// ================================================
+
+const GOOGLE_REVIEW_URLS = {
+  bypass:    'https://g.page/r/CQVtP1_nV-SFEBM/review',
+  samadikun: 'https://g.page/r/CYSfr6rTvLs1EBM/review',
+  sumber:    'https://g.page/r/CS9yPcCA-CznEBM/review',
+  tegal:     'https://g.page/r/CWg3nZeYXRxSEBM/review',
+  csb:       'https://g.page/r/CbsPlES6TnydEBM/review',
+};
+
+// GET /api/reviews/booking?b=<uuid>  — fetch booking info for review page
+app.get('/api/reviews/booking', async (req, res) => {
+  const { b } = req.query;
+  if (!b || !/^[0-9a-f-]{36}$/i.test(b)) return res.status(400).json({ error: 'Invalid booking id' });
+
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id, name, service, date, time, location, barber_id')
+      .eq('id', b)
+      .neq('status', 'cancelled')
+      .single();
+
+    if (error || !data) return res.status(404).json({ error: 'Booking not found' });
+
+    // Resolve kapster name
+    let kapsterName = null;
+    if (data.barber_id) {
+      const { data: barber } = await supabase
+        .from('barbers').select('name').eq('id', data.barber_id).single();
+      kapsterName = barber?.name || null;
+    }
+
+    // Check if already reviewed
+    const { data: existing } = await supabase
+      .from('reviews').select('id').eq('booking_id', b).maybeSingle();
+
+    return res.json({
+      id: data.id,
+      customer_name: data.name,
+      service: data.service,
+      date: data.date,
+      time: data.time,
+      branch: data.location,
+      kapster_id: data.barber_id,
+      kapster_name: kapsterName,
+      already_reviewed: !!existing,
+      google_review_url: GOOGLE_REVIEW_URLS[String(data.location).toLowerCase()] || null,
+    });
+  } catch (e) {
+    console.error('[Reviews] booking fetch error:', e.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/reviews/submit  — save review
+app.post('/api/reviews/submit', async (req, res) => {
+  const { booking_id, rating, comment } = req.body || {};
+
+  if (!booking_id || !/^[0-9a-f-]{36}$/i.test(booking_id))
+    return res.status(400).json({ error: 'Invalid booking_id' });
+  if (!rating || rating < 1 || rating > 5)
+    return res.status(400).json({ error: 'Rating harus 1–5' });
+
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    // Validate booking exists
+    const { data: booking } = await supabase
+      .from('bookings')
+      .select('id, name, barber_id, location')
+      .eq('id', booking_id)
+      .neq('status', 'cancelled')
+      .single();
+
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    // Duplicate check
+    const { data: dup } = await supabase
+      .from('reviews').select('id').eq('booking_id', booking_id).maybeSingle();
+    if (dup) return res.status(409).json({ error: 'Sudah pernah review' });
+
+    // Resolve kapster name
+    let kapsterName = null;
+    if (booking.barber_id) {
+      const { data: barber } = await supabase
+        .from('barbers').select('name').eq('id', booking.barber_id).single();
+      kapsterName = barber?.name || null;
+    }
+
+    const { error: insertErr } = await supabase.from('reviews').insert({
+      booking_id,
+      customer_name: booking.name,
+      kapster_id: booking.barber_id || null,
+      kapster_name: kapsterName,
+      branch: booking.location,
+      rating: Number(rating),
+      comment: comment ? String(comment).trim().slice(0, 1000) : null,
+      is_public: true,
+    });
+
+    if (insertErr) {
+      if (insertErr.code === '23505') return res.status(409).json({ error: 'Sudah pernah review' });
+      throw insertErr;
+    }
+
+    return res.json({
+      ok: true,
+      google_review_url: GOOGLE_REVIEW_URLS[String(booking.location).toLowerCase()] || null,
+    });
+  } catch (e) {
+    console.error('[Reviews] submit error:', e.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/reviews/public?branch=<branch>&limit=<n>  — public reviews for website
+app.get('/api/reviews/public', async (req, res) => {
+  const branch = req.query.branch ? String(req.query.branch).toLowerCase() : null;
+  const limit  = Math.min(parseInt(req.query.limit) || 20, 50);
+  const kapster = req.query.kapster || null;
+
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    let q = supabase
+      .from('reviews')
+      .select('id, customer_name, kapster_name, branch, rating, comment, created_at')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (branch) q = q.eq('branch', branch);
+    if (kapster) q = q.eq('kapster_id', kapster);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    // Aggregate stats
+    const avg = data.length ? (data.reduce((s, r) => s + r.rating, 0) / data.length).toFixed(1) : null;
+
+    res.setHeader('Cache-Control', 'public, s-maxage=60');
+    return res.json({ reviews: data || [], count: data?.length || 0, average_rating: avg });
+  } catch (e) {
+    console.error('[Reviews] public fetch error:', e.message);
+    return res.status(500).json({ error: 'Server error' });
+  }
+});
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
