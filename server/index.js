@@ -11,7 +11,7 @@ const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
 const { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured, getBarbersTableName } = require('./airtable');
-const { notifyCustomerBookingConfirmed, notifyAdminNewBooking } = require('./services/waNotification');
+const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest } = require('./services/waNotification');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -2021,6 +2021,76 @@ if (require.main === module) {
     console.log(`📋 Health check: http://localhost:${PORT}/api/health\n`);
   });
 }
+
+// ================================================
+// CRON — REVIEW REQUEST (called by cron-job.org every 30 min)
+// GET /api/cron/review-request
+// ================================================
+function parseDurationMinutes(durStr) {
+  if (!durStr) return 60;
+  const m = String(durStr).match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : 60;
+}
+
+app.get('/api/cron/review-request', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const auth   = req.headers['authorization'];
+  if (secret && auth !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+
+  const nowUTC = new Date();
+  const nowWIB = new Date(nowUTC.getTime() + 7 * 3600000);
+  console.log(`[ReviewRequest] Fired at ${nowWIB.toISOString().slice(0,16)} WIB`);
+
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+    const cutoffDate = new Date(nowUTC.getTime() - 48 * 3600000).toISOString().slice(0, 10);
+
+    const { data: bookings, error } = await supabase
+      .from('bookings')
+      .select('id, name, wa, service, date, time, location, barber_id, duration, status')
+      .in('status', ['confirmed', 'done'])
+      .is('review_sent_at', null)
+      .gte('date', cutoffDate)
+      .not('wa', 'is', null);
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!bookings || bookings.length === 0) return res.status(200).json({ sent: 0 });
+
+    const barberIds = [...new Set(bookings.map(b => b.barber_id).filter(Boolean))];
+    const barberMap = {};
+    if (barberIds.length) {
+      const { data: barbers } = await supabase.from('barbers').select('id, name').in('id', barberIds);
+      for (const b of barbers || []) barberMap[b.id] = b.name;
+    }
+
+    let sent = 0, skipped = 0, failed = 0;
+    for (const booking of bookings) {
+      if (!booking.wa) { skipped++; continue; }
+      const durationMin = parseDurationMinutes(booking.duration);
+      const triggerTime = new Date(
+        new Date(`${booking.date}T${booking.time}+07:00`).getTime() + (durationMin + 30) * 60000
+      );
+      if (nowUTC < triggerTime) { skipped++; continue; }
+
+      try {
+        const result = await notifyCustomerReviewRequest({ ...booking, barber_name: barberMap[booking.barber_id] || null });
+        if (result && result.status === false) {
+          failed++;
+        } else {
+          await supabase.from('bookings').update({ review_sent_at: nowUTC.toISOString() }).eq('id', booking.id);
+          sent++;
+          console.log(`[ReviewRequest] Sent → ${booking.name} (${booking.wa})`);
+        }
+      } catch (e) { failed++; console.error('[ReviewRequest] send error:', e.message); }
+    }
+
+    console.log(`[ReviewRequest] sent:${sent} skipped:${skipped} failed:${failed}`);
+    return res.json({ sent, skipped, failed });
+  } catch (e) {
+    console.error('[ReviewRequest] error:', e.message);
+    return res.status(500).json({ error: e.message });
+  }
+});
 
 // ================================================
 // REVIEW SYSTEM
