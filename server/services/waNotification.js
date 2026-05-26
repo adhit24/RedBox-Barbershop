@@ -122,7 +122,7 @@ async function notifyCustomerReviewRequest(booking) {
   const fn     = (name || 'Kak').split(' ')[0];
   const branch = branchLabel(location);
   const kapster = barber_name ? `bareng *${barber_name}*` : 'di Redbox';
-  const baseUrl = process.env.APP_BASE_URL || 'https://redboxbarbershop.vercel.app';
+  const baseUrl = process.env.APP_BASE_URL || 'https://redbox-barbershop.vercel.app';
   const link = `${baseUrl}/review.html?b=${id}`;
 
   const message =
