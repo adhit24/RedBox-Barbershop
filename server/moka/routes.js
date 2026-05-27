@@ -883,7 +883,8 @@ function createMokaRouter(supabase) {
       const mokaOutletId = outlet.moka_outlet_id;
       const testDate = date || new Date().toISOString().slice(0, 10);
       const [y, m, d] = testDate.split('-');
-      const fmtDate = `${d}/${m}/${y}`;
+      const fmtDateDDMMYYYY = `${d}/${m}/${y}`;  // DD/MM/YYYY format
+      const fmtDateISO = testDate;  // YYYY-MM-DD format
       const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' };
 
       // Test endpoint variations - comprehensive API path discovery
@@ -892,23 +893,28 @@ function createMokaRouter(supabase) {
         { name: 'token_check_outlets', path: `/v1/outlets?per_page=1` },
         { name: 'token_check_me', path: `/v1/me` },
         // Original sync_bills variations
-        { name: 'sync_bills_with_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills/?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5&deep=true` },
-        { name: 'sync_bills_no_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5&deep=true` },
-        { name: 'v2_sync_bills', path: `/v2/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
-        { name: 'v3_sync_bills', path: `/v3/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
-        // Bills variations
-        { name: 'v1_bills', path: `/v1/outlets/${mokaOutletId}/bills?status=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
-        { name: 'v2_bills', path: `/v2/outlets/${mokaOutletId}/bills?status=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
-        { name: 'v3_bills', path: `/v3/outlets/${mokaOutletId}/bills?status=pending&start=${fmtDate}&end=${fmtDate}&per_page=5` },
-        { name: 'v1_outlet_bills', path: `/v1/bills?outlet_id=${mokaOutletId}&status=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'sync_bills_with_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills/?statuses=PENDING&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5&deep=true` },
+        { name: 'sync_bills_no_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5&deep=true` },
+        { name: 'v2_sync_bills', path: `/v2/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
+        { name: 'v3_sync_bills', path: `/v3/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
+        // Bills variations with DD/MM/YYYY
+        { name: 'v1_bills', path: `/v1/outlets/${mokaOutletId}/bills?status=PENDING&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
+        { name: 'v2_bills', path: `/v2/outlets/${mokaOutletId}/bills?status=PENDING&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
+        { name: 'v3_bills', path: `/v3/outlets/${mokaOutletId}/bills?status=pending&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
+        // Bills with ISO date format (YYYY-MM-DD)
+        { name: 'v1_bills_iso', path: `/v1/outlets/${mokaOutletId}/bills?status=PENDING&start=${fmtDateISO}&end=${fmtDateISO}&per_page=5` },
+        { name: 'v1_bills_created_after', path: `/v1/outlets/${mokaOutletId}/bills?status=PENDING&created_after=${fmtDateISO}&per_page=5` },
+        // Original format tests
+        { name: 'v1_outlet_bills', path: `/v1/bills?outlet_id=${mokaOutletId}&status=PENDING&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
         // Orders variations
-        { name: 'v1_orders', path: `/v1/outlets/${mokaOutletId}/orders?status=pending&start_date=${fmtDate}&end_date=${fmtDate}&per_page=5` },
+        { name: 'v1_orders', path: `/v1/outlets/${mokaOutletId}/orders?status=pending&start_date=${fmtDateDDMMYYYY}&end_date=${fmtDateDDMMYYYY}&per_page=5` },
+        { name: 'v1_orders_iso', path: `/v1/outlets/${mokaOutletId}/orders?status=pending&start_date=${fmtDateISO}&end_date=${fmtDateISO}&per_page=5` },
         { name: 'v1_advanced_orders', path: `/v1/outlets/${mokaOutletId}/advanced_orderings/orders?per_page=5` },
         // Alternative formats
         { name: 'v1_open_bills', path: `/v1/outlets/${mokaOutletId}/open_bills?per_page=5` },
         { name: 'v1_pending_bills', path: `/v1/outlets/${mokaOutletId}/pending_bills?per_page=5` },
-        { name: 'v1_transactions', path: `/v1/outlets/${mokaOutletId}/transactions?status=pending&start=${fmtDate}&end=${fmtDate}&per_page=5` },
-        { name: 'v1_sales', path: `/v1/outlets/${mokaOutletId}/sales?status=pending&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'v1_transactions', path: `/v1/outlets/${mokaOutletId}/transactions?status=pending&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
+        { name: 'v1_sales', path: `/v1/outlets/${mokaOutletId}/sales?status=pending&start=${fmtDateDDMMYYYY}&end=${fmtDateDDMMYYYY}&per_page=5` },
         // Reports endpoint
         { name: 'v1_reports_transactions', path: `/v1/outlets/${mokaOutletId}/reports/transactions?start_date=${testDate}&end_date=${testDate}&per_page=5` },
         { name: 'v3_reports_latest', path: `/v3/outlets/${mokaOutletId}/reports/get_latest_transactions?per_page=5` },
