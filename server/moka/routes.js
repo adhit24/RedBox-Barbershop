@@ -689,6 +689,98 @@ function createMokaRouter(supabase) {
     });
   });
 
+  // ── GET /api/moka/sync-barber-ids ─────────────────────────
+  // Fetch employee IDs from Moka API (via bills) and update Supabase barbers
+  // Query: outletId (required)
+  router.get('/moka/sync-barber-ids', async (req, res) => {
+    try {
+      const { outletId: rawOutletId } = req.query;
+      if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
+
+      const outletId = await _resolveOutletId(supabase, rawOutletId);
+      if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+      const { data: outlet } = await supabase.from('outlets').select('id, slug, moka_outlet_id').eq('id', outletId).single();
+      if (!outlet?.moka_outlet_id) return res.status(404).json({ error: 'Outlet missing moka_outlet_id' });
+
+      const MokaClient = require('./client');
+      const client = new MokaClient(supabase, outletId, outlet.moka_outlet_id);
+
+      // Fetch bills to extract employee IDs
+      const startDate = new Date().toISOString().slice(0, 10);
+      const endDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      
+      const billsRes = await client.getOpenBills(startDate, endDate).catch(err => ({
+        error: err.message, data: []
+      }));
+
+      const bills = billsRes?.data || billsRes || [];
+      
+      // Extract unique employees from bills
+      const employeeMap = new Map(); // name -> id
+      for (const bill of bills) {
+        const items = bill.billDetail?.items || [];
+        for (const item of items) {
+          if (item.name && item.id) {
+            employeeMap.set(item.name, String(item.id));
+          }
+        }
+      }
+
+      // Get all barbers for this outlet
+      const { data: barbers } = await supabase
+        .from('barbers')
+        .select('id, name, moka_employee_id')
+        .eq('outlet_id', outletId)
+        .eq('is_active', true);
+
+      // Match and update
+      const updates = [];
+      const unmatched = [];
+      
+      for (const barber of (barbers || [])) {
+        // Try exact match first
+        let mokaId = employeeMap.get(barber.name);
+        
+        // Try fuzzy match if no exact match
+        if (!mokaId) {
+          for (const [mokaName, mokaEmpId] of employeeMap) {
+            if (barber.name.toLowerCase().includes(mokaName.toLowerCase()) ||
+                mokaName.toLowerCase().includes(barber.name.toLowerCase())) {
+              mokaId = mokaEmpId;
+              break;
+            }
+          }
+        }
+
+        if (mokaId && !barber.moka_employee_id) {
+          const { error } = await supabase
+            .from('barbers')
+            .update({ moka_employee_id: mokaId })
+            .eq('id', barber.id);
+          
+          if (!error) {
+            updates.push({ barber: barber.name, moka_employee_id: mokaId });
+          }
+        } else if (!mokaId) {
+          unmatched.push(barber.name);
+        }
+      }
+
+      res.json({
+        outlet: outlet.slug,
+        billsChecked: bills.length,
+        employeesFound: Array.from(employeeMap.entries()).map(([name, id]) => ({ name, id })),
+        updated: updates,
+        unmatched: unmatched,
+        message: `Updated ${updates.length} barbers, ${unmatched.length} unmatched`
+      });
+    } catch (err) {
+      console.error('[SyncBarberIds] Error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── GET/POST /api/moka/cron-sync ───────────────────────────
   // Cron endpoint - no auth needed, called by Vercel Cron or cron-job.org
   // Query/Body: outletId (optional, default: all authorized outlets)
