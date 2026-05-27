@@ -102,7 +102,6 @@ function renderLockedState(message = 'Admin password diperlukan untuk memuat das
     ['barbersGrid', ''],
     ['crmCalGrid', ''],
     ['slotTimeline', ''],
-    ['view-revenue', ''],
   ];
 
   targets.forEach(([id, fallback]) => {
@@ -238,16 +237,6 @@ async function apiGetBarbers(includeInactive = false) {
     const json = await res.json();
     return json.data || [];
   } catch { return []; }
-}
-
-async function apiGetRevenue(params = {}) {
-  try {
-    params._t = Date.now();
-    const q = new URLSearchParams(params).toString();
-    const res = await fetch(`${API_URL}/revenue?${q}`, { headers: apiHeaders() });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
 }
 
 async function apiSaveBooking(data, id = null) {
@@ -448,7 +437,6 @@ async function renderView(view) {
   }
   if (view === 'barbers')    await renderBarbers();
   if (view === 'customers')  await renderCustomers();
-  if (view === 'revenue')    await renderRevenue();
 }
 
 function getCurrentView() { return document.querySelector('.sb-link.active')?.dataset.view || 'overview'; }
@@ -754,6 +742,14 @@ async function renderBarbers() {
   const allDays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   if (!barbers.length) { grid.innerHTML = '<p class="empty-state">No barbers found in database.</p>'; return; }
 
+  // Sortir: cabang dulu (alfabetis slug), lalu nama kapster (alfabetis)
+  barbers.sort((a, b) => {
+    const ba = String(a.branch || '').toLowerCase();
+    const bb = String(b.branch || '').toLowerCase();
+    if (ba !== bb) return ba.localeCompare(bb);
+    return String(a.name || '').toLowerCase().localeCompare(String(b.name || '').toLowerCase());
+  });
+
   function getInitials(name) {
     const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
     const a = parts[0]?.[0] || '', b = parts.length > 1 ? (parts[parts.length - 1]?.[0] || '') : (parts[0]?.[1] || '');
@@ -953,130 +949,6 @@ document.querySelectorAll('[data-segment]').forEach(btn => {
     renderCustomers(document.getElementById('customerSearch')?.value || '', btn.dataset.segment);
   });
 });
-
-// ── REVENUE REPORT ───────────────────────────────
-async function renderRevenue() {
-  const container = document.getElementById('revenueContent') || document.getElementById('view-revenue');
-  if (!container) return;
-
-  const period  = document.getElementById('revPeriod')?.value || 'month';
-  const branch  = document.getElementById('revBranch')?.value || 'all';
-
-  container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--w30,#aaa)">Memuat laporan...</div>`;
-
-  const data = await apiGetRevenue({ period, branch });
-  if (!data) { container.innerHTML = `<div class="empty-state">Gagal memuat data revenue. Pastikan server berjalan.</div>`; showToast('Gagal memuat data revenue', 'error'); return; }
-
-  const periodLabels = { week: '7 Hari Terakhir', month: '30 Hari Terakhir', year: '1 Tahun Terakhir' };
-
-  const barberRows = (data.by_barber || []).map((b, i) => `
-    <tr>
-      <td>${i + 1}</td>
-      <td>${esc(b.name)}</td>
-      <td style="font-weight:700;color:#4ade80">${esc(fmt(b.revenue))}</td>
-      <td style="color:#aaa;font-size:.8rem">${data.total ? Math.round(b.revenue / data.total * 100) : 0}%</td>
-    </tr>`).join('');
-
-  const branchRows = (data.by_branch || []).map(b => `
-    <tr>
-      <td>${esc(LOCATION_LABELS[b.name] || b.name)}</td>
-      <td style="font-weight:700;color:#60a5fa">${esc(fmt(b.revenue))}</td>
-      <td style="color:#aaa;font-size:.8rem">${data.total ? Math.round(b.revenue / data.total * 100) : 0}%</td>
-    </tr>`).join('');
-
-  // Mini bar chart untuk tren harian
-  const dates = data.by_date || [];
-  const maxRev = Math.max(...dates.map(d => d.revenue), 1);
-  const chartBars = dates.map(d => {
-    const h = Math.max(4, Math.round((d.revenue / maxRev) * 80));
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:18px;max-width:32px">
-      <span style="font-size:.6rem;color:#aaa">${esc(fmt(d.revenue).replace('Rp ',''))}</span>
-      <div style="width:100%;height:${h}px;background:#dc2626;border-radius:3px 3px 0 0;opacity:.85"></div>
-      <span style="font-size:.55rem;color:#666;writing-mode:vertical-rl;transform:rotate(180deg)">${esc(d.date.slice(5))}</span>
-    </div>`;
-  }).join('');
-
-  container.innerHTML = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
-      <div style="display:flex;gap:8px;align-items:center">
-        <label style="font-size:.8rem;color:#aaa">Periode:</label>
-        <select id="revPeriod" class="filter-select" onchange="renderRevenue()">
-          <option value="week" ${period==='week'?'selected':''}>7 Hari</option>
-          <option value="month" ${period==='month'?'selected':''}>30 Hari</option>
-          <option value="year" ${period==='year'?'selected':''}>1 Tahun</option>
-        </select>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <label style="font-size:.8rem;color:#aaa">Cabang:</label>
-        <select id="revBranch" class="filter-select" onchange="renderRevenue()">
-          <option value="all" ${branch==='all'?'selected':''}>Semua Cabang</option>
-          <option value="bypass" ${branch==='bypass'?'selected':''}>Bypass</option>
-          <option value="samadikun" ${branch==='samadikun'?'selected':''}>Samadikun</option>
-          <option value="csb" ${branch==='csb'?'selected':''}>CSB Mall</option>
-          <option value="sumber" ${branch==='sumber'?'selected':''}>Sumber</option>
-          <option value="tegal" ${branch==='tegal'?'selected':''}>Tegal</option>
-        </select>
-      </div>
-      <button class="action-btn" onclick="exportRevenueCSV()">⬇ Export CSV</button>
-    </div>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px">
-      <div class="stat-card"><div class="stat-val" style="color:#4ade80">${esc(fmt(data.total))}</div><div class="stat-label">Total Revenue</div></div>
-      <div class="stat-card"><div class="stat-val">${data.count}</div><div class="stat-label">Booking Selesai</div></div>
-      <div class="stat-card"><div class="stat-val">${data.count ? esc(fmt(Math.round(data.total / data.count))) : 'Rp 0'}</div><div class="stat-label">Rata-rata/Booking</div></div>
-    </div>
-
-    ${dates.length ? `<div style="margin-bottom:24px">
-      <h4 style="font-size:.85rem;color:#aaa;margin-bottom:10px">Tren Revenue — ${esc(periodLabels[period] || period)}</h4>
-      <div style="display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid #333;padding-bottom:4px;overflow-x:auto">${chartBars}</div>
-    </div>` : ''}
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;flex-wrap:wrap">
-      <div>
-        <h4 style="font-size:.85rem;color:#aaa;margin-bottom:10px">Revenue per Kapster</h4>
-        <table class="crm-table"><thead><tr><th>#</th><th>Kapster</th><th>Revenue</th><th>%</th></tr></thead>
-        <tbody>${barberRows || '<tr><td colspan="4" class="empty-state">Belum ada data</td></tr>'}</tbody></table>
-      </div>
-      <div>
-        <h4 style="font-size:.85rem;color:#aaa;margin-bottom:10px">Revenue per Cabang</h4>
-        <table class="crm-table"><thead><tr><th>Cabang</th><th>Revenue</th><th>%</th></tr></thead>
-        <tbody>${branchRows || '<tr><td colspan="3" class="empty-state">Belum ada data</td></tr>'}</tbody></table>
-      </div>
-    </div>`;
-
-  // Simpan data untuk export
-  window._lastRevenueData = data;
-}
-
-window.renderRevenue = renderRevenue;
-
-window.exportRevenueCSV = function() {
-  const data = window._lastRevenueData;
-  if (!data) return;
-  const rows = [
-    ['Laporan Revenue RedBox Barbershop'],
-    [`Periode: ${data.period?.from} s/d ${data.period?.to}`],
-    [`Total Revenue: ${fmt(data.total)}`],
-    [`Total Booking: ${data.count}`],
-    [],
-    ['Revenue per Kapster'],
-    ['Kapster','Revenue','%'],
-    ...(data.by_barber || []).map(b => [b.name, b.revenue, data.total ? Math.round(b.revenue / data.total * 100) + '%' : '0%']),
-    [],
-    ['Revenue per Cabang'],
-    ['Cabang','Revenue','%'],
-    ...(data.by_branch || []).map(b => [LOCATION_LABELS[b.name] || b.name, b.revenue, data.total ? Math.round(b.revenue / data.total * 100) + '%' : '0%']),
-    [],
-    ['Tren Harian'],
-    ['Tanggal','Revenue'],
-    ...(data.by_date || []).map(d => [d.date, d.revenue]),
-  ];
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = `revenue-redbox-${todayStr()}.csv`; a.click();
-  URL.revokeObjectURL(url);
-};
 
 // ── EXPORT BOOKINGS CSV ─────────────────────────
 window.exportBookingsCSV = async function() {
