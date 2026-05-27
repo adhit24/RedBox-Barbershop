@@ -689,10 +689,43 @@ function createMokaRouter(supabase) {
     });
   });
 
-  // ── GET /api/moka/cron-sync ────────────────────────────────
-  // Vercel Cron endpoint (GET) - no auth needed, called by Vercel Cron
-  // Query: outletId (optional, default: all authorized outlets)
+  // ── GET/POST /api/moka/cron-sync ───────────────────────────
+  // Cron endpoint - no auth needed, called by Vercel Cron or cron-job.org
+  // Query/Body: outletId (optional, default: all authorized outlets)
   router.get('/moka/cron-sync', async (req, res) => {
+    try {
+      const { outletId: rawOutletId } = req.query;
+      
+      const _runSync = async () => {
+        const results = [];
+        if (rawOutletId) {
+          const outletId = await _resolveOutletId(supabase, rawOutletId);
+          if (!outletId) return [{ error: `Outlet not found: ${rawOutletId}` }];
+          const result = await pullMokaToWeb(supabase, outletId);
+          results.push({ outletId, ...result });
+        } else {
+          const { data: tokens } = await supabase
+            .from('moka_tokens').select('outlet_id');
+          for (const t of tokens || []) {
+            const result = await pullMokaToWeb(supabase, t.outlet_id).catch(err => ({
+              error: err.message, processed: 0, skipped: 0, errors: 1,
+            }));
+            results.push({ outletId: t.outlet_id, ...result });
+          }
+        }
+        return results;
+      };
+      
+      const results = await _runSync();
+      return res.json({ ok: true, syncedAt: new Date().toISOString(), results });
+    } catch (err) {
+      console.error('[CronSync] Error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // POST variant for cron-job.org compatibility (existing cron uses POST /api/moka/sync)
+  router.post('/moka/cron-sync', async (req, res) => {
     try {
       const { outletId: rawOutletId } = req.query;
       

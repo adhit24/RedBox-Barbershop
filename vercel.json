@@ -48,7 +48,8 @@
   },
   "crons": [
     { "path": "/api/cron/reminders", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/birthday",  "schedule": "0 1 * * *" }
+    { "path": "/api/cron/birthday",  "schedule": "0 1 * * *" },
+    { "path": "/api/moka/cron-sync", "schedule": "*/5 * * * *" }
   ],
   "rewrites": [
     { "source": "/api/ai/analyze",              "destination": "/api/ai/analyze.js" },
@@ -60,6 +61,7 @@
     { "source": "/api/cron/birthday",           "destination": "/api/cron/birthday.js" },
     { "source": "/api/cron/remind-soon",        "destination": "/api/cron/remind-soon.js" },
     { "source": "/api/cron/expire-stale-bills", "destination": "/api/cron/expire-stale-bills.js" },
+    { "source": "/api/moka/cron-sync",          "destination": "/api/moka/cron-sync" },
     { "source": "/api/moka/sync-customers",     "destination": "/api/moka/sync-customers.js" },
     { "source": "/api/(.*)",                    "destination": "/api/[...path].js" }
   ],
