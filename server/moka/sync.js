@@ -1107,6 +1107,12 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   });
 
   if (schErr) {
+    // Handle duplicate external_id - bill already synced
+    if (schErr.message?.includes('schedules_external_id_key') || schErr.code === '23505') {
+      console.log(`[Sync] Open bill ${billId} already exists (duplicate external_id), skipping`);
+      return 'skipped';
+    }
+    // Handle overlapping schedule (goshow queue)
     if (schErr.message?.includes('no_barber_overlap') || schErr.code === '23P01') return 'skipped';
     throw new Error(`Open bill insert failed: ${schErr.message}`);
   }
