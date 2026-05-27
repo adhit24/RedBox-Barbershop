@@ -947,6 +947,59 @@ function createMokaRouter(supabase) {
     } catch (err) { _serverError(res, err); }
   });
 
+  // ── GET /api/moka/debug-bills ──────────────────────────────
+  // Debug endpoint to see actual bill data from Moka
+  router.get('/moka/debug-bills', async (req, res) => {
+    try {
+      const { outletId: rawOutletId, date } = req.query;
+      if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
+
+      const outletId = await _resolveOutletId(supabase, rawOutletId);
+      if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+      const { data: outlet } = await supabase.from('outlets').select('id, slug, moka_outlet_id').eq('id', outletId).single();
+      if (!outlet?.moka_outlet_id) return res.status(404).json({ error: 'Missing moka_outlet_id' });
+
+      const { getAccessToken } = require('./oauth');
+      const token = await getAccessToken(supabase, outletId);
+      const mokaOutletId = outlet.moka_outlet_id;
+      
+      // Test date range: 7 days back to tomorrow (same as sync.js)
+      const testDate = date || new Date().toISOString().slice(0, 10);
+      const [y, m, d] = testDate.split('-');
+      const fmtDate = `${d}/${m}/${y}`;
+      
+      const WIB_MS = 7 * 60 * 60 * 1000;
+      const nowWIB = Date.now() + WIB_MS;
+      const startWIB = new Date(nowWIB - 7 * 86_400_000).toISOString().slice(0, 10);
+      const tomorrowWIB = new Date(nowWIB + 86_400_000).toISOString().slice(0, 10);
+      const [sy, sm, sd] = startWIB.split('-');
+      const [ty, tm, td] = tomorrowWIB.split('-');
+      const startFmt = `${sd}/${sm}/${sy}`;
+      const endFmt = `${td}/${tm}/${ty}`;
+      
+      const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' };
+      const MOKA_API_BASE = process.env.MOKA_API_BASE || 'https://api.mokapos.com';
+      
+      // Query with full date range
+      const path = `/v1/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${startFmt}&end=${endFmt}&per_page=200&deep=true`;
+      const url = `${MOKA_API_BASE}${path}`;
+      
+      const resp = await fetch(url, { headers });
+      const text = await resp.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+      
+      res.json({
+        outlet: { slug: outlet.slug, moka_outlet_id: mokaOutletId },
+        query: { startFmt, endFmt, url },
+        responseStatus: resp.status,
+        billCount: data?.data ? (Array.isArray(data.data) ? data.data.length : 1) : 0,
+        bills: data?.data || data?.raw || data,
+      });
+    } catch (err) { _serverError(res, err); }
+  });
+
   // ── GET/POST /api/moka/sync-customers ─────────────────────
   // Pull customers from Moka transactions → Supabase customers table
   router.get('/moka/sync-customers', async (req, res) => {
