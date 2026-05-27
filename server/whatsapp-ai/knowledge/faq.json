@@ -1,34 +1,49 @@
 {
   "faq": [
     {
-      "question": "Jam buka",
-      "keywords": ["jam buka", "buka jam", "open", "tutup", "jam operasional"],
-      "answer": "Kami buka setiap hari jam 10.00 – 22.00 WIB ✂️"
+      "question": "Jam operasional",
+      "keywords": ["jam buka", "buka jam", "open", "tutup", "jam operasional", "jam berapa buka", "jam kerja"],
+      "answer": "Redbox buka setiap hari Senin–Minggu jam 10.00–21.00 WIB ✂️"
     },
     {
-      "question": "Lokasi",
-      "keywords": ["lokasi", "alamat", "dimana", "maps", "gps", "tempatnya"],
-      "answer": "RedBox Barbershop ada di:\n📍 Jl. Contoh No. 123, Kota\n\nBisa cek Maps ya kak 👇\nhttps://maps.google.com"
+      "question": "Lokasi dan cabang",
+      "keywords": ["lokasi", "alamat", "dimana", "maps", "gps", "tempatnya", "cabang", "ada di mana", "ada dimana"],
+      "answer": "Redbox ada di 5 lokasi kak:\n• 📍 Bypass — Jl. Ahmad Yani No.88 (pusat)\n• 📍 Samadikun\n• 📍 CSB Mall (Lt. 1)\n• 📍 Sumber\n• 📍 Tegal\n\nDetail map + booking online: redboxbarbershop.com 😊"
     },
     {
-      "question": "Booking",
-      "keywords": ["booking", "reservasi", "jadwal", "pesan tempat", "daftar", "antrian"],
-      "answer": "Yuk booking sekarang! Ketik *booking* dan aku bantu prosesnya 😊"
+      "question": "Cara booking",
+      "keywords": ["booking", "reservasi", "jadwal", "pesan tempat", "daftar", "cara book", "gimana booking"],
+      "answer": "Booking online langsung di sini kak:\n\n→ redboxbarbershop.com/booking.html\n\nTinggal pilih cabang → kapster → jam. Slot langsung terkunci, gak perlu konfirmasi ulang ✂️"
+    },
+    {
+      "question": "Slot dan antrian",
+      "keywords": ["antrian", "antrean", "slot", "penuh", "full", "masih ada", "masih kosong", "ada tempat", "bisa jam", "antri"],
+      "answer": "Buat liat slot real-time, paling akurat langsung di sini kak:\n\n→ redboxbarbershop.com/booking.html\n\nPilih cabang yang kakak mau, jam available langsung kelihatan live 👌"
     },
     {
       "question": "Parkir",
-      "keywords": ["parkir", "motor", "mobil"],
+      "keywords": ["parkir", "motor", "mobil", "tempat parkir"],
       "answer": "Tersedia parkir gratis di depan outlet kak 🚗🏍️"
     },
     {
       "question": "Metode pembayaran",
-      "keywords": ["bayar", "pembayaran", "transfer", "qris", "tunai", "cash", "debit", "kredit"],
-      "answer": "Kami terima:\n💵 Tunai\n📱 QRIS (semua e-wallet)\n💳 Debit/Kredit"
+      "keywords": ["bayar", "pembayaran", "transfer", "qris", "tunai", "cash", "debit", "kredit", "e-wallet", "ovo", "gopay", "dana"],
+      "answer": "Redbox terima:\n💵 Tunai (cash)\n📱 QRIS — semua e-wallet & m-banking\n\nGampang dan cashless ✨"
     },
     {
       "question": "Walk-in",
-      "keywords": ["walk in", "langsung datang", "tanpa booking", "bisa langsung"],
-      "answer": "Bisa langsung datang kak! Tapi booking dulu lebih aman biar nggak antri lama 😊"
+      "keywords": ["walk in", "langsung datang", "tanpa booking", "bisa langsung", "ga perlu booking"],
+      "answer": "Bisa langsung datang kak! Tapi mending book dulu di redboxbarbershop.com/booking.html — slot kakak langsung terkunci dan gak perlu antri 😊"
+    },
+    {
+      "question": "Membership",
+      "keywords": ["member", "membership", "daftar member", "poin", "loyalty"],
+      "answer": "Ada program member Redbox kak! Dapet poin tiap transaksi, bisa ditukar diskon. Daftar di: redboxbarbershop.com/membership.html 🔥"
+    },
+    {
+      "question": "Home service",
+      "keywords": ["home service", "panggilan", "ke rumah", "ke kantor", "datang ke"],
+      "answer": "Ada layanan home service kak! Untuk detail dan booking: redboxbarbershop.com/home-service.html 😊"
     }
   ]
 }

@@ -71,123 +71,176 @@
       max-width: 480px;
     }
 
-    /* ── PRODUCT GRID ─────────────────────────────────── */
+    /* ── PRODUCT CATALOG ──────────────────────────────── */
     .product-section {
       padding: clamp(48px, 8vw, 96px) clamp(20px, 6vw, 80px);
       background: var(--bg);
     }
-    .product-grid {
+    .product-catalog {
+      display: flex;
+      flex-direction: column;
+      gap: clamp(48px, 6vw, 80px);
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    /* ── PRODUCT CARD ─────────────────────────────────── */
+    .pcard {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: clamp(12px, 2vw, 24px);
-    }
-    .product-item {
-      position: relative;
-      border-radius: var(--radius);
+      grid-template-columns: 1fr 1.4fr;
+      gap: clamp(24px, 4vw, 56px);
+      background: #111;
+      border-radius: 20px;
       overflow: hidden;
-      aspect-ratio: 3/4;
-      background: var(--black-2);
-      cursor: zoom-in;
+      border: 1px solid rgba(255,255,255,.06);
+      transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease;
     }
-    .product-item img {
-      width: 100%;
-      height: 100%;
+    .pcard:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 24px 64px rgba(0,0,0,.5);
+    }
+    .pcard-img {
+      aspect-ratio: 3/4;
+      overflow: hidden;
+      position: relative;
+    }
+    .pcard-img img {
+      width: 100%; height: 100%;
       object-fit: cover;
       display: block;
-      transition: transform .55s cubic-bezier(0.16,1,0.3,1);
+      transition: transform .6s cubic-bezier(.16,1,.3,1);
     }
-    .product-item:hover img {
-      transform: scale(1.06);
+    .pcard:hover .pcard-img img {
+      transform: scale(1.05);
     }
-    .product-item-overlay {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(to top, rgba(0,0,0,.55) 0%, transparent 55%);
-      opacity: 0;
-      transition: opacity .35s ease;
+    .pcard-body {
+      padding: clamp(24px, 4vw, 48px) clamp(20px, 3vw, 40px);
       display: flex;
-      align-items: flex-end;
-      padding: 20px;
+      flex-direction: column;
+      justify-content: center;
     }
-    .product-item:hover .product-item-overlay {
-      opacity: 1;
-    }
-    .product-item-label {
-      font-size: .75rem;
-      font-weight: 600;
-      letter-spacing: .1em;
+    .pcard-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(193, 18, 31, .12);
+      border: 1px solid rgba(193, 18, 31, .3);
+      color: #ef4444;
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .15em;
       text-transform: uppercase;
-      color: var(--white);
+      padding: 5px 12px;
+      border-radius: 99px;
+      width: fit-content;
+      margin-bottom: 14px;
     }
-
-    /* ── LIGHTBOX ─────────────────────────────────────── */
-    .lb-overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      background: rgba(0,0,0,.92);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity .3s ease;
-    }
-    .lb-overlay.open {
-      opacity: 1;
-      pointer-events: all;
-    }
-    .lb-img {
-      max-width: 90vw;
-      max-height: 88vh;
-      object-fit: contain;
-      border-radius: 8px;
-      box-shadow: 0 20px 80px rgba(0,0,0,.8);
-    }
-    .lb-close {
-      position: absolute;
-      top: 20px; right: 24px;
-      background: none;
-      border: none;
-      color: var(--w70);
-      font-size: 2rem;
-      cursor: pointer;
+    .pcard-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
       line-height: 1;
-      transition: color .2s;
+      letter-spacing: .02em;
+      color: #fff;
+      margin-bottom: 8px;
     }
-    .lb-close:hover { color: var(--white); }
-    .lb-nav {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      background: rgba(255,255,255,.08);
-      border: none;
-      color: var(--white);
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 1.2rem;
+    .pcard-price {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #ef4444;
+      margin-bottom: 18px;
+    }
+    .pcard-price span {
+      font-size: .8rem;
+      font-weight: 400;
+      color: rgba(255,255,255,.4);
+      margin-left: 6px;
+    }
+    .pcard-desc {
+      font-size: .82rem;
+      line-height: 1.7;
+      color: rgba(255,255,255,.6);
+      margin-bottom: 20px;
+    }
+    .pcard-details {
       display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .pcard-detail-block {
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.06);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .pcard-detail-title {
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.35);
+      margin-bottom: 8px;
+    }
+    .pcard-detail-text {
+      font-size: .78rem;
+      line-height: 1.6;
+      color: rgba(255,255,255,.55);
+    }
+    .pcard-cta {
+      display: inline-flex;
       align-items: center;
-      justify-content: center;
-      transition: background .2s;
+      gap: 8px;
+      margin-top: 24px;
+      padding: 12px 28px;
+      background: #C1121F;
+      color: #fff;
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      border-radius: 99px;
+      text-decoration: none;
+      width: fit-content;
+      transition: background .2s, transform .2s;
     }
-    .lb-nav:hover { background: rgba(255,255,255,.18); }
-    .lb-prev { left: 16px; }
-    .lb-next { right: 16px; }
+    .pcard-cta:hover {
+      background: #a00f1a;
+      transform: translateY(-2px);
+    }
 
-    @media (max-width: 768px) {
-      .product-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
-      }
-      .product-item { aspect-ratio: 1; }
+    /* ── PARFUM NOTES DISPLAY ─────────────────────────── */
+    .parfum-notes {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
-    @media (max-width: 480px) {
-      .product-grid {
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
+    .parfum-note-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .parfum-note-label {
+      font-size: .65rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: #ef4444;
+      min-width: 52px;
+      padding-top: 2px;
+    }
+    .parfum-note-value {
+      font-size: .78rem;
+      color: rgba(255,255,255,.55);
+      line-height: 1.5;
+    }
+
+    /* ── RESPONSIVE ───────────────────────────────────── */
+    @media (max-width: 768px) {
+      .pcard {
+        grid-template-columns: 1fr;
+      }
+      .pcard-img {
+        aspect-ratio: 4/3;
+        max-height: 320px;
       }
     }
   </style>
@@ -254,66 +307,191 @@
     <div class="product-hero-content container">
       <p class="product-hero-eyebrow">Redbox Barbershop</p>
       <h1 class="product-hero-title">Product</h1>
-      <p class="product-hero-sub">Produk grooming premium pilihan Redbox — untuk tampilan terbaik Anda setiap hari.</p>
+      <p class="product-hero-sub">Produk grooming premium pilihan Redbox — formulasi eksklusif untuk tampilan terbaik Anda setiap hari.</p>
     </div>
   </section>
 
-  <!-- ========== PRODUCT GRID ========== -->
+  <!-- ========== PRODUCT CATALOG ========== -->
   <section class="product-section" id="products">
-    <div class="product-grid" id="productGrid">
+    <div class="product-catalog">
 
-      <div class="product-item reveal" data-idx="0">
-        <img src="Brand_assets/product/1860A5C9-EB7D-4F8B-B339-8B1E010E93E8.JPG.jpeg" alt="Redbox Product" loading="lazy" />
-        <div class="product-item-overlay">
-          <span class="product-item-label">Product</span>
+      <!-- ─── 1. REDBOX CLAY ─────────────────────────────── -->
+      <article class="pcard reveal">
+        <div class="pcard-img">
+          <img src="Brand_assets/product/IMG_6523.JPG.jpeg" alt="Redbox Clay" loading="lazy" />
         </div>
-      </div>
+        <div class="pcard-body">
+          <div class="pcard-badge">Hair Styling</div>
+          <h2 class="pcard-name">Redbox Clay</h2>
+          <div class="pcard-price">Rp 100.000</div>
+          <p class="pcard-desc">
+            Membantu rambut menjadi lebih padat dan bervolume. Mengurangi rambut rontok dan membantu mempercepat pertumbuhan rambut. Mengandung Biotin, Charcoal Extract, dan Sunflower Seed Oil untuk menutrisi rambut.
+          </p>
+          <div class="pcard-details">
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Cara Pemakaian</div>
+              <div class="pcard-detail-text">Rambut harus dalam kondisi kering sebelum digunakan. Ambil secukupnya, ratakan di telapak tangan, kemudian aplikasikan ke rambut secara merata.</div>
+            </div>
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Cara Penyimpanan</div>
+              <div class="pcard-detail-text">Simpan di tempat sejuk dan hindari sinar matahari langsung.</div>
+            </div>
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Komposisi</div>
+              <div class="pcard-detail-text">Aqua, Hydrogenated Castor Oil, Propylene Glycol, PEG-7 Glyceryl Cocoate, Corn Starch Modified, Biotin, Charcoal Extract, Sunflower Seed Oil, dan bahan tambahan lainnya.</div>
+            </div>
+          </div>
+          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Clay" target="_blank" class="pcard-cta">
+            Beli Sekarang
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </article>
 
-      <div class="product-item reveal" data-idx="1">
-        <img src="Brand_assets/product/IMG_6523.JPG.jpeg" alt="Redbox Product" loading="lazy" />
-        <div class="product-item-overlay">
-          <span class="product-item-label">Product</span>
+      <!-- ─── 2. REDBOX POMADE - WATERBASED ──────────────── -->
+      <article class="pcard reveal">
+        <div class="pcard-img">
+          <img src="Brand_assets/product/IMG_6524.JPG.jpeg" alt="Redbox Pomade Waterbased" loading="lazy" />
         </div>
-      </div>
+        <div class="pcard-body">
+          <div class="pcard-badge">Hair Styling</div>
+          <h2 class="pcard-name">Redbox Pomade — Waterbased</h2>
+          <div class="pcard-price">Rp 100.000 <span>(30gr)</span> &nbsp;/&nbsp; Rp 150.000 <span>(80gr)</span></div>
+          <p class="pcard-desc">
+            Membantu rambut menjadi lebih padat dan bervolume. Mengurangi rambut rontok dan membantu mempercepat pertumbuhan rambut. Mengandung Biotin, Charcoal Extract, dan Sunflower Seed Oil untuk menutrisi rambut.
+          </p>
+          <div class="pcard-details">
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Cara Pemakaian</div>
+              <div class="pcard-detail-text">Rambut harus dalam kondisi kering sebelum digunakan. Ambil secukupnya, ratakan di telapak tangan, kemudian aplikasikan ke rambut secara merata.</div>
+            </div>
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Cara Penyimpanan</div>
+              <div class="pcard-detail-text">Simpan di tempat sejuk dan hindari sinar matahari langsung.</div>
+            </div>
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Komposisi</div>
+              <div class="pcard-detail-text">Aqua, Hydrogenated Castor Oil, Propylene Glycol, PEG-7 Glyceryl Cocoate, Corn Starch Modified, Biotin, Charcoal Extract, Sunflower Seed Oil, dan bahan tambahan lainnya.</div>
+            </div>
+          </div>
+          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Waterbased" target="_blank" class="pcard-cta">
+            Beli Sekarang
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </article>
 
-      <div class="product-item reveal" data-idx="2">
-        <img src="Brand_assets/product/IMG_6524.JPG.jpeg" alt="Redbox Product" loading="lazy" />
-        <div class="product-item-overlay">
-          <span class="product-item-label">Product</span>
+      <!-- ─── 3. REDBOX POMADE - OIL BASED ───────────────── -->
+      <article class="pcard reveal">
+        <div class="pcard-img">
+          <img src="Brand_assets/product/IMG_6528.JPG.jpeg" alt="Redbox Pomade Oil Based" loading="lazy" />
         </div>
-      </div>
+        <div class="pcard-body">
+          <div class="pcard-badge">Hair Styling</div>
+          <h2 class="pcard-name">Redbox Pomade — Oil Based</h2>
+          <div class="pcard-price">Rp 100.000 <span>(30gr)</span> &nbsp;/&nbsp; Rp 150.000 <span>(80gr)</span></div>
+          <p class="pcard-desc">
+            Membantu menata rambut yang susah diatur, memiliki efek shine dan cocok digunakan di luar ruangan. Mengandung Castor Oil, Vitamin E, Sunflower Seed Oil dan Jojoba Oil yang membantu menutrisi dan melindungi rambut.
+          </p>
+          <div class="pcard-details">
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Cara Pemakaian</div>
+              <div class="pcard-detail-text">Pastikan rambut dalam kondisi kering agar produk bekerja dengan maksimal. Ambil secukupnya menggunakan jari, ratakan di telapak tangan, aplikasikan di rambut hingga merata dan sisir sesuai keinginan.</div>
+            </div>
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Cara Penyimpanan</div>
+              <div class="pcard-detail-text">Simpan di tempat sejuk dan terhindar dari sinar matahari secara langsung.</div>
+            </div>
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Komposisi</div>
+              <div class="pcard-detail-text">Petrolatum, Microcrystalline Wax, Beeswax, Lanolin, Castor (Ricinus Communis) Oil, Hydrogenated Coconut Oil, Helianthus Annuus Seed Oil, Parfum, Simmondsia Chinensis (Jojoba) Seed Oil, Tocopheryl Acetate, BHT, Propylparaben.</div>
+            </div>
+          </div>
+          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Oil%20Based" target="_blank" class="pcard-cta">
+            Beli Sekarang
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </article>
 
-      <div class="product-item reveal" data-idx="3">
-        <img src="Brand_assets/product/IMG_6528.JPG.jpeg" alt="Redbox Product" loading="lazy" />
-        <div class="product-item-overlay">
-          <span class="product-item-label">Product</span>
+      <!-- ─── 4. REDBOX EXTRAIT DE PARFUM - ELEFTHEREE ───── -->
+      <article class="pcard reveal">
+        <div class="pcard-img">
+          <img src="Brand_assets/product/IMG_6532.JPG.jpeg" alt="Redbox Parfum Eleftheree" loading="lazy" />
         </div>
-      </div>
+        <div class="pcard-body">
+          <div class="pcard-badge">Fragrance</div>
+          <h2 class="pcard-name">Extrait de Parfum — Eleftheree</h2>
+          <div class="pcard-price">Rp 150.000</div>
+          <p class="pcard-desc">
+            Aroma maskulin yang bold dan sophisticated. Perpaduan buah apricot yang segar dengan sentuhan floral, diperkaya base musk dan leather yang tahan lama.
+          </p>
+          <div class="pcard-details">
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Fragrance Notes</div>
+              <div class="parfum-notes">
+                <div class="parfum-note-row">
+                  <span class="parfum-note-label">Top</span>
+                  <span class="parfum-note-value">Apricot, Orange Blossom, Lychee, Rose, White Flower</span>
+                </div>
+                <div class="parfum-note-row">
+                  <span class="parfum-note-label">Middle</span>
+                  <span class="parfum-note-value">Red Fruits, Cloves, Sandalwood, Peach Tree Blossom, Gardenia</span>
+                </div>
+                <div class="parfum-note-row">
+                  <span class="parfum-note-label">Base</span>
+                  <span class="parfum-note-value">Musk, Incense, Dry Amber, Leathery Accord, Animalic, Wood</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Eleftheree" target="_blank" class="pcard-cta">
+            Beli Sekarang
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+        </div>
+      </article>
 
-      <div class="product-item reveal" data-idx="4">
-        <img src="Brand_assets/product/IMG_6532.JPG.jpeg" alt="Redbox Product" loading="lazy" />
-        <div class="product-item-overlay">
-          <span class="product-item-label">Product</span>
+      <!-- ─── 5. REDBOX EXTRAIT DE PARFUM - PSYHI ────────── -->
+      <article class="pcard reveal">
+        <div class="pcard-img">
+          <img src="Brand_assets/product/IMG_6534.JPG.jpeg" alt="Redbox Parfum Psyhi" loading="lazy" />
         </div>
-      </div>
-
-      <div class="product-item reveal" data-idx="5">
-        <img src="Brand_assets/product/IMG_6534.JPG.jpeg" alt="Redbox Product" loading="lazy" />
-        <div class="product-item-overlay">
-          <span class="product-item-label">Product</span>
+        <div class="pcard-body">
+          <div class="pcard-badge">Fragrance</div>
+          <h2 class="pcard-name">Extrait de Parfum — Psyhi</h2>
+          <div class="pcard-price">Rp 150.000</div>
+          <p class="pcard-desc">
+            Karakter hangat dan manis yang elegan. Dibuka dengan citrus bergamot yang segar, berlapis cinnamon dan freesia, ditutup brown sugar dan vanilla yang sensual.
+          </p>
+          <div class="pcard-details">
+            <div class="pcard-detail-block">
+              <div class="pcard-detail-title">Fragrance Notes</div>
+              <div class="parfum-notes">
+                <div class="parfum-note-row">
+                  <span class="parfum-note-label">Top</span>
+                  <span class="parfum-note-value">Apricot, Orange Blossom, Bergamote, Lemon, White Flower</span>
+                </div>
+                <div class="parfum-note-row">
+                  <span class="parfum-note-label">Middle</span>
+                  <span class="parfum-note-value">Cinnamon, Freesia, Sandalwood, Peach Tree Blossom, Gardenia</span>
+                </div>
+                <div class="parfum-note-row">
+                  <span class="parfum-note-label">Base</span>
+                  <span class="parfum-note-value">Brown Sugar, Dry Amber, Vanilla, Leathery Accord, Animalic</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Psyhi" target="_blank" class="pcard-cta">
+            Beli Sekarang
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
         </div>
-      </div>
+      </article>
 
     </div>
   </section>
-
-  <!-- ========== LIGHTBOX ========== -->
-  <div class="lb-overlay" id="lbOverlay" role="dialog" aria-modal="true" aria-label="Product preview">
-    <button class="lb-close" id="lbClose" aria-label="Tutup">&times;</button>
-    <button class="lb-nav lb-prev" id="lbPrev" aria-label="Sebelumnya">&#8249;</button>
-    <img class="lb-img" id="lbImg" src="" alt="" />
-    <button class="lb-nav lb-next" id="lbNext" aria-label="Berikutnya">&#8250;</button>
-  </div>
 
   <!-- ========== FOOTER ========== -->
   <footer class="footer">
@@ -390,48 +568,6 @@
       });
     }, { threshold: 0.08 });
     document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
-
-    // Lightbox
-    const lbOverlay = document.getElementById('lbOverlay');
-    const lbImg = document.getElementById('lbImg');
-    const lbClose = document.getElementById('lbClose');
-    const lbPrev = document.getElementById('lbPrev');
-    const lbNext = document.getElementById('lbNext');
-    const items = Array.from(document.querySelectorAll('.product-item'));
-    let currentIdx = 0;
-
-    function openLb(idx) {
-      currentIdx = idx;
-      const img = items[idx].querySelector('img');
-      lbImg.src = img.src;
-      lbImg.alt = img.alt;
-      lbOverlay.classList.add('open');
-      document.body.style.overflow = 'hidden';
-    }
-
-    function closeLb() {
-      lbOverlay.classList.remove('open');
-      document.body.style.overflow = '';
-    }
-
-    function navLb(dir) {
-      currentIdx = (currentIdx + dir + items.length) % items.length;
-      const img = items[currentIdx].querySelector('img');
-      lbImg.src = img.src;
-      lbImg.alt = img.alt;
-    }
-
-    items.forEach((item, idx) => item.addEventListener('click', () => openLb(idx)));
-    lbClose.addEventListener('click', closeLb);
-    lbOverlay.addEventListener('click', e => { if (e.target === lbOverlay) closeLb(); });
-    lbPrev.addEventListener('click', e => { e.stopPropagation(); navLb(-1); });
-    lbNext.addEventListener('click', e => { e.stopPropagation(); navLb(1); });
-    document.addEventListener('keydown', e => {
-      if (!lbOverlay.classList.contains('open')) return;
-      if (e.key === 'Escape') closeLb();
-      if (e.key === 'ArrowLeft') navLb(-1);
-      if (e.key === 'ArrowRight') navLb(1);
-    });
 
     // Strip black background from logo at runtime
     (function applyTransparentLogo() {

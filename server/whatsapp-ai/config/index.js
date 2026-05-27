@@ -27,6 +27,9 @@ module.exports = {
   // Human escalation keywords
   ESCALATION_KEYWORDS: ['komplain', 'refund', 'marah', 'kecewa', 'tipu', 'bohong', 'minta uang kembali', 'lapor'],
 
+  // Human handoff settings (when admin manually takes over)
+  HANDOFF_DURATION_MINUTES: parseInt(process.env.HANDOFF_DURATION_MINUTES || '30'),
+
   // Business info
   BRAND_NAME: 'RedBox Barbershop',
   BRAND_ADDRESS: process.env.BRAND_ADDRESS || 'RedBox Barbershop',

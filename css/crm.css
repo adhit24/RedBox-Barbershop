@@ -245,10 +245,20 @@ input,select,textarea{font-family:var(--font)}
 .filter-select:focus{border-color:var(--red)}
 
 /* ===== BARBERS GRID ===== */
-.barbers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px}
-.barber-crm-card{background:var(--bg3);border:1px solid var(--w10);border-radius:var(--radius);overflow:hidden;transition:all .3s var(--ease)}
+.barbers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px;align-items:stretch}
+.barber-crm-card{background:var(--bg3);border:1px solid var(--w10);border-radius:var(--radius);overflow:hidden;transition:all .3s var(--ease);display:flex;flex-direction:column;height:100%;min-height:380px}
 .barber-crm-card:hover{border-color:var(--w20);transform:translateY(-3px);box-shadow:var(--shadow-lg)}
-.barber-crm-top{display:flex;align-items:center;gap:16px;padding:22px}
+.barber-crm-card.barber-inactive{opacity:0.7}
+.barber-crm-card.barber-off-today{border-color:rgba(239,68,68,.35)}
+.barber-crm-top{display:flex;align-items:center;gap:16px;padding:22px;flex-shrink:0}
+.barber-toggle-wrap{margin-top:auto;padding:18px 22px;border-top:1px solid var(--w10);display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(0,0,0,.2)}
+.barber-toggle-wrap.off-today{background:rgba(239,68,68,.07);border-top-color:rgba(239,68,68,.2)}
+.toggle-switch{position:relative;display:inline-block;width:44px;height:22px;cursor:pointer;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0;position:absolute}
+.toggle-slider{position:absolute;inset:0;background:#ef4444;border-radius:22px;transition:0.2s}
+.toggle-switch input:checked + .toggle-slider{background:#22c55e}
+.toggle-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+.toggle-switch input:checked + .toggle-slider + .toggle-knob{left:24px}
 .barber-crm-img{width:62px;height:62px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid var(--w10);transition:border-color .3s;box-shadow:0 0 20px rgba(0,0,0,.3)}
 .barber-crm-card:hover .barber-crm-img{border-color:var(--red-30)}
 .barber-crm-img img{width:100%;height:100%;object-fit:cover;transition:transform .3s}
@@ -256,14 +266,14 @@ input,select,textarea{font-family:var(--font)}
 .barber-crm-name{font-size:1rem;font-weight:700;margin-bottom:3px}
 .barber-crm-role{font-size:.74rem;color:var(--w50);margin-bottom:3px}
 .barber-crm-branch{font-size:.68rem;color:var(--red-h);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
-.barber-crm-stats{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--w10)}
-.bcs{padding:14px;text-align:center;border-right:1px solid var(--w10);transition:background .2s}
+.barber-crm-stats{display:flex;flex-direction:row;border-top:1px solid var(--w10);border-bottom:1px solid var(--w10)}
+.bcs{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 8px;border-right:1px solid var(--w10);transition:background .2s;min-height:70px}
 .bcs:hover{background:var(--w03)}
 .bcs:last-child{border-right:none}
-.bcs-val{display:block;font-family:var(--font-accent);font-size:1.25rem;color:var(--white)}
-.bcs-label{display:block;font-size:.66rem;color:var(--w30);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
-.barber-crm-schedule{padding:14px 18px 18px;border-top:1px solid var(--w10)}
-.barber-crm-schedule h5{font-size:.7rem;color:var(--w30);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;font-weight:700}
+.bcs-val{display:block;font-family:var(--font-accent);font-size:1.1rem;font-weight:700;color:var(--white);line-height:1.2}
+.bcs-label{display:block;font-size:.65rem;color:var(--w30);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;line-height:1.2}
+.barber-crm-schedule{padding:14px 22px 18px;border-top:1px solid var(--w10);flex:1;min-height:0;display:flex;flex-direction:column}
+.barber-crm-schedule h5{font-size:.7rem;color:var(--w30);text-transform:uppercase;letter-spacing:.1em;margin:0 0 10px 0;font-weight:700}
 .schedule-days{display:flex;gap:5px;flex-wrap:wrap}
 .sday{padding:4px 10px;border-radius:6px;font-size:.68rem;font-weight:700;background:var(--green-10);color:#4ade80;transition:all .2s;letter-spacing:.02em}
 .sday.off{background:var(--w05);color:var(--w30)}

@@ -580,33 +580,48 @@
     // Normalize a name to a stable URL-safe cache key segment
     function slug(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
 
-    // ── HAIR IMAGE LOADER — global cache, no per-user generation ──
-    async function loadHairstyleImages(_uploadId, hair) {
-      const API = location.hostname==='localhost'||location.hostname==='127.0.0.1'
-        ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
+    // ── HAIR IMAGE LOADER — customer face for recommended, generic for avoid ──
+    async function loadHairstyleImages(uploadId, hair) {
+      const _isLocal = location.hostname==='localhost'||location.hostname==='127.0.0.1';
+      const HAIR_API = _isLocal ? 'http://localhost:3001/api/ai/hairstyle' : '/api/ai/hairstyle';
+      const IMG_API  = _isLocal ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
       const hairRecs  = hair.recommended_styles || hair.recommendations || [];
       const hairAvoid = hair.avoid_styles || hair.avoidHairstyles || [];
-      const slots = [
-        ...hairRecs.slice(0,4).map((h,i)=>({ elId:`hair-img-rec-${i}`, name:h.name, prompt:`Korean men's hairstyle reference photo. ${h.name} style. Front view. Dark studio background. Sharp focus. Grooming magazine.`, cacheKey:`v1/hair/rec/${slug(h.name)}` })),
-        ...hairRecs.slice(0,4).map((h,i)=>({ elId:`hair-good-${i}`,    name:h.name, prompt:`Korean men's hairdo editorial. ${h.name} style. Studio lighting. Close-up.`, cacheKey:`v1/hair/good/${slug(h.name)}` })),
-        ...hairAvoid.slice(0,4).map((a,i)=>({ elId:`hair-img-avoid-${i}`, name:a.name||a.style, prompt:`Men's hairstyle reference. ${a.name||a.style} style. Front view. Dark studio. Photography.`, cacheKey:`v1/hair/avoid/${slug(a.name||a.style)}` })),
+
+      // Recommended: customer face via image edit
+      const recSlots = [
+        ...hairRecs.slice(0,4).map((h,i)=>({ elId:`hair-img-rec-${i}`, name:h.name })),
+        ...hairRecs.slice(0,4).map((h,i)=>({ elId:`hair-good-${i}`,    name:h.name })),
       ];
-      async function fetchOne(slot) {
+      async function fetchRec(slot) {
+        const el = document.getElementById(slot.elId);
+        if (!el) return;
+        try {
+          const res = await fetch(HAIR_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ uploadId, hairstyleName: slot.name }) });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error);
+          el.innerHTML = `<img src="${json.imageUrl}" alt="${slot.name}" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
+        } catch(err) { el.innerHTML = `<div class="hair-img-error">💈</div>`; }
+      }
+
+      // Avoid: generic reference
+      const avoidSlots = hairAvoid.slice(0,4).map((a,i)=>({ elId:`hair-img-avoid-${i}`, name:a.name||a.style, prompt:`Men's hairstyle reference. ${a.name||a.style} style. Front view. Dark studio. Photography.`, cacheKey:`v1/hair/avoid/${slug(a.name||a.style)}` }));
+      async function fetchAvoid(slot) {
         const el = document.getElementById(slot.elId);
         if (!el) return;
         const badge = el.querySelector('.hair-avoid-x');
         try {
-          const res = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt:slot.prompt, cacheKey:slot.cacheKey}) });
+          const res = await fetch(IMG_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt:slot.prompt, cacheKey:slot.cacheKey}) });
           const json = await res.json();
           if (!res.ok) throw new Error(json.error);
           el.innerHTML = `<img src="${json.imageUrl}" alt="${slot.name}" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
-        } catch(err) {
-          el.innerHTML = `<div class="hair-img-error">💈</div>`;
-        }
+        } catch(err) { el.innerHTML = `<div class="hair-img-error">💈</div>`; }
         if (badge) el.appendChild(badge);
       }
-      const C = 3;
-      for (let i=0; i<slots.length; i+=C) await Promise.allSettled(slots.slice(i,i+C).map(fetchOne));
+
+      const C = 2;
+      for (let i=0; i<recSlots.length; i+=C) await Promise.allSettled(recSlots.slice(i,i+C).map(fetchRec));
+      for (let i=0; i<avoidSlots.length; i+=3) await Promise.allSettled(avoidSlots.slice(i,i+3).map(fetchAvoid));
     }
 
     // ── GENERATED IMAGE LOADER — all keys are global (no uploadId) ──

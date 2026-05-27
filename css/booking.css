@@ -238,6 +238,9 @@
 .barber-status-badge.off-duty  .status-dot{background:#e53e3e}
 .pro-pick-card:hover{border-color:var(--red-20);transform:translateY(-2px)}
 .pro-pick-card.selected{border-color:var(--red);background:rgba(193,18,31,.06)}
+.pro-pick-card.barber-off{opacity:.45;cursor:not-allowed;pointer-events:none;}
+.pro-pick-card.barber-off .pro-pick-img img{filter:grayscale(80%);}
+.pro-pick-card.barber-off:hover{border-color:var(--w10);transform:none;}
 .pro-pick-img{
   width:100%;aspect-ratio:4/3;overflow:hidden;background:var(--bg-4);
   display:flex;align-items:center;justify-content:center;
@@ -421,6 +424,10 @@
   display:grid;grid-template-columns:1fr 1fr;
   gap:16px;margin-bottom:24px;align-items:start;
 }
+.payment-grid-3{
+  display:grid;grid-template-columns:repeat(3, 1fr);
+  gap:12px;margin-bottom:24px;align-items:start;
+}
 .pay-card{
   background:var(--bg-3);border:2px solid var(--w10);border-radius:12px;
   padding:14px 16px;display:flex;align-items:center;gap:12px;
@@ -516,6 +523,7 @@
   .bstep-line{min-width:8px;margin:0 6px}
   .step-head h2{font-size:1.4rem}
   .payment-grid-2{grid-template-columns:1fr 1fr}
+  .payment-grid-3{grid-template-columns:repeat(2, 1fr)}
   .sidebar-rows{grid-template-columns:1fr}
   .step-foot{flex-direction:column;gap:12px}
   .step-foot .btn-primary,.step-foot .btn-secondary{width:100%;justify-content:center}
@@ -566,6 +574,7 @@
 }
 @media(max-width:480px){
   .payment-grid-2{grid-template-columns:1fr}
+  .payment-grid-3{grid-template-columns:1fr}
   .pay-cash-card{min-height:80px}
   .book-steps-bar{padding:10px 8px}
   .bstep-num{width:28px;height:28px;font-size:0.75rem}

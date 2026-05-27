@@ -19,7 +19,8 @@ whatsapp-ai/
  │   ├── aiService.js          # GPT-4o-mini integration
  │   ├── bookingService.js     # Booking state machine
  │   ├── knowledgeService.js   # Load + query knowledge base
- │   └── escalationService.js  # Human handoff logic
+ │   ├── escalationService.js  # Keyword-based escalation
+ │   └── handoffStore.js       # Human takeover detection & state
  ├── prompts/system.txt        # AI personality prompt
  ├── knowledge/
  │   ├── services.json         # Daftar layanan & harga
@@ -86,6 +87,34 @@ whatsappService.sendText()
     ↓
 Customer menerima balasan
 ```
+
+---
+
+## Human Handoff (Admin Takeover)
+
+Saat admin WhatsApp Business manual membalas pelanggan, bot akan **otomatis diam** agar tidak mengganggu percakapan manusia.
+
+### Cara Kerja
+
+1. **Auto-detect**: Bot mendeteksi status `sent/delivered/read` dari pesan keluar (admin membalas)
+2. **Handoff aktif**: Mode handoff otomatis nyala untuk customer tersebut
+3. **Bot berhenti**: Bot tidak merespons pesan dari customer selama handoff aktif
+4. **Auto-expire**: Handoff mati sendiri setelah timeout (default 30 menit)
+
+### Konfigurasi
+
+```bash
+# Di .env — ubah durasi handoff (menit)
+HANDOFF_DURATION_MINUTES=30
+```
+
+### Perintah Admin
+
+| Perintah | Fungsi |
+|----------|--------|
+| `/ai_on 628123456789` | Aktifkan kembali AI untuk customer tertentu |
+
+Contoh: Admin membalas customer → bot diam 30 menit → customer chat lagi → bot tetap diam → admin kirim `/ai_on 628xxx` → bot aktif lagi.
 
 ---
 

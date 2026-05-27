@@ -691,17 +691,19 @@ function createMokaRouter(supabase) {
   // Manual trigger for Moka → Web pull sync.
   // Body (optional): { "outletId": "uuid-or-slug", "wait": true }
   // If omitted, syncs ALL authorized outlets.
-  // Auth: Bearer <CRON_SECRET> header required (or adminAuth for dashboard use)
+  // Auth: Bearer <CRON_SECRET|ADMIN_PASSWORD> or x-admin-token <CRON_SECRET|ADMIN_PASSWORD>
   //
   // Default: respond 202 immediately, sync runs in background.
   // Pass "wait": true in body to wait for sync completion (manual use only).
   router.post('/moka/sync', async (req, res) => {
     const cronSecret = process.env.CRON_SECRET;
-    if (cronSecret) {
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const validTokens = [cronSecret, adminPassword].filter(Boolean);
+    if (validTokens.length > 0) {
       const auth = req.headers['authorization'] || '';
       const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
       const xToken = req.headers['x-admin-token'] || '';
-      if (bearer !== cronSecret && xToken !== cronSecret) {
+      if (!validTokens.includes(bearer) && !validTokens.includes(xToken)) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
     }
@@ -845,19 +847,30 @@ function createMokaRouter(supabase) {
       if (!isMokaOAuthConfigured()) {
         return res.status(503).json({ error: 'Moka OAuth not configured' });
       }
-      
+
       const { createInMemorySupabase } = require('./memoryStore');
       const MokaClient = require('./client');
-      
+
       const memorySupabase = createInMemorySupabase();
       const outletId = process.env.MOKA_OUTLET_ID || '2000001165';
       const client = new MokaClient(memorySupabase, 'default-outlet', outletId);
-      
+
       const result = await client.createOrder(req.body);
       res.json({ success: true, result });
     } catch (err) {
       _serverError(res, err);
     }
+  });
+
+  // ── GET/POST /api/moka/sync-customers ─────────────────────
+  // Pull customers from Moka transactions → Supabase customers table
+  router.get('/moka/sync-customers', async (req, res) => {
+    const syncCustomersHandler = require('../../api/moka/sync-customers');
+    return syncCustomersHandler(req, res);
+  });
+  router.post('/moka/sync-customers', async (req, res) => {
+    const syncCustomersHandler = require('../../api/moka/sync-customers');
+    return syncCustomersHandler(req, res);
   });
 
   // ── GET /api/barbers/today-status ────────────────────────

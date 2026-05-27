@@ -24,7 +24,7 @@ https://platform.openai.com/settings/organization/limits
 
 ## Recommended Setup
 
-* Soft Limit: $7
+* Soft Limit: $5
 * Hard Limit: $10
 
 Purpose:
@@ -295,3 +295,62 @@ Avoid:
 
 Goal:
 Make the AI feel premium while keeping backend cost extremely low.
+
+---
+
+# 11. Home Service — Layanan Baru Redbox Barbershop
+
+## Deskripsi Layanan
+
+Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional datang langsung ke lokasi pelanggan.
+
+**Layanan tersedia:** Gentleman Grooming  
+**Harga:** Rp 200.000 (sudah termasuk biaya kunjungan kapster)  
+**Durasi:** ±60 menit  
+**Halaman info:** https://www.redboxbarbershop.com/home-service.html
+
+---
+
+## Syarat & Ketentuan
+
+* Jarak maksimal pelanggan dari cabang terdekat: **5 KM**
+* Pemesanan minimal H-1 (satu hari sebelumnya)
+* Pelanggan bebas memilih kapster dari cabang terdekat
+* Konfirmasi wajib via WhatsApp setelah booking online
+* Mencakup wilayah **Kota/Kabupaten Cirebon** dan **Kota Tegal**
+
+---
+
+## Cara Pesan
+
+1. Buka halaman booking: https://www.redboxbarbershop.com/booking.html?type=homeservice
+2. Pilih layanan Gentleman Grooming
+3. Pilih kapster dari cabang terdekat
+4. Pilih tanggal & waktu
+5. Isi nama, nomor WhatsApp, cabang terdekat, dan **alamat lengkap**
+6. Konfirmasi via WhatsApp ke cabang terkait
+
+---
+
+## Cabang yang Tersedia (Semua Cabang)
+
+| Cabang | Alamat | WhatsApp |
+|---|---|---|
+| Bypass | Jl. Ahmad Yani No.88, Kecapi, Harjamukti, Cirebon | +62 818-202-569 |
+| Samadikun | Jl. Kapten Samadikun No.60, Kesenden, Kota Cirebon | +62 818-202-589 |
+| CSB Mall | LG Floor #1270, CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26, Cirebon | +62 818-202-889 |
+| Sumber | Jl. Pangeran Cakrabuana No.2, Kemantren, Sumber, Kab. Cirebon | +62 818-202-599 |
+| Tegal Kota | Jl. Kapten Sudibyo No.100, Pekauman, Tegal Barat, Kota Tegal | +62 818-268-883 |
+
+---
+
+## Instruksi untuk AI Bot
+
+Jika pelanggan bertanya tentang home service, gunakan informasi berikut:
+
+* Layanan: Gentleman Grooming, datang ke rumah, Rp 200.000
+* Radius: maksimal 5 KM dari cabang Redbox terdekat
+* Cabang: semua 5 cabang aktif (Bypass, Samadikun, CSB Mall, Sumber, Tegal)
+* Booking: arahkan ke https://www.redboxbarbershop.com/booking.html?type=homeservice
+* Jika pelanggan tidak tahu cabang terdekat: minta alamat mereka, lalu sebutkan cabang yang paling mungkin
+* Layanan selain Gentleman Grooming belum tersedia untuk home service

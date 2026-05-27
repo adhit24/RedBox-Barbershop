@@ -228,10 +228,12 @@ async function apiGetStats() {
   } catch { return { today: 0, done: 0, pending: 0, customers: 0 }; }
 }
 
-async function apiGetBarbers() {
+async function apiGetBarbers(includeInactive = false) {
   if (!USE_API) return Object.entries(BARBER_DATA).map(([id, data]) => ({ id, ...data }));
   try {
-    const res = await fetch(`${API_URL}/barbers?_t=${Date.now()}`, { headers: apiHeaders() });
+    const qs = new URLSearchParams({ _t: Date.now() });
+    if (includeInactive) qs.set('include_inactive', '1');
+    const res = await fetch(`${API_URL}/barbers?${qs}`, { headers: apiHeaders() });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || [];
@@ -698,11 +700,56 @@ document.getElementById('bookingStatusFilter')?.addEventListener('change', funct
 document.getElementById('bookingBarberFilter')?.addEventListener('change', function() { renderBookingsTable(document.getElementById('bookingSearch').value, document.getElementById('bookingStatusFilter').value, this.value, 0); });
 
 // ── BARBERS VIEW ────────────────────────────────
+async function apiToggleBarberActive(id, isActive) {
+  if (!USE_API) return { success: false, error: 'API not available' };
+  try {
+    const res = await fetch(`${API_URL}/barbers/${id}/toggle-active`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ is_active: isActive })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'HTTP ' + res.status }));
+      return { success: false, error: err.error };
+    }
+    return await res.json();
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+async function apiTodayOverride(id, available) {
+  if (!USE_API) return { success: false, error: 'API not available' };
+  try {
+    const res = await fetch(`${API_URL}/barbers/${id}/today-override`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ available })
+    });
+    return res.ok ? await res.json() : { success: false, error: 'HTTP ' + res.status };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
 async function renderBarbers() {
   const bookings = await apiGetBookings();
   if (!bookings) return renderLockedState();
-  const barbers = await apiGetBarbers();
+  // Ambil semua barbers termasuk nonaktif untuk admin
+  const barbers = await apiGetBarbers(true);
   const grid = document.getElementById('barbersGrid');
+
+  // Fetch today-status untuk semua barber
+  const todayWib = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  let offTodaySet = new Set();
+  try {
+    const tsRes = await fetch(`${API_URL}/barbers/today-status?date=${todayWib}`, { headers: apiHeaders() });
+    if (tsRes.ok) {
+      const ts = await tsRes.json();
+      for (const b of ts.barbers || []) { if (!b.isWorking) offTodaySet.add(b.id); }
+    }
+  } catch {}
+
   if (!grid) return;
   const allDays = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   if (!barbers.length) { grid.innerHTML = '<p class="empty-state">No barbers found in database.</p>'; return; }
@@ -720,26 +767,95 @@ async function renderBarbers() {
     try { workDays = Array.isArray(b.work_days) ? b.work_days : JSON.parse(b.work_days || '[]'); } catch { workDays = []; }
     const days = allDays.map(d => `<span class="sday${workDays.includes(d) ? '' : ' off'}">${esc(d)}</span>`).join('');
     const img = String(b.img || '').trim();
+    const isActive   = b.is_active !== false && b.is_active !== 0 && b.is_active !== '0';
+    const isOffToday = isActive && offTodaySet.has(b.id);
+    const effectiveOn = isActive && !isOffToday;
+
+    const statusBadge = isActive
+      ? '<span class="barber-status active" style="background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3);border-radius:12px;padding:2px 8px;font-size:0.7rem;font-weight:600;white-space:nowrap;">● Aktif</span>'
+      : '<span class="barber-status inactive" style="background:rgba(239,68,68,.15);color:#ef4444;border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:2px 8px;font-size:0.7rem;font-weight:600;white-space:nowrap;">● Nonaktif</span>';
+    const imgOverlay = !isActive
+      ? '<div style="position:absolute;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:700;">OFF</div>'
+      : isOffToday
+        ? '<div style="position:absolute;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;color:#fca5a5;font-size:0.7rem;font-weight:700;letter-spacing:.04em;">LIBUR</div>'
+        : '';
     const imgHtml = img
       ? `<img src="${esc(img)}" alt="${esc(b.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='Brand_assets/Kapster1.jpg';" />`
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--bg-4);color:var(--white);font-weight:800;font-size:1.1rem;">${esc(getInitials(b.name))}</div>`;
-    return `<div class="barber-crm-card">
+
+    // Toggle label & handler berbeda tergantung status
+    const toggleLabel = !isActive
+      ? 'Kapster nonaktif<br>tidak bisa dipesan'
+      : isOffToday
+        ? 'Libur hari ini<br><small style="color:var(--w40);font-size:.68rem">Klik untuk override</small>'
+        : 'Kapster aktif<br>bisa dipesan';
+    const toggleHandler = isOffToday
+      ? `toggleTodayOverride('${esc(b.id)}', this.checked)`
+      : `toggleBarberActive('${esc(b.id)}', this.checked)`;
+
+    return `<div class="barber-crm-card${isActive ? '' : ' barber-inactive'}${isOffToday ? ' barber-off-today' : ''}" data-barber-id="${esc(b.id)}">
       <div class="barber-crm-top">
-        <div class="barber-crm-img">${imgHtml}</div>
+        <div class="barber-crm-img" style="position:relative;">${imgHtml}${imgOverlay}</div>
         <div>
-          <div class="barber-crm-name">${esc(b.name)}</div>
+          <div class="barber-crm-name">${esc(b.name)} ${statusBadge}</div>
           <div class="barber-crm-role">${esc(b.role || 'Barber')}</div>
           <div class="barber-crm-branch">${esc(LOCATION_LABELS[b.branch] || b.branch || '')}</div>
         </div>
       </div>
       <div class="barber-crm-stats">
-        <div class="bcs"><span class="bcs-val">${bkCount}</span><span class="bcs-label">Total Bk</span></div>
-        <div class="bcs"><span class="bcs-val">${doneCount}</span><span class="bcs-label">Done</span></div>
-        <div class="bcs"><span class="bcs-val">${bkCount - doneCount}</span><span class="bcs-label">Upcoming</span></div>
+        <div class="bcs"><span class="bcs-val">${bkCount}</span><span class="bcs-label">Total</span></div>
+        <div class="bcs"><span class="bcs-val" style="color:var(--accent)">${doneCount}</span><span class="bcs-label">Done</span></div>
+        <div class="bcs"><span class="bcs-val" style="color:var(--w50)">${bkCount - doneCount}</span><span class="bcs-label">Upcoming</span></div>
       </div>
-      <div class="barber-crm-schedule"><h5>Working Days</h5><div class="schedule-days">${days}</div></div>
+      <div class="barber-crm-schedule">
+        <h5>Working Days</h5>
+        <div class="schedule-days">${days}</div>
+      </div>
+      <div class="barber-toggle-wrap${isOffToday ? ' off-today' : ''}">
+        <span>${toggleLabel}</span>
+        <label class="toggle-switch">
+          <input type="checkbox" ${effectiveOn ? 'checked' : ''} onchange="${toggleHandler}">
+          <span class="toggle-slider"></span>
+          <span class="toggle-knob"></span>
+        </label>
+      </div>
     </div>`;
   }).join('');
+}
+
+// Toggle handler untuk override ketersediaan kapster hari ini
+async function toggleTodayOverride(id, makeAvailable) {
+  const card = document.querySelector(`.barber-crm-card[data-barber-id="${id}"]`);
+  if (card) { card.style.opacity = '0.5'; card.style.pointerEvents = 'none'; }
+  const result = await apiTodayOverride(id, makeAvailable);
+  if (result.success) {
+    await renderBarbers();
+    showToast(makeAvailable ? 'Kapster tersedia hari ini (override)' : 'Kapster diblokir hari ini', 'success');
+  } else {
+    showToast('Gagal: ' + (result.error || 'Unknown error'), 'error');
+    if (card) { card.style.opacity = '1'; card.style.pointerEvents = 'auto'; }
+  }
+}
+
+// Toggle handler untuk aktif/nonaktif kapster
+async function toggleBarberActive(id, isActive) {
+  const card = document.querySelector(`.barber-crm-card[data-barber-id="${id}"]`);
+  if (card) {
+    card.style.opacity = '0.5';
+    card.style.pointerEvents = 'none';
+  }
+  const result = await apiToggleBarberActive(id, isActive);
+  if (result.success) {
+    // Refresh tampilan barbers
+    await renderBarbers();
+    showToast(`Kapster ${isActive ? 'diaktifkan' : 'dinonaktifkan'}`, 'success');
+  } else {
+    showToast('Gagal: ' + (result.error || 'Unknown error'), 'error');
+    if (card) {
+      card.style.opacity = isActive ? '0.7' : '1';
+      card.style.pointerEvents = 'auto';
+    }
+  }
 }
 
 // ── CUSTOMERS VIEW dengan Segmentasi ────────────

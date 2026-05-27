@@ -167,7 +167,7 @@ class AIService {
           role: 'user',
           content: [
             { type: 'input_text', text: promptText },
-            { type: 'input_image', image_url: imageUrl, detail: 'high' }
+            { type: 'input_image', image_url: imageUrl, detail: 'low' }
           ]
         }
       ]
@@ -180,30 +180,20 @@ class AIService {
     };
   }
 
-  // Full analysis: all 5 prompts in parallel
+  // Full analysis: single hairstyle-focused prompt (minimal tokens)
   async fullAnalysis(imageUrl) {
     const startTime = Date.now();
 
-    const [colorResult, outfitResult, eyewearResult, skincareResult, hairstyleResult] = await Promise.all([
-      this._runPrompt(PROMPTS.personalColorAnalysis, imageUrl),
-      this._runPrompt(PROMPTS.outfitByFaceShape, imageUrl),
-      this._runPrompt(PROMPTS.eyewearRecommendation, imageUrl),
-      this._runPrompt(PROMPTS.skincareAnalysis, imageUrl),
-      this._runPrompt(PROMPTS.hairstyleVisual, imageUrl)
-    ]);
-
-    const totalTokens = colorResult.tokens + outfitResult.tokens + eyewearResult.tokens + skincareResult.tokens + hairstyleResult.tokens;
+    const result = await this._runPrompt(PROMPTS.hairstyleVisual, imageUrl);
 
     return {
-      personalColor: colorResult.data,
-      outfit: outfitResult.data,
-      eyewear: eyewearResult.data,
-      skincare: skincareResult.data,
-      hairstyle: hairstyleResult.data,
+      hairstyle: result.data,
+      subject: result.data.subject || {},
+      hairstyle_analysis: result.data.hairstyle_analysis || result.data,
       model: 'gpt-4.1-mini',
-      tokens: totalTokens,
+      tokens: result.tokens,
       processingTime: Date.now() - startTime,
-      cost: this.estimateCost('gpt-4.1-mini', totalTokens)
+      cost: this.estimateCost('gpt-4.1-mini', result.tokens)
     };
   }
 

@@ -415,66 +415,38 @@ Be specific and actionable. Use simple language. Maximum 5 morning steps, 5 even
 `,
 
   // ==========================================
-  // 10. HAIRSTYLE VISUAL RECOMMENDATION
+  // 10. HAIRSTYLE VISUAL RECOMMENDATION (minimal tokens)
   // ==========================================
-  hairstyleVisual: `
-You are a professional barber and hair stylist with expertise in men's haircuts.
+  hairstyleVisual: `You are a men's hair stylist for RedBox Barbershop.
+Analyze this photo. Return ONLY valid JSON, no markdown/explanation.
 
-Analyze this portrait and return a JSON for a hairstyle recommendation infographic.
-
-Tasks:
-- Identify face shape, current hair texture, and density
-- Recommend 4 haircuts that would suit the subject best
-- For each haircut: name, description, styling tips, who it suits
-- List 3 haircuts/hairdos to AVOID with clear reasons
-- Include variety: one Korean/Asian style, one Classic barbershop, one Modern fade, one Versatile
-
-Output JSON format:
 {
-  "currentHair": {
-    "texture": "straight|wavy|curly|coily",
-    "density": "thin|medium|thick",
-    "length": "short|medium|long",
-    "currentStyle": "Brief description of current look"
+  "subject": {
+    "face_shape": {"type": "oval|round|square|heart|diamond|oblong"},
+    "hair": {
+      "type": "straight|wavy|curly|coily",
+      "density": "thin|medium|medium_thick|thick",
+      "current_length": "short|medium|long",
+      "natural_texture": "smooth|soft_wave|coarse"
+    }
   },
-  "faceShape": "oval|round|square|heart|diamond|oblong|triangle",
-  "recommendations": [
-    {
-      "rank": 1,
-      "category": "Korean|Classic|Modern Fade|Versatile|Textured",
-      "name": "Two-Block Cut",
-      "description": "Short sides with textured volume on top, signature K-style",
-      "whyItSuits": "Under 12 words why this cut works for this face",
-      "stylingProducts": ["Matte Clay", "Sea Salt Spray"],
-      "maintenanceLevel": "low|medium|high",
-      "maintenanceFrequency": "Every 3-4 weeks",
-      "stylingTime": "5 minutes daily",
-      "suitabilityScore": 94
-    }
-  ],
-  "avoidHairstyles": [
-    {
-      "style": "Bowl Cut",
-      "reason": "Widens face horizontally, loses definition",
-      "category": "Shape Issue"
-    },
-    {
-      "style": "Very Long Top Undercut",
-      "reason": "Top-heavy, unbalances facial proportions",
-      "category": "Proportion Issue"
-    },
-    {
-      "style": "Slick Back (no volume)",
-      "reason": "Exposes forehead width unfavorably",
-      "category": "Feature Issue"
-    }
-  ],
-  "barberTip": "One sentence tip to tell your barber",
-  "groomingEssentials": ["Product 1", "Product 2", "Tool 1"]
+  "hairstyle_analysis": {
+    "recommended_styles": [
+      {"name": "Style Name", "score": 95, "match_reason": "Why it fits this face"}
+    ],
+    "avoid_styles": [
+      {"name": "Style Name", "reason": "Why to avoid"}
+    ],
+    "styling_products": ["Product1", "Product2", "Product3", "Product4"]
+  }
 }
 
-Return exactly 4 recommendations and 3 avoidHairstyles. Keep all text concise and visual-friendly.
-`
+Rules:
+- Return exactly 4 recommended_styles, 5 avoid_styles
+- Include variety: Korean, Classic, Modern, Textured styles
+- Products: exactly 4 items (clay/paste/spray/powder type)
+- All text concise, under 8 words per field
+- Replace ALL example values with real analysis of THIS person`
 };
 
 module.exports = PROMPTS;

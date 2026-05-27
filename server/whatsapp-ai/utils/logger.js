@@ -56,6 +56,10 @@ const logReminder = (booking, type, status) => {
   fs.appendFileSync(filePath, line + '\n', 'utf8');
 };
 
+const logIntent = (from, name, intent, preview) => {
+  append(`intents-${today()}.log`, `[${now()}] ${intent.toUpperCase().padEnd(24)} | ${from} (${name}) | ${preview}`);
+};
+
 module.exports = {
   ensureLogDir,
   logIncoming,
@@ -66,4 +70,5 @@ module.exports = {
   logError,
   logDispatch,
   logReminder,
+  logIntent,
 };

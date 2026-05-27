@@ -95,3 +95,5 @@ server/test_sheet.js
 
 # Local Netlify folder
 .netlify
+
+.env*.local

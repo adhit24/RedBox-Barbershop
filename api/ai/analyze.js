@@ -6,122 +6,36 @@
 const { createClient } = require('@supabase/supabase-js');
 const OpenAI = require('openai');
 
-const COMBINED_PROMPT = `You are a professional men's grooming consultant for RedBox Barbershop Indonesia.
-Analyze this photo carefully and return ONLY a valid JSON object — no markdown, no explanation, no code block.
-Replace ALL example values with real analysis of THIS specific person's face, skin, and hair.
+const COMBINED_PROMPT = `You are a men's hair stylist for RedBox Barbershop.
+Analyze this photo. Return ONLY valid JSON, no markdown/explanation.
 
-Required JSON structure:
 {
   "subject": {
-    "gender": "male",
-    "age_range": "17-22",
-    "ethnicity_visual": "asian|caucasian|african|latin|middle_eastern",
-    "face_shape": {
-      "type": "oval|round|square|heart|diamond|oblong",
-      "confidence": 0.90
-    },
-    "skin": {
-      "type": "combination|oily|dry|normal",
-      "tone": "warm_neutral|cool|warm|neutral",
-      "undertone": "warm|cool|neutral",
-      "concerns": ["slightly_dull", "minor_acne_marks", "mild_dehydration"]
-    },
+    "face_shape": {"type": "oval|round|square|heart|diamond|oblong"},
     "hair": {
       "type": "straight|wavy|curly|coily",
       "density": "thin|medium|medium_thick|thick",
-      "volume": "low|medium|high",
       "current_length": "short|medium|long",
       "natural_texture": "smooth|soft_wave|coarse"
     }
   },
-  "personal_color_analysis": {
-    "season": "deep_autumn|bright_spring|cool_summer|deep_winter|warm_autumn|soft_summer",
-    "summary_tags": ["warm", "deep", "muted"],
-    "best_colors": [
-      {"name": "Forest Green", "hex": "#2E4A32", "score": 96},
-      {"name": "Navy", "hex": "#1F2A44", "score": 94},
-      {"name": "Burgundy", "hex": "#5B1F2A", "score": 91},
-      {"name": "Teal", "hex": "#0F4C5C", "score": 90}
-    ],
-    "okay_colors": [
-      {"name": "Olive", "hex": "#6B6F3B"},
-      {"name": "Taupe", "hex": "#8A7B70"},
-      {"name": "Muted Sage", "hex": "#88907D"}
-    ],
-    "avoid_colors": [
-      {"name": "Pastel Pink", "hex": "#F4C7D9"},
-      {"name": "Lavender", "hex": "#D8C7F7"},
-      {"name": "Cool Gray", "hex": "#BFC3C8"}
-    ]
-  },
-  "outfit_recommendation": {
-    "recommended_styles": [
-      {
-        "title": "Smart Casual",
-        "score": 95,
-        "top": "Olive Shirt",
-        "bottom": "Cream Trousers",
-        "shoes": "Brown Loafers",
-        "fit": "Tailored"
-      },
-      {
-        "title": "Korean Casual",
-        "score": 93,
-        "top": "Teal Overshirt",
-        "bottom": "Black Straight Pants",
-        "shoes": "White Sneakers",
-        "fit": "Relaxed Clean"
-      },
-      {
-        "title": "Semi Formal",
-        "score": 90,
-        "top": "Navy Blazer",
-        "bottom": "Dark Slacks",
-        "shoes": "Derby Black",
-        "fit": "Structured"
-      }
-    ],
-    "avoid_styles": ["Oversized Neon", "Chaotic Patterns", "Extreme Baggy Fit", "High Contrast Pastel"]
-  },
-  "eyewear_analysis": {
-    "recommended": [
-      {"model": "Wayfarer", "score": 94, "material": "Acetate", "frame_color": "Black"},
-      {"model": "Korean Metal Frame", "score": 91, "material": "Metal", "frame_color": "Silver"},
-      {"model": "Rectangle Frame", "score": 89, "material": "Mixed", "frame_color": "Gunmetal"}
-    ],
-    "avoid": [
-      {"model": "Oversized Square", "reason": "Overwhelms face proportion"},
-      {"model": "Tiny Round", "reason": "Imbalanced with face width"}
-    ]
-  },
-  "skin_analysis": {
-    "overall_score": 78,
-    "concerns": [
-      {"type": "Dehydration", "severity": "mild"},
-      {"type": "Uneven Tone", "severity": "mild"},
-      {"type": "Minor Acne Marks", "severity": "low"}
-    ],
-    "goals": ["Brighter Skin", "Healthy Glow", "Hydration", "Oil Balance"],
-    "routine": {
-      "morning": ["Gentle Cleanser", "Hydrating Toner", "Vitamin C Serum", "Moisturizer", "SPF 50"],
-      "night": ["Cleanser", "Niacinamide Serum", "Moisturizer", "Spot Treatment"]
-    },
-    "ingredients": ["Niacinamide", "Hyaluronic Acid", "Vitamin C", "Zinc PCA"]
-  },
   "hairstyle_analysis": {
     "recommended_styles": [
-      {"name": "Textured Side Part", "score": 96, "maintenance": "medium", "match_reason": "Adds structure to face"},
-      {"name": "Korean Comma Hair", "score": 94, "maintenance": "medium", "match_reason": "Balances face shape"},
-      {"name": "Two Block", "score": 91, "maintenance": "easy", "match_reason": "Enhances natural texture"},
-      {"name": "Classic Taper", "score": 89, "maintenance": "easy", "match_reason": "Clean and professional"}
+      {"name": "Style Name", "score": 95, "match_reason": "Why it fits this face"}
     ],
     "avoid_styles": [
-      {"name": "Bowl Cut", "reason": "Flattens face vertically"},
-      {"name": "Extreme Skin Fade", "reason": "Too aggressive for face shape"}
+      {"name": "Style Name", "reason": "Why to avoid"}
     ],
-    "styling_products": ["Matte Clay", "Sea Salt Spray", "Texture Powder"]
+    "styling_products": ["Product1", "Product2", "Product3", "Product4"]
   }
-}`;
+}
+
+Rules:
+- Return exactly 4 recommended_styles, 5 avoid_styles
+- Include variety: Korean, Classic, Modern, Textured styles
+- Products: exactly 4 items (clay/paste/spray/powder type)
+- All text concise, under 8 words per field
+- Replace ALL example values with real analysis of THIS person`;
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -165,13 +79,13 @@ module.exports = async function handler(req, res) {
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
-      max_tokens: 4000,
+      max_tokens: 1000,
       messages: [
         {
           role: 'user',
           content: [
             { type: 'text', text: COMBINED_PROMPT },
-            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'high' } }
+            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'low' } }
           ]
         }
       ]
