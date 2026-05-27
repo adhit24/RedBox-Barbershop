@@ -89,7 +89,7 @@ class MokaClient {
     const startFmt = toFmt(startDateStr || new Date().toISOString().slice(0, 10));
     const endFmt   = toFmt(endDateStr   || startDateStr || new Date().toISOString().slice(0, 10));
     const qs = new URLSearchParams({ statuses: 'PENDING', start: startFmt, end: endFmt, per_page: '200', deep: 'true' });
-    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/sync_bills/?${qs}`);
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/sync_bills?${qs}`);
   }
 
   /**

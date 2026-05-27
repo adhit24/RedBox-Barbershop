@@ -385,7 +385,17 @@ async function _pullMokaToWebNow(supabase, outletId) {
       try {
         billsRes = await client.getOpenBills(startWIB, tomorrowWIB);
       } catch (e) {
-        console.warn(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) skipped (${e.message})`);
+        console.warn(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) failed (${e.message})`);
+        // CRITICAL FIX: Non-silent error logging to sync_logs for monitoring visibility
+        await supabase.from('sync_logs').insert({
+          direction: 'pull',
+          entity_type: 'moka_open_bills',
+          entity_id: `${outletId}_${startWIB}`,
+          status: 'failed',
+          error_message: `getOpenBills failed: ${e.message} (status: ${e.status || 'unknown'})`,
+          retry_count: 0,
+          created_at: new Date().toISOString(),
+        }).catch(() => {}); // Best-effort logging
         billsRes = null;
       }
 
