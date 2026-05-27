@@ -864,6 +864,19 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── GET /api/moka/test-open-bills ──────────────────────────
+  // Diagnostic endpoint to test Moka API open bills endpoint variations
+  // Tests multiple endpoint hypotheses to find working path
+  // Query: outletId (required), date (optional, default today)
+  router.get('/moka/test-open-bills', async (req, res) => {
+    try {
+      const testOpenBillsHandler = require('../../api/moka/test-open-bills');
+      return testOpenBillsHandler(req, res);
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   // ── GET/POST /api/moka/sync-customers ─────────────────────
   // Pull customers from Moka transactions → Supabase customers table
   router.get('/moka/sync-customers', async (req, res) => {
