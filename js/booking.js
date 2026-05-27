@@ -383,7 +383,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           try {
             const sRes = await fetch(
               `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}`,
-              { signal: AbortSignal.timeout(8000) }
+              { signal: AbortSignal.timeout(25000) }
             );
             if (sRes.ok) {
               const sJson = await sRes.json();
@@ -412,14 +412,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const shouldPollToday = isToday && barberIdFixed && barberIdFixed !== 'any';
       if (shouldPollToday) {
         const startedAt = Date.now();
-        const maxMs = 14_000;
+        const maxMs = 30_000;
         const pollOnce = async () => {
           if (seq !== activeLoadSeq) return;
           if (Date.now() - startedAt > maxMs) return;
           try {
             const sRes = await fetch(
               `${API_URL}/schedules?outletId=${outletIdFixed}&date=${dateStr}&barberId=${barberIdFixed}&_t=${Date.now()}`,
-              { signal: AbortSignal.timeout(8000) }
+              { signal: AbortSignal.timeout(25000) }
             );
             if (!sRes.ok) {
               setTimeout(pollOnce, 2200);
