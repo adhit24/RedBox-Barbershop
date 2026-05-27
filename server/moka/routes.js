@@ -886,11 +886,18 @@ function createMokaRouter(supabase) {
       const fmtDate = `${d}/${m}/${y}`;
       const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' };
 
-      // Test endpoint variations
+      // Test endpoint variations - comprehensive API path discovery
       const variations = [
-        { name: 'with_trailing_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills/?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
-        { name: 'without_trailing_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'sync_bills_with_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills/?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5&deep=true` },
+        { name: 'sync_bills_no_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5&deep=true` },
         { name: 'v2_sync_bills', path: `/v2/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'v3_sync_bills', path: `/v3/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'v1_bills', path: `/v1/outlets/${mokaOutletId}/bills?status=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'v2_bills', path: `/v2/outlets/${mokaOutletId}/bills?status=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'v3_bills', path: `/v3/outlets/${mokaOutletId}/bills?status=pending&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'v1_orders', path: `/v1/outlets/${mokaOutletId}/orders?status=pending&start_date=${fmtDate}&end_date=${fmtDate}&per_page=5` },
+        { name: 'v1_advanced_orders', path: `/v1/outlets/${mokaOutletId}/advanced_orderings/orders?per_page=5` },
+        { name: 'v1_outlet_bills', path: `/v1/bills?outlet_id=${mokaOutletId}&status=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
       ];
 
       const MOKA_API_BASE = process.env.MOKA_API_BASE || 'https://api.mokapos.com';
