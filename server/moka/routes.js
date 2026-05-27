@@ -61,7 +61,9 @@ function createMokaRouter(supabase) {
       const outletId = await _resolveOutletId(supabase, rawOutletId);
       if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
 
-      _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
+      // IMPORTANT: await sync so it completes in serverless (Vercel) before response.
+      // Without await, the function terminates and Moka open bills never reach schedules table.
+      await _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
 
       // Resolve duration
       let duration = durationMinutes ? parseInt(durationMinutes, 10) : null;
@@ -127,7 +129,7 @@ function createMokaRouter(supabase) {
       const dayStart = `${date}T00:00:00+07:00`;
       const dayEnd   = `${date}T23:59:59+07:00`;
 
-      _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
+      await _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
 
       const [{ data: schedules }, { data: outletWide }, { data: legacyBookings }] = await Promise.all([
         supabase
@@ -461,7 +463,7 @@ function createMokaRouter(supabase) {
       if (rawOutletId) {
         outletId = await _resolveOutletId(supabase, rawOutletId);
         if (outletId) query = query.eq('outlet_id', outletId);
-        if (outletId) _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
+        if (outletId) await _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
       }
       if (date) {
         const dayStart = `${date}T00:00:00+07:00`;
@@ -1373,24 +1375,23 @@ async function _refreshFreshTodayData(supabase, outletId, date) {
   // Expire outlet-wide blocks (barber_id IS NULL) for this outlet.
   // Expire jika SALAH SATU: end_time sudah lewat (+ 1h) ATAU created_at sudah > 2h
   // sehingga open bill lintas hari tidak terus memblokir semua kapster.
-  // Fire-and-forget: errors are silently ignored (non-critical cleanup).
+  // Await cleanup so it completes in serverless before function exits.
   const staleHours    = Math.max(1, parseInt(process.env.MOKA_OPENBILL_OUTLET_WIDE_STALE_HOURS || '1', 10) || 1);
   const unmatchedHours = Math.max(1, parseInt(process.env.MOKA_OPENBILL_UNMATCHED_HOURS || '2', 10) || 2);
   const cutoffEnd      = new Date(Date.now() - staleHours    * 60 * 60 * 1000).toISOString();
   const cutoffCreated  = new Date(Date.now() - unmatchedHours * 60 * 60 * 1000).toISOString();
-  supabase
-    .from('schedules')
-    .update({ status: 'cancelled', notes: '[auto] stale outlet-wide open bill — kasir lupa close di MokaPOS' })
-    .eq('outlet_id', outletId)
-    .eq('source', 'moka')
-    .eq('status', 'reserved')
-    .is('barber_id', null)
-    .or(`end_time.lt.${cutoffEnd},created_at.lt.${cutoffCreated}`)
-    .select('id')
-    .then(({ data }) => {
-      if (data?.length) console.log(`[Expire] ${data.length} stale outlet-wide block(s) for outlet ${outletId}`);
-    })
-    .catch(() => {});
+  try {
+    const { data: expired } = await supabase
+      .from('schedules')
+      .update({ status: 'cancelled', notes: '[auto] stale outlet-wide open bill — kasir lupa close di MokaPOS' })
+      .eq('outlet_id', outletId)
+      .eq('source', 'moka')
+      .eq('status', 'reserved')
+      .is('barber_id', null)
+      .or(`end_time.lt.${cutoffEnd},created_at.lt.${cutoffCreated}`)
+      .select('id');
+    if (expired?.length) console.log(`[Expire] ${expired.length} stale outlet-wide block(s) for outlet ${outletId}`);
+  } catch (_) { /* non-critical cleanup */ }
 
   return maybeRefreshOutletData(supabase, outletId, { maxAgeMs });
 }
