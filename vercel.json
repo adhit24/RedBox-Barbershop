@@ -44,10 +44,6 @@
     "api/cron/expire-stale-bills.js": {
       "maxDuration": 30,
       "includeFiles": "server/**"
-    },
-    "api/cron/moka-sync.js": {
-      "maxDuration": 60,
-      "includeFiles": "server/**"
     }
   },
   "crons": [
@@ -64,7 +60,6 @@
     { "source": "/api/cron/birthday",           "destination": "/api/cron/birthday.js" },
     { "source": "/api/cron/remind-soon",        "destination": "/api/cron/remind-soon.js" },
     { "source": "/api/cron/expire-stale-bills", "destination": "/api/cron/expire-stale-bills.js" },
-    { "source": "/api/cron/moka-sync",           "destination": "/api/cron/moka-sync.js" },
     { "source": "/api/moka/sync-customers",     "destination": "/api/moka/sync-customers.js" },
     { "source": "/api/(.*)",                    "destination": "/api/[...path].js" }
   ],
