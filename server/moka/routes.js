@@ -866,15 +866,48 @@ function createMokaRouter(supabase) {
 
   // ── GET /api/moka/test-open-bills ──────────────────────────
   // Diagnostic endpoint to test Moka API open bills endpoint variations
-  // Tests multiple endpoint hypotheses to find working path
   // Query: outletId (required), date (optional, default today)
   router.get('/moka/test-open-bills', async (req, res) => {
     try {
-      const testOpenBillsHandler = require('../../api/moka/test-open-bills');
-      return testOpenBillsHandler(req, res);
-    } catch (err) {
-      _serverError(res, err);
-    }
+      const { outletId: rawOutletId, date } = req.query;
+      if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
+
+      const outletId = await _resolveOutletId(supabase, rawOutletId);
+      if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+
+      const { data: outlet } = await supabase.from('outlets').select('id, slug, moka_outlet_id').eq('id', outletId).single();
+      if (!outlet?.moka_outlet_id) return res.status(404).json({ error: 'Missing moka_outlet_id' });
+
+      const { getAccessToken } = require('./oauth');
+      const token = await getAccessToken(supabase, outletId);
+      const mokaOutletId = outlet.moka_outlet_id;
+      const testDate = date || new Date().toISOString().slice(0, 10);
+      const [y, m, d] = testDate.split('-');
+      const fmtDate = `${d}/${m}/${y}`;
+      const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' };
+
+      // Test endpoint variations
+      const variations = [
+        { name: 'with_trailing_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills/?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'without_trailing_slash', path: `/v1/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+        { name: 'v2_sync_bills', path: `/v2/outlets/${mokaOutletId}/sync_bills?statuses=PENDING&start=${fmtDate}&end=${fmtDate}&per_page=5` },
+      ];
+
+      const MOKA_API_BASE = process.env.MOKA_API_BASE || 'https://api.mokapos.com';
+      const results = [];
+      for (const v of variations) {
+        const start = Date.now();
+        try {
+          const resp = await fetch(`${MOKA_API_BASE}${v.path}`, { headers });
+          const text = await resp.text();
+          let data = null; try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 200) }; }
+          results.push({ name: v.name, status: resp.status, latency_ms: Date.now() - start, hasData: !!data?.data, preview: data?.data ? `Array[${data.data.length}]` : JSON.stringify(data).slice(0, 100) });
+        } catch (e) {
+          results.push({ name: v.name, status: 'ERROR', latency_ms: Date.now() - start, error: e.message });
+        }
+      }
+      res.json({ outlet: { slug: outlet.slug, moka_outlet_id: mokaOutletId }, testDate, results });
+    } catch (err) { _serverError(res, err); }
   });
 
   // ── GET/POST /api/moka/sync-customers ─────────────────────
