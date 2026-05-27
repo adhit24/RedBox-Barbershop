@@ -2023,6 +2023,42 @@ if (require.main === module) {
 }
 
 // ================================================
+// TEST — Send review WA for a specific booking (bypass time check)
+// POST /api/cron/review-request/test  { booking_id }
+// ================================================
+app.post('/api/cron/review-request/test', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const auth   = req.headers['authorization'];
+  if (secret && auth !== `Bearer ${secret}`) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { booking_id } = req.body || {};
+  if (!booking_id) return res.status(400).json({ error: 'booking_id required' });
+
+  try {
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    const { data: booking, error } = await supabase
+      .from('bookings')
+      .select('id, name, wa, service, date, time, location, barber_id, duration')
+      .eq('id', booking_id)
+      .single();
+
+    if (error || !booking) return res.status(404).json({ error: 'Booking not found' });
+
+    let barberName = null;
+    if (booking.barber_id) {
+      const { data: barber } = await supabase.from('barbers').select('name').eq('id', booking.barber_id).single();
+      barberName = barber?.name || null;
+    }
+
+    const result = await notifyCustomerReviewRequest({ ...booking, barber_name: barberName });
+    return res.json({ ok: true, wa: booking.wa, name: booking.name, kapster: barberName, fonnte: result });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
+
+// ================================================
 // CRON — REVIEW REQUEST (called by cron-job.org every 30 min)
 // GET /api/cron/review-request
 // ================================================
