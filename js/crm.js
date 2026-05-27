@@ -925,10 +925,13 @@ async function renderCustomers(search = '', segment = currentSegment) {
       else if (daysSince > 30) segBadge = '<span style="font-size:.65rem;background:rgba(234,179,8,.15);color:#fbbf24;border:1px solid rgba(234,179,8,.3);border-radius:99px;padding:1px 6px;margin-left:4px">At-Risk</span>';
     }
     const waMsg = encodeURIComponent(`Halo ${c.name}, terima kasih sudah mengunjungi Redbox Barbershop!`);
+    const visits = c.visits || 0;
+    const points = c.points ?? (visits * 10);
     return `<tr>
       <td class="td-name">${esc(c.name)}${segBadge}</td>
       <td><a href="https://wa.me/62${esc(c.wa)}" target="_blank" class="wa-link">+62${esc(c.wa)}</a></td>
-      <td style="text-align:center;font-weight:700">${c.visits || 0}</td>
+      <td style="text-align:center;font-weight:700">${visits}</td>
+      <td style="text-align:center;font-weight:700;color:#fbbf24">${points || '—'}</td>
       <td>${esc(fmtDate(lastVisit))}</td>
       <td style="font-size:.78rem">${esc((c.services || []).slice(0, 2).join(', ') || '—')}</td>
       <td style="font-weight:700;color:#f87171">${esc(fmt(c.total_spent || c.totalSpent || 0))}</td>
@@ -1089,8 +1092,8 @@ window.exportBookingsCSV = async function() {
 
 window.exportCustomersCSV = async function() {
   const customers = await apiGetCustomers({ limit: 9999 });
-  const headers = ['ID','Nama','WA','Kunjungan','Total Belanja','Kunjungan Terakhir','Layanan','Notes'];
-  const rows = customers.map(c => [c.id, c.name, c.wa, c.visits || 0, c.total_spent || c.totalSpent || 0, c.last_visit || c.lastVisit || '', (c.services || []).join(';'), c.notes || '']);
+  const headers = ['ID','Nama','WA','Kunjungan','Poin','Total Belanja','Kunjungan Terakhir','Layanan','Notes'];
+  const rows = customers.map(c => [c.id, c.name, c.wa, c.visits || 0, c.points ?? ((c.visits||0)*10), c.total_spent || c.totalSpent || 0, c.last_visit || c.lastVisit || '', (c.services || []).join(';'), c.notes || '']);
   const csv = [headers, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
