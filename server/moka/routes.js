@@ -922,18 +922,28 @@ function createMokaRouter(supabase) {
 
       const MOKA_API_BASE = process.env.MOKA_API_BASE || 'https://api.mokapos.com';
       const results = [];
+
+      // Base URL connectivity check (no auth)
+      try {
+        const baseCheck = await fetch(`${MOKA_API_BASE}/v1`, { method: 'GET' });
+        results.push({ name: 'base_url_check', status: baseCheck.status, latency_ms: 0, hasData: false, preview: `Base URL reachable: ${baseCheck.status}` });
+      } catch (e) {
+        results.push({ name: 'base_url_check', status: 'ERROR', latency_ms: 0, error: e.message, preview: 'Base URL unreachable' });
+      }
+
       for (const v of variations) {
         const start = Date.now();
         try {
           const resp = await fetch(`${MOKA_API_BASE}${v.path}`, { headers });
           const text = await resp.text();
-          let data = null; try { data = JSON.parse(text); } catch { data = { raw: text.slice(0, 200) }; }
-          results.push({ name: v.name, status: resp.status, latency_ms: Date.now() - start, hasData: !!data?.data, preview: data?.data ? `Array[${data.data.length}]` : JSON.stringify(data).slice(0, 100) });
+          let data = null; try { data = JSON.parse(text); } catch { data = { raw: text }; }
+          const preview = data?.data ? `Array[${data.data.length}]` : (data?.raw ? data.raw.slice(0, 200) : JSON.stringify(data).slice(0, 100));
+          results.push({ name: v.name, status: resp.status, latency_ms: Date.now() - start, hasData: !!data?.data, preview });
         } catch (e) {
           results.push({ name: v.name, status: 'ERROR', latency_ms: Date.now() - start, error: e.message });
         }
       }
-      res.json({ outlet: { slug: outlet.slug, moka_outlet_id: mokaOutletId }, testDate, results });
+      res.json({ outlet: { slug: outlet.slug, moka_outlet_id: mokaOutletId }, testDate, mokaApiBase: MOKA_API_BASE, results });
     } catch (err) { _serverError(res, err); }
   });
 
