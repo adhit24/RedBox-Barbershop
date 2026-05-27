@@ -61,9 +61,8 @@ function createMokaRouter(supabase) {
       const outletId = await _resolveOutletId(supabase, rawOutletId);
       if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
 
-      // IMPORTANT: await sync so it completes in serverless (Vercel) before response.
-      // Without await, the function terminates and Moka open bills never reach schedules table.
-      await _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
+      // NOTE: Removed _refreshFreshTodayData call to improve response time
+      // Sync is handled by /api/moka/cron-sync endpoint (called by Vercel Cron every 5 min)
 
       // Resolve duration
       let duration = durationMinutes ? parseInt(durationMinutes, 10) : null;
@@ -129,7 +128,7 @@ function createMokaRouter(supabase) {
       const dayStart = `${date}T00:00:00+07:00`;
       const dayEnd   = `${date}T23:59:59+07:00`;
 
-      await _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
+      // NOTE: Removed _refreshFreshTodayData call - sync handled by cron
 
       const [{ data: schedules }, { data: outletWide }, { data: legacyBookings }] = await Promise.all([
         supabase
@@ -463,7 +462,8 @@ function createMokaRouter(supabase) {
       if (rawOutletId) {
         outletId = await _resolveOutletId(supabase, rawOutletId);
         if (outletId) query = query.eq('outlet_id', outletId);
-        if (outletId) await _refreshFreshTodayData(supabase, outletId, date).catch(() => {});
+        // NOTE: Removed _refreshFreshTodayData call here to improve response time
+        // Sync is handled by /api/moka/cron-sync endpoint (called by Vercel Cron)
       }
       if (date) {
         const dayStart = `${date}T00:00:00+07:00`;
