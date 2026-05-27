@@ -4,7 +4,7 @@
   "description": "Redbox Barbershop CRM API — Node.js + Supabase PostgreSQL",
   "main": "index.js",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "scripts": {
     "start": "node index.js",
