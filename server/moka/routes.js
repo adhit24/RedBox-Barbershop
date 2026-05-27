@@ -1653,6 +1653,74 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── GET /api/moka/test-sync ────────────────────────────────
+  // Test endpoint: Check Moka sync status, token validity, barber mapping
+  router.get('/moka/test-sync', async (req, res) => {
+    try {
+      const outletSlug = req.query.outlet || 'bypass';
+      const secret = req.query.secret;
+      
+      if (secret !== process.env.ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const { data: outlet } = await supabase.from('outlets').select('id, slug, name').eq('slug', outletSlug).single();
+      const { data: tokenData } = await supabase.from('moka_tokens').select('access_token, expires_at').eq('outlet_id', outlet?.id || '').single();
+      const { data: barbers } = await supabase.from('barbers').select('id, name, moka_employee_id').eq('outlet_id', outlet?.id || '').eq('is_active', true);
+      
+      const today = new Date().toISOString().split('T')[0];
+      const { data: schedules } = await supabase.from('schedules').select('id, barber_id, start_time, source').eq('outlet_id', outlet?.id || '').gte('start_time', `${today}T00:00:00`).lte('start_time', `${today}T23:59:59`);
+
+      res.json({
+        timestamp: new Date().toISOString(),
+        outlet: outlet || null,
+        moka_token: { has_token: !!tokenData, is_expired: tokenData?.expires_at ? new Date(tokenData.expires_at) < new Date() : null },
+        barbers: { 
+          total: barbers?.length || 0, 
+          mapped: barbers?.filter(b => b.moka_employee_id).length || 0,
+          unmapped_list: barbers?.filter(b => !b.moka_employee_id).map(b => ({ id: b.id, name: b.name })) || []
+        },
+        today_schedules: { total: schedules?.length || 0, moka_open_bills: schedules?.filter(s => s.source === 'moka_open_bill').length || 0 },
+        test_instructions: {
+          step1: 'Create open bill in Moka POS for this outlet',
+          step2: 'Call /api/moka/cron-sync?secret=YOUR_SECRET to sync',
+          step3: 'Check booking website - slot should be blocked'
+        }
+      });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── POST /api/moka/update-barber-ids ─────────────────────────
+  // Update barber moka_employee_id mappings (Tegal branch)
+  router.post('/moka/update-barber-ids', async (req, res) => {
+    try {
+      if (req.query.secret !== process.env.ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+
+      const tegalUpdates = [
+        { id: 'tegal-faiz', moka_id: '147468093' },
+        { id: 'tegal-wawan', moka_id: '147470744' },
+        { id: 'tegal-epik', moka_id: '147465521' },
+        { id: 'tegal-ahmad', moka_id: '147463715' },
+        { id: 'tegal-sephril', moka_id: '147470666' },
+        { id: 'tegal-yafi', moka_id: '147470745' },
+      ];
+
+      const results = [];
+      for (const barber of tegalUpdates) {
+        const { error } = await supabase.from('barbers').update({ moka_employee_id: barber.moka_id }).eq('id', barber.id);
+        results.push({ id: barber.id, status: error ? 'error' : 'updated', error: error?.message });
+      }
+
+      res.json({ success: true, updates: results });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
   return router;
 }
 
