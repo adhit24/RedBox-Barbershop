@@ -885,12 +885,41 @@ async function renderCustomers(search = '', segment = currentSegment) {
   if (!customers.length) { tbody.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
 
+  // Fetch member tiers by phone (wa number)
+  let memberTierMap = {};
+  try {
+    const waNumbers = customers.map(c => c.wa).filter(Boolean);
+    if (waNumbers.length) {
+      const memberRows = await sbMem(`member_profiles?select=phone,current_tier,membership_status&membership_status=eq.ACTIVE`);
+      if (memberRows) {
+        memberRows.forEach(m => {
+          if (m.phone) {
+            const cleaned = m.phone.replace(/[^0-9]/g, '').replace(/^62/, '0').replace(/^0+/, '');
+            memberTierMap[cleaned] = m.current_tier;
+          }
+        });
+      }
+    }
+  } catch(e) {}
+
+  const TIER_BADGE_STYLES = {
+    silver:   'font-size:.65rem;background:rgba(148,163,184,.2);color:#94a3b8;border:1px solid rgba(148,163,184,.4);border-radius:99px;padding:1px 6px;margin-left:4px',
+    gold:     'font-size:.65rem;background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.4);border-radius:99px;padding:1px 6px;margin-left:4px',
+    platinum: 'font-size:.65rem;background:rgba(185,242,255,.15);color:#67e8f9;border:1px solid rgba(185,242,255,.4);border-radius:99px;padding:1px 6px;margin-left:4px',
+    bronze:   'font-size:.65rem;background:rgba(180,120,60,.15);color:#cd7f32;border:1px solid rgba(180,120,60,.4);border-radius:99px;padding:1px 6px;margin-left:4px'
+  };
+  const TIER_LABELS = { bronze:'Bronze', silver:'Silver', gold:'Gold', platinum:'Platinum' };
+
   const now = new Date();
   tbody.innerHTML = customers.map(c => {
     const lastVisit = c.last_visit || c.lastVisit;
+    // Check membership tier first
+    const waClean = (c.wa || '').replace(/[^0-9]/g, '').replace(/^62/, '0').replace(/^0+/, '');
+    const memberTier = memberTierMap[waClean];
     let segBadge = '';
-    if ((c.visits || 0) >= 5) segBadge = '<span style="font-size:.65rem;background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:99px;padding:1px 6px;margin-left:4px">Loyal</span>';
-    else if (lastVisit) {
+    if (memberTier && TIER_BADGE_STYLES[memberTier]) {
+      segBadge = `<span style="${TIER_BADGE_STYLES[memberTier]}">${TIER_LABELS[memberTier]}</span>`;
+    } else if (lastVisit) {
       const daysSince = Math.floor((now - new Date(lastVisit)) / 86400000);
       if (daysSince > 90) segBadge = '<span style="font-size:.65rem;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);border-radius:99px;padding:1px 6px;margin-left:4px">Lost</span>';
       else if (daysSince > 30) segBadge = '<span style="font-size:.65rem;background:rgba(234,179,8,.15);color:#fbbf24;border:1px solid rgba(234,179,8,.3);border-radius:99px;padding:1px 6px;margin-left:4px">At-Risk</span>';
@@ -1452,6 +1481,7 @@ async function initMembershipView() {
   await loadMemStats();
   await loadRecentActivations();
   await loadAllMembers();
+  await loadPointsLeaderboard();
 }
 
 async function loadMemStats() {
@@ -1605,21 +1635,114 @@ async function loadAllMembers() {
   if (!tbody) return;
   if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="mem-empty">Belum ada member</td></tr>'; return; }
   const TIER_ICONS = { bronze:'🥉', silver:'🥈', gold:'🥇', platinum:'💎' };
+  const TIER_COLORS = { bronze:'#cd7f32', silver:'#94a3b8', gold:'#fbbf24', platinum:'#67e8f9' };
   tbody.innerHTML = rows.map(r => {
     const statusBadge = r.membership_status === 'ACTIVE'
       ? '<span class="mem-badge-ok">Aktif</span>'
       : '<span class="mem-badge-pend">Belum Aktif</span>';
     const join = new Date(r.created_at).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
+    const tierName = r.current_tier || 'bronze';
+    const tierColor = TIER_COLORS[tierName] || '#aaa';
+    const tierBadge = `<span style="display:inline-flex;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:${tierColor};background:${tierColor}22;border:1px solid ${tierColor}55;border-radius:99px;padding:2px 8px">${TIER_ICONS[tierName]||''} ${tierName.charAt(0).toUpperCase()+tierName.slice(1)}</span>`;
     return `<tr>
       <td>${esc(r.full_name || '—')}</td>
       <td class="mem-td-sm">${esc(r.email)}</td>
       <td>${statusBadge}</td>
-      <td>${TIER_ICONS[r.current_tier]||''} ${esc(r.current_tier||'bronze')}</td>
-      <td>${r.total_points ?? 0}</td>
+      <td>${tierBadge}</td>
+      <td style="font-weight:700;color:#fbbf24">${r.total_points ?? 0}</td>
       <td>${r.total_visits ?? 0}</td>
       <td>${join}</td>
     </tr>`;
   }).join('');
+}
+
+async function loadPointsLeaderboard() {
+  const rows = await sbMem('member_profiles?select=full_name,email,current_tier,total_points,total_visits,membership_status&membership_status=eq.ACTIVE&order=total_points.desc&limit=50');
+  const tbody = document.getElementById('memPointsBody');
+  if (!tbody) return;
+  if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="mem-empty">Belum ada data poin</td></tr>'; return; }
+  const TIER_ICONS  = { bronze:'🥉', silver:'🥈', gold:'🥇', platinum:'💎' };
+  const TIER_COLORS = { bronze:'#cd7f32', silver:'#94a3b8', gold:'#fbbf24', platinum:'#67e8f9' };
+  const RANK_MEDALS = ['🥇','🥈','🥉'];
+  tbody.innerHTML = rows.map((r, i) => {
+    const rank = i < 3 ? `<span style="font-size:1.1rem">${RANK_MEDALS[i]}</span>` : `<span style="color:var(--w50);font-weight:600">#${i+1}</span>`;
+    const tierName = r.current_tier || 'bronze';
+    const tierColor = TIER_COLORS[tierName] || '#aaa';
+    const tierBadge = `<span style="display:inline-flex;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:${tierColor};background:${tierColor}22;border:1px solid ${tierColor}55;border-radius:99px;padding:2px 8px">${TIER_ICONS[tierName]||''} ${tierName.charAt(0).toUpperCase()+tierName.slice(1)}</span>`;
+    const poinBar = Math.min(100, Math.round((r.total_points || 0) / 30));
+    return `<tr>
+      <td style="text-align:center">${rank}</td>
+      <td><div style="font-weight:600">${esc(r.full_name || '—')}</div><div style="font-size:.72rem;color:var(--w40)">${esc(r.email)}</div></td>
+      <td>${tierBadge}</td>
+      <td style="font-weight:800;font-size:1.05rem;color:#fbbf24">${r.total_points ?? 0}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:6px;background:var(--w05);border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:${poinBar}%;background:linear-gradient(90deg,#fbbf24,#f59e0b);border-radius:99px"></div>
+          </div>
+          <span style="font-size:.75rem;color:var(--w50);min-width:28px">${r.total_visits ?? 0}x</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function syncMokaPoints() {
+  const btn    = document.getElementById('btnSyncMokaPoints');
+  const status = document.getElementById('mokaPointsSyncStatus');
+  if (!btn || !status) return;
+
+  btn.disabled = true;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Menarik data Moka...';
+  status.style.display = 'block';
+  status.style.background = 'rgba(251,191,36,.08)';
+  status.style.color = '#fbbf24';
+  status.style.border = '1px solid rgba(251,191,36,.2)';
+  status.textContent = '⏳ Menghubungi Moka API, harap tunggu (bisa 30–60 detik)...';
+
+  try {
+    const res = await fetch('/api/moka/sync-member-points', {
+      method: 'POST',
+      headers: apiHeaders(),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      status.style.background = 'rgba(239,68,68,.08)';
+      status.style.color = '#f87171';
+      status.style.border = '1px solid rgba(239,68,68,.2)';
+      status.textContent = `✗ Gagal: ${data.error || res.status}`;
+      showToast('Sync poin gagal: ' + (data.error || res.status), 'error');
+    } else {
+      const lines = [
+        `✓ Berhasil update ${data.updated} member`,
+        data.errors    ? `  • ${data.errors} error` : '',
+        data.unmatched ? `  • ${data.unmatched} member belum ada transaksi Moka` : '',
+        `  • Outlet: ${(data.outlets_scanned || []).join(', ')}`,
+        data.elapsed_s  ? `  • Waktu: ${data.elapsed_s}s` : '',
+      ].filter(Boolean).join('\n');
+
+      status.style.background = 'rgba(34,197,94,.08)';
+      status.style.color = '#4ade80';
+      status.style.border = '1px solid rgba(34,197,94,.2)';
+      status.style.whiteSpace = 'pre-line';
+      status.textContent = lines;
+      showToast(`✓ Poin ${data.updated} member berhasil diperbarui dari Moka`, 'success', 4000);
+
+      // Refresh tabel setelah sync
+      await loadPointsLeaderboard();
+      await loadAllMembers();
+    }
+  } catch (err) {
+    status.style.background = 'rgba(239,68,68,.08)';
+    status.style.color = '#f87171';
+    status.style.border = '1px solid rgba(239,68,68,.2)';
+    status.textContent = `✗ Network error: ${err.message}`;
+    showToast('Gagal konek ke server', 'error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Sync Poin dari Moka';
 }
 
 // Hook into view switcher

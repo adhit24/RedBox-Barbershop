@@ -41,6 +41,10 @@
       "maxDuration": 120,
       "includeFiles": "server/**"
     },
+    "api/moka/sync-member-points.js": {
+      "maxDuration": 120,
+      "includeFiles": "server/**"
+    },
     "api/cron/expire-stale-bills.js": {
       "maxDuration": 30,
       "includeFiles": "server/**"
@@ -61,6 +65,7 @@
     { "source": "/api/cron/remind-soon",        "destination": "/api/cron/remind-soon.js" },
     { "source": "/api/cron/expire-stale-bills", "destination": "/api/cron/expire-stale-bills.js" },
     { "source": "/api/moka/sync-customers",     "destination": "/api/moka/sync-customers.js" },
+    { "source": "/api/moka/sync-member-points", "destination": "/api/moka/sync-member-points.js" },
     { "source": "/api/(.*)",                    "destination": "/api/[...path].js" }
   ],
   "headers": [

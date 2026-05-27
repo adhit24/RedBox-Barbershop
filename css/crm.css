@@ -498,6 +498,10 @@ input,select,textarea{font-family:var(--font)}
 .mem-empty{text-align:center;color:var(--w30);padding:28px!important;font-style:italic}
 .mem-badge-ok  {display:inline-block;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;background:rgba(34,197,94,.1);color:var(--green);border:1px solid rgba(34,197,94,.2)}
 .mem-badge-pend{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;background:var(--red-10);color:var(--red-h);border:1px solid var(--red-20)}
+.btn-mem-sync-points{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.3);border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .2s}
+.btn-mem-sync-points:hover{background:rgba(251,191,36,.2)}
+.btn-mem-sync-points:disabled{opacity:.5;cursor:not-allowed}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 @media(max-width:900px){
   .mem-stats-row{grid-template-columns:repeat(2,1fr)}
