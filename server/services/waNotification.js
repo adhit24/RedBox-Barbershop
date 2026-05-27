@@ -115,24 +115,32 @@ function formatDate(dateStr) {
   });
 }
 
+const GOOGLE_REVIEW_URLS = {
+  bypass:    'https://g.page/r/CQVtP1_nV-SFEBM/review',
+  samadikun: 'https://g.page/r/CYSfr6rTvLs1EBM/review',
+  sumber:    'https://g.page/r/CS9yPcCA-CznEBM/review',
+  tegal:     'https://g.page/r/CWg3nZeYXRxSEBM/review',
+  csb:       'https://g.page/r/CbsPlES6TnydEBM/review',
+};
+
 // 4. Review request — dikirim 30 menit setelah service selesai
 async function notifyCustomerReviewRequest(booking) {
-  const { name, wa, location, barber_name, id } = booking;
+  const { name, wa, location, barber_name } = booking;
 
-  const fn     = (name || 'Kak').split(' ')[0];
-  const branch = branchLabel(location);
+  const fn      = (name || 'Kak').split(' ')[0];
+  const branch  = branchLabel(location);
   const kapster = barber_name ? `bareng *${barber_name}*` : 'di Redbox';
-  const baseUrl = process.env.APP_BASE_URL || 'https://redbox-barbershop.vercel.app';
-  const link = `${baseUrl}/review.html?b=${id}`;
+  const loc     = String(location || '').toLowerCase();
+  const link    = GOOGLE_REVIEW_URLS[loc] || GOOGLE_REVIEW_URLS.bypass;
 
   const message =
 `Haii kak *${fn}*! 👋
 
 Makasih udah mampir ke *${branch}* hari ini — semoga hasilnya bikin pede makin naik ya! 💈✨
 
-Gimana pengalaman kamu ${kapster}? Feedback kamu cuma butuh *1 menit* tapi berarti banget buat kita 🙏
+Gimana pengalaman kamu ${kapster}? Ulasan kamu cuma butuh *1 menit* tapi berarti banget buat kita 🙏
 
-⭐ *Kasih ulasan di sini:*
+⭐ *Tulis ulasan Google di sini:*
 👉 ${link}
 
 Ditunggu ya kak, dan sampai ketemu lagi di Redbox! ✂️🔴`;
