@@ -33,5 +33,20 @@
       "Booking di 2 cabang berbeda → harus 2 booking terpisah",
       "Back-to-back 1 kapster (urut, bukan paralel) → harus 2 booking terpisah"
     ]
+  },
+  "rewards": {
+    "review_reward": {
+      "label": "Reward Ulasan Positif Google",
+      "amount": "5 poin RedBox = senilai Rp 50.000",
+      "trigger": "Customer kasih rating 4-5 bintang di Google review (per cabang)",
+      "delivery": "Link review auto-dikirim 30 menit setelah service selesai via WhatsApp. Poin auto-credit ke akun member.",
+      "membership_url": "redboxbarbershop.com/membership.html",
+      "redeem_examples": ["Diskon haircut", "Free coffee", "Cashback 50%", "Free Gentleman Grooming (250 poin)"],
+      "bot_guidance": "Mention reward ini secara persuasif tapi natural ketika customer tanya soal poin/reward/diskon/membership, atau saat post-visit flow. JANGAN hardsell. Frame sebagai apresiasi & terima kasih, bukan transaksi.",
+      "point_value": {
+        "1_poin": "Rp 10.000",
+        "5_poin": "Rp 50.000"
+      }
+    }
   }
 }

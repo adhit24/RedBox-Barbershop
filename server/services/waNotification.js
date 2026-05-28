@@ -138,12 +138,18 @@ async function notifyCustomerReviewRequest(booking) {
 
 Makasih udah mampir ke *${branch}* hari ini — semoga hasilnya bikin pede makin naik ya! 💈✨
 
-Gimana pengalaman kamu ${kapster}? Ulasan kamu cuma butuh *1 menit* tapi berarti banget buat kita 🙏
+Gimana pengalaman kamu ${kapster}? Ulasan kamu cuma butuh *1 menit* tapi berarti banget buat kami 🙏
 
-⭐ *Tulis ulasan Google di sini:*
+🎁 *BONUS KHUSUS BUAT KAKAK:*
+Kasih ulasan positif (rating ⭐ 4–5) di Google → kakak dapat *5 poin RedBox = senilai Rp 50.000!*
+Poin langsung masuk ke akun member kakak, bisa ditukar untuk diskon haircut, free coffee, atau treatment gratis di kunjungan berikutnya 🔥
+
+⭐ *Tulis ulasan di sini:*
 👉 ${link}
 
-Ditunggu ya kak, dan sampai ketemu lagi di Redbox! ✂️🔴`;
+Beneran cuma 30 detik — voucher Rp 50.000 udah nungguin kakak 😎✂️
+
+_(Pastikan kakak login member di redboxbarbershop.com biar poin auto-credit)_`;
 
   return sendWA(wa, message);
 }
