@@ -1,9 +1,37 @@
 {
   "services": [
-    { "name": "Gentleman Grooming", "price": "95k", "price_csb": "120k", "duration": "45 menit", "description": "Potongan presisi modern termasuk fade" },
-    { "name": "Hair Spa", "price": "110k", "price_csb": "120k", "duration": "30 menit", "description": "Perawatan kesehatan rambut" },
+    { "name": "Gentleman Grooming", "price": "95k", "price_csb": "120k", "duration": "45 menit", "description": "Potongan presisi modern termasuk fade. Punya add-on opsional: Hair Spa, Shaving, Men Massage Service — popup muncul otomatis saat dipilih di website." },
+    { "name": "Hair Spa", "price": "110k", "price_csb": "120k", "duration": "30 menit", "description": "Perawatan kesehatan rambut. Juga tersedia sebagai add-on Gentleman Grooming." },
     { "name": "Hair Color", "price": "160k", "price_csb": "160k", "duration": "45 menit", "description": "Pewarnaan profesional" },
-    { "name": "Shaving", "price": "40k", "price_csb": "50k", "duration": "20 menit", "description": "Cukur jenggot/kumis standar" },
-    { "name": "Men Massage Service", "price": "145k", "price_csb": "155k", "duration": "45 menit", "description": "Pijat relaksasi" }
-  ]
+    { "name": "Shaving", "price": "40k", "price_csb": "50k", "duration": "20 menit", "description": "Cukur jenggot/kumis standar. Juga tersedia sebagai add-on Gentleman Grooming." },
+    { "name": "Men Massage Service", "price": "145k", "price_csb": "155k", "duration": "45 menit", "description": "Pijat relaksasi. Juga tersedia sebagai add-on Gentleman Grooming." }
+  ],
+  "addons": {
+    "gentleman-grooming": {
+      "label": "Add-On Gentleman Grooming (Opsional)",
+      "trigger": "Popup otomatis muncul saat customer pilih Gentleman Grooming di booking page",
+      "rules": "Opsional (boleh skip), boleh pilih lebih dari satu, harga & durasi auto-update, slot kapster otomatis ter-blok lebih lama",
+      "options": [
+        { "name": "Hair Spa", "add_price": "+110k", "add_price_csb": "+120k", "add_duration": "+30 menit" },
+        { "name": "Shaving", "add_price": "+40k", "add_price_csb": "+50k", "add_duration": "+20 menit" },
+        { "name": "Men Massage Service", "add_price": "+145k", "add_price_csb": "+155k", "add_duration": "+45 menit" }
+      ]
+    }
+  },
+  "group_booking": {
+    "supported_sizes": [1, 2],
+    "size_3_plus_action": "Redirect ke WhatsApp untuk koordinasi langsung (banner '3+ orang' di booking page)",
+    "rules_2_orang": [
+      "Cabang SAMA wajib (paralel kapster di 1 outlet)",
+      "Kapster BEDA wajib (sistem cegah pilih kapster yang sama)",
+      "Jam yang SAMA (slot di-intersect availability kedua kapster)",
+      "1 nomor WhatsApp kontak utama, 2 nama orang",
+      "1x pembayaran untuk total gabungan",
+      "Add-on Gentleman Grooming bisa dipilih independent per orang"
+    ],
+    "tidak_didukung_dalam_1_transaksi": [
+      "Booking di 2 cabang berbeda → harus 2 booking terpisah",
+      "Back-to-back 1 kapster (urut, bukan paralel) → harus 2 booking terpisah"
+    ]
+  }
 }
