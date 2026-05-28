@@ -10,7 +10,7 @@ const path    = require('path');
 const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
-const { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured, getBarbersTableName } = require('./airtable');
+// NOTE: Airtable dependency removed - using Supabase as primary source for barbers
 const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest, notifyCustomerReviewPointsCredited } = require('./services/waNotification');
 
 const app  = express();
@@ -709,12 +709,7 @@ async function syncBarbersFromSheet(sheetUrl) {
   return { sheet: result.sheet, ...synced };
 }
 
-async function syncBarbersFromAirtableSource() {
-  if (!isBarbersConfigured()) throw new Error('Airtable kapster belum dikonfigurasi.');
-  const result = await fetchBarbersFromAirtable();
-  barbersCache = null; // invalidate cache on sync
-  return syncBarbersToDatabases(result.data || [], 'airtable');
-}
+// NOTE: Airtable sync removed - using Supabase as primary source
 
 // In-memory cache — valid for 60s (configurable via BARBERS_CACHE_TTL env)
 let barbersCache = null; // { data: [], timestamp: number }
@@ -739,11 +734,7 @@ if (DB_TYPE === 'supabase') {
   if (supabaseConfigured) supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   ensureMysqlBookingSlotKey();
   if (process.env.AUTO_SYNC_BARBERS === '1') {
-    if (isBarbersConfigured()) {
-      syncBarbersFromAirtableSource()
-        .then(r => console.log(`Barbers sync (${r.source}): mysql=${r.imported_mysql} supabase=${r.imported_supabase} deactivated_demo=${r.deactivated_demo}`))
-        .catch(e => console.warn('Barbers Airtable sync failed:', e?.message || e));
-    } else if (process.env.BARBERS_SHEET_URL || process.env.AUTO_SYNC_BARBERS_URL) {
+    if (process.env.BARBERS_SHEET_URL || process.env.AUTO_SYNC_BARBERS_URL) {
       const u = process.env.AUTO_SYNC_BARBERS_URL || process.env.BARBERS_SHEET_URL;
       syncBarbersFromSheet(u)
         .then(r => console.log(`Barbers sync (${r.source}): mysql=${r.imported_mysql} supabase=${r.imported_supabase} deactivated_demo=${r.deactivated_demo}`))
@@ -821,7 +812,6 @@ app.get('/api/img', async (req, res) => {
 // HEALTH CHECK
 // ================================================
 app.get('/api/health', async (req, res) => {
-  const airtableConfigured = process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_API_KEY !== 'your_airtable_api_key';
   let supabaseTest = null;
   if (supabase && req.query.debug === '1') {
     try {
@@ -831,7 +821,7 @@ app.get('/api/health', async (req, res) => {
       supabaseTest = { supabase_url_prefix: (process.env.SUPABASE_URL||'').slice(0,40), total: allData?.length, inactive_count: inactive.length, inactive: inactive.map(b => ({id:b.id,name:b.name})), onoy, error: error?.message };
     } catch (e) { supabaseTest = { error: e.message }; }
   }
-  res.json({ status: 'ok', service: 'Redbox CRM API', db_type: DB_TYPE, supabase_client: !!supabase, airtable: airtableConfigured ? 'connected' : 'not_configured', timestamp: new Date().toISOString(), ...(supabaseTest ? { supabaseTest } : {}) });
+  res.json({ status: 'ok', service: 'Redbox CRM API', db_type: DB_TYPE, supabase_client: !!supabase, timestamp: new Date().toISOString(), ...(supabaseTest ? { supabaseTest } : {}) });
 });
 
 // ================================================
@@ -949,9 +939,6 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         name, wa, visits: 0, total_spent: 0, last_visit: null
       }, { onConflict: 'wa', ignoreDuplicates: true });
 
-      // Sync to Airtable
-      syncBookingToAirtable(data);
-
       // Kirim WA konfirmasi ke pelanggan + notif admin
       // Awaited (bukan fire-and-forget) agar selesai sebelum res.end() — Vercel kills
       // orphaned promises setelah response dikirim.
@@ -1033,8 +1020,6 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         [bookingId]
       );
 
-      syncBookingToAirtable(newBooking[0]);
-
       // Fire-and-forget: kirim WA konfirmasi + notif admin ke semua cabang
       if (desiredStatus === 'confirmed' && newBooking[0]?.wa) {
         notifyCustomerBookingConfirmed({ ...newBooking[0], barber_name: null }).catch(e =>
@@ -1066,7 +1051,6 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
   if (DB_TYPE === 'supabase') {
     const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
     if (error) return res.status(500).json({ error: error.message });
-    updateBookingInAirtable(data);
     return res.json({ data });
   } else {
     try {
@@ -1091,8 +1075,6 @@ async function handleBookingUpdate(req, res) {
 
     const { data, error } = await supabase.from('bookings').update(updates).eq('id', req.params.id).select().single();
     if (error) return res.status(500).json({ error: error.message });
-    updateBookingInAirtable(data);
-
     let moka = null;
     if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
       if (isMokaBranchEnabled(data.location)) {
@@ -1168,8 +1150,6 @@ async function handleBookingUpdate(req, res) {
          FROM bookings b LEFT JOIN barbers br ON b.barber_id = br.id WHERE b.id = ?`,
         [req.params.id]
       );
-      updateBookingInAirtable(updated[0]);
-
       let moka = null;
       if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
         if (isMokaBranchEnabled(updated[0]?.location)) {
@@ -1222,71 +1202,12 @@ app.get('/api/barbers', async (req, res) => {
     barbersCache = null;
   }
 
-  if (isBarbersConfigured()) {
-    // Serve from cache if still fresh (hanya untuk aktif)
-    if (!includeInactive && barbersCache && (Date.now() - barbersCache.timestamp) < BARBERS_CACHE_TTL_MS) {
-      res.setHeader('x-barbers-source', 'airtable-cache');
-      return res.json({ data: barbersCache.data });
-    }
-    try {
-      // Ambil status aktif dari Supabase — ini AUTHORITY untuk is_active
-      let activeIdSet = null;   // null = tidak tersedia (skip filter), Set = whitelist aktif
-      let inactiveNameSet = new Set(); // fallback by name jika ID tidak match
-      if (supabase && !includeInactive) {
-        try {
-          const { data: sbActive } = await supabase.from('barbers').select('id, name, is_active');
-          if (sbActive && sbActive.length) {
-            activeIdSet = new Set();
-            for (const b of sbActive) {
-              if (b.is_active === true) activeIdSet.add(String(b.id).toLowerCase());
-              else if (b.is_active === false) inactiveNameSet.add(String(b.name || '').toLowerCase().trim());
-            }
-          }
-        } catch (e) { console.warn('[Barbers] Supabase active fetch error:', e.message); }
-      }
-
-      const airtableResult = await fetchBarbersFromAirtable();
-      let normalized = dedupeBarberRecords(airtableResult.data || []);
-      const remapped = await _remapBarberIdsFromSupabase(normalized);
-
-      // Filter berdasarkan Supabase authority (jika tersedia)
-      let toReturn = remapped;
-      if (!includeInactive) {
-        if (activeIdSet !== null) {
-          // Filter: hanya barber yang ID-nya ada di activeIdSet, ATAU namanya tidak ada di inactiveNameSet
-          toReturn = remapped.filter(b => {
-            const id = String(b.id || '').toLowerCase();
-            const name = String(b.name || '').toLowerCase().trim();
-            if (activeIdSet.has(id)) return true;           // ID cocok dan aktif
-            if (inactiveNameSet.has(name)) return false;    // Nama ada di nonaktif
-            return b.is_active !== false;                   // Fallback ke is_active field
-          });
-        } else {
-          toReturn = remapped.filter(b => b.is_active !== false);
-        }
-      }
-      if (toReturn.length || remapped.length) {
-        if (!includeInactive) {
-          barbersCache = { data: toReturn, timestamp: Date.now() };
-        }
-        res.setHeader('x-barbers-source', 'airtable');
-        return res.json({ data: toReturn });
-      }
-    } catch (airtableError) {
-      console.error('Airtable barbers fetch failed:', airtableError?.message || airtableError);
-      // Return stale cache rather than wrong DB data
-      if (!includeInactive && barbersCache) {
-        res.setHeader('x-barbers-source', 'airtable-cache-stale');
-        return res.json({ data: barbersCache.data });
-      }
-      // Jika admin request dan Airtable gagal, fallback ke database
-      if (!includeInactive) {
-        return res.status(503).json({ error: 'Data kapster dari Airtable tidak tersedia.', details: airtableError?.message });
-      }
-    }
+  // Primary source: Supabase (Airtable removed to save Vercel env var limits)
+  // Serve from cache if still fresh (hanya untuk aktif)
+  if (!includeInactive && barbersCache && (Date.now() - barbersCache.timestamp) < BARBERS_CACHE_TTL_MS) {
+    res.setHeader('x-barbers-source', 'supabase-cache');
+    return res.json({ data: barbersCache.data });
   }
-
-  // Fallback ke database (Supabase atau MySQL)
   if (DB_TYPE === 'supabase') {
     let query = supabase.from('barbers').select('*');
     if (!includeInactive) {
@@ -1392,7 +1313,7 @@ app.post('/api/barbers/:id/today-override', adminAuth, async (req, res) => {
     barber_id:   id,
     day_of_week: dayOfWeek,
     is_off:      !available,
-    open_time:   '09:00',
+    open_time:   '10:00',
     close_time:  '21:00',
   }, { onConflict: 'barber_id,day_of_week' });
   if (whErr) return res.status(500).json({ error: whErr.message });
@@ -1539,12 +1460,10 @@ app.post('/api/admin/sync-barbers', adminAuth, async (req, res) => {
       const sheetUrl = req.body?.sheetUrl || process.env.BARBERS_SHEET_URL;
       if (!sheetUrl) return res.status(400).json({ error: 'sheetUrl wajib diisi untuk source=sheet' });
       result = await syncBarbersFromSheet(sheetUrl);
-    } else if (isBarbersConfigured()) {
-      result = await syncBarbersFromAirtableSource();
     } else if (process.env.BARBERS_SHEET_URL) {
       result = await syncBarbersFromSheet(process.env.BARBERS_SHEET_URL);
     } else {
-      return res.status(400).json({ error: 'Airtable kapster belum dikonfigurasi.' });
+      return res.status(400).json({ error: 'BARBERS_SHEET_URL belum dikonfigurasi di environment variables.' });
     }
     res.json(result);
   } catch (e) { res.status(500).json({ error: e?.message || 'Sync failed' }); }
