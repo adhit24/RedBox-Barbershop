@@ -328,31 +328,39 @@ async function _pullMokaToWebNow(supabase, outletId) {
 
     const client = await _getClient(supabase, outletId, outlet.moka_outlet_id);
 
-    // Hydrate in-memory cache from DB on cold start so we don't refetch 24h every invocation
+    // Hydrate in-memory cache from DB on cold start so we don't refetch 1h every invocation
     if (!_lastSyncAt.has(outletId) && outlet.last_polled_at) {
       _lastSyncAt.set(outletId, outlet.last_polled_at);
     }
+    // 1-hour lookback (was 24h) caps cold-start backfill work. Older completed orders
+    // are non-blocking — they can stay in Moka without web mirror.
     const since = _lastSyncAt.get(outletId)
-      || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-    // PARALLEL: Pull 1 (completed orders, may be slow on first run) and Pull 3 (open
-    // bills, time-critical for slot blocking) run concurrently so a slow Pull 1 cannot
-    // starve Pull 3 of the function's wall-clock budget.
-    const [pull1, pull3] = await Promise.all([
-      _runPull1Orders(supabase, client, outletId, since)
-        .catch(err => { console.warn(`[Sync] Pull 1 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; }),
-      _runPull3OpenBills(supabase, client, outletId)
-        .catch(err => { console.warn(`[Sync] Pull 3 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; }),
-    ]);
-    processed = pull1.processed + pull3.processed;
-    skipped   = pull1.skipped   + pull3.skipped;
-    errors    = pull1.errors    + pull3.errors;
+    // Kick both pulls in parallel. We AWAIT Pull 3 first (fast, time-critical) and
+    // persist last_polled_at + finishLog immediately. Pull 1 (slow, historical) keeps
+    // running in remaining budget; whatever it completes is bonus. If function timeout
+    // hits Pull 1 mid-way, next tick continues from persisted last_polled_at.
+    const pull1Promise = _runPull1Orders(supabase, client, outletId, since)
+      .catch(err => { console.warn(`[Sync] Pull 1 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; });
+    const pull3Promise = _runPull3OpenBills(supabase, client, outletId)
+      .catch(err => { console.warn(`[Sync] Pull 3 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; });
 
+    const pull3 = await pull3Promise;
+
+    // Persist last_polled_at NOW (after Pull 3) so even if Pull 1 doesn't finish,
+    // next tick has a fresh cursor and won't keep refetching 1h every time.
     const polledAt = new Date().toISOString();
     _lastSyncAt.set(outletId, polledAt);
     const { error: persistErr } = await supabase
       .from('outlets').update({ last_polled_at: polledAt }).eq('id', outletId);
     if (persistErr) console.warn(`[Sync] persist last_polled_at failed: ${persistErr.message}`);
+
+    // Now wait for Pull 1 to finish (may be killed by function timeout — that's OK)
+    const pull1 = await pull1Promise;
+    processed = pull1.processed + pull3.processed;
+    skipped   = pull1.skipped   + pull3.skipped;
+    errors    = pull1.errors    + pull3.errors;
 
     await _finishLog(supabase, logId, 'success', null, { processed, skipped, errors });
 
@@ -372,8 +380,12 @@ async function _pullMokaToWebNow(supabase, outletId) {
 async function _runPull1Orders(supabase, client, outletId, since) {
   let processed = 0, skipped = 0, errors = 0;
   let orders = [];
+  // Limit to 20 per tick (was 100) to bound per-tick work. Each NEW order costs ~2-3s
+  // for customer + barber + schedule + transaction inserts. 20 × 3s = 60s worst case,
+  // which fits Hobby plan timeout. cron-job.org tick = 5min, so 20 orders/tick supports
+  // up to ~5760 orders/day across all 5 outlets — more than enough for steady-state.
   try {
-    const response = await client.getOrders({ updatedSince: since, limit: 100 });
+    const response = await client.getOrders({ updatedSince: since, limit: 20 });
     const rawOrders = response?.data?.payments || [];
     orders = Array.isArray(rawOrders) ? rawOrders : [];
   } catch (pull1Err) {
