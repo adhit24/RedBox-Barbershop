@@ -11,7 +11,7 @@ const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
 const { syncBookingToAirtable, updateBookingInAirtable, fetchBarbersFromAirtable, isBarbersConfigured, getBarbersTableName } = require('./airtable');
-const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest } = require('./services/waNotification');
+const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest, notifyCustomerReviewPointsCredited } = require('./services/waNotification');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -2186,7 +2186,7 @@ app.get('/api/reviews/booking', async (req, res) => {
   }
 });
 
-// POST /api/reviews/submit  — save review
+// POST /api/reviews/submit  — save review + auto-credit points for positive reviews
 app.post('/api/reviews/submit', async (req, res) => {
   const { booking_id, rating, comment } = req.body || {};
 
@@ -2198,10 +2198,10 @@ app.post('/api/reviews/submit', async (req, res) => {
   try {
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-    // Validate booking exists
+    // Validate booking exists with wa number for points credit
     const { data: booking } = await supabase
       .from('bookings')
-      .select('id, name, barber_id, location')
+      .select('id, name, wa, barber_id, location')
       .eq('id', booking_id)
       .neq('status', 'cancelled')
       .single();
@@ -2221,6 +2221,7 @@ app.post('/api/reviews/submit', async (req, res) => {
       kapsterName = barber?.name || null;
     }
 
+    // Insert review
     const { error: insertErr } = await supabase.from('reviews').insert({
       booking_id,
       customer_name: booking.name,
@@ -2237,8 +2238,66 @@ app.post('/api/reviews/submit', async (req, res) => {
       throw insertErr;
     }
 
+    // Auto-credit points for positive reviews (rating 4-5)
+    let pointsCredited = false;
+    let totalPoints = 0;
+    if (rating >= 4) {
+      try {
+        // Find customer by WA number
+        const { data: customer } = await supabase
+          .from('customers')
+          .select('id, wa')
+          .eq('wa', booking.wa)
+          .single();
+
+        if (customer) {
+          // Check if already credited for this booking
+          const { data: existing } = await supabase
+            .from('member_points')
+            .select('id')
+            .eq('source', 'review')
+            .eq('source_id', booking_id)
+            .eq('customer_id', customer.id)
+            .maybeSingle();
+
+          if (!existing) {
+            // Credit 5 points (Rp 50,000 value)
+            const { error: pointsErr } = await supabase.from('member_points').insert({
+              customer_id: customer.id,
+              customer_wa: customer.wa,
+              points: 5,
+              type: 'earned',
+              source: 'review',
+              source_id: booking_id,
+              description: `Bonus 5 poin (Rp 50,000) untuk ulasan positif ${rating} bintang ⭐`,
+              value_idr: 50000,
+            });
+
+            if (!pointsErr) {
+              pointsCredited = true;
+              // Get total points
+              const { data: balance } = await supabase
+                .from('member_points_balance')
+                .select('total_points')
+                .eq('customer_id', customer.id)
+                .single();
+              totalPoints = balance?.total_points || 5;
+
+              // Send WA notification about points (non-blocking)
+              notifyCustomerReviewPointsCredited(customer.wa, customer.wa, rating, 5, totalPoints).catch(() => {});
+            }
+          }
+        }
+      } catch (pointsError) {
+        console.error('[Reviews] Points credit error:', pointsError.message);
+        // Don't fail the review submission if points credit fails
+      }
+    }
+
     return res.json({
       ok: true,
+      points_credited: pointsCredited,
+      total_points: totalPoints,
       google_review_url: GOOGLE_REVIEW_URLS[String(booking.location).toLowerCase()] || null,
     });
   } catch (e) {

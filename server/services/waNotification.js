@@ -155,9 +155,39 @@ _(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`;
   return sendWA(wa, message);
 }
 
+// 5. Notifikasi poin credited setelah review positif
+async function notifyCustomerReviewPointsCredited(wa, name, rating, pointsEarned, totalPoints) {
+  const fn = (name || 'Kak').split(' ')[0];
+  const valueIdr = pointsEarned * 10000; // 1 poin = Rp 10.000
+
+  const message =
+`Yeayy kak *${fn}*! 🎉✨
+
+Ulasan kakak di Google udah kami terima — *${rating} bintang* ⭐ Makasih banyak atas dukungannya! 🙏
+
+🎁 *Bonus poin udah auto-credit ke akun member kakak:*
+
+✅ Poin yang didapat: *+${pointsEarned} poin*
+💰 Nilai: *Rp ${valueIdr.toLocaleString('id-ID')}*
+🏦 Total poin sekarang: *${totalPoints} poin*
+
+Poin bisa ditukerin untuk:
+💈 Diskon haircut
+☕ Free coffee di Sundaze
+🎁 Treatment gratis
+
+Cek & redeem poin di:
+👉 redboxbarbershop.com/member-dashboard.html
+
+Makasih lagi kak udah jadi bagian dari keluarga RedBox! Sampai ketemu di kunjungan next ya 😎✂️`;
+
+  return sendWA(wa, message);
+}
+
 module.exports = {
   notifyCustomerBookingConfirmed,
   notifyCustomerReminderH1,
   notifyAdminNewBooking,
   notifyCustomerReviewRequest,
+  notifyCustomerReviewPointsCredited,
 };
