@@ -1,15 +1,95 @@
 /**
  * Fonnte WhatsApp Gateway Service
  * Docs: https://fonnte.com/api
- * Set env: FONNTE_TOKEN=<your_device_token>
+ * 
+ * Multi-branch token support:
+ * - FONNTE_TOKEN: Default/global token (Bypass)
+ * - FONNTE_TOKEN_SUMBER: Token untuk cabang Sumber
+ * - FONNTE_TOKEN_SAMADIKUN: Token untuk cabang Samadikun
+ * - FONNTE_TOKEN_CSB: Token untuk cabang CSB Mall
+ * - FONNTE_TOKEN_TEGAL: Token untuk cabang Tegal
  */
 
 const FONNTE_API = 'https://api.fonnte.com/send';
 const FONNTE_DEVICE_API = 'https://api.fonnte.com/device';
 const FONNTE_STATUS_API = 'https://api.fonnte.com/status';
 
-async function sendWA(to, message) {
-  const token = process.env.FONNTE_TOKEN;
+// Mapping cabang ke environment variable token
+const BRANCH_TOKEN_MAP = {
+  bypass:    'FONNTE_TOKEN',
+  sumber:    'FONNTE_TOKEN_SUMBER',
+  samadikun: 'FONNTE_TOKEN_SAMADIKUN',
+  csb:       'FONNTE_TOKEN_CSB',
+  tegal:     'FONNTE_TOKEN_TEGAL',
+};
+
+// Device/token mapping untuk multi-cabang
+const BRANCH_WA_NUMBER = {
+  bypass:    '0818202569',
+  sumber:    '0818202599',
+  samadikun: '0818202589',
+  csb:       '0818202889',
+  tegal:     '0818268883',
+};
+
+/**
+ * Mendapatkan token Fonnte untuk cabang tertentu
+ * @param {string} branch - Nama cabang (bypass, sumber, samadikun, csb, tegal)
+ * @returns {string|null} Token Fonnte atau null jika tidak ada
+ */
+function getBranchToken(branch) {
+  const branchKey = String(branch || '').toLowerCase().trim();
+  
+  // Jika tidak ada branch atau default, pakai FONNTE_TOKEN (Bypass)
+  if (!branchKey || branchKey === 'default' || branchKey === 'bypass') {
+    return process.env.FONNTE_TOKEN || null;
+  }
+  
+  const envVarName = BRANCH_TOKEN_MAP[branchKey];
+  if (envVarName) {
+    const token = process.env[envVarName];
+    if (token) return token;
+    // Fallback ke default token jika branch token tidak tersedia
+    return process.env.FONNTE_TOKEN || null;
+  }
+  
+  return process.env.FONNTE_TOKEN || null;
+}
+
+/**
+ * Mendeteksi cabang dari nomor WA tujuan
+ * @param {string} to - Nomor WA tujuan
+ * @returns {string} Nama cabang (bypass, sumber, samadikun, csb, tegal)
+ */
+function detectBranchFromNumber(to) {
+  const normalized = String(to).replace(/\D/g, '');
+  const last9 = normalized.slice(-9); // Ambil 9 digit terakhir
+  
+  for (const [branch, number] of Object.entries(BRANCH_WA_NUMBER)) {
+    if (number.includes(last9) || normalized.includes(number.replace(/^0/, ''))) {
+      return branch;
+    }
+  }
+  return 'bypass'; // Default ke Bypass
+}
+
+/**
+ * Kirim WhatsApp message via Fonnte
+ * @param {string} to - Nomor tujuan
+ * @param {string} message - Pesan yang akan dikirim
+ * @param {object} options - Options tambahan
+ * @param {string} options.branch - Cabang pengirim (bypass, sumber, etc.)
+ * @param {string} options.token - Token khusus (override branch detection)
+ */
+async function sendWA(to, message, options = {}) {
+  // Detect branch from options atau dari nomor tujuan
+  let branch = options.branch || detectBranchFromNumber(to);
+  let token = options.token || getBranchToken(branch);
+  
+  // Fallback ke default token jika tidak ada
+  if (!token) {
+    token = process.env.FONNTE_TOKEN;
+  }
   if (!token) {
     console.warn('[Fonnte] FONNTE_TOKEN not set, skipping WA send');
     return null;
@@ -62,9 +142,13 @@ async function sendWA(to, message) {
   }
 }
 
-async function getDeviceInfo() {
-  const token = process.env.FONNTE_TOKEN;
-  if (!token) return { status: false, reason: 'FONNTE_TOKEN not set' };
+/**
+ * Get device info dengan support branch-specific token
+ * @param {string} branch - Nama cabang (opsional, default: 'bypass')
+ */
+async function getDeviceInfo(branch = 'bypass') {
+  const token = getBranchToken(branch);
+  if (!token) return { status: false, reason: `FONNTE_TOKEN not set for branch: ${branch}` };
 
   try {
     const controller = new AbortController();
@@ -95,9 +179,14 @@ async function getDeviceInfo() {
   }
 }
 
-async function checkMessageStatus(id) {
-  const token = process.env.FONNTE_TOKEN;
-  if (!token) return { status: false, reason: 'FONNTE_TOKEN not set' };
+/**
+ * Check message status dengan support branch-specific token
+ * @param {number} id - Message ID
+ * @param {string} branch - Nama cabang (opsional, default: 'bypass')
+ */
+async function checkMessageStatus(id, branch = 'bypass') {
+  const token = getBranchToken(branch);
+  if (!token) return { status: false, reason: `FONNTE_TOKEN not set for branch: ${branch}` };
   const msgId = Number(id);
   if (!Number.isFinite(msgId) || msgId <= 0) return { status: false, reason: 'invalid_id' };
 
@@ -132,4 +221,38 @@ async function checkMessageStatus(id) {
   }
 }
 
-module.exports = { sendWA, getDeviceInfo, checkMessageStatus };
+/**
+ * Get token untuk cabang tertentu (utility function)
+ * @param {string} branch - Nama cabang
+ * @returns {string|null} Token atau null
+ */
+function getTokenForBranch(branch) {
+  return getBranchToken(branch);
+}
+
+/**
+ * List semua cabang yang punya token tersedia
+ * @returns {object} Object dengan status token per cabang
+ */
+function getAvailableBranches() {
+  const result = {};
+  for (const [branch, envVar] of Object.entries(BRANCH_TOKEN_MAP)) {
+    const hasToken = !!process.env[envVar];
+    result[branch] = {
+      available: hasToken,
+      env_var: envVar,
+      wa_number: BRANCH_WA_NUMBER[branch]
+    };
+  }
+  return result;
+}
+
+module.exports = { 
+  sendWA, 
+  getDeviceInfo, 
+  checkMessageStatus,
+  getTokenForBranch,
+  getAvailableBranches,
+  detectBranchFromNumber,
+  BRANCH_WA_NUMBER
+};

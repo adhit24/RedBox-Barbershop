@@ -4,7 +4,7 @@
  * Powered by OpenAI gpt-4o-mini with per-user conversation memory.
  */
 
-const { sendWA, getDeviceInfo } = require('../../server/services/fonnte');
+const { sendWA, getDeviceInfo, detectBranchFromNumber, getAvailableBranches } = require('../../server/services/fonnte');
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -677,14 +677,24 @@ function getOpenAI() {
   return openaiClient;
 }
 
-async function callOpenAI(sender, userMessage, name) {
+async function callOpenAI(sender, userMessage, name, branch = 'bypass') {
   const openai = getOpenAI();
   if (!openai) throw new Error('OPENAI_API_KEY not set');
 
   const history = await getHistory(sender);
 
+  // Build branch-aware system prompt
+  let systemPrompt = buildSystemPrompt();
+  
+  // Add branch context for Sumber (and other branches with different hours)
+  if (branch === 'sumber') {
+    systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox Sumber. Jam operasional: 10:00-21:00 WIB.`;
+  } else if (branch === 'csb') {
+    systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox CSB Mall (Lt. 1). Catatan: CSB Mall buka lebih lama sampai jam 22:00 WIB!`;
+  }
+
   const messages = [
-    { role: 'system', content: buildSystemPrompt() },
+    { role: 'system', content: systemPrompt },
     ...(history.length === 0 && name && name !== 'Kak'
       ? [{ role: 'system', content: `Nama customer ini: ${name}. Sapa dengan nama panggilannya.` }]
       : []),
@@ -739,13 +749,17 @@ function fallbackReply(text, name) {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text }) {
+async function handleMessage({ from, name, text, device }) {
   let reply;
   let used = 'openai';
   let error = null;
 
+  // Detect branch from device number untuk menggunakan token yang sesuai
+  const branch = detectBranchFromNumber(device || from);
+  console.log(`[WA Bot] Detected branch: ${branch} for device: ${device || from}`);
+
   try {
-    reply = await callOpenAI(from, text, name);
+    reply = await callOpenAI(from, text, name, branch);
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
     reply = fallbackReply(text, name);
@@ -761,7 +775,8 @@ async function handleMessage({ from, name, text }) {
     reply = reply.replace(/\s*FORWARD_BOOKING:\{[^}]+\}/, '').trim();
   }
 
-  const sendResult = await sendWA(from, reply);
+  // Gunakan branch-specific token untuk kirim balasan
+  const sendResult = await sendWA(from, reply, { branch });
   // Persist message status fire-and-forget — jangan block sync path
   if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
     for (let i = 0; i < sendResult.id.length; i++) {
@@ -993,6 +1008,17 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, device: info });
       }
 
+      if (req.query.branch_info === '1') {
+        const branches = getAvailableBranches();
+        pushDebug({ step: 'branch_info', branches });
+        return res.status(200).json({ 
+          status: 'ok', 
+          instance_id: INSTANCE_ID, 
+          branches,
+          note: 'Add environment variables (e.g., FONNTE_TOKEN_SUMBER) to enable AI bot for specific branches'
+        });
+      }
+
       if (req.query.db_dump === '1') {
         const result = await dumpPersistedStatuses(req.query.limit);
         pushDebug({ step: 'db_dump', ok: !!result?.status });
@@ -1049,13 +1075,14 @@ module.exports = async function handler(req, res) {
       if (req.query.send_to && req.query.send_msg) {
         const to = String(req.query.send_to);
         const msg = String(req.query.send_msg);
+        const branch = req.query.branch || detectBranchFromNumber(to);
         const normalized = to.replace(/\D/g, '').replace(/^0/, '62');
         if (normalized.length < 10) {
           pushDebug({ step: 'debug_send', to, error: 'invalid_target' });
           return res.status(200).json({ status: 'error', instance_id: INSTANCE_ID, error: 'invalid_target', target: normalized });
         }
 
-        const result = await sendWA(to, msg);
+        const result = await sendWA(to, msg, { branch });
         if (result && Array.isArray(result.id) && result.id.length > 0) {
           for (let i = 0; i < result.id.length; i++) {
             const msgId = result.id[i];
@@ -1063,8 +1090,8 @@ module.exports = async function handler(req, res) {
             await persistMessageStatus(msgId, { message_status: result.process || 'queued', target, raw: result });
           }
         }
-        pushDebug({ step: 'debug_send', to: String(req.query.send_to), fonnte_result: result });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, result });
+        pushDebug({ step: 'debug_send', to: String(req.query.send_to), branch, fonnte_result: result });
+        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, branch, result });
       }
 
       return res.status(200).json({
@@ -1075,9 +1102,19 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    // Get branch token availability
+    const branches = getAvailableBranches();
+    const activeBranches = Object.entries(branches)
+      .filter(([_, info]) => info.available)
+      .map(([name, _]) => name);
+
     return res.status(200).json({
       status: 'ok', service: 'RedBox WA Bot (AI)',
-      openai_key_set: openaiReady, fonnte_token_set: fonnteReady,
+      openai_key_set: openaiReady, 
+      fonnte_token_set: fonnteReady,
+      multi_branch_support: true,
+      branches,
+      active_branches: activeBranches,
       instance_id: INSTANCE_ID,
     });
   }
@@ -1176,7 +1213,8 @@ module.exports = async function handler(req, res) {
       const mediaReply = type === 'sticker'
         ? `Terima kasih sticker-nya Kak 😄 Ada yang bisa aku bantu? Booking, info layanan, atau tanya harga?`
         : `Maaf Kak, aku belum bisa baca ${type === 'image' ? 'gambar' : type === 'audio' || type === 'ptt' ? 'pesan suara' : 'file'} ya 🙏 Silakan ketik pertanyaan Kakak, aku siap bantu!`;
-      sendWA(sender, mediaReply).catch(() => {});
+      const branch = detectBranchFromNumber(device || sender);
+      sendWA(sender, mediaReply, { branch }).catch(() => {});
       return;
     }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
@@ -1194,7 +1232,7 @@ module.exports = async function handler(req, res) {
     const t0 = Date.now();
     try {
       pushDebug({ step: 'processing_start', sender, message: message?.slice(0, 40) });
-      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message });
+      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device });
       const ms = Date.now() - t0;
       pushDebug({
         step: 'processing_done',
