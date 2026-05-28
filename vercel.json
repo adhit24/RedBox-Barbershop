@@ -60,10 +60,7 @@
     { "source": "/api/cron/birthday",           "destination": "/api/cron/birthday.js" },
     { "source": "/api/cron/remind-soon",        "destination": "/api/cron/remind-soon.js" },
     { "source": "/api/cron/expire-stale-bills", "destination": "/api/cron/expire-stale-bills.js" },
-    { "source": "/api/moka/cron-sync",          "destination": "/api/moka/cron-sync" },
     { "source": "/api/moka/sync-customers",     "destination": "/api/moka/sync-customers.js" },
-    { "source": "/api/moka/update-barber-ids", "destination": "/api/moka/update-barber-ids.js" },
-    { "source": "/api/moka/test-sync",         "destination": "/api/moka/test-sync.js" },
     { "source": "/api/(.*)",                    "destination": "/api/[...path].js" }
   ],
   "headers": [
