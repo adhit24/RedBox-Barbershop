@@ -2186,7 +2186,7 @@ app.get('/api/reviews/booking', async (req, res) => {
   }
 });
 
-// POST /api/reviews/submit  — save review + auto-credit points for positive reviews
+// POST /api/reviews/submit  — save review + auto-credit points + sync to Moka
 app.post('/api/reviews/submit', async (req, res) => {
   const { booking_id, rating, comment } = req.body || {};
 
@@ -2294,10 +2294,59 @@ app.post('/api/reviews/submit', async (req, res) => {
       }
     }
 
+    // Sync review to Moka Feedback CRM (non-blocking, don't fail if Moka fails)
+    let mokaSyncResult = null;
+    try {
+      const { isMokaOAuthConfigured } = require('./moka/oauth');
+      if (isMokaOAuthConfigured()) {
+        // Get outlet moka_outlet_id from location
+        const { data: outlet } = await supabase
+          .from('outlets')
+          .select('id, moka_outlet_id')
+          .eq('slug', booking.location)
+          .maybeSingle();
+
+        // Get moka_order_id from schedules if exists
+        const { data: schedule } = await supabase
+          .from('schedules')
+          .select('external_id')
+          .eq('id', booking_id)
+          .maybeSingle();
+
+        if (outlet?.moka_outlet_id) {
+          const MokaClient = require('./moka/client');
+          const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
+
+          // Normalize WA to +62 format
+          const waNormalized = toE164Indonesia(booking.wa);
+
+          mokaSyncResult = await client.submitFeedback({
+            customer_name: booking.name,
+            customer_phone: waNormalized,
+            rating: Number(rating),
+            comment: comment ? String(comment).trim().slice(0, 500) : null,
+            order_id: schedule?.external_id || null,
+            source: 'website',
+          });
+
+          if (mokaSyncResult.success) {
+            console.log(`[Reviews] Moka feedback synced: ${booking_id}`);
+          } else {
+            console.warn(`[Reviews] Moka feedback failed: ${mokaSyncResult.error}`);
+          }
+        }
+      }
+    } catch (mokaError) {
+      console.error('[Reviews] Moka sync error:', mokaError.message);
+      mokaSyncResult = { success: false, error: mokaError.message };
+    }
+
     return res.json({
       ok: true,
       points_credited: pointsCredited,
       total_points: totalPoints,
+      moka_synced: mokaSyncResult?.success || false,
+      moka_error: mokaSyncResult?.error || null,
       google_review_url: GOOGLE_REVIEW_URLS[String(booking.location).toLowerCase()] || null,
     });
   } catch (e) {

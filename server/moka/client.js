@@ -213,6 +213,70 @@ class MokaClient {
     return this._req('POST', `/v1/outlets/${this._mokaOutletId}/checkouts`, payload);
   }
 
+  // ── FEEDBACK / REVIEW ──────────────────────────────────────
+
+  /**
+   * Submit customer feedback/review to Moka CRM Feedback system.
+   * This allows reviews submitted on RedBox website to also appear in Moka dashboard.
+   * 
+   * Endpoint: POST /v1/outlets/{outlet_id}/feedback (undocumented, using common pattern)
+   * Alternative: POST /v1/feedback
+   * 
+   * @param {object} feedbackData
+   * @param {string} feedbackData.customer_name - Customer name
+   * @param {string} feedbackData.customer_phone - Phone number (normalized +62)
+   * @param {number} feedbackData.rating - Rating 1-5 (Good: 4-5, Bad: 1-3)
+   * @param {string} feedbackData.comment - Review comment
+   * @param {string} [feedbackData.order_id] - Optional Moka order ID to link review
+   * @param {string} [feedbackData.source] - Source of review (default: 'website')
+   */
+  async submitFeedback(feedbackData) {
+    const payload = {
+      outlet_id: this._mokaOutletId,
+      customer_name: feedbackData.customer_name,
+      customer_phone: feedbackData.customer_phone,
+      rating: feedbackData.rating >= 4 ? 'GOOD' : 'BAD', // Moka uses GOOD/BAD
+      comment: feedbackData.comment,
+      order_id: feedbackData.order_id || null,
+      source: feedbackData.source || 'website',
+      created_at: new Date().toISOString(),
+    };
+
+    // Try multiple endpoint patterns (Moka API documentation is limited)
+    const endpoints = [
+      `/v1/outlets/${this._mokaOutletId}/feedback`,
+      `/v1/outlets/${this._mokaOutletId}/reviews`,
+      `/v1/feedback`,
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const result = await this._req('POST', endpoint, payload);
+        return { success: true, endpoint, data: result };
+      } catch (err) {
+        // 404 means endpoint doesn't exist, try next
+        if (err.status === 404 || err.status === 405) {
+          console.warn(`[MokaClient] Feedback endpoint ${endpoint} not available: ${err.message}`);
+          continue;
+        }
+        // 403 means insufficient scope, try next
+        if (err.status === 403) {
+          console.warn(`[MokaClient] Feedback endpoint ${endpoint} forbidden: ${err.message}`);
+          continue;
+        }
+        // Other errors - return the error
+        return { success: false, endpoint, error: err.message, status: err.status };
+      }
+    }
+
+    // All endpoints failed
+    return { 
+      success: false, 
+      error: 'Moka feedback API not available - all endpoints returned 404/403',
+      attempted: endpoints 
+    };
+  }
+
   // ── PRIVATE ───────────────────────────────────────────────
 
   async _req(method, path, body = null, attempt = 0) {
