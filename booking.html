@@ -126,6 +126,52 @@
             <p>Choose from our range of professional services. <span id="selectedCount" class="sel-count"></span></p>
           </div>
 
+          <!-- GROUP SIZE SELECTOR -->
+          <div class="group-selector" id="groupSelector">
+            <div class="group-selector-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              <span>Booking untuk</span>
+            </div>
+            <div class="group-pills">
+              <button class="group-pill active" data-size="1">1 orang</button>
+              <button class="group-pill" data-size="2">2 orang</button>
+              <button class="group-pill" data-size="3">3+ orang</button>
+            </div>
+          </div>
+
+          <!-- 3+ ORANG BANNER (hidden by default) -->
+          <div class="group-banner" id="groupBanner" style="display:none">
+            <div class="group-banner-icon">💬</div>
+            <div class="group-banner-text">
+              <strong>Booking 3 orang atau lebih?</strong>
+              <p>Untuk grup besar, tim kami akan koordinasi langsung via WhatsApp supaya kapster & jadwal pas.</p>
+            </div>
+            <a class="group-banner-cta" id="groupBannerWA" target="_blank" href="https://wa.me/62818202569?text=Halo%20Redbox%2C%20saya%20mau%20booking%20untuk%203%20orang%20atau%20lebih%2C%20mohon%20bantu%20koordinasi.">
+              <span>Hubungi WA</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+
+          <!-- PERSON TABS (shown when 2 orang) -->
+          <div class="person-tabs" id="personTabsService" style="display:none">
+            <button class="person-tab active" data-person="1">
+              <span class="person-tab-badge">1</span>
+              <span class="person-tab-label">Orang 1</span>
+              <span class="person-tab-status" data-status-for="1">Pilih service</span>
+              <span class="person-tab-check" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            </button>
+            <button class="person-tab" data-person="2">
+              <span class="person-tab-badge">2</span>
+              <span class="person-tab-label">Orang 2</span>
+              <span class="person-tab-status" data-status-for="2">Pilih service</span>
+              <span class="person-tab-check" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            </button>
+          </div>
+
           <div class="svc-list" id="svcList">
             <!-- JS generates category groups here from services-data.js -->
           </div>
@@ -149,6 +195,26 @@
           <div class="step-head">
             <h2>Pick Your Professional</h2>
             <p>Select your preferred barber for the service.</p>
+          </div>
+
+          <!-- PERSON TABS for Professional step (shown when 2 orang) -->
+          <div class="person-tabs" id="personTabsBarber" style="display:none">
+            <button class="person-tab active" data-person="1">
+              <span class="person-tab-badge">1</span>
+              <span class="person-tab-label">Kapster Orang 1</span>
+              <span class="person-tab-status" data-status-for="1">Pilih kapster</span>
+              <span class="person-tab-check" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            </button>
+            <button class="person-tab" data-person="2">
+              <span class="person-tab-badge">2</span>
+              <span class="person-tab-label">Kapster Orang 2</span>
+              <span class="person-tab-status" data-status-for="2">Pilih kapster</span>
+              <span class="person-tab-check" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+            </button>
           </div>
 
           <!-- Branch Filter for Professionals -->
@@ -223,9 +289,15 @@
           </div>
           <form class="book-form" id="bookForm" novalidate>
             <div class="form-group">
-              <label for="custName">Full Name *</label>
+              <label for="custName"><span id="custNameLabel">Full Name</span> *</label>
               <input type="text" id="custName" placeholder="e.g. Adi Santoso" autocomplete="name" />
               <span class="form-err">Please enter your name</span>
+            </div>
+            <!-- 2nd person name (shown only when 2 orang mode) -->
+            <div class="form-group" id="custName2Group" style="display:none">
+              <label for="custName2">Nama Orang 2 *</label>
+              <input type="text" id="custName2" placeholder="Nama lengkap orang ke-2" autocomplete="off" />
+              <span class="form-err">Masukkan nama orang ke-2</span>
             </div>
             <div class="form-group">
               <label for="custWa">WhatsApp Number *</label>

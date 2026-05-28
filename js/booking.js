@@ -72,30 +72,232 @@ document.addEventListener('DOMContentLoaded', async () => {
   const preBarber = params.get('barber');
   const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
 
+  // ── GROUP BOOKING STATE ────────────────────────
+  // groupSize: 1 = solo (default), 2 = booking untuk 2 orang paralel di cabang sama
+  // activePerson: tab yang sedang aktif di step 1 (service) atau step 2 (barber)
+  state.groupSize = 1;
+  state.activePerson = 1;
+  state.person2 = null; // { name, service, barber } — diisi saat groupSize===2
+
+  function isGroup() { return state.groupSize === 2; }
+
+  // helper: get/set current person's service/barber (active tab when group)
+  function getActiveService() {
+    if (isGroup() && state.activePerson === 2) return state.person2?.service || null;
+    return state.service;
+  }
+  function setActiveService(svc) {
+    if (isGroup() && state.activePerson === 2) {
+      state.person2 = state.person2 || { name: '', service: null, barber: null };
+      state.person2.service = svc;
+    } else {
+      state.service = svc;
+    }
+  }
+  function getActiveBarber() {
+    if (isGroup() && state.activePerson === 2) return state.person2?.barber || null;
+    return state.barber;
+  }
+  function setActiveBarber(b) {
+    if (isGroup() && state.activePerson === 2) {
+      state.person2 = state.person2 || { name: '', service: null, barber: null };
+      state.person2.barber = b;
+    } else {
+      state.barber = b;
+    }
+  }
+
+  // Update person-tab UI status text + filled checkmark
+  function refreshPersonTabs() {
+    document.querySelectorAll('.person-tabs').forEach(tabs => {
+      const isBarberStep = tabs.id === 'personTabsBarber';
+      tabs.querySelectorAll('.person-tab').forEach(t => {
+        const p = parseInt(t.dataset.person, 10);
+        const filled = isBarberStep
+          ? (p === 1 ? !!state.barber : !!state.person2?.barber)
+          : (p === 1 ? !!state.service : !!state.person2?.service);
+        t.classList.toggle('filled', filled);
+        const statusEl = t.querySelector('.person-tab-status');
+        if (statusEl) {
+          if (filled) {
+            const name = isBarberStep
+              ? (p === 1 ? state.barber?.name : state.person2?.barber?.name)
+              : (p === 1 ? state.service?.name : state.person2?.service?.name);
+            statusEl.textContent = name || (isBarberStep ? 'Dipilih' : 'Dipilih');
+          } else {
+            statusEl.textContent = isBarberStep ? 'Pilih kapster' : 'Pilih service';
+          }
+        }
+        t.classList.toggle('active', state.activePerson === p);
+      });
+    });
+  }
+
+  // Update svc-list "selected" highlight to match active person's service
+  function refreshSvcListSelection() {
+    const activeSvc = getActiveService();
+    document.querySelectorAll('.svc-item').forEach(i => {
+      i.classList.toggle('selected', !!activeSvc && i.dataset.service === activeSvc.id);
+    });
+  }
+  // Update barber-card highlight to match active person's barber
+  function refreshBarberCardSelection() {
+    const activeB = getActiveBarber();
+    document.querySelectorAll('.barber-card').forEach(c => {
+      c.classList.toggle('selected', !!activeB && String(c.dataset.barber) === String(activeB.id));
+    });
+  }
+
+  // Are step-1 / step-2 requirements satisfied for current group size?
+  function step1Ready() {
+    if (!isGroup()) return !!state.service;
+    return !!state.service && !!state.person2?.service;
+  }
+  function step2Ready() {
+    if (!isGroup()) return !!state.barber;
+    if (!state.barber || !state.person2?.barber) return false;
+    // must be different kapster
+    if (String(state.barber.id) === String(state.person2.barber.id)) return false;
+    // must be same branch (paralel di 1 cabang)
+    if (state.barber.branch !== state.person2.barber.branch) return false;
+    return true;
+  }
+
+  function updateStep1Cta() {
+    const ready = step1Ready();
+    const btn = document.getElementById('step1Next');
+    if (btn) btn.disabled = !ready;
+    const mCont = document.getElementById('mobileContinue');
+    if (mCont) {
+      if (ready) { mCont.disabled = false; mCont.classList.add('visible'); }
+      else { mCont.disabled = true; mCont.classList.remove('visible'); }
+    }
+    const sc = document.getElementById('selectedCount');
+    if (sc) {
+      if (!ready) sc.textContent = '';
+      else if (!isGroup()) sc.textContent = '— ' + state.service.name + ' selected';
+      else sc.textContent = '— ' + state.service.name + ' + ' + state.person2.service.name;
+    }
+  }
+
+  function updateStep2Cta() {
+    const btn = document.getElementById('step2Next');
+    if (btn) btn.disabled = !step2Ready();
+  }
+
+  // ── GROUP SELECTOR & PERSON-TAB EVENT WIRING ──
+  const groupSelector = document.getElementById('groupSelector');
+  const groupBanner = document.getElementById('groupBanner');
+  const personTabsService = document.getElementById('personTabsService');
+  const personTabsBarber = document.getElementById('personTabsBarber');
+  const svcListWrap = document.getElementById('svcList');
+
+  function setGroupSize(n) {
+    state.groupSize = n;
+    // pills
+    groupSelector?.querySelectorAll('.group-pill').forEach(p => {
+      p.classList.toggle('active', parseInt(p.dataset.size, 10) === n);
+    });
+    // 3+ banner: hide service list & person tabs
+    if (n === 3) {
+      if (groupBanner) groupBanner.style.display = '';
+      if (personTabsService) personTabsService.style.display = 'none';
+      if (personTabsBarber) personTabsBarber.style.display = 'none';
+      if (svcListWrap) svcListWrap.style.display = 'none';
+      document.getElementById('step1Next').disabled = true;
+      const mCont = document.getElementById('mobileContinue');
+      if (mCont) { mCont.disabled = true; mCont.classList.remove('visible'); }
+      const sc = document.getElementById('selectedCount');
+      if (sc) sc.textContent = '— hubungi WhatsApp kami';
+      return;
+    }
+    // 1 or 2 orang
+    if (groupBanner) groupBanner.style.display = 'none';
+    if (svcListWrap) svcListWrap.style.display = '';
+    const showTabs = (n === 2);
+    if (personTabsService) personTabsService.style.display = showTabs ? '' : 'none';
+    if (personTabsBarber) personTabsBarber.style.display = showTabs ? '' : 'none';
+    // Reset person2 when switching back to 1
+    if (n === 1) {
+      state.person2 = null;
+      state.activePerson = 1;
+    } else {
+      state.person2 = state.person2 || { name: '', service: null, barber: null };
+    }
+    // Toggle 2nd name field & relabel 1st name
+    const name2Group = document.getElementById('custName2Group');
+    const nameLabel = document.getElementById('custNameLabel');
+    if (name2Group) name2Group.style.display = showTabs ? '' : 'none';
+    if (nameLabel) nameLabel.textContent = showTabs ? 'Nama Orang 1 (Kontak Utama)' : 'Full Name';
+
+    refreshPersonTabs();
+    refreshSvcListSelection();
+    refreshBarberCardSelection();
+    updateStep1Cta();
+    updateStep2Cta();
+    updateSidebar();
+  }
+
+  groupSelector?.querySelectorAll('.group-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const n = parseInt(pill.dataset.size, 10);
+      setGroupSize(n);
+      state.activePerson = 1;
+    });
+  });
+
+  // Person-tab click → switch active person
+  document.querySelectorAll('.person-tabs').forEach(tabs => {
+    tabs.addEventListener('click', e => {
+      const tab = e.target.closest('.person-tab');
+      if (!tab) return;
+      state.activePerson = parseInt(tab.dataset.person, 10);
+      refreshPersonTabs();
+      refreshSvcListSelection();
+      refreshBarberCardSelection();
+    });
+  });
+
   // ── ADD-ON HELPERS ─────────────────────────────
   // REDBOX_ADDONS comes from services-data.js — keyed by service id
   function getAddonsFor(svcId) {
     return (typeof REDBOX_ADDONS !== 'undefined' && REDBOX_ADDONS[svcId]) || null;
   }
 
-  // Apply currently-selected addons to state.service (re-computes price + duration).
-  // Respects CSB pricing when state.location === 'csb'.
-  function recalcServiceWithAddons() {
-    if (!state.service) return;
+  // Apply CSB-specific pricing to a service object (handles both: with-addons and plain).
+  function applyCsbPricingTo(svc) {
+    if (!svc) return;
+    if (svc.addons && svc.addons.length) {
+      recalcServiceWithAddons(svc);
+      return;
+    }
+    // Plain service: switch between base & CSB price
+    if (!svc.basePrice) svc.basePrice = svc.price;
+    const effective = (state.location === 'csb' && svc.csbPrice)
+      ? svc.csbPrice
+      : svc.basePrice;
+    svc.price = effective;
+  }
+
+  // Apply currently-selected addons to a service object (re-computes price + duration).
+  // Respects CSB pricing when state.location === 'csb'. Mutates the passed svc in place.
+  function recalcServiceWithAddons(svcRef) {
+    const svc = svcRef || state.service;
+    if (!svc) return;
     const useCsb = state.location === 'csb';
-    const basePrice = useCsb && state.service.baseCsbPrice
-      ? state.service.baseCsbPrice
-      : (state.service.basePrice || 0);
-    const baseMins = state.service.baseDurationMins || 0;
-    const addons = state.service.addons || [];
+    const basePrice = useCsb && svc.baseCsbPrice
+      ? svc.baseCsbPrice
+      : (svc.basePrice || 0);
+    const baseMins = svc.baseDurationMins || 0;
+    const addons = svc.addons || [];
     let addonPriceSum = 0;
     let addonMinsSum = 0;
     addons.forEach(a => {
       addonPriceSum += (useCsb && a.csbPrice) ? a.csbPrice : a.price;
       addonMinsSum += a.durationMins || 0;
     });
-    state.service.price = basePrice + addonPriceSum;
-    state.service.duration = (baseMins + addonMinsSum) + ' menit';
+    svc.price = basePrice + addonPriceSum;
+    svc.duration = (baseMins + addonMinsSum) + ' menit';
   }
 
   // ── ADD-ON MODAL CONTROLLER ───────────────────
@@ -208,7 +410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Escape' && addonOverlay?.classList.contains('open')) closeAddonModal();
   });
 
-  // Confirm — apply addons into state.service & continue
+  // Confirm — apply addons to active person's service & continue
   addonConfirmBtn?.addEventListener('click', () => {
     if (!_addonModalCtx) { closeAddonModal(); return; }
     const ctx = _addonModalCtx;
@@ -216,31 +418,29 @@ document.addEventListener('DOMContentLoaded', async () => {
       .filter(a => ctx.selected.has(a.id))
       .map(a => ({ id: a.id, name: a.name, price: a.price, csbPrice: a.csbPrice, durationMins: a.durationMins }));
 
-    // commit to state
-    state.service = {
+    const newSvc = {
       id: ctx.svcData.id,
       name: ctx.svcData.name,
       basePrice: ctx.svcData.price,
       baseCsbPrice: ctx.svcData.csbPrice || null,
-      price: ctx.svcData.price,            // recalc'd below
+      price: ctx.svcData.price,
       csbPrice: ctx.svcData.csbPrice || null,
       baseDuration: ctx.svcData.duration,
       baseDurationMins: ctx.baseMins,
-      duration: ctx.svcData.duration,      // recalc'd below
+      duration: ctx.svcData.duration,
       addons: selectedAddons
     };
-    recalcServiceWithAddons();
+    setActiveService(newSvc);
+    recalcServiceWithAddons(newSvc);
+    refreshSvcListSelection();
 
-    // visual: mark item selected in svc-list
-    document.querySelectorAll('.svc-item').forEach(i => i.classList.remove('selected'));
-    const svcEl = document.querySelector(`.svc-item[data-service="${ctx.svcData.id}"]`);
-    if (svcEl) svcEl.classList.add('selected');
-
-    document.getElementById('step1Next').disabled = false;
-    const mCont = document.getElementById('mobileContinue');
-    if (mCont) { mCont.disabled = false; mCont.classList.add('visible'); }
-    const sc = document.getElementById('selectedCount');
-    if (sc) sc.textContent = '— ' + state.service.name + ' selected';
+    // Group mode: auto-switch ke person 2 jika belum dipilih
+    if (isGroup() && state.activePerson === 1 && !state.person2?.service) {
+      state.activePerson = 2;
+      refreshSvcListSelection();
+    }
+    refreshPersonTabs();
+    updateStep1Cta();
 
     closeAddonModal();
     updateSidebar();
@@ -391,17 +591,20 @@ document.addEventListener('DOMContentLoaded', async () => {
           return;
         }
 
-        document.querySelectorAll('.svc-item').forEach(i => i.classList.remove('selected'));
-        svcItem.classList.add('selected');
-        state.service = svcData;
-        document.getElementById('step1Next').disabled = false;
-        const mCont = document.getElementById('mobileContinue');
-        if (mCont) { mCont.disabled = false; mCont.classList.add('visible'); }
-        const sc = document.getElementById('selectedCount');
-        if (sc) sc.textContent = '— ' + state.service.name + ' selected';
-        updateSidebar();
+        setActiveService(svcData);
+        refreshSvcListSelection();
 
-        // Show floating continue on mobile (no need to scroll)
+        // Group mode: auto-switch ke tab person 2 supaya alur intuitif
+        if (isGroup() && state.activePerson === 1 && !state.person2?.service) {
+          state.activePerson = 2;
+          refreshPersonTabs();
+          refreshSvcListSelection();
+        } else {
+          refreshPersonTabs();
+        }
+
+        updateStep1Cta();
+        updateSidebar();
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     });
@@ -495,7 +698,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (n === 2) {
       // Step 2: Professional - fetch and render barbers
       fetchAndRenderBarbers();
-      document.getElementById('step2Next').disabled = !state.barber;
+      document.getElementById('step2Next').disabled = !step2Ready();
       updateSidebar();
     }
 
@@ -683,26 +886,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     hint.style.display = 'none';
     rows.style.display = '';
 
-    document.getElementById('sumService').textContent = state.service ? state.service.name + ' — ' + state.service.duration : '—';
-
-    // Add-on rows in sidebar
+    const sumServiceEl = document.getElementById('sumService');
     const sumAddonsEl = document.getElementById('sumAddons');
-    if (sumAddonsEl) {
-      const addons = state.service?.addons || [];
-      if (addons.length) {
+
+    if (isGroup()) {
+      // Group mode: render 2 stacked blocks (Orang 1 + Orang 2)
+      if (sumServiceEl) sumServiceEl.innerHTML = '';
+      if (sumAddonsEl) {
         const useCsb = state.location === 'csb';
-        sumAddonsEl.innerHTML = addons.map(a => {
-          const p = (useCsb && a.csbPrice) ? a.csbPrice : a.price;
-          return `<div class="sum-addon-line"><span class="sum-addon-name">+ ${a.name}</span><span class="sum-addon-price">${fmt(p)}</span></div>`;
+        const blocks = [
+          { tag: 'Orang 1', svc: state.service, barber: state.barber },
+          { tag: 'Orang 2', svc: state.person2?.service, barber: state.person2?.barber }
+        ].map(p => {
+          if (!p.svc && !p.barber) {
+            return `<div class="sb-group-block"><span class="sb-group-tag">${p.tag}</span><span class="sb-group-line">—</span></div>`;
+          }
+          const addons = p.svc?.addons || [];
+          const addonsHtml = addons.map(a => {
+            const ap = (useCsb && a.csbPrice) ? a.csbPrice : a.price;
+            return `<span class="sb-group-sub">+ ${a.name} — ${fmt(ap)}</span>`;
+          }).join('');
+          return `<div class="sb-group-block">
+            <span class="sb-group-tag">${p.tag}</span>
+            <span class="sb-group-line">${p.svc ? p.svc.name + ' — ' + p.svc.duration : 'Pilih service'}</span>
+            ${addonsHtml}
+            ${p.barber ? `<span class="sb-group-sub">👤 ${p.barber.name}</span>` : ''}
+          </div>`;
         }).join('');
+        sumAddonsEl.innerHTML = blocks;
         sumAddonsEl.style.display = '';
-      } else {
-        sumAddonsEl.innerHTML = '';
-        sumAddonsEl.style.display = 'none';
       }
+      document.getElementById('sumBarber').textContent = (state.barber && state.person2?.barber)
+        ? state.barber.name + ' + ' + state.person2.barber.name
+        : (state.barber ? state.barber.name : '—');
+    } else {
+      // Solo mode (default)
+      if (sumServiceEl) sumServiceEl.textContent = state.service ? state.service.name + ' — ' + state.service.duration : '—';
+      if (sumAddonsEl) {
+        const addons = state.service?.addons || [];
+        if (addons.length) {
+          const useCsb = state.location === 'csb';
+          sumAddonsEl.innerHTML = addons.map(a => {
+            const p = (useCsb && a.csbPrice) ? a.csbPrice : a.price;
+            return `<div class="sum-addon-line"><span class="sum-addon-name">+ ${a.name}</span><span class="sum-addon-price">${fmt(p)}</span></div>`;
+          }).join('');
+          sumAddonsEl.style.display = '';
+        } else {
+          sumAddonsEl.innerHTML = '';
+          sumAddonsEl.style.display = 'none';
+        }
+      }
+      document.getElementById('sumBarber').textContent = state.barber ? state.barber.name : '—';
     }
 
-    document.getElementById('sumBarber').textContent = state.barber ? state.barber.name : '—';
     document.getElementById('sumDatetime').textContent =
       (state.date && state.time) ? formatDate(state.date) + ', ' + state.time
       : state.date ? formatDate(state.date) : '—';
@@ -710,17 +946,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('sumLocation').textContent = state.location
       ? (locSel?.querySelector('[value="' + state.location + '"]')?.textContent || state.location)
       : '—';
-    document.getElementById('sumTotal').textContent = state.service ? fmt(state.service.price) : '—';
+
+    // Total = person1 + person2 price (when group)
+    const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+    document.getElementById('sumTotal').textContent = total ? fmt(total) : '—';
   }
 
   // ── STEP 1 NEXT ─────────────────────────────
   document.getElementById('step1Next')?.addEventListener('click', () => {
-    if (state.service) goToStep(2);
+    if (step1Ready()) goToStep(2);
   });
 
   // ── MOBILE FLOATING CONTINUE ─────────────────
   document.getElementById('mobileContinue')?.addEventListener('click', () => {
-    if (state.service) {
+    if (step1Ready()) {
       document.getElementById('mobileContinue')?.classList.remove('visible');
       goToStep(2);
     }
@@ -870,35 +1109,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     proPickGrid.querySelectorAll('.pro-pick-card').forEach(card => {
       card.addEventListener('click', () => {
         if (card.dataset.barber === 'none' || card.classList.contains('barber-off')) return;
-        proPickGrid.querySelectorAll('.pro-pick-card').forEach(c => c.classList.remove('selected'));
-        card.classList.add('selected');
-        state.barber = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
+
+        const barberData = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
+
+        // Group mode: prevent picking same kapster for both persons
+        if (isGroup()) {
+          const otherBarber = state.activePerson === 1 ? state.person2?.barber : state.barber;
+          if (otherBarber && String(otherBarber.id) === String(barberData.id)) {
+            alert('Kapster ini sudah dipilih untuk orang yang lain. Pilih kapster berbeda agar bisa paralel di waktu yang sama.');
+            return;
+          }
+        }
+
+        setActiveBarber(barberData);
+        refreshBarberCardSelection();
         mokaAvailabilityActive = false;
         mokaAvailableSlots = [];
         fallbackBusyRanges = [];
 
-        // Auto-select branch if available
+        // Auto-select branch if available (di-share antar person — cabang sama)
         if (card.dataset.branch && card.dataset.branch !== 'any') {
           state.location = card.dataset.branch;
           const locSel = document.getElementById('custLocation');
           if (locSel) locSel.value = state.location;
         }
 
-        // Apply CSB-specific pricing when CSB branch is selected
-        if (state.service) {
-          if (state.service.addons && state.service.addons.length) {
-            // Service has add-ons: recalc base+addons combined for current location
-            recalcServiceWithAddons();
-          } else {
-            const effectivePrice = (state.location === 'csb' && state.service.csbPrice)
-              ? state.service.csbPrice
-              : (state.service.basePrice || state.service.price);
-            if (!state.service.basePrice) state.service.basePrice = state.service.price;
-            state.service.price = effectivePrice;
-          }
-        }
+        // Apply CSB-specific pricing when CSB branch is selected — untuk SEMUA service person
+        applyCsbPricingTo(state.service);
+        if (isGroup()) applyCsbPricingTo(state.person2?.service);
 
-        document.getElementById('step2Next').disabled = false;
+        // Group mode: auto-switch ke tab person 2 jika belum dipilih
+        if (isGroup() && state.activePerson === 1 && !state.person2?.barber) {
+          state.activePerson = 2;
+          refreshBarberCardSelection();
+        }
+        refreshPersonTabs();
+        updateStep2Cta();
         updateSidebar();
       });
     });
@@ -927,7 +1173,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── STEP 2 NEXT ─────────────────────────────
   document.getElementById('step2Next')?.addEventListener('click', () => {
-    if (state.barber) goToStep(3);
+    if (step2Ready()) goToStep(3);
   });
 
   // ── BACK BUTTON LOGIC (Handling Skip) ────────
@@ -1193,6 +1439,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       if (!isBooked && !mokaAvailabilityActive) {
         isBooked = hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
+        // Group mode: slot juga harus available untuk barber person 2
+        if (!isBooked && isGroup() && state.person2?.barber) {
+          isBooked = hasConflict(state.person2.barber.id, state.date, slot, state.person2.service?.duration);
+        }
       }
 
       if (isBooked) {
@@ -1257,20 +1507,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── STEP 4: DETAILS ────────────────────────
   document.getElementById('step4Next')?.addEventListener('click', () => {
     const custName = document.getElementById('custName');
+    const custName2 = document.getElementById('custName2');
     const custWa = document.getElementById('custWa');
     const custLoc = document.getElementById('custLocation');
     let valid = true;
     const custAddr = document.getElementById('custAddress');
-    [custName, custWa, custLoc].forEach(el => el?.closest('.form-group')?.classList.remove('has-error'));
+    [custName, custName2, custWa, custLoc].forEach(el => el?.closest('.form-group')?.classList.remove('has-error'));
     if (isHomeService) custAddr?.closest('.form-group')?.classList.remove('has-error');
 
     if (!custName?.value.trim()) { custName.closest('.form-group').classList.add('has-error'); valid = false; }
+    if (isGroup() && !custName2?.value.trim()) { custName2.closest('.form-group').classList.add('has-error'); valid = false; }
     if (!custWa?.value.trim() || custWa.value.replace(/\D/g, '').length < 8) { custWa.closest('.form-group').classList.add('has-error'); valid = false; }
     if (!custLoc?.value) { custLoc.closest('.form-group').classList.add('has-error'); valid = false; }
     if (isHomeService && !custAddr?.value.trim()) { custAddr.closest('.form-group').classList.add('has-error'); valid = false; }
     if (!valid) return;
 
     state.name = custName.value.trim();
+    if (isGroup()) {
+      state.person2 = state.person2 || {};
+      state.person2.name = custName2.value.trim();
+    }
     state.wa = custWa.value.trim();
     state.location = custLoc.value;
     state.address = isHomeService ? (custAddr?.value.trim() || '') : '';
@@ -1286,27 +1542,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!box) return;
     const locLabel = document.querySelector('#custLocation [value="' + state.location + '"]')?.textContent || state.location;
     const useCsb = state.location === 'csb';
-    const addons = state.service?.addons || [];
-    const baseSvcPrice = state.service?.basePrice
-      ? (useCsb && state.service.baseCsbPrice ? state.service.baseCsbPrice : state.service.basePrice)
-      : (state.service?.price || 0);
-    const addonRows = addons.map(a => {
-      const p = (useCsb && a.csbPrice) ? a.csbPrice : a.price;
-      return `<div class="confirm-row addon-row"><span class="cr-label">${a.name}</span><span class="cr-val">${fmt(p)}</span></div>`;
-    }).join('');
+
+    // Build per-person service rows (handles both solo & group)
+    function personRows(label, svc, barber, name) {
+      const addons = svc?.addons || [];
+      const baseSvcPrice = svc?.basePrice
+        ? (useCsb && svc.baseCsbPrice ? svc.baseCsbPrice : svc.basePrice)
+        : (svc?.price || 0);
+      const addonRows = addons.map(a => {
+        const p = (useCsb && a.csbPrice) ? a.csbPrice : a.price;
+        return `<div class="confirm-row addon-row"><span class="cr-label">${a.name}</span><span class="cr-val">${fmt(p)}</span></div>`;
+      }).join('');
+      return `
+        ${label ? `<div class="confirm-row group-header"><span class="cr-label">${label}${name ? ' — ' + name : ''}</span><span class="cr-val">${barber?.name || '—'}</span></div>` : ''}
+        <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${svc?.name || '—'}${addons.length ? ' — ' + fmt(baseSvcPrice) : ''}</span></div>
+        ${addonRows}
+        <div class="confirm-row"><span class="cr-label">Duration</span><span class="cr-val">${svc?.duration || '—'}</span></div>
+        ${label ? '' : `<div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${barber?.name || '—'}</span></div>`}
+      `;
+    }
+
+    const groupRows = isGroup()
+      ? personRows('Orang 1', state.service, state.barber, state.name) +
+        personRows('Orang 2', state.person2?.service, state.person2?.barber, state.person2?.name)
+      : personRows('', state.service, state.barber);
+
+    const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+
     box.innerHTML = `
-      <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${state.service?.name || '—'}${addons.length ? ' — ' + fmt(baseSvcPrice) : ''}</span></div>
-      ${addonRows}
-      <div class="confirm-row"><span class="cr-label">Duration</span><span class="cr-val">${state.service?.duration || '—'}</span></div>
-      <div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${state.barber?.name || '—'}</span></div>
+      ${groupRows}
       <div class="confirm-row"><span class="cr-label">Date</span><span class="cr-val">${state.date ? formatDate(state.date) : '—'}</span></div>
       <div class="confirm-row"><span class="cr-label">Time</span><span class="cr-val">${state.time || '—'}</span></div>
       <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
       ${isHomeService && state.address ? `<div class="confirm-row"><span class="cr-label">Alamat</span><span class="cr-val">${state.address}</span></div>` : ''}
-      <div class="confirm-row"><span class="cr-label">Name</span><span class="cr-val">${state.name}</span></div>
+      <div class="confirm-row"><span class="cr-label">${isGroup() ? 'Kontak Utama' : 'Name'}</span><span class="cr-val">${state.name}</span></div>
       <div class="confirm-row"><span class="cr-label">WhatsApp</span><span class="cr-val">+62 ${state.wa}</span></div>
       ${state.notes ? `<div class="confirm-row"><span class="cr-label">Notes</span><span class="cr-val">${state.notes}</span></div>` : ''}
-      <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(state.service?.price || 0)}</span></div>
+      <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(total)}</span></div>
     `;
   }
 
@@ -1337,28 +1609,53 @@ document.addEventListener('DOMContentLoaded', async () => {
       goToStep(3); // Go back to Date & Time step
       return;
     }
+    if (isGroup() && state.person2?.barber && hasConflict(state.person2.barber.id, state.date, state.time, state.person2.service?.duration)) {
+      alert('Mohon maaf, kapster ' + state.person2.barber.name + ' (orang 2) baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');
+      goToStep(3);
+      return;
+    }
 
     const locLabel = document.querySelector('#custLocation [value="' + state.location + '"]')?.textContent || state.location;
     const _useCsbWa = state.location === 'csb';
-    const _addonsWa = state.service?.addons || [];
-    const addonLinesWa = _addonsWa.map(a => {
-      const p = (_useCsbWa && a.csbPrice) ? a.csbPrice : a.price;
-      return '  ➕ ' + a.name + ' — ' + fmt(p);
-    });
+
+    // Build group-aware WA blocks
+    function _waBlockFor(label, name, svc, barber) {
+      const addons = svc?.addons || [];
+      const addonLines = addons.map(a => {
+        const p = (_useCsbWa && a.csbPrice) ? a.csbPrice : a.price;
+        return '  ➕ ' + a.name + ' — ' + fmt(p);
+      });
+      return [
+        label ? '*' + label + (name ? ' — ' + name : '') + '*' : '',
+        '✂️ Service: ' + (svc?.name || '—'),
+        ...(addonLines.length ? ['🧩 Add-On:', ...addonLines] : []),
+        '⏱️ Duration: ' + (svc?.duration || '—'),
+        '👤 Kapster: ' + (barber?.name || '—'),
+        '💰 Subtotal: ' + fmt(svc?.price || 0),
+      ].filter(Boolean);
+    }
+
+    const totalPrice = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+    const headerLine = isGroup()
+      ? '👥 *BOOKING GRUP (2 ORANG) — REDBOX BARBERSHOP*'
+      : (isHomeService ? '🏠 *BOOKING HOME SERVICE — REDBOX BARBERSHOP*' : '🔴 *BOOKING REDBOX BARBERSHOP*');
+
     const msg = [
-      isHomeService ? '🏠 *BOOKING HOME SERVICE — REDBOX BARBERSHOP*' : '🔴 *BOOKING REDBOX BARBERSHOP*', '',
-      '✂️ *Service:* ' + state.service?.name,
-      ...(addonLinesWa.length ? ['🧩 *Add-On:*', ...addonLinesWa] : []),
-      '⏱️ *Duration:* ' + state.service?.duration,
-      '👤 *Kapster:* ' + state.barber?.name,
+      headerLine, '',
+      ...(isGroup()
+        ? [
+            ..._waBlockFor('ORANG 1', state.name, state.service, state.barber), '',
+            ..._waBlockFor('ORANG 2', state.person2?.name, state.person2?.service, state.person2?.barber), '',
+          ]
+        : _waBlockFor('', '', state.service, state.barber)),
       '📅 *Jadwal:* ' + (state.date ? formatDate(state.date) : '—') + ' at ' + state.time,
       '📍 *Cabang Terdekat:* ' + locLabel,
       isHomeService && state.address ? '🏠 *Alamat Kamu:* ' + state.address : '',
-      '👤 *Nama:* ' + state.name,
+      '👤 *' + (isGroup() ? 'Kontak Utama' : 'Nama') + ':* ' + state.name,
       '📱 *WhatsApp:* +62' + state.wa,
       state.notes ? '📝 *Catatan:* ' + state.notes : '',
       '💳 *Pembayaran:* ' + state.payment?.name,
-      '', '💰 *Total:* ' + fmt(state.service?.price || 0),
+      '', '💰 *Total:* ' + fmt(totalPrice),
       '', isHomeService ? '_Tim Redbox akan konfirmasi via WhatsApp_ 🔴' : '_Sharp Cuts, Bold Style_ 🔴',
     ].filter(Boolean).join('\n');
 
@@ -1374,56 +1671,65 @@ document.addEventListener('DOMContentLoaded', async () => {
     const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
 
     // ── Save to CRM (localStorage + API) ──
-    const _addonsPayload = state.service?.addons || [];
-    const _addonNote = _addonsPayload.length
-      ? '[ADD-ON: ' + _addonsPayload.map(a => a.name).join(', ') + ']'
-      : '';
-    const noteParts = [];
-    if (isHomeService && state.address) noteParts.push('[HOME SERVICE] Alamat: ' + state.address);
-    if (_addonNote) noteParts.push(_addonNote);
-    if (state.notes) noteParts.push(state.notes);
-    const notesWithAddress = noteParts.join('\n');
+    // Generate group_id for linking when 2 orang
+    const groupId = isGroup() ? 'GRP-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6).toUpperCase() : null;
 
-    // Service field includes addons appended so dashboard & WA bot can show full booking line
-    const serviceFull = _addonsPayload.length
-      ? state.service.name + ' + ' + _addonsPayload.map(a => a.name).join(' + ')
-      : (state.service?.name || '');
+    function _buildPayloadFor(personIdx, name, svc, barber) {
+      const addons = svc?.addons || [];
+      const addonNote = addons.length ? '[ADD-ON: ' + addons.map(a => a.name).join(', ') + ']' : '';
+      const noteParts = [];
+      if (groupId) noteParts.push('[GROUP:' + groupId + ', ' + personIdx + '/2]');
+      if (isHomeService && state.address) noteParts.push('[HOME SERVICE] Alamat: ' + state.address);
+      if (addonNote) noteParts.push(addonNote);
+      if (state.notes) noteParts.push(state.notes);
+      const serviceFull = addons.length
+        ? svc.name + ' + ' + addons.map(a => a.name).join(' + ')
+        : (svc?.name || '');
+      return {
+        name: name || state.name,
+        wa: state.wa,
+        service_id: svc?.id || '',
+        service: serviceFull,
+        price: svc?.price || 0,
+        duration: svc?.duration || '',
+        barber_id: barber?.id || 'any',
+        date: state.date,
+        time: state.time,
+        location: state.location,
+        notes: noteParts.join('\n'),
+        payment: state.payment?.name || '',
+        status: 'pending'
+      };
+    }
 
-    const payload = {
-      name: state.name,
-      wa: state.wa,
-      service_id: state.service?.id || '',
-      service: serviceFull,
-      price: state.service?.price || 0,
-      duration: state.service?.duration || '',
-      barber_id: state.barber?.id || 'any',
-      date: state.date,
-      time: state.time,
-      location: state.location,
-      notes: notesWithAddress,
-      payment: state.payment?.name || '',
-      status: 'pending'
-    };
+    const payloads = isGroup()
+      ? [
+          _buildPayloadFor(1, state.name, state.service, state.barber),
+          _buildPayloadFor(2, state.person2?.name, state.person2?.service, state.person2?.barber),
+        ]
+      : [_buildPayloadFor(1, state.name, state.service, state.barber)];
 
     let savedToApi = false;
 
     if (USE_API) {
       try {
-        const res = await fetch(API_URL + '/bookings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        
-        if (!res.ok) {
-          const errData = await res.json();
-          if (res.status === 409) {
-            alert('Mohon maaf: ' + errData.error);
-            goToStep(3); // Go back to Date & Time
+        // POST sequentially so conflicts on the 2nd booking can be detected per-row
+        for (let i = 0; i < payloads.length; i++) {
+          const res = await fetch(API_URL + '/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloads[i])
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            if (res.status === 409) {
+              alert('Mohon maaf' + (isGroup() ? ' (booking orang ' + (i + 1) + ')' : '') + ': ' + (errData.error || 'slot bentrok'));
+              goToStep(3);
+              return;
+            }
+            alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));
             return;
           }
-          alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));
-          return;
         }
         console.log('Booking synced to Supabase');
         savedToApi = true;
@@ -1441,10 +1747,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!USE_API) {
       try {
         const existing = JSON.parse(localStorage.getItem('rb_bookings') || '[]');
-        existing.push({
-          id: 'bk_' + Date.now(),
-          ...payload,
-          createdAt: new Date().toISOString()
+        payloads.forEach((p, i) => {
+          existing.push({
+            id: 'bk_' + Date.now() + '_' + i,
+            ...p,
+            createdAt: new Date().toISOString()
+          });
         });
         localStorage.setItem('rb_bookings', JSON.stringify(existing));
       } catch(e) { console.warn('Local storage sync failed', e); }
@@ -1458,18 +1766,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const successBox = document.getElementById('successDetails');
     if (successBox) {
       const _useCsbS = state.location === 'csb';
-      const _addonsS = state.service?.addons || [];
-      const addonRowsSuccess = _addonsS.map(a => {
-        const p = (_useCsbS && a.csbPrice) ? a.csbPrice : a.price;
-        return `<div class="confirm-row addon-row"><span class="cr-label">${a.name}</span><span class="cr-val">${fmt(p)}</span></div>`;
-      }).join('');
+      function _successPerson(label, name, svc, barber) {
+        const addons = svc?.addons || [];
+        const addonRows = addons.map(a => {
+          const p = (_useCsbS && a.csbPrice) ? a.csbPrice : a.price;
+          return `<div class="confirm-row addon-row"><span class="cr-label">${a.name}</span><span class="cr-val">${fmt(p)}</span></div>`;
+        }).join('');
+        return `
+          ${label ? `<div class="confirm-row group-header"><span class="cr-label">${label}${name ? ' — ' + name : ''}</span><span class="cr-val">${barber?.name || '—'}</span></div>` : ''}
+          <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${svc?.name || '—'}</span></div>
+          ${addonRows}
+          ${label ? '' : `<div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${barber?.name || '—'}</span></div>`}
+        `;
+      }
+      const personBlocks = isGroup()
+        ? _successPerson('Orang 1', state.name, state.service, state.barber) +
+          _successPerson('Orang 2', state.person2?.name, state.person2?.service, state.person2?.barber)
+        : _successPerson('', '', state.service, state.barber);
       successBox.innerHTML = `
-        <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${state.service?.name}</span></div>
-        ${addonRowsSuccess}
-        <div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${state.barber?.name}</span></div>
+        ${personBlocks}
         <div class="confirm-row"><span class="cr-label">Schedule</span><span class="cr-val">${formatDate(state.date)}, ${state.time}</span></div>
         <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
-        <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(state.service?.price || 0)}</span></div>
+        <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(totalPrice)}</span></div>
       `;
     }
     const waBtn = document.getElementById('shareWaBtn');
