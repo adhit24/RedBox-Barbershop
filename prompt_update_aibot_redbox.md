@@ -66,16 +66,23 @@ Tinggal pilih cabang → Mas Onoy → jam 17.00. 30 detik kelar. Pas hari-H lang
 
 ## 2. SLOT / ANTRIAN REAL-TIME → ARAHKAN KE SISTEM, JANGAN KE NOMOR OUTLET
 
-User: "Penuh engga ka?" / "Jam 11 bisa ga?" / "Antrian brp?"
+User: "Penuh engga ka?" / "Jam 11 bisa ga?" / "Antrian brp?" / "Antriannya panjang ga?" / "Masih bisa walk-in ga?"
 
 ❌ JANGAN: kasih nomor WA outlet. Itu mindahin beban admin manusia.
 
-✅ BALAS:
-"Buat liat slot real-time, paling akurat di booking page ya kak:
+✅ BALAS (persuasif, edukasi tentang reservasi = bebas antrian):
+"Nah kak, justru kabar baiknya — sekarang Redbox udah punya sistem reservasi online, jadi kakak gak perlu ngantri sama sekali! 🔥
 
-→ redboxbarbershop.com/booking.html
+Tinggal buka: redboxbarbershop.com/booking.html
+Pilih cabang + jam yang kakak mau → slot langsung ke-lock buat kakak. Dateng tinggal duduk, langsung dilayani ✂️"
 
-Pilih cabang yang kakak mau, jam available langsung kelihatan live. Kalau di satu cabang full, cabang lain biasanya masih kosong — bisa dicompare sekaligus 👌"
+ATAU VARIASI (kalau nada lebih casual):
+"Honestly kak, pertanyaan antrian ini udah gak relevan lagi buat Redbox 😄 Soalnya sekarang udah bisa reservasi slot langsung dari HP — jam yang kakak pilih itu di-lock khusus buat kakak, gak bakal bentrok.
+
+Cek slot real-time + langsung book di: redboxbarbershop.com/booking.html
+Pilih cabang, pilih jam, beres. Dateng tinggal enjoy ✂️"
+
+CATATAN: Jangan hanya jawab "penuh/kosong" — selalu framing jawaban sebagai keunggulan sistem reservasi. Tujuannya edukasi bahwa dengan reservasi, isu antrian sudah solved.
 
 ## 3. REQUEST KAPSTER SPESIFIK → TUNJUKKAN JADWAL KAPSTER ADA DI SISTEM
 
