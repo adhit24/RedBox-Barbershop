@@ -23,19 +23,14 @@
 
 const express          = require('express');
 const { randomUUID }   = require('crypto');
-const { createClient } = require('@supabase/supabase-js');
 
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
 const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
 
-// Membership data lives in a SEPARATE Supabase project (member_profiles, member_activations,
-// member_point_transactions, member_reviews). RLS is OFF and anon role has full RW grants —
-// same anon key as hardcoded in js/crm.js. Endpoint /api/moka/sync-member-points needs to
-// UPDATE member_profiles which lives here, not in the main bookings DB.
-const MEMBER_SB_URL  = 'https://gtiggsilfcivuzowaexq.supabase.co';
-const MEMBER_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0aWdnc2lsZmNpdnV6b3dhZXhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzA1OTMsImV4cCI6MjA5MjM0NjU5M30.GKq79uI5i_B31vi4McEGuqRZEJjPIrY5QKyK0LQEA4o';
-const memberSupabase = createClient(MEMBER_SB_URL, MEMBER_SB_ANON);
+// NOTE: member_profiles dulu di project terpisah ('adhit24's Project',
+// gtiggsilfcivuzowaexq) tapi dihapus 2026-05-28. Sekarang consolidated ke
+// primary DB — bisa pakai `supabase` client utama langsung.
 
 /**
  * Factory — returns a configured Express Router.
@@ -1222,7 +1217,7 @@ function createMokaRouter(supabase) {
       if (outletErr) throw new Error('DB outlets: ' + outletErr.message);
       if (!outlets?.length) return res.status(200).json({ updated: 0, note: 'No active outlets with moka_outlet_id' });
 
-      const { data: members, error: memErr } = await memberSupabase
+      const { data: members, error: memErr } = await supabase
         .from('member_profiles').select('id, user_key, phone, full_name, total_points, total_visits, current_tier')
         .eq('membership_status', 'ACTIVE');
       if (memErr) throw new Error('DB member_profiles: ' + memErr.message);
@@ -1288,7 +1283,7 @@ function createMokaRouter(supabase) {
       let successCount = 0, errorCount = 0;
       const now = new Date().toISOString();
       for (const u of updates) {
-        const { error } = await memberSupabase.from('member_profiles')
+        const { error } = await supabase.from('member_profiles')
           .update({ total_points: u.new_points, total_visits: u.new_visits, current_tier: u.new_tier, updated_at: now })
           .eq('id', u.id);
         if (error) { console.error(`[SyncMemberPoints] Update ${u.full_name}: ${error.message}`); errorCount++; }

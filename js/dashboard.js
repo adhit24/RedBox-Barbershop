@@ -3,8 +3,10 @@
 // Full membership status + point system logic
 // ================================================
 
-const SUPABASE_URL = 'https://gtiggsilfcivuzowaexq.supabase.co';
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0aWdnc2lsZmNpdnV6b3dhZXhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzA1OTMsImV4cCI6MjA5MjM0NjU5M30.GKq79uI5i_B31vi4McEGuqRZEJjPIrY5QKyK0LQEA4o';
+// Membership data consolidated to PRIMARY Supabase (was on separate project
+// 'adhit24's Project' that was deleted 2026-05-28).
+const SUPABASE_URL = 'https://khcvklzxfohwkyocenaf.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoY3ZrbHp4Zm9od2t5b2NlbmFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyOTE0ODksImV4cCI6MjA5Mjg2NzQ4OX0.YlqcppDA7xB4ZpOstzjFsnt_0v4nPf09kRXdLf1bCAk';
 
 async function sbFetch(path, opts = {}) {
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {

@@ -1328,8 +1328,11 @@ init();
 // ============================================================
 // MEMBERSHIP MODULE
 // ============================================================
-const SB_URL  = 'https://gtiggsilfcivuzowaexq.supabase.co';
-const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0aWdnc2lsZmNpdnV6b3dhZXhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzA1OTMsImV4cCI6MjA5MjM0NjU5M30.GKq79uI5i_B31vi4McEGuqRZEJjPIrY5QKyK0LQEA4o';
+// Membership tables di PRIMARY project (sebelumnya pakai project terpisah
+// 'adhit24's Project' yang di-delete user pada 2026-05-28; consolidated ke
+// primary supaya single source of truth).
+const SB_URL  = 'https://khcvklzxfohwkyocenaf.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoY3ZrbHp4Zm9od2t5b2NlbmFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyOTE0ODksImV4cCI6MjA5Mjg2NzQ4OX0.YlqcppDA7xB4ZpOstzjFsnt_0v4nPf09kRXdLf1bCAk';
 
 async function sbMem(path, opts = {}) {
   const res = await fetch(SB_URL + '/rest/v1/' + path, {

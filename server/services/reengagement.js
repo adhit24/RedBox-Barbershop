@@ -19,8 +19,9 @@ const COOLDOWN_DAYS   = 30;
 const MIN_INACTIVE_DAYS = 30;
 const SEND_DELAY_MS   = 600;
 
-const MEMBER_SB_URL  = 'https://gtiggsilfcivuzowaexq.supabase.co';
-const MEMBER_SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0aWdnc2lsZmNpdnV6b3dhZXhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NzA1OTMsImV4cCI6MjA5MjM0NjU5M30.GKq79uI5i_B31vi4McEGuqRZEJjPIrY5QKyK0LQEA4o';
+// Member tables sekarang di PRIMARY DB (post-consolidation 2026-05-28),
+// jadi cukup pakai supabase client utama yang sudah di-pass ke
+// sendReengagementBatch — tidak perlu cross-DB fetch lagi.
 
 function buildMessage(name) {
   const fn = String(name || 'Kak').split(' ')[0];
@@ -39,20 +40,17 @@ function normalizePhone(raw) {
   return d.slice(-11);
 }
 
-/** Ambil daftar nomor phone member ACTIVE dari membership DB (cross-DB). */
-async function fetchActiveMemberPhones() {
+/** Ambil daftar nomor phone member ACTIVE dari member_profiles (same DB sekarang). */
+async function fetchActiveMemberPhones(supabase) {
   try {
-    const res = await fetch(
-      `${MEMBER_SB_URL}/rest/v1/member_profiles?select=phone&membership_status=eq.ACTIVE`,
-      { headers: { apikey: MEMBER_SB_ANON, Authorization: `Bearer ${MEMBER_SB_ANON}` } }
-    );
-    if (!res.ok) {
-      console.warn('[Reengagement] Failed to fetch member phones:', res.status);
+    const { data, error } = await supabase
+      .from('member_profiles').select('phone').eq('membership_status', 'ACTIVE');
+    if (error) {
+      console.warn('[Reengagement] Failed to fetch member phones:', error.message);
       return new Set();
     }
-    const rows = await res.json();
     const set = new Set();
-    for (const r of rows || []) {
+    for (const r of data || []) {
       const n = normalizePhone(r.phone);
       if (n) set.add(n);
     }
@@ -96,7 +94,7 @@ async function sendReengagementBatch(supabase) {
     return { scanned: 0, eligible: 0, sent: 0, failed: 0, skipped_members: 0 };
   }
 
-  const memberPhones = await fetchActiveMemberPhones();
+  const memberPhones = await fetchActiveMemberPhones(supabase);
 
   const eligible = [];
   let skippedMembers = 0;

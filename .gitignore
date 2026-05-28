@@ -97,3 +97,6 @@ server/test_sheet.js
 .netlify
 
 .env*.local
+
+# Moka customer exports — contains PII, never commit
+customer-export-*.csv
