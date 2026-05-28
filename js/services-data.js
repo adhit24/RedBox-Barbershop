@@ -291,3 +291,36 @@ const REDBOX_SERVICES = [
     desc: 'Haircut, Face & Back Massage, Ear Singeing.'
   }
 ];
+
+// ================================================
+// ADD-ONS — only for specific services
+// Duration in minutes (numeric for math), price in IDR
+// ================================================
+const REDBOX_ADDONS = {
+  'gentleman-grooming': [
+    {
+      id: 'addon-hair-spa',
+      name: 'Hair Spa',
+      icon: '🧖',
+      price: 110000,
+      csbPrice: 120000,
+      durationMins: 30
+    },
+    {
+      id: 'addon-shaving',
+      name: 'Shaving',
+      icon: '🪒',
+      price: 40000,
+      csbPrice: 50000,
+      durationMins: 20
+    },
+    {
+      id: 'addon-men-massage',
+      name: 'Men Massage Service',
+      icon: '💆‍♂️',
+      price: 145000,
+      csbPrice: 155000,
+      durationMins: 45
+    }
+  ]
+};

@@ -72,6 +72,181 @@ document.addEventListener('DOMContentLoaded', async () => {
   const preBarber = params.get('barber');
   const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
 
+  // ── ADD-ON HELPERS ─────────────────────────────
+  // REDBOX_ADDONS comes from services-data.js — keyed by service id
+  function getAddonsFor(svcId) {
+    return (typeof REDBOX_ADDONS !== 'undefined' && REDBOX_ADDONS[svcId]) || null;
+  }
+
+  // Apply currently-selected addons to state.service (re-computes price + duration).
+  // Respects CSB pricing when state.location === 'csb'.
+  function recalcServiceWithAddons() {
+    if (!state.service) return;
+    const useCsb = state.location === 'csb';
+    const basePrice = useCsb && state.service.baseCsbPrice
+      ? state.service.baseCsbPrice
+      : (state.service.basePrice || 0);
+    const baseMins = state.service.baseDurationMins || 0;
+    const addons = state.service.addons || [];
+    let addonPriceSum = 0;
+    let addonMinsSum = 0;
+    addons.forEach(a => {
+      addonPriceSum += (useCsb && a.csbPrice) ? a.csbPrice : a.price;
+      addonMinsSum += a.durationMins || 0;
+    });
+    state.service.price = basePrice + addonPriceSum;
+    state.service.duration = (baseMins + addonMinsSum) + ' menit';
+  }
+
+  // ── ADD-ON MODAL CONTROLLER ───────────────────
+  const addonOverlay = document.getElementById('addonOverlay');
+  const addonListEl = document.getElementById('addonList');
+  const addonTitle = document.getElementById('addonTitle');
+  const addonBaseDur = document.getElementById('addonBaseDuration');
+  const addonBasePrice = document.getElementById('addonBasePrice');
+  const addonTotalDur = document.getElementById('addonTotalDur');
+  const addonTotalPrice = document.getElementById('addonTotalPrice');
+  const addonCloseBtn = document.getElementById('addonClose');
+  const addonConfirmBtn = document.getElementById('addonConfirm');
+
+  // Modal-local state (committed to state.service only after confirm)
+  let _addonModalCtx = null; // { svcData, baseMins, basePrice, addons:[], selected:Set<id> }
+
+  function _renderAddonTotals() {
+    if (!_addonModalCtx) return;
+    let mins = _addonModalCtx.baseMins;
+    let price = _addonModalCtx.basePrice;
+    _addonModalCtx.addons.forEach(a => {
+      if (_addonModalCtx.selected.has(a.id)) {
+        mins += a.durationMins || 0;
+        price += a.price; // modal always shows non-CSB price (cabang baru dipilih di step 2)
+      }
+    });
+    if (addonTotalDur) addonTotalDur.textContent = mins + ' menit';
+    if (addonTotalPrice) addonTotalPrice.textContent = fmt(price);
+  }
+
+  function openAddonModal(svcData) {
+    const addons = getAddonsFor(svcData.id);
+    if (!addons || !addons.length) return false;
+    _addonModalCtx = {
+      svcData,
+      baseMins: _parseDurToMins(svcData.duration),
+      basePrice: svcData.price,
+      addons,
+      selected: new Set()
+    };
+    if (addonTitle) addonTitle.textContent = svcData.name;
+    if (addonBaseDur) addonBaseDur.textContent = svcData.duration;
+    if (addonBasePrice) addonBasePrice.textContent = fmt(svcData.price);
+
+    // build list
+    if (addonListEl) {
+      addonListEl.innerHTML = addons.map(a => `
+        <div class="addon-item" data-addon="${a.id}">
+          <div class="addon-item-left">
+            <div class="addon-checkbox">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div class="addon-item-info">
+              <div class="addon-item-name"><span class="addon-item-icon">${a.icon || ''}</span><span>${a.name}</span></div>
+              <div class="addon-item-dur">+${a.durationMins} menit</div>
+            </div>
+          </div>
+          <div class="addon-item-right">
+            <span class="addon-item-price">+${fmt(a.price)}</span>
+            ${a.csbPrice && a.csbPrice !== a.price ? `<span class="addon-item-csb">CSB +${fmt(a.csbPrice)}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+    _renderAddonTotals();
+
+    // open with animation (next frame so transition runs)
+    addonOverlay.style.visibility = 'visible';
+    requestAnimationFrame(() => addonOverlay.classList.add('open'));
+    addonOverlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    return true;
+  }
+
+  function closeAddonModal() {
+    if (!addonOverlay) return;
+    addonOverlay.classList.remove('open');
+    addonOverlay.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    // wait for transition before clearing list & visibility
+    setTimeout(() => {
+      if (!addonOverlay.classList.contains('open')) {
+        addonOverlay.style.visibility = 'hidden';
+        if (addonListEl) addonListEl.innerHTML = '';
+      }
+    }, 320);
+    _addonModalCtx = null;
+  }
+
+  // Toggle addon item selection
+  addonListEl?.addEventListener('click', e => {
+    const item = e.target.closest('.addon-item');
+    if (!item || !_addonModalCtx) return;
+    const id = item.dataset.addon;
+    if (_addonModalCtx.selected.has(id)) {
+      _addonModalCtx.selected.delete(id);
+      item.classList.remove('selected');
+    } else {
+      _addonModalCtx.selected.add(id);
+      item.classList.add('selected');
+    }
+    _renderAddonTotals();
+  });
+
+  addonCloseBtn?.addEventListener('click', closeAddonModal);
+  addonOverlay?.addEventListener('click', e => {
+    if (e.target === addonOverlay) closeAddonModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && addonOverlay?.classList.contains('open')) closeAddonModal();
+  });
+
+  // Confirm — apply addons into state.service & continue
+  addonConfirmBtn?.addEventListener('click', () => {
+    if (!_addonModalCtx) { closeAddonModal(); return; }
+    const ctx = _addonModalCtx;
+    const selectedAddons = ctx.addons
+      .filter(a => ctx.selected.has(a.id))
+      .map(a => ({ id: a.id, name: a.name, price: a.price, csbPrice: a.csbPrice, durationMins: a.durationMins }));
+
+    // commit to state
+    state.service = {
+      id: ctx.svcData.id,
+      name: ctx.svcData.name,
+      basePrice: ctx.svcData.price,
+      baseCsbPrice: ctx.svcData.csbPrice || null,
+      price: ctx.svcData.price,            // recalc'd below
+      csbPrice: ctx.svcData.csbPrice || null,
+      baseDuration: ctx.svcData.duration,
+      baseDurationMins: ctx.baseMins,
+      duration: ctx.svcData.duration,      // recalc'd below
+      addons: selectedAddons
+    };
+    recalcServiceWithAddons();
+
+    // visual: mark item selected in svc-list
+    document.querySelectorAll('.svc-item').forEach(i => i.classList.remove('selected'));
+    const svcEl = document.querySelector(`.svc-item[data-service="${ctx.svcData.id}"]`);
+    if (svcEl) svcEl.classList.add('selected');
+
+    document.getElementById('step1Next').disabled = false;
+    const mCont = document.getElementById('mobileContinue');
+    if (mCont) { mCont.disabled = false; mCont.classList.add('visible'); }
+    const sc = document.getElementById('selectedCount');
+    if (sc) sc.textContent = '— ' + state.service.name + ' selected';
+
+    closeAddonModal();
+    updateSidebar();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
   // ── BUILD SERVICE LIST (category grouped + show more/less) ──
   const svcList = document.getElementById('svcList');
   const VISIBLE_PER_CAT = 3; // show first N items, rest hidden behind "Show More"
@@ -202,15 +377,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       // 3) Select service
       const svcItem = e.target.closest('.svc-item');
       if (svcItem) {
-        document.querySelectorAll('.svc-item').forEach(i => i.classList.remove('selected'));
-        svcItem.classList.add('selected');
-        state.service = {
+        const svcData = {
           id: svcItem.dataset.service,
           name: svcItem.dataset.name,
           price: parseInt(svcItem.dataset.price),
           csbPrice: svcItem.dataset.csbPrice ? parseInt(svcItem.dataset.csbPrice) : null,
           duration: svcItem.dataset.duration,
         };
+
+        // If service has add-ons → open popup; commit happens on confirm
+        if (getAddonsFor(svcData.id)) {
+          openAddonModal(svcData);
+          return;
+        }
+
+        document.querySelectorAll('.svc-item').forEach(i => i.classList.remove('selected'));
+        svcItem.classList.add('selected');
+        state.service = svcData;
         document.getElementById('step1Next').disabled = false;
         const mCont = document.getElementById('mobileContinue');
         if (mCont) { mCont.disabled = false; mCont.classList.add('visible'); }
@@ -233,22 +416,35 @@ document.addEventListener('DOMContentLoaded', async () => {
           const btn = catGroup?.querySelector('.cat-toggle-btn');
           if (btn) btn.click();
         }
-        setTimeout(() => {
-          // Set state directly without triggering click handler (avoid double goToStep)
-          state.service = {
-            id: preItem.dataset.service,
-            name: preItem.dataset.name,
-            price: parseInt(preItem.dataset.price),
-            csbPrice: preItem.dataset.csbPrice ? parseInt(preItem.dataset.csbPrice) : null,
-            duration: preItem.dataset.duration,
-          };
-          preItem.classList.add('selected');
-          document.getElementById('step1Next').disabled = false;
-          updateSidebar();
+        const preSvcData = {
+          id: preItem.dataset.service,
+          name: preItem.dataset.name,
+          price: parseInt(preItem.dataset.price),
+          csbPrice: preItem.dataset.csbPrice ? parseInt(preItem.dataset.csbPrice) : null,
+          duration: preItem.dataset.duration,
+        };
 
-          // Go directly to Step 2 (Professional) - skip showing service selection
-          goToStep(2);
-        }, 150);
+        // Service with add-ons: show modal first so customer can pick add-ons.
+        // Modal confirm wires up state + selected style. After confirm, jump to step 2.
+        if (getAddonsFor(preSvcData.id)) {
+          setTimeout(() => {
+            openAddonModal(preSvcData);
+            const origConfirm = addonConfirmBtn;
+            const onceHandler = () => {
+              origConfirm?.removeEventListener('click', onceHandler);
+              setTimeout(() => goToStep(2), 60);
+            };
+            origConfirm?.addEventListener('click', onceHandler);
+          }, 200);
+        } else {
+          setTimeout(() => {
+            state.service = preSvcData;
+            preItem.classList.add('selected');
+            document.getElementById('step1Next').disabled = false;
+            updateSidebar();
+            goToStep(2);
+          }, 150);
+        }
       }
     }
   }
@@ -488,6 +684,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     rows.style.display = '';
 
     document.getElementById('sumService').textContent = state.service ? state.service.name + ' — ' + state.service.duration : '—';
+
+    // Add-on rows in sidebar
+    const sumAddonsEl = document.getElementById('sumAddons');
+    if (sumAddonsEl) {
+      const addons = state.service?.addons || [];
+      if (addons.length) {
+        const useCsb = state.location === 'csb';
+        sumAddonsEl.innerHTML = addons.map(a => {
+          const p = (useCsb && a.csbPrice) ? a.csbPrice : a.price;
+          return `<div class="sum-addon-line"><span class="sum-addon-name">+ ${a.name}</span><span class="sum-addon-price">${fmt(p)}</span></div>`;
+        }).join('');
+        sumAddonsEl.style.display = '';
+      } else {
+        sumAddonsEl.innerHTML = '';
+        sumAddonsEl.style.display = 'none';
+      }
+    }
+
     document.getElementById('sumBarber').textContent = state.barber ? state.barber.name : '—';
     document.getElementById('sumDatetime').textContent =
       (state.date && state.time) ? formatDate(state.date) + ', ' + state.time
@@ -672,11 +886,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Apply CSB-specific pricing when CSB branch is selected
         if (state.service) {
-          const effectivePrice = (state.location === 'csb' && state.service.csbPrice)
-            ? state.service.csbPrice
-            : (state.service.basePrice || state.service.price);
-          if (!state.service.basePrice) state.service.basePrice = state.service.price;
-          state.service.price = effectivePrice;
+          if (state.service.addons && state.service.addons.length) {
+            // Service has add-ons: recalc base+addons combined for current location
+            recalcServiceWithAddons();
+          } else {
+            const effectivePrice = (state.location === 'csb' && state.service.csbPrice)
+              ? state.service.csbPrice
+              : (state.service.basePrice || state.service.price);
+            if (!state.service.basePrice) state.service.basePrice = state.service.price;
+            state.service.price = effectivePrice;
+          }
         }
 
         document.getElementById('step2Next').disabled = false;
@@ -1066,8 +1285,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const box = document.getElementById('confirmSummary');
     if (!box) return;
     const locLabel = document.querySelector('#custLocation [value="' + state.location + '"]')?.textContent || state.location;
+    const useCsb = state.location === 'csb';
+    const addons = state.service?.addons || [];
+    const baseSvcPrice = state.service?.basePrice
+      ? (useCsb && state.service.baseCsbPrice ? state.service.baseCsbPrice : state.service.basePrice)
+      : (state.service?.price || 0);
+    const addonRows = addons.map(a => {
+      const p = (useCsb && a.csbPrice) ? a.csbPrice : a.price;
+      return `<div class="confirm-row addon-row"><span class="cr-label">${a.name}</span><span class="cr-val">${fmt(p)}</span></div>`;
+    }).join('');
     box.innerHTML = `
-      <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${state.service?.name || '—'}</span></div>
+      <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${state.service?.name || '—'}${addons.length ? ' — ' + fmt(baseSvcPrice) : ''}</span></div>
+      ${addonRows}
       <div class="confirm-row"><span class="cr-label">Duration</span><span class="cr-val">${state.service?.duration || '—'}</span></div>
       <div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${state.barber?.name || '—'}</span></div>
       <div class="confirm-row"><span class="cr-label">Date</span><span class="cr-val">${state.date ? formatDate(state.date) : '—'}</span></div>
@@ -1110,9 +1339,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const locLabel = document.querySelector('#custLocation [value="' + state.location + '"]')?.textContent || state.location;
+    const _useCsbWa = state.location === 'csb';
+    const _addonsWa = state.service?.addons || [];
+    const addonLinesWa = _addonsWa.map(a => {
+      const p = (_useCsbWa && a.csbPrice) ? a.csbPrice : a.price;
+      return '  ➕ ' + a.name + ' — ' + fmt(p);
+    });
     const msg = [
       isHomeService ? '🏠 *BOOKING HOME SERVICE — REDBOX BARBERSHOP*' : '🔴 *BOOKING REDBOX BARBERSHOP*', '',
       '✂️ *Service:* ' + state.service?.name,
+      ...(addonLinesWa.length ? ['🧩 *Add-On:*', ...addonLinesWa] : []),
       '⏱️ *Duration:* ' + state.service?.duration,
       '👤 *Kapster:* ' + state.barber?.name,
       '📅 *Jadwal:* ' + (state.date ? formatDate(state.date) : '—') + ' at ' + state.time,
@@ -1138,14 +1374,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
 
     // ── Save to CRM (localStorage + API) ──
-    const notesWithAddress = isHomeService && state.address
-      ? `[HOME SERVICE] Alamat: ${state.address}${state.notes ? '\n' + state.notes : ''}`
-      : state.notes;
+    const _addonsPayload = state.service?.addons || [];
+    const _addonNote = _addonsPayload.length
+      ? '[ADD-ON: ' + _addonsPayload.map(a => a.name).join(', ') + ']'
+      : '';
+    const noteParts = [];
+    if (isHomeService && state.address) noteParts.push('[HOME SERVICE] Alamat: ' + state.address);
+    if (_addonNote) noteParts.push(_addonNote);
+    if (state.notes) noteParts.push(state.notes);
+    const notesWithAddress = noteParts.join('\n');
+
+    // Service field includes addons appended so dashboard & WA bot can show full booking line
+    const serviceFull = _addonsPayload.length
+      ? state.service.name + ' + ' + _addonsPayload.map(a => a.name).join(' + ')
+      : (state.service?.name || '');
+
     const payload = {
       name: state.name,
       wa: state.wa,
       service_id: state.service?.id || '',
-      service: state.service?.name || '',
+      service: serviceFull,
       price: state.service?.price || 0,
       duration: state.service?.duration || '',
       barber_id: state.barber?.id || 'any',
@@ -1209,8 +1457,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const successBox = document.getElementById('successDetails');
     if (successBox) {
+      const _useCsbS = state.location === 'csb';
+      const _addonsS = state.service?.addons || [];
+      const addonRowsSuccess = _addonsS.map(a => {
+        const p = (_useCsbS && a.csbPrice) ? a.csbPrice : a.price;
+        return `<div class="confirm-row addon-row"><span class="cr-label">${a.name}</span><span class="cr-val">${fmt(p)}</span></div>`;
+      }).join('');
       successBox.innerHTML = `
         <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${state.service?.name}</span></div>
+        ${addonRowsSuccess}
         <div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${state.barber?.name}</span></div>
         <div class="confirm-row"><span class="cr-label">Schedule</span><span class="cr-val">${formatDate(state.date)}, ${state.time}</span></div>
         <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
