@@ -2,7 +2,7 @@
   "outputDirectory": ".",
   "functions": {
     "api/[...path].js": {
-      "maxDuration": 30,
+      "maxDuration": 60,
       "includeFiles": "server/**"
     },
     "api/ai/analyze.js": {

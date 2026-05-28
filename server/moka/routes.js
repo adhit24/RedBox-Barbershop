@@ -798,12 +798,12 @@ function createMokaRouter(supabase) {
         } else {
           const { data: tokens } = await supabase
             .from('moka_tokens').select('outlet_id');
-          for (const t of tokens || []) {
-            const result = await pullMokaToWeb(supabase, t.outlet_id).catch(err => ({
-              error: err.message, processed: 0, skipped: 0, errors: 1,
-            }));
-            results.push({ outletId: t.outlet_id, ...result });
-          }
+          const parallelResults = await Promise.all((tokens || []).map(t =>
+            pullMokaToWeb(supabase, t.outlet_id)
+              .then(r => ({ outletId: t.outlet_id, ...r }))
+              .catch(err => ({ outletId: t.outlet_id, error: err.message, processed: 0, skipped: 0, errors: 1 }))
+          ));
+          results.push(...parallelResults);
         }
         return results;
       };
@@ -831,12 +831,12 @@ function createMokaRouter(supabase) {
         } else {
           const { data: tokens } = await supabase
             .from('moka_tokens').select('outlet_id');
-          for (const t of tokens || []) {
-            const result = await pullMokaToWeb(supabase, t.outlet_id).catch(err => ({
-              error: err.message, processed: 0, skipped: 0, errors: 1,
-            }));
-            results.push({ outletId: t.outlet_id, ...result });
-          }
+          const parallelResults = await Promise.all((tokens || []).map(t =>
+            pullMokaToWeb(supabase, t.outlet_id)
+              .then(r => ({ outletId: t.outlet_id, ...r }))
+              .catch(err => ({ outletId: t.outlet_id, error: err.message, processed: 0, skipped: 0, errors: 1 }))
+          ));
+          results.push(...parallelResults);
         }
         return results;
       };
@@ -882,12 +882,12 @@ function createMokaRouter(supabase) {
         } else {
           const { data: tokens } = await supabase
             .from('moka_tokens').select('outlet_id');
-          for (const t of tokens || []) {
-            const result = await pullMokaToWeb(supabase, t.outlet_id).catch(err => ({
-              error: err.message, processed: 0, skipped: 0, errors: 1,
-            }));
-            results.push({ outletId: t.outlet_id, ...result });
-          }
+          const parallelResults = await Promise.all((tokens || []).map(t =>
+            pullMokaToWeb(supabase, t.outlet_id)
+              .then(r => ({ outletId: t.outlet_id, ...r }))
+              .catch(err => ({ outletId: t.outlet_id, error: err.message, processed: 0, skipped: 0, errors: 1 }))
+          ));
+          results.push(...parallelResults);
         }
         return results;
       };
