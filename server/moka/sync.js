@@ -315,10 +315,9 @@ async function _pullMokaToWebNow(supabase, outletId) {
   let processed = 0, skipped = 0, errors = 0;
 
   try {
-    // Fetch outlet's Moka outlet_id
     const { data: outlet } = await supabase
       .from('outlets')
-      .select('id, moka_outlet_id')
+      .select('id, moka_outlet_id, last_polled_at')
       .eq('id', outletId)
       .single();
 
@@ -329,109 +328,32 @@ async function _pullMokaToWebNow(supabase, outletId) {
 
     const client = await _getClient(supabase, outletId, outlet.moka_outlet_id);
 
-    // ── Pull 1: Completed transactions via Report API ──────────────────────
-    // Membawa walk-in yang sudah selesai + dibayar → menjadi schedule 'completed'
-    // Wrapped in its own try/catch so a 404 (e.g. outlet not on v3 plan) does
-    // not abort Pull 3 (open bills), which is critical for double-booking prevention.
+    // Hydrate in-memory cache from DB on cold start so we don't refetch 24h every invocation
+    if (!_lastSyncAt.has(outletId) && outlet.last_polled_at) {
+      _lastSyncAt.set(outletId, outlet.last_polled_at);
+    }
     const since = _lastSyncAt.get(outletId)
       || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    let orders = [];
-    try {
-      const response = await client.getOrders({ updatedSince: since, limit: 100 });
-      const rawOrders = response?.data?.payments || [];
-      orders = Array.isArray(rawOrders) ? rawOrders : [];
-    } catch (pull1Err) {
-      console.warn(`[Sync] Pull 1 (v3/reports) skipped for outlet ${outletId}: ${pull1Err.message}`);
-    }
+    // PARALLEL: Pull 1 (completed orders, may be slow on first run) and Pull 3 (open
+    // bills, time-critical for slot blocking) run concurrently so a slow Pull 1 cannot
+    // starve Pull 3 of the function's wall-clock budget.
+    const [pull1, pull3] = await Promise.all([
+      _runPull1Orders(supabase, client, outletId, since)
+        .catch(err => { console.warn(`[Sync] Pull 1 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; }),
+      _runPull3OpenBills(supabase, client, outletId)
+        .catch(err => { console.warn(`[Sync] Pull 3 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; }),
+    ]);
+    processed = pull1.processed + pull3.processed;
+    skipped   = pull1.skipped   + pull3.skipped;
+    errors    = pull1.errors    + pull3.errors;
 
-    for (const order of orders) {
-      try {
-        const result = await _processIncomingOrder(supabase, order, outletId);
-        if (result === 'skipped') skipped++;
-        else processed++;
-      } catch (orderErr) {
-        errors++;
-        console.error(`[Sync] Error processing Moka order ${order.id}:`, orderErr.message);
-        await supabase.from('sync_logs').insert({
-          direction:     'moka_to_web',
-          entity_type:   'order',
-          entity_id:     String(order.id),
-          payload:       order,
-          status:        'failed',
-          error_message: orderErr.message,
-        });
-      }
-    }
+    const polledAt = new Date().toISOString();
+    _lastSyncAt.set(outletId, polledAt);
+    const { error: persistErr } = await supabase
+      .from('outlets').update({ last_polled_at: polledAt }).eq('id', outletId);
+    if (persistErr) console.warn(`[Sync] persist last_polled_at failed: ${persistErr.message}`);
 
-    // Pull 2 REMOVED: GET /v1/advanced_orderings/orders does not exist in Moka API spec.
-    // Walk-in pending slots are covered by Pull 3 (sync_bills) below.
-
-    // ── Pull 3: Open (PENDING) walk-in bills from sync_bills ────────────────
-    // GoShow customer yang langsung dilayani kasir (bukan via Advanced Ordering).
-    // Slot harus terblokir di website segera, sebelum transaksi selesai.
-    //
-    // BUG FIX: start/end filter by bill *creation date*, not appointment date.
-    // Advance bills (e.g. "Onoy 14:00 Sabtu" created on Friday evening for Saturday)
-    // were missed because querying only today excluded bills created yesterday.
-    // Fix: query 7 days back → tomorrow in a single call to catch all advance bills.
-    try {
-      const WIB_MS = 7 * 60 * 60 * 1000;
-      const nowWIB      = Date.now() + WIB_MS;
-      const startWIB    = new Date(nowWIB - 7 * 86_400_000).toISOString().slice(0, 10);
-      const tomorrowWIB = new Date(nowWIB + 86_400_000).toISOString().slice(0, 10);
-
-      let billsRes;
-      try {
-        billsRes = await client.getOpenBills(startWIB, tomorrowWIB);
-      } catch (e) {
-        console.warn(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) failed (${e.message})`);
-        // CRITICAL FIX: Non-silent error logging to sync_logs for monitoring visibility
-        await supabase.from('sync_logs').insert({
-          direction: 'pull',
-          entity_type: 'moka_open_bills',
-          entity_id: `${outletId}_${startWIB}`,
-          status: 'failed',
-          error_message: `getOpenBills failed: ${e.message} (status: ${e.status || 'unknown'})`,
-          retry_count: 0,
-          created_at: new Date().toISOString(),
-        }).catch(() => {}); // Best-effort logging
-        billsRes = null;
-      }
-
-      if (billsRes) {
-        // Moka may return data as array (multi-bill) or object (single-bill) — normalize.
-        const rawData  = billsRes?.data;
-        const openBills = Array.isArray(rawData) ? rawData
-                        : (rawData && typeof rawData === 'object' && rawData.id) ? [rawData]
-                        : [];
-        if (!openBills.length) {
-          console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) returned 0 PENDING bills for outlet ${outletId}`);
-        } else {
-          // FIFO: sort by createdAt ASC supaya queue order benar saat
-          // 1 kapster melayani multiple goshow customer berurutan.
-          openBills.sort((a, b) => {
-            const ta = new Date(a.createdAt || a.created_at || 0).getTime();
-            const tb = new Date(b.createdAt || b.created_at || 0).getTime();
-            return ta - tb;
-          });
-          console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) → ${openBills.length} PENDING bill(s) for outlet ${outletId}`);
-          for (const bill of openBills) {
-            try {
-              const result = await _processOpenBill(supabase, bill, outletId, client);
-              if (result === 'skipped') skipped++;
-              else processed++;
-            } catch (bErr) {
-              console.warn(`[Sync] Open bill ${bill.id}:`, bErr.message);
-            }
-          }
-        }
-      }
-    } catch (billsErr) {
-      console.warn(`[Sync] getOpenBills error (${billsErr.message})`);
-    }
-
-    _lastSyncAt.set(outletId, new Date().toISOString());
     await _finishLog(supabase, logId, 'success', null, { processed, skipped, errors });
 
   } catch (err) {
@@ -441,6 +363,104 @@ async function _pullMokaToWebNow(supabase, outletId) {
     _syncLock.delete(outletId);
   }
 
+  return { processed, skipped, errors };
+}
+
+// Pull 1: Completed transactions via Report API. Walk-in yang sudah selesai → schedule 'completed'.
+// Slow path on cold start (up to 24h of orders). Safe to fail / partial — historical can backfill
+// on next tick. Each new order takes ~2-3s (customer + barber + schedule + transaction inserts).
+async function _runPull1Orders(supabase, client, outletId, since) {
+  let processed = 0, skipped = 0, errors = 0;
+  let orders = [];
+  try {
+    const response = await client.getOrders({ updatedSince: since, limit: 100 });
+    const rawOrders = response?.data?.payments || [];
+    orders = Array.isArray(rawOrders) ? rawOrders : [];
+  } catch (pull1Err) {
+    console.warn(`[Sync] Pull 1 (v3/reports) skipped for outlet ${outletId}: ${pull1Err.message}`);
+    return { processed, skipped, errors };
+  }
+
+  for (const order of orders) {
+    try {
+      const result = await _processIncomingOrder(supabase, order, outletId);
+      if (result === 'skipped') skipped++;
+      else processed++;
+    } catch (orderErr) {
+      errors++;
+      console.error(`[Sync] Error processing Moka order ${order.id}:`, orderErr.message);
+      await supabase.from('sync_logs').insert({
+        direction:     'moka_to_web',
+        entity_type:   'order',
+        entity_id:     String(order.id),
+        payload:       order,
+        status:        'failed',
+        error_message: orderErr.message,
+      }).catch(() => {});
+    }
+  }
+  return { processed, skipped, errors };
+}
+
+// Pull 3: Open (PENDING) walk-in bills from sync_bills. Time-critical for slot blocking —
+// GoShow customer yang langsung dilayani kasir harus segera blok slot di website.
+// start/end filter by bill *creation date* (not appointment date), so we query 7 days back →
+// tomorrow to catch advance bills (e.g. "Onoy 14:00 Sabtu" dibuat Jumat malam untuk Sabtu).
+async function _runPull3OpenBills(supabase, client, outletId) {
+  let processed = 0, skipped = 0, errors = 0;
+  const WIB_MS = 7 * 60 * 60 * 1000;
+  const nowWIB      = Date.now() + WIB_MS;
+  const startWIB    = new Date(nowWIB - 7 * 86_400_000).toISOString().slice(0, 10);
+  const tomorrowWIB = new Date(nowWIB + 86_400_000).toISOString().slice(0, 10);
+
+  let billsRes;
+  try {
+    billsRes = await client.getOpenBills(startWIB, tomorrowWIB);
+  } catch (e) {
+    console.warn(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) failed (${e.message})`);
+    await supabase.from('sync_logs').insert({
+      direction:     'pull',
+      entity_type:   'moka_open_bills',
+      entity_id:     `${outletId}_${startWIB}`,
+      status:        'failed',
+      error_message: `getOpenBills failed: ${e.message} (status: ${e.status || 'unknown'})`,
+      retry_count:   0,
+      created_at:    new Date().toISOString(),
+    }).catch(() => {});
+    return { processed, skipped, errors: errors + 1 };
+  }
+
+  if (!billsRes) return { processed, skipped, errors };
+
+  // Moka may return data as array (multi-bill) or object (single-bill) — normalize.
+  const rawData   = billsRes?.data;
+  const openBills = Array.isArray(rawData) ? rawData
+                  : (rawData && typeof rawData === 'object' && rawData.id) ? [rawData]
+                  : [];
+  if (!openBills.length) {
+    console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) returned 0 PENDING bills for outlet ${outletId}`);
+    return { processed, skipped, errors };
+  }
+
+  // FIFO: sort by createdAt ASC supaya queue order benar saat 1 kapster melayani
+  // multiple goshow customer berurutan.
+  openBills.sort((a, b) => {
+    const ta = new Date(a.createdAt || a.created_at || 0).getTime();
+    const tb = new Date(b.createdAt || b.created_at || 0).getTime();
+    return ta - tb;
+  });
+  console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) → ${openBills.length} PENDING bill(s) for outlet ${outletId}`);
+
+  for (const bill of openBills) {
+    try {
+      const result = await _processOpenBill(supabase, bill, outletId, client);
+      if (result === 'skipped') skipped++;
+      else processed++;
+    } catch (bErr) {
+      errors++;
+      console.warn(`[Sync] Open bill ${bill.id}:`, bErr.message);
+    }
+  }
   return { processed, skipped, errors };
 }
 
