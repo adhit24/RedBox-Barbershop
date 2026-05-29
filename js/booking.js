@@ -71,6 +71,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const preService = rawService === 'creambath' ? 'hair-spa' : rawService;
   const preBarber = params.get('barber');
   const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
+  // Home Service package: 'family' = Rp 200.000/orang (min 2), default 'single' = Rp 250.000/orang
+  const hsPackage = (params.get('pkg') || '').toLowerCase() === 'family' ? 'family' : 'single';
+  const HS_PRICE_SINGLE = 250000;
+  const HS_PRICE_FAMILY = 200000;
 
   // ── GROUP BOOKING STATE ────────────────────────
   // groupSize: 1 = solo (default), 2 = booking untuk 2 orang paralel di cabang sama
@@ -1832,15 +1836,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── HOME SERVICE MODE ────────────────────────
   if (isHomeService) {
-    // Pre-set service (Gentleman Grooming @ Rp 200.000, fixed home service rate)
+    const hsPrice = hsPackage === 'family' ? HS_PRICE_FAMILY : HS_PRICE_SINGLE;
+    const hsLabel = hsPackage === 'family' ? 'Family' : 'Single';
     state.service = {
       id: 'gentleman-grooming',
-      name: 'Gentleman Grooming (Home Service)',
-      price: 200000,
-      basePrice: 200000,
+      name: 'Gentleman Grooming (Home Service ' + hsLabel + ')',
+      price: hsPrice,
+      basePrice: hsPrice,
       csbPrice: null,
       duration: '60 menit',
     };
+    state.hsPackage = hsPackage;
+
+    // Family package = minimum 2 orang → otomatis aktifkan mode group booking
+    if (hsPackage === 'family') {
+      state.groupSize = 2;
+    }
 
     // Show address field in step 4
     const hsAddr = document.getElementById('hsAddressGroup');
@@ -1851,16 +1862,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Update sidebar hint
     const hint = document.getElementById('sidebarHint');
-    if (hint) hint.textContent = 'Pilih kapster untuk memulai';
+    if (hint) {
+      hint.textContent = hsPackage === 'family'
+        ? 'Paket Family — pilih kapster untuk 2 orang'
+        : 'Pilih kapster untuk memulai';
+    }
 
     // Update page title
-    document.title = 'Home Service Booking — Redbox Barbershop';
+    document.title = (hsPackage === 'family' ? 'Home Service Family' : 'Home Service Single') + ' Booking — Redbox Barbershop';
 
     // Update step 2 heading
     const step2Head = document.querySelector('#step2 .step-head h2');
     const step2Sub  = document.querySelector('#step2 .step-head p');
     if (step2Head) step2Head.textContent = 'Pilih Kapster';
-    if (step2Sub)  step2Sub.textContent  = 'Pilih kapster favorit yang akan datang ke rumah kamu.';
+    if (step2Sub) {
+      step2Sub.textContent = hsPackage === 'family'
+        ? 'Pilih kapster favorit yang akan datang untuk 2 orang ke rumah kamu.'
+        : 'Pilih kapster favorit yang akan datang ke rumah kamu.';
+    }
 
     // Jump directly to step 2 (skip service selection)
     updateSidebar();

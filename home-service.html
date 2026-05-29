@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Home Service — Redbox Barbershop</title>
-  <meta name="description" content="Kapster Redbox Barbershop datang ke rumah kamu. Gentleman Grooming premium, radius 5KM dari cabang, pilih kapster favorit. Rp 200.000." />
+  <meta name="description" content="Kapster Redbox Barbershop datang ke rumah kamu. Gentleman Grooming premium — Single Rp 250.000 atau Family Rp 200.000/orang (min 2). Radius 5KM dari cabang, pilih kapster favorit." />
   <meta name="theme-color" content="#0A0A0A" />
   <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -373,6 +373,241 @@
     .hs-cta-box p { font-size: .9rem; color: rgba(255,255,255,.52); margin-bottom: 32px; position: relative; }
     .hs-cta-box .btn-hero-primary { font-size: .9rem; padding: 16px 40px; position: relative; }
 
+    /* ── PRICING TIERS (Single vs Family) ─────────── */
+    :root {
+      --spring-soft: cubic-bezier(0.34, 1.56, 0.64, 1);
+      --spring-firm: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    @keyframes hs-tier-in {
+      0%   { opacity: 0; transform: translateY(36px) scale(.94); filter: blur(6px); }
+      60%  { filter: blur(0); }
+      100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+    }
+    @keyframes hs-ribbon-shine {
+      0%   { transform: translateX(-120%) skewX(-18deg); }
+      100% { transform: translateX(240%)  skewX(-18deg); }
+    }
+    @keyframes hs-badge-float {
+      0%,100% { transform: translateY(0); }
+      50%     { transform: translateY(-3px); }
+    }
+    @keyframes hs-tier-aura {
+      0%,100% { opacity: .35; transform: translate(-50%, -50%) scale(1); }
+      50%     { opacity: .7;  transform: translate(-50%, -50%) scale(1.08); }
+    }
+    @keyframes hs-save-pop {
+      0%   { transform: scale(.6) rotate(-8deg); opacity: 0; }
+      60%  { transform: scale(1.12) rotate(2deg); opacity: 1; }
+      100% { transform: scale(1) rotate(-4deg); opacity: 1; }
+    }
+
+    .hs-pricing { padding: 96px 0 80px; position: relative; }
+    .hs-pricing-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+      max-width: 920px; margin: 0 auto; align-items: stretch;
+      perspective: 1400px;
+    }
+    .hs-tier {
+      --tier-accent: rgba(255,255,255,.12);
+      position: relative;
+      display: flex; flex-direction: column; gap: 22px;
+      padding: 36px 30px 32px;
+      background: linear-gradient(165deg, rgba(255,255,255,.04) 0%, rgba(255,255,255,.015) 100%);
+      border: 1px solid var(--tier-accent);
+      border-radius: 22px;
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      transform-style: preserve-3d;
+      opacity: 0; transform: translateY(36px) scale(.94);
+      transition:
+        transform .55s var(--spring-soft),
+        border-color .35s ease,
+        box-shadow .45s ease,
+        background .35s ease;
+      will-change: transform;
+    }
+    .hs-tier.is-visible {
+      animation: hs-tier-in .9s var(--spring-soft) forwards;
+    }
+    .hs-tier:nth-child(1).is-visible { animation-delay: .05s; }
+    .hs-tier:nth-child(2).is-visible { animation-delay: .18s; }
+
+    .hs-tier:hover {
+      transform: translateY(-6px) scale(1.012);
+      border-color: rgba(255,255,255,.18);
+      box-shadow:
+        0 1px 0 rgba(255,255,255,.06) inset,
+        0 22px 56px -22px rgba(0,0,0,.55);
+    }
+
+    /* Featured (Family) */
+    .hs-tier--featured {
+      --tier-accent: rgba(193,18,31,.5);
+      background:
+        radial-gradient(120% 100% at 50% 0%, rgba(193,18,31,.18) 0%, transparent 55%),
+        linear-gradient(165deg, rgba(193,18,31,.08) 0%, rgba(20,8,10,.5) 100%);
+      box-shadow:
+        0 1px 0 rgba(255,255,255,.07) inset,
+        0 0 0 1px rgba(193,18,31,.25),
+        0 24px 60px -28px rgba(193,18,31,.45);
+    }
+    .hs-tier--featured::before {
+      content: ''; position: absolute; top: -1px; left: 18%; right: 18%; height: 2px;
+      background: linear-gradient(90deg, transparent, #E63946, transparent);
+      border-radius: 2px; pointer-events: none;
+    }
+    .hs-tier--featured::after {
+      content: ''; position: absolute; top: 50%; left: 50%;
+      width: 320px; height: 240px; border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(193,18,31,.22), transparent 70%);
+      filter: blur(34px); pointer-events: none; z-index: 0;
+      animation: hs-tier-aura 5s ease-in-out infinite;
+    }
+    .hs-tier--featured > * { position: relative; z-index: 1; }
+    .hs-tier--featured:hover {
+      transform: translateY(-8px) scale(1.018);
+      box-shadow:
+        0 1px 0 rgba(255,255,255,.1) inset,
+        0 0 0 1px rgba(193,18,31,.45),
+        0 36px 80px -28px rgba(193,18,31,.6);
+    }
+
+    /* Ribbon */
+    .hs-tier-ribbon {
+      position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 16px; border-radius: 99px;
+      background: linear-gradient(135deg, #E63946 0%, #C1121F 100%);
+      color: #fff; font-size: .68rem; font-weight: 800;
+      letter-spacing: .14em; text-transform: uppercase;
+      box-shadow: 0 8px 22px -6px rgba(193,18,31,.7), 0 0 0 1px rgba(255,255,255,.08) inset;
+      overflow: hidden; z-index: 2;
+      animation: hs-badge-float 3.2s ease-in-out infinite;
+    }
+    .hs-tier-ribbon::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%);
+      animation: hs-ribbon-shine 3.6s ease-in-out infinite;
+      pointer-events: none;
+    }
+    .hs-tier-ribbon svg { width: 11px; height: 11px; }
+
+    /* Header */
+    .hs-tier-head { display: flex; flex-direction: column; gap: 8px; }
+    .hs-tier-eyebrow {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: .68rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: rgba(255,255,255,.48);
+    }
+    .hs-tier--featured .hs-tier-eyebrow { color: rgba(230,57,70,.95); }
+    .hs-tier-eyebrow svg { width: 12px; height: 12px; }
+    .hs-tier-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.85rem; letter-spacing: .04em; color: #F0F0F0; line-height: 1;
+    }
+    .hs-tier-tag {
+      font-size: .82rem; color: rgba(255,255,255,.55); line-height: 1.55;
+    }
+
+    /* Price block */
+    .hs-tier-price {
+      display: flex; align-items: baseline; gap: 8px;
+      padding: 18px 0 14px;
+      border-top: 1px dashed rgba(255,255,255,.08);
+      border-bottom: 1px dashed rgba(255,255,255,.08);
+      font-variant-numeric: tabular-nums;
+    }
+    .hs-tier-price .currency {
+      font-family: 'Inter', sans-serif; font-size: .92rem; font-weight: 600;
+      color: rgba(255,255,255,.55);
+    }
+    .hs-tier-price .amount {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2.5rem, 5.4vw, 3.4rem);
+      letter-spacing: .02em; line-height: 1; color: #F0F0F0;
+    }
+    .hs-tier--featured .hs-tier-price .amount {
+      background: linear-gradient(135deg, #fff 0%, #E63946 70%, #C1121F 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: hs-txt-shift 5s ease infinite;
+    }
+    .hs-tier-price .unit {
+      font-size: .78rem; color: rgba(255,255,255,.5); margin-left: 2px;
+    }
+    .hs-tier-savings {
+      position: relative;
+      align-self: flex-start;
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: -6px; padding: 5px 12px;
+      background: rgba(74,222,128,.12); border: 1px solid rgba(74,222,128,.32);
+      border-radius: 99px;
+      font-size: .72rem; font-weight: 700; color: #4ade80; letter-spacing: .04em;
+      animation: hs-save-pop .7s var(--spring-soft) .3s both;
+    }
+    .hs-tier-savings svg { width: 11px; height: 11px; }
+
+    /* Perks */
+    .hs-tier-perks { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+    .hs-tier-perks li {
+      display: flex; align-items: flex-start; gap: 12px;
+      font-size: .85rem; color: rgba(255,255,255,.72); line-height: 1.5;
+    }
+    .hs-tier-perks li svg {
+      width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0;
+      color: rgba(255,255,255,.4);
+      transition: color .25s ease, transform .35s var(--spring-soft);
+    }
+    .hs-tier--featured .hs-tier-perks li svg { color: #E63946; }
+    .hs-tier:hover .hs-tier-perks li svg { transform: scale(1.15); }
+    .hs-tier-perks li strong { color: #F0F0F0; font-weight: 600; }
+
+    /* CTA inside tier */
+    .hs-tier-cta {
+      margin-top: auto;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 14px 20px; border-radius: 14px;
+      font-size: .82rem; font-weight: 700; text-decoration: none;
+      letter-spacing: .05em; text-transform: uppercase;
+      transition: transform .25s var(--spring-firm), background .25s ease, box-shadow .3s ease, border-color .25s ease;
+      cursor: pointer; position: relative; overflow: hidden;
+    }
+    .hs-tier-cta::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,.18) 50%, transparent 75%);
+      transform: translateX(-100%); pointer-events: none;
+    }
+    .hs-tier-cta:hover::after { animation: rb-shimmer .55s ease forwards; }
+    .hs-tier-cta:active { transform: scale(.97); }
+
+    .hs-tier--standard .hs-tier-cta {
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.14);
+      color: #F0F0F0;
+    }
+    .hs-tier--standard .hs-tier-cta:hover {
+      background: rgba(255,255,255,.1);
+      border-color: rgba(255,255,255,.28);
+      transform: translateY(-2px);
+    }
+    .hs-tier--featured .hs-tier-cta {
+      background: linear-gradient(135deg, #E63946 0%, #C1121F 100%);
+      color: #fff;
+      box-shadow: 0 10px 28px -8px rgba(193,18,31,.55), 0 0 0 1px rgba(255,255,255,.08) inset;
+    }
+    .hs-tier--featured .hs-tier-cta:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 38px -10px rgba(193,18,31,.7), 0 0 0 1px rgba(255,255,255,.14) inset;
+    }
+    .hs-tier-cta svg { width: 15px; height: 15px; }
+
+    /* Footnote under pricing */
+    .hs-pricing-note {
+      max-width: 920px; margin: 28px auto 0; text-align: center;
+      font-size: .76rem; color: rgba(255,255,255,.42); letter-spacing: .02em;
+    }
+    .hs-pricing-note strong { color: rgba(255,255,255,.7); }
+
     /* ── CONTAINER & DIVIDER ──────────────────────── */
     .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
     .rb-divider { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 0; }
@@ -383,11 +618,15 @@
       .hs-steps::before { display: none; }
       .hs-coverage-grid { grid-template-columns: 1fr; }
       .hs-cta-box { padding: 40px 24px; }
+      .hs-pricing { padding: 64px 0 56px; }
+      .hs-pricing-grid { grid-template-columns: 1fr; gap: 22px; max-width: 440px; }
+      .hs-tier { padding: 32px 24px 28px; }
     }
     @media (max-width: 480px) {
       .hs-steps { grid-template-columns: 1fr; }
       .hs-hero-price-tag { flex-direction: column; gap: 8px; }
       .hs-price-divider { width: 40px; height: 1px; }
+      .hs-tier-name { font-size: 1.6rem; }
     }
 
     /* ── REDUCED MOTION ───────────────────────────── */
@@ -399,6 +638,7 @@
       }
       .hs-reveal { opacity: 1 !important; transform: none !important; }
       .hs-steps::before { transform: scaleX(1) !important; }
+      .hs-tier { opacity: 1 !important; transform: none !important; filter: none !important; }
     }
   </style>
 </head>
@@ -419,7 +659,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
           Kembali
         </a>
-        <a href="booking.html?type=homeservice" class="hs-nav-book">Pesan Sekarang</a>
+        <a href="#pricing" class="hs-nav-book">Pesan Sekarang</a>
       </div>
     </div>
   </nav>
@@ -433,21 +673,136 @@
       </div>
       <h1 id="hs-hero-heading" class="hs-hero-title">Kapster Redbox<br><em>Datang ke Rumah Kamu</em></h1>
       <p class="hs-hero-sub">Tidak perlu ke salon. Kapster profesional Redbox Barbershop hadir langsung ke lokasi kamu — kenyamanan rumah, kualitas barbershop premium.</p>
-      <div class="hs-hero-price-tag" aria-label="Harga layanan Rp 200.000 Gentleman Grooming">
-        <div class="hs-price-main">Rp 200.000</div>
+      <div class="hs-hero-price-tag" aria-label="Mulai dari Rp 200.000 per orang">
+        <div class="hs-price-main">Mulai Rp 200K</div>
         <div class="hs-price-divider" aria-hidden="true"></div>
         <div class="hs-price-detail">
           <strong>Gentleman Grooming</strong>
-          <span>Haircut presisi · Fade modern · Finish styling</span>
+          <span>2 pilihan paket · Single &amp; Family</span>
         </div>
       </div>
       <div class="hs-hero-cta">
-        <a href="booking.html?type=homeservice" class="btn-hero-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          Booking Sekarang
+        <a href="#pricing" class="btn-hero-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Lihat Paket
         </a>
         <a href="#cara-kerja" class="btn-hero-secondary">Cara Kerja ↓</a>
       </div>
+    </div>
+  </section>
+
+  <hr class="rb-divider" aria-hidden="true">
+
+  <!-- ========== PRICING TIERS ========== -->
+  <section class="hs-pricing" id="pricing" aria-labelledby="hs-pricing-heading">
+    <div class="container">
+      <div class="hs-section-header hs-reveal">
+        <span class="hs-section-label">Pilih Paket</span>
+        <h2 id="hs-pricing-heading" class="hs-section-title">Single atau Family — <em style="color:#C1121F; font-style:normal;">Kamu Pilih</em></h2>
+        <p class="hs-section-sub">Dua cara menikmati Gentleman Grooming di rumah. Datang ramai-ramai? Lebih hemat per orang.</p>
+      </div>
+
+      <div class="hs-pricing-grid" role="list">
+
+        <!-- ── SINGLE ── -->
+        <article class="hs-tier hs-tier--standard hs-reveal" role="listitem" aria-labelledby="tier-single-name">
+          <header class="hs-tier-head">
+            <span class="hs-tier-eyebrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
+              Untuk 1 Orang
+            </span>
+            <h3 class="hs-tier-name" id="tier-single-name">Home Service Single</h3>
+            <p class="hs-tier-tag">Sesi private. Kamu sendiri, kapster Redbox datang ke rumah.</p>
+          </header>
+
+          <div class="hs-tier-price" aria-label="Rp 250.000 per orang">
+            <span class="currency">Rp</span>
+            <span class="amount">250.000</span>
+            <span class="unit">/ orang</span>
+          </div>
+
+          <ul class="hs-tier-perks">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Gentleman Grooming</strong> — haircut presisi, fade modern, finish styling</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Pilih kapster favorit dari 5 cabang</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Biaya kunjungan kapster sudah termasuk</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Durasi sekitar 60 menit</span>
+            </li>
+          </ul>
+
+          <a href="booking.html?type=homeservice&amp;pkg=single" class="hs-tier-cta">
+            Booking Single
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </a>
+        </article>
+
+        <!-- ── FAMILY (FEATURED) ── -->
+        <article class="hs-tier hs-tier--featured hs-reveal" role="listitem" aria-labelledby="tier-family-name">
+          <span class="hs-tier-ribbon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/></svg>
+            Paling Hemat
+          </span>
+
+          <header class="hs-tier-head">
+            <span class="hs-tier-eyebrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Minimal 2 Orang
+            </span>
+            <h3 class="hs-tier-name" id="tier-family-name">Home Service Family</h3>
+            <p class="hs-tier-tag">Sesi bareng keluarga atau teman — satu kunjungan, semua kelar.</p>
+          </header>
+
+          <div class="hs-tier-price" aria-label="Rp 200.000 per orang, minimal 2 orang">
+            <span class="currency">Rp</span>
+            <span class="amount">200.000</span>
+            <span class="unit">/ orang</span>
+          </div>
+
+          <span class="hs-tier-savings" aria-label="Hemat Rp 50.000 per orang dibanding Single">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Hemat Rp 50.000 / orang
+          </span>
+
+          <ul class="hs-tier-perks">
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Gentleman Grooming</strong> untuk setiap orang</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>Minimal 2 orang</strong> · cocok untuk keluarga, sahabat, atau team</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Pilih kapster favorit · 1 kunjungan, semua tuntas</span>
+            </li>
+            <li>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Biaya kunjungan kapster sudah termasuk</span>
+            </li>
+          </ul>
+
+          <a href="booking.html?type=homeservice&amp;pkg=family" class="hs-tier-cta">
+            Booking Family
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </a>
+        </article>
+
+      </div>
+
+      <p class="hs-pricing-note">
+        Semua paket sudah termasuk <strong>biaya kunjungan kapster</strong>. Radius maksimal 5 KM dari cabang terdekat.
+      </p>
     </div>
   </section>
 
@@ -621,9 +976,9 @@
                 Layanan mencakup wilayah Kota/Kab. Cirebon &amp; Kota Tegal
               </div>
             </div>
-            <a href="booking.html?type=homeservice" class="btn-hero-primary" style="justify-content:center;">
+            <a href="#pricing" class="btn-hero-primary" style="justify-content:center;">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-              Booking Home Service
+              Pilih Paket
             </a>
           </div>
         </div>
@@ -650,7 +1005,7 @@
             <svg class="hs-faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
           <div class="hs-faq-body" aria-hidden="true">
-            <p>Rp 200.000 untuk layanan Gentleman Grooming — sudah termasuk haircut presisi, fade modern, dan finish styling. Biaya kunjungan sudah termasuk dalam harga tersebut.</p>
+            <p>Ada 2 paket: <strong>Single Rp 250.000/orang</strong> untuk sesi private, atau <strong>Family Rp 200.000/orang</strong> (minimal 2 orang) — hemat Rp 50.000 per orang. Semua paket sudah termasuk Gentleman Grooming (haircut presisi, fade modern, finish styling) dan biaya kunjungan kapster.</p>
           </div>
         </div>
 
@@ -716,9 +1071,9 @@
       <div class="hs-cta-box hs-reveal">
         <h2 id="hs-cta-heading">Siap Grooming<br><em>dari Rumah Kamu?</em></h2>
         <p>Kapster profesional Redbox siap hadir. Pilih jadwal, pilih kapster — kami yang datang.</p>
-        <a href="booking.html?type=homeservice" class="btn-hero-primary">
+        <a href="#pricing" class="btn-hero-primary">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          Booking Home Service — Rp 200.000
+          Pilih Paket — Mulai Rp 200K
         </a>
       </div>
     </div>
