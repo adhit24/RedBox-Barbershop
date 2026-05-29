@@ -268,55 +268,174 @@
   </section>
 
   <!-- ========== HOME SERVICE ========== -->
-  <section class="home-service-section" id="home-service">
+  <section class="home-service-section" id="home-service" aria-labelledby="hs-heading">
     <div class="container">
-      <div class="hs-banner">
-        <div class="hs-content">
-          <h2 class="hs-title">Kapster Datang <em>ke Rumah Kamu</em></h2>
-          <p class="hs-desc">Nikmati Gentleman Grooming premium tanpa harus keluar rumah. Kapster profesional Redbox siap hadir langsung ke lokasi kamu — pilih kapster favorit, tentukan waktu, kami yang datang.</p>
-          <div class="hs-highlights">
-            <div class="hs-highlight-item">
-              <img class="hs-fl-icon" src="Brand_assets/price-tag.png" alt="" aria-hidden="true" width="28" height="28">
-              <div>
-                <strong>Mulai Rp 200.000</strong>
-                <span>Single Rp 250K · Family Rp 200K/org (min 2)</span>
-              </div>
-            </div>
-            <div class="hs-highlight-item">
-              <img class="hs-fl-icon" src="Brand_assets/measure-distance.png" alt="" aria-hidden="true" width="28" height="28">
-              <div>
-                <strong>Radius 5 KM</strong>
-                <span>Dari cabang terdekat</span>
-              </div>
-            </div>
-            <div class="hs-highlight-item">
-              <img class="hs-fl-icon" src="Brand_assets/barbershop.png" alt="" aria-hidden="true" width="28" height="28">
-              <div>
-                <strong>Pilih Kapster</strong>
-                <span>5 cabang tersedia</span>
-              </div>
-            </div>
-            <div class="hs-highlight-item">
-              <img class="hs-fl-icon" src="Brand_assets/map.png" alt="" aria-hidden="true" width="28" height="28">
-              <div>
-                <strong>Cirebon & Tegal</strong>
-                <span>Bypass · Samadikun · CSB · Sumber · Tegal</span>
-              </div>
-            </div>
-          </div>
-          <div class="hs-actions">
-            <a href="home-service.html" class="btn-hs-primary">Pesan Home Service</a>
-            <a href="home-service.html#cara-kerja" class="btn-hs-secondary">Cara Kerja →</a>
-          </div>
+      <article class="hs-card" id="hsCard" aria-labelledby="hs-heading">
+
+        <!-- ── ATMOSPHERIC LAYERS ── -->
+        <div class="hs-card__atmos" aria-hidden="true">
+          <span class="hs-card__mesh"></span>
+          <span class="hs-card__grid"></span>
+          <span class="hs-card__orb hs-card__orb--a"></span>
+          <span class="hs-card__orb hs-card__orb--b"></span>
+          <span class="hs-card__trace"></span>
         </div>
-        <div class="hs-visual">
-          <div class="hs-visual-inner">
-            <img class="hs-icon-main" src="https://cdn-icons-png.flaticon.com/512/94/94055.png" alt="Barber" width="120" height="120">
+
+        <div class="hs-card__inner">
+
+          <!-- ── LEFT: CONTENT ── -->
+          <div class="hs-card__content">
+
+            <div class="hs-card__eyebrow">
+              <span class="hs-card__pulse" aria-hidden="true"></span>
+              <span>Layanan Baru</span>
+              <span class="hs-card__eyebrow-sep" aria-hidden="true">·</span>
+              <span class="hs-card__eyebrow-meta">Home Service</span>
+            </div>
+
+            <h2 id="hs-heading" class="hs-card__title">
+              Kapster Datang
+              <em>ke Rumahmu</em>
+            </h2>
+
+            <p class="hs-card__desc">
+              Gentleman Grooming kelas barbershop — tanpa keluar rumah. Pilih kapster favorit, kami yang datang.
+            </p>
+
+            <!-- ── DUAL PRICING TIERS ── -->
+            <div class="hs-card__tiers" role="list">
+              <div class="hs-card__tier" role="listitem">
+                <span class="hs-card__tier-label">Single</span>
+                <div class="hs-card__tier-price">
+                  <span class="cur">Rp</span><span class="num">250<em>K</em></span>
+                </div>
+                <span class="hs-card__tier-foot">per orang</span>
+              </div>
+              <div class="hs-card__tier hs-card__tier--featured" role="listitem">
+                <span class="hs-card__tier-flag" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.39 7.36H22l-6.19 4.5 2.39 7.36L12 16.72l-6.2 4.5 2.39-7.36L2 9.36h7.61z"/></svg>
+                  Hemat Rp 50K
+                </span>
+                <span class="hs-card__tier-label">Family</span>
+                <div class="hs-card__tier-price">
+                  <span class="cur">Rp</span><span class="num">200<em>K</em></span>
+                </div>
+                <span class="hs-card__tier-foot">/orang · min 2</span>
+              </div>
+            </div>
+
+            <!-- ── PERKS ── -->
+            <ul class="hs-card__perks" role="list">
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                <span>Radius 5 KM</span>
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>
+                <span>5 Cabang</span>
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                <span>Pilih Kapster</span>
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span>Cirebon &amp; Tegal</span>
+              </li>
+            </ul>
+
+            <!-- ── CTAs ── -->
+            <div class="hs-card__cta">
+              <a href="home-service.html#pricing" class="hs-card__btn hs-card__btn--primary">
+                <span class="hs-card__btn-text">Pesan Sekarang</span>
+                <span class="hs-card__btn-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                </span>
+              </a>
+              <a href="home-service.html#cara-kerja" class="hs-card__btn hs-card__btn--ghost">
+                Cara Kerja
+                <span aria-hidden="true">↓</span>
+              </a>
+            </div>
           </div>
+
+          <!-- ── RIGHT: COVERAGE RADAR ── -->
+          <div class="hs-card__visual" aria-hidden="true">
+            <div class="hs-radar">
+              <span class="hs-radar__ring hs-radar__ring--1"></span>
+              <span class="hs-radar__ring hs-radar__ring--2"></span>
+              <span class="hs-radar__ring hs-radar__ring--3"></span>
+              <span class="hs-radar__sweep"></span>
+              <div class="hs-radar__core">
+                <strong>5 KM</strong>
+                <small>radius</small>
+              </div>
+              <span class="hs-radar__node hs-radar__node--1"><i></i></span>
+              <span class="hs-radar__node hs-radar__node--2"><i></i></span>
+              <span class="hs-radar__node hs-radar__node--3"><i></i></span>
+              <span class="hs-radar__node hs-radar__node--4"><i></i></span>
+              <span class="hs-radar__node hs-radar__node--5"><i></i></span>
+            </div>
+            <div class="hs-radar__legend">
+              <span><i class="dot dot--core"></i> Cabang Redbox</span>
+              <span><i class="dot dot--area"></i> Area cover 5 KM</span>
+            </div>
+          </div>
+
         </div>
-      </div>
+      </article>
     </div>
   </section>
+
+  <script>
+    /* ── Home Service card: tilt + entrance reveal ── */
+    (function(){
+      var card = document.getElementById('hsCard');
+      if (!card) return;
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      /* Entrance reveal once in view */
+      if ('IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function(entries){
+          entries.forEach(function(e){
+            if (e.isIntersecting) {
+              card.classList.add('is-revealed');
+              io.unobserve(card);
+            }
+          });
+        }, { threshold: 0.18, rootMargin: '0px 0px -60px 0px' });
+        io.observe(card);
+      } else {
+        card.classList.add('is-revealed');
+      }
+
+      if (reduce) return;
+      if (window.matchMedia('(hover: none)').matches) return; /* skip on touch */
+
+      /* Subtle 3D tilt on mouse move */
+      var raf = null, tx = 0, ty = 0;
+      var MAX = 4; /* deg */
+      function onMove(ev){
+        var r = card.getBoundingClientRect();
+        var px = (ev.clientX - r.left) / r.width;  /* 0..1 */
+        var py = (ev.clientY - r.top)  / r.height;
+        tx = (py - 0.5) * -MAX;
+        ty = (px - 0.5) *  MAX;
+        if (!raf) raf = requestAnimationFrame(apply);
+      }
+      function apply(){
+        raf = null;
+        card.style.setProperty('--tx', tx.toFixed(2) + 'deg');
+        card.style.setProperty('--ty', ty.toFixed(2) + 'deg');
+      }
+      function onLeave(){
+        tx = 0; ty = 0;
+        if (!raf) raf = requestAnimationFrame(apply);
+      }
+      card.addEventListener('mousemove', onMove);
+      card.addEventListener('mouseleave', onLeave);
+    })();
+  </script>
 
   <hr class="rb-divider" aria-hidden="true">
 
