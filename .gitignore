@@ -100,3 +100,7 @@ server/test_sheet.js
 
 # Moka customer exports — contains PII, never commit
 customer-export-*.csv
+
+# Local manual trigger scripts (dev only)
+run-reengagement-now.js
+server/run-reengagement-now.js
