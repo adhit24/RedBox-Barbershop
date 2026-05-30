@@ -52,8 +52,7 @@
   },
   "crons": [
     { "path": "/api/cron/reminders",           "schedule": "0 3 * * *" },
-    { "path": "/api/cron/birthday",            "schedule": "0 1 * * *" },
-    { "path": "/api/cron/home-service-flag",   "schedule": "*/15 * * * *" }
+    { "path": "/api/cron/birthday",            "schedule": "0 1 * * *" }
   ],
   "rewrites": [
     { "source": "/api/ai/analyze",              "destination": "/api/ai/analyze.js" },
