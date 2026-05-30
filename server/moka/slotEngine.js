@@ -30,15 +30,17 @@ async function getAvailableSlots(supabase, {
   durationMinutes,
   barberId = null,
   timezone = 'Asia/Jakarta',
+  type = 'outlet',
 }) {
   // ── 1. Load barbers for this outlet ───────────────────────
   const barbersQuery = supabase
     .from('barbers')
-    .select('id, name, is_active')
+    .select('id, name, is_active, home_service_enabled')
     .eq('outlet_id', outletId)
     .eq('is_active', true);
 
   if (barberId) barbersQuery.eq('id', barberId);
+  if (type === 'home_service') barbersQuery.eq('home_service_enabled', true);
 
   const { data: barbers, error: barbersErr } = await barbersQuery;
   if (barbersErr) throw new Error(`Barbers fetch failed: ${barbersErr.message}`);
@@ -116,9 +118,12 @@ async function getAvailableSlots(supabase, {
   for (const barber of barbers) {
     const wh = workingHoursMap[barber.id];
 
-    // Use working hours from DB, or fall back to outlet defaults (09:00–21:00)
-    const openTime  = (wh && !wh.is_off) ? wh.open_time  : '09:00';
-    const closeTime = (wh && !wh.is_off) ? wh.close_time : '21:00';
+    // Home service: 06:00–23:00 WIB regardless of outlet hours
+    // Outlet: use configured hours, fall back to 10:00–21:00
+    const openTime  = type === 'home_service' ? '06:00'
+      : ((wh && !wh.is_off) ? wh.open_time  : '10:00');
+    const closeTime = type === 'home_service' ? '23:00'
+      : ((wh && !wh.is_off) ? wh.close_time : '21:00');
 
     // If barber is off this day, skip
     if (wh?.is_off) continue;

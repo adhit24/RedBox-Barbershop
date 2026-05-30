@@ -27,6 +27,7 @@ const { randomUUID }   = require('crypto');
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
 const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
+const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
 
 // NOTE: member_profiles dulu di project terpisah ('adhit24's Project',
 // gtiggsilfcivuzowaexq) tapi dihapus 2026-05-28. Sekarang consolidated ke
@@ -55,7 +56,7 @@ function createMokaRouter(supabase) {
   // ]
   router.get('/availability', async (req, res) => {
     try {
-      const { outletId: rawOutletId, date, serviceId, durationMinutes, barberId } = req.query;
+      const { outletId: rawOutletId, date, serviceId, durationMinutes, barberId, type } = req.query;
 
       if (!rawOutletId) return res.status(400).json({ error: 'outletId is required' });
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date))
@@ -82,6 +83,7 @@ function createMokaRouter(supabase) {
         date,
         durationMinutes: duration,
         barberId:        barberId || null,
+        type:            type || 'outlet',
       });
 
       res.json({
@@ -439,6 +441,21 @@ function createMokaRouter(supabase) {
       });
     } catch (err) {
       _serverError(res, err);
+    }
+  });
+
+  // ── POST /api/home-service/reschedule ────────────────────
+  router.post('/home-service/reschedule', async (req, res) => {
+    try {
+      const { jobId, newStartTime } = req.body;
+      if (!jobId || !newStartTime) {
+        return res.status(400).json({ error: 'jobId and newStartTime are required' });
+      }
+      const result = await homeServiceReschedule(supabase, { jobId, newStartTime });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      const status = err.statusCode || 500;
+      res.status(status).json({ error: err.message });
     }
   });
 

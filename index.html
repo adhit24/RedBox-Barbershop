@@ -437,6 +437,178 @@
     })();
   </script>
 
+  <!-- ========== WEDDING ========== -->
+  <style>
+    .wedding-section { padding: 0 0 72px; }
+    .wedding-card {
+      position: relative; overflow: hidden;
+      border: 1px solid rgba(212,160,23,.22);
+      border-radius: 24px;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212,160,23,.1) 0%, transparent 60%),
+        linear-gradient(165deg, rgba(212,160,23,.05) 0%, rgba(10,10,10,.8) 100%);
+      padding: 48px 52px 44px;
+      box-shadow: 0 0 0 1px rgba(212,160,23,.1) inset, 0 32px 80px -32px rgba(212,160,23,.22);
+      transition: border-color .35s ease, box-shadow .4s ease;
+    }
+    .wedding-card::before {
+      content: ''; position: absolute; top: 0; left: 18%; right: 18%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(245,158,11,.45), transparent);
+      pointer-events: none;
+    }
+    .wedding-card:hover {
+      border-color: rgba(212,160,23,.38);
+      box-shadow: 0 0 0 1px rgba(212,160,23,.18) inset, 0 40px 96px -32px rgba(212,160,23,.32);
+    }
+    .wedding-card__inner {
+      display: grid; grid-template-columns: 1fr auto; gap: 56px; align-items: center;
+    }
+    .wedding-card__eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(212,160,23,.12); border: 1px solid rgba(212,160,23,.28);
+      border-radius: 99px; padding: 6px 16px;
+      font-size: .72rem; font-weight: 700; color: #F59E0B; letter-spacing: .1em; text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .wedding-card__title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      letter-spacing: .04em; line-height: 1.05; margin-bottom: 16px;
+    }
+    .wedding-card__title em {
+      background: linear-gradient(135deg, #F59E0B 0%, #D4A017 50%, #F59E0B 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; font-style: normal;
+    }
+    .wedding-card__desc {
+      font-size: .92rem; color: rgba(255,255,255,.55); max-width: 500px; line-height: 1.72; margin-bottom: 28px;
+    }
+    .wedding-card__tiers {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px;
+    }
+    .wedding-card__tier {
+      border: 1px solid rgba(212,160,23,.22); border-radius: 14px;
+      padding: 12px 18px; display: flex; flex-direction: column; gap: 3px; min-width: 118px;
+      transition: border-color .2s ease, background .2s ease;
+    }
+    .wedding-card__tier:hover {
+      border-color: rgba(212,160,23,.42);
+      background: rgba(212,160,23,.06);
+    }
+    .wedding-card__tier-label {
+      font-size: .66rem; font-weight: 700; color: rgba(212,160,23,.7); letter-spacing: .12em; text-transform: uppercase;
+    }
+    .wedding-card__tier-price {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.45rem; letter-spacing: .03em; color: #F0F0F0;
+    }
+    .wedding-card__tier-sub { font-size: .67rem; color: rgba(255,255,255,.4); }
+    .wedding-card__cta { display: flex; gap: 12px; flex-wrap: wrap; }
+    .wedding-card__btn--primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 13px 28px; border-radius: 99px;
+      background: linear-gradient(135deg, #F59E0B 0%, #D4A017 100%);
+      color: #0A0A0A; font-size: .8rem; font-weight: 800;
+      text-decoration: none; letter-spacing: .06em; text-transform: uppercase;
+      transition: transform .2s ease, box-shadow .25s ease;
+      box-shadow: 0 8px 24px -8px rgba(212,160,23,.48);
+      position: relative; overflow: hidden;
+    }
+    .wedding-card__btn--primary::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,.22) 50%, transparent 75%);
+      transform: translateX(-100%); pointer-events: none;
+    }
+    .wedding-card__btn--primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px -10px rgba(212,160,23,.62); }
+    .wedding-card__btn--primary:hover::after { animation: rb-shimmer .55s ease forwards; }
+    .wedding-card__btn--ghost {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 13px 22px; border-radius: 99px;
+      border: 1px solid rgba(212,160,23,.28); color: rgba(212,160,23,.75);
+      font-size: .8rem; font-weight: 600;
+      text-decoration: none; letter-spacing: .04em;
+      transition: border-color .2s ease, color .2s ease;
+    }
+    .wedding-card__btn--ghost:hover { border-color: rgba(212,160,23,.55); color: #F59E0B; }
+    .wedding-card__visual {
+      flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 14px;
+      color: rgba(255,255,255,.28); font-size: .7rem; text-align: center; letter-spacing: .08em; text-transform: uppercase;
+    }
+    .wedding-rings-svg { opacity: .85; }
+    @media (max-width: 900px) {
+      .wedding-card__inner { grid-template-columns: 1fr; }
+      .wedding-card__visual { display: none; }
+      .wedding-card { padding: 36px 28px 32px; }
+    }
+    @media (max-width: 600px) {
+      .wedding-card__tiers { gap: 8px; }
+      .wedding-card__tier { min-width: 100px; padding: 10px 14px; }
+    }
+  </style>
+  <section class="wedding-section" id="wedding" aria-labelledby="wedding-heading">
+    <div class="container">
+      <article class="wedding-card">
+        <div class="wedding-card__inner">
+          <div class="wedding-card__content">
+            <div class="wedding-card__eyebrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Layanan Premium · Wedding Grooming
+            </div>
+            <h2 id="wedding-heading" class="wedding-card__title">
+              Tampil Sempurna di
+              <em>Hari Pernikahanmu</em>
+            </h2>
+            <p class="wedding-card__desc">
+              Kapster Redbox hadir langsung ke venue atau rumah. Haircut presisi dan styling khusus pernikahan — untuk pengantin, best man, dan seluruh groomsmen.
+            </p>
+            <div class="wedding-card__tiers" role="list">
+              <div class="wedding-card__tier" role="listitem">
+                <span class="wedding-card__tier-label">Gentleman</span>
+                <span class="wedding-card__tier-price">350K</span>
+                <span class="wedding-card__tier-sub">1 orang</span>
+              </div>
+              <div class="wedding-card__tier" role="listitem">
+                <span class="wedding-card__tier-label">Silver</span>
+                <span class="wedding-card__tier-price">500K</span>
+                <span class="wedding-card__tier-sub">2 orang</span>
+              </div>
+              <div class="wedding-card__tier" role="listitem">
+                <span class="wedding-card__tier-label">Gold</span>
+                <span class="wedding-card__tier-price">750K</span>
+                <span class="wedding-card__tier-sub">3 orang</span>
+              </div>
+              <div class="wedding-card__tier" role="listitem">
+                <span class="wedding-card__tier-label">Platinum</span>
+                <span class="wedding-card__tier-price">1 Juta</span>
+                <span class="wedding-card__tier-sub">4 orang</span>
+              </div>
+            </div>
+            <div class="wedding-card__cta">
+              <a href="home-service.html#wedding-pricing" class="wedding-card__btn--primary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                Lihat Paket
+              </a>
+              <a href="home-service.html#wedding-pricing" class="wedding-card__btn--ghost">
+                Detail Harga ↓
+              </a>
+            </div>
+          </div>
+          <div class="wedding-card__visual" aria-hidden="true">
+            <svg class="wedding-rings-svg" width="128" height="88" viewBox="0 0 128 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="46" cy="44" r="32" stroke="rgba(212,160,23,0.45)" stroke-width="2.5" fill="none"/>
+              <circle cx="46" cy="44" r="32" stroke="rgba(245,158,11,0.15)" stroke-width="10" fill="none"/>
+              <circle cx="82" cy="44" r="32" stroke="rgba(212,160,23,0.45)" stroke-width="2.5" fill="none"/>
+              <circle cx="82" cy="44" r="32" stroke="rgba(245,158,11,0.15)" stroke-width="10" fill="none"/>
+              <circle cx="46" cy="44" r="5" fill="rgba(245,158,11,0.5)"/>
+              <circle cx="82" cy="44" r="5" fill="rgba(245,158,11,0.5)"/>
+            </svg>
+            <span>Wedding<br>Grooming</span>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
   <hr class="rb-divider" aria-hidden="true">
 
   <!-- ========== PROFESSIONALS ========== -->

@@ -3,7 +3,7 @@
     {
       "question": "Jam operasional",
       "keywords": ["jam buka", "buka jam", "open", "tutup", "jam operasional", "jam berapa buka", "jam kerja"],
-      "answer": "Redbox buka setiap hari Senin–Minggu jam 10.00–21.00 WIB ✂️"
+      "answer": "Redbox buka setiap hari jam 10.00–21.00 WIB ✂️\n\nCatatan khusus:\n• 📍 CSB Mall: buka sampai jam 22.00 WIB (1 jam lebih lama!)"
     },
     {
       "question": "Lokasi dan cabang",
@@ -17,8 +17,8 @@
     },
     {
       "question": "Slot dan antrian",
-      "keywords": ["antrian", "antrean", "slot", "penuh", "full", "masih ada", "masih kosong", "ada tempat", "bisa jam", "antri"],
-      "answer": "Buat liat slot real-time, paling akurat langsung di sini kak:\n\n→ redboxbarbershop.com/booking.html\n\nPilih cabang yang kakak mau, jam available langsung kelihatan live 👌"
+      "keywords": ["antrian", "antrean", "slot", "penuh", "full", "masih ada", "masih kosong", "ada tempat", "bisa jam", "antri", "panjang ga", "rame ga", "ramai ga"],
+      "answer": "Redbox udah gak pakai sistem antrian kak 🎉 Sekarang semua booking via website — jadi kakak langsung dapet slot, gak perlu nunggu giliran.\n\nTinggal pilih cabang → kapster → jam, slot langsung terkunci buat kakak:\n→ redboxbarbershop.com/booking.html\n\nDateng tinggal duduk, kapster udah tahu jadwal kakak 😊✂️"
     },
     {
       "question": "Parkir",
@@ -41,9 +41,24 @@
       "answer": "Ada program member Redbox kak! Dapet poin tiap transaksi, bisa ditukar diskon. Daftar di: redboxbarbershop.com/membership.html 🔥"
     },
     {
-      "question": "Home service",
-      "keywords": ["home service", "panggilan", "ke rumah", "ke kantor", "datang ke"],
-      "answer": "Ada layanan home service kak! Untuk detail dan booking: redboxbarbershop.com/home-service.html 😊"
+      "question": "Home service — info umum",
+      "keywords": ["home service", "panggilan", "ke rumah", "ke kantor", "datang ke", "kapster ke tempat", "cukur di rumah"],
+      "answer": "Ada layanan home service kak! Kapster Redbox bisa datang ke lokasi kakak 🏠✂️\n\n⏰ Jam layanan: 06:00–23:00 WIB (jauh lebih fleksibel dari jam outlet!)\n📍 Area: Cirebon & sekitarnya\n💳 Pembayaran di muka via transfer/QRIS setelah booking dikonfirmasi\n\nBooking & detail paket: redboxbarbershop.com/home-service.html"
+    },
+    {
+      "question": "Home service — cara kerja & konfirmasi",
+      "keywords": ["cara kerja home service", "alur home service", "konfirmasi home service", "kapster berangkat", "selesai home service", "konfirmasi selesai"],
+      "answer": "Alur home service Redbox kak:\n\n1️⃣ Booking di website → bayar di muka via QRIS/transfer\n2️⃣ Kapster dapat notif otomatis di HP\n3️⃣ Kapster balas *BERANGKAT* saat mulai menuju lokasi → kakak dapat notif\n4️⃣ Kapster balas *SELESAI* setelah beres → kakak diminta konfirmasi\n5️⃣ Kakak balas *YA* → transaksi selesai & tercatat\n\nSemua terekam di sistem — transparan & aman 🔒"
+    },
+    {
+      "question": "Home service — reschedule & pembatalan",
+      "keywords": ["reschedule home service", "batal home service", "ganti jadwal home service", "cancel home service", "ubah jadwal panggilan"],
+      "answer": "Home service Redbox punya kebijakan reschedule kak:\n\n✅ Reschedule GRATIS jika dilakukan H-1 (minimal 24 jam sebelum jadwal)\n❌ Tidak bisa reschedule jika kurang dari 24 jam sebelum jadwal\n\nUntuk reschedule, hubungi kami lewat chat ini ya 😊"
+    },
+    {
+      "question": "Home service — paket wedding / pernikahan",
+      "keywords": ["wedding", "pernikahan", "pengantin", "nikah", "akad", "resepsi", "grooming nikah", "paket nikah", "paket pengantin", "royal grooming"],
+      "answer": "Ada paket khusus Wedding Grooming kak! Cocok buat hari pernikahanmu 💍✂️\n\n👑 *Wedding Gentleman Grooming* — Rp 350.000 / 1 orang\n🥈 *Royal Grooming Silver* — Rp 500.000 / 2 orang\n🥇 *Royal Grooming Gold* — Rp 750.000 / 3 orang (Paling Populer!)\n💎 *Royal Grooming Platinum* — Rp 1.000.000 / 4 orang\n\n⏰ Jam layanan 06:00–23:00 WIB — bisa dari pagi banget!\n📅 *Pemesanan minimal H-3* sebelum hari H (biar persiapan matang)\n\nDetail & booking: redboxbarbershop.com/home-service.html#wedding-pricing"
     },
     {
       "question": "Booking 2 orang / bareng",

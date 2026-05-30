@@ -1,4 +1,5 @@
 const config = require('../config');
+const homeServiceHandler = require('./homeServiceHandler');
 const whatsappService = require('./whatsappService');
 const knowledgeService = require('./knowledgeService');
 const bookingService = require('./bookingService');
@@ -124,6 +125,10 @@ const handle = async ({ from, name, text }) => {
       await sendText(from, buildRedirectMsg(from));
       return;
     }
+
+    // 0d. Home service lifecycle commands (kapster/pelanggan): BERANGKAT / SELESAI / YA
+    const hsHandled = await homeServiceHandler.handle(from, lower);
+    if (hsHandled) return;
 
     // Log intent for monitoring dashboard
     console.log(`[Intent] ${from} (${name}) → ${intent}: "${text.substring(0, 80)}"`);

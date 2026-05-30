@@ -1760,7 +1760,7 @@ async function bridgeBookingToMoka(supabase, booking) {
   }
 
   // 3. Build ISO timestamps (WIB = +07:00)
-  const timeStr  = String(booking.time  || '09:00').slice(0, 5);
+  const timeStr  = String(booking.time  || '10:00').slice(0, 5);
   const dateStr  = String(booking.date  || '').slice(0, 10);
   const startTime = `${dateStr}T${timeStr}:00+07:00`;
   const durMins   = _parseDurationMins(booking.duration);
@@ -1806,6 +1806,7 @@ async function bridgeBookingToMoka(supabase, booking) {
       source:       'web',
       external_id:  legacyRef,
       notes:        combinedNotes || null,
+      type:         booking.type === 'home_service' ? 'home_service' : 'outlet',
     })
     .select().single();
 

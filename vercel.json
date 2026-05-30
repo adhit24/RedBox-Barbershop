@@ -44,11 +44,16 @@
     "api/cron/expire-stale-bills.js": {
       "maxDuration": 30,
       "includeFiles": "server/**"
+    },
+    "api/cron/home-service-flag.js": {
+      "maxDuration": 60,
+      "includeFiles": "server/**"
     }
   },
   "crons": [
-    { "path": "/api/cron/reminders", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/birthday",  "schedule": "0 1 * * *" }
+    { "path": "/api/cron/reminders",           "schedule": "0 3 * * *" },
+    { "path": "/api/cron/birthday",            "schedule": "0 1 * * *" },
+    { "path": "/api/cron/home-service-flag",   "schedule": "*/15 * * * *" }
   ],
   "rewrites": [
     { "source": "/api/ai/analyze",              "destination": "/api/ai/analyze.js" },
@@ -59,7 +64,8 @@
     { "source": "/api/cron/reminders",          "destination": "/api/cron/reminders.js" },
     { "source": "/api/cron/birthday",           "destination": "/api/cron/birthday.js" },
     { "source": "/api/cron/remind-soon",        "destination": "/api/cron/remind-soon.js" },
-    { "source": "/api/cron/expire-stale-bills", "destination": "/api/cron/expire-stale-bills.js" },
+    { "source": "/api/cron/expire-stale-bills",  "destination": "/api/cron/expire-stale-bills.js" },
+    { "source": "/api/cron/home-service-flag",   "destination": "/api/cron/home-service-flag.js" },
     { "source": "/api/moka/sync-customers",     "destination": "/api/moka/sync-customers.js" },
     { "source": "/api/(.*)",                    "destination": "/api/[...path].js" }
   ],

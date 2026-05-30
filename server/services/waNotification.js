@@ -184,10 +184,29 @@ Makasih lagi kak udah jadi bagian dari keluarga RedBox! Sampai ketemu di kunjung
   return sendWA(wa, message);
 }
 
+async function notifyBarberNewHomeServiceJob({
+  barberPhone, customerName, dateStr, timeStr, address, serviceLabel, price,
+}) {
+  const msg =
+`🔔 *[HOME SERVICE] Booking Baru*
+
+Pelanggan : ${customerName}
+Tanggal   : ${dateStr} | ${timeStr} WIB
+Alamat    : ${address}
+Layanan   : ${serviceLabel}
+Harga     : ${price}
+
+Balas *BERANGKAT* saat berangkat ke lokasi.
+Balas *SELESAI* setelah pekerjaan selesai.`;
+
+  return sendWA(barberPhone, msg);
+}
+
 module.exports = {
   notifyCustomerBookingConfirmed,
   notifyCustomerReminderH1,
   notifyAdminNewBooking,
   notifyCustomerReviewRequest,
   notifyCustomerReviewPointsCredited,
+  notifyBarberNewHomeServiceJob,
 };

@@ -770,6 +770,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             durationMinutes: durMins,
           });
           if (barberIdFixed) params.set('barberId', barberIdFixed);
+          if (isHomeService) params.set('type', 'home_service');
           const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(12000) });
           if (res.ok) {
             const json = await res.json();
@@ -1702,7 +1703,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         location: state.location,
         notes: noteParts.join('\n'),
         payment: state.payment?.name || '',
-        status: 'pending'
+        status: 'pending',
+        type: isHomeService ? 'home_service' : 'outlet',
+        address: isHomeService ? (state.address || '') : undefined,
       };
     }
 

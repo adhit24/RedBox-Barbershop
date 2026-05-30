@@ -883,9 +883,40 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
+async function _notifyBarberHomeService(supabase, scheduleId, address) {
+  const { notifyBarberNewHomeServiceJob } = require('./services/waNotification');
+  const { data: sch } = await supabase
+    .from('schedules')
+    .select('start_time, price, service_name, barber_id, customers(name)')
+    .eq('id', scheduleId)
+    .single();
+  if (!sch) return;
+
+  const { data: barber } = await supabase
+    .from('barbers').select('name, phone').eq('id', sch.barber_id).single();
+  if (!barber?.phone) return;
+
+  const dtWIB = new Date(sch.start_time);
+  const dateStr = dtWIB.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const timeStr = dtWIB.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+
+  await notifyBarberNewHomeServiceJob({
+    barberPhone:  barber.phone,
+    barberName:   barber.name,
+    customerName: sch.customers?.name || 'Pelanggan',
+    dateStr,
+    timeStr,
+    address,
+    serviceLabel: sch.service_name || 'Home Service',
+    price:        `Rp ${(sch.price || 0).toLocaleString('id-ID')}`,
+  });
+}
+
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
-  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status } = req.body;
+  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address } = req.body;
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
   const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
@@ -962,8 +993,29 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // dan langsung dibridge ke schedules + push ke Moka (non-blocking untuk admin draft).
       if (supabase && desiredStatus === 'confirmed') {
         try {
-          const r = await require('./moka/sync').bridgeBookingToMoka(supabase, data);
-          return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync });
+          const r = await require('./moka/sync').bridgeBookingToMoka(supabase, { ...data, type, address });
+
+          // If home service: create lifecycle tracking row
+          let homeServiceJobId = null;
+          if (type === 'home_service' && r.scheduleId) {
+            const jobAddress = address || (notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/)?.[1]?.trim()) || '';
+            if (jobAddress) {
+              const { data: hsJob } = await supabase
+                .from('home_service_jobs')
+                .insert({ schedule_id: r.scheduleId, address: jobAddress, status: 'confirmed' })
+                .select('id')
+                .single();
+              homeServiceJobId = hsJob?.id || null;
+
+              if (homeServiceJobId) {
+                _notifyBarberHomeService(supabase, r.scheduleId, jobAddress).catch(err =>
+                  console.error('[HomeService] Barber notif failed:', err.message)
+                );
+              }
+            }
+          }
+
+          return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId });
         } catch (e) {
           console.warn(`[Moka Bridge] booking ${data.id} failed:`, e.message);
           return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: 'failed' });

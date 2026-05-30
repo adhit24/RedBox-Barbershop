@@ -18,6 +18,31 @@
       ]
     }
   },
+  "home_service": {
+    "jam_layanan": "06:00–23:00 WIB (lebih luas dari jam outlet 10:00–21:00)",
+    "area": "Cirebon & sekitarnya",
+    "pembayaran": "Di muka via transfer/QRIS sebelum booking dikonfirmasi",
+    "pemilihan_kapster": "Pelanggan pilih sendiri; hanya kapster yang tersedia untuk home service yang ditampilkan",
+    "lifecycle_commands": {
+      "kapster_berangkat": "Kapster balas BERANGKAT ke WhatsApp bot saat mulai perjalanan → status on_the_way, notif otomatis ke pelanggan",
+      "kapster_selesai": "Kapster balas SELESAI setelah beres → status done_barber, pelanggan diminta balas YA",
+      "pelanggan_ya": "Pelanggan balas YA untuk konfirmasi → status completed, kapster dapat notif selesai"
+    },
+    "reschedule_policy": "Gratis H-1 (>24 jam sebelum jadwal). Tidak bisa dilakukan H-0 (<24 jam)",
+    "paket_regular": [
+      { "name": "Gentleman Grooming (Home Service)", "price": "250k", "duration": "60 menit" },
+      { "name": "Single Package", "price": "Sesuai pilihan layanan + biaya kunjungan", "duration": "sesuai layanan" },
+      { "name": "Family Package", "price": "Sesuai pilihan layanan + biaya kunjungan", "duration": "sesuai layanan" }
+    ],
+    "paket_wedding": [
+      { "name": "Wedding Gentleman Grooming", "price": "350k", "persons": 1, "description": "Paket grooming premium untuk 1 pengantin pria" },
+      { "name": "Wedding Royal Grooming Silver", "price": "500k", "persons": 2, "description": "Paket grooming untuk 2 orang (pengantin + best man / anggota keluarga)" },
+      { "name": "Wedding Royal Grooming Gold", "price": "750k", "persons": 3, "description": "Paket grooming untuk 3 orang — PALING POPULER!", "featured": true },
+      { "name": "Wedding Royal Grooming Platinum", "price": "1.000k", "persons": 4, "description": "Paket lengkap grooming untuk 4 orang rombongan pengantin" }
+    ],
+    "booking_url": "redboxbarbershop.com/home-service.html",
+    "wedding_url": "redboxbarbershop.com/home-service.html#wedding-pricing"
+  },
   "group_booking": {
     "supported_sizes": [1, 2],
     "size_3_plus_action": "Redirect ke WhatsApp untuk koordinasi langsung (banner '3+ orang' di booking page)",

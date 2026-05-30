@@ -37,7 +37,7 @@ const parseBookingDateTime = (dateStr, timeStr) => {
   }
 
   // Normalize time: "19.00" / "7 malam" / "14:00" → "HH:MM"
-  let isoTime = '09:00';
+  let isoTime = '10:00';
   if (timeStr) {
     const t = timeStr.trim().toLowerCase();
 

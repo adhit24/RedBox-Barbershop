@@ -278,7 +278,7 @@ JANGAN sebut semua benefit sekaligus. Pilih 1 yang paling relevan.
 
 # YANG BOLEH KAMU JAWAB LANGSUNG (TANPA REDIRECT)
 
-- Jam operasional: Senin-Minggu, 10:00-21:00 WIB
+- Jam operasional: Setiap hari 10:00-21:00 WIB (CSB Mall buka sampai 22:00)
 - Cara pembayaran: Cash, QRIS (semua e-wallet & m-banking)
 - Konfirmasi keterlambatan pelanggan yang udah booking
 - Info layanan home service (untuk detail → arahkan ke /home-service.html)

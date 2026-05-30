@@ -74,7 +74,7 @@ async function main() {
   
   // 5. Simulasi generate slots
   const durationMinutes = 60;
-  const openTime = '09:00';
+  const openTime = '10:00';
   const closeTime = '21:00';
   
   function _timeStrToMs(dateStr, timeStr) {
