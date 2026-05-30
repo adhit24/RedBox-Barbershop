@@ -651,7 +651,7 @@
     .hs-wedding-grid {
       display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;
       max-width: 920px; margin: 0 auto; align-items: stretch;
-      perspective: 1400px;
+      perspective: 1400px; overflow: visible;
     }
 
     /* nth-child delays for wedding grid */
@@ -668,6 +668,7 @@
     /* Gold/Platinum wedding tier (featured) */
     .hs-tier--wedding-gold {
       --tier-accent: rgba(212,160,23,.5);
+      z-index: 1;
       background:
         radial-gradient(120% 100% at 50% 0%, rgba(212,160,23,.16) 0%, transparent 55%),
         linear-gradient(165deg, rgba(212,160,23,.07) 0%, rgba(20,16,4,.55) 100%);
