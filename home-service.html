@@ -401,11 +401,11 @@
       100% { transform: scale(1) rotate(-4deg); opacity: 1; }
     }
 
-    .hs-pricing { padding: 96px 0 80px; position: relative; overflow: hidden; }
+    .hs-pricing { padding: 96px 0 80px; position: relative; overflow: hidden; isolation: isolate; }
     .hs-pricing::after {
-      content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      content: ''; position: absolute; inset: -4px; z-index: -1; pointer-events: none;
       background: url('Brand_assets/home_service.png') center center / cover no-repeat;
-      opacity: .13; filter: blur(2px); transform: scale(1.04);
+      opacity: .22; filter: blur(3px);
     }
     .hs-pricing > * { position: relative; z-index: 1; }
     .hs-pricing-grid {
@@ -648,11 +648,11 @@
     }
 
     /* ── WEDDING SECTION ─────────────────────────── */
-    .hs-wedding { padding: 80px 0 64px; position: relative; overflow: hidden; }
+    .hs-wedding { padding: 80px 0 64px; position: relative; overflow: hidden; isolation: isolate; }
     .hs-wedding::after {
-      content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      content: ''; position: absolute; inset: -4px; z-index: -1; pointer-events: none;
       background: url('Brand_assets/wedding_service.png') center center / cover no-repeat;
-      opacity: .13; filter: blur(2px); transform: scale(1.04);
+      opacity: .22; filter: blur(3px);
     }
     .hs-wedding > * { position: relative; z-index: 1; }
     .hs-wedding::before {
