@@ -1810,12 +1810,71 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     }
 
     // Cek customer terdaftar
-    const { data: customer } = await supabase
+    let { data: customer } = await supabase
       .from('customers').select('id, name, wa').eq('wa', wa).maybeSingle();
+
     if (!customer) {
-      return res.status(404).json({
-        error: 'Nomor tidak terdaftar sebagai member. Silakan kunjungi outlet untuk mendaftar.'
-      });
+      // Fallback: cek member_profiles (member terdaftar via Moka POS)
+      const phoneE164 = '+' + wa;
+      const { data: profile } = await supabase
+        .from('member_profiles')
+        .select('full_name, phone, email, membership_status, membership_activated_at, total_points, total_visits, referral_code, birthdate, gender, address')
+        .eq('phone', phoneE164)
+        .maybeSingle();
+
+      if (!profile) {
+        return res.status(404).json({
+          error: 'Nomor tidak terdaftar sebagai member. Silakan kunjungi outlet untuk mendaftar.'
+        });
+      }
+
+      // Auto-provision ke customers — satu kali saja
+      // upsert onConflict:'wa' mencegah duplikasi saat race condition
+      const isSyntheticEmail = Boolean(
+        profile.email && /^moka_.+@redbox\.internal$/.test(profile.email)
+      );
+      const bd = profile.birthdate ? new Date(profile.birthdate) : null;
+      const provisionData = {
+        name:                    profile.full_name || '',
+        wa,
+        phone_e164:              phoneE164,
+        email:                   isSyntheticEmail ? null : (profile.email || null),
+        membership_status:       profile.membership_status || 'INACTIVE',
+        membership_activated_at: profile.membership_activated_at || null,
+        points:                  Number(profile.total_points) || 0,
+        visits:                  Number(profile.total_visits) || 0,
+        referral_code:           profile.referral_code || generateReferralCode(),
+        birth_date:              profile.birthdate || null,
+        ...(bd && !isNaN(bd) ? {
+          birthday: `${String(bd.getUTCMonth()+1).padStart(2,'0')}-${String(bd.getUTCDate()).padStart(2,'0')}`
+        } : {}),
+        gender:  profile.gender  || null,
+        address: profile.address || null,
+      };
+
+      let { data: provisioned, error: provErr } = await supabase
+        .from('customers')
+        .upsert(provisionData, { onConflict: 'wa' })
+        .select('id, name, wa')
+        .single();
+
+      // Fallback jika kolom points belum ada di DB (sama seperti pola di line ~1768)
+      if (provErr?.message?.includes('points')) {
+        const { points: _, ...withoutPoints } = provisionData;
+        ({ data: provisioned, error: provErr } = await supabase
+          .from('customers')
+          .upsert(withoutPoints, { onConflict: 'wa' })
+          .select('id, name, wa')
+          .single());
+      }
+
+      if (provErr) {
+        console.warn('[OTP] Auto-provision gagal, lanjut in-memory:', provErr.message);
+        customer = { id: null, name: provisionData.name, wa };
+      } else {
+        customer = provisioned || { id: null, name: provisionData.name, wa };
+        console.log(`[OTP] Auto-provision sukses: ${wa}`);
+      }
     }
 
     // Rate limit: max 3 OTP per 10 menit
@@ -1909,6 +1968,33 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
 
     const { data: customer } = await supabase.from('customers')
       .select('*').eq('wa', session.customer_wa).maybeSingle();
+
+    if (customer) {
+      // Cross-reference member_profiles by phone to sync membership status.
+      // Orang yang sama bisa punya akun OTP (customers) dan Google (member_profiles)
+      // dengan data membership yang berbeda — ambil yang terbaik.
+      const phoneE164 = customer.phone_e164 || ('+' + session.customer_wa);
+      const { data: profile } = await supabase.from('member_profiles')
+        .select('membership_status, total_points, total_visits, membership_activated_at, referral_code, full_name, current_tier')
+        .eq('phone', phoneE164)
+        .maybeSingle();
+
+      if (profile && profile.membership_status === 'ACTIVE' && customer.membership_status !== 'ACTIVE') {
+        customer.membership_status      = 'ACTIVE';
+        customer.membership_activated_at= profile.membership_activated_at ?? customer.membership_activated_at;
+        customer.points                 = profile.total_points   ?? customer.points ?? 0;
+        customer.visits                 = profile.total_visits   ?? customer.visits ?? 0;
+        customer.referral_code          = profile.referral_code  ?? customer.referral_code;
+        // Sync nama dari member_profiles jika customer belum punya nama lengkap
+        if (!customer.name && profile.full_name) customer.name = profile.full_name;
+        // Persist ke customers agar next login tidak perlu cross-ref lagi
+        supabase.from('customers').update({
+          membership_status:       'ACTIVE',
+          membership_activated_at: profile.membership_activated_at,
+        }).eq('wa', session.customer_wa).catch(() => {});
+      }
+    }
+
     return res.json({ customer: customer || null });
   });
 
