@@ -75,12 +75,15 @@
     .hs-nav-book:active { transform: scale(.96); }
 
     /* ── HERO ─────────────────────────────────────── */
-    .hs-hero { padding: 80px 0 64px; text-align: center; position: relative; overflow: hidden; }
+    .hs-hero {
+      padding: 100px 0 80px; text-align: center; position: relative; overflow: hidden; isolation: isolate;
+      background:
+        linear-gradient(to bottom, rgba(10,10,10,.6) 0%, rgba(10,10,10,.82) 60%, rgba(10,10,10,.96) 100%),
+        url('Brand_assets/home_service.png') center 35% / cover no-repeat;
+    }
     .hs-hero::before {
-      content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
-      width: 640px; height: 640px; border-radius: 50%;
-      background: radial-gradient(circle, rgba(193,18,31,.11) 0%, transparent 68%);
-      pointer-events: none;
+      content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(193,18,31,.18) 0%, transparent 70%);
       animation: hs-orb-drift 9s ease-in-out infinite;
     }
     .hs-hero > .container { position: relative; z-index: 1; }
@@ -401,13 +404,7 @@
       100% { transform: scale(1) rotate(-4deg); opacity: 1; }
     }
 
-    .hs-pricing { padding: 96px 0 80px; position: relative; overflow: hidden; isolation: isolate; }
-    .hs-pricing::after {
-      content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-      background: url('Brand_assets/home_service.png') center 30% / cover no-repeat;
-      opacity: .12; filter: brightness(0.65) saturate(1.1);
-      transform: none;
-    }
+    .hs-pricing { padding: 96px 0 80px; }
     .hs-pricing > * { position: relative; z-index: 1; }
     .hs-pricing-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
