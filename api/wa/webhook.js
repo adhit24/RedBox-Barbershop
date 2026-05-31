@@ -868,6 +868,30 @@ async function handleForeignBooking(from, name, text, device) {
   // State machine
   switch (session.state) {
     case 'greeting': {
+      // Detect if customer is asking about kapster/barber availability (not choosing service)
+      const kapsterAskPatterns = [
+        /who.*(available|recommend|good|best|barber)/i,
+        /which.*(barber|kapster|stylist)/i,
+        /barber.*(available|who|recommend)/i,
+        /누구.*추천/i, /추천.*누구/i, /이발사.*누구/i, /미용사.*누구/i, /누구인가/i, /이용.*가능.*이발/i,
+        /谁.*推荐/i, /推荐.*谁/i, /哪个.*理发师/i, /理发师.*谁/i,
+        /おすすめ.*バーバー/i, /バーバー.*おすすめ/i, /誰がいい/i,
+        /kim.*tavsiye/i, /berber.*kim/i, /hangisi.*iyi/i,
+      ];
+      if (kapsterAskPatterns.some(p => p.test(text))) {
+        const kapsters = KAPSTER_LIST.join(', ');
+        const msg = foreignMsg(session.language, {
+          chinese: `我们所有理发师都经验丰富！✂️\n\n可选理发师：${kapsters}\n\n他们都是专业的，任何一位都能为您提供优质服务。\n\n您想预约什么服务呢？（例如：Gentleman Grooming, Hair Spa, Shaving 等）`,
+          japanese: `当店のバーバーは全員経験豊富です！✂️\n\nバーバー一覧：${kapsters}\n\n皆プロフェッショナルです。\n\nどのサービスをご希望ですか？（例：Gentleman Grooming, Hair Spa, Shaving など）`,
+          korean: `저희 바버들은 모두 숙련된 전문가입니다! ✂️\n\n바버 목록: ${kapsters}\n\n모두 프로페셔널하며 훌륭한 서비스를 제공합니다.\n\n어떤 서비스를 예약하시겠습니까? (예: Gentleman Grooming, Hair Spa, Shaving 등)`,
+          turkish: `Tüm berberlerimiz deneyimlidir! ✂️\n\nBerberlerimiz: ${kapsters}\n\nHepsi profesyoneldir.\n\nHangi hizmeti rezerve etmek istersiniz? (örn: Gentleman Grooming, Hair Spa, Shaving)`,
+          english: `All our barbers are skilled and experienced! ✂️\n\nAvailable barbers: ${kapsters}\n\nThey're all professionals who deliver great results.\n\nWhat service would you like to book? (e.g., Gentleman Grooming, Hair Spa, Shaving)`
+        });
+        session.lastActivity = Date.now();
+        foreignSessions.set(from, session);
+        return { reply: msg, used: 'foreign_booking' };
+      }
+
       // Expecting service choice
       const service = extractForeignService(text);
       if (service) {
@@ -900,6 +924,30 @@ async function handleForeignBooking(from, name, text, device) {
     }
 
     case 'awaiting_kapster': {
+      // Detect if customer is ASKING about kapsters (not choosing one)
+      const askingPatterns = [
+        /who.*(available|recommend|good|best)/i,
+        /which.*(barber|kapster|recommend)/i,
+        /누구.*추천/i, /추천.*누구/i, /이발사.*누구/i, /미용사.*누구/i, /누구인가/i,
+        /谁.*推荐/i, /推荐.*谁/i, /哪个.*理发师/i,
+        /おすすめ/i, /誰がいい/i,
+        /kim.*tavsiye/i, /hangisi.*iyi/i,
+      ];
+      if (askingPatterns.some(p => p.test(text))) {
+        // Re-show kapster list with recommendation
+        const kapsters = KAPSTER_LIST.join(', ');
+        const msg = foreignMsg(session.language, {
+          chinese: `我们所有理发师都经验丰富！✂️\n\n可选理发师：${kapsters}\n\n他们都是专业的，任何一位都能为您提供优质服务。\n\n请选择一位，或回复"任意"让我们为您安排 😊`,
+          japanese: `当店のバーバーは全員経験豊富です！✂️\n\nバーバー一覧：${kapsters}\n\n皆プロフェッショナルです。どなたでも素晴らしいサービスを提供できます。\n\nお一人お選びいただくか、「誰でも」とお答えください 😊`,
+          korean: `저희 바버들은 모두 숙련된 전문가입니다! ✂️\n\n바버 목록: ${kapsters}\n\n모두 프로페셔널하며 훌륭한 서비스를 제공합니다.\n\n한 분을 선택하시거나, "아무나"라고 답해주시면 배정해 드리겠습니다 😊`,
+          turkish: `Tüm berberlerimiz deneyimlidir! ✂️\n\nBerberlerimiz: ${kapsters}\n\nHepsi profesyoneldir ve mükemmel hizmet sunar.\n\nBirini seçin veya "herhangi biri" yazın 😊`,
+          english: `All our barbers are skilled and experienced! ✂️\n\nAvailable barbers: ${kapsters}\n\nThey're all professionals who deliver great results.\n\nPick one, or say "any" and we'll assign the best available 😊`
+        });
+        session.lastActivity = Date.now();
+        foreignSessions.set(from, session);
+        return { reply: msg, used: 'foreign_booking' };
+      }
+
       const kapster = extractForeignKapster(text);
       session.data.kapster = kapster;
       session.state = 'awaiting_date';
