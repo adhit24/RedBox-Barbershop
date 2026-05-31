@@ -11,31 +11,29 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --red: #c1121f;
-      --bg: #050505;
-      --panel: #101010;
-      --panel-2: #171717;
+      --bg: #060606;
+      --panel: #111111;
       --line: rgba(255,255,255,.08);
-      --text: #f5f5f5;
-      --muted: rgba(255,255,255,.58);
+      --text: #f4f4f4;
+      --muted: rgba(255,255,255,.55);
+      --green: #9bd448;
+      --white: #ffffff;
     }
     body {
       min-height: 100vh;
-      background:
-        radial-gradient(circle at top, rgba(193,18,31,.18), transparent 28%),
-        linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
+      background: radial-gradient(circle at top, rgba(155,212,72,.07), transparent 30%), #050505;
       color: var(--text);
       font-family: 'Inter', sans-serif;
     }
     .nav {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      padding: 14px 20px;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
       border-bottom: 1px solid var(--line);
-      background: rgba(5,5,5,.9);
-      backdrop-filter: blur(12px);
+      background: rgba(6,6,6,.94);
+      backdrop-filter: blur(14px);
       position: sticky;
       top: 0;
       z-index: 10;
@@ -44,190 +42,90 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      text-decoration: none;
       color: var(--text);
-    }
-    .nav-logo img {
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      object-fit: cover;
-    }
-    .nav-logo span {
-      font-family: 'Bebas Neue', sans-serif;
-      letter-spacing: .08em;
-      font-size: 1.35rem;
-    }
-    .nav-logo em {
-      color: var(--red);
-      font-style: normal;
-    }
-    .nav-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .nav-btn,
-    .action-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
       text-decoration: none;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      font-size: .85rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: .2s ease;
     }
+    .nav-logo img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
+    .nav-logo span { font-family: 'Bebas Neue', sans-serif; letter-spacing: .08em; font-size: 1.3rem; }
+    .nav-logo em { color: var(--green); font-style: normal; }
+    .nav-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .nav-btn {
-      padding: 10px 15px;
-      color: var(--text);
-      background: transparent;
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 10px 18px; border-radius: 999px; text-decoration: none;
+      font-size: .84rem; font-weight: 700; border: 1px solid var(--line);
+      color: var(--text); background: transparent; cursor: pointer;
     }
-    .nav-btn.red,
-    .action-btn.red {
-      background: var(--red);
-      border-color: transparent;
-      color: #fff;
-    }
+    .nav-btn.primary { background: var(--white); color: #080808; border-color: transparent; }
+
     .page {
-      width: min(1100px, calc(100% - 32px));
-      margin: 28px auto 40px;
+      width: min(860px, calc(100% - 24px));
+      margin: 32px auto 48px;
     }
-    .hero {
-      text-align: center;
-      margin-bottom: 22px;
-    }
-    .eyebrow {
-      display: inline-block;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: rgba(193,18,31,.14);
-      border: 1px solid rgba(193,18,31,.26);
-      color: #ffb3ba;
-      font-size: .72rem;
-      font-weight: 700;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-    }
-    .hero h1 {
-      margin-top: 14px;
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: clamp(2.1rem, 5vw, 4rem);
-      letter-spacing: .04em;
-      line-height: .95;
-    }
-    .hero p {
-      max-width: 640px;
-      margin: 10px auto 0;
-      color: var(--muted);
-      font-size: .98rem;
-      line-height: 1.6;
-    }
-    .result-card {
-      background: transparent;
-      border: none;
-    }
-    .graphic-shell {
-      aspect-ratio: 4 / 5;
-      width: 100%;
-      border-radius: 28px;
-      overflow: hidden;
-      background: #0d0d0d;
-      border: 1px solid rgba(255,255,255,.06);
-      position: relative;
-      box-shadow: 0 28px 80px rgba(0,0,0,.48);
-    }
-    .graphic-shell img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-    .result-kicker {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      color: rgba(255,255,255,.52);
-      font-size: .78rem;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      margin-bottom: 14px;
-    }
-    .result-kicker::before,
-    .result-kicker::after {
-      content: '';
-      width: 42px;
-      height: 1px;
-      background: rgba(255,255,255,.14);
-    }
-    .loading-state,
-    .error-state,
-    .empty-state {
-      min-height: 60vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 28px;
+
+    /* ── State screens ── */
+    .state-wrap {
+      min-height: 62vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 18px; text-align: center;
     }
     .state-card {
-      width: min(520px, 100%);
+      width: min(480px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 32px 24px;
+    }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 3px solid rgba(255,255,255,.12);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 18px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .state-card h2 { font-size: 1.1rem; margin-bottom: 8px; }
+    .state-card p { color: var(--muted); font-size: .9rem; line-height: 1.6; }
+    .state-card .hint {
+      margin-top: 10px; font-size: .78rem;
+      color: rgba(255,255,255,.3); letter-spacing: .03em;
+    }
+    .btn-row {
+      display: flex; gap: 10px; justify-content: center;
+      flex-wrap: wrap; margin-top: 20px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 11px 22px; border-radius: 999px;
+      font-size: .87rem; font-weight: 700;
+      border: 1px solid var(--line); color: var(--text);
+      background: transparent; cursor: pointer;
+      text-decoration: none; transition: opacity .18s;
+    }
+    .btn:hover { opacity: .78; }
+    .btn.primary { background: var(--white); color: #080808; border-color: transparent; }
+    .btn.green-btn { background: var(--green); color: #050e00; border-color: transparent; }
+
+    /* ── Graphic result ── */
+    .result-wrap { display: grid; gap: 18px; }
+    .graphic-frame {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 22px;
-      padding: 28px 22px;
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,.5);
     }
-    .spinner {
-      width: 48px;
-      height: 48px;
-      margin: 0 auto 18px;
-      border: 3px solid rgba(255,255,255,.12);
-      border-top-color: var(--red);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
+    .graphic-frame img {
+      width: 100%; display: block;
+      border-radius: 22px;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    .state-card h2 {
-      font-size: 1.15rem;
-      margin-bottom: 8px;
-    }
-    .state-card p {
-      color: var(--muted);
-      line-height: 1.6;
-    }
-    .actions {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 18px;
-    }
-    .action-btn {
-      min-width: 170px;
-      padding: 13px 18px;
-      background: transparent;
-      color: var(--text);
+    .result-actions {
+      display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
     }
     .footer-note {
-      text-align: center;
-      color: rgba(255,255,255,.28);
-      font-size: .76rem;
-      margin-top: 16px;
-      letter-spacing: .04em;
-    }
-    @media (max-width: 640px) {
-      .page { width: min(100% - 18px, 1100px); margin-top: 18px; }
-      .nav { padding: 12px 14px; }
-      .nav-actions { width: 100%; }
-      .nav-btn { flex: 1; }
-      .result-meta { padding: 14px; }
-      .result-stage { padding: 12px; }
-      .graphic-shell { border-radius: 16px; }
+      text-align: center; font-size: .74rem;
+      color: rgba(255,255,255,.22); letter-spacing: .04em;
+      margin-top: 6px;
     }
   </style>
 </head>
@@ -239,157 +137,152 @@
     </a>
     <div class="nav-actions">
       <a class="nav-btn" href="/#ai">Coba Lagi</a>
-      <a class="nav-btn red" href="/booking.html">Book Now</a>
+      <a class="nav-btn primary" href="/booking.html">Book Now</a>
     </div>
   </nav>
 
-  <main class="page" id="page-root">
-    <section class="hero">
-      <span class="eyebrow">AI Hairstyle Graphic</span>
-      <h1>Simple Visual Result</h1>
-      <p>Hasil dibuat sebagai graphic hairstyle analysis yang singkat, visual-first, dan fokus ke wajah customer.</p>
-    </section>
-
-    <div class="loading-state" id="loading-state">
+  <main class="page">
+    <div id="loading-state" class="state-wrap">
       <div class="state-card">
         <div class="spinner"></div>
-        <h2>Membuat graphic hairstyle analysis</h2>
-        <p>AI sedang menyiapkan hasil visual sederhana berdasarkan foto customer.</p>
+        <h2>Membuat hairstyle analysis graphic...</h2>
+        <p>AI sedang membuat satu gambar analisis lengkap dengan wajah kamu.</p>
+        <div class="hint">Biasanya 30–60 detik</div>
       </div>
     </div>
-
     <div id="result-state" style="display:none"></div>
   </main>
 
   <script>
-    const ANALYSIS_GRAPHIC_PROMPT = [
-      'Create a photo hairstyle analysis graphic using this portrait.',
-      'Show side-by-side hairstyles comparisons to highlight which hairstyles suit the subject best.',
-      'Make it visual-first, with short labels only and no paragraph.',
-      'Design a realistic premium barbershop infographic on a black background.',
-      'Match this structure exactly:',
-      '1. Large real customer portrait on the upper left.',
-      '2. Big title at top right: HAIRSTYLE ANALYSIS.',
-      '3. One clean characteristics panel on the upper right with short labels only.',
-      '4. A recommended hairstyles section with exactly 4 hairstyle comparison cards using the same customer face and green check icons.',
-      '5. A hairstyles to avoid section with exactly 2 hairstyle comparison cards using the same customer face and red X icons.',
-      '6. A styling guide row with simple icon steps and very short labels.',
-      '7. A recommended products row with product packshots and short names.',
-      '8. A key tips row with icon boxes and short uppercase labels.',
-      '9. A hair color suggestion row with circular color swatches and short names.',
-      'Use neat grid alignment, high contrast, realistic hairstyle edits, editorial lighting, and clean spacing.',
-      'Keep all hairstyle comparison faces identical to the uploaded customer.',
-      'Do not create a collage of different people.',
-      'Do not add paragraphs, long descriptions, chat bubbles, UI chrome, or extra sections.',
-      'Use only concise uppercase labels similar to a magazine grooming board.'
-    ].join(' ');
-
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       const loadingEl = document.getElementById('loading-state');
-      const resultEl = document.getElementById('result-state');
+      const resultEl  = document.getElementById('result-state');
 
-      let uploadId = null;
-      let userPhoto = null;
+      let raw = null, uploadId = null;
       try {
+        raw      = sessionStorage.getItem('ai_results');
         uploadId = sessionStorage.getItem('ai_upload_id');
-        userPhoto = sessionStorage.getItem('ai_user_photo');
       } catch (e) {}
 
-      if (!uploadId) {
+      function showState(html) {
         loadingEl.style.display = 'none';
-        resultEl.style.display = 'block';
-        resultEl.innerHTML = `
-          <div class="empty-state">
-            <div class="state-card">
-              <h2>Tidak ada hasil ditemukan</h2>
-              <p>Upload foto terlebih dahulu di halaman utama untuk membuat hairstyle analysis graphic.</p>
-              <div class="actions">
-                <a class="action-btn red" href="/#ai">Upload Foto</a>
-              </div>
-            </div>
-          </div>`;
+        resultEl.style.display  = 'block';
+        resultEl.innerHTML = html;
+      }
+
+      if (!raw || !uploadId) {
+        showState(`<div class="state-wrap"><div class="state-card">
+          <h2>Tidak ada hasil ditemukan</h2>
+          <p>Upload foto terlebih dahulu di halaman utama.</p>
+          <div class="btn-row"><a class="btn primary" href="/#ai">Upload Foto</a></div>
+        </div></div>`);
         return;
       }
 
-      generateGraphic(uploadId, userPhoto)
-        .then((imageUrl) => {
-          loadingEl.style.display = 'none';
-          resultEl.style.display = 'block';
-          resultEl.innerHTML = `
-            <section class="result-card">
-              <div class="result-kicker">Hairstyle Analysis Graphic</div>
-              <div class="graphic-shell">
-                <img src="${imageUrl}" alt="AI hairstyle analysis graphic" />
-              </div>
-            </section>
-            <div class="actions">
-              <a class="action-btn red" href="/booking.html">Book Appointment</a>
-              <a class="action-btn" href="/#ai">Analisis Ulang</a>
-              <button class="action-btn" type="button" id="download-btn">Download</button>
-            </div>
-            <div class="footer-note">Powered by Kinaryaloka for RedBox Barbershop</div>`;
-
-          const downloadBtn = document.getElementById('download-btn');
-          if (downloadBtn) {
-            downloadBtn.addEventListener('click', () => downloadImage(imageUrl));
-          }
-        })
-        .catch((err) => {
-          loadingEl.style.display = 'none';
-          resultEl.style.display = 'block';
-          resultEl.innerHTML = `
-            <div class="error-state">
-              <div class="state-card">
-                <h2>Graphic belum berhasil dibuat</h2>
-                <p>${escapeHtml(err?.message || 'Terjadi kendala saat membuat hasil visual.')}</p>
-                <div class="actions">
-                  <a class="action-btn red" href="/#ai">Coba Lagi</a>
-                </div>
-              </div>
-            </div>`;
-        });
-    });
-
-    async function generateGraphic(uploadId, userPhoto) {
-      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-      const API = isLocal ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
-      const res = await fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uploadId,
-          prompt: ANALYSIS_GRAPHIC_PROMPT,
-          cacheKey: `v6/${uploadId}/hairstyle-analysis-graphic/simple`
-        })
-      });
-
-      const json = await res.json();
-      if (!res.ok || !json.imageUrl) {
-        throw new Error(json.error || 'Gagal membuat hairstyle analysis graphic');
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch (e) {
+        showState(`<div class="state-wrap"><div class="state-card">
+          <h2>Hasil analisis tidak valid</h2>
+          <p>Silakan generate ulang dari halaman utama.</p>
+          <div class="btn-row"><a class="btn primary" href="/#ai">Generate Ulang</a></div>
+        </div></div>`);
+        return;
       }
 
+      const results = parsed.results || parsed;
+      const subject = results.subject || {};
+      const hair    = results.hairstyle_analysis || results.hairstyle || {};
+
+      const analysisData = {
+        faceShape:   subject.face_shape?.type || 'oval',
+        hairType:    subject.hair?.type || subject.hair?.natural_texture || 'straight',
+        hairDensity: subject.hair?.density || 'medium',
+        hairLength:  subject.hair?.current_length || 'medium',
+        recs:   (hair.recommended_styles || hair.recommendations || []).slice(0, 4).map(r => ({ name: r.name || r })),
+        avoids: (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 2).map(r => ({ name: r.name || r.style || r })),
+      };
+
+      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const API = isLocal ? 'http://localhost:3001/api/ai/hairstyle-graphic' : '/api/ai/hairstyle-graphic';
+
+      let graphicUrl = null;
+
       try {
-        sessionStorage.setItem('ai_result_graphic', json.imageUrl);
-        if (userPhoto) sessionStorage.setItem('ai_user_photo', userPhoto);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 120000);
+        let res;
+        try {
+          res = await fetch(API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uploadId, analysisData }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+
+        const text = await res.text();
+        let json = {};
+        try { json = JSON.parse(text); } catch (e) {}
+
+        if (res.ok && json.imageUrl) {
+          graphicUrl = json.imageUrl;
+        }
       } catch (e) {}
 
-      return json.imageUrl;
+      loadingEl.style.display = 'none';
+      resultEl.style.display  = 'block';
+
+      if (graphicUrl) {
+        resultEl.innerHTML = `
+          <div class="result-wrap">
+            <div class="graphic-frame">
+              <img src="${graphicUrl}" alt="Hairstyle Analysis Graphic" id="graphic-img" />
+            </div>
+            <div class="result-actions">
+              <button class="btn green-btn" onclick="downloadGraphic()">⬇ Download Graphic</button>
+              <a class="btn primary" href="/booking.html">✂ Book Appointment</a>
+              <a class="btn" href="/#ai">Coba Lagi</a>
+            </div>
+            <div class="footer-note">AI Hairstyle Analysis — Powered by RedBox Barbershop</div>
+          </div>`;
+      } else {
+        resultEl.innerHTML = `
+          <div class="state-wrap"><div class="state-card">
+            <h2>Graphic gagal dibuat</h2>
+            <p>Terjadi timeout atau error saat generate. Coba lagi — gambar di-cache setelah berhasil.</p>
+            <div class="btn-row">
+              <button class="btn green-btn" onclick="retryGraphic()">↻ Coba Lagi</button>
+              <a class="btn" href="/#ai">Upload Ulang</a>
+            </div>
+          </div></div>`;
+      }
+    });
+
+    async function retryGraphic() {
+      location.reload();
     }
 
-    function downloadImage(src) {
-      const link = document.createElement('a');
-      link.href = src;
-      link.download = 'redbox-hairstyle-analysis.png';
-      link.click();
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    async function downloadGraphic() {
+      const img = document.getElementById('graphic-img');
+      if (!img) return;
+      try {
+        const res = await fetch(img.src);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'redbox-hairstyle-analysis.jpg';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        const a = document.createElement('a');
+        a.href = img.src;
+        a.download = 'redbox-hairstyle-analysis.jpg';
+        a.target = '_blank';
+        a.click();
+      }
     }
   </script>
 </body>

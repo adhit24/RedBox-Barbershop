@@ -21,6 +21,10 @@
       "maxDuration": 120,
       "includeFiles": "server/**"
     },
+    "api/ai/hairstyle-graphic.js": {
+      "maxDuration": 300,
+      "includeFiles": "server/**"
+    },
     "api/wa/webhook.js": {
       "maxDuration": 60,
       "includeFiles": "server/**"
@@ -58,6 +62,7 @@
     { "source": "/api/ai/analyze",              "destination": "/api/ai/analyze.js" },
     { "source": "/api/ai/upload",               "destination": "/api/ai/upload.js" },
     { "source": "/api/ai/hairstyle",            "destination": "/api/ai/hairstyle.js" },
+    { "source": "/api/ai/hairstyle-graphic",    "destination": "/api/ai/hairstyle-graphic.js" },
     { "source": "/api/ai/generate-image",       "destination": "/api/ai/generate-image.js" },
     { "source": "/api/wa/webhook",              "destination": "/api/wa/webhook.js" },
     { "source": "/api/cron/reminders",          "destination": "/api/cron/reminders.js" },
