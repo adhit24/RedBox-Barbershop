@@ -3,28 +3,7 @@
  * Accepts base64 image, uploads to Supabase Storage, creates ai_uploads record
  */
 
-// Validate environment variables early
-const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY'];
-const missingVars = requiredEnvVars.filter(v => !process.env[v]);
-if (missingVars.length > 0) {
-  console.error('[AI Upload] Missing environment variables:', missingVars.join(', '));
-}
-
-let createClient;
-try {
-  ({ createClient } = require('@supabase/supabase-js'));
-} catch (moduleErr) {
-  console.error('[AI Upload] Module loading error:', moduleErr.message);
-}
-
-const crypto = require('crypto');
-
-// Generate deterministic UUID v5 from email namespace
-const UUID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // DNS namespace
-function emailToUuid(email) {
-  if (!email || email === 'anonymous') return null;
-  return crypto.createHash('md5').update(email.toLowerCase().trim()).digest('hex').replace(/(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})/, '$1-$2-$3-$4-$5');
-}
+const { createClient } = require('@supabase/supabase-js');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -32,66 +11,27 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET') {
-    const rawUrl = process.env.SUPABASE_URL || '';
-    return res.status(200).json({ 
-      status: 'ok', 
-      service: 'AI Upload',
-      envCheck: { 
-        hasSupabase: !!process.env.SUPABASE_URL,
-        hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
-        supabaseUrl: rawUrl,
-        urlLength: rawUrl.length,
-        urlEndsWithSlash: rawUrl.endsWith('/'),
-        serviceKeyLength: (process.env.SUPABASE_SERVICE_KEY || '').length,
-        missingVars: missingVars.length > 0 ? missingVars : undefined
-      }
-    });
-  }
+  if (req.method === 'GET') return res.status(200).json({ status: 'ok', service: 'AI Upload' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  // Check if modules loaded
-  if (!createClient) {
-    return res.status(500).json({ 
-      error: 'Server configuration error: modules not loaded',
-      detail: missingVars.length > 0 ? `Missing env vars: ${missingVars.join(', ')}` : 'Unknown module error'
-    });
-  }
-
-  // Check environment variables
-  if (missingVars.length > 0) {
-    return res.status(500).json({ 
-      error: 'Server configuration error: missing environment variables',
-      detail: `Missing: ${missingVars.join(', ')}`
-    });
-  }
 
   try {
     const { image, serviceType = 'full_analysis', userEmail } = req.body || {};
 
     if (!image) return res.status(400).json({ error: 'No image provided' });
 
-    // Sanitize SUPABASE_URL: strip /rest/v1, /rest, and trailing slashes
-    const supabaseUrl = (process.env.SUPABASE_URL || '')
-      .trim()
-      .replace(/\/rest\/v1\/?$/, '')
-      .replace(/\/rest\/?$/, '')
-      .replace(/\/+$/, '');
     const supabase = createClient(
-      supabaseUrl,
+      process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY
     );
-    console.log('[AI Upload] Using Supabase URL:', supabaseUrl);
 
     // Enforce per-member quota: max 2 analyses (whitelisted accounts are unlimited)
     const UNLIMITED_EMAILS = ['adhit24@gmail.com'];
     const MAX_USES = 2;
-    const userUuid = emailToUuid(userEmail);
-    if (userEmail && !UNLIMITED_EMAILS.includes(userEmail) && userUuid) {
+    if (userEmail && !UNLIMITED_EMAILS.includes(userEmail)) {
       const { count, error: countError } = await supabase
         .from('ai_uploads')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', userUuid)
+        .eq('user_id', userEmail)
         .neq('status', 'failed');
 
       if (!countError && count >= MAX_USES) {
@@ -117,65 +57,30 @@ module.exports = async function handler(req, res) {
     }
 
     const ext = contentType.includes('png') ? 'png' : 'jpg';
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const storagePath = `uploads/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
 
-    // List buckets first to verify connection and bucket existence
-    const { data: bucketList, error: listError } = await supabase.storage.listBuckets();
-    console.log('[AI Upload] Available buckets:', bucketList?.map(b => b.name) || 'none');
-    
-    if (listError) {
-      console.error('[AI Upload] Cannot list buckets:', listError.message);
-      return res.status(500).json({ 
-        error: 'Storage connection failed: ' + listError.message,
-        detail: 'Could not list buckets - check SUPABASE_URL and SUPABASE_SERVICE_KEY'
-      });
-    }
-
-    const targetBucket = bucketList?.find(b => b.name === 'ai-images');
-    if (!targetBucket) {
-      console.error('[AI Upload] Bucket ai-images not found. Available:', bucketList?.map(b => b.name));
-      return res.status(500).json({ 
-        error: 'Bucket "ai-images" does not exist',
-        detail: `Available buckets: ${bucketList?.map(b => b.name).join(', ') || 'none'}`,
-        availableBuckets: bucketList?.map(b => b.name) || []
-      });
-    }
-
-    // Upload to Supabase Storage bucket 'ai-images' - use root path
-    const { data: uploadData, error: storageError } = await supabase.storage
+    // Upload to Supabase Storage bucket 'ai-images'
+    const { error: storageError } = await supabase.storage
       .from('ai-images')
-      .upload(fileName, buffer, { 
-        contentType, 
-        cacheControl: '3600', 
-        upsert: false 
-      });
+      .upload(storagePath, buffer, { contentType, cacheControl: '3600', upsert: false });
 
     if (storageError) {
-      console.error('[AI Upload] Storage error:', JSON.stringify(storageError));
-      return res.status(500).json({ 
-        error: 'Failed to store image: ' + storageError.message,
-        detail: storageError.name || 'Storage error',
-        fileName,
-        contentType,
-        bufferSize: buffer.length,
-      });
+      console.error('[AI Upload] Storage error:', storageError.message);
+      return res.status(500).json({ error: 'Failed to store image: ' + storageError.message });
     }
-
-    // Get public URL using the path returned from upload
-    const storagePath = uploadData?.path || fileName;
 
     const { data: { publicUrl } } = supabase.storage
       .from('ai-images')
       .getPublicUrl(storagePath);
 
-    // Create ai_uploads record (userUuid already computed above for quota check)
+    // Create ai_uploads record
     const { data: upload, error: dbError } = await supabase
       .from('ai_uploads')
       .insert({
         original_image_url: publicUrl,
         service_type: serviceType,
         status: 'pending',
-        user_id: userUuid,
+        user_id: userEmail || 'anonymous',
       })
       .select()
       .single();

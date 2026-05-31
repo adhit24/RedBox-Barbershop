@@ -3,20 +3,8 @@
  * Generates hairstyle simulation using gpt-image-2 images.edit
  */
 
-// Validate environment variables early
-const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'OPENAI_API_KEY'];
-const missingVars = requiredEnvVars.filter(v => !process.env[v]);
-if (missingVars.length > 0) {
-  console.error('[AI Hairstyle] Missing environment variables:', missingVars.join(', '));
-}
-
-let createClient, OpenAI;
-try {
-  ({ createClient } = require('@supabase/supabase-js'));
-  OpenAI = require('openai');
-} catch (moduleErr) {
-  console.error('[AI Hairstyle] Module loading error:', moduleErr.message);
-}
+const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -24,34 +12,8 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET') {
-    return res.status(200).json({ 
-      status: 'ok', 
-      service: 'AI Hairstyle',
-      envCheck: { 
-        hasSupabase: !!process.env.SUPABASE_URL,
-        hasOpenAI: !!process.env.OPENAI_API_KEY,
-        missingVars: missingVars.length > 0 ? missingVars : undefined
-      }
-    });
-  }
+  if (req.method === 'GET') return res.status(200).json({ status: 'ok', service: 'AI Hairstyle' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  // Check if modules loaded
-  if (!createClient || !OpenAI) {
-    return res.status(500).json({ 
-      error: 'Server configuration error: modules not loaded',
-      detail: missingVars.length > 0 ? `Missing env vars: ${missingVars.join(', ')}` : 'Unknown module error'
-    });
-  }
-
-  // Check environment variables
-  if (missingVars.length > 0) {
-    return res.status(500).json({ 
-      error: 'Server configuration error: missing environment variables',
-      detail: `Missing: ${missingVars.join(', ')}`
-    });
-  }
 
   try {
     const { uploadId, hairstyleName, hairstyleDescription } = req.body || {};
@@ -59,13 +21,8 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'uploadId and hairstyleName required' });
     }
 
-    const supabaseUrl = (process.env.SUPABASE_URL || '')
-      .trim()
-      .replace(/\/rest\/v1\/?$/, '')
-      .replace(/\/rest\/?$/, '')
-      .replace(/\/+$/, '');
     const supabase = createClient(
-      supabaseUrl,
+      process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY
     );
 
@@ -165,17 +122,10 @@ module.exports = async function handler(req, res) {
 
   } catch (err) {
     console.error('[AI Hairstyle] Error:', err.message, err.status || '');
-    // Log full error details for debugging
-    console.error('[AI Hairstyle] Full error:', {
-      message: err.message,
-      stack: err.stack,
-      response: err.response?.data,
-      status: err.status,
-    });
     // Return structured error so frontend can display it
     return res.status(500).json({
       error: err.message || 'Failed to generate hairstyle image',
-      detail: err.error?.message || err.response?.data?.error?.message || '',
+      detail: err.error?.message || '',
     });
   }
 };

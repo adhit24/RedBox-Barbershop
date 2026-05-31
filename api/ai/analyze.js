@@ -3,154 +3,39 @@
  * Fetches image from ai_uploads, calls OpenAI vision, saves & returns results
  */
 
-// Validate environment variables early
-const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'OPENAI_API_KEY'];
-const missingVars = requiredEnvVars.filter(v => !process.env[v]);
-if (missingVars.length > 0) {
-  console.error('[AI Analyze] Missing environment variables:', missingVars.join(', '));
-}
+const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
 
-let createClient, OpenAI;
-try {
-  ({ createClient } = require('@supabase/supabase-js'));
-  OpenAI = require('openai');
-} catch (moduleErr) {
-  console.error('[AI Analyze] Module loading error:', moduleErr.message);
-}
+const COMBINED_PROMPT = `You are a men's hair stylist for RedBox Barbershop.
+Analyze this photo. Return ONLY valid JSON, no markdown/explanation.
 
-const COMBINED_PROMPT = `You are RedBox Barbershop's premium AI grooming consultant.
-Analyze ONLY what is reasonably visible in this portrait photo.
-Return ONLY valid JSON. No markdown, no prose outside JSON.
-
-Use this exact shape:
 {
   "subject": {
-    "face_shape": {
-      "type": "oval|round|square|heart|diamond|oblong",
-      "characteristics": ["short trait", "short trait", "short trait", "short trait"]
-    },
+    "face_shape": {"type": "oval|round|square|heart|diamond|oblong"},
     "hair": {
       "type": "straight|wavy|curly|coily",
       "density": "thin|medium|medium_thick|thick",
       "current_length": "short|medium|long",
       "natural_texture": "smooth|soft_wave|coarse"
-    },
-    "skin": {
-      "type": "oily|combination|normal|dry|sensitive",
-      "undertone": "warm|neutral|cool",
-      "notes": ["short note", "short note"]
     }
-  },
-  "personal_color_analysis": {
-    "season": "Warm Autumn",
-    "keywords": ["short keyword", "short keyword", "short keyword"],
-    "best_colors": [
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"}
-    ],
-    "okay_colors": [
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"}
-    ],
-    "avoid_colors": [
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"}
-    ]
-  },
-  "outfit_recommendation": {
-    "faceShape": "Oval",
-    "faceShapeDescription": "short sentence",
-    "recommended_styles": [
-      {"name": "style name", "occasion": "occasion", "why_it_works": "short reason"},
-      {"name": "style name", "occasion": "occasion", "why_it_works": "short reason"},
-      {"name": "style name", "occasion": "occasion", "why_it_works": "short reason"},
-      {"name": "style name", "occasion": "occasion", "why_it_works": "short reason"}
-    ],
-    "fit_guidance": {
-      "recommended": ["short tip", "short tip"],
-      "avoid": ["short tip", "short tip"]
-    }
-  },
-  "eyewear_analysis": {
-    "recommended": [
-      {"name": "frame name", "category": "category", "why_it_suits": "short reason"},
-      {"name": "frame name", "category": "category", "why_it_suits": "short reason"},
-      {"name": "frame name", "category": "category", "why_it_suits": "short reason"},
-      {"name": "frame name", "category": "category", "why_it_suits": "short reason"}
-    ],
-    "avoid": [
-      {"name": "frame name", "reason": "short reason"},
-      {"name": "frame name", "reason": "short reason"},
-      {"name": "frame name", "reason": "short reason"},
-      {"name": "frame name", "reason": "short reason"}
-    ],
-    "sports_recommended": [
-      {"name": "sport frame", "why_it_suits": "short reason"},
-      {"name": "sport frame", "why_it_suits": "short reason"},
-      {"name": "sport frame", "why_it_suits": "short reason"},
-      {"name": "sport frame", "why_it_suits": "short reason"}
-    ],
-    "sports_avoid": [
-      {"name": "sport frame", "reason": "short reason"},
-      {"name": "sport frame", "reason": "short reason"},
-      {"name": "sport frame", "reason": "short reason"},
-      {"name": "sport frame", "reason": "short reason"}
-    ]
-  },
-  "skin_analysis": {
-    "type": "oily|combination|normal|dry|sensitive",
-    "concerns": [
-      {"type": "concern", "severity": "low|medium|high", "tip": "short tip"},
-      {"type": "concern", "severity": "low|medium|high", "tip": "short tip"},
-      {"type": "concern", "severity": "low|medium|high", "tip": "short tip"}
-    ],
-    "goals": ["goal", "goal", "goal", "goal", "goal", "goal"],
-    "routine": {
-      "morning": ["step", "step", "step", "step", "step"],
-      "night": ["step", "step", "step", "step", "step"]
-    },
-    "ingredients": ["ingredient", "ingredient", "ingredient", "ingredient", "ingredient"]
   },
   "hairstyle_analysis": {
     "recommended_styles": [
-      {"name": "style name", "score": 95, "match_reason": "short reason"},
-      {"name": "style name", "score": 92, "match_reason": "short reason"},
-      {"name": "style name", "score": 89, "match_reason": "short reason"},
-      {"name": "style name", "score": 86, "match_reason": "short reason"}
+      {"name": "Style Name", "score": 95, "match_reason": "Why it fits this face"}
     ],
     "avoid_styles": [
-      {"name": "style name", "reason": "short reason"},
-      {"name": "style name", "reason": "short reason"},
-      {"name": "style name", "reason": "short reason"},
-      {"name": "style name", "reason": "short reason"}
+      {"name": "Style Name", "reason": "Why to avoid"}
     ],
-    "styling_products": ["product", "product", "product", "product"],
-    "styling_steps": ["step", "step", "step", "step"],
-    "barber_tip": "one short actionable sentence",
-    "hair_color_recommendations": [
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"},
-      {"name": "color name", "hex": "#AABBCC"}
-    ],
-    "maintenance_tips": ["tip", "tip", "tip", "tip"]
+    "styling_products": ["Product1", "Product2", "Product3", "Product4"]
   }
 }
 
 Rules:
-- Use concise Indonesian-friendly labels but keep JSON keys in English exactly as written.
-- Return exactly the requested item counts for each list.
-- Do not invent medical certainty. Base the answer on visible cues only.
-- Keep each reason/tip under 12 words when possible.
-- Make hairstyle recommendations varied across classic, modern, textured, and clean options.
-- Replace every example value with an actual analysis of this person.`;
+- Return exactly 4 recommended_styles, 5 avoid_styles
+- Include variety: Korean, Classic, Modern, Textured styles
+- Products: exactly 4 items (clay/paste/spray/powder type)
+- All text concise, under 8 words per field
+- Replace ALL example values with real analysis of THIS person`;
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -158,32 +43,8 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET') return res.status(200).json({ 
-    status: 'ok', 
-    service: 'AI Analyze',
-    envCheck: { 
-      hasSupabase: !!process.env.SUPABASE_URL,
-      hasOpenAI: !!process.env.OPENAI_API_KEY,
-      missingVars: missingVars.length > 0 ? missingVars : undefined
-    }
-  });
+  if (req.method === 'GET') return res.status(200).json({ status: 'ok', service: 'AI Analyze' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  // Check if modules loaded
-  if (!createClient || !OpenAI) {
-    return res.status(500).json({ 
-      error: 'Server configuration error: modules not loaded',
-      detail: missingVars.length > 0 ? `Missing env vars: ${missingVars.join(', ')}` : 'Unknown module error'
-    });
-  }
-
-  // Check environment variables
-  if (missingVars.length > 0) {
-    return res.status(500).json({ 
-      error: 'Server configuration error: missing environment variables',
-      detail: `Missing: ${missingVars.join(', ')}`
-    });
-  }
 
   const startTime = Date.now();
 
@@ -191,13 +52,8 @@ module.exports = async function handler(req, res) {
     const { uploadId, serviceType = 'full_analysis' } = req.body || {};
     if (!uploadId) return res.status(400).json({ error: 'uploadId required' });
 
-    const supabaseUrl = (process.env.SUPABASE_URL || '')
-      .trim()
-      .replace(/\/rest\/v1\/?$/, '')
-      .replace(/\/rest\/?$/, '')
-      .replace(/\/+$/, '');
     const supabase = createClient(
-      supabaseUrl,
+      process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_KEY
     );
 
@@ -222,16 +78,14 @@ module.exports = async function handler(req, res) {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4o-mini',
       max_tokens: 1000,
-      temperature: 0.4,
-      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'user',
           content: [
             { type: 'text', text: COMBINED_PROMPT },
-            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'high' } }
+            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'low' } }
           ]
         }
       ]
@@ -254,7 +108,7 @@ module.exports = async function handler(req, res) {
     await supabase.from('ai_results').insert({
       upload_id: uploadId,
       analysis_result: analysisResult,
-      model_used: 'gpt-4.1-mini',
+      model_used: 'gpt-4o-mini',
       tokens_used: tokens,
       processing_time_ms: processingTime
     });
@@ -270,34 +124,11 @@ module.exports = async function handler(req, res) {
       status: 'completed',
       serviceType,
       results: analysisResult,
-      meta: { model: 'gpt-4.1-mini', tokens, processingTime }
+      meta: { model: 'gpt-4o-mini', tokens, processingTime }
     });
 
   } catch (err) {
-    console.error('[AI Analyze] Error:', err.message, err.stack);
-    // Update upload status to failed if we have uploadId
-    if (uploadId) {
-      try {
-        const supabaseUrl = (process.env.SUPABASE_URL || '')
-          .trim()
-          .replace(/\/rest\/v1\/?$/, '')
-          .replace(/\/rest\/?$/, '')
-          .replace(/\/+$/, '');
-        const supabase = createClient(
-          supabaseUrl,
-          process.env.SUPABASE_SERVICE_KEY
-        );
-        await supabase.from('ai_uploads').update({ 
-          status: 'failed', 
-          error_message: err.message 
-        }).eq('id', uploadId);
-      } catch (dbErr) {
-        console.error('[AI Analyze] Failed to update error status:', dbErr.message);
-      }
-    }
-    return res.status(500).json({ 
-      error: err.message || 'Internal server error',
-      detail: err.stack?.split('\n')?.[0] || ''
-    });
+    console.error('[AI Analyze] Error:', err.message);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
   }
 };

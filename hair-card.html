@@ -494,26 +494,23 @@
       align-items: center;
       justify-content: flex-start;
       gap: 7px;
-      padding: 8px 6px 10px;
-      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
-      border: 1px solid rgba(255,255,255,.06);
-      border-radius: 10px;
+      padding: 0;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
       text-decoration: none;
-      transition: transform .2s ease, border-color .2s ease, background .2s ease;
+      transition: background .2s, border-color .2s;
     }
     .product-item.redbox-upsell:hover {
-      transform: translateY(-2px);
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-      border-color: rgba(255,255,255,.12);
+      background: transparent;
+      border-color: transparent;
     }
     .product-icon-img {
-      width: 82px; height: 82px;
-      border-radius: 12px;
+      width: 70px; height: 70px;
+      border-radius: 0;
       flex-shrink: 0;
-      object-fit: cover;
-      background: rgba(255,255,255,.04);
-      border: 1px solid rgba(255,255,255,.06);
-      filter: drop-shadow(0 10px 18px rgba(0,0,0,.38));
+      object-fit: contain;
+      filter: drop-shadow(0 8px 14px rgba(0,0,0,.35));
     }
     .product-info {
       width: 100%;
@@ -522,30 +519,30 @@
     }
     .product-name {
       font-size: .66rem;
-      font-weight: 800;
-      color: rgba(255,255,255,.92);
+      font-weight: 700;
+      color: rgba(255,255,255,.9);
       letter-spacing: 0;
       line-height: 1.18;
       white-space: normal;
-    }
+      }
     .product-desc {
-      display: block;
-      font-size: .49rem;
+      display: none;
+      font-size: .5rem;
       color: rgba(255,255,255,.55);
       line-height: 1.3;
-      margin-top: 2px;
+      margin-top: 1px;
     }
     .product-price {
-      display: block;
-      font-size: .48rem;
-      font-weight: 800;
-      color: #d8c19a;
-      margin-top: 4px;
+      display: none;
+      font-size: .45rem;
+      font-weight: 700;
+      color: #C1121F;
+      margin-top: 2px;
     }
     .product-buy-badge {
-      display: inline-flex;
+      display: none;
       flex-shrink: 0;
-      background: rgba(193,18,31,.9);
+      background: #C1121F;
       color: #fff;
       font-size: .38rem;
       font-weight: 800;
@@ -553,7 +550,6 @@
       padding: 4px 8px;
       border-radius: 99px;
       text-transform: uppercase;
-      margin-top: 5px;
     }
 
     /* ── VERY BOTTOM: Key Tips + Hair Color ── */
@@ -606,40 +602,30 @@
       line-height: 1.25;
     }
     .color-swatches-row {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 10px;
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
       margin-top: 8px;
     }
     .color-swatch-item {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
     }
     .color-swatch {
-      width: 100%;
-      aspect-ratio: 4 / 3;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.12);
-      box-shadow: inset 0 0 0 1px rgba(0,0,0,.28);
-      position: relative;
-      overflow: hidden;
-    }
-    .color-swatch::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(255,255,255,.18), transparent 48%);
-      pointer-events: none;
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.55);
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.45);
     }
     .color-swatch-name {
-      font-size: .48rem;
-      color: rgba(255,255,255,.68);
+      font-size: .5rem;
+      color: rgba(255,255,255,.62);
       text-align: center;
-      max-width: 84px;
+      max-width: 68px;
       line-height: 1.2;
-      letter-spacing: .02em;
     }
 
     /* ── LOADING / ERROR states ── */
@@ -836,36 +822,13 @@
     }
 
     // ── STYLING STEPS ──
-    function defaultStylingSteps(hairType, aiSteps) {
-      const fallback = [
+    function defaultStylingSteps(hairType) {
+      return [
         { icon: 'blow', name: 'BLOW DRY', desc: 'Create\nvolume' },
         { icon: 'hand', name: 'APPLY\nPRODUCT', desc: 'Use matte clay\nor paste' },
         { icon: 'shape', name: 'STYLE &\nSHAPE', desc: 'Lift roots, shape\nnaturally' },
         { icon: 'clock', name: 'FINISH', desc: 'Light hold\nhairspray' },
       ];
-
-      if (!aiSteps || !aiSteps.length) return fallback;
-
-      const iconForStep = (text) => {
-        const s = String(text || '').toLowerCase();
-        if (s.includes('blow') || s.includes('dry')) return 'blow';
-        if (s.includes('product') || s.includes('clay') || s.includes('pomade') || s.includes('spray')) return 'hand';
-        if (s.includes('shape') || s.includes('style') || s.includes('tekstur') || s.includes('texture')) return 'shape';
-        if (s.includes('finish') || s.includes('rapikan') || s.includes('final')) return 'clock';
-        return ['blow', 'hand', 'shape', 'clock'][Math.min(3, aiSteps.indexOf(text))] || 'shape';
-      };
-
-      return aiSteps.slice(0, 4).map((step, index) => {
-        const label = String(step || '').trim().toUpperCase();
-        const words = label.split(/\s+/);
-        const name = words.slice(0, 2).join(' ') || fallback[index]?.name || 'STYLE';
-        const desc = words.slice(2).join(' ') || String(step || '') || fallback[index]?.desc || '';
-        return {
-          icon: iconForStep(step),
-          name: name.replace(' ', '\n'),
-          desc: desc ? desc.replace(/\s+/g, ' ').slice(0, 36) : fallback[index]?.desc || '',
-        };
-      });
     }
 
     // ── REDBOX PRODUCT CATALOG (for upsell mapping) ──
@@ -875,7 +838,7 @@
         name: 'Redbox Clay',
         displayName: 'MATTE CLAY',
         price: 'Rp 100.000',
-        icon: 'Brand_assets/product/clay.jpeg',
+        icon: 'Brand_assets/product/icons/redbox-clay.svg',
         desc: 'Matte finish, volume & texture',
         waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Clay',
         keywords: ['clay', 'matte', 'texture', 'volume', 'powder', 'paste'],
@@ -885,7 +848,7 @@
         name: 'Redbox Pomade Waterbased',
         displayName: 'STYLING PASTE',
         price: 'Rp 100K–150K',
-        icon: 'Brand_assets/product/water_base.jpeg',
+        icon: 'Brand_assets/product/icons/redbox-pomade-wb.svg',
         desc: 'Flexible hold, easy wash',
         waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Waterbased',
         keywords: ['pomade', 'waterbased', 'water', 'gel', 'cream', 'mousse', 'light hold', 'medium hold'],
@@ -895,7 +858,7 @@
         name: 'Redbox Pomade Oil Based',
         displayName: 'STRONG POMADE',
         price: 'Rp 100K–150K',
-        icon: 'Brand_assets/product/oil_base.jpeg',
+        icon: 'Brand_assets/product/icons/redbox-pomade-ob.svg',
         desc: 'High shine, strong hold',
         waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Oil%20Based',
         keywords: ['oil', 'shine', 'slick', 'strong hold', 'wax', 'heavy'],
@@ -905,7 +868,7 @@
         name: 'Parfum Eleftheree',
         displayName: 'FINISHING SPRAY',
         price: 'Rp 150.000',
-        icon: 'Brand_assets/product/E_left_here.jpeg',
+        icon: 'Brand_assets/product/icons/redbox-parfum-eleftheree.svg',
         desc: 'Bold, maskulin, leather & musk',
         waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Eleftheree',
         keywords: ['parfum', 'perfume', 'fragrance'],
@@ -915,7 +878,7 @@
         name: 'Parfum Psyhi',
         displayName: 'SIGNATURE SCENT',
         price: 'Rp 150.000',
-        icon: 'Brand_assets/product/psyi.jpeg',
+        icon: 'Brand_assets/product/icons/redbox-parfum-psyhi.svg',
         desc: 'Warm, sweet, vanilla & cinnamon',
         waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Psyhi',
         keywords: ['parfum', 'perfume', 'fragrance'],
@@ -950,46 +913,38 @@
     }
 
     // ── KEY TIPS ──
-    function buildTips(faceShape, hairType, aiTips) {
-      if (aiTips && aiTips.length) {
-        const iconCycle = ['trim', 'texture', 'avoid', 'clock'];
-        return aiTips.slice(0, 4).map((text, index) => ({
-          icon: iconCycle[index] || 'trim',
-          text: String(text || '').trim(),
-        }));
-      }
-
+    function buildTips(faceShape, hairType) {
       const shape = (faceShape || 'oval').toLowerCase();
       const tipMap = {
         oval: [
-          { icon: 'trim', text: 'Keep sides neat and tapered' },
-          { icon: 'texture', text: 'Add texture for volume' },
+          { icon: 'head', text: 'Keep sides neat and tapered' },
+          { icon: 'hand', text: 'Add texture for volume' },
           { icon: 'avoid', text: 'Avoid heavy fringe' },
-          { icon: 'clock', text: 'Trim every 4-6 weeks' },
+          { icon: 'bottle', text: 'Regular trim every 4-6 weeks' },
         ],
         round: [
           { icon: 'volume', text: 'Add height on top' },
           { icon: 'trim', text: 'Keep sides short' },
           { icon: 'avoid', text: 'Avoid round bowl cuts' },
-          { icon: 'clock', text: 'Trim every 3-4 weeks' },
+          { icon: 'bottle', text: 'Regular trim every 3-4 weeks' },
         ],
         square: [
           { icon: 'texture', text: 'Soften edges with texture' },
           { icon: 'volume', text: 'Keep soft side volume' },
           { icon: 'head', text: 'Use longer textured fringe' },
-          { icon: 'clock', text: 'Trim every 4-6 weeks' },
+          { icon: 'bottle', text: 'Regular trim every 4-6 weeks' },
         ],
         heart: [
           { icon: 'volume', text: 'Balance forehead with sides' },
           { icon: 'trim', text: 'Medium length works best' },
           { icon: 'avoid', text: 'Avoid extra wide styles' },
-          { icon: 'clock', text: 'Trim every 5-6 weeks' },
+          { icon: 'bottle', text: 'Regular trim every 5-6 weeks' },
         ],
         diamond: [
           { icon: 'head', text: 'Add width with wispy fringe' },
           { icon: 'texture', text: 'Textured styles work well' },
           { icon: 'avoid', text: 'Avoid too much height' },
-          { icon: 'clock', text: 'Trim every 4-5 weeks' },
+          { icon: 'bottle', text: 'Regular trim every 4-5 weeks' },
         ],
       };
       return tipMap[shape] || tipMap['oval'];
@@ -997,16 +952,13 @@
 
     // ── HAIR COLOR SWATCHES ──
     function buildHairColors(hairData) {
-      return (hairData.hair_color_recommendations || []).slice(0,5).map((c) => ({
-        name: (c.name || '').toUpperCase(),
-        hex: c.hex || '#5a3410'
-      })).concat([
+      return [
         { name: 'NATURAL BLACK', hex: '#1a1008' },
         { name: 'DARK BROWN', hex: '#2d1f0e' },
         { name: 'WARM BROWN', hex: '#5a3410' },
         { name: 'CHESTNUT', hex: '#7b4018' },
         { name: 'LIGHT BROWN', hex: '#9c6028' },
-      ]).slice(0,5);
+      ];
     }
 
     // ── FILL IMAGE SLOT ──
@@ -1032,9 +984,7 @@
     // ── GENERATE HAIRSTYLE ON CUSTOMER FACE (image edit) ──
     async function genHairstyleEdit(elId, uploadId, hairstyleName, fallbackPhoto) {
       try {
-        console.log('[HairCard] Generating hairstyle:', { elId, uploadId: uploadId?.substring(0, 8) + '...', hairstyleName });
         if (!uploadId) {
-          console.warn('[HairCard] No uploadId, using fallback photo');
           if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
           else failSlot(elId);
           return;
@@ -1045,11 +995,9 @@
           body: JSON.stringify({ uploadId, hairstyleName }),
         });
         const json = await res.json();
-        console.log('[HairCard] API response:', { status: res.status, hasImage: !!json.imageUrl, error: json.error });
         if (!res.ok) throw new Error(json.error || 'Failed');
         fillSlot(elId, json.imageUrl);
       } catch (err) {
-        console.error('[HairCard] Error generating hairstyle:', err.message);
         if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
         else failSlot(elId);
       }
@@ -1117,9 +1065,9 @@
       const dotCount = densityDots(density);
       const recLength = hairInfo.current_length || 'medium';
       const lengthPct = lengthToPercent(recLength);
-      const steps = defaultStylingSteps(hairInfo.type, hair.styling_steps);
+      const steps = defaultStylingSteps(hairInfo.type);
       const products = buildProducts(hair.styling_products);
-      const tips = buildTips(faceShape, hairInfo.type, hair.maintenance_tips);
+      const tips = buildTips(faceShape, hairInfo.type);
       const hairColors = buildHairColors(hair);
 
       // ── Portrait ──
@@ -1312,14 +1260,7 @@
         raw = sessionStorage.getItem('ai_results');
         userPhoto = sessionStorage.getItem('ai_user_photo');
         uploadId = sessionStorage.getItem('ai_upload_id');
-        console.log('[HairCard] Session storage loaded:', { 
-          hasResults: !!raw, 
-          hasUserPhoto: !!userPhoto, 
-          uploadId: uploadId ? uploadId.substring(0, 8) + '...' : 'MISSING' 
-        });
-      } catch (e) {
-        console.error('[HairCard] Error reading sessionStorage:', e);
-      }
+      } catch (e) {}
 
       if (!raw) {
         loading.remove();
@@ -1330,11 +1271,6 @@
       const results = JSON.parse(raw);
       const r = results.results || results;
       if (!uploadId) uploadId = results.uploadId || '';
-
-      // Show warning if uploadId is missing - images will be fallback only
-      if (!uploadId) {
-        console.warn('[HairCard] uploadId is missing! AI hairstyle generation will not work. Using fallback photos only.');
-      }
 
       loading.remove();
       root.innerHTML = buildCard(r, userPhoto);
@@ -1347,11 +1283,7 @@
       const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
       while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length - 1] || 'Avoid Style' });
 
-      // If no uploadId but we have userPhoto, use userPhoto for all hairstyle slots as fallback
-      const effectiveUploadId = uploadId || null;
-      const fallbackPhoto = !uploadId && userPhoto ? userPhoto : null;
-      
-      loadHairImages(hairRecs, hairAvoid, effectiveUploadId, fallbackPhoto || userPhoto);
+      loadHairImages(hairRecs, hairAvoid, uploadId, userPhoto);
     });
 
     // ── DOWNLOAD AS PNG ──
