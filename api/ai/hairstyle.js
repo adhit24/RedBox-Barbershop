@@ -65,17 +65,23 @@ module.exports = async function handler(req, res) {
       const hairLength  = (a.hairLength  || 'medium').toUpperCase();
       const recs   = (a.recs   || []).slice(0, 4).map(r => r.name || r).join(', ') || 'Two Block, Korean Comma, Textured Crop, Classic Taper';
       const avoids = (a.avoids || []).slice(0, 2).map(r => r.name || r).join(', ') || 'Bowl Cut, Flat & Limp';
-      prompt = `Create a professional hairstyle analysis graphic card using this portrait photo. Dark #080808 background, white text, green #9bd448 accent color. Layout:
+      prompt = `Create a professional hairstyle analysis graphic card using this portrait photo. Dark #080808 background, white text, green #9bd448 accent color. 
+
+CRITICAL RULES THAT MUST BE FOLLOWED 100%:
+- ALL hairstyle preview images (both RECOMMENDED HAIRSTYLES and HAIRSTYLES TO AVOID) MUST use the EXACT SAME face, identity, skin tone, facial features, and ethnicity as the original user portrait. DO NOT change the person's face at all - ONLY change the hairstyle!
+- Preserve the original person's identity in every preview image!
+
+Layout:
 - TOP: "HAIRSTYLE ANALYSIS" bold header
-- LEFT TOP: User portrait with FACE SHAPE: ${faceShape} label and face shape outline
+- LEFT TOP: User portrait (original photo) with FACE SHAPE: ${faceShape} label and face shape outline
 - RIGHT TOP: 
   - "BEST HAIR CHARACTERISTICS" with 3 icon circles: Tapered Sides, Volume on Top, Natural Texture
   - HAIR TYPE: ${hairType}
   - HAIR THICKNESS: ${hairDensity} with dot indicators
   - HAIR LENGTH: ${hairLength} with SHORT-MEDIUM-LONG slider
 - MIDDLE: 
-  - RECOMMENDED HAIRSTYLES (green title) with 4 subject images and checkmarks: ${recs}
-  - HAIRSTYLES TO AVOID (red title) with 2 subject images and X marks: ${avoids}
+  - RECOMMENDED HAIRSTYLES (green title) with 4 preview images (same person's face) with checkmarks: ${recs}
+  - HAIRSTYLES TO AVOID (red title) with 2 preview images (same person's face) with X marks: ${avoids}
 - BOTTOM LEFT: STYLING GUIDE (blow dry, apply product, style, finish) + KEY TIPS icons
 - BOTTOM RIGHT: RECOMMENDED PRODUCTS (4 bottles) + HAIR COLOR SUGGESTION (5 circular swatches: black, dark brown, ash brown, light brown, ash gray)
 Premium barbershop editorial style, clean minimal design.`;
