@@ -20,7 +20,11 @@ module.exports = async function handler(req, res) {
     const { prompt, cacheKey } = req.body || {};
     if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
-    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '').trim();
+    const supabaseUrl = (process.env.SUPABASE_URL || '')
+      .trim()
+      .replace(/\/rest\/v1\/?$/, '')
+      .replace(/\/rest\/?$/, '')
+      .replace(/\/+$/, '');
     const supabase = createClient(
       supabaseUrl,
       process.env.SUPABASE_SERVICE_KEY

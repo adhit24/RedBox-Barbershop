@@ -191,7 +191,11 @@ module.exports = async function handler(req, res) {
     const { uploadId, serviceType = 'full_analysis' } = req.body || {};
     if (!uploadId) return res.status(400).json({ error: 'uploadId required' });
 
-    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '').trim();
+    const supabaseUrl = (process.env.SUPABASE_URL || '')
+      .trim()
+      .replace(/\/rest\/v1\/?$/, '')
+      .replace(/\/rest\/?$/, '')
+      .replace(/\/+$/, '');
     const supabase = createClient(
       supabaseUrl,
       process.env.SUPABASE_SERVICE_KEY
@@ -274,7 +278,11 @@ module.exports = async function handler(req, res) {
     // Update upload status to failed if we have uploadId
     if (uploadId) {
       try {
-        const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '').trim();
+        const supabaseUrl = (process.env.SUPABASE_URL || '')
+          .trim()
+          .replace(/\/rest\/v1\/?$/, '')
+          .replace(/\/rest\/?$/, '')
+          .replace(/\/+$/, '');
         const supabase = createClient(
           supabaseUrl,
           process.env.SUPABASE_SERVICE_KEY

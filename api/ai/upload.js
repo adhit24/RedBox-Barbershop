@@ -71,8 +71,12 @@ module.exports = async function handler(req, res) {
 
     if (!image) return res.status(400).json({ error: 'No image provided' });
 
-    // Strip trailing slash from URL to prevent "Invalid path" errors
-    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '').trim();
+    // Sanitize SUPABASE_URL: strip /rest/v1, /rest, and trailing slashes
+    const supabaseUrl = (process.env.SUPABASE_URL || '')
+      .trim()
+      .replace(/\/rest\/v1\/?$/, '')
+      .replace(/\/rest\/?$/, '')
+      .replace(/\/+$/, '');
     const supabase = createClient(
       supabaseUrl,
       process.env.SUPABASE_SERVICE_KEY
