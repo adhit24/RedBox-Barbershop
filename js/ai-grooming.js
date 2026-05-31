@@ -321,21 +321,12 @@ class AIGroomingUI {
   }
 
   checkMembershipStatus() {
-    const state = this._getMemberState();
+    // AI Grooming is now open for everyone - no membership check
     const promoSection = document.getElementById('ai-member-promo');
     const uploadSection = document.getElementById('ai-upload-section');
 
-    if (state === 'active_member') {
-      if (promoSection) promoSection.style.display = 'none';
-      if (uploadSection) uploadSection.style.display = 'block';
-    } else {
-      if (uploadSection) uploadSection.style.display = 'none';
-      if (promoSection) {
-        promoSection.innerHTML = this._getGateHTML(state);
-        promoSection.style.display = 'block';
-        this._bindGateEvents(promoSection);
-      }
-    }
+    if (promoSection) promoSection.style.display = 'none';
+    if (uploadSection) uploadSection.style.display = 'block';
   }
 
   bindEvents() {
@@ -426,12 +417,8 @@ class AIGroomingUI {
     const analyzeBtn = document.getElementById('ai-analyze-btn');
     if (analyzeBtn) {
       analyzeBtn.disabled = false;
-      if (this.aiService.isAuthenticated()) {
-        analyzeBtn.textContent = 'Generate';
-        this.hideError(); // Clear any login error
-      } else {
-        analyzeBtn.textContent = 'Login to Continue';
-      }
+      analyzeBtn.textContent = 'Generate';
+      this.hideError();
     }
   }
 
@@ -464,11 +451,7 @@ class AIGroomingUI {
       return;
     }
 
-    if (!this.aiService.isAuthenticated()) {
-      this.showLoginModal();
-      return;
-    }
-
+    // AI Grooming is open for everyone - no authentication required
     const serviceType = 'full_analysis';
     
     try {
