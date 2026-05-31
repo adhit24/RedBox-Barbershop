@@ -106,6 +106,28 @@ module.exports = async function handler(req, res) {
     const ext = contentType.includes('png') ? 'png' : 'jpg';
     const storagePath = `uploads/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
 
+    // Ensure 'ai-images' bucket exists (create if not)
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const bucketExists = buckets?.some(b => b.name === 'ai-images');
+      
+      if (!bucketExists) {
+        console.log('[AI Upload] Creating ai-images bucket...');
+        const { error: createError } = await supabase.storage.createBucket('ai-images', {
+          public: true,
+          fileSizeLimit: 10485760, // 10MB
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp']
+        });
+        if (createError) {
+          console.error('[AI Upload] Failed to create bucket:', createError.message);
+          // Continue anyway - bucket might already exist
+        }
+      }
+    } catch (bucketErr) {
+      console.error('[AI Upload] Bucket check error:', bucketErr.message);
+      // Continue with upload attempt
+    }
+
     // Upload to Supabase Storage bucket 'ai-images'
     const { error: storageError } = await supabase.storage
       .from('ai-images')
