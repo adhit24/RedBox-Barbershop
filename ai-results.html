@@ -126,65 +126,42 @@
       line-height: 1.6;
     }
     .result-card {
-      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
-      border: 1px solid var(--line);
-      border-radius: 24px;
-      overflow: hidden;
-      box-shadow: 0 18px 60px rgba(0,0,0,.32);
-    }
-    .result-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 16px 18px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(255,255,255,.02);
-      flex-wrap: wrap;
-    }
-    .result-title {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .result-title strong {
-      font-size: 1rem;
-      letter-spacing: .02em;
-    }
-    .result-title span {
-      color: var(--muted);
-      font-size: .82rem;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: var(--panel-2);
-      border: 1px solid var(--line);
-      color: var(--muted);
-      font-size: .8rem;
-      font-weight: 700;
-    }
-    .result-stage {
-      padding: 18px;
-      background: #090909;
+      background: transparent;
+      border: none;
     }
     .graphic-shell {
       aspect-ratio: 4 / 5;
       width: 100%;
-      border-radius: 20px;
+      border-radius: 28px;
       overflow: hidden;
-      background: #111;
-      border: 1px solid var(--line);
+      background: #0d0d0d;
+      border: 1px solid rgba(255,255,255,.06);
       position: relative;
+      box-shadow: 0 28px 80px rgba(0,0,0,.48);
     }
     .graphic-shell img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
+    }
+    .result-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: rgba(255,255,255,.52);
+      font-size: .78rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .result-kicker::before,
+    .result-kicker::after {
+      content: '';
+      width: 42px;
+      height: 1px;
+      background: rgba(255,255,255,.14);
     }
     .loading-state,
     .error-state,
@@ -289,14 +266,22 @@
       'Create a photo hairstyle analysis graphic using this portrait.',
       'Show side-by-side hairstyles comparisons to highlight which hairstyles suit the subject best.',
       'Make it visual-first, with short labels only and no paragraph.',
-      'Use a premium black grooming infographic style.',
-      'Place the real customer portrait large on the left.',
-      'Place the title "HAIRSTYLE ANALYSIS" at the top.',
-      'Show 4 recommended hairstyles with green check marks.',
-      'Show 2 hairstyles to avoid with red X marks.',
-      'Add short sections for hair characteristics, styling guide, recommended products, key tips, and hair color suggestion.',
-      'Use only short uppercase labels, clean spacing, realistic hairstyle previews, and no long explanation text.',
-      'Keep the same customer identity in all hairstyle comparison images.'
+      'Design a realistic premium barbershop infographic on a black background.',
+      'Match this structure exactly:',
+      '1. Large real customer portrait on the upper left.',
+      '2. Big title at top right: HAIRSTYLE ANALYSIS.',
+      '3. One clean characteristics panel on the upper right with short labels only.',
+      '4. A recommended hairstyles section with exactly 4 hairstyle comparison cards using the same customer face and green check icons.',
+      '5. A hairstyles to avoid section with exactly 2 hairstyle comparison cards using the same customer face and red X icons.',
+      '6. A styling guide row with simple icon steps and very short labels.',
+      '7. A recommended products row with product packshots and short names.',
+      '8. A key tips row with icon boxes and short uppercase labels.',
+      '9. A hair color suggestion row with circular color swatches and short names.',
+      'Use neat grid alignment, high contrast, realistic hairstyle edits, editorial lighting, and clean spacing.',
+      'Keep all hairstyle comparison faces identical to the uploaded customer.',
+      'Do not create a collage of different people.',
+      'Do not add paragraphs, long descriptions, chat bubbles, UI chrome, or extra sections.',
+      'Use only concise uppercase labels similar to a magazine grooming board.'
     ].join(' ');
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -332,17 +317,9 @@
           resultEl.style.display = 'block';
           resultEl.innerHTML = `
             <section class="result-card">
-              <div class="result-meta">
-                <div class="result-title">
-                  <strong>Hairstyle Analysis Graphic</strong>
-                  <span>Visual-first, short labels only, no paragraph</span>
-                </div>
-                <div class="badge">AI Generated</div>
-              </div>
-              <div class="result-stage">
-                <div class="graphic-shell">
-                  <img src="${imageUrl}" alt="AI hairstyle analysis graphic" />
-                </div>
+              <div class="result-kicker">Hairstyle Analysis Graphic</div>
+              <div class="graphic-shell">
+                <img src="${imageUrl}" alt="AI hairstyle analysis graphic" />
               </div>
             </section>
             <div class="actions">
@@ -382,7 +359,7 @@
         body: JSON.stringify({
           uploadId,
           prompt: ANALYSIS_GRAPHIC_PROMPT,
-          cacheKey: `v5/${uploadId}/hairstyle-analysis-graphic/simple`
+          cacheKey: `v6/${uploadId}/hairstyle-analysis-graphic/simple`
         })
       });
 
