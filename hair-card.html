@@ -1032,7 +1032,9 @@
     // ── GENERATE HAIRSTYLE ON CUSTOMER FACE (image edit) ──
     async function genHairstyleEdit(elId, uploadId, hairstyleName, fallbackPhoto) {
       try {
+        console.log('[HairCard] Generating hairstyle:', { elId, uploadId: uploadId?.substring(0, 8) + '...', hairstyleName });
         if (!uploadId) {
+          console.warn('[HairCard] No uploadId, using fallback photo');
           if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
           else failSlot(elId);
           return;
@@ -1043,9 +1045,11 @@
           body: JSON.stringify({ uploadId, hairstyleName }),
         });
         const json = await res.json();
+        console.log('[HairCard] API response:', { status: res.status, hasImage: !!json.imageUrl, error: json.error });
         if (!res.ok) throw new Error(json.error || 'Failed');
         fillSlot(elId, json.imageUrl);
       } catch (err) {
+        console.error('[HairCard] Error generating hairstyle:', err.message);
         if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
         else failSlot(elId);
       }
@@ -1308,7 +1312,14 @@
         raw = sessionStorage.getItem('ai_results');
         userPhoto = sessionStorage.getItem('ai_user_photo');
         uploadId = sessionStorage.getItem('ai_upload_id');
-      } catch (e) {}
+        console.log('[HairCard] Session storage loaded:', { 
+          hasResults: !!raw, 
+          hasUserPhoto: !!userPhoto, 
+          uploadId: uploadId ? uploadId.substring(0, 8) + '...' : 'MISSING' 
+        });
+      } catch (e) {
+        console.error('[HairCard] Error reading sessionStorage:', e);
+      }
 
       if (!raw) {
         loading.remove();
@@ -1319,6 +1330,11 @@
       const results = JSON.parse(raw);
       const r = results.results || results;
       if (!uploadId) uploadId = results.uploadId || '';
+
+      // Show warning if uploadId is missing - images will be fallback only
+      if (!uploadId) {
+        console.warn('[HairCard] uploadId is missing! AI hairstyle generation will not work. Using fallback photos only.');
+      }
 
       loading.remove();
       root.innerHTML = buildCard(r, userPhoto);
@@ -1331,7 +1347,11 @@
       const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
       while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length - 1] || 'Avoid Style' });
 
-      loadHairImages(hairRecs, hairAvoid, uploadId, userPhoto);
+      // If no uploadId but we have userPhoto, use userPhoto for all hairstyle slots as fallback
+      const effectiveUploadId = uploadId || null;
+      const fallbackPhoto = !uploadId && userPhoto ? userPhoto : null;
+      
+      loadHairImages(hairRecs, hairAvoid, effectiveUploadId, fallbackPhoto || userPhoto);
     });
 
     // ── DOWNLOAD AS PNG ──

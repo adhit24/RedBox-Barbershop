@@ -210,7 +210,12 @@ class AIGroomingService {
           if (status.status === 'completed') {
             clearInterval(checkInterval);
             const results = await this.getResults(uploadId);
-            resolve(results);
+            // Ensure uploadId is included in results for frontend use
+            resolve({
+              ...results,
+              uploadId,
+              status: 'completed',
+            });
           } else if (status.status === 'failed') {
             clearInterval(checkInterval);
             reject(new Error(status.errorMessage || 'Processing failed'));
