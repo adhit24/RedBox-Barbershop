@@ -3,7 +3,20 @@
  * Accepts base64 image, uploads to Supabase Storage, creates ai_uploads record
  */
 
-const { createClient } = require('@supabase/supabase-js');
+// Validate environment variables early
+const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY'];
+const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+if (missingVars.length > 0) {
+  console.error('[AI Upload] Missing environment variables:', missingVars.join(', '));
+}
+
+let createClient;
+try {
+  ({ createClient } = require('@supabase/supabase-js'));
+} catch (moduleErr) {
+  console.error('[AI Upload] Module loading error:', moduleErr.message);
+}
+
 const crypto = require('crypto');
 
 // Generate deterministic UUID v5 from email namespace
@@ -19,8 +32,33 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET') return res.status(200).json({ status: 'ok', service: 'AI Upload' });
+  if (req.method === 'GET') {
+    return res.status(200).json({ 
+      status: 'ok', 
+      service: 'AI Upload',
+      envCheck: { 
+        hasSupabase: !!process.env.SUPABASE_URL,
+        missingVars: missingVars.length > 0 ? missingVars : undefined
+      }
+    });
+  }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Check if modules loaded
+  if (!createClient) {
+    return res.status(500).json({ 
+      error: 'Server configuration error: modules not loaded',
+      detail: missingVars.length > 0 ? `Missing env vars: ${missingVars.join(', ')}` : 'Unknown module error'
+    });
+  }
+
+  // Check environment variables
+  if (missingVars.length > 0) {
+    return res.status(500).json({ 
+      error: 'Server configuration error: missing environment variables',
+      detail: `Missing: ${missingVars.join(', ')}`
+    });
+  }
 
   try {
     const { image, serviceType = 'full_analysis', userEmail } = req.body || {};
