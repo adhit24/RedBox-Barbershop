@@ -1,0 +1,1779 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>RedBox Update Sistem 2026 — Internal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+/* ── Reset & Base ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:#0D0D12;color:#F0F0F0;font-family:'Inter',sans-serif;font-size:15px;line-height:1.6;overflow-x:hidden}
+
+/* ── Variables ── */
+:root{
+  --red:#C1121F;--red-dim:#5C0B14;--red-light:rgba(193,18,31,.12);
+  --gold:#FBBF24;--green:#4ADE80;--purple:#A78BFA;
+  --card:#161820;--card2:#1E2028;
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.12);
+  --white:#F0F0F0;--offW:#C8C8D4;--gray:#7A7A8A;
+}
+
+/* ── Typography ── */
+.bebas{font-family:'Bebas Neue',sans-serif;letter-spacing:.04em}
+h1,h2,h3{font-family:'Bebas Neue',sans-serif;letter-spacing:.04em;line-height:1.1}
+
+/* ── Sticky Nav ── */
+#top-nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(13,13,18,.92);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);
+  padding:0 16px;
+  display:flex;align-items:center;gap:4px;
+  overflow-x:auto;scrollbar-width:none;
+  height:48px;
+}
+#top-nav::-webkit-scrollbar{display:none}
+.nav-item{
+  flex:0 0 auto;
+  display:flex;align-items:center;gap:6px;
+  padding:6px 12px;border-radius:20px;
+  font-size:12px;font-weight:600;color:var(--gray);
+  text-decoration:none;white-space:nowrap;
+  transition:all .2s;border:1px solid transparent;
+}
+.nav-item:hover,.nav-item.active{color:var(--white);background:var(--red-light);border-color:rgba(193,18,31,.3)}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:var(--red);display:none}
+.nav-item.active .nav-dot{display:block}
+
+/* ── Section Base ── */
+section{padding:64px 20px;max-width:800px;margin:0 auto}
+.section-label{
+  display:inline-block;font-size:10px;font-weight:700;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--red);
+  margin-bottom:8px;
+}
+.section-title{font-size:clamp(26px,5vw,36px);color:var(--white);margin-bottom:8px}
+.section-sub{font-size:13px;color:var(--gray);max-width:540px;line-height:1.65;margin-bottom:32px}
+.section-divider{
+  display:flex;align-items:center;gap:12px;margin-bottom:20px;
+}
+.section-divider::before{content:'';flex:1;height:1px;background:var(--border)}
+.section-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── Hero ── */
+#hero{
+  padding:80px 20px 64px;max-width:800px;margin:0 auto;
+  position:relative;text-align:center;
+}
+.hero-tag{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--red-light);border:1px solid rgba(193,18,31,.3);
+  border-radius:20px;padding:6px 14px;
+  font-size:11px;font-weight:700;color:var(--red);letter-spacing:.15em;
+  margin-bottom:24px;
+}
+.hero-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red)}
+.hero-title{font-size:clamp(48px,12vw,80px);color:var(--white);line-height:1}
+.hero-title em{color:var(--red);font-style:normal}
+.hero-sub{font-size:14px;color:var(--offW);max-width:420px;margin:16px auto 36px;line-height:1.7}
+.hero-chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.hero-chip{
+  background:var(--card2);border:1px solid var(--border2);
+  border-radius:10px;padding:10px 16px;
+  font-size:12px;color:var(--offW);
+  display:flex;align-items:center;gap:8px;
+}
+.hero-chip span.ic{font-size:18px}
+
+/* ── Cards ── */
+.card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:20px;
+}
+.card-accent{border-color:var(--red);background:#100508}
+.card-gold{border-color:var(--gold);background:#120F02}
+
+/* ── Grid ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:540px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* ── Section Separator ── */
+.sec-sep{
+  padding:40px 20px 0;max-width:800px;margin:0 auto;
+}
+.sec-header{
+  background:linear-gradient(135deg,var(--red-dim),#0A0A0E);
+  border:1px solid rgba(193,18,31,.25);
+  border-radius:16px;padding:28px 24px;
+  display:flex;align-items:center;gap:16px;margin-bottom:0;
+}
+.sec-num{
+  font-family:'Bebas Neue',sans-serif;font-size:52px;
+  color:var(--red);opacity:.5;line-height:1;flex-shrink:0;
+}
+.sec-header-text h2{font-size:clamp(22px,4vw,28px);color:var(--white)}
+.sec-header-text p{font-size:12px;color:var(--gray);margin-top:4px}
+
+/* ── Feature Row ── */
+.feat-row{display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--border)}
+.feat-row:last-child{border-bottom:none}
+.feat-icon{font-size:22px;flex-shrink:0;width:36px;text-align:center;padding-top:2px}
+.feat-title{font-size:14px;font-weight:700;color:var(--white);margin-bottom:3px}
+.feat-detail{font-size:12px;color:var(--gray);line-height:1.55}
+
+/* ── Price Card ── */
+.price-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.price-header{padding:16px 18px;background:var(--card2);border-bottom:1px solid var(--border)}
+.price-name{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--white);letter-spacing:.05em}
+.price-amount{
+  display:flex;align-items:baseline;gap:4px;
+  margin:12px 0 4px;padding:0 18px;
+}
+.price-currency{font-size:13px;color:var(--gray)}
+.price-num{font-family:'Bebas Neue',sans-serif;font-size:44px;color:var(--red);line-height:1}
+.price-unit{font-size:11px;color:var(--gray)}
+.price-body{padding:12px 18px 18px;flex:1}
+.price-item{
+  display:flex;align-items:center;gap:8px;
+  font-size:12.5px;color:var(--offW);padding:5px 0;
+}
+.price-item::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--red);flex-shrink:0}
+.price-card.featured .price-num{color:var(--white)}
+.price-card.featured{border-color:var(--red)}
+.price-card.featured .price-header{background:var(--red-dim)}
+.price-card.featured .price-item::before{background:var(--green)}
+.badge-save{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);
+  border-radius:6px;padding:3px 8px;
+  font-size:10px;font-weight:700;color:var(--green);
+  margin:0 18px 12px;
+}
+
+/* ── Steps ── */
+.steps{display:flex;flex-direction:column;gap:0}
+.step-row{
+  display:flex;gap:16px;align-items:flex-start;
+  padding:16px 0;position:relative;
+}
+.step-line{
+  position:absolute;left:18px;top:42px;
+  width:2px;height:calc(100% - 16px);
+  background:var(--border);z-index:0;
+}
+.step-circle{
+  width:36px;height:36px;border-radius:50%;
+  background:var(--red);color:#fff;
+  font-weight:700;font-size:14px;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;position:relative;z-index:1;
+}
+.step-content{flex:1;padding-top:4px}
+.step-title{font-size:14px;font-weight:700;color:var(--white);margin-bottom:4px}
+.step-desc{font-size:12px;color:var(--gray);line-height:1.55}
+
+/* ── Table ── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;padding:10px 12px;font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--gray);border-bottom:1px solid var(--border);text-transform:uppercase}
+.tbl td{padding:12px 12px;border-bottom:1px solid var(--border);color:var(--offW);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:hover td{background:rgba(255,255,255,.02)}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:6px;box-shadow:0 0 6px var(--green)}
+.tbl .num{font-family:'Courier New',monospace;color:var(--white);font-size:13px}
+
+/* ── Tier Cards ── */
+.tier-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(min-width:600px){.tier-grid{grid-template-columns:repeat(4,1fr)}}
+.tier-card{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:14px;padding:18px 14px;text-align:center;
+  transition:transform .2s;
+}
+.tier-card:hover{transform:translateY(-3px)}
+.tier-card.featured-tier{border-color:var(--gold);background:#120F02;transform:translateY(-4px)}
+.tier-icon-big{font-size:32px;margin-bottom:8px}
+.tier-name-lbl{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.06em;margin-bottom:4px}
+.tier-range{font-size:10px;color:var(--gray);margin-bottom:10px}
+.tier-disc{
+  font-family:'Bebas Neue',sans-serif;font-size:26px;
+  margin-bottom:2px;
+}
+.tier-disc-lbl{font-size:10px;color:var(--gray)}
+.tier-tagline{font-size:10px;color:var(--gray);margin-top:8px;line-height:1.45}
+
+/* ── Reminder Cards ── */
+.reminder-grid{display:flex;flex-direction:column;gap:10px}
+.reminder-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:12px;padding:14px 16px;
+  display:flex;gap:14px;align-items:flex-start;
+  border-left:3px solid var(--red);
+}
+.reminder-icon{font-size:22px;flex-shrink:0}
+.reminder-title{font-size:13px;font-weight:700;color:var(--white);margin-bottom:3px}
+.reminder-time{display:inline-block;font-size:10px;color:var(--gray);background:var(--card2);border-radius:4px;padding:2px 7px;margin-bottom:5px}
+.reminder-desc{font-size:12px;color:var(--gray);line-height:1.5}
+
+/* ── AI Feature Cards ── */
+.ai-feat-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;overflow:hidden;
+}
+.ai-feat-header{
+  padding:12px 16px;font-size:11px;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px;
+}
+.ai-feat-body{padding:14px 16px}
+.ai-feat-item{
+  display:flex;align-items:flex-start;gap:8px;
+  font-size:12px;color:var(--offW);padding:5px 0;
+  line-height:1.5;
+}
+.ai-feat-item::before{
+  content:'';width:5px;height:5px;border-radius:50%;
+  margin-top:6px;flex-shrink:0;
+}
+
+/* ── Info Box ── */
+.info-box{
+  background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);
+  border-radius:10px;padding:14px 16px;
+  font-size:12.5px;color:var(--offW);line-height:1.6;
+  display:flex;gap:10px;align-items:flex-start;
+}
+.info-box .ic{font-size:18px;flex-shrink:0;padding-top:1px}
+
+/* ── Member-Only Banner ── */
+.member-banner{
+  background:linear-gradient(135deg,rgba(193,18,31,.12),rgba(167,139,250,.08));
+  border:1px solid rgba(193,18,31,.3);
+  border-radius:12px;padding:14px 18px;
+  display:flex;align-items:center;gap:12px;
+  margin-bottom:24px;
+}
+.member-banner .lock{font-size:22px}
+.member-banner-text strong{display:block;font-size:13px;color:var(--white);margin-bottom:2px}
+.member-banner-text span{font-size:11px;color:var(--gray)}
+
+/* ── Wedding Price Table ── */
+.wprice-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 14px;border-bottom:1px solid var(--border);
+}
+.wprice-row:last-child{border-bottom:none}
+.wprice-label{font-size:13px;color:var(--offW)}
+.wprice-amount{font-size:15px;font-weight:700;color:var(--red)}
+
+/* ── Ecosystem Flow ── */
+.eco-flow{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:20px 0}
+.eco-item{
+  background:var(--card2);border:1px solid var(--border2);
+  border-radius:10px;padding:10px 14px;
+  display:flex;align-items:center;gap:8px;
+  font-size:12px;color:var(--offW);font-weight:500;
+}
+.eco-arrow{color:var(--gray);font-size:14px;align-self:center}
+
+/* ── Scroll Top ── */
+#scroll-top{
+  position:fixed;bottom:20px;right:20px;
+  width:42px;height:42px;border-radius:50%;
+  background:var(--red);color:#fff;
+  border:none;cursor:pointer;font-size:18px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 20px rgba(193,18,31,.4);
+  opacity:0;transition:opacity .3s;z-index:50;
+}
+#scroll-top.show{opacity:1}
+
+/* ── Footer ── */
+footer{
+  text-align:center;padding:48px 20px;
+  border-top:1px solid var(--border);
+  color:var(--gray);font-size:12px;
+  max-width:800px;margin:0 auto;
+}
+footer strong{display:block;font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--white);letter-spacing:.05em;margin-bottom:8px}
+
+/* ── WA Chat Bubbles ── */
+.wa-scenario{margin-bottom:28px}
+.wa-scenario-title{
+  font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--gray);margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;
+}
+.wa-scenario-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.wa-phone{
+  background:#0B141A;border-radius:14px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.06);
+  max-width:420px;
+}
+.wa-phone.wide{max-width:100%}
+.wa-topbar{
+  background:#1F2C34;padding:10px 14px;
+  display:flex;align-items:center;gap:10px;
+}
+.wa-avatar{
+  width:34px;height:34px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+}
+.wa-avatar.red-av{background:var(--red)}
+.wa-avatar.green-av{background:#128C7E}
+.wa-avatar.gray-av{background:#2A2A38}
+.wa-contact-name{font-size:13px;font-weight:600;color:#E9EDEF}
+.wa-contact-sub{font-size:10.5px;color:#8696A0;margin-top:1px}
+.wa-body{padding:10px 12px;display:flex;flex-direction:column;gap:5px}
+.wa-date{text-align:center;margin:4px 0}
+.wa-date span{
+  background:rgba(255,255,255,.06);border-radius:8px;
+  padding:2px 10px;font-size:10.5px;color:#8696A0;
+}
+.wa-bubble{
+  padding:7px 11px 16px;border-radius:8px;
+  position:relative;font-size:12.5px;line-height:1.55;
+  color:#E9EDEF;max-width:88%;word-break:break-word;
+}
+.wa-bubble.in{
+  background:#1F2C34;border-radius:0 8px 8px 8px;align-self:flex-start;
+}
+.wa-bubble.out{
+  background:#005C4B;border-radius:8px 0 8px 8px;align-self:flex-end;
+}
+.wa-bubble.notif{
+  background:#1A2B1A;border:1px solid rgba(37,211,102,.2);
+  border-left:3px solid #25D366;border-radius:8px;
+  align-self:flex-start;max-width:100%;
+  font-family:'Courier New',monospace;font-size:12px;line-height:1.75;
+}
+.wa-bubble.sys{
+  background:rgba(255,255,255,.04);border-radius:8px;
+  align-self:center;font-size:11px;color:#8696A0;
+  padding:5px 12px 5px;text-align:center;
+}
+.wa-sender{font-size:10.5px;font-weight:700;margin-bottom:3px;color:#53BDEB}
+.wa-sender.bot{color:#25D366}
+.wa-sender.admin{color:#FFD700}
+.wa-time{
+  position:absolute;bottom:3px;right:8px;
+  font-size:9.5px;color:rgba(233,237,239,.4);
+}
+.wa-check{color:#53BDEB;font-size:10px}
+.wa-strong{font-weight:700;color:#E9EDEF}
+.wa-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:540px){.wa-grid{grid-template-columns:1fr}}
+.wa-note{
+  background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.15);
+  border-radius:10px;padding:11px 14px;
+  font-size:12px;color:var(--offW);line-height:1.6;
+  display:flex;gap:10px;margin-top:10px;
+}
+.wa-note .ic{font-size:16px;flex-shrink:0;padding-top:1px}
+.flow-arrow{
+  text-align:center;font-size:22px;color:var(--gray);
+  padding:4px 0;
+}
+
+/* ── Utilities ── */
+.red{color:var(--red)}
+.gold{color:var(--gold)}
+.green{color:var(--green)}
+.purple{color:var(--purple)}
+.muted{color:var(--gray)}
+.mt8{margin-top:8px}
+.mt16{margin-top:16px}
+.mt24{margin-top:24px}
+.mb16{margin-bottom:16px}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav id="top-nav" role="navigation" aria-label="Navigasi bagian">
+  <a href="#hero"       class="nav-item active"><span class="nav-dot"></span>Home</a>
+  <a href="#home-svc"   class="nav-item"><span class="ic">🏠</span>Home Service</a>
+  <a href="#wa-bot"     class="nav-item"><span class="ic">💬</span>WA Bot</a>
+  <a href="#wedding"    class="nav-item"><span class="ic">💍</span>Wedding</a>
+  <a href="#membership" class="nav-item"><span class="ic">⭐</span>Membership</a>
+  <a href="#ai"         class="nav-item"><span class="ic">🤖</span>AI Grooming</a>
+</nav>
+
+<!-- ── HERO ── -->
+<section id="hero">
+  <div class="hero-tag">UPDATE SISTEM 2026</div>
+  <h1 class="hero-title bebas"><em>REDBOX</em><br>BARBERSHOP</h1>
+  <p class="hero-sub">Panduan fitur terbaru untuk Tim Internal — Admin, Kapster & Operasional 5 Cabang</p>
+  <div class="hero-chips">
+    <div class="hero-chip"><span class="ic">🏠</span>Home Service</div>
+    <div class="hero-chip"><span class="ic">💬</span>WA Bot 5 Cabang</div>
+    <div class="hero-chip"><span class="ic">💍</span>Wedding Package</div>
+    <div class="hero-chip"><span class="ic">⭐</span>Membership</div>
+    <div class="hero-chip"><span class="ic">🤖</span>AI Grooming</div>
+  </div>
+  <p class="muted mt24" style="font-size:11px;text-align:center">📄 Dokumen Internal — Tidak untuk disebarluaskan</p>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 1 — HOME SERVICE
+════════════════════════════════════════════════════ -->
+<div class="sec-sep" id="home-svc">
+  <div class="sec-header">
+    <div class="sec-num">01</div>
+    <div class="sec-header-text">
+      <h2>Home Service</h2>
+      <p>Kapster datang ke lokasi kamu — Gentleman Grooming di mana saja</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="section-label">Home Service</div>
+  <h2 class="section-title">Apa itu Home Service?</h2>
+  <p class="section-sub">Layanan potong rambut premium — kapster kami yang datang ke tempatmu, bukan kamu yang datang ke cabang.</p>
+
+  <div class="card mb16">
+    <div class="feat-row">
+      <div class="feat-icon">📍</div>
+      <div>
+        <div class="feat-title">Radius Layanan</div>
+        <div class="feat-detail">Maksimal 5 KM dari cabang terdekat (Bypass, Samadikun, CSB, Sumber, Tegal)</div>
+      </div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">🕐</div>
+      <div>
+        <div class="feat-title">Jam Operasional</div>
+        <div class="feat-detail">06.00 – 23.00 WIB setiap hari — lebih fleksibel dari jam cabang biasa</div>
+      </div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">💈</div>
+      <div>
+        <div class="feat-title">Pilih Kapster Favorit</div>
+        <div class="feat-detail">Kapster dari cabang manapun bisa dipilih — sesuai preferensi pelanggan</div>
+      </div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">✅</div>
+      <div>
+        <div class="feat-title">Biaya Kunjungan Sudah Termasuk</div>
+        <div class="feat-detail">Tidak ada biaya tambahan — semua sudah masuk dalam harga paket</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pricing -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Paket &amp; Harga</h3>
+  <div class="grid-2">
+    <div class="price-card">
+      <div class="price-header">
+        <div class="price-name">SINGLE</div>
+      </div>
+      <div class="price-amount">
+        <span class="price-currency">Rp</span>
+        <span class="price-num">250.000</span>
+      </div>
+      <span class="price-unit" style="padding:0 18px;display:block;margin-bottom:10px">per orang</span>
+      <div class="price-body">
+        <div class="price-item">1 orang</div>
+        <div class="price-item">Pilih kapster favorit</div>
+        <div class="price-item">Radius maks. 5 KM</div>
+        <div class="price-item">Jam 06.00 – 23.00 WIB</div>
+      </div>
+    </div>
+    <div class="price-card featured">
+      <div class="price-header">
+        <div class="price-name">FAMILY</div>
+      </div>
+      <div class="badge-save">⭐ Hemat Rp 50.000/orang</div>
+      <div class="price-amount">
+        <span class="price-currency">Rp</span>
+        <span class="price-num">200.000</span>
+      </div>
+      <span class="price-unit" style="padding:0 18px;display:block;margin-bottom:10px">per orang · min. 2 orang</span>
+      <div class="price-body">
+        <div class="price-item">Min. 2 orang</div>
+        <div class="price-item">Hemat Rp 50.000/orang</div>
+        <div class="price-item">Kapster sesuai pilihan</div>
+        <div class="price-item">Cocok untuk keluarga</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Flow Booking -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Flow Booking — 4 Langkah</h3>
+  <div class="card">
+    <div class="steps">
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-content">
+          <div class="step-title">🏠 Pilih Paket</div>
+          <div class="step-desc">Kunjungi home-service.html → Pilih Single atau Family → Klik tombol Booking</div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-content">
+          <div class="step-title">💈 Pilih Kapster</div>
+          <div class="step-desc">Pilih kapster favorit dari cabang manapun, lihat slot yang tersedia secara real-time</div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle">3</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-content">
+          <div class="step-title">📅 Pilih Jadwal</div>
+          <div class="step-desc">Tentukan tanggal & jam (06.00–23.00 WIB), konfirmasi alamat tujuan</div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div class="step-circle" style="background:var(--green)">✓</div>
+        <div class="step-content">
+          <div class="step-title">✅ Konfirmasi</div>
+          <div class="step-desc">Booking tersimpan otomatis → Admin dihubungi → Reminder WA dikirim ke pelanggan</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Peran -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Peran Admin &amp; Kapster</h3>
+  <div class="grid-2">
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:var(--white);margin-bottom:14px">👨‍💼 Admin</div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Terima notifikasi booking via WA</div>
+      </div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Konfirmasi ketersediaan kapster</div>
+      </div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Koordinasi waktu &amp; lokasi</div>
+      </div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Monitor status di dashboard</div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:var(--white);margin-bottom:14px">💈 Kapster</div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Terima info booking dari admin</div>
+      </div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Siapkan peralatan sebelum berangkat</div>
+      </div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Berangkat sesuai jadwal</div>
+      </div>
+      <div class="feat-row" style="padding:8px 0">
+        <div class="feat-icon" style="font-size:14px">→</div>
+        <div class="feat-detail">Konfirmasi selesai ke admin cabang</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CONTOH NYATA VIA WA — HOME SERVICE ═══ -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">📱 Contoh Nyata — Alur via WhatsApp</h3>
+  <p style="font-size:12.5px;color:var(--gray);margin-bottom:20px;line-height:1.6">Berikut simulasi lengkap dari pertama customer chat WA, sampai kapster selesai. Pahami setiap tahap agar tidak ada yang terlewat.</p>
+
+  <!-- TAHAP 1: Customer chat bot -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 1 — Customer Chat WA Bot (Otomatis)</div>
+    <div class="wa-phone">
+      <div class="wa-topbar">
+        <div class="wa-avatar red-av">💈</div>
+        <div>
+          <div class="wa-contact-name">RedBox Samadikun</div>
+          <div class="wa-contact-sub">0818-2025-89 · AI Bot Aktif</div>
+        </div>
+      </div>
+      <div class="wa-body">
+        <div class="wa-date"><span>Jumat, 30 Mei 2026</span></div>
+
+        <div class="wa-bubble in">
+          Halo kak, mau tanya dong — ada layanan potong rambut ke rumah ga?
+          <div class="wa-time">14:02</div>
+        </div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender bot">RedBox AI Bot</div>
+          Heyy! Ada dong kak 🏠 Redbox punya <span class="wa-strong">Home Service</span> — kapster kami yang dateng ke rumahmu.<br><br>
+          Ada 2 pilihan:<br>
+          • <span class="wa-strong">Single</span> → Rp 250.000/orang<br>
+          • <span class="wa-strong">Family</span> → Rp 200.000/orang (min 2 org, hemat 50rb!)<br><br>
+          Radius maks 5km dari cabang ya kak 📍<br>
+          Buka jam 06.00–23.00 WIB setiap hari 😄
+          <div class="wa-time">14:02</div>
+        </div>
+
+        <div class="wa-bubble in">
+          Wah oke, mau Family buat 2 orang nih kak. Gimana cara bookingnya?
+          <div class="wa-time">14:04</div>
+        </div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender bot">RedBox AI Bot</div>
+          Gampang banget kak! Langsung book di sini 👇<br>
+          redboxbarbershop.com/home-service.html<br><br>
+          Klik <span class="wa-strong">Booking Family</span>, pilih kapster favorit & pilih jadwal. Selesai! Nanti ada konfirmasi otomatis ya 🎉
+          <div class="wa-time">14:04</div>
+        </div>
+
+        <div class="wa-bubble in">
+          Ok siap, mau besok Sabtu jam 10 pagi. Kapster Onoy bisa?
+          <div class="wa-time">14:06</div>
+        </div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender bot">RedBox AI Bot</div>
+          Untuk cek slot real-time kapster Onoy, langsung buka booking page-nya kak — di sana kelihatan kalau Onoy free atau udah penuh 😊<br><br>
+          redboxbarbershop.com/home-service.html
+          <div class="wa-time">14:06</div>
+        </div>
+
+        <div class="wa-bubble sys">Customer melanjutkan booking via website ✓</div>
+      </div>
+    </div>
+    <div class="wa-note">
+      <span class="ic">💡</span>
+      <span><strong>Catatan Admin:</strong> Bot TIDAK bisa terima booking via chat. Semua booking harus lewat website agar tercatat di sistem. Bila customer "ngotot" mau booking via chat, admin boleh catat manual — tapi tetap minta customer buka website untuk konfirmasi slot.</span>
+    </div>
+  </div>
+
+  <!-- TAHAP 2: Notifikasi ke Admin -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 2 — Notifikasi Booking Masuk ke Admin (Otomatis)</div>
+    <div class="wa-phone wide">
+      <div class="wa-topbar">
+        <div class="wa-avatar gray-av">👨‍💼</div>
+        <div>
+          <div class="wa-contact-name">Admin Samadikun (kamu)</div>
+          <div class="wa-contact-sub">Pesan masuk otomatis dari sistem</div>
+        </div>
+      </div>
+      <div class="wa-body">
+        <div class="wa-date"><span>Jumat, 30 Mei 2026 — 14:09</span></div>
+        <div class="wa-bubble notif">
+          🔔 <span class="wa-strong">BOOKING BARU — HOME SERVICE</span><br><br>
+          👤 Nama: <span class="wa-strong">Rizky Pratama</span><br>
+          ✂️ Layanan: <span class="wa-strong">Home Service Family (2 orang)</span><br>
+          📅 Tanggal: <span class="wa-strong">Sabtu, 31 Mei 2026</span><br>
+          ⏰ Jam: <span class="wa-strong">10:00 WIB</span><br>
+          📍 Cabang: <span class="wa-strong">RedBox Samadikun</span><br>
+          💈 Kapster: <span class="wa-strong">Onoy</span><br>
+          📱 WA Customer: <span class="wa-strong">0812-3456-7890</span><br>
+          🏠 Catatan: Home Service — kapster ke lokasi customer
+          <div class="wa-time" style="position:static;margin-top:8px;text-align:right;opacity:.5;font-size:10px">14:09 · Sistem Otomatis</div>
+        </div>
+      </div>
+    </div>
+    <div class="wa-note">
+      <span class="ic">⚡</span>
+      <span><strong>Tindakan Admin:</strong> Segera cek notifikasi ini. Konfirmasi ke kapster Onoy bahwa ada booking Home Service besok jam 10. Minta customer konfirmasi alamat lengkap tujuan via WA atau sudah tercantum di booking.</span>
+    </div>
+  </div>
+
+  <!-- TAHAP 3: Sistem auto-notif ke kapster -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 3 — Notifikasi Otomatis ke Kapster (dari Sistem)</div>
+    <div class="wa-phone">
+      <div class="wa-topbar">
+        <div class="wa-avatar" style="background:#2A4A2A;font-size:16px">💈</div>
+        <div>
+          <div class="wa-contact-name">Onoy (Kapster)</div>
+          <div class="wa-contact-sub">Notifikasi masuk dari sistem RedBox</div>
+        </div>
+      </div>
+      <div class="wa-body">
+        <div class="wa-date"><span>Jumat, 30 Mei 2026 — 14:09</span></div>
+
+        <div class="wa-bubble notif">
+          🔔 <span class="wa-strong">PENUGASAN HOME SERVICE — ONOY</span><br><br>
+          Kamu dipilih sebagai kapster untuk:<br><br>
+          👤 Customer: <span class="wa-strong">Rizky Pratama</span><br>
+          ✂️ Layanan: <span class="wa-strong">Home Service Family (2 orang)</span><br>
+          📅 Tanggal: <span class="wa-strong">Sabtu, 31 Mei 2026</span><br>
+          ⏰ Jam: <span class="wa-strong">10:00 WIB</span><br>
+          📍 Lokasi: <span class="wa-strong">Jl. Pemuda No. 45, Samadikun</span><br>
+          📱 WA Customer: <span class="wa-strong">0812-3456-7890</span><br><br>
+          Siap kan? Balas <span class="wa-strong">SIAP</span> untuk konfirmasi.
+          <div class="wa-time" style="position:static;margin-top:8px;text-align:right;opacity:.5;font-size:10px">14:09 · Sistem RedBox Otomatis</div>
+        </div>
+
+        <div class="wa-bubble in">
+          SIAP 🫡 Berangkat dari cabang jam 09.30 ya min
+          <div class="wa-time">14:18</div>
+        </div>
+      </div>
+    </div>
+    <div class="wa-note">
+      <span class="ic">⚡</span>
+      <span><strong>Ini otomatis dari sistem</strong> — saat customer memilih kapster Onoy di booking page, sistem langsung kirim notifikasi penugasan ke WA Onoy. Admin tidak perlu forward manual. Admin hanya perlu turun tangan bila ada masalah (konflik jadwal, kapster tidak bisa, dll).</span>
+    </div>
+  </div>
+
+  <!-- TAHAP 4: Reminder otomatis -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 4 — Reminder Otomatis ke Customer (Tanpa Admin)</div>
+    <div class="wa-grid">
+      <div>
+        <p style="font-size:11px;color:var(--gray);margin-bottom:8px">📅 H-1 · Dikirim otomatis jam 10.00 WIB</p>
+        <div class="wa-phone">
+          <div class="wa-topbar">
+            <div class="wa-avatar red-av">💈</div>
+            <div><div class="wa-contact-name">RedBox Samadikun</div></div>
+          </div>
+          <div class="wa-body">
+            <div class="wa-bubble out">
+              <div class="wa-sender bot">RedBox Bot</div>
+              Hai kak Rizky! 😊 Mau ngingetin — <span class="wa-strong">besok kamu ada jadwal</span> nih!<br><br>
+              📍 <span class="wa-strong">RedBox Samadikun (Home Service)</span><br>
+              ⏰ Jam <span class="wa-strong">10:00 WIB</span><br>
+              ✂️ Home Service Family<br>
+              💈 Kapster: <span class="wa-strong">Onoy</span><br><br>
+              Kapster kami akan datang ke lokasi kamu ya kak 🏠 Pastiin ada di rumah!
+              <div class="wa-time">10:00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:11px;color:var(--gray);margin-bottom:8px">⏰ 1 Jam Sebelum · Dikirim otomatis jam 09.00 WIB</p>
+        <div class="wa-phone">
+          <div class="wa-topbar">
+            <div class="wa-avatar red-av">💈</div>
+            <div><div class="wa-contact-name">RedBox Samadikun</div></div>
+          </div>
+          <div class="wa-body">
+            <div class="wa-bubble out">
+              <div class="wa-sender bot">RedBox Bot</div>
+              Hai kak Rizky! Mau ngingetin — <span class="wa-strong">1 jam lagi</span> kapster kami (Onoy) akan datang ke lokasi kamu 😊<br><br>
+              ⏰ Jam <span class="wa-strong">10:00 WIB</span><br>
+              ✂️ Home Service Family<br><br>
+              Pastiin ada di rumah ya kak! 😄
+              <div class="wa-time">09:00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wa-note">
+      <span class="ic">✅</span>
+      <span><strong>Tidak perlu tindakan admin</strong> — reminder H-1 dan 1-jam dikirim otomatis oleh sistem setiap hari. Admin hanya perlu fokus koordinasi dengan kapster.</span>
+    </div>
+  </div>
+
+  <!-- ═══ TAHAP 5: FORMAT BALASAN KAPSTER + SISI CUSTOMER ═══ -->
+  <div class="wa-scenario" style="margin-top:28px">
+    <div class="wa-scenario-title">Tahap 5 — Format Balasan Kapster &amp; Pengalaman Customer secara Bersamaan</div>
+    <p style="font-size:12.5px;color:var(--gray);margin-bottom:18px;line-height:1.65">
+      Kapster wajib update status ke sistem di setiap tahap. Sistem otomatis meneruskan ke customer. Kolom kiri = sisi Onoy. Kolom kanan = sisi pelanggan.
+    </p>
+
+    <!-- STATUS 1: Konfirmasi Terima -->
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;color:var(--white)">STATUS 1 — KONFIRMASI TERIMA PESANAN</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <div class="wa-grid">
+        <!-- Onoy -->
+        <div>
+          <p style="font-size:11px;color:var(--green);font-weight:700;margin-bottom:8px">💈 Sisi Kapster (Onoy)</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div><div class="wa-contact-sub">Sistem Penugasan</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-bubble notif" style="font-size:11.5px">
+                🔔 <span class="wa-strong">PENUGASAN HOME SERVICE</span><br>
+                👤 Rizky · Family 2 org<br>
+                📅 Sabtu 31 Mei · ⏰ 10:00 WIB<br>
+                📍 Jl. Pemuda No. 45<br><br>
+                Balas <span class="wa-strong">SIAP</span> untuk konfirmasi.
+              </div>
+              <div class="wa-bubble in" style="background:#1A2B1A;border:1px solid rgba(37,211,102,.15)">
+                <span style="font-size:14px;font-weight:800;color:#25D366;letter-spacing:.05em">SIAP</span> 🫡 Berangkat jam 09.30 dari cabang
+                <div class="wa-time">14:18</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Customer -->
+        <div>
+          <p style="font-size:11px;color:var(--gray);font-weight:700;margin-bottom:8px">👤 Sisi Customer (Rizky) — belum ada notif</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div></div>
+            </div>
+            <div class="wa-body" style="min-height:120px;justify-content:center;align-items:center;display:flex">
+              <p style="font-size:11.5px;color:var(--gray);text-align:center;padding:20px 10px">Pelanggan belum dapat notifikasi di tahap ini.<br><br>Notif pertama baru masuk saat kapster OTW ↓</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATUS 2: OTW -->
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;color:var(--gold)">STATUS 2 — OTW KE LOKASI PELANGGAN</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <div class="wa-grid">
+        <!-- Onoy -->
+        <div>
+          <p style="font-size:11px;color:var(--green);font-weight:700;margin-bottom:8px">💈 Sisi Kapster (Onoy)</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div><div class="wa-contact-sub">Sistem Penugasan</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-bubble in" style="background:#1A2B1A;border:1px solid rgba(37,211,102,.15)">
+                <span style="font-size:14px;font-weight:800;color:#25D366;letter-spacing:.05em">OTW</span> 🚗 Estimasi 15 menit lagi tiba kak
+                <div class="wa-time">09:35</div>
+              </div>
+              <div class="wa-bubble out">
+                <div class="wa-sender bot">RedBox Sistem</div>
+                ✅ Status OTW tercatat. Notifikasi dikirim ke customer Rizky.
+                <div class="wa-time">09:35</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Customer -->
+        <div>
+          <p style="font-size:11px;color:var(--gold);font-weight:700;margin-bottom:8px">👤 Sisi Customer (Rizky) — notif masuk otomatis</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-bubble out">
+                <div class="wa-sender bot">RedBox Bot</div>
+                Hai kak Rizky! 🚗 Kapster kami <span class="wa-strong">Onoy</span> sudah dalam perjalanan ke lokasi kamu.<br><br>
+                ⏰ Estimasi tiba: <span class="wa-strong">~15 menit</span><br>
+                📍 Pastiin kamu sudah siap di rumah ya kak!<br><br>
+                Ada yang perlu disiapkan? Meja/kursi di ruangan yang nyaman sudah cukup 😊
+                <div class="wa-time">09:35</div>
+              </div>
+              <div class="wa-bubble in">
+                Ok siap kak! Pintu udah aku buka 👍
+                <div class="wa-time">09:37</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATUS 3: MULAI SERVICE -->
+    <div style="margin-bottom:24px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="background:rgba(193,18,31,.12);border:1px solid rgba(193,18,31,.3);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;color:var(--red)">STATUS 3 — TIBA &amp; MULAI SERVICE</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <div class="wa-grid">
+        <!-- Onoy -->
+        <div>
+          <p style="font-size:11px;color:var(--green);font-weight:700;margin-bottom:8px">💈 Sisi Kapster (Onoy)</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div><div class="wa-contact-sub">Sistem Penugasan</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-bubble in" style="background:#1A2B1A;border:1px solid rgba(37,211,102,.15)">
+                <span style="font-size:14px;font-weight:800;color:#25D366;letter-spacing:.05em">MULAI</span> ✂️ Sudah di lokasi, service dimulai untuk 2 orang
+                <div class="wa-time">10:02</div>
+              </div>
+              <div class="wa-bubble out">
+                <div class="wa-sender bot">RedBox Sistem</div>
+                ✅ Status MULAI tercatat jam 10:02 WIB. Notifikasi dikirim ke customer.
+                <div class="wa-time">10:02</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Customer -->
+        <div>
+          <p style="font-size:11px;color:var(--red);font-weight:700;margin-bottom:8px">👤 Sisi Customer (Rizky)</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-bubble out">
+                <div class="wa-sender bot">RedBox Bot</div>
+                ✂️ Service dimulai! Kapster <span class="wa-strong">Onoy</span> sudah mulai bekerja kak Rizky.<br><br>
+                Santai dulu, nikmati prosesnya 😄<br>
+                Estimasi selesai: <span class="wa-strong">~45–60 menit</span> untuk 2 orang.
+                <div class="wa-time">10:02</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATUS 4: SELESAI -->
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:700;color:var(--green)">STATUS 4 — SELESAI SERVICE</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+      <div class="wa-grid">
+        <!-- Onoy -->
+        <div>
+          <p style="font-size:11px;color:var(--green);font-weight:700;margin-bottom:8px">💈 Sisi Kapster (Onoy)</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div><div class="wa-contact-sub">Sistem Penugasan</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-bubble in" style="background:#1A2B1A;border:1px solid rgba(37,211,102,.15)">
+                <span style="font-size:14px;font-weight:800;color:#25D366;letter-spacing:.05em">SELESAI</span> ✅<br>
+                2 orang selesai, hasil rapi. Pelanggan puas. Pamit dari lokasi jam 11.05 🙏
+                <div class="wa-time">11:05</div>
+              </div>
+              <div class="wa-bubble out">
+                <div class="wa-sender bot">RedBox Sistem</div>
+                ✅ Booking #HS-20260531 ditandai selesai. Notifikasi &amp; link review dikirim ke customer. Terima kasih Onoy! 💪
+                <div class="wa-time">11:05</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Customer -->
+        <div>
+          <p style="font-size:11px;color:var(--green);font-weight:700;margin-bottom:8px">👤 Sisi Customer (Rizky) — terima kasih + link review</p>
+          <div class="wa-phone">
+            <div class="wa-topbar">
+              <div class="wa-avatar red-av">💈</div>
+              <div><div class="wa-contact-name">RedBox Samadikun</div></div>
+            </div>
+            <div class="wa-body">
+              <div class="wa-bubble out">
+                <div class="wa-sender bot">RedBox Bot</div>
+                Terima kasih kak Rizky! ✂️🙏<br><br>
+                Semoga hasilnya memuaskan ya kak. Kapster Onoy udah balik ke cabang.<br><br>
+                Kalau pengalamannya oke, bantu kami dengan kasih ulasan di Google — <span class="wa-strong">5 poin member (Rp 50rb)</span> langsung masuk ke akun kamu otomatis!<br><br>
+                → redboxbarbershop.com/review
+                <div class="wa-time">11:06</div>
+              </div>
+              <div class="wa-bubble in">
+                Makasih banyak kak, hasilnya bagus banget! Nanti aku kasih review ya 🔥
+                <div class="wa-time">11:09</div>
+              </div>
+              <div class="wa-bubble out">
+                <div class="wa-sender bot">RedBox Bot</div>
+                Wahh makasih kak Rizky! 🙏✨ 5 poin otomatis masuk ke akun member kakak setelah review diterima. Sampai jumpa lagi di Redbox! ✂️
+                <div class="wa-time">11:10</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ringkasan format -->
+    <div class="card" style="border-color:rgba(37,211,102,.2);background:#0A140A;margin-top:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:12px;letter-spacing:.08em">📋 RINGKASAN FORMAT WAJIB BALASAN KAPSTER</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+        <div style="background:var(--card2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:13px;font-weight:800;color:#25D366;letter-spacing:.05em;margin-bottom:4px">SIAP</div>
+          <div style="font-size:11px;color:var(--gray)">Saat menerima notifikasi penugasan — wajib balas dalam 15 menit</div>
+        </div>
+        <div style="background:var(--card2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:13px;font-weight:800;color:var(--gold);letter-spacing:.05em;margin-bottom:4px">OTW</div>
+          <div style="font-size:11px;color:var(--gray)">Saat berangkat menuju lokasi pelanggan — opsional: tambah estimasi waktu</div>
+        </div>
+        <div style="background:var(--card2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:13px;font-weight:800;color:var(--red);letter-spacing:.05em;margin-bottom:4px">MULAI</div>
+          <div style="font-size:11px;color:var(--gray)">Saat sudah tiba di lokasi dan mulai mengerjakan service</div>
+        </div>
+        <div style="background:var(--card2);border-radius:8px;padding:10px 12px">
+          <div style="font-size:13px;font-weight:800;color:var(--green);letter-spacing:.05em;margin-bottom:4px">SELESAI</div>
+          <div style="font-size:11px;color:var(--gray)">Saat semua service selesai — tambah catatan singkat kondisi pelanggan</div>
+        </div>
+      </div>
+      <div class="wa-note" style="margin-top:12px">
+        <span class="ic">⚠️</span>
+        <span>Kapster yang <strong>tidak membalas SIAP</strong> dalam 15 menit akan di-follow up otomatis oleh sistem. Bila tidak ada respons, admin cabang akan dihubungi untuk reassign kapster lain.</span>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 2 — WA AI BOT
+════════════════════════════════════════════════════ -->
+<div class="sec-sep" id="wa-bot">
+  <div class="sec-header">
+    <div class="sec-num">02</div>
+    <div class="sec-header-text">
+      <h2>WA AI Bot 5 Cabang</h2>
+      <p>AI auto-reply 24/7 — setiap cabang punya asisten pintar sendiri</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="section-label">WA Bot</div>
+  <h2 class="section-title">Apa itu WA AI Bot?</h2>
+  <p class="section-sub">Asisten virtual berbasis AI yang menjawab chat pelanggan secara otomatis — aktif 24 jam, 7 hari seminggu.</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">🤖</div>
+      <div class="feat-title" style="margin-bottom:4px">Auto-Reply 24/7</div>
+      <div class="feat-detail">Bot AI aktif sepanjang hari, membalas chat pelanggan dalam hitungan detik</div>
+    </div>
+    <div class="card">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">🧠</div>
+      <div class="feat-title" style="margin-bottom:4px">Memori Percakapan</div>
+      <div class="feat-detail">Bot ingat konteks obrolan — pelanggan tidak perlu mengulang informasi yang sama</div>
+    </div>
+    <div class="card">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">🔀</div>
+      <div class="feat-title" style="margin-bottom:4px">Routing ke Booking</div>
+      <div class="feat-detail">Semua permintaan booking diarahkan ke website agar data tercatat di sistem</div>
+    </div>
+    <div class="card">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">📩</div>
+      <div class="feat-title" style="margin-bottom:4px">Forward ke Admin</div>
+      <div class="feat-detail">Setiap booking langsung diteruskan ke WA admin cabang yang bersangkutan</div>
+    </div>
+  </div>
+
+  <!-- 5 Cabang Table -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">5 Nomor WA per Cabang</h3>
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Cabang</th>
+          <th>Nomor WA</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>01</td><td>RedBox Bypass (Pusat)</td><td class="num">0818-2025-69</td><td><span class="status-dot"></span><span class="green" style="font-size:11px;font-weight:600">Aktif</span></td></tr>
+        <tr><td>02</td><td>RedBox Samadikun</td><td class="num">0818-2025-89</td><td><span class="status-dot"></span><span class="green" style="font-size:11px;font-weight:600">Aktif</span></td></tr>
+        <tr><td>03</td><td>RedBox CSB Mall</td><td class="num">0818-2028-89</td><td><span class="status-dot"></span><span class="green" style="font-size:11px;font-weight:600">Aktif</span></td></tr>
+        <tr><td>04</td><td>RedBox Sumber</td><td class="num">0818-2025-99</td><td><span class="status-dot"></span><span class="green" style="font-size:11px;font-weight:600">Aktif</span></td></tr>
+        <tr><td>05</td><td>RedBox Tegal</td><td class="num">0818-268-883</td><td><span class="status-dot"></span><span class="green" style="font-size:11px;font-weight:600">Aktif</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Flow Percakapan -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Flow Percakapan</h3>
+  <div class="card">
+    <div class="steps">
+      <div class="step-row">
+        <div style="position:relative"><div class="step-circle">1</div><div class="step-line"></div></div>
+        <div class="step-content"><div class="step-title">💬 Pelanggan Kirim Pesan</div><div class="step-desc">Pelanggan chat ke nomor WA cabang — tanya info, minta booking, atau ngobrol santai</div></div>
+      </div>
+      <div class="step-row">
+        <div style="position:relative"><div class="step-circle">2</div><div class="step-line"></div></div>
+        <div class="step-content"><div class="step-title">🤖 AI Analisis &amp; Balas</div><div class="step-desc">GPT-4o-mini memproses pesan dan membalas dalam hitungan detik, menyesuaikan konteks cabang</div></div>
+      </div>
+      <div class="step-row">
+        <div style="position:relative"><div class="step-circle">3</div><div class="step-line"></div></div>
+        <div class="step-content"><div class="step-title">🔗 Redirect ke Website Booking</div><div class="step-desc">Semua booking diarahkan ke redboxbarbershop.com/booking.html agar data tersimpan di sistem</div></div>
+      </div>
+      <div class="step-row">
+        <div style="position:relative"><div class="step-circle">4</div><div class="step-line"></div></div>
+        <div class="step-content"><div class="step-title">📩 Notifikasi ke Admin Cabang</div><div class="step-desc">Booking yang masuk langsung diteruskan otomatis ke nomor WA admin cabang</div></div>
+      </div>
+      <div class="step-row">
+        <div class="step-circle" style="background:var(--green)">✓</div>
+        <div class="step-content"><div class="step-title">✅ Booking Terkonfirmasi</div><div class="step-desc">Data tersimpan di Supabase, muncul di dashboard admin, siap dilihat dan dikonfirmasi</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Human Takeover -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Human Takeover</h3>
+  <div class="card" style="border-color:rgba(251,191,36,.25)">
+    <div style="font-size:13px;font-weight:700;color:var(--gold);margin-bottom:14px">👨‍💼 Admin Bisa Ambil Alih Kapan Saja</div>
+    <div class="feat-row">
+      <div class="feat-icon">1️⃣</div>
+      <div><div class="feat-title">Admin balas pesan dari HP</div><div class="feat-detail">Sistem otomatis mendeteksi bahwa ini bukan balasan dari bot</div></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">⏸️</div>
+      <div><div class="feat-title">AI pause selama 30 menit</div><div class="feat-detail">Bot berhenti otomatis — admin bisa handle pelanggan secara manual</div></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">▶️</div>
+      <div><div class="feat-title">AI aktif kembali otomatis</div><div class="feat-detail">Setelah 30 menit, bot langsung siap melayani lagi — tidak perlu setting apapun</div></div>
+    </div>
+  </div>
+  <div class="info-box mt16">
+    <span class="ic">💡</span>
+    <span>Gunakan human takeover hanya saat perlu handle kasus khusus atau komplain. AI akan otomatis aktif kembali — tidak perlu tindakan admin.</span>
+  </div>
+
+  <!-- 4 Reminder -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">4 Jenis Reminder Otomatis via WA</h3>
+  <div class="reminder-grid">
+    <div class="reminder-card" style="border-left-color:var(--red)">
+      <div class="reminder-icon">📅</div>
+      <div>
+        <div class="reminder-title">H-1 Booking</div>
+        <div class="reminder-time">Setiap hari jam 10.00 WIB</div>
+        <div class="reminder-desc">Reminder besok ada jadwal — lengkap dengan nama kapster dan lokasi cabang</div>
+      </div>
+    </div>
+    <div class="reminder-card" style="border-left-color:var(--gold)">
+      <div class="reminder-icon">⏰</div>
+      <div>
+        <div class="reminder-title">1 Jam Sebelum</div>
+        <div class="reminder-time">Setiap jam (on the hour)</div>
+        <div class="reminder-desc">Pengingat 1 jam sebelum jadwal — ajak pelanggan berangkat sekarang agar santai</div>
+      </div>
+    </div>
+    <div class="reminder-card" style="border-left-color:var(--purple)">
+      <div class="reminder-icon">🎂</div>
+      <div>
+        <div class="reminder-title">Ulang Tahun</div>
+        <div class="reminder-time">Setiap hari jam 08.00 WIB</div>
+        <div class="reminder-desc">Ucapan selamat ulang tahun otomatis ke pelanggan setia disertai penawaran spesial</div>
+      </div>
+    </div>
+    <div class="reminder-card" style="border-left-color:var(--green)">
+      <div class="reminder-icon">🔔</div>
+      <div>
+        <div class="reminder-title">Re-engagement</div>
+        <div class="reminder-time">Otomatis setelah 30 hari tidak kunjung</div>
+        <div class="reminder-desc">Pelanggan yang lama tidak datang diingatkan kembali ke Redbox — max 1 pesan/bulan</div>
+      </div>
+    </div>
+  </div>
+  <div class="info-box mt16">
+    <span class="ic">✅</span>
+    <span>Semua reminder dikirim <strong>otomatis</strong> — admin tidak perlu kirim satu per satu secara manual.</span>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 3 — WEDDING PACKAGE
+════════════════════════════════════════════════════ -->
+<div class="sec-sep" id="wedding">
+  <div class="sec-header">
+    <div class="sec-num">03</div>
+    <div class="sec-header-text">
+      <h2>Wedding Package</h2>
+      <p>Grooming premium untuk pengantin &amp; rombongan — kapster datang ke venue</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="section-label">Wedding</div>
+  <h2 class="section-title">Apa itu Wedding Package?</h2>
+  <p class="section-sub">Layanan grooming eksklusif untuk hari paling istimewa — kapster datang ke lokasi resepsi, gedung pernikahan, rumah, atau hotel.</p>
+
+  <div class="card mb16">
+    <div class="feat-row">
+      <div class="feat-icon">💍</div>
+      <div><div class="feat-title">Untuk Siapa?</div><div class="feat-detail">Pengantin pria, best man, ayah pengantin, pagar ayu pria — semua rombongan wedding pria</div></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">🚗</div>
+      <div><div class="feat-title">Kapster ke Venue</div><div class="feat-detail">Kapster datang ke gedung pernikahan, hotel, rumah, atau venue manapun sesuai permintaan</div></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">👥</div>
+      <div><div class="feat-title">Rombongan 1–4 Orang</div><div class="feat-detail">Booking untuk 1 orang hingga seluruh rombongan pria. Lebih dari 4 orang — koordinasi langsung dengan admin</div></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-icon">⭐</div>
+      <div><div class="feat-title">Standar Profesional</div><div class="feat-detail">Peralatan profesional dibawa kapster, layanan sama seperti di cabang premium</div></div>
+    </div>
+  </div>
+
+  <!-- Harga -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Paket &amp; Harga</h3>
+
+  <div style="font-size:12px;font-weight:700;color:var(--red);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px">Home Service Wedding</div>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+    <div class="wprice-row"><span class="wprice-label">1 Orang</span><span class="wprice-amount">Rp 350.000</span></div>
+    <div class="wprice-row"><span class="wprice-label">2 Orang (+ Best Man)</span><span class="wprice-amount">Rp 500.000</span></div>
+    <div class="wprice-row"><span class="wprice-label">3 Orang</span><span class="wprice-amount">Rp 750.000</span></div>
+    <div class="wprice-row"><span class="wprice-label">4 Orang &amp; Rombongan</span><span class="wprice-amount">Rp 1.000.000</span></div>
+  </div>
+  <p class="muted mb16" style="font-size:11px">*Kapster datang ke lokasi · Durasi ~2–2.5 jam</p>
+
+  <div style="font-size:12px;font-weight:700;color:var(--gray);letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px">Wedding Package CSB Mall</div>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    <div class="wprice-row">
+      <div><div class="wprice-label" style="font-weight:600">Wedding Royal Grooming</div><div style="font-size:11px;color:var(--gray)">Paket lengkap premium</div></div>
+      <span class="wprice-amount">Rp 510.000</span>
+    </div>
+    <div class="wprice-row" style="background:rgba(251,191,36,.04)">
+      <div>
+        <div class="wprice-label" style="font-weight:600;color:var(--gold)">Wedding Gentlemen Grooming</div>
+        <div style="font-size:11px;color:var(--gray)">Paket menengah terbaik ⭐ Terpopuler</div>
+      </div>
+      <span class="wprice-amount" style="color:var(--gold)">Rp 360.000</span>
+    </div>
+    <div class="wprice-row">
+      <div><div class="wprice-label" style="font-weight:600">Wedding Noble Grooming</div><div style="font-size:11px;color:var(--gray)">Paket entry terjangkau</div></div>
+      <span class="wprice-amount">Rp 210.000</span>
+    </div>
+  </div>
+
+  <!-- Flow Wedding -->
+  <h3 class="bebas red mb16" style="font-size:20px">Flow Booking Wedding</h3>
+  <div class="card">
+    <div class="steps">
+      <div class="step-row"><div style="position:relative"><div class="step-circle">1</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">📱 Hubungi Admin atau Buka Website</div><div class="step-desc">Via WA Bot cabang atau langsung ke booking page — pilih paket wedding</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">2</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">📋 Pilih Paket &amp; Tanggal Acara</div><div class="step-desc">Konfirmasi jumlah orang, alamat venue, dan jam mulai acara</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">3</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">💬 Koordinasi Kapster</div><div class="step-desc">Admin matching kapster terbaik sesuai jadwal dan jumlah rombongan</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">4</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">✅ Konfirmasi &amp; DP (bila perlu)</div><div class="step-desc">Booking dikunci, kapster standby untuk hari-H</div></div></div>
+      <div class="step-row"><div class="step-circle" style="background:var(--green)">✓</div><div class="step-content"><div class="step-title">💈 Hari-H — Kapster Hadir di Venue</div><div class="step-desc">Kapster tiba di venue sesuai waktu yang disepakati, siap bekerja</div></div></div>
+    </div>
+  </div>
+
+  <!-- Tips Admin -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Panduan Admin — Handle Wedding</h3>
+  <div class="card">
+    <div class="feat-row"><div class="feat-icon">📅</div><div><div class="feat-title">Booking Minimal H-3</div><div class="feat-detail">Ingatkan pelanggan untuk booking paling lambat 3 hari sebelum acara agar kapster bisa disiapkan</div></div></div>
+    <div class="feat-row"><div class="feat-icon">💈</div><div><div class="feat-title">Prioritaskan Kapster Senior</div><div class="feat-detail">Untuk acara wedding, pilihkan kapster paling berpengalaman — jangan assign kapster baru</div></div></div>
+    <div class="feat-row"><div class="feat-icon">📍</div><div><div class="feat-title">Konfirmasi Alamat Venue Jelas</div><div class="feat-detail">Pastikan admin menerima alamat lengkap + nomor kontak PIC di venue sebelum hari-H</div></div></div>
+    <div class="feat-row"><div class="feat-icon">📞</div><div><div class="feat-title">Cek Ulang H-1 dengan Kapster</div><div class="feat-detail">Admin wajib konfirmasi ulang dengan kapster 1 hari sebelum — pastikan tidak ada bentrok jadwal</div></div></div>
+    <div class="feat-row"><div class="feat-icon">🕐</div><div><div class="feat-title">Kapster Tiba 30 Menit Lebih Awal</div><div class="feat-detail">Kapster disarankan tiba 30 menit sebelum waktu yang diminta pelanggan untuk persiapan</div></div></div>
+  </div>
+
+  <!-- ═══ CONTOH NYATA VIA WA — WEDDING ═══ -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">📱 Contoh Nyata — Alur Booking Wedding via WhatsApp</h3>
+  <p style="font-size:12.5px;color:var(--gray);margin-bottom:20px;line-height:1.6">Wedding adalah booking paling penting — satu kesalahan koordinasi bisa fatal. Pahami alur ini dengan seksama.</p>
+
+  <!-- TAHAP 1: Customer chat bot -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 1 — Customer Chat WA Bot, Bot Kasih Info Awal</div>
+    <div class="wa-phone">
+      <div class="wa-topbar">
+        <div class="wa-avatar red-av">💈</div>
+        <div>
+          <div class="wa-contact-name">RedBox CSB Mall</div>
+          <div class="wa-contact-sub">0818-2028-89 · AI Bot Aktif</div>
+        </div>
+      </div>
+      <div class="wa-body">
+        <div class="wa-date"><span>Senin, 2 Juni 2026</span></div>
+
+        <div class="wa-bubble in">
+          Halo kak, aku mau tanya paket wedding buat potong rambut pengantin. Ada?
+          <div class="wa-time">09:15</div>
+        </div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender bot">RedBox AI Bot</div>
+          Hai kak! Selamat menjelang hari istimewa ya 💍✨<br><br>
+          Ada dong! Redbox punya <span class="wa-strong">Wedding Package</span> — kapster kami dateng langsung ke venue pernikahan kamu.<br><br>
+          Pilihan paket (Home Service):<br>
+          • 1 orang → <span class="wa-strong">Rp 350.000</span><br>
+          • 2 orang (+ best man) → <span class="wa-strong">Rp 500.000</span><br>
+          • 3 orang → <span class="wa-strong">Rp 750.000</span><br>
+          • 4 orang → <span class="wa-strong">Rp 1.000.000</span>
+          <div class="wa-time">09:15</div>
+        </div>
+
+        <div class="wa-bubble in">
+          Mau buat 3 orang kak — aku, best man, sama ayah. Acaranya di Hotel Aston, 5 Juni. Kapster bisa dateng jam 6 pagi?
+          <div class="wa-time">09:18</div>
+        </div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender bot">RedBox AI Bot</div>
+          Untuk 3 orang jam 06.00 di hotel, koordinasinya perlu langsung sama tim kami ya kak biar kapster & jadwalnya pas 😊<br><br>
+          Tim admin kami akan segera hubungi kakak untuk konfirmasi detail. Atau bisa juga langsung book di:<br>
+          redboxbarbershop.com/home-service.html
+          <div class="wa-time">09:18</div>
+        </div>
+
+        <div class="wa-bubble sys">Admin melihat percakapan ini di dashboard &amp; mengambil alih ↓</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAHAP 2: Admin ambil alih -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 2 — Admin Ambil Alih (Human Takeover 30 Menit)</div>
+    <div class="wa-phone">
+      <div class="wa-topbar">
+        <div class="wa-avatar red-av">💈</div>
+        <div>
+          <div class="wa-contact-name">RedBox CSB Mall</div>
+          <div class="wa-contact-sub">Admin aktif — AI pause 30 menit</div>
+        </div>
+      </div>
+      <div class="wa-body">
+        <div class="wa-date"><span>Senin, 2 Juni 2026</span></div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender admin">Admin CSB (kamu)</div>
+          Halo kak Budi! 😊 Saya admin RedBox CSB. Untuk wedding 3 orang di Hotel Aston, saya bantu koordinasi langsung ya.<br><br>
+          Boleh konfirmasi:<br>
+          1. Nama lengkap &amp; nomor HP kakak?<br>
+          2. Nama hotel &amp; nomor kamar / nama acara?<br>
+          3. Kapster tertentu atau terserah kami?
+          <div class="wa-time">09:22</div>
+        </div>
+
+        <div class="wa-bubble in">
+          Nama aku Budi Santoso, 0812-9876-5432. Hotel Aston Cirebon, ruang persiapan lantai 3. Terserah kapster senior aja kak, yang pengalaman ya!
+          <div class="wa-time">09:25</div>
+        </div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender admin">Admin CSB (kamu)</div>
+          Siap kak Budi! ✅ Kami konfirmasi:<br><br>
+          📅 Tanggal: <span class="wa-strong">Jumat, 5 Juni 2026</span><br>
+          ⏰ Jam: <span class="wa-strong">06:00 WIB</span><br>
+          📍 Hotel Aston Cirebon, lantai 3<br>
+          👥 3 orang (pengantin + best man + ayah)<br>
+          💰 Total: <span class="wa-strong">Rp 750.000</span><br><br>
+          Kapster senior kami yang handle. Nanti H-1 kami konfirmasi lagi ya kak. Selamat menikah! 💍
+          <div class="wa-time">09:28</div>
+        </div>
+
+        <div class="wa-bubble in">
+          Makasih banyak kak! Ditunggu ya 🙏
+          <div class="wa-time">09:29</div>
+        </div>
+      </div>
+    </div>
+    <div class="wa-note">
+      <span class="ic">⚠️</span>
+      <span><strong>Penting:</strong> Setelah admin balas manual, AI otomatis pause 30 menit. Selesaikan semua koordinasi dalam satu sesi. Catat detail booking ke sistem sebelum menutup chat.</span>
+    </div>
+  </div>
+
+  <!-- TAHAP 3: Admin ke Kapster -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 3 — Admin Koordinasi ke Kapster Senior</div>
+    <div class="wa-phone">
+      <div class="wa-topbar">
+        <div class="wa-avatar" style="background:#2A4A2A;font-size:16px">💈</div>
+        <div>
+          <div class="wa-contact-name">Rendi (Kapster Senior)</div>
+          <div class="wa-contact-sub">Chat pribadi Admin → Kapster</div>
+        </div>
+      </div>
+      <div class="wa-body">
+        <div class="wa-date"><span>Senin, 2 Juni 2026</span></div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender admin">Admin CSB</div>
+          Ren, ada booking <span class="wa-strong">wedding 5 Juni jam 06.00</span> di Hotel Aston Cirebon. 3 orang — pengantin, best man, ayah. Customer minta kapster senior. Bisa kamu handle?
+          <div class="wa-time">09:35</div>
+        </div>
+
+        <div class="wa-bubble in">
+          Bisa min! Saya pastiin hadir jam 05.30 buat persiapan dulu. Ada pantangan atau request khusus dari pelanggannya?
+          <div class="wa-time">09:38</div>
+        </div>
+
+        <div class="wa-bubble out">
+          <div class="wa-sender admin">Admin CSB</div>
+          Belum ada info khusus. Nanti H-1 (4 Juni) kamu hubungi langsung ya kak Budi di 0812-9876-5432. Konfirmasi jam &amp; minta info persis ruangannya.
+          <div class="wa-time">09:40</div>
+        </div>
+
+        <div class="wa-bubble in">
+          Siap min! Noted. Saya set reminder H-1 untuk hubungi pelanggan 🫡
+          <div class="wa-time">09:41</div>
+        </div>
+      </div>
+    </div>
+    <div class="wa-note">
+      <span class="ic">📌</span>
+      <span><strong>Wajib dilakukan admin:</strong> Kapster HARUS hubungi customer sendiri H-1 untuk reconfirm lokasi persis. Jangan andalkan memori — minta kapster simpan nomor customer.</span>
+    </div>
+  </div>
+
+  <!-- TAHAP 4: Reminder H-1 otomatis + Kapster konfirmasi -->
+  <div class="wa-scenario">
+    <div class="wa-scenario-title">Tahap 4 — H-1: Reminder Otomatis + Kapster Konfirmasi Mandiri</div>
+    <div class="wa-grid">
+      <div>
+        <p style="font-size:11px;color:var(--gray);margin-bottom:8px">📅 Reminder H-1 — otomatis jam 10.00 WIB (4 Juni)</p>
+        <div class="wa-phone">
+          <div class="wa-topbar">
+            <div class="wa-avatar red-av">💈</div>
+            <div><div class="wa-contact-name">RedBox CSB Mall</div></div>
+          </div>
+          <div class="wa-body">
+            <div class="wa-bubble out">
+              <div class="wa-sender bot">RedBox Bot</div>
+              Hai kak Budi! 😊 Besok hari istimewamu — kapster kami sudah siap! 💍<br><br>
+              📍 <span class="wa-strong">Hotel Aston Cirebon</span><br>
+              ⏰ Jam <span class="wa-strong">06:00 WIB</span><br>
+              ✂️ Wedding Package (3 orang)<br>
+              💈 Kapster: <span class="wa-strong">Rendi</span><br><br>
+              Selamat menikah kak! 🎊
+              <div class="wa-time">10:00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:11px;color:var(--gray);margin-bottom:8px">📞 Kapster konfirmasi langsung ke customer (manual)</p>
+        <div class="wa-phone">
+          <div class="wa-topbar">
+            <div class="wa-avatar" style="background:#2A4A2A;font-size:16px">💈</div>
+            <div><div class="wa-contact-name">Rendi → Kak Budi</div></div>
+          </div>
+          <div class="wa-body">
+            <div class="wa-bubble out">
+              <div class="wa-sender admin">Rendi (Kapster)</div>
+              Halo kak Budi, saya Rendi kapster dari RedBox yang akan handle besok. Mau konfirmasi lokasi persisnya kak — di lantai 3 Hotel Aston, ruang apa ya kak?
+              <div class="wa-time">14:30</div>
+            </div>
+            <div class="wa-bubble in">
+              Halo Rendi! Ruang Jasmine lantai 3 ya. Dateng langsung aja, nanti aku jemput di lobby jam 05.45 🙏
+              <div class="wa-time">14:33</div>
+            </div>
+            <div class="wa-bubble out">
+              <div class="wa-sender admin">Rendi (Kapster)</div>
+              Siap kak! Saya di lobby jam 05.45. Sampai besok 🫡
+              <div class="wa-time">14:34</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wa-note">
+      <span class="ic">🎯</span>
+      <span><strong>Kunci sukses wedding:</strong> Reminder otomatis hanya mengirim info dasar. Konfirmasi kapster ke customer secara personal (H-1) adalah yang memastikan tidak ada miskomunikasi pada hari-H.</span>
+    </div>
+  </div>
+
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 4 — MEMBERSHIP
+════════════════════════════════════════════════════ -->
+<div class="sec-sep" id="membership">
+  <div class="sec-header">
+    <div class="sec-num">04</div>
+    <div class="sec-header-text">
+      <h2>Membership &amp; Reward</h2>
+      <p>Kumpulkan poin setiap kunjungan — semakin sering datang, semakin besar benefitnya</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="section-label">Membership</div>
+  <h2 class="section-title">Program Poin RedBox</h2>
+  <p class="section-sub">Setiap kunjungan menghasilkan poin yang bisa ditukar menjadi diskon nyata di kunjungan berikutnya.</p>
+
+  <div class="grid-2 mb16">
+    <div class="card">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">💈</div>
+      <div class="feat-title" style="margin-bottom:4px">Setiap Kunjungan</div>
+      <div class="feat-detail">Setiap transaksi di cabang menghasilkan poin — semakin besar transaksi, semakin banyak poin</div>
+    </div>
+    <div class="card" style="border-color:rgba(251,191,36,.25)">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">⭐</div>
+      <div class="feat-title" style="margin-bottom:4px;color:var(--gold)">Google Review 5⭐ = 5 Poin</div>
+      <div class="feat-detail">Berikan ulasan positif di Google → otomatis <strong class="gold">5 poin (Rp 50.000)</strong> masuk ke akun member</div>
+    </div>
+    <div class="card">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">💰</div>
+      <div class="feat-title" style="margin-bottom:4px">Poin = Diskon Nyata</div>
+      <div class="feat-detail">Poin yang terkumpul bisa ditukar langsung menjadi potongan harga saat kunjungan</div>
+    </div>
+    <div class="card">
+      <div class="feat-icon" style="font-size:28px;margin-bottom:8px">📱</div>
+      <div class="feat-title" style="margin-bottom:4px">Cek via Dashboard</div>
+      <div class="feat-detail">Pelanggan cek saldo poin, histori kunjungan &amp; tier di member-dashboard.html</div>
+    </div>
+  </div>
+  <div class="info-box">
+    <span class="ic">💡</span>
+    <span>Link review Google dikirim otomatis via WA, <strong>30 menit setelah selesai service</strong> — admin tidak perlu kirim manual.</span>
+  </div>
+
+  <!-- 4 Tier -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">4 Tier Keanggotaan</h3>
+  <div class="tier-grid">
+    <div class="tier-card">
+      <div class="tier-icon-big">🥉</div>
+      <div class="tier-name-lbl" style="color:#CD7F32">BRONZE</div>
+      <div class="tier-range">0 – 499 poin</div>
+      <div class="tier-disc" style="color:#CD7F32">0%</div>
+      <div class="tier-disc-lbl">diskon</div>
+      <div class="tier-tagline">Mulai perjalanan member</div>
+    </div>
+    <div class="tier-card">
+      <div class="tier-icon-big">🥈</div>
+      <div class="tier-name-lbl" style="color:#9CA3AF">SILVER</div>
+      <div class="tier-range">500 – 999 poin</div>
+      <div class="tier-disc" style="color:#9CA3AF">s/d 5%</div>
+      <div class="tier-disc-lbl">diskon</div>
+      <div class="tier-tagline">Benefit lebih menggiurkan</div>
+    </div>
+    <div class="tier-card featured-tier">
+      <div class="tier-icon-big">🏆</div>
+      <div class="tier-name-lbl gold">GOLD</div>
+      <div class="tier-range">1.000 – 1.999 poin</div>
+      <div class="tier-disc gold">s/d 10%</div>
+      <div class="tier-disc-lbl">diskon</div>
+      <div class="tier-tagline">Member setia terpilih ⭐ Populer</div>
+    </div>
+    <div class="tier-card">
+      <div class="tier-icon-big">💎</div>
+      <div class="tier-name-lbl purple">PLATINUM</div>
+      <div class="tier-range">2.000+ poin</div>
+      <div class="tier-disc purple">s/d 15%</div>
+      <div class="tier-disc-lbl">diskon</div>
+      <div class="tier-tagline">Puncak loyalitas Redbox</div>
+    </div>
+  </div>
+
+  <!-- Cara Dapat & Redeem -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Cara Dapat &amp; Tukar Poin</h3>
+  <div class="grid-2">
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:14px">💰 Cara Dapat Poin</div>
+      <div class="feat-row"><div class="feat-icon">💈</div><div><div class="feat-title">Kunjungan ke Cabang</div><div class="feat-detail">Setiap transaksi di cabang manapun — poin dihitung otomatis</div></div></div>
+      <div class="feat-row"><div class="feat-icon">⭐</div><div><div class="feat-title">Google Review 5 Bintang</div><div class="feat-detail">Beri ulasan positif → 5 poin bonus (Rp 50.000) masuk otomatis</div></div></div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:14px">🎁 Cara Tukar Poin</div>
+      <div class="feat-row"><div class="feat-icon">1️⃣</div><div><div class="feat-title">Kunjungi Cabang / Website</div><div class="feat-detail">Buka member-dashboard.html atau datang ke kasir</div></div></div>
+      <div class="feat-row"><div class="feat-icon">2️⃣</div><div><div class="feat-title">Kasir Cek Akun Member</div><div class="feat-detail">Admin melihat saldo poin di dashboard sistem</div></div></div>
+      <div class="feat-row"><div class="feat-icon">3️⃣</div><div><div class="feat-title">Poin Dipotong dari Tagihan</div><div class="feat-detail">Potongan otomatis sesuai tier yang berlaku</div></div></div>
+    </div>
+  </div>
+
+  <!-- Journey -->
+  <h3 class="bebas red mt24 mb16" style="font-size:20px">Perjalanan Member</h3>
+  <div class="card">
+    <div class="steps">
+      <div class="step-row"><div style="position:relative"><div class="step-circle">1</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">📝 Daftar Member</div><div class="step-desc">Buka membership.html → isi data → buat akun → langsung aktif</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">2</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">💈 Kunjungan Pertama</div><div class="step-desc">Datang ke cabang, transaksi — poin mulai terkumpul otomatis</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">3</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">⭐ Review &amp; Poin Bonus</div><div class="step-desc">Beri ulasan Google 5 bintang → 5 poin (Rp 50.000) langsung masuk akun</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">4</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">📈 Naik Tier</div><div class="step-desc">Semakin banyak poin, semakin tinggi tier → Silver → Gold → Platinum</div></div></div>
+      <div class="step-row"><div class="step-circle" style="background:var(--gold)">🎁</div><div class="step-content"><div class="step-title">🎁 Redeem &amp; Nikmati</div><div class="step-desc">Tukar poin jadi diskon di kunjungan berikutnya — semakin setia, semakin besar diskon</div></div></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     SECTION 5 — AI GROOMING (MEMBER ONLY)
+════════════════════════════════════════════════════ -->
+<div class="sec-sep" id="ai">
+  <div class="sec-header" style="border-color:rgba(167,139,250,.25)">
+    <div class="sec-num" style="color:var(--purple)">05</div>
+    <div class="sec-header-text">
+      <h2>AI Grooming Consultant</h2>
+      <p>Fitur eksklusif member — analisis wajah &amp; simulasi gaya rambut berbasis AI</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="section-label" style="color:var(--purple)">AI Grooming</div>
+  <h2 class="section-title">AI Grooming Consultant</h2>
+  <p class="section-sub">Teknologi AI yang menganalisis wajah dan merekomendasikan gaya rambut terbaik — berstandar GQ editorial.</p>
+
+  <div class="member-banner">
+    <div class="lock">🔒</div>
+    <div class="member-banner-text">
+      <strong>Khusus Member Aktif (Bronze s/d Platinum)</strong>
+      <span>Non-member hanya melihat layar terkunci — bantu pelanggan daftar member untuk akses penuh</span>
+    </div>
+  </div>
+
+  <!-- 3 Fitur -->
+  <h3 class="bebas red mb16" style="font-size:20px;color:var(--purple)">3 Fitur Utama</h3>
+
+  <div class="ai-feat-card mb16">
+    <div class="ai-feat-header" style="background:rgba(193,18,31,.12);color:var(--red)">
+      <span>🔬</span> AI Face Analysis — ANALISIS WAJAH
+    </div>
+    <div class="ai-feat-body">
+      <div class="ai-feat-item" style="--dot:var(--red)"><span style="width:5px;height:5px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span>Deteksi bentuk wajah: oval, bulat, kotak, heart, diamond</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span>Analisis jenis rambut: straight, wavy, curly, coily</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span>Cek densitas rambut: thin / medium / thick</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--red);flex-shrink:0;margin-top:6px"></span>Saran produk styling: clay, paste, spray, powder</div>
+    </div>
+  </div>
+
+  <div class="ai-feat-card mb16">
+    <div class="ai-feat-header" style="background:rgba(251,191,36,.1);color:var(--gold)">
+      <span>💡</span> Rekomendasi Gaya — PERSONALISASI
+    </div>
+    <div class="ai-feat-body">
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:6px"></span>4 gaya rambut terbaik (Korean, Classic, Modern, Textured)</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:6px"></span>5 gaya yang harus dihindari beserta alasannya</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:6px"></span>Setiap gaya dilengkapi skor kesesuaian (1–100)</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--gold);flex-shrink:0;margin-top:6px"></span>Alasan mengapa gaya cocok untuk bentuk wajah tersebut</div>
+    </div>
+  </div>
+
+  <div class="ai-feat-card mb16">
+    <div class="ai-feat-header" style="background:rgba(167,139,250,.1);color:var(--purple)">
+      <span>🖼️</span> Simulasi Visual — PREVIEW SEBELUM POTONG
+    </div>
+    <div class="ai-feat-body">
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--purple);flex-shrink:0;margin-top:6px"></span>Pilih gaya dari daftar rekomendasi AI</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--purple);flex-shrink:0;margin-top:6px"></span>AI generate foto preview dengan gaya rambut baru</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--purple);flex-shrink:0;margin-top:6px"></span>Lihat tampilan gaya sebelum potong beneran di cabang</div>
+      <div class="ai-feat-item"><span style="width:5px;height:5px;border-radius:50%;background:var(--purple);flex-shrink:0;margin-top:6px"></span>Tampilan premium cinematic — bukan filter biasa</div>
+    </div>
+  </div>
+
+  <!-- Flow -->
+  <h3 class="bebas mt8 mb16" style="font-size:20px;color:var(--purple)">Flow — Login Hingga Hasil AI</h3>
+  <div class="card">
+    <div class="steps">
+      <div class="step-row"><div style="position:relative"><div class="step-circle">1</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">🔑 Login Member</div><div class="step-desc">Buka website → klik tombol Member → login dengan akun yang sudah terdaftar</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">2</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">📸 Upload Foto Wajah</div><div class="step-desc">Klik tombol Upload → pilih foto dari HP atau laptop → format JPG/PNG</div></div></div>
+      <div class="step-row"><div style="position:relative"><div class="step-circle">3</div><div class="step-line"></div></div><div class="step-content"><div class="step-title">⏳ AI Memproses</div><div class="step-desc">Tunggu beberapa detik — AI analisis otomatis, tidak perlu isi form apapun</div></div></div>
+      <div class="step-row"><div class="step-circle" style="background:var(--purple)">✨</div><div class="step-content"><div class="step-title">✨ Lihat Hasil &amp; Simulasi</div><div class="step-desc">Rekomendasi gaya muncul → pilih gaya → AI generate simulasi foto → screenshot &amp; tunjuk ke kapster</div></div></div>
+    </div>
+  </div>
+  <div class="info-box mt16">
+    <span class="ic">💡</span>
+    <span>Hasil rekomendasi bisa di-screenshot lalu ditunjukkan langsung ke kapster saat kunjungan ke cabang — kapster langsung tahu gaya yang diinginkan pelanggan!</span>
+  </div>
+
+  <!-- Admin Guide -->
+  <h3 class="bebas mt24 mb16" style="font-size:20px;color:var(--purple)">Cara Admin &amp; Kapster Guide Pelanggan</h3>
+  <div class="grid-2">
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:14px">🔒 Siapa yang Bisa Akses?</div>
+      <div class="feat-row" style="padding:7px 0"><div class="feat-icon" style="color:var(--green)">✅</div><div class="feat-detail">Member aktif (sudah login)</div></div>
+      <div class="feat-row" style="padding:7px 0"><div class="feat-icon" style="color:var(--green)">✅</div><div class="feat-detail">Semua tier (Bronze s/d Platinum)</div></div>
+      <div class="feat-row" style="padding:7px 0"><div class="feat-icon" style="color:var(--gray)">❌</div><div class="feat-detail" style="color:var(--gray)">Non-member — harus daftar dulu</div></div>
+      <div class="feat-row" style="padding:7px 0"><div class="feat-icon" style="color:var(--gray)">❌</div><div class="feat-detail" style="color:var(--gray)">Akun admin — bukan untuk admin</div></div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px;font-weight:700;color:var(--gold);margin-bottom:14px">💬 Kalimat Panduan Admin</div>
+      <div class="feat-row" style="padding:7px 0"><div class="feat-icon">🗣️</div><div><div class="feat-title" style="font-size:11px">Pelanggan tanya gaya cocok:</div><div class="feat-detail">"Coba fitur AI Grooming di website kak — upload foto, langsung muncul rekomendasi gaya terbaik untuk bentuk wajah kakak! Gratis untuk member."</div></div></div>
+      <div class="feat-row" style="padding:7px 0"><div class="feat-icon">🗣️</div><div><div class="feat-title" style="font-size:11px">Pelanggan belum member:</div><div class="feat-detail">"Daftar member dulu kak, gratis dan cepat — buka membership.html, langsung bisa pakai AI Grooming plus dapat poin tiap kunjungan!"</div></div></div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════════════
+     EKOSISTEM
+════════════════════════════════════════════════════ -->
+<div class="sec-sep">
+  <div class="sec-header" style="border-color:var(--border2)">
+    <div class="sec-num" style="color:var(--gray)">✦</div>
+    <div class="sec-header-text">
+      <h2>Ekosistem Lengkap 2026</h2>
+      <p>Semua fitur bekerja bersama menciptakan pengalaman pelanggan yang mulus</p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="eco-flow">
+    <div class="eco-item">💬 Chat WA Bot</div>
+    <div class="eco-arrow">→</div>
+    <div class="eco-item">📱 Booking Online</div>
+    <div class="eco-arrow">→</div>
+    <div class="eco-item">✂️ Kunjungan / Home Service / Wedding</div>
+    <div class="eco-arrow">→</div>
+    <div class="eco-item">⭐ Review &amp; Poin</div>
+    <div class="eco-arrow">→</div>
+    <div class="eco-item">🏆 Naik Tier Member</div>
+    <div class="eco-arrow">→</div>
+    <div class="eco-item">🤖 AI Grooming</div>
+  </div>
+
+  <div class="grid-2 mt16">
+    <div class="card"><div class="feat-icon" style="font-size:22px;margin-bottom:6px">🏠</div><div class="feat-title" style="margin-bottom:3px">Home Service</div><div class="feat-detail">Rp 200K–250K · Radius 5KM · Jam 06–23 WIB · Single &amp; Family</div></div>
+    <div class="card"><div class="feat-icon" style="font-size:22px;margin-bottom:6px">💬</div><div class="feat-title" style="margin-bottom:3px">WA Bot 5 Cabang</div><div class="feat-detail">AI 24/7 · Memori percakapan · 4 jenis reminder otomatis · Human takeover</div></div>
+    <div class="card"><div class="feat-icon" style="font-size:22px;margin-bottom:6px">💍</div><div class="feat-title" style="margin-bottom:3px">Wedding Package</div><div class="feat-detail">1–4 orang · Kapster ke venue · Rp 350K–1jt · CSB premium packages</div></div>
+    <div class="card"><div class="feat-icon" style="font-size:22px;margin-bottom:6px">⭐</div><div class="feat-title" style="margin-bottom:3px">Membership</div><div class="feat-detail">4 tier Bronze→Platinum · Poin tiap kunjungan · Bonus Google Review 5⭐</div></div>
+    <div class="card" style="grid-column:1/-1;border-color:rgba(167,139,250,.25)"><div class="feat-icon" style="font-size:22px;margin-bottom:6px">🤖</div><div class="feat-title purple" style="margin-bottom:3px">AI Grooming (Member Only)</div><div class="feat-detail">Analisis bentuk wajah · Rekomendasi 4 gaya terbaik · Simulasi visual · Eksklusif member aktif</div></div>
+  </div>
+</section>
+
+
+<!-- ── FOOTER ── -->
+<footer>
+  <strong>REDBOX BARBERSHOP</strong>
+  <p>redboxbarbershop.com</p>
+  <p class="mt8">Dokumen Internal — Update Sistem 2026</p>
+  <p>Tidak untuk disebarluaskan di luar tim internal</p>
+</footer>
+
+<!-- ── Scroll Top Button ── -->
+<button id="scroll-top" aria-label="Kembali ke atas" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+<script>
+// ── Scroll Top Show/Hide ──
+const scrollBtn = document.getElementById('scroll-top');
+window.addEventListener('scroll', () => {
+  scrollBtn.classList.toggle('show', window.scrollY > 400);
+}, { passive:true });
+
+// ── Active Nav Highlight ──
+const sections = document.querySelectorAll('[id]');
+const navItems = document.querySelectorAll('.nav-item');
+
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      navItems.forEach(n => {
+        n.classList.toggle('active', n.getAttribute('href') === '#' + id);
+      });
+    }
+  });
+}, { rootMargin:'-20% 0px -70% 0px' });
+
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

@@ -251,8 +251,8 @@
 
       const fmt = s => s ? String(s).replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) : '';
 
-      const faceShape    = subject.face_shape?.type || outfit.faceShape || hair.faceShape || 'oval';
-      const faceTraits   = subject.face_shape?.characteristics || ['Proporsi seimbang','Dahi lebar','Rahang lembut','Cocok banyak gaya'];
+      const faceShape    = subject.face_shape?.type || outfit.faceShape || hair.faceShape || '';
+      const faceTraits   = subject.face_shape?.characteristics || [];
       const skinType     = subject.skin?.type || skin.skinProfile?.type || '';
       const colorSeason  = color.season || color.colorSeason || '';
       const colorKws     = (color.keywords || color.summary_tags || []).slice(0,3);
@@ -337,12 +337,12 @@
                   <span class="${mCls}">${mCh}</span>
                 </div>`;
             }).join('')}
-            <div class="skin-best-match">BEST MATCH: <em>${fmt(skinType).toUpperCase() || 'COMBINATION'}</em></div>
+            <div class="skin-best-match">BEST MATCH: <em>${fmt(skinType).toUpperCase() || '—'}</em></div>
           </div>
         </div>`;
 
       // ── 2. Outfit & Face Shape ──
-      const outfitCatLabels = ['SMART\nCASSAL','CASUAL\nDAILY','SEMI\nFORMAL','FORMAL'];
+      const outfitCatLabels = outfitRecs.slice(0,4).map((item) => (item.name || '—').toUpperCase().replace(/\s+/g, '\n'));
       const outfitHTML = `
         <div class="section-card">
           <div class="section-header"><span class="section-num">2.</span><span class="section-title">Outfit Recommendation & Face Shape</span></div>
@@ -391,10 +391,10 @@
         </div>`;
 
       // ── 3. Glasses ──
-      const G_SREC = eyewearRecs.length>=4 ? eyewearRecs.slice(0,4).map(e=>e.model||e.name) : ['Wayfarer','Clubmaster','Round','Rectangle'];
-      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(e=>e.model||e.style||e) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
-      const G_PREC = ['Wrap-Around','Semi-Rimless','Polarized','Lightweight'];
-      const G_PAVD = ['Heavy Frame','Fashion Tint','Non-Polarized','Loose Fit'];
+      const G_SREC = eyewearRecs.slice(0,4).map(e => e.model || e.name || '—');
+      const G_SAVD = eyewearAvoid.slice(0,4).map(e => e.model || e.style || e.name || e || '—');
+      const G_PREC = (eyewear.sports_recommended || []).slice(0,4).map(e => e.name || e.model || '—');
+      const G_PAVD = (eyewear.sports_avoid || []).slice(0,4).map(e => e.name || e.model || '—');
 
       const glassRow = (names, prefix, isAvoid) => `
         <div class="glasses-photos">
@@ -438,15 +438,12 @@
         </div>`;
 
       // ── 4. Skincare ──
-      const concerns3 = skinConcerns.length ? skinConcerns.slice(0,3) : [{type:'Pores'},{type:'Dullness'},{type:'Uneven Tone'}];
-      const defaultGoals = [{i:'💧',n:'Kontrol Minyak'},{i:'🌿',n:'Pori Bersih'},{i:'✨',n:'Cerahkan'},{i:'☀️',n:'Anti Aging'},{i:'💙',n:'Kelembaban'},{i:'🌙',n:'Mois Malam'}];
-      const goalsToShow = skinGoals.slice(0,6).map((g,i)=>({i:defaultGoals[i]?.i||'✨',n:g})).concat(defaultGoals).slice(0,6);
+      const concerns3 = skinConcerns.slice(0,3);
+      const goalIcons = ['💧','🌿','✨','☀️','💙','🌙'];
+      const goalsToShow = skinGoals.slice(0,6).map((g,i)=>({ i: goalIcons[i] || '✨', n: g }));
 
       const routineRow = (time, steps) => {
-        const defaultSteps = time==='AM'
-          ? ['Cleanser','Toner','Vitamin C','Moisturizer','Sunscreen']
-          : ['Cleanser','Toner','Niacinamide','Moisturizer','Eye Cream'];
-        const items = steps.length ? steps : defaultSteps;
+        const items = steps.length ? steps : [];
         return `
           <div class="routine-row">
             <div class="routine-time">${time}</div>
@@ -525,9 +522,7 @@
 
       // ── 5. Hair ──
       const hairRecFill  = [...hairRecs.slice(0,4)];
-      while (hairRecFill.length<4)  hairRecFill.push({name:'—',match_reason:''});
       const hairAvoidFill = [...hairAvoid.slice(0,4)];
-      while (hairAvoidFill.length<4) hairAvoidFill.push({name:'—',reason:''});
 
       const hairHTML = `
         <div class="section-card">
@@ -633,18 +628,17 @@
       const avoidColors  = color.avoid_colors || color.avoidColors || [];
       const eyewearRecs  = eyewear.recommended || eyewear.recommendations || [];
       const eyewearAvoid = eyewear.avoid || eyewear.avoidFrames || [];
-      const G_SREC = eyewearRecs.length>=4  ? eyewearRecs.slice(0,4).map(e=>e.model||e.name)  : ['Wayfarer','Clubmaster','Round','Rectangle'];
-      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(e=>e.model||e.style||e) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
-      const G_PREC = ['Wrap-Around','Semi-Rimless','Polarized','Lightweight'];
-      const G_PAVD = ['Heavy Frame','Fashion Tint','Non-Polarized','Loose Fit'];
+      const G_SREC = eyewearRecs.slice(0,4).map(e => e.model || e.name || '—');
+      const G_SAVD = eyewearAvoid.slice(0,4).map(e => e.model || e.style || e.name || e || '—');
+      const G_PREC = (eyewear.sports_recommended || []).slice(0,4).map(e => e.name || e.model || '—');
+      const G_PAVD = (eyewear.sports_avoid || []).slice(0,4).map(e => e.name || e.model || '—');
 
       // Outfit category: generic prompts, globally cached by label
-      const outfitCats = [
-        { elId:'outfit-img-0', label:'Smart Casual',  prompt:'Smart casual men fashion. Chinos and fitted shirt. Asian man full body. Dark studio. Sharp focus.' },
-        { elId:'outfit-img-1', label:'Casual Daily',  prompt:'Casual daily men fashion. Jeans and clean t-shirt. Asian man full body. Dark studio. Sharp focus.' },
-        { elId:'outfit-img-2', label:'Semi Formal',   prompt:'Semi formal men fashion. Blazer and dress pants. Asian man full body. Dark studio. Sharp focus.' },
-        { elId:'outfit-img-3', label:'Formal',        prompt:'Formal men fashion. Full suit and tie. Asian man full body. Dark studio. Sharp focus.' },
-      ];
+      const outfitCats = (outfit.recommended_styles || []).slice(0,4).map((o, i) => ({
+        elId:`outfit-img-${i}`,
+        label:o.name || `Look ${i + 1}`,
+        prompt:`Men's fashion editorial portrait. ${o.name || 'Recommended outfit'} for ${o.occasion || 'daily wear'}. ${o.why_it_works || ''} Dark studio. Sharp focus.`,
+      }));
       const fitGuides = [
         { elId:'outfit-fit-0', label:'Shoulder Fit',     prompt:'Men shoulder fit clothing guide. Proper shoulder seam placement. Fashion editorial.' },
         { elId:'outfit-fit-1', label:'Tailored Slim Fit', prompt:'Men tailored slim fit clothing guide. Well-fitted suit. Fashion editorial.' },
@@ -671,10 +665,10 @@
         ...okayColors.slice(0,4).map((c,i)=>({ elId:`color-okay-img-${i}`, prompt:`Fashion editorial. Asian man wearing ${c.name} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-okay/${slug(c.name)}`, icon:'👕' })),
         ...avoidColors.slice(0,4).map((c,i)=>({ elId:`color-avd-img-${i}`,  prompt:`Fashion editorial. Asian man wearing ${c.name} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-avd/${slug(c.name)}`, icon:'👕' })),
         // Glasses: cached by style name — exact same image for everyone requesting "Wayfarer"
-        ...G_SREC.map(n=>({ elId:`glass-srec-${G_SREC.indexOf(n)}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
-        ...G_SAVD.map(n=>({ elId:`glass-savd-${G_SAVD.indexOf(n)}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
-        ...G_PREC.map(n=>({ elId:`glass-prec-${G_PREC.indexOf(n)}`, prompt:`Product photography. ${n} sport sunglasses. White background. Isolated. Sharp focus.`,  cacheKey:`v1/glass-sport/${slug(n)}`, icon:'🕶️' })),
-        ...G_PAVD.map(n=>({ elId:`glass-pavd-${G_PAVD.indexOf(n)}`, prompt:`Product photography. ${n} sport sunglasses. White background. Isolated. Sharp focus.`,  cacheKey:`v1/glass-sport/${slug(n)}`, icon:'🕶️' })),
+        ...G_SREC.map((n,i)=>({ elId:`glass-srec-${i}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
+        ...G_SAVD.map((n,i)=>({ elId:`glass-savd-${i}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
+        ...G_PREC.map((n,i)=>({ elId:`glass-prec-${i}`, prompt:`Product photography. ${n} sport sunglasses. White background. Isolated. Sharp focus.`,  cacheKey:`v1/glass-sport/${slug(n)}`, icon:'🕶️' })),
+        ...G_PAVD.map((n,i)=>({ elId:`glass-pavd-${i}`, prompt:`Product photography. ${n} sport sunglasses. White background. Isolated. Sharp focus.`,  cacheKey:`v1/glass-sport/${slug(n)}`, icon:'🕶️' })),
       ];
 
       const C = 3;
