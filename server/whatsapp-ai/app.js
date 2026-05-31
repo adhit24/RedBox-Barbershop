@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('./loadEnv').loadEnv();
 
 const express = require('express');
 const config = require('./config');

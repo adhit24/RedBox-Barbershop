@@ -1,11 +1,17 @@
 'use strict';
+require('../loadEnv').loadEnv();
+
 const { createClient } = require('@supabase/supabase-js');
 const { sendWA } = require('../../services/fonnte');
 
 function _db() {
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY;
+
   return createClient(
     process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
+    supabaseKey
   );
 }
 

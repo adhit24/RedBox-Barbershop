@@ -64,7 +64,7 @@ async function testImprovedSync() {
       name: 'Unstructured format (fuzzy)',
       billName: 'walkin abdul',
       expectedOutlet: 'bypass',
-      expectedBarber: 'Abdul ( Dul )'
+      expectedBarber: 'Abdul'
     }
   ];
   

@@ -482,10 +482,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const FALLBACK_BARBERS = [
     { id:'bypass-bob',        name:'Bob',          role:'Haircut;Fade;Coloring;Beard Trim',                      img:'https://lh3.googleusercontent.com/d/1q8jZWo5lHXb6PhxoFkVMQ9BsyO7hh87Z=w800',  branch:'bypass' },
-    { id:'bypass-kaji-dodi',  name:'Kaji dodi',    role:'Haircut',                                               img:'https://lh3.googleusercontent.com/d/1Oiu0LB7qtC0Hq1vsBXHp94uBDFKJ3GMs=w800',  branch:'bypass' },
+    { id:'bypass-kaji-dodi',  name:'Dodi',         role:'Haircut',                                               img:'https://lh3.googleusercontent.com/d/1Oiu0LB7qtC0Hq1vsBXHp94uBDFKJ3GMs=w800',  branch:'bypass' },
     { id:'bypass-ari',        name:'Ari',           role:'Haircut;Fade',                                          img:'https://lh3.googleusercontent.com/d/1O8Ze8nBCbFwMS4z7Zxi3048wWHTGSo-E=w800',  branch:'bypass' },
     { id:'bypass-onoy',       name:'Onoy',          role:'Haircut;Fade;Coloring;Hair Tattoo;Beard Trim',          img:'https://lh3.googleusercontent.com/d/1-KjMqpgGqACn-zvtIxjmMQRlGEjPbaFj=w800',  branch:'bypass' },
-    { id:'bypass-abdul-dul',  name:'Abdul ( Dul )', role:'Haircut;Fade',                                          img:'https://lh3.googleusercontent.com/d/11rOyCrW-eTP63f0v7Q9f9PPrrw9DRUF_=w800',  branch:'bypass' },
+    { id:'bypass-abdul-dul',  name:'Abdul',        role:'Haircut;Fade',                                          img:'https://lh3.googleusercontent.com/d/11rOyCrW-eTP63f0v7Q9f9PPrrw9DRUF_=w800',  branch:'bypass' },
     { id:'samadikun-khamami', name:'Khamami',       role:'Haircut;Fade;Coloring;Beard Trim',                      img:'https://lh3.googleusercontent.com/d/1Xkdg9j7Wl1vNKo9qT983dmP4sMlERiLz=w800',  branch:'samadikun' },
     { id:'samadikun-opan',    name:'Opan',          role:'Fade',                                                  img:'https://lh3.googleusercontent.com/d/132eu8d4LQ0Nx3F6aTFc25XFv6MLekTpS=w800',  branch:'samadikun' },
     { id:'samadikun-sofyan',  name:'Sofyan',        role:'Haircut;Fade;Coloring;Beard Trim',                      img:'https://lh3.googleusercontent.com/d/10jANuN1FlftSZlYQ3CgXXJlQXYTeoDMs=w800', branch:'samadikun' },

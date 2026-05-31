@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('../loadEnv').loadEnv();
 
 module.exports = {
   // Server
