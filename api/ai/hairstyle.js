@@ -65,7 +65,20 @@ module.exports = async function handler(req, res) {
       const hairLength  = (a.hairLength  || 'medium').toUpperCase();
       const recs   = (a.recs   || []).slice(0, 4).map(r => r.name || r).join(', ') || 'Two Block, Korean Comma, Textured Crop, Classic Taper';
       const avoids = (a.avoids || []).slice(0, 2).map(r => r.name || r).join(', ') || 'Bowl Cut, Flat & Limp';
-      prompt = `Create a detailed hairstyle analysis graphic card using this portrait photo as the subject. Dark background #080808 with white and green #9bd448 text, premium barbershop style. TOP: "HAIRSTYLE ANALYSIS" as bold header. LEFT TOP: portrait photo with FACE SHAPE label (e.g., OVAL) and face shape outline. RIGHT TOP: "BEST HAIR CHARACTERISTICS" with 3 icon circles: Tapered Sides, Volume on Top, Natural Texture; then HAIR TYPE (e.g., STRAIGHT / SLIGHTLY WAVE), HAIR THICKNESS with dot indicators, HAIR LENGTH with slider from SHORT to MEDIUM to LONG. MIDDLE: RECOMMENDED HAIRSTYLES (green title) with 4 images of the subject with checkmark badges: ${recs}; HAIRSTYLES TO AVOID (red title) with 2 images of the subject with X badges: ${avoids}. BOTTOM LEFT: STYLING GUIDE with icons (blow dry, apply product, style & shape, finish hairspray); KEY TIPS with 4 icons (keep sides tapered, add texture for volume, avoid heavy fringe, regular trim every 4-6 weeks). BOTTOM RIGHT: RECOMMENDED PRODUCTS with 4 product bottles (matte clay, styling paste, sea salt spray, volume powder); HAIR COLOR SUGGESTION with 5 circular color swatches (natural black, dark brown, ash brown, light brown, ash gray). High quality, professional barbershop editorial graphic.`;
+      prompt = `Create a professional hairstyle analysis graphic card using this portrait photo. Dark #080808 background, white text, green #9bd448 accent color. Layout:
+- TOP: "HAIRSTYLE ANALYSIS" bold header
+- LEFT TOP: User portrait with FACE SHAPE: ${faceShape} label and face shape outline
+- RIGHT TOP: 
+  - "BEST HAIR CHARACTERISTICS" with 3 icon circles: Tapered Sides, Volume on Top, Natural Texture
+  - HAIR TYPE: ${hairType}
+  - HAIR THICKNESS: ${hairDensity} with dot indicators
+  - HAIR LENGTH: ${hairLength} with SHORT-MEDIUM-LONG slider
+- MIDDLE: 
+  - RECOMMENDED HAIRSTYLES (green title) with 4 subject images and checkmarks: ${recs}
+  - HAIRSTYLES TO AVOID (red title) with 2 subject images and X marks: ${avoids}
+- BOTTOM LEFT: STYLING GUIDE (blow dry, apply product, style, finish) + KEY TIPS icons
+- BOTTOM RIGHT: RECOMMENDED PRODUCTS (4 bottles) + HAIR COLOR SUGGESTION (5 circular swatches: black, dark brown, ash brown, light brown, ash gray)
+Premium barbershop editorial style, clean minimal design.`;
     } else {
       prompt = [
         `Change ONLY the hairstyle of this man to: "${hairstyleName}".`,

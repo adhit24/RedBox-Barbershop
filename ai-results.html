@@ -209,7 +209,7 @@
 
       try {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 120000);
+        const timer = setTimeout(() => controller.abort(), 300000);
         let res;
         try {
           res = await fetch(API, {
