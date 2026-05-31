@@ -3,6 +3,7 @@ const homeServiceHandler = require('./homeServiceHandler');
 const whatsappService = require('./whatsappService');
 const knowledgeService = require('./knowledgeService');
 const bookingService = require('./bookingService');
+const foreignBookingService = require('./foreignBookingService');
 const aiService = require('./aiService');
 const costGuard = require('../middleware/costGuard');
 const escalationService = require('./escalationService');
@@ -118,7 +119,23 @@ const handle = async ({ from, name, text }) => {
       return;
     }
 
-    // 0c. If booking flow active, clear it — all bookings now via website only
+    // 0c. Foreign customer booking flow — if already in session, continue
+    if (foreignBookingService.isActive(from)) {
+      const { reply } = await foreignBookingService.handle(from, name, text, aiService);
+      if (reply) await sendText(from, reply);
+      return;
+    }
+
+    // 0d. Detect foreign language — route to foreign booking service
+    if (foreignBookingService.isForeignLanguage(text)) {
+      console.log(`[Handler] Foreign language detected from ${from} (${name}), routing to foreign booking service`);
+      logger.logIntent(from, name, 'foreign_customer', text.substring(0, 100));
+      const { reply } = await foreignBookingService.handle(from, name, text, aiService);
+      if (reply) await sendText(from, reply);
+      return;
+    }
+
+    // 0e. If booking flow active, clear it — all bookings now via website only
     if (bookingService.isActive(from)) {
       bookingService.clearSession(from);
       console.log(`[Handler] Cleared stale booking session for ${from}, redirecting to website`);
@@ -126,7 +143,7 @@ const handle = async ({ from, name, text }) => {
       return;
     }
 
-    // 0d. Home service lifecycle commands (kapster/pelanggan): BERANGKAT / SELESAI / YA
+    // 0f. Home service lifecycle commands (kapster/pelanggan): BERANGKAT / SELESAI / YA
     const hsHandled = await homeServiceHandler.handle(from, lower);
     if (hsHandled) return;
 

@@ -31,4 +31,15 @@ const buildKnowledgeContext = () => {
   return `=== LAYANAN ===\n${serviceList}\n\n=== FAQ ===\n${faqList}`;
 };
 
-module.exports = { getServicesText, matchFaq, buildKnowledgeContext };
+// Build multilingual service list for foreign customers
+const getServicesForForeign = () => {
+  const { services } = load('services.json');
+  const english = services.map(s => `• ${s.name} — IDR ${s.price} (${s.duration})`).join('\n');
+  const chinese = services.map(s => `• ${s.name} — ${s.price}印尼盾 (${s.duration})`).join('\n');
+  const japanese = services.map(s => `• ${s.name} — ${s.price}ルピア (${s.duration})`).join('\n');
+  const korean = services.map(s => `• ${s.name} — ${s.price}루피아 (${s.duration})`).join('\n');
+  const turkish = services.map(s => `• ${s.name} — ${s.price} IDR (${s.duration})`).join('\n');
+  return { english, chinese, japanese, korean, turkish };
+};
+
+module.exports = { getServicesText, matchFaq, buildKnowledgeContext, getServicesForForeign };
