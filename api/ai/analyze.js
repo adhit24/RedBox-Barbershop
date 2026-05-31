@@ -3,8 +3,20 @@
  * Fetches image from ai_uploads, calls OpenAI vision, saves & returns results
  */
 
-const { createClient } = require('@supabase/supabase-js');
-const OpenAI = require('openai');
+// Validate environment variables early
+const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'OPENAI_API_KEY'];
+const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+if (missingVars.length > 0) {
+  console.error('[AI Analyze] Missing environment variables:', missingVars.join(', '));
+}
+
+let createClient, OpenAI;
+try {
+  ({ createClient } = require('@supabase/supabase-js'));
+  OpenAI = require('openai');
+} catch (moduleErr) {
+  console.error('[AI Analyze] Module loading error:', moduleErr.message);
+}
 
 const COMBINED_PROMPT = `You are RedBox Barbershop's premium AI grooming consultant.
 Analyze ONLY what is reasonably visible in this portrait photo.
@@ -146,8 +158,32 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method === 'GET') return res.status(200).json({ status: 'ok', service: 'AI Analyze' });
+  if (req.method === 'GET') return res.status(200).json({ 
+    status: 'ok', 
+    service: 'AI Analyze',
+    envCheck: { 
+      hasSupabase: !!process.env.SUPABASE_URL,
+      hasOpenAI: !!process.env.OPENAI_API_KEY,
+      missingVars: missingVars.length > 0 ? missingVars : undefined
+    }
+  });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Check if modules loaded
+  if (!createClient || !OpenAI) {
+    return res.status(500).json({ 
+      error: 'Server configuration error: modules not loaded',
+      detail: missingVars.length > 0 ? `Missing env vars: ${missingVars.join(', ')}` : 'Unknown module error'
+    });
+  }
+
+  // Check environment variables
+  if (missingVars.length > 0) {
+    return res.status(500).json({ 
+      error: 'Server configuration error: missing environment variables',
+      detail: `Missing: ${missingVars.join(', ')}`
+    });
+  }
 
   const startTime = Date.now();
 
