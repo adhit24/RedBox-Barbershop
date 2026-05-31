@@ -7,721 +7,413 @@
   <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --red: #C1121F;
-      --dark: #0A0A0A;
-      --card: #111;
-      --card2: #161616;
-      --border: rgba(255,255,255,.08);
-      --white: #F5F5F5;
-      --dim: rgba(255,255,255,.4);
-      --dimmer: rgba(255,255,255,.22);
+      --red: #c1121f;
+      --bg: #050505;
+      --panel: #101010;
+      --panel-2: #171717;
+      --line: rgba(255,255,255,.08);
+      --text: #f5f5f5;
+      --muted: rgba(255,255,255,.58);
     }
-    body { background:#060606; color:var(--white); font-family:'Inter',sans-serif; min-height:100vh; }
-
-    /* NAV */
-    .nav { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-bottom:1px solid var(--border); position:sticky; top:0; background:rgba(10,10,10,.94); backdrop-filter:blur(12px); z-index:100; }
-    .nav-logo { display:flex; align-items:center; gap:8px; text-decoration:none; }
-    .nav-logo img { width:32px; height:32px; border-radius:6px; object-fit:cover; }
-    .nav-logo span { font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:.08em; color:var(--white); }
-    .nav-logo em { color:var(--red); font-style:normal; }
-    .nav-actions { display:flex; gap:8px; }
-    .nav-btn { padding:7px 14px; border-radius:99px; font-size:.72rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:5px; transition:all .2s; }
-    .nav-btn-ghost { background:transparent; color:var(--dim); border:1px solid var(--border); }
-    .nav-btn-ghost:hover { color:var(--white); }
-    .nav-btn-red { background:var(--red); color:#fff; }
-
-    /* GRID */
-    .results-grid { display:grid; grid-template-columns:1fr 1fr; gap:2px; background:#060606; padding:2px; }
-
-    /* SECTION CARD */
-    .section-card { background:var(--card); display:flex; flex-direction:column; overflow:hidden; }
-    .section-header { display:flex; align-items:center; gap:6px; padding:7px 10px; background:#1c1c1c; border-bottom:1px solid var(--border); }
-    .section-num { font-family:'Bebas Neue',sans-serif; font-size:.95rem; color:var(--red); line-height:1; }
-    .section-title { font-size:.52rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:rgba(255,255,255,.65); line-height:1.2; }
-
-    /* SHIMMER / IMG SLOTS */
-    .shimmer { width:100%; height:100%; background:linear-gradient(90deg,#1a1a1a 25%,#252525 50%,#1a1a1a 75%); background-size:200% 100%; animation:sh 1.4s ease-in-out infinite; }
-    @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-    .gen-img-slot { width:100%; height:100%; position:relative; background:#1c1c1c; overflow:hidden; display:block; }
-    .gen-img-slot img { width:100%; height:100%; object-fit:cover; display:block; }
-    .gen-img-error,.hair-img-error { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:.9rem; color:rgba(255,255,255,.1); }
-    .hair-img-shimmer { width:100%; height:100%; background:linear-gradient(90deg,#1a1a1a 25%,#252525 50%,#1a1a1a 75%); background-size:200% 100%; animation:sh 1.4s ease-in-out infinite; }
-
-    /* MARKERS */
-    .mk { width:15px; height:15px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.5rem; font-weight:700; flex-shrink:0; }
-    .mk-good { background:#1a7a3a; color:#fff; }
-    .mk-ok   { background:#b45309; color:#fff; }
-    .mk-bad  { background:rgba(193,18,31,.85); color:#fff; }
-
-    /* ── 1A. PERSONAL COLOR ── */
-    .color-body { display:grid; grid-template-columns:76px 1fr; flex:1; }
-    .color-left { padding:8px; display:flex; flex-direction:column; gap:6px; border-right:1px solid var(--border); background:#0d0d0d; }
-    .color-user-photo { width:100%; aspect-ratio:3/4; overflow:hidden; border-radius:7px; }
-    .color-user-photo img { width:100%; height:100%; object-fit:cover; object-position:top; display:block; }
-    .color-user-ph { width:100%; aspect-ratio:3/4; background:#1a1a1a; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; }
-    .color-kw { font-size:.46rem; font-weight:600; color:var(--dimmer); letter-spacing:.03em; line-height:1.4; }
-    .color-season-lbl { font-size:.44rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:rgba(255,255,255,.25); margin-top:2px; }
-    .color-season-name { font-family:'Bebas Neue',sans-serif; font-size:1rem; letter-spacing:.03em; line-height:1.1; }
-    .color-swatches-row { display:flex; gap:3px; flex-wrap:wrap; }
-    .cs { width:13px; height:13px; border-radius:3px; border:1px solid rgba(255,255,255,.08); flex-shrink:0; }
-    .color-right { padding:7px; display:flex; flex-direction:column; gap:6px; }
-    .cg-lbl { font-size:.46rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; padding:2px 5px; border-radius:3px; margin-bottom:4px; display:inline-block; }
-    .cg-lbl.best { background:rgba(26,122,58,.18); color:rgba(74,222,128,.8); }
-    .cg-lbl.okay { background:rgba(180,83,9,.15); color:rgba(251,191,36,.8); }
-    .cg-lbl.avd  { background:rgba(193,18,31,.12); color:rgba(248,113,113,.8); }
-    .cg-photos { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; }
-    .cg-wrap { position:relative; aspect-ratio:3/4; overflow:hidden; border-radius:4px; background:#1a1a1a; }
-    .cg-wrap .gen-img-slot { position:absolute; inset:0; }
-    .cg-marker { position:absolute; bottom:3px; right:3px; z-index:2; }
-
-    /* ── 1B. SKIN ANALYSIS ── */
-    .skin-body { padding:8px; display:flex; flex-direction:column; gap:0; }
-    .skin-type-row { display:grid; grid-template-columns:52px 1fr 1fr 18px; gap:3px; align-items:center; padding:4px 0; border-bottom:1px solid rgba(255,255,255,.04); }
-    .skin-type-row:last-of-type { border-bottom:none; }
-    .skin-type-lbl { font-size:.5rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--dim); }
-    .skin-slot { position:relative; aspect-ratio:16/10; overflow:hidden; border-radius:3px; background:#1a1a1a; }
-    .skin-slot > div { position:absolute; inset:0; }
-    .skin-slot img { width:100%; height:100%; object-fit:cover; object-position:top; display:block; }
-    .skin-best-match { margin-top:8px; font-size:.58rem; font-weight:600; color:var(--dimmer); text-align:center; padding:5px; background:#1a1a1a; border-radius:4px; }
-    .skin-best-match em { color:rgba(74,222,128,.85); font-style:normal; font-weight:700; }
-
-    /* ── 2. OUTFIT & FACE SHAPE ── */
-    .outfit-body { padding:8px; display:flex; flex-direction:column; gap:7px; }
-    .outfit-top { display:grid; grid-template-columns:54px 1fr; gap:7px; }
-    .face-col { display:flex; flex-direction:column; align-items:center; gap:3px; }
-    .face-photo { width:100%; aspect-ratio:3/4; object-fit:cover; object-position:top; border-radius:6px; display:block; }
-    .face-ph { width:100%; aspect-ratio:3/4; background:#1a1a1a; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; }
-    .face-name { font-family:'Bebas Neue',sans-serif; font-size:1.1rem; text-align:center; }
-    .face-traits { list-style:none; display:flex; flex-direction:column; gap:2px; width:100%; }
-    .face-traits li { font-size:.44rem; color:var(--dimmer); padding-left:7px; position:relative; }
-    .face-traits li::before { content:'•'; color:var(--red); position:absolute; left:0; }
-    .outfit-cats { display:flex; flex-direction:column; gap:3px; }
-    .outfit-cat-labels { display:grid; grid-template-columns:repeat(4,1fr); gap:2px; }
-    .outfit-cat-label { font-size:.42rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--dimmer); text-align:center; line-height:1.2; }
-    .outfit-cat-photos { display:grid; grid-template-columns:repeat(4,1fr); gap:2px; }
-    .outfit-cat-photo { aspect-ratio:3/4; overflow:hidden; border-radius:4px; position:relative; background:#1a1a1a; }
-    .outfit-cat-photo .gen-img-slot { position:absolute; inset:0; }
-    .outfit-colors-row { display:flex; align-items:center; gap:7px; padding:5px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
-    .outfit-colors-lbl { font-size:.44rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--dimmer); white-space:nowrap; }
-    .outfit-colors-sw { display:flex; gap:4px; }
-    .oc-sw { width:14px; height:14px; border-radius:50%; border:1px solid rgba(255,255,255,.1); flex-shrink:0; }
-    .fit-guide-row { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
-    .fit-guide-col-lbl { font-size:.46rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--dimmer); margin-bottom:4px; }
-    .fit-photos { display:grid; grid-template-columns:1fr 1fr; gap:2px; }
-    .fit-photo { position:relative; aspect-ratio:3/4; overflow:hidden; border-radius:4px; background:#1a1a1a; }
-    .fit-photo .gen-img-slot { position:absolute; inset:0; }
-
-    /* ── 3. GLASSES ── */
-    .glasses-body { padding:8px; display:flex; flex-direction:column; gap:5px; }
-    .glasses-group-lbl { font-size:.5rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--dim); }
-    .glasses-sub-lbl { font-size:.44rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; padding:2px 5px; border-radius:3px; margin-bottom:3px; display:inline-block; }
-    .glasses-sub-lbl.rec { background:rgba(26,122,58,.18); color:rgba(74,222,128,.8); }
-    .glasses-sub-lbl.avd { background:rgba(193,18,31,.12); color:rgba(248,113,113,.8); }
-    .glasses-photos { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; margin-bottom:3px; }
-    .glass-wrap { display:flex; flex-direction:column; align-items:center; gap:2px; }
-    .glass-slot { width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:4px; position:relative; background:#1a1a1a; }
-    .glass-slot .gen-img-slot { position:absolute; inset:0; }
-    .glass-avd-x { position:absolute; top:2px; right:2px; z-index:2; width:12px; height:12px; background:rgba(193,18,31,.85); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.42rem; font-weight:700; color:#fff; }
-    .glass-name { font-size:.42rem; color:var(--dimmer); text-align:center; line-height:1.2; }
-    .glasses-divider { height:1px; background:var(--border); margin:2px 0; }
-    .param-guide { border-top:1px solid var(--border); padding-top:5px; margin-top:2px; }
-    .param-lbl { font-size:.44rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--dimmer); margin-bottom:5px; }
-    .param-row { display:flex; gap:3px; }
-    .param-item { display:flex; flex-direction:column; align-items:center; gap:2px; flex:1; }
-    .param-icon { width:16px; height:16px; background:#1a1a1a; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:.55rem; }
-    .param-name { font-size:.38rem; color:var(--dimmer); text-align:center; line-height:1.2; }
-    .param-val  { font-size:.42rem; font-weight:600; color:rgba(255,255,255,.35); text-align:center; }
-
-    /* ── 4. SKINCARE ── */
-    .skincare-body { padding:8px; display:flex; flex-direction:column; gap:7px; }
-    .skincare-top { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
-    .sk-col-lbl { display:block; font-size:.46rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--dimmer); margin-bottom:4px; }
-    .sc-photos { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; }
-    .sc-wrap { display:flex; flex-direction:column; align-items:center; gap:2px; }
-    .sc-slot { width:100%; aspect-ratio:1; overflow:hidden; border-radius:4px; position:relative; background:#1a1a1a; }
-    .sc-slot .gen-img-slot { position:absolute; inset:0; }
-    .sc-name { font-size:.42rem; color:var(--dimmer); text-align:center; }
-    .goals-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; }
-    .goal-item { display:flex; flex-direction:column; align-items:center; gap:2px; }
-    .goal-icon { width:22px; height:22px; background:#1a1a1a; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:.75rem; }
-    .goal-name { font-size:.4rem; color:var(--dimmer); text-align:center; line-height:1.2; }
-    .routine-lbl { display:block; font-size:.46rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--dimmer); margin-bottom:4px; }
-    .routine-row { display:flex; align-items:center; gap:3px; margin-bottom:4px; }
-    .routine-time { font-size:.46rem; font-weight:700; color:var(--dim); width:15px; flex-shrink:0; }
-    .routine-steps { display:flex; align-items:center; gap:2px; overflow-x:auto; scrollbar-width:none; }
-    .routine-steps::-webkit-scrollbar { display:none; }
-    .routine-step-wrap { display:flex; align-items:center; gap:2px; flex-shrink:0; }
-    .routine-step { display:flex; flex-direction:column; align-items:center; gap:2px; }
-    .rs-slot { width:30px; height:30px; position:relative; border-radius:4px; overflow:hidden; background:#1a1a1a; }
-    .rs-slot .gen-img-slot { position:absolute; inset:0; }
-    .rs-name { font-size:.38rem; color:var(--dimmer); text-align:center; line-height:1.1; max-width:32px; }
-    .routine-arrow { font-size:.5rem; color:rgba(255,255,255,.18); flex-shrink:0; }
-    .wl-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
-    .wl-lbl { display:block; font-size:.44rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--dimmer); margin-bottom:3px; }
-    .wl-items { display:flex; gap:5px; flex-wrap:wrap; }
-    .wl-item { display:flex; flex-direction:column; align-items:center; gap:2px; }
-    .wl-icon { font-size:.85rem; }
-    .wl-name { font-size:.38rem; color:var(--dimmer); text-align:center; max-width:38px; line-height:1.2; }
-    .ingredients-row { display:flex; gap:3px; flex-wrap:wrap; }
-    .ingredient-chip { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.07); border-radius:99px; padding:2px 6px; font-size:.42rem; color:var(--dimmer); }
-    .ingredients-lbl { font-size:.44rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--dimmer); margin-bottom:3px; display:block; }
-
-    /* ── 5. HAIR ── */
-    .hair-body { padding:8px; display:flex; flex-direction:column; gap:7px; }
-    .hair-group-lbl { font-size:.5rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--dimmer); }
-    .hair-group-lbl.good { color:rgba(74,222,128,.75); }
-    .hair-group-lbl.avd  { color:rgba(248,113,113,.75); }
-    .hair-photos-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; }
-    .hair-photo-wrap { display:flex; flex-direction:column; gap:2px; }
-    .hair-slot { width:100%; aspect-ratio:3/4; position:relative; overflow:hidden; border-radius:4px; background:#1a1a1a; }
-    .hair-slot img { width:100%; height:100%; object-fit:cover; display:block; }
-    .hair-photo-name { font-size:.4rem; color:var(--dimmer); text-align:center; line-height:1.2; }
-    .hair-avoid-x { position:absolute; top:3px; right:3px; z-index:2; width:13px; height:13px; background:rgba(193,18,31,.85); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.44rem; font-weight:700; color:#fff; }
-    .styling-row { display:flex; justify-content:space-around; border-top:1px solid var(--border); padding-top:7px; }
-    .styling-step { display:flex; flex-direction:column; align-items:center; gap:3px; }
-    .styling-icon { font-size:.95rem; }
-    .styling-lbl { font-size:.4rem; color:var(--dimmer); text-align:center; max-width:36px; line-height:1.2; }
-
-    /* ACTIONS */
-    .results-actions { grid-column:1/-1; display:flex; justify-content:center; gap:10px; padding:22px 20px; background:var(--card); flex-wrap:wrap; }
-    .results-action-btn { padding:11px 24px; border-radius:99px; font-size:.8rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:7px; transition:all .25s; }
-    .results-action-btn-red { background:var(--red); color:#fff; }
-    .results-action-btn-red:hover { opacity:.88; }
-    .results-action-btn-ghost { background:transparent; color:rgba(255,255,255,.5); border:1px solid var(--border); }
-
-    /* LOADING / ERROR */
-    .results-loading { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; gap:16px; }
-    .results-spinner { width:44px; height:44px; border:3px solid rgba(193,18,31,.2); border-top-color:var(--red); border-radius:50%; animation:spin .8s linear infinite; }
-    @keyframes spin { to { transform:rotate(360deg); } }
-    .results-error { text-align:center; padding:80px 24px; }
-    .results-error h2 { font-size:1.4rem; margin-bottom:12px; }
-    .results-error p { color:rgba(255,255,255,.5); margin-bottom:24px; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(193,18,31,.18), transparent 28%),
+        linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(5,5,5,.9);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .nav-logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .nav-logo img {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+    .nav-logo span {
+      font-family: 'Bebas Neue', sans-serif;
+      letter-spacing: .08em;
+      font-size: 1.35rem;
+    }
+    .nav-logo em {
+      color: var(--red);
+      font-style: normal;
+    }
+    .nav-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .nav-btn,
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-size: .85rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .2s ease;
+    }
+    .nav-btn {
+      padding: 10px 15px;
+      color: var(--text);
+      background: transparent;
+    }
+    .nav-btn.red,
+    .action-btn.red {
+      background: var(--red);
+      border-color: transparent;
+      color: #fff;
+    }
+    .page {
+      width: min(1100px, calc(100% - 32px));
+      margin: 28px auto 40px;
+    }
+    .hero {
+      text-align: center;
+      margin-bottom: 22px;
+    }
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(193,18,31,.14);
+      border: 1px solid rgba(193,18,31,.26);
+      color: #ffb3ba;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      margin-top: 14px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2.1rem, 5vw, 4rem);
+      letter-spacing: .04em;
+      line-height: .95;
+    }
+    .hero p {
+      max-width: 640px;
+      margin: 10px auto 0;
+      color: var(--muted);
+      font-size: .98rem;
+      line-height: 1.6;
+    }
+    .result-card {
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 18px 60px rgba(0,0,0,.32);
+    }
+    .result-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+      flex-wrap: wrap;
+    }
+    .result-title {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .result-title strong {
+      font-size: 1rem;
+      letter-spacing: .02em;
+    }
+    .result-title span {
+      color: var(--muted);
+      font-size: .82rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .8rem;
+      font-weight: 700;
+    }
+    .result-stage {
+      padding: 18px;
+      background: #090909;
+    }
+    .graphic-shell {
+      aspect-ratio: 4 / 5;
+      width: 100%;
+      border-radius: 20px;
+      overflow: hidden;
+      background: #111;
+      border: 1px solid var(--line);
+      position: relative;
+    }
+    .graphic-shell img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .loading-state,
+    .error-state,
+    .empty-state {
+      min-height: 60vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 28px;
+    }
+    .state-card {
+      width: min(520px, 100%);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 28px 22px;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 18px;
+      border: 3px solid rgba(255,255,255,.12);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .state-card h2 {
+      font-size: 1.15rem;
+      margin-bottom: 8px;
+    }
+    .state-card p {
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .action-btn {
+      min-width: 170px;
+      padding: 13px 18px;
+      background: transparent;
+      color: var(--text);
+    }
+    .footer-note {
+      text-align: center;
+      color: rgba(255,255,255,.28);
+      font-size: .76rem;
+      margin-top: 16px;
+      letter-spacing: .04em;
+    }
+    @media (max-width: 640px) {
+      .page { width: min(100% - 18px, 1100px); margin-top: 18px; }
+      .nav { padding: 12px 14px; }
+      .nav-actions { width: 100%; }
+      .nav-btn { flex: 1; }
+      .result-meta { padding: 14px; }
+      .result-stage { padding: 12px; }
+      .graphic-shell { border-radius: 16px; }
+    }
   </style>
 </head>
 <body>
-
   <nav class="nav">
     <a class="nav-logo" href="/">
       <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Logo" />
       <span>REDBOX <em>BARBERSHOP</em></span>
     </a>
     <div class="nav-actions">
-      <a class="nav-btn nav-btn-ghost" href="/#ai">✦ Coba Lagi</a>
-      <a class="nav-btn nav-btn-red" href="/booking.html">Book Now</a>
+      <a class="nav-btn" href="/#ai">Coba Lagi</a>
+      <a class="nav-btn red" href="/booking.html">Book Now</a>
     </div>
   </nav>
 
-  <div id="results-container">
-    <div class="results-loading" id="results-loading">
-      <div class="results-spinner"></div>
-      <p style="color:rgba(255,255,255,.5);font-size:.9rem">Memuat hasil analisis...</p>
+  <main class="page" id="page-root">
+    <section class="hero">
+      <span class="eyebrow">AI Hairstyle Graphic</span>
+      <h1>Simple Visual Result</h1>
+      <p>Hasil dibuat sebagai graphic hairstyle analysis yang singkat, visual-first, dan fokus ke wajah customer.</p>
+    </section>
+
+    <div class="loading-state" id="loading-state">
+      <div class="state-card">
+        <div class="spinner"></div>
+        <h2>Membuat graphic hairstyle analysis</h2>
+        <p>AI sedang menyiapkan hasil visual sederhana berdasarkan foto customer.</p>
+      </div>
     </div>
-  </div>
 
-  <script src="js/ai-grooming.js"></script>
+    <div id="result-state" style="display:none"></div>
+  </main>
+
   <script>
+    const ANALYSIS_GRAPHIC_PROMPT = [
+      'Create a photo hairstyle analysis graphic using this portrait.',
+      'Show side-by-side hairstyles comparisons to highlight which hairstyles suit the subject best.',
+      'Make it visual-first, with short labels only and no paragraph.',
+      'Use a premium black grooming infographic style.',
+      'Place the real customer portrait large on the left.',
+      'Place the title "HAIRSTYLE ANALYSIS" at the top.',
+      'Show 4 recommended hairstyles with green check marks.',
+      'Show 2 hairstyles to avoid with red X marks.',
+      'Add short sections for hair characteristics, styling guide, recommended products, key tips, and hair color suggestion.',
+      'Use only short uppercase labels, clean spacing, realistic hairstyle previews, and no long explanation text.',
+      'Keep the same customer identity in all hairstyle comparison images.'
+    ].join(' ');
+
     document.addEventListener('DOMContentLoaded', () => {
-      const container = document.getElementById('results-container');
-      const loading   = document.getElementById('results-loading');
+      const loadingEl = document.getElementById('loading-state');
+      const resultEl = document.getElementById('result-state');
 
-      let raw, userPhoto;
-      try { raw = sessionStorage.getItem('ai_results'); userPhoto = sessionStorage.getItem('ai_user_photo'); } catch(e) {}
+      let uploadId = null;
+      let userPhoto = null;
+      try {
+        uploadId = sessionStorage.getItem('ai_upload_id');
+        userPhoto = sessionStorage.getItem('ai_user_photo');
+      } catch (e) {}
 
-      if (!raw) {
-        loading.remove();
-        container.innerHTML = `<div class="results-error"><h2>Tidak ada hasil ditemukan</h2><p>Upload foto terlebih dahulu di halaman utama.</p><a class="results-action-btn results-action-btn-red" href="/#ai">Upload Foto</a></div>`;
+      if (!uploadId) {
+        loadingEl.style.display = 'none';
+        resultEl.style.display = 'block';
+        resultEl.innerHTML = `
+          <div class="empty-state">
+            <div class="state-card">
+              <h2>Tidak ada hasil ditemukan</h2>
+              <p>Upload foto terlebih dahulu di halaman utama untuk membuat hairstyle analysis graphic.</p>
+              <div class="actions">
+                <a class="action-btn red" href="/#ai">Upload Foto</a>
+              </div>
+            </div>
+          </div>`;
         return;
       }
 
-      const results = JSON.parse(raw);
-      const r = results.results || results;
-
-      const subject = r.subject || {};
-      const color   = r.personal_color_analysis || r.personalColor || {};
-      const outfit  = r.outfit_recommendation   || r.outfit       || {};
-      const eyewear = r.eyewear_analysis         || r.eyewear      || {};
-      const skin    = r.skin_analysis            || r.skincare     || {};
-      const hair    = r.hairstyle_analysis       || r.hairstyle    || {};
-
-      loading.remove();
-
-      const fmt = s => s ? String(s).replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()) : '';
-
-      const faceShape    = subject.face_shape?.type || outfit.faceShape || hair.faceShape || 'oval';
-      const faceTraits   = subject.face_shape?.characteristics || ['Proporsi seimbang','Dahi lebar','Rahang lembut','Cocok banyak gaya'];
-      const skinType     = subject.skin?.type || skin.skinProfile?.type || '';
-      const colorSeason  = color.season || color.colorSeason || '';
-      const colorKws     = (color.keywords || color.summary_tags || []).slice(0,3);
-      const bestColors   = color.best_colors  || color.bestColors  || [];
-      const okayColors   = color.okay_colors  || [];
-      const avoidColors  = color.avoid_colors || color.avoidColors || [];
-      const outfitRecs   = outfit.recommended_styles || outfit.recommendedOutfits || [];
-      const eyewearRecs  = eyewear.recommended || eyewear.recommendations || [];
-      const eyewearAvoid = eyewear.avoid || eyewear.avoidFrames || [];
-      const hairRecs     = hair.recommended_styles || hair.recommendations || [];
-      const hairAvoid    = hair.avoid_styles || hair.avoidHairstyles || [];
-      const skinMorning  = skin.routine?.morning || skin.morningRoutine || [];
-      const skinNight    = skin.routine?.night   || skin.eveningRoutine || [];
-      const skinConcerns = skin.concerns || [];
-      const skinGoals    = skin.goals || [];
-      const skinIngredients = skin.ingredients || [];
-      const bestSkin = skinType.toLowerCase();
-
-      // ── helpers ──
-      const imgWrap = (id, cls='') => `<div class="${cls}" style="position:relative;overflow:hidden;background:#1a1a1a;"><div class="gen-img-slot" id="${id}"><div class="shimmer"></div></div></div>`;
-      const hairSlot = (id, name, isAvoid) => `
-        <div class="hair-photo-wrap">
-          <div class="hair-slot" id="${id}">
-            <div class="hair-img-shimmer"></div>
-            ${isAvoid ? '<span class="hair-avoid-x">✕</span>' : ''}
-          </div>
-          <div class="hair-photo-name">${name}</div>
-        </div>`;
-
-      // ── 1A. Personal Color ──
-      const colorGroup = (type, label, colors) => {
-        if (!colors.length) return '';
-        const [mCls, mCh] = type==='best' ? ['mk mk-good','✓'] : type==='okay' ? ['mk mk-ok','○'] : ['mk mk-bad','✕'];
-        return `
-          <div>
-            <div class="cg-lbl ${type}">${label}</div>
-            <div class="cg-photos">
-              ${colors.slice(0,4).map((c,i)=>`
-                <div class="cg-wrap">
-                  <div class="gen-img-slot" id="color-${type}-img-${i}"><div class="shimmer"></div></div>
-                  <span class="cg-marker ${mCls}">${mCh}</span>
-                </div>`).join('')}
-            </div>
-          </div>`;
-      };
-
-      const colorHTML = `
-        <div class="section-card">
-          <div class="section-header"><span class="section-num">1.</span><span class="section-title">Personal Color Analysis</span></div>
-          <div class="color-body">
-            <div class="color-left">
-              ${userPhoto ? `<div class="color-user-photo"><img src="${userPhoto}" alt=""/></div>` : '<div class="color-user-ph">👤</div>'}
-              ${colorKws.length ? `<div class="color-kw">${colorKws.map(k=>fmt(k).toUpperCase()).join(' • ')}</div>` : ''}
-              <div class="color-season-lbl">BEST SEASON</div>
-              <div class="color-season-name">${fmt(colorSeason).toUpperCase() || '—'}</div>
-              <div class="color-swatches-row">${bestColors.slice(0,4).map(c=>`<div class="cs" style="background:${(c&&c.hex)||'#444'}"></div>`).join('')}</div>
-            </div>
-            <div class="color-right">
-              ${colorGroup('best','BEST COLORS', bestColors)}
-              ${colorGroup('okay','OKAY COLORS', okayColors)}
-              ${colorGroup('avd', 'AVOID COLORS',avoidColors)}
-            </div>
-          </div>
-        </div>`;
-
-      // ── 1B. Skin Analysis ──
-      const SKIN_TYPES = ['oily','combination','normal','dry','sensitive'];
-      const skinHTML = `
-        <div class="section-card">
-          <div class="section-header"><span class="section-num">1.</span><span class="section-title">Skin Analysis</span></div>
-          <div class="skin-body">
-            ${SKIN_TYPES.map((t,i)=>{
-              const isMatch = t === bestSkin;
-              const [mCls,mCh] = isMatch ? ['mk mk-good','✓'] : ['mk mk-bad','✕'];
-              return `
-                <div class="skin-type-row">
-                  <div class="skin-type-lbl">${t.toUpperCase()}</div>
-                  <div class="skin-slot" id="skin-tex-${i}"><div class="shimmer"></div></div>
-                  <div class="skin-slot">
-                    ${userPhoto ? `<img src="${userPhoto}" style="width:100%;height:100%;object-fit:cover;object-position:top"/>` : '<div class="shimmer"></div>'}
-                  </div>
-                  <span class="${mCls}">${mCh}</span>
-                </div>`;
-            }).join('')}
-            <div class="skin-best-match">BEST MATCH: <em>${fmt(skinType).toUpperCase() || 'COMBINATION'}</em></div>
-          </div>
-        </div>`;
-
-      // ── 2. Outfit & Face Shape ──
-      const outfitCatLabels = ['SMART\nCASSAL','CASUAL\nDAILY','SEMI\nFORMAL','FORMAL'];
-      const outfitHTML = `
-        <div class="section-card">
-          <div class="section-header"><span class="section-num">2.</span><span class="section-title">Outfit Recommendation & Face Shape</span></div>
-          <div class="outfit-body">
-            <div class="outfit-top">
-              <div class="face-col">
-                ${userPhoto ? `<img class="face-photo" src="${userPhoto}" alt=""/>` : '<div class="face-ph">👤</div>'}
-                <div class="face-name">${faceShape.toUpperCase()}</div>
-                <ul class="face-traits">
-                  ${(faceTraits.slice(0,4)).map(t=>`<li>${t}</li>`).join('')}
-                </ul>
-              </div>
-              <div class="outfit-cats">
-                <div class="outfit-cat-labels">
-                  ${outfitCatLabels.map(l=>`<div class="outfit-cat-label">${l.replace('\n','<br>')}</div>`).join('')}
+      generateGraphic(uploadId, userPhoto)
+        .then((imageUrl) => {
+          loadingEl.style.display = 'none';
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = `
+            <section class="result-card">
+              <div class="result-meta">
+                <div class="result-title">
+                  <strong>Hairstyle Analysis Graphic</strong>
+                  <span>Visual-first, short labels only, no paragraph</span>
                 </div>
-                <div class="outfit-cat-photos">
-                  ${[0,1,2,3].map(i=>`
-                    <div class="outfit-cat-photo">
-                      <div class="gen-img-slot" id="outfit-img-${i}"><div class="shimmer"></div></div>
-                    </div>`).join('')}
+                <div class="badge">AI Generated</div>
+              </div>
+              <div class="result-stage">
+                <div class="graphic-shell">
+                  <img src="${imageUrl}" alt="AI hairstyle analysis graphic" />
                 </div>
               </div>
+            </section>
+            <div class="actions">
+              <a class="action-btn red" href="/booking.html">Book Appointment</a>
+              <a class="action-btn" href="/#ai">Analisis Ulang</a>
+              <button class="action-btn" type="button" id="download-btn">Download</button>
             </div>
-            <div class="outfit-colors-row">
-              <div class="outfit-colors-lbl">COLORS THAT SUIT YOU</div>
-              <div class="outfit-colors-sw">
-                ${bestColors.slice(0,5).map(c=>`<div class="oc-sw" style="background:${(c&&c.hex)||'#444'}"></div>`).join('')}
-              </div>
-            </div>
-            <div class="fit-guide-row">
-              <div>
-                <div class="fit-guide-col-lbl">FIT GUIDE</div>
-                <div class="fit-photos">
-                  ${[0,1].map(i=>`<div class="fit-photo"><div class="gen-img-slot" id="outfit-fit-${i}"><div class="shimmer"></div></div></div>`).join('')}
+            <div class="footer-note">Powered by Kinaryaloka for RedBox Barbershop</div>`;
+
+          const downloadBtn = document.getElementById('download-btn');
+          if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => downloadImage(imageUrl));
+          }
+        })
+        .catch((err) => {
+          loadingEl.style.display = 'none';
+          resultEl.style.display = 'block';
+          resultEl.innerHTML = `
+            <div class="error-state">
+              <div class="state-card">
+                <h2>Graphic belum berhasil dibuat</h2>
+                <p>${escapeHtml(err?.message || 'Terjadi kendala saat membuat hasil visual.')}</p>
+                <div class="actions">
+                  <a class="action-btn red" href="/#ai">Coba Lagi</a>
                 </div>
               </div>
-              <div>
-                <div class="fit-guide-col-lbl">FIT GUIDE</div>
-                <div class="fit-photos">
-                  ${[2,3].map(i=>`<div class="fit-photo"><div class="gen-img-slot" id="outfit-fit-${i}"><div class="shimmer"></div></div></div>`).join('')}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>`;
-
-      // ── 3. Glasses ──
-      const _eyeName = e => (typeof e === 'string' ? e : (e?.name || e?.model || e?.style || ''));
-      const G_SREC = eyewearRecs.length>=4 ? eyewearRecs.slice(0,4).map(_eyeName).filter(Boolean) : ['Wayfarer','Clubmaster','Round','Rectangle'];
-      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(_eyeName).filter(Boolean) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
-      const G_PREC = ['Wrap-Around','Semi-Rimless','Polarized','Lightweight'];
-      const G_PAVD = ['Heavy Frame','Fashion Tint','Non-Polarized','Loose Fit'];
-
-      const glassRow = (names, prefix, isAvoid) => `
-        <div class="glasses-photos">
-          ${names.map((n,i)=>`
-            <div class="glass-wrap">
-              <div class="glass-slot">
-                <div class="gen-img-slot" id="${prefix}-${i}"><div class="shimmer"></div></div>
-                ${isAvoid ? '<span class="glass-avd-x">✕</span>' : ''}
-              </div>
-              <div class="glass-name">${n}</div>
-            </div>`).join('')}
-        </div>`;
-
-      const glassesHTML = `
-        <div class="section-card">
-          <div class="section-header"><span class="section-num">3.</span><span class="section-title">Glasses Recommendation</span></div>
-          <div class="glasses-body">
-            <div class="glasses-group-lbl">STYLE</div>
-            <div class="glasses-sub-lbl rec">RECOMMENDED</div>
-            ${glassRow(G_SREC,'glass-srec',false)}
-            <div class="glasses-sub-lbl avd">AVOID</div>
-            ${glassRow(G_SAVD,'glass-savd',true)}
-            <div class="glasses-divider"></div>
-            <div class="glasses-group-lbl">SPORT</div>
-            <div class="glasses-sub-lbl rec">RECOMMENDED</div>
-            ${glassRow(G_PREC,'glass-prec',false)}
-            <div class="glasses-sub-lbl avd">AVOID</div>
-            ${glassRow(G_PAVD,'glass-pavd',true)}
-            <div class="param-guide">
-              <div class="param-lbl">PARAMETER GUIDE</div>
-              <div class="param-row">
-                ${[{i:'📐',n:'Frame Size',v:'Medium'},{i:'↔',n:'Frame Width',v:'130-145mm'},{i:'👁',n:'Lens Width',v:'48-54mm'},{i:'🔹',n:'Bridge',v:'16-26mm'},{i:'⟵',n:'Temple',v:'140-150mm'},{i:'😊',n:'Face Fit',v:'Balanced'}].map(p=>`
-                  <div class="param-item">
-                    <div class="param-icon">${p.i}</div>
-                    <div class="param-name">${p.n}</div>
-                    <div class="param-val">${p.v}</div>
-                  </div>`).join('')}
-              </div>
-            </div>
-          </div>
-        </div>`;
-
-      // ── 4. Skincare ──
-      const concerns3 = skinConcerns.length ? skinConcerns.slice(0,3) : [{type:'Pores'},{type:'Dullness'},{type:'Uneven Tone'}];
-      const defaultGoals = [{i:'💧',n:'Kontrol Minyak'},{i:'🌿',n:'Pori Bersih'},{i:'✨',n:'Cerahkan'},{i:'☀️',n:'Anti Aging'},{i:'💙',n:'Kelembaban'},{i:'🌙',n:'Mois Malam'}];
-      const goalsToShow = skinGoals.slice(0,6).map((g,i)=>({i:defaultGoals[i]?.i||'✨',n:g})).concat(defaultGoals).slice(0,6);
-
-      const routineRow = (time, steps) => {
-        const defaultSteps = time==='AM'
-          ? ['Cleanser','Toner','Vitamin C','Moisturizer','Sunscreen']
-          : ['Cleanser','Toner','Niacinamide','Moisturizer','Eye Cream'];
-        const items = steps.length ? steps : defaultSteps;
-        return `
-          <div class="routine-row">
-            <div class="routine-time">${time}</div>
-            <div class="routine-steps">
-              ${items.slice(0,5).map((s,i,arr)=>{
-                const nm = typeof s==='string' ? s : (s.product||s);
-                return `
-                  <div class="routine-step-wrap">
-                    <div class="routine-step">
-                      <div class="rs-slot" id="skin-${time.toLowerCase()}-${i}"><div class="shimmer"></div></div>
-                      <div class="rs-name">${nm}</div>
-                    </div>
-                    ${i<arr.length-1 ? '<span class="routine-arrow">→</span>' : ''}
-                  </div>`;
-              }).join('')}
-            </div>
-          </div>`;
-      };
-
-      const skincareHTML = `
-        <div class="section-card">
-          <div class="section-header"><span class="section-num">4.</span><span class="section-title">Skincare Analysis & Routine</span></div>
-          <div class="skincare-body">
-            <div class="skincare-top">
-              <div>
-                <span class="sk-col-lbl">SKIN CONCERNS</span>
-                <div class="sc-photos">
-                  ${concerns3.map((c,i)=>`
-                    <div class="sc-wrap">
-                      <div class="sc-slot" id="sc-concern-${i}"><div class="shimmer"></div></div>
-                      <div class="sc-name">${c.type||c.issue||c}</div>
-                    </div>`).join('')}
-                </div>
-              </div>
-              <div>
-                <span class="sk-col-lbl">GOALS</span>
-                <div class="goals-grid">
-                  ${goalsToShow.map(g=>`
-                    <div class="goal-item">
-                      <div class="goal-icon">${g.i}</div>
-                      <div class="goal-name">${g.n}</div>
-                    </div>`).join('')}
-                </div>
-              </div>
-            </div>
-            <div>
-              <span class="routine-lbl">ROUTINE</span>
-              ${routineRow('AM', skinMorning)}
-              ${routineRow('PM', skinNight)}
-            </div>
-            <div class="wl-row">
-              <div>
-                <span class="wl-lbl">WEEKLY BOOST</span>
-                <div class="wl-items">
-                  ${[{i:'🫧',n:'Exfoliate\n1-2x/week'},{i:'🎭',n:'Clay Mask\n1x/week'},{i:'💚',n:'Sheet Mask\n1-2x/week'}].map(w=>`
-                    <div class="wl-item"><div class="wl-icon">${w.i}</div><div class="wl-name">${w.n.replace('\n','<br>')}</div></div>`).join('')}
-                </div>
-              </div>
-              <div>
-                <span class="wl-lbl">LIFESTYLE TIPS</span>
-                <div class="wl-items">
-                  ${[{i:'💧',n:'Minum Air\n2L/hari'},{i:'😴',n:'Tidur Cukup\n7-8 jam'},{i:'🚫',n:'Minim Gula\n& Gorengan'}].map(l=>`
-                    <div class="wl-item"><div class="wl-icon">${l.i}</div><div class="wl-name">${l.n.replace('\n','<br>')}</div></div>`).join('')}
-                </div>
-              </div>
-            </div>
-            ${skinIngredients.length ? `
-              <div>
-                <span class="ingredients-lbl">KEY INGREDIENTS</span>
-                <div class="ingredients-row">
-                  ${skinIngredients.slice(0,5).map(i=>`<span class="ingredient-chip">${i}</span>`).join('')}
-                </div>
-              </div>` : ''}
-          </div>
-        </div>`;
-
-      // ── 5. Hair ──
-      const hairRecFill  = [...hairRecs.slice(0,4)];
-      while (hairRecFill.length<4)  hairRecFill.push({name:'—',match_reason:''});
-      const hairAvoidFill = [...hairAvoid.slice(0,4)];
-      while (hairAvoidFill.length<4) hairAvoidFill.push({name:'—',reason:''});
-
-      const hairHTML = `
-        <div class="section-card">
-          <div class="section-header"><span class="section-num">5.</span><span class="section-title">Hair Recommendation</span></div>
-          <div class="hair-body">
-            <div class="hair-group-lbl">RECOMMENDED HAIRCUTS</div>
-            <div class="hair-photos-4">
-              ${hairRecFill.map((h,i)=>hairSlot(`hair-img-rec-${i}`,h.name,false)).join('')}
-            </div>
-            <div class="hair-group-lbl good">HAIRDO STYLE (GOOD)</div>
-            <div class="hair-photos-4">
-              ${hairRecFill.map((h,i)=>hairSlot(`hair-good-${i}`,h.name,false)).join('')}
-            </div>
-            <div class="hair-group-lbl avd">HAIRDO TO AVOID</div>
-            <div class="hair-photos-4">
-              ${hairAvoidFill.map((a,i)=>hairSlot(`hair-img-avoid-${i}`,a.name||a.style||'—',true)).join('')}
-            </div>
-            <div class="styling-row">
-              ${[{i:'💨',l:'Gunakan\nBlow Dry'},{i:'🧴',l:'Pakai\nSea Salt Spray'},{i:'💈',l:'Pilih Produk\nMatte Finish'},{i:'✂️',l:'Rutin\nPotong'}].map(s=>`
-                <div class="styling-step">
-                  <div class="styling-icon">${s.i}</div>
-                  <div class="styling-lbl">${s.l.replace('\n','<br>')}</div>
-                </div>`).join('')}
-            </div>
-          </div>
-        </div>`;
-
-      container.innerHTML = `
-        <div class="results-grid">
-          ${colorHTML}
-          ${skinHTML}
-          ${outfitHTML}
-          ${glassesHTML}
-          ${skincareHTML}
-          ${hairHTML}
-          <div class="results-actions">
-            <a class="results-action-btn results-action-btn-red" href="/booking.html">✂️ Book Appointment</a>
-            <a class="results-action-btn results-action-btn-ghost" href="/#ai">↩ Analisis Ulang</a>
-          </div>
-        </div>`;
-
-      const uploadId = (() => { try { return sessionStorage.getItem('ai_upload_id'); } catch(e) { return null; } })();
-      if (uploadId) {
-        loadHairstyleImages(uploadId, hair);
-        loadGeneratedImages(uploadId, outfit, eyewear, color);
-        loadSkinTextures();
-      }
+            </div>`;
+        });
     });
 
-    // Normalize a name to a stable URL-safe cache key segment
-    function slug(s){
-      if (s == null) return '';
-      const str = typeof s === 'string' ? s : (s.name || s.label || s.model || s.style || String(s));
-      return str.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    }
-
-    function sameFacePrompt(instruction) {
-      return [
-        'Use the uploaded customer photo as identity reference.',
-        'Show the exact same man from the original photo.',
-        'Preserve his face, skin tone, facial proportions, age, ethnicity, and expression.',
-        'Do not replace him with another model.',
-        'Keep it photorealistic and premium like a grooming consultation board.',
-        instruction
-      ].join(' ');
-    }
-
-    // ── HAIR IMAGE LOADER — customer face for recommended and avoid ──
-    async function loadHairstyleImages(uploadId, hair) {
-      const _isLocal = location.hostname==='localhost'||location.hostname==='127.0.0.1';
-      const HAIR_API = _isLocal ? 'http://localhost:3001/api/ai/hairstyle' : '/api/ai/hairstyle';
-      const IMG_API  = _isLocal ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
-      const hairRecs  = hair.recommended_styles || hair.recommendations || [];
-      const hairAvoid = hair.avoid_styles || hair.avoidHairstyles || [];
-
-      // Recommended: customer face via image edit
-      const recSlots = [
-        ...hairRecs.slice(0,4).map((h,i)=>({ elId:`hair-img-rec-${i}`, name:h.name })),
-        ...hairRecs.slice(0,4).map((h,i)=>({ elId:`hair-good-${i}`,    name:h.name })),
-      ];
-      async function fetchRec(slot) {
-        const el = document.getElementById(slot.elId);
-        if (!el) return;
-        try {
-          const res = await fetch(HAIR_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ uploadId, hairstyleName: slot.name }) });
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error);
-          el.innerHTML = `<img src="${json.imageUrl}" alt="${slot.name}" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
-        } catch(err) { el.innerHTML = `<div class="hair-img-error">💈</div>`; }
-      }
-
-      // Avoid: same customer, unsuitable hairstyle simulation
-      const avoidSlots = hairAvoid.slice(0,4).map((a,i)=>{
-        const name = a.name || a.style;
-        return ({
-          elId:`hair-img-avoid-${i}`,
-          name,
-          prompt: sameFacePrompt(`Give him the "${name}" hairstyle in a front portrait. Keep the same outfit. Studio background. This is an unsuitable reference look for comparison.`),
-          cacheKey:`v2/${uploadId}/hair/avoid/${slug(name)}`
-        });
+    async function generateGraphic(uploadId, userPhoto) {
+      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const API = isLocal ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uploadId,
+          prompt: ANALYSIS_GRAPHIC_PROMPT,
+          cacheKey: `v5/${uploadId}/hairstyle-analysis-graphic/simple`
+        })
       });
-      async function fetchAvoid(slot) {
-        const el = document.getElementById(slot.elId);
-        if (!el) return;
-        const badge = el.querySelector('.hair-avoid-x');
-        try {
-          const res = await fetch(IMG_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ uploadId, prompt:slot.prompt, cacheKey:slot.cacheKey }) });
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error);
-          el.innerHTML = `<img src="${json.imageUrl}" alt="${slot.name}" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
-        } catch(err) { el.innerHTML = `<div class="hair-img-error">💈</div>`; }
-        if (badge) el.appendChild(badge);
+
+      const json = await res.json();
+      if (!res.ok || !json.imageUrl) {
+        throw new Error(json.error || 'Gagal membuat hairstyle analysis graphic');
       }
 
-      const C = 2;
-      for (let i=0; i<recSlots.length; i+=C) await Promise.allSettled(recSlots.slice(i,i+C).map(fetchRec));
-      for (let i=0; i<avoidSlots.length; i+=3) await Promise.allSettled(avoidSlots.slice(i,i+3).map(fetchAvoid));
+      try {
+        sessionStorage.setItem('ai_result_graphic', json.imageUrl);
+        if (userPhoto) sessionStorage.setItem('ai_user_photo', userPhoto);
+      } catch (e) {}
+
+      return json.imageUrl;
     }
 
-    // ── GENERATED IMAGE LOADER — customer identity preserved with uploadId ──
-    async function loadGeneratedImages(uploadId, outfit, eyewear, color) {
-      const API = location.hostname==='localhost'||location.hostname==='127.0.0.1'
-        ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
-      const bestColors   = color.best_colors  || color.bestColors  || [];
-      const okayColors   = color.okay_colors  || [];
-      const avoidColors  = color.avoid_colors || color.avoidColors || [];
-      const eyewearRecs  = eyewear.recommended || eyewear.recommendations || [];
-      const eyewearAvoid = eyewear.avoid || eyewear.avoidFrames || [];
-      const _eyeName = e => (typeof e === 'string' ? e : (e?.name || e?.model || e?.style || ''));
-      const G_SREC = eyewearRecs.length>=4  ? eyewearRecs.slice(0,4).map(_eyeName).filter(Boolean)  : ['Wayfarer','Clubmaster','Round','Rectangle'];
-      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(_eyeName).filter(Boolean) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
-      const G_PREC = ['Wrap-Around','Semi-Rimless','Polarized','Lightweight'];
-      const G_PAVD = ['Heavy Frame','Fashion Tint','Non-Polarized','Loose Fit'];
-
-      // Outfit category: same customer, styled variations
-      const outfitCats = [
-        { elId:'outfit-img-0', label:'Smart Casual', prompt:sameFacePrompt('Style the same customer in a smart casual look. Show a chest-up portrait with chinos-inspired smart casual styling, clean fitted shirt, premium grooming, dark studio background, sharp focus.') },
-        { elId:'outfit-img-1', label:'Casual Daily', prompt:sameFacePrompt('Style the same customer in a casual daily look. Show a chest-up portrait with clean t-shirt styling, relaxed modern vibe, dark studio background, sharp focus.') },
-        { elId:'outfit-img-2', label:'Semi Formal',  prompt:sameFacePrompt('Style the same customer in a semi-formal look. Show a chest-up portrait with blazer styling, polished but approachable, dark studio background, sharp focus.') },
-        { elId:'outfit-img-3', label:'Formal',       prompt:sameFacePrompt('Style the same customer in a formal look. Show a chest-up portrait with suit and tie styling, premium editorial lighting, dark studio background, sharp focus.') },
-      ];
-      const fitGuides = [
-        { elId:'outfit-fit-0', label:'Shoulder Fit', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing a properly fitted top with correct shoulder seam placement. Fashion editorial reference.') },
-        { elId:'outfit-fit-1', label:'Tailored Slim Fit', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing a tailored slim fit look that follows his frame cleanly. Fashion editorial reference.') },
-        { elId:'outfit-fit-2', label:'Avoid Oversized', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing an oversized, baggy, ill-fitting outfit as an example to avoid. Fashion reference.') },
-        { elId:'outfit-fit-3', label:'Avoid Too Tight', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing an overly tight outfit as an example to avoid. Fashion reference.') },
-      ];
-
-      async function genOne(elId, prompt, cacheKey, icon) {
-        const el = document.getElementById(elId);
-        if (!el) return;
-        try {
-          const body = uploadId ? { uploadId, prompt, cacheKey } : { prompt, cacheKey };
-          const res = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error||'Failed');
-          el.innerHTML = `<img src="${json.imageUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
-        } catch(err) { el.innerHTML = `<div class="gen-img-error">${icon}</div>`; }
-      }
-
-      const slots = [
-        ...outfitCats.map(o  => ({ elId:o.elId, prompt:o.prompt, cacheKey:`v2/${uploadId}/outfit-cat/${slug(o.label)}`, icon:'👔' })),
-        ...fitGuides.map(f   => ({ elId:f.elId, prompt:f.prompt, cacheKey:`v2/${uploadId}/outfit-fit/${slug(f.label)}`, icon:'👔' })),
-        ...bestColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-best-img-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} as the dominant outfit color. Premium grooming magazine style. Dark studio background.`), cacheKey:`v2/${uploadId}/color-best/${slug(n)}`, icon:'👕' }); }),
-        ...okayColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-okay-img-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} as the dominant outfit color. Balanced styling. Dark studio background.`), cacheKey:`v2/${uploadId}/color-okay/${slug(n)}`, icon:'👕' }); }),
-        ...avoidColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-avd-img-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} as the dominant outfit color as a less flattering example. Dark studio background.`), cacheKey:`v2/${uploadId}/color-avd/${slug(n)}`, icon:'👕' }); }),
-        ...G_SREC.map((n,i)=>({ elId:`glass-srec-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} eyeglasses. Clean styling, neutral expression, white or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass/${slug(n)}`, icon:'🕶️' })),
-        ...G_SAVD.map((n,i)=>({ elId:`glass-savd-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} eyeglasses as an example to avoid. White or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass-avoid/${slug(n)}`, icon:'🕶️' })),
-        ...G_PREC.map((n,i)=>({ elId:`glass-prec-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} sport sunglasses. Active clean styling, white or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass-sport/${slug(n)}`, icon:'🕶️' })),
-        ...G_PAVD.map((n,i)=>({ elId:`glass-pavd-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} sport sunglasses as an example to avoid. White or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass-sport-avoid/${slug(n)}`, icon:'🕶️' })),
-      ];
-
-      const C = 3;
-      for (let i=0; i<slots.length; i+=C) await Promise.allSettled(slots.slice(i,i+C).map(s=>genOne(s.elId,s.prompt,s.cacheKey,s.icon)));
+    function downloadImage(src) {
+      const link = document.createElement('a');
+      link.href = src;
+      link.download = 'redbox-hairstyle-analysis.png';
+      link.click();
     }
 
-    // ── SKIN TEXTURE LOADER ──
-    async function loadSkinTextures() {
-      const API = location.hostname==='localhost'||location.hostname==='127.0.0.1'
-        ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
-      const types = ['oily','combination','normal','dry','sensitive'];
-      for (let i=0; i<types.length; i++) {
-        const el = document.getElementById(`skin-tex-${i}`);
-        if (!el) continue;
-        try {
-          const res = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ prompt:`Close-up macro dermatology photo of ${types[i]} skin texture. Scientific reference. High detail.`, cacheKey:`skin-tex/${types[i]}` }) });
-          const json = await res.json();
-          if (!res.ok) throw new Error();
-          el.innerHTML = `<img src="${json.imageUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
-        } catch(e) { el.innerHTML = `<div class="gen-img-error" style="font-size:.7rem">🩺</div>`; }
-      }
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
   </script>
-<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 20px;font-size:.68rem;letter-spacing:.05em;"><a href="https://kinaryaloka-digital.vercel.app/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.3);font-weight:500;text-decoration:none;">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka" style="width:16px;height:16px;border-radius:3px;opacity:.4;"> <strong>KINARYALOKA</strong></a></div>
 </body>
 </html>
