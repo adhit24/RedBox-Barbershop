@@ -518,7 +518,7 @@ class AIGroomingUI {
       console.error('sessionStorage error:', e);
     }
 
-    window.location.href = '/hair-card.html';
+    window.location.href = '/ai-results.html';
   }
 
   renderFullAnalysis(results) {
