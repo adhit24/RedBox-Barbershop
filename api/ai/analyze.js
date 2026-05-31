@@ -177,7 +177,15 @@ module.exports = async function handler(req, res) {
       .update({ status: 'processing' })
       .eq('id', uploadId);
 
-    // Call OpenAI with vision
+    // Fetch image as base64 for OpenAI Vision API
+    const imgRes = await fetch(upload.original_image_url);
+    if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status} ${imgRes.statusText}`);
+    const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+    const imgBase64 = imgBuffer.toString('base64');
+    const imgUrl = upload.original_image_url.toLowerCase();
+    const mimeType = imgUrl.includes('png') ? 'image/png' : 'image/jpeg';
+
+    // Call OpenAI with vision using base64 image directly (faster & avoids download timeouts
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     const completion = await openai.chat.completions.create({
@@ -190,7 +198,7 @@ module.exports = async function handler(req, res) {
           role: 'user',
           content: [
             { type: 'text', text: COMBINED_PROMPT },
-            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'low' } }
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imgBase64}`, detail: 'low' }
           ]
         }
       ]
