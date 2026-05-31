@@ -1,6 +1,8 @@
 /**
  * Vercel Serverless — POST /api/ai/generate-image
- * Generates a generic image from a text prompt using gpt-image-2.
+ * Generates an image from a text prompt using gpt-image-2.
+ * If uploadId is provided, uses the customer's original photo as identity reference
+ * and performs an image edit so the generated face stays the same person.
  * Results are cached in Supabase Storage by cacheKey.
  */
 
@@ -17,7 +19,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { prompt, cacheKey } = req.body || {};
+    const { prompt, cacheKey, uploadId } = req.body || {};
     if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
     const supabase = createClient(
@@ -44,12 +46,52 @@ module.exports = async function handler(req, res) {
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const result = await openai.images.generate({
-      model: 'gpt-image-2',
-      prompt,
-      n: 1,
-      size: '1024x1024',
-    });
+    let result;
+    if (uploadId) {
+      const { data: upload, error: uploadError } = await supabase
+        .from('ai_uploads')
+        .select('original_image_url')
+        .eq('id', uploadId)
+        .single();
+
+      if (uploadError || !upload?.original_image_url) {
+        return res.status(404).json({ error: 'Upload not found' });
+      }
+
+      const imgRes = await fetch(upload.original_image_url);
+      if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
+      const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+      const imgUrl = upload.original_image_url.toLowerCase();
+      const isPng = imgUrl.includes('.png');
+      const mimeType = isPng ? 'image/png' : 'image/jpeg';
+      const fileName = isPng ? 'photo.png' : 'photo.jpg';
+      const imgFile = new File([imgBuffer], fileName, { type: mimeType });
+
+      const identityPrompt = [
+        'Use the uploaded customer photo as the identity reference.',
+        'Create a photorealistic grooming visualization of the SAME man.',
+        'Preserve the exact face, skin tone, age, ethnicity, facial features, expression, and overall identity.',
+        'Do not replace him with another model or change his face.',
+        'Keep the result realistic, premium, and suitable for a RedBox grooming consultation.',
+        prompt,
+      ].join(' ');
+
+      result = await openai.images.edit({
+        model: 'gpt-image-2',
+        image: imgFile,
+        prompt: identityPrompt,
+        n: 1,
+        size: '1024x1024',
+      });
+    } else {
+      result = await openai.images.generate({
+        model: 'gpt-image-2',
+        prompt,
+        n: 1,
+        size: '1024x1024',
+      });
+    }
 
     const item = result.data?.[0];
     if (!item) throw new Error('No image returned from OpenAI');

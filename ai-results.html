@@ -585,7 +585,18 @@
       return str.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
     }
 
-    // ── HAIR IMAGE LOADER — customer face for recommended, generic for avoid ──
+    function sameFacePrompt(instruction) {
+      return [
+        'Use the uploaded customer photo as identity reference.',
+        'Show the exact same man from the original photo.',
+        'Preserve his face, skin tone, facial proportions, age, ethnicity, and expression.',
+        'Do not replace him with another model.',
+        'Keep it photorealistic and premium like a grooming consultation board.',
+        instruction
+      ].join(' ');
+    }
+
+    // ── HAIR IMAGE LOADER — customer face for recommended and avoid ──
     async function loadHairstyleImages(uploadId, hair) {
       const _isLocal = location.hostname==='localhost'||location.hostname==='127.0.0.1';
       const HAIR_API = _isLocal ? 'http://localhost:3001/api/ai/hairstyle' : '/api/ai/hairstyle';
@@ -609,14 +620,22 @@
         } catch(err) { el.innerHTML = `<div class="hair-img-error">💈</div>`; }
       }
 
-      // Avoid: generic reference
-      const avoidSlots = hairAvoid.slice(0,4).map((a,i)=>({ elId:`hair-img-avoid-${i}`, name:a.name||a.style, prompt:`Men's hairstyle reference. ${a.name||a.style} style. Front view. Dark studio. Photography.`, cacheKey:`v1/hair/avoid/${slug(a.name||a.style)}` }));
+      // Avoid: same customer, unsuitable hairstyle simulation
+      const avoidSlots = hairAvoid.slice(0,4).map((a,i)=>{
+        const name = a.name || a.style;
+        return ({
+          elId:`hair-img-avoid-${i}`,
+          name,
+          prompt: sameFacePrompt(`Give him the "${name}" hairstyle in a front portrait. Keep the same outfit. Studio background. This is an unsuitable reference look for comparison.`),
+          cacheKey:`v2/${uploadId}/hair/avoid/${slug(name)}`
+        });
+      });
       async function fetchAvoid(slot) {
         const el = document.getElementById(slot.elId);
         if (!el) return;
         const badge = el.querySelector('.hair-avoid-x');
         try {
-          const res = await fetch(IMG_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt:slot.prompt, cacheKey:slot.cacheKey}) });
+          const res = await fetch(IMG_API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ uploadId, prompt:slot.prompt, cacheKey:slot.cacheKey }) });
           const json = await res.json();
           if (!res.ok) throw new Error(json.error);
           el.innerHTML = `<img src="${json.imageUrl}" alt="${slot.name}" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
@@ -629,8 +648,8 @@
       for (let i=0; i<avoidSlots.length; i+=3) await Promise.allSettled(avoidSlots.slice(i,i+3).map(fetchAvoid));
     }
 
-    // ── GENERATED IMAGE LOADER — all keys are global (no uploadId) ──
-    async function loadGeneratedImages(_uploadId, outfit, eyewear, color) {
+    // ── GENERATED IMAGE LOADER — customer identity preserved with uploadId ──
+    async function loadGeneratedImages(uploadId, outfit, eyewear, color) {
       const API = location.hostname==='localhost'||location.hostname==='127.0.0.1'
         ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
       const bestColors   = color.best_colors  || color.bestColors  || [];
@@ -644,25 +663,26 @@
       const G_PREC = ['Wrap-Around','Semi-Rimless','Polarized','Lightweight'];
       const G_PAVD = ['Heavy Frame','Fashion Tint','Non-Polarized','Loose Fit'];
 
-      // Outfit category: generic prompts, globally cached by label
+      // Outfit category: same customer, styled variations
       const outfitCats = [
-        { elId:'outfit-img-0', label:'Smart Casual',  prompt:'Smart casual men fashion. Chinos and fitted shirt. Asian man full body. Dark studio. Sharp focus.' },
-        { elId:'outfit-img-1', label:'Casual Daily',  prompt:'Casual daily men fashion. Jeans and clean t-shirt. Asian man full body. Dark studio. Sharp focus.' },
-        { elId:'outfit-img-2', label:'Semi Formal',   prompt:'Semi formal men fashion. Blazer and dress pants. Asian man full body. Dark studio. Sharp focus.' },
-        { elId:'outfit-img-3', label:'Formal',        prompt:'Formal men fashion. Full suit and tie. Asian man full body. Dark studio. Sharp focus.' },
+        { elId:'outfit-img-0', label:'Smart Casual', prompt:sameFacePrompt('Style the same customer in a smart casual look. Show a chest-up portrait with chinos-inspired smart casual styling, clean fitted shirt, premium grooming, dark studio background, sharp focus.') },
+        { elId:'outfit-img-1', label:'Casual Daily', prompt:sameFacePrompt('Style the same customer in a casual daily look. Show a chest-up portrait with clean t-shirt styling, relaxed modern vibe, dark studio background, sharp focus.') },
+        { elId:'outfit-img-2', label:'Semi Formal',  prompt:sameFacePrompt('Style the same customer in a semi-formal look. Show a chest-up portrait with blazer styling, polished but approachable, dark studio background, sharp focus.') },
+        { elId:'outfit-img-3', label:'Formal',       prompt:sameFacePrompt('Style the same customer in a formal look. Show a chest-up portrait with suit and tie styling, premium editorial lighting, dark studio background, sharp focus.') },
       ];
       const fitGuides = [
-        { elId:'outfit-fit-0', label:'Shoulder Fit',     prompt:'Men shoulder fit clothing guide. Proper shoulder seam placement. Fashion editorial.' },
-        { elId:'outfit-fit-1', label:'Tailored Slim Fit', prompt:'Men tailored slim fit clothing guide. Well-fitted suit. Fashion editorial.' },
-        { elId:'outfit-fit-2', label:'Avoid Oversized',   prompt:'Men avoid oversized clothing guide. Baggy ill-fitting outfit. Fashion reference.' },
-        { elId:'outfit-fit-3', label:'Avoid Too Tight',   prompt:'Men avoid too tight clothing guide. Overly tight outfit. Fashion reference.' },
+        { elId:'outfit-fit-0', label:'Shoulder Fit', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing a properly fitted top with correct shoulder seam placement. Fashion editorial reference.') },
+        { elId:'outfit-fit-1', label:'Tailored Slim Fit', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing a tailored slim fit look that follows his frame cleanly. Fashion editorial reference.') },
+        { elId:'outfit-fit-2', label:'Avoid Oversized', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing an oversized, baggy, ill-fitting outfit as an example to avoid. Fashion reference.') },
+        { elId:'outfit-fit-3', label:'Avoid Too Tight', prompt:sameFacePrompt('Show the same customer in a chest-up portrait wearing an overly tight outfit as an example to avoid. Fashion reference.') },
       ];
 
       async function genOne(elId, prompt, cacheKey, icon) {
         const el = document.getElementById(elId);
         if (!el) return;
         try {
-          const res = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({prompt, cacheKey}) });
+          const body = uploadId ? { uploadId, prompt, cacheKey } : { prompt, cacheKey };
+          const res = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
           const json = await res.json();
           if (!res.ok) throw new Error(json.error||'Failed');
           el.innerHTML = `<img src="${json.imageUrl}" alt="" style="width:100%;height:100%;object-fit:cover;display:block"/>`;
@@ -670,17 +690,15 @@
       }
 
       const slots = [
-        ...outfitCats.map(o  => ({ elId:o.elId, prompt:o.prompt, cacheKey:`v1/outfit-cat/${slug(o.label)}`, icon:'👔' })),
-        ...fitGuides.map(f   => ({ elId:f.elId, prompt:f.prompt, cacheKey:`v1/outfit-fit/${slug(f.label)}`, icon:'👔' })),
-        // Color: cached by color name only — shared across all users with same color season
-        ...bestColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-best-img-${i}`, prompt:`Fashion editorial. Asian man wearing ${n} colored outfit. Dark studio. Portrait. Grooming magazine.`, cacheKey:`v1/color-best/${slug(n)}`, icon:'👕' }); }),
-        ...okayColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-okay-img-${i}`, prompt:`Fashion editorial. Asian man wearing ${n} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-okay/${slug(n)}`, icon:'👕' }); }),
-        ...avoidColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-avd-img-${i}`,  prompt:`Fashion editorial. Asian man wearing ${n} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-avd/${slug(n)}`, icon:'👕' }); }),
-        // Glasses: cached by style name — exact same image for everyone requesting "Wayfarer"
-        ...G_SREC.map(n=>({ elId:`glass-srec-${G_SREC.indexOf(n)}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
-        ...G_SAVD.map(n=>({ elId:`glass-savd-${G_SAVD.indexOf(n)}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
-        ...G_PREC.map(n=>({ elId:`glass-prec-${G_PREC.indexOf(n)}`, prompt:`Product photography. ${n} sport sunglasses. White background. Isolated. Sharp focus.`,  cacheKey:`v1/glass-sport/${slug(n)}`, icon:'🕶️' })),
-        ...G_PAVD.map(n=>({ elId:`glass-pavd-${G_PAVD.indexOf(n)}`, prompt:`Product photography. ${n} sport sunglasses. White background. Isolated. Sharp focus.`,  cacheKey:`v1/glass-sport/${slug(n)}`, icon:'🕶️' })),
+        ...outfitCats.map(o  => ({ elId:o.elId, prompt:o.prompt, cacheKey:`v2/${uploadId}/outfit-cat/${slug(o.label)}`, icon:'👔' })),
+        ...fitGuides.map(f   => ({ elId:f.elId, prompt:f.prompt, cacheKey:`v2/${uploadId}/outfit-fit/${slug(f.label)}`, icon:'👔' })),
+        ...bestColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-best-img-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} as the dominant outfit color. Premium grooming magazine style. Dark studio background.`), cacheKey:`v2/${uploadId}/color-best/${slug(n)}`, icon:'👕' }); }),
+        ...okayColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-okay-img-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} as the dominant outfit color. Balanced styling. Dark studio background.`), cacheKey:`v2/${uploadId}/color-okay/${slug(n)}`, icon:'👕' }); }),
+        ...avoidColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-avd-img-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} as the dominant outfit color as a less flattering example. Dark studio background.`), cacheKey:`v2/${uploadId}/color-avd/${slug(n)}`, icon:'👕' }); }),
+        ...G_SREC.map((n,i)=>({ elId:`glass-srec-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} eyeglasses. Clean styling, neutral expression, white or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass/${slug(n)}`, icon:'🕶️' })),
+        ...G_SAVD.map((n,i)=>({ elId:`glass-savd-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} eyeglasses as an example to avoid. White or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass-avoid/${slug(n)}`, icon:'🕶️' })),
+        ...G_PREC.map((n,i)=>({ elId:`glass-prec-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} sport sunglasses. Active clean styling, white or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass-sport/${slug(n)}`, icon:'🕶️' })),
+        ...G_PAVD.map((n,i)=>({ elId:`glass-pavd-${i}`, prompt:sameFacePrompt(`Show the same customer in a portrait wearing ${n} sport sunglasses as an example to avoid. White or light background, sharp focus.`), cacheKey:`v2/${uploadId}/glass-sport-avoid/${slug(n)}`, icon:'🕶️' })),
       ];
 
       const C = 3;

@@ -66,7 +66,9 @@ module.exports = async function handler(req, res) {
     const prompt = [
       `Change ONLY the hairstyle of this man to: "${hairstyleName}".`,
       hairstyleDescription ? `Hair description: ${hairstyleDescription}.` : '',
-      'Keep the face, skin tone, facial features, expression, and all clothing completely unchanged.',
+      'Preserve the exact same customer identity from the uploaded photo.',
+      'Keep the face, skin tone, facial features, expression, age, ethnicity, and all clothing completely unchanged.',
+      'Do not swap the person, do not beautify into another model, and do not alter facial proportions.',
       'Only modify the hair on top of the head.',
       'Realistic photo. Professional barbershop editorial lighting.',
     ].filter(Boolean).join(' ');
