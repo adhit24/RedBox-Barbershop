@@ -308,7 +308,7 @@
               ${colorKws.length ? `<div class="color-kw">${colorKws.map(k=>fmt(k).toUpperCase()).join(' • ')}</div>` : ''}
               <div class="color-season-lbl">BEST SEASON</div>
               <div class="color-season-name">${fmt(colorSeason).toUpperCase() || '—'}</div>
-              <div class="color-swatches-row">${bestColors.slice(0,4).map(c=>`<div class="cs" style="background:${c.hex}"></div>`).join('')}</div>
+              <div class="color-swatches-row">${bestColors.slice(0,4).map(c=>`<div class="cs" style="background:${(c&&c.hex)||'#444'}"></div>`).join('')}</div>
             </div>
             <div class="color-right">
               ${colorGroup('best','BEST COLORS', bestColors)}
@@ -370,7 +370,7 @@
             <div class="outfit-colors-row">
               <div class="outfit-colors-lbl">COLORS THAT SUIT YOU</div>
               <div class="outfit-colors-sw">
-                ${bestColors.slice(0,5).map(c=>`<div class="oc-sw" style="background:${c.hex}"></div>`).join('')}
+                ${bestColors.slice(0,5).map(c=>`<div class="oc-sw" style="background:${(c&&c.hex)||'#444'}"></div>`).join('')}
               </div>
             </div>
             <div class="fit-guide-row">
@@ -391,8 +391,9 @@
         </div>`;
 
       // ── 3. Glasses ──
-      const G_SREC = eyewearRecs.length>=4 ? eyewearRecs.slice(0,4).map(e=>e.model||e.name) : ['Wayfarer','Clubmaster','Round','Rectangle'];
-      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(e=>e.model||e.style||e) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
+      const _eyeName = e => (typeof e === 'string' ? e : (e?.name || e?.model || e?.style || ''));
+      const G_SREC = eyewearRecs.length>=4 ? eyewearRecs.slice(0,4).map(_eyeName).filter(Boolean) : ['Wayfarer','Clubmaster','Round','Rectangle'];
+      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(_eyeName).filter(Boolean) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
       const G_PREC = ['Wrap-Around','Semi-Rimless','Polarized','Lightweight'];
       const G_PAVD = ['Heavy Frame','Fashion Tint','Non-Polarized','Loose Fit'];
 
@@ -578,7 +579,11 @@
     });
 
     // Normalize a name to a stable URL-safe cache key segment
-    function slug(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }
+    function slug(s){
+      if (s == null) return '';
+      const str = typeof s === 'string' ? s : (s.name || s.label || s.model || s.style || String(s));
+      return str.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    }
 
     // ── HAIR IMAGE LOADER — customer face for recommended, generic for avoid ──
     async function loadHairstyleImages(uploadId, hair) {
@@ -633,8 +638,9 @@
       const avoidColors  = color.avoid_colors || color.avoidColors || [];
       const eyewearRecs  = eyewear.recommended || eyewear.recommendations || [];
       const eyewearAvoid = eyewear.avoid || eyewear.avoidFrames || [];
-      const G_SREC = eyewearRecs.length>=4  ? eyewearRecs.slice(0,4).map(e=>e.model||e.name)  : ['Wayfarer','Clubmaster','Round','Rectangle'];
-      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(e=>e.model||e.style||e) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
+      const _eyeName = e => (typeof e === 'string' ? e : (e?.name || e?.model || e?.style || ''));
+      const G_SREC = eyewearRecs.length>=4  ? eyewearRecs.slice(0,4).map(_eyeName).filter(Boolean)  : ['Wayfarer','Clubmaster','Round','Rectangle'];
+      const G_SAVD = eyewearAvoid.length>=4 ? eyewearAvoid.slice(0,4).map(_eyeName).filter(Boolean) : ['Small Round','Narrow Frame','Colored Lens','Too Large'];
       const G_PREC = ['Wrap-Around','Semi-Rimless','Polarized','Lightweight'];
       const G_PAVD = ['Heavy Frame','Fashion Tint','Non-Polarized','Loose Fit'];
 
@@ -667,9 +673,9 @@
         ...outfitCats.map(o  => ({ elId:o.elId, prompt:o.prompt, cacheKey:`v1/outfit-cat/${slug(o.label)}`, icon:'👔' })),
         ...fitGuides.map(f   => ({ elId:f.elId, prompt:f.prompt, cacheKey:`v1/outfit-fit/${slug(f.label)}`, icon:'👔' })),
         // Color: cached by color name only — shared across all users with same color season
-        ...bestColors.slice(0,4).map((c,i)=>({ elId:`color-best-img-${i}`, prompt:`Fashion editorial. Asian man wearing ${c.name} colored outfit. Dark studio. Portrait. Grooming magazine.`, cacheKey:`v1/color-best/${slug(c.name)}`, icon:'👕' })),
-        ...okayColors.slice(0,4).map((c,i)=>({ elId:`color-okay-img-${i}`, prompt:`Fashion editorial. Asian man wearing ${c.name} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-okay/${slug(c.name)}`, icon:'👕' })),
-        ...avoidColors.slice(0,4).map((c,i)=>({ elId:`color-avd-img-${i}`,  prompt:`Fashion editorial. Asian man wearing ${c.name} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-avd/${slug(c.name)}`, icon:'👕' })),
+        ...bestColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-best-img-${i}`, prompt:`Fashion editorial. Asian man wearing ${n} colored outfit. Dark studio. Portrait. Grooming magazine.`, cacheKey:`v1/color-best/${slug(n)}`, icon:'👕' }); }),
+        ...okayColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-okay-img-${i}`, prompt:`Fashion editorial. Asian man wearing ${n} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-okay/${slug(n)}`, icon:'👕' }); }),
+        ...avoidColors.slice(0,4).map((c,i)=>{ const n=typeof c==='string'?c:(c?.name||''); return ({ elId:`color-avd-img-${i}`,  prompt:`Fashion editorial. Asian man wearing ${n} colored outfit. Dark studio. Portrait.`, cacheKey:`v1/color-avd/${slug(n)}`, icon:'👕' }); }),
         // Glasses: cached by style name — exact same image for everyone requesting "Wayfarer"
         ...G_SREC.map(n=>({ elId:`glass-srec-${G_SREC.indexOf(n)}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
         ...G_SAVD.map(n=>({ elId:`glass-savd-${G_SAVD.indexOf(n)}`, prompt:`Product photography. ${n} eyeglasses frame. White background. Isolated. Sharp focus.`, cacheKey:`v1/glass/${slug(n)}`, icon:'🕶️' })),
