@@ -106,6 +106,28 @@ module.exports = async function handler(req, res) {
     const ext = contentType.includes('png') ? 'png' : 'jpg';
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
 
+    // List buckets first to verify connection and bucket existence
+    const { data: bucketList, error: listError } = await supabase.storage.listBuckets();
+    console.log('[AI Upload] Available buckets:', bucketList?.map(b => b.name) || 'none');
+    
+    if (listError) {
+      console.error('[AI Upload] Cannot list buckets:', listError.message);
+      return res.status(500).json({ 
+        error: 'Storage connection failed: ' + listError.message,
+        detail: 'Could not list buckets - check SUPABASE_URL and SUPABASE_SERVICE_KEY'
+      });
+    }
+
+    const targetBucket = bucketList?.find(b => b.name === 'ai-images');
+    if (!targetBucket) {
+      console.error('[AI Upload] Bucket ai-images not found. Available:', bucketList?.map(b => b.name));
+      return res.status(500).json({ 
+        error: 'Bucket "ai-images" does not exist',
+        detail: `Available buckets: ${bucketList?.map(b => b.name).join(', ') || 'none'}`,
+        availableBuckets: bucketList?.map(b => b.name) || []
+      });
+    }
+
     // Upload to Supabase Storage bucket 'ai-images' - use root path
     const { data: uploadData, error: storageError } = await supabase.storage
       .from('ai-images')
@@ -116,16 +138,13 @@ module.exports = async function handler(req, res) {
       });
 
     if (storageError) {
-      console.error('[AI Upload] Storage error:', storageError);
-      // Log full error for debugging
-      console.error('[AI Upload] Full error details:', {
-        message: storageError.message,
-        name: storageError.name,
-        statusCode: storageError.statusCode,
-      });
+      console.error('[AI Upload] Storage error:', JSON.stringify(storageError));
       return res.status(500).json({ 
         error: 'Failed to store image: ' + storageError.message,
-        detail: storageError.name || 'Storage error'
+        detail: storageError.name || 'Storage error',
+        fileName,
+        contentType,
+        bufferSize: buffer.length,
       });
     }
 
