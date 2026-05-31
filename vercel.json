@@ -25,32 +25,12 @@
       "maxDuration": 300,
       "includeFiles": "server/**"
     },
-    "api/wa/webhook.js": {
-      "maxDuration": 60,
-      "includeFiles": "server/**"
-    },
-    "api/cron/reminders.js": {
-      "maxDuration": 60,
-      "includeFiles": "server/**"
-    },
-    "api/cron/birthday.js": {
-      "maxDuration": 60,
-      "includeFiles": "server/**"
-    },
-    "api/cron/remind-soon.js": {
-      "maxDuration": 60,
-      "includeFiles": "server/**"
-    },
     "api/moka/sync-customers.js": {
       "maxDuration": 120,
       "includeFiles": "server/**"
     },
     "api/cron/expire-stale-bills.js": {
       "maxDuration": 30,
-      "includeFiles": "server/**"
-    },
-    "api/cron/home-service-flag.js": {
-      "maxDuration": 60,
       "includeFiles": "server/**"
     }
   },
