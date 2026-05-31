@@ -104,39 +104,33 @@ module.exports = async function handler(req, res) {
     }
 
     const ext = contentType.includes('png') ? 'png' : 'jpg';
-    const storagePath = `uploads/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${ext}`;
 
-    // Ensure 'ai-images' bucket exists (create if not)
-    try {
-      const { data: buckets } = await supabase.storage.listBuckets();
-      const bucketExists = buckets?.some(b => b.name === 'ai-images');
-      
-      if (!bucketExists) {
-        console.log('[AI Upload] Creating ai-images bucket...');
-        const { error: createError } = await supabase.storage.createBucket('ai-images', {
-          public: true,
-          fileSizeLimit: 10485760, // 10MB
-          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp']
-        });
-        if (createError) {
-          console.error('[AI Upload] Failed to create bucket:', createError.message);
-          // Continue anyway - bucket might already exist
-        }
-      }
-    } catch (bucketErr) {
-      console.error('[AI Upload] Bucket check error:', bucketErr.message);
-      // Continue with upload attempt
-    }
-
-    // Upload to Supabase Storage bucket 'ai-images'
-    const { error: storageError } = await supabase.storage
+    // Upload to Supabase Storage bucket 'ai-images' - use root path
+    const { data: uploadData, error: storageError } = await supabase.storage
       .from('ai-images')
-      .upload(storagePath, buffer, { contentType, cacheControl: '3600', upsert: false });
+      .upload(fileName, buffer, { 
+        contentType, 
+        cacheControl: '3600', 
+        upsert: false 
+      });
 
     if (storageError) {
-      console.error('[AI Upload] Storage error:', storageError.message);
-      return res.status(500).json({ error: 'Failed to store image: ' + storageError.message });
+      console.error('[AI Upload] Storage error:', storageError);
+      // Log full error for debugging
+      console.error('[AI Upload] Full error details:', {
+        message: storageError.message,
+        name: storageError.name,
+        statusCode: storageError.statusCode,
+      });
+      return res.status(500).json({ 
+        error: 'Failed to store image: ' + storageError.message,
+        detail: storageError.name || 'Storage error'
+      });
     }
+
+    // Get public URL using the path returned from upload
+    const storagePath = uploadData?.path || fileName;
 
     const { data: { publicUrl } } = supabase.storage
       .from('ai-images')
