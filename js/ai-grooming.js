@@ -321,21 +321,12 @@ class AIGroomingUI {
   }
 
   checkMembershipStatus() {
-    const state = this._getMemberState();
+    // Bypass membership check - AI grooming terbuka untuk semua (promo hari ini)
     const promoSection = document.getElementById('ai-member-promo');
     const uploadSection = document.getElementById('ai-upload-section');
 
-    if (state === 'active_member') {
-      if (promoSection) promoSection.style.display = 'none';
-      if (uploadSection) uploadSection.style.display = 'block';
-    } else {
-      if (uploadSection) uploadSection.style.display = 'none';
-      if (promoSection) {
-        promoSection.innerHTML = this._getGateHTML(state);
-        promoSection.style.display = 'block';
-        this._bindGateEvents(promoSection);
-      }
-    }
+    if (promoSection) promoSection.style.display = 'none';
+    if (uploadSection) uploadSection.style.display = 'block';
   }
 
   bindEvents() {
