@@ -198,7 +198,7 @@ module.exports = async function handler(req, res) {
           role: 'user',
           content: [
             { type: 'text', text: COMBINED_PROMPT },
-            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imgBase64}`, detail: 'low' }
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imgBase64}`, detail: 'low' } }
           ]
         }
       ]
