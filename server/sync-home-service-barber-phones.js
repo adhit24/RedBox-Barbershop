@@ -15,13 +15,12 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const HOME_SERVICE_BARBERS = [
-  { name: 'Aziz', phone: '08978444575' },
+  // Aziz & Bayu removed from Sumber per business decision
   { name: 'Hamami', phone: '085328993734' },
   { name: 'Sigit setiana', phone: '08987857129' },
   { name: 'OPAN', phone: '0882001003496' },
   { name: 'Prima', phone: '087729002108' },
   { name: 'Aden', phone: '08996388698' },
-  { name: 'Bayu', phone: '083144815562' },
   { name: 'yuda', phone: '0881023450051' },
   { name: 'miftah', phone: '083131994954' },
   { name: 'dodi', phone: '085221156910' },
@@ -53,8 +52,7 @@ const ALIAS_TO_BARBER_ID = {
 };
 
 const SOURCE_BRANCH_BY_NAME = {
-  aziz: 'sumber',
-  bayu: 'sumber',
+  // aziz & bayu removed - no longer auto-created in sumber
 };
 
 function normalizeName(value) {
