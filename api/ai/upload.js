@@ -33,11 +33,17 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method === 'GET') {
+    const rawUrl = process.env.SUPABASE_URL || '';
     return res.status(200).json({ 
       status: 'ok', 
       service: 'AI Upload',
       envCheck: { 
         hasSupabase: !!process.env.SUPABASE_URL,
+        hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
+        supabaseUrl: rawUrl,
+        urlLength: rawUrl.length,
+        urlEndsWithSlash: rawUrl.endsWith('/'),
+        serviceKeyLength: (process.env.SUPABASE_SERVICE_KEY || '').length,
         missingVars: missingVars.length > 0 ? missingVars : undefined
       }
     });
