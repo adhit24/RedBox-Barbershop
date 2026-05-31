@@ -59,8 +59,9 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'uploadId and hairstyleName required' });
     }
 
+    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '').trim();
     const supabase = createClient(
-      process.env.SUPABASE_URL,
+      supabaseUrl,
       process.env.SUPABASE_SERVICE_KEY
     );
 

@@ -65,10 +65,13 @@ module.exports = async function handler(req, res) {
 
     if (!image) return res.status(400).json({ error: 'No image provided' });
 
+    // Strip trailing slash from URL to prevent "Invalid path" errors
+    const supabaseUrl = (process.env.SUPABASE_URL || '').replace(/\/+$/, '').trim();
     const supabase = createClient(
-      process.env.SUPABASE_URL,
+      supabaseUrl,
       process.env.SUPABASE_SERVICE_KEY
     );
+    console.log('[AI Upload] Using Supabase URL:', supabaseUrl);
 
     // Enforce per-member quota: max 2 analyses (whitelisted accounts are unlimited)
     const UNLIMITED_EMAILS = ['adhit24@gmail.com'];
