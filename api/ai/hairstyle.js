@@ -1,6 +1,7 @@
-/**
+﻿/**
  * Vercel Serverless — POST /api/ai/hairstyle
- * Generates hairstyle simulation using gpt-image-2 images.edit
+ * mode='graphic' -> single analysis graphic card
+ * mode unset     -> individual hairstyle simulation
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -16,84 +17,74 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { uploadId, hairstyleName, hairstyleDescription } = req.body || {};
-    if (!uploadId || !hairstyleName) {
-      return res.status(400).json({ error: 'uploadId and hairstyleName required' });
+    const { uploadId, hairstyleName, hairstyleDescription, mode, analysisData } = req.body || {};
+    const isGraphic = mode === 'graphic';
+
+    if (!uploadId) return res.status(400).json({ error: 'uploadId required' });
+    if (!isGraphic && !hairstyleName) return res.status(400).json({ error: 'hairstyleName required' });
+
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+
+    let storagePath, cacheFolder, cacheFile;
+    if (isGraphic) {
+      storagePath = `graphics/${uploadId}/hairstyle-graphic.jpg`;
+      cacheFolder = `graphics/${uploadId}`;
+      cacheFile   = 'hairstyle-graphic.jpg';
+    } else {
+      const safeName = hairstyleName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+      storagePath = `hairstyles/${uploadId}/${safeName}.jpg`;
+      cacheFolder = `hairstyles/${uploadId}`;
+      cacheFile   = `${safeName}.jpg`;
     }
 
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_KEY
-    );
-
-    // Cache check
-    const safeName = hairstyleName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
-    const storagePath = `hairstyles/${uploadId}/${safeName}.jpg`;
-
-    const { data: fileList } = await supabase.storage
-      .from('ai-images')
-      .list(`hairstyles/${uploadId}`, { search: `${safeName}.jpg` });
-
+    const { data: fileList } = await supabase.storage.from('ai-images').list(cacheFolder, { search: cacheFile });
     if (fileList && fileList.length > 0) {
       const { data: { publicUrl } } = supabase.storage.from('ai-images').getPublicUrl(storagePath);
       return res.status(200).json({ imageUrl: publicUrl, cached: true });
     }
 
-    // Fetch original image
     const { data: upload, error: fetchError } = await supabase
-      .from('ai_uploads')
-      .select('original_image_url')
-      .eq('id', uploadId)
-      .single();
-
-    if (fetchError || !upload) {
-      return res.status(404).json({ error: 'Upload not found' });
-    }
+      .from('ai_uploads').select('original_image_url').eq('id', uploadId).single();
+    if (fetchError || !upload?.original_image_url) return res.status(404).json({ error: 'Upload not found' });
 
     const imgRes = await fetch(upload.original_image_url);
     if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
     const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
 
-    // Detect content type from URL or default to jpeg
-    const imgUrl = upload.original_image_url;
-    const isPng = imgUrl.toLowerCase().includes('.png');
+    const imgUrl   = upload.original_image_url.toLowerCase();
+    const isPng    = imgUrl.includes('.png');
     const mimeType = isPng ? 'image/png' : 'image/jpeg';
-    const fileName = isPng ? 'photo.png' : 'photo.jpg';
+    const imgFile  = new File([imgBuffer], isPng ? 'photo.png' : 'photo.jpg', { type: mimeType });
 
-    // Use native File (Node.js 20+, Vercel Node 24)
-    const imgFile = new File([imgBuffer], fileName, { type: mimeType });
-
-    const prompt = [
-      `Change ONLY the hairstyle of this man to: "${hairstyleName}".`,
-      hairstyleDescription ? `Hair description: ${hairstyleDescription}.` : '',
-      'Preserve the exact same customer identity from the uploaded photo.',
-      'Keep the face, skin tone, facial features, expression, age, ethnicity, and all clothing completely unchanged.',
-      'Do not swap the person, do not beautify into another model, and do not alter facial proportions.',
-      'Only modify the hair on top of the head.',
-      'Realistic photo. Professional barbershop editorial lighting.',
-    ].filter(Boolean).join(' ');
+    let prompt;
+    if (isGraphic) {
+      const a = analysisData || {};
+      const faceShape   = (a.faceShape   || 'oval').toUpperCase();
+      const hairType    = (a.hairType    || 'straight').toUpperCase();
+      const hairDensity = (a.hairDensity || 'medium').toUpperCase();
+      const hairLength  = (a.hairLength  || 'medium').toUpperCase();
+      const recs   = (a.recs   || []).slice(0, 4).map(r => r.name || r).join(', ') || 'Two Block, Korean Comma, Textured Crop, Classic Taper';
+      const avoids = (a.avoids || []).slice(0, 2).map(r => r.name || r).join(', ') || 'Bowl Cut, Flat & Limp';
+      prompt = `Create a hairstyle analysis graphic card using this portrait photo as the subject. Dark background #080808 with white and green #9bd448 text. LEFT side: portrait photo with FACE SHAPE: ${faceShape} label. RIGHT side: HAIRSTYLE ANALYSIS header, HAIR TYPE: ${hairType}, HAIR THICKNESS: ${hairDensity} with dot indicators, HAIR LENGTH: ${hairLength} with slider. BOTTOM: RECOMMENDED HAIRSTYLES (green) showing ${recs} each with checkmark badge. HAIRSTYLES TO AVOID (red) showing ${avoids} each with X badge. Premium barbershop editorial style. Dark minimal. Wide landscape card layout.`;
+    } else {
+      prompt = [
+        `Change ONLY the hairstyle of this man to: "${hairstyleName}".`,
+        hairstyleDescription ? `Hair description: ${hairstyleDescription}.` : '',
+        'Preserve the exact same customer identity. Keep face, skin tone, features, expression, ethnicity, clothing unchanged.',
+        'Only modify the hair. Realistic photo. Professional barbershop editorial lighting.',
+      ].filter(Boolean).join(' ');
+    }
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-    // gpt-image-2 edit — no response_format param (returns b64_json by default)
-    const editResult = await openai.images.edit({
-      model: 'gpt-image-2',
-      image: imgFile,
-      prompt,
-      n: 1,
-      size: '1024x1024',
-    });
+    const editResult = await openai.images.edit({ model: 'gpt-image-2', image: imgFile, prompt, n: 1, size: '1024x1024' });
 
     const item = editResult.data?.[0];
-    if (!item) throw new Error('No image item returned from OpenAI');
+    if (!item) throw new Error('No image returned from OpenAI');
 
-    // gpt-image-2 returns b64_json; fall back to url if present
     let imageBuffer;
-
     if (item.b64_json) {
       imageBuffer = Buffer.from(item.b64_json, 'base64');
     } else if (item.url) {
-      // Fetch from temporary URL and store in Supabase
       const urlRes = await fetch(item.url);
       if (!urlRes.ok) throw new Error('Failed to fetch generated image URL');
       imageBuffer = Buffer.from(await urlRes.arrayBuffer());
@@ -101,22 +92,11 @@ module.exports = async function handler(req, res) {
       throw new Error('OpenAI returned no image data');
     }
 
-    // Upload to Supabase Storage
-    const { error: storeError } = await supabase.storage
-      .from('ai-images')
-      .upload(storagePath, imageBuffer, {
-        contentType: 'image/jpeg',
-        cacheControl: '86400',
-        upsert: true,
-      });
+    const { error: storeError } = await supabase.storage.from('ai-images')
+      .upload(storagePath, imageBuffer, { contentType: 'image/jpeg', cacheControl: '86400', upsert: true });
 
     if (storeError) {
-      // Return base64 inline if storage fails
-      const b64Fallback = imageBuffer.toString('base64');
-      return res.status(200).json({
-        imageUrl: `data:image/jpeg;base64,${b64Fallback}`,
-        cached: false,
-      });
+      return res.status(200).json({ imageUrl: `data:image/jpeg;base64,${imageBuffer.toString('base64')}`, cached: false });
     }
 
     const { data: { publicUrl } } = supabase.storage.from('ai-images').getPublicUrl(storagePath);
@@ -124,10 +104,6 @@ module.exports = async function handler(req, res) {
 
   } catch (err) {
     console.error('[AI Hairstyle] Error:', err.message, err.status || '');
-    // Return structured error so frontend can display it
-    return res.status(500).json({
-      error: err.message || 'Failed to generate hairstyle image',
-      detail: err.error?.message || '',
-    });
+    return res.status(500).json({ error: err.message || 'Failed to generate hairstyle image', detail: err.error?.message || '' });
   }
 };

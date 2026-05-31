@@ -1,64 +1,36 @@
 {
   "outputDirectory": ".",
   "functions": {
-    "api/[...path].js": {
-      "maxDuration": 60,
-      "includeFiles": "server/**"
-    },
-    "api/ai/analyze.js": {
-      "maxDuration": 60,
-      "includeFiles": "server/**"
-    },
-    "api/ai/upload.js": {
-      "maxDuration": 30,
-      "includeFiles": "server/**"
-    },
-    "api/ai/hairstyle.js": {
-      "maxDuration": 300,
-      "includeFiles": "server/**"
-    },
-    "api/ai/generate-image.js": {
-      "maxDuration": 120,
-      "includeFiles": "server/**"
-    },
-    "api/ai/hairstyle-graphic.js": {
-      "maxDuration": 300,
-      "includeFiles": "server/**"
-    },
-    "api/moka/sync-customers.js": {
-      "maxDuration": 120,
-      "includeFiles": "server/**"
-    },
-    "api/cron/expire-stale-bills.js": {
-      "maxDuration": 30,
-      "includeFiles": "server/**"
-    }
+    "api/[...path].js": { "maxDuration": 60, "includeFiles": "server/**" },
+    "api/ai/analyze.js": { "maxDuration": 60, "includeFiles": "server/**" },
+    "api/ai/upload.js": { "maxDuration": 30, "includeFiles": "server/**" },
+    "api/ai/hairstyle.js": { "maxDuration": 300, "includeFiles": "server/**" },
+    "api/ai/generate-image.js": { "maxDuration": 120, "includeFiles": "server/**" },
+    "api/moka/sync-customers.js": { "maxDuration": 120, "includeFiles": "server/**" },
+    "api/cron/expire-stale-bills.js": { "maxDuration": 30, "includeFiles": "server/**" }
   },
   "crons": [
-    { "path": "/api/cron/reminders",           "schedule": "0 3 * * *" },
-    { "path": "/api/cron/birthday",            "schedule": "0 1 * * *" }
+    { "path": "/api/cron/reminders", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/birthday",  "schedule": "0 1 * * *" }
   ],
   "rewrites": [
-    { "source": "/api/ai/analyze",              "destination": "/api/ai/analyze.js" },
-    { "source": "/api/ai/upload",               "destination": "/api/ai/upload.js" },
-    { "source": "/api/ai/hairstyle",            "destination": "/api/ai/hairstyle.js" },
-    { "source": "/api/ai/hairstyle-graphic",    "destination": "/api/ai/hairstyle-graphic.js" },
-    { "source": "/api/ai/generate-image",       "destination": "/api/ai/generate-image.js" },
-    { "source": "/api/wa/webhook",              "destination": "/api/wa/webhook.js" },
-    { "source": "/api/cron/reminders",          "destination": "/api/cron/reminders.js" },
-    { "source": "/api/cron/birthday",           "destination": "/api/cron/birthday.js" },
-    { "source": "/api/cron/remind-soon",        "destination": "/api/cron/remind-soon.js" },
-    { "source": "/api/cron/expire-stale-bills",  "destination": "/api/cron/expire-stale-bills.js" },
-    { "source": "/api/cron/home-service-flag",   "destination": "/api/cron/home-service-flag.js" },
-    { "source": "/api/moka/sync-customers",     "destination": "/api/moka/sync-customers.js" },
-    { "source": "/api/(.*)",                    "destination": "/api/[...path].js" }
+    { "source": "/api/ai/analyze",             "destination": "/api/ai/analyze.js" },
+    { "source": "/api/ai/upload",              "destination": "/api/ai/upload.js" },
+    { "source": "/api/ai/hairstyle",           "destination": "/api/ai/hairstyle.js" },
+    { "source": "/api/ai/generate-image",      "destination": "/api/ai/generate-image.js" },
+    { "source": "/api/wa/webhook",             "destination": "/api/wa/webhook.js" },
+    { "source": "/api/cron/reminders",         "destination": "/api/cron/reminders.js" },
+    { "source": "/api/cron/birthday",          "destination": "/api/cron/birthday.js" },
+    { "source": "/api/cron/remind-soon",       "destination": "/api/cron/remind-soon.js" },
+    { "source": "/api/cron/expire-stale-bills","destination": "/api/cron/expire-stale-bills.js" },
+    { "source": "/api/cron/home-service-flag", "destination": "/api/cron/home-service-flag.js" },
+    { "source": "/api/moka/sync-customers",    "destination": "/api/moka/sync-customers.js" },
+    { "source": "/api/(.*)",                   "destination": "/api/[...path].js" }
   ],
   "headers": [
     {
       "source": "/Brand_assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     }
   ]
 }
