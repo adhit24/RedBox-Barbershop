@@ -4,6 +4,14 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
+
+// Generate deterministic UUID v5 from email namespace
+const UUID_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'; // DNS namespace
+function emailToUuid(email) {
+  if (!email || email === 'anonymous') return null;
+  return crypto.createHash('md5').update(email.toLowerCase().trim()).digest('hex').replace(/(\w{8})(\w{4})(\w{4})(\w{4})(\w{12})/, '$1-$2-$3-$4-$5');
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,11 +35,12 @@ module.exports = async function handler(req, res) {
     // Enforce per-member quota: max 2 analyses (whitelisted accounts are unlimited)
     const UNLIMITED_EMAILS = ['adhit24@gmail.com'];
     const MAX_USES = 2;
-    if (userEmail && !UNLIMITED_EMAILS.includes(userEmail)) {
+    const userUuid = emailToUuid(userEmail);
+    if (userEmail && !UNLIMITED_EMAILS.includes(userEmail) && userUuid) {
       const { count, error: countError } = await supabase
         .from('ai_uploads')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', userEmail)
+        .eq('user_id', userUuid)
         .neq('status', 'failed');
 
       if (!countError && count >= MAX_USES) {
@@ -73,14 +82,14 @@ module.exports = async function handler(req, res) {
       .from('ai-images')
       .getPublicUrl(storagePath);
 
-    // Create ai_uploads record
+    // Create ai_uploads record (userUuid already computed above for quota check)
     const { data: upload, error: dbError } = await supabase
       .from('ai_uploads')
       .insert({
         original_image_url: publicUrl,
         service_type: serviceType,
         status: 'pending',
-        user_id: userEmail || 'anonymous',
+        user_id: userUuid,
       })
       .select()
       .single();

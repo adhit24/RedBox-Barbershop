@@ -122,10 +122,17 @@ module.exports = async function handler(req, res) {
 
   } catch (err) {
     console.error('[AI Hairstyle] Error:', err.message, err.status || '');
+    // Log full error details for debugging
+    console.error('[AI Hairstyle] Full error:', {
+      message: err.message,
+      stack: err.stack,
+      response: err.response?.data,
+      status: err.status,
+    });
     // Return structured error so frontend can display it
     return res.status(500).json({
       error: err.message || 'Failed to generate hairstyle image',
-      detail: err.error?.message || '',
+      detail: err.error?.message || err.response?.data?.error?.message || '',
     });
   }
 };

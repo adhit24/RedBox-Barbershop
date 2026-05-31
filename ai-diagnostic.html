@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Diagnostic - RedBox Barbershop</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0A0A0A; color: #F5F5F5; font-family: 'Inter', sans-serif; padding: 20px; min-height: 100vh; }
+    h1 { font-size: 1.5rem; margin-bottom: 20px; color: #C1121F; }
+    .test-card { background: #111; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .test-title { font-size: 1rem; font-weight: 600; margin-bottom: 12px; }
+    .test-result { font-family: monospace; font-size: 0.85rem; padding: 12px; border-radius: 6px; margin-top: 8px; white-space: pre-wrap; }
+    .test-result.success { background: rgba(26,122,58,.2); color: #4ade80; }
+    .test-result.error { background: rgba(193,18,31,.2); color: #f87171; }
+    .test-result.pending { background: rgba(255,255,255,.08); color: #888; }
+    button { background: #C1121F; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    button:hover { opacity: 0.9; }
+    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+    .status-item { padding: 12px; background: rgba(255,255,255,.04); border-radius: 6px; }
+    .status-label { font-size: 0.75rem; color: #888; margin-bottom: 4px; }
+    .status-value { font-size: 0.9rem; font-weight: 600; }
+    .status-value.ok { color: #4ade80; }
+    .status-value.error { color: #f87171; }
+    .status-value.warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <h1>🔧 AI Hairstyle Diagnostic Tool</h1>
+  
+  <div class="test-card">
+    <div class="test-title">1. Session Storage Check</div>
+    <div id="session-result" class="test-result pending">Checking...</div>
+  </div>
+
+  <div class="test-card">
+    <div class="test-title">2. API Endpoints Status</div>
+    <button onclick="testApis()">Test APIs</button>
+    <div id="api-result" class="test-result pending">Click button to test</div>
+  </div>
+
+  <div class="test-card">
+    <div class="test-title">3. Test Hairstyle Generation</div>
+    <button onclick="testHairstyle()" id="test-btn">Test Generate</button>
+    <div id="hairstyle-result" class="test-result pending">Click button to test</div>
+  </div>
+
+  <div class="test-card">
+    <div class="test-title">4. System Status</div>
+    <div class="status-grid" id="status-grid">
+      <div class="status-item">
+        <div class="status-label">Upload ID</div>
+        <div class="status-value" id="status-upload">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">User Photo</div>
+        <div class="status-value" id="status-photo">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">API Base</div>
+        <div class="status-value" id="status-api">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Environment</div>
+        <div class="status-value" id="status-env">-</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const API_BASE = _isLocal ? 'http://localhost:3001/api/ai' : '/api/ai';
+    
+    // Check session storage on load
+    function checkSession() {
+      const resultEl = document.getElementById('session-result');
+      try {
+        const uploadId = sessionStorage.getItem('ai_upload_id');
+        const userPhoto = sessionStorage.getItem('ai_user_photo');
+        const aiResults = sessionStorage.getItem('ai_results');
+        
+        let html = '';
+        html += `upload_id: ${uploadId ? '✓ Found (' + uploadId.substring(0, 8) + '...)' : '✗ Missing'}\n`;
+        html += `user_photo: ${userPhoto ? '✓ Found (' + userPhoto.substring(0, 30) + '...)' : '✗ Missing'}\n`;
+        html += `ai_results: ${aiResults ? '✓ Found (' + JSON.stringify(JSON.parse(aiResults)).substring(0, 50) + '...)' : '✗ Missing'}`;
+        
+        resultEl.textContent = html;
+        resultEl.className = 'test-result ' + (uploadId ? 'success' : 'error');
+        
+        // Update status grid
+        document.getElementById('status-upload').textContent = uploadId ? uploadId.substring(0, 8) + '...' : 'Not found';
+        document.getElementById('status-upload').className = 'status-value ' + (uploadId ? 'ok' : 'error');
+        document.getElementById('status-photo').textContent = userPhoto ? 'Found' : 'Not found';
+        document.getElementById('status-photo').className = 'status-value ' + (userPhoto ? 'ok' : 'warn');
+        document.getElementById('status-api').textContent = API_BASE;
+        document.getElementById('status-env').textContent = _isLocal ? 'Local' : 'Production';
+        
+        return { uploadId, userPhoto, aiResults };
+      } catch (e) {
+        resultEl.textContent = 'Error: ' + e.message;
+        resultEl.className = 'test-result error';
+        return {};
+      }
+    }
+
+    // Test API endpoints
+    async function testApis() {
+      const resultEl = document.getElementById('api-result');
+      resultEl.textContent = 'Testing...';
+      resultEl.className = 'test-result pending';
+      
+      let results = [];
+      
+      // Test upload endpoint
+      try {
+        const uploadRes = await fetch(`${API_BASE}/upload`);
+        const uploadData = await uploadRes.json();
+        results.push(`Upload API: ${uploadRes.ok ? '✓ OK' : '✗ Error'} (${uploadData.status || uploadData.error || 'unknown'})`);
+      } catch (e) {
+        results.push(`Upload API: ✗ Failed (${e.message})`);
+      }
+      
+      // Test hairstyle endpoint
+      try {
+        const hairRes = await fetch(`${API_BASE}/hairstyle`);
+        const hairData = await hairRes.json();
+        results.push(`Hairstyle API: ${hairRes.ok ? '✓ OK' : '✗ Error'} (${hairData.status || hairData.error || 'unknown'})`);
+      } catch (e) {
+        results.push(`Hairstyle API: ✗ Failed (${e.message})`);
+      }
+      
+      // Test generate-image endpoint
+      try {
+        const imgRes = await fetch(`${API_BASE}/generate-image`);
+        const imgData = await imgRes.json();
+        results.push(`Generate-Image API: ${imgRes.ok ? '✓ OK' : '✗ Error'} (${imgData.status || imgData.error || 'unknown'})`);
+      } catch (e) {
+        results.push(`Generate-Image API: ✗ Failed (${e.message})`);
+      }
+      
+      resultEl.textContent = results.join('\n');
+      const allOk = results.every(r => r.includes('✓'));
+      resultEl.className = 'test-result ' + (allOk ? 'success' : 'error');
+    }
+
+    // Test actual hairstyle generation
+    async function testHairstyle() {
+      const resultEl = document.getElementById('hairstyle-result');
+      const btn = document.getElementById('test-btn');
+      
+      const { uploadId } = checkSession();
+      if (!uploadId) {
+        resultEl.textContent = 'Error: No uploadId found in session. Please upload a photo first.';
+        resultEl.className = 'test-result error';
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = 'Generating...';
+      resultEl.textContent = 'Sending request to /api/ai/hairstyle...';
+      resultEl.className = 'test-result pending';
+      
+      try {
+        const startTime = Date.now();
+        const res = await fetch(`${API_BASE}/hairstyle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            uploadId, 
+            hairstyleName: 'Crew Cut',
+            hairstyleDescription: 'Short, clean cut with tapered sides'
+          })
+        });
+        
+        const duration = Date.now() - startTime;
+        const data = await res.json();
+        
+        let html = `Status: ${res.status} ${res.statusText}\n`;
+        html += `Duration: ${duration}ms\n`;
+        html += `Response: ${JSON.stringify(data, null, 2).substring(0, 500)}`;
+        
+        if (data.imageUrl) {
+          html += `\n\n✓ Image generated successfully!`;
+          html += `\nURL: ${data.imageUrl.substring(0, 60)}...`;
+          resultEl.className = 'test-result success';
+        } else if (data.error) {
+          html += `\n\n✗ Error: ${data.error}`;
+          if (data.detail) html += `\nDetail: ${data.detail}`;
+          resultEl.className = 'test-result error';
+        } else {
+          resultEl.className = 'test-result warn';
+        }
+        
+        resultEl.textContent = html;
+      } catch (e) {
+        resultEl.textContent = 'Error: ' + e.message;
+        resultEl.className = 'test-result error';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test Generate';
+      }
+    }
+
+    // Run session check on load
+    checkSession();
+  </script>
+</body>
+</html>
