@@ -190,7 +190,7 @@ module.exports = async function handler(req, res) {
           role: 'user',
           content: [
             { type: 'text', text: COMBINED_PROMPT },
-            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'high' } }
+            { type: 'image_url', image_url: { url: upload.original_image_url, detail: 'low' } }
           ]
         }
       ]
