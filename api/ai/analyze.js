@@ -233,7 +233,25 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (err) {
-    console.error('[AI Analyze] Error:', err.message);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    console.error('[AI Analyze] Error:', err.message, err.stack);
+    // Update upload status to failed if we have uploadId
+    if (uploadId) {
+      try {
+        const supabase = createClient(
+          process.env.SUPABASE_URL,
+          process.env.SUPABASE_SERVICE_KEY
+        );
+        await supabase.from('ai_uploads').update({ 
+          status: 'failed', 
+          error_message: err.message 
+        }).eq('id', uploadId);
+      } catch (dbErr) {
+        console.error('[AI Analyze] Failed to update error status:', dbErr.message);
+      }
+    }
+    return res.status(500).json({ 
+      error: err.message || 'Internal server error',
+      detail: err.stack?.split('\n')?.[0] || ''
+    });
   }
 };

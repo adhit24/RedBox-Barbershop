@@ -124,12 +124,22 @@ class AIGroomingService {
         body: JSON.stringify({ uploadId, serviceType })
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Analysis failed');
+      const responseText = await response.text();
+      
+      // Try to parse as JSON, fallback to text if fails
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        // Not valid JSON - likely an HTML error page
+        console.error('[AI] Non-JSON response:', responseText.substring(0, 200));
+        throw new Error(`Server error ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || data.message || `Analysis failed (${response.status})`);
+      }
+
       if (data && !data.serviceType && serviceType) data.serviceType = serviceType;
       return data;
 
