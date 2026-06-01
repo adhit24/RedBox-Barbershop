@@ -74,7 +74,9 @@ function _fmtTimeOnly(isoStr) {
 
 async function sendHomeServiceReminders(supabase) {
   const now = new Date();
-  const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+  // Convert now to WIB (UTC+7)
+  const nowWIB = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  console.log(`[HomeServiceReminder] Now (UTC): ${now.toISOString()}, Now (WIB): ${nowWIB.toISOString()}`);
 
   // Find confirmed home service jobs where:
   // 1. Booking time is in ~1 hour (between now + 55 mins and now + 65 mins to handle cron timing)
@@ -95,8 +97,12 @@ async function sendHomeServiceReminders(supabase) {
     return;
   }
 
+  console.log(`[HomeServiceReminder] Found ${jobs.length} candidate jobs`);
+
   for (const job of jobs) {
     try {
+      console.log(`[HomeServiceReminder] Processing job ${job.id}`);
+      
       // Get schedule details
       const { data: sch, error: schError } = await supabase
         .from('schedules')
@@ -105,16 +111,34 @@ async function sendHomeServiceReminders(supabase) {
         .single();
 
       if (schError || !sch) {
-        console.warn(`[HomeServiceReminder] Schedule not found for job ${job.id}`);
+        console.warn(`[HomeServiceReminder] Schedule not found for job ${job.id}`, schError?.message);
         continue;
       }
 
-      const scheduleTime = new Date(sch.start_time);
+      console.log(`[HomeServiceReminder] Job ${job.id}: schedule.start_time = ${sch.start_time}`);
+
+      // Parse schedule.start_time (assuming it's stored as WIB datetime string, or ISO 8601 with timezone)
+      let scheduleTime;
+      try {
+        scheduleTime = new Date(sch.start_time);
+        if (isNaN(scheduleTime.getTime())) {
+          console.warn(`[HomeServiceReminder] Invalid start_time for job ${job.id}: ${sch.start_time}`);
+          continue;
+        }
+      } catch (err) {
+        console.warn(`[HomeServiceReminder] Error parsing start_time for job ${job.id}:`, err.message);
+        continue;
+      }
+
+      // Convert scheduleTime to UTC for comparison if needed
       const timeDiff = scheduleTime.getTime() - now.getTime();
       const minutesUntil = timeDiff / 1000 / 60;
 
+      console.log(`[HomeServiceReminder] Job ${job.id}: time until booking = ${minutesUntil.toFixed(1)} minutes`);
+
       // Only send if between 55 and 65 minutes from now
       if (minutesUntil < 55 || minutesUntil > 65) {
+        console.log(`[HomeServiceReminder] Job ${job.id}: skipping (not in 55-65 min window)`);
         continue;
       }
 
