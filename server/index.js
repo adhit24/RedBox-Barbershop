@@ -883,34 +883,32 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
-async function _notifyBarberHomeService(supabase, scheduleId, address) {
+// Notifikasi kapster home service menggunakan data booking langsung (tidak bergantung Moka bridge)
+async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, address) {
+  if (!bookingData.barber_id) return;
   const { notifyBarberNewHomeServiceJob } = require('./services/waNotification');
-  const { data: sch } = await supabase
-    .from('schedules')
-    .select('start_time, price, service_name, barber_id, customers(name)')
-    .eq('id', scheduleId)
-    .single();
-  if (!sch) return;
 
   const { data: barber } = await supabase
-    .from('barbers').select('name, phone').eq('id', sch.barber_id).single();
+    .from('barbers').select('name, phone').eq('id', bookingData.barber_id).single();
   if (!barber?.phone) return;
 
-  const dtWIB = new Date(sch.start_time);
+  const dtWIB = new Date(`${bookingData.date}T${bookingData.time}:00`);
   const dateStr = dtWIB.toLocaleDateString('id-ID', {
     timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
-  const timeStr = dtWIB.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+  const timeStr = dtWIB.toLocaleTimeString('id-ID', {
+    timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit',
+  });
 
   await notifyBarberNewHomeServiceJob({
     barberPhone:  barber.phone,
     barberName:   barber.name,
-    customerName: sch.customers?.name || 'Pelanggan',
+    customerName: bookingData.name || 'Pelanggan',
     dateStr,
     timeStr,
     address,
-    serviceLabel: sch.service_name || 'Home Service',
-    price:        `Rp ${(sch.price || 0).toLocaleString('id-ID')}`,
+    serviceLabel: bookingData.service || 'Home Service',
+    price:        bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
   });
 }
 
@@ -1063,11 +1061,19 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
           console.warn('[WA Confirm] failed:', e.message);
         }
         notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
-        // Send notification to barber if it's an outlet booking and barber is assigned
+        // Send notification to barber regardless of booking type
         if (type !== 'home_service') {
           _notifyBarberOutletBookingSupabase(supabase, data).catch(err =>
             console.error('[Outlet Booking] Barber notif failed:', err.message)
           );
+        } else {
+          // Home service — notify kapster immediately, independent of Moka bridge
+          const jobAddress = address || (notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/)?.[1]?.trim()) || '';
+          if (jobAddress) {
+            _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress).catch(err =>
+              console.error('[HomeService] Barber notif failed:', err.message)
+            );
+          }
         }
       }
 
@@ -1088,12 +1094,6 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
                 .select('id')
                 .single();
               homeServiceJobId = hsJob?.id || null;
-
-              if (homeServiceJobId) {
-                _notifyBarberHomeService(supabase, r.scheduleId, jobAddress).catch(err =>
-                  console.error('[HomeService] Barber notif failed:', err.message)
-                );
-              }
             }
           }
 
@@ -1208,7 +1208,11 @@ async function handleBookingUpdate(req, res) {
   if (updates.barber_id !== undefined) updates.barber_id = normalizeBarberIdInput(updates.barber_id);
 
   if (DB_TYPE === 'supabase') {
-    const { data: cur, error: curError } = await supabase.from('bookings').select('id,status').eq('id', req.params.id).single();
+    const { data: cur, error: curError } = await supabase
+      .from('bookings')
+      .select('id,status,barber_id,date,time,name,wa,service,price,location,notes')
+      .eq('id', req.params.id)
+      .single();
     if (curError) return res.status(500).json({ error: curError.message });
 
     const nextStatus = updates.status !== undefined ? updates.status : cur.status;
@@ -1223,6 +1227,27 @@ async function handleBookingUpdate(req, res) {
         } catch (e) {
             moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
         }
+      }
+    }
+
+    // Notify kapster if: booking is confirmed AND (barber just assigned/changed OR booking just confirmed)
+    const nextBarberId = updates.barber_id !== undefined ? updates.barber_id : cur.barber_id;
+    const barberChanged = updates.barber_id !== undefined && updates.barber_id !== cur.barber_id;
+    const justConfirmed = nextStatus === 'confirmed' && cur.status !== 'confirmed';
+    if (nextStatus === 'confirmed' && nextBarberId && (barberChanged || justConfirmed)) {
+      const isHomeService = data.notes?.includes('[HOME SERVICE]');
+      if (isHomeService) {
+        const addrMatch = data.notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/);
+        const jobAddress = addrMatch?.[1]?.trim() || '';
+        if (jobAddress) {
+          _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress).catch(err =>
+            console.error('[PATCH HomeService] Barber notif failed:', err.message)
+          );
+        }
+      } else {
+        _notifyBarberOutletBookingSupabase(supabase, data).catch(err =>
+          console.error('[PATCH Outlet] Barber notif failed:', err.message)
+        );
       }
     }
 
