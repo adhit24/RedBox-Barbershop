@@ -480,6 +480,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let allBarbers = [];
 
+  // TODO: keep in sync with BARBERS_BY_BRANCH @ api/wa/webhook.js (WA AI bot).
+  // If a barber is added/removed/moved between outlets, update BOTH places.
   const FALLBACK_BARBERS = [
     { id:'bypass-bob',        name:'Bob',          role:'Haircut;Fade;Coloring;Beard Trim',                      img:'https://lh3.googleusercontent.com/d/1q8jZWo5lHXb6PhxoFkVMQ9BsyO7hh87Z=w800',  branch:'bypass' },
     { id:'bypass-kaji-dodi',  name:'Dodi',         role:'Haircut',                                               img:'https://lh3.googleusercontent.com/d/1Oiu0LB7qtC0Hq1vsBXHp94uBDFKJ3GMs=w800',  branch:'bypass' },

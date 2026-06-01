@@ -350,11 +350,17 @@ function buildSystemPrompt(branch = 'bypass') {
   };
   
   const branchInfo = BRANCH_DATA[branch] || BRANCH_DATA.bypass;
+  const branchKapsters = (BARBERS_BY_BRANCH[branch] || BARBERS_BY_BRANCH.bypass)
+    .map(n => `Mas ${n}`)
+    .join(', ');
 
   return `Kamu adalah "Reddy", asisten AI resmi Redbox Barbershop — cabang ${branchInfo.name}. Sejak 2014 Redbox udah jadi salah satu barbershop premium paling dipercaya di Cirebon (dan Tegal).
 
 CABANG KAMU: ${branchInfo.name} (${branchInfo.address})
 Jam operasional cabang kamu: ${branchInfo.hours}
+KAPSTER CABANG KAMU (HANYA INI yang boleh kamu sebutkan ketika pelanggan tanya nama kapster / barber):
+${branchKapsters}
+PENTING: JANGAN PERNAH menyebut nama kapster dari cabang lain. Kalau pelanggan tanya nama kapster, hanya sebut dari list di atas. Daftar lengkap & jadwal live ada di redboxbarbershop.com/booking.html.
 Kamu HANYA melayani pelanggan untuk cabang ini. Jika pelanggan tanya tentang cabang lain, arahkan mereka ke website.
 
 IDENTITAS & TONE:
@@ -527,7 +533,25 @@ function fallbackReply(text, name) {
 const foreignSessions = new Map(); // phone → { state, language, data, lastActivity }
 const FOREIGN_SESSION_TTL = 30 * 60 * 1000; // 30 menit
 
-const KAPSTER_LIST = ['Mas Dika', 'Mas Onoy', 'Mas Dodi', 'Mas Abdul', 'Mas Rizky', 'Mas Iqbal'];
+// Per-branch kapster (barber) names.
+// TODO: keep in sync with FALLBACK_BARBERS @ js/main.js (and barbers table in Supabase).
+// If a barber is added/removed/moved between outlets, update BOTH places.
+const BARBERS_BY_BRANCH = {
+  bypass:    ['Bob', 'Dodi', 'Ari', 'Onoy', 'Abdul'],
+  samadikun: ['Khamami', 'Opan', 'Sofyan', 'Aden', 'Miftah'],
+  csb:       ['Syarif', 'Ubay', 'Ragil', 'Ega', 'Husen', 'Yudha'],
+  sumber:    ['Prima', 'Sigit', 'Didi'],
+  tegal:     ['Faiz', 'Yafi', 'Epik', 'Wawan', 'Ahmad', 'Sephril']
+};
+
+function getKapsterListForBranch(branch) {
+  const list = BARBERS_BY_BRANCH[branch] || BARBERS_BY_BRANCH.bypass;
+  return list.map(n => `Mas ${n}`);
+}
+
+// Flat list across all branches — used for foreign-name extraction fallback only
+const ALL_KAPSTER_NAMES = Object.values(BARBERS_BY_BRANCH).flat();
+
 const ADMIN_WA = process.env.ADMIN_WHATSAPP || '6285173100365';
 
 function isForeignLanguage(text) {
@@ -603,9 +627,10 @@ function foreignMsg(lang, msgs) {
   return msgs[lang] || msgs['english'] || msgs['en'];
 }
 
-async function handleForeignBooking(from, name, text, device) {
+async function handleForeignBooking(from, name, text, device, branch = 'bypass') {
   let session = getForeignSession(from);
   const lower = text.toLowerCase().trim();
+  const KAPSTER_LIST = getKapsterListForBranch(branch);
 
   // Cancel commands
   if (['cancel', 'stop', 'nevermind', '取消', 'キャンセル', 'iptal', '취소'].some(k => lower.includes(k))) {
@@ -622,7 +647,7 @@ async function handleForeignBooking(from, name, text, device) {
   }
 
   // ── General question handler — works in ANY state ──
-  const generalAnswer = handleForeignGeneralQuestion(text, session?.language || detectForeignLanguage(text), session);
+  const generalAnswer = handleForeignGeneralQuestion(text, session?.language || detectForeignLanguage(text), session, branch);
   if (generalAnswer) {
     if (session) { session.lastActivity = Date.now(); foreignSessions.set(from, session); }
     return { reply: generalAnswer, used: 'foreign_booking' };
@@ -770,7 +795,7 @@ async function handleForeignBooking(from, name, text, device) {
     }
 
     case 'awaiting_kapster': {
-      const kapster = extractForeignKapster(text);
+      const kapster = extractForeignKapster(text, branch);
       session.data.kapster = kapster;
       // If we already have date+time from smart extraction, skip to name
       if (session.data.date && session.data.time) {
@@ -928,8 +953,9 @@ async function handleForeignBooking(from, name, text, device) {
 }
 
 // ── General question handler for foreign customers ──
-function handleForeignGeneralQuestion(text, lang, session) {
+function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
   const lower = text.toLowerCase();
+  const KAPSTER_LIST = getKapsterListForBranch(branch);
 
   // Kapster/barber questions
   const kapsterPatterns = [
@@ -1158,14 +1184,19 @@ function extractForeignService(text) {
   return null;
 }
 
-function extractForeignKapster(text) {
+function extractForeignKapster(text, branch = 'bypass') {
   const lower = text.toLowerCase();
   if (['any', 'anyone', 'no preference', '任意', '誰でも', '아무나', 'herhangi biri', 'fark etmez',
     "doesn't matter", "don't mind", 'doesnt matter'].some(k => lower.includes(k))) {
     return 'Any available';
   }
-  const match = KAPSTER_LIST.find(k => lower.includes(k.toLowerCase().replace('mas ', '')));
-  return match || text.trim();
+  // Prefer match within current branch, then fall back to any branch
+  const branchList = getKapsterListForBranch(branch);
+  const branchMatch = branchList.find(k => lower.includes(k.toLowerCase().replace('mas ', '')));
+  if (branchMatch) return branchMatch;
+  const anyMatch = ALL_KAPSTER_NAMES.find(n => lower.includes(n.toLowerCase()));
+  if (anyMatch) return `Mas ${anyMatch}`;
+  return text.trim();
 }
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
@@ -1188,7 +1219,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const existingForeignSession = getForeignSession(from);
   if (existingForeignSession) {
     console.log(`[WA Bot] Foreign session active for ${from}, language: ${existingForeignSession.language}`);
-    const result = await handleForeignBooking(from, name, text, device);
+    const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
       const sendResult = await sendWA(from, result.reply, { branch });
       return { used: result.used, reply: result.reply, sendResult, error: null };
@@ -1198,7 +1229,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // New foreign language detected → start foreign booking flow
   if (isForeignLanguage(text)) {
     console.log(`[WA Bot] Foreign language detected from ${from} (${name}), starting foreign booking flow`);
-    const result = await handleForeignBooking(from, name, text, device);
+    const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
       const sendResult = await sendWA(from, result.reply, { branch });
       return { used: result.used, reply: result.reply, sendResult, error: null };
