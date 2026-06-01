@@ -10,11 +10,31 @@ export async function middleware(request: NextRequest) {
   // Public routes — no auth needed
   if (
     pathname.startsWith('/login') ||
+    pathname.startsWith('/barber/login') ||
     pathname.startsWith('/ai-hairstyle') ||
     pathname.startsWith('/api/ai-hairstyle') ||
+    pathname.startsWith('/api/barber/auth/') ||
     pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|js|json|css|woff|woff2)$/)
   ) {
     return NextResponse.next();
+  }
+
+  // Barber session cookie → allow /barber/* and /api/barber/*
+  const barberSession = request.cookies.get('redbox_barber_session')?.value;
+  if (barberSession) {
+    if (pathname === '/') {
+      return NextResponse.redirect(new URL('/barber/home', request.url));
+    }
+    if (pathname.startsWith('/barber/') || pathname.startsWith('/api/barber/')) {
+      return NextResponse.next();
+    }
+    if (pathname.startsWith('/admin/')) {
+      return NextResponse.redirect(new URL('/barber/home', request.url));
+    }
+  }
+
+  if (pathname.startsWith('/barber/') && !pathname.startsWith('/barber/login')) {
+    return NextResponse.redirect(new URL('/barber/login', request.url));
   }
 
   if (!supabaseUrl || !supabaseKey) return NextResponse.next();
@@ -36,20 +56,14 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Not logged in → redirect to /login
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  // Root / → redirect based on role
   if (pathname === '/') {
     const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    const dest = profile?.role === 'barber' ? '/barber/schedule' : '/admin/dashboard';
+      .from('users').select('role').eq('id', user.id).single();
+    const dest = profile?.role === 'barber' ? '/barber/home' : '/admin/dashboard';
     return NextResponse.redirect(new URL(dest, request.url));
   }
 
