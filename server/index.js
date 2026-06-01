@@ -12,6 +12,7 @@ const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
 // NOTE: Airtable dependency removed - using Supabase as primary source for barbers
 const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest, notifyCustomerReviewPointsCredited } = require('./services/waNotification');
+const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1075,6 +1076,25 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
             );
           }
         }
+      }
+
+      // Send Web Push to the assigned barber (fire-and-forget)
+      if (data && data.barber_id && data.location) {
+        supabase
+          .from('users')
+          .select('id')
+          .eq('barber_id', data.barber_id)
+          .eq('role', 'barber')
+          .single()
+          .then(({ data: barberUser }) => {
+            if (!barberUser) return;
+            sendPushToUser(supabase, barberUser.id, {
+              title: '📋 Booking Baru!',
+              body: `${data.name} — ${data.service} jam ${data.time}`,
+              url: '/barber/schedule',
+            }).catch(() => {});
+          })
+          .catch(() => {});
       }
 
       // Auto-book: untuk booking dari public website, status langsung CONFIRMED
@@ -2182,6 +2202,35 @@ try {
 } catch (e) {
   console.warn('[Cron] Could not start Moka cron jobs:', e.message);
 }
+
+// POST /api/push/subscribe — save push subscription token
+app.post('/api/push/subscribe', async (req, res) => {
+  const { user_id, endpoint, p256dh, auth } = req.body;
+  if (!user_id || !endpoint || !p256dh || !auth) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+  const { error } = await supabase
+    .from('push_subscriptions')
+    .upsert({ user_id, endpoint, p256dh, auth }, { onConflict: 'endpoint' });
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ ok: true });
+});
+
+// POST /api/push/send — send push to user or branch (admin only)
+app.post('/api/push/send', adminAuth, async (req, res) => {
+  const { user_id, branch, title, body, url } = req.body;
+  if (!title || !body) return res.status(400).json({ error: 'title and body required' });
+  try {
+    if (user_id) {
+      await sendPushToUser(supabase, user_id, { title, body, url });
+    } else if (branch) {
+      await sendPushToBranch(supabase, branch, { title, body, url });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+});
 
 // START SERVER
 if (require.main === module) {
