@@ -6,7 +6,7 @@ const { notifyBarberHomeServiceReminderH1 } = require('../../server/services/waN
 const ADMIN_PHONE = process.env.WA_ADMIN_NUMBER;
 
 function _db() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
 function _shortId(uuid) {
