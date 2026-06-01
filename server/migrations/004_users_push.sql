@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('owner', 'branch_admin', 'barber')),
-  branch TEXT,      -- NULL untuk owner; 'bypass'|'samadikun'|'csb'|'sumber'|'tegal' untuk lainnya
+  branch TEXT CHECK (branch IS NULL OR branch IN ('bypass', 'samadikun', 'csb', 'sumber', 'tegal')),      -- NULL untuk owner; 'bypass'|'samadikun'|'csb'|'sumber'|'tegal' untuk lainnya
   barber_id TEXT,   -- diisi untuk role 'barber', referensi ke barbers.id
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);
+
 -- GRANT wajib
 GRANT SELECT, INSERT, DELETE ON push_subscriptions TO anon, authenticated;
 
@@ -33,6 +35,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   read BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 
 -- GRANT wajib
 GRANT SELECT, INSERT, UPDATE ON notifications TO anon, authenticated;
