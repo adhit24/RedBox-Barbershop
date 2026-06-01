@@ -2203,6 +2203,10 @@ try {
   console.warn('[Cron] Could not start Moka cron jobs:', e.message);
 }
 
+// Barber self-service routes
+const { createBarberRoutes } = require('./routes/barber');
+app.use('/api/barber', createBarberRoutes(supabase));
+
 // POST /api/push/subscribe — save push subscription token
 app.post('/api/push/subscribe', async (req, res) => {
   const { user_id, endpoint, p256dh, auth } = req.body;
