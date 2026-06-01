@@ -1,5 +1,5 @@
 const CACHE_NAME = 'redbox-staff-v1';
-const SHELL = ['/', '/login', '/admin/dashboard', '/barber/schedule'];
+const SHELL = ['/login'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

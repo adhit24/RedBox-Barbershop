@@ -46,6 +46,13 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Seed branch from user.branch for branch_admin
+  useEffect(() => {
+    if (user?.role === 'branch_admin' && user.branch) {
+      setBranch(user.branch as BranchKey);
+    }
+  }, [user]);
+
   // Auto-refresh every 60s
   useEffect(() => {
     const t = setInterval(load, 60_000);

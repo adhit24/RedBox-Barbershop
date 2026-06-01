@@ -37,6 +37,13 @@ export default function BookingsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Seed branch from user.branch for branch_admin
+  useEffect(() => {
+    if (user?.role === 'branch_admin' && user.branch) {
+      setBranch(user.branch as BranchKey);
+    }
+  }, [user]);
+
   async function handleStatusChange(id: string, status: string) {
     try {
       await fetch('/api/admin/booking-status', {

@@ -25,6 +25,13 @@ export default function BarbersPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Seed branch from user.branch for branch_admin
+  useEffect(() => {
+    if (user?.role === 'branch_admin' && user.branch) {
+      setBranch(user.branch as BranchKey);
+    }
+  }, [user]);
+
   const filtered = barbers.filter((b) => branch === 'all' || b.branch === branch);
 
   async function toggleActive(barber: Barber) {
