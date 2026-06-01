@@ -1,12 +1,12 @@
 /**
- * Vercel Cron — GET /api/cron/reminders
- * Runs daily at 10:00 WIB (03:00 UTC).
+ * Cron — GET /api/cron/reminders
+ * Runs daily at 10:00 WIB via cron-job.org.
  * Sends WhatsApp H-1 booking reminder to customers with appointments tomorrow.
+ * Re-engagement batch dipindah ke /api/cron/reengagement (endpoint terpisah).
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { notifyCustomerReminderH1 } = require('../../server/services/waNotification');
-const { sendReengagementBatch } = require('../../server/services/reengagement');
 
 function tomorrowWIB() {
   const now = new Date();
@@ -93,18 +93,7 @@ module.exports = async function handler(req, res) {
     }
 
     console.log(`[Reminders] Done. Sent: ${sent}, Failed: ${failed}`);
-
-    // ── Re-engagement batch (at-risk + lost customers) ──
-    // Jalan setelah H-1 selesai. Error di sini tidak boleh mempengaruhi response H-1.
-    let reengagement = null;
-    try {
-      reengagement = await sendReengagementBatch(supabase);
-    } catch (err) {
-      console.error('[Reminders] Re-engagement batch error:', err.message);
-      reengagement = { error: err.message };
-    }
-
-    return res.status(200).json({ sent, failed, date: tomorrow, total: bookings.length, reengagement });
+    return res.status(200).json({ sent, failed, date: tomorrow, total: bookings.length });
 
   } catch (err) {
     console.error('[Reminders] Unexpected error:', err.message);
