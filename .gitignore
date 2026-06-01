@@ -104,3 +104,5 @@ customer-export-*.csv
 # Local manual trigger scripts (dev only)
 run-reengagement-now.js
 server/run-reengagement-now.js
+aibot_5_branch.md
+redbox-barbershop-log-export-*.json
