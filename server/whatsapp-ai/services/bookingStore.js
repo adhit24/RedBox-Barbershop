@@ -44,6 +44,7 @@ const saveBooking = (data) => {
     status: 'confirmed',
     h1_sent: false,
     h2_sent: false,
+    review_sent: false,
   };
 
   bookings.push(booking);
@@ -59,6 +60,16 @@ const saveBooking = (data) => {
 const getPendingReminders = () => {
   return _load().filter(b =>
     b.status === 'confirmed' && (!b.h1_sent || !b.h2_sent)
+  );
+};
+
+/**
+ * Get bookings that need a post-appointment review request.
+ * Eligible: confirmed + review not sent yet.
+ */
+const getPendingReviews = () => {
+  return _load().filter(b =>
+    b.status === 'confirmed' && !b.review_sent
   );
 };
 
@@ -80,4 +91,4 @@ const markReminderSent = (id, flag) => {
  */
 const getAllBookings = () => _load();
 
-module.exports = { saveBooking, getPendingReminders, markReminderSent, getAllBookings };
+module.exports = { saveBooking, getPendingReminders, getPendingReviews, markReminderSent, getAllBookings };

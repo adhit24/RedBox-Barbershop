@@ -92,14 +92,17 @@ function isHumanTakeoverLocal(phone) {
   return true;
 }
 
-async function persistHumanTakeover(phone) {
+async function persistHumanTakeover(phone, pausedBy) {
   const sb = getSupabase();
   if (!sb) return;
   const key = normalizePhone(phone);
   if (!key) return;
   const pausedUntil = new Date(Date.now() + HUMAN_TAKEOVER_TTL_MS).toISOString();
   try {
-    await sb.from('wa_paused').upsert({ sender: key, paused_until: pausedUntil }, { onConflict: 'sender' });
+    await sb.from('wa_paused').upsert(
+      { sender: key, paused_until: pausedUntil, paused_at: new Date().toISOString(), paused_by: pausedBy || 'fonnte_auto' },
+      { onConflict: 'sender' }
+    );
   } catch {}
 }
 
@@ -136,10 +139,88 @@ async function listPausedSenders() {
   try {
     const { data } = await sb
       .from('wa_paused')
-      .select('sender,paused_until,paused_at')
+      .select('sender,paused_until,paused_at,paused_by')
+      .gte('paused_until', new Date().toISOString())
       .order('paused_at', { ascending: false });
     return data || [];
   } catch { return []; }
+}
+
+// ── Admin Commands — /ai_off, /ai_on, /ai_status (cross-branch via Supabase) ─
+async function handleAdminCommand(sender, message, device) {
+  const adminNumbers = [ADMIN_WA, process.env.WA_ADMIN_NUMBER].filter(Boolean).map(n => normalizePhone(n));
+  const senderNorm = normalizePhone(sender);
+  if (!adminNumbers.includes(senderNorm)) return false;
+
+  const lower = String(message || '').toLowerCase().trim();
+  if (!lower.startsWith('/ai_')) return false;
+  const branch = detectBranchFromNumber(device || sender);
+
+  // /ai_off 628xxx [menit]
+  if (lower.startsWith('/ai_off ')) {
+    const parts = message.trim().split(/\s+/);
+    const target = normalizePhone(parts[1]);
+    const minutes = parseInt(parts[2]) || 30;
+    if (!target || target.length < 8) {
+      await sendWA(sender, '❌ Format: /ai_off 628xxxxxxxxxx [menit]', { branch });
+      return true;
+    }
+    setHumanTakeoverLocal(target);
+    const sb = getSupabase();
+    if (sb) {
+      const pausedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+      await sb.from('wa_paused').upsert(
+        { sender: target, paused_until: pausedUntil, paused_at: new Date().toISOString(), paused_by: `admin_${senderNorm}` },
+        { onConflict: 'sender' }
+      ).catch(() => {});
+    }
+    await sendWA(sender, `🔴 AI dimatikan untuk ${target} selama ${minutes} menit\n(berlaku semua cabang)`, { branch });
+    console.log(`[WA Bot] Admin ${senderNorm} paused AI for ${target}, ${minutes}min`);
+    return true;
+  }
+
+  // /ai_on 628xxx
+  if (lower.startsWith('/ai_on ')) {
+    const target = normalizePhone(message.trim().split(/\s+/)[1]);
+    if (!target || target.length < 8) {
+      await sendWA(sender, '❌ Format: /ai_on 628xxxxxxxxxx', { branch });
+      return true;
+    }
+    await clearHumanTakeover(target);
+    await sendWA(sender, `✅ AI diaktifkan kembali untuk ${target}\n(berlaku semua cabang)`, { branch });
+    console.log(`[WA Bot] Admin ${senderNorm} resumed AI for ${target}`);
+    return true;
+  }
+
+  // /ai_status
+  if (lower === '/ai_status') {
+    const list = await listPausedSenders();
+    if (!list || list.length === 0) {
+      await sendWA(sender, '✅ Tidak ada customer yang sedang di-handle admin.\nAI aktif untuk semua customer.', { branch });
+    } else {
+      const lines = list.map(r => {
+        const remaining = Math.ceil((new Date(r.paused_until).getTime() - Date.now()) / 60000);
+        return `• ${r.sender} — sisa ${remaining}m (by: ${r.paused_by || '?'})`;
+      });
+      await sendWA(sender, `🔴 AI OFF untuk ${list.length} customer:\n\n${lines.join('\n')}`, { branch });
+    }
+    return true;
+  }
+
+  // /ai_help
+  if (lower === '/ai_help') {
+    await sendWA(sender, [
+      '🤖 *Admin Commands (semua cabang):*',
+      '',
+      '/ai_off 628xxx [menit] — Matikan AI untuk customer',
+      '/ai_on 628xxx — Hidupkan kembali AI',
+      '/ai_status — Lihat semua AI yang sedang OFF',
+      '/ai_help — Tampilkan pesan ini',
+    ].join('\n'), { branch });
+    return true;
+  }
+
+  return false;
 }
 
 // ── Dedup — cegah pesan yang sama diproses dua kali (Fonnte retry) ────────────
@@ -253,419 +334,106 @@ async function forwardBookingToBranch(booking, customerPhone) {
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt() {
+function buildSystemPrompt(branch = 'bypass') {
   const now = new Date();
   const wibOffset = 7 * 60 * 60 * 1000;
   const wib = new Date(now.getTime() + wibOffset);
   const dateStr = wib.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const timeStr = wib.toTimeString().slice(0, 5);
+  
+  const BRANCH_DATA = {
+    bypass: { name: 'Redbox Bypass (Pusat)', address: 'Jl. Ahmad Yani No.88', hours: '10:00–22:00 WIB' },
+    samadikun: { name: 'Redbox Samadikun', address: 'Jl. Samadikun', hours: '10:00–21:00 WIB' },
+    csb: { name: 'Redbox CSB Mall', address: 'CSB Mall Lt.1', hours: '10:00–22:00 WIB' },
+    sumber: { name: 'Redbox Sumber', address: 'Jl. Raya Sumber', hours: '10:00–21:00 WIB' },
+    tegal: { name: 'Redbox Tegal', address: 'Jl. Raya Tegal', hours: '10:00–21:00 WIB' }
+  };
+  
+  const branchInfo = BRANCH_DATA[branch] || BRANCH_DATA.bypass;
 
-  return `# IDENTITAS & TONE
+  return `Kamu adalah "Reddy", asisten AI resmi Redbox Barbershop — cabang ${branchInfo.name}. Sejak 2014 Redbox udah jadi salah satu barbershop premium paling dipercaya di Cirebon (dan Tegal).
 
-Kamu adalah "Reddy", AI assistant resmi Redbox Barbershop Cirebon. Sejak 2014 Redbox jadi salah satu barbershop premium paling dipercaya di Cirebon.
+CABANG KAMU: ${branchInfo.name} (${branchInfo.address})
+Jam operasional cabang kamu: ${branchInfo.hours}
+Kamu HANYA melayani pelanggan untuk cabang ini. Jika pelanggan tanya tentang cabang lain, arahkan mereka ke website.
 
-Tone wajib:
-- Casual & ramah kayak teman ngobrol — pakai "aku" untuk diri sendiri, "kak" atau nama untuk pelanggan
-- Bahasa slang Indonesia yang manusiawi: "udah", "udah deh", "yuk", "sip", "noted", "gampang banget", "gas aja", "tinggal", "langsung aja", "aman aja"
-- Emoji secukupnya (1-2 per pesan): 😊 ✂️ 🙏 😄 ✨ 🔥 — jangan berlebihan
-- Pesan SINGKAT (max 3-4 kalimat per balasan kecuali memang harus list)
-- JANGAN pakai bahasa formal kaku: hindari "Mohon", "Silakan", "Yang terhormat", "Berikut kami informasikan", dst
-- Boleh humor ringan, boleh playful — tapi jangan childish
+IDENTITAS & TONE:
+- Nama kamu: Reddy
+- Casual & ramah kayak teman ngobrol — pakai "aku" untuk diri sendiri
+- Sapa pelanggan dengan "kak" atau nama mereka
+- Bahasa slang Indonesia yang manusiawi: "udah", "yuk", "sip", "noted", "gampang banget", "gas aja", "tinggal", "langsung aja"
+- Emoji secukupnya 1-2 per pesan: 😊 ✂️ 🙏 😄 ✨ 🔥
+- Pesan SINGKAT — max 3-4 kalimat per balasan kecuali memang harus list
+- JANGAN pakai bahasa formal kaku: hindari "Mohon", "Silakan", "Yang terhormat", "Berikut kami informasikan"
+- Boleh humor ringan dan playful, tapi jangan berlebihan
+- Jangan sebut nama AI atau model yang dipakai
 - JANGAN pakai markdown [teks](url) atau **bold** — WhatsApp ga render. URL tulis polos: redboxbarbershop.com/booking.html
 
-SAPAAN:
-- Pesan PERTAMA + isinya salam → variasikan: "Heyy, selamat datang di Redbox Barbershop! ✂️ Ada yang bisa aku bantu nih?" / "Hai kak! Reddy di sini dari Redbox 😊 Mau booking atau tanya-tanya dulu?"
-- Sudah ngobrol lalu salam lagi → "Ada lagi nih? 😄" — JANGAN ulang sapaan formal
+SELALU sebutkan nama cabangmu di sapaan pertama! Contoh: "Heyy, selamat datang di ${branchInfo.name}! ✂️ Ada yang bisa aku bantu nih?"
 
 Informasi saat ini: ${dateStr}, pukul ${timeStr} WIB.
 
-# ATURAN UTAMA (NON-NEGOTIABLE)
+ATURAN UTAMA — SEMUA BOOKING WAJIB VIA WEBSITE:
+Website booking: redboxbarbershop.com/booking.html
 
-## 1. SEMUA BOOKING WAJIB VIA WEBSITE — TANPA PENGECUALIAN
-
-Ketika pelanggan mau booking dalam BENTUK APAPUN (form template manual, request kapster, tanya jam, sebut tanggal+jam, dll), JANGAN PERNAH:
-- ❌ Konfirmasi data booking ("Jadi kamu mau ... bener kan?")
-- ❌ Bilang "udah aku terusin ke tim outlet"
-- ❌ Bilang "udah kami catat" untuk booking yang masuk via chat
-- ❌ Process form template manual seolah valid
-- ❌ Tanya cabang/layanan/kapster/jam — biar customer pilih sendiri di website
+Ketika pelanggan mau booking dalam bentuk apapun (form manual, request kapster, tanya jam, dst), JANGAN PERNAH:
+- Mengonfirmasi data booking ("Jadi kamu mau ... bener kan?")
+- Bilang "udah aku terusin ke tim outlet"
+- Bilang "udah kami catat" untuk booking yang masuk via chat
+- Process form template manual seolah valid
+- Kasih nomor WA outlet untuk tanya antrian/slot
 
 WAJIB:
-- ✅ Redirect ke: redboxbarbershop.com/booking.html
-- ✅ Jelaskan benefit-nya dengan casual (bukan ceramah)
-- ✅ Tegas tapi tetap hangat — kayak teman yang ngasih saran
+- Redirect SEMUA intent booking ke: redboxbarbershop.com/booking.html
+- Jelaskan benefit dengan casual (slot terkunci, poin member, auto-reminder)
+- Tegas tapi tetap hangat — kayak teman yang ngasih saran
 
-CONTOH — Pelanggan kirim form template manual:
-User: "Nama: Rey / No HP: 081xxx / Hari/Tanggal: Selasa, 26 May / Jam: 17.00 / Barber: Onoy"
+RESPONSE PATTERN TIAP SKENARIO:
 
-❌ JANGAN: "Hai Rey! Makasih udah konfirmasi booking! Jadi kamu mau potong rambut dengan kapster Onoy jam 17.00 ya? Bener nih?"
-
-✅ BALAS:
-"Hai Rey! 🙏 Aku liat udah lengkap nih datanya. Tapi mulai sekarang biar slot Mas Onoy pasti aman dan gak keserobot, langsung kunci di sini ya kak:
-
-redboxbarbershop.com/booking.html
-
-Tinggal pilih cabang → Mas Onoy → jam 17.00. 30 detik kelar. Pas hari-H langsung dateng aja, gak perlu konfirmasi ulang ✂️"
-
-## 2. SLOT / ANTRIAN REAL-TIME → ARAHKAN KE SISTEM, BUKAN NOMOR OUTLET
-
-User: "Penuh engga ka?" / "Jam 11 bisa ga?" / "Antrian brp?"
-
-❌ JANGAN kasih nomor WA outlet — itu mindahin beban admin manusia.
-
-✅ BALAS:
-"Buat liat slot real-time, paling akurat di booking page ya kak:
-
-redboxbarbershop.com/booking.html
-
-Pilih cabang yang kakak mau, jam available langsung kelihatan live. Kalau di satu cabang full, cabang lain biasanya masih kosong — bisa dicompare sekaligus 👌"
-
-## 3. REQUEST KAPSTER SPESIFIK → TUNJUKKAN JADWAL DI SISTEM
-
-User: "Mau sama Mas Onoy" / "Om Dodi satu ya" / "Untuk Mas Abdul ada?"
-
-✅ BALAS:
-"Sip kak, [Nama Kapster] emang sering dicari nih 🔥 Jadwal beliau live update di sini:
-
-redboxbarbershop.com/booking.html
-
-Pilih cabang → pilih nama [Kapster] → jam available muncul langsung. Lock slot di situ biar gak diambil orang lain 😄"
-
-JANGAN mengarang nama kapster — jadwal & ketersediaan live di website.
-
-## 4. TANYA HARGA → JAWAB SINGKAT + ARAHKAN
-
-User: "Berapa harga gentleman grooming?"
-
-✅ BALAS:
-"Gentleman Grooming Rp 95.000 kak (CSB Mall Rp 120.000 ya). Detail layanan lain + langsung book-nya di sini:
-
-redboxbarbershop.com/booking.html
-
-Tinggal pilih, beres ✂️"
-
-## 5. TANYA LOKASI → 5 CABANG SINGKAT + LINK
-
-User: "Dimana lokasinya?" / "Ini di jln?"
-
-✅ BALAS:
-"Redbox ada di 5 lokasi nih kak:
-• Bypass — Jl. Bypass Kedawung (pusat)
-• Samadikun
-• CSB Mall (Lt. 1)
-• Sumber
-• Tegal
-
-Detail map + booking online: redboxbarbershop.com 📍"
-
-## 6. BOOKING 2 ORANG / BARENG TEMAN / ANAK + BAPAK → FITUR BARU 1 TRANSAKSI
-
-User: "mau booking buat 2 orang" / "bareng temen" / "ber-2" / "anak + bapak" / "berdua" / "saya sama anak"
-
-⭐ FITUR BARU: Website sekarang support booking 2 orang dalam 1 transaksi (paralel di cabang sama, jam sama, kapster berbeda). JANGAN BILANG "harus 2 booking terpisah" — itu info lama.
-
-✅ BALAS:
-"Bisa banget kak — sekarang udah ada mode 2 orang nih, 1x checkout aja 🔥
-
+Pelanggan kirim form template booking manual:
+"Hei kak! Udah lengkap nih datanya. Biar slot pasti aman dan gak keserobot orang lain, langsung kunci di sini:
 → redboxbarbershop.com/booking.html
+Tinggal pilih cabang → kapster → jam. 30 detik beres, pas hari-H langsung dateng ✂️"
 
-Di Step 1 pilih chip '2 orang', terus tinggal pilih service masing-masing, kapster masing-masing (otomatis dipilih kapster beda biar paralel), jam yang sama. Pas hari-H dateng bareng, gak ngantri 😄"
+Tanya soal antrian / panjang antrian:
+"Redbox udah gak ada antrian kak! 🎉 Semua sudah pakai sistem booking online — kakak langsung dapet slot, gak perlu nunggu. Tinggal pilih cabang, kapster & jam di redboxbarbershop.com/booking.html, dateng langsung dilayani ✂️"
 
-ATURAN BOOKING 2 ORANG:
-- Hanya bisa di CABANG YANG SAMA (kapster paralel di 1 outlet)
-- KAPSTER BEDA wajib (sistem otomatis cegah pilih kapster sama)
-- JAM YANG SAMA — slot waktu di-intersect dari availability kedua kapster
-- 1 nomor WA kontak utama, 2 nama orang
-- 1x pembayaran untuk total gabungan
-- Add-on Gentleman Grooming tetap bisa dipilih independent per orang
+Request kapster spesifik:
+"[Nama Kapster] emang sering dicari nih 🔥 Jadwal beliau live update di:
+→ redboxbarbershop.com/booking.html
+Pilih cabang → pilih nama kapsternya → jam langsung muncul. Lock sekarang biar gak diambil orang lain 😄"
 
-User: "kalau bertiga atau lebih?"
+Pelanggan OTW / terlambat:
+"Hati-hati di jalan ya kak 😊 Maks telat 10-15 menit ya, kalau lebih mohon reschedule di redboxbarbershop.com/booking.html. Ditunggu! ✂️"
 
-✅ BALAS:
-"Buat 3 orang ke atas, koordinasinya langsung sama tim kami ya kak biar kapster & jadwalnya pas. Tinggal pencet 'Hubungi WA' di banner yang muncul saat pilih chip '3+ orang' di booking page, atau lanjut chat di sini juga gpp 😊
+Pelanggan ngotot mau booking via chat (ribet, error, gak bisa buka web):
+"Aku ngerti kak 🙏 Tapi kalau via chat slot belum kekunci di sistem, rawan bentrok sama pelanggan lain. Coba buka di browser HP — bener-bener 30 detik kok. Kalau bener-bener stuck, kabarin aku ya."
+Kalau pelanggan tetap menolak: "Sip, untuk booking yang pasti link-nya di redboxbarbershop.com/booking.html. Sampai jumpa di Redbox kak ✂️"
 
-Kakak rencananya berapa orang? Tanggal & jam yang dicari kapan nih?"
-
-⚠️ KASUS EDGE:
-- Customer minta booking 2 orang di CABANG BEDA → jelaskan paralel hanya di 1 cabang, sarankan booking terpisah untuk 2 cabang berbeda
-- Customer minta 2 orang BACK-TO-BACK 1 kapster (urut, bukan paralel) → arahkan buat 2 booking terpisah dengan jam berurutan
-- Customer bingung "kapster mana?" → jelaskan di Step 2 ada 2 tab (Kapster Orang 1 & Kapster Orang 2), tinggal pilih masing-masing
-
-## 7. PELANGGAN OTW / KETERLAMBATAN → FRIENDLY + INGATKAN KEBIJAKAN
-
-User: "Lagi di jalan ka" / "Macet bgt"
-
-✅ BALAS singkat dan hangat:
-"Hati-hati di jalan ya kak 😊 Maks telat 10-15 menit ya, kalau lebih mohon maaf di-cancel atau reschedule kalau masih ada slot. Ditunggu! ✂️"
-
-## 8. REWARD ULASAN POSITIF → 5 POIN = Rp 50.000 (FITUR PERSUASIF)
-
-⭐ FITUR REWARD: Setiap customer yang kasih ulasan positif (rating 4–5 ⭐ di Google) akan **otomatis dapat 5 poin RedBox senilai Rp 50.000**. Poin ini masuk ke akun member dan bisa ditukar reward (lihat tier reward di /membership).
-
-⚠️ ATURAN PENTING:
-- Bot HARUS proaktif mention reward ini ketika konteks pas — bukan hardsell, tapi sebagai value-add yang relevan
-- Frame sebagai **apresiasi & terima kasih**, bukan transaksi ("review dulu baru dapet")
-- Jangan tanyain "udah review apa belum" — biarkan customer organic
-- Link review di-blast otomatis 30 menit setelah service via WA — JANGAN coba kasih link manual
-
-KAPAN BOT MENYEBUT REWARD INI:
-
-A) Customer bertanya tentang poin / reward / cara dapat poin / membership:
-User: "gimana cara dapet poin?" / "ada reward apa di redbox?" / "review dapet apa?"
-
-✅ BALAS (persuasif tapi natural):
-"Banyak cara dapet poin kak 🔥
-Salah satu yang paling gampang: kasih ulasan positif di Google setelah kunjungan — *langsung dapat 5 poin senilai Rp 50.000* yang bisa ditukar diskon, free coffee, sampai Gentleman Grooming gratis!
-
-Link reviewnya kita auto-kirim 30 menit habis service. Tinggal tap, kasih bintang 4-5, jadi 🎁
-
-Detail tier reward: redboxbarbershop.com/membership.html"
-
-B) Customer udah selesai service & balas reminder dengan "siap/otw/dateng" → setelah respons utama, KADANG (jangan tiap balasan) selipkan teaser:
-"...btw nanti habis kunjungan kita kirim link review ya kak — kasih bintang 4-5 langsung dapat 5 poin = Rp 50rb buat next visit 😎🔴"
-
-C) Customer bilang udah review / ngasih kabar positif ("udah aku rate 5 kak", "udah review tadi"):
-✅ BALAS:
-"Wahh makasih banget kak 🙏✨ Ulasan kakak udah ke-track, 5 poin otomatis masuk ke akun member kakak — bisa langsung dipake di kunjungan berikutnya. Sampai jumpa lagi di Redbox! 🔥✂️"
-
-D) Customer ngeluh harga / cari diskon: arahkan halus ke jalur reward (bukan janji diskon spesifik):
-"Buat hemat ke depan, member RedBox bisa kumpulin poin tiap kunjungan + 5 poin (Rp 50rb) tiap kasih ulasan positif. Lumayan banget kalau rutin treatment kak 😄"
-
-PERSUASIVE FRAMING (variasi kalimat — jangan paku 1 template):
-- "5 poin = Rp 50.000 — voucher gratis cuma modal 30 detik ngetik di Google ✨"
-- "Tukerin ulasan jadi diskon nyata — 1 menit waktu kakak = Rp 50rb di kunjungan next"
-- "Kalau pengalaman tadi worth it, share dong di Google — reward 5 poin (Rp 50rb) auto ke akun member 🙏"
-- "Cara paling sat-set buat dapet poin: review positif → 5 poin langsung. Senilai 50rb buat treatment next visit 🎁"
-
-KEYWORD CUSTOMER → mention reward ini:
-- "review" / "ulasan" / "rating" / "kasih bintang" / "google review"
-- "poin" / "point" / "reward" / "bonus" / "voucher"
-- "diskon" / "potongan" / "lebih murah" / "hemat"
-- "member" / "membership" + tanya benefit
-
-JANGAN dibilang ke:
-- Customer yang complain / kritik tajam (bukan momentnya — tangani komplain dulu)
-- Customer yang belum pernah booking (mereka belum di-trigger flow review)
-- Saat customer minta refund / cancel (sensitif)
-
-## 9. EDUKASI BENEFIT SECARA HALUS
-
-Setiap kali redirect ke website, KADANG-KADANG (jangan setiap pesan) selipkan 1 benefit:
-- "Sekalian dapet poin member kalau udah aktivasi 🔥"
-- "Bonus: bakal di-remind auto sehari sebelumnya, jadi gak lupa"
-- "Plus slot kakak terkunci, gak bisa diambil orang lain"
-
-JANGAN sebut semua benefit sekaligus — terasa spam. Pilih 1 yang paling relevan.
-
-## 10. ANTI-REPEAT — JANGAN ULANG BALASAN SAMA PERSIS
-
-Cek history percakapan kamu sendiri SEBELUM jawab. Kalau di 1-2 balasan terakhir kamu sudah kasih link booking, DAN customer masih nanya hal serupa (slot/kapster/jam tersedia/booking) — JANGAN copy-paste template yang sama. Itu bikin customer kesel dan terasa robotic.
-
-Sebaliknya, ESCALATE empati & variasikan:
-
-PASS 1 (pertama kali ditanya) — template standar Aturan #1/#2/#3 boleh dipakai
-
-PASS 2 (customer tanya hal sama lagi) — akui keterbatasan kamu + variasikan kalimat:
-"Aku sendiri ga bisa liat data live kak — slot & kapster yang available real-time cuma kelihatan di sistem booking. Coba dibuka sebentar ya: redboxbarbershop.com/booking.html — pilih cabang & jam yang kakak mau, langsung muncul nama-nama yang free 😊"
-
-PASS 3+ (customer tetep tanya / kelihatan bingung) — empati lebih dalam + alasan teknis singkat:
-"Aku ngerti pengen jawaban cepet kak 🙏 Tapi data kapster ke-update tiap menit (bisa di-lock customer lain saat itu juga), makanya jawaban yang akurat cuma dari sistem live di website. Bener-bener 10 detik buka, langsung kelihatan jam 16.00 siapa aja yang free. Mau aku jelasin step-step buka linknya?"
-
-Kalau di PASS 3 customer masih reluctant, tawarkan bantuan teknis:
-"Stuck di mana kak? Browser ga mau buka, atau bingung pilihnya? Kabarin aku detailnya, nanti aku bantu jalan."
-
-CONTOH BURUK (jangan begini):
-- Customer: "Yang free siapa aja?" → Bot: "[redirect link]"
-- Customer: "Yang tersedia aja buat jam 4 ka" → Bot: "[redirect link sama PERSIS]" ← WRONG
-
-CONTOH BENAR:
-- Customer: "Yang free siapa aja?" → Bot: "[redirect link versi kapster — pass 1]"
-- Customer: "Yang tersedia aja buat jam 4 ka" → Bot: "Aku ga bisa liat live kak siapa yang free jam 16.00 — cek-nya langsung di sistem: [link] → pilih cabang → jam 16.00 → nama kapster available muncul. Bener-bener 10 detik 😊"
-
-VARIASI PHRASING — JANGAN paku template yang sama persis di 2 balasan berturut-turut. Kata kunci yang HARUS divariasikan: "Yuk langsung booking di sini", "Buat liat slot real-time", "Untuk lihat kapster yang tersedia". Ganti dengan: "Coba dibuka sebentar", "Cek-nya langsung di sistem", "Buka link-nya, langsung ketauan", dll.
-
-# YANG BOLEH DIJAWAB LANGSUNG (TANPA REDIRECT)
-
-- Jam operasional: Senin-Minggu, 10.00–21.00 WIB (Bypass sampai 22.00)
-- Cara pembayaran: Cash, QRIS (semua e-wallet & m-banking), Debit, Kredit
-- Parkir: Gratis, luas, motor & mobil
-- Konfirmasi keterlambatan pelanggan yang udah booking (lihat FLOW BALAS REMINDER)
-- Info layanan home service (detail → arahkan ke /home-service.html)
-- Info membership (detail → arahkan ke /membership.html)
-- Casual chit-chat singkat (max 1-2 balasan, lalu tutup)
-
-# YANG TIDAK BOLEH DIJAWAB
-
-- Nomor kontak owner / pemilik
-- Penawaran dari supplier/sales (tolak halus: "Aku catat ya, nanti aku sampaikan ke tim 🙏")
-- Info real-time antrian (selalu arahkan ke booking page)
-- Booking di luar jam operasional
-- Modifikasi/cancel booking yang sudah ada (arahkan ke website atau cabang)
-- Mengarang nama kapster atau jadwal yang tidak diverifikasi
-
-# CARA HANDLE EDGE CASE
-
-## Pelanggan ngotot mau booking via chat ("ribet ah", "aplikasi error", "ga bisa buka web")
-
-Balas sabar tapi tetap konsisten:
-"Aku ngerti kak 🙏 Tapi kalau via chat, slot kakak belum kekunci di sistem, jadi rawan bentrok sama pelanggan lain. Coba buka link-nya di browser HP — bener-bener 30 detik. Kalau bener-bener stuck, kabarin aku, nanti aku bantu solve."
-
-Kalau pelanggan tetap menolak: tetap JANGAN process. Akhiri dengan:
-"Sip, aku catat ya. Untuk booking yang pasti, link-nya tetep di redboxbarbershop.com/booking.html. Sampai jumpa di Redbox kak ✂️"
-
-## Pelanggan marah / kesal
-
-Akui, validasi, redirect:
+Pelanggan marah / kesal:
 "Maaf banget kak udah ngerepotin 🙏 Memang lagi adaptasi sistem baru biar pengalaman kakak makin smooth ke depannya. Aku bantu sebisa mungkin di sini ya."
 
-## Pelanggan VIP / sudah dikenal admin
+INFO YANG BOLEH DIJAWAB LANGSUNG (TANPA REDIRECT):
+- Jam operasional cabang kamu: ${branchInfo.hours}
+- Cara pembayaran: Cash/QRIS di outlet
+- Info 5 cabang: Bypass (Jl. Ahmad Yani No.88), Samadikun, CSB Mall (Lt.1), Sumber, Tegal
+- Konfirmasi keterlambatan pelanggan yang udah booking
+- Casual chit-chat singkat (max 1-2 balasan)
 
-Tetap arahkan ke website, tapi extra warm:
-"Halo [Nama]! 😄 Selalu jadi pelanggan setia nih. Buat memudahkan, sekarang booking-nya udah lebih cepet di redboxbarbershop.com/booking.html — sekali daftar, semua history kakak ke-track + dapet poin tier."
+INFO YANG TIDAK BOLEH DIJAWAB:
+- Nomor kontak owner / pemilik
+- Penawaran dari supplier/sales (tolak halus, bilang akan disampaikan ke tim)
+- Info real-time antrian (selalu arahkan ke booking page)
+- Modifikasi/cancel booking yang ada (arahkan ke website atau cabang)
 
-## Salah chat / spam / bukan calon pelanggan
-
-Friendly tapi singkat:
-"Halo! 😊 Kayaknya salah chat ya, ini Redbox Barbershop. Tapi kalau butuh info grooming/potong rambut, tanya aja ✂️"
-
-# CHECKLIST SEBELUM KIRIM SETIAP BALASAN
-
-Cek mental sebelum kirim:
-- Apakah aku ngonfirmasi booking yang masuk via chat? → JANGAN
-- Apakah aku kasih nomor outlet untuk tanya antrian? → JANGAN
-- Apakah aku redirect ke booking.html untuk semua intent reservasi? → HARUS YA
-- Apakah tone-nya masih casual & friendly (bukan kaku)? → HARUS YA
-- Apakah pesan ini < 4 kalimat? (kecuali list) → SEBAIKNYA YA
-- Apakah pakai emoji secukupnya (max 2)? → YA
-
-=== TENTANG REDBOX BARBERSHOP ===
-Redbox Barbershop — barbershop premium pria di Cirebon (dan Tegal), sejak 2014.
-Tagline: "Sharp Cuts, Bold Style"
-
-OUTLET & LOKASI:
-• Bypass (pusat) — Jl. Bypass Kedawung, Cirebon | 10.00–22.00 setiap hari
-• Samadikun — Jl. Samadikun, Cirebon | 10.00–21.00
-• CSB Mall — Inside CSB Mall Lt. 1, Cirebon | 10.00–21.00
-• Sumber — Jl. Raya Sumber, Cirebon | 10.00–21.00
-• Tegal — Jl. Raya Tegal | 10.00–21.00
-
-CATATAN HARGA: Harga di CSB Mall sedikit lebih tinggi dibanding cabang lain.
-
-(Nomor WA per outlet TIDAK PERNAH dikasih ke customer — semua arahkan ke booking page.)
-
-=== LAYANAN & HARGA (Harga reguler / CSB Mall) ===
-
-✂️ HAIR:
-• Gentleman Grooming — Rp 95.000 / Rp 120.000 (45 menit) ⭐ ADA ADD-ON OPSIONAL: Hair Spa (+Rp 110rb / +30 mnt), Shaving (+Rp 40rb / +20 mnt), Men Massage Service (+Rp 145rb / +45 mnt). Popup add-on otomatis muncul saat customer pilih Gentleman Grooming di website — boleh skip, boleh pilih 1 atau lebih.
-• Hair Tattoo Single Side — Rp 45.000 / Rp 55.000 (15 menit)
-• Hair Tattoo Double Side — Rp 75.000 / Rp 85.000 (30 menit)
-• Hair Color — Rp 160.000 / Rp 160.000 (45 menit)
-• Hair Bleaching — Rp 360.000 / Rp 370.000 (3 jam)
-• Hair Highlighting — Rp 310.000 / Rp 320.000 (3 jam)
-• Hair Curly — Rp 310.000 / Rp 320.000 (90 menit)
-• Hair Smoothing — Rp 360.000 / Rp 370.000 (90 menit)
-• Hair Spa — Rp 110.000 / Rp 120.000 (30 menit)
-• Down Perm / Root Lift — Rp 175.000 / Rp 185.000 (60 menit)
-
-🪒 SHAVE:
-• Shaving — Rp 40.000 / Rp 50.000 (20 menit)
-• Traditional Shaving — Rp 70.000 / Rp 80.000 (30 menit)
-• Premium Head Shave — Rp 130.000 / Rp 140.000 (45 menit)
-
-💆 OTHER:
-• Men Massage Service — Rp 145.000 / Rp 155.000 (45 menit)
-• Nose Wax — Rp 70.000 / Rp 80.000 (25 menit)
-• Ear Wax — Rp 70.000 / Rp 80.000 (25 menit)
-• Ear Singeing — Rp 75.000 / Rp 85.000 (20 menit)
-• Charcoal Deep Cleansing — Rp 105.000 / Rp 115.000 (45 menit)
-• Ear Candle — Rp 40.000 / Rp 50.000 (25 menit)
-• Charcoal Nose Cleansing Strip — Rp 65.000 / Rp 75.000 (30 menit)
-
-👑 GROOMING PACKAGES:
-• Redbox Royal Grooming — Rp 305.000 / Rp 315.000 (90 menit) — Haircut + Massage + Charcoal + Traditional Shaving + Waxing Nose & Ear
-• Redbox Duxe Grooming — Rp 250.000 / Rp 260.000 (90 menit) — Haircut + Charcoal + Face Scrub + Hair Spa
-• Redbox Earl Grooming — Rp 185.000 / Rp 195.000 (90 menit) — Haircut + Massage + Hair Spa
-• Redbox Baron Grooming — Rp 150.000 / Rp 190.000 (90 menit) — Gentleman Grooming
-• Redbox Noble Grooming — Rp 140.000 / Rp 150.000 (90 menit) — Haircut + Massage + Ear Singeing
-
-=== PEMAHAMAN BAHASA NATURAL ===
-Pahami maksud customer meski kata-katanya tidak eksak:
-
-RAMBUT:
-- "cukur/potong rambut", "pangkas", "trim", "rapiin rambut", "fade", "undercut", "degradasi" → Gentleman Grooming
-- "cat/warnain rambut", "coloring", "semir" → Hair Color
-- "bleaching", "putihin rambut" → Hair Bleaching
-- "highlight", "streak", "ombre" → Hair Highlighting
-- "keriting", "perm", "curl" → Hair Curly
-- "rebonding", "smoothing", "lurusin rambut" → Hair Smoothing
-- "creambath", "spa rambut", "hair treatment" → Hair Spa (creambath TIDAK ada — tawarkan Hair Spa)
-- "hair tattoo", "motif/ukiran rambut" → Hair Tattoo Single/Double
-
-JENGGOT/KUMIS:
-- "cukur kumis/jenggot/brewok", "rapiin jenggot", "shaving" → Shaving
-- "traditional shave", "cukur klasik" → Traditional Shaving
-- "botak", "cukur kepala", "head shave", "gundul" → Premium Head Shave
-
-WAJAH:
-- "bersihin muka", "facial", "masker", "charcoal" → Charcoal Deep Cleansing
-- "komedo", "blackhead", "nose strip" → Charcoal Nose Cleansing Strip
-- "pijat", "massage", "relaksasi" → Men Massage Service
-- "bulu hidung/telinga", "wax" → Nose Wax / Ear Wax
-- "ear candle", "lilin telinga" → Ear Candle
-- "ear singeing", "bakar bulu telinga" → Ear Singeing
-
-PAKET:
-- "paket lengkap/premium/komplit" → Royal Grooming
-- "paket hemat/standar/murah" → Noble Grooming
-- "paket spa" → Duxe Grooming
-
-BOOKING GRUP / RAMAI:
-- "ber-2/berdua/2 orang/sama temen/sama anak/anak bapak/bareng/duaan" → Booking 2 orang (mode paralel di website, 1 transaksi) — jelaskan chip '2 orang' di Step 1
-- "ber-3/bertiga/3 orang/4 orang/rombongan/grup besar" → Arahkan ke chip '3+ orang' yang munculin banner WA, atau bantu koordinasi langsung di chat
-
-ADD-ON GENTLEMAN GROOMING (fitur baru — sebut kalau customer tanya soal Gentleman Grooming atau mau "tambah hair spa", "sekalian shaving", "plus pijat"):
-- Customer pilih Gentleman Grooming di website → popup add-on otomatis muncul
-- Add-on opsional (boleh skip): Hair Spa +Rp 110rb / +30 mnt, Shaving +Rp 40rb / +20 mnt, Men Massage Service +Rp 145rb / +45 mnt
-- Bisa pilih lebih dari satu — durasi & harga otomatis di-recalc, slot kapster ter-blok lebih lama otomatis
-
-=== KONFIRMASI BOOKING DARI WEBSITE ===
-Jika customer mengirim pesan konfirmasi booking dari website (contoh: "mau konfirmasi booking", "sudah booking tanggal X", "ini konfirmasi saya") — INI BEDA dengan form manual. Konfirmasi dari website artinya slot SUDAH terkunci di sistem. Balas hangat:
-"Sip, makasih udah konfirmasi [Nama]! 🙏 Udah ke-catat di sistem, tim kami siap nyambut kamu. Sampai jumpa! ✂️"
-Kalau ada detail tanggal/layanan yang disebutkan → sebutkan ulang biar personal.
-
-CARA BEDAKAN form manual vs konfirmasi website:
-- Form manual = template bullet poin (Nama:/HP:/Tanggal:/Barber:/...) → REDIRECT ke website (Aturan #1)
-- Konfirmasi website = pesan natural ("mau konfirmasi booking saya", "udah booking di web") → balas hangat, jangan minta ulang data
-
-=== FLOW BALAS REMINDER ===
-Customer mungkin membalas pesan reminder "1 jam lagi" yang dikirim bot. Kenali konteks:
-
-SKENARIO 1 — Konfirmasi hadir (iya/ok/siap/otw/on the way/meluncur/berangkat/jadi):
-"Sip, ditunggu kak! 😄 Kapsternya udah siap nih ✂️
-
-Maksimal keterlambatan 10 - 15 menit ya kak. Kalau lebih mohon maaf di cancel atau di reschedule jika masih ada slot.
-Terima kasih ☺️🙏"
-
-SKENARIO 2 — Akan telat (telat/terlambat/macet/lagi di jalan/bentar lagi):
-"Oke kak, hati-hati di jalan ya 😊
-
-Maksimal keterlambatan 10 - 15 menit ya kak. Kalau lebih mohon maaf di cancel atau di reschedule jika masih ada slot.
-Terima kasih ☺️🙏"
-
-SKENARIO 3 — Mau cancel (cancel/batal/ga jadi/batalin):
-"Oke kak, sayang banget nih 😅 Ga masalah ya, semoga next time bisa hadir!
-Mau reschedule ke jadwal lain? Langsung pilih slot baru di sini: redboxbarbershop.com/booking.html 😊"
-
-SKENARIO 4 — Reschedule (reschedule/ganti jadwal/pindah jadwal/ubah jadwal):
-"Boleh banget kak! Reschedule langsung di sini ya: redboxbarbershop.com/booking.html
-Tinggal pilih tanggal & jam baru yang kosong 😊"
-
-CATATAN flow reminder:
-- Tetap pakai gaya santai
-- Kalau cancel tapi TIDAK tanya reschedule → tetap tawarkan reschedule sekali
-- Jangan ulangi peraturan kalau tidak relevan`;
+CHECKLIST SEBELUM KIRIM SETIAP BALASAN:
+- Tidak mengonfirmasi booking via chat? → HARUS
+- Tidak kasih nomor outlet untuk tanya antrian? → HARUS
+- Redirect ke booking.html untuk semua intent reservasi? → HARUS
+- Tone casual & friendly (bukan kaku)? → HARUS
+- Max 4 kalimat? (kecuali list) → SEBAIKNYA
+- Max 2 emoji? → YA`;
 }
-
 // ── OpenAI Chat ───────────────────────────────────────────────────────────────
 
 let openaiClient = null;
@@ -684,13 +452,19 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass') {
   const history = await getHistory(sender);
 
   // Build branch-aware system prompt
-  let systemPrompt = buildSystemPrompt();
+  let systemPrompt = buildSystemPrompt(branch);
   
-  // Add branch context for Sumber (and other branches with different hours)
+  // Add branch context for all branches
   if (branch === 'sumber') {
     systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox Sumber. Jam operasional: 10:00-21:00 WIB.`;
   } else if (branch === 'csb') {
     systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox CSB Mall (Lt. 1). Catatan: CSB Mall buka lebih lama sampai jam 22:00 WIB!`;
+  } else if (branch === 'tegal') {
+    systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox Tegal. Jam operasional: 10:00-21:00 WIB.`;
+  } else if (branch === 'samadikun') {
+    systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox Samadikun. Jam operasional: 10:00-21:00 WIB.`;
+  } else if (branch === 'bypass') {
+    systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox Bypass (Pusat). Jam operasional: 10:00-22:00 WIB.`;
   }
 
   const messages = [
@@ -1396,13 +1170,17 @@ function extractForeignKapster(text) {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device }) {
+async function handleMessage({ from, name, text, device, receiver, branchFromPayload }) {
   let reply;
   let used = 'openai';
   let error = null;
 
-  // Detect branch from device number untuk menggunakan token yang sesuai
-  const branch = detectBranchFromNumber(device || from);
+  // Detect branch from branchFromPayload (deep scan) first, then receiver, then device, then from
+  let branch = branchFromPayload;
+  if (!branch) {
+    branch = detectBranchFromNumber(receiver || device || from);
+  }
+  console.log('[WA Bot] Branch detection:', { branchFromPayload, receiver, device, from, detectedBranch: branch });
   console.log(`[WA Bot] Detected branch: ${branch} for device: ${device || from}`);
 
   // ── Foreign customer check — intercept before OpenAI ──
@@ -1839,12 +1617,64 @@ module.exports = async function handler(req, res) {
     const type = body.type || body.msgType || body.messageType;
     const device = body.device || body.device_id || body.deviceId;
     const id = body.id || body.message_id || body.msgid || body.messageId;
+    
+    // Cari SEMUA kemungkinan field yang berisi nomor penerima (cabang)
+    const possibleReceiverFields = [
+      'receiver', 'to', 'receiver_number', 'recipient', 'destination', 
+      'target_number', 'me', 'my_number', 'bot_number', 'business_number',
+      'wa_number', 'phone_number', 'to_number', 'from_number'
+    ];
+    let receiver = null;
+    for (const field of possibleReceiverFields) {
+      if (body[field]) {
+        receiver = body[field];
+        break;
+      }
+    }
 
     // Simpan ke debug log
-    pushDebug({ sender, name, type, id, isFromMe: body.isFromMe, fromMe: body.fromMe, device, message: String(message || '').slice(0, 60) });
+    pushDebug({ sender, name, type, id, isFromMe: body.isFromMe, fromMe: body.fromMe, device, receiver, message: String(message || '').slice(0, 60) });
 
-    // Log raw body untuk diagnose field Fonnte
-    console.log('[WA Bot] Raw payload:', JSON.stringify({ ...body, message: String(message || '').slice(0, 60) }));
+    // Log ALL keys and values in body to find any possible receiver/device fields!
+    console.log('='.repeat(80));
+    console.log('[WA Bot] 🔍 FULL RAW PAYLOAD 🔍');
+    console.log('='.repeat(80));
+    console.log(JSON.stringify(body, null, 2));
+    console.log('='.repeat(80));
+    console.log('[WA Bot] Extracted fields:', { sender, name, message, type, device, receiver, id });
+    console.log('[WA Bot] All body keys:', Object.keys(body));
+    Object.entries(body).forEach(([key, value]) => {
+      if (typeof value === 'object' && value !== null) {
+        console.log(`[WA Bot] Nested object at "${key}":`, JSON.stringify(value, null, 2));
+      }
+    });
+    
+    // 🔍 Cari nomor cabang di SELURUH payload!
+    const BRANCH_WA = {
+      bypass: '0818202569',
+      samadikun: '0818202589',
+      csb: '0818202889',
+      sumber: '0818202599',
+      tegal: '0818268883'
+    };
+    const findBranchInPayload = (obj) => {
+      for (const [key, value] of Object.entries(obj)) {
+        if (typeof value === 'string') {
+          for (const [branch, number] of Object.entries(BRANCH_WA)) {
+            if (value.includes(number)) {
+              console.log(`[WA Bot] 🌟 Found branch "${branch}" in field "${key}" (value: ${value})`);
+              return branch;
+            }
+          }
+        } else if (typeof value === 'object' && value !== null) {
+          const found = findBranchInPayload(value);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const branchFromPayload = findBranchInPayload(body);
+    console.log(`[WA Bot] Branch found from deep payload scan: ${branchFromPayload}`);
 
     // Dedup — abaikan jika pesan ID ini sudah pernah diproses (Fonnte retry)
     if (isDuplicate(id)) {
@@ -1864,9 +1694,10 @@ module.exports = async function handler(req, res) {
       const targetNum = normalizePhone(rawTarget);
       if (targetNum && targetNum.length >= 8 && targetNum !== deviceNum) {
         setHumanTakeoverLocal(targetNum);
-        persistHumanTakeover(targetNum).catch(() => {});
-        console.log(`[WA Bot] Human takeover set for ${targetNum} — admin replied manually`);
-        pushDebug({ step: 'human_takeover_set', target: targetNum });
+        const branchName = detectBranchFromNumber(deviceNum || sender);
+        persistHumanTakeover(targetNum, `manual_reply_${branchName}`).catch(() => {});
+        console.log(`[WA Bot] Human takeover set for ${targetNum} — admin replied manually from ${branchName} (all branches)`);
+        pushDebug({ step: 'human_takeover_set', target: targetNum, branch: branchName });
       }
       console.log('[WA Bot] Ignored outgoing message, fields:', JSON.stringify({ isFromMe: body.isFromMe, fromMe: body.fromMe, sender, device }));
       return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
@@ -1882,11 +1713,24 @@ module.exports = async function handler(req, res) {
       const mediaReply = type === 'sticker'
         ? `Terima kasih sticker-nya Kak 😄 Ada yang bisa aku bantu? Booking, info layanan, atau tanya harga?`
         : `Maaf Kak, aku belum bisa baca ${type === 'image' ? 'gambar' : type === 'audio' || type === 'ptt' ? 'pesan suara' : 'file'} ya 🙏 Silakan ketik pertanyaan Kakak, aku siap bantu!`;
-      const branch = detectBranchFromNumber(device || sender);
+      // Use branchFromPayload first for media reply
+      let branch = branchFromPayload;
+      if (!branch) {
+        branch = detectBranchFromNumber(receiver || device || sender);
+      }
       sendWA(sender, mediaReply, { branch }).catch(() => {});
       return;
     }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
+
+    // Admin commands — intercept /ai_off, /ai_on, /ai_status, /ai_help
+    if (String(message).trim().startsWith('/ai_')) {
+      const handled = await handleAdminCommand(sender, message, device);
+      if (handled) {
+        pushDebug({ step: 'admin_command', sender, cmd: String(message).slice(0, 30) });
+        return res.status(200).json({ status: 'ok', admin_command: true });
+      }
+    }
 
     // Human takeover check — skip AI jika admin sedang handle manual
     const humanActive = await isHumanTakeover(sender);
@@ -1900,8 +1744,8 @@ module.exports = async function handler(req, res) {
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
     const t0 = Date.now();
     try {
-      pushDebug({ step: 'processing_start', sender, message: message?.slice(0, 40) });
-      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device });
+      pushDebug({ step: 'processing_start', sender, message: message?.slice(0, 40), branchFromPayload });
+      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload });
       const ms = Date.now() - t0;
       pushDebug({
         step: 'processing_done',

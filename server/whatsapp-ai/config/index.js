@@ -30,18 +30,18 @@ module.exports = {
   // Human handoff settings (when admin manually takes over)
   HANDOFF_DURATION_MINUTES: parseInt(process.env.HANDOFF_DURATION_MINUTES || '30'),
 
-  // Business info
+  // Business & branch identity
+  // Each branch runs its own instance with its own .env
   BRAND_NAME: 'RedBox Barbershop',
   BRAND_ADDRESS: process.env.BRAND_ADDRESS || 'RedBox Barbershop',
+  BRANCH_NAME: process.env.BRANCH_NAME || 'RedBox Barbershop',   // e.g. "Bypass", "CSB", "Samadikun"
+  BRANCH_ADDRESS: process.env.BRANCH_ADDRESS || '',               // Full address of this branch
+
+  // Admin WhatsApp (escalation & backup booking notifications)
   ADMIN_WHATSAPP: process.env.ADMIN_WHATSAPP || '',
 
-  // Branch WhatsApp numbers for dispatch forwarding
-  // Format: 628xxxxxxxxxx (no + or spaces)
-  BRANCH_WA: {
-    bypass:    process.env.WA_BRANCH_BYPASS    || '',
-    csb:       process.env.WA_BRANCH_CSB       || '',
-    samadikun: process.env.WA_BRANCH_SAMADIKUN || '',
-    sumber:    process.env.WA_BRANCH_SUMBER    || '',
-    tegal:     process.env.WA_BRANCH_TEGAL     || '',
-  },
+  // Kapster WhatsApp numbers for this branch
+  // Format: comma-separated 628xxxxxxxxxx values
+  // e.g. KAPSTER_WA=628111000001,628111000002,628111000003
+  KAPSTER_WA: process.env.KAPSTER_WA || '',
 };

@@ -95,27 +95,85 @@ const buildRedirectMsg = (from, opts = {}) => {
   return `Untuk booking yang pasti aman, langsung kunci di sini ya kak:\n\n→ ${BOOKING_URL}\n\n${benefits[count % benefits.length]}`;
 };
 
+// ─── Admin Commands ─────────────────────────────────────────────────────────
+// Commands available when admin sends message starting with /
+// All commands berlaku di SEMUA CABANG via Supabase shared state.
+const handleAdminCommand = async (from, lower, text) => {
+  // /ai_on 628xxx — Re-enable AI for a customer
+  if (lower.startsWith('/ai_on ')) {
+    const targetPhone = text.split(' ')[1]?.trim();
+    if (targetPhone) {
+      handoffStore.disableHandoff(targetPhone);
+      await sendText(from, `✅ AI diaktifkan kembali untuk ${targetPhone}\n(berlaku semua cabang)`);
+      console.log(`[Admin] AI re-enabled for ${targetPhone} by admin ${from}`);
+    } else {
+      await sendText(from, '❌ Format: /ai_on 628xxxxxxxxxx');
+    }
+    return true;
+  }
+
+  // /ai_off 628xxx [menit] — Manually pause AI for a customer
+  if (lower.startsWith('/ai_off ')) {
+    const parts = text.split(' ');
+    const targetPhone = parts[1]?.trim();
+    const minutes = parseInt(parts[2]) || config.HANDOFF_DURATION_MINUTES || 30;
+    if (targetPhone) {
+      handoffStore.enableHandoff(targetPhone, minutes, `admin_${from}`);
+      await sendText(from, `🔴 AI dimatikan untuk ${targetPhone} selama ${minutes} menit\n(berlaku semua cabang)`);
+      console.log(`[Admin] AI paused for ${targetPhone} by admin ${from}, ${minutes}min`);
+    } else {
+      await sendText(from, '❌ Format: /ai_off 628xxxxxxxxxx [menit]\nContoh: /ai_off 628123456789 30');
+    }
+    return true;
+  }
+
+  // /ai_status — Show all active handoffs (cross-branch)
+  if (lower === '/ai_status') {
+    const active = await handoffStore.getAllActive();
+    if (!active || active.length === 0) {
+      await sendText(from, '✅ Tidak ada customer yang sedang di-handle admin.\nAI aktif untuk semua customer.');
+    } else {
+      const lines = active.map(h =>
+        `• ${h.customerPhone} — sisa ${h.remainingMinutes}m (by: ${h.pausedBy})`
+      );
+      await sendText(from, `🔴 AI OFF untuk ${active.length} customer:\n\n${lines.join('\n')}`);
+    }
+    return true;
+  }
+
+  // /ai_help — Show available commands
+  if (lower === '/ai_help') {
+    await sendText(from, [
+      '🤖 *Admin Commands (semua cabang):*',
+      '',
+      '/ai_off 628xxx [menit] — Matikan AI untuk customer',
+      '/ai_on 628xxx — Hidupkan kembali AI',
+      '/ai_status — Lihat semua AI yang sedang OFF',
+      '/ai_help — Tampilkan pesan ini',
+    ].join('\n'));
+    return true;
+  }
+
+  return false; // Not an admin command
+};
+
 // Route and handle an incoming message
 const handle = async ({ from, name, text }) => {
   const lower = text.toLowerCase().trim();
   const intent = classifyIntent(text);
 
   try {
-    // 0. Admin commands - re-enable AI for a customer
-    // Format: /ai_on 628123456789
-    if (lower.startsWith('/ai_on ') && config.ADMIN_WHATSAPP && from === config.ADMIN_WHATSAPP) {
-      const targetPhone = text.split(' ')[1]?.trim();
-      if (targetPhone) {
-        handoffStore.disableHandoff(targetPhone);
-        await sendText(from, `✅ AI telah diaktifkan kembali untuk ${targetPhone}`);
-        console.log(`[Admin] AI re-enabled for ${targetPhone} by admin ${from}`);
-      }
-      return;
+    // 0. Admin commands — only from ADMIN_WHATSAPP number
+    const isAdmin = config.ADMIN_WHATSAPP && from === config.ADMIN_WHATSAPP;
+    if (isAdmin && lower.startsWith('/')) {
+      const handled = await handleAdminCommand(from, lower, text);
+      if (handled) return;
     }
 
     // 0b. Check if admin is handling this conversation (human handoff)
-    if (handoffStore.isHandoffActive(from)) {
-      console.log(`[Handler] Handoff active for ${from}, skipping AI response`);
+    //     Uses async check → includes cross-branch Supabase lookup
+    if (await handoffStore.isHandoffActiveAsync(from)) {
+      console.log(`[Handler] Handoff active for ${from}, skipping AI response (cross-branch)`);
       return;
     }
 
@@ -207,7 +265,7 @@ const handle = async ({ from, name, text }) => {
     if (['halo', 'hai', 'hi', 'hello', 'assalamualaikum', 'selamat'].some(k => lower.startsWith(k))) {
       const hour = new Date().getHours();
       const greet = hour < 12 ? 'pagi' : hour < 15 ? 'siang' : hour < 18 ? 'sore' : 'malam';
-      await sendText(from, `Heyy ${name}! Selamat ${greet} ✂️\n\nAda yang bisa aku bantu? Mau lihat layanan, booking, atau nanya-nanya dulu? 😊`);
+      await sendText(from, `Heyy ${name}! Selamat ${greet} dari RedBox *${config.BRANCH_NAME}* ✂️\n\nAda yang bisa aku bantu? Mau lihat layanan, booking, atau nanya-nanya dulu? 😊`);
       return;
     }
 

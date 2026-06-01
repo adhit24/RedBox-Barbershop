@@ -27,9 +27,9 @@ const detectAdminIntervention = (value) => {
     
     // If status is 'sent' or 'read', it means business recently interacted
     if (['sent', 'delivered', 'read'].includes(status.status)) {
-      // Enable handoff when business sends message to customer
-      handoffStore.enableHandoff(recipientId, config.HANDOFF_DURATION_MINUTES || 30);
-      console.log(`[Webhook] Admin intervention detected for ${recipientId}, handoff enabled`);
+      // Enable handoff when business sends message to customer (all branches)
+      handoffStore.enableHandoff(recipientId, config.HANDOFF_DURATION_MINUTES || 30, 'cloud_api_status');
+      console.log(`[Webhook] Admin intervention detected for ${recipientId}, handoff enabled (all branches)`);
     }
   }
 };

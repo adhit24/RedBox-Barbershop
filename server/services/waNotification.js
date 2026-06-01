@@ -51,7 +51,7 @@ Kami udah catat jadwalnya — tinggal dateng aja kak! 😄
 
 Ada yang mau ditanyain? Mau tanya soal layanan, tips perawatan rambut, atau hal lain — aku siap bantu kapan aja! 💬✂️`;
 
-  return sendWA(wa, message);
+  return sendWA(wa, message, { branch: location });
 }
 
 // 2. Reminder H-1 ke pelanggan (sehari sebelum) — dipakai oleh cron reminders.js
@@ -76,7 +76,7 @@ async function notifyCustomerReminderH1(booking) {
 Dateng tepat waktu ya kak biar langsung bisa dilayani! 😊
 Sampai besok! ✂️🔴`;
 
-  return sendWA(wa, message);
+  return sendWA(wa, message, { branch: location });
 }
 
 // 3. Notifikasi ke admin/barber saat ada booking baru
@@ -152,7 +152,7 @@ Beneran 30 detik aja — bantu kami tumbuh, kakak yang dapet hadiahnya. Win-win 
 
 _(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`;
 
-  return sendWA(wa, message);
+  return sendWA(wa, message, { branch: location });
 }
 
 // 5. Notifikasi poin credited setelah review positif
@@ -202,6 +202,55 @@ Balas *SELESAI* setelah pekerjaan selesai.`;
   return sendWA(barberPhone, msg);
 }
 
+// Remind barber 1 hour before home service booking
+async function notifyBarberHomeServiceReminderH1({
+  barberPhone, barberName, customerName, dateStr, timeStr, address, serviceLabel, price,
+}) {
+  const msg =
+`⏰ *[REMINDER HOME SERVICE] H-1 Jam!*
+
+Halo kak ${barberName}! 👋
+
+Reminder: Kamu punya pesanan home service dalam 1 jam! 📋
+
+📋 *Detail Pesanan:*
+👤 Pelanggan : ${customerName}
+⏰ Waktu      : ${dateStr} | ${timeStr} WIB
+📍 Alamat     : ${address}
+✂️ Layanan    : ${serviceLabel}
+💰 Harga      : ${price}
+
+Jangan lupa bersiap-siap ya! 🛠️
+
+Balas *BERANGKAT* saat kamu mulai berangkat ke lokasi.
+Balas *SELESAI* setelah pekerjaan selesai.`;
+
+  return sendWA(barberPhone, msg);
+}
+
+// Notify barber of new in-outlet booking
+async function notifyBarberNewOutletBooking({
+  barberPhone, barberName, customerName, dateStr, timeStr, location, serviceLabel, price,
+}) {
+  const msg =
+`🔔 *[BOOKING BARU] Pemesanan di Outlet!*
+
+Halo kak ${barberName}! 👋
+
+Kamu punya pesanan baru di ${location}! 📋
+
+📋 *Detail Pesanan:*
+👤 Pelanggan : ${customerName}
+⏰ Waktu      : ${dateStr} | ${timeStr} WIB
+📍 Lokasi     : ${location}
+✂️ Layanan    : ${serviceLabel}
+💰 Harga      : ${price}
+
+Jangan lupa catat ya! ✂️`;
+
+  return sendWA(barberPhone, msg);
+}
+
 module.exports = {
   notifyCustomerBookingConfirmed,
   notifyCustomerReminderH1,
@@ -209,4 +258,6 @@ module.exports = {
   notifyCustomerReviewRequest,
   notifyCustomerReviewPointsCredited,
   notifyBarberNewHomeServiceJob,
+  notifyBarberHomeServiceReminderH1,
+  notifyBarberNewOutletBooking,
 };

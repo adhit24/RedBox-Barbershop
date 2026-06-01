@@ -914,6 +914,82 @@ async function _notifyBarberHomeService(supabase, scheduleId, address) {
   });
 }
 
+async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
+  if (!bookingData.barber_id) return; // Skip if no barber assigned
+  const { notifyBarberNewOutletBooking } = require('./services/waNotification');
+
+  // Get barber details
+  const { data: barber } = await supabase
+    .from('barbers').select('name, phone').eq('id', bookingData.barber_id).single();
+  if (!barber?.phone) return;
+
+  // Format date and time
+  const dtWIB = new Date(`${bookingData.date}T${bookingData.time}:00`);
+  const dateStr = dtWIB.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const timeStr = dtWIB.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+
+  // Get location label
+  const locationLabel = {
+    bypass: 'RedBox Bypass',
+    samadikun: 'RedBox Samadikun',
+    csb: 'RedBox CSB Mall',
+    sumber: 'RedBox Sumber',
+    tegal: 'RedBox Tegal',
+  }[bookingData.location] || 'RedBox Barbershop';
+
+  await notifyBarberNewOutletBooking({
+    barberPhone: barber.phone,
+    barberName: barber.name,
+    customerName: bookingData.name,
+    dateStr,
+    timeStr,
+    location: locationLabel,
+    serviceLabel: bookingData.service,
+    price: bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
+  });
+}
+
+async function _notifyBarberOutletBookingMysql(bookingData) {
+  if (!bookingData.barber_id) return; // Skip if no barber assigned
+  const { notifyBarberNewOutletBooking } = require('./services/waNotification');
+
+  // Get barber details from MySQL
+  const [barbers] = await mysqlPool.execute(
+    'SELECT name, phone FROM barbers WHERE id = ?',
+    [bookingData.barber_id]
+  );
+  if (!barbers[0]?.phone) return;
+
+  // Format date and time
+  const dtWIB = new Date(`${bookingData.date}T${bookingData.time}:00`);
+  const dateStr = dtWIB.toLocaleDateString('id-ID', {
+    timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const timeStr = dtWIB.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+
+  // Get location label
+  const locationLabel = {
+    bypass: 'RedBox Bypass',
+    samadikun: 'RedBox Samadikun',
+    csb: 'RedBox CSB Mall',
+    sumber: 'RedBox Sumber',
+    tegal: 'RedBox Tegal',
+  }[bookingData.location] || 'RedBox Barbershop';
+
+  await notifyBarberNewOutletBooking({
+    barberPhone: barbers[0].phone,
+    barberName: barbers[0].name,
+    customerName: bookingData.name,
+    dateStr,
+    timeStr,
+    location: locationLabel,
+    serviceLabel: bookingData.service,
+    price: bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
+  });
+}
+
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
   const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address } = req.body;
@@ -970,7 +1046,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         name, wa, visits: 0, total_spent: 0, last_visit: null
       }, { onConflict: 'wa', ignoreDuplicates: true });
 
-      // Kirim WA konfirmasi ke pelanggan + notif admin
+      // Kirim WA konfirmasi ke pelanggan + notif admin + notif barber (if assigned)
       // Awaited (bukan fire-and-forget) agar selesai sebelum res.end() — Vercel kills
       // orphaned promises setelah response dikirim.
       if (desiredStatus === 'confirmed' && data.wa) {
@@ -987,6 +1063,12 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
           console.warn('[WA Confirm] failed:', e.message);
         }
         notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
+        // Send notification to barber if it's an outlet booking and barber is assigned
+        if (type !== 'home_service') {
+          _notifyBarberOutletBookingSupabase(supabase, data).catch(err =>
+            console.error('[Outlet Booking] Barber notif failed:', err.message)
+          );
+        }
       }
 
       // Auto-book: untuk booking dari public website, status langsung CONFIRMED
@@ -1072,12 +1154,18 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         [bookingId]
       );
 
-      // Fire-and-forget: kirim WA konfirmasi + notif admin ke semua cabang
+      // Fire-and-forget: kirim WA konfirmasi + notif admin + notif barber (if assigned)
       if (desiredStatus === 'confirmed' && newBooking[0]?.wa) {
         notifyCustomerBookingConfirmed({ ...newBooking[0], barber_name: null }).catch(e =>
           console.warn('[WA Confirm] failed:', e.message)
         );
         notifyAdminNewBooking({ ...newBooking[0], barber_name: null }).catch(() => {});
+        // Send notification to barber if it's an outlet booking and barber is assigned
+        if (type !== 'home_service') {
+          _notifyBarberOutletBookingMysql(newBooking[0]).catch(err =>
+            console.error('[Outlet Booking] Barber notif failed:', err.message)
+          );
+        }
       }
 
       let moka = null;

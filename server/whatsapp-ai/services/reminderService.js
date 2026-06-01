@@ -1,6 +1,18 @@
-const whatsappService = require('./whatsappService');
+const { sendWA } = require('../../services/fonnte');
 const bookingStore = require('./bookingStore');
+const config = require('../config');
 const logger = require('../utils/logger');
+
+const GOOGLE_REVIEW_URLS = {
+  bypass:    'https://g.page/r/CQVtP1_nV-SFEBM/review',
+  samadikun: 'https://g.page/r/CYSfr6rTvLs1EBM/review',
+  sumber:    'https://g.page/r/CS9yPcCA-CznEBM/review',
+  tegal:     'https://g.page/r/CWg3nZeYXRxSEBM/review',
+  csb:       'https://g.page/r/CbsPlES6TnydEBM/review',
+};
+
+// Kirim selalu dari nomor cabang ini sendiri
+const sendFromBranch = (to, text) => sendWA(to, text, { branch: config.BRANCH_NAME.toLowerCase() });
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 5000;
@@ -36,7 +48,7 @@ const buildH2Message = (booking) => {
 const sendWithRetry = async (phone, message, context) => {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      await whatsappService.sendText(phone, message);
+      await sendFromBranch(phone, message);
       return true;
     } catch (err) {
       const errMsg = err.response?.data?.error?.message || err.message;
@@ -88,4 +100,48 @@ const sendH2Reminder = async (booking) => {
   }
 };
 
-module.exports = { sendH1Reminder, sendH2Reminder };
+// ─── Send review request (post-appointment) ───────────────────────────────────
+
+const buildReviewMessage = (booking) => {
+  const branchName = booking.branch || config.BRANCH_NAME;
+  const branchKey  = branchName.toLowerCase();
+  const link       = GOOGLE_REVIEW_URLS[branchKey] || GOOGLE_REVIEW_URLS.bypass;
+  const fn         = (booking.customer_name || 'Kak').split(' ')[0];
+  return (
+`Haii kak *${fn}*! 👋
+
+Makasih banget udah percayain *RedBox ${branchName}* jadi grooming spot kakak hari ini — beneran berarti banget buat kami 🙏✨ Semoga hasilnya bikin pede makin nampol ya 💈
+
+Jujur kak, sebagai barbershop yang masih terus berkembang, ulasan kakak di Google itu kayak suntikan energi buat tim kami. Cuma butuh *1 menit* waktu kakak, tapi bantu banyak orang nemuin Redbox & bikin para kapster makin semangat ngasih hasil terbaik 🙏
+
+Biar kakak gak rugi waktu, ada apresiasi spesial nih:
+
+🎁 *Kasih ulasan positif* (rating ⭐ 4–5) → langsung dapat *5 poin RedBox senilai Rp 50.000!*
+Poin auto-credit ke akun member kakak — bisa ditukar diskon haircut, free coffee, sampai treatment gratis di kunjungan next 🔥
+
+⭐ *Tulis ulasan di sini:*
+👉 ${link}
+
+Beneran 30 detik aja — bantu kami tumbuh, kakak yang dapet hadiahnya. Win-win banget kan 😎✂️
+
+_(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`
+  );
+};
+
+const sendReviewRequest = async (booking) => {
+  if (booking.review_sent) return; // duplicate prevention
+
+  const message = buildReviewMessage(booking);
+  const context = `REVIEW | ${booking.id} | ${booking.customer_name}`;
+
+  const ok = await sendWithRetry(booking.phone_number, message, context);
+  if (ok) {
+    bookingStore.markReminderSent(booking.id, 'review_sent');
+    logger.logReminder(booking, 'REVIEW', 'sent');
+    console.log(`[Reminder] ✅ Review request sent → ${booking.phone_number} (${booking.customer_name})`);
+  } else {
+    logger.logReminder(booking, 'REVIEW', 'failed');
+  }
+};
+
+module.exports = { sendH1Reminder, sendH2Reminder, sendReviewRequest };

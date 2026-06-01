@@ -63,10 +63,22 @@ function getBranchToken(branch) {
  */
 function detectBranchFromNumber(to) {
   const normalized = String(to).replace(/\D/g, '');
-  const last9 = normalized.slice(-9); // Ambil 9 digit terakhir
+  
+  // Normalize the branch number to check: remove all non-digits, then remove leading 62 or 0
+  const normalizeBranchNum = (num) => {
+    let n = String(num).replace(/\D/g, '');
+    if (n.startsWith('62')) n = n.slice(2);
+    if (n.startsWith('0')) n = n.slice(1);
+    return n;
+  };
+  
+  // Check normalized input against normalized branch numbers
+  const normalizedInput = normalizeBranchNum(normalized);
   
   for (const [branch, number] of Object.entries(BRANCH_WA_NUMBER)) {
-    if (number.includes(last9) || normalized.includes(number.replace(/^0/, ''))) {
+    const normalizedBranch = normalizeBranchNum(number);
+    // Check if either the full normalized number matches, or the input ends with the branch number
+    if (normalizedInput === normalizedBranch || normalized.endsWith(normalizedBranch)) {
       return branch;
     }
   }
@@ -86,9 +98,12 @@ async function sendWA(to, message, options = {}) {
   let branch = options.branch || detectBranchFromNumber(to);
   let token = options.token || getBranchToken(branch);
   
+  console.log('[Fonnte] sendWA called with:', { to, branch, options, tokenFirstChars: token ? token.slice(0, 10) + '...' : 'none' });
+  
   // Fallback ke default token jika tidak ada
   if (!token) {
     token = process.env.FONNTE_TOKEN;
+    console.log('[Fonnte] Falling back to default (Bypass) token');
   }
   if (!token) {
     console.warn('[Fonnte] FONNTE_TOKEN not set, skipping WA send');

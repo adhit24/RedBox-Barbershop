@@ -7,10 +7,13 @@ const logger = require('../utils/logger');
 
 const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY });
 
-// Load system prompt once at startup
-const SYSTEM_PROMPT = fs.readFileSync(
+// Load system prompt once at startup, then interpolate branch identity
+const _RAW_SYSTEM_PROMPT = fs.readFileSync(
   path.join(__dirname, '../prompts/system.txt'), 'utf8'
 );
+const SYSTEM_PROMPT = _RAW_SYSTEM_PROMPT
+  .replace(/\{\{BRANCH_NAME\}\}/g, config.BRANCH_NAME)
+  .replace(/\{\{BRANCH_ADDRESS\}\}/g, config.BRANCH_ADDRESS);
 
 // In-memory short context per user: { phone: [{ role, content }] }
 const userContexts = new Map();

@@ -3,6 +3,9 @@ const bookingStore = require('./bookingStore');
 const reminderService = require('./reminderService');
 const logger = require('../utils/logger');
 
+// How long after appointment end to send review request (minutes)
+const REVIEW_AFTER_MINUTES = 30;
+
 const TIMEZONE = 'Asia/Jakarta';
 
 // Quiet hours: do not send reminders before 08:00 or after 21:00 WIB
@@ -97,7 +100,16 @@ const checkAndSendReminders = async () => {
   isRunning = true;
 
   try {
-    const bookings = bookingStore.getPendingReminders();
+    // Merge pending reminders + pending reviews (deduplicated by id)
+    const reminders = bookingStore.getPendingReminders();
+    const reviews = bookingStore.getPendingReviews();
+    const seen = new Set();
+    const bookings = [...reminders, ...reviews].filter(b => {
+      if (seen.has(b.id)) return false;
+      seen.add(b.id);
+      return true;
+    });
+
     if (bookings.length === 0) {
       isRunning = false;
       return;
@@ -126,6 +138,14 @@ const checkAndSendReminders = async () => {
       // H-2: send between 1.75h and 2.25h before appointment
       if (!booking.h2_sent && diffHours >= 1.75 && diffHours <= 2.25) {
         await reminderService.sendH2Reminder(booking);
+        processed++;
+      }
+
+      // Post-appointment review request: send ~REVIEW_AFTER_MINUTES after appointment
+      // diffHours is negative when appointment has passed
+      const minutesPast = -diffHours * 60;
+      if (!booking.review_sent && minutesPast >= REVIEW_AFTER_MINUTES && minutesPast <= REVIEW_AFTER_MINUTES + 30) {
+        await reminderService.sendReviewRequest(booking);
         processed++;
       }
     }
