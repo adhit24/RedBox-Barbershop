@@ -11,7 +11,6 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { sendWA } = require('../../server/services/fonnte');
-const { notifyBarberHomeServiceReminderH1 } = require('../../server/services/waNotification');
 
 /** Returns { date: 'YYYY-MM-DD', hourPrefix: 'HH' } in WIB for the *next* hour */
 function nextHourWIB() {
@@ -53,129 +52,6 @@ function buildSoonMessage(booking, barberName) {
   const branch = branchLabel(location);
 
   return `Hai kak ${fn}! Mau ngingetin — *1 jam lagi* kamu ada jadwal nih! 😊\n\n📍 *${branch}*\n⏰ Jam *${time} WIB*\n✂️ *${service}*${barberName ? `\n💈 Kapster: *${barberName}*` : ''}\n\nBrangkat sekarang biar santai ya kak, jangan rush! 😄`;
-}
-
-// Home Service Helper Functions
-function _fmtTime(isoStr) {
-  if (!isoStr) return '-';
-  return new Date(isoStr).toLocaleString('id-ID', {
-    timeZone: 'Asia/Jakarta',
-    weekday: 'short', day: 'numeric', month: 'short',
-  });
-}
-
-function _fmtTimeOnly(isoStr) {
-  if (!isoStr) return '-';
-  return new Date(isoStr).toLocaleTimeString('id-ID', {
-    timeZone: 'Asia/Jakarta',
-    hour: '2-digit', minute: '2-digit',
-  });
-}
-
-async function sendHomeServiceReminders(supabase) {
-  const now = new Date();
-  // Convert now to WIB (UTC+7)
-  const nowWIB = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-  console.log(`[HomeServiceReminder] Now (UTC): ${now.toISOString()}, Now (WIB): ${nowWIB.toISOString()}`);
-
-  // Find confirmed home service jobs where:
-  // 1. Booking time is in ~1 hour (between now + 55 mins and now + 65 mins to handle cron timing)
-  // 2. We haven't sent the reminder yet
-  const { data: jobs, error: jobsError } = await supabase
-    .from('home_service_jobs')
-    .select('id, address, schedule_id, barber_reminded_at')
-    .eq('status', 'confirmed')
-    .is('barber_reminded_at', null);
-
-  if (jobsError) {
-    console.error('[HomeServiceReminder] Error fetching jobs:', jobsError.message);
-    return;
-  }
-
-  if (!jobs?.length) {
-    console.log('[HomeServiceReminder] No jobs to remind');
-    return;
-  }
-
-  console.log(`[HomeServiceReminder] Found ${jobs.length} candidate jobs`);
-
-  for (const job of jobs) {
-    try {
-      console.log(`[HomeServiceReminder] Processing job ${job.id}`);
-      
-      // Get schedule details
-      const { data: sch, error: schError } = await supabase
-        .from('schedules')
-        .select('start_time, price, service_name, barber_id, customers(name)')
-        .eq('id', job.schedule_id)
-        .single();
-
-      if (schError || !sch) {
-        console.warn(`[HomeServiceReminder] Schedule not found for job ${job.id}`, schError?.message);
-        continue;
-      }
-
-      console.log(`[HomeServiceReminder] Job ${job.id}: schedule.start_time = ${sch.start_time}`);
-
-      // Parse schedule.start_time (assuming it's stored as WIB datetime string, or ISO 8601 with timezone)
-      let scheduleTime;
-      try {
-        scheduleTime = new Date(sch.start_time);
-        if (isNaN(scheduleTime.getTime())) {
-          console.warn(`[HomeServiceReminder] Invalid start_time for job ${job.id}: ${sch.start_time}`);
-          continue;
-        }
-      } catch (err) {
-        console.warn(`[HomeServiceReminder] Error parsing start_time for job ${job.id}:`, err.message);
-        continue;
-      }
-
-      // Convert scheduleTime to UTC for comparison if needed
-      const timeDiff = scheduleTime.getTime() - now.getTime();
-      const minutesUntil = timeDiff / 1000 / 60;
-
-      console.log(`[HomeServiceReminder] Job ${job.id}: time until booking = ${minutesUntil.toFixed(1)} minutes`);
-
-      // Only send if between 55 and 65 minutes from now
-      if (minutesUntil < 55 || minutesUntil > 65) {
-        console.log(`[HomeServiceReminder] Job ${job.id}: skipping (not in 55-65 min window)`);
-        continue;
-      }
-
-      // Get barber details
-      const { data: barber, error: barberError } = await supabase
-        .from('barbers')
-        .select('name, phone')
-        .eq('id', sch.barber_id)
-        .single();
-
-      if (barberError || !barber?.phone) {
-        console.warn(`[HomeServiceReminder] Barber not found or no phone for job ${job.id}`);
-        continue;
-      }
-
-      // Send the reminder
-      await notifyBarberHomeServiceReminderH1({
-        barberPhone: barber.phone,
-        barberName: barber.name,
-        customerName: sch.customers?.name || 'Pelanggan',
-        dateStr: _fmtTime(sch.start_time),
-        timeStr: _fmtTimeOnly(sch.start_time),
-        address: job.address,
-        serviceLabel: sch.service_name || 'Home Service',
-        price: sch.price ? `Rp ${sch.price.toLocaleString('id-ID')}` : '-',
-      });
-
-      // Mark reminder as sent
-      await supabase.from('home_service_jobs')
-        .update({ barber_reminded_at: new Date().toISOString() })
-        .eq('id', job.id);
-
-      console.log(`[HomeServiceReminder] Reminder sent to barber ${barber.name} for job ${job.id}`);
-    } catch (err) {
-      console.error(`[HomeServiceReminder] Error processing job ${job.id}:`, err.message);
-    }
-  }
 }
 
 module.exports = async function handler(req, res) {
@@ -259,14 +135,6 @@ module.exports = async function handler(req, res) {
     }
 
     console.log(`[RemindSoon] Done. Sent: ${sent}, Failed: ${failed}`);
-
-    // Run home service reminders
-    try {
-      console.log('[RemindSoon] Running home service reminders...');
-      await sendHomeServiceReminders(supabase);
-    } catch (err) {
-      console.error('[RemindSoon] Home service reminder error:', err.message);
-    }
 
     return res.status(200).json({ sent, failed, date, hourPrefix, total: bookings.length });
 
