@@ -1,12 +1,74 @@
 /**
  * Cron — GET /api/cron/reminders
  * Runs daily at 10:00 WIB via cron-job.org.
- * Sends WhatsApp H-1 booking reminder to customers with appointments tomorrow.
+ * 1. Sends WhatsApp H-1 booking reminder to customers with appointments tomorrow.
+ * 2. Sends birthday free-cut promo to customers born today.
  * Re-engagement batch dipindah ke /api/cron/reengagement (endpoint terpisah).
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { notifyCustomerReminderH1 } = require('../../server/services/waNotification');
+const { sendWA } = require('../../server/services/fonnte');
+
+// ── Birthday helpers ──────────────────────────────────────────────────────────
+const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+function _todayMMDD() {
+  const wib = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const m = String(wib.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(wib.getUTCDate()).padStart(2, '0');
+  return `${m}-${d}`;
+}
+
+function _buildBirthdayMessage(name) {
+  const firstName = (name || 'Kak').split(' ')[0];
+  return _pick([
+    `Haii kak ${firstName}! 🎂🎉\n\nSelamat ulang tahun dari kami semua di *RedBox Barbershop*! 🥳🥳\n\nSemoga panjang umur, sehat selalu, dan makin kece penampilannya ya!\n\nSpesial hari ini, kamu dapet:\n🎁 *FREE HAIRCUT* — gratis potong rambut!\n\nCaranya gampang:\n✅ Tunjukin pesan ini ke kasir\n✅ Berlaku hari ini aja ya kak\n\nBooking dulu biar dapat slot yang pas:\n👉 *redboxbarbershop.com/booking.html*\n\nHappy birthday kak ${firstName}! 🎊🎊🎊`,
+    `Selamat ultah kak ${firstName}! 🎉🎂✨\n\nWah hari ini hari spesial banget nih! Semoga semua harapannya terkabul ya kak 🙏\n\nDari RedBox, ada kado spesial buat kamu:\n🎁 *GRATIS HAIRCUT* — khusus hari ini!\n\nGampang banget cara dapetinnya:\n1️⃣ Booking di redboxbarbershop.com/booking.html\n2️⃣ Dateng ke outlet\n3️⃣ Tunjukin pesan ini ke kasir\n4️⃣ Done — gratis! 🙌\n\nJangan sampe kelewatan ya kak! Berlaku hari ini doang 😄\n\nHappy birthday! 🥳`,
+    `Kak ${firstName}! 🎂\n\nHappy birthday ya dari seluruh tim *RedBox Barbershop*!\n\nUlang tahun itu momen buat tampil lebih kece — dan kami punya kado untukmu:\n\n💈 *FREE HAIRCUT hari ini!*\n\nTinggal:\n✔️ Booking: redboxbarbershop.com/booking.html\n✔️ Dateng & tunjukin pesan ini\n\nSelamat merayakan kak! Kamu berhak tampil terbaik hari ini 🌟`,
+  ]);
+}
+
+async function _sendBirthdays(supabase) {
+  const today = _todayMMDD();
+  console.log(`[Birthday] Checking customers with birthday: ${today}`);
+
+  const { data: customers, error } = await supabase
+    .from('customers')
+    .select('id, name, wa, birthday')
+    .eq('birthday', today)
+    .not('wa', 'is', null);
+
+  if (error) {
+    if (error.code === '42703') {
+      console.warn('[Birthday] `birthday` column not found in customers table.');
+      return { sent: 0, failed: 0, note: 'birthday column not found' };
+    }
+    console.error('[Birthday] DB error:', error.message);
+    return { sent: 0, failed: 0, error: error.message };
+  }
+
+  if (!customers || customers.length === 0) {
+    console.log('[Birthday] No birthdays today.');
+    return { sent: 0, failed: 0, date: today };
+  }
+
+  let sent = 0, failed = 0;
+  for (const c of customers) {
+    if (!c.wa) continue;
+    try {
+      await sendWA(c.wa, _buildBirthdayMessage(c.name));
+      sent++;
+      console.log(`[Birthday] Sent to ${c.wa} (${c.name})`);
+      await new Promise(r => setTimeout(r, 500));
+    } catch (err) {
+      failed++;
+      console.error(`[Birthday] Failed for ${c.wa}:`, err.message);
+    }
+  }
+  console.log(`[Birthday] Done. Sent: ${sent}, Failed: ${failed}`);
+  return { sent, failed, date: today, total: customers.length };
+}
 
 function tomorrowWIB() {
   const now = new Date();
@@ -93,7 +155,13 @@ module.exports = async function handler(req, res) {
     }
 
     console.log(`[Reminders] Done. Sent: ${sent}, Failed: ${failed}`);
-    return res.status(200).json({ sent, failed, date: tomorrow, total: bookings.length });
+
+    const birthdayResult = await _sendBirthdays(supabase);
+
+    return res.status(200).json({
+      reminders: { sent, failed, date: tomorrow, total: bookings.length },
+      birthday: birthdayResult,
+    });
 
   } catch (err) {
     console.error('[Reminders] Unexpected error:', err.message);

@@ -9,7 +9,6 @@
     "api/moka/sync-customers.js":    { "maxDuration": 120, "includeFiles": "server/**" },
     "api/cron/reminders.js":         { "maxDuration": 60,  "includeFiles": "server/**" },
     "api/cron/reengagement.js":      { "maxDuration": 60,  "includeFiles": "server/**" },
-    "api/cron/birthday.js":          { "maxDuration": 60,  "includeFiles": "server/**" },
     "api/cron/remind-soon.js":       { "maxDuration": 60,  "includeFiles": "server/**" },
     "api/cron/home-service-flag.js": { "maxDuration": 60,  "includeFiles": "server/**" },
     "api/cron/expire-stale-bills.js":{ "maxDuration": 30,  "includeFiles": "server/**" }
@@ -22,7 +21,6 @@
     { "source": "/api/wa/webhook",             "destination": "/api/wa/webhook.js" },
     { "source": "/api/cron/reminders",         "destination": "/api/cron/reminders.js" },
     { "source": "/api/cron/reengagement",     "destination": "/api/cron/reengagement.js" },
-    { "source": "/api/cron/birthday",          "destination": "/api/cron/birthday.js" },
     { "source": "/api/cron/remind-soon",       "destination": "/api/cron/remind-soon.js" },
     { "source": "/api/cron/expire-stale-bills","destination": "/api/cron/expire-stale-bills.js" },
     { "source": "/api/cron/home-service-flag", "destination": "/api/cron/home-service-flag.js" },
