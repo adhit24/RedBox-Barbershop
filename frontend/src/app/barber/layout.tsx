@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
+import { usePush } from '@/hooks/usePush';
 import { BottomNav } from '@/components/BottomNav';
 
 const BARBER_NAV = [
@@ -13,6 +14,7 @@ const BARBER_NAV = [
 export default function BarberLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
   const router = useRouter();
+  usePush();
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
