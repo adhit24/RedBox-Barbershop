@@ -78,7 +78,7 @@ function detectBranchFromNumber(to) {
   for (const [branch, number] of Object.entries(BRANCH_WA_NUMBER)) {
     const normalizedBranch = normalizeBranchNum(number);
     // Check if either the full normalized number matches, or the input ends with the branch number
-    if (normalizedInput === normalizedBranch || normalized.endsWith(normalizedBranch)) {
+    if (normalizedInput === normalizedBranch) {
       return branch;
     }
   }

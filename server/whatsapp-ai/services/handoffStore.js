@@ -118,18 +118,18 @@ async function _removeSupabase(customerPhone) {
 
 async function _checkSupabase(customerPhone) {
   const sb = _getSupabase();
-  if (!sb) return false;
+  if (!sb) return null;
   const key = _normalizePhone(customerPhone);
   try {
     const { data } = await Promise.race([
-      sb.from('wa_paused').select('paused_until').eq('sender', key).maybeSingle(),
+      sb.from('wa_paused').select('paused_until,paused_by').eq('sender', key).maybeSingle(),
       new Promise(r => setTimeout(() => r({ data: null }), 2000)),
     ]);
     if (data?.paused_until && new Date(data.paused_until) > new Date()) {
-      return true;
+      return data; // return full record so caller can use real paused_until
     }
   } catch {}
-  return false;
+  return null;
 }
 
 async function _listSupabasePaused() {
@@ -215,15 +215,15 @@ const isHandoffActiveAsync = async (customerPhone) => {
   if (isHandoffActive(customerPhone)) return true;
 
   // 2. Cross-branch check via Supabase
-  const supabaseActive = await _checkSupabase(customerPhone);
-  if (supabaseActive) {
-    // Warm local cache so subsequent sync checks are fast
+  const supabaseRecord = await _checkSupabase(customerPhone);
+  if (supabaseRecord) {
+    // Warm local cache using the real paused_until from Supabase (not a hardcoded 30min)
     const record = {
       customerPhone,
       enabledAt: Date.now(),
-      expiresAt: Date.now() + (30 * 60 * 1000), // default 30min
+      expiresAt: new Date(supabaseRecord.paused_until).getTime(),
       enabled: true,
-      pausedBy: 'cross_branch'
+      pausedBy: supabaseRecord.paused_by || 'cross_branch'
     };
     handoffCache.set(customerPhone, record);
     console.log(`[HandoffStore] Cross-branch handoff detected for ${customerPhone}`);
@@ -240,7 +240,8 @@ const isHandoffActiveAsync = async (customerPhone) => {
 const extendHandoff = (customerPhone, additionalMinutes = 30) => {
   const record = handoffCache.get(customerPhone);
   if (record) {
-    record.expiresAt = Date.now() + (additionalMinutes * 60 * 1000);
+    // Extend from current expiry (or now, whichever is later) — don't overwrite remaining time
+    record.expiresAt = Math.max(record.expiresAt, Date.now()) + (additionalMinutes * 60 * 1000);
     handoffCache.set(customerPhone, record);
     _persistFile();
     _persistSupabase(customerPhone, additionalMinutes, record.pausedBy || 'extend').catch(() => {});
