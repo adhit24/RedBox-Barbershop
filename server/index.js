@@ -2262,6 +2262,8 @@ try {
 // Barber self-service routes
 const { createBarberRoutes } = require('./routes/barber');
 app.use('/api/barber', createBarberRoutes(supabase));
+const { createBarberCronRoutes } = require('./routes/barberCron');
+app.use('/api/cron', createBarberCronRoutes(supabase, adminAuth));
 
 // POST /api/push/subscribe — save push subscription token
 app.post('/api/push/subscribe', async (req, res) => {
