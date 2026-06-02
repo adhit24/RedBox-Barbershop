@@ -1359,12 +1359,14 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     }
   }
 
-  // Forward booking ke branch WA jika ada tag (fire-and-forget)
-  if (forwardBooking) {
-    forwardBookingToBranch(forwardBooking, from).catch(err =>
-      console.error('[WA Bot] forwardBookingToBranch error:', err.message)
-    );
-  }
+  // Forward booking ke branch WA dinonaktifkan — tiap cabang handle customer-nya sendiri.
+  // Mengirim ke nomor WA cabang lain via forwardBookingToBranch memicu webhook bot penerima
+  // → bot penerima anggap pengirim sebagai customer → feedback loop antar cabang.
+  // if (forwardBooking) {
+  //   forwardBookingToBranch(forwardBooking, from).catch(err =>
+  //     console.error('[WA Bot] forwardBookingToBranch error:', err.message)
+  //   );
+  // }
 
   return { used, reply, sendResult, error };
 }
@@ -1830,6 +1832,16 @@ module.exports = async function handler(req, res) {
       }
       console.log('[WA Bot] Ignored outgoing message, fields:', JSON.stringify({ isFromMe: body.isFromMe, fromMe: body.fromMe, sender, device, rawTarget }));
       return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
+    }
+
+    // Guard: abaikan pesan yang masuk dari nomor WA cabang lain (cegah bot-to-bot feedback loop).
+    // Terjadi ketika forwardBookingToBranch kirim notif ke nomor cabang → bot penerima
+    // membalas ke pengirim → loop tak berujung lintas cabang.
+    const BRANCH_WA_NORMALIZED = Object.values(BRANCH_WA).map(n => n.replace(/\D/g, '').replace(/^0/, '62'));
+    const senderNormalized = normalizePhone(sender).replace(/^0/, '62');
+    if (BRANCH_WA_NORMALIZED.includes(senderNormalized)) {
+      console.log(`[WA Bot] Ignored message from branch number: ${senderNormalized} (bot-to-bot loop prevention)`);
+      return res.status(200).json({ status: 'ignored', reason: 'from_branch_number' });
     }
 
     console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: String(message || '').slice(0, 80) }));
