@@ -237,6 +237,262 @@ function createBarberRoutes(supabase) {
     return res.json({ items: data || [], period, from, to });
   });
 
+  // ─── STREAK ──────────────────────────────────────────
+  router.get('/streak', barberAuth, async (req, res) => {
+    const { data } = await supabase
+      .from('barber_streaks')
+      .select('current_streak, longest_streak, last_hit_date')
+      .eq('barber_id', req.barber.id)
+      .maybeSingle();
+    return res.json(data || { current_streak: 0, longest_streak: 0, last_hit_date: null });
+  });
+
+  // ─── ACHIEVEMENTS ────────────────────────────────────
+  router.get('/achievements', barberAuth, async (req, res) => {
+    const { data: earned } = await supabase
+      .from('barber_achievements')
+      .select('badge_key, earned_at')
+      .eq('barber_id', req.barber.id)
+      .order('earned_at', { ascending: false });
+
+    // Calculate progress for unearned badges
+    const { BADGES } = require('../services/barberMetrics');
+    const earnedKeys = new Set((earned || []).map(a => a.badge_key));
+    const inProgress = [];
+
+    for (const [key, def] of Object.entries(BADGES)) {
+      if (earnedKeys.has(key) || def.streakBased) continue;
+
+      let count = 0;
+      if (def.allServices) {
+        const { count: c } = await supabase
+          .from('bookings').select('*', { count: 'exact', head: true })
+          .eq('barber_id', req.barber.id).eq('status', 'done');
+        count = c || 0;
+      } else if (def.serviceMatch) {
+        const pattern = def.serviceMatch.source.replace(/[/\\^$*+?.()|[\]{}]/g, '');
+        const { data: rows } = await supabase
+          .from('bookings').select('id')
+          .eq('barber_id', req.barber.id).eq('status', 'done')
+          .ilike('service', `%${pattern}%`);
+        count = rows?.length || 0;
+      } else if (def.typeMatch) {
+        const { data: rows } = await supabase
+          .from('bookings').select('id')
+          .eq('barber_id', req.barber.id).eq('status', 'done')
+          .like('notes', '%HOME SERVICE%');
+        count = rows?.length || 0;
+      } else if (def.timeMax) {
+        const { data: rows } = await supabase
+          .from('bookings').select('id')
+          .eq('barber_id', req.barber.id).eq('status', 'done')
+          .lt('time', def.timeMax);
+        count = rows?.length || 0;
+      } else if (def.timeMin) {
+        const { data: rows } = await supabase
+          .from('bookings').select('id')
+          .eq('barber_id', req.barber.id).eq('status', 'done')
+          .gte('time', def.timeMin);
+        count = rows?.length || 0;
+      }
+
+      inProgress.push({ badge_key: key, label: def.label, current: count, target: def.threshold });
+    }
+
+    // Add streak_master progress from barber_streaks
+    if (!earnedKeys.has('streak_master')) {
+      const { data: streak } = await supabase
+        .from('barber_streaks').select('longest_streak')
+        .eq('barber_id', req.barber.id).maybeSingle();
+      inProgress.push({
+        badge_key: 'streak_master',
+        label: '🔥 Streak Master',
+        current: streak?.longest_streak || 0,
+        target: 30,
+      });
+    }
+
+    return res.json({ earned: earned || [], in_progress: inProgress });
+  });
+
+  // ─── RECORDS ─────────────────────────────────────────
+  router.get('/records', barberAuth, async (req, res) => {
+    const { data } = await supabase
+      .from('barber_records')
+      .select('*')
+      .eq('barber_id', req.barber.id)
+      .maybeSingle();
+    return res.json(data || {
+      best_customer_per_day: 0, best_customer_per_day_at: null,
+      best_revenue_per_month: 0, best_revenue_per_month_at: null,
+      best_rating_per_month: 0, best_rating_per_month_at: null,
+      longest_streak_at: null,
+    });
+  });
+
+  // ─── MISSIONS ────────────────────────────────────────
+  router.get('/missions', barberAuth, async (req, res) => {
+    const now = new Date();
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((day === 0 ? 7 : day) - 1));
+    const weekStart = localDateStr(monday);
+
+    const { data } = await supabase
+      .from('barber_missions')
+      .select('mission_key, target, progress, completed_at')
+      .eq('barber_id', req.barber.id)
+      .eq('week_start', weekStart)
+      .order('mission_key');
+
+    return res.json({ week_start: weekStart, missions: data || [] });
+  });
+
+  // ─── LEADERBOARD ─────────────────────────────────────
+  router.get('/leaderboard', barberAuth, async (req, res) => {
+    const branch = req.barber.branch;
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    const today = localDateStr(now);
+
+    // Get all barbers in this branch with their done count this month
+    const { data: barbers } = await supabase
+      .from('barbers')
+      .select('id, name')
+      .eq('branch', branch)
+      .eq('is_active', true);
+
+    if (!barbers || barbers.length === 0) {
+      return res.json({ tier: 'RISING', position_pct: 100, next_tier_needed: 0, barber_count: 0 });
+    }
+
+    const counts = [];
+    for (const b of barbers) {
+      const { count } = await supabase
+        .from('bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('barber_id', b.id)
+        .eq('status', 'done')
+        .gte('date', monthStart)
+        .lte('date', today);
+      counts.push({ barber_id: b.id, name: b.name, count: count || 0 });
+    }
+
+    counts.sort((a, b) => b.count - a.count);
+    const total = counts.length;
+    const myIdx = counts.findIndex(c => c.barber_id === req.barber.id);
+    const myCount = myIdx >= 0 ? counts[myIdx].count : 0;
+    const positionPct = total > 0 ? Math.round(((myIdx + 1) / total) * 100) : 100;
+
+    let tier = 'RISING';
+    let nextTierNeeded = 0;
+    if (positionPct <= 10) {
+      tier = 'LEGEND';
+      nextTierNeeded = 0;
+    } else if (positionPct <= 30) {
+      tier = 'ELITE';
+      const legendThreshold = counts[Math.max(0, Math.floor(total * 0.1) - 1)]?.count || 0;
+      nextTierNeeded = Math.max(0, legendThreshold - myCount + 1);
+    } else if (positionPct <= 70) {
+      tier = 'ADVANCED';
+      const eliteThreshold = counts[Math.max(0, Math.floor(total * 0.3) - 1)]?.count || 0;
+      nextTierNeeded = Math.max(0, eliteThreshold - myCount + 1);
+    } else {
+      const advThreshold = counts[Math.max(0, Math.floor(total * 0.7) - 1)]?.count || 0;
+      nextTierNeeded = Math.max(0, advThreshold - myCount + 1);
+    }
+
+    return res.json({
+      tier,
+      position_pct: positionPct,
+      next_tier_needed: nextTierNeeded,
+      my_count: myCount,
+      barber_count: total,
+      month: monthStart,
+    });
+  });
+
+  // ─── FAVORITES ───────────────────────────────────────
+  router.get('/favorites', barberAuth, async (req, res) => {
+    const { data: rows } = await supabase
+      .from('booking_full')
+      .select('name, service')
+      .eq('barber_id', req.barber.id)
+      .eq('status', 'done')
+      .order('date', { ascending: false })
+      .limit(500);
+
+    const map = {};
+    for (const r of (rows || [])) {
+      const key = r.name || 'Unknown';
+      if (!map[key]) map[key] = { name: key, visits: 0, service: r.service };
+      map[key].visits++;
+    }
+    const favorites = Object.values(map)
+      .filter(f => f.visits >= 3)
+      .sort((a, b) => b.visits - a.visits)
+      .slice(0, 5);
+    return res.json({ favorites });
+  });
+
+  // ─── REVIEWS ─────────────────────────────────────────
+  router.get('/reviews', barberAuth, async (req, res) => {
+    let reviews = [];
+    try {
+      const { data } = await supabase
+        .from('reviews')
+        .select('rating, review_text, customer_name, created_at')
+        .eq('barber_id', req.barber.id)
+        .eq('rating', 5)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      reviews = data || [];
+    } catch { /* reviews table optional */ }
+    return res.json({ reviews });
+  });
+
+  // ─── PACE PREDICTION ────────────────────────────────
+  router.get('/pace', barberAuth, async (req, res) => {
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysRemaining = daysInMonth - dayOfMonth;
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+    const today = localDateStr(now);
+
+    const { count } = await supabase
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('barber_id', req.barber.id)
+      .eq('status', 'done')
+      .gte('date', monthStart)
+      .lte('date', today);
+
+    const currentCount = count || 0;
+    const { data: profile } = await supabase
+      .from('barber_users')
+      .select('target_monthly')
+      .eq('barber_id', req.barber.id)
+      .maybeSingle();
+
+    const targetMonthly = profile?.target_monthly || 250;
+    const currentPace = dayOfMonth > 0 ? currentCount / dayOfMonth : 0;
+    const predictedEnd = Math.round(currentCount + (currentPace * daysRemaining));
+    const neededPerDay = daysRemaining > 0 ? Math.ceil((targetMonthly - currentCount) / daysRemaining) : 0;
+    const onTrack = predictedEnd >= targetMonthly;
+
+    return res.json({
+      current_count: currentCount,
+      target_monthly: targetMonthly,
+      days_passed: dayOfMonth,
+      days_remaining: daysRemaining,
+      current_pace: Math.round(currentPace * 10) / 10,
+      predicted_end: predictedEnd,
+      needed_per_day: neededPerDay,
+      on_track: onTrack,
+    });
+  });
+
   return router;
 }
 
