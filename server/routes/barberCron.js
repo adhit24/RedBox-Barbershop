@@ -6,8 +6,145 @@ function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Returns monday of current week as YYYY-MM-DD
+function currentWeekStart(d = new Date()) {
+  const day = d.getDay(); // 0=Sun
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - ((day === 0 ? 7 : day) - 1));
+  return localDateStr(monday);
+}
+
+// Combined web + Moka customer count for a specific barber on a specific date
+async function getDailyCount(supabase, barberId, dateStr) {
+  const dayStart = `${dateStr}T00:00:00+07:00`;
+  const dayEnd   = `${dateStr}T23:59:59+07:00`;
+
+  const [{ count: webCount }, { count: mokaCount }] = await Promise.all([
+    supabase.from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('barber_id', barberId)
+      .eq('status', 'done')
+      .eq('date', dateStr),
+    supabase.from('schedules')
+      .select('*', { count: 'exact', head: true })
+      .eq('barber_id', barberId)
+      .eq('source', 'moka')
+      .eq('status', 'completed')
+      .gte('start_time', dayStart)
+      .lte('start_time', dayEnd),
+  ]);
+
+  return (webCount || 0) + (mokaCount || 0);
+}
+
+// Combined weekly count for a barber (weekStart..weekStart+6)
+async function getWeeklyCount(supabase, barberId, weekStart) {
+  const monday = new Date(weekStart + 'T00:00:00+07:00');
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const weekEnd = localDateStr(sunday);
+  const weekEndTs = `${weekEnd}T23:59:59+07:00`;
+
+  const [{ count: webCount }, { count: mokaCount }] = await Promise.all([
+    supabase.from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('barber_id', barberId)
+      .eq('status', 'done')
+      .gte('date', weekStart)
+      .lte('date', weekEnd),
+    supabase.from('schedules')
+      .select('*', { count: 'exact', head: true })
+      .eq('barber_id', barberId)
+      .eq('source', 'moka')
+      .eq('status', 'completed')
+      .gte('start_time', weekStart + 'T00:00:00+07:00')
+      .lte('start_time', weekEndTs),
+  ]);
+
+  return (webCount || 0) + (mokaCount || 0);
+}
+
 function createBarberCronRoutes(supabase, adminAuth) {
   const router = express.Router();
+
+  // ─── DAILY RECAP (23:30 WIB) ────────────────────────
+  // Pulls web+Moka data, updates barber_records & missions, sends recap notif
+  router.post('/barber-daily-recap', adminAuth, async (req, res) => {
+    const today = localDateStr();
+    const weekStart = currentWeekStart();
+
+    const { data: barberUsers } = await supabase
+      .from('barber_users')
+      .select('barber_id, notif_enabled');
+
+    if (!barberUsers) return res.json({ ok: true, processed: 0 });
+
+    const results = [];
+    for (const bu of barberUsers) {
+      const todayCount = await getDailyCount(supabase, bu.barber_id, today);
+      const weekCount  = await getWeeklyCount(supabase, bu.barber_id, weekStart);
+
+      // ── Update barber_records: best single-day ──
+      const { data: rec } = await supabase
+        .from('barber_records')
+        .select('best_customer_per_day')
+        .eq('barber_id', bu.barber_id)
+        .maybeSingle();
+
+      const prevBest = rec?.best_customer_per_day || 0;
+      const isNewRecord = todayCount > 0 && todayCount > prevBest;
+
+      if (todayCount > 0) {
+        await supabase.from('barber_records').upsert({
+          barber_id: bu.barber_id,
+          best_customer_per_day: isNewRecord ? todayCount : prevBest,
+          best_customer_per_day_at: isNewRecord ? today : (rec?.best_customer_per_day_at || today),
+        }, { onConflict: 'barber_id' });
+      }
+
+      // ── Update barber_missions: serve_customers progress ──
+      if (todayCount > 0) {
+        const { data: mission } = await supabase
+          .from('barber_missions')
+          .select('id, target, progress, completed_at')
+          .eq('barber_id', bu.barber_id)
+          .eq('week_start', weekStart)
+          .eq('mission_key', 'serve_customers')
+          .maybeSingle();
+
+        if (mission) {
+          const newProgress = Math.min(weekCount, mission.target);
+          const justCompleted = newProgress >= mission.target && !mission.completed_at;
+          await supabase.from('barber_missions').update({
+            progress: newProgress,
+            completed_at: justCompleted ? new Date().toISOString() : mission.completed_at,
+          }).eq('id', mission.id);
+
+          if (justCompleted) {
+            sendPushNotifToBarber(supabase, bu.barber_id, {
+              title: '🎯 Misi Selesai!',
+              body: `Target ${mission.target} customer minggu ini tercapai! Keren! 🔥`,
+              url: '/barber/progress',
+            });
+          }
+        }
+      }
+
+      // ── Push recap notif ──
+      if (bu.notif_enabled !== false && todayCount > 0) {
+        const recordStr = isNewRecord ? ` 🏆 REKOR BARU: ${todayCount}/hari!` : '';
+        sendPushNotifToBarber(supabase, bu.barber_id, {
+          title: `Recap hari ini: ${todayCount} customer`,
+          body: `Total minggu ini: ${weekCount} customer.${recordStr}`,
+          url: '/barber/home',
+        });
+      }
+
+      results.push({ barber_id: bu.barber_id, today: todayCount, week: weekCount, new_record: isNewRecord });
+    }
+
+    return res.json({ ok: true, processed: results.length, date: today, week_start: weekStart, results });
+  });
 
   // ─── STREAK DAILY (23:55 WIB) ───────────────────────
   router.post('/barber-streak-daily', adminAuth, async (req, res) => {
@@ -22,14 +159,10 @@ function createBarberCronRoutes(supabase, adminAuth) {
     for (const bu of barberUsers) {
       const target = bu.target_daily || 10;
 
-      const { count } = await supabase
-        .from('bookings')
-        .select('*', { count: 'exact', head: true })
-        .eq('barber_id', bu.barber_id)
-        .eq('status', 'done')
-        .eq('date', today);
+      // Combined web + Moka count for today
+      const count = await getDailyCount(supabase, bu.barber_id, today);
 
-      const hitTarget = (count || 0) >= target;
+      const hitTarget = count >= target;
 
       // Get or create streak row
       let { data: streak } = await supabase
@@ -148,14 +281,8 @@ function createBarberCronRoutes(supabase, adminAuth) {
 
       if (existing > 0) continue;
 
-      // Calculate avg from previous week
-      const { count: prevCount } = await supabase
-        .from('bookings')
-        .select('*', { count: 'exact', head: true })
-        .eq('barber_id', bu.barber_id)
-        .eq('status', 'done')
-        .gte('date', prevWeekStart)
-        .lte('date', prevWeekEnd);
+      // Calculate target from previous week (web + Moka combined)
+      const prevCount = await getWeeklyCount(supabase, bu.barber_id, prevWeekStart);
 
       const volumeTarget = Math.max(30, Math.round((prevCount || 30) * 1.1));
 
