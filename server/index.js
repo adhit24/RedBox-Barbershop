@@ -822,7 +822,7 @@ app.get('/api/health', async (req, res) => {
       supabaseTest = { supabase_url_prefix: (process.env.SUPABASE_URL||'').slice(0,40), total: allData?.length, inactive_count: inactive.length, inactive: inactive.map(b => ({id:b.id,name:b.name})), onoy, error: error?.message };
     } catch (e) { supabaseTest = { error: e.message }; }
   }
-  res.json({ status: 'ok', service: 'Redbox CRM API', db_type: DB_TYPE, supabase_client: !!supabase, timestamp: new Date().toISOString(), ...(supabaseTest ? { supabaseTest } : {}) });
+  res.json({ status: 'ok', service: 'Redbox CRM API', db_type: DB_TYPE, supabase_client: !!supabase, timestamp: new Date().toISOString(), env_check: { has_supabase_url: !!process.env.SUPABASE_URL, has_supabase_key: !!process.env.SUPABASE_SERVICE_KEY, has_admin_password: !!process.env.ADMIN_PASSWORD, has_cron_secret: !!process.env.CRON_SECRET }, ...(supabaseTest ? { supabaseTest } : {}) });
 });
 
 // ================================================
