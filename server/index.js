@@ -401,6 +401,52 @@ function timeToMinsStr(t) {
   return h * 60 + m;
 }
 
+function formatBookingDateTimeWIB(dateValue, timeValue) {
+  const rawDate = String(dateValue || '').trim();
+  const rawTime = String(timeValue || '').trim();
+
+  let dateStr = rawDate || '-';
+  let timeStr = rawTime || '-';
+
+  const dateMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    const [, year, month, day] = dateMatch;
+    const dateObj = new Date(`${year}-${month}-${day}T12:00:00+07:00`);
+    if (!Number.isNaN(dateObj.getTime())) {
+      dateStr = dateObj.toLocaleDateString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    }
+  }
+
+  const timeMatch = rawTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (timeMatch) {
+    const [, hourStr, minuteStr, secondStr = '00'] = timeMatch;
+    const hour = parseInt(hourStr, 10);
+    const minute = parseInt(minuteStr, 10);
+    const second = parseInt(secondStr, 10);
+    if (
+      Number.isFinite(hour) && Number.isFinite(minute) && Number.isFinite(second) &&
+      hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 && second >= 0 && second <= 59
+    ) {
+      const timeObj = new Date(`1970-01-01T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}+07:00`);
+      if (!Number.isNaN(timeObj.getTime())) {
+        timeStr = timeObj.toLocaleTimeString('id-ID', {
+          timeZone: 'Asia/Jakarta',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+    }
+  }
+
+  return { dateStr, timeStr };
+}
+
 function normalizeBarberIdInput(value) {
   const raw = String(value || '').trim();
   if (!raw || raw.toLowerCase() === 'any') return null;
@@ -893,13 +939,7 @@ async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, addres
     .from('barbers').select('name, phone').eq('id', bookingData.barber_id).single();
   if (!barber?.phone) return;
 
-  const dtWIB = new Date(`${bookingData.date}T${bookingData.time}:00`);
-  const dateStr = dtWIB.toLocaleDateString('id-ID', {
-    timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
-  const timeStr = dtWIB.toLocaleTimeString('id-ID', {
-    timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit',
-  });
+  const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
 
   await notifyBarberNewHomeServiceJob({
     barberPhone:  barber.phone,
@@ -923,12 +963,7 @@ async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
     .from('barbers').select('name, phone').eq('id', bookingData.barber_id).single();
   if (!barber?.phone) return;
 
-  // Format date and time
-  const dtWIB = new Date(`${bookingData.date}T${bookingData.time}:00`);
-  const dateStr = dtWIB.toLocaleDateString('id-ID', {
-    timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
-  const timeStr = dtWIB.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+  const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
 
   // Get location label
   const locationLabel = {
@@ -963,12 +998,7 @@ async function _notifyBarberOutletBookingMysql(bookingData) {
   );
   if (!barbers[0]?.phone) return;
 
-  // Format date and time
-  const dtWIB = new Date(`${bookingData.date}T${bookingData.time}:00`);
-  const dateStr = dtWIB.toLocaleDateString('id-ID', {
-    timeZone: 'Asia/Jakarta', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
-  const timeStr = dtWIB.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' });
+  const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
 
   // Get location label
   const locationLabel = {
