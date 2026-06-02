@@ -3,6 +3,12 @@ import type {
   BarberStats,
   BarberUpcoming,
   BarberHistoryResponse,
+  StreakData,
+  AchievementsResponse,
+  RecordsData,
+  MissionsResponse,
+  LeaderboardData,
+  PaceData,
 } from './barberTypes';
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -79,4 +85,36 @@ export function fetchBarberHistory(period: string = 'month', offset = 0, limit =
   return jsonFetch<BarberHistoryResponse>(
     `/api/barber/history?period=${period}&offset=${offset}&limit=${limit}`
   );
+}
+
+export function fetchBarberStreak() {
+  return jsonFetch<StreakData>('/api/barber/streak');
+}
+
+export function fetchBarberAchievements() {
+  return jsonFetch<AchievementsResponse>('/api/barber/achievements');
+}
+
+export function fetchBarberRecords() {
+  return jsonFetch<RecordsData>('/api/barber/records');
+}
+
+export function fetchBarberMissions() {
+  return jsonFetch<MissionsResponse>('/api/barber/missions');
+}
+
+export function fetchBarberLeaderboard() {
+  return jsonFetch<LeaderboardData>('/api/barber/leaderboard');
+}
+
+export function fetchBarberFavorites() {
+  return jsonFetch<{ favorites: Array<{ name: string; visits: number; service: string }> }>('/api/barber/favorites');
+}
+
+export function fetchBarberReviews() {
+  return jsonFetch<{ reviews: Array<{ rating: number; review_text: string; customer_name: string; created_at: string }> }>('/api/barber/reviews');
+}
+
+export function fetchBarberPace() {
+  return jsonFetch<PaceData>('/api/barber/pace');
 }
