@@ -502,12 +502,12 @@ document.addEventListener('DOMContentLoaded', () => {
     { id:'sumber-prima',      name:'Prima',         role:'Haircut',                                               img:'https://lh3.googleusercontent.com/d/1gGTM8a6Rrlw3SgfJOvZEzAcZkIm_2ysl=w800',  branch:'sumber' },
     { id:'sumber-sigit',      name:'Sigit',         role:'Haircut;Fade;Coloring;Hair Tattoo;Beard Trim;Chemical', img:'https://lh3.googleusercontent.com/d/19Tp5LCEoNqkDU4iRUGzT--xqmRqkIue_=w800',  branch:'sumber' },
     { id:'sumber-didi',       name:'Didi',          role:'Haircut;Fade;Coloring;Hair Tattoo;Beard Trim',          img:'https://lh3.googleusercontent.com/d/1_WCEC6tHVlVqFeKrcbZZ0NEe-BDr03cI=w800',  branch:'sumber' },
-    { id:'tegal-faiz',        name:'Faiz',          role:'Haircut;Fade;Coloring;Beard Trim',                      img:'https://lh3.googleusercontent.com/d/1p9CMGJAodrr6aaxljTUtiqlelgk5rJbA=w800',  branch:'tegal' },
+    { id:'tegal-faiz',        name:'Faiz',          role:'Haircut;Fade;Coloring;Beard Trim',                      img:'/Brand_assets/Kapster4.jpg',  branch:'tegal' },
     { id:'tegal-yafi',        name:'Yafi',          role:'Haircut;Fade;Coloring;Creambath',                       img:'https://lh3.googleusercontent.com/d/1vMxXb0bir4tnncM1Hk-62PPRG6FXA80T=w800',  branch:'tegal' },
     { id:'tegal-epik',        name:'Epik',          role:'Haircut;Fade;Long trim',                                img:'https://lh3.googleusercontent.com/d/10A9IZpNmmCFb13tu6OigSxEF_wTS1s9j=w800',  branch:'tegal' },
     { id:'tegal-wawan',       name:'Wawan',         role:'Haircut;Fade;Coloring',                                 img:'https://lh3.googleusercontent.com/d/1G4Smy7D5oZrlKjrl0W05_ktJnCIB4Lgo=w800',  branch:'tegal' },
     { id:'tegal-ahmad',       name:'Ahmad',         role:'Haircut;Fade;Coloring;Creambath',                       img:'/Brand_assets/Kapster2.jpg', branch:'tegal' },
-    { id:'tegal-sephril',     name:'Sephril',       role:'Haircut;Fade;Coloring;Creambath',                       img:'/Brand_assets/Kapster4.jpg', branch:'tegal' }
+    { id:'tegal-sephril',     name:'Sephril',       role:'Haircut;Fade;Coloring;Creambath',                       img:'https://lh3.googleusercontent.com/d/1p9CMGJAodrr6aaxljTUtiqlelgk5rJbA=w800', branch:'tegal' }
   ];
 
   async function fetchBarbers() {
