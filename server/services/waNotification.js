@@ -101,7 +101,7 @@ async function notifyAdminNewBooking(booking) {
 ${barber_name ? `• Kapster : ${barber_name}\n` : ''}${notes ? `• Catatan : ${notes}\n` : ''}
 #RedBoxBooking`;
 
-  return sendWA(ADMIN_NUMBER, message);
+  return sendWA(ADMIN_NUMBER, message, { branch: location });
 }
 
 // --- helpers ---
@@ -156,7 +156,7 @@ _(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`;
 }
 
 // 5. Notifikasi poin credited setelah review positif
-async function notifyCustomerReviewPointsCredited(wa, name, rating, pointsEarned, totalPoints) {
+async function notifyCustomerReviewPointsCredited(wa, name, rating, pointsEarned, totalPoints, branch = 'bypass') {
   const fn = (name || 'Kak').split(' ')[0];
   const valueIdr = pointsEarned * 10000; // 1 poin = Rp 10.000
 
@@ -181,11 +181,11 @@ Cek & redeem poin di:
 
 Makasih lagi kak udah jadi bagian dari keluarga RedBox! Sampai ketemu di kunjungan next ya 😎✂️`;
 
-  return sendWA(wa, message);
+  return sendWA(wa, message, { branch });
 }
 
 async function notifyBarberNewHomeServiceJob({
-  barberPhone, customerName, dateStr, timeStr, address, serviceLabel, price,
+  barberPhone, customerName, dateStr, timeStr, address, serviceLabel, price, branch,
 }) {
   const msg =
 `🔔 *[HOME SERVICE] Booking Baru*
@@ -199,12 +199,12 @@ Harga     : ${price}
 Balas *BERANGKAT* saat berangkat ke lokasi.
 Balas *SELESAI* setelah pekerjaan selesai.`;
 
-  return sendWA(barberPhone, msg);
+  return sendWA(barberPhone, msg, { branch });
 }
 
 // Remind barber 1 hour before home service booking
 async function notifyBarberHomeServiceReminderH1({
-  barberPhone, barberName, customerName, dateStr, timeStr, address, serviceLabel, price,
+  barberPhone, barberName, customerName, dateStr, timeStr, address, serviceLabel, price, branch,
 }) {
   const msg =
 `⏰ *[REMINDER HOME SERVICE] H-1 Jam!*
@@ -225,12 +225,12 @@ Jangan lupa bersiap-siap ya! 🛠️
 Balas *BERANGKAT* saat kamu mulai berangkat ke lokasi.
 Balas *SELESAI* setelah pekerjaan selesai.`;
 
-  return sendWA(barberPhone, msg);
+  return sendWA(barberPhone, msg, { branch });
 }
 
 // Notify barber of new in-outlet booking
 async function notifyBarberNewOutletBooking({
-  barberPhone, barberName, customerName, dateStr, timeStr, location, serviceLabel, price,
+  barberPhone, barberName, customerName, dateStr, timeStr, location, serviceLabel, price, branch,
 }) {
   const msg =
 `🔔 *[BOOKING BARU] Pemesanan di Outlet!*
@@ -248,7 +248,7 @@ Kamu punya pesanan baru di ${location}! 📋
 
 Jangan lupa catat ya! ✂️`;
 
-  return sendWA(barberPhone, msg);
+  return sendWA(barberPhone, msg, { branch });
 }
 
 module.exports = {

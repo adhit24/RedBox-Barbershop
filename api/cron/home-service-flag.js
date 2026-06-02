@@ -73,7 +73,7 @@ async function sendHomeServiceReminders(supabase) {
       
       const { data: sch, error: schError } = await supabase
         .from('schedules')
-        .select('start_time, price, service_name, barber_id, customers(name)')
+        .select('start_time, price, service_name, barber_id, customers(name), outlets(slug)')
         .eq('id', job.schedule_id)
         .single();
 
@@ -126,6 +126,7 @@ async function sendHomeServiceReminders(supabase) {
         address: job.address,
         serviceLabel: sch.service_name || 'Home Service',
         price: sch.price ? `Rp ${sch.price.toLocaleString('id-ID')}` : '-',
+        branch: sch.outlets?.slug,
       });
 
       await supabase.from('home_service_jobs')

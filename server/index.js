@@ -910,6 +910,7 @@ async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, addres
     address,
     serviceLabel: bookingData.service || 'Home Service',
     price:        bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
+    branch:       bookingData.location,
   });
 }
 
@@ -947,6 +948,7 @@ async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
     location: locationLabel,
     serviceLabel: bookingData.service,
     price: bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
+    branch: bookingData.location,
   });
 }
 
@@ -986,6 +988,7 @@ async function _notifyBarberOutletBookingMysql(bookingData) {
     location: locationLabel,
     serviceLabel: bookingData.service,
     price: bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
+    branch: bookingData.location,
   });
 }
 
@@ -2027,7 +2030,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     const msg = `Halo kak ${firstName}! 👋\n\nKode OTP login Member RedBox Barbershop:\n\n*${code}*\n\nBerlaku 10 menit. Jangan bagikan ke siapapun ya! 🔒\n\nRedBox Barbershop — Sharp Cuts, Bold Style ✂️`;
 
     try {
-      await sendWAFonnte(wa, msg);
+      await sendWAFonnte(wa, msg, { branch: 'bypass' });
     } catch (e) {
       console.error('[OTP] sendWA error:', e.message);
       return res.status(500).json({ error: 'Gagal kirim OTP ke WhatsApp. Coba lagi.' });
@@ -2507,7 +2510,7 @@ app.post('/api/reviews/submit', async (req, res) => {
               totalPoints = balance?.total_points || 5;
 
               // Send WA notification about points (non-blocking)
-              notifyCustomerReviewPointsCredited(customer.wa, customer.wa, rating, 5, totalPoints).catch(() => {});
+              notifyCustomerReviewPointsCredited(customer.wa, customer.wa, rating, 5, totalPoints, booking.location).catch(() => {});
             }
           }
         }

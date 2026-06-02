@@ -40,20 +40,23 @@ const BRANCH_WA_NUMBER = {
 function getBranchToken(branch) {
   const branchKey = String(branch || '').toLowerCase().trim();
   
-  // Jika tidak ada branch atau default, pakai FONNTE_TOKEN (Bypass)
+  // Token bypass: cek FONNTE_TOKEN_BYPASS dulu, fallback ke FONNTE_TOKEN (legacy)
+  const bypassToken = process.env.FONNTE_TOKEN_BYPASS || process.env.FONNTE_TOKEN || null;
+
+  // Jika tidak ada branch atau default, pakai bypass token
   if (!branchKey || branchKey === 'default' || branchKey === 'bypass') {
-    return process.env.FONNTE_TOKEN || null;
+    return bypassToken;
   }
-  
+
   const envVarName = BRANCH_TOKEN_MAP[branchKey];
   if (envVarName) {
     const token = process.env[envVarName];
     if (token) return token;
-    // Fallback ke default token jika branch token tidak tersedia
-    return process.env.FONNTE_TOKEN || null;
+    // Fallback ke bypass token jika branch token tidak tersedia
+    return bypassToken;
   }
-  
-  return process.env.FONNTE_TOKEN || null;
+
+  return bypassToken;
 }
 
 /**

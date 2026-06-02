@@ -57,7 +57,7 @@ async function _mokaGet(path, token) {
 
 async function _fetchOutletItems(mokaOutletId, token) {
   const d = await _mokaGet(
-    `/v1/outlets/${mokaOutletId}/items?include_variants=true`,
+    `/v1/outlets/${mokaOutletId}/items?include_variants=true&per_page=200`,
     token
   );
   return d?.data?.items || d?.data || d?.items || [];
@@ -90,14 +90,21 @@ async function syncMokaSchema(supabase) {
     return report;
   }
 
-  // Ambil token — gunakan token pertama yang tersedia (Client Credentials berlaku global)
+  // Ambil token bypass (outlet bypass punya akses items endpoint untuk semua outlet).
+  // Token outlet lain (mis. CSB) hanya punya scope reports, tidak bisa fetch items.
+  const bypassOutlet = outlets.find(o => o.slug === 'bypass');
   const { data: tokens } = await supabase
     .from('moka_tokens')
     .select('access_token, outlet_id, expires_at')
-    .order('expires_at', { ascending: false })
+    .eq('outlet_id', bypassOutlet?.id || '')
     .limit(1);
 
-  const token = tokens?.[0]?.access_token;
+  // Fallback: token manapun jika bypass tidak ada
+  const { data: fallbackTokens } = tokens?.length
+    ? { data: null }
+    : await supabase.from('moka_tokens').select('access_token').order('expires_at', { ascending: true }).limit(1);
+
+  const token = tokens?.[0]?.access_token || fallbackTokens?.[0]?.access_token;
   if (!token) {
     report.errors.push('No Moka token available — run OAuth first');
     return report;
