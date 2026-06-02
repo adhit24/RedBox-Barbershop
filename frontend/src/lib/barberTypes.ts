@@ -89,6 +89,14 @@ export interface MissionsResponse {
   missions: Mission[];
 }
 
+export interface LeaderboardEntry {
+  rank: number;
+  barber_id: string;
+  name: string;
+  total_count: number;
+  is_me: boolean;
+}
+
 export interface LeaderboardData {
   tier: 'LEGEND' | 'ELITE' | 'ADVANCED' | 'RISING';
   position_pct: number;
@@ -96,6 +104,7 @@ export interface LeaderboardData {
   my_count: number;
   barber_count: number;
   month: string;
+  rankings: LeaderboardEntry[];
 }
 
 export interface FavoriteCustomer {

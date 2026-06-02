@@ -354,8 +354,9 @@ function createBarberRoutes(supabase) {
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
     const today = localDateStr(now);
+    const monthStartTs = `${monthStart}T00:00:00+07:00`;
 
-    // Get all barbers in this branch with their done count this month
+    // Get all active barbers in this branch
     const { data: barbers } = await supabase
       .from('barbers')
       .select('id, name')
@@ -363,20 +364,44 @@ function createBarberRoutes(supabase) {
       .eq('is_active', true);
 
     if (!barbers || barbers.length === 0) {
-      return res.json({ tier: 'RISING', position_pct: 100, next_tier_needed: 0, barber_count: 0 });
+      return res.json({ tier: 'RISING', position_pct: 100, next_tier_needed: 0, barber_count: 0, rankings: [] });
     }
 
-    const counts = [];
-    for (const b of barbers) {
-      const { count } = await supabase
-        .from('bookings')
-        .select('*', { count: 'exact', head: true })
-        .eq('barber_id', b.id)
-        .eq('status', 'done')
-        .gte('date', monthStart)
-        .lte('date', today);
-      counts.push({ barber_id: b.id, name: b.name, count: count || 0 });
+    const barberIds = barbers.map(b => b.id);
+
+    // Web bookings this month (all barbers in branch, single query)
+    const { data: webRows } = await supabase
+      .from('bookings')
+      .select('barber_id')
+      .in('barber_id', barberIds)
+      .eq('status', 'done')
+      .gte('date', monthStart)
+      .lte('date', today);
+
+    // Moka schedules this month (all barbers in branch, single query)
+    const { data: mokaRows } = await supabase
+      .from('schedules')
+      .select('barber_id')
+      .in('barber_id', barberIds)
+      .eq('source', 'moka')
+      .eq('status', 'completed')
+      .gte('start_time', monthStartTs);
+
+    // Tally counts per barber
+    const webMap = {};
+    for (const r of (webRows || [])) {
+      webMap[r.barber_id] = (webMap[r.barber_id] || 0) + 1;
     }
+    const mokaMap = {};
+    for (const r of (mokaRows || [])) {
+      if (r.barber_id) mokaMap[r.barber_id] = (mokaMap[r.barber_id] || 0) + 1;
+    }
+
+    const counts = barbers.map(b => ({
+      barber_id: b.id,
+      name: b.name,
+      count: (webMap[b.id] || 0) + (mokaMap[b.id] || 0),
+    }));
 
     counts.sort((a, b) => b.count - a.count);
     const total = counts.length;
@@ -402,6 +427,14 @@ function createBarberRoutes(supabase) {
       nextTierNeeded = Math.max(0, advThreshold - myCount + 1);
     }
 
+    const rankings = counts.map((c, i) => ({
+      rank: i + 1,
+      barber_id: c.barber_id,
+      name: c.name,
+      total_count: c.count,
+      is_me: c.barber_id === req.barber.id,
+    }));
+
     return res.json({
       tier,
       position_pct: positionPct,
@@ -409,6 +442,7 @@ function createBarberRoutes(supabase) {
       my_count: myCount,
       barber_count: total,
       month: monthStart,
+      rankings,
     });
   });
 
