@@ -111,11 +111,6 @@ const handle = (phone, name, text) => {
           logger.logError('notification_kapster', err.message)
         );
 
-        // Notify admin as backup (fire-and-forget)
-        notificationService.notifyAdmin(savedBooking).catch(err =>
-          logger.logError('notification_admin', err.message)
-        );
-
         clearSession(phone);
         return {
           reply: `Booking berhasil dikonfirmasi kak! 🎉\n\nSampai ketemu ya, kami tunggu kedatangannya di *${config.BRANCH_NAME}* 💈\n\n📅 *Tambah ke Google Calendar:*\n${calLink}\n\nJika ada perubahan, hubungi kami kembali 🙏`,

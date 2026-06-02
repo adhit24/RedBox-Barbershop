@@ -1095,7 +1095,6 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         } catch (e) {
           console.warn('[WA Confirm] failed:', e.message);
         }
-        notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
         // Send notification to barber regardless of booking type
         if (type !== 'home_service') {
           _notifyBarberOutletBookingSupabase(supabase, data).catch(err =>
@@ -1213,7 +1212,6 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         notifyCustomerBookingConfirmed({ ...newBooking[0], barber_name: null }).catch(e =>
           console.warn('[WA Confirm] failed:', e.message)
         );
-        notifyAdminNewBooking({ ...newBooking[0], barber_name: null }).catch(() => {});
         // Send notification to barber if it's an outlet booking and barber is assigned
         if (type !== 'home_service') {
           _notifyBarberOutletBookingMysql(newBooking[0]).catch(err =>
