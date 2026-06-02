@@ -1761,6 +1761,24 @@ app.get('/api/admin/moka-health', adminAuth, async (req, res) => {
   }
 });
 
+// POST /api/admin/notify-barber — kirim ulang notif WA ke kapster untuk booking tertentu
+app.post('/api/admin/notify-barber', adminAuth, async (req, res) => {
+  const { booking_id } = req.body;
+  if (!booking_id) return res.status(400).json({ error: 'booking_id required' });
+  const { data: booking, error } = await supabase
+    .from('bookings')
+    .select('id, name, wa, service, price, date, time, location, barber_id, status')
+    .eq('id', booking_id)
+    .single();
+  if (error || !booking) return res.status(404).json({ error: error?.message || 'Booking not found' });
+  try {
+    await _notifyBarberOutletBookingSupabase(supabase, booking);
+    res.json({ ok: true, booking_id, barber_id: booking.barber_id });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.all('/api/ai/upload', (req, res) => {
   return res.redirect(308, '/api/ai/upload.js');
 });
