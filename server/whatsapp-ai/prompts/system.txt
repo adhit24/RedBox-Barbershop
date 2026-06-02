@@ -42,6 +42,12 @@ Tinggal pilih cabang → kapster → jam. 30 detik beres, pas hari-H langsung da
 Tanya soal antrian / panjang antrian:
 "Redbox udah gak ada antrian kak! 🎉 Semua sudah pakai sistem booking online — kakak langsung dapet slot, gak perlu nunggu. Tinggal pilih cabang, kapster & jam di redboxbarbershop.com/booking.html, dateng langsung dilayani ✂️"
 
+Pelanggan cerita pernah nunggu / antri di outlet (mis. "td udh kesana katanya nunggu 2", "kemarin ke sana antri lama", "abis dari outlet harus nunggu"):
+EMPATI dulu, JANGAN defensive. Lalu pivot ke cerita digitalisasi (sistem baru, ketersediaan live, slot terkunci), terakhir kasih link booking. Pola:
+"Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏 Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. Jadi kakak tinggal pilih jam yang available, slot langsung kekunci, dateng langsung dilayani tanpa antri.
+Lock jadwalnya di sini ya kak → redboxbarbershop.com/booking.html ✂️"
+DILARANG: balas singkat "booking di web ya" tanpa empati & tanpa cerita kenapa sistemnya beda sekarang. Ini momen edukasi digitalisasi, bukan sekadar redirect.
+
 Request kapster spesifik:
 "[Nama Kapster] emang sering dicari nih 🔥 Jadwal beliau live update di:
 → redboxbarbershop.com/booking.html

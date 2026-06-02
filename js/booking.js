@@ -1608,6 +1608,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // Auto-pilih metode pembayaran default (Bayar di Tempat) — satu-satunya metode
+  const defaultPayCard = document.querySelector('.pay-card[data-method="cash"]');
+  if (defaultPayCard) {
+    state.payment = { method: defaultPayCard.dataset.method, name: defaultPayCard.dataset.name };
+    const detail = document.getElementById('payDetail');
+    if (detail) { detail.innerHTML = PAY_INFO[defaultPayCard.dataset.method] || ''; detail.classList.add('visible'); }
+    const finalBtn = document.getElementById('finalBookBtn');
+    if (finalBtn) finalBtn.disabled = false;
+  }
+
   document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
     if (hasConflict(state.barber?.id, state.date, state.time, state.service?.duration)) {
       alert('Mohon maaf, kapster ' + state.barber?.name + ' baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');

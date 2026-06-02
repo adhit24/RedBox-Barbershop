@@ -343,56 +343,16 @@
         <!-- STEP 5: CONFIRM -->
         <div class="book-step" id="step5">
           <div class="step-head">
-            <h2>Confirm &amp; Pay</h2>
-            <p>Review your booking details, then select payment method.</p>
+            <h2>Konfirmasi Booking</h2>
+            <p>Periksa detail booking kamu. Pembayaran dilakukan di tempat saat tiba di lokasi.</p>
           </div>
           <div class="confirm-box" id="confirmSummary"></div>
-          <h4 class="payment-label">Select Payment Method</h4>
+          <h4 class="payment-label">Metode Pembayaran</h4>
           <div class="payment-grid-3">
-            <!-- QRIS — Full Payment -->
-            <div class="pay-card pay-qris-card" data-method="qris" data-name="QRIS — Bayar Penuh">
-              <div class="pay-qris-header">
-                <div class="pay-icon">📱</div>
-                <div><strong>QRIS</strong><span>Bayar penuh di muka</span></div>
-              </div>
-              <div class="qris-img-wrap">
-              </div>
-            </div>
-            
-            <!-- GoPay -->
-            <div class="pay-card pay-gopay-card" data-method="gopay" data-name="GoPay">
-              <div class="pay-icon">💚</div>
-              <div><strong>GoPay</strong><span>E-wallet instant</span></div>
-            </div>
-            
-            <!-- OVO -->
-            <div class="pay-card pay-ovo-card" data-method="ovo" data-name="OVO">
-              <div class="pay-icon">🟣</div>
-              <div><strong>OVO</strong><span>E-wallet instant</span></div>
-            </div>
-            
-            <!-- DANA -->
-            <div class="pay-card pay-dana-card" data-method="dana" data-name="DANA">
-              <div class="pay-icon">🔵</div>
-              <div><strong>DANA</strong><span>E-wallet instant</span></div>
-            </div>
-            
-            <!-- ShopeePay -->
-            <div class="pay-card pay-shopeepay-card" data-method="shopeepay" data-name="ShopeePay">
-              <div class="pay-icon">🟠</div>
-              <div><strong>ShopeePay</strong><span>E-wallet instant</span></div>
-            </div>
-            
-            <!-- Credit/Debit Card -->
-            <div class="pay-card pay-card-card" data-method="card" data-name="Kartu Kredit/Debit">
-              <div class="pay-icon">💳</div>
-              <div><strong>Kartu Kredit/Debit</strong><span>Visa, Mastercard, JCB</span></div>
-            </div>
-            
-            <!-- Bayar di Tempat -->
-            <div class="pay-card pay-cash-card" data-method="cash" data-name="Bayar di Tempat">
+            <!-- Bayar di Tempat (satu-satunya metode) -->
+            <div class="pay-card pay-cash-card selected" data-method="cash" data-name="Bayar di Tempat">
               <div class="pay-icon">💵</div>
-              <div><strong>Bayar di Tempat</strong><span>Cash / non-cash</span></div>
+              <div><strong>Bayar di Tempat</strong><span>Cash / non-cash di lokasi</span></div>
             </div>
           </div>
           <div class="pay-detail" id="payDetail"></div>

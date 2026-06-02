@@ -67,10 +67,26 @@ const isLateNotification = (text) => {
   return ['otw', 'di jalan', 'lagi jalan', 'macet', 'bentar lagi', 'sebentar lagi', 'hampir sampai', 'mau nyampe', 'mau sampai'].some(k => lower.includes(k));
 };
 
+// Deteksi keluhan pernah nunggu/antri di outlet (mis. "td udh kesana katanya nunggu 2")
+// Pivot: empati → cerita digitalisasi → arahkan booking online
+const isPriorWaitComplaint = (text) => {
+  const lower = text.toLowerCase();
+  const waitWord = /(nunggu|tunggu|ngantri|antri|antre|antrian|antrean)/.test(lower);
+  if (!waitWord) return false;
+  const pastIndicator = /\b(td|tadi|barusan|barusaja|kemarin|kemaren|kmrn|sebelumnya|abis|habis|udh|udah|sudah)\b/.test(lower);
+  const beenThere = /(ke\s*sana|kesana|ke\s*sini|kesini|outlet|cabang|tempatnya|tokonya|store)/.test(lower);
+  // "td udh kesana katanya nunggu" → pastIndicator + waitWord ✅
+  // "ke sana antri panjang" → beenThere + waitWord ✅
+  return pastIndicator || beenThere;
+};
+
 // Classify message intent for routing + logging
 const classifyIntent = (text) => {
   if (isBookingForm(text)) return 'booking_request_form';
   const lower = text.toLowerCase();
+  // Cek wait complaint DULU sebelum slot_inquiry, karena keluhan masa lalu
+  // butuh empati + cerita digitalisasi, bukan sekadar info slot.
+  if (isPriorWaitComplaint(text)) return 'wait_complaint';
   if (isSlotInquiry(text)) return 'slot_inquiry';
   if (isKapsterInquiry(text)) return 'kapster_inquiry';
   if (isBookingDetailConfirmation(text)) return 'booking_detail_confirmation';
@@ -233,6 +249,17 @@ const handle = async ({ from, name, text }) => {
     // 2. Escalation keywords — bypass AI, route to human
     if (escalationService.shouldEscalate(text)) {
       await escalationService.escalate(from, name, text);
+      return;
+    }
+
+    // 3a. Keluhan pernah nunggu/antri di outlet — empati + cerita digitalisasi
+    if (intent === 'wait_complaint') {
+      const msg =
+        `Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏\n\n` +
+        `Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. ` +
+        `Jadi kakak tinggal pilih jam yang available, slot langsung kekunci, dateng langsung dilayani tanpa antri.\n\n` +
+        `Lock jadwalnya di sini ya kak → ${BOOKING_URL} ✂️`;
+      await sendText(from, msg);
       return;
     }
 
