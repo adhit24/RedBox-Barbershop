@@ -48,6 +48,20 @@ const isKapsterInquiry = (text) => {
   return ['mau sama', 'sama mas', 'sama om', 'sama pak', 'barbernya', 'barber nya', 'kapsternya', 'minta mas', 'minta om', 'minta pak', 'ada mas', 'ada om', 'ada pak', 'dengan mas', 'dengan om'].some(k => lower.includes(k));
 };
 
+// Deteksi konfirmasi detail booking (misal: "yang anak2", "oke yg 2 anak", setelah user diarahkan ke web)
+const isBookingDetailConfirmation = (text) => {
+  const lower = text.toLowerCase();
+  const detailPatterns = [
+    /yang\s+anak/i,                          // "yang anak"
+    /\b(anak2|anak-anak)\b/i,               // "anak2", "anak-anak"
+    /\b(oke|ok|okey|sip|noted|ya)\b.*\b(anak|orang)\b/i,  // "oke yg 2 anak"
+    /jadi\s+.*\b(booking|reservasi|pesan)\b/i,             // "jadi mau booking..."
+    /(nomor|no)\s*\.?\s*\d+.*\b(orang|anak|orangnya)\b/i, // "yg 2 orang"
+    /\b\d+\s*(orang|anak|orangnya|anaknya)\b/,           // "3 orang", "2 anak"
+  ];
+  return detailPatterns.some(p => p.test(lower));
+};
+
 const isLateNotification = (text) => {
   const lower = text.toLowerCase();
   return ['otw', 'di jalan', 'lagi jalan', 'macet', 'bentar lagi', 'sebentar lagi', 'hampir sampai', 'mau nyampe', 'mau sampai'].some(k => lower.includes(k));
@@ -59,6 +73,7 @@ const classifyIntent = (text) => {
   const lower = text.toLowerCase();
   if (isSlotInquiry(text)) return 'slot_inquiry';
   if (isKapsterInquiry(text)) return 'kapster_inquiry';
+  if (isBookingDetailConfirmation(text)) return 'booking_detail_confirmation';
   if (isLateNotification(text)) return 'late_notification';
   if (['harga', 'price', 'berapa', 'tarif', 'biaya'].some(k => lower.includes(k))) return 'price_inquiry';
   if (['lokasi', 'alamat', 'dimana', 'maps', 'tempatnya', 'cabang mana', 'ada di'].some(k => lower.includes(k))) return 'location_inquiry';
@@ -232,6 +247,13 @@ const handle = async ({ from, name, text }) => {
       const match = text.match(/(?:mas|om|pak|sama|minta|ada|dengan)\s+([A-Za-z]{2,})/i);
       const kapster = match ? `Mas/Om ${match[1]}` : 'Kapster pilihan kakak';
       await sendText(from, buildRedirectMsg(from, { kapster }));
+      return;
+    }
+
+    // 4b. Booking detail confirmation (e.g., "yang anak2", "oke yg 2 anak")
+    // Redirect to website, do NOT acknowledge booking manually
+    if (intent === 'booking_detail_confirmation') {
+      await sendText(from, `Aku ngerti kak, tapi booking harus lewat website biar slot-nya aman dan terkunci. Yuk langsung aja ke redboxbarbershop.com/booking.html ✂️`);
       return;
     }
 
