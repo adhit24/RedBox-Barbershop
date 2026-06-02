@@ -36,8 +36,8 @@ export default function LeaderboardPage() {
 
   return (
     <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold text-gray-900">🏆 Leaderboard</h2>
-      <p className="text-sm text-gray-500 capitalize">Cabang {session?.barber.branch} — Bulan ini</p>
+      <h2 className="text-lg font-bold text-gray-900">🏆 Ranking Semua Cabang</h2>
+      <p className="text-sm text-gray-500">Bulan ini — semua kapster</p>
 
       <TierIndicator data={data} />
 
@@ -68,10 +68,13 @@ export default function LeaderboardPage() {
               <span className="w-7 text-center text-base font-bold">
                 {medal ?? <span className="text-gray-400 text-sm">#{entry.rank}</span>}
               </span>
-              <span className={`flex-1 font-medium ${entry.is_me ? tierConf.color : 'text-gray-700'}`}>
-                {entry.name}
-                {entry.is_me && <span className="ml-2 text-xs opacity-70">(Kamu)</span>}
-              </span>
+              <div className="flex-1 min-w-0">
+                <p className={`font-medium truncate ${entry.is_me ? tierConf.color : 'text-gray-700'}`}>
+                  {entry.name}
+                  {entry.is_me && <span className="ml-2 text-xs opacity-70">(Kamu)</span>}
+                </p>
+                <p className="text-xs text-gray-400 capitalize">{entry.branch}</p>
+              </div>
               <span className={`text-sm font-bold ${entry.is_me ? tierConf.color : 'text-gray-500'}`}>
                 {entry.total_count} cust
               </span>

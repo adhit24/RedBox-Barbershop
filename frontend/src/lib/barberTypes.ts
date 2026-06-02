@@ -93,6 +93,7 @@ export interface LeaderboardEntry {
   rank: number;
   barber_id: string;
   name: string;
+  branch: string;
   total_count: number;
   is_me: boolean;
 }

@@ -350,17 +350,15 @@ function createBarberRoutes(supabase) {
 
   // ─── LEADERBOARD ─────────────────────────────────────
   router.get('/leaderboard', barberAuth, async (req, res) => {
-    const branch = req.barber.branch;
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
     const today = localDateStr(now);
     const monthStartTs = `${monthStart}T00:00:00+07:00`;
 
-    // Get all active barbers in this branch
+    // Get ALL active barbers across all branches
     const { data: barbers } = await supabase
       .from('barbers')
-      .select('id, name')
-      .eq('branch', branch)
+      .select('id, name, branch')
       .eq('is_active', true);
 
     if (!barbers || barbers.length === 0) {
@@ -400,6 +398,7 @@ function createBarberRoutes(supabase) {
     const counts = barbers.map(b => ({
       barber_id: b.id,
       name: b.name,
+      branch: b.branch,
       count: (webMap[b.id] || 0) + (mokaMap[b.id] || 0),
     }));
 
@@ -431,6 +430,7 @@ function createBarberRoutes(supabase) {
       rank: i + 1,
       barber_id: c.barber_id,
       name: c.name,
+      branch: c.branch,
       total_count: c.count,
       is_me: c.barber_id === req.barber.id,
     }));
