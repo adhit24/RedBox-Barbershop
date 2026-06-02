@@ -1,10 +1,17 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useBarberSession } from '@/hooks/useBarberSession';
-import { fetchBarberStats, fetchBarberHistory } from '@/lib/barberApi';
+import { fetchBarberStats, fetchBarberHistory, fetchBarberStreak, fetchBarberAchievements, fetchBarberRecords, fetchBarberMissions, fetchBarberLeaderboard, fetchBarberFavorites, fetchBarberReviews } from '@/lib/barberApi';
 import { StatsGrid } from '@/components/barber/StatsGrid';
 import { BookingCard } from '@/components/BookingCard';
-import type { BarberStats } from '@/lib/barberTypes';
+import { StreakBadge } from '@/components/barber/StreakBadge';
+import { BadgeGrid } from '@/components/barber/BadgeGrid';
+import { MissionList } from '@/components/barber/MissionList';
+import { TierIndicator } from '@/components/barber/TierIndicator';
+import { FavoriteCustomerList } from '@/components/barber/FavoriteCustomerList';
+import { ReviewQuoteCard } from '@/components/barber/ReviewQuoteCard';
+import Link from 'next/link';
+import type { BarberStats, StreakData, AchievementsResponse, RecordsData, MissionsResponse, LeaderboardData } from '@/lib/barberTypes';
 import type { Booking } from '@/lib/constants';
 
 type Period = 'day' | 'week' | 'month' | 'year';
@@ -22,6 +29,13 @@ export default function BarberProgressPage() {
   const [stats, setStats] = useState<BarberStats | null>(null);
   const [history, setHistory] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [streak, setStreak] = useState<StreakData | null>(null);
+  const [achievements, setAchievements] = useState<AchievementsResponse | null>(null);
+  const [records, setRecords] = useState<RecordsData | null>(null);
+  const [missions, setMissions] = useState<MissionsResponse | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardData | null>(null);
+  const [favorites, setFavorites] = useState<Array<{name:string;visits:number;service:string}>>([]);
+  const [reviews, setReviews] = useState<Array<{rating:number;review_text:string;customer_name:string;created_at:string}>>([]);
 
   useEffect(() => {
     if (!session) return;
@@ -34,6 +48,29 @@ export default function BarberProgressPage() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [session, period]);
+
+  useEffect(() => {
+    if (!session) return;
+    Promise.all([
+      fetchBarberStreak(),
+      fetchBarberAchievements(),
+      fetchBarberRecords(),
+      fetchBarberMissions(),
+      fetchBarberLeaderboard(),
+      fetchBarberFavorites(),
+      fetchBarberReviews(),
+    ])
+      .then(([st, ach, rec, mis, lb, fav, rev]) => {
+        setStreak(st);
+        setAchievements(ach);
+        setRecords(rec);
+        setMissions(mis);
+        setLeaderboard(lb);
+        setFavorites(fav.favorites || []);
+        setReviews(rev.reviews || []);
+      })
+      .catch(console.error);
+  }, [session]);
 
   return (
     <div className="p-4 space-y-4">
@@ -58,6 +95,35 @@ export default function BarberProgressPage() {
       ) : (
         <>
           <StatsGrid stats={stats} />
+
+          {/* Motivation Section */}
+          {leaderboard && (
+            <>
+              <TierIndicator data={leaderboard} />
+              <Link href="/barber/leaderboard" className="block text-center text-sm text-red-600 hover:underline -mt-2">
+                Lihat detail leaderboard →
+              </Link>
+            </>
+          )}
+          {streak && <StreakBadge streak={streak} />}
+          {missions && <MissionList data={missions} />}
+          {achievements && <BadgeGrid data={achievements} />}
+
+          {/* Records */}
+          {records && records.best_customer_per_day > 0 && (
+            <div className="bg-white rounded-xl p-4 border border-gray-100">
+              <p className="text-sm font-medium text-gray-700 mb-2">🏆 Rekor Pribadi</p>
+              <div className="space-y-1 text-sm">
+                <p>📋 Customer/hari terbanyak: <span className="font-semibold">{records.best_customer_per_day}</span> ({records.best_customer_per_day_at})</p>
+                {records.best_revenue_per_month > 0 && (
+                  <p>💰 Revenue/bulan tertinggi: <span className="font-semibold">Rp {records.best_revenue_per_month.toLocaleString('id-ID')}</span></p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <FavoriteCustomerList favorites={favorites} />
+          <ReviewQuoteCard reviews={reviews} />
 
           <div className="space-y-2 pt-4">
             <p className="text-sm font-medium text-gray-700">
