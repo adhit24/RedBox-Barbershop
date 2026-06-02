@@ -1,11 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useBarberSession } from '@/hooks/useBarberSession';
-import { fetchBarberStats, fetchBarberUpcoming } from '@/lib/barberApi';
+import { fetchBarberStats, fetchBarberUpcoming, fetchBarberStreak, fetchBarberPace } from '@/lib/barberApi';
 import { BookingCard } from '@/components/BookingCard';
 import { TargetProgressBar } from '@/components/barber/TargetProgressBar';
 import { UpcomingBookingCard } from '@/components/barber/UpcomingBookingCard';
-import type { BarberStats, BarberUpcoming } from '@/lib/barberTypes';
+import { StreakBadge } from '@/components/barber/StreakBadge';
+import { PaceCard } from '@/components/barber/PaceCard';
+import type { BarberStats, BarberUpcoming, StreakData, PaceData } from '@/lib/barberTypes';
 
 function rupiah(n: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -29,13 +31,17 @@ export default function BarberHomePage() {
   const [stats, setStats] = useState<BarberStats | null>(null);
   const [upcoming, setUpcoming] = useState<BarberUpcoming | null>(null);
   const [loading, setLoading] = useState(true);
+  const [streak, setStreak] = useState<StreakData | null>(null);
+  const [pace, setPace] = useState<PaceData | null>(null);
 
   useEffect(() => {
     if (!session) return;
-    Promise.all([fetchBarberStats('day'), fetchBarberUpcoming()])
-      .then(([s, u]) => {
+    Promise.all([fetchBarberStats('day'), fetchBarberUpcoming(), fetchBarberStreak(), fetchBarberPace()])
+      .then(([s, u, st, p]) => {
         setStats(s);
         setUpcoming(u);
+        setStreak(st);
+        setPace(p);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -67,6 +73,8 @@ export default function BarberHomePage() {
         </div>
       </div>
 
+      {streak && <StreakBadge streak={streak} />}
+
       {upcoming.next && <UpcomingBookingCard booking={upcoming.next} />}
 
       {homeServiceToday.length > 0 && (
@@ -77,6 +85,8 @@ export default function BarberHomePage() {
           ))}
         </div>
       )}
+
+      {pace && <PaceCard pace={pace} />}
 
       {upcoming.tomorrow.length > 0 && (
         <div className="space-y-2">
