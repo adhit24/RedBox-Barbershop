@@ -1519,41 +1519,64 @@ app.post('/api/barbers/:id/toggle-active', adminAuth, async (req, res) => {
 });
 
 // POST /api/barbers/:id/today-override — Admin: override ketersediaan kapster hari ini
-// available=true  → hapus blokir, upsert working_hours is_off=false untuk hari ini
-// available=false → upsert working_hours is_off=true + insert admin-block schedule
+// Supports optional ?date=YYYY-MM-DD (defaults to today WIB).
+// available=true  → tandai tersedia di tanggal tersebut (hapus admin-block)
+// available=false → tandai libur di tanggal tersebut (insert admin-block)
+//
+// FIX (2026-06-02): dulu memakai barber_working_hours.is_off + day_of_week sehingga
+// memblokir SEMUA hari yang sama di minggu-minggu berikutnya secara permanen.
+// Sekarang menggunakan barber_date_overrides (per-tanggal) agar blokir hanya berlaku
+// untuk tanggal spesifik yang dipilih.
 app.post('/api/barbers/:id/today-override', adminAuth, async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
   const { id } = req.params;
   const { available } = req.body;
   if (typeof available !== 'boolean') return res.status(400).json({ error: 'available (boolean) required' });
 
-  const wibNow   = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const today    = wibNow.toISOString().slice(0, 10);
-  const dayOfWeek = new Date(`${today}T12:00:00Z`).getUTCDay();
+  const wibNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  // Allow admin to override a future date (e.g., block a barber for next Saturday)
+  const targetDate = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
+    ? req.query.date
+    : wibNow.toISOString().slice(0, 10);
 
-  // Upsert barber_working_hours untuk hari ini (hari dalam seminggu)
-  const { error: whErr } = await supabase.from('barber_working_hours').upsert({
-    barber_id:   id,
-    day_of_week: dayOfWeek,
-    is_off:      !available,
-    open_time:   '10:00',
-    close_time:  '21:00',
-  }, { onConflict: 'barber_id,day_of_week' });
-  if (whErr) return res.status(500).json({ error: whErr.message });
+  // Upsert into barber_date_overrides (date-specific, not day-of-week)
+  const { error: overrideErr } = await supabase
+    .from('barber_date_overrides')
+    .upsert({ barber_id: id, date: targetDate, is_off: !available }, { onConflict: 'barber_id,date' });
+  if (overrideErr) return res.status(500).json({ error: overrideErr.message });
 
-  if (available) {
-    // Batalkan admin-block schedules hari ini untuk kapster ini
+  // Also manage admin-block schedules so slot-blockers debug and legacy code stays in sync
+  if (!available) {
+    // Insert a full-day block schedule for this specific date
+    const dayStart = `${targetDate}T00:00:00+07:00`;
+    const dayEnd   = `${targetDate}T23:59:59+07:00`;
+    const { data: outletRow } = await supabase
+      .from('barbers').select('outlet_id').eq('id', id).single();
+    if (outletRow?.outlet_id) {
+      await supabase.from('schedules').insert({
+        barber_id:    id,
+        outlet_id:    outletRow.outlet_id,
+        start_time:   dayStart,
+        end_time:     dayEnd,
+        status:       'confirmed',
+        source:       'admin-block',
+        service_name: 'Libur / Admin Block',
+        notes:        `[admin-block] tanggal ${targetDate}`,
+      });
+    }
+  } else {
+    // Cancel all admin-block schedules for this specific date
     await supabase.from('schedules')
-      .update({ status: 'cancelled', notes: '[auto] admin override: kapster tersedia hari ini' })
+      .update({ status: 'cancelled', notes: `[auto] admin override: kapster tersedia ${targetDate}` })
       .eq('barber_id', id)
       .ilike('notes', '%admin-block%')
-      .gte('start_time', `${today}T00:00:00+07:00`)
-      .lt('start_time',  `${today}T23:59:59+07:00`)
+      .gte('start_time', `${targetDate}T00:00:00+07:00`)
+      .lt('start_time',  `${targetDate}T23:59:59+07:00`)
       .neq('status', 'cancelled');
   }
 
   barbersCache = null;
-  res.json({ success: true, barberId: id, available, dayOfWeek, date: today });
+  res.json({ success: true, barberId: id, available, date: targetDate });
 });
 
 // GET /api/customers

@@ -1031,7 +1031,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function renderBarberCards() {
-    const filtered = allBarbers.filter(b => b.branch === currentBranchFilter && b.is_active !== false);
+    const filtered = allBarbers.filter(b =>
+      b.branch === currentBranchFilter &&
+      b.is_active !== false &&
+      // Pada halaman home service / wedding, hanya tampilkan kapster yang boleh home service.
+      // Jika kapster non-home-service muncul tapi availability API memfilternya,
+      // semua slot akan tampil tercoret — ini yang menyebabkan bug Yudha/Sabtu.
+      (!isHomeService || b.home_service_enabled)
+    );
 
     function getInitials(name) {
       const parts = String(name || '').trim().split(/\s+/).filter(Boolean);

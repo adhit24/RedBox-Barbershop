@@ -40,7 +40,10 @@ async function getAvailableSlots(supabase, {
     .eq('is_active', true);
 
   if (barberId) barbersQuery.eq('id', barberId);
-  if (type === 'home_service') barbersQuery.eq('home_service_enabled', true);
+  // Only filter by home_service_enabled when listing all barbers (no specific barber requested).
+  // When a specific barberId is given the caller already chose that barber; filtering here
+  // would silently return 0 slots and make every time-slot appear blocked.
+  if (type === 'home_service' && !barberId) barbersQuery.eq('home_service_enabled', true);
 
   const { data: barbers, error: barbersErr } = await barbersQuery;
   if (barbersErr) throw new Error(`Barbers fetch failed: ${barbersErr.message}`);
@@ -56,6 +59,16 @@ async function getAvailableSlots(supabase, {
     .eq('day_of_week', dayOfWeek);
 
   const workingHoursMap = _indexBy(hours || [], 'barber_id');
+
+  // ── 2b. Load date-specific overrides (takes priority over weekly hours) ──
+  // Prevents today-override from permanently blocking every occurrence of a weekday.
+  const { data: dateOverrides } = await supabase
+    .from('barber_date_overrides')
+    .select('barber_id, is_off')
+    .in('barber_id', barbers.map(b => b.id))
+    .eq('date', date);
+
+  const dateOverridesMap = _indexBy(dateOverrides || [], 'barber_id');
 
   // ── 3. Load existing schedules for the day ─────────────────
   // Use overlap semantics: any schedule whose window intersects [dayStart, dayEnd].
@@ -116,7 +129,18 @@ async function getAvailableSlots(supabase, {
   const now   = Date.now();
 
   for (const barber of barbers) {
-    const wh = workingHoursMap[barber.id];
+    const wh           = workingHoursMap[barber.id];
+    const dateOverride = dateOverridesMap[barber.id]; // date-specific override (takes priority)
+
+    // Date-specific override (set by today-override endpoint) wins over weekly schedule.
+    // This prevents blocking a barber on one Saturday from blocking ALL future Saturdays.
+    if (dateOverride !== undefined) {
+      if (dateOverride.is_off) continue; // explicitly marked off for this date → skip
+      // is_off=false means explicitly available — skip the weekly is_off check below
+    } else {
+      // No date override — fall back to weekly working hours
+      if (wh?.is_off) continue;
+    }
 
     // Home service: 06:00–23:00 WIB regardless of outlet hours
     // Outlet: use configured hours, fall back to 10:00–21:00
@@ -125,12 +149,8 @@ async function getAvailableSlots(supabase, {
     const closeTime = type === 'home_service' ? '23:00'
       : ((wh && !wh.is_off) ? wh.close_time : '21:00');
 
-    // If barber is off this day, skip
-    if (wh?.is_off) continue;
-
-    // Alternatively: check barber's work_days array (existing schema field)
-    // wh table takes precedence; fall back to barber.work_days if no wh row
-    if (!wh) {
+    // Check barber's work_days array if no working_hours row exists
+    if (!wh && dateOverride === undefined) {
       const { data: b } = await supabase
         .from('barbers').select('work_days').eq('id', barber.id).single();
       if (!_barberWorksOnDay(b?.work_days, dayOfWeek)) continue;

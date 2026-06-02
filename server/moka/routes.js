@@ -136,7 +136,7 @@ function createMokaRouter(supabase) {
 
       // NOTE: Removed _refreshFreshTodayData call - sync handled by cron
 
-      const [{ data: schedules }, { data: outletWide }, { data: legacyBookings }] = await Promise.all([
+      const [{ data: schedules }, { data: outletWide }, { data: legacyBookings }, { data: whRows }, { data: dateOvrRows }] = await Promise.all([
         supabase
           .from('schedules')
           .select('id, barber_id, start_time, end_time, status, source, external_id, service_name, notes, outlet_id')
@@ -159,7 +159,24 @@ function createMokaRouter(supabase) {
           .eq('date', date)
           .eq('barber_id', barberId)
           .not('status', 'in', '("cancelled","rejected")'),
+        // Working hours for this day-of-week
+        supabase
+          .from('barber_working_hours')
+          .select('day_of_week, open_time, close_time, is_off')
+          .eq('barber_id', barberId)
+          .eq('day_of_week', new Date(`${date}T12:00:00Z`).getUTCDay()),
+        // Date-specific override
+        supabase
+          .from('barber_date_overrides')
+          .select('date, is_off, notes')
+          .eq('barber_id', barberId)
+          .eq('date', date),
       ]);
+
+      const workingHours = whRows?.[0] || null;
+      const dateOverride = dateOvrRows?.[0] || null;
+      // Effective is_off: date override wins over weekly schedule
+      const effectiveIsOff = dateOverride !== null ? dateOverride.is_off : (workingHours?.is_off ?? false);
 
       const bookingRanges = (legacyBookings || [])
         .map(b => {
@@ -231,6 +248,15 @@ function createMokaRouter(supabase) {
         barberId,
         date,
         durationMinutes: duration,
+        // ── Diagnosis info — penyebab blokir di luar schedules/bookings ──
+        barberAvailability: {
+          effectiveIsOff,
+          slotsWouldBeSkipped: effectiveIsOff,
+          dateOverride: dateOverride ? { is_off: dateOverride.is_off, notes: dateOverride.notes } : null,
+          weeklyWorkingHours: workingHours
+            ? { day_of_week: workingHours.day_of_week, open_time: workingHours.open_time, close_time: workingHours.close_time, is_off: workingHours.is_off }
+            : null,
+        },
         slotTimes,
         results: finalResults,
         lastSyncAt: getLastSyncAt(outletId),
@@ -1350,18 +1376,35 @@ function createMokaRouter(supabase) {
       if (barbersErr) throw new Error(barbersErr.message);
 
       const barberIds = (barbers || []).map(b => b.id);
-      const { data: hours } = barberIds.length
-        ? await supabase
-            .from('barber_working_hours')
-            .select('barber_id, is_off')
-            .in('barber_id', barberIds)
-            .eq('day_of_week', dayOfWeek)
-        : { data: [] };
+
+      const [{ data: hours }, { data: dateOverrides }] = await Promise.all([
+        barberIds.length
+          ? supabase
+              .from('barber_working_hours')
+              .select('barber_id, is_off')
+              .in('barber_id', barberIds)
+              .eq('day_of_week', dayOfWeek)
+          : Promise.resolve({ data: [] }),
+        barberIds.length
+          ? supabase
+              .from('barber_date_overrides')
+              .select('barber_id, is_off')
+              .in('barber_id', barberIds)
+              .eq('date', date)
+          : Promise.resolve({ data: [] }),
+      ]);
 
       const hoursByBarber = {};
       for (const h of hours || []) hoursByBarber[h.barber_id] = h;
+      const dateOverridesByBarber = {};
+      for (const d of dateOverrides || []) dateOverridesByBarber[d.barber_id] = d;
 
       const result = (barbers || []).map(b => {
+        // Date-specific override takes priority over weekly schedule
+        const dateOvr = dateOverridesByBarber[b.id];
+        if (dateOvr !== undefined) {
+          return { id: b.id, isWorking: !dateOvr.is_off };
+        }
         const wh = hoursByBarber[b.id];
         let isWorking;
         if (wh !== undefined) {
