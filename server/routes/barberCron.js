@@ -94,6 +94,17 @@ function createBarberCronRoutes(supabase, adminAuth) {
       const prevBest = rec?.best_customer_per_day || 0;
       const isNewRecord = todayCount > 0 && todayCount > prevBest;
 
+      // ── Write accurate daily count (used by leaderboard) ──
+      if (todayCount > 0) {
+        await supabase.from('barber_daily_counts').upsert({
+          barber_id: bu.barber_id,
+          date: today,
+          count: todayCount,
+          source: 'cron',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'barber_id,date' });
+      }
+
       if (todayCount > 0) {
         await supabase.from('barber_records').upsert({
           barber_id: bu.barber_id,

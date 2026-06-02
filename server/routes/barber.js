@@ -353,7 +353,6 @@ function createBarberRoutes(supabase) {
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
     const today = localDateStr(now);
-    const monthStartTs = `${monthStart}T00:00:00+07:00`;
 
     // Get ALL active barbers across all branches
     const { data: barbers } = await supabase
@@ -367,39 +366,43 @@ function createBarberRoutes(supabase) {
 
     const barberIds = barbers.map(b => b.id);
 
-    // Web bookings this month (all barbers in branch, single query)
-    const { data: webRows } = await supabase
+    // Primary source: barber_daily_counts (accurate, filled by CSV + nightly cron)
+    const { data: dailyRows } = await supabase
+      .from('barber_daily_counts')
+      .select('barber_id, count')
+      .in('barber_id', barberIds)
+      .gte('date', monthStart)
+      .lte('date', today);
+
+    // Which dates already have recorded counts?
+    const recordedDates = new Set((dailyRows || []).map(r => r.date));
+
+    // For today (not yet captured by nightly cron), add live web bookings
+    const { data: todayWebRows } = await supabase
       .from('bookings')
       .select('barber_id')
       .in('barber_id', barberIds)
       .eq('status', 'done')
-      .gte('date', monthStart)
-      .lte('date', today);
+      .eq('date', today);
 
-    // Moka schedules this month (all barbers in branch, single query)
-    const { data: mokaRows } = await supabase
-      .from('schedules')
-      .select('barber_id')
-      .in('barber_id', barberIds)
-      .eq('source', 'moka')
-      .eq('status', 'completed')
-      .gte('start_time', monthStartTs);
-
-    // Tally counts per barber
-    const webMap = {};
-    for (const r of (webRows || [])) {
-      webMap[r.barber_id] = (webMap[r.barber_id] || 0) + 1;
+    // Sum daily_counts by barber
+    const dailyMap = {};
+    for (const r of (dailyRows || [])) {
+      dailyMap[r.barber_id] = (dailyMap[r.barber_id] || 0) + r.count;
     }
-    const mokaMap = {};
-    for (const r of (mokaRows || [])) {
-      if (r.barber_id) mokaMap[r.barber_id] = (mokaMap[r.barber_id] || 0) + 1;
+
+    // Add today's live web bookings only if today not yet recorded by cron
+    if (!recordedDates.has(today)) {
+      for (const r of (todayWebRows || [])) {
+        if (r.barber_id) dailyMap[r.barber_id] = (dailyMap[r.barber_id] || 0) + 1;
+      }
     }
 
     const counts = barbers.map(b => ({
       barber_id: b.id,
       name: b.name,
       branch: b.branch,
-      count: (webMap[b.id] || 0) + (mokaMap[b.id] || 0),
+      count: dailyMap[b.id] || 0,
     }));
 
     counts.sort((a, b) => b.count - a.count);
