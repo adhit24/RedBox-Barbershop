@@ -757,7 +757,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
 
     if (USE_API) {
-      const durMins = _parseDurToMins(state.service?.duration);
+      // Home service / wedding: durasi selalu 120 menit per kapster (aturan bisnis),
+      // bukan durasi service yang dipilih pelanggan.
+      const durMins = isHomeService ? 120 : _parseDurToMins(state.service?.duration);
       const outletIdFixed = state.location || 'bypass';
       const barberIdFixed = state.barber?.id || null;
       const promises = [];
@@ -1417,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Pre-calculate busy ranges check (avoid creating Date objects in loop)
     const hasBusyRanges = state.barber?.id && state.barber.id !== 'any' && busyRanges && busyRanges.length;
-    const durMins = hasBusyRanges ? _parseDurToMins(state.service?.duration) : 0;
+    const durMins = hasBusyRanges ? (isHomeService ? 120 : _parseDurToMins(state.service?.duration)) : 0;
     
     console.log('[TimeGrid] Building for', state.barber?.name, 'on', state.date);
     console.log('[TimeGrid] hasBusyRanges:', hasBusyRanges, 'busyRanges:', busyRanges);

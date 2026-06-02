@@ -9,7 +9,16 @@
 //   • Requested service duration
 // ============================================================
 
-const SLOT_INTERVAL_MIN = 30; // generate a candidate slot every 30 minutes
+const SLOT_INTERVAL_MIN = 30; // generate a candidate slot every 30 minutes (outlet)
+
+// Home service / wedding rules:
+//   • Durasi tetap 2 jam per kapster per pelanggan
+//   • Buffer perjalanan 1 jam setelah selesai → kapster baru bisa diambil 3 jam setelah mulai
+//   • Slot ditampilkan per jam (bukan per 30 menit)
+//   Contoh: booking jam 10:00 → servis 10:00-12:00 → buffer 12:00-13:00 → slot berikutnya 13:00
+const HOME_SERVICE_DURATION_MIN  = 120; // durasi servis (disimpan di booking/schedule)
+const HOME_SERVICE_BUFFER_MIN    =  60; // buffer perjalanan setelah servis
+const HOME_SERVICE_INTERVAL_MIN  =  60; // kandidat slot setiap 60 menit
 
 /**
  * Return all available booking slots for a given outlet + date + duration.
@@ -160,21 +169,32 @@ async function getAvailableSlots(supabase, {
     const closeMs = _timeStrToMs(date, closeTime);
     const busy    = busyMap[barber.id] || [];
 
+    // Home service pakai durasi & interval berbeda dari outlet biasa.
+    // Durasi slot (untuk mengecek apakah kapster tersedia) = 120 menit.
+    // Buffer perjalanan = 60 menit → blokir efektif = 180 menit per booking.
+    // Contoh: booking 10:00 → blokir 10:00–13:00 → slot berikutnya 13:00.
+    const isHomeServiceType = type === 'home_service';
+    const slotDuration = isHomeServiceType ? HOME_SERVICE_DURATION_MIN : durationMinutes;
+    const slotInterval = isHomeServiceType ? HOME_SERVICE_INTERVAL_MIN : SLOT_INTERVAL_MIN;
+    // Untuk overlap-check, tambah buffer perjalanan ke akhir booking yang sudah ada
+    const bufferMs = isHomeServiceType ? HOME_SERVICE_BUFFER_MIN * 60_000 : 0;
+
     // Slide candidate windows across the barber's working day
     let cursor = openMs;
-    while (cursor + durationMinutes * 60_000 <= closeMs) {
+    while (cursor + slotDuration * 60_000 <= closeMs) {
       const slotStart = cursor;
-      const slotEnd   = cursor + durationMinutes * 60_000;
+      const slotEnd   = cursor + slotDuration * 60_000;
 
       // Skip slots already in the past (with 5 min buffer)
       if (slotStart < now + 5 * 60_000) {
-        cursor += SLOT_INTERVAL_MIN * 60_000;
+        cursor += slotInterval * 60_000;
         continue;
       }
 
-      // Check overlap against barber-specific AND outlet-wide (unmatched GoShow) blocks
-      const isBusy = busy.some(b => slotStart < b.end && slotEnd > b.start)
-                  || outletWideBlocks.some(b => slotStart < b.end && slotEnd > b.start);
+      // Check overlap: existing booking end + buffer must not overlap this slot window.
+      // bufferMs = 0 untuk outlet biasa, 3600000 (60 mnt) untuk home service.
+      const isBusy = busy.some(b => slotStart < b.end + bufferMs && slotEnd > b.start)
+                  || outletWideBlocks.some(b => slotStart < b.end + bufferMs && slotEnd > b.start);
 
       if (!isBusy) {
         slots.push({
@@ -185,7 +205,7 @@ async function getAvailableSlots(supabase, {
         });
       }
 
-      cursor += SLOT_INTERVAL_MIN * 60_000;
+      cursor += slotInterval * 60_000;
     }
   }
 
