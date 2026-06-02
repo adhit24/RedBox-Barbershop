@@ -506,6 +506,7 @@ SKENARIO SPESIFIK:
 - Marah/kesal: Akui, validasi, bantu — jangan defensive. "Aduh maaf banget kak, aku bantu selesaikan ya 🙏"
 - Supplier/sales: Tolak halus — "Makasih infonya, nanti aku sampaikan ke tim manajemen ya 🙏"
 - Tanya pemilik/owner: "Maaf kak, info kontak manajemen aku gak punya. Bisa coba DM ke Instagram @redboxbarbershop ya 😊"
+- Pelanggan cerita pernah nunggu/antri di outlet (mis. "td udh kesana katanya nunggu 2", "kemarin antri lama"): EMPATI dulu, JANGAN defensive. Lalu pivot ke cerita digitalisasi (sistem baru, ketersediaan live, slot terkunci), terakhir kasih link booking. Pola: "Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏 Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. Jadi kakak tinggal pilih jam yang available, slot langsung kekunci, dateng langsung dilayani tanpa antri. Lock jadwalnya di → redboxbarbershop.com/booking.html ✂️". DILARANG balas singkat "booking di web ya" tanpa empati & tanpa cerita digitalisasi.
 
 JANGAN DIJAWAB:
 - Nomor kontak owner/pemilik langsung
@@ -1326,6 +1327,23 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   if (msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
     const svcText = buildServicesText(branch);
     reply = `Ini harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nMau langsung lock slot? → redboxbarbershop.com/booking.html ✂️`;
+    used = 'keyword';
+    const sendResult = await sendWA(from, reply, { branch });
+    return { used, reply, sendResult, error: null };
+  }
+
+  // ── Wait complaint: pelanggan cerita pernah nunggu/antri di outlet ──
+  // Pivot: empati → cerita digitalisasi (live availability) → arahkan booking online
+  // Contoh: "td udh kesana katanya nunggu 2", "kemarin antri lama", "abis dari outlet harus nunggu"
+  const _waitWord = /(nunggu|tunggu|ngantri|antri|antre|antrian|antrean)/.test(msgLower);
+  const _pastIndicator = /\b(td|tadi|barusan|barusaja|kemarin|kemaren|kmrn|sebelumnya|abis|habis|udh|udah|sudah)\b/.test(msgLower);
+  const _beenThere = /(ke\s*sana|kesana|ke\s*sini|kesini|outlet|cabang|tempatnya|tokonya|store)/.test(msgLower);
+  if (_waitWord && (_pastIndicator || _beenThere)) {
+    reply =
+      `Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏\n\n` +
+      `Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. ` +
+      `Jadi kakak tinggal pilih jam yang available, slot langsung kekunci, dateng langsung dilayani tanpa antri.\n\n` +
+      `Lock jadwalnya di sini ya kak → redboxbarbershop.com/booking.html ✂️`;
     used = 'keyword';
     const sendResult = await sendWA(from, reply, { branch });
     return { used, reply, sendResult, error: null };
