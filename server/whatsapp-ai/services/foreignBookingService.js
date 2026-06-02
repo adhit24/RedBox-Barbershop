@@ -17,9 +17,15 @@ const logger = require('../utils/logger');
 // In-memory sessions for foreign customers
 const sessions = new Map(); // phone → { state, data, language, history[] }
 
+// Kepala Cabang — penerima notifikasi semua reservasi orang asing.
+// Beliau yang akan meneruskan ke staff cabang masing-masing.
+// Format: tanpa tanda + (Fonnte/WA gateway pakai format internasional tanpa +)
+const KEPALA_CABANG_WA = '628817803761';
+
 const STATES = {
   IDLE: 'idle',
-  GREETING_SENT: 'greeting_sent',         // Services & kapster info sent, waiting response
+  GREETING_SENT: 'greeting_sent',         // Greeting + services sent, waiting branch choice
+  AWAITING_BRANCH: 'awaiting_branch',
   AWAITING_SERVICE: 'awaiting_service',
   AWAITING_KAPSTER: 'awaiting_kapster',
   AWAITING_DATE: 'awaiting_date',
@@ -167,7 +173,7 @@ const handle = async (phone, name, text, aiService) => {
 
   switch (session.state) {
     case STATES.IDLE: {
-      // First contact — send greeting with service info in their language
+      // First contact — send greeting + ask which branch first
       session.state = STATES.GREETING_SENT;
       sessions.set(phone, session);
 
@@ -177,6 +183,24 @@ const handle = async (phone, name, text, aiService) => {
     }
 
     case STATES.GREETING_SENT:
+    case STATES.AWAITING_BRANCH: {
+      const branchMatch = extractBranch(text);
+      if (branchMatch) {
+        session.data.branch = branchMatch;
+        session.state = STATES.AWAITING_SERVICE;
+        sessions.set(phone, session);
+        const msg = buildServiceQuestion(session.language);
+        session.history.push({ role: 'assistant', content: msg });
+        return { reply: msg, done: false };
+      }
+      // Re-ask branch with clearer list
+      session.state = STATES.AWAITING_BRANCH;
+      sessions.set(phone, session);
+      const msg = buildBranchQuestion(session.language);
+      session.history.push({ role: 'assistant', content: msg });
+      return { reply: msg, done: false };
+    }
+
     case STATES.AWAITING_SERVICE: {
       // Try to extract service preference from their message
       const serviceMatch = extractService(text);
@@ -190,7 +214,6 @@ const handle = async (phone, name, text, aiService) => {
       }
 
       // If they're asking questions, use AI to respond in their language then re-ask
-      session.state = STATES.AWAITING_SERVICE;
       sessions.set(phone, session);
       const aiReply = await getAIReplyForForeigner(phone, name, text, session, aiService);
       session.history.push({ role: 'assistant', content: aiReply });
@@ -244,7 +267,8 @@ const handle = async (phone, name, text, aiService) => {
         return { reply: msg, done: true };
       } else {
         // Reset to let them correct
-        session.state = STATES.GREETING_SENT;
+        session.state = STATES.AWAITING_BRANCH;
+        session.data = {};
         sessions.set(phone, session);
         const msg = buildRetryMessage(session.language);
         session.history.push({ role: 'assistant', content: msg });
@@ -262,22 +286,42 @@ const handle = async (phone, name, text, aiService) => {
 
 const buildGreetingWithServices = (name, language) => {
   const services = knowledgeService.getServicesForForeign();
+  const branchList = BRANCHES.map((b, i) => `${i + 1}. ${b}`).join('\n');
 
   if (language === 'chinese') {
-    return `你好 ${name}！欢迎来到 RedBox Barbershop ✂️\n\n我们的服务：\n${services.chinese}\n\n我们的理发师随时为您服务。\n\n请问您想预约什么服务？`;
+    return `你好 ${name}！欢迎来到 RedBox Barbershop ✂️\n\n*我们的服务：*\n${services.chinese}\n\n*我们的分店：*\n${branchList}\n\n请问您想预约 *哪家分店*？（请回复名字或编号）`;
   }
   if (language === 'japanese') {
-    return `こんにちは ${name}さん！RedBox Barbershopへようこそ ✂️\n\nサービス一覧：\n${services.japanese}\n\n経験豊富なバーバーがお待ちしております。\n\nどのサービスをご希望ですか？`;
+    return `こんにちは ${name}さん！RedBox Barbershopへようこそ ✂️\n\n*サービス一覧：*\n${services.japanese}\n\n*店舗一覧：*\n${branchList}\n\n*どの店舗* をご希望ですか？（名前または番号でお答えください）`;
   }
   if (language === 'korean') {
-    return `안녕하세요 ${name}님! RedBox Barbershop에 오신 것을 환영합니다 ✂️\n\n서비스 목록:\n${services.korean}\n\n숙련된 바버가 대기하고 있습니다.\n\n어떤 서비스를 예약하시겠습니까?`;
+    return `안녕하세요 ${name}님! RedBox Barbershop에 오신 것을 환영합니다 ✂️\n\n*서비스 목록:*\n${services.korean}\n\n*지점 목록:*\n${branchList}\n\n*어느 지점* 을 원하시나요? (이름 또는 번호로 답변해 주세요)`;
   }
   if (language === 'turkish') {
-    return `Merhaba ${name}! RedBox Barbershop'a hoş geldiniz ✂️\n\nHizmetlerimiz:\n${services.turkish}\n\nDeneyimli berberlerimiz sizi bekliyor.\n\nHangi hizmeti rezerve etmek istersiniz?`;
+    return `Merhaba ${name}! RedBox Barbershop'a hoş geldiniz ✂️\n\n*Hizmetlerimiz:*\n${services.turkish}\n\n*Şubelerimiz:*\n${branchList}\n\n*Hangi şubeyi* tercih edersiniz? (isim veya numara ile cevap verebilirsiniz)`;
   }
 
   // Default: English
-  return `Hello ${name}! Welcome to RedBox Barbershop ✂️\n\nOur Services:\n${services.english}\n\nWe have skilled barbers ready to serve you.\n\nWhat service would you like to book?`;
+  return `Hello ${name}! Welcome to RedBox Barbershop ✂️\n\n*Our Services:*\n${services.english}\n\n*Our Branches:*\n${branchList}\n\n*Which branch* would you like to visit? (reply with the name or number)`;
+};
+
+const buildBranchQuestion = (language) => {
+  const branchList = BRANCHES.map((b, i) => `${i + 1}. ${b}`).join('\n');
+  if (language === 'chinese') return `请选择 *一家分店*：\n${branchList}\n\n（请回复分店名字或编号）`;
+  if (language === 'japanese') return `*ご希望の店舗* をお選びください：\n${branchList}\n\n（名前または番号でお答えください）`;
+  if (language === 'korean') return `*지점을 선택* 해 주세요:\n${branchList}\n\n(이름 또는 번호로 답변해 주세요)`;
+  if (language === 'turkish') return `Lütfen *bir şube seçin*:\n${branchList}\n\n(şube adı veya numarası ile cevap verin)`;
+  return `Please choose *a branch*:\n${branchList}\n\n(reply with the branch name or number)`;
+};
+
+const buildServiceQuestion = (language) => {
+  const services = knowledgeService.getServicesForForeign();
+  const lang = services[language] ? language : 'english';
+  if (language === 'chinese') return `好的！您想预约 *什么服务*？\n\n${services.chinese}`;
+  if (language === 'japanese') return `承知しました！*どのサービス* をご希望ですか？\n\n${services.japanese}`;
+  if (language === 'korean') return `알겠습니다! *어떤 서비스* 를 원하시나요?\n\n${services.korean}`;
+  if (language === 'turkish') return `Harika! *Hangi hizmeti* istersiniz?\n\n${services.turkish}`;
+  return `Got it! *What service* would you like to book?\n\n${services[lang]}`;
 };
 
 const buildKapsterQuestion = (language) => {
@@ -314,7 +358,7 @@ const buildNameQuestion = (name, language) => {
 };
 
 const buildConfirmation = (data, language) => {
-  const summary = `✂️ ${data.service}\n👤 ${data.customerName}\n💇 ${data.kapster}\n📅 ${data.date}\n🕐 ${data.time}`;
+  const summary = `📍 ${data.branch}\n✂️ ${data.service}\n👤 ${data.customerName}\n💇 ${data.kapster}\n📅 ${data.date}\n🕐 ${data.time}`;
 
   if (language === 'chinese') return `请确认您的预约信息：\n\n${summary}\n\n确认请回复"是"，取消请回复"取消"`;
   if (language === 'japanese') return `ご予約内容の確認：\n\n${summary}\n\n確認は「はい」、キャンセルは「キャンセル」とお答えください`;
@@ -386,6 +430,27 @@ const extractService = (text) => {
   return null;
 };
 
+const extractBranch = (text) => {
+  const trimmed = text.trim();
+  // Numeric choice (1-5)
+  const numMatch = trimmed.match(/^[1-9]\d*$/);
+  if (numMatch) {
+    const idx = parseInt(trimmed, 10) - 1;
+    if (idx >= 0 && idx < BRANCHES.length) return BRANCHES[idx];
+  }
+  const lower = trimmed.toLowerCase();
+  // Name match (partial OK, e.g. 'csb', 'tegal')
+  const found = BRANCHES.find(b => lower.includes(b.toLowerCase()));
+  if (found) return found;
+  // Common aliases
+  if (lower.includes('csb') || lower.includes('mall')) return 'CSB Mall';
+  if (lower.includes('bypass') || lower.includes('by pass') || lower.includes('by-pass')) return 'Bypass';
+  if (lower.includes('samadikun') || lower.includes('sama')) return 'Samadikun';
+  if (lower.includes('sumber')) return 'Sumber';
+  if (lower.includes('tegal')) return 'Tegal';
+  return null;
+};
+
 const extractKapster = (text) => {
   const lower = text.toLowerCase();
   if (['any', 'anyone', 'no preference', 'siapa saja', '任意', '誰でも', '아무나', 'doesnt matter', "doesn't matter", "don't mind", 'herhangi biri', 'fark etmez', 'farketmez'].some(k => lower.includes(k))) {
@@ -411,11 +476,15 @@ const getAIReplyForForeigner = async (phone, name, text, session, aiService) => 
   return reply;
 };
 
-// --- Admin Notification ---
+// --- Kepala Cabang Notification ---
+// Notifikasi reservasi orang asing dikirim ke Kepala Cabang.
+// Beliau yang akan meneruskan ke staff cabang masing-masing untuk
+// di-input manual ke Moka POS.
 
 const sendBookingSummaryToAdmin = async (phone, name, session) => {
-  if (!config.ADMIN_WHATSAPP) {
-    console.warn('[ForeignBooking] No ADMIN_WHATSAPP configured, cannot send summary');
+  const target = KEPALA_CABANG_WA;
+  if (!target) {
+    console.warn('[ForeignBooking] No KEPALA_CABANG_WA configured, cannot send summary');
     return;
   }
 
@@ -423,26 +492,28 @@ const sendBookingSummaryToAdmin = async (phone, name, session) => {
   const lang = session.language;
 
   const summary =
-    `🌍 *BOOKING REQUEST — FOREIGN CUSTOMER*\n` +
+    `🌍 *RESERVASI ORANG ASING — INPUT MANUAL*\n` +
     `─────────────────────────────\n` +
-    `👤 Name     : *${d.customerName}*\n` +
+    `� Cabang   : *${d.branch || '-'}*\n` +
+    `�👤 Nama     : *${d.customerName}*\n` +
     `📱 WhatsApp : wa.me/${phone}\n` +
-    `🗣️ Language : *${lang.charAt(0).toUpperCase() + lang.slice(1)}*\n` +
-    `✂️ Service  : *${d.service}*\n` +
-    `💇 Barber   : *${d.kapster}*\n` +
-    `📅 Date     : *${d.date}*\n` +
-    `🕐 Time     : *${d.time}*\n` +
+    `🗣️ Bahasa   : *${lang.charAt(0).toUpperCase() + lang.slice(1)}*\n` +
+    `✂️ Layanan  : *${d.service}*\n` +
+    `💇 Kapster  : *${d.kapster}*\n` +
+    `📅 Tanggal  : *${d.date}*\n` +
+    `🕐 Jam      : *${d.time}*\n` +
     `─────────────────────────────\n` +
-    `📝 *Action needed:* Please create this booking manually in Moka POS.\n` +
-    `_Submitted via WhatsApp AI at ${new Date().toLocaleString('id-ID')}_`;
+    `📝 *Tindakan:* Mohon teruskan ke staff cabang *${d.branch || '-'}*\n` +
+    `untuk di-input manual ke Moka POS.\n\n` +
+    `_Dikirim otomatis oleh AI bot pada ${new Date().toLocaleString('id-ID')}_`;
 
   try {
-    await whatsappService.sendText(config.ADMIN_WHATSAPP, summary);
-    console.log(`[ForeignBooking] ✅ Summary sent to admin for ${d.customerName} (${phone})`);
-    logger.logIntent(phone, name, 'foreign_booking_submitted', `${d.service} | ${d.date} ${d.time}`);
+    await whatsappService.sendText(target, summary);
+    console.log(`[ForeignBooking] ✅ Summary sent to Kepala Cabang (${target}) for ${d.customerName} @ ${d.branch} (${phone})`);
+    logger.logIntent(phone, name, 'foreign_booking_submitted', `${d.branch} | ${d.service} | ${d.date} ${d.time}`);
   } catch (err) {
-    console.error('[ForeignBooking] ❌ Failed to notify admin:', err.message);
-    logger.logError('foreign_booking_admin', err.message);
+    console.error('[ForeignBooking] ❌ Failed to notify Kepala Cabang:', err.message);
+    logger.logError('foreign_booking_kepala_cabang', err.message);
   }
 };
 
