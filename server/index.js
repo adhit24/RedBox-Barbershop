@@ -13,6 +13,7 @@ const mysql = require('mysql2/promise');
 // NOTE: Airtable dependency removed - using Supabase as primary source for barbers
 const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest, notifyCustomerReviewPointsCredited } = require('./services/waNotification');
 const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
+const { onBookingCompleted } = require('./services/barberMetrics');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1244,6 +1245,10 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
   if (DB_TYPE === 'supabase') {
     const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
     if (error) return res.status(500).json({ error: error.message });
+    // Fire-and-forget: update gamification when booking marked done
+    if (status === 'done' && data) {
+      onBookingCompleted(supabase, data).catch(e => console.error('[Metrics] onBookingCompleted error:', e.message));
+    }
     return res.json({ data });
   } else {
     try {
