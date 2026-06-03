@@ -5,9 +5,13 @@ import { useUser } from '@/hooks/useUser';
 import { BottomNav } from '@/components/BottomNav';
 
 const ADMIN_NAV = [
-  { href: '/admin/dashboard', label: 'Dashboard', icon: '📊' },
-  { href: '/admin/bookings',  label: 'Booking',   icon: '📋' },
-  { href: '/admin/barbers',   label: 'Barber',    icon: '💈' },
+  { href: '/admin/dashboard',   label: 'Command',   icon: '📊' },
+  { href: '/admin/bookings',    label: 'Booking',   icon: '📋' },
+  { href: '/admin/barbers',     label: 'Absensi',   icon: '💈' },
+  { href: '/admin/customers',   label: 'Customer',  icon: '👥' },
+  { href: '/admin/leaderboard', label: 'Ranking',   icon: '🏆' },
+  { href: '/admin/schedule',    label: 'Jadwal',    icon: '📅' },
+  { href: '/admin/broadcast',   label: 'Broadcast', icon: '📣' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
