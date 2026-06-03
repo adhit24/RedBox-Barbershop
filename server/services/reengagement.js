@@ -14,10 +14,10 @@
 
 const { sendWA } = require('./fonnte');
 
-const BATCH_LIMIT     = 50;
+const BATCH_LIMIT     = 20;   // 20 × 400ms = 8s delays, safe under cron-job.org 30s timeout
 const COOLDOWN_DAYS   = 30;
 const MIN_INACTIVE_DAYS = 30;
-const SEND_DELAY_MS   = 600;
+const SEND_DELAY_MS   = 400;
 
 // Member tables sekarang di PRIMARY DB (post-consolidation 2026-05-28),
 // jadi cukup pakai supabase client utama yang sudah di-pass ke
