@@ -20,10 +20,15 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network first for API calls, cache fallback for shell
+  // Skip API calls and non-GET requests
+  if (event.request.method !== 'GET') return;
   if (event.request.url.includes('/api/')) return;
+  // Skip navigation requests — let browser handle page loads normally
+  if (event.request.mode === 'navigate') return;
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request).catch(() =>
+      caches.match(event.request).then((r) => r ?? Response.error())
+    )
   );
 });
 
