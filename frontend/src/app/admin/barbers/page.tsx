@@ -3,21 +3,51 @@ import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchAttendance, updateAttendance, fetchAttendanceHistory } from '@/lib/adminCrmApi';
 import type { AttendanceData } from '@/lib/adminCrmTypes';
+import { motion, AnimatePresence } from 'framer-motion';
+import { UserCheck, History, Scissors } from 'lucide-react';
 
 const STATUSES = ['hadir','terlambat','izin','sakit','cuti'] as const;
 type AttStatus = typeof STATUSES[number];
 
-const STATUS_COLOR: Record<AttStatus, string> = {
-  hadir:     'bg-green-100 text-green-700',
-  terlambat: 'bg-yellow-100 text-yellow-700',
-  izin:      'bg-blue-100 text-blue-700',
-  sakit:     'bg-red-100 text-red-700',
-  cuti:      'bg-gray-100 text-gray-600',
+const STATUS_META: Record<AttStatus, { color: string; dot: string }> = {
+  hadir:     { color: 'bg-green-500/15 text-green-400 border-green-500/30',   dot: 'bg-green-400' },
+  terlambat: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   dot: 'bg-amber-400' },
+  izin:      { color: 'bg-blue-500/15 text-blue-400 border-blue-500/30',      dot: 'bg-blue-400' },
+  sakit:     { color: 'bg-red-500/15 text-red-400 border-red-500/30',         dot: 'bg-red-400' },
+  cuti:      { color: 'bg-slate-500/15 text-slate-400 border-slate-500/30',   dot: 'bg-slate-400' },
+};
+
+const BTN_ACTIVE: Record<AttStatus, string> = {
+  hadir:     'bg-green-500/20 text-green-400 border-green-500/40',
+  terlambat: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+  izin:      'bg-blue-500/20 text-blue-400 border-blue-500/40',
+  sakit:     'bg-red-500/20 text-red-400 border-red-500/40',
+  cuti:      'bg-slate-600/40 text-slate-300 border-slate-500/40',
 };
 
 function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <motion.div
+      animate={{ opacity: [0.4, 0.7, 0.4] }}
+      transition={{ duration: 1.4, repeat: Infinity }}
+      className={`bg-slate-800 rounded-lg ${className}`}
+    />
+  );
+}
+
+function StatusPill({ status }: { status: AttStatus | string }) {
+  const m = STATUS_META[status as AttStatus] ?? { color: 'bg-slate-500/15 text-slate-400 border-slate-500/30', dot: 'bg-slate-400' };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize ${m.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
+      {status}
+    </span>
+  );
 }
 
 export default function AttendancePage() {
@@ -56,90 +86,131 @@ export default function AttendancePage() {
   }
 
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold text-gray-900">💈 Absensi Kapster</h2>
+    <div className="p-4 space-y-4 pb-6">
 
-      <div className="flex gap-2">
-        {(['today','history'] as const).map(t => (
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <UserCheck size={16} className="text-slate-500" />
+        <h2 className="text-white font-bold text-base">Absensi Kapster</h2>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 bg-slate-900 p-1 rounded-2xl">
+        {([['today','Hari Ini'],['history','Riwayat']] as const).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
-              tab === t ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200'
+            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              tab === t
+                ? 'bg-slate-700 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-300'
             }`}>
-            {t === 'today' ? 'Hari Ini' : 'Riwayat'}
+            {label}
           </button>
         ))}
       </div>
 
-      {tab === 'today' && (
-        <>
-          {loading ? <p className="text-center text-gray-400">Memuat...</p> :
-           !data ? <p className="text-center text-gray-400">Gagal memuat</p> : (
-            <div className="space-y-2">
-              {data.barbers.map(b => (
-                <div key={b.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 space-y-2">
+      <AnimatePresence mode="wait">
+        {tab === 'today' && (
+          <motion.div key="today" initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }} className="space-y-2">
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)
+            ) : !data ? (
+              <p className="text-center text-slate-500 text-sm py-8">Gagal memuat</p>
+            ) : (
+              data.barbers.map((b, i) => (
+                <motion.div
+                  key={b.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.06, duration: 0.25 }}
+                  className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-3"
+                >
                   <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-gray-800">{b.name}</p>
-                      <p className="text-xs text-gray-400">{b.today_count} customer hari ini</p>
+                    <div className="flex items-center gap-2.5">
+                      <Scissors size={13} className="text-slate-500" />
+                      <div>
+                        <p className="font-semibold text-white text-sm">{b.name}</p>
+                        <p className="text-[11px] text-slate-500">{b.today_count} customer hari ini</p>
+                      </div>
                     </div>
-                    {b.attendance ? (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_COLOR[b.attendance.status as AttStatus]}`}>
-                        {b.attendance.status}
-                      </span>
-                    ) : (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">Belum check-in</span>
-                    )}
+                    {b.attendance
+                      ? <StatusPill status={b.attendance.status} />
+                      : <span className="text-[11px] text-slate-500 border border-slate-700 rounded-full px-2 py-0.5">Belum</span>
+                    }
                   </div>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {STATUSES.map(s => (
-                      <button key={s} disabled={updating === b.id}
-                        onClick={() => setStatus(b.id, s)}
-                        className={`px-2.5 py-1 text-xs rounded-lg border font-medium transition-all ${
-                          b.attendance?.status === s
-                            ? 'bg-gray-900 text-white border-gray-900'
-                            : 'bg-white text-gray-500 border-gray-200'
-                        }`}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
 
-      {tab === 'history' && (
-        <>
-          <input type="month" value={month}
-            onChange={e => setMonth(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-          {loading ? <p className="text-center text-gray-400">Memuat...</p> :
-           !history ? <p className="text-center text-gray-400">Gagal memuat</p> : (
-            <div className="space-y-2">
-              {history.barbers.map((b: any) => {
+                  <div className="flex gap-1.5 flex-wrap">
+                    {STATUSES.map(s => {
+                      const isActive = b.attendance?.status === s;
+                      return (
+                        <button
+                          key={s}
+                          disabled={updating === b.id}
+                          onClick={() => setStatus(b.id, s)}
+                          className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all capitalize cursor-pointer active:scale-95 ${
+                            isActive
+                              ? BTN_ACTIVE[s]
+                              : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700'
+                          } disabled:opacity-40`}
+                        >
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              ))
+            )}
+          </motion.div>
+        )}
+
+        {tab === 'history' && (
+          <motion.div key="history" initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }} className="space-y-3">
+            <input
+              type="month"
+              value={month}
+              onChange={e => setMonth(e.target.value)}
+              className="w-full bg-[#0F172A] border border-slate-700 rounded-2xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
+            />
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)
+            ) : !history ? (
+              <p className="text-center text-slate-500 text-sm py-8">Gagal memuat</p>
+            ) : (
+              history.barbers.map((b: any, i: number) => {
                 const recs = history.records.filter((r: any) => r.barber_id === b.id);
                 const counts: Record<string, number> = {};
                 for (const r of recs) counts[r.status] = (counts[r.status] || 0) + 1;
                 return (
-                  <div key={b.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3">
-                    <p className="font-semibold text-gray-800 mb-2">{b.name}</p>
-                    <div className="flex gap-3 flex-wrap">
-                      {Object.entries(counts).map(([s, c]) => (
-                        <span key={s} className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${STATUS_COLOR[s as AttStatus] || 'bg-gray-100 text-gray-600'}`}>
-                          {s}: {c}
-                        </span>
-                      ))}
-                      {recs.length === 0 && <p className="text-xs text-gray-400">Tidak ada data</p>}
+                  <motion.div
+                    key={b.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+                  >
+                    <div className="flex items-center gap-2">
+                      <History size={13} className="text-slate-500" />
+                      <p className="font-semibold text-white text-sm">{b.name}</p>
                     </div>
-                  </div>
+                    <div className="flex gap-2 flex-wrap">
+                      {Object.entries(counts).length === 0
+                        ? <p className="text-xs text-slate-500">Tidak ada data</p>
+                        : Object.entries(counts).map(([s, c]) => (
+                            <span key={s} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize ${
+                              STATUS_META[s as AttStatus]?.color ?? 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+                            }`}>
+                              {s}: {c}
+                            </span>
+                          ))
+                      }
+                    </div>
+                  </motion.div>
                 );
-              })}
-            </div>
-          )}
-        </>
-      )}
+              })
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

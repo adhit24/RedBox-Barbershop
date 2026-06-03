@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchSchedule, blockBarberDate, unblockBarberDate } from '@/lib/adminCrmApi';
 import type { ScheduleData } from '@/lib/adminCrmTypes';
+import { motion } from 'framer-motion';
+import { CalendarDays, ChevronLeft, ChevronRight, Scissors } from 'lucide-react';
 
 function mondayOfWeek(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -17,12 +19,31 @@ function todayStr() {
 
 const DAY_LABELS = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
 
+function formatWeekRange(monday: string) {
+  const start = new Date(monday + 'T00:00:00');
+  const end = new Date(monday + 'T00:00:00');
+  end.setDate(end.getDate() + 6);
+  const fmt = (d: Date) => `${d.getDate()} ${d.toLocaleString('id-ID', { month: 'short' })}`;
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <motion.div
+      animate={{ opacity: [0.4, 0.7, 0.4] }}
+      transition={{ duration: 1.4, repeat: Infinity }}
+      className={`bg-slate-800 rounded-lg ${className}`}
+    />
+  );
+}
+
 export default function SchedulePage() {
   const { user } = useUser();
   const branch = user?.branch || '';
   const [week, setWeek] = useState(mondayOfWeek(todayStr()));
   const [data, setData] = useState<ScheduleData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   const load = async () => {
     if (!branch) return;
@@ -37,9 +58,12 @@ export default function SchedulePage() {
   }, [branch, week]);
 
   async function toggleBlock(barber_id: string, date: string, isBlocked: boolean) {
+    const key = `${barber_id}-${date}`;
+    setToggling(key);
     if (isBlocked) await unblockBarberDate(barber_id, date);
     else await blockBarberDate(barber_id, date);
-    load();
+    await load();
+    setToggling(null);
   }
 
   function prevWeek() {
@@ -54,48 +78,82 @@ export default function SchedulePage() {
   }
 
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold text-gray-900">📅 Jadwal Kapster</h2>
+    <div className="p-4 space-y-4 pb-6">
 
-      {/* Week navigation */}
-      <div className="flex items-center justify-between bg-white rounded-xl border border-gray-100 px-4 py-2">
-        <button onClick={prevWeek} className="text-gray-500 font-bold px-2">‹</button>
-        <p className="text-sm font-semibold text-gray-700">{week}</p>
-        <button onClick={nextWeek} className="text-gray-500 font-bold px-2">›</button>
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <CalendarDays size={16} className="text-slate-500" />
+        <h2 className="text-white font-bold text-base">Jadwal Kapster</h2>
+      </div>
+
+      {/* Week Navigation */}
+      <div className="flex items-center justify-between bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-2.5">
+        <button
+          onClick={prevWeek}
+          className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95 cursor-pointer"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <p className="text-sm font-semibold text-slate-200">{formatWeekRange(week)}</p>
+        <button
+          onClick={nextWeek}
+          className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700 transition-all active:scale-95 cursor-pointer"
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
 
       {loading ? (
-        <p className="text-center text-gray-400">Memuat...</p>
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+        </div>
       ) : !data ? (
-        <p className="text-center text-gray-400">Gagal memuat</p>
+        <p className="text-center text-slate-500 text-sm py-8">Gagal memuat</p>
       ) : (
         <div className="space-y-3">
-          {data.barbers.map(barber => (
-            <div key={barber.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3">
-              <p className="font-semibold text-gray-800 text-sm mb-2">{barber.name}</p>
+          {data.barbers.map((barber, i) => (
+            <motion.div
+              key={barber.id}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.07, duration: 0.25 }}
+              className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+            >
+              <div className="flex items-center gap-2">
+                <Scissors size={13} className="text-slate-500" />
+                <p className="font-semibold text-white text-sm">{barber.name}</p>
+              </div>
+
               <div className="flex gap-1.5">
-                {data.days.map((day, i) => {
+                {data.days.map((day, idx) => {
                   const isBlocked = data.overrides[barber.id]?.[day] === true;
                   const dayOfWeek = new Date(day + 'T00:00:00').getDay();
                   const workDayMap: Record<string, number> = { Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6, Sun:0 };
                   const isWorkDay = barber.work_days?.some((wd: string) => workDayMap[wd] === dayOfWeek) ?? true;
+                  const key = `${barber.id}-${day}`;
+                  const isToggling = toggling === key;
+
                   return (
                     <button
                       key={day}
                       onClick={() => toggleBlock(barber.id, day, isBlocked)}
-                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                        isBlocked   ? 'bg-red-100 text-red-600' :
-                        !isWorkDay  ? 'bg-gray-50 text-gray-300' :
-                                      'bg-green-50 text-green-700'
+                      disabled={isToggling}
+                      className={`flex-1 py-2 rounded-xl text-[11px] font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-60 ${
+                        isBlocked
+                          ? 'bg-red-500/15 text-red-400 border border-red-500/25'
+                          : !isWorkDay
+                          ? 'bg-slate-800/40 text-slate-600 border border-slate-800'
+                          : 'bg-green-500/10 text-green-500 border border-green-500/20'
                       }`}
                     >
-                      {DAY_LABELS[i]}
+                      {DAY_LABELS[idx]}
                     </button>
                   );
                 })}
               </div>
-              <p className="text-[11px] text-gray-400 mt-1">Tap untuk blokir/buka hari</p>
-            </div>
+
+              <p className="text-[10px] text-slate-600">Tap untuk blokir / buka hari</p>
+            </motion.div>
           ))}
         </div>
       )}
