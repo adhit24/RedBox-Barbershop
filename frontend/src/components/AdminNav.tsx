@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, CalendarCheck, UserCheck, Trophy, CalendarDays, Megaphone } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, UserCheck, Trophy, CalendarDays, Megaphone, CreditCard } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const NAV_ITEMS = [
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/admin/barbers',     label: 'Absensi',  Icon: UserCheck },
   { href: '/admin/leaderboard', label: 'Ranking',  Icon: Trophy },
   { href: '/admin/schedule',    label: 'Jadwal',   Icon: CalendarDays },
+  { href: '/admin/membership',  label: 'Member',   Icon: CreditCard },
   { href: '/admin/broadcast',   label: 'Broadcast',Icon: Megaphone },
 ];
 

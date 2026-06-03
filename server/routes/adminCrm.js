@@ -726,6 +726,33 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     return res.json({ summary: { revenue_moka, revenue_web, tx_total, avg_tx }, daily_trend, branch_compare, top_barbers, top_services });
   });
 
+  // ─── MEMBERSHIP ──────────────────────────────────────────────
+  router.get('/membership', adminAuth, async (req, res) => {
+    const { data, error } = await supabase
+      .from('member_profiles')
+      .select('user_key,full_name,email,membership_status,current_tier,total_points,total_visits,created_at')
+      .order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  });
+
+  router.post('/membership/activate', adminAuth, async (req, res) => {
+    const { userKey, branch, payMethod } = req.body;
+    if (!userKey) return res.status(400).json({ error: 'userKey required' });
+    const now = new Date().toISOString();
+    const { error: patchErr } = await supabase
+      .from('member_profiles')
+      .update({ membership_status: 'ACTIVE', membership_activated_at: now, total_points: 0, current_tier: 'bronze', updated_at: now })
+      .eq('user_key', userKey);
+    if (patchErr) return res.status(500).json({ error: patchErr.message });
+    await supabase.from('member_activations').insert({
+      user_key: userKey, amount: 100000,
+      payment_method: payMethod || 'cash', status: 'completed',
+      confirmed_by: 'admin-' + (branch || 'unknown')
+    });
+    res.json({ success: true });
+  });
+
   return router;
 }
 
