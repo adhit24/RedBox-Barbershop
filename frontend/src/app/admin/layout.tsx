@@ -2,17 +2,9 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
-import { BottomNav } from '@/components/BottomNav';
-
-const ADMIN_NAV = [
-  { href: '/admin/dashboard',   label: 'Command',   icon: '📊' },
-  { href: '/admin/bookings',    label: 'Booking',   icon: '📋' },
-  { href: '/admin/barbers',     label: 'Absensi',   icon: '💈' },
-  { href: '/admin/customers',   label: 'Customer',  icon: '👥' },
-  { href: '/admin/leaderboard', label: 'Ranking',   icon: '🏆' },
-  { href: '/admin/schedule',    label: 'Jadwal',    icon: '📅' },
-  { href: '/admin/broadcast',   label: 'Broadcast', icon: '📣' },
-];
+import { AdminNav } from '@/components/AdminNav';
+import { LogOut } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
@@ -25,27 +17,40 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-400">Memuat...</div>
+      <div className="min-h-dvh bg-[#020617] flex items-center justify-center">
+        <motion.div
+          animate={{ opacity: [0.3, 1, 0.3] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+          className="text-slate-500 text-sm"
+        >
+          Memuat...
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-10">
+    <div className="min-h-dvh bg-[#020617] pb-20">
+      {/* Header */}
+      <header className="bg-[#0A0F1E]/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex justify-between items-center sticky top-0 z-40">
         <div>
-          <h1 className="font-bold text-gray-900">RedBox Staff</h1>
+          <h1 className="font-bold text-white text-sm tracking-wide">REDBOX STAFF</h1>
           {user?.branch && (
-            <p className="text-xs text-gray-500 capitalize">{user.branch}</p>
+            <p className="text-[11px] text-green-400 capitalize font-medium">{user.branch}</p>
           )}
         </div>
-        <button onClick={signOut} className="text-sm text-gray-500 hover:text-gray-700">
-          Keluar
+        <button
+          onClick={signOut}
+          className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+          aria-label="Keluar"
+        >
+          <LogOut size={16} />
+          <span className="text-xs">Keluar</span>
         </button>
       </header>
+
       <main>{children}</main>
-      <BottomNav items={ADMIN_NAV} />
+      <AdminNav />
     </div>
   );
 }

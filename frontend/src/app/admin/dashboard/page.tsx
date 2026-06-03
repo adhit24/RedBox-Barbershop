@@ -2,195 +2,321 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchCommandCenter } from '@/lib/adminCrmApi';
-import type { CommandCenterData } from '@/lib/adminCrmTypes';
+import type { CommandCenterData, BookingRow } from '@/lib/adminCrmTypes';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  AlertTriangle, Home,
+  Users, CalendarCheck, RefreshCw,
+  ChevronRight, Circle,
+} from 'lucide-react';
 
-const STATUS_COLORS: Record<string, string> = {
-  pending:     'bg-yellow-100 text-yellow-700',
-  confirmed:   'bg-blue-100 text-blue-700',
-  done:        'bg-green-100 text-green-700',
-  cancelled:   'bg-red-100 text-red-700',
-  no_show:     'bg-gray-100 text-gray-600',
-  departed:    'bg-indigo-100 text-indigo-700',
-  arrived:     'bg-cyan-100 text-cyan-700',
-  in_progress: 'bg-purple-100 text-purple-700',
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const STATUS_META: Record<string, { label: string; color: string; dot: string }> = {
+  pending:     { label: 'Pending',      color: 'bg-amber-500/15 text-amber-400 border-amber-500/30',    dot: 'bg-amber-400' },
+  confirmed:   { label: 'Confirmed',    color: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       dot: 'bg-blue-400' },
+  done:        { label: 'Selesai',      color: 'bg-green-500/15 text-green-400 border-green-500/30',    dot: 'bg-green-400' },
+  cancelled:   { label: 'Cancelled',    color: 'bg-red-500/15 text-red-400 border-red-500/30',          dot: 'bg-red-400' },
+  no_show:     { label: 'No-show',      color: 'bg-slate-500/15 text-slate-400 border-slate-500/30',    dot: 'bg-slate-400' },
+  departed:    { label: 'Berangkat',    color: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30', dot: 'bg-indigo-400' },
+  arrived:     { label: 'Tiba',         color: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',       dot: 'bg-cyan-400' },
+  in_progress: { label: 'Dikerjakan',   color: 'bg-purple-500/15 text-purple-400 border-purple-500/30', dot: 'bg-purple-400' },
 };
 
 const HS_NEXT: Record<string, string> = {
-  confirmed:   'departed',
-  departed:    'arrived',
-  arrived:     'in_progress',
-  in_progress: 'done',
+  confirmed: 'departed', departed: 'arrived', arrived: 'in_progress', in_progress: 'done',
+};
+const HS_BTN: Record<string, string> = {
+  confirmed: 'Tandai Berangkat', departed: 'Tandai Sampai', arrived: 'Mulai', in_progress: 'Selesai',
 };
 
-const HS_LABEL: Record<string, string> = {
-  confirmed:   '🔵 Tandai Berangkat',
-  departed:    '🟢 Tandai Sampai',
-  arrived:     '🔄 Mulai Kerjakan',
-  in_progress: '✅ Selesai',
-};
+function StatusBadge({ status }: { status: string }) {
+  const m = STATUS_META[status] ?? { label: status, color: 'bg-slate-500/15 text-slate-400 border-slate-500/30', dot: 'bg-slate-400' };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${m.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
+      {m.label}
+    </span>
+  );
+}
+
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <motion.div
+      animate={{ opacity: [0.4, 0.7, 0.4] }}
+      transition={{ duration: 1.4, repeat: Infinity }}
+      className={`bg-slate-800 rounded-lg ${className}`}
+    />
+  );
+}
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, color, index }: { label: string; value: number; color: string; index: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.3, ease: 'easeOut' }}
+      className="bg-[#0F172A] border border-slate-800 rounded-2xl p-3 text-center"
+    >
+      <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
+      <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">{label}</p>
+    </motion.div>
+  );
+}
+
+// ─── Booking Card ─────────────────────────────────────────────────────────────
+
+function BookingCard({ bk, onAction, index }: {
+  bk: BookingRow;
+  onAction: (id: string, status: string) => void;
+  index: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.06, duration: 0.25, ease: 'easeOut' }}
+      className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-semibold text-white text-sm truncate">{bk.name}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{bk.time} · {bk.service}</p>
+        </div>
+        <StatusBadge status={bk.status} />
+      </div>
+      {bk.status === 'pending' && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => onAction(bk.id, 'confirmed')}
+            className="flex-1 h-9 text-xs font-semibold bg-green-500/15 text-green-400 border border-green-500/30 rounded-xl hover:bg-green-500/25 active:scale-95 transition-all cursor-pointer"
+          >
+            Konfirmasi
+          </button>
+          <button
+            onClick={() => onAction(bk.id, 'cancelled')}
+            className="flex-1 h-9 text-xs font-semibold bg-red-500/15 text-red-400 border border-red-500/30 rounded-xl hover:bg-red-500/25 active:scale-95 transition-all cursor-pointer"
+          >
+            Batalkan
+          </button>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Home Service Card ────────────────────────────────────────────────────────
+
+function HomeServiceCard({ hs, onAdvance, index }: {
+  hs: BookingRow;
+  onAdvance: (id: string, next: string) => void;
+  index: number;
+}) {
+  const next = HS_NEXT[hs.status];
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.07, duration: 0.28 }}
+      className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Home size={14} className="text-slate-500 flex-shrink-0" />
+          <div className="min-w-0">
+            <p className="font-semibold text-white text-sm truncate">{hs.name}</p>
+            <p className="text-xs text-slate-500">{hs.time}</p>
+          </div>
+        </div>
+        <StatusBadge status={hs.status} />
+      </div>
+      {next && (
+        <button
+          onClick={() => onAdvance(hs.id, next)}
+          className="w-full h-9 text-xs font-semibold bg-slate-700/60 text-slate-200 border border-slate-600 rounded-xl hover:bg-slate-700 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+        >
+          <ChevronRight size={14} />
+          {HS_BTN[hs.status]}
+        </button>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CommandCenterPage() {
   const { user } = useUser();
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
-
+  const [refreshing, setRefreshing] = useState(false);
   const branch = user?.branch || '';
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!branch) return;
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     const d = await fetchCommandCenter(branch).catch(() => null);
     if (d) setData(d);
+    setLoading(false);
+    setRefreshing(false);
   }, [branch]);
 
   useEffect(() => {
-    load().finally(() => setLoading(false));
-    const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
+    load();
+    const iv = setInterval(() => load(true), 30000);
+    return () => clearInterval(iv);
   }, [load]);
 
-  async function advanceHsStatus(bookingId: string, nextStatus: string) {
+  async function updateStatus(id: string, status: string) {
     await fetch('/api/admin/booking-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: bookingId, status: nextStatus }),
+      body: JSON.stringify({ id, status }),
     });
-    load();
+    load(true);
   }
 
-  async function quickAction(bookingId: string, status: string) {
-    await fetch('/api/admin/booking-status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: bookingId, status }),
-    });
-    load();
+  // ── Loading skeleton ──
+  if (loading) {
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex justify-between items-center">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-4 w-16" />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
+        </div>
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+    );
   }
 
-  if (loading) return <div className="p-4 text-center text-gray-400">Memuat...</div>;
-  if (!data) return <div className="p-4 text-center text-red-400">Gagal memuat data</div>;
+  if (!data) {
+    return (
+      <div className="p-8 text-center text-slate-500 text-sm">
+        Gagal memuat data
+      </div>
+    );
+  }
+
+  const stats = [
+    { label: 'Hadir',        value: data.stats.hadir,               color: 'text-green-400' },
+    { label: 'Tdk Hadir',    value: data.stats.tidak_hadir,         color: 'text-red-400' },
+    { label: 'Blm Check-in', value: data.stats.belum_check_in,      color: 'text-amber-400' },
+    { label: 'Booking',      value: data.stats.booking_today,       color: 'text-blue-400' },
+    { label: 'Pending',      value: data.stats.pending,             color: 'text-orange-400' },
+    { label: 'Home Svc',     value: data.stats.home_service_active, color: 'text-purple-400' },
+  ];
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-5 pb-6">
+
+      {/* Title row */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-gray-900 capitalize">📊 {branch}</h2>
-        <p className="text-xs text-gray-400">{data.today}</p>
+        <div>
+          <h2 className="text-white font-bold text-base capitalize">{branch}</h2>
+          <p className="text-[11px] text-slate-500">{data.today}</p>
+        </div>
+        <button
+          onClick={() => load(true)}
+          className="p-2 rounded-xl bg-slate-800 text-slate-400 active:scale-95 transition-all cursor-pointer"
+          aria-label="Refresh"
+        >
+          <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+        </button>
       </div>
 
-      {/* Smart Alerts */}
-      {data.alerts.length > 0 && (
-        <div className="space-y-2">
-          {data.alerts.map((alert, i) => (
-            <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 flex gap-2 items-start">
-              <span className="text-amber-500 text-sm mt-0.5">⚠️</span>
-              <p className="text-sm text-amber-800">{alert.message}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Alerts */}
+      <AnimatePresence>
+        {data.alerts.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-2"
+          >
+            {data.alerts.map((a, i) => (
+              <div key={i} className="flex items-start gap-2.5 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-3.5 py-2.5">
+                <AlertTriangle size={14} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-300 leading-relaxed">{a.message}</p>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Stat Cards */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: 'Hadir',       value: data.stats.hadir,               color: 'text-green-600' },
-          { label: 'Tdk Hadir',   value: data.stats.tidak_hadir,         color: 'text-red-500' },
-          { label: 'Blm Check-in',value: data.stats.belum_check_in,      color: 'text-yellow-600' },
-          { label: 'Booking',     value: data.stats.booking_today,       color: 'text-blue-600' },
-          { label: 'Pending',     value: data.stats.pending,             color: 'text-orange-500' },
-          { label: 'Home Svc',    value: data.stats.home_service_active, color: 'text-purple-600' },
-        ].map(s => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-3 text-center">
-            <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[11px] text-gray-400 mt-0.5">{s.label}</p>
-          </div>
-        ))}
+        {stats.map((s, i) => <StatCard key={s.label} {...s} index={i} />)}
       </div>
 
       {/* Home Service Tracker */}
       {data.home_service.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">🏠 Home Service Aktif</p>
-          {data.home_service.map(hs => {
-            const next = HS_NEXT[hs.status];
-            return (
-              <div key={hs.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-gray-800 text-sm">{hs.name}</p>
-                    <p className="text-xs text-gray-400">{hs.time} · {hs.service}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[hs.status] || 'bg-gray-100'}`}>
-                    {hs.status}
-                  </span>
-                </div>
-                {next && (
-                  <button
-                    onClick={() => advanceHsStatus(hs.id, next)}
-                    className="w-full py-1.5 text-sm font-medium bg-gray-900 text-white rounded-lg"
-                  >
-                    {HS_LABEL[hs.status]}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <section className="space-y-2.5">
+          <div className="flex items-center gap-1.5">
+            <Home size={13} className="text-slate-500" />
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Home Service Aktif</p>
+          </div>
+          {data.home_service.map((hs, i) => (
+            <HomeServiceCard key={hs.id} hs={hs} onAdvance={updateStatus} index={i} />
+          ))}
+        </section>
       )}
 
       {/* Booking Feed */}
       {data.booking_feed.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">📋 Booking Masuk</p>
-          {data.booking_feed.map(bk => (
-            <div key={bk.id} className="bg-white rounded-xl border border-gray-100 px-4 py-3">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="font-semibold text-gray-800 text-sm">{bk.name}</p>
-                  <p className="text-xs text-gray-400">{bk.time} · {bk.service}</p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[bk.status] || 'bg-gray-100'}`}>
-                  {bk.status}
-                </span>
-              </div>
-              {bk.status === 'pending' && (
-                <div className="flex gap-2">
-                  <button onClick={() => quickAction(bk.id, 'confirmed')}
-                    className="flex-1 py-1 text-xs font-medium bg-blue-600 text-white rounded-lg">
-                    Confirm
-                  </button>
-                  <button onClick={() => quickAction(bk.id, 'cancelled')}
-                    className="flex-1 py-1 text-xs font-medium bg-red-100 text-red-600 rounded-lg">
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
+        <section className="space-y-2.5">
+          <div className="flex items-center gap-1.5">
+            <CalendarCheck size={13} className="text-slate-500" />
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Booking Masuk</p>
+          </div>
+          {data.booking_feed.map((bk, i) => (
+            <BookingCard key={bk.id} bk={bk} onAction={updateStatus} index={i} />
           ))}
-        </div>
+        </section>
       )}
 
       {/* Kapster On-Duty */}
-      <div className="space-y-2">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">💈 Kapster Hari Ini</p>
-        <div className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-50">
-          {data.barbers.map(b => (
-            <div key={b.id} className="flex items-center justify-between px-4 py-2.5">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">
-                  {b.attendance_status === 'hadir' || b.attendance_status === 'terlambat' ? '🟢' :
-                   b.attendance_status ? '🔴' : '⚪'}
-                </span>
-                <p className="text-sm font-medium text-gray-700">{b.name}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {b.attendance_status && (
-                  <span className="text-[11px] text-gray-400 capitalize">{b.attendance_status}</span>
-                )}
-                <span className="text-sm font-bold text-gray-600">{b.today_count}</span>
-              </div>
-            </div>
-          ))}
+      <section className="space-y-2.5">
+        <div className="flex items-center gap-1.5">
+          <Users size={13} className="text-slate-500" />
+          <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Kapster Hari Ini</p>
         </div>
-      </div>
+        <div className="bg-[#0F172A] border border-slate-800 rounded-2xl overflow-hidden">
+          {data.barbers.map((b, i) => {
+            const isPresent = b.attendance_status === 'hadir' || b.attendance_status === 'terlambat';
+            const isAbsent = b.attendance_status && !isPresent;
+            return (
+              <motion.div
+                key={b.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.04 }}
+                className={`flex items-center justify-between px-4 py-2.5 ${i > 0 ? 'border-t border-slate-800/70' : ''}`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <Circle
+                    size={8}
+                    className={`fill-current ${isPresent ? 'text-green-400' : isAbsent ? 'text-red-400' : 'text-slate-600'}`}
+                  />
+                  <p className="text-sm text-slate-200 font-medium">{b.name}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {b.attendance_status && (
+                    <span className="text-[11px] text-slate-500 capitalize">{b.attendance_status}</span>
+                  )}
+                  <span className="text-sm font-bold text-slate-300 tabular-nums">{b.today_count}</span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
