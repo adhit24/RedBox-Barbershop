@@ -379,8 +379,8 @@
         </h3>
         <div class="mem-table-wrap">
           <table class="mem-table">
-            <thead><tr><th>Nama</th><th>Email</th><th>Status</th><th>Tier</th><th>Poin</th><th>Kunjungan</th><th>Bergabung</th></tr></thead>
-            <tbody id="memAllBody"><tr><td colspan="7" class="mem-empty">Memuat...</td></tr></tbody>
+            <thead><tr><th>Nama</th><th>Email</th><th>Status</th><th>Tier</th><th>Poin</th><th>Kunjungan</th><th>Bergabung</th><th>Aksi</th></tr></thead>
+            <tbody id="memAllBody"><tr><td colspan="8" class="mem-empty">Memuat...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -597,16 +597,58 @@
       </h3>
       <div class="mem-table-wrap">
         <table class="mem-table">
-          <thead><tr><th>Nama</th><th>Email</th><th>Status</th><th>Tier</th><th>Poin</th><th>Kunjungan</th><th>Bergabung</th></tr></thead>
-          <tbody id="memAllBody"><tr><td colspan="7" class="mem-empty">Memuat...</td></tr></tbody>
+          <thead><tr><th>Nama</th><th>Email</th><th>Status</th><th>Tier</th><th>Poin</th><th>Kunjungan</th><th>Bergabung</th><th>Aksi</th></tr></thead>
+          <tbody id="memAllBody"><tr><td colspan="8" class="mem-empty">Memuat...</td></tr></tbody>
         </table>
       </div>
     </div>
 
   </div><!-- /view-membership -->
 
+  <!-- QUICK ACTIVATE MODAL -->
+  <div class="modal-overlay" id="quickActivateOverlay" style="display:none" onclick="if(event.target===this)closeQuickActivate()">
+    <div class="modal" style="max-width:420px">
+      <div class="modal-head">
+        <h3>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px"><polyline points="20 6 9 17 4 12"/></svg>
+          Aktifkan Member
+        </h3>
+        <button class="modal-close" onclick="closeQuickActivate()">&times;</button>
+      </div>
+      <div class="modal-body" style="gap:14px">
+        <p style="font-size:.9rem;color:var(--w70)">Member: <strong id="qaName" style="color:var(--white)">—</strong></p>
+        <div class="form-group">
+          <label style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">CABANG</label>
+          <select id="qaBranch" style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem">
+            <option value="bypass">Bypass</option>
+            <option value="csb">CSB</option>
+            <option value="samadikun">Samadikun</option>
+            <option value="sumber">Sumber</option>
+            <option value="tegal">Tegal</option>
+            <option value="parker">Parker</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">METODE BAYAR</label>
+          <select id="qaPayMethod" style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem">
+            <option value="cash">Cash / Tunai</option>
+            <option value="qris">QRIS</option>
+            <option value="transfer">Transfer Bank</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn-ghost" onclick="closeQuickActivate()">Batal</button>
+        <button class="btn-mem-activate" id="qaConfirmBtn" onclick="confirmQuickActivate()" style="min-width:180px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Aktifkan — Rp 100.000
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/services-data.js"></script>
-  <script src="js/crm.js?v=20260501"></script>
+  <script src="js/crm.js?v=20260601"></script>
 <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 20px;font-size:.68rem;letter-spacing:.05em;"><a href="https://kinaryaloka-digital.vercel.app/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.3);font-weight:500;text-decoration:none;">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka" style="width:16px;height:16px;border-radius:3px;opacity:.4;"> <strong>KINARYALOKA</strong></a></div>
 </body>
 </html>

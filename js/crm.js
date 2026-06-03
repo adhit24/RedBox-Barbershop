@@ -1515,13 +1515,17 @@ async function loadAllMembers() {
   const TIER_ICONS = { bronze:'🥉', silver:'🥈', gold:'🥇', platinum:'💎' };
   const TIER_COLORS = { bronze:'#cd7f32', silver:'#94a3b8', gold:'#fbbf24', platinum:'#67e8f9' };
   tbody.innerHTML = rows.map(r => {
-    const statusBadge = r.membership_status === 'ACTIVE'
+    const isActive = r.membership_status === 'ACTIVE';
+    const statusBadge = isActive
       ? '<span class="mem-badge-ok">Aktif</span>'
       : '<span class="mem-badge-pend">Belum Aktif</span>';
     const join = new Date(r.created_at).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
     const tierName = r.current_tier || 'bronze';
     const tierColor = TIER_COLORS[tierName] || '#aaa';
     const tierBadge = `<span style="display:inline-flex;align-items:center;gap:3px;font-size:.72rem;font-weight:700;color:${tierColor};background:${tierColor}22;border:1px solid ${tierColor}55;border-radius:99px;padding:2px 8px">${TIER_ICONS[tierName]||''} ${tierName.charAt(0).toUpperCase()+tierName.slice(1)}</span>`;
+    const aksiCell = isActive
+      ? '<span style="color:var(--w30);font-size:.75rem">—</span>'
+      : `<button onclick="openQuickActivate(${JSON.stringify(r.user_key)},${JSON.stringify(r.full_name||r.email)})" style="background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80;border-radius:8px;padding:4px 12px;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap">✓ Aktifkan</button>`;
     return `<tr>
       <td>${esc(r.full_name || '—')}</td>
       <td class="mem-td-sm">${esc(r.email)}</td>
@@ -1530,6 +1534,7 @@ async function loadAllMembers() {
       <td style="font-weight:700;color:#fbbf24">${r.total_points ?? 0}</td>
       <td>${r.total_visits ?? 0}</td>
       <td>${join}</td>
+      <td>${aksiCell}</td>
     </tr>`;
   }).join('');
 }
@@ -1621,6 +1626,69 @@ async function syncMokaPoints() {
 
   btn.disabled = false;
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Sync Poin dari Moka';
+}
+
+// ===== QUICK ACTIVATE MODAL =====
+let _qaCurrentKey = null;
+
+function openQuickActivate(userKey, userName) {
+  _qaCurrentKey = userKey;
+  document.getElementById('qaName').textContent = userName || userKey;
+  const btn = document.getElementById('qaConfirmBtn');
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktifkan — Rp 100.000';
+  document.getElementById('quickActivateOverlay').style.display = 'flex';
+}
+
+function closeQuickActivate() {
+  document.getElementById('quickActivateOverlay').style.display = 'none';
+  _qaCurrentKey = null;
+}
+
+async function confirmQuickActivate() {
+  if (!_qaCurrentKey) return;
+  const branch = document.getElementById('qaBranch').value;
+  const payMethod = document.getElementById('qaPayMethod').value;
+  const btn = document.getElementById('qaConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Memproses...';
+
+  const now = new Date().toISOString();
+  const patchOk = await sbMem(`member_profiles?user_key=eq.${encodeURIComponent(_qaCurrentKey)}`, {
+    method: 'PATCH',
+    headers: { 'Prefer': 'return=minimal' },
+    body: JSON.stringify({
+      membership_status: 'ACTIVE',
+      membership_activated_at: now,
+      total_points: 0,
+      current_tier: 'bronze',
+      updated_at: now
+    })
+  });
+
+  await sbMem('member_activations', {
+    method: 'POST',
+    prefer: 'return=minimal',
+    body: JSON.stringify({
+      user_key: _qaCurrentKey,
+      amount: 100000,
+      payment_method: payMethod,
+      status: 'completed',
+      confirmed_by: 'admin-' + branch
+    })
+  });
+
+  if (patchOk !== null) {
+    showToast('✓ Membership berhasil diaktifkan!', 'success');
+    closeQuickActivate();
+    await loadMemStats();
+    await loadRecentActivations();
+    await loadAllMembers();
+  } else {
+    showToast('Gagal mengaktifkan. Coba lagi.', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktifkan — Rp 100.000';
+  }
 }
 
 // Hook into view switcher
