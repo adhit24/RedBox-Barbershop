@@ -559,6 +559,173 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     return res.json({ logs: data || [] });
   });
 
+  // ─── OWNER OVERVIEW ──────────────────────────────────────────
+  router.get('/owner-overview', adminAuth, async (req, res) => {
+    const today = localDateStr();
+    const dayStart = today + 'T00:00:00+07:00';
+    const dayEnd   = today + 'T23:59:59+07:00';
+
+    const { data: outlets } = await supabase
+      .from('outlets')
+      .select('id, name, slug');
+
+    const branches = await Promise.all((outlets || []).map(async (outlet) => {
+      const { data: barbers } = await supabase
+        .from('barbers').select('id').eq('is_active', true).eq('branch', outlet.slug);
+      const barberIds = (barbers || []).map(b => b.id);
+
+      const [attRows, mokaSch, webTx, goshow, pendingBk] = await Promise.all([
+        supabase.from('barber_attendance').select('barber_id, status')
+          .in('barber_id', barberIds).eq('date', today),
+        supabase.from('schedules').select('price')
+          .eq('outlet_id', outlet.id).eq('source', 'moka').eq('status', 'completed')
+          .gte('start_time', dayStart).lte('start_time', dayEnd),
+        supabase.from('transactions').select('total_amount')
+          .eq('outlet_id', outlet.id).eq('source', 'web')
+          .gte('created_at', dayStart).lte('created_at', dayEnd),
+        supabase.from('schedules').select('id')
+          .eq('outlet_id', outlet.id).eq('source', 'moka').eq('status', 'reserved')
+          .gte('start_time', dayStart).lte('start_time', dayEnd),
+        supabase.from('bookings').select('id')
+          .eq('location', outlet.slug).eq('status', 'pending').eq('date', today),
+      ]);
+
+      const hadirSet = new Set(
+        (attRows.data || []).filter(a => ['hadir','terlambat'].includes(a.status)).map(a => a.barber_id)
+      );
+      const revenue_moka = (mokaSch.data || []).reduce((s, r) => s + (r.price || 0), 0);
+      const revenue_web  = (webTx.data  || []).reduce((s, r) => s + (r.total_amount || 0), 0);
+
+      return {
+        slug: outlet.slug,
+        name: outlet.name,
+        revenue_moka,
+        tx_moka:    (mokaSch.data || []).length,
+        revenue_web,
+        tx_web:     (webTx.data  || []).length,
+        hadir:      hadirSet.size,
+        total_barbers: barberIds.length,
+        goshow:     (goshow.data || []).length,
+        pending_bookings: (pendingBk.data || []).length,
+      };
+    }));
+
+    const totals = branches.reduce((acc, b) => ({
+      revenue_moka: acc.revenue_moka + b.revenue_moka,
+      revenue_web:  acc.revenue_web  + b.revenue_web,
+      tx_total:     acc.tx_total     + b.tx_moka + b.tx_web,
+      hadir:        acc.hadir        + b.hadir,
+      goshow:       acc.goshow       + b.goshow,
+      pending:      acc.pending      + b.pending_bookings,
+    }), { revenue_moka: 0, revenue_web: 0, tx_total: 0, hadir: 0, goshow: 0, pending: 0 });
+
+    return res.json({ today, branches, totals });
+  });
+
+  // ─── OWNER REVENUE ────────────────────────────────────────────
+  router.get('/owner-revenue', adminAuth, async (req, res) => {
+    const { branch = 'all', period = '7d' } = req.query;
+
+    const now = new Date();
+    let startDate;
+    if (period === 'today') {
+      startDate = new Date(now); startDate.setHours(0,0,0,0);
+    } else if (period === '7d') {
+      startDate = new Date(now); startDate.setDate(now.getDate() - 6); startDate.setHours(0,0,0,0);
+    } else if (period === '30d') {
+      startDate = new Date(now); startDate.setDate(now.getDate() - 29); startDate.setHours(0,0,0,0);
+    } else if (period === 'month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else {
+      startDate = new Date(now); startDate.setDate(now.getDate() - 6); startDate.setHours(0,0,0,0);
+    }
+    const startIso = startDate.toISOString();
+
+    // Resolve outlet filter
+    let outletIds = null;
+    if (branch !== 'all') {
+      const { data: outlet } = await supabase.from('outlets').select('id').eq('slug', branch).maybeSingle();
+      outletIds = outlet ? [outlet.id] : [];
+    }
+
+    // Fetch moka schedules & web transactions in parallel
+    let mokaQ = supabase.from('schedules').select('outlet_id, barber_id, service_name, price, start_time')
+      .eq('source', 'moka').eq('status', 'completed').gte('start_time', startIso);
+    let webQ  = supabase.from('transactions').select('outlet_id, total_amount, created_at')
+      .eq('source', 'web').gte('created_at', startIso);
+    if (outletIds) {
+      mokaQ = mokaQ.in('outlet_id', outletIds);
+      webQ  = webQ.in('outlet_id', outletIds);
+    }
+
+    const [mokaRes, webRes, outletRes, barberRes] = await Promise.all([
+      mokaQ, webQ,
+      supabase.from('outlets').select('id, name, slug'),
+      supabase.from('barbers').select('id, name, branch').eq('is_active', true),
+    ]);
+
+    const mokaRows = mokaRes.data || [];
+    const webRows  = webRes.data  || [];
+    const outlets  = outletRes.data || [];
+    const barbers  = barberRes.data || [];
+
+    // Summary
+    const revenue_moka = mokaRows.reduce((s, r) => s + (r.price || 0), 0);
+    const revenue_web  = webRows.reduce((s, r)  => s + (r.total_amount || 0), 0);
+    const tx_total = mokaRows.length + webRows.length;
+    const avg_tx = tx_total ? Math.round((revenue_moka + revenue_web) / tx_total) : 0;
+
+    // Daily trend — group by WIB date
+    const dailyMap = {};
+    for (const r of mokaRows) {
+      const d = new Date(r.start_time).toLocaleDateString('sv-SE', { timeZone: 'Asia/Jakarta' });
+      if (!dailyMap[d]) dailyMap[d] = { date: d, moka: 0, web: 0 };
+      dailyMap[d].moka += r.price || 0;
+    }
+    for (const r of webRows) {
+      const d = new Date(r.created_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Jakarta' });
+      if (!dailyMap[d]) dailyMap[d] = { date: d, moka: 0, web: 0 };
+      dailyMap[d].web += r.total_amount || 0;
+    }
+    const daily_trend = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Branch compare
+    const outletMap = {};
+    for (const o of outlets) outletMap[o.id] = { slug: o.slug, name: o.name, revenue_moka: 0, revenue_web: 0, tx_total: 0 };
+    for (const r of mokaRows) {
+      if (outletMap[r.outlet_id]) { outletMap[r.outlet_id].revenue_moka += r.price || 0; outletMap[r.outlet_id].tx_total++; }
+    }
+    for (const r of webRows) {
+      if (outletMap[r.outlet_id]) { outletMap[r.outlet_id].revenue_web += r.total_amount || 0; outletMap[r.outlet_id].tx_total++; }
+    }
+    const branch_compare = Object.values(outletMap).sort((a, b) => (b.revenue_moka + b.revenue_web) - (a.revenue_moka + a.revenue_web));
+
+    // Top barbers
+    const barberMap = {};
+    for (const r of mokaRows) {
+      if (!r.barber_id) continue;
+      if (!barberMap[r.barber_id]) barberMap[r.barber_id] = { barber_id: r.barber_id, name: '', branch: '', tx_count: 0, revenue: 0 };
+      barberMap[r.barber_id].tx_count++;
+      barberMap[r.barber_id].revenue += r.price || 0;
+    }
+    for (const b of barbers) {
+      if (barberMap[b.id]) { barberMap[b.id].name = b.name; barberMap[b.id].branch = b.branch; }
+    }
+    const top_barbers = Object.values(barberMap).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+
+    // Top services
+    const svcMap = {};
+    for (const r of mokaRows) {
+      const svc = r.service_name || 'Unknown';
+      if (!svcMap[svc]) svcMap[svc] = { service_name: svc, count: 0, revenue: 0 };
+      svcMap[svc].count++;
+      svcMap[svc].revenue += r.price || 0;
+    }
+    const top_services = Object.values(svcMap).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+
+    return res.json({ summary: { revenue_moka, revenue_web, tx_total, avg_tx }, daily_trend, branch_compare, top_barbers, top_services });
+  });
+
   return router;
 }
 
