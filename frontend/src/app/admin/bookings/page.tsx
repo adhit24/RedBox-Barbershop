@@ -35,8 +35,6 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-const STATUS_FILTERS = ['all','pending','confirmed','done','cancelled','no_show'];
-const TYPE_FILTERS   = ['all','online','home_service','wedding','walk_in'];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -128,32 +126,34 @@ function BookingControlPageInner() {
         className="w-full h-10 bg-[#0F172A] border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
       />
 
-      {/* Status filter */}
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-        {STATUS_FILTERS.map(s => (
-          <button key={s} onClick={() => setStatusFilter(s)}
-            className={`flex-shrink-0 h-7 px-3 rounded-full text-xs font-medium border transition-all cursor-pointer ${
-              statusFilter === s
-                ? 'bg-white text-slate-900 border-white'
-                : 'bg-slate-800/60 text-slate-400 border-slate-700'
-            }`}>
-            {s === 'all' ? 'Semua' : s}
-          </button>
-        ))}
-      </div>
+      {/* Filters */}
+      <div className="grid grid-cols-2 gap-2">
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="h-9 rounded-xl px-3 text-xs font-medium focus:outline-none cursor-pointer [color-scheme:dark]"
+          style={{ background: '#0F0A0D', border: '1px solid rgba(255,255,255,0.08)', color: statusFilter === 'all' ? '#6B5A5E' : '#F0EAEB' }}
+        >
+          <option value="all">Semua Status</option>
+          <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="done">Done</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="no_show">No-show</option>
+        </select>
 
-      {/* Type filter */}
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-        {TYPE_FILTERS.map(t => (
-          <button key={t} onClick={() => setTypeFilter(t)}
-            className={`flex-shrink-0 h-7 px-3 rounded-full text-xs font-medium border transition-all cursor-pointer ${
-              typeFilter === t
-                ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                : 'bg-slate-800/60 text-slate-400 border-slate-700'
-            }`}>
-            {t === 'all' ? 'Semua' : t.replace('_',' ')}
-          </button>
-        ))}
+        <select
+          value={typeFilter}
+          onChange={e => setTypeFilter(e.target.value)}
+          className="h-9 rounded-xl px-3 text-xs font-medium focus:outline-none cursor-pointer [color-scheme:dark]"
+          style={{ background: '#0F0A0D', border: '1px solid rgba(255,255,255,0.08)', color: typeFilter === 'all' ? '#6B5A5E' : '#F0EAEB' }}
+        >
+          <option value="all">Semua Tipe</option>
+          <option value="online">Online</option>
+          <option value="home_service">Home Service</option>
+          <option value="wedding">Wedding</option>
+          <option value="walk_in">Walk-in</option>
+        </select>
       </div>
 
       {/* Booking list */}
