@@ -19,26 +19,31 @@ export function useUser() {
     const supabase = createClient();
 
     async function load() {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) { setUser(null); setLoading(false); return; }
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (!authUser) { setUser(null); setLoading(false); return; }
 
-      const { data } = await supabase
-        .from('users')
-        .select('name, role, branch, barber_id')
-        .eq('id', authUser.id)
-        .single();
+        const { data } = await supabase
+          .from('users')
+          .select('name, role, branch, barber_id')
+          .eq('id', authUser.id)
+          .single();
 
-      if (data) {
-        setUser({
-          id: authUser.id,
-          email: authUser.email ?? '',
-          name: data.name,
-          role: data.role,
-          branch: data.branch,
-          barber_id: data.barber_id,
-        });
+        if (data) {
+          setUser({
+            id: authUser.id,
+            email: authUser.email ?? '',
+            name: data.name,
+            role: data.role,
+            branch: data.branch,
+            barber_id: data.barber_id,
+          });
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     load();
