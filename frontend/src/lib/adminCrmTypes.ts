@@ -89,3 +89,42 @@ export interface BroadcastLog {
   channel: string;
   sent_at: string;
 }
+
+export interface OwnerBranchSummary {
+  slug: string;
+  name: string;
+  revenue_moka: number;
+  tx_moka: number;
+  revenue_web: number;
+  tx_web: number;
+  hadir: number;
+  total_barbers: number;
+  goshow: number;
+  pending_bookings: number;
+}
+
+export interface OwnerOverviewData {
+  today: string;
+  branches: OwnerBranchSummary[];
+  totals: {
+    revenue_moka: number;
+    revenue_web: number;
+    tx_total: number;
+    hadir: number;
+    goshow: number;
+    pending: number;
+  };
+}
+
+export interface OwnerRevenueData {
+  summary: {
+    revenue_moka: number;
+    revenue_web: number;
+    tx_total: number;
+    avg_tx: number;
+  };
+  daily_trend: { date: string; moka: number; web: number }[];
+  branch_compare: { slug: string; name: string; revenue_moka: number; revenue_web: number; tx_total: number }[];
+  top_barbers: { barber_id: string; name: string; branch: string; tx_count: number; revenue: number }[];
+  top_services: { service_name: string; count: number; revenue: number }[];
+}

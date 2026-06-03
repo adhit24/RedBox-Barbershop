@@ -3,6 +3,7 @@
 import type {
   CommandCenterData, AttendanceData, CustomerRow,
   LeaderboardItem, ScheduleData, BroadcastLog,
+  OwnerOverviewData, OwnerRevenueData,
 } from './adminCrmTypes';
 
 async function crmFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -98,4 +99,12 @@ export function sendBroadcast(branch: string, message: string, target = 'all') {
 
 export function fetchBroadcastLog(branch: string) {
   return crmFetch<{ logs: BroadcastLog[] }>(`/api/admin/crm/broadcast?branch=${branch}`);
+}
+
+export function fetchOwnerOverview(): Promise<OwnerOverviewData> {
+  return crmFetch<OwnerOverviewData>('/api/admin/crm/owner-overview');
+}
+
+export function fetchOwnerRevenue(branch: string, period: string): Promise<OwnerRevenueData> {
+  return crmFetch<OwnerRevenueData>(`/api/admin/crm/owner-revenue?branch=${branch}&period=${period}`);
 }
