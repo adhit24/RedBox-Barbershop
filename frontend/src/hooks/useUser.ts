@@ -53,7 +53,11 @@ export function useUser() {
   }, []);
 
   async function signOut() {
-    await createClient().auth.signOut();
+    try {
+      await createClient().auth.signOut();
+    } catch {
+      // ignore errors — navigate regardless
+    }
     window.location.href = '/login';
   }
 
