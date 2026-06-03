@@ -337,30 +337,32 @@ async function _pullMokaToWebNow(supabase, outletId) {
     const since = _lastSyncAt.get(outletId)
       || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
-    // Kick both pulls in parallel. We AWAIT Pull 3 first (fast, time-critical) and
-    // persist last_polled_at + finishLog immediately. Pull 1 (slow, historical) keeps
-    // running in remaining budget; whatever it completes is bonus. If function timeout
-    // hits Pull 1 mid-way, next tick continues from persisted last_polled_at.
+    // Kick both pulls in parallel. We AWAIT Pull 3 first (fast, time-critical) then Pull 1.
     const pull1Promise = _runPull1Orders(supabase, client, outletId, since)
-      .catch(err => { console.warn(`[Sync] Pull 1 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; });
+      .catch(err => { console.warn(`[Sync] Pull 1 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1, apiError: true }; });
     const pull3Promise = _runPull3OpenBills(supabase, client, outletId)
       .catch(err => { console.warn(`[Sync] Pull 3 error: ${err.message}`); return { processed: 0, skipped: 0, errors: 1 }; });
 
     const pull3 = await pull3Promise;
 
-    // Persist last_polled_at NOW (after Pull 3) so even if Pull 1 doesn't finish,
-    // next tick has a fresh cursor and won't keep refetching 1h every time.
-    const polledAt = new Date().toISOString();
-    _lastSyncAt.set(outletId, polledAt);
-    const { error: persistErr } = await supabase
-      .from('outlets').update({ last_polled_at: polledAt }).eq('id', outletId);
-    if (persistErr) console.warn(`[Sync] persist last_polled_at failed: ${persistErr.message}`);
-
-    // Now wait for Pull 1 to finish (may be killed by function timeout — that's OK)
+    // Wait for Pull 1 before advancing last_polled_at.
+    // CRITICAL FIX: only advance the cursor if Pull 1 did NOT return an API error.
+    // If Pull 1 errored, keep last_polled_at at the old `since` so the next tick retries
+    // from the same window — prevents the cursor from silently jumping past missed orders.
     const pull1 = await pull1Promise;
     processed = pull1.processed + pull3.processed;
     skipped   = pull1.skipped   + pull3.skipped;
     errors    = pull1.errors    + pull3.errors;
+
+    if (!pull1.apiError) {
+      const polledAt = new Date().toISOString();
+      _lastSyncAt.set(outletId, polledAt);
+      const { error: persistErr } = await supabase
+        .from('outlets').update({ last_polled_at: polledAt }).eq('id', outletId);
+      if (persistErr) console.warn(`[Sync] persist last_polled_at failed: ${persistErr.message}`);
+    } else {
+      console.warn(`[Sync] Pull 1 API error for outlet ${outletId} — NOT advancing last_polled_at, will retry`);
+    }
 
     await _finishLog(supabase, logId, 'success', null, { processed, skipped, errors });
 
@@ -390,7 +392,7 @@ async function _runPull1Orders(supabase, client, outletId, since) {
     orders = Array.isArray(rawOrders) ? rawOrders : [];
   } catch (pull1Err) {
     console.warn(`[Sync] Pull 1 (v3/reports) skipped for outlet ${outletId}: ${pull1Err.message}`);
-    return { processed, skipped, errors };
+    return { processed, skipped, errors, apiError: true };
   }
 
   for (const order of orders) {
@@ -1858,6 +1860,10 @@ function _parseDurationMins(dur) {
   return (Number.isFinite(m) && m > 0) ? m : 30;
 }
 
+function setLastSyncAt(outletId, ts) {
+  _lastSyncAt.set(outletId, ts);
+}
+
 module.exports = {
   pushScheduleToMoka,
   pushCheckoutToMoka,
@@ -1867,4 +1873,5 @@ module.exports = {
   bridgeBookingToMoka,
   maybeRefreshOutletData,
   getLastSyncAt,
+  setLastSyncAt,
 };

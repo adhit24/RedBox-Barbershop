@@ -932,6 +932,15 @@ app.get('/api/bookings', async (req, res) => {
 });
 
 // Notifikasi kapster home service menggunakan data booking langsung (tidak bergantung Moka bridge)
+function assertWaSendResult(result, label) {
+  if (!result) throw new Error(`${label}: Fonnte token missing or send skipped`);
+  if (result.status === false) {
+    const reason = result.reason || result.error || result.message || JSON.stringify(result);
+    throw new Error(`${label}: ${reason}`);
+  }
+  return result;
+}
+
 async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, address) {
   if (!bookingData.barber_id) return;
   const { notifyBarberNewHomeServiceJob } = require('./services/waNotification');
@@ -942,7 +951,7 @@ async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, addres
 
   const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
 
-  await notifyBarberNewHomeServiceJob({
+  const result = await notifyBarberNewHomeServiceJob({
     barberPhone:  barber.phone,
     barberName:   barber.name,
     customerName: bookingData.name || 'Pelanggan',
@@ -953,6 +962,7 @@ async function _notifyBarberHomeServiceFromBooking(supabase, bookingData, addres
     price:        bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
     branch:       bookingData.location,
   });
+  return assertWaSendResult(result, 'Home service barber notification failed');
 }
 
 async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
@@ -975,10 +985,10 @@ async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
     tegal: 'RedBox Tegal',
   }[bookingData.location] || 'RedBox Barbershop';
 
-  await notifyBarberNewOutletBooking({
+  const result = await notifyBarberNewOutletBooking({
     barberPhone: barber.phone,
     barberName: barber.name,
-    customerName: bookingData.name,
+    customerName: bookingData.name || bookingData.customer_name || 'Pelanggan',
     dateStr,
     timeStr,
     location: locationLabel,
@@ -986,6 +996,7 @@ async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
     price: bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
     branch: bookingData.location,
   });
+  return assertWaSendResult(result, 'Outlet barber notification failed');
 }
 
 async function _notifyBarberOutletBookingMysql(bookingData) {
@@ -1010,10 +1021,10 @@ async function _notifyBarberOutletBookingMysql(bookingData) {
     tegal: 'RedBox Tegal',
   }[bookingData.location] || 'RedBox Barbershop';
 
-  await notifyBarberNewOutletBooking({
+  const result = await notifyBarberNewOutletBooking({
     barberPhone: barbers[0].phone,
     barberName: barbers[0].name,
-    customerName: bookingData.name,
+    customerName: bookingData.name || bookingData.customer_name || 'Pelanggan',
     dateStr,
     timeStr,
     location: locationLabel,
@@ -1021,6 +1032,7 @@ async function _notifyBarberOutletBookingMysql(bookingData) {
     price: bookingData.price ? `Rp ${bookingData.price.toLocaleString('id-ID')}` : '-',
     branch: bookingData.location,
   });
+  return assertWaSendResult(result, 'Outlet barber notification failed');
 }
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
@@ -1096,18 +1108,18 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
           console.warn('[WA Confirm] failed:', e.message);
         }
         // Send notification to barber regardless of booking type
-        if (type !== 'home_service') {
-          _notifyBarberOutletBookingSupabase(supabase, data).catch(err =>
-            console.error('[Outlet Booking] Barber notif failed:', err.message)
-          );
-        } else {
-          // Home service — notify kapster immediately, independent of Moka bridge
-          const jobAddress = address || (notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/)?.[1]?.trim()) || '';
-          if (jobAddress) {
-            _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress).catch(err =>
-              console.error('[HomeService] Barber notif failed:', err.message)
-            );
+        try {
+          if (type !== 'home_service') {
+            await _notifyBarberOutletBookingSupabase(supabase, data);
+          } else {
+            // Home service — notify kapster immediately, independent of Moka bridge
+            const jobAddress = address || (notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/)?.[1]?.trim()) || '';
+            if (jobAddress) {
+              await _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress);
+            }
           }
+        } catch (err) {
+          console.error('[Booking] Barber notif failed:', err.message);
         }
       }
 
@@ -1207,16 +1219,20 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         [bookingId]
       );
 
-      // Fire-and-forget: kirim WA konfirmasi + notif admin + notif barber (if assigned)
+      // Kirim WA konfirmasi + notif barber sebelum response selesai (serverless can kill orphan promises).
       if (desiredStatus === 'confirmed' && newBooking[0]?.wa) {
-        notifyCustomerBookingConfirmed({ ...newBooking[0], barber_name: null }).catch(e =>
-          console.warn('[WA Confirm] failed:', e.message)
-        );
+        try {
+          await notifyCustomerBookingConfirmed({ ...newBooking[0], barber_name: null });
+        } catch (e) {
+          console.warn('[WA Confirm] failed:', e.message);
+        }
         // Send notification to barber if it's an outlet booking and barber is assigned
-        if (type !== 'home_service') {
-          _notifyBarberOutletBookingMysql(newBooking[0]).catch(err =>
-            console.error('[Outlet Booking] Barber notif failed:', err.message)
-          );
+        try {
+          if (type !== 'home_service') {
+            await _notifyBarberOutletBookingMysql(newBooking[0]);
+          }
+        } catch (err) {
+          console.error('[Outlet Booking] Barber notif failed:', err.message);
         }
       }
 
@@ -1241,8 +1257,29 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
   const { id, status } = req.body;
   if (!id || !status) return res.status(400).json({ error: 'id and status required' });
   if (DB_TYPE === 'supabase') {
+    const { data: cur, error: curError } = await supabase
+      .from('bookings')
+      .select('id,status,barber_id,notes')
+      .eq('id', id)
+      .single();
+    if (curError) return res.status(500).json({ error: curError.message });
+
     const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
     if (error) return res.status(500).json({ error: error.message });
+    if (status === 'confirmed' && cur?.status !== 'confirmed' && data?.barber_id) {
+      try {
+        const isHomeService = data.notes?.includes('[HOME SERVICE]');
+        if (isHomeService) {
+          const addrMatch = data.notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/);
+          const jobAddress = addrMatch?.[1]?.trim() || '';
+          if (jobAddress) await _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress);
+        } else {
+          await _notifyBarberOutletBookingSupabase(supabase, data);
+        }
+      } catch (e) {
+        console.error('[BookingStatus] Barber notif failed:', e.message);
+      }
+    }
     // Fire-and-forget: update gamification when booking marked done
     if (status === 'done' && data) {
       onBookingCompleted(supabase, data).catch(e => console.error('[Metrics] onBookingCompleted error:', e.message));
@@ -1296,14 +1333,18 @@ async function handleBookingUpdate(req, res) {
         const addrMatch = data.notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/);
         const jobAddress = addrMatch?.[1]?.trim() || '';
         if (jobAddress) {
-          _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress).catch(err =>
-            console.error('[PATCH HomeService] Barber notif failed:', err.message)
-          );
+          try {
+            await _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress);
+          } catch (err) {
+            console.error('[PATCH HomeService] Barber notif failed:', err.message);
+          }
         }
       } else {
-        _notifyBarberOutletBookingSupabase(supabase, data).catch(err =>
-          console.error('[PATCH Outlet] Barber notif failed:', err.message)
-        );
+        try {
+          await _notifyBarberOutletBookingSupabase(supabase, data);
+        } catch (err) {
+          console.error('[PATCH Outlet] Barber notif failed:', err.message);
+        }
       }
     }
 
@@ -1815,6 +1856,88 @@ app.get('/api/admin/moka-health', adminAuth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, error: e?.message || 'Moka health failed', status: e?.status, details: e?.details });
   }
+});
+
+// ── POST /api/admin/moka-backfill ──────────────────────────────────────────────
+// Force-reset last_polled_at untuk semua (atau satu) outlet ke N hari lalu,
+// sehingga cron tick berikutnya akan fetch ulang semua transaksi yang terlewat.
+// Body: { days?: number (default 3), outlet_slug?: string (all if omitted) }
+app.post('/api/admin/moka-backfill', adminAuth, async (req, res) => {
+  const { days = 3, outlet_slug } = req.body || {};
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  let q = supabase.from('outlets').select('id, slug, name').eq('is_active', true).not('moka_outlet_id', 'is', null);
+  if (outlet_slug) q = q.eq('slug', outlet_slug);
+  const { data: outlets, error } = await q;
+  if (error) return res.status(500).json({ error: error.message });
+
+  const results = [];
+  for (const outlet of (outlets || [])) {
+    const { error: updErr } = await supabase
+      .from('outlets').update({ last_polled_at: since }).eq('id', outlet.id);
+    results.push({ slug: outlet.slug, name: outlet.name, reset_to: since, ok: !updErr });
+    // Also clear in-memory cache so next tick picks up the new since
+    try {
+      const { setLastSyncAt } = require('./moka/sync');
+      if (setLastSyncAt) setLastSyncAt(outlet.id, since);
+    } catch {}
+    console.log(`[Backfill] Reset ${outlet.slug} last_polled_at → ${since}`);
+  }
+
+  res.json({ ok: true, message: `Cursor reset to ${days} days ago. Next cron tick will backfill.`, since, outlets: results });
+});
+
+// ── GET /api/admin/moka-sync-status ────────────────────────────────────────────
+// Debug: lihat status sync per outlet — last_polled_at, jumlah schedules hari ini, token status
+app.get('/api/admin/moka-sync-status', adminAuth, async (req, res) => {
+  const today = new Date();
+  const wib = new Date(today.getTime() + 7 * 3600000);
+  const todayStr = wib.toISOString().slice(0, 10);
+  const dayStartWIB = `${todayStr}T00:00:00+07:00`;
+  const dayEndWIB   = `${todayStr}T23:59:59+07:00`;
+
+  const { data: outlets } = await supabase
+    .from('outlets').select('id, slug, name, moka_outlet_id, last_polled_at').eq('is_active', true);
+
+  const { data: tokens } = await supabase
+    .from('moka_tokens').select('outlet_id, expires_at, updated_at');
+  const tokenMap = {};
+  for (const t of (tokens || [])) tokenMap[t.outlet_id] = t;
+
+  const results = await Promise.all((outlets || []).map(async (o) => {
+    const { count: completedToday } = await supabase
+      .from('schedules').select('*', { count: 'exact', head: true })
+      .eq('outlet_id', o.id).eq('source', 'moka').eq('status', 'completed')
+      .gte('start_time', dayStartWIB).lte('start_time', dayEndWIB);
+
+    const { count: reservedToday } = await supabase
+      .from('schedules').select('*', { count: 'exact', head: true })
+      .eq('outlet_id', o.id).eq('source', 'moka').eq('status', 'reserved')
+      .gte('start_time', dayStartWIB).lte('start_time', dayEndWIB);
+
+    const tok = tokenMap[o.id];
+    const lastPolledWIB = o.last_polled_at
+      ? new Date(new Date(o.last_polled_at).getTime() + 7*3600000).toISOString().slice(0,19) + ' WIB'
+      : null;
+    const staleMins = o.last_polled_at
+      ? Math.round((Date.now() - new Date(o.last_polled_at).getTime()) / 60000)
+      : null;
+
+    return {
+      slug: o.slug,
+      name: o.name,
+      moka_outlet_id: o.moka_outlet_id,
+      last_polled_wib: lastPolledWIB,
+      stale_mins: staleMins,
+      stale_warn: staleMins !== null && staleMins > 30,
+      completed_today: completedToday || 0,
+      reserved_today: reservedToday || 0,
+      token_ok: !!tok,
+      token_expires: tok?.expires_at?.slice(0, 10) || null,
+    };
+  }));
+
+  res.json({ today: todayStr, outlets: results });
 });
 
 // POST /api/admin/notify-barber — kirim ulang notif WA ke kapster untuk booking tertentu
