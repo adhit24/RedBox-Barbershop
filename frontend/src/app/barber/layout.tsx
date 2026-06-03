@@ -5,11 +5,11 @@ import { useBarberSession } from '@/hooks/useBarberSession';
 import { BottomNav } from '@/components/BottomNav';
 
 const BARBER_NAV = [
-  { href: '/barber/home',        label: 'Home',     icon: '🏠' },
-  { href: '/barber/schedule',    label: 'Jadwal',   icon: '📅' },
-  { href: '/barber/progress',    label: 'Progress', icon: '📊' },
-  { href: '/barber/leaderboard', label: 'Ranking',  icon: '🏆' },
-  { href: '/barber/profile',     label: 'Saya',     icon: '👤' },
+  { href: '/barber/home',        label: 'Home',    icon: '🏠' },
+  { href: '/barber/schedule',    label: 'Jadwal',  icon: '📅' },
+  { href: '/barber/leaderboard', label: 'Ranking', icon: '🏆' },
+  { href: '/barber/feed',        label: 'Feed',    icon: '📣' },
+  { href: '/barber/profile',     label: 'Saya',    icon: '👤' },
 ];
 
 export default function BarberLayout({ children }: { children: React.ReactNode }) {

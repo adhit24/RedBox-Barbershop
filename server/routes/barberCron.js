@@ -1,6 +1,7 @@
 // server/routes/barberCron.js
 const express = require('express');
 const { sendPushNotifToBarber } = require('../services/barberMetrics');
+const { checkAchievements, assignRivals, crownKingOfShop, rebuildLeaderboardCache } = require('../services/gamificationService');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -367,6 +368,89 @@ function createBarberCronRoutes(supabase, adminAuth) {
     }
 
     return res.json({ ok: true, sent, date: today });
+  });
+
+  // ─── NIGHTLY GAMIFICATION (00:00 WIB) ─────────────────────────
+  // Award XP, check achievements, rebuild leaderboard cache
+  // Tiap Senin: assign rivals + crown King of the Shop
+  router.post('/barber-nightly-gamification', adminAuth, async (req, res) => {
+    const today = localDateStr();
+
+    const { data: barberUsers } = await supabase
+      .from('barber_users').select('barber_id, target_daily');
+    if (!barberUsers) return res.json({ ok: true, processed: 0 });
+
+    const results = [];
+
+    for (const bu of barberUsers) {
+      const bId = bu.barber_id;
+
+      // 1. Total customers all-time (from barber_daily_counts)
+      const { data: allCounts } = await supabase
+        .from('barber_daily_counts').select('count').eq('barber_id', bId);
+      const totalCustomers = (allCounts || []).reduce((s, r) => s + r.count, 0);
+
+      // 2. Today's count for XP
+      const { data: todayRow } = await supabase
+        .from('barber_daily_counts').select('count')
+        .eq('barber_id', bId).eq('date', today).maybeSingle();
+      const todayCount = todayRow?.count || 0;
+
+      // 3. Total reviews
+      const { count: totalReviews } = await supabase
+        .from('reviews').select('*', { count: 'exact', head: true })
+        .eq('barber_id', bId);
+
+      // 4. Current streak
+      const { data: streak } = await supabase
+        .from('barber_streaks').select('current_streak').eq('barber_id', bId).maybeSingle();
+      const currentStreak = streak?.current_streak || 0;
+
+      // 5. Total completed missions
+      const { count: missionsDone } = await supabase
+        .from('barber_missions').select('*', { count: 'exact', head: true })
+        .eq('barber_id', bId).not('completed_at', 'is', null);
+
+      // 6. Award XP for today's customers
+      if (todayCount > 0) {
+        await supabase.rpc('add_xp', {
+          p_barber_id: bId,
+          p_xp: todayCount * 10,
+          p_reason: 'daily_customers',
+        });
+      }
+
+      // 7. Award streak XP
+      if (currentStreak > 0) {
+        const streakXp = currentStreak >= 30 ? 20 : currentStreak >= 7 ? 10 : 5;
+        await supabase.rpc('add_xp', {
+          p_barber_id: bId, p_xp: streakXp, p_reason: 'streak'
+        });
+      }
+
+      // 8. Check and unlock achievements
+      const unlocked = await checkAchievements(supabase, bId, {
+        totalCustomers, totalReviews: totalReviews || 0, streak: currentStreak,
+        missionsDone: missionsDone || 0,
+      });
+
+      results.push({ barber_id: bId, today: todayCount, xp_from_customers: todayCount * 10, unlocked });
+    }
+
+    // 9. Rebuild leaderboard cache
+    await rebuildLeaderboardCache(supabase, today);
+
+    // 10. Monday: assign rivals + crown King
+    const isMonday = new Date(today + 'T00:00:00+07:00').getDay() === 1;
+    if (isMonday) {
+      await assignRivals(supabase, today);
+      await crownKingOfShop(supabase, today);
+    }
+
+    return res.json({
+      ok: true, processed: results.length, date: today,
+      is_monday: isMonday, results
+    });
   });
 
   return router;

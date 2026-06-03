@@ -530,6 +530,118 @@ function createBarberRoutes(supabase) {
     });
   });
 
+  // ─── XP & LEVEL ──────────────────────────────────────────────
+  router.get('/xp', barberAuth, async (req, res) => {
+    const { data } = await supabase
+      .from('barber_xp')
+      .select('total_xp, current_xp, level, prestige, xp_multiplier')
+      .eq('barber_id', req.barber.id)
+      .maybeSingle();
+
+    if (!data) {
+      return res.json({ total_xp: 0, current_xp: 0, level: 1, prestige: 0,
+        xp_to_next_level: 150, xp_multiplier: 1.0 });
+    }
+
+    const nextLevelXp = 150 * data.level * data.level;
+    return res.json({ ...data, xp_to_next_level: nextLevelXp });
+  });
+
+  // ─── TITLE ───────────────────────────────────────────────────
+  router.get('/title', barberAuth, async (req, res) => {
+    const { data } = await supabase
+      .from('barber_titles')
+      .select('level_title, special_title, active_title')
+      .eq('barber_id', req.barber.id)
+      .maybeSingle();
+
+    return res.json(data || { level_title: 'Rookie', special_title: null, active_title: 'Rookie' });
+  });
+
+  // ─── SOCIAL FEED ─────────────────────────────────────────────
+  router.get('/social-feed', barberAuth, async (req, res) => {
+    const limit  = Math.min(parseInt(req.query.limit) || 20, 50);
+    const offset = parseInt(req.query.offset) || 0;
+
+    const { data } = await supabase
+      .from('barber_social_feed')
+      .select('id, event_type, barber_name, branch, title, body, emoji, created_at')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    return res.json({ items: data || [], offset, limit });
+  });
+
+  // ─── RIVAL ───────────────────────────────────────────────────
+  router.get('/rival', barberAuth, async (req, res) => {
+    const today = localDateStr();
+    const day = new Date(today + 'T00:00:00+07:00').getDay();
+    const monday = new Date(today + 'T00:00:00+07:00');
+    monday.setDate(monday.getDate() - ((day === 0 ? 7 : day) - 1));
+    const weekStart = localDateStr(monday);
+
+    const { data: rival } = await supabase
+      .from('barber_rivals')
+      .select('rival_id, my_count_current, rival_count_current, result')
+      .eq('barber_id', req.barber.id)
+      .eq('week_start', weekStart)
+      .maybeSingle();
+
+    if (!rival) return res.json(null);
+
+    const { data: rivalBarber } = await supabase
+      .from('barbers').select('name, branch').eq('id', rival.rival_id).single();
+
+    return res.json({
+      rival_id:     rival.rival_id,
+      rival_name:   rivalBarber?.name || 'Unknown',
+      rival_branch: rivalBarber?.branch || '',
+      my_count:     rival.my_count_current,
+      rival_count:  rival.rival_count_current,
+      result:       rival.result,
+      gap:          rival.my_count_current - rival.rival_count_current,
+    });
+  });
+
+  // ─── KING OF THE SHOP ────────────────────────────────────────
+  router.get('/king', barberAuth, async (req, res) => {
+    const today = localDateStr();
+    const day = new Date(today + 'T00:00:00+07:00').getDay();
+    const monday = new Date(today + 'T00:00:00+07:00');
+    monday.setDate(monday.getDate() - ((day === 0 ? 7 : day) - 1));
+    const weekStart = localDateStr(monday);
+
+    const { data } = await supabase
+      .from('king_of_shop')
+      .select('barber_id, barber_name, total_count')
+      .eq('branch', req.barber.branch)
+      .eq('week_start', weekStart)
+      .maybeSingle();
+
+    if (!data) return res.json(null);
+
+    return res.json({ ...data, is_me: data.barber_id === req.barber.id });
+  });
+
+  // ─── LEADERBOARD CATEGORY ────────────────────────────────────
+  router.get('/leaderboard/category', barberAuth, async (req, res) => {
+    const type     = req.query.type || 'monthly';
+    const category = req.query.category || 'customer_champion';
+    const now      = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+
+    const { data } = await supabase
+      .from('barber_leaderboard_cache')
+      .select('rank, barber_id, barber_name, branch, score, display_value')
+      .eq('period_type', type)
+      .eq('category', category)
+      .eq('period_start', monthStart)
+      .order('rank', { ascending: true })
+      .limit(50);
+
+    return res.json({ items: data || [] });
+  });
+
   return router;
 }
 

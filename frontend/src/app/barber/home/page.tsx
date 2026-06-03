@@ -1,13 +1,16 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useBarberSession } from '@/hooks/useBarberSession';
-import { fetchBarberStats, fetchBarberUpcoming, fetchBarberStreak, fetchBarberPace } from '@/lib/barberApi';
+import { fetchBarberStats, fetchBarberUpcoming, fetchBarberStreak, fetchBarberPace, fetchBarberXP, fetchBarberTitle, fetchBarberRival, fetchBarberKing } from '@/lib/barberApi';
 import { BookingCard } from '@/components/BookingCard';
 import { TargetProgressBar } from '@/components/barber/TargetProgressBar';
 import { UpcomingBookingCard } from '@/components/barber/UpcomingBookingCard';
 import { StreakBadge } from '@/components/barber/StreakBadge';
 import { PaceCard } from '@/components/barber/PaceCard';
-import type { BarberStats, BarberUpcoming, StreakData, PaceData } from '@/lib/barberTypes';
+import { XPBar } from '@/components/barber/XPBar';
+import { RivalWidget } from '@/components/barber/RivalWidget';
+import { KingBadge } from '@/components/barber/KingBadge';
+import type { BarberStats, BarberUpcoming, StreakData, PaceData, XPData, TitleData, RivalData, KingData } from '@/lib/barberTypes';
 
 function rupiah(n: number) {
   return new Intl.NumberFormat('id-ID', {
@@ -33,15 +36,26 @@ export default function BarberHomePage() {
   const [loading, setLoading] = useState(true);
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [pace, setPace] = useState<PaceData | null>(null);
+  const [xp, setXp] = useState<XPData | null>(null);
+  const [title, setTitle] = useState<TitleData | null>(null);
+  const [rival, setRival] = useState<RivalData | null>(null);
+  const [king, setKing] = useState<KingData | null>(null);
 
   useEffect(() => {
     if (!session) return;
-    Promise.all([fetchBarberStats('day'), fetchBarberUpcoming(), fetchBarberStreak(), fetchBarberPace()])
-      .then(([s, u, st, p]) => {
-        setStats(s);
-        setUpcoming(u);
-        setStreak(st);
-        setPace(p);
+    Promise.all([
+      fetchBarberStats('day'),
+      fetchBarberUpcoming(),
+      fetchBarberStreak(),
+      fetchBarberPace(),
+      fetchBarberXP(),
+      fetchBarberTitle(),
+      fetchBarberRival().catch(() => null),
+      fetchBarberKing().catch(() => null),
+    ])
+      .then(([s, u, st, p, x, t, rv, k]) => {
+        setStats(s); setUpcoming(u); setStreak(st); setPace(p);
+        setXp(x); setTitle(t); setRival(rv); setKing(k);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -74,6 +88,24 @@ export default function BarberHomePage() {
       </div>
 
       {streak && <StreakBadge streak={streak} />}
+
+      {xp && title && (
+        <div>
+          <XPBar xp={xp} title={title} />
+        </div>
+      )}
+
+      {king && (
+        <div>
+          <KingBadge data={king} />
+        </div>
+      )}
+
+      {rival && (
+        <div>
+          <RivalWidget data={rival} />
+        </div>
+      )}
 
       {upcoming.next && <UpcomingBookingCard booking={upcoming.next} />}
 

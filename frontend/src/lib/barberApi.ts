@@ -9,6 +9,12 @@ import type {
   MissionsResponse,
   LeaderboardData,
   PaceData,
+  XPData,
+  TitleData,
+  SocialFeedResponse,
+  RivalData,
+  KingData,
+  LeaderboardCategoryItem,
 } from './barberTypes';
 
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -117,4 +123,29 @@ export function fetchBarberReviews() {
 
 export function fetchBarberPace() {
   return jsonFetch<PaceData>('/api/barber/pace');
+}
+export function fetchBarberXP() {
+  return jsonFetch<XPData>('/api/barber/xp');
+}
+
+export function fetchBarberTitle() {
+  return jsonFetch<TitleData>('/api/barber/title');
+}
+
+export function fetchBarberFeed(offset = 0) {
+  return jsonFetch<SocialFeedResponse>(`/api/barber/social-feed?limit=20&offset=${offset}`);
+}
+
+export function fetchBarberRival() {
+  return jsonFetch<RivalData | null>('/api/barber/rival');
+}
+
+export function fetchBarberKing() {
+  return jsonFetch<KingData | null>('/api/barber/king');
+}
+
+export function fetchLeaderboardCategory(category: 'customer_champion' | 'streak_champion') {
+  return jsonFetch<{ items: LeaderboardCategoryItem[] }>(
+    `/api/barber/leaderboard/category?type=monthly&category=${category}`
+  );
 }

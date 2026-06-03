@@ -131,3 +131,62 @@ export interface PaceData {
   needed_per_day: number;
   on_track: boolean;
 }
+
+
+export interface XPData {
+  total_xp: number;
+  current_xp: number;
+  level: number;
+  prestige: number;
+  xp_to_next_level: number;
+  xp_multiplier: number;
+}
+
+export interface TitleData {
+  level_title: string;
+  special_title: string | null;
+  active_title: string;
+}
+
+export interface SocialFeedItem {
+  id: number;
+  event_type: string;
+  barber_name: string;
+  branch: string;
+  title: string;
+  body: string;
+  emoji: string | null;
+  created_at: string;
+}
+
+export interface SocialFeedResponse {
+  items: SocialFeedItem[];
+  offset: number;
+  limit: number;
+}
+
+export interface RivalData {
+  rival_id: string;
+  rival_name: string;
+  rival_branch: string;
+  my_count: number;
+  rival_count: number;
+  result: string | null;
+  gap: number;
+}
+
+export interface KingData {
+  barber_id: string;
+  barber_name: string;
+  total_count: number;
+  is_me: boolean;
+}
+
+export interface LeaderboardCategoryItem {
+  rank: number;
+  barber_id: string;
+  barber_name: string;
+  branch: string;
+  score: number;
+  display_value: string;
+}
