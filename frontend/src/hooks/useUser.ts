@@ -53,12 +53,9 @@ export function useUser() {
     return () => subscription.unsubscribe();
   }, []);
 
-  async function signOut() {
-    try {
-      await createClient().auth.signOut();
-    } catch {
-      // ignore errors — navigate regardless
-    }
+  function signOut() {
+    // fire-and-forget — don't await, navigate immediately
+    createClient().auth.signOut().catch(() => {});
     window.location.href = '/login';
   }
 
