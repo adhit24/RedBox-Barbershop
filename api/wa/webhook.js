@@ -994,6 +994,44 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
           `📝 *Action needed:* Please create this booking manually in Moka POS.`,
         ].join('\n');
         sendWA(ADMIN_WA, adminMsg).catch(e => console.error('[WA Bot] Failed to notify admin:', e.message));
+
+        // Notify kapster — sama seperti notif booking lokal
+        if (d.kapster && d.kapster !== 'Any available') {
+          const supabase = getSupabase();
+          if (supabase) {
+            const bareName = d.kapster.replace(/^mas\s+/i, '').trim();
+            const branchLabelMap = {
+              'Bypass': 'RedBox Bypass', 'CSB Mall': 'RedBox CSB Mall',
+              'Samadikun': 'RedBox Samadikun', 'Sumber': 'RedBox Sumber', 'Tegal': 'RedBox Tegal',
+            };
+            const locationLabel = branchLabelMap[d.branch] || d.branch || 'RedBox Barbershop';
+            const kapsterLang = langLabel[session.language] || session.language;
+            supabase.from('barbers').select('name, phone').ilike('name', `%${bareName}%`).maybeSingle()
+              .then(({ data: barber }) => {
+                if (!barber?.phone) return;
+                const barberMsg = [
+                  `🔔 *[BOOKING BARU] Pelanggan Asing!*`,
+                  ``,
+                  `Halo kak ${barber.name}! 👋`,
+                  ``,
+                  `Kamu punya pesanan baru dari pelanggan asing di ${locationLabel}! 🌍`,
+                  ``,
+                  `📋 *Detail Pesanan:*`,
+                  `👤 Pelanggan : ${d.customerName}`,
+                  `📱 WhatsApp  : wa.me/${from}`,
+                  `🗣️ Bahasa    : ${kapsterLang}`,
+                  `✂️ Layanan   : ${d.service}`,
+                  `📅 Tanggal   : ${d.date}`,
+                  `🕐 Jam       : ${d.time}`,
+                  ``,
+                  `Booking ini perlu di-input manual ke Moka ya kak! ✂️`,
+                ].join('\n');
+                return sendWA(barber.phone, barberMsg);
+              })
+              .catch(e => console.error('[WA Bot] Failed to notify barber (foreign booking):', e.message));
+          }
+        }
+
         foreignSessions.delete(from);
         const msg = foreignMsg(session.language, {
           chinese: '预约请求已提交！✅\n\n我们的工作人员会尽快确认。如有问题请随时联系！\n\n到时见！✂️😊',
