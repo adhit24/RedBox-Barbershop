@@ -5,7 +5,7 @@ export function PaceCard({ pace }: { pace: PaceData }) {
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-      <p className="text-sm text-gray-500 mb-2">📈 Pace Bulan Ini</p>
+      <p className="text-sm text-gray-500 mb-2">Pace Bulan Ini</p>
       <div className="flex justify-between items-baseline mb-1">
         <span className="text-2xl font-bold text-gray-900">{pace.current_count}</span>
         <span className="text-sm text-gray-500">/ {pace.target_monthly}</span>
@@ -22,8 +22,8 @@ export function PaceCard({ pace }: { pace: PaceData }) {
       </div>
       <p className={`text-sm font-medium mt-2 ${pace.on_track ? 'text-green-600' : 'text-yellow-600'}`}>
         {pace.on_track
-          ? `✅ On track! Prediksi: ${pace.predicted_end} customer`
-          : `💪 Tambah ${Math.max(0, pace.needed_per_day - Math.round(pace.current_pace))}/hari lagi`
+          ? `On track! Prediksi: ${pace.predicted_end} customer`
+          : `Tambah ${Math.max(0, pace.needed_per_day - Math.round(pace.current_pace))}/hari lagi`
         }
       </p>
     </div>

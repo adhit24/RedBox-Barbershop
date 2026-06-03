@@ -6,7 +6,7 @@ export function StreakBadge({ streak }: { streak: StreakData }) {
     <div className="bg-orange-50 rounded-2xl p-4 border border-orange-100">
       <div className="flex justify-between items-center">
         <div>
-          <p className="text-sm text-orange-600 font-medium">🔥 Streak</p>
+          <p className="text-sm text-orange-600 font-medium">Streak</p>
           <p className="text-3xl font-bold text-orange-700">{streak.current_streak} hari</p>
         </div>
         <div className="text-right">
