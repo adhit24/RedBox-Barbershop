@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchAttendance, updateAttendance, fetchAttendanceHistory } from '@/lib/adminCrmApi';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import type { AttendanceData } from '@/lib/adminCrmTypes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserCheck, History, Scissors } from 'lucide-react';
@@ -51,7 +52,7 @@ function StatusPill({ status }: { status: AttStatus | string }) {
   );
 }
 
-export default function AttendancePage() {
+function AttendancePageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
@@ -216,4 +217,8 @@ export default function AttendancePage() {
       </AnimatePresence>
     </div>
   );
+}
+
+export default function AttendancePage() {
+  return <Suspense><AttendancePageInner /></Suspense>;
 }

@@ -5,6 +5,7 @@ import { reassignBooking, createWalkIn } from '@/lib/adminCrmApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, Check, UserX, Shuffle, Home, ChevronRight } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ const TYPE_FILTERS   = ['all','online','home_service','wedding','walk_in'];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function BookingControlPage() {
+function BookingControlPageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
@@ -310,4 +311,8 @@ function Sheet({ onClose, title, children }: { onClose: () => void; title: strin
       </motion.div>
     </motion.div>
   );
+}
+
+export default function BookingControlPage() {
+  return <Suspense><BookingControlPageInner /></Suspense>;
 }

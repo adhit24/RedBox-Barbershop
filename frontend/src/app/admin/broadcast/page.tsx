@@ -6,6 +6,7 @@ import type { BroadcastLog } from '@/lib/adminCrmTypes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Megaphone, Send, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
 function timeAgo(iso: string) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -15,7 +16,7 @@ function timeAgo(iso: string) {
   return `${Math.floor(diff / 86400)} hari lalu`;
 }
 
-export default function BroadcastPage() {
+function BroadcastPageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
@@ -150,4 +151,8 @@ export default function BroadcastPage() {
       )}
     </div>
   );
+}
+
+export default function BroadcastPage() {
+  return <Suspense><BroadcastPageInner /></Suspense>;
 }

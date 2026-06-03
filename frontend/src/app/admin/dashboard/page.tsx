@@ -10,6 +10,7 @@ import {
   ChevronRight, Circle, ShoppingBag,
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -175,7 +176,7 @@ function MokaCard({ bill, index }: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function CommandCenterPage() {
+function CommandCenterPageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
@@ -363,4 +364,8 @@ export default function CommandCenterPage() {
       </section>
     </div>
   );
+}
+
+export default function CommandCenterPage() {
+  return <Suspense><CommandCenterPageInner /></Suspense>;
 }

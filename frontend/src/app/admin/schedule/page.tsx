@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchSchedule, blockBarberDate, unblockBarberDate } from '@/lib/adminCrmApi';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import type { ScheduleData } from '@/lib/adminCrmTypes';
 import { motion } from 'framer-motion';
 import { CalendarDays, ChevronLeft, ChevronRight, Scissors } from 'lucide-react';
@@ -38,7 +39,7 @@ function Skeleton({ className }: { className?: string }) {
   );
 }
 
-export default function SchedulePage() {
+function SchedulePageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
@@ -162,4 +163,8 @@ export default function SchedulePage() {
       )}
     </div>
   );
+}
+
+export default function SchedulePage() {
+  return <Suspense><SchedulePageInner /></Suspense>;
 }
