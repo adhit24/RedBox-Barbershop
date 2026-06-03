@@ -53,7 +53,7 @@ function StatusPill({ status }: { status: AttStatus | string }) {
 }
 
 function AttendancePageInner() {
-  const { user } = useUser();
+  const { user, loading: userLoading } = useUser();
   const searchParams = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
   const branch = user?.branch || '';
@@ -77,10 +77,11 @@ function AttendancePageInner() {
   }, [branch, month]);
 
   useEffect(() => {
+    if (userLoading || !branch) return;
     setLoading(true);
     if (tab === 'today') loadToday().finally(() => setLoading(false));
     else loadHistory().finally(() => setLoading(false));
-  }, [tab, loadToday, loadHistory]);
+  }, [tab, loadToday, loadHistory, userLoading, branch]);
 
   async function setStatus(barber_id: string, status: AttStatus) {
     setUpdating(barber_id);

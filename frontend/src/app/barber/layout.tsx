@@ -3,6 +3,9 @@ import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useBarberSession } from '@/hooks/useBarberSession';
 import { BottomNav } from '@/components/BottomNav';
+import { LogOut } from 'lucide-react';
+import { motion } from 'framer-motion';
+import Image from 'next/image';
 
 const BARBER_NAV = [
   { href: '/barber/home',        label: 'Home',    icon: '🏠' },
@@ -36,8 +39,22 @@ export default function BarberLayout({ children }: { children: React.ReactNode }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-400">Memuat...</div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#070508' }}>
+        <div className="flex flex-col items-center gap-4">
+          <motion.div
+            className="relative w-12 h-12"
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+          >
+            <Image src="/redbox-logo.png" alt="RedBox" fill className="object-contain" />
+          </motion.div>
+          <motion.div
+            className="w-5 h-px rounded-full"
+            style={{ background: '#C72820' }}
+            animate={{ scaleX: [0.3, 1, 0.3], opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+          />
+        </div>
       </div>
     );
   }
@@ -47,8 +64,11 @@ export default function BarberLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex justify-between items-center sticky top-0 z-10">
+    <div className="min-h-screen pb-20" style={{ background: '#070508' }}>
+      <header
+        className="sticky top-0 z-40 backdrop-blur-md border-b px-4 py-2.5 flex justify-between items-center"
+        style={{ background: 'rgba(8,5,9,0.96)', borderColor: '#201618' }}
+      >
         <div className="flex items-center gap-3">
           {data.profile.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -56,19 +76,41 @@ export default function BarberLayout({ children }: { children: React.ReactNode }
               src={data.profile.avatar_url}
               alt=""
               className="w-9 h-9 rounded-full object-cover"
+              style={{ border: '2px solid #261E20' }}
             />
           ) : (
-            <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center">👤</div>
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+              style={{
+                background: 'rgba(199,40,32,0.15)',
+                border: '1px solid rgba(199,40,32,0.25)',
+                color: '#E87068',
+              }}
+            >
+              {data.barber.name[0]?.toUpperCase() ?? '?'}
+            </div>
           )}
           <div>
-            <h1 className="font-bold text-gray-900">{data.barber.name}</h1>
-            <p className="text-xs text-gray-500 capitalize">{data.barber.branch}</p>
+            <h1 className="font-bold text-sm" style={{ color: '#F0EAEB' }}>
+              {data.barber.name}
+            </h1>
+            <p className="text-[10px] capitalize font-medium" style={{ color: '#C72820' }}>
+              {data.barber.branch}
+            </p>
           </div>
         </div>
-        <button onClick={signOut} className="text-sm text-gray-500 hover:text-gray-700">
-          Keluar
+
+        <button
+          onClick={signOut}
+          className="flex items-center gap-1.5 transition-colors cursor-pointer"
+          style={{ color: '#4A3E40' }}
+          aria-label="Keluar"
+        >
+          <LogOut size={15} />
+          <span className="text-xs font-medium">Keluar</span>
         </button>
       </header>
+
       <main>{children}</main>
       <BottomNav items={BARBER_NAV} />
     </div>

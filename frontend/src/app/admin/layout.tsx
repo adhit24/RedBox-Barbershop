@@ -5,9 +5,9 @@ import { useUser } from '@/hooks/useUser';
 import { AdminNav } from '@/components/AdminNav';
 import { LogOut, ChevronLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import type { AppUser } from '@/hooks/useUser';
 
-// Separate component so useSearchParams is inside a Suspense boundary
 function AdminShell({ children, user, signOut }: {
   children: React.ReactNode;
   user: AppUser | null;
@@ -18,36 +18,64 @@ function AdminShell({ children, user, signOut }: {
   const readonly = searchParams.get('readonly') === 'true';
 
   return (
-    <div className="min-h-dvh bg-[#020617] pb-20">
-      <header className="bg-[#0A0F1E]/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex justify-between items-center sticky top-0 z-40">
-        <div className="flex items-center gap-2">
+    <div className="min-h-dvh pb-20" style={{ background: '#070508' }}>
+      <header
+        className="sticky top-0 z-40 backdrop-blur-md border-b px-4 py-2.5 flex justify-between items-center"
+        style={{ background: 'rgba(8,5,9,0.96)', borderColor: '#201618' }}
+      >
+        <div className="flex items-center gap-2.5">
           {readonly && (
-            <button onClick={() => router.push('/owner/dashboard')}
-              className="p-1.5 -ml-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer active:scale-95"
-              aria-label="Kembali ke Owner Dashboard">
+            <button
+              onClick={() => router.push('/owner/dashboard')}
+              className="p-1.5 -ml-1.5 rounded-xl transition-all active:scale-95 cursor-pointer"
+              style={{ color: '#5A4E50' }}
+              aria-label="Kembali ke Owner Dashboard"
+            >
               <ChevronLeft size={18} />
             </button>
           )}
+          <div className="relative w-7 h-7 shrink-0">
+            <Image src="/redbox-logo.png" alt="RedBox" fill className="object-contain" />
+          </div>
           <div>
-            <h1 className="font-bold text-white text-sm tracking-wide">REDBOX STAFF</h1>
+            <h1
+              className="font-bold text-[13px] tracking-widest uppercase"
+              style={{ color: '#F0EAEB' }}
+            >
+              RedBox Staff
+            </h1>
             {user?.branch && (
-              <p className="text-[11px] text-green-400 capitalize font-medium">{user.branch}</p>
+              <p className="text-[10px] capitalize font-medium" style={{ color: '#C72820' }}>
+                {user.branch}
+              </p>
             )}
           </div>
         </div>
+
         {readonly ? (
-          <span className="text-[10px] bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded-full">
+          <span
+            className="text-[10px] px-2.5 py-1 rounded-full font-medium"
+            style={{
+              background: '#1C1416',
+              color: '#5A4E50',
+              border: '1px solid #261E20',
+            }}
+          >
             Read-only
           </span>
         ) : (
-          <button onClick={signOut}
-            className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-            aria-label="Keluar">
-            <LogOut size={16} />
-            <span className="text-xs">Keluar</span>
+          <button
+            onClick={signOut}
+            className="flex items-center gap-1.5 transition-colors cursor-pointer"
+            style={{ color: '#4A3E40' }}
+            aria-label="Keluar"
+          >
+            <LogOut size={15} />
+            <span className="text-xs font-medium">Keluar</span>
           </button>
         )}
       </header>
+
       <main>{children}</main>
       {!readonly && <AdminNav />}
     </div>
@@ -66,14 +94,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-[#020617] flex items-center justify-center">
-        <motion.div
-          animate={{ opacity: [0.3, 1, 0.3] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
-          className="text-slate-500 text-sm"
-        >
-          Memuat...
-        </motion.div>
+      <div className="min-h-dvh flex items-center justify-center" style={{ background: '#070508' }}>
+        <div className="flex flex-col items-center gap-4">
+          <motion.div
+            className="relative w-12 h-12"
+            animate={{ opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+          >
+            <Image src="/redbox-logo.png" alt="RedBox" fill className="object-contain" />
+          </motion.div>
+          <motion.div
+            className="w-5 h-px rounded-full"
+            style={{ background: '#C72820' }}
+            animate={{ scaleX: [0.3, 1, 0.3], opacity: [0.4, 1, 0.4] }}
+            transition={{ duration: 1.8, repeat: Infinity }}
+          />
+        </div>
       </div>
     );
   }
