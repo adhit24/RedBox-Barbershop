@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle, Home,
   Users, CalendarCheck, RefreshCw,
-  ChevronRight, Circle,
+  ChevronRight, Circle, ShoppingBag,
 } from 'lucide-react';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -145,6 +145,32 @@ function HomeServiceCard({ hs, onAdvance, index }: {
   );
 }
 
+// ─── Moka Open Bill Card ──────────────────────────────────────────────────────
+
+function MokaCard({ bill, index }: {
+  bill: { id: string; barber_name: string; service_name: string; time: string; unassigned: boolean };
+  index: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -8 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.22 }}
+      className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-2"
+    >
+      <div className="min-w-0">
+        <p className="font-semibold text-white text-sm truncate">{bill.service_name}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{bill.time} · {bill.barber_name}</p>
+      </div>
+      {bill.unassigned && (
+        <span className="flex-shrink-0 text-[11px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">
+          Unassigned
+        </span>
+      )}
+    </motion.div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CommandCenterPage() {
@@ -211,7 +237,7 @@ export default function CommandCenterPage() {
     { label: 'Blm Check-in', value: data.stats.belum_check_in,      color: 'text-amber-400' },
     { label: 'Booking',      value: data.stats.booking_today,       color: 'text-blue-400' },
     { label: 'Pending',      value: data.stats.pending,             color: 'text-orange-400' },
-    { label: 'Home Svc',     value: data.stats.home_service_active, color: 'text-purple-400' },
+    { label: 'GoShow',       value: data.stats.moka_open_bills ?? 0, color: 'text-teal-400' },
   ];
 
   return (
@@ -264,6 +290,20 @@ export default function CommandCenterPage() {
           </div>
           {data.home_service.map((hs, i) => (
             <HomeServiceCard key={hs.id} hs={hs} onAdvance={updateStatus} index={i} />
+          ))}
+        </section>
+      )}
+
+      {/* Moka GoShow Open Bills */}
+      {(data.moka_open_bills?.length ?? 0) > 0 && (
+        <section className="space-y-2.5">
+          <div className="flex items-center gap-1.5">
+            <ShoppingBag size={13} className="text-teal-500" />
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">GoShow Moka</p>
+            <span className="ml-auto text-[11px] text-teal-400 tabular-nums">{data.moka_open_bills.length} open</span>
+          </div>
+          {data.moka_open_bills.map((bill, i) => (
+            <MokaCard key={bill.id} bill={bill} index={i} />
           ))}
         </section>
       )}

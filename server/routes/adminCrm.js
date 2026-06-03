@@ -103,6 +103,46 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       }
     }
 
+    // ── Moka open bills (GoShow walk-in) ──
+    const { data: outlet } = await supabase
+      .from('outlets')
+      .select('id')
+      .eq('slug', branch)
+      .maybeSingle();
+
+    let mokaOpenBills = [];
+    if (outlet) {
+      const dayStart = today + 'T00:00:00+07:00';
+      const dayEnd   = today + 'T23:59:59+07:00';
+      const { data: openBillRows } = await supabase
+        .from('schedules')
+        .select('id, barber_id, service_name, start_time, end_time, external_id, notes')
+        .eq('outlet_id', outlet.id)
+        .eq('source', 'moka')
+        .eq('status', 'reserved')
+        .gte('start_time', dayStart)
+        .lte('start_time', dayEnd)
+        .order('start_time', { ascending: true });
+
+      const barberNameMap = {};
+      for (const b of (barbers || [])) barberNameMap[b.id] = b.name;
+
+      mokaOpenBills = (openBillRows || []).map(r => {
+        const startWib = new Date(r.start_time);
+        const timeStr = startWib.toLocaleTimeString('id-ID', {
+          hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta',
+        });
+        return {
+          id:           r.id,
+          barber_name:  barberNameMap[r.barber_id] || (r.notes?.includes('No barber') ? '⚠ Unassigned' : r.barber_id),
+          service_name: r.service_name,
+          time:         timeStr,
+          external_id:  r.external_id,
+          unassigned:   !r.barber_id || r.notes?.includes('No barber'),
+        };
+      });
+    }
+
     return res.json({
       today,
       barbers: (barbers || []).map(b => ({
@@ -117,12 +157,14 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         booking_today: allBookings.length,
         pending: pending.length,
         home_service_active: homeServiceActive.length,
+        moka_open_bills: mokaOpenBills.length,
       },
       home_service: homeServiceActive,
       booking_feed: allBookings
         .filter(b => ['pending','confirmed'].includes(b.status))
         .sort((a, b) => a.time.localeCompare(b.time))
         .slice(0, 10),
+      moka_open_bills: mokaOpenBills,
       alerts,
     });
   });

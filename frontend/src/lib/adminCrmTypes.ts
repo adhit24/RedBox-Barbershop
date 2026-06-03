@@ -8,6 +8,15 @@ export interface BarberWithStatus {
   today_count: number;
 }
 
+export interface MokaOpenBill {
+  id: string;
+  barber_name: string;
+  service_name: string;
+  time: string;
+  external_id: string;
+  unassigned: boolean;
+}
+
 export interface CommandCenterData {
   today: string;
   barbers: BarberWithStatus[];
@@ -18,9 +27,11 @@ export interface CommandCenterData {
     booking_today: number;
     pending: number;
     home_service_active: number;
+    moka_open_bills: number;
   };
   home_service: BookingRow[];
   booking_feed: BookingRow[];
+  moka_open_bills: MokaOpenBill[];
   alerts: { type: 'warning' | 'info'; message: string }[];
 }
 
