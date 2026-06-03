@@ -1,218 +1,292 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@/hooks/useUser';
-import { fetchAttendance, updateAttendance, fetchAttendanceHistory } from '@/lib/adminCrmApi';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
-import type { AttendanceData } from '@/lib/adminCrmTypes';
+import { fetchAllBarbers, toggleBarberActive, fetchAttendance } from '@/lib/adminCrmApi';
+import type { BarberRecord } from '@/lib/adminCrmApi';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserCheck, History, Scissors } from 'lucide-react';
+import { Scissors } from 'lucide-react';
+import Image from 'next/image';
+import { Suspense } from 'react';
 
-const STATUSES = ['hadir','terlambat','izin','sakit','cuti'] as const;
-type AttStatus = typeof STATUSES[number];
-
-const STATUS_META: Record<AttStatus, { color: string; dot: string }> = {
-  hadir:     { color: 'bg-green-500/15 text-green-400 border-green-500/30',   dot: 'bg-green-400' },
-  terlambat: { color: 'bg-amber-500/15 text-amber-400 border-amber-500/30',   dot: 'bg-amber-400' },
-  izin:      { color: 'bg-blue-500/15 text-blue-400 border-blue-500/30',      dot: 'bg-blue-400' },
-  sakit:     { color: 'bg-red-500/15 text-red-400 border-red-500/30',         dot: 'bg-red-400' },
-  cuti:      { color: 'bg-slate-500/15 text-slate-400 border-slate-500/30',   dot: 'bg-slate-400' },
+const DAYS_SHORT = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+const DAYS_MAP: Record<string, number> = {
+  sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6,
+  minggu:0, senin:1, selasa:2, rabu:3, kamis:4, jumat:5, sabtu:6,
 };
 
-const BTN_ACTIVE: Record<AttStatus, string> = {
-  hadir:     'bg-green-500/20 text-green-400 border-green-500/40',
-  terlambat: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
-  izin:      'bg-blue-500/20 text-blue-400 border-blue-500/40',
-  sakit:     'bg-red-500/20 text-red-400 border-red-500/40',
-  cuti:      'bg-slate-600/40 text-slate-300 border-slate-500/40',
-};
-
-function todayStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function workDayIndices(workDays?: string[]): number[] {
+  if (!workDays?.length) return [];
+  return workDays
+    .map(d => DAYS_MAP[d.toLowerCase()])
+    .filter(n => n !== undefined) as number[];
 }
 
 function Skeleton({ className }: { className?: string }) {
   return (
     <motion.div
-      animate={{ opacity: [0.4, 0.7, 0.4] }}
-      transition={{ duration: 1.4, repeat: Infinity }}
-      className={`bg-slate-800 rounded-lg ${className}`}
+      animate={{ opacity: [0.35, 0.6, 0.35] }}
+      transition={{ duration: 1.5, repeat: Infinity }}
+      className={`rounded-2xl ${className}`}
+      style={{ background: 'rgba(255,255,255,0.04)' }}
     />
   );
 }
 
-function StatusPill({ status }: { status: AttStatus | string }) {
-  const m = STATUS_META[status as AttStatus] ?? { color: 'bg-slate-500/15 text-slate-400 border-slate-500/30', dot: 'bg-slate-400' };
+function ToggleSwitch({ active, onChange, disabled }: {
+  active: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize ${m.color}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
-      {status}
-    </span>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={active}
+      disabled={disabled}
+      onClick={() => onChange(!active)}
+      className="relative flex-shrink-0 focus:outline-none disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+    >
+      <motion.div
+        animate={{ backgroundColor: active ? '#C72820' : '#2A2326' }}
+        transition={{ duration: 0.2 }}
+        className="w-12 h-6 rounded-full border"
+        style={{ borderColor: active ? 'rgba(199,40,32,0.4)' : 'rgba(255,255,255,0.08)' }}
+      />
+      <motion.div
+        animate={{ x: active ? 26 : 2 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+        className="absolute top-[3px] w-[18px] h-[18px] rounded-full bg-white shadow-md"
+        style={{ left: 0 }}
+      />
+    </button>
   );
 }
 
-function AttendancePageInner() {
+interface BarberCardProps {
+  barber: BarberRecord;
+  onToggle: (id: string, val: boolean) => void;
+  toggling: boolean;
+  index: number;
+}
+
+function BarberCard({ barber, onToggle, toggling, index }: BarberCardProps) {
+  const initials = barber.name.slice(0, 2).toUpperCase();
+  const activeDays = workDayIndices(barber.work_days);
+  const todayCount = barber.today_count ?? 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.28, ease: 'easeOut' }}
+      className="rounded-2xl overflow-hidden"
+      style={{ background: '#0F0A0D', border: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      {/* Top: Avatar + Name + Branch */}
+      <div className="px-4 pt-4 pb-3 flex items-center gap-3">
+        <div className="relative flex-shrink-0 w-12 h-12 rounded-full overflow-hidden"
+          style={{ border: barber.is_active ? '2px solid rgba(199,40,32,0.5)' : '2px solid rgba(255,255,255,0.08)' }}>
+          {barber.img ? (
+            <Image src={barber.img} alt={barber.name} fill className="object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-sm font-bold"
+              style={{ background: 'rgba(199,40,32,0.12)', color: '#E87068' }}>
+              {initials}
+            </div>
+          )}
+          {barber.is_active && (
+            <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#0F0A0D]" />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-[#F0EAEB] text-sm leading-tight truncate">{barber.name}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[10px] font-medium uppercase tracking-wider"
+              style={{ color: '#C72820' }}>
+              {barber.branch || '—'}
+            </span>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={barber.is_active ? 'aktif' : 'nonaktif'}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            transition={{ duration: 0.15 }}
+            className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
+            style={barber.is_active
+              ? { background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.25)' }
+              : { background: 'rgba(199,40,32,0.12)', color: '#E87068', border: '1px solid rgba(199,40,32,0.25)' }
+            }
+          >
+            {barber.is_active ? 'Aktif' : 'Nonaktif'}
+          </motion.span>
+        </AnimatePresence>
+      </div>
+
+      {/* Stats */}
+      <div className="px-4 pb-3">
+        <div className="grid grid-cols-1 gap-1.5 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px]" style={{ color: '#6B5A5E' }}>Customer hari ini</span>
+            <span className="text-[13px] font-semibold" style={{ color: '#F0EAEB' }}>{todayCount}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Working Days */}
+      {activeDays.length > 0 && (
+        <div className="px-4 pb-3">
+          <p className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: '#6B5A5E' }}>Hari Kerja</p>
+          <div className="flex gap-1">
+            {DAYS_SHORT.map((d, i) => {
+              const isWork = activeDays.includes(i);
+              return (
+                <div key={d}
+                  className="flex-1 text-center py-1 rounded-lg text-[10px] font-semibold"
+                  style={isWork
+                    ? { background: 'rgba(199,40,32,0.15)', color: '#E87068', border: '1px solid rgba(199,40,32,0.25)' }
+                    : { background: 'rgba(255,255,255,0.03)', color: '#3D2E32', border: '1px solid transparent' }
+                  }>
+                  {d}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Toggle */}
+      <div className="px-4 pb-4 pt-1 flex items-center justify-between"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+        <p className="text-[11px]" style={{ color: barber.is_active ? '#34d399' : '#6B5A5E' }}>
+          {barber.is_active ? 'Kapster bisa dipesan' : 'Kapster tidak bisa dipesan'}
+        </p>
+        <ToggleSwitch
+          active={barber.is_active}
+          onChange={(val) => onToggle(barber.id, val)}
+          disabled={toggling}
+        />
+      </div>
+    </motion.div>
+  );
+}
+
+function BarbersPageInner() {
   const { user, loading: userLoading } = useUser();
-  const searchParams = useSearchParams();
-  const readonly = searchParams.get('readonly') === 'true';
   const branch = user?.branch || '';
-  const [tab, setTab] = useState<'today'|'history'>('today');
-  const [data, setData] = useState<AttendanceData | null>(null);
-  const [history, setHistory] = useState<any | null>(null);
+
+  const [barbers, setBarbers] = useState<BarberRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [month, setMonth] = useState(todayStr().slice(0, 7));
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
-  const loadToday = useCallback(async () => {
+  const loadBarbers = useCallback(async () => {
     if (!branch) return;
-    const d = await fetchAttendance(branch).catch(() => null);
-    if (d) setData(d);
+    const [barberRes, attRes] = await Promise.all([
+      fetchAllBarbers().catch(() => null),
+      fetchAttendance(branch).catch(() => null),
+    ]);
+    if (!barberRes) return;
+
+    const todayCounts: Record<string, number> = {};
+    if (attRes) {
+      for (const b of attRes.barbers) todayCounts[b.id] = b.today_count;
+    }
+
+    const filtered = barberRes.data
+      .filter(b => !branch || b.branch?.toLowerCase() === branch.toLowerCase())
+      .map(b => ({ ...b, today_count: todayCounts[b.id] ?? 0 }));
+
+    setBarbers(filtered);
   }, [branch]);
-
-  const loadHistory = useCallback(async () => {
-    if (!branch) return;
-    const d = await fetchAttendanceHistory(branch, month).catch(() => null);
-    if (d) setHistory(d);
-  }, [branch, month]);
 
   useEffect(() => {
     if (userLoading || !branch) return;
     setLoading(true);
-    if (tab === 'today') loadToday().finally(() => setLoading(false));
-    else loadHistory().finally(() => setLoading(false));
-  }, [tab, loadToday, loadHistory, userLoading, branch]);
+    loadBarbers().finally(() => setLoading(false));
+  }, [loadBarbers, userLoading, branch]);
 
-  async function setStatus(barber_id: string, status: AttStatus) {
-    setUpdating(barber_id);
-    await updateAttendance(barber_id, todayStr(), status).catch(() => null);
-    await loadToday();
-    setUpdating(null);
+  async function handleToggle(id: string, val: boolean) {
+    setToggling(id);
+    // Optimistic update
+    setBarbers(prev => prev.map(b => b.id === id ? { ...b, is_active: val } : b));
+    const res = await toggleBarberActive(id, val).catch(() => null);
+    if (!res?.success && !res?.ok) {
+      // Revert on failure
+      setBarbers(prev => prev.map(b => b.id === id ? { ...b, is_active: !val } : b));
+    }
+    setToggling(null);
   }
 
+  const displayed = barbers.filter(b =>
+    filter === 'all' ? true : filter === 'active' ? b.is_active : !b.is_active
+  );
+
+  const activeCount = barbers.filter(b => b.is_active).length;
+  const inactiveCount = barbers.length - activeCount;
+
   return (
-    <div className="p-4 space-y-4 pb-6">
+    <div className="p-4 space-y-4 pb-8">
 
       {/* Header */}
       <div className="flex items-center gap-2">
-        <UserCheck size={16} className="text-slate-500" />
-        <h2 className="text-white font-bold text-base">Absensi Kapster</h2>
+        <Scissors size={15} style={{ color: '#C72820' }} />
+        <h2 className="font-bold text-base" style={{ color: '#F0EAEB' }}>Kapster</h2>
+        {!loading && (
+          <span className="ml-auto text-[11px]" style={{ color: '#6B5A5E' }}>
+            {activeCount} aktif · {inactiveCount} nonaktif
+          </span>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 bg-slate-900 p-1 rounded-2xl">
-        {([['today','Hari Ini'],['history','Riwayat']] as const).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              tab === t
-                ? 'bg-slate-700 text-white shadow-sm'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}>
-            {label}
+      {/* Filter pills */}
+      <div className="flex gap-2">
+        {(['all','active','inactive'] as const).map(f => (
+          <button key={f}
+            onClick={() => setFilter(f)}
+            className="px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer"
+            style={filter === f
+              ? { background: '#C72820', color: '#fff' }
+              : { background: 'rgba(255,255,255,0.04)', color: '#6B5A5E', border: '1px solid rgba(255,255,255,0.07)' }
+            }>
+            {f === 'all' ? 'Semua' : f === 'active' ? 'Aktif' : 'Nonaktif'}
           </button>
         ))}
       </div>
 
-      <AnimatePresence mode="wait">
-        {tab === 'today' && (
-          <motion.div key="today" initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }} className="space-y-2">
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)
-            ) : !data ? (
-              <p className="text-center text-slate-500 text-sm py-8">Gagal memuat</p>
-            ) : (
-              data.barbers.map((b, i) => (
-                <motion.div
-                  key={b.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.06, duration: 0.25 }}
-                  className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <Scissors size={13} className="text-slate-500" />
-                      <div>
-                        <p className="font-semibold text-white text-sm">{b.name}</p>
-                        <p className="text-[11px] text-slate-500">{b.today_count} customer hari ini</p>
-                      </div>
-                    </div>
-                    {b.attendance
-                      ? <StatusPill status={b.attendance.status} />
-                      : <span className="text-[11px] text-slate-500 border border-slate-700 rounded-full px-2 py-0.5">Belum</span>
-                    }
-                  </div>
-
-                  <div className="flex gap-1.5 flex-wrap">
-                    {STATUSES.map(s => {
-                      const isActive = b.attendance?.status === s;
-                      return (
-                        <button
-                          key={s}
-                          disabled={updating === b.id || readonly}
-                          onClick={() => !readonly && setStatus(b.id, s)}
-                          className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all capitalize active:scale-95 ${
-                            isActive
-                              ? BTN_ACTIVE[s]
-                              : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700'
-                          } disabled:opacity-40 ${readonly ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                        >
-                          {s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              ))
-            )}
+      {/* Cards */}
+      <AnimatePresence mode="popLayout">
+        {loading ? (
+          <motion.div key="skel" className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-44" />
+            ))}
           </motion.div>
-        )}
-
-        {tab === 'history' && (
-          <motion.div key="history" initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }} className="space-y-3">
-            <input
-              type="month"
-              value={month}
-              onChange={e => setMonth(e.target.value)}
-              className="w-full bg-[#0F172A] border border-slate-700 rounded-2xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
-            />
-            {loading ? (
-              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)
-            ) : !history ? (
-              <p className="text-center text-slate-500 text-sm py-8">Gagal memuat</p>
-            ) : (
-              history.barbers.map((b: any, i: number) => {
-                const recs = history.records.filter((r: any) => r.barber_id === b.id);
-                const counts: Record<string, number> = {};
-                for (const r of recs) counts[r.status] = (counts[r.status] || 0) + 1;
-                return (
-                  <motion.div
-                    key={b.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
-                  >
-                    <div className="flex items-center gap-2">
-                      <History size={13} className="text-slate-500" />
-                      <p className="font-semibold text-white text-sm">{b.name}</p>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      {Object.entries(counts).length === 0
-                        ? <p className="text-xs text-slate-500">Tidak ada data</p>
-                        : Object.entries(counts).map(([s, c]) => (
-                            <span key={s} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border capitalize ${
-                              STATUS_META[s as AttStatus]?.color ?? 'bg-slate-500/15 text-slate-400 border-slate-500/30'
-                            }`}>
-                              {s}: {c}
-                            </span>
-                          ))
-                      }
-                    </div>
-                  </motion.div>
-                );
-              })
-            )}
+        ) : displayed.length === 0 ? (
+          <motion.p
+            key="empty"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center text-sm py-10"
+            style={{ color: '#6B5A5E' }}
+          >
+            Tidak ada kapster
+          </motion.p>
+        ) : (
+          <motion.div key="cards" className="space-y-3">
+            {displayed.map((b, i) => (
+              <BarberCard
+                key={b.id}
+                barber={b}
+                onToggle={handleToggle}
+                toggling={toggling === b.id}
+                index={i}
+              />
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
@@ -220,6 +294,6 @@ function AttendancePageInner() {
   );
 }
 
-export default function AttendancePage() {
-  return <Suspense><AttendancePageInner /></Suspense>;
+export default function BarbersPage() {
+  return <Suspense><BarbersPageInner /></Suspense>;
 }

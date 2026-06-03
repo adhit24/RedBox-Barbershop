@@ -108,3 +108,24 @@ export function fetchOwnerOverview(): Promise<OwnerOverviewData> {
 export function fetchOwnerRevenue(branch: string, period: string): Promise<OwnerRevenueData> {
   return crmFetch<OwnerRevenueData>(`/api/admin/crm/owner-revenue?branch=${branch}&period=${period}`);
 }
+
+export interface BarberRecord {
+  id: string;
+  name: string;
+  branch: string;
+  is_active: boolean;
+  img?: string | null;
+  work_days?: string[];
+  today_count?: number;
+}
+
+export function fetchAllBarbers(): Promise<{ data: BarberRecord[] }> {
+  return crmFetch<{ data: BarberRecord[] }>('/api/admin/barbers?include_inactive=1');
+}
+
+export function toggleBarberActive(id: string, is_active: boolean): Promise<{ success?: boolean; ok?: boolean }> {
+  return crmFetch<{ success?: boolean; ok?: boolean }>(`/api/admin/barber-toggle/${id}`, {
+    method: 'POST',
+    body: JSON.stringify({ is_active }),
+  });
+}
