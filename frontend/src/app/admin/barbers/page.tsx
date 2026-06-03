@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchAttendance, updateAttendance, fetchAttendanceHistory } from '@/lib/adminCrmApi';
+import { useSearchParams } from 'next/navigation';
 import type { AttendanceData } from '@/lib/adminCrmTypes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserCheck, History, Scissors } from 'lucide-react';
@@ -52,6 +53,8 @@ function StatusPill({ status }: { status: AttStatus | string }) {
 
 export default function AttendancePage() {
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const readonly = searchParams.get('readonly') === 'true';
   const branch = user?.branch || '';
   const [tab, setTab] = useState<'today'|'history'>('today');
   const [data, setData] = useState<AttendanceData | null>(null);
@@ -144,13 +147,13 @@ export default function AttendancePage() {
                       return (
                         <button
                           key={s}
-                          disabled={updating === b.id}
-                          onClick={() => setStatus(b.id, s)}
-                          className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all capitalize cursor-pointer active:scale-95 ${
+                          disabled={updating === b.id || readonly}
+                          onClick={() => !readonly && setStatus(b.id, s)}
+                          className={`px-2.5 py-1 text-[11px] rounded-lg border font-medium transition-all capitalize active:scale-95 ${
                             isActive
                               ? BTN_ACTIVE[s]
                               : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-700'
-                          } disabled:opacity-40`}
+                          } disabled:opacity-40 ${readonly ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                         >
                           {s}
                         </button>

@@ -5,6 +5,7 @@ import { sendBroadcast, fetchBroadcastLog } from '@/lib/adminCrmApi';
 import type { BroadcastLog } from '@/lib/adminCrmTypes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Megaphone, Send, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 function timeAgo(iso: string) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -16,6 +17,8 @@ function timeAgo(iso: string) {
 
 export default function BroadcastPage() {
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const readonly = searchParams.get('readonly') === 'true';
   const branch = user?.branch || '';
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -61,6 +64,11 @@ export default function BroadcastPage() {
       </div>
 
       {/* Compose */}
+      {readonly ? (
+        <div className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 text-center">
+          <p className="text-slate-500 text-sm">Mode read-only — tidak bisa kirim broadcast</p>
+        </div>
+      ) : (
       <div className="bg-[#0F172A] border border-slate-800 rounded-2xl p-4 space-y-3">
         <textarea
           value={message}
@@ -117,6 +125,7 @@ export default function BroadcastPage() {
           )}
         </AnimatePresence>
       </div>
+      )}
 
       {/* Broadcast Log */}
       {logs.length > 0 && (

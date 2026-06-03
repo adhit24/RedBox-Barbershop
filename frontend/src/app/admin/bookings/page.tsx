@@ -4,6 +4,7 @@ import { useUser } from '@/hooks/useUser';
 import { reassignBooking, createWalkIn } from '@/lib/adminCrmApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, Check, UserX, Shuffle, Home, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,8 @@ const TYPE_FILTERS   = ['all','online','home_service','wedding','walk_in'];
 
 export default function BookingControlPage() {
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const readonly = searchParams.get('readonly') === 'true';
   const branch = user?.branch || '';
 
   const [bookings, setBookings]           = useState<any[]>([]);
@@ -106,13 +109,15 @@ export default function BookingControlPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-white font-bold text-base">Booking Control</h2>
-        <button
-          onClick={() => setWalkinOpen(true)}
-          className="flex items-center gap-1.5 h-9 px-3 bg-green-500/15 text-green-400 border border-green-500/30 rounded-xl text-xs font-semibold active:scale-95 transition-all cursor-pointer"
-        >
-          <Plus size={14} />
-          Walk-in
-        </button>
+        {!readonly && (
+          <button
+            onClick={() => setWalkinOpen(true)}
+            className="flex items-center gap-1.5 h-9 px-3 bg-green-500/15 text-green-400 border border-green-500/30 rounded-xl text-xs font-semibold active:scale-95 transition-all cursor-pointer"
+          >
+            <Plus size={14} />
+            Walk-in
+          </button>
+        )}
       </div>
 
       {/* Date */}
@@ -181,22 +186,24 @@ export default function BookingControlPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-1.5 flex-wrap">
-                {bk.status === 'pending' && <>
-                  <ActionBtn color="green" icon={<Check size={12}/>} label="Konfirmasi"   onClick={() => updateStatus(bk.id,'confirmed')} />
-                  <ActionBtn color="red"   icon={<X size={12}/>}     label="Batalkan"     onClick={() => updateStatus(bk.id,'cancelled')} />
-                  <ActionBtn color="slate" icon={<Shuffle size={12}/>} label="Reassign"   onClick={() => setReassignId(bk.id)} />
-                </>}
-                {bk.status === 'confirmed' && <>
-                  <ActionBtn color="green" icon={<Check size={12}/>}  label="Done"        onClick={() => updateStatus(bk.id,'done')} />
-                  <ActionBtn color="slate" icon={<UserX size={12}/>}  label="No-show"     onClick={() => updateStatus(bk.id,'no_show')} />
-                  <ActionBtn color="red"   icon={<X size={12}/>}      label="Batalkan"    onClick={() => updateStatus(bk.id,'cancelled')} />
-                  {isHS(bk) && <ActionBtn color="indigo" icon={<ChevronRight size={12}/>} label="Berangkat" onClick={() => updateStatus(bk.id,'departed')} />}
-                </>}
-                {bk.status === 'departed'    && <ActionBtn color="cyan"   icon={<ChevronRight size={12}/>} label="Sampai"      onClick={() => updateStatus(bk.id,'arrived')} />}
-                {bk.status === 'arrived'     && <ActionBtn color="purple" icon={<ChevronRight size={12}/>} label="Dikerjakan"  onClick={() => updateStatus(bk.id,'in_progress')} />}
-                {bk.status === 'in_progress' && <ActionBtn color="green"  icon={<Check size={12}/>}        label="Selesai"     onClick={() => updateStatus(bk.id,'done')} />}
-              </div>
+              {!readonly && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {bk.status === 'pending' && <>
+                    <ActionBtn color="green" icon={<Check size={12}/>} label="Konfirmasi"   onClick={() => updateStatus(bk.id,'confirmed')} />
+                    <ActionBtn color="red"   icon={<X size={12}/>}     label="Batalkan"     onClick={() => updateStatus(bk.id,'cancelled')} />
+                    <ActionBtn color="slate" icon={<Shuffle size={12}/>} label="Reassign"   onClick={() => setReassignId(bk.id)} />
+                  </>}
+                  {bk.status === 'confirmed' && <>
+                    <ActionBtn color="green" icon={<Check size={12}/>}  label="Done"        onClick={() => updateStatus(bk.id,'done')} />
+                    <ActionBtn color="slate" icon={<UserX size={12}/>}  label="No-show"     onClick={() => updateStatus(bk.id,'no_show')} />
+                    <ActionBtn color="red"   icon={<X size={12}/>}      label="Batalkan"    onClick={() => updateStatus(bk.id,'cancelled')} />
+                    {isHS(bk) && <ActionBtn color="indigo" icon={<ChevronRight size={12}/>} label="Berangkat" onClick={() => updateStatus(bk.id,'departed')} />}
+                  </>}
+                  {bk.status === 'departed'    && <ActionBtn color="cyan"   icon={<ChevronRight size={12}/>} label="Sampai"      onClick={() => updateStatus(bk.id,'arrived')} />}
+                  {bk.status === 'arrived'     && <ActionBtn color="purple" icon={<ChevronRight size={12}/>} label="Dikerjakan"  onClick={() => updateStatus(bk.id,'in_progress')} />}
+                  {bk.status === 'in_progress' && <ActionBtn color="green"  icon={<Check size={12}/>}        label="Selesai"     onClick={() => updateStatus(bk.id,'done')} />}
+                </div>
+              )}
             </motion.div>
           ))}
         </div>

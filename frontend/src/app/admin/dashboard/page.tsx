@@ -9,6 +9,7 @@ import {
   Users, CalendarCheck, RefreshCw,
   ChevronRight, Circle, ShoppingBag,
 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,10 +110,11 @@ function BookingCard({ bk, onAction, index }: {
 
 // ─── Home Service Card ────────────────────────────────────────────────────────
 
-function HomeServiceCard({ hs, onAdvance, index }: {
+function HomeServiceCard({ hs, onAdvance, index, readonly }: {
   hs: BookingRow;
   onAdvance: (id: string, next: string) => void;
   index: number;
+  readonly?: boolean;
 }) {
   const next = HS_NEXT[hs.status];
   return (
@@ -132,7 +134,7 @@ function HomeServiceCard({ hs, onAdvance, index }: {
         </div>
         <StatusBadge status={hs.status} />
       </div>
-      {next && (
+      {next && !readonly && (
         <button
           onClick={() => onAdvance(hs.id, next)}
           className="w-full h-9 text-xs font-semibold bg-slate-700/60 text-slate-200 border border-slate-600 rounded-xl hover:bg-slate-700 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
@@ -175,6 +177,8 @@ function MokaCard({ bill, index }: {
 
 export default function CommandCenterPage() {
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const readonly = searchParams.get('readonly') === 'true';
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -289,7 +293,7 @@ export default function CommandCenterPage() {
             <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Home Service Aktif</p>
           </div>
           {data.home_service.map((hs, i) => (
-            <HomeServiceCard key={hs.id} hs={hs} onAdvance={updateStatus} index={i} />
+            <HomeServiceCard key={hs.id} hs={hs} onAdvance={updateStatus} index={i} readonly={readonly} />
           ))}
         </section>
       )}

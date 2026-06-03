@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchSchedule, blockBarberDate, unblockBarberDate } from '@/lib/adminCrmApi';
+import { useSearchParams } from 'next/navigation';
 import type { ScheduleData } from '@/lib/adminCrmTypes';
 import { motion } from 'framer-motion';
 import { CalendarDays, ChevronLeft, ChevronRight, Scissors } from 'lucide-react';
@@ -39,6 +40,8 @@ function Skeleton({ className }: { className?: string }) {
 
 export default function SchedulePage() {
   const { user } = useUser();
+  const searchParams = useSearchParams();
+  const readonly = searchParams.get('readonly') === 'true';
   const branch = user?.branch || '';
   const [week, setWeek] = useState(mondayOfWeek(todayStr()));
   const [data, setData] = useState<ScheduleData | null>(null);
@@ -136,9 +139,9 @@ export default function SchedulePage() {
                   return (
                     <button
                       key={day}
-                      onClick={() => toggleBlock(barber.id, day, isBlocked)}
-                      disabled={isToggling}
-                      className={`flex-1 py-2 rounded-xl text-[11px] font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-60 ${
+                      onClick={() => !readonly && toggleBlock(barber.id, day, isBlocked)}
+                      disabled={isToggling || readonly}
+                      className={`flex-1 py-2 rounded-xl text-[11px] font-semibold transition-all disabled:opacity-60 ${readonly ? 'cursor-not-allowed' : 'active:scale-95 cursor-pointer'} ${
                         isBlocked
                           ? 'bg-red-500/15 text-red-400 border border-red-500/25'
                           : !isWorkDay
@@ -152,7 +155,7 @@ export default function SchedulePage() {
                 })}
               </div>
 
-              <p className="text-[10px] text-slate-600">Tap untuk blokir / buka hari</p>
+              {!readonly && <p className="text-[10px] text-slate-600">Tap untuk blokir / buka hari</p>}
             </motion.div>
           ))}
         </div>
