@@ -1,4 +1,4 @@
-const CACHE_NAME = 'redbox-staff-v1';
+const CACHE_NAME = 'redbox-staff-v3';
 const SHELL = ['/login'];
 
 self.addEventListener('install', (event) => {
