@@ -58,7 +58,7 @@ export default function BookingControlPage() {
     if (statusFilter !== 'all') params.set('status', statusFilter);
     const [bkRes, brRes] = await Promise.all([
       fetch(`/api/bookings?${params}`).then(r => r.json()),
-      fetch(`/api/barbers?branch=${branch}`).then(r => r.json()),
+      fetch(`/api/admin/barbers?branch=${branch}`).then(r => r.json()),
     ]);
     let bks = bkRes.bookings || bkRes || [];
     if (typeFilter === 'home_service') bks = bks.filter((b: any) => (b.notes||'').toUpperCase().includes('HOME SERVICE'));
