@@ -1,169 +1,208 @@
-# Admin CRM Dashboard — Design Spec
+# Branch Operations Center — Design Spec
 
 **Date:** 2026-06-03
 **Scope:** Branch Admin (branch_admin role) + Owner
-**Approach:** Opsi A — upgrade halaman admin yang sudah ada di Next.js (`/admin/*`)
+**Approach:** Upgrade halaman admin yang sudah ada di Next.js (`/admin/*`)
 
 ---
 
 ## Filosofi
 
-Dashboard ini bukan alat laporan — Moka POS sudah handle itu. Dashboard ini adalah **pusat aksi operasional** untuk melancarkan sistem booking website yang sudah berjalan. Admin fokus pada: memastikan booking berjalan lancar, kapster hadir, customer terlayani.
+Bukan alat laporan — Moka POS sudah handle itu.
+Ini adalah **pusat aksi operasional** untuk melancarkan sistem booking website.
+Sistem bekerja untuk admin, bukan admin yang bekerja untuk sistem.
 
 ---
 
 ## Constraints
 
-- **No revenue / nominal transaksi** — Moka POS yang handle keuangan. Admin hanya lihat count dan status.
-- **Branch-scoped** — branch_admin hanya lihat data cabangnya sendiri (`user.branch`). Owner lihat semua cabang.
-- **Existing auth** — pakai `useUser()` + `users` table (role: `branch_admin` | `owner`).
+- **No revenue** — admin hanya lihat count, status, dan aksi. Nominal transaksi = manager/owner only.
+- **Branch-scoped** — branch_admin hanya lihat data cabangnya. Owner lihat semua cabang.
+- **Mobile-first** — admin pakai HP di lapangan.
+- **Existing auth** — `useUser()` + `users` table (role: `branch_admin` | `owner`).
 
 ---
 
-## User Roles
+## Fitur yang TIDAK dibangun (sengaja dihilangkan)
 
-| Role | Akses |
-|------|-------|
-| `owner` | Semua cabang, semua fitur |
-| `branch_admin` | Cabang sendiri saja |
+- Slot per kursi fisik (tidak relevan untuk barbershop)
+- GPS + selfie check-in (distrust, behavioral change terlalu besar)
+- Incident ticketing dengan foto + PIC (terlalu formal)
+- Daily task checklist (lebih efektif manual di tempat)
+- Barber Workload Balancer otomatis (data tidak selalu akurat)
+- Waiting list management (kompleksitas tinggi, nilai rendah)
+- Semua laporan keuangan / rekap penjualan
 
 ---
 
-## Navigation (Updated)
+## Navigation
 
 ```
-📊 Dashboard
-📋 Bookings
-💈 Barbers
+📊 Command Center     ← rename dari Dashboard
+📋 Booking Control
+💈 Attendance
 👥 Customers
 🏆 Leaderboard
 📅 Schedule
 📣 Broadcast
 ```
 
-7 halaman — hapus Laporan (Moka handles).
-
 ---
 
-## Halaman 1: Dashboard (`/admin/dashboard`) — Upgrade
+## Halaman 1: Command Center (`/admin/dashboard`) — Upgrade
 
-Pusat komando harian. Semua yang admin perlu tahu sekilas pandang.
+Admin tahu kondisi cabang dalam 5 detik.
 
-### Stat Cards (atas)
-- Booking Hari Ini · Pending · Selesai · Total Customer cabang (all-time)
+### Status Cards
+
+| Card | Isi |
+|------|-----|
+| 🟢 Barber Hadir | Count barber hadir hari ini |
+| 🔴 Tidak Hadir | Count izin/sakit/cuti |
+| 📋 Booking Hari Ini | Total booking hari ini |
+| ⏳ Pending | Booking belum di-confirm |
+| 🏠 Home Service Aktif | Home service sedang berjalan |
+
+### Smart Alerts (otomatis, muncul kalau ada masalah)
+
+| Kondisi | Alert |
+|---------|-------|
+| Barber belum check-in jam > 10:00 | ⚠️ [Nama] belum hadir — ada booking jam [X] |
+| Booking pending > 1 jam | ⚠️ Booking [nama customer] jam [X] belum di-confirm |
+| Home service belum `departed` 30 menit sebelum jadwal | ⚠️ [Barber] belum berangkat untuk home service jam [X] |
+| Customer dengan visit ≥ 10x booking hari ini | ⭐ Customer VIP [nama] booking hari ini |
+
+Alert hanya muncul kalau ada kondisi bermasalah. Kalau semua oke, tidak ada alert.
 
 ### Home Service Tracker
-Section khusus — card per barber yang punya booking home service/wedding hari ini.
 
-**Status pipeline:**
+Card per booking home service/wedding hari ini.
+
+Status pipeline:
 ```
-🟡 Terjadwal → 🔵 Berangkat → 🟢 Sampai → ✅ Selesai
+🟡 Terjadwal → 🔵 Berangkat → 🟢 Sampai → 🔄 Dikerjakan → ✅ Selesai
 ```
 
-Admin tap tombol untuk advance status. Tersimpan ke `bookings.status` dengan nilai: `departed`, `arrived`.
+Admin tap tombol untuk advance status. Tersimpan ke `bookings.status`: `departed`, `arrived`, `in_progress`.
 
 ### Booking Feed
-List booking masuk hari ini — admin bisa **Confirm** / **Cancel** inline langsung dari feed tanpa pindah halaman.
 
-### Kapster On-Duty
-Siapa yang hadir hari ini + jumlah customer masing-masing saat ini. Kapster yang izin/sakit ditampilkan terpisah dengan badge merah.
+List booking masuk hari ini — admin bisa **Confirm** / **Cancel** inline.
 
 ---
 
-## Halaman 2: Bookings (`/admin/bookings`) — Upgrade
+## Halaman 2: Booking Control (`/admin/bookings`) — Upgrade
 
 ### Filter Bar
 - **Periode:** Hari ini / Minggu ini / Bulan ini
-- **Status:** Semua / Pending / Confirmed / Done / Cancelled
+- **Status:** Semua / Pending / Confirmed / Done / Cancelled / No-show
 - **Type:** Semua / Online / Walk-in / Home Service / Wedding
 
 ### Tabel Booking
 Kolom: Waktu · Customer · No HP · Kapster · Service · Type badge · Status badge · Aksi
 
 ### Actions Per Row
+
 | Aksi | Kondisi |
 |------|---------|
-| Confirm | Status = pending |
-| Cancel | Status = pending / confirmed |
-| Done | Status = confirmed |
-| Tandai Berangkat | Type = home_service/wedding, status = confirmed |
-| Tandai Sampai | Type = home_service/wedding, status = departed |
+| Confirm | pending |
+| Cancel | pending / confirmed |
+| Done | confirmed |
+| No-show | confirmed, lewat jadwal |
+| Reassign Barber | pending / confirmed → pilih barber lain |
+| Reschedule | pending / confirmed → pilih tanggal + waktu baru |
+| Convert Walk-in | pending → ubah jadi walk-in, status done langsung |
+| Tandai Berangkat | home_service/wedding, confirmed |
+| Tandai Sampai | home_service/wedding, departed |
+
+### Smart Reassignment
+Saat admin klik Reassign, sistem tampilkan daftar barber tersedia hari itu diurutkan berdasarkan:
+1. Sudah hadir hari ini
+2. Jumlah booking hari ini (terkecil ke terbesar — load balancing manual)
+3. Skill match (kalau data tersedia)
+
+Admin tetap yang memilih — sistem hanya membantu urutan rekomendasi.
 
 ### Walk-in Entry
-Tombol **"+ Walk-in"** — form cepat: nama customer (opsional), kapster, service → create booking type `walk_in`, status `done` langsung.
+Tombol **"+ Walk-in"** — form: nama customer (opsional) · kapster · service → create booking type `walk_in`, status `done`.
 
 ---
 
-## Halaman 3: Barbers (`/admin/barbers`) — Upgrade
+## Halaman 3: Attendance (`/admin/barbers`) — Upgrade
 
-### Tab 1: Kapster
-List kapster aktif cabang:
-- Jumlah customer bulan ini + hari ini
-- Streak aktif
-- Status kehadiran hari ini (Hadir / Izin / Sakit)
+### Tab 1: Hari Ini
+List semua barber cabang + status kehadiran hari ini.
 
-**Aksi per kapster:**
+Status: **Hadir** / **Terlambat** / **Izin** / **Sakit** / **Cuti** / **Belum Check-in**
+
+Admin bisa:
+- Update status kehadiran manual
+- Lihat jumlah customer hari ini per barber
 - Toggle aktif/nonaktif (existing)
-- Tandai izin/sakit hari ini → otomatis blokir semua slot hari ini
 
-### Tab 2: Absensi
-Log kehadiran per hari. Admin input status harian: Hadir / Izin / Sakit / Cuti.
-Tersimpan ke tabel `barber_attendance` (baru).
+Jika barber ditandai izin/sakit → sistem otomatis blokir slot barber tersebut hari ini.
+
+### Tab 2: Riwayat Absensi
+Kalender + log kehadiran per barber. Filter per bulan.
+Ringkasan: hadir X hari, izin Y hari, sakit Z hari bulan ini.
+
+**DB baru:** `barber_attendance(barber_id, date, status, note, updated_by)`
 
 ---
 
 ## Halaman 4: Customers (`/admin/customers`) — BARU
 
-Fokus aksi: identifikasi customer yang perlu di-follow up.
+Fokus: identifikasi customer yang butuh follow-up, bukan analitik.
 
 ### 3 Tab
 
-**🔥 Frequent**
-Customer booking ≥3x bulan ini di cabang ini.
-Kolom: Nama · No HP · Kunjungan bulan ini · Kapster favorit · Terakhir datang · Aksi WA
+**🔥 Loyal**
+Booking ≥ 5x all-time di cabang ini.
+Kolom: Nama · No HP · Total kunjungan · Kapster favorit · Terakhir datang
 
 **🆕 Baru**
-Customer pertama kali booking di cabang ini bulan ini.
-Kolom: Nama · No HP · Tanggal pertama · Kapster · Service · Aksi WA
+Pertama kali booking di cabang ini (bulan ini).
+Kolom: Nama · No HP · Tanggal pertama · Kapster · Service
 
 **😴 Dormant**
-Customer tidak balik >30 hari.
-Kolom: Nama · No HP · Terakhir datang · Total kunjungan · Aksi WA
+Tidak balik > 30 hari (pernah datang sebelumnya).
+Kolom: Nama · No HP · Terakhir datang · Total kunjungan
 
-### Aksi WA per Customer
-Buka `wa.me/62xxx` dengan template:
-- Frequent: *"Makasih udah setia ke RedBox [cabang]! Slot favoritmu masih ada 😊"*
-- Baru: *"Halo [nama], senang kamu coba RedBox [cabang]! Gimana pengalamannya?"*
-- Dormant: *"Halo [nama], sudah lama nih! Yuk balik ke RedBox [cabang], ada kapster favoritmu 😊"*
+### Aksi WA (1 klik)
+Buka `wa.me/62xxx` dengan template pre-filled:
+- Loyal: *"Makasih udah setia ke RedBox [cabang]! Kapster favoritmu siap melayani 😊"*
+- Baru: *"Halo [nama], senang kamu coba RedBox [cabang]! Gimana pengalamannya? 😊"*
+- Dormant: *"Halo [nama], sudah lama nih! Yuk balik ke RedBox [cabang] 😊"*
 
 ---
 
 ## Halaman 5: Leaderboard (`/admin/leaderboard`) — BARU
 
-Motivasi kapster + visibility admin terhadap performa tim.
+Visibility admin terhadap performa tim — non-finansial.
 
 ### Tab Kategori
-| Tab | Metric | Sumber Data |
-|-----|--------|-------------|
-| 👥 Customer | Count bulan ini | `barber_daily_counts` |
-| 🔥 Streak | Hari berturut aktif | `barber_streaks` |
-| 🏠 Home Service | Count home service bulan ini | `bookings` type=home_service |
 
-### Tampilan
-- Ranking kapster + nama + count + badge tier (Legend/Elite/Advanced/Rising) + XP level
-- Branch_admin: hanya kapster cabangnya
-- Owner: semua cabang + filter dropdown per cabang
+| Tab | Metric | Data |
+|-----|--------|------|
+| 👥 Customer | Count bulan ini | `barber_daily_counts` |
+| 🔥 Streak | Hari aktif berturut | `barber_streaks` |
+| 🏠 Home Service | Count home service bulan ini | `bookings` |
+
+Tampilan: Rank · Nama · Count · Badge Tier · Level XP
+
+Branch_admin: kapster cabangnya saja.
+Owner: semua cabang + filter dropdown.
 
 ---
 
 ## Halaman 6: Schedule (`/admin/schedule`) — BARU
 
-Kontrol availability kapster dan slot booking.
+Kontrol availability kapster dan slot.
 
 - Kalender mingguan per kapster
-- Set **libur / cuti** per kapster → blokir slot otomatis
-- **Blokir slot** tertentu (tutup cabang, event khusus, maintenance)
-- Perubahan langsung update `schedules` table yang sudah ada
+- Set libur/cuti per kapster → blokir slot otomatis
+- Blokir slot range (tutup cabang, event, dll)
+- Update `schedules` table yang sudah ada
 
 ---
 
@@ -171,61 +210,64 @@ Kontrol availability kapster dan slot booking.
 
 Kirim pengumuman ke kapster cabang.
 
-- **Target:** Semua kapster cabang / kapster tertentu
-- **Channel:** Push notification (existing web push) + opsional WA via Fonnte
+- **Target:** Semua kapster cabang / pilih kapster tertentu
+- **Channel:** Push notification (existing) + WA via Fonnte (opsional)
 - **Pesan:** Teks bebas, max 300 karakter
-- **Log:** History broadcast yang pernah dikirim (read-only)
+- **Log:** Riwayat broadcast yang pernah dikirim
+
+---
+
+## Booking Status — Extended
+
+```
+pending → confirmed → departed → arrived → in_progress → done
+                   ↘ cancelled
+                   ↘ no_show
+```
+
+`departed`, `arrived`, `in_progress` hanya untuk `home_service` dan `wedding`.
+
+---
+
+## DB Baru
+
+```sql
+-- Absensi harian barber
+CREATE TABLE barber_attendance (
+  barber_id   TEXT NOT NULL REFERENCES barbers(id),
+  date        DATE NOT NULL,
+  status      TEXT NOT NULL, -- hadir | terlambat | izin | sakit | cuti
+  note        TEXT,
+  updated_by  UUID REFERENCES auth.users(id),
+  updated_at  TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (barber_id, date)
+);
+```
 
 ---
 
 ## Data Flow
 
 ```
-Frontend (Next.js)
-  └── /app/admin/* pages
-        └── fetch → /app/api/admin/* proxy routes
-              └── → Express server (server/routes/adminCrm.js) BARU
-                    └── Supabase queries (branch-scoped)
+Frontend /admin/* pages
+  → /app/api/admin/* proxy routes (Next.js)
+    → Express server/routes/adminCrm.js (BARU)
+      → Supabase (branch-scoped queries)
 ```
-
-**File baru backend:**
-- `server/routes/adminCrm.js` — semua endpoint CRM baru
-
-**File baru frontend:**
-- `frontend/src/app/admin/customers/page.tsx`
-- `frontend/src/app/admin/leaderboard/page.tsx`
-- `frontend/src/app/admin/schedule/page.tsx`
-- `frontend/src/app/admin/broadcast/page.tsx`
-
-**File dimodifikasi:**
-- `frontend/src/app/admin/dashboard/page.tsx`
-- `frontend/src/app/admin/bookings/page.tsx`
-- `frontend/src/app/admin/barbers/page.tsx`
-- `frontend/src/app/admin/layout.tsx`
 
 ---
 
-## Booking Status — Tambahan untuk Home Service
+## File Map
 
-```
-pending → confirmed → departed → arrived → done
-                   ↘ cancelled
-```
+### Backend (server/)
+- `routes/adminCrm.js` — BARU: semua endpoint CRM
 
-`departed` dan `arrived` hanya untuk type `home_service` dan `wedding`.
-
----
-
-## DB Baru
-
-- `barber_attendance(barber_id, date, status)` — absensi harian kapster
-
----
-
-## Out of Scope
-
-- Laporan harian/bulanan (Moka POS handles)
-- Revenue / nominal transaksi (manager only)
-- Inventory / stok produk
-- Payroll kapster
-- Rating & review management
+### Frontend (frontend/src/)
+- `app/admin/dashboard/page.tsx` — MODIFY: Command Center
+- `app/admin/bookings/page.tsx` — MODIFY: Booking Control
+- `app/admin/barbers/page.tsx` — MODIFY: Attendance tabs
+- `app/admin/customers/page.tsx` — BARU
+- `app/admin/leaderboard/page.tsx` — BARU
+- `app/admin/schedule/page.tsx` — BARU
+- `app/admin/broadcast/page.tsx` — BARU
+- `app/admin/layout.tsx` — MODIFY: nav updated
