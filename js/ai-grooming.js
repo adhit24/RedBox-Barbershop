@@ -321,12 +321,21 @@ class AIGroomingUI {
   }
 
   checkMembershipStatus() {
-    // AI Grooming is now open for everyone - no membership check
     const promoSection = document.getElementById('ai-member-promo');
     const uploadSection = document.getElementById('ai-upload-section');
+    const state = this._getMemberState();
 
-    if (promoSection) promoSection.style.display = 'none';
-    if (uploadSection) uploadSection.style.display = 'block';
+    if (state === 'active_member') {
+      if (promoSection) promoSection.style.display = 'none';
+      if (uploadSection) uploadSection.style.display = 'block';
+    } else {
+      if (uploadSection) uploadSection.style.display = 'none';
+      if (promoSection) {
+        promoSection.style.display = 'block';
+        promoSection.innerHTML = this._getGateHTML(state);
+        this._bindGateEvents(promoSection);
+      }
+    }
   }
 
   bindEvents() {
