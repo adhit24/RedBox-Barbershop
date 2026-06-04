@@ -238,9 +238,9 @@
 .barber-status-badge.off-duty  .status-dot{background:#e53e3e}
 .pro-pick-card:hover{border-color:var(--red-20);transform:translateY(-2px)}
 .pro-pick-card.selected{border-color:var(--red);background:rgba(193,18,31,.06)}
-.pro-pick-card.barber-off{opacity:.45;cursor:not-allowed;pointer-events:none;}
-.pro-pick-card.barber-off .pro-pick-img img{filter:grayscale(80%);}
-.pro-pick-card.barber-off:hover{border-color:var(--w10);transform:none;}
+.pro-pick-card.barber-off{}
+.pro-pick-card.barber-off .pro-pick-img img{}
+.pro-pick-card.barber-off:hover{}
 .pro-pick-img{
   width:100%;aspect-ratio:4/3;overflow:hidden;background:var(--bg-4);
   display:flex;align-items:center;justify-content:center;

@@ -1091,10 +1091,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     proPickGrid.innerHTML = `
       ${(filtered.length ? filtered : [{ __empty: true }]).map(b => {
         if (b.__empty) return emptyCard;
-        const isOff = barberOffToday.has(b.id);
         return `
-          <div class="pro-pick-card ${state.barber?.id === b.id ? 'selected' : ''} ${isOff ? 'barber-off' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
-            ${isOff ? '<div class="barber-status-badge off-duty"><span class="status-dot"></span>Libur Hari Ini</div>' : ''}
+          <div class="pro-pick-card ${state.barber?.id === b.id ? 'selected' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
             <div class="pro-pick-img">${proImgHtml(b)}</div>
             <div class="pro-pick-info">
               <h4>${b.name}</h4>
