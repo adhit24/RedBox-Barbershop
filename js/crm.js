@@ -779,13 +779,13 @@ async function renderBarbers() {
       ? `<img src="${esc(img)}" alt="${esc(b.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='Brand_assets/Kapster1.jpg';" />`
       : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--bg-4);color:var(--white);font-weight:800;font-size:1.1rem;">${esc(getInitials(b.name))}</div>`;
 
-    // Toggle label & handler berbeda tergantung status
+    // Toggle label & handler — toggle selalu untuk override jadwal hari ini
     const toggleLabel = !isActive
       ? 'Kapster nonaktif<br>tidak bisa dipesan'
       : isOffToday
-        ? 'Libur hari ini<br><small style="color:var(--w40);font-size:.68rem">Klik untuk override</small>'
-        : 'Kapster aktif<br>bisa dipesan';
-    const toggleHandler = isOffToday
+        ? 'Libur hari ini<br><small style="color:var(--w40);font-size:.68rem">Tidak bisa dipesan</small>'
+        : 'Tersedia hari ini<br><small style="color:var(--w40);font-size:.68rem">Bisa dipesan</small>';
+    const toggleHandler = isActive
       ? `toggleTodayOverride('${esc(b.id)}', this.checked)`
       : `toggleBarberActive('${esc(b.id)}', this.checked)`;
 
