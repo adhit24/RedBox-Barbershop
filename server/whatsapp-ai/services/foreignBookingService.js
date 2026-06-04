@@ -13,6 +13,7 @@ const config = require('../config');
 const whatsappService = require('./whatsappService');
 const knowledgeService = require('./knowledgeService');
 const logger = require('../utils/logger');
+const { notifyKapster } = require('./notificationService');
 
 // In-memory sessions for foreign customers
 const sessions = new Map(); // phone → { state, data, language, history[] }
@@ -514,6 +515,20 @@ const sendBookingSummaryToAdmin = async (phone, name, session) => {
   } catch (err) {
     console.error('[ForeignBooking] ❌ Failed to notify Kepala Cabang:', err.message);
     logger.logError('foreign_booking_kepala_cabang', err.message);
+  }
+
+  // Notify kapster directly — same as regular bookings
+  try {
+    await notifyKapster({
+      branch: d.branch,
+      customer_name: d.customerName,
+      phone_number: phone,
+      service: d.service,
+      booking_date: d.date,
+      booking_time: d.time,
+    });
+  } catch (err) {
+    console.error('[ForeignBooking] ❌ Failed to notify kapster:', err.message);
   }
 };
 
