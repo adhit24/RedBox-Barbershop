@@ -737,6 +737,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     state.date = dateStr;
     state.time = null;
+    state.barberOffOnDate = false;
     mokaAvailabilityActive = false;
     mokaAvailableSlots = [];
     fallbackBusyRanges = [];
@@ -1092,7 +1093,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (b.__empty) return emptyCard;
         const isOff = barberOffToday.has(b.id);
         return `
-          <div class="pro-pick-card ${state.barber?.id === b.id && !isOff ? 'selected' : ''} ${isOff ? 'barber-off' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
+          <div class="pro-pick-card ${state.barber?.id === b.id ? 'selected' : ''} ${isOff ? 'barber-off' : ''}" data-barber="${b.id}" data-barber-name="${b.name}" data-branch="${b.branch}">
             ${isOff ? '<div class="barber-status-badge off-duty"><span class="status-dot"></span>Libur Hari Ini</div>' : ''}
             <div class="pro-pick-img">${proImgHtml(b)}</div>
             <div class="pro-pick-info">
@@ -1122,7 +1123,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Re-attach listeners
     proPickGrid.querySelectorAll('.pro-pick-card').forEach(card => {
       card.addEventListener('click', () => {
-        if (card.dataset.barber === 'none' || card.classList.contains('barber-off')) return;
+        if (card.dataset.barber === 'none') return;
 
         const barberData = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
 
@@ -1334,30 +1335,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function checkBarberOffDuty() {
     const warningEl = document.getElementById('barberOffWarning');
     const barberNameEl = document.getElementById('offDutyBarberName');
-    if (!warningEl || !state.barber?.id || !state.date) return;
+    if (!warningEl || !state.barber?.id || !state.date) {
+      state.barberOffOnDate = false;
+      return;
+    }
 
     try {
       const res = await fetch(`${API_URL}/barbers/today-status?date=${state.date}`);
       if (!res.ok) {
         warningEl.style.display = 'none';
+        state.barberOffOnDate = false;
         return;
       }
       const json = await res.json();
       const barberStatus = json.barbers?.find(b => String(b.id) === String(state.barber.id));
-      
+
       if (barberStatus && !barberStatus.isWorking) {
-        // Barber is off duty - show warning
+        // Barber is off on selected date — show warning and block all slots
         barberNameEl.textContent = state.barber.name;
         warningEl.style.display = 'block';
-        // Optionally disable continue button
+        state.barberOffOnDate = true;
         document.getElementById('step3Next').disabled = true;
+        buildTimeGrid(fallbackBusyRanges);
       } else {
-        // Barber is working - hide warning
+        // Barber is working — hide warning, slots are normal
         warningEl.style.display = 'none';
+        if (state.barberOffOnDate) {
+          state.barberOffOnDate = false;
+          buildTimeGrid(fallbackBusyRanges);
+        }
       }
     } catch (e) {
       console.warn('[Off Duty Check] Failed to check barber status:', e.message);
       warningEl.style.display = 'none';
+      state.barberOffOnDate = false;
     }
   }
 
@@ -1434,6 +1445,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Optimized isBooked check
       let isBooked = false;
+
+      // If barber is off on the selected date, block all slots
+      if (state.barberOffOnDate) {
+        isBooked = true;
+      }
       
       if (hasBusyRanges) {
         // Pre-calculate slot timestamps once
