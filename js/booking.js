@@ -811,6 +811,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('[Schedules] Fetch error:', e.message);
           }
         })());
+
+        // Check barber off-duty status for this specific date — runs in parallel so
+        // state.barberOffOnDate is guaranteed to be set before buildTimeGrid() is called.
+        promises.push((async () => {
+          try {
+            const tsRes = await fetch(
+              `${API_URL}/barbers/today-status?date=${dateStr}`,
+              { signal: AbortSignal.timeout(8000) }
+            );
+            if (tsRes.ok) {
+              const tsJson = await tsRes.json();
+              const bs = (tsJson.barbers || []).find(b => String(b.id) === String(barberIdFixed));
+              if (bs !== undefined) state.barberOffOnDate = !bs.isWorking;
+            }
+          } catch (e) {
+            console.warn('[OffDuty] Status check failed:', e.message);
+          }
+        })());
       }
 
       await Promise.all(promises);
