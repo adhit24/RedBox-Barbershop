@@ -39,8 +39,8 @@ function BookingControlPageInner() {
     const params = new URLSearchParams({ location: branch, date: dateFilter });
     if (statusFilter !== 'all') params.set('status', statusFilter);
     const [bkRes, brRes] = await Promise.all([
-      fetch(`/api/bookings?${params}`).then(r => r.json()),
-      fetch(`/api/admin/barbers?branch=${branch}`).then(r => r.json()),
+      fetch(`/api/bookings?${params}`).then(r => r.json()).catch(() => []),
+      fetch(`/api/admin/barbers?branch=${branch}`).then(r => r.json()).catch(() => []),
     ]);
     let bks: any[] = Array.isArray(bkRes?.bookings) ? bkRes.bookings : Array.isArray(bkRes) ? bkRes : [];
     if (typeFilter === 'home_service') bks = bks.filter((b: any) => (b.notes||'').toUpperCase().includes('HOME SERVICE'));
@@ -48,7 +48,8 @@ function BookingControlPageInner() {
     else if (typeFilter === 'walk_in')  bks = bks.filter((b: any) => (b.notes||'').toUpperCase().includes('WALK-IN'));
     else if (typeFilter === 'online')   bks = bks.filter((b: any) => !['HOME SERVICE','WEDDING','WALK-IN'].some(t => (b.notes||'').toUpperCase().includes(t)));
     setBookings(bks.sort((a: any, b: any) => a.time.localeCompare(b.time)));
-    setBarbers(brRes.barbers || brRes || []);
+    const barbs: any[] = Array.isArray(brRes?.barbers) ? brRes.barbers : Array.isArray(brRes) ? brRes : [];
+    setBarbers(barbs);
   }, [branch, dateFilter, statusFilter, typeFilter]);
 
   useEffect(() => {

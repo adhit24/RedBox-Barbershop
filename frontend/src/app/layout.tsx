@@ -37,7 +37,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').catch(function() {});
+                  navigator.serviceWorker.register('/sw.js')
+                    .then(function(reg) { reg.update(); })
+                    .catch(function() {});
+                  // Force-unregister any stale SW that might intercept requests
+                  navigator.serviceWorker.getRegistrations().then(function(regs) {
+                    regs.forEach(function(reg) { reg.update(); });
+                  });
                 });
               }
             `,

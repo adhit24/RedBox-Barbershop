@@ -3,15 +3,16 @@ import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { AdminNav } from '@/components/AdminNav';
-import { LogOut, ChevronLeft } from 'lucide-react';
+import { LogOut, ChevronLeft, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import type { AppUser } from '@/hooks/useUser';
 
-function AdminShell({ children, user, signOut }: {
+function AdminShell({ children, user, signOut, signingOut }: {
   children: React.ReactNode;
   user: AppUser | null;
-  signOut: () => void;
+  signOut: () => Promise<void>;
+  signingOut: boolean;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -66,12 +67,13 @@ function AdminShell({ children, user, signOut }: {
         ) : (
           <button
             onClick={signOut}
-            className="flex items-center gap-1.5 transition-colors cursor-pointer"
-            style={{ color: '#4A3E40' }}
+            disabled={signingOut}
+            className="flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40"
+            style={{ color: signingOut ? '#C72820' : '#4A3E40' }}
             aria-label="Keluar"
           >
-            <LogOut size={15} />
-            <span className="text-xs font-medium">Keluar</span>
+            {signingOut ? <Loader2 size={15} className="animate-spin" /> : <LogOut size={15} />}
+            <span className="text-xs font-medium">{signingOut ? 'Keluar...' : 'Keluar'}</span>
           </button>
         )}
       </header>
@@ -83,7 +85,7 @@ function AdminShell({ children, user, signOut }: {
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, signOut } = useUser();
+  const { user, loading, signOut, signingOut } = useUser();
   const router = useRouter();
 
   useEffect(() => {
@@ -116,7 +118,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <Suspense>
-      <AdminShell user={user} signOut={signOut}>
+      <AdminShell user={user} signOut={signOut} signingOut={signingOut}>
         {children}
       </AdminShell>
     </Suspense>

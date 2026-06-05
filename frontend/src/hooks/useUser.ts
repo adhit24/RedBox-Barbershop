@@ -14,6 +14,7 @@ export interface AppUser {
 export function useUser() {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -53,11 +54,19 @@ export function useUser() {
     return () => subscription.unsubscribe();
   }, []);
 
-  function signOut() {
-    // fire-and-forget — don't await, navigate immediately
-    createClient().auth.signOut().catch(() => {});
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      // Cap at 3s so a slow Supabase response doesn't block navigation
+      await Promise.race([
+        createClient().auth.signOut(),
+        new Promise(resolve => setTimeout(resolve, 3000)),
+      ]);
+    } catch {
+      // proceed regardless
+    }
     window.location.href = '/login';
   }
 
-  return { user, loading, signOut };
+  return { user, loading, signOut, signingOut };
 }
