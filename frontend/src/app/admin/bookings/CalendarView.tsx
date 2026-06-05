@@ -99,7 +99,8 @@ export function CalendarView({ branch, barbers }: CalendarViewProps) {
     }
     setLoadingDate(dateStr);
     try {
-      const res  = await fetch(`/api/bookings?location=${branch}&date=${dateStr}`);
+      const params = new URLSearchParams({ location: branch, date: dateStr });
+      const res  = await fetch(`/api/bookings?${params}`);
       const data = await res.json();
       const bookings: BookingRow[] = Array.isArray(data?.bookings)
         ? data.bookings
