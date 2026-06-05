@@ -55,19 +55,30 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user ?? null;
+  // getSession() can trigger a token-refresh network call to Supabase auth servers.
+  // Without a timeout this hangs indefinitely on slow/failed refreshes — cap at 4s.
+  let user: { id: string } | null = null;
+  try {
+    const result = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise<{ data: { session: null } }>((resolve) =>
+        setTimeout(() => resolve({ data: { session: null } }), 4000)
+      ),
+    ]);
+    user = result.data.session?.user ?? null;
+  } catch {
+    user = null;
+  }
 
   if (!user) {
     if (pathname === '/') return response;
     return NextResponse.redirect(new URL('/', request.url));
   }
 
+  // Authenticated user at '/' → redirect to dashboard.
+  // Barbers are already caught above by the cookie check.
   if (pathname === '/') {
-    const { data: profile } = await supabase
-      .from('users').select('role').eq('id', user.id).single();
-    const dest = profile?.role === 'barber' ? '/barber/home' : '/admin/dashboard';
-    return NextResponse.redirect(new URL(dest, request.url));
+    return NextResponse.redirect(new URL('/admin/dashboard', request.url));
   }
 
   return response;
