@@ -119,7 +119,7 @@ async function pushScheduleToMoka(supabase, scheduleId) {
     return { mokaOrderId };
 
   } catch (err) {
-    await _finishLog(supabase, logId, 'failed', err.message);
+    await _finishLog(supabase, logId, 'failed', err.message, err.details ? { mokaError: err.details } : null);
     throw err;
   }
 }
@@ -1474,6 +1474,18 @@ async function _buildMokaOrderPayload(schedule, client) {
           if (!variantId && bestItem.item_variants?.length) {
             variantId = bestItem.item_variants[0].id;
           }
+        }
+      }
+
+      // Fallback: nama barber tidak cocok (score < 0.6) tapi kita punya moka_employee_id.
+      // Cari item by ID langsung di cache supaya bisa ambil variant pertamanya.
+      // Ini mencegah 400 "item_variant_id cannot be blank" untuk outlet yang item-nya punya variants.
+      if (mokaItemId && !variantId) {
+        const itemById = itemsRes.find(i => String(i.id) === String(mokaItemId));
+        if (itemById?.item_variants?.length) {
+          variantId    = itemById.item_variants[0].id;
+          categoryId   = categoryId   || (itemById.category_id ? String(itemById.category_id) : null);
+          categoryName = categoryName || itemById.category?.name || null;
         }
       }
     } catch (err) {

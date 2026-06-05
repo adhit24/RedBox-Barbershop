@@ -134,9 +134,8 @@ async function pushConfirmedBookingToMoka(booking) {
         .select('id, slug, moka_outlet_id')
         .eq('slug', locSlug)
         .maybeSingle();
-      const outlet = bySlug || null;
-      if (outlet?.id) outletId = outlet.id;
-      if (outlet?.moka_outlet_id) mokaOutletId = String(outlet.moka_outlet_id);
+      if (bySlug?.id) outletId = bySlug.id;
+      if (bySlug?.moka_outlet_id) mokaOutletId = String(bySlug.moka_outlet_id);
     }
 
     if (!mokaOutletId) {
@@ -145,62 +144,77 @@ async function pushConfirmedBookingToMoka(booking) {
 
     const client = new MokaClient(sb, outletId, mokaOutletId);
 
-    const customerPayload = {
-      customer_name: String(booking?.name || '').trim(),
-      phone: toE164Indonesia(booking?.wa),
-      email: String(booking?.email || '').trim() || undefined,
-      external_ref: String(booking?.id || '').trim(),
-      notes: 'Customer dari website booking',
-    };
-
-    const customerResult = await client.createCustomer(customerPayload);
-    const mokaCustomerId = customerResult?.id || customerResult?.customer_id;
-
-    if (!mokaCustomerId) {
-      throw new Error('Failed to create Moka customer');
+    // Enrich with barber name and moka_employee_id from DB
+    let barberName = String(booking?.barber_name || '').trim();
+    let mokaItemId = null;
+    if (booking?.barber_id && sb && typeof sb.from === 'function') {
+      try {
+        const { data: barber } = await sb
+          .from('barbers')
+          .select('name, moka_employee_id')
+          .eq('id', booking.barber_id)
+          .maybeSingle();
+        if (!barberName && barber?.name) barberName = barber.name;
+        if (barber?.moka_employee_id) mokaItemId = Number(barber.moka_employee_id);
+      } catch (_) {}
     }
 
+    // Enrich with Moka category IDs from services table
+    let categoryId = null;
+    let categoryName = null;
+    let variantName = String(booking?.service || '').trim() || null;
+    if (booking?.service_id && sb && typeof sb.from === 'function') {
+      try {
+        const { data: svc } = await sb
+          .from('services')
+          .select('moka_variant_name, moka_category_id, moka_category_name')
+          .eq('id', booking.service_id)
+          .maybeSingle();
+        if (svc?.moka_category_id) categoryId = Number(svc.moka_category_id);
+        if (svc?.moka_category_name) categoryName = svc.moka_category_name;
+        if (svc?.moka_variant_name) variantName = svc.moka_variant_name;
+      } catch (_) {}
+    }
+
+    const note = [
+      'Booking via website',
+      barberName ? `Barber: ${barberName}` : '',
+      booking?.location ? `Cabang: ${booking.location}` : '',
+      booking?.payment ? `Pembayaran: ${booking.payment}` : '',
+      booking?.notes ? `Catatan: ${booking.notes}` : '',
+    ].filter(Boolean).join('. ').slice(0, 255);
+
+    // Build order_items using Moka API spec field names
+    const orderItem = {
+      item_name: barberName || variantName || 'Layanan',
+      quantity: 1,
+      item_price_library: Number(booking?.price || 0),
+    };
+    if (mokaItemId) orderItem.item_id = mokaItemId;
+    if (variantName) orderItem.item_variant_name = variantName;
+    if (categoryId) orderItem.category_id = categoryId;
+    if (categoryName) orderItem.category_name = categoryName;
+
+    // Payload sesuai Moka Advanced Ordering API spec
     const orderPayload = {
-      outlet_id: mokaOutletId,
-      external_ref: String(booking?.id || '').trim(),
-      booking_time: bookingTimeIso({ date: booking?.date, time: booking?.time }),
-      customer: {
-        customer_id: mokaCustomerId,
-        customer_name: String(booking?.name || '').trim(),
-        phone: toE164Indonesia(booking?.wa),
-      },
-      items: [{
-        sku: String(booking?.service_id || 'SRV').trim() || 'SRV',
-        name: String(booking?.service || '').trim(),
-        qty: 1,
-        price: Number(booking?.price || 0),
-      }],
-      amounts: {
-        subtotal: Number(booking?.price || 0),
-        discount: 0,
-        tax: 0,
-        total: Number(booking?.price || 0),
-      },
-      notes: [
-        `Booking via website`,
-        booking?.barber_name ? `Barber: ${booking.barber_name}` : (booking?.barber_id ? `Barber ID: ${booking.barber_id}` : ''),
-        booking?.location ? `Location: ${booking.location}` : '',
-        booking?.payment ? `Payment: ${booking.payment}` : '',
-        booking?.notes ? `Notes: ${booking.notes}` : '',
-      ].filter(Boolean).join('. '),
-      status: 'CONFIRMED',
+      application_order_id: String(booking?.id || '').trim(),
+      payment_type: 'online_booking',
+      customer_name: String(booking?.name || 'Guest').trim(),
+      customer_phone_number: toE164Indonesia(booking?.wa) || undefined,
+      note,
+      client_created_at: bookingTimeIso({ date: booking?.date, time: booking?.time }) || undefined,
+      order_items: [orderItem],
     };
 
     const orderResult = await client.createOrder(orderPayload);
-    const mokaOrderId = orderResult?.id || orderResult?.order_id || orderResult?.transaction_id;
+    const mokaOrderId = orderResult?.data?.id || orderResult?.id || orderResult?.order_id;
 
     if (!mokaOrderId) {
-      throw new Error('Failed to create Moka order');
+      throw new Error('Moka order created but no ID returned');
     }
 
     return {
       ok: true,
-      customer: { moka_customer_id: mokaCustomerId, payload: customerPayload },
       order: { moka_order_id: mokaOrderId, payload: orderPayload }
     };
 
@@ -1370,12 +1384,10 @@ async function handleBookingUpdate(req, res) {
     if (error) return res.status(500).json({ error: error.message });
     let moka = null;
     if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
-      if (isMokaBranchEnabled(data.location)) {
-        try {
-          moka = await pushConfirmedBookingToMoka(data);
-        } catch (e) {
-            moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
-        }
+      try {
+        moka = await pushConfirmedBookingToMoka(data);
+      } catch (e) {
+        moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
       }
     }
 
@@ -1470,12 +1482,10 @@ async function handleBookingUpdate(req, res) {
       );
       let moka = null;
       if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
-        if (isMokaBranchEnabled(updated[0]?.location)) {
-          try {
-            moka = await pushConfirmedBookingToMoka(updated[0]);
-          } catch (e) {
-            moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
-          }
+        try {
+          moka = await pushConfirmedBookingToMoka(updated[0]);
+        } catch (e) {
+          moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
         }
       }
 
