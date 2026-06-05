@@ -5,7 +5,7 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
 
 export async function GET(req: NextRequest) {
   const qs = req.nextUrl.search;
-  const res = await fetch(`${API_URL}/api/barbers${qs}`, {
+  const res = await fetch(`${API_URL}/api/barbers${qs}`, { signal: AbortSignal.timeout(10_000), 
     headers: { 'x-admin-token': ADMIN_TOKEN },
   });
   const data = await res.json();

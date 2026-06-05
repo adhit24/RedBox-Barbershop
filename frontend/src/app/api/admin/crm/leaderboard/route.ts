@@ -5,6 +5,6 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const qs = searchParams.toString();
   const res = await fetch(`${API_URL}/api/admin/crm/leaderboard${qs ? '?' + qs : ''}`,
-    { headers: { 'x-admin-token': TOKEN } });
+    { signal: AbortSignal.timeout(10_000),  headers: { 'x-admin-token': TOKEN } });
   return NextResponse.json(await res.json(), { status: res.status });
 }

@@ -9,7 +9,7 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const res = await fetch(`${API_URL}/api/barbers/${id}/toggle-active`, {
+  const res = await fetch(`${API_URL}/api/barbers/${id}/toggle-active`, { signal: AbortSignal.timeout(10_000), 
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
     body: JSON.stringify(body),

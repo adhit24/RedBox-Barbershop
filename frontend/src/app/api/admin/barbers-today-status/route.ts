@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const date = searchParams.get('date') ?? '';
   const params = date ? `?date=${encodeURIComponent(date)}` : '';
-  const res = await fetch(`${API_URL}/api/barbers/today-status${params}`, {
+  const res = await fetch(`${API_URL}/api/barbers/today-status${params}`, { signal: AbortSignal.timeout(10_000), 
     headers: { 'x-admin-token': ADMIN_TOKEN },
   });
   const data = await res.json();

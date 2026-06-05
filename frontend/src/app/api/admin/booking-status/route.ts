@@ -5,7 +5,7 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? '';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const res = await fetch(`${API_URL}/api/booking-status`, {
+  const res = await fetch(`${API_URL}/api/booking-status`, { signal: AbortSignal.timeout(10_000), 
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

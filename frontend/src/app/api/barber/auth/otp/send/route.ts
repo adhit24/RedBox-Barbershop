@@ -4,7 +4,7 @@ const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const res = await fetch(`${API_URL}/api/barber/auth/otp/send`, {
+  const res = await fetch(`${API_URL}/api/barber/auth/otp/send`, { signal: AbortSignal.timeout(10_000), 
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

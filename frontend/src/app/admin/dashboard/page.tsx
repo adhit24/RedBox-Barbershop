@@ -186,7 +186,7 @@ function CommandCenterPageInner() {
   const branch = user?.branch || '';
 
   const load = useCallback(async (silent = false) => {
-    if (!branch) return;
+    if (!branch) { if (!silent) setLoading(false); return; }
     if (!silent) setLoading(true);
     else setRefreshing(true);
     const d = await fetchCommandCenter(branch).catch(() => null);

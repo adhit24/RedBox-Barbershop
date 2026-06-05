@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/barber/login') ||
+    pathname.startsWith('/signage') ||
     pathname.startsWith('/ai-hairstyle') ||
     pathname.startsWith('/api/ai-hairstyle') ||
     pathname.startsWith('/api/barber/auth/') ||
@@ -54,7 +55,8 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
