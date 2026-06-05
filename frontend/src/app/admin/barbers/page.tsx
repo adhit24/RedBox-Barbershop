@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useUser } from '@/hooks/useUser';
-import { toggleBarberActive } from '@/lib/adminCrmApi';
+import { toggleBarberTodayOverride } from '@/lib/adminCrmApi';
 import { createClient } from '@/utils/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Scissors, RefreshCw, Calendar } from 'lucide-react';
@@ -72,21 +72,27 @@ function Toggle({ on, onChange, disabled }: {
 
 // ─── Card ──────────────────────────────────────────────────────────────────────
 
-function BarberCard({ barber, onToggle, toggling, index }: {
+function BarberCard({ barber, isOffToday, onToggle, toggling, index }: {
   barber: BarberRow;
-  onToggle: (id: string, val: boolean) => void;
+  isOffToday: boolean;
+  onToggle: (id: string, available: boolean) => void;
   toggling: boolean;
   index: number;
 }) {
   const workDays = parseWorkDays(barber.work_days);
   const initials = barber.name.trim().slice(0, 2).toUpperCase();
+  const isPermanentlyInactive = !barber.is_active;
+  const effectivelyOff = isPermanentlyInactive || isOffToday;
 
-  const borderColor = barber.is_active
-    ? 'rgba(34, 197, 94, 0.25)'
-    : 'rgba(199, 40, 32, 0.22)';
-  const bgColor = barber.is_active
-    ? 'rgba(22, 163, 74, 0.04)'
-    : 'rgba(199, 40, 32, 0.04)';
+  const borderColor = effectivelyOff
+    ? 'rgba(199, 40, 32, 0.22)'
+    : 'rgba(34, 197, 94, 0.25)';
+  const bgColor = effectivelyOff
+    ? 'rgba(199, 40, 32, 0.04)'
+    : 'rgba(22, 163, 74, 0.04)';
+  const dotColor = effectivelyOff ? '#C72820' : '#22c55e';
+  const label = isPermanentlyInactive ? 'Nonaktif' : isOffToday ? 'Libur' : 'Aktif';
+  const labelColor = effectivelyOff ? '#6B5A5E' : '#4ade80';
 
   return (
     <motion.div
@@ -124,10 +130,7 @@ function BarberCard({ barber, onToggle, toggling, index }: {
           {/* Status dot */}
           <div
             className="absolute bottom-0.5 right-0.5 w-3 h-3 rounded-full"
-            style={{
-              background: barber.is_active ? '#22c55e' : '#C72820',
-              border: '2px solid #070508',
-            }}
+            style={{ background: dotColor, border: '2px solid #070508' }}
           />
         </div>
 
@@ -153,26 +156,26 @@ function BarberCard({ barber, onToggle, toggling, index }: {
           {/* Working days */}
           {workDays.length > 0 && (
             <div className="flex gap-[3px] mt-2">
-              {DAY_KEYS.map((label, i) => {
+              {DAY_KEYS.map((dayLabel, i) => {
                 const works = workDays.includes(i);
                 return (
                   <div
-                    key={label}
+                    key={dayLabel}
                     className="flex items-center justify-center rounded text-[9px] font-semibold"
                     style={{
                       width: 24,
                       height: 18,
                       background: works
-                        ? barber.is_active
-                          ? 'rgba(34,197,94,0.15)'
-                          : 'rgba(199,40,32,0.15)'
+                        ? effectivelyOff
+                          ? 'rgba(199,40,32,0.15)'
+                          : 'rgba(34,197,94,0.15)'
                         : 'rgba(255,255,255,0.04)',
                       color: works
-                        ? barber.is_active ? '#4ade80' : '#E87068'
+                        ? effectivelyOff ? '#E87068' : '#4ade80'
                         : '#2d1f23',
                     }}
                   >
-                    {label}
+                    {dayLabel}
                   </div>
                 );
               })}
@@ -183,15 +186,15 @@ function BarberCard({ barber, onToggle, toggling, index }: {
         {/* Toggle */}
         <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
           <Toggle
-            on={barber.is_active}
+            on={!effectivelyOff}
             onChange={(val) => onToggle(barber.id, val)}
-            disabled={toggling}
+            disabled={toggling || isPermanentlyInactive}
           />
           <span
             className="text-[9px] font-semibold uppercase tracking-wider"
-            style={{ color: barber.is_active ? '#4ade80' : '#6B5A5E' }}
+            style={{ color: labelColor }}
           >
-            {barber.is_active ? 'Aktif' : 'Off'}
+            {label}
           </span>
         </div>
       </div>
@@ -219,6 +222,7 @@ function BarbersPageInner() {
   const branch = user?.branch ?? '';
 
   const [barbers, setBarbers] = useState<BarberRow[]>([]);
+  const [offTodaySet, setOffTodaySet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -231,13 +235,25 @@ function BarbersPageInner() {
     const supabase = createClient();
     const today = todayStr();
 
-    const { data: barberData, error: barberErr } = await supabase
-      .from('barbers')
-      .select('id, name, branch, is_active, img, work_days')
-      .eq('branch', branch)
-      .order('name');
+    const [{ data: barberData, error: barberErr }, todayStatusRes] = await Promise.all([
+      supabase
+        .from('barbers')
+        .select('id, name, branch, is_active, img, work_days')
+        .eq('branch', branch)
+        .order('name'),
+      fetch(`/api/admin/barbers-today-status?date=${today}`).catch(() => null),
+    ]);
 
     if (barberErr || !barberData) { setError(true); return; }
+
+    const newOffSet = new Set<string>();
+    if (todayStatusRes?.ok) {
+      const ts = await todayStatusRes.json().catch(() => null);
+      for (const b of ts?.barbers ?? []) {
+        if (!b.isWorking) newOffSet.add(String(b.id));
+      }
+    }
+    setOffTodaySet(newOffSet);
 
     const ids = barberData.map((b) => b.id);
     const { data: bookingData } = await supabase
@@ -261,20 +277,32 @@ function BarbersPageInner() {
     loadBarbers().finally(() => setLoading(false));
   }, [loadBarbers, userLoading, branch]);
 
-  async function handleToggle(id: string, val: boolean) {
+  async function handleToggle(id: string, available: boolean) {
     setToggling(id);
-    setBarbers((prev) => prev.map((b) => (b.id === id ? { ...b, is_active: val } : b)));
-    const res = await toggleBarberActive(id, val).catch(() => null);
-    if (!res?.success && !res?.ok) {
-      setBarbers((prev) => prev.map((b) => (b.id === id ? { ...b, is_active: !val } : b)));
+    setOffTodaySet((prev) => {
+      const next = new Set(prev);
+      if (available) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    const res = await toggleBarberTodayOverride(id, available).catch(() => null);
+    if (!res?.success) {
+      setOffTodaySet((prev) => {
+        const next = new Set(prev);
+        if (available) next.add(id);
+        else next.delete(id);
+        return next;
+      });
     }
     setToggling(null);
   }
 
+  const isEffectivelyOff = (b: BarberRow) => !b.is_active || offTodaySet.has(b.id);
+
   const displayed = barbers.filter((b) =>
-    filter === 'all' ? true : filter === 'active' ? b.is_active : !b.is_active
+    filter === 'all' ? true : filter === 'active' ? !isEffectivelyOff(b) : isEffectivelyOff(b)
   );
-  const activeCount = barbers.filter((b) => b.is_active).length;
+  const activeCount = barbers.filter((b) => !isEffectivelyOff(b)).length;
   const inactiveCount = barbers.length - activeCount;
 
   return (
@@ -361,6 +389,7 @@ function BarbersPageInner() {
               <BarberCard
                 key={b.id}
                 barber={b}
+                isOffToday={offTodaySet.has(b.id)}
                 onToggle={handleToggle}
                 toggling={toggling === b.id}
                 index={i}
