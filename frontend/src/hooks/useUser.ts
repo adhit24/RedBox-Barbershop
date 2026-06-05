@@ -21,8 +21,14 @@ export function useUser() {
 
     async function load() {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const authUser = session?.user ?? null;
+        // getSession() can hang indefinitely on token refresh — cap at 4s
+        const result = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<{ data: { session: null } }>((resolve) =>
+            setTimeout(() => resolve({ data: { session: null } }), 4000)
+          ),
+        ]);
+        const authUser = result.data.session?.user ?? null;
         if (!authUser) { setUser(null); setLoading(false); return; }
 
         const { data } = await supabase
