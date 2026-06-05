@@ -464,7 +464,7 @@ async function verifyOtp() {
     localStorage.setItem('redbox_member', JSON.stringify(memberObj));
 
     showAlert('Login berhasil! Mengalihkan ke dashboard... 🎉', 'success');
-    setTimeout(() => { window.location.href = 'member-dashboard.html'; }, 1200);
+    setTimeout(() => { window.location.href = 'member-loading.html'; }, 1200);
 
   } catch (e) {
     showAlert('Koneksi error. Coba lagi.');
@@ -556,7 +556,7 @@ document.getElementById('otpInput').addEventListener('keydown', e => {
       headers: { 'X-Member-Token': token }
     });
     if (res.ok) {
-      window.location.href = 'member-dashboard.html';
+      window.location.href = 'member-loading.html';
     } else {
       localStorage.removeItem('rb_member_token');
     }
