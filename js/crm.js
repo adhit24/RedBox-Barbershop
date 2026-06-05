@@ -856,6 +856,7 @@ async function toggleBarberActive(id, isActive) {
 
 // ── CUSTOMERS VIEW dengan Segmentasi ────────────
 let currentSegment = 'all';
+let _lastRenderedCustomers = []; // cache untuk openCustomerDetailModal
 
 async function renderCustomers(search = '', segment = currentSegment) {
   currentSegment = segment;
@@ -864,6 +865,7 @@ async function renderCustomers(search = '', segment = currentSegment) {
   if (segment !== 'all') params.segment = segment;
   const customers = await apiGetCustomers(params);
   if (!customers) return renderLockedState();
+  _lastRenderedCustomers = customers; // simpan untuk modal
 
   // Badge counts (hanya saat tidak sedang filter)
   if (!search) {
@@ -1117,8 +1119,13 @@ document.getElementById('detailCancel')?.addEventListener('click', async () => {
 
 // ── CUSTOMER DETAIL MODAL ─────────────────────────
 async function openCustomerDetailModal(wa) {
-  const customers = await apiGetCustomers();
-  const c = customers.find(x => x.wa === wa);
+  // Cari dari cache hasil render terakhir dulu (sudah terfilter + paginasi benar)
+  let c = _lastRenderedCustomers.find(x => x.wa === wa);
+  if (!c) {
+    // Fallback: fetch langsung dengan search filter
+    const rows = await apiGetCustomers({ search: wa, limit: 5 });
+    c = (rows || []).find(x => x.wa === wa);
+  }
   if (!c) return;
   const bookings = (await apiGetBookings()).filter(b => b.wa === wa).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const body = document.getElementById('customerDetailBody');
