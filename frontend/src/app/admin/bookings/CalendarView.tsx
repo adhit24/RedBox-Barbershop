@@ -63,7 +63,9 @@ export function CalendarView({ branch, barbers }: CalendarViewProps) {
 
   useEffect(() => {
     if (!branch) return;
-    loadDay(today);
+    setDayCache(new Map());
+    setSelectedDate(todayStr());
+    loadDay(todayStr());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branch]);
 
@@ -77,13 +79,14 @@ export function CalendarView({ branch, barbers }: CalendarViewProps) {
     try {
       const params = new URLSearchParams({ location: branch, date: dateStr });
       const res  = await fetch(`/api/bookings?${params}`);
+      if (!res.ok) throw new Error(res.statusText);
       const data = await res.json();
       const bookings: BookingRow[] = Array.isArray(data?.bookings)
         ? data.bookings
         : Array.isArray(data) ? data : [];
       setDayCache(prev => new Map(prev).set(dateStr, bookings.sort((a, b) => a.time.localeCompare(b.time))));
     } catch {
-      setDayCache(prev => new Map(prev).set(dateStr, []));
+      // Do not cache errors — allow retry on next click
     } finally {
       setLoadingDate(null);
       setTimeout(() => detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
