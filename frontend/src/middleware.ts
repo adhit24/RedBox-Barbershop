@@ -59,7 +59,8 @@ export async function middleware(request: NextRequest) {
   const user = session?.user ?? null;
 
   if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url));
+    if (pathname === '/') return response;
+    return NextResponse.redirect(new URL('/', request.url));
   }
 
   if (pathname === '/') {
