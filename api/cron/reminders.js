@@ -7,7 +7,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { notifyCustomerReminderH1 } = require('../../server/services/waNotification');
+const { notifyCustomerReminderH1, notifyBarberHomeServiceReminderH1 } = require('../../server/services/waNotification');
 const { sendWA } = require('../../server/services/fonnte');
 
 // ── Birthday helpers ──────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ module.exports = async function handler(req, res) {
 
     const { data: bookings, error } = await supabase
       .from('bookings')
-      .select('id, name, wa, service, time, date, location, barber_id')
+      .select('id, name, wa, service, time, date, location, barber_id, notes')
       .eq('date', tomorrow)
       .eq('status', 'confirmed')
       .eq('remind_h1_sent', false)
@@ -118,13 +118,13 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ sent: 0, date: tomorrow });
     }
 
-    // Bulk fetch barber names — non-blocking: if it fails, reminders still send without kapster name.
-    const barberMap = {};
+    // Bulk fetch barber names + phone — non-blocking: if it fails, reminders still send without kapster name.
+    const barberMap = {};   // id → { name, phone }
     const barberIds = [...new Set(bookings.map(b => b.barber_id).filter(Boolean))];
     if (barberIds.length) {
       const { data: barbers } = await supabase
-        .from('barbers').select('id, name').in('id', barberIds);
-      for (const b of barbers || []) barberMap[b.id] = b.name;
+        .from('barbers').select('id, name, phone').in('id', barberIds);
+      for (const b of barbers || []) barberMap[b.id] = { name: b.name, phone: b.phone };
     }
 
     let sent = 0;
@@ -133,8 +133,10 @@ module.exports = async function handler(req, res) {
     for (const booking of bookings) {
       if (!booking.wa) continue;
 
-      const barberName = barberMap[booking.barber_id] || null;
+      const barber = barberMap[booking.barber_id] || {};
+      const barberName = barber.name || null;
 
+      // ── Reminder ke pelanggan ──────────────────────────────────────────────
       try {
         const result = await notifyCustomerReminderH1({ ...booking, barber_name: barberName });
         // Fonnte returns { status: false, reason: ... } on soft failure — treat as failure
@@ -151,6 +153,34 @@ module.exports = async function handler(req, res) {
       } catch (err) {
         failed++;
         console.error(`[Reminders] Failed for ${booking.wa}:`, err.message);
+      }
+
+      // ── Reminder H-1 ke kapster (home service saja) ───────────────────────
+      const isHomeService = booking.notes?.includes('[HOME SERVICE]');
+      if (isHomeService && barber.phone) {
+        const addrMatch = booking.notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/);
+        const address = addrMatch?.[1]?.trim() || '';
+        const dateStr = new Date(booking.date + 'T12:00:00').toLocaleDateString('id-ID', {
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+        });
+        const timeStr = booking.time ? String(booking.time).slice(0, 5) : '';
+        try {
+          await notifyBarberHomeServiceReminderH1({
+            barberPhone:  barber.phone,
+            barberName:   barber.name,
+            customerName: booking.name,
+            dateStr,
+            timeStr,
+            address,
+            serviceLabel: booking.service,
+            price:        '-',
+            branch:       booking.location,
+          });
+          console.log(`[Reminders] Barber H-1 sent to ${barber.phone} (${barber.name})`);
+          await new Promise(r => setTimeout(r, 500));
+        } catch (err) {
+          console.error(`[Reminders] Barber H-1 failed for ${barber.phone}:`, err.message);
+        }
       }
     }
 

@@ -972,7 +972,10 @@ async function _notifyBarberOutletBookingSupabase(supabase, bookingData) {
   // Get barber details
   const { data: barber } = await supabase
     .from('barbers').select('name, phone').eq('id', bookingData.barber_id).single();
-  if (!barber?.phone) return;
+  if (!barber?.phone) {
+    console.warn(`[BarberNotif] Kapster ${barber?.name || bookingData.barber_id} tidak punya nomor phone — notif dilewati`);
+    return;
+  }
 
   const { dateStr, timeStr } = formatBookingDateTimeWIB(bookingData.date, bookingData.time);
 
@@ -1091,7 +1094,12 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         name, wa, visits: 0, total_spent: 0, last_visit: null
       }, { onConflict: 'wa', ignoreDuplicates: true });
 
-      // Kirim WA konfirmasi ke pelanggan + notif admin + notif barber (if assigned)
+      // Notif admin untuk setiap booking baru (fire-and-forget — tidak block response)
+      if (data.wa) {
+        notifyAdminNewBooking({ ...data }).catch(e => console.warn('[WA Admin] failed:', e.message));
+      }
+
+      // Kirim WA konfirmasi ke pelanggan + notif barber (if assigned)
       // Awaited (bukan fire-and-forget) agar selesai sebelum res.end() — Vercel kills
       // orphaned promises setelah response dikirim.
       if (desiredStatus === 'confirmed' && data.wa) {
@@ -1250,6 +1258,54 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       res.status(500).json({ error: error.message });
     }
   }
+});
+
+// POST /api/bookings/:id/resend-notif — kirim ulang WA ke pelanggan + kapster
+app.post('/api/bookings/:id/resend-notif', adminAuth, async (req, res) => {
+  const { id } = req.params;
+  if (DB_TYPE !== 'supabase') return res.status(400).json({ error: 'Only supported on Supabase' });
+
+  const { data: bk, error } = await supabase
+    .from('bookings')
+    .select('*, barbers(name, phone)')
+    .eq('id', id)
+    .single();
+  if (error || !bk) return res.status(404).json({ error: error?.message || 'Booking not found' });
+
+  const barberName = bk.barbers?.name || null;
+  const results = { customer: false, barber: false };
+
+  // Kirim ke pelanggan
+  if (bk.wa) {
+    try {
+      await notifyCustomerBookingConfirmed({ ...bk, barber_name: barberName });
+      results.customer = true;
+    } catch (e) {
+      console.warn('[ResendNotif] Customer failed:', e.message);
+    }
+  }
+
+  // Kirim ke kapster
+  if (bk.barber_id) {
+    const isHomeService = bk.notes?.includes('[HOME SERVICE]');
+    try {
+      if (isHomeService) {
+        const addrMatch = bk.notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/);
+        const address = addrMatch?.[1]?.trim() || '';
+        if (address) {
+          await _notifyBarberHomeServiceFromBooking(supabase, bk, address);
+          results.barber = true;
+        }
+      } else {
+        await _notifyBarberOutletBookingSupabase(supabase, bk);
+        results.barber = true;
+      }
+    } catch (e) {
+      console.warn('[ResendNotif] Barber failed:', e.message);
+    }
+  }
+
+  return res.json({ ok: true, ...results });
 });
 
 // POST /api/booking-status — flat endpoint for cancel/confirm/deny (avoids dynamic-segment routing issues)
@@ -1528,6 +1584,25 @@ app.get('/api/barbers/:id/availability', async (req, res) => {
 });
 
 // POST /api/barbers/:id/toggle-active — Admin: aktifkan/nonaktifkan kapster
+// PATCH /api/barbers/:id/phone — set nomor WA kapster (untuk notifikasi)
+app.patch('/api/barbers/:id/phone', adminAuth, async (req, res) => {
+  const { id } = req.params;
+  let { phone } = req.body;
+  if (!phone) return res.status(400).json({ error: 'phone required' });
+  // Normalize: strip non-digits, ensure starts with 62
+  phone = String(phone).replace(/\D/g, '').replace(/^0/, '62');
+  if (!phone.startsWith('62') || phone.length < 10) {
+    return res.status(400).json({ error: 'Format nomor tidak valid (contoh: 628123456789)' });
+  }
+  if (DB_TYPE === 'supabase') {
+    const { data, error } = await supabase
+      .from('barbers').update({ phone }).eq('id', id).select('id, name, phone').single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ data });
+  }
+  return res.status(400).json({ error: 'Only supported on Supabase' });
+});
+
 app.post('/api/barbers/:id/toggle-active', adminAuth, async (req, res) => {
   const { id } = req.params;
   const { is_active } = req.body;

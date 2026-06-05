@@ -815,6 +815,13 @@ async function renderBarbers() {
           <span class="toggle-knob"></span>
         </label>
       </div>
+      <div style="padding:0 12px 10px;display:flex;align-items:center;gap:8px;font-size:0.72rem;">
+        ${b.phone
+          ? `<span style="color:#22c55e;">📱 WA: ${esc(b.phone)}</span>`
+          : `<span style="color:#f87171;">📵 Belum ada nomor WA</span>
+             <button onclick="setBarberPhone('${esc(b.id)}','${esc(b.name)}')" style="font-size:0.68rem;padding:2px 8px;border-radius:6px;border:1px solid #64748b;background:transparent;color:#94a3b8;cursor:pointer;">Set WA</button>`
+        }
+      </div>
     </div>`;
   }).join('');
 }
@@ -853,6 +860,24 @@ async function toggleBarberActive(id, isActive) {
     }
   }
 }
+
+// Set nomor WA kapster agar bisa terima notifikasi booking
+async function setBarberPhone(id, name) {
+  const raw = window.prompt(`Nomor WA ${name} (format: 08xxx atau 628xxx):`);
+  if (!raw) return;
+  try {
+    const res = await fetch(`${API_URL}/barbers/${encodeURIComponent(id)}/phone`, {
+      method: 'PATCH', headers: apiHeaders(), body: JSON.stringify({ phone: raw.trim() }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Gagal');
+    showToast(`Nomor WA ${name} disimpan: ${json.data?.phone}`, 'success');
+    await renderBarbers();
+  } catch (e) {
+    showToast('Gagal simpan nomor: ' + e.message, 'error');
+  }
+}
+window.setBarberPhone = setBarberPhone;
 
 // ── CUSTOMERS VIEW dengan Segmentasi ────────────
 let currentSegment = 'all';
@@ -1116,6 +1141,30 @@ document.getElementById('detailEdit')?.addEventListener('click', () => { documen
 document.getElementById('detailConfirm')?.addEventListener('click', async () => { await confirmBooking(detailBookingId); document.getElementById('detailModal').style.display = 'none'; });
 document.getElementById('detailDeny')?.addEventListener('click', async () => { await denyBooking(detailBookingId); document.getElementById('detailModal').style.display = 'none'; });
 document.getElementById('detailCancel')?.addEventListener('click', async () => { await cancelBooking(detailBookingId); document.getElementById('detailModal').style.display = 'none'; });
+
+document.getElementById('detailResendNotif')?.addEventListener('click', async () => {
+  const btn = document.getElementById('detailResendNotif');
+  btn.disabled = true;
+  btn.textContent = '⏳ Mengirim...';
+  try {
+    const res = await fetch(`${API_URL}/bookings/${detailBookingId}/resend-notif`, {
+      method: 'POST', headers: apiHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Gagal');
+    const parts = [];
+    if (json.customer) parts.push('pelanggan ✅');
+    else parts.push('pelanggan ❌');
+    if (json.barber) parts.push('kapster ✅');
+    else parts.push('kapster ❌ (cek nomor WA kapster di data barber)');
+    showToast(`Notif: ${parts.join(' | ')}`, json.barber && json.customer ? 'success' : 'warning', 5000);
+  } catch (e) {
+    showToast('Gagal kirim notif: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📨 Kirim Notif';
+  }
+});
 
 // ── CUSTOMER DETAIL MODAL ─────────────────────────
 async function openCustomerDetailModal(wa) {
