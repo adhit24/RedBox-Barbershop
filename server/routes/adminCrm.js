@@ -730,10 +730,137 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   router.get('/membership', adminAuth, async (req, res) => {
     const { data, error } = await supabase
       .from('member_profiles')
-      .select('user_key,full_name,email,membership_status,current_tier,total_points,total_visits,created_at')
+      .select('user_key,full_name,email,membership_status,current_tier,total_points,total_visits,created_at,phone')
       .order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
+
+    // Enrich with last_visit dari customers table (match by phone_e164)
+    const phones = (data || []).map(m => m.phone).filter(Boolean);
+    let lastVisitMap = {};
+    if (phones.length) {
+      const { data: custs } = await supabase
+        .from('customers')
+        .select('phone_e164,last_visit')
+        .in('phone_e164', phones);
+      for (const c of (custs || [])) {
+        if (c.phone_e164) lastVisitMap[c.phone_e164] = c.last_visit;
+      }
+    }
+    const enriched = (data || []).map(m => ({ ...m, last_visit: lastVisitMap[m.phone] || null }));
+    res.json(enriched);
+  });
+
+  // ── POST /membership/sync-moka ─────────────────────────────────────────────
+  // Tarik data transaksi Moka untuk 1 member (by wa), upsert member_profiles + update customers.
+  router.post('/membership/sync-moka', adminAuth, async (req, res) => {
+    const { wa } = req.body;
+    if (!wa) return res.status(400).json({ error: 'wa required' });
+
+    // Normalize phone
+    const digits   = String(wa).replace(/\D/g, '');
+    const waNorm   = digits.startsWith('62') ? digits : '62' + (digits.startsWith('0') ? digits.slice(1) : digits);
+    const phoneE164 = '+' + waNorm;
+    const normPhone = (raw) => {
+      if (!raw) return '';
+      let d = String(raw).replace(/\D/g, '');
+      if (d.startsWith('62')) d = d.slice(2); else if (d.startsWith('0')) d = d.slice(1);
+      return d.slice(-11);
+    };
+    const targetNorm = normPhone(wa);
+
+    // Fetch active outlets
+    const { data: outlets, error: outletErr } = await supabase
+      .from('outlets').select('id,slug,name,moka_outlet_id')
+      .not('moka_outlet_id', 'is', null).eq('is_active', true);
+    if (outletErr) return res.status(500).json({ error: outletErr.message });
+    if (!outlets?.length) return res.status(400).json({ error: 'No active outlets with Moka' });
+
+    const PAGE_DELAY_MS = 150;
+    const MAX_BUDGET_MS = 55_000;
+    const POINTS_PER_VISIT = 50;
+    const TIER_THRESHOLDS = [
+      { name: 'platinum', min: 3000 },
+      { name: 'gold',     min: 1000 },
+      { name: 'silver',   min:  500 },
+      { name: 'bronze',   min:    0 },
+    ];
+    const getTier = (pts) => { for (const t of TIER_THRESHOLDS) if (pts >= t.min) return t.name; return 'bronze'; };
+
+    let totalVisits = 0, totalSpent = 0, lastVisit = null, firstVisit = null;
+    const startTime = Date.now();
+
+    try {
+      for (const outlet of outlets) {
+        if (Date.now() - startTime > MAX_BUDGET_MS) break;
+        const MokaClient = require('../moka/client');
+        const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
+        let sinceEpoch = null;
+        while (true) {
+          if (Date.now() - startTime > MAX_BUDGET_MS) break;
+          let json;
+          try { json = await client.getTransactionPage({ sinceEpoch, limit: 100 }); }
+          catch (err) { if (err.status === 404 || err.status === 403) break; throw err; }
+          const payments = json?.data?.payments ?? [];
+          for (const p of payments) {
+            if (p.is_deleted || p.is_refunded) continue;
+            const norm = normPhone(p.customer_phone || p.customer_phone_number || p.phone_number || p.phone || '');
+            if (norm !== targetNorm) continue;
+            totalVisits++;
+            totalSpent += Number(p.total_collected || p.total_transaction || 0);
+            const txDate = (p.created_at || p.updated_at || '').slice(0, 10);
+            if (txDate && (!lastVisit  || txDate > lastVisit))  lastVisit  = txDate;
+            if (txDate && (!firstVisit || txDate < firstVisit)) firstVisit = txDate;
+          }
+          if (json?.data?.completed || !payments.length) break;
+          const m2 = (json?.data?.next_url || '').match(/[?&]since=([0-9.]+)/);
+          if (!m2) break;
+          sinceEpoch = parseFloat(m2[1]);
+          await new Promise(r => setTimeout(r, PAGE_DELAY_MS));
+        }
+      }
+
+      const newPoints = totalVisits * POINTS_PER_VISIT;
+      const newTier   = getTier(newPoints);
+      const now       = new Date().toISOString();
+
+      // Update customers — first_visit hanya diisi jika belum ada (preserve yang sudah tersimpan)
+      const custPatch = { visits: totalVisits, points: newPoints, total_spent: totalSpent, last_visit: lastVisit, updated_at: now };
+      if (firstVisit) custPatch.first_visit = firstVisit;
+      await supabase.from('customers').update(custPatch).eq('wa', waNorm);
+
+      // Fetch existing member_profiles to decide insert vs update
+      const { data: existing } = await supabase.from('member_profiles')
+        .select('id,user_key,full_name,phone').eq('phone', phoneE164).maybeSingle();
+
+      if (existing) {
+        await supabase.from('member_profiles').update({
+          total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
+          membership_status: 'ACTIVE', updated_at: now,
+        }).eq('id', existing.id);
+      } else {
+        // Create member_profiles entry (no prior entry for this phone)
+        const { data: cust } = await supabase.from('customers')
+          .select('name,phone_e164,email,birth_date,gender,address,referral_code,membership_activated_at')
+          .eq('wa', waNorm).maybeSingle();
+        const phoneNormShort = targetNorm;
+        const userKey  = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}`;
+        const email    = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}@redbox.internal`;
+        await supabase.from('member_profiles').upsert({
+          user_key: userKey, email, full_name: cust?.name || '', phone: phoneE164,
+          membership_status: 'ACTIVE', membership_activated_at: cust?.membership_activated_at || now,
+          total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
+        }, { onConflict: 'user_key' });
+      }
+
+      return res.json({
+        success: true, wa: waNorm, phone_e164: phoneE164,
+        visits: totalVisits, points: newPoints, tier: newTier,
+        last_visit: lastVisit, first_visit: firstVisit, total_spent: totalSpent,
+      });
+    } catch (err) {
+      console.error('[SyncMokaSingle] Fatal:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
   });
 
   router.post('/membership/activate', adminAuth, async (req, res) => {

@@ -1144,17 +1144,72 @@ async function openCustomerDetailModal(wa) {
   let segLabel = '';
   if (visits >= 5) segLabel = '<span style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:99px;padding:2px 8px;font-size:.7rem">Loyal Customer</span>';
 
+  const isActiveMember = c.membership_status === 'ACTIVE';
+  const memberBadge = isActiveMember
+    ? `<span style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:99px;padding:2px 8px;font-size:.7rem">✓ Member Aktif</span>`
+    : `<span style="background:rgba(100,116,139,.15);color:#94a3b8;border:1px solid rgba(100,116,139,.3);border-radius:99px;padding:2px 8px;font-size:.7rem">Non-Member</span>`;
+
   body.innerHTML = `
     <div class="detail-row"><span class="detail-label">Nama</span><span class="detail-val">${esc(c.name)} ${segLabel}</span></div>
     <div class="detail-row"><span class="detail-label">WhatsApp</span><span class="detail-val"><a href="https://wa.me/62${esc(c.wa)}" target="_blank" class="wa-link">+62${esc(c.wa)}</a></span></div>
-    <div class="detail-row"><span class="detail-label">Kunjungan</span><span class="detail-val">${visits}</span></div>
-    <div class="detail-row"><span class="detail-label">Kunjungan Terakhir</span><span class="detail-val">${esc(fmtDate(lastVisit))}</span></div>
+    <div class="detail-row"><span class="detail-label">Membership</span><span class="detail-val">${memberBadge}</span></div>
+    <div class="detail-row"><span class="detail-label">Kunjungan</span><span class="detail-val" id="cdVisits">${visits}</span></div>
+    <div class="detail-row"><span class="detail-label">Poin</span><span class="detail-val" id="cdPoints" style="color:#facc15">${c.points || 0}</span></div>
+    <div class="detail-row"><span class="detail-label">Kunjungan Pertama</span><span class="detail-val" id="cdFirstVisit">${esc(fmtDate(c.first_visit || null))}</span></div>
+    <div class="detail-row"><span class="detail-label">Kunjungan Terakhir</span><span class="detail-val" id="cdLastVisit">${esc(fmtDate(lastVisit))}</span></div>
     <div class="detail-row"><span class="detail-label">Total Belanja</span><span class="detail-val" style="color:#f87171">${esc(fmt(c.total_spent || c.totalSpent || 0))}</span></div>
     ${c.notes ? `<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-val">${esc(c.notes)}</span></div>` : ''}
+    <div style="margin-top:14px">
+      <button id="syncMokaBtn" onclick="syncMokaCustomer('${esc(c.wa)}')"
+        style="background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.4);border-radius:8px;padding:7px 14px;font-size:.8rem;font-weight:600;cursor:pointer;width:100%">
+        🔄 Sync Data dari Moka
+      </button>
+      <p id="syncMokaResult" style="font-size:.75rem;color:#94a3b8;margin-top:6px;text-align:center"></p>
+    </div>
     <h4 style="margin-top:15px;margin-bottom:10px">Riwayat Booking</h4>
     <div style="max-height:200px;overflow-y:auto">${historyHtml}</div>`;
   document.getElementById('customerDetailModal').style.display = 'flex';
 }
+
+async function syncMokaCustomer(wa) {
+  const btn    = document.getElementById('syncMokaBtn');
+  const result = document.getElementById('syncMokaResult');
+  if (!btn) return;
+  btn.disabled    = true;
+  btn.textContent = '⏳ Menarik data Moka...';
+  result.textContent = '';
+  try {
+    const res  = await fetch(`${API_URL}/admin/crm/membership/sync-moka`, {
+      method: 'POST', headers: apiHeaders(),
+      body: JSON.stringify({ wa }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.textContent = '✓ Sync selesai';
+      btn.style.color  = '#4ade80';
+      btn.style.borderColor = 'rgba(34,197,94,.4)';
+      result.style.color = '#4ade80';
+      result.textContent = `${data.visits} kunjungan · ${data.points} poin · Pertama: ${data.first_visit || '—'} · Terakhir: ${data.last_visit || '—'}`;
+      // Update displayed values in modal tanpa close/open ulang
+      const el = (id) => document.getElementById(id);
+      if (el('cdVisits'))     el('cdVisits').textContent     = data.visits;
+      if (el('cdPoints'))     el('cdPoints').textContent     = data.points;
+      if (el('cdFirstVisit')) el('cdFirstVisit').textContent = fmtDate(data.first_visit);
+      if (el('cdLastVisit'))  el('cdLastVisit').textContent  = fmtDate(data.last_visit);
+    } else {
+      btn.textContent = '🔄 Sync Data dari Moka';
+      btn.disabled    = false;
+      result.style.color = '#f87171';
+      result.textContent = data.error || 'Sync gagal.';
+    }
+  } catch (err) {
+    btn.textContent = '🔄 Sync Data dari Moka';
+    btn.disabled    = false;
+    result.style.color = '#f87171';
+    result.textContent = 'Network error: ' + err.message;
+  }
+}
+window.syncMokaCustomer = syncMokaCustomer;
 
 document.getElementById('customerDetailClose')?.addEventListener('click', () => document.getElementById('customerDetailModal').style.display = 'none');
 document.getElementById('customerDetailCancel')?.addEventListener('click', () => document.getElementById('customerDetailModal').style.display = 'none');

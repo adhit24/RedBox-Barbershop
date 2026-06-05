@@ -603,11 +603,17 @@ document.addEventListener('DOMContentLoaded', () => {
             memberData.email                  = c.email                || memberData.email || '';
             memberData.membership_status      = c.membership_status    || memberData.membership_status;
             memberData.membership_activated_at= c.membership_activated_at || memberData.membership_activated_at;
+            // first_visit = tanggal transaksi Moka paling awal — sumber kebenaran "Bergabung sejak"
+            if (c.first_visit) memberData.joinDate = c.first_visit;
             if (c.referral_code) memberData.referralCode = c.referral_code;
             save();
 
             // Re-render UI with fresh data
             if (profileName) profileName.textContent = userData.name || 'Member Redbox';
+            if (profileSince && memberData.joinDate) {
+              const dj = new Date(memberData.joinDate);
+              profileSince.textContent = `Bergabung sejak ${MONTHS[dj.getMonth()]} ${dj.getFullYear()}`;
+            }
             const isACTIVE = memberData.membership_status === 'ACTIVE';
             const pts = isACTIVE ? memberData.points : 0;
             animateCount(statPoints, pts, 800);

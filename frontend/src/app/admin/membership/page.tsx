@@ -2,16 +2,18 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, CheckCircle, Clock, Search, X, CreditCard } from 'lucide-react';
+import { CheckCircle, Search, X, CreditCard, RefreshCw } from 'lucide-react';
 
 interface Member {
   user_key: string;
   full_name: string;
   email: string;
+  phone: string;
   membership_status: string;
   current_tier: string;
   total_points: number;
   total_visits: number;
+  last_visit: string | null;
   created_at: string;
 }
 
@@ -21,14 +23,34 @@ const PAY_METHODS = [
   { value: 'transfer', label: 'Transfer Bank' },
 ];
 
+const TIER_COLOR: Record<string, string> = {
+  platinum: 'text-cyan-300',
+  gold:     'text-yellow-400',
+  silver:   'text-slate-300',
+  bronze:   'text-orange-400',
+};
+
 function Skeleton() {
   return (
     <motion.div
       animate={{ opacity: [0.3, 0.6, 0.3] }}
       transition={{ duration: 1.4, repeat: Infinity }}
-      className="h-16 bg-slate-800 rounded-xl"
+      className="h-20 bg-slate-800 rounded-xl"
     />
   );
+}
+
+function fmtDate(d: string | null) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function phoneFromEmail(email: string) {
+  // Extract wa from synthetic email: moka_87838544015@redbox.internal → 6287838544015
+  const m = email?.match(/^moka_(\d+)@redbox\.internal$/);
+  if (m) return '62' + m[1];
+  return null;
 }
 
 function MembershipPageInner() {
@@ -42,7 +64,8 @@ function MembershipPageInner() {
   const [activating, setActivating] = useState<string | null>(null);
   const [payMethod, setPayMethod]   = useState('cash');
   const [processing, setProcessing] = useState(false);
-  const [toast, setToast]           = useState<string | null>(null);
+  const [syncing, setSyncing]       = useState<string | null>(null);
+  const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -57,6 +80,11 @@ function MembershipPageInner() {
 
   useEffect(() => { load(); }, []);
 
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
+
   async function handleActivate() {
     if (!activating) return;
     setProcessing(true);
@@ -68,15 +96,38 @@ function MembershipPageInner() {
       });
       const data = await res.json();
       if (data.success) {
-        setToast('✓ Membership berhasil diaktifkan!');
+        showToast('✓ Membership berhasil diaktifkan!');
         setActivating(null);
         await load();
       } else {
-        setToast('Gagal mengaktifkan. Coba lagi.');
+        showToast('Gagal mengaktifkan. Coba lagi.', false);
       }
     } finally {
       setProcessing(false);
-      setTimeout(() => setToast(null), 3000);
+    }
+  }
+
+  async function handleSyncMoka(m: Member) {
+    const wa = m.phone
+      ? m.phone.replace(/^\+/, '')
+      : phoneFromEmail(m.email);
+    if (!wa) { showToast('Nomor WA tidak tersedia.', false); return; }
+    setSyncing(m.user_key);
+    try {
+      const res = await fetch('/api/admin/crm/membership/sync-moka', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wa }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`✓ Data Moka diperbarui — ${data.visits} kunjungan, ${data.points} poin`);
+        await load();
+      } else {
+        showToast(data.error || 'Sync gagal.', false);
+      }
+    } finally {
+      setSyncing(null);
     }
   }
 
@@ -93,7 +144,6 @@ function MembershipPageInner() {
 
   const totalActive   = members.filter(m => m.membership_status === 'ACTIVE').length;
   const totalInactive = members.filter(m => m.membership_status !== 'ACTIVE').length;
-
   const activatingMember = members.find(m => m.user_key === activating);
 
   return (
@@ -151,35 +201,70 @@ function MembershipPageInner() {
         ) : filtered.length === 0 ? (
           <div className="text-center text-slate-500 py-16 text-sm">Tidak ada member ditemukan</div>
         ) : filtered.map(m => {
-          const isActive = m.membership_status === 'ACTIVE';
-          const join = new Date(m.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+          const isActive    = m.membership_status === 'ACTIVE';
+          const join        = fmtDate(m.created_at);
+          const tierColor   = TIER_COLOR[m.current_tier] || 'text-slate-400';
+          const isSyncing   = syncing === m.user_key;
+
           return (
             <motion.div
               key={m.user_key}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-[#0F172A] border border-slate-800 rounded-xl px-4 py-3 flex items-center gap-3"
+              className="bg-[#0F172A] border border-slate-800 rounded-xl px-4 py-3"
             >
-              <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-slate-300 shrink-0">
-                {(m.full_name || m.email || '?')[0].toUpperCase()}
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-slate-300 shrink-0 mt-0.5">
+                  {(m.full_name || m.email || '?')[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-semibold truncate">{m.full_name || '—'}</p>
+                  <p className="text-slate-500 text-xs truncate">{m.email}</p>
+                  {isActive && (
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      <span className={`text-[10px] font-bold uppercase ${tierColor}`}>
+                        {m.current_tier || 'bronze'}
+                      </span>
+                      <span className="text-slate-500 text-[10px]">
+                        {m.total_points ?? 0} poin · {m.total_visits ?? 0} kunjungan
+                      </span>
+                      {m.last_visit && (
+                        <span className="text-slate-600 text-[10px]">
+                          Terakhir {fmtDate(m.last_visit)}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {!isActive && (
+                    <p className="text-slate-600 text-[10px] mt-0.5">Bergabung {join}</p>
+                  )}
+                </div>
+
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  {isActive ? (
+                    <>
+                      <span className="text-green-400 text-[10px] font-bold bg-green-400/10 border border-green-400/20 rounded-full px-2 py-0.5">
+                        ✓ Aktif
+                      </span>
+                      <button
+                        onClick={() => handleSyncMoka(m)}
+                        disabled={isSyncing}
+                        className="flex items-center gap-1 text-slate-400 hover:text-blue-400 text-[10px] font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg px-2 py-1 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw size={10} className={isSyncing ? 'animate-spin' : ''} />
+                        {isSyncing ? 'Sync...' : 'Sync Moka'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => { setActivating(m.user_key); setPayMethod('cash'); }}
+                      className="bg-green-400/15 border border-green-400/40 text-green-400 text-xs font-bold rounded-xl px-3 py-1.5 active:scale-95 transition-transform"
+                    >
+                      Aktifkan
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-semibold truncate">{m.full_name || '—'}</p>
-                <p className="text-slate-500 text-xs truncate">{m.email}</p>
-                <p className="text-slate-600 text-[10px] mt-0.5">Bergabung {join}</p>
-              </div>
-              {isActive ? (
-                <span className="text-green-400 text-[10px] font-bold bg-green-400/10 border border-green-400/20 rounded-full px-2 py-0.5 shrink-0">
-                  ✓ Aktif
-                </span>
-              ) : (
-                <button
-                  onClick={() => { setActivating(m.user_key); setPayMethod('cash'); }}
-                  className="bg-green-400/15 border border-green-400/40 text-green-400 text-xs font-bold rounded-xl px-3 py-1.5 shrink-0 active:scale-95 transition-transform"
-                >
-                  Aktifkan
-                </button>
-              )}
             </motion.div>
           );
         })}
@@ -252,9 +337,13 @@ function MembershipPageInner() {
         {toast && (
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 left-4 right-4 z-50 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white text-sm font-medium text-center shadow-lg"
+            className={`fixed bottom-24 left-4 right-4 z-50 border rounded-xl px-4 py-3 text-sm font-medium text-center shadow-lg ${
+              toast.ok
+                ? 'bg-slate-800 border-slate-700 text-white'
+                : 'bg-red-900/80 border-red-700 text-red-200'
+            }`}
           >
-            {toast}
+            {toast.msg}
           </motion.div>
         )}
       </AnimatePresence>
