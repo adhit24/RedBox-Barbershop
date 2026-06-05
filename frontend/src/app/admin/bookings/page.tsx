@@ -6,29 +6,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, Check, UserX, Shuffle, Home, ChevronRight } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const STATUS_META: Record<string, { label: string; color: string; dot: string }> = {
-  pending:     { label: 'Pending',    color: 'bg-amber-500/15 text-amber-400 border-amber-500/30',    dot: 'bg-amber-400' },
-  confirmed:   { label: 'Confirmed', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       dot: 'bg-blue-400' },
-  done:        { label: 'Selesai',   color: 'bg-green-500/15 text-green-400 border-green-500/30',    dot: 'bg-green-400' },
-  cancelled:   { label: 'Batal',     color: 'bg-red-500/15 text-red-400 border-red-500/30',          dot: 'bg-red-400' },
-  no_show:     { label: 'No-show',   color: 'bg-slate-500/15 text-slate-400 border-slate-500/30',    dot: 'bg-slate-400' },
-  departed:    { label: 'Berangkat', color: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30', dot: 'bg-indigo-400' },
-  arrived:     { label: 'Tiba',      color: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',       dot: 'bg-cyan-400' },
-  in_progress: { label: 'Dikerjakan',color: 'bg-purple-500/15 text-purple-400 border-purple-500/30', dot: 'bg-purple-400' },
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const m = STATUS_META[status] ?? { label: status, color: 'bg-slate-500/15 text-slate-400 border-slate-500/30', dot: 'bg-slate-400' };
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${m.color}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
-      {m.label}
-    </span>
-  );
-}
+import { CalendarView } from './CalendarView';
+import { StatusBadge } from './bookingStatus';
 
 function today() {
   const d = new Date();
@@ -53,6 +32,7 @@ function BookingControlPageInner() {
   const [walkinOpen, setWalkinOpen]       = useState(false);
   const [walkinData, setWalkinData]       = useState({ name:'', wa:'', barber_id:'', service:'' });
   const [reassignId, setReassignId]       = useState<string | null>(null);
+  const [tab, setTab]                     = useState<'tabel' | 'kalender'>('tabel');
 
   const load = useCallback(async () => {
     if (!branch) return;
@@ -108,7 +88,7 @@ function BookingControlPageInner() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-white font-bold text-base">Booking Control</h2>
-        {!readonly && (
+        {!readonly && tab === 'tabel' && (
           <button
             onClick={() => setWalkinOpen(true)}
             className="flex items-center gap-1.5 h-9 px-3 bg-green-500/15 text-green-400 border border-green-500/30 rounded-xl text-xs font-semibold active:scale-95 transition-all cursor-pointer"
@@ -119,142 +99,164 @@ function BookingControlPageInner() {
         )}
       </div>
 
-      {/* Date */}
-      <input
-        type="date" value={dateFilter}
-        onChange={e => setDateFilter(e.target.value)}
-        className="w-full h-10 bg-[#0F172A] border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
-      />
-
-      {/* Filters */}
-      <div className="grid grid-cols-2 gap-2">
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="h-9 rounded-xl px-3 text-xs font-medium focus:outline-none cursor-pointer [color-scheme:dark]"
-          style={{ background: '#0F0A0D', border: '1px solid rgba(255,255,255,0.08)', color: statusFilter === 'all' ? '#6B5A5E' : '#F0EAEB' }}
-        >
-          <option value="all">Semua Status</option>
-          <option value="pending">Pending</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="done">Done</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="no_show">No-show</option>
-        </select>
-
-        <select
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          className="h-9 rounded-xl px-3 text-xs font-medium focus:outline-none cursor-pointer [color-scheme:dark]"
-          style={{ background: '#0F0A0D', border: '1px solid rgba(255,255,255,0.08)', color: typeFilter === 'all' ? '#6B5A5E' : '#F0EAEB' }}
-        >
-          <option value="all">Semua Tipe</option>
-          <option value="online">Online</option>
-          <option value="home_service">Home Service</option>
-          <option value="wedding">Wedding</option>
-          <option value="walk_in">Walk-in</option>
-        </select>
+      {/* Tab Switcher */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        {(['tabel', 'kalender'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="flex-1 h-8 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            style={tab === t
+              ? { background: 'rgba(199,40,32,0.15)', color: '#E87068', border: '1px solid rgba(199,40,32,0.3)' }
+              : { background: 'transparent', color: '#4A3E40', border: '1px solid transparent' }
+            }
+          >
+            {t === 'tabel' ? '📋 Tabel' : '📅 Kalender'}
+          </button>
+        ))}
       </div>
 
-      {/* Booking list */}
-      {loading ? (
-        <div className="space-y-2">
-          {[1,2,3].map(i => (
-            <motion.div key={i} animate={{ opacity: [0.4,0.7,0.4] }} transition={{ duration:1.4, repeat:Infinity, delay: i*0.2 }}
-              className="h-20 bg-slate-800 rounded-2xl" />
-          ))}
-        </div>
-      ) : bookings.length === 0 ? (
-        <p className="text-center text-slate-500 text-sm py-10">Tidak ada booking</p>
+      {tab === 'kalender' ? (
+        <CalendarView branch={branch} barbers={branchBarbers} readonly={readonly} />
       ) : (
-        <div className="space-y-2">
-          {bookings.map((bk: any, i: number) => (
-            <motion.div key={bk.id}
-              initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}
-              transition={{ delay: i*0.04, duration:0.2 }}
-              className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+        <>
+          {/* Date */}
+          <input
+            type="date" value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            className="w-full h-10 bg-[#0F172A] border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500"
+          />
+
+          {/* Filters */}
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="h-9 rounded-xl px-3 text-xs font-medium focus:outline-none cursor-pointer [color-scheme:dark]"
+              style={{ background: '#0F0A0D', border: '1px solid rgba(255,255,255,0.08)', color: statusFilter === 'all' ? '#6B5A5E' : '#F0EAEB' }}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="font-semibold text-white text-sm truncate">{bk.name}</p>
-                    {isHS(bk) && <Home size={12} className="text-purple-400 flex-shrink-0" />}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">{bk.time} · {bk.service}</p>
-                  {bk.wa && bk.wa !== '-' && <p className="text-xs text-slate-600">{bk.wa}</p>}
-                </div>
-                <StatusBadge status={bk.status} />
-              </div>
-
-              {/* Actions */}
-              {!readonly && (
-                <div className="flex gap-1.5 flex-wrap">
-                  {bk.status === 'pending' && <>
-                    <ActionBtn color="green" icon={<Check size={12}/>} label="Konfirmasi"   onClick={() => updateStatus(bk.id,'confirmed')} />
-                    <ActionBtn color="red"   icon={<X size={12}/>}     label="Batalkan"     onClick={() => updateStatus(bk.id,'cancelled')} />
-                    <ActionBtn color="slate" icon={<Shuffle size={12}/>} label="Reassign"   onClick={() => setReassignId(bk.id)} />
-                  </>}
-                  {bk.status === 'confirmed' && <>
-                    <ActionBtn color="green" icon={<Check size={12}/>}  label="Done"        onClick={() => updateStatus(bk.id,'done')} />
-                    <ActionBtn color="slate" icon={<UserX size={12}/>}  label="No-show"     onClick={() => updateStatus(bk.id,'no_show')} />
-                    <ActionBtn color="red"   icon={<X size={12}/>}      label="Batalkan"    onClick={() => updateStatus(bk.id,'cancelled')} />
-                    {isHS(bk) && <ActionBtn color="indigo" icon={<ChevronRight size={12}/>} label="Berangkat" onClick={() => updateStatus(bk.id,'departed')} />}
-                  </>}
-                  {bk.status === 'departed'    && <ActionBtn color="cyan"   icon={<ChevronRight size={12}/>} label="Sampai"      onClick={() => updateStatus(bk.id,'arrived')} />}
-                  {bk.status === 'arrived'     && <ActionBtn color="purple" icon={<ChevronRight size={12}/>} label="Dikerjakan"  onClick={() => updateStatus(bk.id,'in_progress')} />}
-                  {bk.status === 'in_progress' && <ActionBtn color="green"  icon={<Check size={12}/>}        label="Selesai"     onClick={() => updateStatus(bk.id,'done')} />}
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </div>
-      )}
-
-      {/* Walk-in Bottom Sheet */}
-      <AnimatePresence>
-        {walkinOpen && (
-          <Sheet onClose={() => setWalkinOpen(false)} title="Walk-in Customer">
-            <Input placeholder="Nama (opsional)" value={walkinData.name}
-              onChange={e => setWalkinData(d => ({ ...d, name: e.target.value }))} />
-            <Input placeholder="No HP (opsional)" value={walkinData.wa}
-              onChange={e => setWalkinData(d => ({ ...d, wa: e.target.value }))} />
-            <select value={walkinData.barber_id}
-              onChange={e => setWalkinData(d => ({ ...d, barber_id: e.target.value }))}
-              className="w-full h-11 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500">
-              <option value="">Pilih Kapster</option>
-              {branchBarbers.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              <option value="all">Semua Status</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="done">Done</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="no_show">No-show</option>
             </select>
-            <Input placeholder="Service (contoh: Potong Rambut)" value={walkinData.service}
-              onChange={e => setWalkinData(d => ({ ...d, service: e.target.value }))} />
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => setWalkinOpen(false)}
-                className="flex-1 h-11 border border-slate-700 rounded-xl text-sm text-slate-400 cursor-pointer active:scale-95 transition-all">
-                Batal
-              </button>
-              <button onClick={submitWalkIn}
-                className="flex-1 h-11 bg-green-500 text-white rounded-xl text-sm font-semibold cursor-pointer active:scale-95 transition-all">
-                Catat
-              </button>
-            </div>
-          </Sheet>
-        )}
-      </AnimatePresence>
 
-      {/* Reassign Bottom Sheet */}
-      <AnimatePresence>
-        {reassignId && (
-          <Sheet onClose={() => setReassignId(null)} title="Pilih Kapster Pengganti">
-            <div className="space-y-1.5 max-h-60 overflow-y-auto">
-              {branchBarbers.map((b: any) => (
-                <button key={b.id} onClick={() => doReassign(b.id)}
-                  className="w-full h-11 text-left px-4 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-medium text-slate-200 cursor-pointer active:scale-[0.98] transition-all">
-                  {b.name}
-                </button>
+            <select
+              value={typeFilter}
+              onChange={e => setTypeFilter(e.target.value)}
+              className="h-9 rounded-xl px-3 text-xs font-medium focus:outline-none cursor-pointer [color-scheme:dark]"
+              style={{ background: '#0F0A0D', border: '1px solid rgba(255,255,255,0.08)', color: typeFilter === 'all' ? '#6B5A5E' : '#F0EAEB' }}
+            >
+              <option value="all">Semua Tipe</option>
+              <option value="online">Online</option>
+              <option value="home_service">Home Service</option>
+              <option value="wedding">Wedding</option>
+              <option value="walk_in">Walk-in</option>
+            </select>
+          </div>
+
+          {/* Booking list */}
+          {loading ? (
+            <div className="space-y-2">
+              {[1,2,3].map(i => (
+                <motion.div key={i} animate={{ opacity: [0.4,0.7,0.4] }} transition={{ duration:1.4, repeat:Infinity, delay: i*0.2 }}
+                  className="h-20 bg-slate-800 rounded-2xl" />
               ))}
             </div>
-          </Sheet>
-        )}
-      </AnimatePresence>
+          ) : bookings.length === 0 ? (
+            <p className="text-center text-slate-500 text-sm py-10">Tidak ada booking</p>
+          ) : (
+            <div className="space-y-2">
+              {bookings.map((bk: any, i: number) => (
+                <motion.div key={bk.id}
+                  initial={{ opacity:0, y:6 }} animate={{ opacity:1, y:0 }}
+                  transition={{ delay: i*0.04, duration:0.2 }}
+                  className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-white text-sm truncate">{bk.name}</p>
+                        {isHS(bk) && <Home size={12} className="text-purple-400 flex-shrink-0" />}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">{bk.time} · {bk.service}</p>
+                      {bk.wa && bk.wa !== '-' && <p className="text-xs text-slate-600">{bk.wa}</p>}
+                    </div>
+                    <StatusBadge status={bk.status} />
+                  </div>
+
+                  {!readonly && (
+                    <div className="flex gap-1.5 flex-wrap">
+                      {bk.status === 'pending' && <>
+                        <ActionBtn color="green" icon={<Check size={12}/>} label="Konfirmasi"   onClick={() => updateStatus(bk.id,'confirmed')} />
+                        <ActionBtn color="red"   icon={<X size={12}/>}     label="Batalkan"     onClick={() => updateStatus(bk.id,'cancelled')} />
+                        <ActionBtn color="slate" icon={<Shuffle size={12}/>} label="Reassign"   onClick={() => setReassignId(bk.id)} />
+                      </>}
+                      {bk.status === 'confirmed' && <>
+                        <ActionBtn color="green" icon={<Check size={12}/>}  label="Done"        onClick={() => updateStatus(bk.id,'done')} />
+                        <ActionBtn color="slate" icon={<UserX size={12}/>}  label="No-show"     onClick={() => updateStatus(bk.id,'no_show')} />
+                        <ActionBtn color="red"   icon={<X size={12}/>}      label="Batalkan"    onClick={() => updateStatus(bk.id,'cancelled')} />
+                        {isHS(bk) && <ActionBtn color="indigo" icon={<ChevronRight size={12}/>} label="Berangkat" onClick={() => updateStatus(bk.id,'departed')} />}
+                      </>}
+                      {bk.status === 'departed'    && <ActionBtn color="cyan"   icon={<ChevronRight size={12}/>} label="Sampai"      onClick={() => updateStatus(bk.id,'arrived')} />}
+                      {bk.status === 'arrived'     && <ActionBtn color="purple" icon={<ChevronRight size={12}/>} label="Dikerjakan"  onClick={() => updateStatus(bk.id,'in_progress')} />}
+                      {bk.status === 'in_progress' && <ActionBtn color="green"  icon={<Check size={12}/>}        label="Selesai"     onClick={() => updateStatus(bk.id,'done')} />}
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* Walk-in Bottom Sheet */}
+          <AnimatePresence>
+            {walkinOpen && (
+              <Sheet onClose={() => setWalkinOpen(false)} title="Walk-in Customer">
+                <Input placeholder="Nama (opsional)" value={walkinData.name}
+                  onChange={e => setWalkinData(d => ({ ...d, name: e.target.value }))} />
+                <Input placeholder="No HP (opsional)" value={walkinData.wa}
+                  onChange={e => setWalkinData(d => ({ ...d, wa: e.target.value }))} />
+                <select value={walkinData.barber_id}
+                  onChange={e => setWalkinData(d => ({ ...d, barber_id: e.target.value }))}
+                  className="w-full h-11 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500">
+                  <option value="">Pilih Kapster</option>
+                  {branchBarbers.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+                <Input placeholder="Service (contoh: Potong Rambut)" value={walkinData.service}
+                  onChange={e => setWalkinData(d => ({ ...d, service: e.target.value }))} />
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setWalkinOpen(false)}
+                    className="flex-1 h-11 border border-slate-700 rounded-xl text-sm text-slate-400 cursor-pointer active:scale-95 transition-all">
+                    Batal
+                  </button>
+                  <button onClick={submitWalkIn}
+                    className="flex-1 h-11 bg-green-500 text-white rounded-xl text-sm font-semibold cursor-pointer active:scale-95 transition-all">
+                    Catat
+                  </button>
+                </div>
+              </Sheet>
+            )}
+          </AnimatePresence>
+
+          {/* Reassign Bottom Sheet */}
+          <AnimatePresence>
+            {reassignId && (
+              <Sheet onClose={() => setReassignId(null)} title="Pilih Kapster Pengganti">
+                <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                  {branchBarbers.map((b: any) => (
+                    <button key={b.id} onClick={() => doReassign(b.id)}
+                      className="w-full h-11 text-left px-4 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-medium text-slate-200 cursor-pointer active:scale-[0.98] transition-all">
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+              </Sheet>
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </div>
   );
 }
