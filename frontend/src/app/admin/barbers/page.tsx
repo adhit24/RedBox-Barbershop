@@ -231,6 +231,7 @@ function BarbersPageInner() {
   const loadBarbers = useCallback(async () => {
     if (!branch) return;
     setError(false);
+    setOffTodaySet(new Set());
 
     const supabase = createClient();
     const today = todayStr();
@@ -252,6 +253,8 @@ function BarbersPageInner() {
       for (const b of ts?.barbers ?? []) {
         if (!b.isWorking) newOffSet.add(String(b.id));
       }
+    } else {
+      console.warn('[Barbers] today-status unavailable — showing all as available');
     }
     setOffTodaySet(newOffSet);
 
