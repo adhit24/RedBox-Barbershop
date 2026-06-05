@@ -2331,6 +2331,122 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     return res.json({ customer: customer || null });
   });
 
+  // POST /api/member/sync — tarik data Moka fresh untuk member yang login
+  app.post('/api/member/sync', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || req.headers['x-member-token'];
+    if (!token) return res.status(401).json({ error: 'Login diperlukan' });
+
+    const { data: session } = await supabase.from('member_sessions')
+      .select('customer_wa').eq('token', token)
+      .gt('expires_at', new Date().toISOString()).maybeSingle();
+    if (!session) return res.status(401).json({ success: false, error: 'Session expired' });
+
+    const wa = session.customer_wa;
+    const digits    = String(wa).replace(/\D/g, '');
+    const waNorm    = digits.startsWith('62') ? digits : '62' + (digits.startsWith('0') ? digits.slice(1) : digits);
+    const phoneE164 = '+' + waNorm;
+    const normPhone = (raw) => {
+      if (!raw) return '';
+      let d = String(raw).replace(/\D/g, '');
+      if (d.startsWith('62')) d = d.slice(2); else if (d.startsWith('0')) d = d.slice(1);
+      return d.slice(-11);
+    };
+    const targetNorm = normPhone(wa);
+
+    const { data: outlets } = await supabase
+      .from('outlets').select('id,slug,name,moka_outlet_id')
+      .not('moka_outlet_id', 'is', null).eq('is_active', true);
+    if (!outlets?.length) return res.json({ success: false, error: 'No active outlets' });
+
+    const PAGE_DELAY_MS  = 150;
+    const MAX_BUDGET_MS  = 8000;
+    const POINTS_PER_VISIT = 50;
+    const TIER_THRESHOLDS = [
+      { name: 'platinum', min: 3000 },
+      { name: 'gold',     min: 1000 },
+      { name: 'silver',   min:  500 },
+      { name: 'bronze',   min:    0 },
+    ];
+    const getTier = (pts) => { for (const t of TIER_THRESHOLDS) if (pts >= t.min) return t.name; return 'bronze'; };
+
+    let totalVisits = 0, totalSpent = 0, lastVisit = null, firstVisit = null;
+    const startTime = Date.now();
+
+    try {
+      for (const outlet of outlets) {
+        if (Date.now() - startTime > MAX_BUDGET_MS) break;
+        const MokaClient = require('./moka/client');
+        const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
+        let sinceEpoch = null;
+        while (true) {
+          if (Date.now() - startTime > MAX_BUDGET_MS) break;
+          let json;
+          try { json = await client.getTransactionPage({ sinceEpoch, limit: 100 }); }
+          catch (err) { if (err.status === 404 || err.status === 403) break; throw err; }
+          const payments = json?.data?.payments ?? [];
+          for (const p of payments) {
+            if (p.is_deleted || p.is_refunded) continue;
+            const norm = normPhone(p.customer_phone || p.customer_phone_number || p.phone_number || p.phone || '');
+            if (norm !== targetNorm) continue;
+            totalVisits++;
+            totalSpent += Number(p.total_collected || p.total_transaction || 0);
+            const txDate = (p.created_at || p.updated_at || '').slice(0, 10);
+            if (txDate && (!lastVisit  || txDate > lastVisit))  lastVisit  = txDate;
+            if (txDate && (!firstVisit || txDate < firstVisit)) firstVisit = txDate;
+          }
+          if (json?.data?.completed || !payments.length) break;
+          const m2 = (json?.data?.next_url || '').match(/[?&]since=([0-9.]+)/);
+          if (!m2) break;
+          sinceEpoch = parseFloat(m2[1]);
+          await new Promise(r => setTimeout(r, PAGE_DELAY_MS));
+        }
+      }
+
+      const newPoints = totalVisits * POINTS_PER_VISIT;
+      const newTier   = getTier(newPoints);
+      const now       = new Date().toISOString();
+
+      const custPatch = { visits: totalVisits, points: newPoints, total_spent: totalSpent, last_visit: lastVisit, updated_at: now };
+      if (firstVisit) custPatch.first_visit = firstVisit;
+      await supabase.from('customers').update(custPatch).eq('wa', waNorm);
+
+      const { data: existing } = await supabase.from('member_profiles')
+        .select('id,full_name,phone').eq('phone', phoneE164).maybeSingle();
+
+      if (existing) {
+        await supabase.from('member_profiles').update({
+          total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
+          membership_status: 'ACTIVE', updated_at: now,
+        }).eq('id', existing.id);
+      } else {
+        const { data: cust } = await supabase.from('customers')
+          .select('name,email,referral_code,membership_activated_at')
+          .eq('wa', waNorm).maybeSingle();
+        const phoneNormShort = targetNorm;
+        const userKey = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}`;
+        const email   = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}@redbox.internal`;
+        await supabase.from('member_profiles').upsert({
+          user_key: userKey, email, full_name: cust?.name || '', phone: phoneE164,
+          membership_status: 'ACTIVE', membership_activated_at: cust?.membership_activated_at || now,
+          total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
+        }, { onConflict: 'user_key' });
+      }
+
+      const { data: custData } = await supabase.from('customers').select('name').eq('wa', waNorm).maybeSingle();
+
+      return res.json({
+        success: true,
+        full_name: existing?.full_name || custData?.name || '',
+        visits: totalVisits, points: newPoints, tier: newTier,
+        last_visit: lastVisit, first_visit: firstVisit, total_spent: totalSpent,
+      });
+    } catch (err) {
+      console.error('[MemberSync]', err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // PATCH /api/auth/me — update profil member
   app.patch('/api/auth/me', async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
