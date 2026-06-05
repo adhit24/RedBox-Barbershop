@@ -64,9 +64,11 @@ export default function RolePickerPage() {
           transition={{ duration: 0.7, ease, delay: 0.15 }}
         >
           {roles.map((role) => (
-            <button
+            <motion.button
               key={role.num}
               onClick={() => router.push(role.href)}
+              aria-label={`Login sebagai ${role.label}`}
+              whileTap={{ scale: 0.98 }}
               className="w-full flex items-center gap-4 rounded-xl px-5 py-4 text-sm font-semibold tracking-[0.12em] uppercase transition-all duration-200 text-left"
               style={{ background: 'transparent', border: '1px solid #2a2a2a', color: '#ccc' }}
               onMouseEnter={(e) => {
@@ -85,7 +87,7 @@ export default function RolePickerPage() {
                 {role.num}
               </span>
               {role.label}
-            </button>
+            </motion.button>
           ))}
         </motion.div>
 
