@@ -1,4 +1,6 @@
-const STATUS_META: Record<string, { label: string; color: string; dot: string }> = {
+'use client';
+
+export const STATUS_META: Record<string, { label: string; color: string; dot: string }> = {
   pending:     { label: 'Pending',    color: 'bg-amber-500/15 text-amber-400 border-amber-500/30',    dot: 'bg-amber-400' },
   confirmed:   { label: 'Confirmed',  color: 'bg-blue-500/15 text-blue-400 border-blue-500/30',       dot: 'bg-blue-400' },
   done:        { label: 'Selesai',    color: 'bg-green-500/15 text-green-400 border-green-500/30',    dot: 'bg-green-400' },
