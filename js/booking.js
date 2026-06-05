@@ -1529,10 +1529,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Show message if no slots available
-    if (isToday && availableCount === 0) {
+    if (availableCount === 0 && (isToday || state.barberOffOnDate)) {
       const note = document.createElement('div');
       note.style.cssText = 'grid-column:1/-1;color:var(--w50);font-size:.85rem;padding:8px 2px';
-      note.textContent = 'Semua slot hari ini sudah booked. Silakan pilih tanggal lain.';
+      note.textContent = state.barberOffOnDate
+        ? 'Kapster off duty hari ini. Silakan pilih tanggal lain.'
+        : 'Semua slot hari ini sudah booked. Silakan pilih tanggal lain.';
       grid.appendChild(note);
       document.getElementById('step3Next').disabled = true;
     }
