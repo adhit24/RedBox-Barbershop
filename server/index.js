@@ -2374,16 +2374,22 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     const startTime = Date.now();
 
     try {
+      const MokaClient = require('./moka/client');
       for (const outlet of outlets) {
         if (Date.now() - startTime > MAX_BUDGET_MS) break;
-        const MokaClient = require('./moka/client');
         const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
         let sinceEpoch = null;
         while (true) {
           if (Date.now() - startTime > MAX_BUDGET_MS) break;
           let json;
-          try { json = await client.getTransactionPage({ sinceEpoch, limit: 100 }); }
-          catch (err) { if (err.status === 404 || err.status === 403) break; throw err; }
+          try {
+            const remaining = MAX_BUDGET_MS - (Date.now() - startTime);
+            if (remaining <= 0) break;
+            const budgetDeadline = new Promise((_, reject) =>
+              setTimeout(() => reject(Object.assign(new Error('budget'), { status: 408 })), remaining)
+            );
+            json = await Promise.race([client.getTransactionPage({ sinceEpoch, limit: 100 }), budgetDeadline]);
+          } catch (err) { if (err.status === 404 || err.status === 403 || err.status === 408) break; throw err; }
           const payments = json?.data?.payments ?? [];
           for (const p of payments) {
             if (p.is_deleted || p.is_refunded) continue;
@@ -2409,16 +2415,18 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
 
       const custPatch = { visits: totalVisits, points: newPoints, total_spent: totalSpent, last_visit: lastVisit, updated_at: now };
       if (firstVisit) custPatch.first_visit = firstVisit;
-      await supabase.from('customers').update(custPatch).eq('wa', waNorm);
+      const { error: custErr } = await supabase.from('customers').update(custPatch).eq('wa', waNorm);
+      if (custErr) throw new Error(`customers update failed: ${custErr.message}`);
 
       const { data: existing } = await supabase.from('member_profiles')
         .select('id,full_name,phone').eq('phone', phoneE164).maybeSingle();
 
       if (existing) {
-        await supabase.from('member_profiles').update({
+        const { error: profErr } = await supabase.from('member_profiles').update({
           total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
           membership_status: 'ACTIVE', updated_at: now,
         }).eq('id', existing.id);
+        if (profErr) throw new Error(`member_profiles update failed: ${profErr.message}`);
       } else {
         const { data: cust } = await supabase.from('customers')
           .select('name,email,referral_code,membership_activated_at')
@@ -2426,11 +2434,12 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         const phoneNormShort = targetNorm;
         const userKey = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}`;
         const email   = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}@redbox.internal`;
-        await supabase.from('member_profiles').upsert({
+        const { error: upsertErr } = await supabase.from('member_profiles').upsert({
           user_key: userKey, email, full_name: cust?.name || '', phone: phoneE164,
           membership_status: 'ACTIVE', membership_activated_at: cust?.membership_activated_at || now,
           total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
         }, { onConflict: 'user_key' });
+        if (upsertErr) throw new Error(`member_profiles upsert failed: ${upsertErr.message}`);
       }
 
       const { data: custData } = await supabase.from('customers').select('name').eq('wa', waNorm).maybeSingle();
