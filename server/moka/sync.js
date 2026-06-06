@@ -1484,10 +1484,9 @@ async function _buildMokaOrderPayload(schedule, client) {
       }
       if (bestItem && bestScore >= 0.6) {
         mokaItemId = mokaItemId || String(bestItem.id);
-        // BUGFIX: always use item's own category from Moka API (authoritative),
-        // even if null — never send a category from a different item.
-        // stale services.moka_category_id causes 400 "Category is not for item".
-        categoryId   = bestItem.category_id ? String(bestItem.category_id) : null;
+        // category_id bisa di root item ATAU nested di category.id — cek keduanya
+        const resolvedCatId = bestItem.category_id || bestItem.category?.id || null;
+        categoryId   = resolvedCatId ? String(resolvedCatId) : null;
         categoryName = bestItem.category?.name || null;
 
         // Resolve variant by service name
@@ -1513,11 +1512,19 @@ async function _buildMokaOrderPayload(schedule, client) {
       if (mokaItemId && !variantId) {
         const itemById = itemsRes.find(i => String(i.id) === String(mokaItemId));
         if (itemById?.item_variants?.length) {
-          variantId    = itemById.item_variants[0].id;
-          // Override category — item's own category is authoritative, even if null
-          categoryId   = itemById.category_id ? String(itemById.category_id) : null;
+          variantId = itemById.item_variants[0].id;
+          const catId = itemById.category_id || itemById.category?.id || null;
+          categoryId   = catId ? String(catId) : null;
           categoryName = itemById.category?.name || null;
         }
+      }
+
+      // Jika item_id dikirim tapi category tidak bisa di-resolve → jangan kirim item_id.
+      // Moka menolak order jika item dikirim tanpa category yang valid.
+      if (mokaItemId && !categoryId) {
+        console.warn(`[Sync] item ${mokaItemId} tidak punya category di Moka — order dikirim tanpa item_id`);
+        mokaItemId = null;
+        variantId  = null;
       }
     } catch (err) {
       console.warn('[Sync] Could not resolve barber Moka item:', err.message);
