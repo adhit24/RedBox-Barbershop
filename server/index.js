@@ -897,21 +897,22 @@ app.get('/api/bookings', async (req, res) => {
 
   if (!isAdmin && !req.query.date) return res.status(401).json({ error: 'Admin access required' });
 
-  const { date, barber, barber_id, status, search, limit = 100, offset = 0 } = req.query;
+  const { date, barber, barber_id, location, status, search, limit = 100, offset = 0 } = req.query;
   const bid = barber_id || barber;
 
   if (DB_TYPE === 'supabase') {
     const tableName = isAdmin ? 'booking_full' : 'bookings';
-    const selectCols = isAdmin ? '*' : 'date,time,duration,barber_id,status';
+    const selectCols = isAdmin ? '*' : 'id,date,time,duration,barber_id,name,wa,service,notes,status,location';
     let q = supabase.from(tableName).select(selectCols).order('date', { ascending: false }).order('time', { ascending: true }).range(Number(offset), Number(offset) + Number(limit) - 1);
     if (date) q = q.eq('date', date);
+    if (location) q = q.eq('location', location);
     if (bid && bid !== 'all' && bid !== 'any') q = q.eq('barber_id', bid);
     if (status && status !== 'all') q = q.eq('status', status);
     else q = q.neq('status', 'cancelled');
     if (search) q = q.or(`name.ilike.%${search}%,wa.ilike.%${search}%,service.ilike.%${search}%`);
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ data: data || [], total: data?.length || 0 });
+    return res.json({ bookings: data || [], total: data?.length || 0 });
   } else {
     const selectCols = isAdmin
       ? `b.id, b.customer_id, b.name, b.wa, b.service_id, b.service, b.price, b.duration,
