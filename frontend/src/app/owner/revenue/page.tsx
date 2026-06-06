@@ -4,7 +4,7 @@ import { fetchOwnerRevenue } from '@/lib/adminCrmApi';
 import type { OwnerRevenueData } from '@/lib/adminCrmTypes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { TrendingUp, Scissors, ShoppingBag } from 'lucide-react';
+import { TrendingUp, Scissors, ShoppingBag, Upload, CheckCircle2, XCircle } from 'lucide-react';
 
 const BRANCHES = [
   { key: 'all',       label: 'Semua' },
@@ -50,11 +50,15 @@ const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?:
   );
 };
 
+type ImportResult = { ok: boolean; transactions?: number; barber_services?: number; skipped?: number; error?: string };
+
 export default function OwnerRevenuePage() {
   const [branch, setBranch] = useState('all');
   const [period, setPeriod] = useState('7d');
   const [data, setData] = useState<OwnerRevenueData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,14 +69,68 @@ export default function OwnerRevenuePage() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const csvText = await file.text();
+      const res = await fetch('/api/admin/crm/import-moka-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvText }),
+      });
+      const result: ImportResult = await res.json();
+      setImportResult(result);
+      if (result.ok) load();
+    } catch {
+      setImportResult({ ok: false, error: 'Gagal upload' });
+    } finally {
+      setImporting(false);
+    }
+  }
+
   const maxBranchRev = data ? Math.max(...data.branch_compare.map(b => b.revenue_moka + b.revenue_web), 1) : 1;
 
   return (
     <div className="p-4 space-y-4 pb-6">
-      <div className="flex items-center gap-2">
-        <TrendingUp size={16} className="text-slate-500" />
-        <h2 className="text-white font-bold text-base">Revenue</h2>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <TrendingUp size={16} className="text-slate-500" />
+          <h2 className="text-white font-bold text-base">Revenue</h2>
+        </div>
+        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+          importing ? 'opacity-50 pointer-events-none' : 'bg-slate-900 text-slate-300 border-slate-700 active:scale-95'
+        }`}>
+          <Upload size={12} />
+          {importing ? 'Mengimpor...' : 'Import CSV'}
+          <input type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} disabled={importing} />
+        </label>
       </div>
+
+      {/* Import result toast */}
+      <AnimatePresence>
+        {importResult && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border ${
+              importResult.ok
+                ? 'bg-green-500/10 border-green-500/30 text-green-400'
+                : 'bg-red-500/10 border-red-500/30 text-red-400'
+            }`}
+            onClick={() => setImportResult(null)}
+          >
+            {importResult.ok
+              ? <CheckCircle2 size={14} />
+              : <XCircle size={14} />}
+            {importResult.ok
+              ? `Import berhasil — ${importResult.transactions} transaksi, ${importResult.barber_services} baris kapster`
+              : `Gagal: ${importResult.error}`}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Branch filter */}
       <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1">

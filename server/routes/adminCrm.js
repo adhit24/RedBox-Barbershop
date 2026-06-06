@@ -11,8 +11,187 @@ function getMonthStart() {
   return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
 }
 
+// ── Moka CSV import: outlet name → slug ─────────────────────────────────────
+const OUTLET_SLUG_MAP = {
+  'redbox barbershop bypass':    'bypass',
+  'redbox barbershop samadikun': 'samadikun',
+  'redbox barbershop csb':       'csb',
+  'redbox barbershop sumber':    'sumber',
+  'redbox barbershop tegal':     'tegal',
+};
+
+function parseCSVRow(line) {
+  const fields = [];
+  let field = '', inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { field += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      fields.push(field.trim()); field = '';
+    } else {
+      field += ch;
+    }
+  }
+  fields.push(field.trim());
+  return fields;
+}
+
+function parseMokaDate(raw) {
+  // "06-06-2026" (DD-MM-YYYY) → "2026-06-06"
+  const [d, m, y] = raw.split('-');
+  return `${y}-${m}-${d}`;
+}
+
+function extractBarberItems(itemsRaw) {
+  const parts = [];
+  let depth = 0, current = '';
+  for (const ch of itemsRaw) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 0) { parts.push(current.trim()); current = ''; continue; }
+    current += ch;
+  }
+  if (current.trim()) parts.push(current.trim());
+
+  const items = [];
+  for (const part of parts) {
+    const parenIdx = part.indexOf('(');
+    if (parenIdx < 0) continue; // no parens = product/drink, skip
+    const name    = part.slice(0, parenIdx).trim();
+    const service = part.slice(parenIdx + 1, part.lastIndexOf(')')).trim();
+    if (name && service) items.push({ name, service });
+  }
+  return items;
+}
+
+function editDist(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i + j));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  return dp[m][n];
+}
+
+function matchBarberName(csvName, barbers) {
+  const lower = csvName.toLowerCase().trim();
+  for (const b of barbers) {
+    const fw = b.name.split(' ')[0].toLowerCase();
+    if (lower === fw || lower === b.name.toLowerCase()) return b;
+  }
+  for (const b of barbers) {
+    const fw = b.name.split(' ')[0].toLowerCase();
+    if (editDist(lower, fw) <= 2) return b;
+  }
+  return null;
+}
+
 function createAdminCrmRoutes(supabase, adminAuth) {
   const router = express.Router();
+
+  // ─── IMPORT MOKA CSV ─────────────────────────────────────────
+  router.post('/import-moka-csv', adminAuth, async (req, res) => {
+    const { csvText } = req.body;
+    if (!csvText) return res.status(400).json({ error: 'csvText required' });
+
+    const { data: allBarbers } = await supabase
+      .from('barbers').select('id, name, branch').eq('is_active', true);
+    const barbers = allBarbers || [];
+
+    const lines = csvText.split('\n').filter(l => l.trim());
+    if (lines.length < 2) return res.status(400).json({ error: 'CSV too short' });
+
+    const headers = parseCSVRow(lines[0]).map(h =>
+      h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'));
+    const ci = (hint) => headers.findIndex(h => h.includes(hint));
+
+    const iOutlet    = ci('outlet');
+    const iDate      = ci('date');
+    const iTime      = ci('time');
+    const iGross     = ci('gross');
+    const iNet       = ci('net_sale');
+    const iCollected = ci('total_collected');
+    const iReceipt   = ci('receipt');
+    const iCollBy    = ci('collected_by');
+    const iItems     = ci('items');
+    const iPayment   = ci('payment');
+    const iEvent     = ci('event_type');
+
+    const txToUpsert = [], svcRows = [];
+    let skipped = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const row = parseCSVRow(lines[i]);
+      if (row.length < 5) continue;
+
+      const outletSlug = OUTLET_SLUG_MAP[(row[iOutlet] || '').trim().toLowerCase()];
+      if (!outletSlug) { skipped++; continue; }
+
+      if ((row[iEvent] || '').trim().toLowerCase() !== 'payment') { skipped++; continue; }
+
+      const receiptNumber = (row[iReceipt] || '').trim();
+      if (!receiptNumber) continue;
+
+      const rawDate = (row[iDate] || '').trim();
+      const txDate  = rawDate.length === 10 && rawDate[2] === '-' ? parseMokaDate(rawDate) : rawDate;
+
+      const netSales   = parseFloat(row[iNet]       || '0') || 0;
+      const grossSales = parseFloat(row[iGross]     || '0') || 0;
+      const totalColl  = parseFloat(row[iCollected] || '0') || 0;
+      const itemsRaw   = (row[iItems]   || '').trim();
+
+      txToUpsert.push({
+        receipt_number: receiptNumber, outlet_slug: outletSlug,
+        tx_date: txDate, tx_time: (row[iTime] || '').trim(),
+        net_sales: netSales, gross_sales: grossSales, total_collected: totalColl,
+        payment_method: (row[iPayment] || '').trim(),
+        collected_by: (row[iCollBy] || '').trim(), items_raw: itemsRaw,
+      });
+
+      const seenBarbers = new Map(); // barberId → { csvName, services[] }
+      for (const item of extractBarberItems(itemsRaw)) {
+        const matched = matchBarberName(item.name, barbers);
+        if (!matched) continue;
+        if (!seenBarbers.has(matched.id)) seenBarbers.set(matched.id, { csvName: item.name, services: [] });
+        seenBarbers.get(matched.id).services.push(item.service);
+      }
+
+      const revenueShare = seenBarbers.size > 0 ? Math.round(netSales / seenBarbers.size) : 0;
+      for (const [barberId, { csvName, services }] of seenBarbers) {
+        svcRows.push({
+          receipt_number: receiptNumber,
+          barber_name_raw: csvName, barber_id: barberId,
+          service_name: services.join(', '),
+          outlet_slug: outletSlug, tx_date: txDate,
+          revenue_share: revenueShare,
+        });
+      }
+    }
+
+    if (txToUpsert.length) {
+      const { error } = await supabase.from('moka_transactions')
+        .upsert(txToUpsert, { onConflict: 'receipt_number' });
+      if (error) return res.status(500).json({ error: 'TX upsert: ' + error.message });
+    }
+
+    if (svcRows.length) {
+      const receiptNums = [...new Set(svcRows.map(s => s.receipt_number))];
+      await supabase.from('moka_barber_services').delete().in('receipt_number', receiptNums);
+      const { error } = await supabase.from('moka_barber_services').insert(svcRows);
+      if (error) return res.status(500).json({ error: 'SVC insert: ' + error.message });
+    }
+
+    return res.json({
+      ok: true,
+      transactions: txToUpsert.length,
+      barber_services: svcRows.length,
+      skipped,
+    });
+  });
 
   // ─── COMMAND CENTER ──────────────────────────────────────────
   router.get('/command-center', adminAuth, async (req, res) => {
@@ -354,16 +533,29 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     const barberIds = barbers.map(b => b.id);
 
     if (category === 'customer') {
+      // Primary: actual Moka POS customers (1 receipt = 1 customer)
+      const { data: mokaSvc } = await supabase
+        .from('moka_barber_services').select('barber_id')
+        .in('barber_id', barberIds)
+        .gte('tx_date', monthStart).lte('tx_date', today);
+
+      const mokaMap = {};
+      for (const r of (mokaSvc || [])) mokaMap[r.barber_id] = (mokaMap[r.barber_id] || 0) + 1;
+
+      // Fallback: web bookings (barber_daily_counts) for barbers with no Moka CSV data
       const { data: counts } = await supabase
         .from('barber_daily_counts').select('barber_id, count')
         .in('barber_id', barberIds)
         .gte('date', monthStart).lte('date', today);
 
-      const map = {};
-      for (const r of (counts || [])) map[r.barber_id] = (map[r.barber_id] || 0) + r.count;
+      const dailyMap = {};
+      for (const r of (counts || [])) dailyMap[r.barber_id] = (dailyMap[r.barber_id] || 0) + r.count;
 
       const ranked = barbers
-        .map(b => ({ ...b, score: map[b.id] || 0, display: `${map[b.id] || 0} customer` }))
+        .map(b => {
+          const score = (mokaMap[b.id] || 0) > 0 ? mokaMap[b.id] : (dailyMap[b.id] || 0);
+          return { ...b, score, display: `${score} customer` };
+        })
         .sort((a, b) => b.score - a.score)
         .map((b, i) => ({ rank: i + 1, ...b }));
 
@@ -577,9 +769,8 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       const [attRows, mokaSch, webTx, goshow, pendingBk] = await Promise.all([
         supabase.from('barber_attendance').select('barber_id, status')
           .in('barber_id', barberIds).eq('date', today),
-        supabase.from('schedules').select('price')
-          .eq('outlet_id', outlet.id).eq('source', 'moka').eq('status', 'completed')
-          .gte('start_time', dayStart).lte('start_time', dayEnd),
+        supabase.from('moka_transactions').select('net_sales')
+          .eq('outlet_slug', outlet.slug).eq('tx_date', today),
         supabase.from('transactions').select('total_amount')
           .eq('outlet_id', outlet.id).eq('source', 'web')
           .gte('created_at', dayStart).lte('created_at', dayEnd),
@@ -593,7 +784,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       const hadirSet = new Set(
         (attRows.data || []).filter(a => ['hadir','terlambat'].includes(a.status)).map(a => a.barber_id)
       );
-      const revenue_moka = (mokaSch.data || []).reduce((s, r) => s + (r.price || 0), 0);
+      const revenue_moka = (mokaSch.data || []).reduce((s, r) => s + (r.net_sales || 0), 0);
       const revenue_web  = (webTx.data  || []).reduce((s, r) => s + (r.total_amount || 0), 0);
 
       return {
@@ -648,39 +839,45 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       outletIds = outlet ? [outlet.id] : [];
     }
 
-    // Fetch moka schedules & web transactions in parallel
-    let mokaQ = supabase.from('schedules').select('outlet_id, barber_id, service_name, price, start_time')
-      .eq('source', 'moka').eq('status', 'completed').gte('start_time', startIso);
-    let webQ  = supabase.from('transactions').select('outlet_id, total_amount, created_at')
-      .eq('source', 'web').gte('created_at', startIso);
-    if (outletIds) {
-      mokaQ = mokaQ.in('outlet_id', outletIds);
-      webQ  = webQ.in('outlet_id', outletIds);
-    }
+    // Date range: DATE string for moka_transactions, ISO for web transactions
+    const startDateStr = startDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Jakarta' });
 
-    const [mokaRes, webRes, outletRes, barberRes] = await Promise.all([
-      mokaQ, webQ,
+    // Fetch Moka CSV data, web transactions, and metadata in parallel
+    let mokaQ = supabase.from('moka_transactions')
+      .select('outlet_slug, tx_date, net_sales')
+      .gte('tx_date', startDateStr);
+    let svcQ = supabase.from('moka_barber_services')
+      .select('barber_id, outlet_slug, tx_date, revenue_share, service_name')
+      .gte('tx_date', startDateStr);
+    let webQ = supabase.from('transactions').select('outlet_id, total_amount, created_at')
+      .eq('source', 'web').gte('created_at', startIso);
+    if (branch !== 'all') { mokaQ = mokaQ.eq('outlet_slug', branch); svcQ = svcQ.eq('outlet_slug', branch); }
+    if (outletIds) webQ = webQ.in('outlet_id', outletIds);
+
+    const [mokaRes, svcRes, webRes, outletRes, barberRes] = await Promise.all([
+      mokaQ, svcQ, webQ,
       supabase.from('outlets').select('id, name, slug'),
       supabase.from('barbers').select('id, name, branch').eq('is_active', true),
     ]);
 
     const mokaRows = mokaRes.data || [];
+    const svcRows  = svcRes.data  || [];
     const webRows  = webRes.data  || [];
     const outlets  = outletRes.data || [];
     const barbers  = barberRes.data || [];
 
     // Summary
-    const revenue_moka = mokaRows.reduce((s, r) => s + (r.price || 0), 0);
+    const revenue_moka = mokaRows.reduce((s, r) => s + (r.net_sales || 0), 0);
     const revenue_web  = webRows.reduce((s, r)  => s + (r.total_amount || 0), 0);
     const tx_total = mokaRows.length + webRows.length;
     const avg_tx = tx_total ? Math.round((revenue_moka + revenue_web) / tx_total) : 0;
 
-    // Daily trend — group by WIB date
+    // Daily trend
     const dailyMap = {};
     for (const r of mokaRows) {
-      const d = new Date(r.start_time).toLocaleDateString('sv-SE', { timeZone: 'Asia/Jakarta' });
+      const d = r.tx_date;
       if (!dailyMap[d]) dailyMap[d] = { date: d, moka: 0, web: 0 };
-      dailyMap[d].moka += r.price || 0;
+      dailyMap[d].moka += r.net_sales || 0;
     }
     for (const r of webRows) {
       const d = new Date(r.created_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Jakarta' });
@@ -689,39 +886,47 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
     const daily_trend = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
 
-    // Branch compare
-    const outletMap = {};
-    for (const o of outlets) outletMap[o.id] = { slug: o.slug, name: o.name, revenue_moka: 0, revenue_web: 0, tx_total: 0 };
+    // Branch compare (moka uses slug; web uses outlet_id → need id→slug map)
+    const slugEntry  = {};
+    const idToSlug   = {};
+    for (const o of outlets) {
+      slugEntry[o.slug] = { slug: o.slug, name: o.name, revenue_moka: 0, revenue_web: 0, tx_total: 0 };
+      idToSlug[o.id]    = o.slug;
+    }
     for (const r of mokaRows) {
-      if (outletMap[r.outlet_id]) { outletMap[r.outlet_id].revenue_moka += r.price || 0; outletMap[r.outlet_id].tx_total++; }
+      if (slugEntry[r.outlet_slug]) { slugEntry[r.outlet_slug].revenue_moka += r.net_sales || 0; slugEntry[r.outlet_slug].tx_total++; }
     }
     for (const r of webRows) {
-      if (outletMap[r.outlet_id]) { outletMap[r.outlet_id].revenue_web += r.total_amount || 0; outletMap[r.outlet_id].tx_total++; }
+      const sl = idToSlug[r.outlet_id];
+      if (sl && slugEntry[sl]) { slugEntry[sl].revenue_web += r.total_amount || 0; slugEntry[sl].tx_total++; }
     }
-    const branch_compare = Object.values(outletMap).sort((a, b) => (b.revenue_moka + b.revenue_web) - (a.revenue_moka + a.revenue_web));
+    const branch_compare = Object.values(slugEntry).sort((a, b) => (b.revenue_moka + b.revenue_web) - (a.revenue_moka + a.revenue_web));
 
-    // Top barbers
+    // Top barbers (from moka_barber_services revenue_share)
     const barberMap = {};
-    for (const r of mokaRows) {
+    for (const r of svcRows) {
       if (!r.barber_id) continue;
       if (!barberMap[r.barber_id]) barberMap[r.barber_id] = { barber_id: r.barber_id, name: '', branch: '', tx_count: 0, revenue: 0 };
       barberMap[r.barber_id].tx_count++;
-      barberMap[r.barber_id].revenue += r.price || 0;
+      barberMap[r.barber_id].revenue += r.revenue_share || 0;
     }
     for (const b of barbers) {
       if (barberMap[b.id]) { barberMap[b.id].name = b.name; barberMap[b.id].branch = b.branch; }
     }
     const top_barbers = Object.values(barberMap).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
 
-    // Top services
-    const svcMap = {};
-    for (const r of mokaRows) {
-      const svc = r.service_name || 'Unknown';
-      if (!svcMap[svc]) svcMap[svc] = { service_name: svc, count: 0, revenue: 0 };
-      svcMap[svc].count++;
-      svcMap[svc].revenue += r.price || 0;
+    // Top services (service_name per barber row, split on ", ")
+    const topSvcMap = {};
+    for (const r of svcRows) {
+      const svcs = (r.service_name || 'Unknown').split(', ');
+      const revEach = svcs.length > 0 ? Math.round((r.revenue_share || 0) / svcs.length) : 0;
+      for (const svc of svcs) {
+        if (!topSvcMap[svc]) topSvcMap[svc] = { service_name: svc, count: 0, revenue: 0 };
+        topSvcMap[svc].count++;
+        topSvcMap[svc].revenue += revEach;
+      }
     }
-    const top_services = Object.values(svcMap).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+    const top_services = Object.values(topSvcMap).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
 
     return res.json({ summary: { revenue_moka, revenue_web, tx_total, avg_tx }, daily_trend, branch_compare, top_barbers, top_services });
   });
