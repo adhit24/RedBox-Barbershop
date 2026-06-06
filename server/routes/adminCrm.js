@@ -77,17 +77,29 @@ function editDist(a, b) {
   return dp[m][n];
 }
 
-function matchBarberName(csvName, barbers) {
+function matchBarberName(csvName, barbers, preferBranch) {
   const lower = csvName.toLowerCase().trim();
+  // 1. Exact first-word match — same branch first
+  for (const b of barbers) {
+    if (preferBranch && b.branch !== preferBranch) continue;
+    const fw = b.name.split(' ')[0].toLowerCase();
+    if (lower === fw || lower === b.name.toLowerCase()) return b;
+  }
+  // 2. Exact first-word match — any branch
   for (const b of barbers) {
     const fw = b.name.split(' ')[0].toLowerCase();
     if (lower === fw || lower === b.name.toLowerCase()) return b;
   }
+  // 3. Best (minimum) edit distance ≤ 2 — prefer same branch on tie
+  let best = null, bestDist = 3;
   for (const b of barbers) {
     const fw = b.name.split(' ')[0].toLowerCase();
-    if (editDist(lower, fw) <= 2) return b;
+    const d  = editDist(lower, fw);
+    if (d < bestDist || (d === bestDist && preferBranch && b.branch === preferBranch)) {
+      bestDist = d; best = b;
+    }
   }
-  return null;
+  return best;
 }
 
 function createAdminCrmRoutes(supabase, adminAuth) {
@@ -154,7 +166,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
       const seenBarbers = new Map(); // barberId → { csvName, services[] }
       for (const item of extractBarberItems(itemsRaw)) {
-        const matched = matchBarberName(item.name, barbers);
+        const matched = matchBarberName(item.name, barbers, outletSlug);
         if (!matched) continue;
         if (!seenBarbers.has(matched.id)) seenBarbers.set(matched.id, { csvName: item.name, services: [] });
         seenBarbers.get(matched.id).services.push(item.service);

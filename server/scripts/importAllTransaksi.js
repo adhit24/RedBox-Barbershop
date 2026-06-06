@@ -81,17 +81,29 @@ function editDist(a, b) {
   return dp[m][n];
 }
 
-function matchBarberName(csvName, barbers) {
+function matchBarberName(csvName, barbers, preferBranch) {
   const lower = csvName.toLowerCase().trim();
+  // 1. Exact first-word — same branch first
+  for (const b of barbers) {
+    if (preferBranch && b.branch !== preferBranch) continue;
+    const fw = b.name.split(' ')[0].toLowerCase();
+    if (lower === fw || lower === b.name.toLowerCase()) return b;
+  }
+  // 2. Exact first-word — any branch
   for (const b of barbers) {
     const fw = b.name.split(' ')[0].toLowerCase();
     if (lower === fw || lower === b.name.toLowerCase()) return b;
   }
+  // 3. Best (minimum) edit distance ≤ 2 — prefer same branch on tie
+  let best = null, bestDist = 3;
   for (const b of barbers) {
     const fw = b.name.split(' ')[0].toLowerCase();
-    if (editDist(lower, fw) <= 2) return b;
+    const d  = editDist(lower, fw);
+    if (d < bestDist || (d === bestDist && preferBranch && b.branch === preferBranch)) {
+      bestDist = d; best = b;
+    }
   }
-  return null;
+  return best;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -149,7 +161,7 @@ async function importCSV(filePath, barbers) {
 
     const seen = new Map();
     for (const item of extractBarberItems(itemsRaw)) {
-      const matched = matchBarberName(item.name, barbers);
+      const matched = matchBarberName(item.name, barbers, outletSlug);
       if (!matched) continue;
       if (!seen.has(matched.id)) seen.set(matched.id, { csvName: item.name, services: [] });
       seen.get(matched.id).services.push(item.service);
