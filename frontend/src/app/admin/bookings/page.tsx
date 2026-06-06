@@ -9,6 +9,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { CalendarView } from './CalendarView';
 import { StatusBadge } from './bookingStatus';
+import { ConfirmDialog } from './ConfirmDialog';
 
 function playPing() {
   try {
@@ -52,6 +53,7 @@ function BookingControlPageInner() {
   const [walkinData, setWalkinData]       = useState({ name:'', wa:'', barber_id:'', service:'' });
   const [reassignId, setReassignId]       = useState<string | null>(null);
   const [tab, setTab]                     = useState<'tabel' | 'kalender'>('tabel');
+  const [confirmAction, setConfirmAction] = useState<{ id: string; status: string; name: string; danger: boolean } | null>(null);
   const [toastMsg, setToastMsg]           = useState<string | null>(null);
   const [realtimeOk, setRealtimeOk]       = useState(false);
   const toastTimer                        = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -117,6 +119,16 @@ function BookingControlPageInner() {
       body: JSON.stringify({ id, status }),
     });
     load();
+  }
+
+  function askConfirm(bk: any, status: string, danger = false) {
+    setConfirmAction({ id: bk.id, status, name: bk.name || 'booking ini', danger });
+  }
+
+  async function executeConfirm() {
+    if (!confirmAction) return;
+    await updateStatus(confirmAction.id, confirmAction.status);
+    setConfirmAction(null);
   }
 
   async function doReassign(barber_id: string) {
@@ -283,13 +295,13 @@ function BookingControlPageInner() {
                     <div className="flex gap-1.5 flex-wrap">
                       {bk.status === 'pending' && <>
                         <ActionBtn color="green" icon={<Check size={12}/>} label="Konfirmasi"   onClick={() => updateStatus(bk.id,'confirmed')} />
-                        <ActionBtn color="red"   icon={<X size={12}/>}     label="Batalkan"     onClick={() => updateStatus(bk.id,'cancelled')} />
+                        <ActionBtn color="red"   icon={<X size={12}/>}     label="Batalkan"     onClick={() => askConfirm(bk,'cancelled',true)} />
                         <ActionBtn color="slate" icon={<Shuffle size={12}/>} label="Reassign"   onClick={() => setReassignId(bk.id)} />
                       </>}
                       {bk.status === 'confirmed' && <>
                         <ActionBtn color="green" icon={<Check size={12}/>}  label="Done"        onClick={() => updateStatus(bk.id,'done')} />
-                        <ActionBtn color="slate" icon={<UserX size={12}/>}  label="No-show"     onClick={() => updateStatus(bk.id,'no_show')} />
-                        <ActionBtn color="red"   icon={<X size={12}/>}      label="Batalkan"    onClick={() => updateStatus(bk.id,'cancelled')} />
+                        <ActionBtn color="slate" icon={<UserX size={12}/>}  label="No-show"     onClick={() => askConfirm(bk,'no_show',false)} />
+                        <ActionBtn color="red"   icon={<X size={12}/>}      label="Batalkan"    onClick={() => askConfirm(bk,'cancelled',true)} />
                         {isHS(bk) && <ActionBtn color="indigo" icon={<ChevronRight size={12}/>} label="Berangkat" onClick={() => updateStatus(bk.id,'departed')} />}
                       </>}
                       {bk.status === 'departed'    && <ActionBtn color="cyan"   icon={<ChevronRight size={12}/>} label="Sampai"      onClick={() => updateStatus(bk.id,'arrived')} />}
@@ -301,6 +313,28 @@ function BookingControlPageInner() {
               ))}
             </div>
           )}
+
+          {/* Confirm Dialog */}
+          <AnimatePresence>
+            {confirmAction && (
+              <ConfirmDialog
+                danger={confirmAction.danger}
+                message={
+                  confirmAction.status === 'cancelled'
+                    ? `Batalkan booking ${confirmAction.name}?`
+                    : `Tandai ${confirmAction.name} sebagai no-show?`
+                }
+                subtext={
+                  confirmAction.status === 'cancelled'
+                    ? 'Booking akan ditandai batal dan tidak bisa diurungkan.'
+                    : 'Customer akan tercatat tidak hadir.'
+                }
+                confirmLabel={confirmAction.status === 'cancelled' ? 'Ya, Batalkan' : 'Ya, No-show'}
+                onConfirm={executeConfirm}
+                onCancel={() => setConfirmAction(null)}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Walk-in Bottom Sheet */}
           <AnimatePresence>

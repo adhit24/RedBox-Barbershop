@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, X, Check, UserX, Calendar, Clock } from 'lucide-react';
 import { StatusBadge } from './bookingStatus';
+import { ConfirmDialog } from './ConfirmDialog';
 import { createClient } from '@/utils/supabase/client';
 
 interface CalendarViewProps {
@@ -70,109 +71,150 @@ interface ActionSheetProps {
   onClose: () => void;
 }
 
+type PendingConfirm = { status: string; message: string; subtext: string; danger: boolean; onConfirm: () => void };
+
 function ActionSheet({ booking, barbers, loading, onStatus, onReschedule, onClose }: ActionSheetProps) {
-  const [showReschedule, setShowReschedule] = useState(false);
-  const [rDate, setRDate] = useState(booking.date);
-  const [rTime, setRTime] = useState(booking.time.slice(0, 5));
+  const [showReschedule, setShowReschedule]   = useState(false);
+  const [rDate, setRDate]                     = useState(booking.date);
+  const [rTime, setRTime]                     = useState(booking.time.slice(0, 5));
+  const [pendingConfirm, setPendingConfirm]   = useState<PendingConfirm | null>(null);
   const isHS = (booking.notes || '').toUpperCase().includes('HOME SERVICE') ||
                (booking.notes || '').toUpperCase().includes('WEDDING');
   const barberName = barbers.find(b => b.id === booking.barber_id)?.name;
   const canReschedule = ['pending', 'confirmed'].includes(booking.status);
 
+  function confirm(status: string, danger: boolean, message: string, subtext: string) {
+    setPendingConfirm({ status, danger, message, subtext, onConfirm: () => { onStatus(booking.id, status); setPendingConfirm(null); } });
+  }
+
+  function confirmReschedule() {
+    const oldDate = booking.date;
+    const oldTime = booking.time.slice(0, 5);
+    const changed = rDate !== oldDate || rTime !== oldTime;
+    if (!changed) { setShowReschedule(false); return; }
+    setPendingConfirm({
+      status: 'reschedule',
+      danger: false,
+      message: `Ubah jadwal ${booking.name || 'booking ini'}?`,
+      subtext: `${oldDate} ${oldTime} → ${rDate} ${rTime}`,
+      onConfirm: () => { onReschedule(booking.id, rDate, rTime); setPendingConfirm(null); },
+    });
+  }
+
   return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/70 z-50 flex items-end backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <>
       <motion.div
-        initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
-        transition={{ type: 'spring', stiffness: 420, damping: 36 }}
-        className="w-full rounded-t-2xl p-5 space-y-4"
-        style={{ background: '#0F172A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
-        onClick={e => e.stopPropagation()}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/70 z-50 flex items-end backdrop-blur-sm"
+        onClick={onClose}
       >
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="min-w-0">
-            <p className="font-bold text-white text-sm">{booking.name || '—'}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{booking.time.slice(0,5)} · {booking.service}</p>
-            {barberName && <p className="text-xs text-slate-500 mt-0.5">{barberName}</p>}
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <StatusBadge status={booking.status} />
-            <button onClick={onClose} className="text-slate-500 hover:text-slate-300 cursor-pointer p-1">
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Status Actions */}
-        {!showReschedule && (
-          <div className="flex flex-wrap gap-2">
-            {booking.status === 'pending' && <>
-              <Btn color="green" label="Konfirmasi" icon={<Check size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'confirmed')} />
-              <Btn color="red"   label="Batalkan"   icon={<X size={12}/>}     loading={loading} onClick={() => onStatus(booking.id, 'cancelled')} />
-            </>}
-            {booking.status === 'confirmed' && <>
-              <Btn color="green" label="Done"     icon={<Check size={12}/>}  loading={loading} onClick={() => onStatus(booking.id, 'done')} />
-              <Btn color="slate" label="No-show"  icon={<UserX size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'no_show')} />
-              <Btn color="red"   label="Batalkan" icon={<X size={12}/>}      loading={loading} onClick={() => onStatus(booking.id, 'cancelled')} />
-              {isHS && <Btn color="indigo" label="Berangkat" icon={<ChevronRight size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'departed')} />}
-            </>}
-            {booking.status === 'departed'    && <Btn color="cyan"   label="Sampai"     icon={<ChevronRight size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'arrived')} />}
-            {booking.status === 'arrived'     && <Btn color="purple" label="Dikerjakan" icon={<ChevronRight size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'in_progress')} />}
-            {booking.status === 'in_progress' && <Btn color="green"  label="Selesai"    icon={<Check size={12}/>}        loading={loading} onClick={() => onStatus(booking.id, 'done')} />}
-            {canReschedule && (
-              <Btn color="slate" label="Reschedule" icon={<Calendar size={12}/>} loading={false} onClick={() => setShowReschedule(true)} />
-            )}
-          </div>
-        )}
-
-        {/* Reschedule Form */}
-        {showReschedule && (
-          <div className="space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Ubah Jadwal</p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-500 uppercase tracking-wide flex items-center gap-1">
-                  <Calendar size={10}/> Tanggal
-                </label>
-                <input
-                  type="date" value={rDate} onChange={e => setRDate(e.target.value)}
-                  className="w-full h-10 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-500 uppercase tracking-wide flex items-center gap-1">
-                  <Clock size={10}/> Jam
-                </label>
-                <input
-                  type="time" value={rTime} onChange={e => setRTime(e.target.value)}
-                  className="w-full h-10 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
-                />
-              </div>
+        <motion.div
+          initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
+          transition={{ type: 'spring', stiffness: 420, damping: 36 }}
+          className="w-full rounded-t-2xl p-5 space-y-4"
+          style={{ background: '#0F172A', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div className="min-w-0">
+              <p className="font-bold text-white text-sm">{booking.name || '—'}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{booking.time.slice(0,5)} · {booking.service}</p>
+              {barberName && <p className="text-xs text-slate-500 mt-0.5">{barberName}</p>}
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowReschedule(false)}
-                className="flex-1 h-10 border border-slate-700 rounded-xl text-sm text-slate-400 cursor-pointer active:scale-95 transition-all"
-              >
-                Batal
-              </button>
-              <button
-                onClick={() => onReschedule(booking.id, rDate, rTime)}
-                disabled={loading || !rDate}
-                className="flex-1 h-10 rounded-xl text-sm font-semibold text-white cursor-pointer active:scale-95 transition-all disabled:opacity-50"
-                style={{ background: '#C72820' }}
-              >
-                {loading ? 'Menyimpan...' : 'Simpan'}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <StatusBadge status={booking.status} />
+              <button onClick={onClose} className="text-slate-500 hover:text-slate-300 cursor-pointer p-1">
+                <X size={16} />
               </button>
             </div>
           </div>
-        )}
+
+          {/* Status Actions */}
+          {!showReschedule && (
+            <div className="flex flex-wrap gap-2">
+              {booking.status === 'pending' && <>
+                <Btn color="green" label="Konfirmasi" icon={<Check size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'confirmed')} />
+                <Btn color="red"   label="Batalkan"   icon={<X size={12}/>}     loading={loading}
+                  onClick={() => confirm('cancelled', true, `Batalkan booking ${booking.name || 'ini'}?`, 'Booking akan ditandai batal dan tidak bisa diurungkan.')} />
+              </>}
+              {booking.status === 'confirmed' && <>
+                <Btn color="green" label="Done"     icon={<Check size={12}/>}  loading={loading} onClick={() => onStatus(booking.id, 'done')} />
+                <Btn color="slate" label="No-show"  icon={<UserX size={12}/>} loading={loading}
+                  onClick={() => confirm('no_show', false, `Tandai ${booking.name || 'customer'} sebagai no-show?`, 'Customer akan tercatat tidak hadir.')} />
+                <Btn color="red"   label="Batalkan" icon={<X size={12}/>}      loading={loading}
+                  onClick={() => confirm('cancelled', true, `Batalkan booking ${booking.name || 'ini'}?`, 'Booking akan ditandai batal dan tidak bisa diurungkan.')} />
+                {isHS && <Btn color="indigo" label="Berangkat" icon={<ChevronRight size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'departed')} />}
+              </>}
+              {booking.status === 'departed'    && <Btn color="cyan"   label="Sampai"     icon={<ChevronRight size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'arrived')} />}
+              {booking.status === 'arrived'     && <Btn color="purple" label="Dikerjakan" icon={<ChevronRight size={12}/>} loading={loading} onClick={() => onStatus(booking.id, 'in_progress')} />}
+              {booking.status === 'in_progress' && <Btn color="green"  label="Selesai"    icon={<Check size={12}/>}        loading={loading} onClick={() => onStatus(booking.id, 'done')} />}
+              {canReschedule && (
+                <Btn color="slate" label="Reschedule" icon={<Calendar size={12}/>} loading={false} onClick={() => setShowReschedule(true)} />
+              )}
+            </div>
+          )}
+
+          {/* Reschedule Form */}
+          {showReschedule && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Ubah Jadwal</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                    <Calendar size={10}/> Tanggal
+                  </label>
+                  <input
+                    type="date" value={rDate} onChange={e => setRDate(e.target.value)}
+                    className="w-full h-10 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                    <Clock size={10}/> Jam
+                  </label>
+                  <input
+                    type="time" value={rTime} onChange={e => setRTime(e.target.value)}
+                    className="w-full h-10 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowReschedule(false)}
+                  className="flex-1 h-10 border border-slate-700 rounded-xl text-sm text-slate-400 cursor-pointer active:scale-95 transition-all"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={confirmReschedule}
+                  disabled={loading || !rDate}
+                  className="flex-1 h-10 rounded-xl text-sm font-semibold text-white cursor-pointer active:scale-95 transition-all disabled:opacity-50"
+                  style={{ background: '#C72820' }}
+                >
+                  {loading ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </div>
+          )}
+        </motion.div>
       </motion.div>
-    </motion.div>
+
+      {/* Confirm Dialog — rendered outside bottom sheet so z-index stacks above */}
+      <AnimatePresence>
+        {pendingConfirm && (
+          <ConfirmDialog
+            danger={pendingConfirm.danger}
+            message={pendingConfirm.message}
+            subtext={pendingConfirm.subtext}
+            confirmLabel={pendingConfirm.status === 'cancelled' ? 'Ya, Batalkan' : pendingConfirm.status === 'no_show' ? 'Ya, No-show' : 'Ya, Ubah'}
+            loading={loading}
+            onConfirm={pendingConfirm.onConfirm}
+            onCancel={() => setPendingConfirm(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
