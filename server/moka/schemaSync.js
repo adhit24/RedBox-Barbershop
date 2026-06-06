@@ -22,7 +22,20 @@ function _norm(str) {
     .trim();
 }
 
+// Edit distance (Levenshtein) — untuk fuzzy matching typo/ejaan berbeda
+function _editDistance(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+  return dp[m][n];
+}
+
 // Score kecocokan nama (0..1). 1 = exact match.
+// Handles typos like "Syarif" vs "Sarif" via edit distance fallback.
 function _matchScore(a, b) {
   const na = _norm(a);
   const nb = _norm(b);
@@ -33,7 +46,12 @@ function _matchScore(a, b) {
   const tb = new Set(nb.split(' '));
   const inter = [...ta].filter(t => tb.has(t) && t.length > 1).length;
   const union = new Set([...ta, ...tb]).size;
-  return union > 0 ? inter / union : 0;
+  const tokenScore = union > 0 ? inter / union : 0;
+  if (tokenScore > 0) return tokenScore;
+  // Edit distance fallback: handles single-word names with spelling differences
+  const maxLen = Math.max(na.length, nb.length);
+  if (maxLen === 0) return 0;
+  return Math.max(0, 1 - _editDistance(na, nb) / maxLen);
 }
 
 function _bestMatch(name, candidates) {
