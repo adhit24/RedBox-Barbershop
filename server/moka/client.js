@@ -10,7 +10,7 @@ const { getAccessToken } = require('./oauth');
 const MOKA_API_BASE = process.env.MOKA_API_BASE || 'https://api.mokapos.com';
 const MAX_RETRIES   = 3;
 const RETRY_DELAYS  = [500, 2000, 8000]; // ms — exponential-ish backoff
-const FETCH_TIMEOUT = 30000; // 30 seconds timeout for Moka API calls
+const FETCH_TIMEOUT = 15000; // 15 seconds timeout for Moka API calls
 
 class MokaClient {
   /**
@@ -301,10 +301,11 @@ class MokaClient {
       
       clearTimeout(timeoutId);
     } catch (networkErr) {
-      if (networkErr.name === 'AbortError') {
-        return this._handleRetry(method, path, body, attempt, new Error('Request timeout'));
-      }
-      return this._handleRetry(method, path, body, attempt, networkErr);
+      const err = networkErr.name === 'AbortError'
+        ? Object.assign(new Error(`Moka API timeout: ${method} ${path}`), { status: 0, code: 'MOKA_TIMEOUT' })
+        : networkErr;
+      if (attempt >= MAX_RETRIES - 1) throw err;
+      return this._handleRetry(method, path, body, attempt, err);
     }
 
     // Parse response body
