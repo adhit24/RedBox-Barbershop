@@ -1553,12 +1553,27 @@ async function _buildMokaOrderPayload(schedule, client) {
         }
       }
 
-      // Jika setelah semua fallback category masih tidak ada → jangan kirim item_id.
-      // Moka wajib category jika item_id dikirim, DAN wajib item_id jika order_items ada.
+      // Last resort: jika barber item tidak punya category, pakai item pertama yang ada category.
+      // Moka wajib item_id; tanpanya → 400. Barber name masih benar di note/item_name.
       if (mokaItemId && !categoryId) {
-        console.warn(`[Sync] item ${mokaItemId} tidak punya category di Moka — coba tanpa item_id`);
-        mokaItemId = null;
-        variantId  = null;
+        const anyWithCat = itemsRes.find(i => {
+          const catId = i.category_id || i.category?.id || null;
+          return !!catId;
+        });
+        if (anyWithCat) {
+          const catId = anyWithCat.category_id || anyWithCat.category?.id;
+          console.warn(`[Sync] item ${mokaItemId} no category — last resort: item ${anyWithCat.id} (${anyWithCat.name})`);
+          mokaItemId   = String(anyWithCat.id);
+          categoryId   = String(catId);
+          categoryName = anyWithCat.category?.name || null;
+          if (!variantId && anyWithCat.item_variants?.length) {
+            variantId = anyWithCat.item_variants[0].id;
+          }
+        } else {
+          console.warn(`[Sync] item ${mokaItemId} tidak punya category dan tidak ada item fallback di outlet ini`);
+          mokaItemId = null;
+          variantId  = null;
+        }
       }
     } catch (err) {
       console.warn('[Sync] Could not resolve barber Moka item:', err.message);
