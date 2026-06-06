@@ -2049,6 +2049,23 @@ app.get('/api/admin/moka-advanced-ordering', async (req, res) => {
       row.status = err.status === 404 ? 'not_active' : 'error';
       row.error = err.message;
     }
+    // Check which outlet_ids this token can access (profile/self)
+    try {
+      const MOKA_API_BASE_URL = String(process.env.MOKA_API_BASE || 'https://api.mokapos.com').trim();
+      const token = await require('./moka/oauth').getAccessToken(supabase, o.id);
+      const profRes = await fetch(`${MOKA_API_BASE_URL}/v1/profile/self`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const prof = await profRes.json();
+      row.profile_outlet_ids = prof?.outlet_ids ?? prof?.data?.outlet_ids ?? `status ${profRes.status}`;
+      row.profile_email = prof?.email ?? prof?.data?.email ?? null;
+      row.token_covers_this_outlet = Array.isArray(row.profile_outlet_ids)
+        ? row.profile_outlet_ids.includes(Number(o.moka_outlet_id))
+        : null;
+    } catch (errP) {
+      row.profile_outlet_ids = `error: ${errP.message}`;
+    }
+
     // Verify basic API access (items endpoint — always available if outlet_id + token correct)
     try {
       const items = await client.getItems();
