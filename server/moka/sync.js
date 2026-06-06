@@ -446,13 +446,16 @@ async function _runPull3OpenBills(supabase, client, outletId) {
 
   if (!billsRes) return { processed, skipped, errors };
 
+  // Debug: log response shape to diagnose missing bills
+  console.log(`[Sync] Pull3 outlet ${outletId} response keys: ${Object.keys(billsRes || {}).join(',')}, data type: ${Array.isArray(billsRes?.data) ? `array(${billsRes.data.length})` : typeof billsRes?.data}`);
+
   // Moka may return data as array (multi-bill) or object (single-bill) — normalize.
   const rawData   = billsRes?.data;
   const openBills = Array.isArray(rawData) ? rawData
                   : (rawData && typeof rawData === 'object' && rawData.id) ? [rawData]
                   : [];
   if (!openBills.length) {
-    console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) returned 0 PENDING bills for outlet ${outletId}`);
+    console.log(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) returned 0 open bills for outlet ${outletId}`);
     return { processed, skipped, errors };
   }
 
