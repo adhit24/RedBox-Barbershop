@@ -27,7 +27,7 @@ function branchLabel(location) {
 
 // 1. Konfirmasi booking ke pelanggan — dikirim otomatis setelah booking berhasil
 async function notifyCustomerBookingConfirmed(booking) {
-  const { name, wa, service, date, time, location, barber_name, price, duration } = booking;
+  const { name, wa, service, date, time, location, barber_name, price, duration, notes, type } = booking;
 
   const fn     = (name || 'Kak').split(' ')[0];
   const branch = branchLabel(location);
@@ -35,6 +35,16 @@ async function notifyCustomerBookingConfirmed(booking) {
   const harga  = price ? `\n💰 *Rp ${Number(price).toLocaleString('id-ID')}*` : '';
   const durasi = duration ? `\n⏱ Durasi ±${duration}` : '';
   const kapster = barber_name ? `\n💈 Kapster: *${barber_name}*` : '';
+
+  const isHomeService = type === 'home_service' || Boolean(notes?.includes('[HOME SERVICE]'));
+
+  const closingLine = isHomeService
+    ? `Kapster kami langsung *meluncur ke lokasi kamu* tepat waktu ya kak! Kamu tinggal standby aja di tempat — nggak perlu repot ke mana-mana! 🛵✨`
+    : `Kami udah catat jadwalnya — tinggal dateng aja kak! 😄`;
+
+  const closingQuestion = isHomeService
+    ? `Ada yang mau ditanyain? Soal layanan, persiapan sebelum grooming, atau konfirmasi lokasi — aku siap bantu kapan aja! 💬✂️`
+    : `Ada yang mau ditanyain? Mau tanya soal layanan, tips perawatan rambut, atau hal lain — aku siap bantu kapan aja! 💬✂️`;
 
   const message =
 `Haii kak *${fn}*! 👋
@@ -47,9 +57,9 @@ Yeay, booking kamu sudah *CONFIRMED* nih! 🎉✅
 ⏰ Jam *${time} WIB*${kapster}
 📍 *${branch}*
 
-Kami udah catat jadwalnya — tinggal dateng aja kak! 😄
+${closingLine}
 
-Ada yang mau ditanyain? Mau tanya soal layanan, tips perawatan rambut, atau hal lain — aku siap bantu kapan aja! 💬✂️`;
+${closingQuestion}`;
 
   return sendWA(wa, message, { branch: location });
 }
@@ -196,8 +206,7 @@ Alamat    : ${address}
 Layanan   : ${serviceLabel}
 Harga     : ${price}
 
-Balas *BERANGKAT* saat berangkat ke lokasi.
-Balas *SELESAI* setelah pekerjaan selesai.`;
+Catat jadwal ini ya! Kamu akan mendapat pengingat beserta instruksi keberangkatan *1 jam sebelum jadwal*. 📌`;
 
   return sendWA(barberPhone, msg, { branch });
 }
