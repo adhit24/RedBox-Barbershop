@@ -18,25 +18,16 @@ export function useUser() {
 
   useEffect(() => {
     const supabase = createClient();
+    let mounted = true;
 
-    async function load() {
+    async function loadProfile(authUser: { id: string; email?: string }) {
       try {
-        // getSession() can hang indefinitely on token refresh — cap at 4s
-        const result = await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<{ data: { session: null } }>((resolve) =>
-            setTimeout(() => resolve({ data: { session: null } }), 4000)
-          ),
-        ]);
-        const authUser = result.data.session?.user ?? null;
-        if (!authUser) { setUser(null); setLoading(false); return; }
-
         const { data } = await supabase
           .from('users')
           .select('name, role, branch, barber_id')
           .eq('id', authUser.id)
           .single();
-
+        if (!mounted) return;
         if (data) {
           setUser({
             id: authUser.id,
@@ -46,24 +37,38 @@ export function useUser() {
             branch: data.branch,
             barber_id: data.barber_id,
           });
+        } else {
+          setUser(null);
         }
       } catch {
-        setUser(null);
+        if (mounted) setUser(null);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
 
-    load();
+    // onAuthStateChange fires INITIAL_SESSION immediately from cached cookies
+    // without waiting for token refresh network calls — avoids the getSession() hang
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      const authUser = session?.user ?? null;
+      if (!authUser) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      loadProfile(authUser);
+    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => load());
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   async function signOut() {
     setSigningOut(true);
     try {
-      // Cap at 3s so a slow Supabase response doesn't block navigation
       await Promise.race([
         createClient().auth.signOut(),
         new Promise(resolve => setTimeout(resolve, 3000)),
@@ -71,7 +76,7 @@ export function useUser() {
     } catch {
       // proceed regardless
     }
-    window.location.href = '/login';
+    window.location.href = '/';
   }
 
   return { user, loading, signOut, signingOut };

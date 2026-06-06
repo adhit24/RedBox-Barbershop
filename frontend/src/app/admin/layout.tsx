@@ -89,7 +89,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
+    if (!loading && !user) router.replace('/');
     if (!loading && user && user.role === 'owner') router.replace('/owner/dashboard');
     if (!loading && user && user.role === 'barber') router.replace('/barber/schedule');
   }, [user, loading, router]);
