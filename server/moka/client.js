@@ -5,7 +5,7 @@
 // Base URL: https://api.mokapos.com  (override via MOKA_API_BASE)
 // ============================================================
 
-const { getAccessToken } = require('./oauth');
+const { getAccessToken, invalidateToken } = require('./oauth');
 
 const MOKA_API_BASE = process.env.MOKA_API_BASE || 'https://api.mokapos.com';
 const MAX_RETRIES   = 3;
@@ -348,10 +348,14 @@ class MokaClient {
     let data;
     try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
 
-    // 401 → token may have been revoked; do NOT retry (caller should re-auth)
+    // 401 → token was revoked server-side; invalidate it and retry once with a fresh token
     if (res.status === 401) {
+      if (attempt === 0) {
+        await invalidateToken(this._supabase, this._outletId);
+        return this._req(method, path, body, 1);
+      }
       throw Object.assign(
-        new Error(`Moka 401 — re-authorize the outlet`),
+        new Error(`Moka 401 — token invalid after refresh, re-authorize the outlet`),
         { status: 401, code: 'MOKA_UNAUTHORIZED', details: data }
       );
     }

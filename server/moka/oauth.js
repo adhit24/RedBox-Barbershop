@@ -180,6 +180,22 @@ function invalidateCache(outletId) {
 }
 
 /**
+ * Invalidate token in both memory cache and DB.
+ * Call this when Moka returns 401 — the stored token is no longer valid.
+ * Next getAccessToken() call will regenerate via client_credentials.
+ * @param {import('@supabase/supabase-js').SupabaseClient|null} supabase
+ * @param {string} outletId
+ */
+async function invalidateToken(supabase, outletId) {
+  _cache.delete(outletId);
+  if (supabase) {
+    try {
+      await supabase.from('moka_tokens').delete().eq('outlet_id', outletId);
+    } catch (_) {}
+  }
+}
+
+/**
  * Check whether Moka integration is ready to make API calls.
  * Two modes:
  *   1. Full OAuth: CLIENT_ID + CLIENT_SECRET + REDIRECT_URI → token auto-refresh works
@@ -277,5 +293,6 @@ module.exports = {
   getAccessToken,
   getTokenInfo,
   invalidateCache,
+  invalidateToken,
   isMokaOAuthConfigured,
 };
