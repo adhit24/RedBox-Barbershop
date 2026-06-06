@@ -1509,18 +1509,29 @@ async function _buildMokaOrderPayload(schedule, client) {
       // Fallback: nama barber tidak cocok (score < 0.6) tapi kita punya moka_employee_id.
       // Cari item by ID langsung di cache supaya bisa ambil variant pertamanya.
       // Ini mencegah 400 "item_variant_id cannot be blank" untuk outlet yang item-nya punya variants.
-      if (mokaItemId && !variantId) {
+      // Fallback by ID: cari item langsung by moka_employee_id.
+      // Pisahkan category resolution dari variant resolution —
+      // item tanpa variants tetap punya category yang wajib dikirim.
+      if (mokaItemId) {
         const itemById = itemsRes.find(i => String(i.id) === String(mokaItemId));
-        if (itemById?.item_variants?.length) {
-          variantId = itemById.item_variants[0].id;
-          const catId = itemById.category_id || itemById.category?.id || null;
-          categoryId   = catId ? String(catId) : null;
-          categoryName = itemById.category?.name || null;
+        if (itemById) {
+          // Ambil category dari item (wajib jika item_id dikirim)
+          if (!categoryId) {
+            const catId = itemById.category_id || itemById.category?.id || null;
+            if (catId) {
+              categoryId   = String(catId);
+              categoryName = itemById.category?.name || categoryName;
+            }
+          }
+          // Ambil variant pertama jika belum ada
+          if (!variantId && itemById.item_variants?.length) {
+            variantId = itemById.item_variants[0].id;
+          }
         }
       }
 
-      // Jika item_id dikirim tapi category tidak bisa di-resolve → jangan kirim item_id.
-      // Moka menolak order jika item dikirim tanpa category yang valid.
+      // Jika setelah semua lookup category masih tidak ada → jangan kirim item_id.
+      // Moka wajib category jika item_id dikirim.
       if (mokaItemId && !categoryId) {
         console.warn(`[Sync] item ${mokaItemId} tidak punya category di Moka — order dikirim tanpa item_id`);
         mokaItemId = null;
