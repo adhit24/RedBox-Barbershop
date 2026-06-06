@@ -1481,10 +1481,11 @@ async function _buildMokaOrderPayload(schedule, client) {
       }
       if (bestItem && bestScore >= 0.6) {
         mokaItemId = mokaItemId || String(bestItem.id);
-        // BUGFIX: always use item's own category from Moka API (authoritative).
-        // services.moka_category_id can be stale and cause 400 "Category is not for item".
-        if (bestItem.category_id) categoryId = String(bestItem.category_id);
-        if (bestItem.category?.name) categoryName = bestItem.category.name;
+        // BUGFIX: always use item's own category from Moka API (authoritative),
+        // even if null — never send a category from a different item.
+        // stale services.moka_category_id causes 400 "Category is not for item".
+        categoryId   = bestItem.category_id ? String(bestItem.category_id) : null;
+        categoryName = bestItem.category?.name || null;
 
         // Resolve variant by service name
         if (variantName && !variantId) {
@@ -1509,10 +1510,10 @@ async function _buildMokaOrderPayload(schedule, client) {
       if (mokaItemId && !variantId) {
         const itemById = itemsRes.find(i => String(i.id) === String(mokaItemId));
         if (itemById?.item_variants?.length) {
-          variantId = itemById.item_variants[0].id;
-          // Juga override category dari item yang ditemukan by ID
-          if (itemById.category_id) categoryId = String(itemById.category_id);
-          if (itemById.category?.name) categoryName = itemById.category.name;
+          variantId    = itemById.item_variants[0].id;
+          // Override category — item's own category is authoritative, even if null
+          categoryId   = itemById.category_id ? String(itemById.category_id) : null;
+          categoryName = itemById.category?.name || null;
         }
       }
     } catch (err) {

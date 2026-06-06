@@ -2153,6 +2153,54 @@ app.get('/api/moka/callback', async (req, res) => {
   }
 });
 
+// ── POST /api/admin/moka-retry-schedules ───────────────────────────────────────
+// Retry semua schedule yang belum dapat Moka order ID (external_id IS NULL atau 'booking:...').
+// Bisa juga retry schedule tertentu via ?schedule_id=UUID.
+// Auth: x-admin-token header ATAU ?token= query param.
+app.post('/api/admin/moka-retry-schedules', async (req, res) => {
+  const tok = req.headers['x-admin-token'] || req.query.token || '';
+  const valid = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
+  if (!tok || !valid.includes(tok)) return res.status(401).json({ error: 'Unauthorized' });
+  if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
+
+  const { pushScheduleToMoka } = require('./moka/sync');
+  const specificId = req.query.schedule_id || req.body?.schedule_id;
+
+  let scheduleIds = [];
+  if (specificId) {
+    scheduleIds = [specificId];
+  } else {
+    const now = new Date();
+    const ceiling = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    const { data: nullMissed } = await supabase
+      .from('schedules').select('id')
+      .is('external_id', null)
+      .in('status', ['reserved', 'confirmed'])
+      .gte('start_time', now.toISOString())
+      .lte('start_time', ceiling.toISOString());
+    const { data: bridgeMissed } = await supabase
+      .from('schedules').select('id')
+      .like('external_id', 'booking:%')
+      .in('status', ['reserved', 'confirmed'])
+      .gte('start_time', now.toISOString())
+      .lte('start_time', ceiling.toISOString());
+    scheduleIds = [...(nullMissed || []), ...(bridgeMissed || [])].map(s => s.id);
+  }
+
+  if (!scheduleIds.length) return res.json({ ok: true, retried: 0, message: 'Tidak ada schedule yang perlu di-retry' });
+
+  const results = [];
+  for (const id of scheduleIds) {
+    try {
+      await pushScheduleToMoka(supabase, id);
+      results.push({ id, status: 'success' });
+    } catch (e) {
+      results.push({ id, status: 'failed', error: e.message });
+    }
+  }
+  res.json({ ok: true, retried: scheduleIds.length, results });
+});
+
 // ── GET /api/admin/moka-advanced-ordering ──────────────────────────────────────
 // Cek status Advanced Ordering (BeeSales) untuk semua outlet.
 // Jika active → {status:'active', auto_accept:bool}
