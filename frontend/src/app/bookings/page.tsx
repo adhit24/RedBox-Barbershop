@@ -40,9 +40,9 @@ export default async function BookingsPage() {
                 </span>
               </div>
               <div className="mt-3 text-sm text-gray-500">
-                <p>📅 {booking.booking_date} at {booking.booking_time}</p>
-                <p>📍 {booking.location}</p>
-                <p>💇 {booking.service_name}</p>
+                <p>{booking.booking_date} at {booking.booking_time}</p>
+                <p>{booking.location}</p>
+                <p>{booking.service_name}</p>
               </div>
             </div>
           ))}

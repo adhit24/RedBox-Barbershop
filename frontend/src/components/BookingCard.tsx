@@ -19,14 +19,14 @@ export function BookingCard({ booking, onStatusChange, showBranch = false }: Pro
           )}
           {booking.type === 'home_service' && (
             <span className="inline-block mt-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-              🏠 Home Service
+              Home Service
             </span>
           )}
         </div>
         <StatusBadge status={booking.status} />
       </div>
       {booking.barber_name && (
-        <p className="text-sm text-gray-600">💈 {booking.barber_name}</p>
+        <p className="text-sm text-gray-600">{booking.barber_name}</p>
       )}
       {onStatusChange && booking.status !== 'done' && booking.status !== 'cancelled' && (
         <div className="flex gap-2 mt-3">

@@ -237,12 +237,11 @@ export default function AIHairstylePage() {
             {!selectedFile && (
               <div className="grid grid-cols-3 gap-2 pt-2">
                 {[
-                  { icon: '🔬', label: 'Face Analysis' },
-                  { icon: '✂️', label: 'Style Match' },
-                  { icon: '💡', label: 'Pro Tips' },
+                  { label: 'Face Analysis' },
+                  { label: 'Style Match' },
+                  { label: 'Pro Tips' },
                 ].map((f) => (
                   <div key={f.label} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center">
-                    <p className="text-xl mb-1">{f.icon}</p>
                     <p className="text-zinc-400 text-xs">{f.label}</p>
                   </div>
                 ))}

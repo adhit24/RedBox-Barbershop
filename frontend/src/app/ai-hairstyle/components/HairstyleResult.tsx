@@ -160,14 +160,13 @@ export default function HairstyleResult({ data, previewUrl, onReset }: Props) {
 
         <div className="grid grid-cols-2 gap-3">
           {[
-            { icon: '💨', step: '01', label: 'Blow Dry', sub: 'Towel dry then blow dry for volume' },
-            { icon: '✋', step: '02', label: 'Apply Product', sub: 'Work pomade/clay through damp hair' },
-            { icon: '✂️', step: '03', label: 'Shape & Style', sub: 'Lift roots, define your cut' },
-            { icon: '⏱', step: '04', label: 'Finish', sub: 'Light hold spray to set all day' },
+            { step: '01', label: 'Blow Dry', sub: 'Towel dry then blow dry for volume' },
+            { step: '02', label: 'Apply Product', sub: 'Work pomade/clay through damp hair' },
+            { step: '03', label: 'Shape & Style', sub: 'Lift roots, define your cut' },
+            { step: '04', label: 'Finish', sub: 'Light hold spray to set all day' },
           ].map((s) => (
             <div key={s.step} className="p-4" style={{ background: '#111', borderRadius: 24 }}>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-2xl">{s.icon}</span>
+              <div className="flex items-center justify-end mb-4">
                 <span className="text-zinc-700 font-black text-lg">{s.step}</span>
               </div>
               <p className="text-white font-black text-base leading-tight">{s.label}</p>
@@ -181,7 +180,6 @@ export default function HairstyleResult({ data, previewUrl, onReset }: Props) {
             className="mt-4 p-4 flex items-start gap-3"
             style={{ background: '#111', borderRadius: 24, border: '1px solid rgba(239,68,68,0.2)' }}
           >
-            <span className="text-xl flex-shrink-0">✂️</span>
             <div>
               <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#ef4444' }}>Tell Your Barber</p>
               <p className="text-white text-sm leading-snug italic">&ldquo;{data.barberTip}&rdquo;</p>
@@ -212,12 +210,6 @@ export default function HairstyleResult({ data, previewUrl, onReset }: Props) {
                 className="flex items-center gap-4 p-4 transition-all active:scale-[0.98]"
                 style={{ background: '#111', borderRadius: 24, border: '1px solid rgba(255,255,255,0.06)' }}
               >
-                <div
-                  className="flex-shrink-0 flex items-center justify-center text-2xl"
-                  style={{ width: 56, height: 56, background: '#1a1a1a', borderRadius: 16 }}
-                >
-                  {product.emoji}
-                </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-black text-sm leading-tight">{product.name}</p>
                   <p className="text-zinc-500 text-xs mt-0.5 capitalize">

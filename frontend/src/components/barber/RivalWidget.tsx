@@ -8,7 +8,7 @@ export function RivalWidget({ data }: { data: RivalData }) {
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 px-4 py-3">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">⚔️ Rival Minggu Ini</p>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Rival Minggu Ini</p>
       <div className="flex items-center justify-between">
         <div>
           <p className="font-bold text-gray-800">{data.rival_name}</p>

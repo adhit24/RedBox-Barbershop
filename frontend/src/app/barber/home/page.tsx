@@ -72,18 +72,18 @@ export default function BarberHomePage() {
     <div className="p-4 space-y-4">
       <div>
         <p className="text-xs text-gray-500">{todayLabel()}</p>
-        <h2 className="text-xl font-bold text-gray-900">Halo, {session.barber.name.split(' ')[0]} 👋</h2>
+        <h2 className="text-xl font-bold text-gray-900">Halo, {session.barber.name.split(' ')[0]}</h2>
       </div>
 
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
         <TargetProgressBar
           current={stats.count}
           target={target}
-          label="🎯 Target Hari Ini"
+          label="Target Hari Ini"
         />
         <div className="flex justify-between text-sm">
-          <span className="text-gray-500">💰 {rupiah(stats.revenue)}</span>
-          <span className="text-gray-500">⏱️ {stats.hours}j</span>
+          <span className="text-gray-500">{rupiah(stats.revenue)}</span>
+          <span className="text-gray-500">{stats.hours}j</span>
         </div>
       </div>
 
@@ -111,7 +111,7 @@ export default function BarberHomePage() {
 
       {homeServiceToday.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-700">🏠 Home Service Hari Ini ({homeServiceToday.length})</p>
+          <p className="text-sm font-medium text-gray-700">Home Service Hari Ini ({homeServiceToday.length})</p>
           {homeServiceToday.map(b => (
             <BookingCard key={b.id} booking={b} />
           ))}
@@ -122,7 +122,7 @@ export default function BarberHomePage() {
 
       {upcoming.tomorrow.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-700">📅 Besok — {tomorrowLabel()}</p>
+          <p className="text-sm font-medium text-gray-700">Besok — {tomorrowLabel()}</p>
           <div className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 space-y-2">
             {upcoming.tomorrow.slice(0, 5).map(b => (
               <div key={b.id} className="flex justify-between text-sm">
@@ -139,7 +139,6 @@ export default function BarberHomePage() {
 
       {upcoming.today.length === 0 && upcoming.tomorrow.length === 0 && (
         <div className="text-center py-10 text-gray-400">
-          <p className="text-4xl mb-2">😌</p>
           <p>Belum ada jadwal hari ini atau besok</p>
         </div>
       )}
