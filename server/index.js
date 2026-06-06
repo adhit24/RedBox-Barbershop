@@ -2157,8 +2157,8 @@ app.get('/api/moka/callback', async (req, res) => {
 // Retry semua schedule yang belum dapat Moka order ID (external_id IS NULL atau 'booking:...').
 // Bisa juga retry schedule tertentu via ?schedule_id=UUID.
 // Auth: x-admin-token header ATAU ?token= query param.
-app.post('/api/admin/moka-retry-schedules', async (req, res) => {
-  const tok = req.headers['x-admin-token'] || req.query.token || '';
+app.all('/api/admin/moka-retry-schedules', async (req, res) => {
+  const tok = req.headers['x-admin-token'] || req.query.token || req.body?.token || '';
   const valid = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
   if (!tok || !valid.includes(tok)) return res.status(401).json({ error: 'Unauthorized' });
   if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
