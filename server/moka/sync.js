@@ -1530,10 +1530,33 @@ async function _buildMokaOrderPayload(schedule, client) {
         }
       }
 
-      // Jika setelah semua lookup category masih tidak ada → jangan kirim item_id.
-      // Moka wajib category jika item_id dikirim.
+      // Fallback: item barber tidak punya category → cari item yang punya variant = service kita.
+      // (schedule.moka_item_id adalah variant ID dari services table, bukan item ID)
+      // Ini terjadi jika barber di Moka belum di-assign ke category.
+      if (!categoryId && schedule.moka_item_id) {
+        for (const item of itemsRes) {
+          const hasVariant = (item.item_variants || []).some(v => String(v.id) === String(schedule.moka_item_id));
+          if (hasVariant) {
+            const catId = item.category_id || item.category?.id || null;
+            if (catId) {
+              console.warn(`[Sync] item ${mokaItemId} no category — using item ${item.id} via service variant ${schedule.moka_item_id}`);
+              mokaItemId   = String(item.id);
+              categoryId   = String(catId);
+              categoryName = item.category?.name || null;
+              if (!variantId) {
+                const vv = item.item_variants.find(v => String(v.id) === String(schedule.moka_item_id));
+                if (vv) variantId = vv.id;
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // Jika setelah semua fallback category masih tidak ada → jangan kirim item_id.
+      // Moka wajib category jika item_id dikirim, DAN wajib item_id jika order_items ada.
       if (mokaItemId && !categoryId) {
-        console.warn(`[Sync] item ${mokaItemId} tidak punya category di Moka — order dikirim tanpa item_id`);
+        console.warn(`[Sync] item ${mokaItemId} tidak punya category di Moka — coba tanpa item_id`);
         mokaItemId = null;
         variantId  = null;
       }
