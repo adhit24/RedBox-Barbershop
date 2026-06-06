@@ -2098,6 +2098,61 @@ app.get('/api/admin/moka-sync-status', adminAuth, async (req, res) => {
   res.json({ today: todayStr, outlets: results });
 });
 
+// ── GET /api/moka/auth-start ───────────────────────────────────────────────────
+// Mulai Moka OAuth flow untuk satu outlet.
+// Tidak butuh admin auth — user tetap harus login ke akun Moka merchant mereka.
+// ?outlet=csb|bypass|samadikun|sumber|tegal
+app.get('/api/moka/auth-start', async (req, res) => {
+  const { buildAuthorizationUrl } = require('./moka/oauth');
+  const slug = (req.query.outlet || '').toLowerCase().trim();
+  if (!slug) {
+    const { data: outlets } = await supabase.from('outlets').select('slug, name, moka_outlet_id').eq('is_active', true);
+    const links = (outlets || []).map(o =>
+      `<li><a href="/api/moka/auth-start?outlet=${o.slug}" style="color:#0af;font-size:18px">${o.name} (${o.moka_outlet_id})</a></li>`
+    ).join('');
+    return res.send(`<!DOCTYPE html><html><body style="background:#111;color:#eee;font-family:sans-serif;padding:40px">
+      <h2>🔑 Moka OAuth — Pilih Outlet</h2>
+      <p>Klik outlet yang ingin di-authorize. Kamu akan diarahkan ke halaman login Moka.</p>
+      <ul style="line-height:2.5">${links}</ul>
+    </body></html>`);
+  }
+  const { data: outlet } = await supabase.from('outlets').select('id, name, moka_outlet_id').eq('slug', slug).maybeSingle();
+  if (!outlet) return res.status(404).send(`Outlet '${slug}' tidak ditemukan`);
+  const state = `${slug}|${outlet.id}`;
+  const authUrl = buildAuthorizationUrl(Buffer.from(state).toString('base64'));
+  res.redirect(authUrl);
+});
+
+// ── GET /api/moka/callback ─────────────────────────────────────────────────────
+// Moka redirect ke sini setelah user authorize (sesuai MOKA_REDIRECT_URI).
+// ?code=AUTH_CODE&state=BASE64_STATE
+app.get('/api/moka/callback', async (req, res) => {
+  const { exchangeCode } = require('./moka/oauth');
+  const { code, state, error } = req.query;
+  if (error) return res.send(`<h2>❌ Moka Error: ${error}</h2>`);
+  if (!code || !state) return res.status(400).send('Missing code or state');
+  let slug, outletId;
+  try {
+    const decoded = Buffer.from(String(state), 'base64').toString();
+    [slug, outletId] = decoded.split('|');
+  } catch {
+    return res.status(400).send('Invalid state');
+  }
+  if (!outletId) return res.status(400).send('Invalid state — no outlet ID');
+  try {
+    await exchangeCode(supabase, String(code), outletId);
+    const { data: outlet } = await supabase.from('outlets').select('name, moka_outlet_id').eq('id', outletId).maybeSingle();
+    res.send(`<!DOCTYPE html><html><body style="background:#111;color:#eee;font-family:sans-serif;padding:40px">
+      <h2>✅ Berhasil!</h2>
+      <p>Token Moka untuk <strong>${outlet?.name || slug}</strong> (ID: ${outlet?.moka_outlet_id}) berhasil disimpan.</p>
+      <p>Online order dari website untuk outlet ini sekarang akan masuk ke Moka POS.</p>
+      <p><a href="/api/moka/auth-start" style="color:#0af">← Authorize outlet lain</a></p>
+    </body></html>`);
+  } catch (e) {
+    res.status(500).send(`<h2>❌ Gagal exchange token</h2><pre>${e.message}</pre>`);
+  }
+});
+
 // ── GET /api/admin/moka-advanced-ordering ──────────────────────────────────────
 // Cek status Advanced Ordering (BeeSales) untuk semua outlet.
 // Jika active → {status:'active', auto_accept:bool}
