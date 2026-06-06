@@ -1972,6 +1972,79 @@ app.post('/api/admin/moka-backfill', adminAuth, async (req, res) => {
   res.json({ ok: true, message: `Cursor reset to ${days} days ago. Next cron tick will backfill.`, since, outlets: results });
 });
 
+// ── GET /api/admin/moka-token-debug ────────────────────────────────────────────
+// Debug: cek apakah client_credentials menghasilkan token valid dari Moka
+app.get('/api/admin/moka-token-debug', async (req, res) => {
+  const tok = req.headers['x-admin-token'] || req.query.token || '';
+  const valid = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
+  if (!tok || !valid.includes(tok)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const MOKA_TOKEN_URL = process.env.MOKA_TOKEN_URL || 'https://api.mokapos.com/oauth/token';
+  const MOKA_API_BASE_URL = String(process.env.MOKA_API_BASE || 'https://api.mokapos.com').trim();
+  const clientId = process.env.MOKA_CLIENT_ID || '';
+  const clientSecret = process.env.MOKA_CLIENT_SECRET || '';
+  const redirectUri = process.env.MOKA_REDIRECT_URI || '';
+
+  const result = {
+    env: {
+      MOKA_CLIENT_ID: clientId ? `set (${clientId.length} chars, starts: ${clientId.slice(0,8)}...)` : 'NOT SET',
+      MOKA_CLIENT_SECRET: clientSecret ? `set (${clientSecret.length} chars)` : 'NOT SET',
+      MOKA_REDIRECT_URI: redirectUri || 'NOT SET',
+      MOKA_TOKEN_URL,
+      MOKA_API_BASE: MOKA_API_BASE_URL,
+    },
+  };
+
+  // Step 1: try client_credentials
+  try {
+    const tokenRes = await fetch(MOKA_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: 'customer library profile report transaction checkout checkout_api sales_type',
+      }).toString(),
+    });
+    const tokenText = await tokenRes.text();
+    let tokenBody;
+    try { tokenBody = JSON.parse(tokenText); } catch { tokenBody = { raw: tokenText }; }
+    result.client_credentials = {
+      status: tokenRes.status,
+      ok: tokenRes.ok,
+      token_type: tokenBody.token_type,
+      scope: tokenBody.scope,
+      expires_in: tokenBody.expires_in,
+      has_access_token: !!tokenBody.access_token,
+      access_token_prefix: tokenBody.access_token ? tokenBody.access_token.slice(0, 20) + '...' : null,
+      error: tokenBody.error || tokenBody.error_description || null,
+    };
+
+    // Step 2: if token obtained, try profile/self
+    if (tokenBody.access_token) {
+      const profRes = await fetch(`${MOKA_API_BASE_URL}/v1/profile/self`, {
+        headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+      });
+      const profText = await profRes.text();
+      let profBody;
+      try { profBody = JSON.parse(profText); } catch { profBody = { raw: profText }; }
+      result.profile_self_test = {
+        status: profRes.status,
+        ok: profRes.ok,
+        email: profBody.email || profBody.data?.email || null,
+        outlet_ids: profBody.outlet_ids || profBody.data?.outlet_ids || null,
+        error: profBody.meta?.error_message || profBody.error || null,
+        raw_preview: profText.slice(0, 200),
+      };
+    }
+  } catch (e) {
+    result.client_credentials = { error: e.message };
+  }
+
+  res.json(result);
+});
+
 // ── GET /api/admin/moka-sync-status ────────────────────────────────────────────
 // Debug: lihat status sync per outlet — last_polled_at, jumlah schedules hari ini, token status
 app.get('/api/admin/moka-sync-status', adminAuth, async (req, res) => {
