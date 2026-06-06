@@ -1450,14 +1450,43 @@ async function _getClient(supabase, outletId, mokaOutletId) {
  * @param {MokaClient|null} client - used to resolve variant ID from item cache
  * @returns {object}
  */
+// Format start_time ke "Sabtu, 08/06/2026 pukul 15:00 WIB"
+function _formatScheduleTime(isoStr) {
+  if (!isoStr) return null;
+  try {
+    const d = new Date(isoStr);
+    const wib = new Date(d.getTime() + 7 * 60 * 60 * 1000); // UTC+7
+    const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+    const day  = days[wib.getUTCDay()];
+    const dd   = String(wib.getUTCDate()).padStart(2, '0');
+    const mm   = String(wib.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = wib.getUTCFullYear();
+    const hh   = String(wib.getUTCHours()).padStart(2, '0');
+    const min  = String(wib.getUTCMinutes()).padStart(2, '0');
+    return `${day}, ${dd}/${mm}/${yyyy} pukul ${hh}:${min} WIB`;
+  } catch { return null; }
+}
+
 async function _buildMokaOrderPayload(schedule, client) {
   const base = (process.env.APP_BASE_URL || '').replace(/\/$/, '');
 
-  const note = [
+  const jadwal      = _formatScheduleTime(schedule.start_time);
+  const serviceName = schedule.service_name || schedule.moka_variant_name || null;
+  const phone       = schedule.customer_phone || null;
+
+  // Order-level note: semua info penting untuk kasir
+  const noteParts = [
     `Online booking — ${schedule.outlet_name || 'RedBox'}`,
-    schedule.barber_name ? `Barber: ${schedule.barber_name}` : null,
+    jadwal    ? `Jadwal: ${jadwal}`              : null,
+    serviceName && schedule.barber_name
+      ? `Service: ${serviceName} | Barber: ${schedule.barber_name}`
+      : (serviceName ? `Service: ${serviceName}` : (schedule.barber_name ? `Barber: ${schedule.barber_name}` : null)),
+    schedule.customer_name
+      ? `Pemesan: ${schedule.customer_name}${phone ? ' | HP: ' + phone : ''}`
+      : null,
     schedule.notes || null,
-  ].filter(Boolean).join('. ');
+  ];
+  const note = noteParts.filter(Boolean).join('\n');
 
   // In Moka: item = barber, variant = service type
   let mokaItemId   = schedule.barber_moka_employee_id ? String(schedule.barber_moka_employee_id) : null;
@@ -1586,11 +1615,18 @@ async function _buildMokaOrderPayload(schedule, client) {
     variantId = schedule.moka_item_id;
   }
 
+  // Item-level note: jadwal appointment (muncul di detail item di Moka)
+  const itemNote = [
+    schedule.barber_name ? `Barber: ${schedule.barber_name}` : null,
+    jadwal ? jadwal : null,
+  ].filter(Boolean).join(' | ');
+
   const orderItem = {
     item_id:            mokaItemId ? Number(mokaItemId) : undefined,
     item_name:          schedule.barber_name || 'Barber',
     quantity:           1,
     item_price_library: schedule.price || 0,
+    note:               itemNote || undefined,
   };
   if (variantId)    orderItem.item_variant_id  = Number(variantId);
   if (variantName)  orderItem.item_variant_name = variantName;
