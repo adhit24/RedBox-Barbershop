@@ -1461,8 +1461,11 @@ async function _buildMokaOrderPayload(schedule, client) {
 
   // In Moka: item = barber, variant = service type
   let mokaItemId   = schedule.barber_moka_employee_id ? String(schedule.barber_moka_employee_id) : null;
-  let categoryId   = schedule.moka_category_id   ? String(schedule.moka_category_id) : null;
-  let categoryName = schedule.moka_category_name || null;
+  // BUGFIX: moka_category_id di services table adalah milik item/barber tertentu,
+  // bukan kategori service yang generik. Mengirimnya untuk barber lain → 400.
+  // Category HANYA di-set dari Moka items API (live) di bawah.
+  let categoryId   = null;
+  let categoryName = null;
   let variantId    = null;
   const variantName = schedule.moka_variant_name || schedule.service_name || null;
 
