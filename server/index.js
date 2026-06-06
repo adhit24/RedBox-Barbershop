@@ -2049,14 +2049,23 @@ app.get('/api/admin/moka-advanced-ordering', async (req, res) => {
       row.status = err.status === 404 ? 'not_active' : 'error';
       row.error = err.message;
     }
-    // Try generate_sales_type for inactive outlets
+    // Try to activate Advanced Ordering for inactive outlets
     if (row.status === 'not_active' && req.query.activate === '1') {
+      // Step 1: POST auto_accept — may enable Advanced Ordering
+      try {
+        const aa = await client.setAutoAccept(true);
+        row.set_auto_accept = `ok — auto_accept_status: ${aa?.data?.auto_accept_status}`;
+        row.status = 'activated';
+      } catch (err2) {
+        row.set_auto_accept = `failed: ${err2.message}`;
+      }
+      // Step 2: generate_sales_type — creates the payment_type entry
       try {
         const g = await client.generateSalesType();
         const name = Array.isArray(g?.data) ? g.data[0]?.name : g?.data?.name;
-        row.generate_sales_type = name ? `ok — payment_type: ${name}` : 'ok (no name)';
-      } catch (err2) {
-        row.generate_sales_type = `failed: ${err2.message}`;
+        row.generate_sales_type = name ? `ok — payment_type: ${name}` : 'ok (no name returned)';
+      } catch (err3) {
+        row.generate_sales_type = `failed: ${err3.message}`;
       }
     }
     return row;

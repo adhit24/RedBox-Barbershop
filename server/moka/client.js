@@ -78,6 +78,17 @@ class MokaClient {
   }
 
   /**
+   * Enable/configure auto-accept for Advanced Ordering.
+   * Calling this may also activate Advanced Ordering if not yet active.
+   * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/auto_accept
+   * Required scope: checkout
+   */
+  async setAutoAccept(enabled = true) {
+    return this._req('POST', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/auto_accept`,
+      { auto_accept_status: enabled });
+  }
+
+  /**
    * Fetch a single Advanced Order by Moka's internal order ID.
    * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}
    * @param {string} mokaOrderId
