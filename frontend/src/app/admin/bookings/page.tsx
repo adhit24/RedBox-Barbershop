@@ -1,13 +1,32 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { reassignBooking, createWalkIn } from '@/lib/adminCrmApi';
+import { createClient } from '@/utils/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, X, Check, UserX, Shuffle, Home, ChevronRight } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { CalendarView } from './CalendarView';
 import { StatusBadge } from './bookingStatus';
+
+function playPing() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.25);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+    osc.onended = () => ctx.close();
+  } catch {}
+}
 
 function today() {
   const d = new Date();
@@ -33,6 +52,10 @@ function BookingControlPageInner() {
   const [walkinData, setWalkinData]       = useState({ name:'', wa:'', barber_id:'', service:'' });
   const [reassignId, setReassignId]       = useState<string | null>(null);
   const [tab, setTab]                     = useState<'tabel' | 'kalender'>('tabel');
+  const [toastMsg, setToastMsg]           = useState<string | null>(null);
+  const [realtimeOk, setRealtimeOk]       = useState(false);
+  const toastTimer                        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadRef                           = useRef<() => Promise<void>>(() => Promise.resolve());
 
   const load = useCallback(async () => {
     if (!branch) return;
@@ -56,6 +79,37 @@ function BookingControlPageInner() {
     setLoading(true);
     load().finally(() => setLoading(false));
   }, [load]);
+
+  // Keep loadRef pointing to latest load so realtime callback never uses stale closure
+  useEffect(() => { loadRef.current = load; }, [load]);
+
+  function showToast(msg: string) {
+    setToastMsg(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMsg(null), 4000);
+  }
+
+  // Supabase Realtime — subscribe to bookings changes for this branch only
+  useEffect(() => {
+    if (!branch) return;
+    const supabase = createClient();
+    const ch = supabase
+      .channel(`bookings-rt-${branch}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bookings', filter: `location=eq.${branch}` },
+        () => { loadRef.current(); playPing(); showToast('Booking baru masuk'); }
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'bookings', filter: `location=eq.${branch}` },
+        () => { loadRef.current(); playPing(); showToast('Status booking diperbarui'); }
+      )
+      .on('postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'bookings' },
+        () => { loadRef.current(); }
+      )
+      .subscribe((status) => setRealtimeOk(status === 'SUBSCRIBED'));
+    return () => { supabase.removeChannel(ch); };
+  }, [branch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function updateStatus(id: string, status: string) {
     await fetch('/api/admin/booking-status', {
@@ -88,7 +142,20 @@ function BookingControlPageInner() {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-white font-bold text-base">Booking Control</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-white font-bold text-base">Booking Control</h2>
+          {realtimeOk && (
+            <span className="flex items-center gap-1 text-[10px] font-semibold tracking-wide" style={{ color: '#4ade80' }}>
+              <motion.span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: '#4ade80' }}
+                animate={{ opacity: [1, 0.3, 1] }}
+                transition={{ duration: 1.2, repeat: Infinity }}
+              />
+              LIVE
+            </span>
+          )}
+        </div>
         {!readonly && tab === 'tabel' && (
           <button
             onClick={() => setWalkinOpen(true)}
@@ -99,6 +166,30 @@ function BookingControlPageInner() {
           </button>
         )}
       </div>
+
+      {/* Realtime Toast */}
+      <AnimatePresence>
+        {toastMsg && (
+          <motion.div
+            key="rt-toast"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium"
+            style={{ background: 'rgba(199,40,32,0.10)', border: '1px solid rgba(199,40,32,0.25)', color: '#E87068' }}
+          >
+            <motion.span
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{ background: '#C72820' }}
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ duration: 0.8, repeat: Infinity }}
+            />
+            <span className="flex-1">{toastMsg}</span>
+            <button onClick={() => setToastMsg(null)} className="cursor-pointer opacity-60 hover:opacity-100"><X size={12} /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Tab Switcher */}
       <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
