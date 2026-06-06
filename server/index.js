@@ -2030,9 +2030,11 @@ app.get('/api/admin/moka-sync-status', adminAuth, async (req, res) => {
 // Jika active → {status:'active', auto_accept:bool}
 // Jika tidak active → {status:'not_active', error:'404'}
 // Juga coba generate_sales_type untuk mengaktifkan outlet yang belum aktif.
-app.get('/api/admin/moka-advanced-ordering', adminAuth, async (req, res) => {
+app.get('/api/admin/moka-advanced-ordering', async (req, res) => {
+  const tok = req.headers['x-admin-token'] || req.query.token || '';
+  const valid = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
+  if (!tok || !valid.includes(tok)) return res.status(401).json({ error: 'Unauthorized' });
   const MokaClient  = require('./moka/client');
-  const { getAccessToken } = require('./moka/oauth');
   const { data: outlets } = await supabase
     .from('outlets').select('id, slug, name, moka_outlet_id').eq('is_active', true);
 
