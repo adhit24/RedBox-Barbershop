@@ -2025,6 +2025,44 @@ app.get('/api/admin/moka-sync-status', adminAuth, async (req, res) => {
   res.json({ today: todayStr, outlets: results });
 });
 
+// ── GET /api/admin/moka-advanced-ordering ──────────────────────────────────────
+// Cek status Advanced Ordering (BeeSales) untuk semua outlet.
+// Jika active → {status:'active', auto_accept:bool}
+// Jika tidak active → {status:'not_active', error:'404'}
+// Juga coba generate_sales_type untuk mengaktifkan outlet yang belum aktif.
+app.get('/api/admin/moka-advanced-ordering', adminAuth, async (req, res) => {
+  const MokaClient  = require('./moka/client');
+  const { getAccessToken } = require('./moka/oauth');
+  const { data: outlets } = await supabase
+    .from('outlets').select('id, slug, name, moka_outlet_id').eq('is_active', true);
+
+  const results = await Promise.all((outlets || []).map(async (o) => {
+    const client = new MokaClient(supabase, o.id, o.moka_outlet_id);
+    const row = { slug: o.slug, moka_outlet_id: o.moka_outlet_id };
+    try {
+      const r = await client.getAdvancedOrderingStatus();
+      row.status = 'active';
+      row.auto_accept = r?.data?.auto_accept_status ?? null;
+    } catch (err) {
+      row.status = err.status === 404 ? 'not_active' : 'error';
+      row.error = err.message;
+    }
+    // Try generate_sales_type for inactive outlets
+    if (row.status === 'not_active' && req.query.activate === '1') {
+      try {
+        const g = await client.generateSalesType();
+        const name = Array.isArray(g?.data) ? g.data[0]?.name : g?.data?.name;
+        row.generate_sales_type = name ? `ok — payment_type: ${name}` : 'ok (no name)';
+      } catch (err2) {
+        row.generate_sales_type = `failed: ${err2.message}`;
+      }
+    }
+    return row;
+  }));
+
+  res.json({ outlets: results });
+});
+
 // POST /api/admin/notify-barber — kirim ulang notif WA ke kapster untuk booking tertentu
 app.post('/api/admin/notify-barber', adminAuth, async (req, res) => {
   const { booking_id } = req.body;

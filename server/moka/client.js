@@ -68,6 +68,16 @@ class MokaClient {
   }
 
   /**
+   * Check whether Advanced Ordering (BeeSales) is active for this outlet.
+   * Returns {auto_accept_status: bool} on 200, throws with status=404 if not activated.
+   * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/auto_accept
+   * Required scope: checkout
+   */
+  async getAdvancedOrderingStatus() {
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/auto_accept`);
+  }
+
+  /**
    * Fetch a single Advanced Order by Moka's internal order ID.
    * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}
    * @param {string} mokaOrderId
