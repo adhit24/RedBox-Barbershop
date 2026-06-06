@@ -814,27 +814,32 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   }
   if (!totalPrice && priceFromItems) totalPrice = priceFromItems;
 
+  // Declare parsedStart here (before Pass 2) to avoid TDZ ReferenceError.
+  // Without this, `!parsedStart` inside the try block throws because `let parsedStart`
+  // is not declared until line ~996, causing the catch to run and discard a valid resolution.
+  let parsedStart = null;
+
   // Pass 2 (ENHANCED): Use improved barber resolution with outlet validation
   // This prevents cross-branch assignment errors like Yuki→Abdul instead of Yuki→Opan
   if (!barberId && billName) {
     try {
       const { resolveBarberWithValidation, validateOutletAssignment } = require('./improved-sync');
-      
-      // Resolve barber with strict validation
-      const resolution = await resolveBarberWithValidation(billName, outletId, billId);
-      
+
+      // Resolve barber with strict validation (pass supabase to avoid second client)
+      const resolution = await resolveBarberWithValidation(billName, outletId, billId, supabase);
+
       if (resolution) {
         barberId = resolution.barberId;
-        
+
         // Validate outlet assignment to prevent cross-branch errors
-        const isValidOutlet = await validateOutletAssignment(barberId, outletId, billId);
-        
+        const isValidOutlet = await validateOutletAssignment(barberId, outletId, billId, supabase);
+
         if (!isValidOutlet) {
           console.error(`[Sync] ❌ CRITICAL: Outlet validation failed for bill ${billId} - preventing cross-branch assignment`);
           barberId = null; // Reset to prevent wrong assignment
         } else {
           console.log(`[Sync] ✅ Enhanced barber resolution for bill ${billId}: ${resolution.method} (confidence: ${resolution.confidence})`);
-          
+
           // Use parsed time from structured format if available
           if (resolution.parsedTime && !parsedStart) {
             parsedStart = resolution.parsedTime;
@@ -844,10 +849,12 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
       }
     } catch (e) {
       console.warn(`[Sync] Open bill ${billId} enhanced resolution failed:`, e.message);
-      // Fall back to original method as safety net
-      const fallbackId = await _fallbackBarberResolution(billName, outletId, billId);
-      if (fallbackId) {
-        barberId = fallbackId;
+      // Fall back to original method — only if barberId not already resolved above
+      if (!barberId) {
+        const fallbackId = await _fallbackBarberResolution(billName, outletId, billId);
+        if (fallbackId) {
+          barberId = fallbackId;
+        }
       }
     }
   }
@@ -993,20 +1000,21 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   // Kasir memberi nama bill dengan format "NamaCustomer HH.MM HariIni",
   // mis. "Satria Abdul 15.00 Sabtu". Ini adalah waktu appointment SEBENARNYA.
   // Jika tidak ada pola ini, fall back ke bill.createdAt (GoShow langsung).
-  let parsedStart = _parseAppointmentTimeFromBillName(billName, bill.createdAt || bill.created_at);
+  // parsedStart mungkin sudah di-set oleh Pass 2 (structured bill format) — pertahankan.
+  parsedStart = parsedStart || _parseAppointmentTimeFromBillName(billName, bill.createdAt || bill.created_at);
   let startTime     = parsedStart || _safeDate(bill.createdAt, bill.created_at);
   let endTime       = new Date(startTime.getTime() + durationMin * 60_000);
 
   // ── FINAL VALIDATION: Prevent cross-branch assignment ───────
-  // CRITICAL: Validasi final untuk mencegah double booking antar cabang
+  // Guards Pass 1 (item_id) and Pass 3 (variant→parent) paths which skip the
+  // Pass 2 validateOutletAssignment. Pass supabase to avoid a second DB client.
   if (barberId) {
     const { validateOutletAssignment } = require('./improved-sync');
-    const isValidOutlet = await validateOutletAssignment(barberId, outletId, billId);
-    
+    const isValidOutlet = await validateOutletAssignment(barberId, outletId, billId, supabase);
+
     if (!isValidOutlet) {
-      console.error(`[Sync] ❌ FATAL: Cross-branch assignment detected for bill ${billId}`);
-      console.error(`    This would cause double booking - blocking assignment completely`);
-      barberId = null; // Force outlet-wide block instead of wrong assignment
+      console.error(`[Sync] ❌ FATAL: Cross-branch assignment detected for bill ${billId} — forcing outlet-wide block`);
+      barberId = null;
     }
   }
 
