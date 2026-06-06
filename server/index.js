@@ -2035,8 +2035,14 @@ app.get('/api/admin/moka-advanced-ordering', async (req, res) => {
   const valid = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
   if (!tok || !valid.includes(tok)) return res.status(401).json({ error: 'Unauthorized' });
   const MokaClient  = require('./moka/client');
+  const { invalidateToken } = require('./moka/oauth');
   const { data: outlets } = await supabase
     .from('outlets').select('id, slug, name, moka_outlet_id').eq('is_active', true);
+
+  // ?clear_cache=1 — paksa hapus token dari memory cache + DB sebelum cek
+  if (req.query.clear_cache === '1') {
+    await Promise.all((outlets || []).map(o => invalidateToken(supabase, o.id)));
+  }
 
   const results = await Promise.all((outlets || []).map(async (o) => {
     const client = new MokaClient(supabase, o.id, o.moka_outlet_id);
