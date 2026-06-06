@@ -2049,6 +2049,15 @@ app.get('/api/admin/moka-advanced-ordering', async (req, res) => {
       row.status = err.status === 404 ? 'not_active' : 'error';
       row.error = err.message;
     }
+    // Verify basic API access (items endpoint — always available if outlet_id + token correct)
+    try {
+      const items = await client.getItems();
+      const count = items?.data?.items?.length ?? items?.data?.length ?? '?';
+      row.items_api = `ok — ${count} items`;
+    } catch (errI) {
+      row.items_api = `failed: ${errI.message}`;
+    }
+
     // Try to activate Advanced Ordering for inactive outlets
     if (row.status === 'not_active' && req.query.activate === '1') {
       // Step 1: POST auto_accept — may enable Advanced Ordering
