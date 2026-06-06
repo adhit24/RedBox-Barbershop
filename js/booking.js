@@ -1771,6 +1771,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         ]
       : [_buildPayloadFor(1, state.name, state.service, state.barber)];
 
+    const confirmedTime = payloads[0]?.time || state.time;
+
     let savedToApi = false;
 
     if (USE_API) {
@@ -1847,7 +1849,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         : _successPerson('', '', state.service, state.barber);
       successBox.innerHTML = `
         ${personBlocks}
-        <div class="confirm-row"><span class="cr-label">Schedule</span><span class="cr-val">${formatDate(state.date)}, ${state.time}</span></div>
+        <div class="confirm-row"><span class="cr-label">Schedule</span><span class="cr-val">${formatDate(state.date)}, ${confirmedTime}</span></div>
         <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
         <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(totalPrice)}</span></div>
       `;

@@ -90,9 +90,22 @@ async function pushScheduleToMoka(supabase, scheduleId) {
     // 3. Customer upsert removed — POST /v2/customers not in Moka API spec.
     //    Customer is identified in Moka via customer_name + customer_phone_number in the order.
 
-    // 4. Create Moka order
+    // 4. Create Moka order (with 404 auto-recovery via generate_sales_type)
     const orderPayload = await _buildMokaOrderPayload(sch, client);
-    const mokaOrder    = await client.createOrder(orderPayload);
+    let mokaOrder;
+    try {
+      mokaOrder = await client.createOrder(orderPayload);
+    } catch (firstErr) {
+      if (firstErr.status !== 404) throw firstErr;
+      // 404 = Advanced Ordering not yet activated for this outlet.
+      // Call generate_sales_type to initialize it, then retry with the returned payment_type name.
+      console.log(`[Sync] createOrder 404 for outlet ${sch.outlet_moka_id} — calling generate_sales_type`);
+      const genRes = await client.generateSalesType();
+      const generatedName = Array.isArray(genRes?.data) ? genRes.data[0]?.name : genRes?.data?.name;
+      if (!generatedName) throw firstErr;
+      console.log(`[Sync] Retrying order with generated payment_type: ${generatedName}`);
+      mokaOrder = await client.createOrder({ ...orderPayload, payment_type: generatedName });
+    }
     const mokaOrderId  = mokaOrder?.data?.id || mokaOrder?.id;
 
     if (!mokaOrderId) throw new Error('Moka order created but no ID returned');
@@ -1502,6 +1515,12 @@ async function _buildMokaOrderPayload(schedule, client) {
     } catch (err) {
       console.warn('[Sync] Could not resolve barber Moka item:', err.message);
     }
+  }
+
+  // Final fallback: use schedule.moka_item_id which schema sync stores as the Moka variant ID
+  // (services.moka_item_id = variant.id from schemaSync._syncServicesFromVariants)
+  if (!variantId && schedule.moka_item_id) {
+    variantId = schedule.moka_item_id;
   }
 
   const orderItem = {

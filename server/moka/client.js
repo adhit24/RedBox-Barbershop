@@ -57,6 +57,17 @@ class MokaClient {
   }
 
   /**
+   * Initialize Advanced Ordering for an outlet by generating its sales type.
+   * Call this when createOrder returns 404 (outlet not yet activated).
+   * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/generate_sales_type
+   * Required scopes: sales_type, library (both present in client credentials)
+   * Returns: { data: [{ id, name }] } — name is the payment_type to use in orders
+   */
+  async generateSalesType() {
+    return this._req('POST', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/generate_sales_type`);
+  }
+
+  /**
    * Fetch a single Advanced Order by Moka's internal order ID.
    * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}
    * @param {string} mokaOrderId
