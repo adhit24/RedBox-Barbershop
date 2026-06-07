@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchCommandCenter } from '@/lib/adminCrmApi';
 import type { CommandCenterData, BookingRow } from '@/lib/adminCrmTypes';
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { createClient } from '@/utils/supabase/client';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,9 @@ function CommandCenterPageInner() {
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeCard, setActiveCard] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
+  const loadRef = useRef<(silent?: boolean) => void>(() => {});
   const branch = user?.branch || '';
 
   const load = useCallback(async (silent = false) => {
@@ -207,6 +211,12 @@ function CommandCenterPageInner() {
     setLoading(false);
     setRefreshing(false);
   }, [branch]);
+
+  useEffect(() => { loadRef.current = load; }, [load]);
+
+  function handleCardClick(type: string) {
+    setActiveCard(prev => prev === type ? null : type);
+  }
 
   useEffect(() => {
     load();
@@ -250,12 +260,12 @@ function CommandCenterPageInner() {
   }
 
   const stats = [
-    { label: 'Hadir',        value: data.stats.hadir,               color: 'text-green-400' },
-    { label: 'Tdk Hadir',    value: data.stats.tidak_hadir,         color: 'text-red-400' },
-    { label: 'Blm Check-in', value: data.stats.belum_check_in,      color: 'text-amber-400' },
-    { label: 'Booking',      value: data.stats.booking_today,       color: 'text-blue-400' },
-    { label: 'Pending',      value: data.stats.pending,             color: 'text-orange-400' },
-    { label: 'GoShow',       value: data.stats.moka_open_bills ?? 0, color: 'text-teal-400' },
+    { label: 'Hadir',        value: data.stats.hadir,                color: 'text-green-400',  type: 'hadir',         accentColor: '#4ade80' },
+    { label: 'Tdk Hadir',    value: data.stats.tidak_hadir,          color: 'text-red-400',    type: 'tidak_hadir',   accentColor: '#f87171' },
+    { label: 'Blm Check-in', value: data.stats.belum_check_in,       color: 'text-amber-400',  type: 'belum_checkin', accentColor: '#fbbf24' },
+    { label: 'Booking',      value: data.stats.booking_today,        color: 'text-blue-400',   type: 'booking',       accentColor: '#60a5fa' },
+    { label: 'Pending',      value: data.stats.pending,              color: 'text-orange-400', type: 'pending',       accentColor: '#fb923c' },
+    { label: 'GoShow',       value: data.stats.moka_open_bills ?? 0, color: 'text-teal-400',   type: 'goshow',        accentColor: '#2dd4bf' },
   ];
 
   return (
@@ -296,7 +306,15 @@ function CommandCenterPageInner() {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
-        {stats.map((s, i) => <StatCard key={s.label} {...s} index={i} />)}
+        {stats.map((s, i) => (
+          <StatCard
+            key={s.label}
+            {...s}
+            index={i}
+            isActive={activeCard === s.type}
+            onClick={() => handleCardClick(s.type)}
+          />
+        ))}
       </div>
 
       {/* Home Service Tracker */}
