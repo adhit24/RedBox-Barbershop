@@ -14,6 +14,7 @@ Stat cards di admin dashboard (`/admin/dashboard`) saat ini hanya display-only. 
 | Aksi di dalam sheet | Booking & Pending: konfirmasi/batalkan langsung. Sisanya read-only. |
 | Visual card aktif | Border warna card + garis pendek di bawah kartu (indicator line) |
 | Platform target | Mobile-first (admin dashboard diakses via HP) |
+| Data refresh | Supabase Realtime WebSocket (booking INSERT/UPDATE) + polling 30 detik untuk attendance & GoShow |
 
 ---
 
@@ -25,6 +26,8 @@ Stat cards di admin dashboard (`/admin/dashboard`) saat ini hanya display-only. 
 - **Swipe to dismiss**: sheet bisa di-drag/swipe ke bawah untuk tutup
 - **Auto-refresh angka**: setelah aksi konfirmasi/batalkan berhasil, angka card Pending dan Booking update otomatis (re-fetch CommandCenterData)
 - **Tidak ada API baru**: semua data diambil dari `CommandCenterData` yang sudah ada
+- **Realtime bookings**: Supabase Realtime subscribe ke tabel `bookings` (INSERT + UPDATE) per branch — saat booking baru masuk atau status berubah, `load(true)` dipanggil otomatis tanpa tunggu 30 detik
+- **Indikator LIVE**: dot hijau `● LIVE` muncul di header saat Realtime channel terkoneksi (konsisten dengan halaman `/admin/bookings`)
 
 ---
 
@@ -83,6 +86,28 @@ Visual active state:
 border-color: accentColor;
 /* garis bawah indicator */
 ::after { width: 22px; height: 3px; background: accentColor; bottom: -2px; }
+```
+
+**Supabase Realtime subscription** — ditambahkan di `CommandCenterPageInner`:
+```tsx
+useEffect(() => {
+  if (!branch) return;
+  const channel = supabase
+    .channel(`dashboard-bookings-${branch}`)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'bookings',
+      filter: `location=eq.${branch}`,
+    }, () => load(true))
+    .subscribe(status => setLive(status === 'SUBSCRIBED'));
+  return () => { supabase.removeChannel(channel); };
+}, [branch, load]);
+
+const [live, setLive] = useState(false);
+```
+
+Indikator di header:
+```tsx
+{live && <span className="flex items-center gap-1 text-[10px] text-green-400"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />LIVE</span>}
 ```
 
 **`StatDetailSheet` component** — baru, menangani semua 6 jenis konten:
@@ -149,7 +174,7 @@ Sheet height: `max-h-[70vh]`, scroll jika konten melebihi.
 
 | File | Perubahan |
 |---|---|
-| `frontend/src/app/admin/dashboard/page.tsx` | Ubah `StatCard`, tambah `StatDetailSheet`, tambah state `activeCard`, wiring onClick |
+| `frontend/src/app/admin/dashboard/page.tsx` | Ubah `StatCard`, tambah `StatDetailSheet`, tambah state `activeCard` + `live`, wiring onClick + Realtime subscription |
 
 Tidak ada file baru, tidak ada API baru.
 
@@ -160,4 +185,5 @@ Tidak ada file baru, tidak ada API baru.
 - Swipe gesture yang sophisticated (drag physics) — cukup tap backdrop atau swipe sederhana
 - Reschedule dari dalam sheet
 - Filter / search di dalam sheet
-- Notifikasi realtime di sheet (data sudah auto-refresh 30 detik)
+- Swipe gesture drag physics (cukup tap backdrop)
+- Attendance realtime (check-in masih polling 30 detik — Supabase Realtime hanya untuk `bookings`)
