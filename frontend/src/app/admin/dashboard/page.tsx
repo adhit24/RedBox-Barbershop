@@ -54,16 +54,29 @@ function Skeleton({ className }: { className?: string }) {
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color, index }: { label: string; value: number; color: string; index: number }) {
+function StatCard({
+  label, value, color, index, onClick, isActive, accentColor,
+}: {
+  label: string; value: number; color: string; index: number;
+  onClick?: () => void; isActive?: boolean; accentColor?: string;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05, duration: 0.3, ease: 'easeOut' }}
-      className="bg-[#0F172A] border border-slate-800 rounded-2xl p-3 text-center"
+      onClick={onClick}
+      className="bg-[#0F172A] border border-slate-800 rounded-2xl p-3 text-center relative cursor-pointer active:scale-95 transition-all select-none"
+      style={{ borderColor: isActive && accentColor ? accentColor : undefined }}
     >
       <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
       <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">{label}</p>
+      {isActive && accentColor && (
+        <span
+          className="absolute -bottom-[2px] left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full"
+          style={{ background: accentColor }}
+        />
+      )}
     </motion.div>
   );
 }
