@@ -17,25 +17,17 @@ function currentWeekStart(d = new Date()) {
 
 // Combined web + Moka customer count for a specific barber on a specific date
 async function getDailyCount(supabase, barberId, dateStr) {
-  const dayStart = `${dateStr}T00:00:00+07:00`;
-  const dayEnd   = `${dateStr}T23:59:59+07:00`;
-
   const [{ count: webCount }, { count: mokaCount }] = await Promise.all([
     supabase.from('bookings')
       .select('*', { count: 'exact', head: true })
-      .eq('barber_id', barberId)
-      .eq('status', 'done')
-      .eq('date', dateStr),
-    supabase.from('schedules')
+      .eq('barber_id', barberId).eq('status', 'done').eq('date', dateStr),
+    supabase.from('moka_barber_services')
       .select('*', { count: 'exact', head: true })
-      .eq('barber_id', barberId)
-      .eq('source', 'moka')
-      .eq('status', 'completed')
-      .gte('start_time', dayStart)
-      .lte('start_time', dayEnd),
+      .eq('barber_id', barberId).eq('tx_date', dateStr),
   ]);
 
-  return (webCount || 0) + (mokaCount || 0);
+  // Moka lebih akurat (termasuk walk-in); kalau ada pakai Moka, fallback ke web
+  return (mokaCount || 0) > 0 ? (mokaCount || 0) : (webCount || 0);
 }
 
 // Combined weekly count for a barber (weekStart..weekStart+6)
@@ -451,6 +443,77 @@ function createBarberCronRoutes(supabase, adminAuth) {
       ok: true, processed: results.length, date: today,
       is_monday: isMonday, results
     });
+  });
+
+  // ─── SYNC MOKA DAILY (dipanggil cronjob.org tiap jam) ──
+  // GET /api/cron/sync-moka-daily?token=CRON_SECRET
+  // Update barber_daily_counts dari moka_barber_services untuk hari ini (dan kemarin jika ada)
+  router.get('/sync-moka-daily', async (req, res) => {
+    const secret = process.env.CRON_SECRET || process.env.ADMIN_PASSWORD;
+    if (!secret || req.query.token !== secret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const today = localDateStr();
+    const yesterday = localDateStr(new Date(Date.now() - 86400000));
+    const datesToSync = [yesterday, today];
+
+    const { data: barberUsers } = await supabase
+      .from('barber_users').select('barber_id');
+    if (!barberUsers?.length) return res.json({ ok: true, synced: 0 });
+
+    let synced = 0;
+    for (const dateStr of datesToSync) {
+      for (const { barber_id } of barberUsers) {
+        const count = await getDailyCount(supabase, barber_id, dateStr);
+        if (count > 0) {
+          await supabase.from('barber_daily_counts').upsert({
+            barber_id, date: dateStr, count, source: 'moka_sync',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'barber_id,date' });
+          synced++;
+        }
+      }
+    }
+
+    // Rebuild leaderboard cache setelah sync
+    try { await rebuildLeaderboardCache(supabase); } catch { /* optional */ }
+
+    return res.json({ ok: true, synced, dates: datesToSync, ts: new Date().toISOString() });
+  });
+
+  // ─── SYNC MOKA DAILY (dipanggil cronjob.org tiap jam) ──
+  // GET /api/cron/sync-moka-daily?token=CRON_SECRET
+  router.get('/sync-moka-daily', async (req, res) => {
+    const secret = process.env.CRON_SECRET || process.env.ADMIN_PASSWORD;
+    if (!secret || req.query.token !== secret) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const today = localDateStr();
+    const yesterday = localDateStr(new Date(Date.now() - 86400000));
+    const datesToSync = [yesterday, today];
+
+    const { data: barberUsers } = await supabase.from('barber_users').select('barber_id');
+    if (!barberUsers?.length) return res.json({ ok: true, synced: 0 });
+
+    let synced = 0;
+    for (const dateStr of datesToSync) {
+      for (const { barber_id } of barberUsers) {
+        const count = await getDailyCount(supabase, barber_id, dateStr);
+        if (count > 0) {
+          await supabase.from('barber_daily_counts').upsert({
+            barber_id, date: dateStr, count, source: 'moka_sync',
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'barber_id,date' });
+          synced++;
+        }
+      }
+    }
+
+    try { await rebuildLeaderboardCache(supabase); } catch { /* optional */ }
+
+    return res.json({ ok: true, synced, dates: datesToSync, ts: new Date().toISOString() });
   });
 
   return router;

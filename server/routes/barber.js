@@ -141,45 +141,41 @@ function createBarberRoutes(supabase) {
     const period = String(req.query.period || 'day');
     const { from, to } = getDateRange(period);
 
-    const { data: rows, error } = await supabase
-      .from('booking_full')
-      .select('price, duration, date')
-      .eq('barber_id', req.barber.id)
-      .eq('status', 'done')
-      .gte('date', from)
-      .lte('date', to);
+    const [{ data: rows, error }, { data: mokaRows }] = await Promise.all([
+      supabase.from('booking_full').select('price, duration, date')
+        .eq('barber_id', req.barber.id).eq('status', 'done')
+        .gte('date', from).lte('date', to),
+      supabase.from('moka_barber_services').select('revenue_share')
+        .eq('barber_id', req.barber.id).gte('tx_date', from).lte('tx_date', to),
+    ]);
 
     if (error) return res.status(500).json({ error: error.message });
 
-    const count = rows?.length || 0;
-    const revenue = (rows || []).reduce((s, r) => s + (Number(r.price) || 0), 0);
+    const webCount   = rows?.length || 0;
+    const webRevenue = (rows || []).reduce((s, r) => s + (Number(r.price) || 0), 0);
     const minutesTotal = (rows || []).reduce((s, r) => s + (Number(r.duration) || 0), 0);
     const hours = Math.round((minutesTotal / 60) * 10) / 10;
 
-    // Rating dari tabel reviews kalau ada
+    const mokaCount   = mokaRows?.length || 0;
+    const mokaRevenue = (mokaRows || []).reduce((s, r) => s + (Number(r.revenue_share) || 0), 0);
+
+    // Moka lebih akurat (termasuk walk-in); kalau ada, pakai Moka. Fallback ke web.
+    const count   = mokaCount > 0 ? mokaCount   : webCount;
+    const revenue = mokaCount > 0 ? mokaRevenue : webRevenue;
+
     let rating = 0;
     try {
       const { data: revs } = await supabase
-        .from('reviews')
-        .select('rating')
+        .from('reviews').select('rating')
         .eq('barber_id', req.barber.id)
-        .gte('created_at', from + 'T00:00:00')
-        .lte('created_at', to + 'T23:59:59');
-      if (revs && revs.length > 0) {
+        .gte('created_at', from + 'T00:00:00').lte('created_at', to + 'T23:59:59');
+      if (revs?.length > 0) {
         const sum = revs.reduce((s, r) => s + (Number(r.rating) || 0), 0);
         rating = Math.round((sum / revs.length) * 10) / 10;
       }
     } catch { /* reviews table optional */ }
 
-    return res.json({
-      period,
-      from,
-      to,
-      count,
-      revenue,
-      hours,
-      rating,
-    });
+    return res.json({ period, from, to, count, revenue, hours, rating });
   });
 
   // ─── UPCOMING ────────────────────────────────────────
@@ -366,33 +362,29 @@ function createBarberRoutes(supabase) {
 
     const barberIds = barbers.map(b => b.id);
 
-    // Primary source: barber_daily_counts (accurate, filled by CSV + nightly cron)
-    const { data: dailyRows } = await supabase
-      .from('barber_daily_counts')
-      .select('barber_id, count')
-      .in('barber_id', barberIds)
-      .gte('date', monthStart)
-      .lte('date', today);
+    // Primary: moka_barber_services (CSV import Moka — akurat, termasuk walk-in)
+    const [{ data: mokaRows }, { data: dailyRows }, { data: todayWebRows }] = await Promise.all([
+      supabase.from('moka_barber_services').select('barber_id')
+        .in('barber_id', barberIds).gte('tx_date', monthStart).lte('tx_date', today),
+      supabase.from('barber_daily_counts').select('barber_id, count')
+        .in('barber_id', barberIds).gte('date', monthStart).lte('date', today),
+      supabase.from('bookings').select('barber_id')
+        .in('barber_id', barberIds).eq('status', 'done').eq('date', today),
+    ]);
 
-    // Which dates already have recorded counts?
-    const recordedDates = new Set((dailyRows || []).map(r => r.date));
+    // Hitung dari Moka (1 row = 1 customer)
+    const mokaMap = {};
+    for (const r of (mokaRows || [])) {
+      mokaMap[r.barber_id] = (mokaMap[r.barber_id] || 0) + 1;
+    }
 
-    // For today (not yet captured by nightly cron), add live web bookings
-    const { data: todayWebRows } = await supabase
-      .from('bookings')
-      .select('barber_id')
-      .in('barber_id', barberIds)
-      .eq('status', 'done')
-      .eq('date', today);
-
-    // Sum daily_counts by barber
+    // Fallback: barber_daily_counts + live web booking hari ini
     const dailyMap = {};
     for (const r of (dailyRows || [])) {
       dailyMap[r.barber_id] = (dailyMap[r.barber_id] || 0) + r.count;
     }
-
-    // Add today's live web bookings only if today not yet recorded by cron
-    if (!recordedDates.has(today)) {
+    const todayDates = new Set((dailyRows || []).map(r => r.date));
+    if (!todayDates.has(today)) {
       for (const r of (todayWebRows || [])) {
         if (r.barber_id) dailyMap[r.barber_id] = (dailyMap[r.barber_id] || 0) + 1;
       }
@@ -402,7 +394,7 @@ function createBarberRoutes(supabase) {
       barber_id: b.id,
       name: b.name,
       branch: b.branch,
-      count: dailyMap[b.id] || 0,
+      count: (mokaMap[b.id] || 0) > 0 ? mokaMap[b.id] : (dailyMap[b.id] || 0),
     }));
 
     counts.sort((a, b) => b.count - a.count);
@@ -497,15 +489,15 @@ function createBarberRoutes(supabase) {
     const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
     const today = localDateStr(now);
 
-    const { count } = await supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('barber_id', req.barber.id)
-      .eq('status', 'done')
-      .gte('date', monthStart)
-      .lte('date', today);
+    const [{ count: webCount }, { count: mokaCount }] = await Promise.all([
+      supabase.from('bookings').select('*', { count: 'exact', head: true })
+        .eq('barber_id', req.barber.id).eq('status', 'done')
+        .gte('date', monthStart).lte('date', today),
+      supabase.from('moka_barber_services').select('*', { count: 'exact', head: true })
+        .eq('barber_id', req.barber.id).gte('tx_date', monthStart).lte('tx_date', today),
+    ]);
 
-    const currentCount = count || 0;
+    const currentCount = (mokaCount || 0) > 0 ? (mokaCount || 0) : (webCount || 0);
     const { data: profile } = await supabase
       .from('barber_users')
       .select('target_monthly')
