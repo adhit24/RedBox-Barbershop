@@ -390,6 +390,24 @@ function CommandCenterPageInner() {
     return () => clearInterval(iv);
   }, [load]);
 
+  // Supabase Realtime — booking INSERT/UPDATE per branch
+  useEffect(() => {
+    if (!branch) return;
+    const supabase = createClient();
+    const ch = supabase
+      .channel(`dashboard-bookings-${branch}`)
+      .on('postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bookings', filter: `location=eq.${branch}` },
+        () => loadRef.current(true)
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'bookings', filter: `location=eq.${branch}` },
+        () => loadRef.current(true)
+      )
+      .subscribe(status => setLive(status === 'SUBSCRIBED'));
+    return () => { supabase.removeChannel(ch); };
+  }, [branch]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function updateStatus(id: string, status: string) {
     await fetch('/api/admin/booking-status', {
       method: 'POST',
@@ -440,7 +458,15 @@ function CommandCenterPageInner() {
       {/* Title row */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-white font-bold text-base capitalize">{branch}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-white font-bold text-base capitalize">{branch}</h2>
+            {live && (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-green-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                LIVE
+              </span>
+            )}
+          </div>
           <p className="text-[11px] text-slate-500">{data.today}</p>
         </div>
         <button
