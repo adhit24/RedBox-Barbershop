@@ -912,7 +912,7 @@ app.get('/api/bookings', async (req, res) => {
     if (search) q = q.or(`name.ilike.%${search}%,wa.ilike.%${search}%,service.ilike.%${search}%`);
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ bookings: data || [], total: data?.length || 0 });
+    return res.json({ data: data || [], total: data?.length || 0 });
   } else {
     const selectCols = isAdmin
       ? `b.id, b.customer_id, b.name, b.wa, b.service_id, b.service, b.price, b.duration,
