@@ -66,7 +66,7 @@ function StatCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05, duration: 0.3, ease: 'easeOut' }}
       onClick={onClick}
-      className="bg-[#0F172A] border border-slate-800 rounded-2xl p-3 text-center relative cursor-pointer active:scale-95 transition-all select-none"
+      className={`bg-[#0F172A] border border-slate-800 rounded-2xl p-3 text-center relative transition-all${onClick ? ' cursor-pointer active:scale-95 select-none' : ''}`}
       style={{ borderColor: isActive && accentColor ? accentColor : undefined }}
     >
       <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
