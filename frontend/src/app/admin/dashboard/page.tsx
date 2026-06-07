@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useUser } from '@/hooks/useUser';
 import { fetchCommandCenter } from '@/lib/adminCrmApi';
-import type { CommandCenterData, BookingRow } from '@/lib/adminCrmTypes';
+import type { CommandCenterData, BookingRow, BarberWithStatus, MokaOpenBill } from '@/lib/adminCrmTypes';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle, Home,
@@ -212,9 +212,12 @@ function StatDetailSheet({
   const [acting, setActing] = useState<string | null>(null);
 
   async function handleAction(id: string, status: string) {
-    setActing(id + status);
-    await onAction(id, status);
-    setActing(null);
+    setActing(id + ':' + status);
+    try {
+      await onAction(id, status);
+    } finally {
+      setActing(null);
+    }
   }
 
   function getRows(): unknown[] {
@@ -238,7 +241,7 @@ function StatDetailSheet({
 
   function renderRow(row: unknown, i: number): React.ReactNode {
     if (type === 'hadir' || type === 'tidak_hadir' || type === 'belum_checkin') {
-      const b = row as import('@/lib/adminCrmTypes').BarberWithStatus;
+      const b = row as BarberWithStatus;
       const badge =
         b.attendance_status === 'hadir'     ? { label: 'Hadir',     cls: 'bg-green-500/15 text-green-400 border-green-500/30' } :
         b.attendance_status === 'terlambat' ? { label: 'Terlambat', cls: 'bg-amber-500/15 text-amber-400 border-amber-500/30' } :
@@ -258,7 +261,7 @@ function StatDetailSheet({
     }
 
     if (type === 'booking' || type === 'pending') {
-      const bk = row as import('@/lib/adminCrmTypes').BookingRow;
+      const bk = row as BookingRow;
       const isPending = bk.status === 'pending';
       return (
         <div key={bk.id} className={`py-2.5 ${i > 0 ? 'border-t border-slate-800/60' : ''}`}>
@@ -276,14 +279,14 @@ function StatDetailSheet({
                 disabled={acting !== null}
                 className="flex-1 h-8 text-xs font-bold bg-green-500/15 text-green-400 border border-green-500/30 rounded-xl hover:bg-green-500/25 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
               >
-                {acting === bk.id + 'confirmed' ? '...' : '✓ Konfirmasi'}
+                {acting === bk.id + ':confirmed' ? '...' : '✓ Konfirmasi'}
               </button>
               <button
                 onClick={() => handleAction(bk.id, 'cancelled')}
                 disabled={acting !== null}
                 className="flex-1 h-8 text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/30 rounded-xl hover:bg-red-500/25 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
               >
-                {acting === bk.id + 'cancelled' ? '...' : '✕ Batalkan'}
+                {acting === bk.id + ':cancelled' ? '...' : '✕ Batalkan'}
               </button>
             </div>
           )}
@@ -292,7 +295,7 @@ function StatDetailSheet({
     }
 
     if (type === 'goshow') {
-      const bill = row as import('@/lib/adminCrmTypes').MokaOpenBill;
+      const bill = row as MokaOpenBill;
       return (
         <div key={bill.id} className={`flex items-center justify-between py-2.5 ${i > 0 ? 'border-t border-slate-800/60' : ''}`}>
           <div className="min-w-0">
