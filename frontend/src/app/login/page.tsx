@@ -1,15 +1,18 @@
 'use client';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
 import { Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 
-const ease = [0.16, 1, 0.3, 1] as const; // expo ease-out
+const ease = [0.16, 1, 0.3, 1] as const;
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const roleIntent = searchParams.get('role'); // 'owner' | 'admin' | null
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -38,12 +41,33 @@ export default function LoginPage() {
       .eq('id', user.id)
       .single();
 
-    if (profile?.role === 'barber') {
+    const actualRole = profile?.role;
+
+    // Kapster dengan akun Supabase → barber portal
+    if (actualRole === 'barber') {
       router.push('/barber/schedule');
-    } else {
-      router.push('/admin/dashboard');
+      return;
     }
+
+    // Admin/kasir mencoba jalur Owner → tolak
+    if (roleIntent === 'owner' && actualRole !== 'owner') {
+      await supabase.auth.signOut();
+      setError('Akun ini tidak memiliki akses Owner. Silakan gunakan jalur Kasir / Admin.');
+      setLoading(false);
+      return;
+    }
+
+    // Owner → selalu ke owner dashboard (akses penuh sudah di sana)
+    if (actualRole === 'owner') {
+      router.push('/owner/dashboard');
+      return;
+    }
+
+    // branch_admin → admin dashboard
+    router.push('/admin/dashboard');
   }
+
+  const roleLabel = roleIntent === 'owner' ? 'Owner' : roleIntent === 'admin' ? 'Kasir / Admin' : null;
 
   return (
     <div
@@ -88,7 +112,7 @@ export default function LoginPage() {
             className="text-[11px] tracking-[0.28em] font-semibold uppercase"
             style={{ color: '#7A6A6D' }}
           >
-            Staff Dashboard
+            {roleLabel ?? 'Staff Dashboard'}
           </p>
           {/* Thin divider */}
           <div
@@ -225,17 +249,34 @@ export default function LoginPage() {
           </motion.button>
         </motion.form>
 
-        {/* Footer */}
-        <motion.p
-          className="text-center text-[10px] mt-8"
+        {/* Back to role picker */}
+        <motion.button
+          onClick={() => router.push('/')}
+          className="w-full text-center text-[11px] mt-5 tracking-[0.08em] transition-colors cursor-pointer"
           style={{ color: '#3A3033' }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.4 }}
+          whileHover={{ color: '#7A6A6D' } as never}
+        >
+          ← Ganti role
+        </motion.button>
+
+        {/* Footer */}
+        <motion.p
+          className="text-center text-[10px] mt-4"
+          style={{ color: '#2A2428' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
         >
           RedBox Barbershop &mdash; Internal System
         </motion.p>
       </div>
     </div>
   );
+}
+
+export default function LoginPage() {
+  return <Suspense><LoginForm /></Suspense>;
 }

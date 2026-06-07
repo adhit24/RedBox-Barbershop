@@ -20,7 +20,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Barber session cookie → allow /barber/* and /api/barber/*
+  // Barber session cookie → only allow /barber/* and /api/barber/*
   const barberSession = request.cookies.get('redbox_barber_session')?.value;
   if (barberSession) {
     if (pathname === '/') {
@@ -29,7 +29,8 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/barber/') || pathname.startsWith('/api/barber/')) {
       return NextResponse.next();
     }
-    if (pathname.startsWith('/admin/')) {
+    // Kapster tidak bisa akses admin atau owner area
+    if (pathname.startsWith('/admin/') || pathname.startsWith('/owner/')) {
       return NextResponse.redirect(new URL('/barber/home', request.url));
     }
   }

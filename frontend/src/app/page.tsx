@@ -12,13 +12,13 @@ const roles = [
     num: '01',
     label: 'OWNER',
     sub: 'Akses penuh & laporan',
-    href: '/login',
+    href: '/login?role=owner',
   },
   {
     num: '02',
     label: 'KASIR / ADMIN',
     sub: 'Booking, kasir & operasional',
-    href: '/login',
+    href: '/login?role=admin',
   },
   {
     num: '03',
