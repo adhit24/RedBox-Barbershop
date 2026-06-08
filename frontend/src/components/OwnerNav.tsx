@@ -1,12 +1,13 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, TrendingUp, User } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, User, CreditCard } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const NAV_ITEMS = [
   { href: '/owner/dashboard', label: 'Overview', Icon: LayoutDashboard },
   { href: '/owner/revenue',   label: 'Revenue',  Icon: TrendingUp },
+  { href: '/owner/payment',   label: 'Payment',  Icon: CreditCard },
   { href: '/owner/profile',   label: 'Profil',   Icon: User },
 ];
 
