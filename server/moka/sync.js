@@ -1399,7 +1399,34 @@ function startCronJobs(supabase) {
     }
   }, 5000);
 
-  console.log(`[Cron] Moka jobs scheduled: pull ${MOKA_PULL_INTERVAL_MINUTES}min, retry ${MOKA_RETRY_INTERVAL_MINUTES}min, stale-bill expire 15min (window ${MOKA_OPENBILL_STALE_HOURS}h, buffer ${MOKA_OPENBILL_BUFFER_MIN}m), schema sync 03:00 WIB`);
+  // Cron 5: Sync transaksi bulan berjalan ke moka_transactions tiap jam.
+  // Berguna untuk payment analytics & leaderboard tanpa perlu upload CSV manual.
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const { syncCurrentMonthTx } = require('./txSync');
+      const { data: outlets } = await supabase
+        .from('outlets')
+        .select('id, slug, moka_outlet_id')
+        .eq('is_active', true)
+        .not('moka_outlet_id', 'is', null);
+      if (!outlets?.length) return;
+
+      const { data: tokenRows } = await supabase
+        .from('moka_tokens').select('outlet_id')
+        .in('outlet_id', outlets.map(o => o.id));
+      const authorizedIds = new Set((tokenRows || []).map(r => r.outlet_id));
+
+      for (const o of outlets) {
+        if (!authorizedIds.has(o.id)) continue;
+        syncCurrentMonthTx(supabase, o).catch(err =>
+          console.error(`[TxCron] ${o.slug}:`, err.message));
+      }
+    } catch (err) {
+      console.error('[TxCron] error:', err.message);
+    }
+  });
+
+  console.log(`[Cron] Moka jobs scheduled: pull ${MOKA_PULL_INTERVAL_MINUTES}min, retry ${MOKA_RETRY_INTERVAL_MINUTES}min, stale-bill expire 15min (window ${MOKA_OPENBILL_STALE_HOURS}h, buffer ${MOKA_OPENBILL_BUFFER_MIN}m), schema sync 03:00 WIB, tx-sync tiap jam`);
 }
 
 function getLastSyncAt(outletId) {
