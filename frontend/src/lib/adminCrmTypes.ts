@@ -128,3 +128,18 @@ export interface OwnerRevenueData {
   top_barbers: { barber_id: string; name: string; branch: string; tx_count: number; revenue: number }[];
   top_services: { service_name: string; count: number; revenue: number }[];
 }
+
+export interface PaymentMethodStat {
+  name: string;
+  key: string;
+  total: number;
+  tx_count: number;
+  pct: number;
+  color: string;
+}
+
+export interface PaymentAnalyticsData {
+  methods: PaymentMethodStat[];
+  daily_trend: { date: string; cash: number; qris: number; transfer: number; other: number }[];
+  by_branch: { slug: string; name: string; cash: number; qris: number; transfer: number; other: number; total: number }[];
+}
