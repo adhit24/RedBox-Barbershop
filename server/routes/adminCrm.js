@@ -1097,6 +1097,106 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     res.json({ success: true });
   });
 
+  // ─── OWNER PAYMENT ANALYTICS ──────────────────────────────────────────
+  const PAYMENT_COLORS = { cash: '#3b82f6', qris: '#8b5cf6', transfer: '#14b8a6', other: '#f59e0b' };
+  const PAYMENT_NAMES  = { cash: 'Cash', qris: 'QRIS', transfer: 'Transfer', other: 'Lainnya' };
+
+  function normalizePayment(raw) {
+    const s = (raw || '').toLowerCase();
+    if (s === 'cash' || s === 'tunai') return 'cash';
+    if (s === 'qris' || s.includes('qris')) return 'qris';
+    if (s.includes('transfer') || s.includes('mandiri') || s.includes('bni') ||
+        s.includes('bca') || s.includes('ovo') || s.includes('dana') ||
+        s.includes('gopay') || s.includes('shopeepay')) return 'transfer';
+    return 'other';
+  }
+
+  router.get('/owner-payment-analytics', adminAuth, async (req, res) => {
+    try {
+      const { branch = 'all', period = '30d' } = req.query;
+
+      const now = new Date();
+      let startDate;
+      if (period === 'today') {
+        startDate = new Date(now); startDate.setHours(0, 0, 0, 0);
+      } else if (period === '7d') {
+        startDate = new Date(now); startDate.setDate(now.getDate() - 6); startDate.setHours(0, 0, 0, 0);
+      } else if (period === '30d') {
+        startDate = new Date(now); startDate.setDate(now.getDate() - 29); startDate.setHours(0, 0, 0, 0);
+      } else if (period === 'month') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      } else {
+        startDate = new Date(now); startDate.setDate(now.getDate() - 29); startDate.setHours(0, 0, 0, 0);
+      }
+      const startDateStr = startDate.toLocaleDateString('sv-SE', { timeZone: 'Asia/Jakarta' });
+
+      let q = supabase.from('moka_transactions')
+        .select('outlet_slug, tx_date, net_sales, payment_method')
+        .gte('tx_date', startDateStr);
+      if (branch !== 'all') q = q.eq('outlet_slug', branch);
+
+      const { data: rows, error } = await q;
+      if (error) return res.status(500).json({ error: error.message });
+
+      const allRows = rows || [];
+
+      // Methods totals
+      const methodTotals = { cash: 0, qris: 0, transfer: 0, other: 0 };
+      const methodCounts = { cash: 0, qris: 0, transfer: 0, other: 0 };
+      for (const r of allRows) {
+        const key = normalizePayment(r.payment_method);
+        methodTotals[key] += r.net_sales || 0;
+        methodCounts[key]++;
+      }
+      const grandTotal = Object.values(methodTotals).reduce((s, v) => s + v, 0);
+      const methods = Object.keys(methodTotals).map(key => ({
+        name:     PAYMENT_NAMES[key],
+        key,
+        total:    Math.round(methodTotals[key]),
+        tx_count: methodCounts[key],
+        pct:      grandTotal > 0 ? Math.round((methodTotals[key] / grandTotal) * 100) : 0,
+        color:    PAYMENT_COLORS[key],
+      }));
+
+      // Daily trend
+      const dailyMap = {};
+      for (const r of allRows) {
+        const d = r.tx_date;
+        if (!dailyMap[d]) dailyMap[d] = { date: d, cash: 0, qris: 0, transfer: 0, other: 0 };
+        const key = normalizePayment(r.payment_method);
+        dailyMap[d][key] += r.net_sales || 0;
+      }
+      const daily_trend = Object.values(dailyMap)
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(d => ({ ...d, cash: Math.round(d.cash), qris: Math.round(d.qris), transfer: Math.round(d.transfer), other: Math.round(d.other) }));
+
+      // By branch
+      const branchMap = {};
+      for (const r of allRows) {
+        const sl = r.outlet_slug;
+        if (!branchMap[sl]) branchMap[sl] = { slug: sl, name: sl, cash: 0, qris: 0, transfer: 0, other: 0, total: 0 };
+        const key = normalizePayment(r.payment_method);
+        branchMap[sl][key] += r.net_sales || 0;
+        branchMap[sl].total += r.net_sales || 0;
+      }
+
+      // Enrich with outlet names
+      const { data: outlets } = await supabase.from('outlets').select('slug, name');
+      for (const o of (outlets || [])) {
+        if (branchMap[o.slug]) branchMap[o.slug].name = o.name;
+      }
+
+      const by_branch = Object.values(branchMap)
+        .sort((a, b) => b.total - a.total)
+        .map(b => ({ ...b, cash: Math.round(b.cash), qris: Math.round(b.qris), transfer: Math.round(b.transfer), other: Math.round(b.other), total: Math.round(b.total) }));
+
+      return res.json({ methods, daily_trend, by_branch });
+    } catch (err) {
+      console.error('[PaymentAnalytics]', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }
 
