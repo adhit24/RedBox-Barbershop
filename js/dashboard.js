@@ -37,43 +37,34 @@ document.addEventListener('DOMContentLoaded', () => {
   // CONSTANTS
   // ============================================================
   const TIERS = [
-    { name:'Bronze',   min:0,    max:499,      class:'bronze',   color:'#CD7F32', glow:'rgba(205,127,50,.5)',  multiplier:1.0, label:'Level 1' },
-    { name:'Silver',   min:500,  max:1499,     class:'silver',   color:'#C0C0C0', glow:'rgba(192,192,192,.5)', multiplier:1.2, label:'Level 2' },
-    { name:'Gold',     min:1500, max:2999,     class:'gold',     color:'#FFD700', glow:'rgba(255,215,0,.5)',   multiplier:1.5, label:'Level 3' },
-    { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', multiplier:2.0, label:'Level 4' }
+    { name:'Silver',   min:0,    max:499,      class:'silver',   color:'#C0C0C0', glow:'rgba(192,192,192,.5)', multiplier:1.0, label:'Level 1' },
+    { name:'Gold',     min:500,  max:1499,     class:'gold',     color:'#FFD700', glow:'rgba(255,215,0,.5)',   multiplier:1.2, label:'Level 2' },
+    { name:'Platinum', min:1500, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', multiplier:1.5, label:'Level 3' }
   ];
 
   const REWARDS = [
-    { id:'r1', tier:'bronze',   name:'Mug Redbox For Free',              desc:'Dapatkan mug eksklusif Redbox secara gratis.',                          cost:75,  icon:'☕', type:'redeem' },
-    { id:'r2', tier:'bronze',   name:'Free Redbox Oilbased Mini',        desc:'Dapatkan produk oilbased mini eksklusif Redbox secara gratis.',         cost:75,  icon:'🧴', type:'redeem' },
-    { id:'r3', tier:'silver',   name:'Free Baileys Coffee',              desc:'Nikmati segelas Baileys Coffee gratis dari Redbox.',                    cost:100, icon:'🍵', type:'redeem' },
-    { id:'r4', tier:'silver',   name:'Free Express Cleaning (All Varians)', desc:'Layanan express cleaning untuk semua varian secara gratis.',         cost:100, icon:'✨', type:'redeem' },
-    { id:'r5', tier:'silver',   name:'Cashback 50% Haircut Regular',     desc:'Dapatkan cashback 50% untuk layanan Haircut Regular.',                  cost:100, icon:'✂️', type:'redeem' },
-    { id:'r6', tier:'gold',     name:'Cashback 50% Haircut Premium (CSB)', desc:'Dapatkan cashback 50% untuk layanan Haircut Premium Classic Style Barber.', cost:125, icon:'💈', type:'redeem' },
-    { id:'r7', tier:'gold',     name:'Free Haircut / Fadecut',           desc:'Haircut atau Fadecut gratis pilihan kamu.',                             cost:200, icon:'🏆', type:'redeem' },
-    { id:'r8', tier:'platinum', name:'Free Gentlemen Grooming',          desc:'Layanan Gentlemen Grooming lengkap gratis untukmu.',                    cost:250, icon:'👑', type:'redeem' },
-    { id:'r9', tier:'platinum', name:'Free Fadecut Grooming',            desc:'Layanan Fadecut Grooming eksklusif gratis untukmu.',                    cost:250, icon:'💎', type:'redeem' },
+    { id:'r1', tier:'silver', name:'Voucher Diskon Rp 10.000',     desc:'Tukar 100 poin untuk potongan Rp 10.000 pada transaksi apapun.',     cost:100, icon:'🎟️', type:'redeem' },
+    { id:'r2', tier:'silver', name:'Free Haircut',                 desc:'Haircut gratis pilihan kamu. Berlaku di semua cabang Redbox.',         cost:200, icon:'✂️', type:'redeem' },
+    { id:'r3', tier:'silver', name:'Free Haircut + Beard Trim',    desc:'Combo haircut dan beard trim gratis sekaligus.',                       cost:350, icon:'💈', type:'redeem' },
+    { id:'r4', tier:'silver', name:'Free Premium Grooming',        desc:'Layanan Premium Grooming lengkap gratis untukmu.',                     cost:500, icon:'🏆', type:'redeem' },
+    { id:'r5', tier:'silver', name:'Free Royal Grooming Package',  desc:'Paket Royal Grooming eksklusif Redbox — pengalaman terbaik untukmu.', cost:800, icon:'👑', type:'redeem' },
   ];
 
   const BENEFITS = [
-    // Bronze
-    { tier:'bronze', name:'Akses dashboard member',           desc:'Lihat riwayat kunjungan, poin, dan profil.',            auto:true },
-    { tier:'bronze', name:'Kode referral',                    desc:'Bagikan kode, dapat bonus poin tiap teman daftar.',      auto:true },
-    { tier:'bronze', name:'Riwayat kunjungan & poin',         desc:'Pantau semua aktivitas membership kamu.',                auto:true },
     // Silver
-    { tier:'silver', name:'Poin multiplier ×1.2',            desc:'Setiap kunjungan menghasilkan lebih banyak poin.',       auto:true },
-    { tier:'silver', name:'Cashback 50% Haircut Regular',    desc:'Tersedia di katalog rewards untuk diredeem.',            auto:false },
-    { tier:'silver', name:'Akses Katalog Produk',            desc:'Beli produk Redbox langsung dari dashboard.',            auto:true },
+    { tier:'silver', name:'Akses dashboard member',          desc:'Lihat riwayat kunjungan, poin, dan profil.',             auto:true  },
+    { tier:'silver', name:'Kode referral aktif',             desc:'Bagikan kode, dapat bonus poin tiap teman daftar.',      auto:true  },
+    { tier:'silver', name:'5% discount haircut',             desc:'Diskon 5% haircut setiap kunjungan.',                    auto:true  },
+    { tier:'silver', name:'50% Birthday discount',           desc:'Diskon 50% di hari ulang tahun (±7 hari).',              auto:false },
     // Gold
-    { tier:'gold', name:'Poin multiplier ×1.5',              desc:'Setiap kunjungan menghasilkan poin lebih banyak lagi.',  auto:true },
-    { tier:'gold', name:'Diskon 10% semua layanan',          desc:'Berlaku di semua cabang Redbox.',                        auto:true },
-    { tier:'gold', name:'Cashback 50% Haircut Premium CSB', desc:'Tersedia di katalog rewards untuk diredeem.',            auto:false },
+    { tier:'gold', name:'10% discount haircut',              desc:'Diskon 10% haircut, berlaku di semua cabang Redbox.',    auto:true  },
+    { tier:'gold', name:'50% Birthday discount',             desc:'Diskon 50% di hari ulang tahun (±7 hari).',              auto:false },
+    { tier:'gold', name:'Berlaku di semua cabang',           desc:'Termasuk CSB Mall dan semua outlet Redbox.',             auto:true  },
     // Platinum
-    { tier:'platinum', name:'Poin multiplier ×2.0',          desc:'Poin terbanyak per kunjungan.',                          auto:true },
-    { tier:'platinum', name:'Free Gentlemen Grooming',       desc:'Layanan grooming gratis tiap kunjungan.',                auto:true },
-    { tier:'platinum', name:'Free Iced Americano',           desc:'Kopi gratis tiap kunjungan ke Redbox.',                  auto:true },
-    { tier:'platinum', name:'Birthday gratis penuh',         desc:'Layanan gratis saat hari ulang tahunmu.',                auto:true },
-    { tier:'platinum', name:'Priority semua cabang',         desc:'Akses priority booking di seluruh cabang Redbox.',       auto:true },
+    { tier:'platinum', name:'Free Haircut tiap kunjungan',   desc:'Haircut gratis tanpa batas kunjungan.',                  auto:true  },
+    { tier:'platinum', name:'Free Birthday penuh',           desc:'Layanan gratis di hari ulang tahunmu (±7 hari).',        auto:false },
+    { tier:'platinum', name:'Free Iced Americano',           desc:'Kopi gratis tiap kunjungan ke Redbox.',                  auto:true  },
+    { tier:'platinum', name:'Berlaku di semua cabang',       desc:'Akses semua cabang Redbox tanpa terkecuali.',            auto:true  },
   ];
 
   const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -366,6 +357,101 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   }
+
+  // ============================================================
+  // BENEFIT TRACKER
+  // ============================================================
+  function renderBenefitTracker() {
+    const container = document.getElementById('benefitTracker');
+    if (!container) return;
+
+    const tierNames  = ['Bronze','Silver','Gold','Platinum'];
+    const tierColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#B9F2FF' };
+    const userTierIdx = tier.level - 1;
+
+    let html = `<h3 class="benefit-tracker-title">Benefit Kamu</h3>`;
+
+    tierNames.forEach((tName, ti) => {
+      const tClass    = tName.toLowerCase();
+      const tBenefits = BENEFITS.filter(b => b.tier === tClass);
+      const unlocked  = ACTIVE && userTierIdx >= ti;
+      const isCurrent = userTierIdx === ti;
+
+      const statusLabel = !ACTIVE
+        ? '<span class="bt-status inactive">Tidak aktif</span>'
+        : unlocked
+          ? `<span class="bt-status active">${isCurrent ? 'Tier saat ini' : 'Unlocked'}</span>`
+          : `<span class="bt-status locked">Locked</span>`;
+
+      html += `
+        <div class="bt-tier-group">
+          <div class="bt-tier-header">
+            <span class="bt-tier-dot" style="background:${tierColors[tClass]}"></span>
+            <span class="bt-tier-name" style="color:${tierColors[tClass]}">${tName}</span>
+            ${statusLabel}
+          </div>
+          <div class="bt-rows">
+            ${tBenefits.map(b => {
+              const state = ACTIVE && userTierIdx >= ti ? 'unlocked' : (ti === userTierIdx + 1 ? 'locked-next' : 'locked-far');
+              const icon  = state === 'unlocked'
+                ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`
+                : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+              return `
+                <div class="bt-row ${state}">
+                  <span class="bt-icon">${icon}</span>
+                  <div class="bt-text">
+                    <span class="bt-name">${b.name}</span>
+                    <span class="bt-desc">${b.desc}</span>
+                  </div>
+                  ${state !== 'unlocked' ? `<span class="bt-lock-label">${tName}+</span>` : ''}
+                </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    });
+
+    container.innerHTML = html;
+  }
+
+  renderBenefitTracker();
+
+  // ============================================================
+  // REDEEM HISTORY
+  // ============================================================
+  function renderRedeemHistory() {
+    const container = document.getElementById('redeemHistory');
+    if (!container) return;
+
+    // Filter pointsHistory for redeem transactions (negative amount)
+    const redeems = (memberData.pointsHistory || [])
+      .filter(h => h.amount < 0 && (h.activity || '').toLowerCase().includes('redeem'));
+
+    if (!redeems.length) {
+      container.innerHTML = `
+        <div class="redeem-empty">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          <span>Belum ada riwayat redeem — tukar poin kamu di katalog bawah</span>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <table class="redeem-table">
+        <thead><tr>
+          <th>Tanggal</th><th>Reward</th><th>Poin</th><th>Status</th>
+        </tr></thead>
+        <tbody>
+          ${redeems.map(h => `<tr>
+            <td>${h.date}</td>
+            <td>${(h.activity||'').replace('Redeem reward: ','')}</td>
+            <td style="color:#c1121f">-${Math.abs(h.amount)}</td>
+            <td><span class="rd-status used">Digunakan</span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  renderRedeemHistory();
 
   // ============================================================
   // TAB SWITCHING
