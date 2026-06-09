@@ -916,6 +916,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   display: flex; align-items: center; justify-content: space-between;
   gap: 14px; flex-wrap: wrap;
   border-radius: 14px; padding: 16px 20px; margin-bottom: 18px;
+  grid-column: 1 / -1;
 }
 .upsell-banner.tier-bronze { background: linear-gradient(135deg, #1a1008 0%, #0d0a06 100%); border: 1px solid rgba(205,127,50,0.25); }
 .upsell-banner.tier-silver { background: linear-gradient(135deg, #111418 0%, #0a0c10 100%); border: 1px solid rgba(192,192,192,0.20); }
