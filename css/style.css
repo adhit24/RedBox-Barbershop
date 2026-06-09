@@ -2171,3 +2171,119 @@ section{padding:100px 0}
   .hs-card__title em { animation: none !important; }
   .hs-card__inner { transform: none !important; }
 }
+
+/* ---- HYGIENE PLEDGE ---- */
+.hygiene-pledge {
+  background: var(--bg-2);
+  border: 1px solid rgba(193,18,31,.2);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.hygiene-pledge::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--red) 0%, transparent 100%);
+}
+.hp-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.hp-icon-wrap {
+  width: 32px; height: 32px;
+  background: var(--red-10);
+  border: 1px solid rgba(193,18,31,.25);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.hp-icon-wrap svg {
+  width: 16px; height: 16px;
+  stroke: var(--red); fill: none;
+  stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.hp-eyebrow {
+  font-size: .58rem; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--red); opacity: .8;
+}
+.hp-title {
+  font-size: .8rem; font-weight: 600;
+  color: var(--w90); margin-top: 1px;
+}
+.hp-items {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.hp-item {
+  background: var(--bg-3);
+  border: 1px solid var(--w05);
+  border-radius: var(--radius-sm);
+  padding: 12px 10px;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px;
+  position: relative; overflow: hidden;
+}
+.hp-item::after {
+  content: '';
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 20px; height: 2px;
+  background: var(--red); border-radius: 1px;
+  opacity: .6;
+}
+.hp-item-icon {
+  width: 40px; height: 40px;
+  background: var(--bg-4);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.hp-item-img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  padding: 4px;
+}
+.hp-item-img--kip {
+  filter: invert(1) brightness(0.85);
+}
+.hp-item-num {
+  font-family: var(--font-accent);
+  font-size: 1.2rem;
+  color: var(--red);
+  line-height: 1;
+}
+.hp-item-label {
+  font-size: .58rem; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--w70); text-align: center; line-height: 1.3;
+}
+.hp-item-sub {
+  font-size: .52rem;
+  color: var(--w30);
+  text-align: center; line-height: 1.4;
+}
+.hp-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--w05);
+  font-size: .6rem; color: var(--w30);
+  font-style: italic;
+  letter-spacing: .02em;
+}
+
+/* Hygiene Pledge — responsive */
+@media (max-width: 480px) {
+  .hygiene-pledge { padding: 14px 16px; }
+  .hp-items { gap: 6px; }
+  .hp-item { padding: 8px 6px; gap: 4px; }
+  .hp-item-icon { width: 32px; height: 32px; }
+  .hp-item-num { font-size: 1rem; }
+  .hp-item-sub { display: none; }
+}
