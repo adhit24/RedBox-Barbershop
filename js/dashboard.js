@@ -80,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { id:'clay',    name:'Redbox Clay',        sub:'Styling clay natural finish',   price:'Rp 100.000',        img:'Brand_assets/product/clay.jpeg',              badge:'Populer' },
     { id:'water',   name:'Pomade Waterbased',  sub:'Formula water-based rinse',     price:'Rp 100.000–150.000',img:'Brand_assets/product/water_base.jpeg',         badge:null },
     { id:'oil',     name:'Pomade Oil Based',   sub:'Hold kuat tahan lama',          price:'Rp 100.000–150.000',img:'Brand_assets/product/oil_base.jpeg',           badge:null },
-    { id:'elfree',  name:'Parfum Eleftheree',  sub:'Aroma segar maskulin',          price:'Rp 150.000',        img:'Brand_assets/product/IMG_6532.JPG.jpeg',       badge:'New' },
+    { id:'elfree',  name:'Parfum Eleftheree',  sub:'Aroma segar maskulin',          price:'Rp 150.000',        img:'Brand_assets/product/IMG_6532.JPG.jpeg',       badge:null },
     { id:'psyhi',   name:'Parfum Psyhi',       sub:'Aroma woody premium',           price:'Rp 150.000',        img:'Brand_assets/product/psyi.jpeg',               badge:null },
   ];
 
