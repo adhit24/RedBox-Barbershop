@@ -9,7 +9,7 @@
   <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;700;900&family=Jost:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Cinzel:wght@400;500;700;900&family=Jost:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet" />
   <style>
     /* ── RESET ─────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -32,6 +32,18 @@
       --f-body:     'Jost', system-ui, sans-serif;
       --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
       --ease-std:   cubic-bezier(0.4, 0, 0.2, 1);
+      /* ── hygiene-pledge tokens (from css/style.css) ─────────── */
+      --bg-4: #1E1E1E;
+      --red: #C1121F;
+      --red-10: rgba(193,18,31,.10);
+      --red-20: rgba(193,18,31,.20);
+      --w05: rgba(255,255,255,.05);
+      --w30: rgba(255,255,255,.3);
+      --w70: rgba(255,255,255,.7);
+      --w90: rgba(255,255,255,.9);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --font-accent: 'Bebas Neue', sans-serif;
     }
 
     body {
@@ -1004,6 +1016,7 @@
     </p>
   </div>
 
+  <!-- HYGIENE PLEDGE -->
   <div class="container" style="padding-top:24px;padding-bottom:0">
     <div class="hygiene-pledge">
       <div class="hp-header">
@@ -1046,6 +1059,7 @@
       </div>
     </div>
   </div>
+  <!-- END HYGIENE PLEDGE -->
 
   <div class="orn" aria-hidden="true"><span class="orn-mark">✦</span></div>
 
