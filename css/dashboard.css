@@ -883,19 +883,23 @@ html, body { overflow-x: hidden; max-width: 100vw; }
     position:sticky;top:64px;z-index:100;
     background:var(--bg);
     padding-bottom:4px;
+    overflow:visible;
   }
   .dash-nav{
-    flex-direction:row;overflow-x:auto;
-    scrollbar-width:none;padding:8px;gap:2px;
-    width:100%;max-width:100%;min-width:0;
+    flex-direction:row;overflow-x:visible;
+    padding:6px 4px;gap:2px;
+    width:100%;min-width:0;
   }
-  .dash-nav::-webkit-scrollbar{display:none}
   .dash-nav-item{
-    flex-shrink:0;padding:10px 14px;
-    flex-direction:column;gap:4px;font-size:.72rem;
-    text-align:center;min-width:80px;
+    flex:1;min-width:0;
+    padding:8px 2px;
+    flex-direction:column;gap:2px;font-size:.58rem;
+    text-align:center;
   }
-  .dash-nav-item span{white-space:nowrap}
+  .dash-nav-item svg{width:16px;height:16px}
+  .dash-nav-item span{
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;
+  }
   .dash-nav-divider{display:none}
   .profile-card{flex-direction:column;align-items:flex-start}
   .profile-stats{width:100%;justify-content:space-between}
