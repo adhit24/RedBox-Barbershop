@@ -242,6 +242,10 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
             <span>Benefits &amp; Rewards</span>
           </button>
+          <button class="dash-nav-item" data-tab="shop">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            <span>Shop</span>
+          </button>
           <button class="dash-nav-item" data-tab="referral">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
             <span>Kode Referral</span>
@@ -411,6 +415,30 @@
           </div>
           <p class="rewards-desc">Tukar poin untuk reward eksklusif. Semakin tinggi tier, semakin banyak pilihan tersedia.</p>
           <div class="rewards-grid" id="rewardsGrid"></div>
+        </div>
+
+        <!-- Tab: Shop -->
+        <div class="dash-panel" id="panel-shop">
+          <!-- Section A: Rekomendasi Untukmu -->
+          <h2 class="panel-title">Rekomendasi Untukmu</h2>
+          <p class="section-desc">Produk pilihan sesuai tier kamu.</p>
+          <div class="shop-grid shop-grid-3" id="shopCurated"></div>
+
+          <hr style="border:none;border-top:1px solid #1f1f1f;margin:28px 0;"/>
+
+          <!-- Section B: Semua Produk -->
+          <h2 class="panel-title">Semua Produk</h2>
+          <div class="shop-grid shop-grid-3" id="shopProducts"></div>
+
+          <hr style="border:none;border-top:1px solid #1f1f1f;margin:28px 0;"/>
+
+          <!-- Section C: Layanan Premium -->
+          <h2 class="panel-title">Tingkatkan Pengalamanmu</h2>
+          <p class="section-desc">Layanan eksklusif untuk member Gold & Platinum.</p>
+          <div class="shop-grid shop-grid-2" id="shopServices"></div>
+
+          <!-- Section D: Upgrade CTA -->
+          <div id="shopUpgradeCta"></div>
         </div>
 
         <!-- Tab: Referral -->
