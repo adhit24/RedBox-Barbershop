@@ -37,17 +37,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // CONSTANTS
   // ============================================================
   const TIERS = [
-    { name:'Silver',   min:0,    max:499,      class:'silver',   color:'#C0C0C0', glow:'rgba(192,192,192,.5)', multiplier:1.0, label:'Level 1' },
-    { name:'Gold',     min:500,  max:1499,     class:'gold',     color:'#FFD700', glow:'rgba(255,215,0,.5)',   multiplier:1.2, label:'Level 2' },
-    { name:'Platinum', min:1500, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', multiplier:1.5, label:'Level 3' }
+    { name:'Bronze',   min:0,    max:499,      class:'bronze',   color:'#CD7F32', glow:'rgba(205,127,50,.5)',  multiplier:1.0, label:'Level 1' },
+    { name:'Silver',   min:500,  max:1499,     class:'silver',   color:'#C0C0C0', glow:'rgba(192,192,192,.5)', multiplier:1.2, label:'Level 2' },
+    { name:'Gold',     min:1500, max:2999,     class:'gold',     color:'#FFD700', glow:'rgba(255,215,0,.5)',   multiplier:1.5, label:'Level 3' },
+    { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', multiplier:2.0, label:'Level 4' }
   ];
 
   const REWARDS = [
-    { id:'r1', tier:'silver', name:'Voucher Diskon Rp 10.000',     desc:'Tukar 100 poin untuk potongan Rp 10.000 pada transaksi apapun.',     cost:100, icon:'🎟️', type:'redeem' },
-    { id:'r2', tier:'silver', name:'Free Haircut',                 desc:'Haircut gratis pilihan kamu. Berlaku di semua cabang Redbox.',         cost:200, icon:'✂️', type:'redeem' },
-    { id:'r3', tier:'silver', name:'Free Haircut + Beard Trim',    desc:'Combo haircut dan beard trim gratis sekaligus.',                       cost:350, icon:'💈', type:'redeem' },
-    { id:'r4', tier:'silver', name:'Free Premium Grooming',        desc:'Layanan Premium Grooming lengkap gratis untukmu.',                     cost:500, icon:'🏆', type:'redeem' },
-    { id:'r5', tier:'silver', name:'Free Royal Grooming Package',  desc:'Paket Royal Grooming eksklusif Redbox — pengalaman terbaik untukmu.', cost:800, icon:'👑', type:'redeem' },
+    { id:'r1', tier:'bronze',   name:'Mug Redbox For Free',                   desc:'Dapatkan mug eksklusif Redbox secara gratis.',                                    cost:75,  icon:'☕', type:'redeem' },
+    { id:'r2', tier:'bronze',   name:'Free Redbox Oilbased Mini',             desc:'Dapatkan produk oilbased mini eksklusif Redbox secara gratis.',                  cost:75,  icon:'🧴', type:'redeem' },
+    { id:'r3', tier:'silver',   name:'Free Baileys Coffee',                   desc:'Nikmati segelas Baileys Coffee gratis dari Redbox.',                             cost:100, icon:'🍵', type:'redeem' },
+    { id:'r4', tier:'silver',   name:'Free Express Cleaning (All Varians)',   desc:'Layanan express cleaning untuk semua varian secara gratis.',                     cost:100, icon:'✨', type:'redeem' },
+    { id:'r5', tier:'silver',   name:'Cashback 50% Haircut Regular',          desc:'Dapatkan cashback 50% untuk layanan Haircut Regular.',                           cost:100, icon:'✂️', type:'redeem' },
+    { id:'r6', tier:'gold',     name:'Cashback 50% Haircut Premium (CSB)',    desc:'Dapatkan cashback 50% untuk layanan Haircut Premium Classic Style Barber.',      cost:125, icon:'💈', type:'redeem' },
+    { id:'r7', tier:'gold',     name:'Free Haircut / Fadecut',                desc:'Haircut atau Fadecut gratis pilihan kamu.',                                       cost:200, icon:'🏆', type:'redeem' },
+    { id:'r8', tier:'platinum', name:'Free Gentlemen Grooming',               desc:'Layanan Gentlemen Grooming lengkap gratis untukmu.',                             cost:250, icon:'👑', type:'redeem' },
+    { id:'r9', tier:'platinum', name:'Free Fadecut Grooming',                 desc:'Layanan Fadecut Grooming eksklusif gratis untukmu.',                             cost:250, icon:'💎', type:'redeem' },
   ];
 
   const BENEFITS = [
