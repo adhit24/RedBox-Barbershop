@@ -163,6 +163,77 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const tier = getCurrentTier(displayPoints);
 
+  // ============================================================
+  // SMART UPSELL BANNER
+  // ============================================================
+  function renderUpsellBanner(tier) {
+    const banner = document.getElementById('upsellBanner');
+    if (!banner) return;
+
+    const tierIdx = tier.level - 1; // 0=Bronze, 1=Silver, 2=Gold, 3=Platinum
+    const nextTier = TIERS[tierIdx + 1] || null;
+
+    // Tier progress within current band
+    const rangeWidth = tier.max === Infinity ? 1 : (tier.max - tier.min + 1);
+    const inRange    = displayPoints - tier.min;
+    const progress   = Math.min(Math.round((inRange / rangeWidth) * 100), 100);
+
+    // Banner config per tier
+    const configs = {
+      bronze:   { title:'Aktivasi Member — Mulai Kumpul Poin',         desc:'Bergabunglah dan mulai dapatkan keuntungan eksklusif Redbox.',          cta:'Aktivasi Sekarang', ctaClass:'' },
+      silver:   { title:'Upgrade ke Gold — Unlock Benefit Lebih',       desc:'Diskon 10% semua layanan, cashback eksklusif, dan lebih banyak reward.', cta:'Upgrade ke Gold',    ctaClass:'' },
+      gold:     { title:'Upgrade ke Platinum — Benefit Terlengkap',     desc:'Free grooming, iced americano, dan birthday gratis di semua cabang.',    cta:'Upgrade ke Platinum', ctaClass:'plat' },
+      platinum: { title:'Kamu di Tingkat Tertinggi',                    desc:'Nikmati semua benefit eksklusif Redbox Platinum.',                       cta:null, ctaClass:'' },
+    };
+    const cfg = configs[tier.class] || configs.bronze;
+
+    // Tier accent colors for progress bar
+    const progressColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#B9F2FF' };
+    const accentColor = progressColors[tier.class] || '#c1121f';
+
+    // Tier SVG icons (24×24 stroke)
+    const tierIcons = {
+      bronze:   `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#CD7F32" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+      silver:   `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+      gold:     `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+      platinum: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B9F2FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z"/><polyline points="2 8 12 14 22 8"/><line x1="12" y1="14" x2="12" y2="20"/></svg>`,
+    };
+
+    // Inject content
+    const ubIcon    = document.getElementById('ubIcon');
+    const ubTitle   = document.getElementById('ubTitle');
+    const ubDesc    = document.getElementById('ubDesc');
+    const ubProgressWrap = document.getElementById('ubProgressWrap');
+    const ubProgressFill = document.getElementById('ubProgressFill');
+    const ubProgressLabel= document.getElementById('ubProgressLabel');
+    const ubActions = document.getElementById('ubActions');
+
+    if (ubIcon)  ubIcon.innerHTML = tierIcons[tier.class] || '';
+    if (ubTitle) ubTitle.textContent = cfg.title;
+    if (ubDesc)  ubDesc.textContent  = cfg.desc;
+
+    // Progress bar — show for non-Platinum
+    if (ubProgressWrap) {
+      ubProgressWrap.style.display = tier.class === 'platinum' ? 'none' : 'block';
+      if (ubProgressFill) { ubProgressFill.style.width = progress + '%'; ubProgressFill.style.background = accentColor; }
+      if (ubProgressLabel && nextTier) ubProgressLabel.textContent = `${displayPoints.toLocaleString('id-ID')} / ${tier.max.toLocaleString('id-ID')} poin — ${tier.max - displayPoints} lagi ke ${nextTier.name}`;
+    }
+
+    // CTA button
+    if (ubActions) {
+      ubActions.innerHTML = cfg.cta
+        ? `<button class="ub-btn ${cfg.ctaClass}" onclick="window.location.href='membership.html'">${cfg.cta}</button>`
+        : '';
+    }
+
+    // Show banner + apply tier class
+    banner.className = `upsell-banner tier-${tier.class}`;
+    banner.style.display = 'flex';
+  }
+
+  // Call after tier is determined
+  renderUpsellBanner(tier);
+
   if (tierBadge)     tierBadge.className = 'profile-tier-badge ' + (ACTIVE ? tier.class : 'inactive');
   if (tierBadgeText) tierBadgeText.textContent = ACTIVE ? `${tier.label} — ${tier.name}` : 'Membership Belum Aktif';
   if (cardTier)      cardTier.textContent = ACTIVE ? tier.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
