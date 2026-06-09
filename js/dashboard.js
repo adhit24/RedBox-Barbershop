@@ -55,6 +55,27 @@ document.addEventListener('DOMContentLoaded', () => {
     { id:'r9', tier:'platinum', name:'Free Fadecut Grooming',            desc:'Layanan Fadecut Grooming eksklusif gratis untukmu.',                    cost:250, icon:'💎', type:'redeem' },
   ];
 
+  const BENEFITS = [
+    // Bronze
+    { tier:'bronze', name:'Akses dashboard member',           desc:'Lihat riwayat kunjungan, poin, dan profil.',            auto:true },
+    { tier:'bronze', name:'Kode referral',                    desc:'Bagikan kode, dapat bonus poin tiap teman daftar.',      auto:true },
+    { tier:'bronze', name:'Riwayat kunjungan & poin',         desc:'Pantau semua aktivitas membership kamu.',                auto:true },
+    // Silver
+    { tier:'silver', name:'Poin multiplier ×1.2',            desc:'Setiap kunjungan menghasilkan lebih banyak poin.',       auto:true },
+    { tier:'silver', name:'Cashback 50% Haircut Regular',    desc:'Tersedia di katalog rewards untuk diredeem.',            auto:false },
+    { tier:'silver', name:'Akses Katalog Produk',            desc:'Beli produk Redbox langsung dari dashboard.',            auto:true },
+    // Gold
+    { tier:'gold', name:'Poin multiplier ×1.5',              desc:'Setiap kunjungan menghasilkan poin lebih banyak lagi.',  auto:true },
+    { tier:'gold', name:'Diskon 10% semua layanan',          desc:'Berlaku di semua cabang Redbox.',                        auto:true },
+    { tier:'gold', name:'Cashback 50% Haircut Premium CSB', desc:'Tersedia di katalog rewards untuk diredeem.',            auto:false },
+    // Platinum
+    { tier:'platinum', name:'Poin multiplier ×2.0',          desc:'Poin terbanyak per kunjungan.',                          auto:true },
+    { tier:'platinum', name:'Free Gentlemen Grooming',       desc:'Layanan grooming gratis tiap kunjungan.',                auto:true },
+    { tier:'platinum', name:'Free Iced Americano',           desc:'Kopi gratis tiap kunjungan ke Redbox.',                  auto:true },
+    { tier:'platinum', name:'Birthday gratis penuh',         desc:'Layanan gratis saat hari ulang tahunmu.',                auto:true },
+    { tier:'platinum', name:'Priority semua cabang',         desc:'Akses priority booking di seluruh cabang Redbox.',       auto:true },
+  ];
+
   const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
   // ============================================================
