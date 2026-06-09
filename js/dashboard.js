@@ -256,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Progress bar — show for non-Platinum
     if (ubProgressWrap) {
-      ubProgressWrap.style.display = tier.class === 'platinum' ? 'none' : 'block';
+      ubProgressWrap.style.display = (tier.class === 'platinum' || !ACTIVE) ? 'none' : 'block';
       if (ubProgressFill) { ubProgressFill.style.width = progress + '%'; ubProgressFill.style.background = accentColor; }
       if (ubProgressLabel && nextTier) ubProgressLabel.textContent = `${displayPoints.toLocaleString('id-ID')} / ${tier.max.toLocaleString('id-ID')} poin — ${tier.max - displayPoints} lagi ke ${nextTier.name}`;
     }
@@ -516,6 +516,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const servicesEl = document.getElementById('shopServices');
     const ctaEl      = document.getElementById('shopUpgradeCta');
     if (!curatedEl || !productsEl || !servicesEl) return;
+
+    if (!ACTIVE) {
+      const inactiveSvg = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`;
+      const inactiveHtml = `
+        <div style="text-align:center;padding:40px 20px;color:#4b5563;">
+          ${inactiveSvg}
+          <p style="margin-top:12px;font-size:0.8rem;">Aktivasi membership untuk mengakses Shop.</p>
+          <button onclick="location.href='membership.html'" style="margin-top:14px;padding:8px 18px;border-radius:6px;border:none;background:#c1121f;color:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;">Aktivasi Sekarang</button>
+        </div>`;
+      curatedEl.closest('#panel-shop').innerHTML = inactiveHtml;
+      return;
+    }
 
     const tierKey    = ACTIVE ? tier.class : 'bronze';
     const tierIdx    = ACTIVE ? (tier.level - 1) : 0;
