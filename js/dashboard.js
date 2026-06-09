@@ -56,20 +56,24 @@ document.addEventListener('DOMContentLoaded', () => {
   ];
 
   const BENEFITS = [
-    // Silver
-    { tier:'silver', name:'Akses dashboard member',          desc:'Lihat riwayat kunjungan, poin, dan profil.',             auto:true  },
-    { tier:'silver', name:'Kode referral aktif',             desc:'Bagikan kode, dapat bonus poin tiap teman daftar.',      auto:true  },
-    { tier:'silver', name:'5% discount haircut',             desc:'Diskon 5% haircut setiap kunjungan.',                    auto:true  },
-    { tier:'silver', name:'50% Birthday discount',           desc:'Diskon 50% di hari ulang tahun (±7 hari).',              auto:false },
-    // Gold
-    { tier:'gold', name:'10% discount haircut',              desc:'Diskon 10% haircut, berlaku di semua cabang Redbox.',    auto:true  },
-    { tier:'gold', name:'50% Birthday discount',             desc:'Diskon 50% di hari ulang tahun (±7 hari).',              auto:false },
-    { tier:'gold', name:'Berlaku di semua cabang',           desc:'Termasuk CSB Mall dan semua outlet Redbox.',             auto:true  },
-    // Platinum
-    { tier:'platinum', name:'Free Haircut tiap kunjungan',   desc:'Haircut gratis tanpa batas kunjungan.',                  auto:true  },
-    { tier:'platinum', name:'Free Birthday penuh',           desc:'Layanan gratis di hari ulang tahunmu (±7 hari).',        auto:false },
-    { tier:'platinum', name:'Free Iced Americano',           desc:'Kopi gratis tiap kunjungan ke Redbox.',                  auto:true  },
-    { tier:'platinum', name:'Berlaku di semua cabang',       desc:'Akses semua cabang Redbox tanpa terkecuali.',            auto:true  },
+    // Bronze (3)
+    { tier:'bronze',   name:'Akses dashboard member',             desc:'Lihat riwayat kunjungan, poin, dan profil.',                   auto:true  },
+    { tier:'bronze',   name:'Kode referral',                      desc:'Bagikan kode, dapat bonus poin tiap teman daftar.',            auto:true  },
+    { tier:'bronze',   name:'Riwayat kunjungan & poin',           desc:'Pantau semua aktivitas membership kamu.',                      auto:true  },
+    // Silver (3)
+    { tier:'silver',   name:'Poin multiplier ×1.2',               desc:'Setiap kunjungan menghasilkan lebih banyak poin.',             auto:true  },
+    { tier:'silver',   name:'Cashback 50% Haircut Regular',       desc:'Tersedia di katalog rewards untuk diredeem.',                  auto:false },
+    { tier:'silver',   name:'Akses Katalog Produk',               desc:'Beli produk Redbox langsung dari dashboard.',                  auto:true  },
+    // Gold (3)
+    { tier:'gold',     name:'Poin multiplier ×1.5',               desc:'Setiap kunjungan menghasilkan poin lebih banyak lagi.',        auto:true  },
+    { tier:'gold',     name:'Diskon 10% semua layanan',           desc:'Berlaku di semua cabang Redbox.',                              auto:true  },
+    { tier:'gold',     name:'Cashback 50% Haircut Premium CSB',   desc:'Tersedia di katalog rewards untuk diredeem.',                  auto:false },
+    // Platinum (5)
+    { tier:'platinum', name:'Poin multiplier ×2.0',               desc:'Poin terbanyak per kunjungan.',                                auto:true  },
+    { tier:'platinum', name:'Free Gentlemen Grooming',            desc:'Layanan grooming gratis tiap kunjungan.',                      auto:true  },
+    { tier:'platinum', name:'Free Iced Americano',                desc:'Kopi gratis tiap kunjungan ke Redbox.',                        auto:true  },
+    { tier:'platinum', name:'Birthday gratis penuh',              desc:'Layanan gratis saat hari ulang tahunmu.',                      auto:true  },
+    { tier:'platinum', name:'Priority semua cabang',              desc:'Akses priority booking di seluruh cabang Redbox.',             auto:true  },
   ];
 
   const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -916,6 +920,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }));
       save();
       renderPointsHistory();
+      renderRedeemHistory();
       // Refresh rewards points display
       const rpd = document.getElementById('rewardsPointsDisplay');
       if (rpd) {
