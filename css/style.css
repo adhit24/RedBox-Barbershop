@@ -2175,7 +2175,7 @@ section{padding:100px 0}
 /* ---- HYGIENE PLEDGE ---- */
 .hygiene-pledge {
   background: var(--bg-2);
-  border: 1px solid rgba(193,18,31,.2);
+  border: 1px solid var(--red-20);
   border-radius: var(--radius);
   padding: 20px 24px;
   position: relative;
@@ -2194,11 +2194,16 @@ section{padding:100px 0}
   gap: 10px;
   margin-bottom: 16px;
 }
+.hp-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .hp-icon-wrap {
   width: 32px; height: 32px;
   background: var(--red-10);
   border: 1px solid rgba(193,18,31,.25);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -2241,7 +2246,7 @@ section{padding:100px 0}
 .hp-item-icon {
   width: 40px; height: 40px;
   background: var(--bg-4);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
   overflow: hidden;
 }
