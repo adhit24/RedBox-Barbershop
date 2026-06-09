@@ -607,6 +607,19 @@ document.addEventListener('DOMContentLoaded', () => {
   renderShop();
 
   // ============================================================
+  // MOBILE NAV HAMBURGER
+  // ============================================================
+  const dashSidebar   = document.getElementById('dashSidebar');
+  const dashNavToggle = document.getElementById('dashNavToggle');
+  const dashNavBackdrop = document.getElementById('dashNavBackdrop');
+
+  function openNav()  { dashSidebar.classList.add('open'); dashNavBackdrop.classList.add('open'); }
+  function closeNav() { dashSidebar.classList.remove('open'); dashNavBackdrop.classList.remove('open'); }
+
+  if (dashNavToggle)   dashNavToggle.addEventListener('click', openNav);
+  if (dashNavBackdrop) dashNavBackdrop.addEventListener('click', closeNav);
+
+  // ============================================================
   // TAB SWITCHING
   // ============================================================
   const navItems = document.querySelectorAll('.dash-nav-item[data-tab]');
@@ -617,6 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
       navItems.forEach(n => n.classList.remove('active'));
       item.classList.add('active');
       panels.forEach(p => { p.classList.remove('active'); if (p.id === 'panel-'+tab) p.classList.add('active'); });
+      closeNav(); // close sidebar drawer after selecting tab on mobile
     });
   });
 
