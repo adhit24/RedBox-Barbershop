@@ -147,7 +147,7 @@ async function syncCurrentMonthTx(supabase, outlet) {
             tx_date:         txDate,
             barber_id:       barberId,
             barber_name_raw: csvName,
-            service_name:    services[0] || '',
+            service_name:    services.join(', '),
             revenue_share:   revShare,
           });
         }
