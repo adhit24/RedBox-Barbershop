@@ -144,42 +144,32 @@
         </div>
         <div class="tier-progress-track">
           <div class="tier-nodes">
-            <div class="tier-node active" data-tier="bronze">
-              <div class="tier-node-dot">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-              </div>
-              <span class="tier-node-label">Bronze</span>
-              <span class="tier-node-pts">0 pts</span>
-            </div>
-            <div class="tier-connector">
-              <div class="tier-connector-fill" id="tierFill1" style="width:0%"></div>
-            </div>
-            <div class="tier-node" data-tier="silver">
+            <div class="tier-node active" data-tier="silver">
               <div class="tier-node-dot">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
               </div>
               <span class="tier-node-label">Silver</span>
-              <span class="tier-node-pts">500 pts</span>
+              <span class="tier-node-pts">0 pts</span>
             </div>
             <div class="tier-connector">
-              <div class="tier-connector-fill" id="tierFill2" style="width:0%"></div>
+              <div class="tier-connector-fill" id="tierFill1" style="width:0%"></div>
             </div>
             <div class="tier-node" data-tier="gold">
               <div class="tier-node-dot">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
               </div>
               <span class="tier-node-label">Gold</span>
-              <span class="tier-node-pts">1500 pts</span>
+              <span class="tier-node-pts">500 pts</span>
             </div>
             <div class="tier-connector">
-              <div class="tier-connector-fill" id="tierFill3" style="width:0%"></div>
+              <div class="tier-connector-fill" id="tierFill2" style="width:0%"></div>
             </div>
             <div class="tier-node" data-tier="platinum">
               <div class="tier-node-dot">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
               </div>
               <span class="tier-node-label">Platinum</span>
-              <span class="tier-node-pts">3000 pts</span>
+              <span class="tier-node-pts">1500 pts</span>
             </div>
           </div>
         </div>
@@ -188,7 +178,7 @@
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           <h3>Tier Terkunci</h3>
           <p>Aktivasi membership untuk membuka sistem tier dan mulai kumpulkan poin eksklusif.</p>
-          <button class="btn-tier-unlock" id="btnActivate">Aktivasi Sekarang — Rp100.000</button>
+          <button class="btn-tier-unlock" id="btnActivate">Aktivasi Membership Sekarang</button>
         </div>
         <div class="tier-message" id="tierMessage">
           <p>Selamat datang di Redbox! Kumpulkan poin setiap kunjungan untuk naik level.</p>
@@ -208,7 +198,7 @@
             <span>Aktivasi untuk unlock poin, tier rewards, dan privilege eksklusif.</span>
           </div>
         </div>
-        <button class="btn-act-top" id="btnActivateTop">Aktivasi Rp100.000 →</button>
+        <button class="btn-act-top" id="btnActivateTop">Aktivasi Membership →</button>
       </div>
     </div>
   </div>
@@ -366,46 +356,35 @@
           <div class="points-tiers-explain">
             <h4>Cara Naik Level</h4>
             <div class="tier-explain-grid">
-              <div class="tier-explain-item tier-bronze">
-                <div class="tier-ex-icon">🥉</div>
-                <h5>Bronze</h5>
-                <p>0 - 499 Poin</p>
-                <ul>
-                  <li>Welcome bonus 50 poin</li>
-                  <li>Diskon 5% produk</li>
-                </ul>
-              </div>
               <div class="tier-explain-item tier-silver">
                 <div class="tier-ex-icon">🥈</div>
                 <h5>Silver</h5>
-                <p>500 - 1.499 Poin</p>
+                <p>Rp 100.000 / 500 Poin</p>
                 <ul>
-                  <li>Diskon 10% layanan</li>
-                  <li>Free hair wash</li>
-                  <li>Birthday treat</li>
+                  <li>5% discount haircut</li>
+                  <li>50% birthday discount</li>
+                  <li>Tidak berlaku di CSB Mall</li>
                 </ul>
               </div>
               <div class="tier-explain-item tier-gold">
                 <div class="tier-ex-icon">🥇</div>
                 <h5>Gold</h5>
-                <p>1.500 - 2.999 Poin</p>
+                <p>Rp 250.000 / 501+ Poin</p>
                 <ul>
-                  <li>Diskon 15% semua layanan</li>
-                  <li>Prioritas booking</li>
-                  <li>Free styling product</li>
-                  <li>Exclusive event access</li>
+                  <li>10% discount haircut</li>
+                  <li>50% birthday discount</li>
+                  <li>Berlaku di semua cabang</li>
                 </ul>
               </div>
               <div class="tier-explain-item tier-platinum">
                 <div class="tier-ex-icon">💎</div>
                 <h5>Platinum</h5>
-                <p>3.000+ Poin</p>
+                <p>Rp 1.500.000</p>
                 <ul>
-                  <li>Diskon 20% semua</li>
-                  <li>Free service per bulan</li>
-                  <li>VIP lounge access</li>
-                  <li>Personal barber</li>
-                  <li>Exclusive merchandise</li>
+                  <li>Free haircut setiap kunjungan</li>
+                  <li>Free birthday penuh</li>
+                  <li>Free iced americano</li>
+                  <li>Berlaku di semua cabang</li>
                 </ul>
               </div>
             </div>
@@ -487,19 +466,19 @@
         <div class="act-left">
           <span class="act-badge">MEMBERSHIP BELUM AKTIF</span>
           <h2>Clean cut deserves premium rewards.</h2>
-          <p>Bayar sekali <strong>Rp100.000</strong> — unlock sistem poin, tier rewards, dan privilege eksklusif selamanya.</p>
+          <p>Pilih tier sesuai kebutuhan — <strong>Silver, Gold, atau Platinum</strong> — dan bayar langsung di outlet Redbox terdekat.</p>
           <div class="act-perks">
             <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Poin setiap kunjungan</span>
-            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Bronze → Platinum tier</span>
+            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Silver → Platinum tier</span>
             <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Referral bonus</span>
             <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Diskon eksklusif</span>
           </div>
         </div>
         <div class="act-right">
           <div class="act-price-box">
-            <span class="act-price-tag">Biaya Aktivasi</span>
-            <span class="act-price-val">Rp100.000</span>
-            <span class="act-price-sub">Bayar sekali. Benefit selamanya.</span>
+            <span class="act-price-tag">Pilih Tier Membership</span>
+            <span class="act-price-val" style="font-size:1.1rem">Silver / Gold / Platinum</span>
+            <span class="act-price-sub">Bayar di outlet terdekat</span>
           </div>
           <button class="btn-act-main" id="btnActivateBanner">
             Aktivasi Membership
@@ -525,14 +504,14 @@
         <span>Kartu eksklusif ini milik kamu setelah aktivasi</span>
       </div>
       <div class="modal-price-display">
-        <span>Biaya Aktivasi (Sekali Bayar)</span>
-        <strong>Rp 100.000</strong>
+        <span>Pilih tier yang sesuai kebutuhanmu</span>
+        <strong>Silver / Gold / Platinum</strong>
       </div>
       <div class="modal-benefits">
-        <div class="modal-benefit-item"><span>✓</span><span>+50 poin bonus langsung aktif</span></div>
-        <div class="modal-benefit-item"><span>✓</span><span>Akses penuh sistem tier Bronze–Platinum</span></div>
+        <div class="modal-benefit-item"><span>✓</span><span>+25 poin bonus langsung aktif</span></div>
+        <div class="modal-benefit-item"><span>✓</span><span>Akses penuh sistem tier Silver–Platinum</span></div>
         <div class="modal-benefit-item"><span>✓</span><span>Kode referral aktif, earn bonus poin</span></div>
-        <div class="modal-benefit-item"><span>✓</span><span>Reward &amp; redeem tersedia</span></div>
+        <div class="modal-benefit-item"><span>✓</span><span>Reward &amp; redeem poin tersedia</span></div>
       </div>
       <!-- How to activate steps -->
       <div class="modal-steps">
@@ -548,7 +527,7 @@
           </li>
           <li>
             <span class="step-num">3</span>
-            <div><strong>Bayar Rp 100.000</strong> (sekali bayar, berlaku seumur hidup)</div>
+            <div><strong>Bayar sesuai tier</strong> yang kamu pilih (Silver / Gold / Platinum)</div>
           </li>
           <li>
             <span class="step-num">4</span>

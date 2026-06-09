@@ -192,12 +192,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Banner config per tier
     const configs = {
-      bronze:   { title:'Aktivasi Member — Mulai Kumpul Poin',         desc:'Bergabunglah dan mulai dapatkan keuntungan eksklusif Redbox.',          cta:'Aktivasi Sekarang', ctaClass:'' },
-      silver:   { title:'Upgrade ke Gold — Unlock Benefit Lebih',       desc:'Diskon 10% semua layanan, cashback eksklusif, dan lebih banyak reward.', cta:'Upgrade ke Gold',    ctaClass:'' },
-      gold:     { title:'Upgrade ke Platinum — Benefit Terlengkap',     desc:'Free grooming, iced americano, dan birthday gratis di semua cabang.',    cta:'Upgrade ke Platinum', ctaClass:'plat' },
-      platinum: { title:'Kamu di Tingkat Tertinggi',                    desc:'Nikmati semua benefit eksklusif Redbox Platinum.',                       cta:null, ctaClass:'' },
+      silver:   { title:'Silver Member — Kumpul Poin untuk Naik Gold',     desc:'Capai 500 poin untuk upgrade Gold — diskon 10% di semua cabang.',        cta:'Lihat Semua Tier',    ctaClass:'' },
+      gold:     { title:'Upgrade ke Platinum — Benefit Terlengkap',         desc:'Free haircut, free iced americano, dan birthday gratis di semua cabang.', cta:'Upgrade ke Platinum', ctaClass:'plat' },
+      platinum: { title:'Kamu di Tingkat Tertinggi',                        desc:'Nikmati semua benefit eksklusif Redbox Platinum.',                        cta:null, ctaClass:'' },
     };
-    const cfg = configs[tier.class] || configs.bronze;
+    const cfg = configs[tier.class] || configs.silver;
 
     // Tier accent colors for progress bar
     const progressColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#B9F2FF' };
@@ -205,7 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Tier SVG icons (24×24 stroke)
     const tierIcons = {
-      bronze:   `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#CD7F32" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
       silver:   `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
       gold:     `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
       platinum: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B9F2FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z"/><polyline points="2 8 12 14 22 8"/><line x1="12" y1="14" x2="12" y2="20"/></svg>`,
@@ -287,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (i === tier.level-1) node.classList.add('active');
     });
     setTimeout(() => {
-      [[0,0,500],[1,500,1500],[2,1500,3000]].forEach(([i,start,end]) => {
+      [[0,0,500],[1,500,1500]].forEach(([i,start,end]) => {
         const fill = document.getElementById('tierFill' + (i+1));
         if (!fill) return;
         const pct = memberData.points >= end ? 100
