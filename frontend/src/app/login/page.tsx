@@ -92,6 +92,32 @@ function LoginForm() {
       />
 
       <div className="w-full max-w-[360px] relative z-10">
+        {/* BETA badge */}
+        <motion.div
+          className="absolute top-0 right-0 flex items-center gap-1.5 px-3 py-1 rounded-full"
+          initial={{ opacity: 0, scale: 0.75, y: -4 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.65, ease }}
+          style={{
+            background: 'rgba(199,40,32,0.13)',
+            border: '1px solid rgba(199,40,32,0.28)',
+            boxShadow: '0 0 12px rgba(199,40,32,0.06)',
+          }}
+        >
+          <motion.span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: '#C72820' }}
+            animate={{ opacity: [1, 0.4, 1] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <span
+            className="text-[10px] font-bold tracking-[0.18em] uppercase"
+            style={{ color: '#E87068' }}
+          >
+            BETA 1.2
+          </span>
+        </motion.div>
+
         {/* Logo + brand */}
         <motion.div
           className="flex flex-col items-center mb-10"

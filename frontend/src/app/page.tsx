@@ -183,7 +183,7 @@ export default function RolePickerPage() {
             className="text-[10px] font-bold tracking-[0.18em] uppercase"
             style={{ color: '#E87068' }}
           >
-            Beta
+            BETA 1.2
           </span>
         </motion.div>
 
