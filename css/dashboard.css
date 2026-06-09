@@ -910,3 +910,34 @@ html, body { overflow-x: hidden; max-width: 100vw; }
   .form-field input,.form-field select{padding:10px 12px;font-size:.85rem}
   .gender-btn{padding:10px 6px;font-size:.8rem}
 }
+
+/* ── Smart Upsell Banner ── */
+.upsell-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+  border-radius: 14px; padding: 16px 20px; margin-bottom: 18px;
+}
+.upsell-banner.tier-bronze { background: linear-gradient(135deg, #1a1008 0%, #0d0a06 100%); border: 1px solid rgba(205,127,50,0.25); }
+.upsell-banner.tier-silver { background: linear-gradient(135deg, #111418 0%, #0a0c10 100%); border: 1px solid rgba(192,192,192,0.20); }
+.upsell-banner.tier-gold   { background: linear-gradient(135deg, #12100a 0%, #0a0905 100%); border: 1px solid rgba(255,215,0,0.22); }
+.upsell-banner.tier-platinum { background: linear-gradient(135deg, #0d0818 0%, #070510 100%); border: 1px solid rgba(185,242,255,0.18); }
+.ub-left { display: flex; align-items: flex-start; gap: 14px; flex: 1; min-width: 0; }
+.ub-icon svg { flex-shrink: 0; }
+.ub-text { min-width: 0; }
+.ub-text strong { display: block; font-size: 0.9rem; font-weight: 700; color: #e5e7eb; margin-bottom: 3px; }
+.ub-text span   { display: block; font-size: 0.75rem; color: #9ca3af; line-height: 1.5; }
+.ub-progress-wrap { margin-top: 8px; }
+.ub-progress-bar  { height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; width: 200px; max-width: 100%; }
+.ub-progress-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+.ub-progress-label { font-size: 0.65rem; color: #6b7280; margin-top: 4px; display: block; }
+.ub-actions { display: flex; flex-shrink: 0; }
+.ub-btn {
+  background: #c1121f; color: #fff; border: none;
+  padding: 9px 16px; border-radius: 8px; font-size: 0.78rem; font-weight: 700;
+  cursor: pointer; white-space: nowrap;
+}
+.ub-btn:hover { opacity: 0.88; }
+.ub-btn.plat { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+@media (max-width: 640px) {
+  .upsell-banner { flex-direction: column; align-items: flex-start; }
+}
