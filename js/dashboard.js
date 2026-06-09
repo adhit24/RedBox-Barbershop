@@ -76,6 +76,29 @@ document.addEventListener('DOMContentLoaded', () => {
     { tier:'platinum', name:'Priority semua cabang',              desc:'Akses priority booking di seluruh cabang Redbox.',             auto:true  },
   ];
 
+  const PRODUCTS = [
+    { id:'clay',    name:'Redbox Clay',        sub:'Styling clay natural finish',   price:'Rp 100.000',        img:'Brand_assets/product/clay.jpeg',              badge:'Populer' },
+    { id:'water',   name:'Pomade Waterbased',  sub:'Formula water-based rinse',     price:'Rp 100.000–150.000',img:'Brand_assets/product/water_base.jpeg',         badge:null },
+    { id:'oil',     name:'Pomade Oil Based',   sub:'Hold kuat tahan lama',          price:'Rp 100.000–150.000',img:'Brand_assets/product/oil_base.jpeg',           badge:null },
+    { id:'elfree',  name:'Parfum Eleftheree',  sub:'Aroma segar maskulin',          price:'Rp 150.000',        img:'Brand_assets/product/IMG_6532.JPG.jpeg',       badge:'New' },
+    { id:'psyhi',   name:'Parfum Psyhi',       sub:'Aroma woody premium',           price:'Rp 150.000',        img:'Brand_assets/product/psyi.jpeg',               badge:null },
+  ];
+
+  const SERVICES_SHOP = [
+    { id:'grooming', name:'Gentlemen Grooming', sub:'Cukur + styling presisi',      img:'Brand_assets/Services/Shaving.jpg',                                        tier:'gold',     discount:'Disc 10%' },
+    { id:'hairspa',  name:'Hairspa',            sub:'Perawatan kulit kepala',        img:'Brand_assets/Services/Creambath.jpg',                                      tier:'gold',     discount:'Disc 10%' },
+    { id:'massage',  name:"Men's Massage",      sub:'Pijat relaksasi premium',       img:'Brand_assets/Services/Men_Massage_Service.jpg',                            tier:'platinum', discount:null },
+    { id:'americano',name:'Iced Americano',     sub:'Free tiap kunjungan Platinum',  img:'https://images.unsplash.com/photo-1630184799082-05623dbdc7f7?w=400&q=75', tier:'platinum', discount:null },
+  ];
+
+  // Curated recommendations by tier (product IDs)
+  const CURATED_MAP = {
+    bronze:   ['clay','water','oil'],
+    silver:   ['clay','water','oil'],
+    gold:     ['clay','water','elfree'],
+    platinum: ['elfree','psyhi','clay'],
+  };
+
   const MONTHS = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
   // ============================================================
@@ -459,6 +482,114 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   renderRedeemHistory();
+
+  // ============================================================
+  // SHOP
+  // ============================================================
+  function shopCardHtml(p) {
+    const badgeHtml = p.badge
+      ? `<span class="shop-badge badge-${p.badge==='New'?'new':'red'}">${p.badge}</span>` : '';
+    return `
+      <div class="shop-card red">
+        <div class="shop-card-img">
+          <img src="${p.img}" alt="${p.name}" loading="lazy"/>
+          ${badgeHtml}
+        </div>
+        <div class="shop-card-body">
+          <div class="shop-card-name">${p.name}</div>
+          <div class="shop-card-sub">${p.sub}</div>
+          <span class="shop-tag tag-price">${p.price}</span>
+          <button class="shop-btn shop-btn-red" onclick="window.open('https://wa.me/6289635379441?text=Halo%20Redbox%2C%20saya%20ingin%20memesan%20${encodeURIComponent(p.name)}','_blank')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.555 4.13 1.535 5.875L.057 23.857c-.072.267.162.501.43.43l6.062-1.476A11.965 11.965 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.98 0-3.849-.576-5.42-1.566l-.39-.23-3.6.876.893-3.51-.253-.4A9.962 9.962 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+            Beli via WA
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function renderShop() {
+    const curatedEl  = document.getElementById('shopCurated');
+    const productsEl = document.getElementById('shopProducts');
+    const servicesEl = document.getElementById('shopServices');
+    const ctaEl      = document.getElementById('shopUpgradeCta');
+    if (!curatedEl) return;
+
+    const tierKey    = ACTIVE ? tier.class : 'bronze';
+    const tierIdx    = ACTIVE ? (tier.level - 1) : 0;
+
+    // Section A: Curated
+    const curatedIds = CURATED_MAP[tierKey] || CURATED_MAP.bronze;
+    curatedEl.innerHTML = curatedIds
+      .map(id => shopCardHtml(PRODUCTS.find(p => p.id === id)))
+      .join('');
+
+    // Section B: All products (5 + "Lihat semua" card)
+    productsEl.innerHTML = PRODUCTS.map(shopCardHtml).join('') + `
+      <a href="products.html" class="shop-more-card">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span>Lihat semua<br>produk →</span>
+      </a>`;
+
+    // Section C: Service upsell cards
+    servicesEl.innerHTML = SERVICES_SHOP.map(s => {
+      const isGold     = tierIdx >= 2;
+      const isPlat     = tierIdx >= 3;
+      const locked     = s.tier === 'platinum' ? !isPlat : !isGold;
+      const cardClass  = s.tier === 'platinum' ? 'plat' : 'red';
+      const badgeHtml  = locked
+        ? `<span class="shop-badge badge-lock"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>${s.tier==='platinum'?'Platinum':'Gold'}+</span>`
+        : s.discount
+          ? `<span class="shop-badge badge-gold">${s.discount}</span>`
+          : '';
+      const tagHtml    = locked
+        ? `<span class="shop-tag tag-lock">${s.tier==='platinum'?'🔒 Platinum':'🔒 Gold+'}</span>`
+        : s.discount
+          ? `<span class="shop-tag tag-disc">${s.discount} untuk kamu</span>`
+          : '';
+      const btnHtml    = locked
+        ? `<button class="shop-btn shop-btn-plat" onclick="location.href='membership.html'">Upgrade Sekarang</button>`
+        : `<button class="shop-btn shop-btn-red" onclick="location.href='booking.html'">Book sekarang</button>`;
+      return `
+        <div class="shop-card ${cardClass}">
+          <div class="shop-card-img">
+            <img src="${s.img}" alt="${s.name}" loading="lazy"/>
+            ${badgeHtml}
+          </div>
+          <div class="shop-card-body">
+            <div class="shop-card-name">${s.name}</div>
+            <div class="shop-card-sub">${s.sub}</div>
+            ${tagHtml}
+            ${btnHtml}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Section D: Upgrade CTA (only if not Platinum)
+    if (!ctaEl) return;
+    if (ACTIVE && tierIdx >= 3) { ctaEl.innerHTML = ''; return; }
+    const nextT = TIERS[Math.min(tierIdx + 1, TIERS.length - 1)];
+    ctaEl.innerHTML = `
+      <div class="suc-block">
+        <div class="suc-info">
+          <div class="suc-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Upgrade ke ${nextT.name}
+          </div>
+          <div class="suc-sub">Unlock lebih banyak benefit eksklusif Redbox.</div>
+          <div class="suc-tags">
+            ${BENEFITS.filter(b => b.tier === nextT.class).slice(0,3).map(b =>
+              `<span class="suc-tag">✓ ${b.name}</span>`
+            ).join('')}
+          </div>
+        </div>
+        <button class="suc-btn" onclick="location.href='membership.html'">
+          Upgrade Sekarang
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>`;
+  }
+
+  renderShop();
 
   // ============================================================
   // TAB SWITCHING
