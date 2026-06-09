@@ -2255,7 +2255,8 @@ section{padding:100px 0}
   object-fit: contain;
   padding: 4px;
 }
-.hp-item-img--kip {
+.hp-item-img--kip,
+.hp-item-img--barbercut {
   filter: invert(1) brightness(0.85);
 }
 .hp-item-num {
