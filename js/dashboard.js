@@ -313,8 +313,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (ACTIVE) {
     const tierNodes = document.querySelectorAll('.tier-node');
     tierNodes.forEach((node, i) => {
-      if (i < tier.level)     node.classList.add('completed');
-      if (i === tier.level-1) node.classList.add('active');
+      if (i < tier.level - 1)   node.classList.add('completed');
+      if (i === tier.level - 2) node.classList.add('active');
     });
     setTimeout(() => {
       [[0,0,500],[1,500,1500]].forEach(([i,start,end]) => {
