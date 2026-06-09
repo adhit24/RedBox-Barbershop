@@ -486,19 +486,22 @@ document.addEventListener('DOMContentLoaded', () => {
   // ============================================================
   // SHOP
   // ============================================================
+  function esc(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+
   function shopCardHtml(p) {
+    if (!p) return '';
     const badgeHtml = p.badge
-      ? `<span class="shop-badge badge-${p.badge==='New'?'new':'red'}">${p.badge}</span>` : '';
+      ? `<span class="shop-badge badge-${p.badge==='New'?'new':'red'}">${esc(p.badge)}</span>` : '';
     return `
       <div class="shop-card red">
         <div class="shop-card-img">
-          <img src="${p.img}" alt="${p.name}" loading="lazy"/>
+          <img src="${esc(p.img)}" alt="${esc(p.name)}" loading="lazy"/>
           ${badgeHtml}
         </div>
         <div class="shop-card-body">
-          <div class="shop-card-name">${p.name}</div>
-          <div class="shop-card-sub">${p.sub}</div>
-          <span class="shop-tag tag-price">${p.price}</span>
+          <div class="shop-card-name">${esc(p.name)}</div>
+          <div class="shop-card-sub">${esc(p.sub)}</div>
+          <span class="shop-tag tag-price">${esc(p.price)}</span>
           <button class="shop-btn shop-btn-red" onclick="window.open('https://wa.me/6289635379441?text=Halo%20Redbox%2C%20saya%20ingin%20memesan%20${encodeURIComponent(p.name)}','_blank')">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.555 4.13 1.535 5.875L.057 23.857c-.072.267.162.501.43.43l6.062-1.476A11.965 11.965 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.98 0-3.849-.576-5.42-1.566l-.39-.23-3.6.876.893-3.51-.253-.4A9.962 9.962 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
             Beli via WA
@@ -512,15 +515,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const productsEl = document.getElementById('shopProducts');
     const servicesEl = document.getElementById('shopServices');
     const ctaEl      = document.getElementById('shopUpgradeCta');
-    if (!curatedEl) return;
+    if (!curatedEl || !productsEl || !servicesEl) return;
 
     const tierKey    = ACTIVE ? tier.class : 'bronze';
     const tierIdx    = ACTIVE ? (tier.level - 1) : 0;
+    const isGold     = tierIdx >= 2;
+    const isPlat     = tierIdx >= 3;
 
     // Section A: Curated
     const curatedIds = CURATED_MAP[tierKey] || CURATED_MAP.bronze;
     curatedEl.innerHTML = curatedIds
-      .map(id => shopCardHtml(PRODUCTS.find(p => p.id === id)))
+      .map(id => { const p = PRODUCTS.find(x => x.id === id); return p ? shopCardHtml(p) : ''; })
       .join('');
 
     // Section B: All products (5 + "Lihat semua" card)
@@ -532,8 +537,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Section C: Service upsell cards
     servicesEl.innerHTML = SERVICES_SHOP.map(s => {
-      const isGold     = tierIdx >= 2;
-      const isPlat     = tierIdx >= 3;
       const locked     = s.tier === 'platinum' ? !isPlat : !isGold;
       const cardClass  = s.tier === 'platinum' ? 'plat' : 'red';
       const badgeHtml  = locked
@@ -552,12 +555,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return `
         <div class="shop-card ${cardClass}">
           <div class="shop-card-img">
-            <img src="${s.img}" alt="${s.name}" loading="lazy"/>
+            <img src="${esc(s.img)}" alt="${esc(s.name)}" loading="lazy"/>
             ${badgeHtml}
           </div>
           <div class="shop-card-body">
-            <div class="shop-card-name">${s.name}</div>
-            <div class="shop-card-sub">${s.sub}</div>
+            <div class="shop-card-name">${esc(s.name)}</div>
+            <div class="shop-card-sub">${esc(s.sub)}</div>
             ${tagHtml}
             ${btnHtml}
           </div>
