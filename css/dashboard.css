@@ -975,3 +975,124 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .rd-status.used    { background:rgba(74,222,128,0.1);  color:#4ade80; }
 .rd-status.pending { background:rgba(251,191,36,0.1);  color:#fbbf24; }
 .rd-status.expired { background:rgba(239,68,68,0.1);   color:#ef4444; }
+
+/* ── Shop Tab ── */
+.section-desc { font-size:0.72rem; color:oklch(0.42 0.008 60); margin-bottom:12px; margin-top:-4px; }
+
+.shop-grid { display:grid; gap:8px; }
+.shop-grid-3 { grid-template-columns:repeat(3,1fr); }
+.shop-grid-2 { grid-template-columns:repeat(2,1fr); }
+
+.shop-card {
+  background:oklch(0.13 0.007 15); border:1px solid oklch(0.18 0.005 15);
+  border-radius:10px; overflow:hidden;
+  display:flex; flex-direction:column;
+  transition:border-color 0.18s; cursor:pointer;
+}
+.shop-card:hover { border-color:oklch(0.22 0.005 15); }
+.shop-card.red   { border-color:oklch(0.50 0.22 25 / 0.30); }
+.shop-card.red:hover   { border-color:oklch(0.50 0.22 25 / 0.55); }
+.shop-card.plat  { border-color:oklch(0.75 0.09 295 / 0.20); }
+.shop-card.plat:hover  { border-color:oklch(0.75 0.09 295 / 0.38); }
+
+.shop-card-img {
+  height:112px; overflow:hidden; position:relative;
+  background:oklch(0.16 0.006 15); flex-shrink:0;
+}
+.shop-card-img img {
+  width:100%; height:100%; object-fit:cover; object-position:center;
+  display:block; transition:transform 0.35s ease;
+}
+.shop-card:hover .shop-card-img img { transform:scale(1.07); }
+.shop-card.plat .shop-card-img::after {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(180deg, transparent 30%, oklch(0.10 0.01 295 / 0.5) 100%);
+}
+
+.shop-badge {
+  position:absolute; top:7px; left:7px; z-index:1;
+  font-size:0.54rem; font-weight:800; padding:2px 7px; border-radius:3px;
+  letter-spacing:0.07em; text-transform:uppercase;
+}
+.badge-red  { background:oklch(0.50 0.22 25 / 0.92); color:#fff; }
+.badge-gold { background:oklch(0.80 0.14 80 / 0.90); color:oklch(0.20 0.05 80); }
+.badge-new  { background:oklch(0.60 0.18 145 / 0.90); color:oklch(0.18 0.05 145); }
+.badge-lock {
+  background:oklch(0.75 0.09 295 / 0.15); color:oklch(0.75 0.09 295);
+  border:1px solid oklch(0.75 0.09 295 / 0.25);
+  display:flex; align-items:center; gap:4px;
+}
+
+.shop-card-body {
+  padding:10px 11px 12px;
+  flex:1; display:flex; flex-direction:column;
+}
+.shop-card-name {
+  font-family:'Teko',sans-serif; font-size:1.0rem; font-weight:600;
+  color:oklch(0.93 0.005 60); line-height:1.2; margin-bottom:2px; letter-spacing:0.01em;
+}
+.shop-card-sub { font-size:0.68rem; color:oklch(0.42 0.008 60); margin-bottom:8px; line-height:1.4; flex:1; }
+
+.shop-tag {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:0.58rem; font-weight:700; padding:2px 7px; border-radius:3px;
+  margin-bottom:9px; letter-spacing:0.03em;
+}
+.tag-price { background:oklch(1 0 0 / 0.05); color:oklch(0.60 0.010 60); }
+.tag-disc  { background:oklch(0.50 0.22 25 / 0.14); color:oklch(0.50 0.22 25); }
+.tag-lock  { background:oklch(0.75 0.09 295 / 0.12); color:oklch(0.75 0.09 295); }
+
+.shop-btn {
+  width:100%; padding:7px 10px; border-radius:6px; border:none;
+  font-family:'Barlow',sans-serif; font-size:0.68rem; font-weight:700;
+  cursor:pointer; transition:opacity 0.15s;
+  display:flex; align-items:center; justify-content:center; gap:5px;
+  margin-top:auto;
+}
+.shop-btn-red   { background:oklch(0.50 0.22 25); color:#fff; }
+.shop-btn-ghost { background:transparent; border:1px solid oklch(0.22 0.005 15); color:oklch(0.42 0.008 60); }
+.shop-btn-plat  { background:oklch(0.75 0.09 295 / 0.12); border:1px solid oklch(0.75 0.09 295 / 0.22); color:oklch(0.75 0.09 295); }
+.shop-btn:hover { opacity:0.82; }
+
+.shop-more-card {
+  display:flex; align-items:center; justify-content:center; flex-direction:column;
+  gap:8px; min-height:164px;
+  border:1px dashed oklch(0.22 0.005 15); border-radius:10px;
+  cursor:pointer; color:oklch(0.42 0.008 60); transition:border-color 0.2s, color 0.2s;
+}
+.shop-more-card:hover { border-color:oklch(0.22 0.005 15); color:oklch(0.60 0.010 60); }
+.shop-more-card span  { font-size:0.67rem; text-align:center; line-height:1.5; }
+
+/* ── Shop Upgrade CTA ── */
+.suc-block {
+  margin-top:24px;
+  background:oklch(0.11 0.018 295); border:1px solid oklch(0.75 0.09 295 / 0.18);
+  border-radius:10px; padding:16px 18px;
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+}
+.suc-info { flex:1; }
+.suc-title {
+  font-family:'Teko',sans-serif; font-size:1.1rem; font-weight:600;
+  color:oklch(0.75 0.09 295); letter-spacing:0.03em; margin-bottom:4px;
+  text-transform:uppercase; display:flex; align-items:center; gap:7px;
+}
+.suc-sub   { font-size:0.7rem; color:oklch(0.42 0.008 60); line-height:1.55; }
+.suc-tags  { display:flex; flex-wrap:wrap; gap:5px; margin-top:9px; }
+.suc-tag   {
+  display:inline-flex; align-items:center; gap:4px; font-size:0.58rem;
+  background:oklch(0.75 0.09 295 / 0.12); color:oklch(0.75 0.09 295);
+  padding:2px 7px; border-radius:3px;
+}
+.suc-btn {
+  background:oklch(0.48 0.19 295); color:#fff; border:none;
+  padding:9px 16px; border-radius:7px; font-family:'Barlow',sans-serif;
+  font-size:0.75rem; font-weight:700; cursor:pointer;
+  display:flex; align-items:center; gap:6px; flex-shrink:0; white-space:nowrap;
+}
+.suc-btn:hover { opacity:0.88; }
+
+@media (max-width:480px) {
+  .shop-grid-3 { grid-template-columns:repeat(2,1fr); }
+  .shop-grid-2 { grid-template-columns:1fr; }
+  .suc-block   { flex-direction:column; align-items:flex-start; }
+}
