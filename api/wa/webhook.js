@@ -47,6 +47,31 @@ function getSupabase() {
   return supabaseClient;
 }
 
+// ── Per-branch AI off-hours schedule ──────────────────────────────────────────
+// Bot diam total di luar jam ini. Jam dalam WIB, format "HH:MM".
+// AI_ON_FROM ≤ AI_OFF_AT → bot aktif di interval [AI_ON_FROM, AI_OFF_AT).
+const BRANCH_AI_HOURS = {
+  bypass:    { on_from: '10:00', off_at: '20:30' },
+  samadikun: { on_from: '10:00', off_at: '20:30' },
+  sumber:    { on_from: '10:00', off_at: '20:30' },
+  tegal:     { on_from: '10:00', off_at: '20:30' },
+  csb:       { on_from: '10:00', off_at: '21:30' },
+};
+
+function isBranchAiOff(branch) {
+  const cfg = BRANCH_AI_HOURS[branch];
+  if (!cfg) return false;
+  const wib = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const nowMin = wib.getUTCHours() * 60 + wib.getUTCMinutes();
+  const toMin = (s) => {
+    const [h, m] = s.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const onMin = toMin(cfg.on_from);
+  const offMin = toMin(cfg.off_at);
+  return nowMin < onMin || nowMin >= offMin;
+}
+
 // ── Conversation Memory ───────────────────────────────────────────────────────
 // In-memory cache + Supabase persistence untuk continuity lintas serverless instance.
 //
@@ -1935,6 +1960,16 @@ module.exports = async function handler(req, res) {
       pushDebug({ step: 'human_takeover_active', sender });
       console.log(`[WA Bot] AI paused for ${sender} — human takeover active`);
       return res.status(200).json({ status: 'ignored', reason: 'human_takeover' });
+    }
+
+    // Per-branch AI off-hours — bot diam total di luar jam aktif cabang
+    {
+      const branchForHours = branchFromPayload || detectBranchFromNumber(receiver || device || sender);
+      if (isBranchAiOff(branchForHours)) {
+        pushDebug({ step: 'branch_ai_off_hours', sender, branch: branchForHours });
+        console.log(`[WA Bot] AI off-hours for branch=${branchForHours}, sender=${sender}`);
+        return res.status(200).json({ status: 'ignored', reason: 'branch_ai_off_hours', branch: branchForHours });
+      }
     }
 
     // Proses AI + kirim WA DULU (sebelum res.json) — Lambda dalam state sinkron = network lebih cepat.
