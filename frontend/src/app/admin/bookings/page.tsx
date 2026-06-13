@@ -67,7 +67,7 @@ function BookingControlPageInner() {
       fetch(`/api/bookings?${params}`).then(r => r.json()).catch(() => []),
       fetch(`/api/admin/barbers?branch=${branch}`).then(r => r.json()).catch(() => []),
     ]);
-    let bks: any[] = Array.isArray(bkRes?.bookings) ? bkRes.bookings : Array.isArray(bkRes) ? bkRes : [];
+    let bks: any[] = Array.isArray(bkRes?.bookings) ? bkRes.bookings : Array.isArray(bkRes?.data) ? bkRes.data : Array.isArray(bkRes) ? bkRes : [];
     if (typeFilter === 'home_service') bks = bks.filter((b: any) => (b.notes||'').toUpperCase().includes('HOME SERVICE'));
     else if (typeFilter === 'wedding') bks = bks.filter((b: any) => (b.notes||'').toUpperCase().includes('WEDDING'));
     else if (typeFilter === 'walk_in')  bks = bks.filter((b: any) => (b.notes||'').toUpperCase().includes('WALK-IN'));
