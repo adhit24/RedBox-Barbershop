@@ -15,10 +15,6 @@
     "api/cron/expire-stale-bills.js":{ "maxDuration": 30,  "includeFiles": "server/**" },
     "api/cron/moka-pull.js":         { "maxDuration": 60,  "includeFiles": "server/**" }
   },
-  "crons": [
-    { "path": "/api/cron/moka-pull",          "schedule": "*/5 * * * *"  },
-    { "path": "/api/cron/expire-stale-bills", "schedule": "*/15 * * * *" }
-  ],
   "rewrites": [
     { "source": "/api/ai/analyze",             "destination": "/api/ai/analyze.js" },
     { "source": "/api/ai/upload",              "destination": "/api/ai/upload.js" },
