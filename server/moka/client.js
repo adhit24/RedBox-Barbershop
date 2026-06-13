@@ -121,10 +121,8 @@ class MokaClient {
     const toFmt = (s) => { const [y, m, d] = (s || '').split('-'); return `${d}/${m}/${y}`; };
     const startFmt = toFmt(startDateStr || new Date().toISOString().slice(0, 10));
     const endFmt   = toFmt(endDateStr   || startDateStr || new Date().toISOString().slice(0, 10));
-    // Moka bills in active service can be PENDING or HOLD — query both to avoid missing in-progress bills
-    const qs = new URLSearchParams({ start: startFmt, end: endFmt, per_page: '200', deep: 'true' });
-    qs.append('statuses', 'PENDING');
-    qs.append('statuses', 'HOLD');
+    // Build query string manually — URLSearchParams encodes '/' as '%2F' which Moka API rejects (400)
+    const qs = `start=${startFmt}&end=${endFmt}&per_page=200&deep=true&statuses=PENDING&statuses=HOLD`;
     return this._req('GET', `/v1/outlets/${this._mokaOutletId}/sync_bills?${qs}`);
   }
 
