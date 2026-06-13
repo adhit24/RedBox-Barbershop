@@ -707,10 +707,18 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
       const h  = String(hours).padStart(2, '0');
       const mi = String(minutes).padStart(2, '0');
       let candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
-      // Tanggal sudah lewat lebih dari 1 hari → booking untuk tahun depan (e.g. Des → Jan)
+      // Tanggal lewat lebih dari 1 hari: advance year HANYA jika bulan appointment < bulan sekarang
+      // (kasus cross-year: "01/01" di Desember → tahun depan).
+      // Jika bulan sama/lebih besar tapi sudah lewat → bill stale, return null supaya fallback ke createdAt.
       if (!yearStr && candidate.getTime() < wibBase.getTime() - 86_400_000) {
-        year += 1;
-        candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
+        const candidateMonth = month;
+        const currentMonth   = wibBase.getUTCMonth() + 1;
+        if (candidateMonth < currentMonth) {
+          year += 1;
+          candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
+        } else {
+          return null; // Tanggal sudah lewat di bulan yang sama/lebih → gunakan bill.createdAt
+        }
       }
       return candidate;
     }
