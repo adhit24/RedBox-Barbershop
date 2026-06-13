@@ -1019,8 +1019,8 @@ function createMokaRouter(supabase) {
       const outletId = await _resolveOutletId(supabase, rawOutletId || 'bypass');
       const { data: outlet } = await supabase.from('outlets').select('id,name,moka_outlet_id').eq('id', outletId).single();
       if (!outlet?.moka_outlet_id) return res.status(404).json({ error: 'Outlet not found or no moka_outlet_id' });
-      const { MokaClient } = require('./client');
-      const client = await _getClient(supabase, outletId, outlet.moka_outlet_id);
+      const MokaClient = require('./client');
+      const client = new MokaClient(supabase, outletId, outlet.moka_outlet_id);
       const WIB_MS = 7 * 60 * 60 * 1000;
       const nowWIB = Date.now() + WIB_MS;
       const startWIB    = new Date(nowWIB - 7 * 86_400_000).toISOString().slice(0, 10);
