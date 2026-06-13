@@ -122,7 +122,8 @@ class MokaClient {
     const startFmt = toFmt(startDateStr || new Date().toISOString().slice(0, 10));
     const endFmt   = toFmt(endDateStr   || startDateStr || new Date().toISOString().slice(0, 10));
     // Build query string manually — URLSearchParams encodes '/' as '%2F' which Moka API rejects (400)
-    const qs = `start=${startFmt}&end=${endFmt}&per_page=200&deep=true&statuses=PENDING&statuses=HOLD`;
+    // statuses=PENDING first (matching confirmed-working order); HOLD excluded (causes 400)
+    const qs = `statuses=PENDING&start=${startFmt}&end=${endFmt}&per_page=200&deep=true`;
     return this._req('GET', `/v1/outlets/${this._mokaOutletId}/sync_bills?${qs}`);
   }
 
