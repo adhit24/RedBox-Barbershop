@@ -341,14 +341,15 @@ async function _pullMokaToWebNow(supabase, outletId) {
 
     const client = await _getClient(supabase, outletId, outlet.moka_outlet_id);
 
-    // Hydrate in-memory cache from DB on cold start so we don't refetch 1h every invocation
-    if (!_lastSyncAt.has(outletId) && outlet.last_polled_at) {
-      _lastSyncAt.set(outletId, outlet.last_polled_at);
+    // Hydrate in-memory cache from DB on cold start — but cap to 1 hour.
+    // If last_polled_at is stale (e.g. after re-auth gap), a large backfill window
+    // causes Pull 1 to fetch hundreds of old orders → timeout. Cap prevents this.
+    if (!_lastSyncAt.has(outletId)) {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const dbSince = outlet.last_polled_at;
+      _lastSyncAt.set(outletId, dbSince && dbSince > oneHourAgo ? dbSince : oneHourAgo);
     }
-    // 1-hour lookback (was 24h) caps cold-start backfill work. Older completed orders
-    // are non-blocking — they can stay in Moka without web mirror.
-    const since = _lastSyncAt.get(outletId)
-      || new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const since = _lastSyncAt.get(outletId);
 
     // Kick both pulls in parallel. We AWAIT Pull 3 first (fast, time-critical) then Pull 1.
     const pull1Promise = _runPull1Orders(supabase, client, outletId, since)
