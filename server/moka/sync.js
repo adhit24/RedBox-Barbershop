@@ -707,17 +707,16 @@ function _parseAppointmentTimeFromBillName(billName, billCreatedAt) {
       const h  = String(hours).padStart(2, '0');
       const mi = String(minutes).padStart(2, '0');
       let candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
-      // Tanggal lewat lebih dari 1 hari: advance year HANYA jika bulan appointment < bulan sekarang
-      // (kasus cross-year: "01/01" di Desember → tahun depan).
-      // Jika bulan sama/lebih besar tapi sudah lewat → bill stale, return null supaya fallback ke createdAt.
+      // Tanggal lewat lebih dari 1 hari: advance year HANYA jika versi tahun-depan jatuh
+      // dalam 60 hari ke depan (kasus cross-year barbershop: "01/01" di Desember → Jan depan).
+      // Jika tidak, bill sudah stale — return null supaya fallback ke createdAt (lalu di-expire cron).
       if (!yearStr && candidate.getTime() < wibBase.getTime() - 86_400_000) {
-        const candidateMonth = month;
-        const currentMonth   = wibBase.getUTCMonth() + 1;
-        if (candidateMonth < currentMonth) {
+        const nextYearCandidate = new Date(`${year + 1}-${mo}-${d}T${h}:${mi}:00+07:00`);
+        if (nextYearCandidate.getTime() <= wibBase.getTime() + 60 * 86_400_000) {
           year += 1;
-          candidate = new Date(`${year}-${mo}-${d}T${h}:${mi}:00+07:00`);
+          candidate = nextYearCandidate;
         } else {
-          return null; // Tanggal sudah lewat di bulan yang sama/lebih → gunakan bill.createdAt
+          return null; // Tanggal stale dan tahun-depannya > 60 hari → gunakan bill.createdAt
         }
       }
       return candidate;
