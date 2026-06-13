@@ -322,13 +322,16 @@ class MokaClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
       
+      const reqHeaders = {
+        Authorization: `Bearer ${token}`,
+        Accept:        'application/json',
+      };
+      // Moka sync_bills returns 400 when Content-Type is sent on GET requests
+      if (method !== 'GET') reqHeaders['Content-Type'] = 'application/json';
+
       res = await fetch(url, {
         method,
-        headers: {
-          Authorization:  `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          Accept:         'application/json',
-        },
+        headers: reqHeaders,
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
