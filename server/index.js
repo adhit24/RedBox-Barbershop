@@ -2131,7 +2131,43 @@ app.get('/api/moka/callback', async (req, res) => {
   const { exchangeCode } = require('./moka/oauth');
   const { code, state, error } = req.query;
   if (error) return res.send(`<h2>❌ Moka Error: ${error}</h2>`);
-  if (!code || !state) return res.status(400).send('Missing code or state');
+  if (!code) return res.status(400).send('Missing authorization code');
+
+  // No-state fallback: Moka drops the state param in its callback URL.
+  // Exchange code once for the first outlet, then copy token to all others.
+  if (!state) {
+    try {
+      const { data: outlets } = await supabase.from('outlets').select('id, name').eq('is_active', true);
+      const outletList = outlets || [];
+      if (!outletList.length) return res.status(500).send('No active outlets found');
+
+      await exchangeCode(supabase, String(code), outletList[0].id);
+
+      const { data: firstToken } = await supabase
+        .from('moka_tokens').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      if (firstToken) {
+        for (const outlet of outletList) {
+          if (outlet.id === firstToken.outlet_id) continue;
+          await supabase.from('moka_tokens').upsert(
+            { ...firstToken, outlet_id: outlet.id, updated_at: new Date().toISOString() },
+            { onConflict: 'outlet_id' }
+          );
+        }
+      }
+
+      const names = outletList.map(o => o.name).join(', ');
+      return res.send(`<!DOCTYPE html><html><body style="background:#111;color:#eee;font-family:sans-serif;padding:40px">
+        <h2>✅ Token Moka berhasil disimpan untuk semua outlet!</h2>
+        <p>Outlets: <strong>${names}</strong></p>
+        <p>Online order dari website sekarang akan masuk ke Moka POS di semua cabang.</p>
+        <p><a href="/api/moka/auth-start" style="color:#0af">← Authorize ulang jika perlu</a></p>
+      </body></html>`);
+    } catch (e) {
+      return res.status(500).send(`<h2>❌ Gagal exchange token</h2><pre>${e.message}</pre>`);
+    }
+  }
+
+  // Normal flow: state contains slug|outletId
   let slug, outletId;
   try {
     const decoded = Buffer.from(String(state), 'base64').toString();
