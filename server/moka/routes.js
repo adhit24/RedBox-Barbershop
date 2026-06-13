@@ -896,6 +896,36 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── GET /api/cron/moka-pull ──────────────────────────────
+  // Called by cron-job.org every 5 min. Pulls open GoShow bills from Moka
+  // and inserts them as 'reserved' schedules to block barber slots on the web.
+  // Served by Express catch-all (not a standalone Vercel function) to stay within
+  // Vercel Hobby's 12-function-per-deployment limit.
+  router.get('/cron/moka-pull', async (req, res) => {
+    try {
+      const { data: tokens, error: tokErr } = await supabase
+        .from('moka_tokens').select('outlet_id');
+      if (tokErr) throw new Error(`moka_tokens fetch failed: ${tokErr.message}`);
+      if (!tokens?.length) {
+        return res.status(200).json({ ok: true, message: 'No outlets with Moka tokens', results: [] });
+      }
+      const results = await Promise.all(
+        tokens.map(t =>
+          pullMokaToWeb(supabase, t.outlet_id)
+            .then(r  => ({ outletId: t.outlet_id, ...r }))
+            .catch(err => ({ outletId: t.outlet_id, error: err.message, processed: 0, skipped: 0, errors: 1 }))
+        )
+      );
+      const totalProcessed = results.reduce((s, r) => s + (r.processed || 0), 0);
+      const totalErrors    = results.reduce((s, r) => s + (r.errors   || 0), 0);
+      console.log(`[MokaPull] done — ${results.length} outlet(s), processed=${totalProcessed}, errors=${totalErrors}`);
+      return res.status(200).json({ ok: true, syncedAt: new Date().toISOString(), outlets: results.length, processed: totalProcessed, errors: totalErrors, results });
+    } catch (err) {
+      console.error('[MokaPull] Unexpected error:', err.message);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── POST /api/moka/sync ───────────────────────────────────
   // Manual trigger for Moka → Web pull sync.
   // Body (optional): { "outletId": "uuid-or-slug", "wait": true }
