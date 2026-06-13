@@ -459,11 +459,20 @@ async function _runPull3OpenBills(supabase, client, outletId) {
 
   if (!billsRes) return { processed, skipped, errors };
 
-  // Debug: log response shape to diagnose missing bills
-  console.log(`[Sync] Pull3 outlet ${outletId} response keys: ${Object.keys(billsRes || {}).join(',')}, data type: ${Array.isArray(billsRes?.data) ? `array(${billsRes.data.length})` : typeof billsRes?.data}`);
+  // Log response shape for diagnostics — critical to identify Moka API response format
+  const _billsResType = Array.isArray(billsRes) ? `direct-array(${billsRes.length})`
+                      : (typeof billsRes === 'object' ? `object{${Object.keys(billsRes).join(',')}}` : typeof billsRes);
+  const _dataType = Array.isArray(billsRes?.data) ? `array(${billsRes.data.length})`
+                  : (billsRes?.data ? `object{${Object.keys(billsRes.data).join(',')}}` : typeof billsRes?.data);
+  console.warn(`[Sync] Pull3 outlet ${outletId} raw response: type=${_billsResType}, data=${_dataType}`);
 
-  // Moka may return data as array (multi-bill) or object (single-bill) — normalize.
-  const rawData   = billsRes?.data;
+  // Normalize Moka sync_bills response — API may return:
+  //   { data: [...] }        — standard wrapper
+  //   [...]                  — direct array (no wrapper)
+  //   { data: { ... } }      — single-object in data (old API behaviour)
+  const rawData = Array.isArray(billsRes) ? billsRes          // direct array
+               : Array.isArray(billsRes?.data) ? billsRes.data // wrapped array
+               : billsRes?.data;                               // anything else (incl. single object)
   const openBills = Array.isArray(rawData) ? rawData
                   : (rawData && typeof rawData === 'object' && rawData.id) ? [rawData]
                   : [];
