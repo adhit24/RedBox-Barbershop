@@ -1029,7 +1029,7 @@ function createMokaRouter(supabase) {
       try {
         rawResponse = await client.getOpenBills(startWIB, tomorrowWIB);
       } catch (e) {
-        error = { message: e.message, status: e.status, code: e.code };
+        error = { message: e.message, status: e.status, code: e.code, details: e.details };
       }
       return res.json({ outlet: outlet.name, mokaOutletId: outlet.moka_outlet_id, dateRange: `${startWIB} → ${tomorrowWIB}`, rawResponse, error });
     } catch (err) {
