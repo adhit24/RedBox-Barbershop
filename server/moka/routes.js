@@ -1010,6 +1010,33 @@ function createMokaRouter(supabase) {
     }
   });
 
+  // ── GET /api/moka/debug-open-bills ──────────────────────────────
+  // Diagnostic: call getOpenBills for one outlet and return raw Moka response.
+  // Usage: /api/moka/debug-open-bills?outletId=<slug-or-uuid>
+  router.get('/moka/debug-open-bills', async (req, res) => {
+    try {
+      const { outletId: rawOutletId } = req.query;
+      const outletId = await _resolveOutletId(supabase, rawOutletId || 'bypass');
+      const { data: outlet } = await supabase.from('outlets').select('id,name,moka_outlet_id').eq('id', outletId).single();
+      if (!outlet?.moka_outlet_id) return res.status(404).json({ error: 'Outlet not found or no moka_outlet_id' });
+      const { MokaClient } = require('./client');
+      const client = await _getClient(supabase, outletId, outlet.moka_outlet_id);
+      const WIB_MS = 7 * 60 * 60 * 1000;
+      const nowWIB = Date.now() + WIB_MS;
+      const startWIB    = new Date(nowWIB - 7 * 86_400_000).toISOString().slice(0, 10);
+      const tomorrowWIB = new Date(nowWIB + 86_400_000).toISOString().slice(0, 10);
+      let rawResponse, error = null;
+      try {
+        rawResponse = await client.getOpenBills(startWIB, tomorrowWIB);
+      } catch (e) {
+        error = { message: e.message, status: e.status, code: e.code };
+      }
+      return res.json({ outlet: outlet.name, mokaOutletId: outlet.moka_outlet_id, dateRange: `${startWIB} → ${tomorrowWIB}`, rawResponse, error });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── GET /api/moka/token-info ──────────────────────────────
   // Returns current token scopes and expiry info
   router.get('/moka/token-info', async (req, res) => {
