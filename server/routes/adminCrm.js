@@ -1221,6 +1221,84 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     return res.json({ ok: true, token, barber: { id: match.id, name: match.name, branch: match.branch } });
   });
 
+  // ── POST /api/admin/crm/broadcast-barbers ──────────────────────────────────
+  // Kirim broadcast WA ke seluruh kapster aktif, dari nomor aibot cabangnya.
+  // Body (JSON) atau query params:
+  //   branch  - filter ke cabang tertentu (opsional)
+  //   dry_run - jika "true", hanya preview tanpa kirim
+  router.post('/broadcast-barbers', adminAuth, async (req, res) => {
+    const { sendWA } = require('../services/fonnte');
+    const filterBranch = (req.body?.branch || req.query.branch || '').toLowerCase().trim();
+    const dryRun = req.body?.dry_run === true || req.query.dry_run === 'true';
+
+    const MESSAGE_TEMPLATE = `Selamat siang, Kak *{NAMA}* 👋
+
+Kami ingin menginformasikan bahwa *Dashboard Kapster Redbox Barbershop* kini sudah dapat diakses langsung melalui handphone.
+
+📱 Link akses:
+admin.redboxbarbershop.com
+
+Cara login:
+1. Buka link di atas.
+2. Pilih menu *Kapster*.
+3. Masukkan nomor WhatsApp yang terdaftar.
+4. Sistem akan mengirimkan kode OTP ke nomor tersebut.
+5. Masukkan kode OTP untuk masuk ke akun Anda.
+
+Melalui dashboard ini, Kakak dapat mengakses informasi dan fitur yang berkaitan dengan aktivitas kerja secara lebih mudah langsung dari perangkat mobile.
+
+Apabila mengalami kendala saat login atau tidak menerima kode OTP, silakan hubungi admin cabang masing-masing.
+
+Terima kasih 🙏
+*Management Redbox Barbershop*`;
+
+    let query = supabase.from('barbers').select('id, name, branch, phone').eq('is_active', true);
+    if (filterBranch) query = query.eq('branch', filterBranch);
+    const { data: barbers, error } = await query.order('branch').order('name');
+    if (error) return res.status(500).json({ error: error.message });
+
+    const sent = [];
+    const skipped = [];
+    const failed = [];
+
+    for (const barber of (barbers || [])) {
+      if (!barber.phone) {
+        skipped.push({ id: barber.id, name: barber.name, branch: barber.branch, reason: 'no_phone' });
+        continue;
+      }
+      const firstName = barber.name.trim().split(/\s+/)[0];
+      const message = MESSAGE_TEMPLATE.replace('{NAMA}', firstName);
+
+      if (dryRun) {
+        sent.push({ id: barber.id, name: barber.name, branch: barber.branch, phone: barber.phone, message });
+        continue;
+      }
+
+      try {
+        const result = await sendWA(barber.phone, message, { branch: barber.branch });
+        if (result && result.status !== false) {
+          sent.push({ id: barber.id, name: barber.name, branch: barber.branch, phone: barber.phone });
+        } else {
+          failed.push({ id: barber.id, name: barber.name, branch: barber.branch, phone: barber.phone, error: result?.error || result?.detail || 'unknown' });
+        }
+      } catch (err) {
+        failed.push({ id: barber.id, name: barber.name, branch: barber.branch, phone: barber.phone, error: err.message });
+      }
+
+      // 800ms delay antar pesan agar tidak kena rate-limit Fonnte
+      await new Promise(r => setTimeout(r, 800));
+    }
+
+    return res.json({
+      ok: true,
+      dry_run: dryRun,
+      summary: { sent: sent.length, skipped: skipped.length, failed: failed.length },
+      sent,
+      skipped,
+      failed,
+    });
+  });
+
   return router;
 }
 
