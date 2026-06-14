@@ -321,7 +321,7 @@ function StatDetailSheet({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.25 }}
-        className="fixed inset-0 bg-black/50 z-40"
+        className="fixed inset-0 bg-black/50 z-[55]"
         onClick={onClose}
       />
       {/* Sheet */}
@@ -330,7 +330,7 @@ function StatDetailSheet({
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
         transition={{ duration: 0.32, ease: [0.32, 0.72, 0, 1] }}
-        className="fixed bottom-0 left-0 right-0 z-50 bg-[#111827] border-t-2 border-slate-800 rounded-t-2xl max-h-[70vh] flex flex-col"
+        className="fixed bottom-0 left-0 right-0 z-[60] bg-[#111827] border-t-2 border-slate-800 rounded-t-2xl max-h-[85vh] flex flex-col"
       >
         {/* Drag handle — tap to close */}
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0 cursor-pointer" onClick={onClose}>
@@ -343,7 +343,7 @@ function StatDetailSheet({
           </p>
         </div>
         {/* Rows */}
-        <div className="overflow-y-auto px-4 pb-8">
+        <div className="overflow-y-auto px-4 pb-10">
           {rows.length === 0
             ? <p className="text-slate-600 text-sm text-center py-10">Belum ada data</p>
             : rows.map((row, i) => renderRow(row, i))
