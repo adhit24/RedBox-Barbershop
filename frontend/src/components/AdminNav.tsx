@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { LayoutDashboard, CalendarCheck, Scissors, Trophy, CreditCard } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -14,6 +14,9 @@ const NAV_ITEMS = [
 
 export function AdminNav() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const branch = searchParams.get('branch');
+  const suffix = branch ? `?branch=${branch}` : '';
 
   return (
     <nav
@@ -26,7 +29,7 @@ export function AdminNav() {
           return (
             <Link
               key={href}
-              href={href}
+              href={`${href}${suffix}`}
               className="flex-shrink-0 flex-1 flex flex-col items-center justify-center py-2.5 min-w-[52px] relative"
             >
               {active && (

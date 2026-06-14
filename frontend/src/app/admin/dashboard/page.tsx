@@ -366,7 +366,7 @@ function CommandCenterPageInner() {
   const [activeCard, setActiveCard] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const loadRef = useRef<(silent?: boolean) => void>(() => {});
-  const branch = user?.branch || '';
+  const branch = searchParams.get('branch') || user?.branch || '';
 
   const load = useCallback(async (silent = false) => {
     if (!branch) { if (!silent) setLoading(false); return; }

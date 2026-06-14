@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { toggleBarberTodayOverride } from '@/lib/adminCrmApi';
 import { createClient } from '@/utils/supabase/client';
@@ -219,7 +220,8 @@ function Skeleton() {
 
 function BarbersPageInner() {
   const { user, loading: userLoading } = useUser();
-  const branch = user?.branch ?? '';
+  const searchParams = useSearchParams();
+  const branch = searchParams.get('branch') ?? user?.branch ?? '';
 
   const [barbers, setBarbers] = useState<BarberRow[]>([]);
   const [offTodaySet, setOffTodaySet] = useState<Set<string>>(new Set());

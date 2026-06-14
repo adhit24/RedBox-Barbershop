@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, Search, X, CreditCard, RefreshCw } from 'lucide-react';
@@ -55,7 +56,8 @@ function phoneFromEmail(email: string) {
 
 function MembershipPageInner() {
   const { user } = useUser();
-  const branch = user?.branch || '';
+  const searchParams = useSearchParams();
+  const branch = searchParams.get('branch') || user?.branch || '';
 
   const [members, setMembers]     = useState<Member[]>([]);
   const [loading, setLoading]     = useState(true);

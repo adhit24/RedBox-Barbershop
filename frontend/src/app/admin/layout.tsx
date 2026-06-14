@@ -17,6 +17,15 @@ function AdminShell({ children, user, signOut, signingOut }: {
   const searchParams = useSearchParams();
   const router = useRouter();
   const readonly = searchParams.get('readonly') === 'true';
+  const branchParam = searchParams.get('branch');
+  const isOwner = user?.role === 'owner';
+  const ownerMode = isOwner && !readonly;
+
+  useEffect(() => {
+    if (isOwner && !branchParam && !readonly) {
+      router.replace('/owner/branches');
+    }
+  }, [isOwner, branchParam, readonly, router]);
 
   return (
     <div className="min-h-dvh pb-20" style={{ background: '#070508' }}>
@@ -25,12 +34,12 @@ function AdminShell({ children, user, signOut, signingOut }: {
         style={{ background: 'rgba(8,5,9,0.96)', borderColor: '#201618' }}
       >
         <div className="flex items-center gap-2.5">
-          {readonly && (
+          {(readonly || ownerMode) && (
             <button
-              onClick={() => router.push('/owner/dashboard')}
+              onClick={() => router.push(ownerMode ? '/owner/branches' : '/owner/dashboard')}
               className="p-1.5 -ml-1.5 rounded-xl transition-all active:scale-95 cursor-pointer"
               style={{ color: '#5A4E50' }}
-              aria-label="Kembali ke Owner Dashboard"
+              aria-label="Kembali ke Owner"
             >
               <ChevronLeft size={18} />
             </button>
@@ -45,24 +54,20 @@ function AdminShell({ children, user, signOut, signingOut }: {
             >
               RedBox Staff
             </h1>
-            {user?.branch && (
+            {(branchParam || user?.branch) && (
               <p className="text-[10px] capitalize font-medium" style={{ color: '#C72820' }}>
-                {user.branch}
+                {branchParam || user?.branch}
               </p>
             )}
           </div>
         </div>
 
-        {readonly ? (
+        {(readonly || ownerMode) ? (
           <span
             className="text-[10px] px-2.5 py-1 rounded-full font-medium"
-            style={{
-              background: '#1C1416',
-              color: '#5A4E50',
-              border: '1px solid #261E20',
-            }}
+            style={{ background: '#1C1416', color: '#5A4E50', border: '1px solid #261E20' }}
           >
-            Read-only
+            {ownerMode ? 'Owner' : 'Read-only'}
           </span>
         ) : (
           <button
@@ -90,7 +95,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!loading && !user) router.replace('/');
-    if (!loading && user && user.role === 'owner') router.replace('/owner/dashboard');
     if (!loading && user && user.role === 'barber') router.replace('/barber/schedule');
   }, [user, loading, router]);
 

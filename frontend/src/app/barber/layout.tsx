@@ -1,9 +1,9 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useBarberSession } from '@/hooks/useBarberSession';
 import { BottomNav } from '@/components/BottomNav';
-import { LogOut } from 'lucide-react';
+import { LogOut, ArrowLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 
@@ -19,6 +19,17 @@ export default function BarberLayout({ children }: { children: React.ReactNode }
   const { data, loading, signOut } = useBarberSession();
   const router = useRouter();
   const pathname = usePathname();
+  const [impersonating, setImpersonating] = useState(false);
+  useEffect(() => {
+    setImpersonating(document.cookie.split('; ').some(c => c.startsWith('redbox_impersonator=owner')));
+  }, []);
+
+  async function exitImpersonation() {
+    await fetch('/api/barber/auth/logout', { method: 'POST' }).catch(() => {});
+    // marker non-httpOnly: hapus juga dari client untuk jaga-jaga
+    document.cookie = 'redbox_impersonator=; Max-Age=0; path=/';
+    window.location.href = '/owner/kapster';
+  }
 
   const isPublicBarberPage = pathname === '/barber/login' || pathname === '/barber/setup';
 
@@ -65,6 +76,16 @@ export default function BarberLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen pb-20" style={{ background: '#070508' }}>
+      {impersonating && (
+        <button
+          onClick={exitImpersonation}
+          className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold cursor-pointer"
+          style={{ background: 'rgba(199,40,32,0.15)', color: '#E87068', borderBottom: '1px solid rgba(199,40,32,0.25)' }}
+        >
+          <ArrowLeft size={13} />
+          Mode Owner — Kembali ke Owner
+        </button>
+      )}
       <header
         className="sticky top-0 z-40 backdrop-blur-md border-b px-4 py-2.5 flex justify-between items-center"
         style={{ background: 'rgba(8,5,9,0.96)', borderColor: '#201618' }}
