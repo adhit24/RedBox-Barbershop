@@ -10,5 +10,6 @@ export async function POST(req: NextRequest) {
   }).catch(() => {});
   const response = NextResponse.json({ ok: true });
   response.cookies.delete('redbox_barber_session');
+  response.cookies.delete('redbox_impersonator');
   return response;
 }
