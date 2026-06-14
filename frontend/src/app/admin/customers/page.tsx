@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { fetchLoyalCustomers, fetchNewCustomers, fetchDormantCustomers } from '@/lib/adminCrmApi';
 import type { CustomerRow } from '@/lib/adminCrmTypes';
@@ -38,7 +39,8 @@ function Skeleton({ className }: { className?: string }) {
 
 export default function CustomersPage() {
   const { user } = useUser();
-  const branch = user?.branch || '';
+  const searchParams = useSearchParams();
+  const branch = searchParams.get('branch') || user?.branch || '';
   const [tab, setTab] = useState<Tab>('dormant');
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(true);

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { fetchAdminLeaderboard } from '@/lib/adminCrmApi';
 import type { LeaderboardItem } from '@/lib/adminCrmTypes';
@@ -32,7 +33,8 @@ function Skeleton({ className }: { className?: string }) {
 
 export default function AdminLeaderboardPage() {
   const { user } = useUser();
-  const branch = user?.branch || '';
+  const searchParams = useSearchParams();
+  const branch = searchParams.get('branch') || user?.branch || '';
   const [category, setCategory] = useState<Category>('customer');
   const [items, setItems] = useState<LeaderboardItem[]>([]);
   const [loading, setLoading] = useState(true);

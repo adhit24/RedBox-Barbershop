@@ -41,7 +41,7 @@ function BookingControlPageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const readonly = searchParams.get('readonly') === 'true';
-  const branch = user?.branch || '';
+  const branch = searchParams.get('branch') || user?.branch || '';
 
   const [bookings, setBookings]           = useState<any[]>([]);
   const [barbers, setBarbers]             = useState<any[]>([]);
