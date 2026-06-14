@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { fetchLoyalCustomers, fetchNewCustomers, fetchDormantCustomers } from '@/lib/adminCrmApi';
 import type { CustomerRow } from '@/lib/adminCrmTypes';
+import { branchLabel } from '@/lib/branches';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Flame, Sparkles, Moon, MessageCircle, Phone } from 'lucide-react';
 
@@ -59,8 +60,7 @@ export default function CustomersPage() {
   function openWA(c: CustomerRow) {
     const num = toWaNumber(c.wa || '');
     if (!num) return;
-    const branchLabel = branch.charAt(0).toUpperCase() + branch.slice(1);
-    const msg = WA_TEMPLATES[tab](c.name, branchLabel);
+    const msg = WA_TEMPLATES[tab](c.name, branchLabel(branch));
     window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
   }
 

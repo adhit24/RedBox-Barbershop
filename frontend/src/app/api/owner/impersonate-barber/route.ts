@@ -37,13 +37,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: res.status || 500 });
   }
 
-  // 4. Set cookie sesi kapster + marker impersonator
+  // 4. Set cookie sesi kapster + marker impersonator.
+  // Sesi impersonasi sengaja pendek (8 jam) supaya owner tidak nyangkut di
+  // mode kapster lintas sesi — beda dari login OTP kapster yang 30 hari.
+  const IMPERSONATE_MAX_AGE = 8 * 60 * 60;
   const response = NextResponse.json({ ok: true, barber: data.barber });
   response.cookies.set('redbox_barber_session', data.token, {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: IMPERSONATE_MAX_AGE,
     path: '/',
   });
   // marker non-httpOnly agar barber layout (client) bisa membacanya untuk banner
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
     httpOnly: false,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 30 * 24 * 60 * 60,
+    maxAge: IMPERSONATE_MAX_AGE,
     path: '/',
   });
   return response;
