@@ -1197,6 +1197,30 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
   });
 
+  // ── GET /api/admin/crm/impersonate-barber ────────────────────────────────────
+  // Admin-only: create a barber session for any barber by name (fuzzy match).
+  // Returns token as JSON so the Next.js proxy can set the httpOnly cookie.
+  // Usage: GET /api/admin/crm/impersonate-barber?name=onoy
+  router.get('/impersonate-barber', adminAuth, async (req, res) => {
+    const { randomUUID } = require('crypto');
+    const name = (req.query.name || '').toLowerCase().trim();
+    if (!name) return res.status(400).json({ error: 'name is required' });
+
+    const { data: barbers } = await supabase
+      .from('barbers').select('id, name, branch').eq('is_active', true);
+    const match = (barbers || []).find(b =>
+      b.name.toLowerCase().includes(name) || name.includes(b.name.toLowerCase().split(' ')[0])
+    );
+    if (!match) return res.status(404).json({ error: `Barber '${name}' not found`, available: (barbers||[]).map(b=>b.name) });
+
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await supabase.from('barber_sessions').insert({ token, barber_id: match.id, expires_at: expiresAt });
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json({ ok: true, token, barber: { id: match.id, name: match.name, branch: match.branch } });
+  });
+
   return router;
 }
 
