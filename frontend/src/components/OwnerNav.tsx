@@ -1,14 +1,16 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, TrendingUp, User, CreditCard } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, User, CreditCard, Building2, Scissors } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const NAV_ITEMS = [
-  { href: '/owner/dashboard', label: 'Overview', Icon: LayoutDashboard },
-  { href: '/owner/revenue',   label: 'Revenue',  Icon: TrendingUp },
-  { href: '/owner/payment',   label: 'Payment',  Icon: CreditCard },
-  { href: '/owner/profile',   label: 'Profil',   Icon: User },
+  { href: '/owner/dashboard', label: 'Overview',  Icon: LayoutDashboard },
+  { href: '/owner/branches',  label: 'Cabang',    Icon: Building2 },
+  { href: '/owner/kapster',   label: 'Kapster',   Icon: Scissors },
+  { href: '/owner/revenue',   label: 'Revenue',   Icon: TrendingUp },
+  { href: '/owner/payment',   label: 'Payment',   Icon: CreditCard },
+  { href: '/owner/profile',   label: 'Profil',    Icon: User },
 ];
 
 export function OwnerNav() {
@@ -18,12 +20,12 @@ export function OwnerNav() {
       className="fixed bottom-0 left-0 right-0 z-50 backdrop-blur-md border-t"
       style={{ background: 'rgba(8,5,9,0.97)', borderColor: '#201618' }}
     >
-      <div className="flex">
+      <div className="flex overflow-x-auto scrollbar-none">
         {NAV_ITEMS.map(({ href, label, Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link key={href} href={href}
-              className="flex-1 flex flex-col items-center justify-center py-2.5 relative">
+              className="flex-shrink-0 flex-1 flex flex-col items-center justify-center py-2.5 min-w-[52px] relative">
               {active && (
                 <motion.div
                   layoutId="owner-nav-indicator"
