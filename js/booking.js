@@ -144,10 +144,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       i.classList.toggle('selected', !!activeSvc && i.dataset.service === activeSvc.id);
     });
   }
-  // Update barber-card highlight to match active person's barber
+  // Update barber-card highlight to match active person's barber.
+  // Cards are rendered with class `.pro-pick-card` (see renderBarberCards),
+  // so we must target that — querying `.barber-card` matched nothing and made
+  // the on-click red highlight a no-op (it only appeared on the next re-render).
   function refreshBarberCardSelection() {
     const activeB = getActiveBarber();
-    document.querySelectorAll('.barber-card').forEach(c => {
+    document.querySelectorAll('.pro-pick-card').forEach(c => {
       c.classList.toggle('selected', !!activeB && String(c.dataset.barber) === String(activeB.id));
     });
   }
