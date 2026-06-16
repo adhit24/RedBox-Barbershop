@@ -264,6 +264,138 @@ function Skeleton() {
   );
 }
 
+// ─── BarberSheet ────────────────────────────────────────────────────────────────
+
+function BarberSheet({ barber, isOffToday, upcomingBlocks, onAction, onClose, actionLoading }: {
+  barber: BarberRow;
+  isOffToday: boolean;
+  upcomingBlocks: string[];
+  onAction: (date: string, available: boolean) => void;
+  onClose: () => void;
+  actionLoading: boolean;
+}) {
+  const [date, setDate] = useState(todayStr());
+
+  return (
+    <>
+      {/* Overlay */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 z-40"
+        style={{ background: 'rgba(0,0,0,0.6)' }}
+      />
+      {/* Sheet */}
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+        className="fixed bottom-0 left-0 right-0 z-50 rounded-t-2xl"
+        style={{ background: '#1f1215', border: '1px solid rgba(255,255,255,0.07)', maxHeight: '80vh', overflowY: 'auto' }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-9 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 pt-3 pb-4">
+          <div
+            className="w-9 h-9 rounded-full flex-shrink-0 overflow-hidden"
+            style={{ background: '#1a0e11' }}
+          >
+            {barber.img ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={barber.img} alt={barber.name} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-xs font-bold" style={{ color: '#E87068' }}>
+                {barber.name.trim().slice(0, 2).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="font-semibold text-[14px] capitalize" style={{ color: '#F0EAEB' }}>{barber.name}</p>
+            <p className="text-[10px]" style={{ color: isOffToday ? '#C72820' : '#4ade80' }}>
+              {isOffToday ? '● Libur hari ini' : '● Aktif hari ini'}
+            </p>
+          </div>
+        </div>
+
+        {/* Date picker section */}
+        <div className="px-5 pb-4">
+          <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+            <p className="text-[10px] uppercase tracking-wider mb-3" style={{ color: '#6B5A5E' }}>Pilih Tanggal</p>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-[13px] outline-none"
+              style={{ background: '#2a1a1e', border: '1px solid rgba(255,255,255,0.1)', color: '#F0EAEB', colorScheme: 'dark' }}
+            />
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                disabled={actionLoading || !date}
+                onClick={() => onAction(date, false)}
+                className="flex-1 rounded-xl py-2.5 text-[12px] font-semibold disabled:opacity-40"
+                style={{ background: '#C72820', color: 'white' }}
+              >
+                {actionLoading ? '…' : 'Set Libur'}
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading || !date}
+                onClick={() => onAction(date, true)}
+                className="flex-1 rounded-xl py-2.5 text-[12px] font-semibold disabled:opacity-40"
+                style={{ background: 'rgba(22,163,74,0.15)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)' }}
+              >
+                {actionLoading ? '…' : 'Buka Lagi'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Upcoming blocks list */}
+        <div className="px-5 pb-8">
+          <p className="text-[10px] uppercase tracking-wider mb-2" style={{ color: '#6B5A5E' }}>Libur Terjadwal</p>
+          {upcomingBlocks.length === 0 ? (
+            <p className="text-[11px] text-center py-3" style={{ color: '#3D2E32' }}>Tidak ada jadwal libur ke depan</p>
+          ) : (
+            <div className="space-y-2">
+              {upcomingBlocks.map(d => (
+                <div
+                  key={d}
+                  className="flex items-center gap-3 rounded-xl px-3 py-2.5"
+                  style={{ background: 'rgba(199,40,32,0.06)', border: '1px solid rgba(199,40,32,0.15)' }}
+                >
+                  <Calendar size={13} style={{ color: '#C72820', flexShrink: 0 }} />
+                  <span className="flex-1 text-[12px]" style={{ color: '#F0EAEB' }}>
+                    {new Date(d + 'T12:00:00').toLocaleDateString('id-ID', {
+                      weekday: 'long', day: 'numeric', month: 'short', year: 'numeric',
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => onAction(d, true)}
+                    className="w-6 h-6 flex items-center justify-center rounded-md text-[11px] disabled:opacity-40 cursor-pointer"
+                    style={{ background: 'rgba(199,40,32,0.15)', border: '1px solid rgba(199,40,32,0.2)', color: '#C72820' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 function BarbersPageInner() {
