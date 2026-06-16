@@ -137,8 +137,12 @@ export function toggleBarberActive(id: string, is_active: boolean): Promise<{ su
 export function toggleBarberTodayOverride(
   id: string,
   available: boolean,
+  date?: string,
 ): Promise<{ success?: boolean }> {
-  return crmFetch<{ success?: boolean }>(`/api/admin/barber-override/${id}`, {
+  const path = date
+    ? `/api/admin/barber-override/${id}?date=${date}`
+    : `/api/admin/barber-override/${id}`;
+  return crmFetch<{ success?: boolean }>(path, {
     method: 'POST',
     body: JSON.stringify({ available }),
   });
