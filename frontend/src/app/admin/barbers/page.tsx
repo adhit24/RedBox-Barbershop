@@ -332,6 +332,7 @@ function BarberSheet({ barber, isOffToday, upcomingBlocks, onAction, onClose, ac
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
+              min={todayStr()}
               className="w-full rounded-lg px-3 py-2 text-[13px] outline-none"
               style={{ background: '#2a1a1e', border: '1px solid rgba(255,255,255,0.1)', color: '#F0EAEB', colorScheme: 'dark' }}
             />
@@ -503,6 +504,28 @@ function BarbersPageInner() {
     setToggling(null);
   }
 
+  async function handleBlockAction(barberId: string, date: string, available: boolean) {
+    setSheetActionLoading(true);
+    const res = await toggleBarberTodayOverride(barberId, available, date).catch(() => null);
+    if (res?.success) {
+      setUpcomingBlocksMap(prev => {
+        const dates = prev[barberId] ?? [];
+        const next = available
+          ? dates.filter(d => d !== date)
+          : [...dates, date].sort();
+        return { ...prev, [barberId]: next };
+      });
+      if (date === todayStr()) {
+        setOffTodaySet(prev => {
+          const next = new Set(prev);
+          available ? next.delete(barberId) : next.add(barberId);
+          return next;
+        });
+      }
+    }
+    setSheetActionLoading(false);
+  }
+
   const isEffectivelyOff = (b: BarberRow) => !b.is_active || offTodaySet.has(b.id);
 
   const displayed = barbers.filter((b) =>
@@ -604,6 +627,20 @@ function BarbersPageInner() {
               />
             ))}
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bottom sheet jadwal libur */}
+      <AnimatePresence>
+        {activeSheet && (
+          <BarberSheet
+            barber={activeSheet}
+            isOffToday={offTodaySet.has(activeSheet.id)}
+            upcomingBlocks={upcomingBlocksMap[activeSheet.id] ?? []}
+            onAction={(date, available) => handleBlockAction(activeSheet.id, date, available)}
+            onClose={() => setActiveSheet(null)}
+            actionLoading={sheetActionLoading}
+          />
         )}
       </AnimatePresence>
     </div>
