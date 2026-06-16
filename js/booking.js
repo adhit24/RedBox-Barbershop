@@ -1470,7 +1470,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         isBooked = true;
       }
       
-      if (hasBusyRanges) {
+      // When mokaAvailabilityActive, trust /api/availability exclusively —
+      // it already accounts for all confirmed schedules/bookings.
+      // fallbackBusyRanges only applies when /api/availability failed.
+      if (!mokaAvailabilityActive && hasBusyRanges) {
         // Pre-calculate slot timestamps once
         const slotStartMs = new Date(`${state.date}T${slot}:00+07:00`).getTime();
         const slotEndMs = slotStartMs + durMins * 60_000;
@@ -1483,7 +1486,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         }
       }
-      
+
       if (!isBooked && mokaAvailabilityActive) {
         isBooked = !mokaFreeSet.has(slot);
       }
