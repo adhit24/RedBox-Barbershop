@@ -229,11 +229,15 @@ function BarbersPageInner() {
   const [error, setError] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [upcomingBlocksMap, setUpcomingBlocksMap] = useState<Record<string, string[]>>({});
+  const [activeSheet, setActiveSheet] = useState<BarberRow | null>(null);
+  const [sheetActionLoading, setSheetActionLoading] = useState(false);
 
   const loadBarbers = useCallback(async () => {
     if (!branch) return;
     setError(false);
     setOffTodaySet(new Set());
+    setUpcomingBlocksMap({});
 
     const supabase = createClient();
     const today = todayStr();
@@ -261,17 +265,34 @@ function BarbersPageInner() {
     setOffTodaySet(newOffSet);
 
     const ids = barberData.map((b) => b.id);
-    const { data: bookingData } = await supabase
-      .from('bookings')
-      .select('barber_id')
-      .eq('date', today)
-      .neq('status', 'cancelled')
-      .in('barber_id', ids);
+
+    const [{ data: bookingData }, { data: blocksData }] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('barber_id')
+        .eq('date', today)
+        .neq('status', 'cancelled')
+        .in('barber_id', ids),
+      supabase
+        .from('barber_date_overrides')
+        .select('barber_id, date')
+        .in('barber_id', ids)
+        .gte('date', today)
+        .eq('is_off', true)
+        .order('date', { ascending: true }),
+    ]);
 
     const countMap: Record<string, number> = {};
     for (const bk of bookingData ?? []) {
       if (bk.barber_id) countMap[bk.barber_id] = (countMap[bk.barber_id] ?? 0) + 1;
     }
+
+    const blocksMap: Record<string, string[]> = {};
+    for (const b of blocksData ?? []) {
+      if (!blocksMap[b.barber_id]) blocksMap[b.barber_id] = [];
+      blocksMap[b.barber_id].push(b.date);
+    }
+    setUpcomingBlocksMap(blocksMap);
 
     setBarbers(barberData.map((b) => ({ ...b, today_count: countMap[b.id] ?? 0 })));
   }, [branch]);
