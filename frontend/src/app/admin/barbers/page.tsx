@@ -1,11 +1,11 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { toggleBarberTodayOverride } from '@/lib/adminCrmApi';
 import { createClient } from '@/utils/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Scissors, RefreshCw, Calendar } from 'lucide-react';
+import { Scissors, RefreshCw, Calendar, MoreVertical } from 'lucide-react';
 import { Suspense } from 'react';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -73,17 +73,28 @@ function Toggle({ on, onChange, disabled }: {
 
 // ─── Card ──────────────────────────────────────────────────────────────────────
 
-function BarberCard({ barber, isOffToday, onToggle, toggling, index }: {
+function BarberCard({ barber, isOffToday, onToggle, toggling, index, upcomingCount, onOpenSheet }: {
   barber: BarberRow;
   isOffToday: boolean;
   onToggle: (id: string, available: boolean) => void;
   toggling: boolean;
   index: number;
+  upcomingCount: number;
+  onOpenSheet: () => void;
 }) {
   const workDays = parseWorkDays(barber.work_days);
   const initials = barber.name.trim().slice(0, 2).toUpperCase();
   const isPermanentlyInactive = !barber.is_active;
   const effectivelyOff = isPermanentlyInactive || isOffToday;
+
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handlePointerDown = () => {
+    pressTimer.current = setTimeout(() => onOpenSheet(), 500);
+  };
+  const handlePointerUp = () => {
+    if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
+  };
 
   const borderColor = effectivelyOff
     ? 'rgba(199, 40, 32, 0.22)'
@@ -103,6 +114,9 @@ function BarberCard({ barber, isOffToday, onToggle, toggling, index }: {
       layout
       className="rounded-2xl overflow-hidden"
       style={{ background: bgColor, border: `1px solid ${borderColor}` }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
     >
       <div className="flex items-center gap-3 px-4 py-3.5">
 
@@ -128,6 +142,16 @@ function BarberCard({ barber, isOffToday, onToggle, toggling, index }: {
             </div>
           )}
 
+          {/* Upcoming blocks badge */}
+          {upcomingCount > 0 && (
+            <div
+              className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold"
+              style={{ background: '#C72820', color: 'white', border: '1.5px solid #070508' }}
+            >
+              {upcomingCount}
+            </div>
+          )}
+
           {/* Status dot */}
           <div
             className="absolute bottom-0.5 right-0.5 w-3 h-3 rounded-full"
@@ -150,6 +174,14 @@ function BarberCard({ barber, isOffToday, onToggle, toggling, index }: {
                 style={{ background: 'rgba(199,40,32,0.12)', color: '#E87068' }}
               >
                 {barber.today_count} hari ini
+              </span>
+            )}
+            {upcomingCount > 0 && (
+              <span
+                className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-md"
+                style={{ background: 'rgba(199,40,32,0.10)', color: '#C72820' }}
+              >
+                {upcomingCount} libur terjadwal
               </span>
             )}
           </div>
@@ -184,19 +216,29 @@ function BarberCard({ barber, isOffToday, onToggle, toggling, index }: {
           )}
         </div>
 
-        {/* Toggle */}
-        <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
-          <Toggle
-            on={!effectivelyOff}
-            onChange={(val) => onToggle(barber.id, val)}
-            disabled={toggling || isPermanentlyInactive}
-          />
-          <span
-            className="text-[9px] font-semibold uppercase tracking-wider"
-            style={{ color: labelColor }}
+        {/* Toggle + sheet trigger */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenSheet(); }}
+            className="flex items-center justify-center rounded-lg cursor-pointer"
+            style={{ width: 28, height: 28, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#6B5A5E' }}
           >
-            {label}
-          </span>
+            <MoreVertical size={14} />
+          </button>
+          <div className="flex flex-col items-center gap-1.5">
+            <Toggle
+              on={!effectivelyOff}
+              onChange={(val) => onToggle(barber.id, val)}
+              disabled={toggling || isPermanentlyInactive}
+            />
+            <span
+              className="text-[9px] font-semibold uppercase tracking-wider"
+              style={{ color: labelColor }}
+            >
+              {label}
+            </span>
+          </div>
         </div>
       </div>
     </motion.div>
@@ -419,6 +461,8 @@ function BarbersPageInner() {
                 onToggle={handleToggle}
                 toggling={toggling === b.id}
                 index={i}
+                upcomingCount={(upcomingBlocksMap[b.id] ?? []).length}
+                onOpenSheet={() => setActiveSheet(b)}
               />
             ))}
           </motion.div>
