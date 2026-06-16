@@ -505,25 +505,28 @@ function BarbersPageInner() {
   }
 
   async function handleBlockAction(barberId: string, date: string, available: boolean) {
-    setSheetActionLoading(true);
-    const res = await toggleBarberTodayOverride(barberId, available, date).catch(() => null);
-    if (res?.success) {
-      setUpcomingBlocksMap(prev => {
-        const dates = prev[barberId] ?? [];
-        const next = available
-          ? dates.filter(d => d !== date)
-          : [...dates, date].sort();
-        return { ...prev, [barberId]: next };
-      });
-      if (date === todayStr()) {
-        setOffTodaySet(prev => {
-          const next = new Set(prev);
-          available ? next.delete(barberId) : next.add(barberId);
-          return next;
+    try {
+      setSheetActionLoading(true);
+      const res = await toggleBarberTodayOverride(barberId, available, date).catch(() => null);
+      if (res?.success) {
+        setUpcomingBlocksMap(prev => {
+          const dates = prev[barberId] ?? [];
+          const next = available
+            ? dates.filter(d => d !== date)
+            : [...dates, date].sort();
+          return { ...prev, [barberId]: next };
         });
+        if (date === todayStr()) {
+          setOffTodaySet(prev => {
+            const next = new Set(prev);
+            available ? next.delete(barberId) : next.add(barberId);
+            return next;
+          });
+        }
       }
+    } finally {
+      setSheetActionLoading(false);
     }
-    setSheetActionLoading(false);
   }
 
   const isEffectivelyOff = (b: BarberRow) => !b.is_active || offTodaySet.has(b.id);
