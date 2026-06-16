@@ -9,7 +9,12 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const res = await fetch(`${API_URL}/api/barbers/${id}/today-override`, { signal: AbortSignal.timeout(10_000), 
+  const date = req.nextUrl.searchParams.get('date');
+  const upstream = date
+    ? `${API_URL}/api/barbers/${id}/today-override?date=${date}`
+    : `${API_URL}/api/barbers/${id}/today-override`;
+  const res = await fetch(upstream, {
+    signal: AbortSignal.timeout(10_000),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
     body: JSON.stringify(body),
