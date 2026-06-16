@@ -1330,7 +1330,7 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
   if (DB_TYPE === 'supabase') {
     const { data: cur, error: curError } = await supabase
       .from('bookings')
-      .select('id,status,barber_id,notes')
+      .select('id,status,barber_id,notes,schedule_id')
       .eq('id', id)
       .single();
     if (curError) return res.status(500).json({ error: curError.message });
@@ -1350,6 +1350,12 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
       } catch (e) {
         console.error('[BookingStatus] Barber notif failed:', e.message);
       }
+    }
+    // Propagate cancellation to linked schedule so the slot is freed immediately
+    if (status === 'cancelled' && cur?.schedule_id) {
+      supabase.from('schedules').update({ status: 'cancelled' })
+        .eq('id', cur.schedule_id).neq('status', 'cancelled')
+        .then().catch(e => console.error('[BookingStatus] schedule cancel sync failed:', e.message));
     }
     // Fire-and-forget: update gamification when booking marked done
     if (status === 'done' && data) {
@@ -1374,7 +1380,7 @@ async function handleBookingUpdate(req, res) {
   if (DB_TYPE === 'supabase') {
     const { data: cur, error: curError } = await supabase
       .from('bookings')
-      .select('id,status,barber_id,date,time,name,wa,service,price,location,notes')
+      .select('id,status,barber_id,date,time,name,wa,service,price,location,notes,schedule_id')
       .eq('id', req.params.id)
       .single();
     if (curError) return res.status(500).json({ error: curError.message });
@@ -1383,6 +1389,12 @@ async function handleBookingUpdate(req, res) {
 
     const { data, error } = await supabase.from('bookings').update(updates).eq('id', req.params.id).select().single();
     if (error) return res.status(500).json({ error: error.message });
+    // Propagate cancellation to linked schedule so the slot is freed immediately
+    if (nextStatus === 'cancelled' && cur.status !== 'cancelled' && cur.schedule_id) {
+      supabase.from('schedules').update({ status: 'cancelled' })
+        .eq('id', cur.schedule_id).neq('status', 'cancelled')
+        .then().catch(e => console.error('[PATCH] schedule cancel sync failed:', e.message));
+    }
     let moka = null;
     if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
       try {
