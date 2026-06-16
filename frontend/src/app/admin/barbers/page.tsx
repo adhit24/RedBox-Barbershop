@@ -96,6 +96,12 @@ function BarberCard({ barber, isOffToday, onToggle, toggling, index, upcomingCou
     if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null; }
   };
 
+  useEffect(() => {
+    return () => {
+      if (pressTimer.current) clearTimeout(pressTimer.current);
+    };
+  }, []);
+
   const borderColor = effectivelyOff
     ? 'rgba(199, 40, 32, 0.22)'
     : 'rgba(34, 197, 94, 0.25)';
@@ -226,7 +232,7 @@ function BarberCard({ barber, isOffToday, onToggle, toggling, index, upcomingCou
           >
             <MoreVertical size={14} />
           </button>
-          <div className="flex flex-col items-center gap-1.5">
+          <div className="flex flex-col items-center gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
             <Toggle
               on={!effectivelyOff}
               onChange={(val) => onToggle(barber.id, val)}
