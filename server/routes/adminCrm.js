@@ -857,10 +857,12 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     // Fetch Moka CSV data, web transactions, and metadata in parallel
     let mokaQ = supabase.from('moka_transactions')
       .select('outlet_slug, tx_date, net_sales')
-      .gte('tx_date', startDateStr);
+      .gte('tx_date', startDateStr)
+      .limit(10000);
     let svcQ = supabase.from('moka_barber_services')
       .select('barber_id, outlet_slug, tx_date, revenue_share, service_name')
-      .gte('tx_date', startDateStr);
+      .gte('tx_date', startDateStr)
+      .limit(10000);
     let webQ = supabase.from('transactions').select('outlet_id, total_amount, created_at')
       .eq('source', 'web').gte('created_at', startIso);
     if (branch !== 'all') { mokaQ = mokaQ.eq('outlet_slug', branch); svcQ = svcQ.eq('outlet_slug', branch); }
@@ -1132,7 +1134,8 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
       let q = supabase.from('moka_transactions')
         .select('outlet_slug, tx_date, net_sales, payment_method')
-        .gte('tx_date', startDateStr);
+        .gte('tx_date', startDateStr)
+        .limit(10000);
       if (branch !== 'all') q = q.eq('outlet_slug', branch);
 
       const { data: rows, error } = await q;

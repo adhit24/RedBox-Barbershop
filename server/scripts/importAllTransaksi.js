@@ -149,6 +149,8 @@ async function importCSV(filePath, barbers) {
     const netSales   = parseFloat(row[iNet]       || '0') || 0;
     const grossSales = parseFloat(row[iGross]     || '0') || 0;
     const totalColl  = parseFloat(row[iCollected] || '0') || 0;
+    // Skip EDC settlement records (gross=0, no items) — these are payment processor entries, not real transactions
+    if (grossSales === 0 && !(row[iItems] || '').trim()) { skipped++; continue; }
     const itemsRaw   = (row[iItems] || '').trim();
 
     txRows.push({
