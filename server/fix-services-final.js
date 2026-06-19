@@ -6,7 +6,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 async function fixServicesFinal() {
   try {
-    console.log('🔧 Final Service Update: Deactivate Hair Cut + Hair Fade Cut → Keep Gentleman Grooming (95k)\n');
+    console.log('🔧 Final Service Update: Deactivate Hair Cut + Hair Fade Cut → Keep Redbox Gentleman Grooming (95k)\n');
     
     // 1. Deactivate specific services
     const servicesToDeactivate = ['Hair Cut', 'Hair Fade Cut'];
@@ -29,41 +29,41 @@ async function fixServicesFinal() {
       }
     }
     
-    // 2. Verify Gentleman Grooming is active
-    console.log('\n✅ Verifying Gentleman Grooming service...');
+    // 2. Verify Redbox Gentleman Grooming is active
+    console.log('\n✅ Verifying Redbox Gentleman Grooming service...');
     const { data: gentlemanService, error: checkError } = await supabase
       .from('services')
       .select('*')
-      .eq('name', 'Gentleman Grooming')
+      .eq('name', 'Redbox Gentleman Grooming')
       .eq('is_active', true)
       .single();
       
     if (checkError || !gentlemanService) {
-      console.log('❌ Gentleman Grooming service not found or inactive');
+      console.log('❌ Redbox Gentleman Grooming service not found or inactive');
       
       // Add it if not exists
-      console.log('➕ Adding Gentleman Grooming service...');
+      console.log('➕ Adding Redbox Gentleman Grooming service...');
       const { data: newService, error: insertError } = await supabase
         .from('services')
         .insert({
-          name: 'Gentleman Grooming',
+          name: 'Redbox Gentleman Grooming',
           slug: 'gentleman-grooming',
           price: 95000,
           duration_minutes: 75,
           is_active: true,
-          moka_variant_name: 'Gentleman Grooming',
+          moka_variant_name: 'Redbox Gentleman Grooming',
           created_at: new Date().toISOString()
         })
         .select()
         .single();
         
       if (insertError) {
-        console.error('❌ Failed to add Gentleman Grooming:', insertError);
+        console.error('❌ Failed to add Redbox Gentleman Grooming:', insertError);
       } else {
-        console.log('✅ Added Gentleman Grooming successfully');
+        console.log('✅ Added Redbox Gentleman Grooming successfully');
       }
     } else {
-      console.log('✅ Gentleman Grooming is active');
+      console.log('✅ Redbox Gentleman Grooming is active');
       console.log(`   Price: Rp${gentlemanService.price.toLocaleString('id-ID')}`);
       console.log(`   Duration: ${gentlemanService.duration_minutes} minutes`);
     }
@@ -98,7 +98,7 @@ async function fixServicesFinal() {
     // 4. Summary
     console.log(`\n📊 SUMMARY:`);
     console.log(`   Services deactivated: ${deactivatedCount}`);
-    console.log(`   Gentleman Grooming: Active at Rp95,000`);
+    console.log(`   Redbox Gentleman Grooming: Active at Rp95,000`);
     console.log(`   Status: ✅ Service update completed`);
     
     return {

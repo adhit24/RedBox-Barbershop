@@ -6,7 +6,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 async function updateServices() {
   try {
-    console.log('🔧 Updating Services: Haircut + FadeCut + LongTrim → Gentleman Grooming (95k)\n');
+    console.log('🔧 Updating Services: Haircut + FadeCut + LongTrim → Redbox Gentleman Grooming (95k)\n');
     
     // 1. Check current services
     console.log('📋 Checking current services...');
@@ -49,16 +49,16 @@ async function updateServices() {
       }
     }
     
-    // 3. Add new Gentleman Grooming service
-    console.log('\n➕ Adding new "Gentleman Grooming" service...');
+    // 3. Add new Redbox Gentleman Grooming service
+    console.log('\n➕ Adding new "Redbox Gentleman Grooming" service...');
     
     const newService = {
-      name: 'Gentleman Grooming',
+      name: 'Redbox Gentleman Grooming',
       slug: 'gentleman-grooming',
       price: 95000,
       duration_minutes: 75, // Combined duration
       is_active: true,
-      moka_variant_name: 'Gentleman Grooming',
+      moka_variant_name: 'Redbox Gentleman Grooming',
       created_at: new Date().toISOString()
     };
     
@@ -96,7 +96,7 @@ async function updateServices() {
       console.log(`  • ${service.name} - Rp${service.price?.toLocaleString('id-ID') || 'N/A'} (${service.duration_minutes}min)`);
     });
     
-    // 5. Check if Gentleman Grooming is the only grooming service
+    // 5. Check if Redbox Gentleman Grooming is the only grooming service
     const groomingServices = activeServices?.filter(s => 
       s.name.toLowerCase().includes('grooming') || 
       s.name.toLowerCase().includes('haircut') ||
@@ -106,12 +106,12 @@ async function updateServices() {
     
     console.log(`\n📊 Summary:`);
     console.log(`   Deactivated services: ${deactivatedCount}`);
-    console.log(`   Added new service: 1 (Gentleman Grooming)`);
+    console.log(`   Added new service: 1 (Redbox Gentleman Grooming)`);
     console.log(`   Total active services: ${activeServices?.length || 0}`);
     console.log(`   Grooming-related services: ${groomingServices?.length || 0}`);
     
-    if (groomingServices?.length === 1 && groomingServices[0].name === 'Gentleman Grooming') {
-      console.log(`\n🎉 Service update successful! Now offering "Gentleman Grooming" for Rp95,000`);
+    if (groomingServices?.length === 1 && groomingServices[0].name === 'Redbox Gentleman Grooming') {
+      console.log(`\n🎉 Service update successful! Now offering "Redbox Gentleman Grooming" for Rp95,000`);
     } else {
       console.log(`\n⚠️  Please verify the grooming services list above`);
     }

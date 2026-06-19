@@ -51,7 +51,7 @@ const handle = (phone, name, text) => {
       session.state = STATES.AWAITING_SERVICE;
       setSession(phone, session);
       return {
-        reply: `Hai ${input}! 👋\n\nLayanan apa yang mau dipilih kak?\n\n• Gentleman Grooming (95k)\n• Hair Spa (110k)\n• Hair Color (160k)\n• Shaving (40k)\n• Men Massage (145k)\n\nKetik nama layanannya ya 😊`,
+        reply: `Hai ${input}! 👋\n\nLayanan apa yang mau dipilih kak?\n\n• Redbox Gentleman Grooming (95k)\n• Hair Spa (110k)\n• Hair Color (160k)\n• Shaving (40k)\n• Men Massage (145k)\n\nKetik nama layanannya ya 😊`,
         done: false
       };
     }

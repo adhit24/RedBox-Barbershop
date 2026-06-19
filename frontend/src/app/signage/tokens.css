@@ -1,0 +1,59 @@
+/* Redbox Signage — Design Tokens (1920x1080 TV) */
+.signage-root {
+  --bg-obsidian: #0b0b0d;
+  --bg-charcoal: #15151a;
+  --bg-graphite: #1f1f25;
+  --accent-crimson: #b81c2b;
+  --accent-gold: #b8954a;
+  --text-ivory: #efe9dc;
+  --text-smoke: #7a7a82;
+
+  --safe: 80px;
+  --margin: 96px;
+  --gutter: 32px;
+
+  background: var(--bg-obsidian);
+  color: var(--text-ivory);
+  font-family: var(--font-satoshi), system-ui, sans-serif;
+}
+
+.signage-stage {
+  width: 1920px;
+  height: 1080px;
+  position: relative;
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+.font-display { font-family: var(--font-fraunces), Georgia, serif; font-weight: 600; letter-spacing: -0.02em; }
+.font-display-italic { font-family: var(--font-fraunces), Georgia, serif; font-weight: 400; font-style: italic; letter-spacing: -0.02em; }
+.font-section { font-family: var(--font-bricolage), system-ui, sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+.font-item { font-family: var(--font-manrope), system-ui, sans-serif; font-weight: 600; }
+.font-body { font-family: var(--font-manrope), system-ui, sans-serif; font-weight: 400; line-height: 1.45; }
+.font-mono { font-family: var(--font-jetbrains), ui-monospace, monospace; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; }
+
+.hairline-gold { background: linear-gradient(90deg, transparent, var(--accent-gold) 20%, var(--accent-gold) 80%, transparent); height: 1px; }
+.divider-graphite { background: var(--bg-graphite); height: 1px; }
+
+.ghost-numeral {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-weight: 300;
+  font-style: italic;
+  font-size: 320px;
+  line-height: 1;
+  color: var(--text-ivory);
+  opacity: 0.05;
+  letter-spacing: -0.03em;
+  pointer-events: none;
+  position: absolute;
+}
+
+/* Auto-fit 1920x1080 stage to any viewport, preserving aspect ratio */
+.signage-fit {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #000;
+  overflow: hidden;
+}

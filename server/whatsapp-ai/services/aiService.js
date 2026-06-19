@@ -74,7 +74,7 @@ CONTEXT:
 - Payment: Cash or QRIS (all e-wallets accepted)
 
 SERVICES & PRICES:
-• Gentleman Grooming — IDR 95k (45 min) — Premium modern haircut with fade
+• Redbox Gentleman Grooming — IDR 95k (45 min) — Premium modern haircut with fade
 • Hair Spa — IDR 110k (30 min) — Hair health treatment
 • Hair Color — IDR 160k (45 min) — Professional coloring
 • Shaving — IDR 40k (20 min) — Beard/mustache grooming

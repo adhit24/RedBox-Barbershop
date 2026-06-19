@@ -7,7 +7,7 @@ const REDBOX_SERVICES = [
   {
     id: 'gentleman-grooming',
     category: 'haircut',
-    name: 'Gentleman Grooming',
+    name: 'Redbox Gentleman Grooming',
     icon: '✂️',
     img: 'Brand_assets/Services/Hair_Cut.jpg',
     duration: '60 menit',

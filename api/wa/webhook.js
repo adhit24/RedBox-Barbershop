@@ -362,7 +362,7 @@ async function forwardBookingToBranch(booking, customerPhone) {
 function buildServicesText(branch) {
   const isCsb = branch === 'csb';
   return [
-    `• Gentleman Grooming — Rp ${isCsb ? '120.000' : '95.000'} (45 menit) — potong + fade`,
+    `• Redbox Gentleman Grooming — Rp ${isCsb ? '120.000' : '95.000'} (45 menit) — potong + fade`,
     `• Hair Curly — Rp 310.000 — keriting semi-perm natural`,
     `• Down Perm — Rp 350.000 — gelombang/wave tahan lama`,
     `• Hair Spa — Rp ${isCsb ? '120.000' : '110.000'} (30 menit) — perawatan rambut`,
@@ -435,9 +435,9 @@ KNOWLEDGE LAYANAN — DEEP DIVE
 ═══════════════════════════════════
 Ini pengetahuan mendalam yang WAJIB kamu pakai saat ngobrol:
 
-GENTLEMAN GROOMING — Rp ${branchInfo.name.includes('CSB') ? '120.000' : '95.000'} (45 menit)
+REDBOX GENTLEMAN GROOMING — Rp ${branchInfo.name.includes('CSB') ? '120.000' : '95.000'} (45 menit)
 Layanan flagship Redbox. Potongan presisi + fade modern yang bikin tampilan rapi dan sharp. Kapster Redbox terlatih buat baca bentuk kepala dan wajah, jadi hasilnya bukan cuma potong — tapi beneran di-konsultasi dulu. Add-on opsional yang bisa ditambah langsung pas booking (popup otomatis di website): Hair Spa (+Rp ${branchInfo.name.includes('CSB') ? '120.000' : '110.000'}), Shaving (+Rp ${branchInfo.name.includes('CSB') ? '50.000' : '40.000'}), Men Massage (+Rp ${branchInfo.name.includes('CSB') ? '155.000' : '145.000'}).
-Upsell trigger: Kalau pelanggan pilih/tanya Gentleman Grooming → tawarkan add-on yang relevan.
+Upsell trigger: Kalau pelanggan pilih/tanya Redbox Gentleman Grooming → tawarkan add-on yang relevan.
 
 HAIR CURLY — Rp 310.000
 Keriting semi-perm yang hasilnya natural dan fleksibel — bisa bikin gelombang santai atau curl yang lebih defined tergantung teknik. Cocok buat rambut medium ke panjang. Bertahan beberapa bulan, makin lama makin natural. Ini bukan perm kaku, hasilnya "lived-in" dan kekinian.
@@ -448,7 +448,7 @@ Perm gelombang/wave yang lebih defined & lasting dibanding Hair Curly. Cocok kal
 Upsell trigger: Bandingkan dengan Hair Curly dulu, tanya preferensi — baru recommend yang tepat.
 
 HAIR SPA — Rp ${branchInfo.name.includes('CSB') ? '120.000' : '110.000'} (30 menit)
-Perawatan intensif untuk rambut & kulit kepala — nutrisi, hidrasi, dan relaksasi sekaligus. Cocok untuk rambut kering, kusam, atau habis di-treatment kimia (color/perm). Hasilnya: rambut lebih lembut, berkilau, dan sehat. Bisa standalone atau add-on Gentleman Grooming.
+Perawatan intensif untuk rambut & kulit kepala — nutrisi, hidrasi, dan relaksasi sekaligus. Cocok untuk rambut kering, kusam, atau habis di-treatment kimia (color/perm). Hasilnya: rambut lebih lembut, berkilau, dan sehat. Bisa standalone atau add-on Redbox Gentleman Grooming.
 Upsell trigger: Setelah Hair Color, Perm, atau Curly → selalu rekomendasikan Hair Spa.
 
 HAIR COLOR — Rp 160.000 (45 menit)
@@ -456,10 +456,10 @@ Pewarnaan profesional dengan produk berkualitas. Kapster bisa bantu konsultasi w
 Upsell trigger: Setelah Color → rekomendasikan Creambath atau Hair Spa untuk menjaga warna dan kesehatan rambut.
 
 SHAVING — Rp ${branchInfo.name.includes('CSB') ? '50.000' : '40.000'} (20 menit)
-Cukur jenggot/kumis bersih dan presisi. Bisa standalone atau add-on Gentleman Grooming. Cocok untuk yang mau tampilan bersih atau shaping jenggot lebih rapi.
+Cukur jenggot/kumis bersih dan presisi. Bisa standalone atau add-on Redbox Gentleman Grooming. Cocok untuk yang mau tampilan bersih atau shaping jenggot lebih rapi.
 
 MEN MASSAGE SERVICE — Rp ${branchInfo.name.includes('CSB') ? '155.000' : '145.000'} (45 menit)
-Pijat relaksasi pundak & kepala. Cocok banget setelah kerja panjang atau mau me-time quality. Bisa standalone atau add-on Gentleman Grooming untuk pengalaman grooming premium.
+Pijat relaksasi pundak & kepala. Cocok banget setelah kerja panjang atau mau me-time quality. Bisa standalone atau add-on Redbox Gentleman Grooming untuk pengalaman grooming premium.
 Upsell trigger: Pelanggan tampak stressed atau sering ke barber → tawarkan Men Massage sekalian.
 
 ROYAL GROOMING — Rp 305.000 (90 menit)
@@ -522,7 +522,7 @@ SEMUA booking WAJIB via website. JANGAN PERNAH:
 
 ATURAN HARGA & LAYANAN — KRITIS:
 1. HANYA sebut layanan & harga dari KNOWLEDGE LAYANAN di atas. DILARANG mengarang: "beard trim", "styling", "hair cut Rp 50.000", atau apapun yang tidak ada.
-2. "potong/haircut/cut/fade" = Gentleman Grooming Rp ${branchInfo.name.includes('CSB') ? '120.000' : '95.000'}
+2. "potong/haircut/cut/fade" = Redbox Gentleman Grooming Rp ${branchInfo.name.includes('CSB') ? '120.000' : '95.000'}
 3. Untuk pertanyaan harga → JAWAB LANGSUNG, jangan redirect ke website hanya untuk harga
 4. Pertanyaan antrian/slot real-time → arahkan ke booking page (bukan nomor outlet)
 
@@ -707,11 +707,11 @@ function getForeignSession(phone) {
   return s;
 }
 
-const SERVICES_EN = `• Gentleman Grooming — IDR 95k (45 min)\n• Hair Spa — IDR 110k (30 min)\n• Hair Color — IDR 160k (45 min)\n• Shaving — IDR 40k (20 min)\n• Men Massage — IDR 145k (45 min)\n• Royal Grooming — IDR 305k (90 min)`;
-const SERVICES_ZH = `• Gentleman Grooming — 95k印尼盾 (45分钟)\n• Hair Spa — 110k印尼盾 (30分钟)\n• Hair Color — 160k印尼盾 (45分钟)\n• Shaving — 40k印尼盾 (20分钟)\n• Men Massage — 145k印尼盾 (45分钟)\n• Royal Grooming — 305k印尼盾 (90分钟)`;
-const SERVICES_JA = `• Gentleman Grooming — 95kルピア (45分)\n• Hair Spa — 110kルピア (30分)\n• Hair Color — 160kルピア (45分)\n• Shaving — 40kルピア (20分)\n• Men Massage — 145kルピア (45分)\n• Royal Grooming — 305kルピア (90分)`;
-const SERVICES_KO = `• Gentleman Grooming — 95k루피아 (45분)\n• Hair Spa — 110k루피아 (30분)\n• Hair Color — 160k루피아 (45분)\n• Shaving — 40k루피아 (20분)\n• Men Massage — 145k루피아 (45분)\n• Royal Grooming — 305k루피아 (90분)`;
-const SERVICES_TR = `• Gentleman Grooming — 95k IDR (45 dk)\n• Hair Spa — 110k IDR (30 dk)\n• Hair Color — 160k IDR (45 dk)\n• Shaving — 40k IDR (20 dk)\n• Men Massage — 145k IDR (45 dk)\n• Royal Grooming — 305k IDR (90 dk)`;
+const SERVICES_EN = `• Redbox Gentleman Grooming — IDR 95k (45 min)\n• Hair Spa — IDR 110k (30 min)\n• Hair Color — IDR 160k (45 min)\n• Shaving — IDR 40k (20 min)\n• Men Massage — IDR 145k (45 min)\n• Royal Grooming — IDR 305k (90 min)`;
+const SERVICES_ZH = `• Redbox Gentleman Grooming — 95k印尼盾 (45分钟)\n• Hair Spa — 110k印尼盾 (30分钟)\n• Hair Color — 160k印尼盾 (45分钟)\n• Shaving — 40k印尼盾 (20分钟)\n• Men Massage — 145k印尼盾 (45分钟)\n• Royal Grooming — 305k印尼盾 (90分钟)`;
+const SERVICES_JA = `• Redbox Gentleman Grooming — 95kルピア (45分)\n• Hair Spa — 110kルピア (30分)\n• Hair Color — 160kルピア (45分)\n• Shaving — 40kルピア (20分)\n• Men Massage — 145kルピア (45分)\n• Royal Grooming — 305kルピア (90分)`;
+const SERVICES_KO = `• Redbox Gentleman Grooming — 95k루피아 (45분)\n• Hair Spa — 110k루피아 (30분)\n• Hair Color — 160k루피아 (45분)\n• Shaving — 40k루피아 (20분)\n• Men Massage — 145k루피아 (45분)\n• Royal Grooming — 305k루피아 (90분)`;
+const SERVICES_TR = `• Redbox Gentleman Grooming — 95k IDR (45 dk)\n• Hair Spa — 110k IDR (30 dk)\n• Hair Color — 160k IDR (45 dk)\n• Shaving — 40k IDR (20 dk)\n• Men Massage — 145k IDR (45 dk)\n• Royal Grooming — 305k IDR (90 dk)`;
 
 function getServicesForLang(lang) {
   if (lang === 'chinese') return SERVICES_ZH;
@@ -1291,27 +1291,27 @@ function extractForeignDateTime(text) {
 function extractForeignService(text) {
   const lower = text.toLowerCase();
   const map = {
-    'gentleman': 'Gentleman Grooming', 'grooming': 'Gentleman Grooming', 'haircut': 'Gentleman Grooming',
-    'hair cut': 'Gentleman Grooming', 'cut': 'Gentleman Grooming', 'potong': 'Gentleman Grooming',
+    'gentleman': 'Redbox Gentleman Grooming', 'grooming': 'Redbox Gentleman Grooming', 'haircut': 'Redbox Gentleman Grooming',
+    'hair cut': 'Redbox Gentleman Grooming', 'cut': 'Redbox Gentleman Grooming', 'potong': 'Redbox Gentleman Grooming',
     'hair spa': 'Hair Spa', 'spa': 'Hair Spa',
     'color': 'Hair Color', 'colour': 'Hair Color', 'dye': 'Hair Color',
     'shave': 'Shaving', 'shaving': 'Shaving', 'beard': 'Shaving',
     'massage': 'Men Massage Service',
     'royal': 'Royal Grooming',
     // Chinese
-    '剪发': 'Gentleman Grooming', '理发': 'Gentleman Grooming', '剪头发': 'Gentleman Grooming',
+    '剪发': 'Redbox Gentleman Grooming', '理发': 'Redbox Gentleman Grooming', '剪头发': 'Redbox Gentleman Grooming',
     '染发': 'Hair Color', '按摩': 'Men Massage Service', '刮胡': 'Shaving',
     // Turkish
-    'saç kesimi': 'Gentleman Grooming', 'kesim': 'Gentleman Grooming',
+    'saç kesimi': 'Redbox Gentleman Grooming', 'kesim': 'Redbox Gentleman Grooming',
     'tıraş': 'Shaving', 'sakal': 'Shaving', 'masaj': 'Men Massage Service',
     'boya': 'Hair Color', 'saç boyası': 'Hair Color', 'saç bakım': 'Hair Spa',
     // Korean
-    '커트': 'Gentleman Grooming', '이발': 'Gentleman Grooming',
-    '머리': 'Gentleman Grooming', '자르': 'Gentleman Grooming', '헤어컷': 'Gentleman Grooming',
+    '커트': 'Redbox Gentleman Grooming', '이발': 'Redbox Gentleman Grooming',
+    '머리': 'Redbox Gentleman Grooming', '자르': 'Redbox Gentleman Grooming', '헤어컷': 'Redbox Gentleman Grooming',
     '염색': 'Hair Color', '마사지': 'Men Massage Service', '면도': 'Shaving',
     '헤어스파': 'Hair Spa', '로열': 'Royal Grooming',
     // Japanese
-    '散髪': 'Gentleman Grooming', 'カット': 'Gentleman Grooming', 'ヘアカット': 'Gentleman Grooming',
+    '散髪': 'Redbox Gentleman Grooming', 'カット': 'Redbox Gentleman Grooming', 'ヘアカット': 'Redbox Gentleman Grooming',
     'カラー': 'Hair Color', 'マッサージ': 'Men Massage Service', 'シェービング': 'Shaving',
   };
   for (const [kw, svc] of Object.entries(map)) {

@@ -130,7 +130,7 @@ async function checkPaymentCards() {
     }
     
     console.log('\n📊 PAYMENT CARDS SUMMARY:');
-    console.log('✅ Price updated: Gentleman Grooming now Rp120,000');
+    console.log('✅ Price updated: Redbox Gentleman Grooming now Rp120,000');
     console.log('ℹ️  Please check website manually for payment card updates');
     console.log('🌐 Website: https://www.redboxbarbershop.com');
     

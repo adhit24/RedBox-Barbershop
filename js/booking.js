@@ -1906,7 +1906,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const hsLabel = hsPackage === 'family' ? 'Family' : 'Single';
     state.service = {
       id: 'gentleman-grooming',
-      name: 'Gentleman Grooming (Home Service ' + hsLabel + ')',
+      name: 'Redbox Gentleman Grooming (Home Service ' + hsLabel + ')',
       price: hsPrice,
       basePrice: hsPrice,
       csbPrice: null,

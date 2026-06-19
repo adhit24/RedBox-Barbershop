@@ -13,7 +13,7 @@ async function verifyPriceProduction() {
     const { data: service, error } = await supabase
       .from('services')
       .select('name, price, duration_minutes, is_active')
-      .eq('name', 'Gentleman Grooming')
+      .eq('name', 'Redbox Gentleman Grooming')
       .eq('is_active', true)
       .single();
       
@@ -39,7 +39,7 @@ async function verifyPriceProduction() {
         );
         
         if (gentlemanService) {
-          console.log(`✅ Gentleman Grooming in API:`);
+          console.log(`✅ Redbox Gentleman Grooming in API:`);
           console.log(`   Price: Rp${gentlemanService.price?.toLocaleString('id-ID') || 'N/A'}`);
           console.log(`   Duration: ${gentlemanService.duration_minutes || 'N/A'} minutes`);
           
@@ -49,7 +49,7 @@ async function verifyPriceProduction() {
             console.log(`⚠️  Price mismatch. Expected: 120000, Got: ${gentlemanService.price}`);
           }
         } else {
-          console.log('❌ Gentleman Grooming not found in API response');
+          console.log('❌ Redbox Gentleman Grooming not found in API response');
         }
       } else {
         console.log(`❌ API error: ${response.status} ${response.statusText}`);
@@ -76,7 +76,7 @@ async function verifyPriceProduction() {
           );
           
           if (gentlemanInAvailability) {
-            console.log(`✅ Gentleman Grooming in availability: Rp${gentlemanInAvailability.price?.toLocaleString('id-ID') || 'N/A'}`);
+            console.log(`✅ Redbox Gentleman Grooming in availability: Rp${gentlemanInAvailability.price?.toLocaleString('id-ID') || 'N/A'}`);
           }
         }
       } else {
@@ -88,7 +88,7 @@ async function verifyPriceProduction() {
     
     // 4. Summary
     console.log('\n📊 VERIFICATION SUMMARY:');
-    console.log(`✅ Database: Gentleman Grooming - Rp${service.price.toLocaleString('id-ID')}`);
+    console.log(`✅ Database: Redbox Gentleman Grooming - Rp${service.price.toLocaleString('id-ID')}`);
     console.log(`✅ Deployment: Production updated at https://www.redboxbarbershop.com`);
     console.log(`✅ Payment Cards: QRIS method available in booking.html`);
     

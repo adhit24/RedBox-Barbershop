@@ -304,7 +304,7 @@ Make the AI feel premium while keeping backend cost extremely low.
 
 Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional datang langsung ke lokasi pelanggan.
 
-**Layanan tersedia:** Gentleman Grooming  
+**Layanan tersedia:** Redbox Gentleman Grooming  
 **Harga:** Rp 200.000 (sudah termasuk biaya kunjungan kapster)  
 **Durasi:** ±60 menit  
 **Halaman info:** https://www.redboxbarbershop.com/home-service.html
@@ -324,7 +324,7 @@ Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional d
 ## Cara Pesan
 
 1. Buka halaman booking: https://www.redboxbarbershop.com/booking.html?type=homeservice
-2. Pilih layanan Gentleman Grooming
+2. Pilih layanan Redbox Gentleman Grooming
 3. Pilih kapster dari cabang terdekat
 4. Pilih tanggal & waktu
 5. Isi nama, nomor WhatsApp, cabang terdekat, dan **alamat lengkap**
@@ -348,9 +348,9 @@ Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional d
 
 Jika pelanggan bertanya tentang home service, gunakan informasi berikut:
 
-* Layanan: Gentleman Grooming, datang ke rumah, Rp 200.000
+* Layanan: Redbox Gentleman Grooming, datang ke rumah, Rp 200.000
 * Radius: maksimal 5 KM dari cabang Redbox terdekat
 * Cabang: semua 5 cabang aktif (Bypass, Samadikun, CSB Mall, Sumber, Tegal)
 * Booking: arahkan ke https://www.redboxbarbershop.com/booking.html?type=homeservice
 * Jika pelanggan tidak tahu cabang terdekat: minta alamat mereka, lalu sebutkan cabang yang paling mungkin
-* Layanan selain Gentleman Grooming belum tersedia untuk home service
+* Layanan selain Redbox Gentleman Grooming belum tersedia untuk home service

@@ -6,7 +6,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 
 async function updateCSBPrice() {
   try {
-    console.log('💰 Updating Gentleman Grooming Price for CSB Outlet\n');
+    console.log('💰 Updating Redbox Gentleman Grooming Price for CSB Outlet\n');
     
     // 1. Get CSB outlet ID
     const { data: csbOutlet, error: outletError } = await supabase
@@ -30,7 +30,7 @@ async function updateCSBPrice() {
       .from('outlet_services')
       .select('*')
       .eq('outlet_id', csbOutlet.id)
-      .eq('service_name', 'Gentleman Grooming');
+      .eq('service_name', 'Redbox Gentleman Grooming');
       
     if (serviceError) {
       console.log('ℹ️  No outlet_services table found, using base service approach');
@@ -48,7 +48,7 @@ async function updateCSBPrice() {
           updated_at: new Date().toISOString()
         })
         .eq('outlet_id', csbOutlet.id)
-        .eq('service_name', 'Gentleman Grooming');
+        .eq('service_name', 'Redbox Gentleman Grooming');
         
       if (updateError) {
         console.error('❌ Failed to update outlet-specific price:', updateError);
@@ -63,7 +63,7 @@ async function updateCSBPrice() {
         .from('outlet_services')
         .insert({
           outlet_id: csbOutlet.id,
-          service_name: 'Gentleman Grooming',
+          service_name: 'Redbox Gentleman Grooming',
           price: 120000,
           is_active: true,
           created_at: new Date().toISOString()
@@ -82,13 +82,13 @@ async function updateCSBPrice() {
             price: 120000,
             // You could add a note here about CSB pricing if needed
           })
-          .eq('name', 'Gentleman Grooming')
+          .eq('name', 'Redbox Gentleman Grooming')
           .eq('is_active', true);
           
         if (baseUpdateError) {
           console.error('❌ Failed to update base service:', baseUpdateError);
         } else {
-          console.log('✅ Updated Gentleman Grooming price to Rp120,000 (base service)');
+          console.log('✅ Updated Redbox Gentleman Grooming price to Rp120,000 (base service)');
         }
       } else {
         console.log('✅ Created CSB-specific pricing: Rp120,000');
@@ -100,14 +100,14 @@ async function updateCSBPrice() {
     const { data: verifyService, error: verifyError } = await supabase
       .from('services')
       .select('name, price, duration_minutes')
-      .eq('name', 'Gentleman Grooming')
+      .eq('name', 'Redbox Gentleman Grooming')
       .eq('is_active', true)
       .single();
       
     if (verifyError) {
       console.error('❌ Verification failed:', verifyError);
     } else {
-      console.log(`✅ Current Gentleman Grooming price: Rp${verifyService.price.toLocaleString('id-ID')}`);
+      console.log(`✅ Current Redbox Gentleman Grooming price: Rp${verifyService.price.toLocaleString('id-ID')}`);
       console.log(`   Duration: ${verifyService.duration_minutes} minutes`);
     }
     
@@ -116,7 +116,7 @@ async function updateCSBPrice() {
       .from('outlet_services')
       .select('price')
       .eq('outlet_id', csbOutlet.id)
-      .eq('service_name', 'Gentleman Grooming')
+      .eq('service_name', 'Redbox Gentleman Grooming')
       .eq('is_active', true)
       .maybeSingle();
       

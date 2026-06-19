@@ -16,19 +16,19 @@ async function testServicesProduction() {
         const services = await response.json();
         console.log(`✅ API responding: ${services?.length || 0} services found`);
         
-        // Check if Gentleman Grooming is in the list
+        // Check if Redbox Gentleman Grooming is in the list
         const gentlemanService = services?.find(s => 
           s.name.toLowerCase().includes('gentleman grooming')
         );
         
         if (gentlemanService) {
-          console.log(`✅ Gentleman Grooming found in API:`);
+          console.log(`✅ Redbox Gentleman Grooming found in API:`);
           console.log(`   Name: ${gentlemanService.name}`);
           console.log(`   Price: Rp${gentlemanService.price?.toLocaleString('id-ID') || 'N/A'}`);
           console.log(`   Duration: ${gentlemanService.duration_minutes || 'N/A'} minutes`);
           console.log(`   Active: ${gentlemanService.is_active ? 'Yes' : 'No'}`);
         } else {
-          console.log('❌ Gentleman Grooming not found in API response');
+          console.log('❌ Redbox Gentleman Grooming not found in API response');
         }
         
         // Check that old services are not active
@@ -86,9 +86,9 @@ async function testServicesProduction() {
     } else {
       console.log(`✅ Database shows ${dbServices?.length || 0} active services`);
       
-      const dbGentleman = dbServices?.find(s => s.name === 'Gentleman Grooming');
+      const dbGentleman = dbServices?.find(s => s.name === 'Redbox Gentleman Grooming');
       if (dbGentleman) {
-        console.log(`✅ Gentleman Grooming confirmed in database:`);
+        console.log(`✅ Redbox Gentleman Grooming confirmed in database:`);
         console.log(`   Price: Rp${dbGentleman.price.toLocaleString('id-ID')}`);
         console.log(`   Duration: ${dbGentleman.duration_minutes} minutes`);
         console.log(`   Slug: ${dbGentleman.slug}`);
@@ -97,7 +97,7 @@ async function testServicesProduction() {
     
     console.log('\n📊 PRODUCTION TEST SUMMARY:');
     console.log('✅ Service update completed successfully');
-    console.log('✅ Gentleman Grooming active at Rp95,000');
+    console.log('✅ Redbox Gentleman Grooming active at Rp95,000');
     console.log('✅ Old services (Hair Cut, Hair Fade) deactivated');
     console.log('✅ Production APIs responding correctly');
     

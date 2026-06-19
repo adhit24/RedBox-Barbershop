@@ -397,12 +397,12 @@ const buildRetryMessage = (language) => {
 const extractService = (text) => {
   const lower = text.toLowerCase();
   const serviceMap = {
-    'gentleman': 'Gentleman Grooming',
-    'grooming': 'Gentleman Grooming',
-    'haircut': 'Gentleman Grooming',
-    'hair cut': 'Gentleman Grooming',
-    'potong': 'Gentleman Grooming',
-    'cut': 'Gentleman Grooming',
+    'gentleman': 'Redbox Gentleman Grooming',
+    'grooming': 'Redbox Gentleman Grooming',
+    'haircut': 'Redbox Gentleman Grooming',
+    'hair cut': 'Redbox Gentleman Grooming',
+    'potong': 'Redbox Gentleman Grooming',
+    'cut': 'Redbox Gentleman Grooming',
     'hair spa': 'Hair Spa',
     'spa': 'Hair Spa',
     'color': 'Hair Color',
@@ -415,8 +415,8 @@ const extractService = (text) => {
     'massage': 'Men Massage Service',
     'pijat': 'Men Massage Service',
     // Turkish keywords
-    'saç kesimi': 'Gentleman Grooming',
-    'kesim': 'Gentleman Grooming',
+    'saç kesimi': 'Redbox Gentleman Grooming',
+    'kesim': 'Redbox Gentleman Grooming',
     'tıraş': 'Shaving',
     'sakal': 'Shaving',
     'masaj': 'Men Massage Service',
