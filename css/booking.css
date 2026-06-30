@@ -83,22 +83,33 @@
 .svc-item{
   display:flex;align-items:flex-start;justify-content:space-between;
   padding:16px 20px;border-bottom:1px solid var(--w05);
-  cursor:pointer;transition:background .2s;gap:16px;
+  cursor:pointer;
+  transition:background .22s cubic-bezier(.22,1,.36,1), box-shadow .22s cubic-bezier(.22,1,.36,1);
+  gap:16px;
+  position:relative;
 }
 .svc-item:last-child{border-bottom:none}
-.svc-item:hover{background:rgba(193,18,31,.04)}
-.svc-item.selected{background:rgba(193,18,31,.08);border-left:3px solid var(--red)}
+.svc-item:hover{background:rgba(193,18,31,.05)}
+.svc-item.selected{
+  background:rgba(193,18,31,.12);
+  box-shadow:inset 0 0 0 1.5px rgba(193,18,31,.45);
+}
+.svc-item.just-selected{ animation:rb-svc-flash .5s cubic-bezier(.22,1,.36,1); }
 .svc-item.svc-hidden{display:none}
 
 .svc-left{display:flex;align-items:flex-start;gap:14px;flex:1}
 .svc-radio{
   width:18px;height:18px;border-radius:50%;flex-shrink:0;margin-top:3px;
   border:2px solid var(--w20);background:transparent;
-  display:flex;align-items:center;justify-content:center;transition:all .2s;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .22s cubic-bezier(.22,1,.36,1), border-color .22s cubic-bezier(.22,1,.36,1), transform .22s cubic-bezier(.22,1,.36,1);
 }
 .svc-item.selected .svc-radio{border-color:var(--red);background:var(--red)}
 .svc-item.selected .svc-radio::after{
   content:'';width:6px;height:6px;border-radius:50%;background:var(--white);display:block;
+}
+.svc-item.just-selected .svc-radio{
+  animation:rb-radio-pop .38s cubic-bezier(.22,1,.36,1);
 }
 .svc-info{flex:1;min-width:0}
 .svc-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;min-width:0}
@@ -210,11 +221,16 @@
 
 .pro-pick-card{
   background:var(--bg-3);border:2px solid var(--w10);border-radius:16px;
-  overflow:hidden;cursor:pointer;transition:all .25s;
+  overflow:hidden;cursor:pointer;
+  transition:border-color .22s cubic-bezier(.22,1,.36,1),
+             background .22s cubic-bezier(.22,1,.36,1),
+             transform .22s cubic-bezier(.22,1,.36,1),
+             box-shadow .22s cubic-bezier(.22,1,.36,1);
   display: flex;
   flex-direction: column;
   height: 100%;
   position: relative;
+  will-change: transform;
 }
 .barber-status-badge{
   position:absolute;top:8px;right:8px;
@@ -236,8 +252,27 @@
 }
 .barber-status-badge.available .status-dot{background:#10b981}
 .barber-status-badge.off-duty  .status-dot{background:#e53e3e}
-.pro-pick-card:hover{border-color:var(--red-20);transform:translateY(-2px)}
-.pro-pick-card.selected{border-color:var(--red);background:rgba(193,18,31,.06)}
+.pro-pick-card:hover{border-color:var(--red-20);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.pro-pick-card:active{transform:translateY(-1px) scale(.98)}
+.pro-pick-card.selected{
+  border-color:var(--red);
+  background:rgba(193,18,31,.10);
+  transform:translateY(-3px) scale(1.02);
+  box-shadow:0 0 0 1px var(--red), 0 10px 30px rgba(193,18,31,.22), 0 4px 12px rgba(0,0,0,.4);
+  z-index:1;
+}
+.pro-pick-card.selected:hover{transform:translateY(-3px) scale(1.02)}
+.pro-pick-card.just-selected{animation:rb-card-flash .55s cubic-bezier(.22,1,.36,1)}
+/* Checkmark badge on selected card */
+.pro-pick-card.selected::after{
+  content:'✓';
+  position:absolute;top:8px;left:8px;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--red);color:#fff;
+  font-size:12px;font-weight:900;line-height:22px;text-align:center;
+  z-index:10;
+  animation:rb-check-pop .35s cubic-bezier(.22,1,.36,1) forwards;
+}
 .pro-pick-card.barber-off{}
 .pro-pick-card.barber-off .pro-pick-img img{}
 .pro-pick-card.barber-off:hover{}
@@ -1220,6 +1255,48 @@
     padding:12px 14px;
   }
   .person-tab-label{ font-size:.85rem }
+}
+
+/* ================================================
+   SELECTION ANIMATIONS
+   ================================================ */
+
+/* Flash ripple on service item selection */
+@keyframes rb-svc-flash {
+  0%   { background:rgba(193,18,31,.22); box-shadow:inset 0 0 0 2px rgba(193,18,31,.7); }
+  60%  { background:rgba(193,18,31,.14); box-shadow:inset 0 0 0 1.5px rgba(193,18,31,.5); }
+  100% { background:rgba(193,18,31,.12); box-shadow:inset 0 0 0 1.5px rgba(193,18,31,.45); }
+}
+
+/* Radio button pop */
+@keyframes rb-radio-pop {
+  0%   { transform:scale(1); }
+  40%  { transform:scale(1.45); }
+  70%  { transform:scale(.9); }
+  100% { transform:scale(1); }
+}
+
+/* Checkmark badge pop-in on barber card */
+@keyframes rb-check-pop {
+  0%   { transform:scale(0) rotate(-20deg); opacity:0; }
+  65%  { transform:scale(1.25) rotate(5deg); opacity:1; }
+  100% { transform:scale(1) rotate(0deg);   opacity:1; }
+}
+
+/* Glow flash on barber card selection */
+@keyframes rb-card-flash {
+  0%   { box-shadow:0 0 0 4px rgba(193,18,31,.55), 0 10px 30px rgba(193,18,31,.35); }
+  50%  { box-shadow:0 0 0 2px rgba(193,18,31,.35), 0 10px 30px rgba(193,18,31,.25); }
+  100% { box-shadow:0 0 0 1px var(--red), 0 10px 30px rgba(193,18,31,.22), 0 4px 12px rgba(0,0,0,.4); }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .svc-item, .svc-radio, .pro-pick-card {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+  .pro-pick-card.selected { transform: none !important; }
 }
 
 

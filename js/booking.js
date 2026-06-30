@@ -601,6 +601,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         setActiveService(svcData);
         refreshSvcListSelection();
 
+        // Trigger selection animation on the clicked item
+        svcItem.classList.remove('just-selected');
+        void svcItem.offsetWidth; // force reflow so animation restarts
+        svcItem.classList.add('just-selected');
+        const removeJustSelected = () => svcItem.classList.remove('just-selected');
+        svcItem.addEventListener('animationend', removeJustSelected, { once: true });
+
         // Group mode: auto-switch ke tab person 2 supaya alur intuitif
         if (isGroup() && state.activePerson === 1 && !state.person2?.service) {
           state.activePerson = 2;
@@ -1157,6 +1164,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         setActiveBarber(barberData);
         refreshBarberCardSelection();
+
+        // Trigger selection animation — re-add class to restart keyframe
+        card.classList.remove('just-selected');
+        void card.offsetWidth; // force reflow
+        card.classList.add('just-selected');
+        card.addEventListener('animationend', () => card.classList.remove('just-selected'), { once: true });
+
         mokaAvailabilityActive = false;
         mokaAvailableSlots = [];
         fallbackBusyRanges = [];
