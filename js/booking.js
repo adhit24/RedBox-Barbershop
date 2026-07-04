@@ -72,7 +72,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const preBarber = params.get('barber');
   const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
   // Home Service package: 'family' = Rp 200.000/orang (min 2), default 'single' = Rp 250.000/orang
-  const hsPackage = (params.get('pkg') || '').toLowerCase() === 'family' ? 'family' : 'single';
+  const _pkg = (params.get('pkg') || '').toLowerCase();
+  const isWedding = isHomeService && _pkg.startsWith('wedding');
+  const hsPackage = _pkg === 'family' ? 'family' : 'single';
   const HS_PRICE_SINGLE = 250000;
   const HS_PRICE_FAMILY = 200000;
 
@@ -1718,7 +1720,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const totalPrice = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
     const headerLine = isGroup()
       ? '👥 *BOOKING GRUP (2 ORANG) — REDBOX BARBERSHOP*'
-      : (isHomeService ? '🏠 *BOOKING HOME SERVICE — REDBOX BARBERSHOP*' : '🔴 *BOOKING REDBOX BARBERSHOP*');
+      : isWedding ? '💍 *BOOKING WEDDING — REDBOX BARBERSHOP*'
+      : isHomeService ? '🏠 *BOOKING HOME SERVICE — REDBOX BARBERSHOP*'
+      : '🔴 *BOOKING REDBOX BARBERSHOP*';
 
     const msg = [
       headerLine, '',
@@ -1759,7 +1763,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const addonNote = addons.length ? '[ADD-ON: ' + addons.map(a => a.name).join(', ') + ']' : '';
       const noteParts = [];
       if (groupId) noteParts.push('[GROUP:' + groupId + ', ' + personIdx + '/2]');
-      if (isHomeService && state.address) noteParts.push('[HOME SERVICE] Alamat: ' + state.address);
+      if (isWedding && state.address) noteParts.push('[WEDDING] Alamat: ' + state.address);
+      else if (isHomeService && state.address) noteParts.push('[HOME SERVICE] Alamat: ' + state.address);
       if (addonNote) noteParts.push(addonNote);
       if (state.notes) noteParts.push(state.notes);
       const serviceFull = addons.length
@@ -1779,8 +1784,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         notes: noteParts.join('\n'),
         payment: state.payment?.name || '',
         status: 'pending',
-        type: isHomeService ? 'home_service' : 'outlet',
-        address: isHomeService ? (state.address || '') : undefined,
+        type: isWedding ? 'wedding' : isHomeService ? 'home_service' : 'outlet',
+        address: (isHomeService || isWedding) ? (state.address || '') : undefined,
       };
     }
 

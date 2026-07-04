@@ -1132,11 +1132,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         }
         // Send notification to barber regardless of booking type
         try {
-          if (type !== 'home_service') {
+          if (type !== 'home_service' && type !== 'wedding') {
             await _notifyBarberOutletBookingSupabase(supabase, data);
           } else {
-            // Home service — notify kapster immediately, independent of Moka bridge
-            const jobAddress = address || (notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/)?.[1]?.trim()) || '';
+            // Home service / wedding — kapster datang ke lokasi pelanggan
+            const addrPattern = type === 'wedding'
+              ? /\[WEDDING\] Alamat:\s*(.+)/
+              : /\[HOME SERVICE\] Alamat:\s*(.+)/;
+            const jobAddress = address || (notes?.match(addrPattern)?.[1]?.trim()) || '';
             if (jobAddress) {
               await _notifyBarberHomeServiceFromBooking(supabase, data, jobAddress);
             }
@@ -1251,7 +1254,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         }
         // Send notification to barber if it's an outlet booking and barber is assigned
         try {
-          if (type !== 'home_service') {
+          if (type !== 'home_service' && type !== 'wedding') {
             await _notifyBarberOutletBookingMysql(newBooking[0]);
           }
         } catch (err) {

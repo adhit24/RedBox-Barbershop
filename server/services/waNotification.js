@@ -36,13 +36,18 @@ async function notifyCustomerBookingConfirmed(booking) {
   const durasi = duration ? `\n⏱ Durasi ±${duration}` : '';
   const kapster = barber_name ? `\n💈 Kapster: *${barber_name}*` : '';
 
-  const isHomeService = type === 'home_service' || Boolean(notes?.includes('[HOME SERVICE]'));
+  const isWedding     = type === 'wedding'      || Boolean(notes?.includes('[WEDDING]'));
+  const isHomeService = (type === 'home_service' || Boolean(notes?.includes('[HOME SERVICE]'))) && !isWedding;
 
-  const closingLine = isHomeService
+  const closingLine = isWedding
+    ? `Kapster kami akan hadir ke *venue pernikahan kamu* tepat waktu! Siap buat kesan pertama yang tak terlupakan di hari spesialnya ✨💈`
+    : isHomeService
     ? `Kapster kami langsung *meluncur ke lokasi kamu* tepat waktu ya kak! Kamu tinggal standby aja di tempat — nggak perlu repot ke mana-mana! 🛵✨`
     : `Kami udah catat jadwalnya — tinggal dateng aja kak! 😄`;
 
-  const closingQuestion = isHomeService
+  const closingQuestion = isWedding
+    ? `Ada yang mau ditanyain soal persiapan grooming hari H? Kami siap bantu kapan aja! 💬✂️`
+    : isHomeService
     ? `Ada yang mau ditanyain? Soal layanan, persiapan sebelum grooming, atau konfirmasi lokasi — aku siap bantu kapan aja! 💬✂️`
     : `Ada yang mau ditanyain? Mau tanya soal layanan, tips perawatan rambut, atau hal lain — aku siap bantu kapan aja! 💬✂️`;
 
