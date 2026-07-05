@@ -7,14 +7,14 @@
  *  - last_reminder_at NULL atau > 30 hari lalu (cooldown 1 reminder/bulan)
  *
  * Dipanggil otomatis tiap hari oleh api/cron/reminders.js setelah H-1 booking reminders.
- * Batch limit: 50 customer per run untuk hindari rate-limit Fonnte.
+ * Batch limit: 15 customer per run untuk hindari rate-limit Fonnte & review Meta.
  */
 
 'use strict';
 
 const { sendWA } = require('./fonnte');
 
-const BATCH_LIMIT     = 20;   // 20 × 400ms = 8s delays, safe under cron-job.org 30s timeout
+const BATCH_LIMIT     = 15;   // 15 × 400ms = 6s delays, turun dari 20 biar no. bypass tidak dianggap spam Meta
 const COOLDOWN_DAYS   = 30;
 const MIN_INACTIVE_DAYS = 30;
 const SEND_DELAY_MS   = 400;
