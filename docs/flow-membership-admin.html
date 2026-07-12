@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOP Aktivasi Membership — Panduan Admin/Kasir | Redbox Barbershop</title>
+<style>
+  :root{
+    --bg:#020617; --surface:#0F172A; --surface2:#1E293B; --border:#1E293B;
+    --red:#C1121F; --red-soft:#FF6B6B;
+    --green:#4ADE80; --blue:#60A5FA; --gold:#FBBF24; --orange:#FB923C;
+    --w90:rgba(255,255,255,.92); --w70:rgba(255,255,255,.7); --w50:rgba(255,255,255,.5);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--w90);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;line-height:1.6}
+  .container{max-width:860px;margin:0 auto;padding:0 20px}
+
+  /* Hero */
+  .hero{padding:48px 0 36px;background:radial-gradient(ellipse 70% 60% at 50% 0%,rgba(74,222,128,.12),transparent)}
+  .hero-logo{height:48px;width:auto;border-radius:10px;margin-bottom:18px}
+  .hero .eyebrow{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.2em;color:var(--green);border:1px solid rgba(74,222,128,.35);border-radius:999px;padding:6px 14px;margin-bottom:16px}
+  .hero h1{font-size:clamp(1.6rem,4.2vw,2.4rem);font-weight:800}
+  .hero h1 span{color:var(--green)}
+  .hero p{color:var(--w70);max-width:620px;margin-top:12px;font-size:.97rem}
+
+  /* Flowchart */
+  .fc-wrap{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;overflow-x:auto}
+  .fc-wrap svg{display:block;width:100%;min-width:560px;max-width:760px;height:auto;margin:0 auto;font-family:inherit}
+  .fc-legend{display:flex;flex-wrap:wrap;gap:12px 20px;margin-top:14px;font-size:.78rem;color:var(--w70)}
+  .fc-legend span{display:flex;align-items:center;gap:7px}
+  .fc-legend i{display:inline-block;flex-shrink:0}
+  .lg-pill{width:26px;height:14px;border-radius:999px;border:1.5px solid var(--green)}
+  .lg-rect{width:22px;height:14px;border-radius:3px;border:1.5px solid var(--w50)}
+  .lg-diamond{width:13px;height:13px;border:1.5px solid var(--gold);transform:rotate(45deg);margin:0 3px}
+  .lg-dash{width:22px;height:14px;border-radius:3px;border:1.5px dashed var(--gold)}
+  .lg-line{width:22px;height:3px;border-radius:2px}
+
+  /* Screenshot gallery */
+  .shot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .shot{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+  .shot img{display:block;width:100%;height:auto;border-bottom:1px solid var(--border)}
+  .shot figcaption{padding:12px 16px;font-size:.82rem;color:var(--w70)}
+  .shot figcaption b{color:var(--green)}
+  .shot-note{margin-top:12px;font-size:.75rem;color:var(--w50);font-style:italic}
+
+  /* Section */
+  section{padding:40px 0}
+  .sec-title{font-size:1.3rem;font-weight:800;margin-bottom:6px}
+  .sec-sub{color:var(--w50);font-size:.9rem;margin-bottom:26px}
+
+  /* Prasyarat */
+  .prereq{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .prereq-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px}
+  .prereq-card b{display:block;font-size:.92rem;margin-bottom:4px;color:var(--green)}
+  .prereq-card p{color:var(--w70);font-size:.85rem}
+
+  /* Steps */
+  .steps{display:flex;flex-direction:column;gap:18px}
+  .step{display:flex;gap:16px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px}
+  .step-num{flex-shrink:0;width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#16A34A,#065F46);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.05rem;color:#fff}
+  .step h3{font-size:1rem;font-weight:700;margin-bottom:6px}
+  .step p{color:var(--w70);font-size:.9rem}
+  .step ul,.step ol{margin:10px 0 0 18px;color:var(--w70);font-size:.88rem}
+  .step li{margin-bottom:6px}
+  .tag{display:inline-block;font-size:.65rem;font-weight:700;letter-spacing:.08em;border-radius:6px;padding:3px 8px;margin-left:8px;vertical-align:middle}
+  .tag.app{background:rgba(96,165,250,.12);color:var(--blue);border:1px solid rgba(96,165,250,.3)}
+  .tag.manual{background:rgba(251,191,36,.12);color:var(--gold);border:1px solid rgba(251,191,36,.3)}
+  .tag.auto{background:rgba(74,222,128,.12);color:var(--green);border:1px solid rgba(74,222,128,.3)}
+
+  .warn{margin-top:12px;background:rgba(251,146,60,.08);border-left:3px solid var(--orange);border-radius:0 8px 8px 0;padding:10px 14px;font-size:.84rem;color:var(--w70)}
+  .warn b{color:var(--orange)}
+  .info{margin-top:12px;background:rgba(96,165,250,.08);border-left:3px solid var(--blue);border-radius:0 8px 8px 0;padding:10px 14px;font-size:.84rem;color:var(--w70)}
+  .info b{color:var(--blue)}
+
+  /* Mini UI mock */
+  .ui-mock{margin-top:14px;background:#020617;border:1px solid #334155;border-radius:12px;padding:14px;font-size:.82rem}
+  .ui-mock .mock-label{font-size:.62rem;letter-spacing:.12em;font-weight:700;color:var(--w50);margin-bottom:10px}
+  .mock-btn{display:inline-block;border-radius:8px;padding:6px 14px;font-weight:700;font-size:.78rem;margin:3px 4px 3px 0}
+  .mock-btn.green{background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.4);color:var(--green)}
+  .mock-btn.solid{background:var(--green);color:#0F172A}
+  .mock-btn.gray{background:var(--surface2);border:1px solid #334155;color:var(--w70)}
+  .mock-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:6px}
+  .mock-row .nm{font-weight:600;color:var(--w90)} .mock-row .em{color:var(--w50);font-size:.72rem}
+  .badge-active{font-size:.66rem;font-weight:800;color:var(--green);background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25);border-radius:999px;padding:2px 8px}
+
+  /* Sistem otomatis (tabel) */
+  .sys-table{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:6px}
+  .sys-table th,.sys-table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border)}
+  .sys-table th{color:var(--w50);font-size:.72rem;letter-spacing:.1em;font-weight:700}
+  .sys-table td{color:var(--w70)}
+  .sys-table td:first-child{color:var(--w90);font-weight:600}
+  .sys-table .mono{font-family:Consolas,monospace;font-size:.78rem;color:var(--gold)}
+  .table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px 12px}
+
+  /* Troubleshoot */
+  .ts-item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:10px}
+  .ts-item b{display:block;font-size:.9rem;margin-bottom:4px;color:var(--orange)}
+  .ts-item p{color:var(--w70);font-size:.85rem}
+
+  /* Checklist */
+  .checklist{background:var(--surface);border:1px solid rgba(74,222,128,.3);border-radius:16px;padding:22px;margin-bottom:60px}
+  .checklist h3{font-size:1rem;margin-bottom:12px;color:var(--green)}
+  .checklist label{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:.88rem;color:var(--w70);cursor:pointer}
+  .checklist input{margin-top:4px;accent-color:var(--green)}
+
+  footer{border-top:1px solid var(--border);padding:22px 0;text-align:center;color:var(--w50);font-size:.76rem}
+
+  @media(max-width:560px){ .step{flex-direction:column;gap:12px} }
+</style>
+</head>
+<body>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="container">
+    <img class="hero-logo" src="../Brand_assets/logo_redboxnew.jpeg" alt="Logo Redbox Barbershop">
+    <br>
+    <span class="eyebrow">SOP INTERNAL — ADMIN / KASIR</span>
+    <h1>Alur Digital <span>Aktivasi Membership</span></h1>
+    <p>Panduan lengkap untuk admin dan kasir dalam memproses pendaftaran pelanggan menjadi member Redbox — dari pelanggan datang ke kasir sampai membership aktif dan tersinkron dengan POS Moka.</p>
+
+  </div>
+</header>
+
+<!-- ============ DIAGRAM FLOWCHART ============ -->
+<section style="padding-top:8px">
+  <div class="container">
+    <h2 class="sec-title">Diagram Alur Aktivasi</h2>
+    <p class="sec-sub">Baca dari atas ke bawah. Bentuk lonjong = mulai/selesai, kotak = proses, belah ketupat = keputusan, kotak putus-putus = proses otomatis oleh sistem.</p>
+
+    <div class="fc-wrap">
+      <svg viewBox="0 0 760 1050" role="img" aria-label="Diagram alur aktivasi membership dari sisi admin dan kasir">
+        <defs>
+          <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
+          </marker>
+        </defs>
+
+        <!-- MULAI -->
+        <rect x="170" y="16" width="260" height="46" rx="23" fill="rgba(96,165,250,.12)" stroke="#60A5FA" stroke-width="1.5"/>
+        <text x="300" y="45" text-anchor="middle" fill="#60A5FA" font-size="14" font-weight="800">PELANGGAN INGIN JADI MEMBER</text>
+        <line x1="300" y1="62" x2="300" y2="94" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <!-- Keputusan 1 -->
+        <polygon points="300,98 460,172 300,246 140,172" fill="#0F172A" stroke="#FBBF24" stroke-width="1.5"/>
+        <text x="300" y="167" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="13.5" font-weight="700">Sudah punya</text>
+        <text x="300" y="185" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="13.5" font-weight="700">akun online?</text>
+
+        <!-- Cabang TIDAK 1 -->
+        <line x1="460" y1="172" x2="516" y2="172" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+        <text x="488" y="162" text-anchor="middle" fill="#FBBF24" font-size="11" font-weight="800">TIDAK</text>
+        <rect x="520" y="134" width="220" height="76" rx="12" fill="#0F172A" stroke="#60A5FA" stroke-width="1.5"/>
+        <text x="630" y="160" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="13" font-weight="700">Arahkan daftar lewat HP</text>
+        <text x="630" y="178" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="11.5">halaman Membership website</text>
+        <text x="630" y="195" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="11.5">(± 2 menit)</text>
+        <polyline points="630,210 630,304 466,304" fill="none" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <!-- Cabang YA 1 -->
+        <line x1="300" y1="246" x2="300" y2="268" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+        <text x="312" y="262" text-anchor="start" fill="#FBBF24" font-size="11" font-weight="800">YA</text>
+
+        <!-- Proses: cari member -->
+        <rect x="140" y="272" width="320" height="64" rx="12" fill="#0F172A" stroke="#4ADE80" stroke-width="1.5"/>
+        <text x="300" y="299" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="14" font-weight="700">Buka menu Aktivasi Member</text>
+        <text x="300" y="320" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">cari nama / email — tab "Belum Aktif"</text>
+        <line x1="300" y1="336" x2="300" y2="368" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <!-- Keputusan 2 -->
+        <polygon points="300,372 460,446 300,520 140,446" fill="#0F172A" stroke="#FBBF24" stroke-width="1.5"/>
+        <text x="300" y="441" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="13.5" font-weight="700">Data ketemu &amp;</text>
+        <text x="300" y="459" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="13.5" font-weight="700">identitas cocok?</text>
+
+        <!-- Cabang TIDAK 2 -->
+        <line x1="460" y1="446" x2="516" y2="446" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+        <text x="488" y="436" text-anchor="middle" fill="#FBBF24" font-size="11" font-weight="800">TIDAK</text>
+        <rect x="520" y="408" width="220" height="76" rx="12" fill="#0F172A" stroke="#FB923C" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="630" y="434" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="13" font-weight="700">Jangan aktifkan dulu</text>
+        <text x="630" y="452" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="11.5">cek tab "Semua", verifikasi ulang,</text>
+        <text x="630" y="469" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="11.5">lalu ulangi pencarian</text>
+
+        <!-- Cabang YA 2 -->
+        <line x1="300" y1="520" x2="300" y2="552" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+        <text x="312" y="540" text-anchor="start" fill="#FBBF24" font-size="11" font-weight="800">YA</text>
+
+        <!-- Proses: terima bayar -->
+        <rect x="140" y="556" width="320" height="64" rx="12" fill="#0F172A" stroke="#FBBF24" stroke-width="1.5"/>
+        <text x="300" y="583" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="14" font-weight="700">Terima pembayaran Rp 100.000</text>
+        <text x="300" y="604" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">Cash · QRIS · Transfer — verifikasi dulu</text>
+        <line x1="300" y1="620" x2="300" y2="652" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <!-- Proses: tap aktifkan -->
+        <rect x="140" y="656" width="320" height="64" rx="12" fill="#0F172A" stroke="#4ADE80" stroke-width="1.5"/>
+        <text x="300" y="683" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="14" font-weight="700">Tap "Aktifkan" pada nama pelanggan</text>
+        <text x="300" y="704" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">pilih metode bayar → konfirmasi</text>
+        <line x1="300" y1="720" x2="300" y2="752" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <!-- Sistem otomatis -->
+        <rect x="110" y="756" width="380" height="84" rx="12" fill="rgba(251,191,36,.05)" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="6 4"/>
+        <text x="300" y="781" text-anchor="middle" fill="#FBBF24" font-size="11" font-weight="800" letter-spacing="2">SISTEM — OTOMATIS</text>
+        <text x="300" y="802" text-anchor="middle" fill="rgba(255,255,255,.85)" font-size="12.5">Status → ACTIVE · tier awal Bronze · poin 0</text>
+        <text x="300" y="822" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12">pembayaran + cabang kasir tercatat di sistem</text>
+        <line x1="300" y1="840" x2="300" y2="872" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <!-- Proses: sync moka -->
+        <rect x="140" y="876" width="320" height="64" rx="12" fill="#0F172A" stroke="#4ADE80" stroke-width="1.5"/>
+        <text x="300" y="903" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="14" font-weight="700">Tekan "Sync Moka"</text>
+        <text x="300" y="924" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">tarik data kunjungan &amp; poin dari POS</text>
+        <line x1="300" y1="940" x2="300" y2="972" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <!-- SELESAI -->
+        <rect x="160" y="976" width="280" height="48" rx="24" fill="rgba(74,222,128,.12)" stroke="#4ADE80" stroke-width="1.5"/>
+        <text x="300" y="996" text-anchor="middle" fill="#4ADE80" font-size="14" font-weight="800">✓ SELESAI</text>
+        <text x="300" y="1014" text-anchor="middle" fill="rgba(74,222,128,.75)" font-size="11.5">konfirmasi benefit ke pelanggan</text>
+      </svg>
+    </div>
+
+    <div class="fc-legend">
+      <span><i class="lg-pill"></i> Mulai / Selesai</span>
+      <span><i class="lg-rect"></i> Proses</span>
+      <span><i class="lg-diamond"></i> Keputusan</span>
+      <span><i class="lg-dash"></i> Otomatis oleh sistem</span>
+      <span><i class="lg-line" style="background:#60A5FA"></i> Pelanggan</span>
+      <span><i class="lg-line" style="background:#4ADE80"></i> Kasir di aplikasi</span>
+      <span><i class="lg-line" style="background:#FBBF24"></i> Manual di kasir</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRASYARAT ============ -->
+<section>
+  <div class="container">
+    <h2 class="sec-title">Prasyarat Sebelum Memproses</h2>
+    <p class="sec-sub">Pastikan tiga hal ini terpenuhi sebelum memulai aktivasi.</p>
+    <div class="prereq">
+      <div class="prereq-card">
+        <b>1. Login Portal Admin</b>
+        <p>Anda sudah login ke portal admin Redbox dengan akun kasir/admin cabang Anda. Cabang yang tercatat di akun akan otomatis terlampir pada data aktivasi.</p>
+      </div>
+      <div class="prereq-card">
+        <b>2. Pelanggan Punya Akun</b>
+        <p>Pelanggan sudah mendaftar akun member secara online (via Google atau email/no. HP di halaman Membership website). Jika belum, arahkan untuk daftar dulu dari HP-nya — hanya 1–2 menit.</p>
+      </div>
+      <div class="prereq-card">
+        <b>3. Pembayaran Diterima</b>
+        <p>Biaya aktivasi <b>Rp 100.000</b> sudah diterima penuh (cash / QRIS / transfer) <u>sebelum</u> tombol aktivasi ditekan.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LANGKAH ============ -->
+<section>
+  <div class="container">
+    <h2 class="sec-title">Langkah-Langkah Aktivasi</h2>
+    <p class="sec-sub">Proses di aplikasi memakan waktu kurang dari 1 menit.</p>
+
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h3>Buka Menu "Aktivasi Member" <span class="tag app">PORTAL ADMIN</span></h3>
+          <p>Dari portal admin, masuk ke menu <b>Aktivasi Member</b> (ikon kartu 💳). Di bagian atas halaman terlihat dua angka ringkasan: jumlah member <b style="color:var(--green)">Aktif</b> dan <b style="color:var(--orange)">Belum Aktif</b>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h3>Cari Pelanggan <span class="tag app">PORTAL ADMIN</span></h3>
+          <p>Secara default halaman menampilkan tab <b>"Belum Aktif"</b> — daftar pelanggan yang sudah punya akun tapi belum membayar aktivasi. Gunakan kolom pencarian untuk mencari berdasarkan <b>nama atau email</b> pelanggan.</p>
+          <div class="ui-mock">
+            <div class="mock-label">TAMPILAN DI LAYAR</div>
+            <span class="mock-btn solid">Belum Aktif</span><span class="mock-btn gray">Aktif</span><span class="mock-btn gray">Semua</span>
+            <div style="height:10px"></div>
+            <div class="mock-row"><div><div class="nm">Budi Santoso</div><div class="em">budi@gmail.com · Bergabung 10 Jul 2026</div></div><span class="mock-btn green">Aktifkan</span></div>
+          </div>
+          <div class="warn"><b>Verifikasi identitas:</b> cocokkan nama/email di layar dengan yang disebutkan pelanggan. Jangan mengaktifkan akun yang tidak bisa dikonfirmasi pemiliknya.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h3>Terima Pembayaran Rp 100.000 <span class="tag manual">DI KASIR</span></h3>
+          <p>Terima pembayaran biaya aktivasi dari pelanggan melalui salah satu metode:</p>
+          <ul>
+            <li><b>Cash / Tunai</b> — hitung dan simpan di laci kas seperti transaksi biasa.</li>
+            <li><b>QRIS</b> — pastikan notifikasi pembayaran masuk sebelum lanjut.</li>
+            <li><b>Transfer Bank</b> — verifikasi mutasi/bukti transfer terlebih dahulu.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h3>Tekan "Aktifkan" &amp; Konfirmasi <span class="tag app">PORTAL ADMIN</span></h3>
+          <p>Tekan tombol <b>Aktifkan</b> pada kartu pelanggan. Panel konfirmasi akan muncul dari bawah layar:</p>
+          <ol>
+            <li>Periksa kembali <b>nama dan email</b> pelanggan yang tampil.</li>
+            <li>Pilih <b>Metode Bayar</b> sesuai pembayaran yang benar-benar diterima (Cash / QRIS / Transfer).</li>
+            <li>Tekan tombol <b>"Aktifkan — Rp 100.000"</b>.</li>
+          </ol>
+          <div class="ui-mock">
+            <div class="mock-label">PANEL KONFIRMASI</div>
+            <div class="mock-row"><div><div class="nm">Budi Santoso</div><div class="em">budi@gmail.com</div></div></div>
+            <div style="margin:8px 0 4px;font-size:.68rem;letter-spacing:.1em;color:var(--w50);font-weight:700">METODE BAYAR</div>
+            <span class="mock-btn solid">Cash / Tunai</span><span class="mock-btn gray">QRIS</span><span class="mock-btn gray">Transfer Bank</span>
+            <div style="height:8px"></div>
+            <span class="mock-btn solid" style="width:100%;text-align:center;display:block">✓ Aktifkan — Rp 100.000</span>
+          </div>
+          <div class="warn"><b>Penting:</b> metode bayar yang dipilih tercatat permanen di laporan keuangan owner. Pastikan sesuai dengan cara pelanggan membayar.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">5</div>
+        <div>
+          <h3>Sistem Memproses Otomatis <span class="tag auto">OTOMATIS</span></h3>
+          <p>Begitu tombol ditekan, sistem melakukan hal berikut tanpa perlu tindakan tambahan:</p>
+          <div class="table-wrap">
+            <table class="sys-table">
+              <thead><tr><th>YANG TERJADI</th><th>DETAIL</th></tr></thead>
+              <tbody>
+                <tr><td>Status membership</td><td>Berubah menjadi <span class="mono">ACTIVE</span> beserta tanggal aktivasi</td></tr>
+                <tr><td>Tier awal</td><td>Ditetapkan <span class="mono">Bronze</span> dengan poin mulai dari 0</td></tr>
+                <tr><td>Catatan pembayaran</td><td>Tersimpan: nominal Rp 100.000, metode bayar, dan cabang kasir yang memproses</td></tr>
+                <tr><td>Notifikasi di layar</td><td>Muncul pesan <span class="mono">"✓ Membership berhasil diaktifkan!"</span> dan daftar ter-refresh</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">6</div>
+        <div>
+          <h3>Sync Data Moka POS <span class="tag app">PORTAL ADMIN</span></h3>
+          <p>Setelah member aktif, pada kartunya muncul badge <span class="badge-active">✓ Aktif</span> dan tombol <b>Sync Moka</b>. Tekan tombol ini untuk menarik data <b>jumlah kunjungan dan poin</b> pelanggan dari sistem kasir Moka, sehingga riwayat transaksinya langsung terhitung.</p>
+          <div class="info"><b>Catatan:</b> sync membutuhkan <b>nomor WhatsApp</b> pelanggan yang terdaftar. Jika muncul pesan "Nomor WA tidak tersedia", lengkapi dulu nomor HP pelanggan di data akunnya.</div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">7</div>
+        <div>
+          <h3>Konfirmasi ke Pelanggan <span class="tag manual">DI KASIR</span></h3>
+          <p>Tutup proses dengan menyampaikan ke pelanggan:</p>
+          <ul>
+            <li>Membership sudah <b>aktif</b> dan berlaku 1 tahun.</li>
+            <li>Setiap transaksi <b>Rp 10.000 = 1 poin</b>, otomatis tercatat.</li>
+            <li>Pelanggan bisa cek poin &amp; tier kapan saja lewat <b>Dashboard Member</b> di website (login dengan akun yang sama).</li>
+            <li>Untuk klaim diskon/benefit, cukup sebutkan nomor member atau no. HP ke kasir <b>sebelum layanan dimulai</b>.</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCREENSHOT ============ -->
+<section>
+  <div class="container">
+    <h2 class="sec-title">Tampilan Layar di Aplikasi</h2>
+    <p class="sec-sub">Tiga tahap yang akan Anda lihat di menu Aktivasi Member.</p>
+    <div class="shot-grid">
+      <figure class="shot">
+        <img src="img/05-admin-list.png" alt="Daftar pelanggan Belum Aktif di menu Aktivasi Member" loading="lazy">
+        <figcaption><b>Tahap 1</b> — Daftar pelanggan tab <b>"Belum Aktif"</b>. Cari nama/email, lalu tekan tombol hijau <b>Aktifkan</b>.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/06-admin-konfirmasi.png" alt="Panel konfirmasi aktivasi dengan pilihan metode bayar" loading="lazy">
+        <figcaption><b>Tahap 2</b> — Panel konfirmasi: cek nama &amp; email, pilih <b>Metode Bayar</b>, lalu tekan <b>"✓ Aktifkan — Rp 100.000"</b>.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="img/07-admin-sukses.png" alt="Notifikasi sukses dan member berstatus aktif dengan tombol Sync Moka" loading="lazy">
+        <figcaption><b>Tahap 3</b> — Muncul notifikasi sukses; member kini berbadge <b>✓ Aktif</b> (tier Bronze, 0 poin) dan tombol <b>Sync Moka</b> tersedia.</figcaption>
+      </figure>
+    </div>
+    <p class="shot-note">* Tampilan simulasi dengan data contoh — nama dan email pada gambar bukan data pelanggan sungguhan.</p>
+  </div>
+</section>
+
+<!-- ============ TROUBLESHOOTING ============ -->
+<section>
+  <div class="container">
+    <h2 class="sec-title">Kendala Umum &amp; Solusinya</h2>
+    <p class="sec-sub">Empat situasi yang paling sering terjadi di kasir dan cara menanganinya.</p>
+    <div class="ts-item">
+      <b>Pelanggan tidak muncul di daftar "Belum Aktif"</b>
+      <p>Kemungkinan pelanggan belum menyelesaikan pendaftaran akun online, atau salah mengeja nama/email saat dicari. Cek tab <b>"Semua"</b> dan coba kata kunci lain (potongan nama, email, dsb). Jika benar-benar belum ada, minta pelanggan mendaftar dulu lewat halaman Membership di website.</p>
+    </div>
+    <div class="ts-item">
+      <b>Muncul pesan "Gagal mengaktifkan. Coba lagi."</b>
+      <p>Biasanya gangguan koneksi sesaat. Tunggu beberapa detik lalu ulangi. Sebelum menekan ulang, refresh halaman dan pastikan status pelanggan belum berubah menjadi Aktif (mencegah dobel input). Jika terus gagal, laporkan ke owner/tim teknis.</p>
+    </div>
+    <div class="ts-item">
+      <b>Sync Moka gagal / "Nomor WA tidak tersedia"</b>
+      <p>Data pelanggan belum memiliki nomor WhatsApp. Lengkapi nomor HP pelanggan terlebih dahulu, lalu ulangi Sync Moka. Sync juga bisa diulang kapan saja — data terbaru dari Moka akan menimpa data lama dengan aman.</p>
+    </div>
+    <div class="ts-item">
+      <b>Salah pilih metode bayar saat aktivasi</b>
+      <p>Catatan pembayaran tidak bisa diubah dari halaman kasir. Segera laporkan ke owner/admin pusat agar dikoreksi di data, karena angka ini masuk ke laporan keuangan.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CHECKLIST ============ -->
+<section>
+  <div class="container">
+    <div class="checklist">
+      <h3>✅ Checklist Cepat Kasir</h3>
+      <label><input type="checkbox"> Identitas pelanggan cocok dengan akun di layar (nama &amp; email)</label>
+      <label><input type="checkbox"> Pembayaran Rp 100.000 sudah diterima penuh &amp; terverifikasi</label>
+      <label><input type="checkbox"> Metode bayar di panel konfirmasi sesuai pembayaran aktual</label>
+      <label><input type="checkbox"> Muncul notifikasi "✓ Membership berhasil diaktifkan!"</label>
+      <label><input type="checkbox"> Sync Moka dijalankan (jika nomor WA tersedia)</label>
+      <label><input type="checkbox"> Pelanggan sudah diberi tahu cara cek poin &amp; klaim benefit</label>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">© 2026 Redbox Barbershop — SOP Aktivasi Membership (Dokumen Internal Admin/Kasir)</div>
+</footer>
+
+</body>
+</html>
