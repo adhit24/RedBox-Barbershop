@@ -184,21 +184,21 @@
 
         <!-- Proses: terima bayar -->
         <rect x="140" y="556" width="320" height="64" rx="12" fill="#0F172A" stroke="#FBBF24" stroke-width="1.5"/>
-        <text x="300" y="583" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="14" font-weight="700">Terima pembayaran Rp 100.000</text>
-        <text x="300" y="604" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">Cash · QRIS · Transfer — verifikasi dulu</text>
+        <text x="300" y="583" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="14" font-weight="700">Terima pembayaran sesuai paket</text>
+        <text x="300" y="604" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">Silver 100rb · Gold 250rb · Platinum 1,5jt</text>
         <line x1="300" y1="620" x2="300" y2="652" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
 
         <!-- Proses: tap aktifkan -->
         <rect x="140" y="656" width="320" height="64" rx="12" fill="#0F172A" stroke="#4ADE80" stroke-width="1.5"/>
         <text x="300" y="683" text-anchor="middle" fill="rgba(255,255,255,.9)" font-size="14" font-weight="700">Tap "Aktifkan" pada nama pelanggan</text>
-        <text x="300" y="704" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">pilih metode bayar → konfirmasi</text>
+        <text x="300" y="704" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12.5">pilih paket + metode bayar → konfirmasi</text>
         <line x1="300" y1="720" x2="300" y2="752" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
 
         <!-- Sistem otomatis -->
         <rect x="110" y="756" width="380" height="84" rx="12" fill="rgba(251,191,36,.05)" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="6 4"/>
         <text x="300" y="781" text-anchor="middle" fill="#FBBF24" font-size="11" font-weight="800" letter-spacing="2">SISTEM — OTOMATIS</text>
-        <text x="300" y="802" text-anchor="middle" fill="rgba(255,255,255,.85)" font-size="12.5">Status → ACTIVE · tier awal Bronze · poin 0</text>
-        <text x="300" y="822" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12">pembayaran + cabang kasir tercatat di sistem</text>
+        <text x="300" y="802" text-anchor="middle" fill="rgba(255,255,255,.85)" font-size="12.5">Status → ACTIVE · tier sesuai paket yang dibeli</text>
+        <text x="300" y="822" text-anchor="middle" fill="rgba(255,255,255,.6)" font-size="12">poin tidak direset · paket, nominal &amp; cabang tercatat</text>
         <line x1="300" y1="840" x2="300" y2="872" stroke="#64748B" stroke-width="1.5" marker-end="url(#arw)"/>
 
         <!-- Proses: sync moka -->
@@ -241,8 +241,8 @@
         <p>Pelanggan sudah mendaftar akun member secara online (via Google atau email/no. HP di halaman Membership website). Jika belum, arahkan untuk daftar dulu dari HP-nya — hanya 1–2 menit.</p>
       </div>
       <div class="prereq-card">
-        <b>3. Pembayaran Diterima</b>
-        <p>Biaya aktivasi <b>Rp 100.000</b> sudah diterima penuh (cash / QRIS / transfer) <u>sebelum</u> tombol aktivasi ditekan.</p>
+        <b>3. Paket &amp; Pembayaran Jelas</b>
+        <p>Pelanggan sudah memilih paket — <b>Silver Rp 100.000</b>, <b>Gold Rp 250.000</b>, atau <b>Platinum Rp 1.500.000</b> — dan pembayaran sesuai harga paket sudah diterima penuh <u>sebelum</u> tombol aktivasi ditekan.</p>
       </div>
     </div>
   </div>
@@ -282,8 +282,8 @@
       <div class="step">
         <div class="step-num">3</div>
         <div>
-          <h3>Terima Pembayaran Rp 100.000 <span class="tag manual">DI KASIR</span></h3>
-          <p>Terima pembayaran biaya aktivasi dari pelanggan melalui salah satu metode:</p>
+          <h3>Tanyakan Paket &amp; Terima Pembayaran <span class="tag manual">DI KASIR</span></h3>
+          <p>Tanyakan paket yang diinginkan pelanggan — <b>Silver Rp 100.000</b>, <b>Gold Rp 250.000</b>, atau <b>Platinum Rp 1.500.000</b> — lalu terima pembayaran <b>sesuai harga paket</b> melalui salah satu metode:</p>
           <ul>
             <li><b>Cash / Tunai</b> — hitung dan simpan di laci kas seperti transaksi biasa.</li>
             <li><b>QRIS</b> — pastikan notifikasi pembayaran masuk sebelum lanjut.</li>
@@ -299,18 +299,21 @@
           <p>Tekan tombol <b>Aktifkan</b> pada kartu pelanggan. Panel konfirmasi akan muncul dari bawah layar:</p>
           <ol>
             <li>Periksa kembali <b>nama dan email</b> pelanggan yang tampil.</li>
+            <li>Pilih <b>Paket</b> sesuai permintaan pelanggan (Silver / Gold / Platinum) — harga di tombol mengikuti paket.</li>
             <li>Pilih <b>Metode Bayar</b> sesuai pembayaran yang benar-benar diterima (Cash / QRIS / Transfer).</li>
-            <li>Tekan tombol <b>"Aktifkan — Rp 100.000"</b>.</li>
+            <li>Tekan tombol <b>"Aktifkan — [harga paket]"</b>.</li>
           </ol>
           <div class="ui-mock">
             <div class="mock-label">PANEL KONFIRMASI</div>
             <div class="mock-row"><div><div class="nm">Budi Santoso</div><div class="em">budi@gmail.com</div></div></div>
+            <div style="margin:8px 0 4px;font-size:.68rem;letter-spacing:.1em;color:var(--w50);font-weight:700">PILIH PAKET</div>
+            <span class="mock-btn gray">Silver · Rp 100rb</span><span class="mock-btn" style="background:#FBBF24;color:#0F172A;font-weight:700">Gold · Rp 250rb</span><span class="mock-btn gray">Platinum · Rp 1,5jt</span>
             <div style="margin:8px 0 4px;font-size:.68rem;letter-spacing:.1em;color:var(--w50);font-weight:700">METODE BAYAR</div>
             <span class="mock-btn solid">Cash / Tunai</span><span class="mock-btn gray">QRIS</span><span class="mock-btn gray">Transfer Bank</span>
             <div style="height:8px"></div>
-            <span class="mock-btn solid" style="width:100%;text-align:center;display:block">✓ Aktifkan — Rp 100.000</span>
+            <span class="mock-btn solid" style="width:100%;text-align:center;display:block">✓ Aktifkan — Rp 250.000</span>
           </div>
-          <div class="warn"><b>Penting:</b> metode bayar yang dipilih tercatat permanen di laporan keuangan owner. Pastikan sesuai dengan cara pelanggan membayar.</div>
+          <div class="warn"><b>Penting:</b> paket dan metode bayar yang dipilih tercatat permanen di laporan keuangan owner. Pastikan keduanya sesuai dengan permintaan dan pembayaran pelanggan.</div>
         </div>
       </div>
 
@@ -324,8 +327,9 @@
               <thead><tr><th>YANG TERJADI</th><th>DETAIL</th></tr></thead>
               <tbody>
                 <tr><td>Status membership</td><td>Berubah menjadi <span class="mono">ACTIVE</span> beserta tanggal aktivasi</td></tr>
-                <tr><td>Tier awal</td><td>Ditetapkan <span class="mono">Bronze</span> dengan poin mulai dari 0</td></tr>
-                <tr><td>Catatan pembayaran</td><td>Tersimpan: nominal Rp 100.000, metode bayar, dan cabang kasir yang memproses</td></tr>
+                <tr><td>Tier member</td><td>Ditetapkan <span class="mono">sesuai paket yang dibeli</span> (silver / gold / platinum)</td></tr>
+                <tr><td>Poin pelanggan</td><td><b>Tidak direset</b> — poin lama dari transaksi Moka tetap utuh</td></tr>
+                <tr><td>Catatan pembayaran</td><td>Tersimpan: paket, nominal sesuai harga paket, metode bayar, dan cabang kasir</td></tr>
                 <tr><td>Notifikasi di layar</td><td>Muncul pesan <span class="mono">"✓ Membership berhasil diaktifkan!"</span> dan daftar ter-refresh</td></tr>
               </tbody>
             </table>
@@ -371,12 +375,12 @@
         <figcaption><b>Tahap 1</b> — Daftar pelanggan tab <b>"Belum Aktif"</b>. Cari nama/email, lalu tekan tombol hijau <b>Aktifkan</b>.</figcaption>
       </figure>
       <figure class="shot">
-        <img src="img/06-admin-konfirmasi.png" alt="Panel konfirmasi aktivasi dengan pilihan metode bayar" loading="lazy">
-        <figcaption><b>Tahap 2</b> — Panel konfirmasi: cek nama &amp; email, pilih <b>Metode Bayar</b>, lalu tekan <b>"✓ Aktifkan — Rp 100.000"</b>.</figcaption>
+        <img src="img/06-admin-konfirmasi.png" alt="Panel konfirmasi aktivasi dengan pilihan paket dan metode bayar" loading="lazy">
+        <figcaption><b>Tahap 2</b> — Panel konfirmasi: cek nama &amp; email, pilih <b>Paket</b> (harga di tombol mengikuti paket), pilih <b>Metode Bayar</b>, lalu tekan <b>"✓ Aktifkan"</b>.</figcaption>
       </figure>
       <figure class="shot">
         <img src="img/07-admin-sukses.png" alt="Notifikasi sukses dan member berstatus aktif dengan tombol Sync Moka" loading="lazy">
-        <figcaption><b>Tahap 3</b> — Muncul notifikasi sukses; member kini berbadge <b>✓ Aktif</b> (tier Bronze, 0 poin) dan tombol <b>Sync Moka</b> tersedia.</figcaption>
+        <figcaption><b>Tahap 3</b> — Muncul notifikasi sukses; member kini berbadge <b>✓ Aktif</b> dengan tier sesuai paket, dan tombol <b>Sync Moka</b> tersedia.</figcaption>
       </figure>
     </div>
     <p class="shot-note">* Tampilan simulasi dengan data contoh — nama dan email pada gambar bukan data pelanggan sungguhan.</p>
@@ -401,8 +405,8 @@
       <p>Data pelanggan belum memiliki nomor WhatsApp. Lengkapi nomor HP pelanggan terlebih dahulu, lalu ulangi Sync Moka. Sync juga bisa diulang kapan saja — data terbaru dari Moka akan menimpa data lama dengan aman.</p>
     </div>
     <div class="ts-item">
-      <b>Salah pilih metode bayar saat aktivasi</b>
-      <p>Catatan pembayaran tidak bisa diubah dari halaman kasir. Segera laporkan ke owner/admin pusat agar dikoreksi di data, karena angka ini masuk ke laporan keuangan.</p>
+      <b>Salah pilih paket atau metode bayar saat aktivasi</b>
+      <p>Catatan aktivasi tidak bisa diubah dari halaman kasir. Segera laporkan ke owner/admin pusat agar paket, nominal, atau metode bayarnya dikoreksi di data — angka ini masuk ke laporan keuangan.</p>
     </div>
   </div>
 </section>
@@ -413,9 +417,10 @@
     <div class="checklist">
       <h3>✅ Checklist Cepat Kasir</h3>
       <label><input type="checkbox"> Identitas pelanggan cocok dengan akun di layar (nama &amp; email)</label>
-      <label><input type="checkbox"> Pembayaran Rp 100.000 sudah diterima penuh &amp; terverifikasi</label>
+      <label><input type="checkbox"> Paket yang dipilih di panel sesuai permintaan pelanggan (Silver / Gold / Platinum)</label>
+      <label><input type="checkbox"> Pembayaran sesuai harga paket sudah diterima penuh &amp; terverifikasi</label>
       <label><input type="checkbox"> Metode bayar di panel konfirmasi sesuai pembayaran aktual</label>
-      <label><input type="checkbox"> Muncul notifikasi "✓ Membership berhasil diaktifkan!"</label>
+      <label><input type="checkbox"> Muncul notifikasi "✓ Membership [paket] berhasil diaktifkan!"</label>
       <label><input type="checkbox"> Sync Moka dijalankan (jika nomor WA tersedia)</label>
       <label><input type="checkbox"> Pelanggan sudah diberi tahu cara cek poin &amp; klaim benefit</label>
     </div>

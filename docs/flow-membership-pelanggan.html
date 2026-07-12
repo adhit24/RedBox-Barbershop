@@ -65,24 +65,33 @@
   .card-glow{position:absolute;inset:-30px;background:radial-gradient(ellipse 60% 55% at 50% 55%,rgba(193,18,31,.4),transparent 70%);filter:blur(30px);z-index:-1;border-radius:50%}
   .card-shine{position:absolute;inset:0;border-radius:22px;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.14) 48%,transparent 62%);background-size:220% 100%;background-position:120% 0;pointer-events:none}
 
-  /* ======== DUA JALUR ======== */
-  .paths{display:grid;grid-template-columns:1fr 1fr;gap:22px}
-  .path-card{position:relative;border-radius:22px;padding:2px;background:linear-gradient(150deg,rgba(255,255,255,.14),rgba(255,255,255,.03) 40%,rgba(193,18,31,.35));transition:transform .35s var(--ease)}
-  .path-card:hover{transform:translateY(-5px)}
-  .path-inner{background:linear-gradient(160deg,#131316,#0D0D10);border-radius:20px;padding:34px 30px;height:100%;display:flex;flex-direction:column;gap:14px}
-  .path-badge{display:inline-flex;align-self:flex-start;align-items:center;gap:8px;font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-radius:999px;padding:7px 14px}
+  /* ======== DUA JALUR — gaya kartu gradient membership.html ======== */
+  .paths{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+  .path-wrap{position:relative}
+  .path-glow{position:absolute;inset:6px;border-radius:26px;filter:blur(28px);opacity:.28;transition:opacity .4s var(--ease);pointer-events:none}
+  .path-wrap:hover .path-glow{opacity:.55}
+  .path-wrap.baru .path-glow{background:linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%)}
+  .path-wrap.lama .path-glow{background:linear-gradient(137deg,#8A6414 0%,#E3B341 45%,#F5D67B 100%)}
+  .path-card{position:relative;height:100%;border-radius:24px;border:2px solid transparent;padding:32px 28px;display:flex;flex-direction:column;gap:14px;transition:transform .35s var(--ease)}
+  .path-wrap.baru .path-card{background:linear-gradient(#151517,#151517) padding-box,linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%) border-box}
+  .path-wrap.lama .path-card{background:linear-gradient(#151517,#151517) padding-box,linear-gradient(137deg,#8A6414 0%,#E3B341 45%,#F5D67B 100%) border-box}
+  .path-wrap:hover .path-card{transform:translateY(-6px)}
+  .path-icon{width:52px;height:52px;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.04);display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+  .path-icon svg{width:24px;height:24px;stroke:#fff}
+  .path-badge{display:inline-flex;align-self:flex-start;align-items:center;font-size:.68rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;border-radius:999px;padding:6px 14px}
   .path-badge.baru{background:rgba(193,18,31,.14);color:var(--red-soft);border:1px solid rgba(193,18,31,.35)}
   .path-badge.lama{background:rgba(227,179,65,.1);color:var(--gold);border:1px solid rgba(227,179,65,.3)}
-  .path-inner h3{font-family:var(--font-display);font-size:1.45rem;font-weight:700}
-  .path-inner>p{color:var(--w70);font-size:.92rem;font-weight:300}
-  .path-steps{list-style:none;display:flex;flex-direction:column;gap:10px;margin-top:6px}
+  .path-card h3{font-family:var(--font-display);font-size:1.45rem;font-weight:700}
+  .path-card>p{color:var(--w70);font-size:.92rem;font-weight:300}
+  .path-steps{list-style:none;display:flex;flex-direction:column;gap:11px;margin-top:6px}
   .path-steps li{display:flex;gap:12px;align-items:flex-start;font-size:.88rem;color:var(--w70)}
+  .path-steps li>span:last-child{flex:1}
+  .path-steps li b{color:var(--w95)}
   .path-steps .dot{flex-shrink:0;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.66rem;font-weight:700;margin-top:1px}
   .baru-dot{background:rgba(193,18,31,.16);color:var(--red-soft);border:1px solid rgba(193,18,31,.4)}
   .lama-dot{background:rgba(227,179,65,.12);color:var(--gold);border:1px solid rgba(227,179,65,.35)}
   .path-cta{margin-top:auto;padding-top:18px;font-size:.85rem;font-weight:600;color:var(--red-soft);text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:gap .25s var(--ease)}
   .path-cta:hover{gap:13px}
-  .path-card.lama-card{background:linear-gradient(150deg,rgba(255,255,255,.14),rgba(255,255,255,.03) 40%,rgba(227,179,65,.3))}
   .path-cta.gold{color:var(--gold)}
 
   /* Callout poin member lama */
@@ -136,7 +145,7 @@
   .tier:hover{transform:translateY(-8px)}
   .tier-inner{background:linear-gradient(170deg,#141417,#0D0D10);border-radius:22.5px;padding:36px 28px;height:100%;display:flex;flex-direction:column;text-align:center}
   .tier.gold{background:linear-gradient(165deg,rgba(227,179,65,.55),rgba(227,179,65,.08) 55%,rgba(227,179,65,.3))}
-  .tier .t-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#E3B341,#B8860B);color:#0B0B0D;font-size:.66rem;font-weight:800;letter-spacing:.12em;padding:6px 16px;border-radius:999px;white-space:nowrap}
+  .tier .t-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:linear-gradient(135deg,#E3B341,#B8860B);color:#0B0B0D;font-size:.66rem;font-weight:800;letter-spacing:.12em;padding:6px 16px;border-radius:999px;white-space:nowrap}
   .t-name{font-family:var(--font-accent);font-size:1.35rem;letter-spacing:.3em;margin-bottom:4px}
   .tier.silver .t-name{color:var(--silver)} .tier.gold .t-name{color:var(--gold)} .tier.plat .t-name{color:var(--plat)}
   .t-price{font-family:var(--font-display);font-size:2rem;font-weight:700;margin:10px 0 2px}
@@ -199,6 +208,36 @@
     .tl-node{width:48px;height:48px;border-radius:15px}
     .tl-item{padding-left:70px}
   }
+  @media(max-width:480px){
+    .container{padding:0 16px}
+    section{padding:52px 0}
+    .sec-head{margin-bottom:38px}
+    .hero{padding:72px 0 48px}
+    .hero-logo{height:44px;margin-bottom:20px}
+    .hero-sub{font-size:.95rem}
+    .hero-ctas{margin-top:26px}
+    .hero-ctas .btn{flex:1 1 100%;justify-content:center;padding:14px 20px}
+    .hero-visual{max-width:320px}
+    .paths{gap:20px}
+    .path-card{padding:26px 20px}
+    .path-card h3{font-size:1.25rem}
+    .callout{padding:18px;gap:12px}
+    .tl-track{left:20px}
+    .tl-node{width:42px;height:42px;border-radius:13px}
+    .tl-node .num{font-size:1.1rem}
+    .tl-item{padding-left:60px;padding-bottom:34px}
+    .tl-card{padding:20px 18px}
+    .tl-card h3{font-size:1.12rem}
+    .price-row{gap:8px}
+    .price-pill{font-size:.74rem;padding:7px 11px}
+    .tier-inner{padding:30px 20px}
+    .point-card{padding:22px 18px}
+    .p-row{font-size:.83rem}
+    .faq-q{padding:16px 18px;font-size:.88rem}
+    .faq-a p{padding:0 18px 16px}
+    .cta-final{padding:48px 22px;border-radius:22px}
+    .shot figcaption{padding:12px 16px;font-size:.8rem}
+  }
   @media(prefers-reduced-motion:reduce){
     *,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}
   }
@@ -250,16 +289,20 @@
     </div>
 
     <div class="paths">
-      <div class="path-card r">
-        <div class="path-inner">
+      <div class="path-wrap baru r">
+        <div class="path-glow"></div>
+        <div class="path-card">
+          <div class="path-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          </div>
           <span class="path-badge baru">Pelanggan Baru</span>
           <h3>Daftar Member Baru</h3>
           <p>Belum pernah terdaftar di Redbox? Buat akun, pilih paket, dan bayar sesuai paket pilihanmu di outlet.</p>
           <ol class="path-steps">
-            <li><span class="dot baru-dot">1</span>Buat akun online lewat website (Google / email / no. HP)</li>
-            <li><span class="dot baru-dot">2</span>Pilih paket: <b>&nbsp;Silver · Gold · Platinum</b></li>
-            <li><span class="dot baru-dot">3</span>Bayar di outlet <b>&nbsp;sesuai harga paket</b>&nbsp;— kasir aktifkan saat itu juga</li>
-            <li><span class="dot baru-dot">4</span>Benefit paket &amp; poin langsung berjalan</li>
+            <li><span class="dot baru-dot">1</span><span>Buat akun online lewat website (Google / email / no. HP)</span></li>
+            <li><span class="dot baru-dot">2</span><span>Pilih paket: <b>Silver · Gold · Platinum</b></span></li>
+            <li><span class="dot baru-dot">3</span><span>Bayar di outlet <b>sesuai harga paket</b> — kasir aktifkan saat itu juga</span></li>
+            <li><span class="dot baru-dot">4</span><span>Benefit paket &amp; poin langsung berjalan</span></li>
           </ol>
           <a class="path-cta" href="#timeline">Lihat langkah detailnya
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -267,16 +310,20 @@
         </div>
       </div>
 
-      <div class="path-card lama-card r">
-        <div class="path-inner">
+      <div class="path-wrap lama r">
+        <div class="path-glow"></div>
+        <div class="path-card">
+          <div class="path-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
           <span class="path-badge lama">Pelanggan Setia Redbox</span>
           <h3>Sudah Sering Cukur di Redbox?</h3>
           <p>Data &amp; poin transaksimu sudah tercatat otomatis di sistem kami. Kamu sudah member Redbox — tinggal upgrade untuk buka benefit paket.</p>
           <ol class="path-steps">
-            <li><span class="dot lama-dot">1</span>Login pakai <b>&nbsp;nomor WhatsApp + kode OTP</b>&nbsp;— tanpa daftar ulang</li>
-            <li><span class="dot lama-dot">2</span>Poin &amp; riwayat kunjunganmu sudah tersimpan</li>
-            <li><span class="dot lama-dot">3</span>Ingin diskon &amp; benefit? Pilih paket Silver, Gold, atau Platinum</li>
-            <li><span class="dot lama-dot">4</span>Bayar paket pilihan di outlet — benefit aktif 1 tahun</li>
+            <li><span class="dot lama-dot">1</span><span>Login pakai <b>nomor WhatsApp + kode OTP</b> — tanpa daftar ulang</span></li>
+            <li><span class="dot lama-dot">2</span><span>Poin &amp; riwayat kunjunganmu sudah tersimpan</span></li>
+            <li><span class="dot lama-dot">3</span><span>Ingin diskon &amp; benefit? Pilih paket <b>Silver, Gold, atau Platinum</b></span></li>
+            <li><span class="dot lama-dot">4</span><span>Bayar paket pilihan di outlet — benefit aktif 1 tahun</span></li>
           </ol>
           <a class="path-cta gold" href="../member-login.html">Login &amp; cek poinmu
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -419,7 +466,7 @@
       </div>
 
       <div class="tier gold r">
-        <span class="t-badge">✦ PALING POPULER</span>
+        <span class="t-badge"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>PALING POPULER</span>
         <div class="tier-inner">
           <div class="t-name">GOLD</div>
           <div class="t-price">Rp 250.000<span> / tahun</span></div>

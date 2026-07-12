@@ -24,6 +24,14 @@ const PAY_METHODS = [
   { value: 'transfer', label: 'Transfer Bank' },
 ];
 
+const TIERS = [
+  { value: 'silver',   label: 'Silver',   price: 100000,  active: 'bg-slate-300 text-slate-900 border-slate-300' },
+  { value: 'gold',     label: 'Gold',     price: 250000,  active: 'bg-yellow-400 text-slate-900 border-yellow-400' },
+  { value: 'platinum', label: 'Platinum', price: 1500000, active: 'bg-cyan-300 text-slate-900 border-cyan-300' },
+];
+
+const fmtRp = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
+
 const TIER_COLOR: Record<string, string> = {
   platinum: 'text-cyan-300',
   gold:     'text-yellow-400',
@@ -65,6 +73,7 @@ function MembershipPageInner() {
   const [filter, setFilter]       = useState<'all' | 'inactive' | 'active'>('inactive');
   const [activating, setActivating] = useState<string | null>(null);
   const [payMethod, setPayMethod]   = useState('cash');
+  const [tier, setTier]             = useState('silver');
   const [processing, setProcessing] = useState(false);
   const [syncing, setSyncing]       = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
@@ -94,11 +103,11 @@ function MembershipPageInner() {
       const res = await fetch('/api/admin/crm/membership/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userKey: activating, branch, payMethod }),
+        body: JSON.stringify({ userKey: activating, branch, payMethod, tier }),
       });
       const data = await res.json();
       if (data.success) {
-        showToast('✓ Membership berhasil diaktifkan!');
+        showToast(`✓ Membership ${TIERS.find(t => t.value === tier)?.label ?? ''} berhasil diaktifkan!`);
         setActivating(null);
         await load();
       } else {
@@ -259,7 +268,7 @@ function MembershipPageInner() {
                     </>
                   ) : (
                     <button
-                      onClick={() => { setActivating(m.user_key); setPayMethod('cash'); }}
+                      onClick={() => { setActivating(m.user_key); setPayMethod('cash'); setTier('silver'); }}
                       className="bg-green-400/15 border border-green-400/40 text-green-400 text-xs font-bold rounded-xl px-3 py-1.5 active:scale-95 transition-transform"
                     >
                       Aktifkan
@@ -304,6 +313,26 @@ function MembershipPageInner() {
                 </div>
               </div>
 
+              <p className="text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">Pilih Paket</p>
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {TIERS.map(t => (
+                  <button
+                    key={t.value}
+                    onClick={() => setTier(t.value)}
+                    className={`rounded-xl py-2.5 px-1 border transition-all ${
+                      tier === t.value
+                        ? t.active
+                        : 'bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold">{t.label}</span>
+                    <span className={`block text-[10px] font-semibold ${tier === t.value ? 'opacity-70' : 'text-slate-500'}`}>
+                      {fmtRp(t.price)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
               <p className="text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">Metode Bayar</p>
               <div className="grid grid-cols-3 gap-2 mb-5">
                 {PAY_METHODS.map(pm => (
@@ -327,7 +356,7 @@ function MembershipPageInner() {
                 className="w-full bg-green-400 text-slate-900 font-bold rounded-xl py-3.5 text-sm flex items-center justify-center gap-2 active:scale-[.98] transition-transform disabled:opacity-60"
               >
                 <CheckCircle size={16} />
-                {processing ? 'Memproses...' : 'Aktifkan — Rp 100.000'}
+                {processing ? 'Memproses...' : `Aktifkan — ${fmtRp(TIERS.find(t => t.value === tier)?.price ?? 0)}`}
               </button>
             </motion.div>
           </>

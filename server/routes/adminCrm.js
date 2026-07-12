@@ -1082,21 +1082,27 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
   });
 
+  // Harga paket membership — aktivasi mengikuti paket yang dipilih pelanggan
+  const TIER_PRICES = { silver: 100000, gold: 250000, platinum: 1500000 };
+
   router.post('/membership/activate', adminAuth, async (req, res) => {
-    const { userKey, branch, payMethod } = req.body;
+    const { userKey, branch, payMethod, tier } = req.body;
     if (!userKey) return res.status(400).json({ error: 'userKey required' });
+    const price = TIER_PRICES[tier];
+    if (!price) return res.status(400).json({ error: 'tier harus silver, gold, atau platinum' });
     const now = new Date().toISOString();
+    // total_points sengaja TIDAK direset — poin pelanggan lama (sync Moka) tetap utuh
     const { error: patchErr } = await supabase
       .from('member_profiles')
-      .update({ membership_status: 'ACTIVE', membership_activated_at: now, total_points: 0, current_tier: 'bronze', updated_at: now })
+      .update({ membership_status: 'ACTIVE', membership_activated_at: now, current_tier: tier, updated_at: now })
       .eq('user_key', userKey);
     if (patchErr) return res.status(500).json({ error: patchErr.message });
     await supabase.from('member_activations').insert({
-      user_key: userKey, amount: 100000,
+      user_key: userKey, amount: price, tier,
       payment_method: payMethod || 'cash', status: 'completed',
       confirmed_by: 'admin-' + (branch || 'unknown')
     });
-    res.json({ success: true });
+    res.json({ success: true, tier, amount: price });
   });
 
   // ─── OWNER PAYMENT ANALYTICS ──────────────────────────────────────────
