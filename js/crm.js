@@ -1465,6 +1465,46 @@ async function sbMem(path, opts = {}) {
 }
 
 let _memCurrentKey = null; // user_key of currently found member
+const MEMBERSHIP_PACKAGES = {
+  silver: { label: 'Silver', price: 100000 },
+  gold: { label: 'Gold', price: 250000 },
+  platinum: { label: 'Platinum', price: 1500000 },
+};
+
+function formatRupiah(amount) {
+  return `Rp ${Number(amount || 0).toLocaleString('id-ID')}`;
+}
+
+function membershipButtonHtml(prefix, tier) {
+  const pkg = MEMBERSHIP_PACKAGES[tier] || MEMBERSHIP_PACKAGES.silver;
+  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> ${prefix} ${pkg.label} — ${formatRupiah(pkg.price)}`;
+}
+
+function updateMembershipActivateButton(scope = document) {
+  const buttons = scope.querySelectorAll ? scope.querySelectorAll('#memActivateBtn') : [];
+  buttons.forEach(btn => {
+    const opts = btn.closest('.mem-activate-opts');
+    const tier = opts?.querySelector('#memTier')?.value || document.getElementById('memTier')?.value || 'silver';
+    btn.innerHTML = membershipButtonHtml('Aktivasi', tier);
+  });
+}
+
+function updateQuickActivateButton() {
+  const tier = document.getElementById('qaTier')?.value || 'silver';
+  const btn = document.getElementById('qaConfirmBtn');
+  if (btn) btn.innerHTML = membershipButtonHtml('Aktifkan', tier).replace('width="16"', 'width="14"').replace('height="16"', 'height="14"');
+}
+
+async function activateMembershipViaApi(userKey, { branch, payMethod, tier }) {
+  const res = await fetch(`${API_URL}/admin/crm/membership/activate`, {
+    method: 'POST',
+    headers: apiHeaders(),
+    body: JSON.stringify({ userKey, branch, payMethod, tier }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
 
 async function initMembershipView() {
   await loadMemStats();
@@ -1533,44 +1573,20 @@ async function searchMember(query) {
   card.style.display = 'block';
 }
 
-async function activateMember() {
+async function activateMember(event) {
   if (!_memCurrentKey) return;
-  const branch = document.getElementById('memBranch').value;
-  const payMethod = document.getElementById('memPayMethod').value;
-  const btn = document.getElementById('memActivateBtn');
+  const opts = event?.currentTarget?.closest('.mem-activate-opts') || document;
+  const branch = opts.querySelector('#memBranch')?.value || document.getElementById('memBranch')?.value || 'unknown';
+  const payMethod = opts.querySelector('#memPayMethod')?.value || document.getElementById('memPayMethod')?.value || 'cash';
+  const tier = opts.querySelector('#memTier')?.value || document.getElementById('memTier')?.value || 'silver';
+  const btn = event?.currentTarget || document.getElementById('memActivateBtn');
   btn.disabled = true;
   btn.textContent = 'Memproses...';
 
-  const now = new Date().toISOString();
-
-  // 1. PATCH member profile → ACTIVE
-  const patchOk = await sbMem(`member_profiles?user_key=eq.${encodeURIComponent(_memCurrentKey)}`, {
-    method: 'PATCH',
-    headers: { 'Prefer': 'return=minimal' },
-    body: JSON.stringify({
-      membership_status: 'ACTIVE',
-      membership_activated_at: now,
-      total_points: 0,
-      current_tier: 'bronze',
-      updated_at: now
-    })
-  });
-
-  // 2. Record activation
-  await sbMem('member_activations', {
-    method: 'POST',
-    prefer: 'return=minimal',
-    body: JSON.stringify({
-      user_key: _memCurrentKey,
-      amount: 100000,
-      payment_method: payMethod,
-      status: 'completed',
-      confirmed_by: 'admin-' + branch
-    })
-  });
-
-  if (patchOk !== null) {
-    showToast('✓ Membership berhasil diaktifkan!', 'success');
+  try {
+    const result = await activateMembershipViaApi(_memCurrentKey, { branch, payMethod, tier });
+    const pkg = MEMBERSHIP_PACKAGES[result.tier] || MEMBERSHIP_PACKAGES[tier] || MEMBERSHIP_PACKAGES.silver;
+    showToast(`✓ Membership ${pkg.label} berhasil diaktifkan!`, 'success');
     // Refresh UI
     document.getElementById('memFoundBadge').textContent = '✓ AKTIF';
     document.getElementById('memFoundBadge').className = 'mem-found-badge status-active';
@@ -1579,12 +1595,12 @@ async function activateMember() {
     await loadMemStats();
     await loadRecentActivations();
     await loadAllMembers();
-  } else {
-    showToast('Gagal mengaktifkan. Coba lagi.', 'error');
+  } catch (err) {
+    showToast(`Gagal mengaktifkan: ${err.message}`, 'error');
   }
 
   btn.disabled = false;
-  btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktivasi Membership — Rp 100.000';
+  updateMembershipActivateButton(opts);
 }
 
 async function loadRecentActivations() {
@@ -1747,7 +1763,7 @@ function openQuickActivate(userKey, userName) {
   document.getElementById('qaName').textContent = userName || userKey;
   const btn = document.getElementById('qaConfirmBtn');
   btn.disabled = false;
-  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktifkan — Rp 100.000';
+  updateQuickActivateButton();
   document.getElementById('quickActivateOverlay').style.display = 'flex';
 }
 
@@ -1760,45 +1776,23 @@ async function confirmQuickActivate() {
   if (!_qaCurrentKey) return;
   const branch = document.getElementById('qaBranch').value;
   const payMethod = document.getElementById('qaPayMethod').value;
+  const tier = document.getElementById('qaTier')?.value || 'silver';
   const btn = document.getElementById('qaConfirmBtn');
   btn.disabled = true;
   btn.textContent = 'Memproses...';
 
-  const now = new Date().toISOString();
-  const patchOk = await sbMem(`member_profiles?user_key=eq.${encodeURIComponent(_qaCurrentKey)}`, {
-    method: 'PATCH',
-    headers: { 'Prefer': 'return=minimal' },
-    body: JSON.stringify({
-      membership_status: 'ACTIVE',
-      membership_activated_at: now,
-      total_points: 0,
-      current_tier: 'bronze',
-      updated_at: now
-    })
-  });
-
-  await sbMem('member_activations', {
-    method: 'POST',
-    prefer: 'return=minimal',
-    body: JSON.stringify({
-      user_key: _qaCurrentKey,
-      amount: 100000,
-      payment_method: payMethod,
-      status: 'completed',
-      confirmed_by: 'admin-' + branch
-    })
-  });
-
-  if (patchOk !== null) {
-    showToast('✓ Membership berhasil diaktifkan!', 'success');
+  try {
+    const result = await activateMembershipViaApi(_qaCurrentKey, { branch, payMethod, tier });
+    const pkg = MEMBERSHIP_PACKAGES[result.tier] || MEMBERSHIP_PACKAGES[tier] || MEMBERSHIP_PACKAGES.silver;
+    showToast(`✓ Membership ${pkg.label} berhasil diaktifkan!`, 'success');
     closeQuickActivate();
     await loadMemStats();
     await loadRecentActivations();
     await loadAllMembers();
-  } else {
-    showToast('Gagal mengaktifkan. Coba lagi.', 'error');
+  } catch (err) {
+    showToast(`Gagal mengaktifkan: ${err.message}`, 'error');
     btn.disabled = false;
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktifkan — Rp 100.000';
+    updateQuickActivateButton();
   }
 }
 
@@ -1814,5 +1808,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('memSearchInput')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') searchMember(e.target.value);
   });
-  document.getElementById('memActivateBtn')?.addEventListener('click', activateMember);
+  document.querySelectorAll('#memActivateBtn').forEach(btn => btn.addEventListener('click', activateMember));
+  document.querySelectorAll('#memTier').forEach(sel => {
+    sel.addEventListener('change', () => updateMembershipActivateButton(sel.closest('.mem-activate-opts') || document));
+  });
+  document.getElementById('qaTier')?.addEventListener('change', updateQuickActivateButton);
+  updateMembershipActivateButton();
+  updateQuickActivateButton();
 });

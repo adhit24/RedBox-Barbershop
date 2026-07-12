@@ -1097,11 +1097,12 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       .update({ membership_status: 'ACTIVE', membership_activated_at: now, current_tier: tier, updated_at: now })
       .eq('user_key', userKey);
     if (patchErr) return res.status(500).json({ error: patchErr.message });
-    await supabase.from('member_activations').insert({
+    const { error: activationErr } = await supabase.from('member_activations').insert({
       user_key: userKey, amount: price, tier,
       payment_method: payMethod || 'cash', status: 'completed',
       confirmed_by: 'admin-' + (branch || 'unknown')
     });
+    if (activationErr) return res.status(500).json({ error: activationErr.message });
     res.json({ success: true, tier, amount: price });
   });
 

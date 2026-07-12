@@ -313,6 +313,14 @@
                 </select>
               </div>
               <div class="mem-opt-row">
+                <label>Paket</label>
+                <select id="memTier">
+                  <option value="silver">Silver — Rp 100.000</option>
+                  <option value="gold">Gold — Rp 250.000</option>
+                  <option value="platinum">Platinum — Rp 1.500.000</option>
+                </select>
+              </div>
+              <div class="mem-opt-row">
                 <label>Metode Bayar</label>
                 <select id="memPayMethod">
                   <option value="cash">Cash / Tunai</option>
@@ -322,7 +330,7 @@
               </div>
               <button class="btn-mem-activate" id="memActivateBtn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-                Aktivasi Membership — Rp 100.000
+                Aktivasi Silver — Rp 100.000
               </button>
             </div>
             <div class="mem-already-active" id="memAlreadyActive" style="display:none">
@@ -553,6 +561,14 @@
               </select>
             </div>
             <div class="mem-opt-row">
+              <label>Paket</label>
+              <select id="memTier">
+                <option value="silver">Silver — Rp 100.000</option>
+                <option value="gold">Gold — Rp 250.000</option>
+                <option value="platinum">Platinum — Rp 1.500.000</option>
+              </select>
+            </div>
+            <div class="mem-opt-row">
               <label>Metode Bayar</label>
               <select id="memPayMethod">
                 <option value="cash">Cash / Tunai</option>
@@ -562,7 +578,7 @@
             </div>
             <button class="btn-mem-activate" id="memActivateBtn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-              Aktivasi Membership — Rp 100.000
+              Aktivasi Silver — Rp 100.000
             </button>
           </div>
           <div class="mem-already-active" id="memAlreadyActive" style="display:none">
@@ -619,6 +635,14 @@
       <div class="modal-body" style="gap:14px">
         <p style="font-size:.9rem;color:var(--w70)">Member: <strong id="qaName" style="color:var(--white)">—</strong></p>
         <div class="form-group">
+          <label style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">PAKET</label>
+          <select id="qaTier" style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem">
+            <option value="silver">Silver — Rp 100.000</option>
+            <option value="gold">Gold — Rp 250.000</option>
+            <option value="platinum">Platinum — Rp 1.500.000</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">CABANG</label>
           <select id="qaBranch" style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem">
             <option value="bypass">Bypass</option>
@@ -642,14 +666,14 @@
         <button class="btn-ghost" onclick="closeQuickActivate()">Batal</button>
         <button class="btn-mem-activate" id="qaConfirmBtn" onclick="confirmQuickActivate()" style="min-width:180px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-          Aktifkan — Rp 100.000
+          Aktifkan Silver — Rp 100.000
         </button>
       </div>
     </div>
   </div>
 
   <script src="js/services-data.js"></script>
-  <script src="js/crm.js?v=20260605d"></script>
+  <script src="js/crm.js?v=20260712a"></script>
 <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 20px;font-size:.68rem;letter-spacing:.05em;"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.3);font-weight:500;text-decoration:none;">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka" style="width:16px;height:16px;border-radius:3px;opacity:.4;"> <strong>KINARYALOKA</strong></a></div>
 </body>
 </html>
