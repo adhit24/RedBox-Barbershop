@@ -1069,6 +1069,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
   }
 
   const bookingId = randomUUID();
+  let resolvedLocation = location || 'bypass';
 
   if (DB_TYPE === 'supabase') {
     try {
@@ -1076,7 +1077,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       if (normalizedBarberId && normalizedBarberId !== 'any') {
         const { data: barberCheck, error: barberErr } = await supabase
           .from('barbers')
-          .select('id, is_active')
+          .select('id, is_active, branch')
           .eq('id', normalizedBarberId)
           .single();
         if (barberErr && barberErr.code !== 'PGRST116') {
@@ -1087,6 +1088,13 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         }
         if (!isAdmin && barberCheck.is_active === false) {
           return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
+        }
+        // Cabang booking WAJIB ikut cabang asli kapster — mencegah booking tersimpan
+        // dengan barber_id dan location yang tidak sinkron (kapster "pindah cabang"
+        // secara keliru di notifikasi WA). Berlaku untuk submit pelanggan maupun admin.
+        if (barberCheck.branch && barberCheck.branch !== resolvedLocation) {
+          console.warn(`[Booking] location "${resolvedLocation}" tidak sinkron dengan cabang kapster ${normalizedBarberId} ("${barberCheck.branch}") — dikoreksi otomatis.`);
+          resolvedLocation = barberCheck.branch;
         }
       }
 
@@ -1099,7 +1107,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       const { data, error } = await supabase.from('bookings').insert([{
         id: bookingId, name, wa, service_id: service_id || '', service, price: price || 0,
         duration: duration || '', barber_id: normalizedBarberId, date, time,
-        location: location || 'bypass', status: desiredStatus, notes: notes || '', payment: payment || ''
+        location: resolvedLocation, status: desiredStatus, notes: notes || '', payment: payment || ''
       }]).select().single();
       if (error) return res.status(500).json({ error: error.message });
 

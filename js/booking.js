@@ -113,6 +113,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Cabang booking harus selalu mengikuti cabang kapster yang dipilih — dropdown
+  // "Branch Location" dikunci (disabled) begitu ada kapster aktif supaya pelanggan
+  // tidak bisa membuat kombinasi barber_id/location yang tidak sinkron.
+  function lockLocationToBranch(branch) {
+    const locSel = document.getElementById('custLocation');
+    const note = document.getElementById('custLocationLockNote');
+    if (!locSel) return;
+    locSel.value = branch;
+    locSel.disabled = true;
+    if (note) note.style.display = '';
+  }
+
   // Update person-tab UI status text + filled checkmark
   function refreshPersonTabs() {
     document.querySelectorAll('.person-tabs').forEach(tabs => {
@@ -1177,11 +1189,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         mokaAvailableSlots = [];
         fallbackBusyRanges = [];
 
-        // Auto-select branch if available (di-share antar person — cabang sama)
+        // Auto-select branch if available (di-share antar person — cabang sama).
+        // Dikunci (bukan cuma di-set) supaya pelanggan tidak bisa mengubahnya secara
+        // manual di step kontak dan membuat booking barber_id/location mismatch —
+        // lihat insiden kapster Ari (Bypass) tersimpan sebagai booking cabang CSB.
         if (card.dataset.branch && card.dataset.branch !== 'any') {
           state.location = card.dataset.branch;
-          const locSel = document.getElementById('custLocation');
-          if (locSel) locSel.value = state.location;
+          lockLocationToBranch(state.location);
         }
 
         // Apply CSB-specific pricing when CSB branch is selected — untuk SEMUA service person
@@ -1600,6 +1614,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.person2.name = custName2.value.trim();
     }
     state.wa = custWa.value.trim();
+
+    // Defense-in-depth: cabang booking wajib ikut cabang kapster yang dipilih.
+    // Dropdown ini sudah dikunci sejak kapster dipilih (lihat lockLocationToBranch),
+    // tapi tetap dikoreksi ulang di sini kalau-kalau ada jalur lain yang belum terkunci —
+    // mencegah kombinasi barber_id/location yang tidak sinkron tersimpan ke database.
+    const barberBranch = state.barber?.branch;
+    if (barberBranch && custLoc.value !== barberBranch) {
+      console.warn('[Booking] Lokasi tidak sinkron dengan cabang kapster — dikoreksi otomatis.', { dropdown: custLoc.value, barberBranch });
+      custLoc.value = barberBranch;
+    }
+
     state.location = custLoc.value;
     state.address = isHomeService ? (custAddr?.value.trim() || '') : '';
     state.notes = document.getElementById('custNotes')?.value.trim() || '';
