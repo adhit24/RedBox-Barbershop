@@ -1,625 +1,625 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Book Appointment — Redbox Barbershop</title>
-  <meta name="description" content="Booking online Redbox Barbershop. Pilih layanan, barber, dan jadwal favorit kamu." />
-  <meta name="theme-color" content="#0A0A0A" />
-  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
-  <link rel="stylesheet" href="css/booking.css" />
-  <link rel="stylesheet" href="css/animations.css" />
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <style>
-    /* Home Service Mode — hide service step from progress bar */
-    body.hs-mode .bstep[data-step="1"],
-    body.hs-mode .bstep[data-step="1"] + .bstep-line { display: none; }
-    /* Home service banner in sidebar / step bar */
-    body.hs-mode .book-steps-bar::before {
-      content: '🏠 HOME SERVICE';
-      display: block; text-align: center;
-      font-size: .65rem; font-weight: 700; letter-spacing: .12em;
-      color: #C1121F; margin-bottom: 12px;
-    }
-  </style>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Book Appointment | Redbox Barbershop</title>
+ <meta name="description" content="Booking online Redbox Barbershop. Pilih layanan, barber, dan jadwal favorit kamu." />
+ <meta name="theme-color" content="#0A0A0A" />
+ <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+ <link rel="preconnect" href="https://fonts.googleapis.com" />
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+ <link rel="stylesheet" href="css/style.css" />
+ <link rel="stylesheet" href="css/booking.css" />
+ <link rel="stylesheet" href="css/animations.css" />
+ <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+ <script src="https://accounts.google.com/gsi/client" async defer></script>
+ <style>
+ /* Home Service Mode - hide service step from progress bar */
+ body.hs-mode .bstep[data-step="1"],
+ body.hs-mode .bstep[data-step="1"] + .bstep-line { display: none; }
+ /* Home service banner in sidebar / step bar */
+ body.hs-mode .book-steps-bar::before {
+ content: ' HOME SERVICE';
+ display: block; text-align: center;
+ font-size: .65rem; font-weight: 700; letter-spacing: .12em;
+ color: #C1121F; margin-bottom: 12px;
+ }
+ </style>
 </head>
 <body class="booking-page">
 
-  <!-- Scroll Progress -->
-  <div class="rb-progress" aria-hidden="true"></div>
+ <!-- Scroll Progress -->
+ <div class="rb-progress" aria-hidden="true"></div>
 
-  <!-- ========== NAVBAR ========== -->
-  <nav class="navbar scrolled" id="navbar">
-    <div class="container nav-container">
-      <a href="index.html" class="nav-logo">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
-        <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
-      </a>
-      <div class="nav-pill-wrapper" id="navPillWrapper">
-        <span class="nav-pill-track" id="navPillTrack"></span>
-        <ul class="nav-links" id="navLinks">
-          <li><a href="index.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            Home
-          </a></li>
-          <li><a href="index.html#services" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
-            Services
-          </a></li>
-          <li><a href="index.html#professionals" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Pros
-          </a></li>
-          <li><a href="products.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            Product
-          </a></li>
-          <li><a href="index.html#location" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            Location
-          </a></li>
-          <li><a href="membership.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            Membership
-          </a></li>
-          <li><a href="sundaze.html" class="nav-link nav-sundaze">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            SUNDAZE
-          </a></li>
-        </ul>
-      </div>
-      <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Member</span>
-      </button>
-      <button class="hamburger" id="hamburger" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </nav>
+ <!-- ========== NAVBAR ========== -->
+ <nav class="navbar scrolled" id="navbar">
+ <div class="container nav-container">
+ <a href="index.html" class="nav-logo">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
+ <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
+ </a>
+ <div class="nav-pill-wrapper" id="navPillWrapper">
+ <span class="nav-pill-track" id="navPillTrack"></span>
+ <ul class="nav-links" id="navLinks">
+ <li><a href="index.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z"/><path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z"/></svg>
+ Home
+ </a></li>
+ <li><a href="index.html#services" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.128 9.155a3.751 3.751 0 1 1 .713-1.321l1.136.656a.75.75 0 0 1 .222 1.104l-.006.007a.75.75 0 0 1-1.032.157l-.113-.072-.92-.531ZM3.3 5.625a2.25 2.25 0 1 1 3.994 2.063.756.756 0 0 0-.122.23 2.25 2.25 0 0 1-3.872-2.293Zm12.572 3.53a3.751 3.751 0 1 0-.713-1.321l-1.136.656a.75.75 0 0 0-.222 1.104l.006.007a.75.75 0 0 0 1.032.157l.113-.072.92-.531Zm4.827-3.53a2.25 2.25 0 0 0-3.994 2.063.756.756 0 0 1 .122.23 2.25 2.25 0 0 0 3.872-2.293ZM14.678 11.492a.75.75 0 0 1 .738.144l5.063 4.5a.75.75 0 0 1-.988 1.128l-5.063-4.5a.75.75 0 0 1 .25-1.272ZM6.388 14.718l5.063 4.5a.75.75 0 0 0 .988-1.128l-5.063-4.5a.75.75 0 0 0-.988 1.128Z" clip-rule="evenodd"/></svg>
+ Services
+ </a></li>
+ <li><a href="index.html#professionals" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM15.75 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM2.25 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM6.31 15.117A6.745 6.745 0 0 1 12 12a6.745 6.745 0 0 1 6.709 7.498.75.75 0 0 1-.372.568A12.696 12.696 0 0 1 12 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 0 1-.372-.568 6.787 6.787 0 0 1 1.019-4.38Z" clip-rule="evenodd"/><path d="M5.082 14.254a8.287 8.287 0 0 0-1.308 5.135 9.687 9.687 0 0 1-1.764-.44l-.115-.04a.563.563 0 0 1-.373-.487l-.01-.121a3.75 3.75 0 0 1 3.57-4.047ZM20.226 19.389a8.287 8.287 0 0 0-1.308-5.135 3.75 3.75 0 0 1 3.57 4.047l-.01.121a.563.563 0 0 1-.373.486l-.115.04c-.567.2-1.156.349-1.764.441Z"/></svg>
+ Pros
+ </a></li>
+ <li><a href="products.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12.378 1.602a.75.75 0 0 0-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03ZM21.75 7.93l-9 5.25v9l8.628-5.032a.75.75 0 0 0 .372-.648V7.93ZM11.25 22.18v-9l-9-5.25v8.57a.75.75 0 0 0 .372.648l8.628 5.033Z"/></svg>
+ Product
+ </a></li>
+ <li><a href="index.html#location" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ Location
+ </a></li>
+ <li><a href="membership.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z"/></svg>
+ Membership
+ </a></li>
+ <li><a href="sundaze.html" class="nav-link nav-sundaze">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25a.75.75 0 0 1 .75.75v2.25a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM7.5 12a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM18.894 6.166a.75.75 0 0 0-1.06-1.06l-1.591 1.59a.75.75 0 1 0 1.06 1.061l1.591-1.59ZM21.75 12a.75.75 0 0 1-.75.75h-2.25a.75.75 0 0 1 0-1.5H21a.75.75 0 0 1 .75.75ZM17.834 18.894a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 1 0-1.061 1.06l1.59 1.591ZM12 18a.75.75 0 0 1 .75.75V21a.75.75 0 0 1-1.5 0v-2.25A.75.75 0 0 1 12 18ZM7.758 17.303a.75.75 0 0 0-1.061-1.06l-1.591 1.59a.75.75 0 0 0 1.06 1.061l1.591-1.59ZM6 12a.75.75 0 0 1-.75.75H3a.75.75 0 0 1 0-1.5h2.25A.75.75 0 0 1 6 12ZM6.697 7.757a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 0 0-1.061 1.06l1.59 1.591Z"/></svg>
+ SUNDAZE
+ </a></li>
+ </ul>
+ </div>
+ <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ <span>Member</span>
+ </button>
+ <button class="hamburger" id="hamburger" aria-label="Menu">
+ <span></span><span></span><span></span>
+ </button>
+ </div>
+ </nav>
 
-  <!-- ========== BOOKING WRAPPER ========== -->
-  <div class="book-wrapper">
+ <!-- ========== BOOKING WRAPPER ========== -->
+ <div class="book-wrapper">
 
-    <!-- Step Indicator -->
-    <div class="book-steps-bar" id="bookStepsBar">
-      <div class="bstep active" data-step="1">
-        <div class="bstep-num">1</div>
-        <span>Service</span>
-      </div>
-      <div class="bstep-line"></div>
-      <div class="bstep" data-step="2">
-        <div class="bstep-num">2</div>
-        <span>Professional</span>
-      </div>
-      <div class="bstep-line"></div>
-      <div class="bstep" data-step="3">
-        <div class="bstep-num">3</div>
-        <span>Date &amp; Time</span>
-      </div>
-      <div class="bstep-line"></div>
-      <div class="bstep" data-step="4">
-        <div class="bstep-num">4</div>
-        <span>Details</span>
-      </div>
-      <div class="bstep-line"></div>
-      <div class="bstep" data-step="5">
-        <div class="bstep-num">5</div>
-        <span>Confirm</span>
-      </div>
-    </div>
+ <!-- Step Indicator -->
+ <div class="book-steps-bar" id="bookStepsBar">
+ <div class="bstep active" data-step="1">
+ <div class="bstep-num">1</div>
+ <span>Service</span>
+ </div>
+ <div class="bstep-line"></div>
+ <div class="bstep" data-step="2">
+ <div class="bstep-num">2</div>
+ <span>Professional</span>
+ </div>
+ <div class="bstep-line"></div>
+ <div class="bstep" data-step="3">
+ <div class="bstep-num">3</div>
+ <span>Date &amp; Time</span>
+ </div>
+ <div class="bstep-line"></div>
+ <div class="bstep" data-step="4">
+ <div class="bstep-num">4</div>
+ <span>Details</span>
+ </div>
+ <div class="bstep-line"></div>
+ <div class="bstep" data-step="5">
+ <div class="bstep-num">5</div>
+ <span>Confirm</span>
+ </div>
+ </div>
 
-    <div class="book-layout">
+ <div class="book-layout">
 
-      <!-- ===== MAIN AREA ===== -->
-      <div class="book-main">
+ <!-- ===== MAIN AREA ===== -->
+ <div class="book-main">
 
-        <!-- STEP 1: SERVICE -->
-        <div class="book-step active" id="step1">
-          <div class="step-head">
-            <h2>Select Service</h2>
-            <p>Choose from our range of professional services. <span id="selectedCount" class="sel-count"></span></p>
-          </div>
+ <!-- STEP 1: SERVICE -->
+ <div class="book-step active" id="step1">
+ <div class="step-head">
+ <h2>Select Service</h2>
+ <p>Choose from our range of professional services. <span id="selectedCount" class="sel-count"></span></p>
+ </div>
 
-          <!-- HYGIENE PLEDGE -->
-          <div class="hygiene-pledge" style="margin-bottom:20px">
-            <div class="hp-header">
-              <div class="hp-icon-wrap">
-                <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              </div>
-              <div class="hp-header-text">
-                <div class="hp-eyebrow">Janji Kami</div>
-                <div class="hp-title">Standar Kebersihan Redbox</div>
-              </div>
-            </div>
-            <div class="hp-items">
-              <div class="hp-item">
-                <div class="hp-item-icon">
-                  <img src="Brand_assets/kip.png" alt="Kip" class="hp-item-img hp-item-img--kip" />
-                </div>
-                <div class="hp-item-num">1</div>
-                <div class="hp-item-label">Kip</div>
-                <div class="hp-item-sub">Satu kip bersih per pelanggan</div>
-              </div>
-              <div class="hp-item">
-                <div class="hp-item-icon">
-                  <img src="Brand_assets/towel.png" alt="Handuk" class="hp-item-img" />
-                </div>
-                <div class="hp-item-num">1</div>
-                <div class="hp-item-label">Handuk</div>
-                <div class="hp-item-sub">Satu handuk segar per kunjungan</div>
-              </div>
-              <div class="hp-item">
-                <div class="hp-item-icon">
-                  <img src="Brand_assets/barbercut.png" alt="Per Orang" class="hp-item-img hp-item-img--barbercut" />
-                </div>
-                <div class="hp-item-num">1</div>
-                <div class="hp-item-label">Orang</div>
-                <div class="hp-item-sub">Diganti setiap sesi, tanpa terkecuali</div>
-              </div>
-            </div>
-            <div class="hp-footer">
-              "Kami tidak kompromi soal kebersihan. Setiap duduk di kursi kami, semua alat baru untuk kamu."
-            </div>
-          </div>
-          <!-- END HYGIENE PLEDGE -->
+ <!-- HYGIENE PLEDGE -->
+ <div class="hygiene-pledge" style="margin-bottom:20px">
+ <div class="hp-header">
+ <div class="hp-icon-wrap">
+ <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+ </div>
+ <div class="hp-header-text">
+ <div class="hp-eyebrow">Janji Kami</div>
+ <div class="hp-title">Standar Kebersihan Redbox</div>
+ </div>
+ </div>
+ <div class="hp-items">
+ <div class="hp-item">
+ <div class="hp-item-icon">
+ <img src="Brand_assets/kip.png" alt="Kip" class="hp-item-img hp-item-img--kip" />
+ </div>
+ <div class="hp-item-num">1</div>
+ <div class="hp-item-label">Kip</div>
+ <div class="hp-item-sub">Satu kip bersih per pelanggan</div>
+ </div>
+ <div class="hp-item">
+ <div class="hp-item-icon">
+ <img src="Brand_assets/towel.png" alt="Handuk" class="hp-item-img" />
+ </div>
+ <div class="hp-item-num">1</div>
+ <div class="hp-item-label">Handuk</div>
+ <div class="hp-item-sub">Satu handuk segar per kunjungan</div>
+ </div>
+ <div class="hp-item">
+ <div class="hp-item-icon">
+ <img src="Brand_assets/barbercut.png" alt="Per Orang" class="hp-item-img hp-item-img--barbercut" />
+ </div>
+ <div class="hp-item-num">1</div>
+ <div class="hp-item-label">Orang</div>
+ <div class="hp-item-sub">Diganti setiap sesi, tanpa terkecuali</div>
+ </div>
+ </div>
+ <div class="hp-footer">
+ "Kami tidak kompromi soal kebersihan. Setiap duduk di kursi kami, semua alat baru untuk kamu."
+ </div>
+ </div>
+ <!-- END HYGIENE PLEDGE -->
 
-          <!-- GROUP SIZE SELECTOR -->
-          <div class="group-selector" id="groupSelector">
-            <div class="group-selector-label">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              <span>Booking untuk</span>
-            </div>
-            <div class="group-pills">
-              <button class="group-pill active" data-size="1">1 orang</button>
-              <button class="group-pill" data-size="2">2 orang</button>
-              <button class="group-pill" data-size="3">3+ orang</button>
-            </div>
-          </div>
+ <!-- GROUP SIZE SELECTOR -->
+ <div class="group-selector" id="groupSelector">
+ <div class="group-selector-label">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM15.75 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM2.25 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM6.31 15.117A6.745 6.745 0 0 1 12 12a6.745 6.745 0 0 1 6.709 7.498.75.75 0 0 1-.372.568A12.696 12.696 0 0 1 12 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 0 1-.372-.568 6.787 6.787 0 0 1 1.019-4.38Z" clip-rule="evenodd"/><path d="M5.082 14.254a8.287 8.287 0 0 0-1.308 5.135 9.687 9.687 0 0 1-1.764-.44l-.115-.04a.563.563 0 0 1-.373-.487l-.01-.121a3.75 3.75 0 0 1 3.57-4.047ZM20.226 19.389a8.287 8.287 0 0 0-1.308-5.135 3.75 3.75 0 0 1 3.57 4.047l-.01.121a.563.563 0 0 1-.373.486l-.115.04c-.567.2-1.156.349-1.764.441Z"/></svg>
+ <span>Booking untuk</span>
+ </div>
+ <div class="group-pills">
+ <button class="group-pill active" data-size="1">1 orang</button>
+ <button class="group-pill" data-size="2">2 orang</button>
+ <button class="group-pill" data-size="3">3+ orang</button>
+ </div>
+ </div>
 
-          <!-- 3+ ORANG BANNER (hidden by default) -->
-          <div class="group-banner" id="groupBanner" style="display:none">
-            <div class="group-banner-icon">💬</div>
-            <div class="group-banner-text">
-              <strong>Booking 3 orang atau lebih?</strong>
-              <p>Untuk grup besar, tim kami akan koordinasi langsung via WhatsApp supaya kapster & jadwal pas.</p>
-            </div>
-            <a class="group-banner-cta" id="groupBannerWA" target="_blank" href="https://wa.me/62818202569?text=Halo%20Redbox%2C%20saya%20mau%20booking%20untuk%203%20orang%20atau%20lebih%2C%20mohon%20bantu%20koordinasi.">
-              <span>Hubungi WA</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </a>
-          </div>
+ <!-- 3+ ORANG BANNER (hidden by default) -->
+ <div class="group-banner" id="groupBanner" style="display:none">
+ <div class="group-banner-icon"></div>
+ <div class="group-banner-text">
+ <strong>Booking 3 orang atau lebih?</strong>
+ <p>Untuk grup besar, tim kami akan koordinasi langsung via WhatsApp supaya kapster & jadwal pas.</p>
+ </div>
+ <a class="group-banner-cta" id="groupBannerWA" target="_blank" href="https://wa.me/62818202569?text=Halo%20Redbox%2C%20saya%20mau%20booking%20untuk%203%20orang%20atau%20lebih%2C%20mohon%20bantu%20koordinasi.">
+ <span>Hubungi WA</span>
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </a>
+ </div>
 
-          <!-- PERSON TABS (shown when 2 orang) -->
-          <div class="person-tabs" id="personTabsService" style="display:none">
-            <button class="person-tab active" data-person="1">
-              <span class="person-tab-badge">1</span>
-              <span class="person-tab-label">Orang 1</span>
-              <span class="person-tab-status" data-status-for="1">Pilih service</span>
-              <span class="person-tab-check" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </span>
-            </button>
-            <button class="person-tab" data-person="2">
-              <span class="person-tab-badge">2</span>
-              <span class="person-tab-label">Orang 2</span>
-              <span class="person-tab-status" data-status-for="2">Pilih service</span>
-              <span class="person-tab-check" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </span>
-            </button>
-          </div>
+ <!-- PERSON TABS (shown when 2 orang) -->
+ <div class="person-tabs" id="personTabsService" style="display:none">
+ <button class="person-tab active" data-person="1">
+ <span class="person-tab-badge">1</span>
+ <span class="person-tab-label">Orang 1</span>
+ <span class="person-tab-status" data-status-for="1">Pilih service</span>
+ <span class="person-tab-check" aria-hidden="true">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ </span>
+ </button>
+ <button class="person-tab" data-person="2">
+ <span class="person-tab-badge">2</span>
+ <span class="person-tab-label">Orang 2</span>
+ <span class="person-tab-status" data-status-for="2">Pilih service</span>
+ <span class="person-tab-check" aria-hidden="true">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ </span>
+ </button>
+ </div>
 
-          <div class="svc-list" id="svcList">
-            <!-- JS generates category groups here from services-data.js -->
-          </div>
+ <div class="svc-list" id="svcList">
+ <!-- JS generates category groups here from services-data.js -->
+ </div>
 
-          <!-- Mobile floating continue button (shows when service selected) -->
-          <button class="mobile-floating-continue" id="mobileContinue" disabled>
-            <span>Continue</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </button>
+ <!-- Mobile floating continue button (shows when service selected) -->
+ <button class="mobile-floating-continue" id="mobileContinue" disabled>
+ <span>Continue</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
 
-          <div class="step-foot">
-            <button class="btn-primary" id="step1Next" disabled>
-              <span>Continue</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-          </div>
-        </div>
+ <div class="step-foot">
+ <button class="btn-primary" id="step1Next" disabled>
+ <span>Continue</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
 
-        <!-- STEP 2: PROFESSIONAL -->
-        <div class="book-step" id="step2">
-          <div class="step-head">
-            <h2>Pick Your Professional</h2>
-            <p>Select your preferred barber for the service.</p>
-          </div>
+ <!-- STEP 2: PROFESSIONAL -->
+ <div class="book-step" id="step2">
+ <div class="step-head">
+ <h2>Pick Your Professional</h2>
+ <p>Select your preferred barber for the service.</p>
+ </div>
 
-          <!-- PERSON TABS for Professional step (shown when 2 orang) -->
-          <div class="person-tabs" id="personTabsBarber" style="display:none">
-            <button class="person-tab active" data-person="1">
-              <span class="person-tab-badge">1</span>
-              <span class="person-tab-label">Kapster Orang 1</span>
-              <span class="person-tab-status" data-status-for="1">Pilih kapster</span>
-              <span class="person-tab-check" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </span>
-            </button>
-            <button class="person-tab" data-person="2">
-              <span class="person-tab-badge">2</span>
-              <span class="person-tab-label">Kapster Orang 2</span>
-              <span class="person-tab-status" data-status-for="2">Pilih kapster</span>
-              <span class="person-tab-check" aria-hidden="true">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </span>
-            </button>
-          </div>
+ <!-- PERSON TABS for Professional step (shown when 2 orang) -->
+ <div class="person-tabs" id="personTabsBarber" style="display:none">
+ <button class="person-tab active" data-person="1">
+ <span class="person-tab-badge">1</span>
+ <span class="person-tab-label">Kapster Orang 1</span>
+ <span class="person-tab-status" data-status-for="1">Pilih kapster</span>
+ <span class="person-tab-check" aria-hidden="true">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ </span>
+ </button>
+ <button class="person-tab" data-person="2">
+ <span class="person-tab-badge">2</span>
+ <span class="person-tab-label">Kapster Orang 2</span>
+ <span class="person-tab-status" data-status-for="2">Pilih kapster</span>
+ <span class="person-tab-check" aria-hidden="true">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ </span>
+ </button>
+ </div>
 
-          <!-- Branch Filter for Professionals -->
-          <div class="pro-branch-filter" id="proBranchFilter">
-            <button class="branch-btn active" data-branch="bypass">Bypass</button>
-            <button class="branch-btn" data-branch="samadikun">Samadikun</button>
-            <button class="branch-btn" data-branch="csb">Csb Mall</button>
-            <button class="branch-btn" data-branch="sumber">Sumber</button>
-            <button class="branch-btn" data-branch="tegal">Tegal</button>
-          </div>
+ <!-- Branch Filter for Professionals -->
+ <div class="pro-branch-filter" id="proBranchFilter">
+ <button class="branch-btn active" data-branch="bypass">Bypass</button>
+ <button class="branch-btn" data-branch="samadikun">Samadikun</button>
+ <button class="branch-btn" data-branch="csb">Csb Mall</button>
+ <button class="branch-btn" data-branch="sumber">Sumber</button>
+ <button class="branch-btn" data-branch="tegal">Tegal</button>
+ </div>
 
-          <div class="pro-pick-grid" id="proPickGrid">
-            <!-- JS will populate barbers dynamically -->
-            <div class="pro-pick-loading">Loading professionals...</div>
-          </div>
-          <div class="step-foot">
-            <button class="btn-secondary step-back" data-target="1">← Back</button>
-            <button class="btn-primary" id="step2Next" disabled>
-              <span>Continue</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-          </div>
-        </div>
+ <div class="pro-pick-grid" id="proPickGrid">
+ <!-- JS will populate barbers dynamically -->
+ <div class="pro-pick-loading">Loading professionals...</div>
+ </div>
+ <div class="step-foot">
+ <button class="btn-secondary step-back" data-target="1">← Back</button>
+ <button class="btn-primary" id="step2Next" disabled>
+ <span>Continue</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
 
-        <!-- STEP 3: DATE & TIME -->
-        <div class="book-step" id="step3">
-          <div class="step-head">
-            <h2>Choose Date &amp; Time</h2>
-            <p>Pick a convenient date and time from available slots.</p>
-          </div>
-          
-          <!-- Warning notification for off-duty barber -->
-          <div class="barber-off-warning" id="barberOffWarning" style="display:none;">
-            <div class="warning-content">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-              <div class="warning-text">
-                <strong>Perhatian:</strong> <span id="offDutyBarberName"></span> sedang <strong>OFF DUTY</strong> pada tanggal yang dipilih.
-                <br>Silakan pilih tanggal lain atau ganti kapster.
-              </div>
-            </div>
-          </div>
+ <!-- STEP 3: DATE & TIME -->
+ <div class="book-step" id="step3">
+ <div class="step-head">
+ <h2>Choose Date &amp; Time</h2>
+ <p>Pick a convenient date and time from available slots.</p>
+ </div>
+ 
+ <!-- Warning notification for off-duty barber -->
+ <div class="barber-off-warning" id="barberOffWarning" style="display:none;">
+ <div class="warning-content">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003ZM12 8.25a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75Zm0 8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clip-rule="evenodd"/></svg>
+ <div class="warning-text">
+ <strong>Perhatian:</strong> <span id="offDutyBarberName"></span> sedang <strong>OFF DUTY</strong> pada tanggal yang dipilih.
+ <br>Silakan pilih tanggal lain atau ganti kapster.
+ </div>
+ </div>
+ </div>
 
-          <div class="cal-wrap">
-            <div class="cal-header">
-              <button class="cal-nav" id="calPrev" aria-label="Previous month">‹</button>
-              <span id="calMonthYear">—</span>
-              <button class="cal-nav" id="calNext" aria-label="Next month">›</button>
-            </div>
-            <div class="cal-days-head">
-              <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
-            </div>
-            <div class="cal-grid" id="calGrid"></div>
-          </div>
-          <div class="time-section" id="timeSection" style="display:none">
-            <h4>Select Time</h4>
-            <div class="time-grid" id="timeGrid"></div>
-          </div>
-          <div class="step-foot">
-            <button class="btn-secondary step-back" data-target="2">← Back</button>
-            <button class="btn-primary" id="step3Next" disabled>
-              <span>Continue</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-          </div>
-        </div>
+ <div class="cal-wrap">
+ <div class="cal-header">
+ <button class="cal-nav" id="calPrev" aria-label="Previous month">‹</button>
+ <span id="calMonthYear">-</span>
+ <button class="cal-nav" id="calNext" aria-label="Next month">›</button>
+ </div>
+ <div class="cal-days-head">
+ <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+ </div>
+ <div class="cal-grid" id="calGrid"></div>
+ </div>
+ <div class="time-section" id="timeSection" style="display:none">
+ <h4>Select Time</h4>
+ <div class="time-grid" id="timeGrid"></div>
+ </div>
+ <div class="step-foot">
+ <button class="btn-secondary step-back" data-target="2">← Back</button>
+ <button class="btn-primary" id="step3Next" disabled>
+ <span>Continue</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
 
-        <!-- STEP 4: YOUR DETAILS -->
-        <div class="book-step" id="step4">
-          <div class="step-head">
-            <h2>Your Details</h2>
-            <p>Fill in your information to complete the booking.</p>
-          </div>
-          <form class="book-form" id="bookForm" novalidate>
-            <div class="form-group">
-              <label for="custName"><span id="custNameLabel">Full Name</span> *</label>
-              <input type="text" id="custName" placeholder="e.g. Adi Santoso" autocomplete="name" />
-              <span class="form-err">Please enter your name</span>
-            </div>
-            <!-- 2nd person name (shown only when 2 orang mode) -->
-            <div class="form-group" id="custName2Group" style="display:none">
-              <label for="custName2">Nama Orang 2 *</label>
-              <input type="text" id="custName2" placeholder="Nama lengkap orang ke-2" autocomplete="off" />
-              <span class="form-err">Masukkan nama orang ke-2</span>
-            </div>
-            <div class="form-group">
-              <label for="custWa">WhatsApp Number *</label>
-              <div class="input-prefix-wrap">
-                <span class="input-prefix">+62</span>
-                <input type="tel" id="custWa" placeholder="8xx xxxx xxxx" autocomplete="tel" />
-              </div>
-              <span class="form-err">Please enter a valid number</span>
-            </div>
-            <div class="form-group">
-              <label for="custLocation">Branch Location * <span id="custLocationLockNote" style="display:none;font-weight:400;color:var(--w50);font-size:.78em">(mengikuti cabang kapster pilihanmu)</span></label>
-              <select id="custLocation">
-                <option value="">— Select branch —</option>
-                <option value="bypass">Redbox Bypass — Jl. Ahmad Yani No.88, Kecapi, Harjamukti, Cirebon</option>
-                <option value="samadikun">Redbox Samadikun — Jl. Kapten Samadikun No.60, Kesenden, Cirebon</option>
-                <option value="csb">Redbox CSB Mall — LG Floor #1270, CSB Mall, Cirebon</option>
-                <option value="sumber">Redbox Sumber — Jl. Pangeran Cakrabuana No.2, Sumber, Kab. Cirebon</option>
-                <option value="tegal">Redbox Tegal Kota — Pusat Kota Tegal</option>
-              </select>
-              <span class="form-err">Please select a location</span>
-            </div>
-            <!-- HOME SERVICE: Address field (shown only when home service mode) -->
-            <div class="form-group" id="hsAddressGroup" style="display:none">
-              <label for="custAddress">Alamat Lengkap <span style="color:#C1121F">*</span> <span style="color:var(--w50);font-size:.72rem">(Home Service)</span></label>
-              <textarea id="custAddress" rows="3" placeholder="e.g. Jl. Flamboyan No.12, RT 03/RW 05, Kesambi, Kota Cirebon"></textarea>
-              <span class="form-err">Masukkan alamat lengkap untuk home service</span>
-              <p style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:6px;line-height:1.5">⚠️ Jarak maksimal 5 KM dari cabang terdekat. Tim kami akan konfirmasi via WhatsApp.</p>
-            </div>
-            <div class="form-group">
-              <label for="custNotes">Notes <span style="color:var(--w50)">(optional)</span></label>
-              <textarea id="custNotes" rows="3" placeholder="e.g. fade pendek di samping..."></textarea>
-            </div>
-          </form>
-          <div class="step-foot">
-            <button class="btn-secondary step-back" data-target="3">← Back</button>
-            <button class="btn-primary" id="step4Next">
-              <span>Review Booking</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-          </div>
-        </div>
+ <!-- STEP 4: YOUR DETAILS -->
+ <div class="book-step" id="step4">
+ <div class="step-head">
+ <h2>Your Details</h2>
+ <p>Fill in your information to complete the booking.</p>
+ </div>
+ <form class="book-form" id="bookForm" novalidate>
+ <div class="form-group">
+ <label for="custName"><span id="custNameLabel">Full Name</span> *</label>
+ <input type="text" id="custName" placeholder="e.g. Adi Santoso" autocomplete="name" />
+ <span class="form-err">Please enter your name</span>
+ </div>
+ <!-- 2nd person name (shown only when 2 orang mode) -->
+ <div class="form-group" id="custName2Group" style="display:none">
+ <label for="custName2">Nama Orang 2 *</label>
+ <input type="text" id="custName2" placeholder="Nama lengkap orang ke-2" autocomplete="off" />
+ <span class="form-err">Masukkan nama orang ke-2</span>
+ </div>
+ <div class="form-group">
+ <label for="custWa">WhatsApp Number *</label>
+ <div class="input-prefix-wrap">
+ <span class="input-prefix">+62</span>
+ <input type="tel" id="custWa" placeholder="8xx xxxx xxxx" autocomplete="tel" />
+ </div>
+ <span class="form-err">Please enter a valid number</span>
+ </div>
+ <div class="form-group">
+ <label for="custLocation">Branch Location *</label>
+ <select id="custLocation">
+ <option value="">Pilih cabang</option>
+ <option value="bypass">Redbox Bypass, Jl. Ahmad Yani No.88, Kecapi, Harjamukti, Cirebon</option>
+ <option value="samadikun">Redbox Samadikun, Jl. Kapten Samadikun No.60, Kesenden, Cirebon</option>
+ <option value="csb">Redbox CSB Mall, LG Floor #1270, CSB Mall, Cirebon</option>
+ <option value="sumber">Redbox Sumber, Jl. Pangeran Cakrabuana No.2, Sumber, Kab. Cirebon</option>
+ <option value="tegal">Redbox Tegal Kota, Pusat Kota Tegal</option>
+ </select>
+ <span class="form-err">Please select a location</span>
+ </div>
+ <!-- HOME SERVICE: Address field (shown only when home service mode) -->
+ <div class="form-group" id="hsAddressGroup" style="display:none">
+ <label for="custAddress">Alamat Lengkap <span style="color:#C1121F">*</span> <span style="color:var(--w50);font-size:.72rem">(Home Service)</span></label>
+ <textarea id="custAddress" rows="3" placeholder="e.g. Jl. Flamboyan No.12, RT 03/RW 05, Kesambi, Kota Cirebon"></textarea>
+ <span class="form-err">Masukkan alamat lengkap untuk home service</span>
+ <p style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:6px;line-height:1.5"> Jarak maksimal 5 KM dari cabang terdekat. Tim kami akan konfirmasi via WhatsApp.</p>
+ </div>
+ <div class="form-group">
+ <label for="custNotes">Notes <span style="color:var(--w50)">(optional)</span></label>
+ <textarea id="custNotes" rows="3" placeholder="e.g. fade pendek di samping..."></textarea>
+ </div>
+ </form>
+ <div class="step-foot">
+ <button class="btn-secondary step-back" data-target="3">← Back</button>
+ <button class="btn-primary" id="step4Next">
+ <span>Review Booking</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
 
-        <!-- STEP 5: CONFIRM -->
-        <div class="book-step" id="step5">
-          <div class="step-head">
-            <h2>Konfirmasi Booking</h2>
-            <p>Periksa detail booking kamu. Pembayaran dilakukan di tempat saat tiba di lokasi.</p>
-          </div>
-          <div class="confirm-box" id="confirmSummary"></div>
-          <h4 class="payment-label">Metode Pembayaran</h4>
-          <div class="payment-grid-3">
-            <!-- Bayar di Tempat (satu-satunya metode) -->
-            <div class="pay-card pay-cash-card selected" data-method="cash" data-name="Bayar di Tempat">
-              <div class="pay-icon">💵</div>
-              <div><strong>Bayar di Tempat</strong><span>Cash / non-cash di lokasi</span></div>
-            </div>
-          </div>
-          <div class="pay-detail" id="payDetail"></div>
-          <div class="step-foot">
-            <button class="btn-secondary step-back" data-target="4">← Back</button>
-            <button class="btn-primary" id="finalBookBtn" disabled>
-              <span>CONFIRM BOOKING</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-            </button>
-          </div>
-        </div>
+ <!-- STEP 5: CONFIRM -->
+ <div class="book-step" id="step5">
+ <div class="step-head">
+ <h2>Konfirmasi Booking</h2>
+ <p>Periksa detail booking kamu. Pembayaran dilakukan di tempat saat tiba di lokasi.</p>
+ </div>
+ <div class="confirm-box" id="confirmSummary"></div>
+ <h4 class="payment-label">Metode Pembayaran</h4>
+ <div class="payment-grid-3">
+ <!-- Bayar di Tempat (satu-satunya metode) -->
+ <div class="pay-card pay-cash-card selected" data-method="cash" data-name="Bayar di Tempat">
+ <div class="pay-icon"></div>
+ <div><strong>Bayar di Tempat</strong><span>Cash / non-cash di lokasi</span></div>
+ </div>
+ </div>
+ <div class="pay-detail" id="payDetail"></div>
+ <div class="step-foot">
+ <button class="btn-secondary step-back" data-target="4">← Back</button>
+ <button class="btn-primary" id="finalBookBtn" disabled>
+ <span>CONFIRM BOOKING</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
 
-        <!-- SUCCESS -->
-        <div class="book-step" id="stepSuccess" style="display:none">
-          <div class="success-wrap">
-            <div class="success-icon">✅</div>
-            <h2>Booking Confirmed!</h2>
-            <p>Thank you! We've prepared your appointment details.</p>
-            <div class="confirm-box" id="successDetails" style="margin:24px 0"></div>
-            <div class="success-actions">
-              <a href="#" id="shareWaBtn" target="_blank" class="btn-primary">
-                <span>💬 Confirm via WhatsApp</span>
-              </a>
-              <a href="index.html" class="btn-secondary">← Back to Home</a>
-            </div>
-          </div>
-        </div>
+ <!-- SUCCESS -->
+ <div class="book-step" id="stepSuccess" style="display:none">
+ <div class="success-wrap">
+ <div class="success-icon"></div>
+ <h2>Booking Confirmed!</h2>
+ <p>Thank you! We've prepared your appointment details.</p>
+ <div class="confirm-box" id="successDetails" style="margin:24px 0"></div>
+ <div class="success-actions">
+ <a href="#" id="shareWaBtn" target="_blank" class="btn-primary">
+ <span> Confirm via WhatsApp</span>
+ </a>
+ <a href="index.html" class="btn-secondary">← Back to Home</a>
+ </div>
+ </div>
+ </div>
 
-      </div><!-- end book-main -->
+ </div><!-- end book-main -->
 
-      <!-- ===== SIDEBAR ===== -->
-      <aside class="book-sidebar" id="bookSidebar">
-        <div class="sidebar-card">
-          <div class="sidebar-logo">
-            <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
-          </div>
-          <h3 class="sidebar-title">BOOKING SUMMARY</h3>
-          <p class="sidebar-hint" id="sidebarHint">Select a service to get started</p>
-          <div class="sidebar-rows" id="sidebarRows" style="display:none">
-            <div class="sb-row"><span class="sb-label">Service</span><span class="sb-val" id="sumService">—</span></div>
-            <div class="sum-addons" id="sumAddons" style="display:none"></div>
-            <div class="sb-row"><span class="sb-label">Professional</span><span class="sb-val" id="sumBarber">—</span></div>
-            <div class="sb-row"><span class="sb-label">Schedule</span><span class="sb-val" id="sumDatetime">—</span></div>
-            <div class="sb-row"><span class="sb-label">Location</span><span class="sb-val" id="sumLocation">—</span></div>
-            <div class="sb-row total-row"><span class="sb-label">Total</span><span class="sb-val sb-total" id="sumTotal">—</span></div>
-          </div>
-          <div class="sidebar-wa">
-            <a href="https://wa.me/62818202569" target="_blank">💬 Need help? Chat us</a>
-          </div>
-        </div>
-      </aside>
+ <!-- ===== SIDEBAR ===== -->
+ <aside class="book-sidebar" id="bookSidebar">
+ <div class="sidebar-card">
+ <div class="sidebar-logo">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
+ </div>
+ <h3 class="sidebar-title">BOOKING SUMMARY</h3>
+ <p class="sidebar-hint" id="sidebarHint">Select a service to get started</p>
+ <div class="sidebar-rows" id="sidebarRows" style="display:none">
+ <div class="sb-row"><span class="sb-label">Service</span><span class="sb-val" id="sumService">-</span></div>
+ <div class="sum-addons" id="sumAddons" style="display:none"></div>
+ <div class="sb-row"><span class="sb-label">Professional</span><span class="sb-val" id="sumBarber">-</span></div>
+ <div class="sb-row"><span class="sb-label">Schedule</span><span class="sb-val" id="sumDatetime">-</span></div>
+ <div class="sb-row"><span class="sb-label">Location</span><span class="sb-val" id="sumLocation">-</span></div>
+ <div class="sb-row total-row"><span class="sb-label">Total</span><span class="sb-val sb-total" id="sumTotal">-</span></div>
+ </div>
+ <div class="sidebar-wa">
+ <a href="https://wa.me/62818202569" target="_blank"> Need help? Chat us</a>
+ </div>
+ </div>
+ </aside>
 
-    </div><!-- end book-layout -->
-  </div><!-- end book-wrapper -->
+ </div><!-- end book-layout -->
+ </div><!-- end book-wrapper -->
 
-  <!-- ========== BOOKING SUCCESS POPUP ========== -->
-  <div class="rb-success-overlay" id="rbSuccessOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Booking berhasil">
-    <canvas class="rb-confetti-canvas" id="rbConfettiCanvas" aria-hidden="true"></canvas>
-    <div class="rb-success-popup">
-      <div class="rb-success-emoji" aria-hidden="true">🎉</div>
-      <div class="rb-success-check" aria-hidden="true">
-        <svg viewBox="0 0 52 52" fill="none">
-          <circle class="rb-check-circle" cx="26" cy="26" r="24" stroke="#C1121F" stroke-width="2.5"/>
-          <path class="rb-check-tick" d="M14 27l9 9 15-18" stroke="#C1121F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <h2 class="rb-success-title">Booking Confirmed!</h2>
-      <p class="rb-success-msg">Yeay! Appointment kamu udah masuk. Jangan lupa konfirmasi via WhatsApp ya 😊</p>
-      <button class="rb-success-cta" id="rbSuccessClose">
-        Lihat Detail Booking
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      </button>
-    </div>
-  </div>
+ <!-- ========== BOOKING SUCCESS POPUP ========== -->
+ <div class="rb-success-overlay" id="rbSuccessOverlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Booking berhasil">
+ <canvas class="rb-confetti-canvas" id="rbConfettiCanvas" aria-hidden="true"></canvas>
+ <div class="rb-success-popup">
+ <div class="rb-success-emoji" aria-hidden="true"></div>
+ <div class="rb-success-check" aria-hidden="true">
+ <svg viewBox="0 0 52 52" fill="none">
+ <circle class="rb-check-circle" cx="26" cy="26" r="24" stroke="#C1121F" stroke-width="2.5"/>
+ <path class="rb-check-tick" d="M14 27l9 9 15-18" stroke="#C1121F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+ </svg>
+ </div>
+ <h2 class="rb-success-title">Booking Confirmed!</h2>
+ <p class="rb-success-msg">Yeay! Appointment kamu udah masuk. Jangan lupa konfirmasi via WhatsApp ya </p>
+ <button class="rb-success-cta" id="rbSuccessClose">
+ Lihat Detail Booking
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
 
-  <!-- Confetti Container -->
-  <div class="confetti-container" id="confettiContainer" style="display:none">
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div>
-  </div>
+ <!-- Confetti Container -->
+ <div class="confetti-container" id="confettiContainer" style="display:none">
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div>
+ </div>
 
-  <script src="js/services-data.js"></script>
-  <script>
-    (function(){
-      const params = new URLSearchParams(window.location.search);
-      if(params.get('type') === 'homeservice'){
-        document.addEventListener('DOMContentLoaded', function(){
-          var addrGroup = document.getElementById('hsAddressGroup');
-          if(addrGroup) addrGroup.style.display = 'block';
-          var hint = document.querySelector('.book-wrapper .step-head p');
-          var bookTitle = document.querySelector('#step1 .step-head h2');
-          if(bookTitle) bookTitle.insertAdjacentHTML('afterend', '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(193,18,31,.15);border:1px solid rgba(193,18,31,.35);border-radius:99px;padding:4px 12px;font-size:.72rem;font-weight:700;color:#C1121F;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px">🏠 Mode: Home Service</div>');
-        });
-      }
-    })();
-  </script>
-  <script src="js/booking-success.js"></script>
-  <script src="js/booking.js"></script>
+ <script src="js/services-data.js"></script>
+ <script>
+ (function(){
+ const params = new URLSearchParams(window.location.search);
+ if(params.get('type') === 'homeservice'){
+ document.addEventListener('DOMContentLoaded', function(){
+ var addrGroup = document.getElementById('hsAddressGroup');
+ if(addrGroup) addrGroup.style.display = 'block';
+ var hint = document.querySelector('.book-wrapper .step-head p');
+ var bookTitle = document.querySelector('#step1 .step-head h2');
+ if(bookTitle) bookTitle.insertAdjacentHTML('afterend', '<div style="display:inline-flex;align-items:center;gap:6px;background:rgba(193,18,31,.15);border:1px solid rgba(193,18,31,.35);border-radius:99px;padding:4px 12px;font-size:.72rem;font-weight:700;color:#C1121F;letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px"> Mode: Home Service</div>');
+ });
+ }
+ })();
+ </script>
+ <script src="js/booking-success.js"></script>
+ <script src="js/booking.js"></script>
 
-  <!-- ===== ADD-ON MODAL (shown after selecting service with addons, e.g. Redbox Gentleman Grooming) ===== -->
-  <div class="addon-overlay" id="addonOverlay" aria-hidden="true">
-    <div class="addon-modal" role="dialog" aria-modal="true" aria-labelledby="addonTitle">
-      <button class="addon-close" id="addonClose" aria-label="Tutup">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+ <!-- ===== ADD-ON MODAL (shown after selecting service with addons, e.g. Gentleman Grooming) ===== -->
+ <div class="addon-overlay" id="addonOverlay" aria-hidden="true">
+ <div class="addon-modal" role="dialog" aria-modal="true" aria-labelledby="addonTitle">
+ <button class="addon-close" id="addonClose" aria-label="Tutup">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
 
-      <div class="addon-head">
-        <h3 id="addonTitle">—</h3>
-        <div class="addon-meta">
-          <span class="addon-meta-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span id="addonBaseDuration">— menit</span>
-          </span>
-        </div>
-        <div class="addon-price" id="addonBasePrice">—</div>
-      </div>
+ <div class="addon-head">
+ <h3 id="addonTitle">-</h3>
+ <div class="addon-meta">
+ <span class="addon-meta-item">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clip-rule="evenodd"/></svg>
+ <span id="addonBaseDuration">- menit</span>
+ </span>
+ </div>
+ <div class="addon-price" id="addonBasePrice">-</div>
+ </div>
 
-      <div class="addon-section-head">
-        <h4>Add Ons</h4>
-        <span class="addon-section-hint" id="addonHint">Opsional — boleh pilih lebih dari satu</span>
-      </div>
+ <div class="addon-section-head">
+ <h4>Add Ons</h4>
+ <span class="addon-section-hint" id="addonHint">Opsional, boleh pilih lebih dari satu</span>
+ </div>
 
-      <div class="addon-list" id="addonList"></div>
+ <div class="addon-list" id="addonList"></div>
 
-      <div class="addon-foot">
-        <div class="addon-total-row">
-          <span class="addon-total-label">Total</span>
-          <div class="addon-total-vals">
-            <span class="addon-total-dur" id="addonTotalDur">60 menit</span>
-            <span class="addon-total-price" id="addonTotalPrice">Rp 95.000</span>
-          </div>
-        </div>
-        <button class="addon-cta" id="addonConfirm">
-          <span>Pilih</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </button>
-      </div>
-    </div>
-  </div>
+ <div class="addon-foot">
+ <div class="addon-total-row">
+ <span class="addon-total-label">Total</span>
+ <div class="addon-total-vals">
+ <span class="addon-total-dur" id="addonTotalDur">60 menit</span>
+ <span class="addon-total-price" id="addonTotalPrice">Rp 95.000</span>
+ </div>
+ </div>
+ <button class="addon-cta" id="addonConfirm">
+ <span>Pilih</span>
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
+ </div>
 
-  <!-- Auth Modal -->
-  <div class="modal-overlay" id="loginModal">
-    <div class="modal-login" id="loginFormContainer">
-      <div class="modal-header">
-        <div class="modal-header-left">
-          <div class="modal-header-icon" id="authIcon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-          <div><h3 id="authTitle">MASUK</h3></div>
-        </div>
-        <button class="modal-close" id="modalClose" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-      <div class="modal-body">
-        <div class="auth-mode-toggle">
-          <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
-          <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
-        </div>
-        <button class="btn-google" type="button" id="googleLoginBtn"><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> <span id="googleBtnText">Login dengan Google</span></button>
-        <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
-        <form id="loginForm">
-          <div class="form-group name-field" id="nameField"><label for="userName">NAMA LENGKAP</label><input type="text" id="userName" placeholder="Nama lengkap Anda"></div>
-          <div class="form-group"><label for="loginEmail">EMAIL / NO. HP</label><input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required></div>
-          <div class="form-group"><label for="loginPassword">PASSWORD</label><input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8"></div>
-          <button type="submit" class="btn-login-submit" id="submitBtn"><span id="submitBtnText">Masuk Sekarang</span> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-        </form>
-        <div class="benefits-list" id="benefitsList" style="display:none">
-          <p class="benefits-title">Keuntungan Member:</p>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Simpan riwayat kunjungan & poin</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Tracking tier & benefits real-time</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Akses diskon eksklusif member</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Prioritas booking & customer support</span></div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-success" id="signupSuccess" style="display:none">
-      <div class="success-header">
-        <div class="success-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l.324.995c.235.721.953 1.672 1.597 2.113.644.442 1.849.92 2.674.928.825.008 1.084.185 1.083.983-.001.798-.272 2.456-.604 3.685-.331 1.229-1.068 3.097-1.638 4.152-.571 1.055-1.639 2.346-2.373 2.87-.734.524-1.872.932-2.536.932s-1.802-.408-2.536-.932c-.734-.524-1.802-1.815-2.373-2.87-.57-1.055-1.307-2.923-1.638-4.152-.332-1.229-.603-2.887-.604-3.685-.001-.798.258-.975 1.083-.983.825-.008 2.03-.486 2.674-.928.644-.441 1.362-1.392 1.597-2.113L12 2z"/><path d="M4 14l2.5 2.5"/><path d="M20 14l-2.5 2.5"/></svg></div>
-        <h2 class="success-title">SELAMAT BERGABUNG!</h2>
-        <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
-      </div>
-      <div class="success-body">
-        <div class="success-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Member Redbox Barbershop</div>
-        <p class="success-message" id="successUserName">Selamat!</p>
-        <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
-        <div class="success-email-box"><div class="success-email-label">Email Terdaftar</div><div class="success-email" id="successUserEmail">member@redbox.com</div></div>
-        <button class="btn-success-cta" id="successCtaBtn">Mulai Petualangan <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-      </div>
-    </div>
-  </div>
+ <!-- Auth Modal -->
+ <div class="modal-overlay" id="loginModal">
+ <div class="modal-login" id="loginFormContainer">
+ <div class="modal-header">
+ <div class="modal-header-left">
+ <div class="modal-header-icon" id="authIcon"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg></div>
+ <div><h3 id="authTitle">MASUK</h3></div>
+ </div>
+ <button class="modal-close" id="modalClose" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg></button>
+ </div>
+ <div class="modal-body">
+ <div class="auth-mode-toggle">
+ <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
+ <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
+ </div>
+ <button class="btn-google" type="button" id="googleLoginBtn"><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> <span id="googleBtnText">Login dengan Google</span></button>
+ <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
+ <form id="loginForm">
+ <div class="form-group name-field" id="nameField"><label for="userName">NAMA LENGKAP</label><input type="text" id="userName" placeholder="Nama lengkap Anda"></div>
+ <div class="form-group"><label for="loginEmail">EMAIL / NO. HP</label><input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required></div>
+ <div class="form-group"><label for="loginPassword">PASSWORD</label><input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8"></div>
+ <button type="submit" class="btn-login-submit" id="submitBtn"><span id="submitBtnText">Masuk Sekarang</span> <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg></button>
+ </form>
+ <div class="benefits-list" id="benefitsList" style="display:none">
+ <p class="benefits-title">Keuntungan Member:</p>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Simpan riwayat kunjungan & poin</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Tracking tier & benefits real-time</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Akses diskon eksklusif member</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Prioritas booking & customer support</span></div>
+ </div>
+ </div>
+ </div>
+ <div class="modal-success" id="signupSuccess" style="display:none">
+ <div class="success-header">
+ <div class="success-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l.324.995c.235.721.953 1.672 1.597 2.113.644.442 1.849.92 2.674.928.825.008 1.084.185 1.083.983-.001.798-.272 2.456-.604 3.685-.331 1.229-1.068 3.097-1.638 4.152-.571 1.055-1.639 2.346-2.373 2.87-.734.524-1.872.932-2.536.932s-1.802-.408-2.536-.932c-.734-.524-1.802-1.815-2.373-2.87-.57-1.055-1.307-2.923-1.638-4.152-.332-1.229-.603-2.887-.604-3.685-.001-.798.258-.975 1.083-.983.825-.008 2.03-.486 2.674-.928.644-.441 1.362-1.392 1.597-2.113L12 2z"/><path d="M4 14l2.5 2.5"/><path d="M20 14l-2.5 2.5"/></svg></div>
+ <h2 class="success-title">SELAMAT BERGABUNG!</h2>
+ <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
+ </div>
+ <div class="success-body">
+ <div class="success-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Member Redbox Barbershop</div>
+ <p class="success-message" id="successUserName">Selamat!</p>
+ <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
+ <div class="success-email-box"><div class="success-email-label">Email Terdaftar</div><div class="success-email" id="successUserEmail">member@redbox.com</div></div>
+ <button class="btn-success-cta" id="successCtaBtn">Mulai Petualangan <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+ </div>
+ </div>
+ </div>
 
-  <script type="module" src="js/animations.js"></script>
-  <script>
-    // Strip black background from logo at runtime
-    document.addEventListener('DOMContentLoaded', function() {
-      document.querySelectorAll('.nav-logo img').forEach(function(img) {
-        function process(src) {
-          var canvas = document.createElement('canvas');
-          var ctx = canvas.getContext('2d');
-          var tmp = new Image();
-          tmp.crossOrigin = 'anonymous';
-          tmp.onload = function() {
-            canvas.width = tmp.naturalWidth;
-            canvas.height = tmp.naturalHeight;
-            ctx.drawImage(tmp, 0, 0);
-            try {
-              var d = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              for (var i = 0; i < d.data.length; i += 4) {
-                if (d.data[i] < 40 && d.data[i+1] < 40 && d.data[i+2] < 40) d.data[i+3] = 0;
-              }
-              ctx.putImageData(d, 0, 0);
-              img.src = canvas.toDataURL('image/png');
-            } catch(e) {}
-          };
-          tmp.src = src;
-        }
-        img.complete ? process(img.src) : img.addEventListener('load', function() { process(img.src); }, { once: true });
-      });
-    });
-  </script>
-  <footer style="text-align:center;padding:20px 0 28px;border-top:1px solid rgba(255,255,255,.06);">
-    <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
-  </footer>
+ <script type="module" src="js/animations.js"></script>
+ <script>
+ // Strip black background from logo at runtime
+ document.addEventListener('DOMContentLoaded', function() {
+ document.querySelectorAll('.nav-logo img').forEach(function(img) {
+ function process(src) {
+ var canvas = document.createElement('canvas');
+ var ctx = canvas.getContext('2d');
+ var tmp = new Image();
+ tmp.crossOrigin = 'anonymous';
+ tmp.onload = function() {
+ canvas.width = tmp.naturalWidth;
+ canvas.height = tmp.naturalHeight;
+ ctx.drawImage(tmp, 0, 0);
+ try {
+ var d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+ for (var i = 0; i < d.data.length; i += 4) {
+ if (d.data[i] < 40 && d.data[i+1] < 40 && d.data[i+2] < 40) d.data[i+3] = 0;
+ }
+ ctx.putImageData(d, 0, 0);
+ img.src = canvas.toDataURL('image/png');
+ } catch(e) {}
+ };
+ tmp.src = src;
+ }
+ img.complete ? process(img.src) : img.addEventListener('load', function() { process(img.src); }, { once: true });
+ });
+ });
+ </script>
+ <footer style="text-align:center;padding:20px 0 28px;border-top:1px solid rgba(255,255,255,.06);">
+ <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
+ </footer>
 </body>
 </html>

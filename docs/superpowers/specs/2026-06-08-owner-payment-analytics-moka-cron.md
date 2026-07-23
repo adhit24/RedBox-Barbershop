@@ -1,6 +1,6 @@
 # Owner Payment Analytics + Moka Transaction Cron — Design Spec
 
-**Date:** 2026-06-08  
+**Date:** 2026-06-08 
 **Scope:** Two features for the owner role:
 1. **Moka Transaction Cron** — hourly auto-sync dari Moka API ke `moka_transactions`
 2. **Payment Method Analytics** — breakdown Cash/QRIS/Transfer/Lainnya, interactive di `/owner/revenue` + halaman penuh `/owner/payment`
@@ -41,20 +41,20 @@ Fungsi utama: `syncCurrentMonthTx(supabase, outlet)`
 - `outlet`: `{ id, slug, moka_outlet_id }`
 - Hitung `sinceEpoch`: awal bulan berjalan dalam Unix epoch (WIB → UTC: kurangi 7 jam)
 - Loop pagination:
-  ```
-  sinceEpoch = firstDayOfMonth (epoch)
-  while true:
-    json = client.getTransactionPage({ sinceEpoch, limit: 100 })
-    payments = json.data.payments ?? []
-    jika payments kosong atau json.data.completed: break
-    map payments → txRows + svcRows
-    upsert txRows → moka_transactions
-    upsert svcRows → moka_barber_services
-    nextMatch = json.data.next_url.match(/[?&]since=([0-9.]+)/)
-    jika tidak ada nextMatch: break
-    sinceEpoch = parseFloat(nextMatch[1])
-    delay 300ms (rate limit)
-  ```
+ ```
+ sinceEpoch = firstDayOfMonth (epoch)
+ while true:
+ json = client.getTransactionPage({ sinceEpoch, limit: 100 })
+ payments = json.data.payments ?? []
+ jika payments kosong atau json.data.completed: break
+ map payments → txRows + svcRows
+ upsert txRows → moka_transactions
+ upsert svcRows → moka_barber_services
+ nextMatch = json.data.next_url.match(/[?&]since=([0-9.]+)/)
+ jika tidak ada nextMatch: break
+ sinceEpoch = parseFloat(nextMatch[1])
+ delay 300ms (rate limit)
+ ```
 
 **Field mapping Moka API → `moka_transactions`:**
 | Moka API field | DB column |
@@ -83,12 +83,12 @@ Rows dengan `p.is_deleted === true` atau `p.is_refunded === true` → skip.
 **Modifikasi:** `server/moka/sync.js` — tambah cron job di `startCronJobs()`:
 ```js
 cron.schedule('0 * * * *', async () => {
-  const { syncCurrentMonthTx } = require('./txSync');
-  // load authorized outlets (sama dengan cron existing)
-  for (const o of authorizedOutlets) {
-    syncCurrentMonthTx(supabase, o).catch(err =>
-      console.error(`[TxCron] ${o.slug}:`, err.message));
-  }
+ const { syncCurrentMonthTx } = require('./txSync');
+ // load authorized outlets (sama dengan cron existing)
+ for (const o of authorizedOutlets) {
+ syncCurrentMonthTx(supabase, o).catch(err =>
+ console.error(`[TxCron] ${o.slug}:`, err.message));
+ }
 });
 ```
 
@@ -108,30 +108,30 @@ cron.schedule('0 * * * *', async () => {
 ### Response Shape
 ```ts
 {
-  methods: Array<{
-    name: string;        // 'Cash' | 'QRIS' | 'Transfer' | 'Lainnya'
-    key: string;         // 'cash' | 'qris' | 'transfer' | 'other'
-    total: number;       // sum net_sales
-    tx_count: number;    // jumlah transaksi
-    pct: number;         // persentase dari total (0-100, integer)
-    color: string;       // hex warna untuk UI
-  }>;
-  daily_trend: Array<{
-    date: string;        // 'YYYY-MM-DD'
-    cash: number;
-    qris: number;
-    transfer: number;
-    other: number;
-  }>;
-  by_branch: Array<{
-    slug: string;
-    name: string;
-    cash: number;
-    qris: number;
-    transfer: number;
-    other: number;
-    total: number;
-  }>;
+ methods: Array<{
+ name: string; // 'Cash' | 'QRIS' | 'Transfer' | 'Lainnya'
+ key: string; // 'cash' | 'qris' | 'transfer' | 'other'
+ total: number; // sum net_sales
+ tx_count: number; // jumlah transaksi
+ pct: number; // persentase dari total (0-100, integer)
+ color: string; // hex warna untuk UI
+ }>;
+ daily_trend: Array<{
+ date: string; // 'YYYY-MM-DD'
+ cash: number;
+ qris: number;
+ transfer: number;
+ other: number;
+ }>;
+ by_branch: Array<{
+ slug: string;
+ name: string;
+ cash: number;
+ qris: number;
+ transfer: number;
+ other: number;
+ total: number;
+ }>;
 }
 ```
 
@@ -139,13 +139,13 @@ cron.schedule('0 * * * *', async () => {
 `payment_method` di DB adalah raw string dari Moka/CSV (e.g., `'Cash'`, `'QRIS'`, `'Mandiri'`, `'BNI'`, `'Transfer Bank'`). Normalisasi ke 4 bucket:
 ```js
 function normalizePayment(raw) {
-  const s = (raw || '').toLowerCase();
-  if (s === 'cash' || s === 'tunai') return 'cash';
-  if (s === 'qris' || s.includes('qris')) return 'qris';
-  if (s.includes('transfer') || s.includes('mandiri') || s.includes('bni') ||
-      s.includes('bca') || s.includes('ovo') || s.includes('dana') ||
-      s.includes('gopay') || s.includes('shopeepay')) return 'transfer';
-  return 'other';
+ const s = (raw || '').toLowerCase();
+ if (s === 'cash' || s === 'tunai') return 'cash';
+ if (s === 'qris' || s.includes('qris')) return 'qris';
+ if (s.includes('transfer') || s.includes('mandiri') || s.includes('bni') ||
+ s.includes('bca') || s.includes('ovo') || s.includes('dana') ||
+ s.includes('gopay') || s.includes('shopeepay')) return 'transfer';
+ return 'other';
 }
 ```
 
@@ -161,12 +161,12 @@ function normalizePayment(raw) {
 Tambah di `server/routes/adminCrm.js` dalam `createAdminCrmRoutes()`:
 ```js
 router.get('/owner-payment-analytics', adminAuth, async (req, res) => {
-  const { branch = 'all', period = '30d' } = req.query;
-  // Resolve date range (sama dengan owner-revenue)
-  // Build moka_transactions query dengan filter branch + date
-  // Group by payment_method (JS-side, bukan SQL GROUP BY)
-  // Hitung methods[], daily_trend[], by_branch[]
-  // Return JSON
+ const { branch = 'all', period = '30d' } = req.query;
+ // Resolve date range (sama dengan owner-revenue)
+ // Build moka_transactions query dengan filter branch + date
+ // Group by payment_method (JS-side, bukan SQL GROUP BY)
+ // Hitung methods[], daily_trend[], by_branch[]
+ // Return JSON
 });
 ```
 
@@ -179,18 +179,18 @@ router.get('/owner-payment-analytics', adminAuth, async (req, res) => {
 Tambah di akhir file:
 ```ts
 export interface PaymentMethodStat {
-  name: string;
-  key: string;
-  total: number;
-  tx_count: number;
-  pct: number;
-  color: string;
+ name: string;
+ key: string;
+ total: number;
+ tx_count: number;
+ pct: number;
+ color: string;
 }
 
 export interface PaymentAnalyticsData {
-  methods: PaymentMethodStat[];
-  daily_trend: { date: string; cash: number; qris: number; transfer: number; other: number }[];
-  by_branch: { slug: string; name: string; cash: number; qris: number; transfer: number; other: number; total: number }[];
+ methods: PaymentMethodStat[];
+ daily_trend: { date: string; cash: number; qris: number; transfer: number; other: number }[];
+ by_branch: { slug: string; name: string; cash: number; qris: number; transfer: number; other: number; total: number }[];
 }
 ```
 
@@ -199,7 +199,7 @@ export interface PaymentAnalyticsData {
 Tambah:
 ```ts
 export function fetchPaymentAnalytics(branch: string, period: string): Promise<PaymentAnalyticsData> {
-  return crmFetch<PaymentAnalyticsData>(`/api/admin/crm/owner-payment-analytics?branch=${branch}&period=${period}`);
+ return crmFetch<PaymentAnalyticsData>(`/api/admin/crm/owner-payment-analytics?branch=${branch}&period=${period}`);
 }
 ```
 
@@ -218,33 +218,33 @@ const [activePayment, setActivePayment] = useState<string | null>(null); // 'cas
 - Grid 2×2: 4 `PaymentCard` component
 - `PaymentCard` props: `method: PaymentMethodStat`, `isActive: boolean`, `onClick: () => void`
 - Card design (mobile-first, `min-h-[72px]`, `rounded-2xl`, `px-4 py-3`):
-  - Accent bar 2px di atas card (`borderTop: 2px solid <color>`)
-  - Label metode (9px, uppercase, slate-500)
-  - Nilai (16px, bold, warna sesuai bucket)
-  - Jumlah tx + persentase (10px, slate-400)
-  - `active:scale-[0.97]` saat tap
-  - Ketika `isActive`: background sedikit lebih terang, border-color sesuai bucket
+ - Accent bar 2px di atas card (`borderTop: 2px solid <color>`)
+ - Label metode (9px, uppercase, slate-500)
+ - Nilai (16px, bold, warna sesuai bucket)
+ - Jumlah tx + persentase (10px, slate-400)
+ - `active:scale-[0.97]` saat tap
+ - Ketika `isActive`: background sedikit lebih terang, border-color sesuai bucket
 
 **Bottom Sheet** — `PaymentMethodSheet` component (dalam file yang sama):
 - Identik dengan `StatDetailSheet` di admin dashboard: `framer-motion` slide-up, `AnimatePresence`, backdrop overlay
 - Judul: "Detail: {method.name} · {periodLabel}"
 - Konten:
-  1. **Tren Harian** — `BarChart` dari recharts (compact, height 80px, hanya bar warna bucket)
-  2. **Per Cabang** — list rows: nama cabang, total (warna bucket), jumlah tx
+ 1. **Tren Harian** — `BarChart` dari recharts (compact, height 80px, hanya bar warna bucket)
+ 2. **Per Cabang** — list rows: nama cabang, total (warna bucket), jumlah tx
 - Tombol close: `×` di kanan atas, atau tap backdrop
 - Mobile-first: `max-w-lg mx-auto`, `rounded-t-3xl`, `px-4 py-5`, `pb-safe` (padding bottom aman untuk notch)
 
 **AnimatePresence** di return JSX:
 ```tsx
 <AnimatePresence>
-  {activePayment && paymentData && (
-    <PaymentMethodSheet
-      method={paymentData.methods.find(m => m.key === activePayment)!}
-      data={paymentData}
-      periodLabel={PERIODS.find(p => p.key === period)?.label ?? period}
-      onClose={() => setActivePayment(null)}
-    />
-  )}
+ {activePayment && paymentData && (
+ <PaymentMethodSheet
+ method={paymentData.methods.find(m => m.key === activePayment)!}
+ data={paymentData}
+ periodLabel={PERIODS.find(p => p.key === period)?.label ?? period}
+ onClose={() => setActivePayment(null)}
+ />
+ )}
 </AnimatePresence>
 ```
 
@@ -269,7 +269,7 @@ const [activePayment, setActivePayment] = useState<string | null>(null); // 'cas
 Tambah link ke `/owner/payment` di `/owner/revenue/page.tsx`:
 ```tsx
 <Link href="/owner/payment" className="text-[11px] text-slate-500 underline">
-  Lihat analitik lengkap →
+ Lihat analitik lengkap →
 </Link>
 ```
 

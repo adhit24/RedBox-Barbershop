@@ -1,45 +1,45 @@
 @import "tailwindcss";
 
 :root {
-  --background: #070508;
-  --foreground: #F0EAEB;
+ --background: #070508;
+ --foreground: #F0EAEB;
 
-  /* RedBox brand tokens */
-  --rb-red:         #C72820;
-  --rb-red-light:   #E87068;
-  --rb-red-muted:   rgba(199, 40, 32, 0.15);
+ /* RedBox brand tokens */
+ --rb-red: #C72820;
+ --rb-red-light: #E87068;
+ --rb-red-muted: rgba(199, 40, 32, 0.15);
 
-  --rb-bg:          #070508;
-  --rb-surface-1:   #110B0E;
-  --rb-surface-2:   #1A1215;
-  --rb-border:      #201618;
-  --rb-border-2:    #261E20;
+ --rb-bg: #070508;
+ --rb-surface-1: #110B0E;
+ --rb-surface-2: #1A1215;
+ --rb-border: #201618;
+ --rb-border-2: #261E20;
 
-  --rb-text:        #F0EAEB;
-  --rb-text-muted:  #7A6A6D;
-  --rb-text-faint:  #4A3E40;
+ --rb-text: #F0EAEB;
+ --rb-text-muted: #7A6A6D;
+ --rb-text-faint: #4A3E40;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+ --color-background: var(--background);
+ --color-foreground: var(--foreground);
+ --font-sans: var(--font-geist-sans);
+ --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--rb-bg);
-  color: var(--rb-text);
-  font-family: var(--font-geist-sans, Arial, Helvetica, sans-serif);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+ background: var(--rb-bg);
+ color: var(--rb-text);
+ font-family: var(--font-geist-sans, Arial, Helvetica, sans-serif);
+ -webkit-font-smoothing: antialiased;
+ -moz-osx-font-smoothing: grayscale;
 }
 
 /* Hide scrollbar utility — used in AdminNav overflow-x-auto */
 .scrollbar-none {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+ scrollbar-width: none;
+ -ms-overflow-style: none;
 }
 .scrollbar-none::-webkit-scrollbar {
-  display: none;
+ display: none;
 }

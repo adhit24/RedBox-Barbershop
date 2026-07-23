@@ -62,11 +62,11 @@ goto menu
 echo.
 echo Testing all outlets...
 for %%o in (bypass csb samadikun sumber tegal) do (
-    echo.
-    echo ==========================================
-    echo Testing: %%o
-    echo ==========================================
-    curl -s "%DOMAIN%/api/moka/test-sync?outlet=%%o&secret=%SECRET%" | powershell -Command "ConvertFrom-Json | Select-Object outlet, moka_token, barbers | ConvertTo-Json -Depth 5"
+ echo.
+ echo ==========================================
+ echo Testing: %%o
+ echo ==========================================
+ curl -s "%DOMAIN%/api/moka/test-sync?outlet=%%o&secret=%SECRET%" | powershell -Command "ConvertFrom-Json | Select-Object outlet, moka_token, barbers | ConvertTo-Json -Depth 5"
 )
 pause
 goto menu

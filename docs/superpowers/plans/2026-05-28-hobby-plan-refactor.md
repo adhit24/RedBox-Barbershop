@@ -107,10 +107,10 @@ Expected: see the four entries — `reminders`, `birthday`, `moka-sync`, `expire
 Open `vercel.json` and replace lines 53-58 (the `"crons"` array) with exactly:
 
 ```json
-  "crons": [
-    { "path": "/api/cron/reminders", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/birthday",  "schedule": "0 1 * * *" }
-  ],
+ "crons": [
+ { "path": "/api/cron/reminders", "schedule": "0 3 * * *" },
+ { "path": "/api/cron/birthday", "schedule": "0 1 * * *" }
+ ],
 ```
 
 **Do NOT touch** the `functions` block or `rewrites` block — the two pruned cron paths (`/api/cron/moka-sync` and `/api/cron/expire-stale-bills`) must remain reachable as HTTP-triggerable functions for external scheduler (cron-job.org).

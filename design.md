@@ -25,8 +25,8 @@ Struktur utama (mengikuti sistem Reydy):
 4. Time Slot (pilih waktu)
 5. Confirm booking
 
-📌 Insight:
-User diarahkan step-by-step tanpa mikir  
+ Insight:
+User diarahkan step-by-step tanpa mikir 
 → ini bikin conversion tinggi
 
 ---
@@ -43,35 +43,35 @@ Contoh:
 “Sharp Cuts. Bold Style.”
 
 - CTA:
-  - Book Now
-  - View Services
+ - Book Now
+ - View Services
 
 ---
 
 **2. Services Preview**
 - Grid / tab system
 - Category:
-  - Haircut
-  - Beard
-  - Package
+ - Haircut
+ - Beard
+ - Package
 
 ---
 
 **3. Barber Section**
 - List barber
 - Card style:
-  - Foto
-  - Nama
-  - CTA: Book
+ - Foto
+ - Nama
+ - CTA: Book
 
 ---
 
 **4. Booking Section**
 - Step-by-step explanation:
-  1. Select service
-  2. Pick barber
-  3. Choose time
-  4. Confirm
+ 1. Select service
+ 2. Pick barber
+ 3. Choose time
+ 4. Confirm
 
 ---
 
@@ -174,12 +174,12 @@ Secondary:
 
 - Smooth scroll
 - Hover effect:
-  - Button → glow / lighten
-  - Card → slight zoom
+ - Button → glow / lighten
+ - Card → slight zoom
 
 - Transition:
-  - Fast (0.2–0.3s)
-  - Clean
+ - Fast (0.2–0.3s)
+ - Clean
 
 ---
 
@@ -189,12 +189,12 @@ Mengikuti sistem Reydy:
 
 ### Step Flow:
 
-1. Select Service  
-2. Select Barber  
-3. Select Time  
-4. Confirm  
+1. Select Service 
+2. Select Barber 
+3. Select Time 
+4. Confirm 
 
-📌 Harus:
+ Harus:
 - Tidak lebih dari 3 klik per step
 - Tidak membingungkan
 
@@ -203,9 +203,9 @@ Mengikuti sistem Reydy:
 ### Slot System UI
 
 - Grid jam:
-  - 10:00
-  - 11:00
-  - 12:00
+ - 10:00
+ - 11:00
+ - 12:00
 
 Status:
 - Available → normal
@@ -261,9 +261,9 @@ Website harus terasa:
 
 ## 12. Final Goal
 
-User datang dari Instagram →  
-Langsung ngerti →  
-Langsung booking →  
-Datang ke store  
+User datang dari Instagram → 
+Langsung ngerti → 
+Langsung booking → 
+Datang ke store 
 
 ---

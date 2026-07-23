@@ -1,0 +1,185 @@
+<style>
+ .tab-mockup { background:#0f0f0f; border-radius:14px; padding:24px; font-family:Inter,sans-serif; }
+ .panel-title { font-size:1.1rem; font-weight:700; color:#e5e7eb; margin-bottom:4px; }
+ .panel-sub { font-size:0.8rem; color:#6b7280; margin-bottom:20px; }
+ .section-label { font-size:0.7rem; font-weight:700; letter-spacing:0.12em; color:#c1121f; text-transform:uppercase; margin-bottom:12px; margin-top:24px; display:flex; align-items:center; justify-content:space-between; }
+ .section-label:first-of-type { margin-top:0; }
+ .see-all { font-size:0.72rem; color:#9ca3af; font-weight:400; letter-spacing:0; text-decoration:none; }
+
+ /* Curated product strip */
+ .product-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+ .product-card { background:#161616; border:1px solid #222; border-radius:10px; overflow:hidden; }
+ .product-card.featured { border-color:rgba(193,18,31,0.35); }
+ .product-img { height:90px; background:#1a1a1a; display:flex; align-items:center; justify-content:center; font-size:2rem; position:relative; }
+ .product-badge { position:absolute; top:6px; left:6px; font-size:0.6rem; font-weight:700; padding:2px 6px; border-radius:4px; }
+ .badge-rec { background:rgba(193,18,31,0.85); color:#fff; }
+ .badge-new { background:rgba(74,222,128,0.85); color:#052e16; }
+ .badge-top { background:rgba(251,191,36,0.85); color:#451a03; }
+ .product-body { padding:10px; }
+ .product-name { font-size:0.75rem; font-weight:600; color:#e5e7eb; margin-bottom:2px; }
+ .product-price { font-size:0.72rem; color:#c1121f; font-weight:700; margin-bottom:8px; }
+ .product-btn { width:100%; padding:7px; border-radius:6px; background:#c1121f; color:#fff; border:none; font-size:0.7rem; font-weight:700; cursor:pointer; }
+ .product-btn.outline { background:transparent; border:1px solid #333; color:#9ca3af; }
+
+ /* Service upsell cards */
+ .service-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+ .service-card { background:#161616; border:1px solid #222; border-radius:10px; padding:14px; display:flex; gap:12px; align-items:flex-start; }
+ .service-emoji { font-size:1.6rem; flex-shrink:0; }
+ .service-name { font-size:0.82rem; font-weight:700; color:#e5e7eb; margin-bottom:3px; }
+ .service-price { font-size:0.75rem; color:#9ca3af; margin-bottom:8px; }
+ .service-tag { display:inline-block; font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:4px; margin-bottom:8px; }
+ .tag-disc { background:rgba(193,18,31,0.15); color:#c1121f; }
+ .tag-free { background:rgba(74,222,128,0.15); color:#4ade80; }
+ .service-btn { font-size:0.72rem; font-weight:700; color:#c1121f; background:none; border:none; padding:0; cursor:pointer; }
+
+ /* Tier upgrade CTA */
+ .upgrade-cta { border-radius:12px; padding:18px 20px; background:linear-gradient(135deg,#0f0a1e,#07050f); border:1px solid rgba(196,181,253,0.25); display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+ .upgrade-left { flex:1; }
+ .upgrade-title { font-size:0.95rem; font-weight:700; color:#c4b5fd; margin-bottom:4px; }
+ .upgrade-sub { font-size:0.78rem; color:#6b7280; line-height:1.5; }
+ .upgrade-perks { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+ .upgrade-perk { font-size:0.68rem; background:rgba(196,181,253,0.1); color:#c4b5fd; padding:3px 8px; border-radius:4px; }
+ .upgrade-btn { background:linear-gradient(135deg,#7c3aed,#5b21b6); color:#fff; border:none; padding:10px 18px; border-radius:8px; font-size:0.8rem; font-weight:700; cursor:pointer; flex-shrink:0; }
+</style>
+
+<h2>Design: Tab "Shop"</h2>
+<p class="subtitle">Produk kurasi personal + semua produk + upsell layanan premium + upgrade tier CTA</p>
+
+<div class="tab-mockup">
+ <div class="panel-title">Shop</div>
+ <div class="panel-sub">Rekomendasi dipersonalisasi untuk member Gold</div>
+
+ <!-- SECTION 1: Curated personal -->
+ <div class="section-label">
+ <span> Rekomendasi Untukmu</span>
+ <span style="font-size:0.7rem;color:#6b7280;font-weight:400;letter-spacing:0">Berdasarkan tier Gold</span>
+ </div>
+ <div class="product-strip">
+ <div class="product-card featured">
+ <div class="product-img">
+ 
+ <div class="product-badge badge-rec">POPULER</div>
+ </div>
+ <div class="product-body">
+ <div class="product-name">Redbox Clay</div>
+ <div class="product-price">Rp 100.000</div>
+ <button class="product-btn">Beli via WA</button>
+ </div>
+ </div>
+ <div class="product-card featured">
+ <div class="product-img">
+ 
+ <div class="product-badge badge-top">TOP PICK</div>
+ </div>
+ <div class="product-body">
+ <div class="product-name">Pomade Waterbased</div>
+ <div class="product-price">Rp 100rb–150rb</div>
+ <button class="product-btn">Beli via WA</button>
+ </div>
+ </div>
+ <div class="product-card">
+ <div class="product-img">
+ 
+ <div class="product-badge badge-new">BARU</div>
+ </div>
+ <div class="product-body">
+ <div class="product-name">Pomade Oil Based</div>
+ <div class="product-price">Rp 100rb–150rb</div>
+ <button class="product-btn">Beli via WA</button>
+ </div>
+ </div>
+ </div>
+
+ <!-- SECTION 2: All products link -->
+ <div class="section-label">
+ <span> Semua Produk Redbox</span>
+ <a class="see-all" href="#">Lihat semua →</a>
+ </div>
+ <div class="product-strip">
+ <div class="product-card">
+ <div class="product-img"></div>
+ <div class="product-body">
+ <div class="product-name">Parfum Eleftheree</div>
+ <div class="product-price">Rp 150.000</div>
+ <button class="product-btn outline">Detail</button>
+ </div>
+ </div>
+ <div class="product-card">
+ <div class="product-img"></div>
+ <div class="product-body">
+ <div class="product-name">Parfum Psyhi</div>
+ <div class="product-price">Rp 150.000</div>
+ <button class="product-btn outline">Detail</button>
+ </div>
+ </div>
+ <div class="product-card" style="display:flex;align-items:center;justify-content:center;min-height:140px;border-style:dashed;">
+ <div style="text-align:center;color:#4b5563;">
+ <div style="font-size:1.2rem;margin-bottom:4px">+2</div>
+ <div style="font-size:0.72rem">Lihat semua<br/>di products.html</div>
+ </div>
+ </div>
+ </div>
+
+ <!-- SECTION 3: Layanan premium upsell -->
+ <div class="section-label" style="margin-top:28px">
+ <span> Tingkatkan Pengalamanmu</span>
+ </div>
+ <div class="service-grid">
+ <div class="service-card">
+ <div class="service-emoji"></div>
+ <div>
+ <div class="service-name">Haircut Premium</div>
+ <div class="service-price">Classic Style Barber — CSB Mall</div>
+ <div class="service-tag tag-disc">10% disc (Gold)</div>
+ <div style="display:block"><button class="service-btn">Book sekarang →</button></div>
+ </div>
+ </div>
+ <div class="service-card">
+ <div class="service-emoji"></div>
+ <div>
+ <div class="service-name">Gentlemen Grooming</div>
+ <div class="service-price">Layanan grooming lengkap</div>
+ <div class="service-tag tag-disc">10% disc (Gold)</div>
+ <div style="display:block"><button class="service-btn">Book sekarang →</button></div>
+ </div>
+ </div>
+ <div class="service-card" style="border-color:rgba(196,181,253,0.2);">
+ <div class="service-emoji"></div>
+ <div>
+ <div class="service-name">Fadecut Grooming</div>
+ <div class="service-price">Premium Platinum service</div>
+ <div class="service-tag" style="background:rgba(196,181,253,0.1);color:#c4b5fd;">Free — Platinum only </div>
+ <div style="display:block"><button class="service-btn" style="color:#c4b5fd;">Upgrade tier →</button></div>
+ </div>
+ </div>
+ <div class="service-card" style="border-color:rgba(196,181,253,0.2);">
+ <div class="service-emoji"></div>
+ <div>
+ <div class="service-name">Free Americano</div>
+ <div class="service-price">Setiap kunjungan</div>
+ <div class="service-tag" style="background:rgba(196,181,253,0.1);color:#c4b5fd;">Free — Platinum only </div>
+ <div style="display:block"><button class="service-btn" style="color:#c4b5fd;">Upgrade tier →</button></div>
+ </div>
+ </div>
+ </div>
+
+ <!-- SECTION 4: Upgrade tier CTA -->
+ <div style="margin-top:24px;">
+ <div class="upgrade-cta">
+ <div class="upgrade-left">
+ <div class="upgrade-title"> Upgrade ke Platinum — 1.400 poin lagi</div>
+ <div class="upgrade-sub">Unlock free haircut, free americano, dan birthday gratis penuh di semua cabang.</div>
+ <div class="upgrade-perks">
+ <span class="upgrade-perk">Free Haircut</span>
+ <span class="upgrade-perk">Free Americano</span>
+ <span class="upgrade-perk">Birthday Gratis</span>
+ <span class="upgrade-perk">Semua Cabang</span>
+ </div>
+ </div>
+ <button class="upgrade-btn">Kumpul Poin →</button>
+ </div>
+ </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:20px">Desain tab Shop ini oke? Ketik feedback atau "oke selesai" di terminal.</p>

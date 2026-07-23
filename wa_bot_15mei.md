@@ -75,10 +75,10 @@ Sistem prompt AI (bot bernama "Reddy") dilengkapi dengan data bisnis lengkap:
 
 - **Tone:** Casual tapi profesional (bukan kaku, bukan terlalu santai)
 - **Sapaan pembuka standar:**
-  ```
-  Welcome to Redbox Barbershop ✂️
-  Silakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 👌
-  ```
+ ```
+ Welcome to Redbox Barbershop 
+ Silakan informasikan kebutuhan Kakak ya — reservation, konsultasi hairstyle, atau info layanan lainnya 
+ ```
 - **Larangan:** Tidak boleh pakai format markdown `[teks](url)` — kirim URL plain text
 - **Larangan:** Tidak tanya "mau ngapain?"
 - **Kapster:** Arahkan ke halaman booking, jangan karang nama kapster
@@ -167,15 +167,15 @@ Returns 10 request terakhir yang diterima server.
 
 ```
 Customer WA
-    ↓ (kirim pesan)
+ ↓ (kirim pesan)
 Fonnte Gateway (0818202569)
-    ↓ (POST webhook)
+ ↓ (POST webhook)
 Vercel Serverless: /api/wa/webhook
-    ↓ (filter outgoing, dedup, media type)
+ ↓ (filter outgoing, dedup, media type)
 OpenAI GPT-4o-mini (timeout 7s via Promise.race)
-    ↓ (atau fallback keyword-based reply)
+ ↓ (atau fallback keyword-based reply)
 Fonnte API: api.fonnte.com/send
-    ↓ (kirim balasan)
+ ↓ (kirim balasan)
 Customer WA ← bot menjawab
 ```
 
@@ -243,11 +243,11 @@ Karena webhookstatus dari Fonnte tidak selalu dapat diandalkan (atau tidak selal
 SQL (dibuat di Supabase SQL Editor):
 ```sql
 create table if not exists wa_message_status (
-  message_id text primary key,
-  message_status text,
-  target text,
-  payload jsonb,
-  updated_at timestamptz default now()
+ message_id text primary key,
+ message_status text,
+ target text,
+ payload jsonb,
+ updated_at timestamptz default now()
 );
 ```
 
@@ -300,10 +300,10 @@ Setelah investigasi mendalam via debug log, ditemukan bahwa:
 ### Fix yang Diterapkan (`api/wa/webhook.js`)
 
 1. **Arsitektur sinkron** — proses getHistory + OpenAI + sendWA **sebelum** `res.json(200)`:
-   - Lambda masih dalam state fresh/synchronous → network tidak di-throttle
-   - `res.json(200)` dikirim ke Fonnte **setelah** semua proses selesai
-   - Warm Lambda: ~4.5s total (di bawah timeout Fonnte ~5s)
-   - Cold Lambda: ~6s (Fonnte mungkin timeout duluan, tapi customer tetap menerima balasan)
+ - Lambda masih dalam state fresh/synchronous → network tidak di-throttle
+ - `res.json(200)` dikirim ke Fonnte **setelah** semua proses selesai
+ - Warm Lambda: ~4.5s total (di bawah timeout Fonnte ~5s)
+ - Cold Lambda: ~6s (Fonnte mungkin timeout duluan, tapi customer tetap menerima balasan)
 
 2. **Timeout Supabase `getHistory`**: 4s → 2s (fail faster pada cold start)
 
@@ -317,17 +317,17 @@ Setelah investigasi mendalam via debug log, ditemukan bahwa:
 
 ### Hasil Test
 ```
-Pesan 1 (cold Lambda): 5.9s → OpenAI ✓, sendWA ✓, history saved ✓
-Pesan 2 (warm Lambda): 4.5s → OpenAI ✓, conversation history diingat ✓
+Pesan 1 (cold Lambda): 5.9s → OpenAI , sendWA , history saved 
+Pesan 2 (warm Lambda): 4.5s → OpenAI , conversation history diingat 
 ```
 
 Contoh conversation history tersimpan di Supabase:
 ```json
 [
-  {"role":"user","content":"halo mau tanya harga potong"},
-  {"role":"assistant","content":"Welcome to Redbox Barbershop ✂️\nSilakan informasikan kebutuhan Kakak ya..."},
-  {"role":"user","content":"berapa harga hair cut"},
-  {"role":"assistant","content":"Harga untuk Hair Cut adalah Rp 85.000 di semua cabang, kecuali CSB Mall Rp 120.000.\nMau langsung booking? redboxbarbershop.com/booking.html"}
+ {"role":"user","content":"halo mau tanya harga potong"},
+ {"role":"assistant","content":"Welcome to Redbox Barbershop \nSilakan informasikan kebutuhan Kakak ya..."},
+ {"role":"user","content":"berapa harga hair cut"},
+ {"role":"assistant","content":"Harga untuk Hair Cut adalah Rp 85.000 di semua cabang, kecuali CSB Mall Rp 120.000.\nMau langsung booking? redboxbarbershop.com/booking.html"}
 ]
 ```
 
@@ -351,9 +351,9 @@ Kode lama menggunakan pola fire-and-forget `(async () => { ... })()` yang tidak 
 ```javascript
 // KODE LAMA — tidak reliable di Vercel
 (async () => {
-  try {
-    await notifyCustomerBookingConfirmed(...);
-  } catch (e) { ... }
+ try {
+ await notifyCustomerBookingConfirmed(...);
+ } catch (e) { ... }
 })(); // tidak di-await → dikill setelah res.end()
 
 const r = await bridgeBookingToMoka(...);
@@ -366,19 +366,19 @@ Ganti ke awaited call sebelum `res.end()`:
 ```javascript
 // KODE BARU — dijamin selesai sebelum response dikirim
 if (desiredStatus === 'confirmed' && data.wa) {
-  let barberName = null;
-  if (data.barber_id) {
-    try {
-      const { data: b } = await supabase.from('barbers').select('name').eq('id', data.barber_id).single();
-      barberName = b?.name || null;
-    } catch (_) {}
-  }
-  try {
-    await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
-  } catch (e) {
-    console.warn('[WA Confirm] failed:', e.message);
-  }
-  notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
+ let barberName = null;
+ if (data.barber_id) {
+ try {
+ const { data: b } = await supabase.from('barbers').select('name').eq('id', data.barber_id).single();
+ barberName = b?.name || null;
+ } catch (_) {}
+ }
+ try {
+ await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
+ } catch (e) {
+ console.warn('[WA Confirm] failed:', e.message);
+ }
+ notifyAdminNewBooking({ ...data, barber_name: barberName }).catch(() => {});
 }
 // baru lanjut ke Moka bridge → baru res.json()
 ```
@@ -407,17 +407,17 @@ Handle semua format nomor Indonesia:
 ```javascript
 let number = String(to).replace(/\D/g, '');
 if (number.startsWith('0')) {
-  number = '62' + number.slice(1);      // "08xxx" → "628xxx"
+ number = '62' + number.slice(1); // "08xxx" → "628xxx"
 } else if (!number.startsWith('62')) {
-  number = '62' + number;               // "8xxx"  → "628xxx"
+ number = '62' + number; // "8xxx" → "628xxx"
 }
-// "628xxx" tetap tidak berubah ✓
-// "+628xxx" → strip + → "628xxx" → tidak berubah ✓
+// "628xxx" tetap tidak berubah 
+// "+628xxx" → strip + → "628xxx" → tidak berubah 
 ```
 
 Fix ini berlaku untuk **semua WA notifikasi**: konfirmasi booking, reminder H-1, remind-soon, admin notif — semua pakai `sendWA()` yang sama.
 
-**Verifikasi:** Direct curl ke Fonnte API dengan nomor `6281357662424` → `{"status":true,"detail":"success! message in queue"}` ✓
+**Verifikasi:** Direct curl ke Fonnte API dengan nomor `6281357662424` → `{"status":true,"detail":"success! message in queue"}` 
 
 ---
 
@@ -429,20 +429,20 @@ Fix ini berlaku untuk **semua WA notifikasi**: konfirmasi booking, reminder H-1,
 
 **Fix (`api/wa/webhook.js` — commit `ee44d4e`):**
 
-1. Tambah blok `⚠️ ATURAN BOOKING` di posisi tinggi dalam system prompt — eksplisit melarang tanya cabang, wajib langsung kasih link:
-   ```
-   ⚠️ ATURAN BOOKING — WAJIB IKUTI, TIDAK BOLEH DILANGGAR:
-   Setiap kali customer menyebut niat booking → LANGSUNG balas dengan link,
-   TIDAK PERLU tanya cabang, layanan, atau info apapun dulu.
-   Contoh: "Yuk langsung booking di sini kak: redboxbarbershop.com/booking.html"
-   ```
+1. Tambah blok ` ATURAN BOOKING` di posisi tinggi dalam system prompt — eksplisit melarang tanya cabang, wajib langsung kasih link:
+ ```
+ ATURAN BOOKING — WAJIB IKUTI, TIDAK BOLEH DILANGGAR:
+ Setiap kali customer menyebut niat booking → LANGSUNG balas dengan link,
+ TIDAK PERLU tanya cabang, layanan, atau info apapun dulu.
+ Contoh: "Yuk langsung booking di sini kak: redboxbarbershop.com/booking.html"
+ ```
 
 2. Batasi flow `DISPATCH BOOKING` — hanya aktif jika customer **eksplisit** minta dibantu via WA (contoh: "tolong daftarin saya"), bukan sekedar "mau booking":
-   ```
-   PERHATIAN: Flow dispatch HANYA berlaku jika customer eksplisit minta
-   dibantu booking via WA DAN sudah sebut cabang. Kalau hanya "mau booking"
-   → ABAIKAN flow ini, langsung kasih link.
-   ```
+ ```
+ PERHATIAN: Flow dispatch HANYA berlaku jika customer eksplisit minta
+ dibantu booking via WA DAN sudah sebut cabang. Kalau hanya "mau booking"
+ → ABAIKAN flow ini, langsung kasih link.
+ ```
 
 ---
 

@@ -12,7 +12,7 @@
 Screenshot 1 (Moka POS Billing Management — Open Bills tab) menampilkan:
 - `fajar 28/05 15.00 abdul` — 5h 57min open
 - `riched hansen 28/05 13.00 abdul` — 9h 34min open
-- `✔tomy` — 6h 5min open (format beda, no time)
+- `tomy` — 6h 5min open (format beda, no time)
 
 Screenshot 2 (booking page RedBox, Choose Date & Time, May 2026 day 28) — slot 10:00–20:00 semua available, tidak ada coret.
 
@@ -42,7 +42,7 @@ Screenshot 2 (booking page RedBox, Choose Date & Time, May 2026 day 28) — slot
 const structuredPattern = /^(\S+)\s+(\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?)\s+(\d{1,2}[.:]\d{2})\s+(.+)$/i;
 ```
 
-⚠️ **Potential issue (belum diverifikasi):** regex pakai `\S+` (one token) untuk customer name. Bill "riched hansen 28/05 13.00 abdul" punya 2-kata customer, structured parse akan **gagal** dan fall-through ke fuzzy match. Tapi fuzzy match seharusnya tetap nemu "abdul" via substring. Bukan root cause utama (lihat di bawah).
+ **Potential issue (belum diverifikasi):** regex pakai `\S+` (one token) untuk customer name. Bill "riched hansen 28/05 13.00 abdul" punya 2-kata customer, structured parse akan **gagal** dan fall-through ke fuzzy match. Tapi fuzzy match seharusnya tetap nemu "abdul" via substring. Bukan root cause utama (lihat di bawah).
 
 **Time parser** di [sync.js:680](server/moka/sync.js#L680) (fungsi `_parseAppointmentTimeFromBillName`):
 ```js
@@ -60,9 +60,9 @@ Abdul ( Dul ) — id: bypass-abdul-dul — outlet: bypass (RedBox Bypass)
 **2. Schedules table — zero untuk Abdul/outlet-wide hari ini:**
 ```sql
 SELECT ... FROM schedules WHERE outlet_id = bypass
-  AND start_time < '2026-05-28T23:59:59+07:00'
-  AND end_time > '2026-05-28T00:00:00+07:00'
-  AND (barber_id = 'bypass-abdul-dul' OR barber_id IS NULL);
+ AND start_time < '2026-05-28T23:59:59+07:00'
+ AND end_time > '2026-05-28T00:00:00+07:00'
+ AND (barber_id = 'bypass-abdul-dul' OR barber_id IS NULL);
 -- result: []
 ```
 
@@ -75,18 +75,18 @@ SELECT ... FROM schedules WHERE outlet_id = bypass
 **4. Moka OAuth tokens semua valid** (expire November 2026, refreshed dalam minggu terakhir).
 ```
 bypass: refreshed 2026-05-20 01:28 (sehari sebelum break) → token valid
-csb:    refreshed 2026-05-26
+csb: refreshed 2026-05-26
 samadikun: 2026-05-27
 sumber: 2026-05-24
-tegal:  2026-05-25
+tegal: 2026-05-25
 ```
 
 **5. sync_logs hanya track summary `_finishLog`** — error dari `getOpenBills` di-catch silent ke `console.warn` di [sync.js:386-389](server/moka/sync.js#L386-L389):
 ```js
 try { billsRes = await client.getOpenBills(startWIB, tomorrowWIB); }
 catch (e) {
-  console.warn(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) skipped (${e.message})`);
-  billsRes = null;
+ console.warn(`[Sync] getOpenBills(${startWIB}…${tomorrowWIB}) skipped (${e.message})`);
+ billsRes = null;
 }
 ```
 Sehingga sync_logs selalu nunjukin `processed: 0` tanpa error_message — silent failure.
@@ -99,14 +99,14 @@ curl "https://www.redboxbarbershop.com/api/moka/open-bills?date=2026-05-28"
 ```
 **Hasil — semua 5 outlet kena 404:**
 ```
-RedBox Bypass    -> Moka API GET /v1/outlets/100818/sync_bills/?statuses=PENDING&start=28/05/2026&end=28/05/2026&per_page=200&deep=true → 404
+RedBox Bypass -> Moka API GET /v1/outlets/100818/sync_bills/?statuses=PENDING&start=28/05/2026&end=28/05/2026&per_page=200&deep=true → 404
 RedBox Samadikun -> Moka API GET /v1/outlets/105517/sync_bills/... → 404
-RedBox CSB Mall  -> Moka API GET /v1/outlets/216102/sync_bills/... → 404
-RedBox Sumber    -> Moka API GET /v1/outlets/592422/sync_bills/... → 404
-RedBox Tegal     -> Moka API GET /v1/outlets/1023616/sync_bills/... → 404
+RedBox CSB Mall -> Moka API GET /v1/outlets/216102/sync_bills/... → 404
+RedBox Sumber -> Moka API GET /v1/outlets/592422/sync_bills/... → 404
+RedBox Tegal -> Moka API GET /v1/outlets/1023616/sync_bills/... → 404
 ```
 
-## 🎯 Root Cause (confirmed)
+## Root Cause (confirmed)
 
 **Moka API endpoint `GET /v1/outlets/{id}/sync_bills/` mengembalikan 404 untuk semua outlet sejak ~2026-05-19/20.** 
 
@@ -126,10 +126,10 @@ Token-nya valid (bukan 401), endpoint deprecated/dipindah/dicabut aksesnya. Kare
 
 - [ ] Cek Moka API docs current spec untuk endpoint open-bill alternatif. Klien punya method ini di [server/moka/client.js:87](server/moka/client.js#L87). Path sekarang: `/v1/outlets/{outlet_id}/sync_bills/?statuses=PENDING&start=DD/MM/YYYY&end=DD/MM/YYYY&per_page=200&deep=true`.
 - [ ] Apakah Moka migrasi ke endpoint baru? Misal:
-  - `/v2/outlets/{id}/bills?...`
-  - `/v3/outlets/{id}/bills?...`
-  - Atau `/v1/outlets/{id}/orders?status=pending`
-  - Atau path tanpa trailing slash: `/v1/outlets/{id}/sync_bills?...`
+ - `/v2/outlets/{id}/bills?...`
+ - `/v3/outlets/{id}/bills?...`
+ - Atau `/v1/outlets/{id}/orders?status=pending`
+ - Atau path tanpa trailing slash: `/v1/outlets/{id}/sync_bills?...`
 - [ ] Coba variants curl manual ke Moka API (butuh access token) untuk eksperimen path mana yang return 200.
 
 ### Phase 3 — Hypothesis
@@ -183,7 +183,7 @@ curl "https://www.redboxbarbershop.com/api/moka/open-bills?outletId=bypass&date=
 
 # 2. Manual trigger sync (test setelah fix)
 curl -X POST "https://www.redboxbarbershop.com/api/moka/sync" \
-  -H "Authorization: Bearer 1c78d4adde332e0714a0af5f9c003379af955242444dacb7ba87be5acacc5172"
+ -H "Authorization: Bearer 1c78d4adde332e0714a0af5f9c003379af955242444dacb7ba87be5acacc5172"
 
 # 3. Cek schedules muncul setelah sync
 # (via Supabase MCP execute_sql ke project khcvklzxfohwkyocenaf — query schedules table)

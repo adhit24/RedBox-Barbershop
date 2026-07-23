@@ -1,1348 +1,1348 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hair Analysis Card — Redbox Barbershop</title>
-  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --red: #C1121F;
-      --green: #2a7a3a;
-      --green-bright: #4ade80;
-      --dark: #080808;
-      --card: #111111;
-      --card2: #161616;
-      --border: rgba(255,255,255,.07);
-      --white: #F0F0F0;
-      --dim: rgba(255,255,255,.45);
-      --dimmer: rgba(255,255,255,.28);
-    }
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Hair Analysis Card | Redbox Barbershop</title>
+ <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+ <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" crossorigin="anonymous"></script>
+ <style>
+ *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+ :root {
+ --red: #C1121F;
+ --green: #2a7a3a;
+ --green-bright: #4ade80;
+ --dark: #080808;
+ --card: #111111;
+ --card2: #161616;
+ --border: rgba(255,255,255,.07);
+ --white: #F0F0F0;
+ --dim: rgba(255,255,255,.45);
+ --dimmer: rgba(255,255,255,.28);
+ }
 
-    body {
-      background: #030303;
-      color: var(--white);
-      font-family: 'Inter', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px 16px 40px;
-    }
+ body {
+ background: #030303;
+ color: var(--white);
+ font-family: 'Inter', sans-serif;
+ min-height: 100vh;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ padding: 20px 16px 40px;
+ }
 
-    /* ── PAGE HEADER ── */
-    .page-nav {
-      width: 100%;
-      max-width: 945px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 0 18px;
-    }
-    .page-nav-logo { display:flex; align-items:center; gap:8px; text-decoration:none; }
-    .page-nav-logo img { width:28px; height:28px; border-radius:5px; object-fit:cover; }
-    .page-nav-logo span { font-family:'Bebas Neue',sans-serif; font-size:1.1rem; letter-spacing:.08em; color:var(--white); }
-    .page-nav-logo em { color:var(--red); font-style:normal; }
-    .page-nav-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
-    .page-nav-btn { padding:8px 18px; border-radius:99px; font-size:.72rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:5px; transition:all .2s; }
-    .btn-ghost { background:transparent; color:var(--dim); border:1px solid var(--border); }
-    .btn-ghost:hover { color:var(--white); border-color:rgba(255,255,255,.2); }
-    .btn-red { background:var(--red); color:#fff; }
-    .btn-red:hover { opacity:.88; }
-    .btn-green { background:#166534; color:#86efac; border:1px solid #166534; }
-    .btn-green:hover { background:#15803d; }
-    .btn-green:disabled { opacity:.5; cursor:not-allowed; }
+ /* ── PAGE HEADER ── */
+ .page-nav {
+ width: 100%;
+ max-width: 945px;
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ padding: 12px 0 18px;
+ }
+ .page-nav-logo { display:flex; align-items:center; gap:8px; text-decoration:none; }
+ .page-nav-logo img { width:28px; height:28px; border-radius:5px; object-fit:cover; }
+ .page-nav-logo span { font-family:'Bebas Neue',sans-serif; font-size:1.1rem; letter-spacing:.08em; color:var(--white); }
+ .page-nav-logo em { color:var(--red); font-style:normal; }
+ .page-nav-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+ .page-nav-btn { padding:8px 18px; border-radius:99px; font-size:.72rem; font-weight:600; cursor:pointer; border:none; text-decoration:none; display:inline-flex; align-items:center; gap:5px; transition:all .2s; }
+ .btn-ghost { background:transparent; color:var(--dim); border:1px solid var(--border); }
+ .btn-ghost:hover { color:var(--white); border-color:rgba(255,255,255,.2); }
+ .btn-red { background:var(--red); color:#fff; }
+ .btn-red:hover { opacity:.88; }
+ .btn-green { background:#166534; color:#86efac; border:1px solid #166534; }
+ .btn-green:hover { background:#15803d; }
+ .btn-green:disabled { opacity:.5; cursor:not-allowed; }
 
-    /* ── CARD WRAPPER ── */
-    .card-wrap {
-      width: 100%;
-      max-width: 945px;
-      border-radius: 12px;
-      overflow: hidden;
-      background: var(--dark);
-      box-shadow: 0 8px 60px rgba(0,0,0,.8);
-      position: relative;
-    }
+ /* ── CARD WRAPPER ── */
+ .card-wrap {
+ width: 100%;
+ max-width: 945px;
+ border-radius: 12px;
+ overflow: hidden;
+ background: var(--dark);
+ box-shadow: 0 8px 60px rgba(0,0,0,.8);
+ position: relative;
+ }
 
-    /* ── TOP SECTION: Portrait + Analysis ── */
-    .card-top {
-      display: grid;
-      grid-template-columns: 445px 1fr;
-      height: 560px;
-    }
+ /* ── TOP SECTION: Portrait + Analysis ── */
+ .card-top {
+ display: grid;
+ grid-template-columns: 445px 1fr;
+ height: 560px;
+ }
 
-    /* Portrait */
-    .portrait-col {
-      position: relative;
-      background: #0a0a0a;
-      overflow: hidden;
-    }
-    .portrait-col img {
-      width: 100%;
-      height: 560px;
-      object-fit: cover;
-      object-position: top center;
-      display: block;
-    }
-    .portrait-placeholder {
-      width: 100%;
-      height: 560px;
-      background: #111;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 3rem;
-      color: rgba(255,255,255,.08);
-    }
-    .face-shape-overlay {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      padding: 24px 14px 14px;
-      background: linear-gradient(to top, rgba(0,0,0,.95) 60%, transparent);
-    }
-    .face-shape-label {
-      font-size: .5rem;
-      font-weight: 700;
-      letter-spacing: .14em;
-      color: rgba(255,255,255,.45);
-      text-transform: uppercase;
-      line-height: 1;
-      margin-bottom: 3px;
-    }
-    .face-shape-value {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.6rem;
-      letter-spacing: .05em;
-      color: #fff;
-      line-height: 1;
-    }
+ /* Portrait */
+ .portrait-col {
+ position: relative;
+ background: #0a0a0a;
+ overflow: hidden;
+ }
+ .portrait-col img {
+ width: 100%;
+ height: 560px;
+ object-fit: cover;
+ object-position: top center;
+ display: block;
+ }
+ .portrait-placeholder {
+ width: 100%;
+ height: 560px;
+ background: #111;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ font-size: 3rem;
+ color: rgba(255,255,255,.08);
+ }
+ .face-shape-overlay {
+ position: absolute;
+ bottom: 0;
+ left: 0;
+ right: 0;
+ padding: 24px 14px 14px;
+ background: linear-gradient(to top, rgba(0,0,0,.95) 60%, transparent);
+ }
+ .face-shape-label {
+ font-size: .5rem;
+ font-weight: 700;
+ letter-spacing: .14em;
+ color: rgba(255,255,255,.45);
+ text-transform: uppercase;
+ line-height: 1;
+ margin-bottom: 3px;
+ }
+ .face-shape-value {
+ font-family: 'Bebas Neue', sans-serif;
+ font-size: 1.6rem;
+ letter-spacing: .05em;
+ color: #fff;
+ line-height: 1;
+ }
 
-    /* Analysis Column */
-    .analysis-col {
-      padding: 18px 16px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      border-left: 1px solid var(--border);
-      background:
-        radial-gradient(circle at 90% 5%, rgba(145,190,105,.08), transparent 35%),
-        #0a0b0b;
-    }
-    .card-main-title {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 2.25rem;
-      letter-spacing: .035em;
-      color: #f2f2f2;
-      line-height: 1;
-    }
-    .analysis-panel {
-      padding: 14px 16px;
-      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
-      border: 1px solid rgba(255,255,255,.075);
-      border-radius: 6px;
-      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-    }
+ /* Analysis Column */
+ .analysis-col {
+ padding: 18px 16px 12px;
+ display: flex;
+ flex-direction: column;
+ gap: 10px;
+ border-left: 1px solid var(--border);
+ background:
+ radial-gradient(circle at 90% 5%, rgba(145,190,105,.08), transparent 35%),
+ #0a0b0b;
+ }
+ .card-main-title {
+ font-family: 'Bebas Neue', sans-serif;
+ font-size: 2.25rem;
+ letter-spacing: .035em;
+ color: #f2f2f2;
+ line-height: 1;
+ }
+ .analysis-panel {
+ padding: 14px 16px;
+ background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+ border: 1px solid rgba(255,255,255,.075);
+ border-radius: 6px;
+ box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+ }
 
-    /* Characteristics row */
-    .section-micro-label {
-      font-size: .62rem;
-      font-weight: 700;
-      letter-spacing: .035em;
-      text-transform: uppercase;
-      color: #a7cc74;
-      margin-bottom: 12px;
-    }
-    .char-icons-row {
-      display: flex;
-      gap: 18px;
-    }
-    .char-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 5px;
-      flex: 1;
-    }
-    .char-icon-box {
-      width: 78px;
-      height: 78px;
-      background:
-        radial-gradient(circle at 35% 25%, rgba(255,255,255,.08), transparent 34%),
-        #111313;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #d5d0c6;
-      border: 1px solid rgba(255,255,255,.08);
-      box-shadow: 0 10px 25px rgba(0,0,0,.28);
-    }
-    .char-icon-box .emoji-icon {
-      font-size: 38px;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      filter: drop-shadow(0 2px 4px rgba(0,0,0,.3));
-    }
-    .char-icon-box svg {
-      width: 54px;
-      height: 54px;
-      display: block;
-    }
-    .char-label {
-      font-size: .69rem;
-      font-weight: 700;
-      letter-spacing: 0;
-      text-transform: uppercase;
-      color: rgba(255,255,255,.86);
-      text-align: center;
-      line-height: 1.18;
-      max-width: 96px;
-    }
+ /* Characteristics row */
+ .section-micro-label {
+ font-size: .62rem;
+ font-weight: 700;
+ letter-spacing: .035em;
+ text-transform: uppercase;
+ color: #a7cc74;
+ margin-bottom: 12px;
+ }
+ .char-icons-row {
+ display: flex;
+ gap: 18px;
+ }
+ .char-item {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ gap: 5px;
+ flex: 1;
+ }
+ .char-icon-box {
+ width: 78px;
+ height: 78px;
+ background:
+ radial-gradient(circle at 35% 25%, rgba(255,255,255,.08), transparent 34%),
+ #111313;
+ border-radius: 50%;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ color: #d5d0c6;
+ border: 1px solid rgba(255,255,255,.08);
+ box-shadow: 0 10px 25px rgba(0,0,0,.28);
+ }
+ .char-icon-box .emoji-icon {
+ font-size: 38px;
+ line-height: 1;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ filter: drop-shadow(0 2px 4px rgba(0,0,0,.3));
+ }
+ .char-icon-box svg {
+ width: 54px;
+ height: 54px;
+ display: block;
+ }
+ .char-label {
+ font-size: .69rem;
+ font-weight: 700;
+ letter-spacing: 0;
+ text-transform: uppercase;
+ color: rgba(255,255,255,.86);
+ text-align: center;
+ line-height: 1.18;
+ max-width: 96px;
+ }
 
-    /* Hair type row */
-    .hair-meta-block {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 8px;
-      padding-top: 14px;
-      border-top: 1px solid rgba(255,255,255,.08);
-    }
-    .hair-meta-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
-    .hair-meta-copy { display: flex; flex-direction: column; gap: 4px; }
-    .meta-label {
-      font-size: .62rem;
-      font-weight: 700;
-      letter-spacing: .035em;
-      text-transform: uppercase;
-      color: #a7cc74;
-    }
-    .meta-value {
-      font-size: .78rem;
-      font-weight: 500;
-      color: rgba(255,255,255,.86);
-      letter-spacing: 0;
-      text-transform: uppercase;
-    }
+ /* Hair type row */
+ .hair-meta-block {
+ display: flex;
+ flex-direction: column;
+ gap: 10px;
+ margin-top: 8px;
+ padding-top: 14px;
+ border-top: 1px solid rgba(255,255,255,.08);
+ }
+ .hair-meta-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
+ .hair-meta-copy { display: flex; flex-direction: column; gap: 4px; }
+ .meta-label {
+ font-size: .62rem;
+ font-weight: 700;
+ letter-spacing: .035em;
+ text-transform: uppercase;
+ color: #a7cc74;
+ }
+ .meta-value {
+ font-size: .78rem;
+ font-weight: 500;
+ color: rgba(255,255,255,.86);
+ letter-spacing: 0;
+ text-transform: uppercase;
+ }
 
-    /* Thickness dots */
-    .thickness-dots { display: flex; gap: 12px; align-items: center; }
-    .thickness-dot {
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: rgba(255,255,255,.12);
-      border: 2px solid rgba(255,255,255,.42);
-    }
-    .thickness-dot.filled { background: #9bc86b; border-color: #9bc86b; }
+ /* Thickness dots */
+ .thickness-dots { display: flex; gap: 12px; align-items: center; }
+ .thickness-dot {
+ width: 22px;
+ height: 22px;
+ border-radius: 50%;
+ background: rgba(255,255,255,.12);
+ border: 2px solid rgba(255,255,255,.42);
+ }
+ .thickness-dot.filled { background: #9bc86b; border-color: #9bc86b; }
 
-    /* Length slider */
-    .analysis-col .char-panel {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-    }
-    .analysis-col .char-panel .hair-meta-block { margin-top: auto; }
-    .length-panel { padding: 12px 16px 12px; }
-    .length-slider-wrap { display: flex; flex-direction: column; gap: 8px; }
-    .length-bar-wrap {
-      position: relative;
-      height: 30px;
-      margin-top: 2px;
-      background:
-        repeating-linear-gradient(90deg, rgba(255,255,255,.42) 0 1px, transparent 1px calc(100% / 15)),
-        linear-gradient(to bottom, transparent 13px, rgba(255,255,255,.38) 13px 15px, transparent 15px);
-    }
-    .length-bar-fill {
-      position: absolute;
-      left: 0;
-      top: 13px;
-      height: 2px;
-      background: #9bc86b;
-      transition: width .4s ease;
-    }
-    .length-bar-knob {
-      position: absolute;
-      top: 5px;
-      width: 2px;
-      height: 20px;
-      background: #9bc86b;
-      transform: translateX(-50%);
-      box-shadow: 0 0 10px rgba(155,200,107,.45);
-    }
-    .length-labels { display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; }
-    .length-lbl { font-size: .78rem; color: rgba(255,255,255,.72); font-weight: 500; letter-spacing: 0; text-transform: uppercase; }
-    .length-lbl:nth-child(2) { text-align: center; }
-    .length-lbl:nth-child(3) { text-align: right; }
-    .length-lbl.active { color: #9bc86b; font-weight: 800; }
+ /* Length slider */
+ .analysis-col .char-panel {
+ flex: 1;
+ display: flex;
+ flex-direction: column;
+ }
+ .analysis-col .char-panel .hair-meta-block { margin-top: auto; }
+ .length-panel { padding: 12px 16px 12px; }
+ .length-slider-wrap { display: flex; flex-direction: column; gap: 8px; }
+ .length-bar-wrap {
+ position: relative;
+ height: 30px;
+ margin-top: 2px;
+ background:
+ repeating-linear-gradient(90deg, rgba(255,255,255,.42) 0 1px, transparent 1px calc(100% / 15)),
+ linear-gradient(to bottom, transparent 13px, rgba(255,255,255,.38) 13px 15px, transparent 15px);
+ }
+ .length-bar-fill {
+ position: absolute;
+ left: 0;
+ top: 13px;
+ height: 2px;
+ background: #9bc86b;
+ transition: width .4s ease;
+ }
+ .length-bar-knob {
+ position: absolute;
+ top: 5px;
+ width: 2px;
+ height: 20px;
+ background: #9bc86b;
+ transform: translateX(-50%);
+ box-shadow: 0 0 10px rgba(155,200,107,.45);
+ }
+ .length-labels { display: grid; grid-template-columns: repeat(3, 1fr); align-items: center; }
+ .length-lbl { font-size: .78rem; color: rgba(255,255,255,.72); font-weight: 500; letter-spacing: 0; text-transform: uppercase; }
+ .length-lbl:nth-child(2) { text-align: center; }
+ .length-lbl:nth-child(3) { text-align: right; }
+ .length-lbl.active { color: #9bc86b; font-weight: 800; }
 
-    /* ── RECOMMENDED HAIRSTYLES SECTION ── */
-    .rec-section {
-      background: linear-gradient(180deg, #244b2b, #132b18);
-      padding: 14px 14px 12px;
-      border-top: 1px solid rgba(155,200,107,.35);
-    }
-    .rec-section-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    .rec-badge {
-      width: 20px; height: 20px;
-      background: #166534;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: .6rem; font-weight: 700; color: #86efac;
-      flex-shrink: 0;
-    }
-    .rec-section-title {
-      font-size: 1rem;
-      font-weight: 800;
-      letter-spacing: 0;
-      color: #f3f3f3;
-    }
-    .hair-photos-row {
-      display: grid;
-      gap: 5px;
-    }
-    .hair-photos-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
-    .hair-photos-row.cols-5 { grid-template-columns: repeat(5, 1fr); }
-    .hair-photo-item {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      min-width: 0;
-    }
-    .hair-photo-slot {
-      width: 100%;
-      aspect-ratio: 3/4;
-      border-radius: 5px 5px 0 0;
-      overflow: hidden;
-      background: #1a1a1a;
-      position: relative;
-      border: 1px solid rgba(255,255,255,.08);
-      border-bottom: 0;
-    }
-    .hair-photo-slot img {
-      width: 100%; height: 100%; object-fit: cover; display: block;
-    }
-    .hair-photo-shimmer {
-      width: 100%; height: 100%;
-      background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
-      background-size: 200% 100%;
-      animation: sh 1.4s ease-in-out infinite;
-    }
-    @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-    .hair-check-mark {
-      position: absolute;
-      bottom: 30px; right: 9px;
-      width: 34px; height: 34px;
-      background: #6fac47;
-      border: 3px solid rgba(255,255,255,.88);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1rem; font-weight: 900;
-      color: #fff;
-      z-index: 2;
-    }
-    .hair-x-mark {
-      position: absolute;
-      top: 8px; right: 8px;
-      width: 30px; height: 30px;
-      background: #d92435;
-      border: 3px solid rgba(255,255,255,.88);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: .95rem; font-weight: 900;
-      color: #fff;
-      z-index: 2;
-    }
-    .hair-photo-name {
-      min-height: 33px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 6px 4px;
-      background: rgba(255,255,255,.12);
-      border: 1px solid rgba(255,255,255,.08);
-      border-top: 0;
-      border-radius: 0 0 5px 5px;
-      font-size: .78rem;
-      font-weight: 800;
-      text-align: center;
-      color: rgba(255,255,255,.86);
-      letter-spacing: 0;
-      text-transform: uppercase;
-      line-height: 1.2;
-    }
+ /* ── RECOMMENDED HAIRSTYLES SECTION ── */
+ .rec-section {
+ background: linear-gradient(180deg, #244b2b, #132b18);
+ padding: 14px 14px 12px;
+ border-top: 1px solid rgba(155,200,107,.35);
+ }
+ .rec-section-header {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ margin-bottom: 10px;
+ }
+ .rec-badge {
+ width: 20px; height: 20px;
+ background: #166534;
+ border-radius: 50%;
+ display: flex; align-items: center; justify-content: center;
+ font-size: .6rem; font-weight: 700; color: #86efac;
+ flex-shrink: 0;
+ }
+ .rec-section-title {
+ font-size: 1rem;
+ font-weight: 800;
+ letter-spacing: 0;
+ color: #f3f3f3;
+ }
+ .hair-photos-row {
+ display: grid;
+ gap: 5px;
+ }
+ .hair-photos-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
+ .hair-photos-row.cols-5 { grid-template-columns: repeat(5, 1fr); }
+ .hair-photo-item {
+ display: flex;
+ flex-direction: column;
+ gap: 0;
+ min-width: 0;
+ }
+ .hair-photo-slot {
+ width: 100%;
+ aspect-ratio: 3/4;
+ border-radius: 5px 5px 0 0;
+ overflow: hidden;
+ background: #1a1a1a;
+ position: relative;
+ border: 1px solid rgba(255,255,255,.08);
+ border-bottom: 0;
+ }
+ .hair-photo-slot img {
+ width: 100%; height: 100%; object-fit: cover; display: block;
+ }
+ .hair-photo-shimmer {
+ width: 100%; height: 100%;
+ background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+ background-size: 200% 100%;
+ animation: sh 1.4s ease-in-out infinite;
+ }
+ @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+ .hair-check-mark {
+ position: absolute;
+ bottom: 30px; right: 9px;
+ width: 34px; height: 34px;
+ background: #6fac47;
+ border: 3px solid rgba(255,255,255,.88);
+ border-radius: 50%;
+ display: flex; align-items: center; justify-content: center;
+ font-size: 1rem; font-weight: 900;
+ color: #fff;
+ z-index: 2;
+ }
+ .hair-x-mark {
+ position: absolute;
+ top: 8px; right: 8px;
+ width: 30px; height: 30px;
+ background: #d92435;
+ border: 3px solid rgba(255,255,255,.88);
+ border-radius: 50%;
+ display: flex; align-items: center; justify-content: center;
+ font-size: .95rem; font-weight: 900;
+ color: #fff;
+ z-index: 2;
+ }
+ .hair-photo-name {
+ min-height: 33px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 6px 4px;
+ background: rgba(255,255,255,.12);
+ border: 1px solid rgba(255,255,255,.08);
+ border-top: 0;
+ border-radius: 0 0 5px 5px;
+ font-size: .78rem;
+ font-weight: 800;
+ text-align: center;
+ color: rgba(255,255,255,.86);
+ letter-spacing: 0;
+ text-transform: uppercase;
+ line-height: 1.2;
+ }
 
-    /* ── AVOID SECTION ── */
-    .avoid-section {
-      background: linear-gradient(180deg, #371717, #1b1010);
-      padding: 14px 14px 12px;
-      border-top: 1px solid rgba(193,18,31,.35);
-    }
-    .avoid-section-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    .avoid-badge {
-      width: 20px; height: 20px;
-      background: rgba(193,18,31,.85);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: .6rem; font-weight: 700; color: #fff;
-      flex-shrink: 0;
-    }
-    .avoid-section-title {
-      font-size: 1rem;
-      font-weight: 800;
-      letter-spacing: 0;
-      color: #f3f3f3;
-    }
+ /* ── AVOID SECTION ── */
+ .avoid-section {
+ background: linear-gradient(180deg, #371717, #1b1010);
+ padding: 14px 14px 12px;
+ border-top: 1px solid rgba(193,18,31,.35);
+ }
+ .avoid-section-header {
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ margin-bottom: 10px;
+ }
+ .avoid-badge {
+ width: 20px; height: 20px;
+ background: rgba(193,18,31,.85);
+ border-radius: 50%;
+ display: flex; align-items: center; justify-content: center;
+ font-size: .6rem; font-weight: 700; color: #fff;
+ flex-shrink: 0;
+ }
+ .avoid-section-title {
+ font-size: 1rem;
+ font-weight: 800;
+ letter-spacing: 0;
+ color: #f3f3f3;
+ }
 
-    /* ── BOTTOM SECTIONS: Styling Guide + Products ── */
-    .bottom-grid {
-      display: grid;
-      grid-template-columns: 1.05fr .95fr;
-      gap: 8px;
-      padding: 10px;
-      border-top: 1px solid rgba(255,255,255,.08);
-      background: #0a0a0a;
-    }
-    .guide-col {
-      padding: 14px 16px 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 6px;
-      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
-    }
-    .products-col {
-      padding: 14px 16px 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 6px;
-      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
-    }
-    .col-title {
-      font-size: 1rem;
-      font-weight: 800;
-      letter-spacing: 0;
-      color: rgba(255,255,255,.82);
-      margin-bottom: 12px;
-      text-transform: uppercase;
-    }
+ /* ── BOTTOM SECTIONS: Styling Guide + Products ── */
+ .bottom-grid {
+ display: grid;
+ grid-template-columns: 1.05fr .95fr;
+ gap: 8px;
+ padding: 10px;
+ border-top: 1px solid rgba(255,255,255,.08);
+ background: #0a0a0a;
+ }
+ .guide-col {
+ padding: 14px 16px 16px;
+ border: 1px solid rgba(255,255,255,.08);
+ border-radius: 6px;
+ background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+ }
+ .products-col {
+ padding: 14px 16px 16px;
+ border: 1px solid rgba(255,255,255,.08);
+ border-radius: 6px;
+ background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+ }
+ .col-title {
+ font-size: 1rem;
+ font-weight: 800;
+ letter-spacing: 0;
+ color: rgba(255,255,255,.82);
+ margin-bottom: 12px;
+ text-transform: uppercase;
+ }
 
-    /* Styling steps */
-    .steps-flow {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      flex-wrap: nowrap;
-    }
-    .step-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 7px;
-      flex: 1;
-      min-width: 60px;
-    }
-    .step-icon {
-      width: 62px; height: 62px;
-      background: rgba(255,255,255,.88);
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      color: #1f2221;
-      border: 1px solid rgba(255,255,255,.18);
-    }
-    .step-icon svg {
-      width: 42px;
-      height: 42px;
-    }
-    .step-icon .emoji-icon {
-      font-size: 32px;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .step-name {
-      font-size: .68rem;
-      font-weight: 700;
-      color: rgba(255,255,255,.92);
-      text-align: center;
-      letter-spacing: 0;
-      text-transform: uppercase;
-    }
-    .step-desc {
-      font-size: .66rem;
-      color: rgba(255,255,255,.72);
-      text-align: center;
-      line-height: 1.3;
-      max-width: 90px;
-    }
-    .step-arrow {
-      font-size: 1.5rem;
-      color: rgba(255,255,255,.38);
-      padding-top: 18px;
-      flex-shrink: 0;
-    }
+ /* Styling steps */
+ .steps-flow {
+ display: flex;
+ align-items: flex-start;
+ gap: 8px;
+ flex-wrap: nowrap;
+ }
+ .step-item {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ gap: 7px;
+ flex: 1;
+ min-width: 60px;
+ }
+ .step-icon {
+ width: 62px; height: 62px;
+ background: rgba(255,255,255,.88);
+ border-radius: 50%;
+ display: flex; align-items: center; justify-content: center;
+ color: #1f2221;
+ border: 1px solid rgba(255,255,255,.18);
+ }
+ .step-icon svg {
+ width: 42px;
+ height: 42px;
+ }
+ .step-icon .emoji-icon {
+ font-size: 32px;
+ line-height: 1;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ }
+ .step-name {
+ font-size: .68rem;
+ font-weight: 700;
+ color: rgba(255,255,255,.92);
+ text-align: center;
+ letter-spacing: 0;
+ text-transform: uppercase;
+ }
+ .step-desc {
+ font-size: .66rem;
+ color: rgba(255,255,255,.72);
+ text-align: center;
+ line-height: 1.3;
+ max-width: 90px;
+ }
+ .step-arrow {
+ font-size: 1.5rem;
+ color: rgba(255,255,255,.38);
+ padding-top: 18px;
+ flex-shrink: 0;
+ }
 
-    /* Products - Redbox Upsell */
-    .products-list {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-    }
-    .product-item.redbox-upsell {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 7px;
-      padding: 0;
-      background: transparent;
-      border: 0;
-      border-radius: 0;
-      text-decoration: none;
-      transition: background .2s, border-color .2s;
-    }
-    .product-item.redbox-upsell:hover {
-      background: transparent;
-      border-color: transparent;
-    }
-    .product-icon-img {
-      width: 70px; height: 70px;
-      border-radius: 0;
-      flex-shrink: 0;
-      object-fit: contain;
-      filter: drop-shadow(0 8px 14px rgba(0,0,0,.35));
-    }
-    .product-info {
-      width: 100%;
-      min-width: 0;
-      text-align: center;
-    }
-    .product-name {
-      font-size: .66rem;
-      font-weight: 700;
-      color: rgba(255,255,255,.9);
-      letter-spacing: 0;
-      line-height: 1.18;
-      white-space: normal;
-      }
-    .product-desc {
-      display: none;
-      font-size: .5rem;
-      color: rgba(255,255,255,.55);
-      line-height: 1.3;
-      margin-top: 1px;
-    }
-    .product-price {
-      display: none;
-      font-size: .45rem;
-      font-weight: 700;
-      color: #C1121F;
-      margin-top: 2px;
-    }
-    .product-buy-badge {
-      display: none;
-      flex-shrink: 0;
-      background: #C1121F;
-      color: #fff;
-      font-size: .38rem;
-      font-weight: 800;
-      letter-spacing: .1em;
-      padding: 4px 8px;
-      border-radius: 99px;
-      text-transform: uppercase;
-    }
+ /* Products - Redbox Upsell */
+ .products-list {
+ display: grid;
+ grid-template-columns: repeat(4, 1fr);
+ gap: 10px;
+ }
+ .product-item.redbox-upsell {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: flex-start;
+ gap: 7px;
+ padding: 0;
+ background: transparent;
+ border: 0;
+ border-radius: 0;
+ text-decoration: none;
+ transition: background .2s, border-color .2s;
+ }
+ .product-item.redbox-upsell:hover {
+ background: transparent;
+ border-color: transparent;
+ }
+ .product-icon-img {
+ width: 70px; height: 70px;
+ border-radius: 0;
+ flex-shrink: 0;
+ object-fit: contain;
+ filter: drop-shadow(0 8px 14px rgba(0,0,0,.35));
+ }
+ .product-info {
+ width: 100%;
+ min-width: 0;
+ text-align: center;
+ }
+ .product-name {
+ font-size: .66rem;
+ font-weight: 700;
+ color: rgba(255,255,255,.9);
+ letter-spacing: 0;
+ line-height: 1.18;
+ white-space: normal;
+ }
+ .product-desc {
+ display: none;
+ font-size: .5rem;
+ color: rgba(255,255,255,.55);
+ line-height: 1.3;
+ margin-top: 1px;
+ }
+ .product-price {
+ display: none;
+ font-size: .45rem;
+ font-weight: 700;
+ color: #C1121F;
+ margin-top: 2px;
+ }
+ .product-buy-badge {
+ display: none;
+ flex-shrink: 0;
+ background: #C1121F;
+ color: #fff;
+ font-size: .38rem;
+ font-weight: 800;
+ letter-spacing: .1em;
+ padding: 4px 8px;
+ border-radius: 99px;
+ text-transform: uppercase;
+ }
 
-    /* ── VERY BOTTOM: Key Tips + Hair Color ── */
-    .footer-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      padding: 0 10px 10px;
-      border-top: 0;
-      background: #0a0a0a;
-    }
-    .tips-col {
-      padding: 14px 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 6px;
-      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
-    }
-    .color-rec-col {
-      padding: 14px 16px;
-      border: 1px solid rgba(255,255,255,.08);
-      border-radius: 6px;
-      background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
-    }
-    .tips-list {
-      list-style: none;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      padding-top: 8px;
-      border-top: 1px solid rgba(255,255,255,.08);
-    }
-    .tip-item {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-    .tip-icon {
-      width: 28px;
-      height: 28px;
-      color: rgba(255,255,255,.88);
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .tip-icon svg { width: 26px; height: 26px; }
-    .tip-icon .emoji-icon {
-      font-size: 18px;
-      line-height: 1;
-    }
-    .tip-text {
-      font-size: .58rem;
-      color: rgba(255,255,255,.86);
-      line-height: 1.25;
-    }
-    .color-swatches-row {
-      display: flex;
-      gap: 18px;
-      flex-wrap: wrap;
-      margin-top: 8px;
-    }
-    .color-swatch-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-    }
-    .color-swatch {
-      width: 58px;
-      height: 58px;
-      border-radius: 50%;
-      border: 2px solid rgba(255,255,255,.55);
-      box-shadow: inset 0 0 0 1px rgba(0,0,0,.45);
-    }
-    .color-swatch-name {
-      font-size: .5rem;
-      color: rgba(255,255,255,.62);
-      text-align: center;
-      max-width: 68px;
-      line-height: 1.2;
-    }
+ /* ── VERY BOTTOM: Key Tips + Hair Color ── */
+ .footer-grid {
+ display: grid;
+ grid-template-columns: 1fr 1fr;
+ gap: 8px;
+ padding: 0 10px 10px;
+ border-top: 0;
+ background: #0a0a0a;
+ }
+ .tips-col {
+ padding: 14px 16px;
+ border: 1px solid rgba(255,255,255,.08);
+ border-radius: 6px;
+ background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+ }
+ .color-rec-col {
+ padding: 14px 16px;
+ border: 1px solid rgba(255,255,255,.08);
+ border-radius: 6px;
+ background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.035));
+ }
+ .tips-list {
+ list-style: none;
+ display: grid;
+ grid-template-columns: repeat(4, 1fr);
+ gap: 12px;
+ padding-top: 8px;
+ border-top: 1px solid rgba(255,255,255,.08);
+ }
+ .tip-item {
+ display: flex;
+ align-items: center;
+ gap: 7px;
+ }
+ .tip-icon {
+ width: 28px;
+ height: 28px;
+ color: rgba(255,255,255,.88);
+ flex-shrink: 0;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ }
+ .tip-icon svg { width: 26px; height: 26px; }
+ .tip-icon .emoji-icon {
+ font-size: 18px;
+ line-height: 1;
+ }
+ .tip-text {
+ font-size: .58rem;
+ color: rgba(255,255,255,.86);
+ line-height: 1.25;
+ }
+ .color-swatches-row {
+ display: flex;
+ gap: 18px;
+ flex-wrap: wrap;
+ margin-top: 8px;
+ }
+ .color-swatch-item {
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ gap: 4px;
+ }
+ .color-swatch {
+ width: 58px;
+ height: 58px;
+ border-radius: 50%;
+ border: 2px solid rgba(255,255,255,.55);
+ box-shadow: inset 0 0 0 1px rgba(0,0,0,.45);
+ }
+ .color-swatch-name {
+ font-size: .5rem;
+ color: rgba(255,255,255,.62);
+ text-align: center;
+ max-width: 68px;
+ line-height: 1.2;
+ }
 
-    /* ── LOADING / ERROR states ── */
-    .page-loading {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      min-height: 60vh; gap: 16px;
-    }
-    .page-spinner {
-      width: 44px; height: 44px;
-      border: 3px solid rgba(193,18,31,.2); border-top-color: #C1121F;
-      border-radius: 50%; animation: spin .8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .page-error { text-align: center; padding: 80px 24px; }
-    .page-error h2 { font-size: 1.4rem; margin-bottom: 12px; }
-    .page-error p { color: rgba(255,255,255,.4); margin-bottom: 24px; font-size: .9rem; }
+ /* ── LOADING / ERROR states ── */
+ .page-loading {
+ display: flex; flex-direction: column; align-items: center; justify-content: center;
+ min-height: 60vh; gap: 16px;
+ }
+ .page-spinner {
+ width: 44px; height: 44px;
+ border: 3px solid rgba(193,18,31,.2); border-top-color: #C1121F;
+ border-radius: 50%; animation: spin .8s linear infinite;
+ }
+ @keyframes spin { to { transform: rotate(360deg); } }
+ .page-error { text-align: center; padding: 80px 24px; }
+ .page-error h2 { font-size: 1.4rem; margin-bottom: 12px; }
+ .page-error p { color: rgba(255,255,255,.4); margin-bottom: 24px; font-size: .9rem; }
 
-    /* Branding bar at bottom of card */
-    .card-brand-bar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 16px;
-      background: #050505;
-      border-top: 1px solid rgba(193,18,31,.2);
-    }
-    .brand-bar-left {
-      display: flex; align-items: center; gap: 6px;
-    }
-    .brand-bar-left img {
-      width: 18px; height: 18px; border-radius: 3px; object-fit: cover;
-    }
-    .brand-bar-name {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: .75rem;
-      letter-spacing: .08em;
-      color: rgba(255,255,255,.4);
-    }
-    .brand-bar-name em { color: rgba(193,18,31,.7); font-style: normal; }
-    .brand-bar-right {
-      font-size: .4rem;
-      color: rgba(255,255,255,.2);
-      letter-spacing: .06em;
-      text-transform: uppercase;
-    }
+ /* Branding bar at bottom of card */
+ .card-brand-bar {
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ padding: 8px 16px;
+ background: #050505;
+ border-top: 1px solid rgba(193,18,31,.2);
+ }
+ .brand-bar-left {
+ display: flex; align-items: center; gap: 6px;
+ }
+ .brand-bar-left img {
+ width: 18px; height: 18px; border-radius: 3px; object-fit: cover;
+ }
+ .brand-bar-name {
+ font-family: 'Bebas Neue', sans-serif;
+ font-size: .75rem;
+ letter-spacing: .08em;
+ color: rgba(255,255,255,.4);
+ }
+ .brand-bar-name em { color: rgba(193,18,31,.7); font-style: normal; }
+ .brand-bar-right {
+ font-size: .4rem;
+ color: rgba(255,255,255,.2);
+ letter-spacing: .06em;
+ text-transform: uppercase;
+ }
 
-    /* Download progress */
-    #download-status {
-      margin-top: 10px;
-      font-size: .72rem;
-      color: rgba(255,255,255,.4);
-      min-height: 20px;
-      text-align: center;
-    }
+ /* Download progress */
+ #download-status {
+ margin-top: 10px;
+ font-size: .72rem;
+ color: rgba(255,255,255,.4);
+ min-height: 20px;
+ text-align: center;
+ }
 
-    /* Responsive */
-    @media (max-width: 640px) {
-      .page-nav { max-width: 100%; }
-      .card-top { grid-template-columns: 1fr; height: auto; }
-      .card-top .portrait-col img { height: 390px; min-height: 360px; max-height: 430px; }
-      .portrait-placeholder { height: 360px; }
-      .analysis-col { border-left: 0; padding: 16px 12px; }
-      .card-main-title { font-size: 1.9rem; }
-      .analysis-panel { padding: 12px; }
-      .char-icons-row { gap: 8px; }
-      .char-icon-box { width: 58px; height: 58px; }
-      .char-icon-box svg { width: 40px; height: 40px; }
-      .char-label { font-size: .56rem; }
-      .hair-meta-row { grid-template-columns: 1fr; }
-      .thickness-dots { gap: 8px; }
-      .thickness-dot { width: 16px; height: 16px; }
-      .hair-photos-row.cols-4 { grid-template-columns: repeat(2, 1fr); }
-      .hair-photos-row.cols-5 { grid-template-columns: repeat(3, 1fr); }
-      .bottom-grid, .footer-grid { grid-template-columns: 1fr; }
-      .steps-flow { flex-wrap: wrap; }
-      .step-arrow { display: none; }
-      .products-list { grid-template-columns: repeat(2, 1fr); }
-      .tips-list { grid-template-columns: repeat(2, 1fr); }
-      .color-swatches-row { gap: 10px; }
-      .color-swatch { width: 46px; height: 46px; }
-    }
-  </style>
+ /* Responsive */
+ @media (max-width: 640px) {
+ .page-nav { max-width: 100%; }
+ .card-top { grid-template-columns: 1fr; height: auto; }
+ .card-top .portrait-col img { height: 390px; min-height: 360px; max-height: 430px; }
+ .portrait-placeholder { height: 360px; }
+ .analysis-col { border-left: 0; padding: 16px 12px; }
+ .card-main-title { font-size: 1.9rem; }
+ .analysis-panel { padding: 12px; }
+ .char-icons-row { gap: 8px; }
+ .char-icon-box { width: 58px; height: 58px; }
+ .char-icon-box svg { width: 40px; height: 40px; }
+ .char-label { font-size: .56rem; }
+ .hair-meta-row { grid-template-columns: 1fr; }
+ .thickness-dots { gap: 8px; }
+ .thickness-dot { width: 16px; height: 16px; }
+ .hair-photos-row.cols-4 { grid-template-columns: repeat(2, 1fr); }
+ .hair-photos-row.cols-5 { grid-template-columns: repeat(3, 1fr); }
+ .bottom-grid, .footer-grid { grid-template-columns: 1fr; }
+ .steps-flow { flex-wrap: wrap; }
+ .step-arrow { display: none; }
+ .products-list { grid-template-columns: repeat(2, 1fr); }
+ .tips-list { grid-template-columns: repeat(2, 1fr); }
+ .color-swatches-row { gap: 10px; }
+ .color-swatch { width: 46px; height: 46px; }
+ }
+ </style>
 </head>
 <body>
 
-  <nav class="page-nav">
-    <a class="page-nav-logo" href="/">
-      <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
-      <span>REDBOX <em>BARBERSHOP</em></span>
-    </a>
-    <div class="page-nav-actions">
-      <button class="page-nav-btn btn-green" id="download-btn" disabled>⬇ Download Card</button>
-      <a class="page-nav-btn btn-ghost" href="/#ai">↩ Analisis Ulang</a>
-      <a class="page-nav-btn btn-red" href="/booking.html">Book Now</a>
-    </div>
-  </nav>
+ <nav class="page-nav">
+ <a class="page-nav-logo" href="/">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
+ <span>REDBOX <em>BARBERSHOP</em></span>
+ </a>
+ <div class="page-nav-actions">
+ <button class="page-nav-btn btn-green" id="download-btn" disabled>⬇ Download Card</button>
+ <a class="page-nav-btn btn-ghost" href="/#ai"> Analisis Ulang</a>
+ <a class="page-nav-btn btn-red" href="/booking.html">Book Now</a>
+ </div>
+ </nav>
 
-  <div id="page-root">
-    <div class="page-loading" id="page-loading">
-      <div class="page-spinner"></div>
-      <p style="color:rgba(255,255,255,.4);font-size:.85rem">Memuat kartu analisis rambut...</p>
-    </div>
-  </div>
+ <div id="page-root">
+ <div class="page-loading" id="page-loading">
+ <div class="page-spinner"></div>
+ <p style="color:rgba(255,255,255,.4);font-size:.85rem">Memuat kartu analisis rambut...</p>
+ </div>
+ </div>
 
-  <div id="download-status"></div>
+ <div id="download-status"></div>
 
-  <script>
-    const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    const IMG_API = _isLocal ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
-    const HAIR_API = _isLocal ? 'http://localhost:3001/api/ai/hairstyle' : '/api/ai/hairstyle';
+ <script>
+ const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+ const IMG_API = _isLocal ? 'http://localhost:3001/api/ai/generate-image' : '/api/ai/generate-image';
+ const HAIR_API = _isLocal ? 'http://localhost:3001/api/ai/hairstyle' : '/api/ai/hairstyle';
 
-    function slug(s) {
-      return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    }
+ function slug(s) {
+ return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+ }
 
-    function fmt(s) {
-      return s ? String(s).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
-    }
+ function fmt(s) {
+ return s ? String(s).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '';
+ }
 
-    function iconSvg(name) {
-      // Realistic emoji icons (render with native OS emoji rendering for 3D look)
-      const icons = {
-        taper:   '<span class="emoji-icon">💈</span>',
-        volume:  '<span class="emoji-icon">💇‍♂️</span>',
-        texture: '<span class="emoji-icon">〰️</span>',
-        blow:    '<span class="emoji-icon">💨</span>',
-        hand:    '<span class="emoji-icon">✋</span>',
-        shape:   '<span class="emoji-icon">🎨</span>',
-        clock:   '<span class="emoji-icon">⏱️</span>',
-        head:    '<span class="emoji-icon">🧔</span>',
-        trim:    '<span class="emoji-icon">✂️</span>',
-        avoid:   '<span class="emoji-icon">🚫</span>',
-        bottle:  '<span class="emoji-icon">🧴</span>'
-      };
-      return icons[name] || icons.texture;
-    }
+ function iconSvg(name) {
+ // Realistic emoji icons (render with native OS emoji rendering for 3D look)
+ const icons = {
+ taper: '<span class="emoji-icon"></span>',
+ volume: '<span class="emoji-icon"></span>',
+ texture: '<span class="emoji-icon"></span>',
+ blow: '<span class="emoji-icon"></span>',
+ hand: '<span class="emoji-icon"></span>',
+ shape: '<span class="emoji-icon"></span>',
+ clock: '<span class="emoji-icon"></span>',
+ head: '<span class="emoji-icon"></span>',
+ trim: '<span class="emoji-icon"></span>',
+ avoid: '<span class="emoji-icon"></span>',
+ bottle: '<span class="emoji-icon"></span>'
+ };
+ return icons[name] || icons.texture;
+ }
 
-    // ── DENSITY → dot count ──
-    function densityDots(density) {
-      const map = { thin: 1, medium: 3, medium_thick: 4, thick: 5 };
-      return map[density] || 3;
-    }
+ // ── DENSITY → dot count ──
+ function densityDots(density) {
+ const map = { thin: 1, medium: 3, medium_thick: 4, thick: 5 };
+ return map[density] || 3;
+ }
 
-    // ── LENGTH → slider position ──
-    function lengthToPercent(length) {
-      const map = { short: 20, medium: 55, long: 85 };
-      return map[length] || 55;
-    }
-    function lengthLabels(length) {
-      const labels = ['SHORT', 'MEDIUM', 'MEDIUM LONG'];
-      const active = length === 'short' ? 0 : length === 'long' ? 2 : 1;
-      return labels.map((l, i) => `<span class="length-lbl${i === active ? ' active' : ''}">${l}</span>`).join('');
-    }
+ // ── LENGTH → slider position ──
+ function lengthToPercent(length) {
+ const map = { short: 20, medium: 55, long: 85 };
+ return map[length] || 55;
+ }
+ function lengthLabels(length) {
+ const labels = ['SHORT', 'MEDIUM', 'MEDIUM LONG'];
+ const active = length === 'short' ? 0 : length === 'long' ? 2 : 1;
+ return labels.map((l, i) => `<span class="length-lbl${i === active ? ' active' : ''}">${l}</span>`).join('');
+ }
 
-    // ── CHARACTERISTICS from hair data ──
-    function buildCharacteristics(hair, hairRecs) {
-      const chars = [];
-      const type = hair.type || '';
-      const density = hair.density || 'medium';
-      const texture = hair.natural_texture || '';
+ // ── CHARACTERISTICS from hair data ──
+ function buildCharacteristics(hair, hairRecs) {
+ const chars = [];
+ const type = hair.type || '';
+ const density = hair.density || 'medium';
+ const texture = hair.natural_texture || '';
 
-      if (hairRecs.length > 0 && (hairRecs[0].name || '').toLowerCase().includes('fade')) {
-        chars.push({ icon: 'taper', label: 'KEEP SIDES\nTAPERED' });
-      } else if (hairRecs.length > 0 && (hairRecs[0].name || '').toLowerCase().includes('taper')) {
-        chars.push({ icon: 'taper', label: 'KEEP SIDES\nTAPERED' });
-      } else {
-        chars.push({ icon: 'taper', label: 'KEEP SIDES\nTAPERED' });
-      }
+ if (hairRecs.length > 0 && (hairRecs[0].name || '').toLowerCase().includes('fade')) {
+ chars.push({ icon: 'taper', label: 'KEEP SIDES\nTAPERED' });
+ } else if (hairRecs.length > 0 && (hairRecs[0].name || '').toLowerCase().includes('taper')) {
+ chars.push({ icon: 'taper', label: 'KEEP SIDES\nTAPERED' });
+ } else {
+ chars.push({ icon: 'taper', label: 'KEEP SIDES\nTAPERED' });
+ }
 
-      if (density === 'thin' || density === 'medium') {
-        chars.push({ icon: 'volume', label: 'LIGHT ON\nTOP' });
-      } else if (density === 'thick' || density === 'medium_thick') {
-        chars.push({ icon: 'volume', label: 'MEDIUM VOLUME\nON TOP' });
-      } else {
-        chars.push({ icon: 'volume', label: 'MEDIUM VOLUME\nON TOP' });
-      }
+ if (density === 'thin' || density === 'medium') {
+ chars.push({ icon: 'volume', label: 'LIGHT ON\nTOP' });
+ } else if (density === 'thick' || density === 'medium_thick') {
+ chars.push({ icon: 'volume', label: 'MEDIUM VOLUME\nON TOP' });
+ } else {
+ chars.push({ icon: 'volume', label: 'MEDIUM VOLUME\nON TOP' });
+ }
 
-      if (type.includes('straight') || texture.includes('smooth')) {
-        chars.push({ icon: 'texture', label: 'NATURAL\nTEXTURE' });
-      } else if (type.includes('wavy') || type.includes('curly')) {
-        chars.push({ icon: 'texture', label: 'WORK WITH\nCURLY HAIR' });
-      } else {
-        chars.push({ icon: 'texture', label: 'NATURAL\nTEXTURE' });
-      }
+ if (type.includes('straight') || texture.includes('smooth')) {
+ chars.push({ icon: 'texture', label: 'NATURAL\nTEXTURE' });
+ } else if (type.includes('wavy') || type.includes('curly')) {
+ chars.push({ icon: 'texture', label: 'WORK WITH\nCURLY HAIR' });
+ } else {
+ chars.push({ icon: 'texture', label: 'NATURAL\nTEXTURE' });
+ }
 
-      return chars;
-    }
+ return chars;
+ }
 
-    // ── HAIR TYPE display ──
-    function hairTypeDisplay(hair) {
-      const type = (hair.type || 'straight').replace(/_/g, ' ').toUpperCase();
-      const texture = hair.natural_texture ? ' / ' + hair.natural_texture.replace(/_/g, ' ').toUpperCase() : '';
-      return type + texture;
-    }
+ // ── HAIR TYPE display ──
+ function hairTypeDisplay(hair) {
+ const type = (hair.type || 'straight').replace(/_/g, ' ').toUpperCase();
+ const texture = hair.natural_texture ? ' / ' + hair.natural_texture.replace(/_/g, ' ').toUpperCase() : '';
+ return type + texture;
+ }
 
-    // ── STYLING STEPS ──
-    function defaultStylingSteps(hairType) {
-      return [
-        { icon: 'blow', name: 'BLOW DRY', desc: 'Create\nvolume' },
-        { icon: 'hand', name: 'APPLY\nPRODUCT', desc: 'Use matte clay\nor paste' },
-        { icon: 'shape', name: 'STYLE &\nSHAPE', desc: 'Lift roots, shape\nnaturally' },
-        { icon: 'clock', name: 'FINISH', desc: 'Light hold\nhairspray' },
-      ];
-    }
+ // ── STYLING STEPS ──
+ function defaultStylingSteps(hairType) {
+ return [
+ { icon: 'blow', name: 'BLOW DRY', desc: 'Create\nvolume' },
+ { icon: 'hand', name: 'APPLY\nPRODUCT', desc: 'Use matte clay\nor paste' },
+ { icon: 'shape', name: 'STYLE &\nSHAPE', desc: 'Lift roots, shape\nnaturally' },
+ { icon: 'clock', name: 'FINISH', desc: 'Light hold\nhairspray' },
+ ];
+ }
 
-    // ── REDBOX PRODUCT CATALOG (for upsell mapping) ──
-    const REDBOX_PRODUCTS = [
-      {
-        id: 'clay',
-        name: 'Redbox Clay',
-        displayName: 'MATTE CLAY',
-        price: 'Rp 100.000',
-        icon: 'Brand_assets/product/icons/redbox-clay.svg',
-        desc: 'Matte finish, volume & texture',
-        waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Clay',
-        keywords: ['clay', 'matte', 'texture', 'volume', 'powder', 'paste'],
-      },
-      {
-        id: 'pomade-wb',
-        name: 'Redbox Pomade Waterbased',
-        displayName: 'STYLING PASTE',
-        price: 'Rp 100K–150K',
-        icon: 'Brand_assets/product/icons/redbox-pomade-wb.svg',
-        desc: 'Flexible hold, easy wash',
-        waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Waterbased',
-        keywords: ['pomade', 'waterbased', 'water', 'gel', 'cream', 'mousse', 'light hold', 'medium hold'],
-      },
-      {
-        id: 'pomade-ob',
-        name: 'Redbox Pomade Oil Based',
-        displayName: 'STRONG POMADE',
-        price: 'Rp 100K–150K',
-        icon: 'Brand_assets/product/icons/redbox-pomade-ob.svg',
-        desc: 'High shine, strong hold',
-        waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Oil%20Based',
-        keywords: ['oil', 'shine', 'slick', 'strong hold', 'wax', 'heavy'],
-      },
-      {
-        id: 'parfum-eleftheree',
-        name: 'Parfum Eleftheree',
-        displayName: 'FINISHING SPRAY',
-        price: 'Rp 150.000',
-        icon: 'Brand_assets/product/icons/redbox-parfum-eleftheree.svg',
-        desc: 'Bold, maskulin, leather & musk',
-        waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Eleftheree',
-        keywords: ['parfum', 'perfume', 'fragrance'],
-      },
-      {
-        id: 'parfum-psyhi',
-        name: 'Parfum Psyhi',
-        displayName: 'SIGNATURE SCENT',
-        price: 'Rp 150.000',
-        icon: 'Brand_assets/product/icons/redbox-parfum-psyhi.svg',
-        desc: 'Warm, sweet, vanilla & cinnamon',
-        waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Psyhi',
-        keywords: ['parfum', 'perfume', 'fragrance'],
-      },
-    ];
+ // ── REDBOX PRODUCT CATALOG (for upsell mapping) ──
+ const REDBOX_PRODUCTS = [
+ {
+ id: 'clay',
+ name: 'Redbox Clay',
+ displayName: 'MATTE CLAY',
+ price: 'Rp 100.000',
+ icon: 'Brand_assets/product/icons/redbox-clay.svg',
+ desc: 'Matte finish, volume & texture',
+ waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Clay',
+ keywords: ['clay', 'matte', 'texture', 'volume', 'powder', 'paste'],
+ },
+ {
+ id: 'pomade-wb',
+ name: 'Redbox Pomade Waterbased',
+ displayName: 'STYLING PASTE',
+ price: 'Rp 100K-150K',
+ icon: 'Brand_assets/product/icons/redbox-pomade-wb.svg',
+ desc: 'Flexible hold, easy wash',
+ waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Waterbased',
+ keywords: ['pomade', 'waterbased', 'water', 'gel', 'cream', 'mousse', 'light hold', 'medium hold'],
+ },
+ {
+ id: 'pomade-ob',
+ name: 'Redbox Pomade Oil Based',
+ displayName: 'STRONG POMADE',
+ price: 'Rp 100K-150K',
+ icon: 'Brand_assets/product/icons/redbox-pomade-ob.svg',
+ desc: 'High shine, strong hold',
+ waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Oil%20Based',
+ keywords: ['oil', 'shine', 'slick', 'strong hold', 'wax', 'heavy'],
+ },
+ {
+ id: 'parfum-eleftheree',
+ name: 'Parfum Eleftheree',
+ displayName: 'FINISHING SPRAY',
+ price: 'Rp 150.000',
+ icon: 'Brand_assets/product/icons/redbox-parfum-eleftheree.svg',
+ desc: 'Bold, maskulin, leather & musk',
+ waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Eleftheree',
+ keywords: ['parfum', 'perfume', 'fragrance'],
+ },
+ {
+ id: 'parfum-psyhi',
+ name: 'Parfum Psyhi',
+ displayName: 'SIGNATURE SCENT',
+ price: 'Rp 150.000',
+ icon: 'Brand_assets/product/icons/redbox-parfum-psyhi.svg',
+ desc: 'Warm, sweet, vanilla & cinnamon',
+ waLink: 'https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Psyhi',
+ keywords: ['parfum', 'perfume', 'fragrance'],
+ },
+ ];
 
-    function buildProducts(stylingProducts) {
-      // Map AI-recommended product types to actual Redbox products
-      const matched = [];
-      const usedIds = new Set();
+ function buildProducts(stylingProducts) {
+ // Map AI-recommended product types to actual Redbox products
+ const matched = [];
+ const usedIds = new Set();
 
-      if (stylingProducts && stylingProducts.length) {
-        stylingProducts.forEach(p => {
-          const name = (typeof p === 'string' ? p : p.name || p).toLowerCase();
-          for (const rp of REDBOX_PRODUCTS) {
-            if (usedIds.has(rp.id)) continue;
-            if (rp.keywords.some(kw => name.includes(kw))) {
-              matched.push({ ...rp, aiProduct: (typeof p === 'string' ? p : p.name || p).toUpperCase() });
-              usedIds.add(rp.id);
-              break;
-            }
-          }
-        });
-      }
+ if (stylingProducts && stylingProducts.length) {
+ stylingProducts.forEach(p => {
+ const name = (typeof p === 'string' ? p : p.name || p).toLowerCase();
+ for (const rp of REDBOX_PRODUCTS) {
+ if (usedIds.has(rp.id)) continue;
+ if (rp.keywords.some(kw => name.includes(kw))) {
+ matched.push({ ...rp, aiProduct: (typeof p === 'string' ? p : p.name || p).toUpperCase() });
+ usedIds.add(rp.id);
+ break;
+ }
+ }
+ });
+ }
 
-      // Always include at least clay + one pomade + one parfum
-      if (!usedIds.has('clay')) { matched.push({ ...REDBOX_PRODUCTS[0], aiProduct: 'STYLING CLAY' }); usedIds.add('clay'); }
-      if (!usedIds.has('pomade-wb') && !usedIds.has('pomade-ob')) { matched.push({ ...REDBOX_PRODUCTS[1], aiProduct: 'POMADE' }); usedIds.add('pomade-wb'); }
-      if (!usedIds.has('parfum-eleftheree') && !usedIds.has('parfum-psyhi')) { matched.push({ ...REDBOX_PRODUCTS[3], aiProduct: 'FINISHING FRAGRANCE' }); usedIds.add('parfum-eleftheree'); }
+ // Always include at least clay + one pomade + one parfum
+ if (!usedIds.has('clay')) { matched.push({ ...REDBOX_PRODUCTS[0], aiProduct: 'STYLING CLAY' }); usedIds.add('clay'); }
+ if (!usedIds.has('pomade-wb') && !usedIds.has('pomade-ob')) { matched.push({ ...REDBOX_PRODUCTS[1], aiProduct: 'POMADE' }); usedIds.add('pomade-wb'); }
+ if (!usedIds.has('parfum-eleftheree') && !usedIds.has('parfum-psyhi')) { matched.push({ ...REDBOX_PRODUCTS[3], aiProduct: 'FINISHING FRAGRANCE' }); usedIds.add('parfum-eleftheree'); }
 
-      return matched.slice(0, 4);
-    }
+ return matched.slice(0, 4);
+ }
 
-    // ── KEY TIPS ──
-    function buildTips(faceShape, hairType) {
-      const shape = (faceShape || 'oval').toLowerCase();
-      const tipMap = {
-        oval: [
-          { icon: 'head', text: 'Keep sides neat and tapered' },
-          { icon: 'hand', text: 'Add texture for volume' },
-          { icon: 'avoid', text: 'Avoid heavy fringe' },
-          { icon: 'bottle', text: 'Regular trim every 4-6 weeks' },
-        ],
-        round: [
-          { icon: 'volume', text: 'Add height on top' },
-          { icon: 'trim', text: 'Keep sides short' },
-          { icon: 'avoid', text: 'Avoid round bowl cuts' },
-          { icon: 'bottle', text: 'Regular trim every 3-4 weeks' },
-        ],
-        square: [
-          { icon: 'texture', text: 'Soften edges with texture' },
-          { icon: 'volume', text: 'Keep soft side volume' },
-          { icon: 'head', text: 'Use longer textured fringe' },
-          { icon: 'bottle', text: 'Regular trim every 4-6 weeks' },
-        ],
-        heart: [
-          { icon: 'volume', text: 'Balance forehead with sides' },
-          { icon: 'trim', text: 'Medium length works best' },
-          { icon: 'avoid', text: 'Avoid extra wide styles' },
-          { icon: 'bottle', text: 'Regular trim every 5-6 weeks' },
-        ],
-        diamond: [
-          { icon: 'head', text: 'Add width with wispy fringe' },
-          { icon: 'texture', text: 'Textured styles work well' },
-          { icon: 'avoid', text: 'Avoid too much height' },
-          { icon: 'bottle', text: 'Regular trim every 4-5 weeks' },
-        ],
-      };
-      return tipMap[shape] || tipMap['oval'];
-    }
+ // ── KEY TIPS ──
+ function buildTips(faceShape, hairType) {
+ const shape = (faceShape || 'oval').toLowerCase();
+ const tipMap = {
+ oval: [
+ { icon: 'head', text: 'Keep sides neat and tapered' },
+ { icon: 'hand', text: 'Add texture for volume' },
+ { icon: 'avoid', text: 'Avoid heavy fringe' },
+ { icon: 'bottle', text: 'Regular trim every 4-6 weeks' },
+ ],
+ round: [
+ { icon: 'volume', text: 'Add height on top' },
+ { icon: 'trim', text: 'Keep sides short' },
+ { icon: 'avoid', text: 'Avoid round bowl cuts' },
+ { icon: 'bottle', text: 'Regular trim every 3-4 weeks' },
+ ],
+ square: [
+ { icon: 'texture', text: 'Soften edges with texture' },
+ { icon: 'volume', text: 'Keep soft side volume' },
+ { icon: 'head', text: 'Use longer textured fringe' },
+ { icon: 'bottle', text: 'Regular trim every 4-6 weeks' },
+ ],
+ heart: [
+ { icon: 'volume', text: 'Balance forehead with sides' },
+ { icon: 'trim', text: 'Medium length works best' },
+ { icon: 'avoid', text: 'Avoid extra wide styles' },
+ { icon: 'bottle', text: 'Regular trim every 5-6 weeks' },
+ ],
+ diamond: [
+ { icon: 'head', text: 'Add width with wispy fringe' },
+ { icon: 'texture', text: 'Textured styles work well' },
+ { icon: 'avoid', text: 'Avoid too much height' },
+ { icon: 'bottle', text: 'Regular trim every 4-5 weeks' },
+ ],
+ };
+ return tipMap[shape] || tipMap['oval'];
+ }
 
-    // ── HAIR COLOR SWATCHES ──
-    function buildHairColors(hairData) {
-      return [
-        { name: 'NATURAL BLACK', hex: '#1a1008' },
-        { name: 'DARK BROWN', hex: '#2d1f0e' },
-        { name: 'WARM BROWN', hex: '#5a3410' },
-        { name: 'CHESTNUT', hex: '#7b4018' },
-        { name: 'LIGHT BROWN', hex: '#9c6028' },
-      ];
-    }
+ // ── HAIR COLOR SWATCHES ──
+ function buildHairColors(hairData) {
+ return [
+ { name: 'NATURAL BLACK', hex: '#1a1008' },
+ { name: 'DARK BROWN', hex: '#2d1f0e' },
+ { name: 'WARM BROWN', hex: '#5a3410' },
+ { name: 'CHESTNUT', hex: '#7b4018' },
+ { name: 'LIGHT BROWN', hex: '#9c6028' },
+ ];
+ }
 
-    // ── FILL IMAGE SLOT ──
-    function fillSlot(elId, imageUrl) {
-      const el = document.getElementById(elId);
-      if (!el) return;
-      const slot = el.querySelector('.hair-photo-shimmer');
-      if (slot) {
-        const img = document.createElement('img');
-        img.src = imageUrl;
-        img.alt = '';
-        img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
-        el.replaceChild(img, slot);
-      }
-    }
-    function failSlot(elId) {
-      const el = document.getElementById(elId);
-      if (!el) return;
-      const slot = el.querySelector('.hair-photo-shimmer');
-      if (slot) { slot.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:rgba(255,255,255,.1);'; slot.textContent = '💈'; }
-    }
+ // ── FILL IMAGE SLOT ──
+ function fillSlot(elId, imageUrl) {
+ const el = document.getElementById(elId);
+ if (!el) return;
+ const slot = el.querySelector('.hair-photo-shimmer');
+ if (slot) {
+ const img = document.createElement('img');
+ img.src = imageUrl;
+ img.alt = '';
+ img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+ el.replaceChild(img, slot);
+ }
+ }
+ function failSlot(elId) {
+ const el = document.getElementById(elId);
+ if (!el) return;
+ const slot = el.querySelector('.hair-photo-shimmer');
+ if (slot) { slot.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:rgba(255,255,255,.1);'; slot.textContent = ''; }
+ }
 
-    // ── GENERATE HAIRSTYLE ON CUSTOMER FACE (image edit) ──
-    async function genHairstyleEdit(elId, uploadId, hairstyleName, fallbackPhoto) {
-      try {
-        if (!uploadId) {
-          if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
-          else failSlot(elId);
-          return;
-        }
-        const res = await fetch(HAIR_API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uploadId, hairstyleName }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'Failed');
-        fillSlot(elId, json.imageUrl);
-      } catch (err) {
-        if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
-        else failSlot(elId);
-      }
-    }
+ // ── GENERATE HAIRSTYLE ON CUSTOMER FACE (image edit) ──
+ async function genHairstyleEdit(elId, uploadId, hairstyleName, fallbackPhoto) {
+ try {
+ if (!uploadId) {
+ if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
+ else failSlot(elId);
+ return;
+ }
+ const res = await fetch(HAIR_API, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ uploadId, hairstyleName }),
+ });
+ const json = await res.json();
+ if (!res.ok) throw new Error(json.error || 'Failed');
+ fillSlot(elId, json.imageUrl);
+ } catch (err) {
+ if (fallbackPhoto) fillSlot(elId, fallbackPhoto);
+ else failSlot(elId);
+ }
+ }
 
-    // ── GENERATE GENERIC REFERENCE IMAGE (text-to-image) ──
-    async function genGenericImage(elId, prompt, cacheKey) {
-      try {
-        const res = await fetch(IMG_API, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, cacheKey }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'Failed');
-        fillSlot(elId, json.imageUrl);
-      } catch (err) { failSlot(elId); }
-    }
+ // ── GENERATE GENERIC REFERENCE IMAGE (text-to-image) ──
+ async function genGenericImage(elId, prompt, cacheKey) {
+ try {
+ const res = await fetch(IMG_API, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ prompt, cacheKey }),
+ });
+ const json = await res.json();
+ if (!res.ok) throw new Error(json.error || 'Failed');
+ fillSlot(elId, json.imageUrl);
+ } catch (err) { failSlot(elId); }
+ }
 
-    // ── LOAD ALL HAIR IMAGES ──
-    async function loadHairImages(hairRecs, hairAvoid, uploadId, userPhoto) {
-      // Recommended: use customer's own face via image edit
-      const recSlots = hairRecs.slice(0, 4).map((h, i) => ({
-        elId: `rec-slot-${i}`, name: h.name,
-      }));
-      // Avoid: also use customer's own face. Never render another person's face here.
-      const avoidSlots = hairAvoid.slice(0, 5).map((a, i) => ({
-        elId: `avoid-slot-${i}`, name: a.name || a.style,
-      }));
+ // ── LOAD ALL HAIR IMAGES ──
+ async function loadHairImages(hairRecs, hairAvoid, uploadId, userPhoto) {
+ // Recommended: use customer's own face via image edit
+ const recSlots = hairRecs.slice(0, 4).map((h, i) => ({
+ elId: `rec-slot-${i}`, name: h.name,
+ }));
+ // Avoid: also use customer's own face. Never render another person's face here.
+ const avoidSlots = hairAvoid.slice(0, 5).map((a, i) => ({
+ elId: `avoid-slot-${i}`, name: a.name || a.style,
+ }));
 
-      // Load recommended (customer face) — 2 at a time to avoid overload
-      for (let i = 0; i < recSlots.length; i += 2) {
-        await Promise.allSettled(
-          recSlots.slice(i, i + 2).map(s => genHairstyleEdit(s.elId, uploadId, s.name, userPhoto))
-        );
-      }
+ // Load recommended (customer face) - 2 at a time to avoid overload
+ for (let i = 0; i < recSlots.length; i += 2) {
+ await Promise.allSettled(
+ recSlots.slice(i, i + 2).map(s => genHairstyleEdit(s.elId, uploadId, s.name, userPhoto))
+ );
+ }
 
-      // Load avoid styles with the uploaded customer face — 2 at a time to avoid overload
-      for (let i = 0; i < avoidSlots.length; i += 2) {
-        await Promise.allSettled(
-          avoidSlots.slice(i, i + 2).map(s => genHairstyleEdit(s.elId, uploadId, s.name, userPhoto))
-        );
-      }
+ // Load avoid styles with the uploaded customer face - 2 at a time to avoid overload
+ for (let i = 0; i < avoidSlots.length; i += 2) {
+ await Promise.allSettled(
+ avoidSlots.slice(i, i + 2).map(s => genHairstyleEdit(s.elId, uploadId, s.name, userPhoto))
+ );
+ }
 
-      // Enable download after images load
-      document.getElementById('download-btn').disabled = false;
-    }
+ // Enable download after images load
+ document.getElementById('download-btn').disabled = false;
+ }
 
-    // ── BUILD CARD ──
-    function buildCard(r, userPhoto) {
-      const subject = r.subject || {};
-      const hair = r.hairstyle_analysis || r.hairstyle || {};
-      const faceShape = subject.face_shape?.type || hair.faceShape || 'oval';
-      const hairInfo = subject.hair || {};
+ // ── BUILD CARD ──
+ function buildCard(r, userPhoto) {
+ const subject = r.subject || {};
+ const hair = r.hairstyle_analysis || r.hairstyle || {};
+ const faceShape = subject.face_shape?.type || hair.faceShape || 'oval';
+ const hairInfo = subject.hair || {};
 
-      const hairRecs = (hair.recommended_styles || hair.recommendations || []).slice(0, 4);
-      while (hairRecs.length < 4) hairRecs.push({ name: '—', match_reason: '' });
-      const hairAvoid = (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 5);
-      const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
-      while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length] });
+ const hairRecs = (hair.recommended_styles || hair.recommendations || []).slice(0, 4);
+ while (hairRecs.length < 4) hairRecs.push({ name: '-', match_reason: '' });
+ const hairAvoid = (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 5);
+ const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
+ while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length] });
 
-      const chars = buildCharacteristics(hairInfo, hairRecs);
-      const hairTypeTxt = hairTypeDisplay(hairInfo);
-      const density = hairInfo.density || 'medium';
-      const dotCount = densityDots(density);
-      const recLength = hairInfo.current_length || 'medium';
-      const lengthPct = lengthToPercent(recLength);
-      const steps = defaultStylingSteps(hairInfo.type);
-      const products = buildProducts(hair.styling_products);
-      const tips = buildTips(faceShape, hairInfo.type);
-      const hairColors = buildHairColors(hair);
+ const chars = buildCharacteristics(hairInfo, hairRecs);
+ const hairTypeTxt = hairTypeDisplay(hairInfo);
+ const density = hairInfo.density || 'medium';
+ const dotCount = densityDots(density);
+ const recLength = hairInfo.current_length || 'medium';
+ const lengthPct = lengthToPercent(recLength);
+ const steps = defaultStylingSteps(hairInfo.type);
+ const products = buildProducts(hair.styling_products);
+ const tips = buildTips(faceShape, hairInfo.type);
+ const hairColors = buildHairColors(hair);
 
-      // ── Portrait ──
-      const portraitHTML = userPhoto
-        ? `<img src="${userPhoto}" alt="Portrait" id="portrait-img" />`
-        : `<div class="portrait-placeholder">👤</div>`;
+ // ── Portrait ──
+ const portraitHTML = userPhoto
+ ? `<img src="${userPhoto}" alt="Portrait" id="portrait-img" />`
+ : `<div class="portrait-placeholder"></div>`;
 
-      // ── Characteristics ──
-      const charsHTML = chars.map(c => `
-        <div class="char-item">
-          <div class="char-icon-box">${iconSvg(c.icon)}</div>
-          <div class="char-label">${c.label.replace('\n', '<br>')}</div>
-        </div>
-      `).join('');
+ // ── Characteristics ──
+ const charsHTML = chars.map(c => `
+ <div class="char-item">
+ <div class="char-icon-box">${iconSvg(c.icon)}</div>
+ <div class="char-label">${c.label.replace('\n', '<br>')}</div>
+ </div>
+ `).join('');
 
-      // ── Dots ──
-      const dotsHTML = [1,2,3,4,5].map(i =>
-        `<span class="thickness-dot${i <= dotCount ? ' filled' : ''}"></span>`
-      ).join('');
+ // ── Dots ──
+ const dotsHTML = [1,2,3,4,5].map(i =>
+ `<span class="thickness-dot${i <= dotCount ? ' filled' : ''}"></span>`
+ ).join('');
 
-      // ── Rec photos ──
-      const recPhotosHTML = hairRecs.map((h, i) => `
-        <div class="hair-photo-item">
-          <div class="hair-photo-slot" id="rec-slot-${i}">
-            <div class="hair-photo-shimmer"></div>
-            <span class="hair-check-mark">✓</span>
-          </div>
-          <div class="hair-photo-name">${h.name}</div>
-        </div>
-      `).join('');
+ // ── Rec photos ──
+ const recPhotosHTML = hairRecs.map((h, i) => `
+ <div class="hair-photo-item">
+ <div class="hair-photo-slot" id="rec-slot-${i}">
+ <div class="hair-photo-shimmer"></div>
+ <span class="hair-check-mark"></span>
+ </div>
+ <div class="hair-photo-name">${h.name}</div>
+ </div>
+ `).join('');
 
-      // ── Avoid photos ──
-      const avoidPhotosHTML = hairAvoid.map((a, i) => `
-        <div class="hair-photo-item">
-          <div class="hair-photo-slot" id="avoid-slot-${i}">
-            <div class="hair-photo-shimmer"></div>
-            <span class="hair-x-mark">✕</span>
-          </div>
-          <div class="hair-photo-name">${a.name || a.style || '—'}</div>
-        </div>
-      `).join('');
+ // ── Avoid photos ──
+ const avoidPhotosHTML = hairAvoid.map((a, i) => `
+ <div class="hair-photo-item">
+ <div class="hair-photo-slot" id="avoid-slot-${i}">
+ <div class="hair-photo-shimmer"></div>
+ <span class="hair-x-mark"></span>
+ </div>
+ <div class="hair-photo-name">${a.name || a.style || '-'}</div>
+ </div>
+ `).join('');
 
-      // ── Styling steps ──
-      const stepsHTML = steps.map((s, i, arr) => `
-        <div class="step-item">
-          <div class="step-icon">${iconSvg(s.icon)}</div>
-          <div class="step-name">${s.name.replace('\n', '<br>')}</div>
-          <div class="step-desc">${s.desc.replace('\n', '<br>')}</div>
-        </div>
-        ${i < arr.length - 1 ? '<span class="step-arrow">&rarr;</span>' : ''}
-      `).join('');
+ // ── Styling steps ──
+ const stepsHTML = steps.map((s, i, arr) => `
+ <div class="step-item">
+ <div class="step-icon">${iconSvg(s.icon)}</div>
+ <div class="step-name">${s.name.replace('\n', '<br>')}</div>
+ <div class="step-desc">${s.desc.replace('\n', '<br>')}</div>
+ </div>
+ ${i < arr.length - 1 ? '<span class="step-arrow">&rarr;</span>' : ''}
+ `).join('');
 
-      // ── Products (Redbox Upsell) ──
-      const productsHTML = products.map(p => `
-        <a class="product-item redbox-upsell" href="${p.waLink}" target="_blank" rel="noopener">
-          <img class="product-icon-img" src="${p.icon}" alt="${p.name}" />
-          <div class="product-info">
-            <div class="product-name">${p.displayName || p.name}</div>
-            <div class="product-desc">${p.desc}</div>
-            <div class="product-price">${p.price}</div>
-          </div>
-          <div class="product-buy-badge">BELI</div>
-        </a>
-      `).join('');
+ // ── Products (Redbox Upsell) ──
+ const productsHTML = products.map(p => `
+ <a class="product-item redbox-upsell" href="${p.waLink}" target="_blank" rel="noopener">
+ <img class="product-icon-img" src="${p.icon}" alt="${p.name}" />
+ <div class="product-info">
+ <div class="product-name">${p.displayName || p.name}</div>
+ <div class="product-desc">${p.desc}</div>
+ <div class="product-price">${p.price}</div>
+ </div>
+ <div class="product-buy-badge">BELI</div>
+ </a>
+ `).join('');
 
-      // ── Tips ──
-      const tipsHTML = tips.map(t => `
-        <li class="tip-item">
-          <span class="tip-icon">${iconSvg(t.icon)}</span>
-          <span class="tip-text">${t.text}</span>
-        </li>
-      `).join('');
+ // ── Tips ──
+ const tipsHTML = tips.map(t => `
+ <li class="tip-item">
+ <span class="tip-icon">${iconSvg(t.icon)}</span>
+ <span class="tip-text">${t.text}</span>
+ </li>
+ `).join('');
 
-      // ── Hair colors ──
-      const colorsHTML = hairColors.map(c => `
-        <div class="color-swatch-item">
-          <div class="color-swatch" style="background:${c.hex}"></div>
-          <div class="color-swatch-name">${c.name}</div>
-        </div>
-      `).join('');
+ // ── Hair colors ──
+ const colorsHTML = hairColors.map(c => `
+ <div class="color-swatch-item">
+ <div class="color-swatch" style="background:${c.hex}"></div>
+ <div class="color-swatch-name">${c.name}</div>
+ </div>
+ `).join('');
 
-      return `
-        <div class="card-wrap" id="hair-card">
+ return `
+ <div class="card-wrap" id="hair-card">
 
-          <!-- TOP: portrait + analysis -->
-          <div class="card-top">
-            <div class="portrait-col">
-              ${portraitHTML}
-              <div class="face-shape-overlay">
-                <div class="face-shape-label">Face Shape</div>
-                <div class="face-shape-value">${faceShape.toUpperCase()}</div>
-              </div>
-            </div>
-            <div class="analysis-col">
-              <div class="card-main-title">HAIRSTYLE ANALYSIS</div>
-              <div class="analysis-panel char-panel">
-                <div class="section-micro-label">Best Hair Characteristics</div>
-                <div class="char-icons-row">${charsHTML}</div>
-                <div class="hair-meta-block">
-                <div class="hair-meta-row">
-                  <div class="hair-meta-copy">
-                    <div class="meta-label">Hair Type</div>
-                    <div class="meta-value">${hairTypeTxt || 'STRAIGHT'}</div>
-                  </div>
-                </div>
-                <div class="hair-meta-row">
-                  <div class="hair-meta-copy">
-                    <div class="meta-label">Hair Thickness</div>
-                    <div class="meta-value">${fmt(density)}</div>
-                  </div>
-                  <div class="thickness-dots">${dotsHTML}</div>
-                </div>
-                </div>
-              </div>
-              <div class="analysis-panel length-panel">
-                  <div class="meta-label" style="margin-bottom:4px">Recommended Length</div>
-                  <div class="length-slider-wrap">
-                    <div class="length-bar-wrap">
-                      <div class="length-bar-fill" style="width:${lengthPct}%"></div>
-                      <div class="length-bar-knob" style="left:${lengthPct}%"></div>
-                    </div>
-                    <div class="length-labels">${lengthLabels(recLength)}</div>
-                  </div>
-              </div>
-            </div>
-          </div>
+ <!-- TOP: portrait + analysis -->
+ <div class="card-top">
+ <div class="portrait-col">
+ ${portraitHTML}
+ <div class="face-shape-overlay">
+ <div class="face-shape-label">Face Shape</div>
+ <div class="face-shape-value">${faceShape.toUpperCase()}</div>
+ </div>
+ </div>
+ <div class="analysis-col">
+ <div class="card-main-title">HAIRSTYLE ANALYSIS</div>
+ <div class="analysis-panel char-panel">
+ <div class="section-micro-label">Best Hair Characteristics</div>
+ <div class="char-icons-row">${charsHTML}</div>
+ <div class="hair-meta-block">
+ <div class="hair-meta-row">
+ <div class="hair-meta-copy">
+ <div class="meta-label">Hair Type</div>
+ <div class="meta-value">${hairTypeTxt || 'STRAIGHT'}</div>
+ </div>
+ </div>
+ <div class="hair-meta-row">
+ <div class="hair-meta-copy">
+ <div class="meta-label">Hair Thickness</div>
+ <div class="meta-value">${fmt(density)}</div>
+ </div>
+ <div class="thickness-dots">${dotsHTML}</div>
+ </div>
+ </div>
+ </div>
+ <div class="analysis-panel length-panel">
+ <div class="meta-label" style="margin-bottom:4px">Recommended Length</div>
+ <div class="length-slider-wrap">
+ <div class="length-bar-wrap">
+ <div class="length-bar-fill" style="width:${lengthPct}%"></div>
+ <div class="length-bar-knob" style="left:${lengthPct}%"></div>
+ </div>
+ <div class="length-labels">${lengthLabels(recLength)}</div>
+ </div>
+ </div>
+ </div>
+ </div>
 
-          <!-- RECOMMENDED HAIRSTYLES -->
-          <div class="rec-section">
-            <div class="rec-section-header">
-              <div class="rec-badge">✓</div>
-              <div class="rec-section-title">RECOMMENDED HAIRSTYLES</div>
-            </div>
-            <div class="hair-photos-row cols-4">${recPhotosHTML}</div>
-          </div>
+ <!-- RECOMMENDED HAIRSTYLES -->
+ <div class="rec-section">
+ <div class="rec-section-header">
+ <div class="rec-badge"></div>
+ <div class="rec-section-title">RECOMMENDED HAIRSTYLES</div>
+ </div>
+ <div class="hair-photos-row cols-4">${recPhotosHTML}</div>
+ </div>
 
-          <!-- HAIRSTYLES TO AVOID -->
-          <div class="avoid-section">
-            <div class="avoid-section-header">
-              <div class="avoid-badge">✕</div>
-              <div class="avoid-section-title">HAIRSTYLES TO AVOID</div>
-            </div>
-            <div class="hair-photos-row cols-5">${avoidPhotosHTML}</div>
-          </div>
+ <!-- HAIRSTYLES TO AVOID -->
+ <div class="avoid-section">
+ <div class="avoid-section-header">
+ <div class="avoid-badge"></div>
+ <div class="avoid-section-title">HAIRSTYLES TO AVOID</div>
+ </div>
+ <div class="hair-photos-row cols-5">${avoidPhotosHTML}</div>
+ </div>
 
-          <!-- STYLING GUIDE + PRODUCTS -->
-          <div class="bottom-grid">
-            <div class="guide-col">
-              <div class="col-title">STYLING GUIDE</div>
-              <div class="steps-flow">${stepsHTML}</div>
-            </div>
-            <div class="products-col">
-              <div class="col-title">RECOMMENDED PRODUCTS</div>
-              <div class="products-list">${productsHTML}</div>
-            </div>
-          </div>
+ <!-- STYLING GUIDE + PRODUCTS -->
+ <div class="bottom-grid">
+ <div class="guide-col">
+ <div class="col-title">STYLING GUIDE</div>
+ <div class="steps-flow">${stepsHTML}</div>
+ </div>
+ <div class="products-col">
+ <div class="col-title">RECOMMENDED PRODUCTS</div>
+ <div class="products-list">${productsHTML}</div>
+ </div>
+ </div>
 
-          <!-- KEY TIPS + HAIR COLOR -->
-          <div class="footer-grid">
-            <div class="tips-col">
-              <div class="col-title">KEY TIPS</div>
-              <ul class="tips-list">${tipsHTML}</ul>
-            </div>
-            <div class="color-rec-col">
-              <div class="col-title">HAIR COLOR RECOMMENDATION</div>
-              <div class="color-swatches-row">${colorsHTML}</div>
-            </div>
-          </div>
+ <!-- KEY TIPS + HAIR COLOR -->
+ <div class="footer-grid">
+ <div class="tips-col">
+ <div class="col-title">KEY TIPS</div>
+ <ul class="tips-list">${tipsHTML}</ul>
+ </div>
+ <div class="color-rec-col">
+ <div class="col-title">HAIR COLOR RECOMMENDATION</div>
+ <div class="color-swatches-row">${colorsHTML}</div>
+ </div>
+ </div>
 
-          <!-- BRAND BAR -->
-          <div class="card-brand-bar">
-            <div class="brand-bar-left">
-              <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
-              <span class="brand-bar-name">REDBOX <em>BARBERSHOP</em></span>
-            </div>
-            <div class="brand-bar-right">AI Grooming Analysis • redboxbarbershop.com</div>
-          </div>
+ <!-- BRAND BAR -->
+ <div class="card-brand-bar">
+ <div class="brand-bar-left">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
+ <span class="brand-bar-name">REDBOX <em>BARBERSHOP</em></span>
+ </div>
+ <div class="brand-bar-right">AI Grooming Analysis • redboxbarbershop.com</div>
+ </div>
 
-        </div>
-      `;
-    }
+ </div>
+ `;
+ }
 
-    // ── MAIN INIT ──
-    document.addEventListener('DOMContentLoaded', () => {
-      const root = document.getElementById('page-root');
-      const loading = document.getElementById('page-loading');
+ // ── MAIN INIT ──
+ document.addEventListener('DOMContentLoaded', () => {
+ const root = document.getElementById('page-root');
+ const loading = document.getElementById('page-loading');
 
-      let raw, userPhoto, uploadId;
-      try {
-        raw = sessionStorage.getItem('ai_results');
-        userPhoto = sessionStorage.getItem('ai_user_photo');
-        uploadId = sessionStorage.getItem('ai_upload_id');
-      } catch (e) {}
+ let raw, userPhoto, uploadId;
+ try {
+ raw = sessionStorage.getItem('ai_results');
+ userPhoto = sessionStorage.getItem('ai_user_photo');
+ uploadId = sessionStorage.getItem('ai_upload_id');
+ } catch (e) {}
 
-      if (!raw) {
-        loading.remove();
-        root.innerHTML = `<div class="page-error"><h2>Tidak ada hasil ditemukan</h2><p>Upload foto terlebih dahulu di halaman utama.</p><a class="page-nav-btn btn-red" href="/#ai" style="display:inline-flex;padding:11px 24px;border-radius:99px;font-size:.8rem;font-weight:600;cursor:pointer;border:none;text-decoration:none;background:#C1121F;color:#fff;">Upload Foto</a></div>`;
-        return;
-      }
+ if (!raw) {
+ loading.remove();
+ root.innerHTML = `<div class="page-error"><h2>Tidak ada hasil ditemukan</h2><p>Upload foto terlebih dahulu di halaman utama.</p><a class="page-nav-btn btn-red" href="/#ai" style="display:inline-flex;padding:11px 24px;border-radius:99px;font-size:.8rem;font-weight:600;cursor:pointer;border:none;text-decoration:none;background:#C1121F;color:#fff;">Upload Foto</a></div>`;
+ return;
+ }
 
-      const results = JSON.parse(raw);
-      const r = results.results || results;
-      if (!uploadId) uploadId = results.uploadId || '';
+ const results = JSON.parse(raw);
+ const r = results.results || results;
+ if (!uploadId) uploadId = results.uploadId || '';
 
-      loading.remove();
-      root.innerHTML = buildCard(r, userPhoto);
+ loading.remove();
+ root.innerHTML = buildCard(r, userPhoto);
 
-      // Load AI-generated hairstyle images with the uploaded customer face for both recommended and avoid.
-      const hair = r.hairstyle_analysis || r.hairstyle || {};
-      const hairRecs = (hair.recommended_styles || hair.recommendations || []).slice(0, 4);
-      while (hairRecs.length < 4) hairRecs.push({ name: '—' });
-      const hairAvoid = (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 5);
-      const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
-      while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length - 1] || 'Avoid Style' });
+ // Load AI-generated hairstyle images with the uploaded customer face for both recommended and avoid.
+ const hair = r.hairstyle_analysis || r.hairstyle || {};
+ const hairRecs = (hair.recommended_styles || hair.recommendations || []).slice(0, 4);
+ while (hairRecs.length < 4) hairRecs.push({ name: '-' });
+ const hairAvoid = (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 5);
+ const avoidFallbacks = ['Bowl Cut', 'Flat & Limp', 'Overly Curly', 'High Fade Extreme', 'Long & Straight'];
+ while (hairAvoid.length < 5) hairAvoid.push({ name: avoidFallbacks[hairAvoid.length - 1] || 'Avoid Style' });
 
-      loadHairImages(hairRecs, hairAvoid, uploadId, userPhoto);
-    });
+ loadHairImages(hairRecs, hairAvoid, uploadId, userPhoto);
+ });
 
-    // ── DOWNLOAD AS PNG ──
-    document.getElementById('download-btn').addEventListener('click', async () => {
-      const btn = document.getElementById('download-btn');
-      const status = document.getElementById('download-status');
-      const card = document.getElementById('hair-card');
-      if (!card) return;
+ // ── DOWNLOAD AS PNG ──
+ document.getElementById('download-btn').addEventListener('click', async () => {
+ const btn = document.getElementById('download-btn');
+ const status = document.getElementById('download-status');
+ const card = document.getElementById('hair-card');
+ if (!card) return;
 
-      btn.disabled = true;
-      btn.textContent = '⏳ Generating...';
-      status.textContent = 'Menyiapkan kartu analisis...';
+ btn.disabled = true;
+ btn.textContent = ' Generating...';
+ status.textContent = 'Menyiapkan kartu analisis...';
 
-      try {
-        const canvas = await html2canvas(card, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#080808',
-          logging: false,
-          width: card.offsetWidth,
-          height: card.offsetHeight,
-        });
+ try {
+ const canvas = await html2canvas(card, {
+ scale: 2,
+ useCORS: true,
+ allowTaint: true,
+ backgroundColor: '#080808',
+ logging: false,
+ width: card.offsetWidth,
+ height: card.offsetHeight,
+ });
 
-        const link = document.createElement('a');
-        link.download = 'redbox-hair-analysis.png';
-        link.href = canvas.toDataURL('image/png', 1.0);
-        link.click();
+ const link = document.createElement('a');
+ link.download = 'redbox-hair-analysis.png';
+ link.href = canvas.toDataURL('image/png', 1.0);
+ link.click();
 
-        status.textContent = '✓ Berhasil diunduh!';
-        setTimeout(() => { status.textContent = ''; }, 3000);
-      } catch (err) {
-        status.textContent = '⚠ Gagal mengunduh — coba lagi.';
-        console.error(err);
-      }
+ status.textContent = ' Berhasil diunduh!';
+ setTimeout(() => { status.textContent = ''; }, 3000);
+ } catch (err) {
+ status.textContent = ' Gagal mengunduh. Coba lagi.';
+ console.error(err);
+ }
 
-      btn.disabled = false;
-      btn.textContent = '⬇ Download Card';
-    });
-  </script>
+ btn.disabled = false;
+ btn.textContent = '⬇ Download Card';
+ });
+ </script>
 <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 20px;font-size:.68rem;letter-spacing:.05em;"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.3);font-weight:500;text-decoration:none;">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka" style="width:16px;height:16px;border-radius:3px;opacity:.4;"> <strong>KINARYALOKA</strong></a></div>
 </body>
 </html>

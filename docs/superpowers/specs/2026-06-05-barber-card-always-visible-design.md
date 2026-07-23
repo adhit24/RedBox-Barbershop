@@ -1,6 +1,6 @@
 # Design: Barber Card Selalu Visible — Off-Duty Hanya Blokir Slot
 
-**Date:** 2026-06-05  
+**Date:** 2026-06-05 
 **Status:** Approved
 
 ---
@@ -30,20 +30,20 @@ Ketika admin meng-OFF toggle kapster di halaman CRM Next.js (`/admin/barbers`), 
 **Before:**
 ```
 Admin toggle OFF
-  → POST /api/admin/barber-toggle/:id { is_active: false }
-  → barbers.is_active = false (permanen)
-  → GET /api/barbers filters out → card HILANG di booking
+ → POST /api/admin/barber-toggle/:id { is_active: false }
+ → barbers.is_active = false (permanen)
+ → GET /api/barbers filters out → card HILANG di booking
 ```
 
 **After:**
 ```
 Admin toggle OFF
-  → POST /api/admin/barber-override/:id { available: false }
-  → barber_date_overrides.is_off = true untuk hari ini saja
-  → barbers.is_active tetap true
-  → GET /api/barbers tetap return barber → card TETAP MUNCUL
-  → today-status: isWorking = false
-  → checkBarberOffDuty() → semua slot diblokir saat tanggal dipilih
+ → POST /api/admin/barber-override/:id { available: false }
+ → barber_date_overrides.is_off = true untuk hari ini saja
+ → barbers.is_active tetap true
+ → GET /api/barbers tetap return barber → card TETAP MUNCUL
+ → today-status: isWorking = false
+ → checkBarberOffDuty() → semua slot diblokir saat tanggal dipilih
 ```
 
 ---
@@ -67,13 +67,13 @@ Tambah fungsi baru:
 
 ```ts
 export function toggleBarberTodayOverride(
-  id: string,
-  available: boolean
+ id: string,
+ available: boolean
 ): Promise<{ success?: boolean }> {
-  return crmFetch<{ success?: boolean }>(`/api/admin/barber-override/${id}`, {
-    method: 'POST',
-    body: JSON.stringify({ available }),
-  });
+ return crmFetch<{ success?: boolean }>(`/api/admin/barber-override/${id}`, {
+ method: 'POST',
+ body: JSON.stringify({ available }),
+ });
 }
 ```
 
@@ -120,9 +120,9 @@ const [offTodaySet, setOffTodaySet] = useState<Set<string>>(new Set());
 
 | Route | File | Status |
 |-------|------|--------|
-| `POST /api/admin/barber-override/:id` | `frontend/src/app/api/admin/barber-override/[id]/route.ts` | ✅ Sudah ada |
-| `POST /api/barbers/:id/today-override` | `server/index.js` | ✅ Sudah ada |
-| `GET /api/barbers/today-status` | `server/moka/routes.js` | ✅ Sudah ada |
+| `POST /api/admin/barber-override/:id` | `frontend/src/app/api/admin/barber-override/[id]/route.ts` | Sudah ada |
+| `POST /api/barbers/:id/today-override` | `server/index.js` | Sudah ada |
+| `GET /api/barbers/today-status` | `server/moka/routes.js` | Sudah ada |
 
 ---
 

@@ -3,14 +3,14 @@
 
 ---
 
-## 🎯 Objective
+## Objective
 
 Menyediakan sistem pencatatan dan pengelolaan data pelanggan yang terstruktur, 
 sebagai fondasi untuk peningkatan layanan dan pengembangan strategi marketing ke depan.
 
 ---
 
-## 🧩 Scope CRM (Basic)
+## Scope CRM (Basic)
 
 CRM pada tahap ini berfokus pada:
 - Pengumpulan data pelanggan secara otomatis
@@ -21,7 +21,7 @@ CRM pada tahap ini berfokus pada:
 
 ---
 
-## 📊 Data yang Dikumpulkan
+## Data yang Dikumpulkan
 
 Setiap pelanggan yang melakukan booking akan tersimpan dengan data berikut:
 
@@ -34,7 +34,7 @@ Setiap pelanggan yang melakukan booking akan tersimpan dengan data berikut:
 
 ---
 
-## 🗂️ Customer Database
+## Customer Database
 
 Semua data pelanggan akan:
 - Tersimpan dalam sistem database terpusat
@@ -43,15 +43,15 @@ Semua data pelanggan akan:
 
 ---
 
-## 🧑‍💻 Admin Dashboard (Basic CRM View)
+## Admin Dashboard (Basic CRM View)
 
 Fitur yang tersedia:
 
 ### 1. List Customer
 - Menampilkan seluruh data pelanggan
 - Pencarian berdasarkan:
-  - Nama
-  - Nomor HP
+ - Nama
+ - Nomor HP
 
 ### 2. Customer Detail
 - Informasi lengkap pelanggan
@@ -59,12 +59,12 @@ Fitur yang tersedia:
 
 ### 3. Booking History Tracking
 - Melihat aktivitas pelanggan:
-  - Kapan terakhir datang
-  - Layanan yang sering digunakan
+ - Kapan terakhir datang
+ - Layanan yang sering digunakan
 
 ---
 
-## 🔄 Data Flow
+## Data Flow
 
 1. Customer melakukan booking melalui website
 2. Data otomatis masuk ke sistem
@@ -72,19 +72,19 @@ Fitur yang tersedia:
 
 ---
 
-## ⚙️ Benefit untuk Redbox
+## Benefit untuk Redbox
 
 - Tidak ada lagi data tercecer di WhatsApp
 - Semua pelanggan terdokumentasi dengan rapi
 - Memudahkan monitoring aktivitas customer
 - Menjadi fondasi untuk:
-  - Follow-up otomatis
-  - Loyalty program
-  - Marketing campaign
+ - Follow-up otomatis
+ - Loyalty program
+ - Marketing campaign
 
 ---
 
-## 🚀 Future Upgrade (Not Included in This Phase)
+## Future Upgrade (Not Included in This Phase)
 
 Fitur berikut dapat dikembangkan di tahap selanjutnya:
 
@@ -96,7 +96,7 @@ Fitur berikut dapat dikembangkan di tahap selanjutnya:
 
 ---
 
-## 📌 Notes
+## Notes
 
 CRM pada tahap ini bersifat **basic data management**, 
 difokuskan untuk membangun fondasi sistem yang rapi sebelum masuk ke automation & scaling.

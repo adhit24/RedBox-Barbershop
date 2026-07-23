@@ -23,8 +23,8 @@ Buat cron baru dengan detail:
 - **URL**: `https://redbox-barbershop-13wpj8yuq-adh24s-projects.vercel.app/api/cron/home-service-flag` (ganti dengan URL Production kamu yang aktif)
 - **Metode**: GET
 - **Headers**:
-  - Key: `Authorization`
-  - Value: `Bearer <YOUR_CRON_SECRET>` (contoh: `Bearer h0zlXyGbA9bTy44CDYCk6SOdEPuymPGqS0E2ewfsId0=`)
+ - Key: `Authorization`
+ - Value: `Bearer <YOUR_CRON_SECRET>` (contoh: `Bearer h0zlXyGbA9bTy44CDYCk6SOdEPuymPGqS0E2ewfsId0=`)
 - **Jadwal**: Setiap 5 menit
 - **Opsi Lanjutan**: Centang "Perlakukan pengalihan dengan kode status HTTP 3xx sebagai keberhasilan"
 
@@ -34,9 +34,9 @@ Buat cron baru dengan detail:
 
 ## Detail Teknis
 - Endpoint `/api/cron/home-service-flag` menjalankan 3 tugas sekaligus:
-  1. `sendHomeServiceReminders()`: Mengirim reminder ke kapster 1 jam sebelum home service
-  2. `flagNoShows()`: Menandai job sebagai flagged jika kapster tidak berangkat dalam 30 menit
-  3. `flagCustomerNoConfirm()`: Menandai job sebagai flagged jika customer tidak konfirmasi dalam 45 menit
+ 1. `sendHomeServiceReminders()`: Mengirim reminder ke kapster 1 jam sebelum home service
+ 2. `flagNoShows()`: Menandai job sebagai flagged jika kapster tidak berangkat dalam 30 menit
+ 3. `flagCustomerNoConfirm()`: Menandai job sebagai flagged jika customer tidak konfirmasi dalam 45 menit
 - Semua fungsi menggunakan Supabase Service Role Key dan Fonnte untuk mengirim WhatsApp
 
 ---

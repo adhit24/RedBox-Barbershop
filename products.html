@@ -1,660 +1,765 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Product — Redbox Barbershop</title>
-  <meta name="description" content="Produk premium Redbox Barbershop. Hair care, grooming tools, dan perlengkapan barbershop pilihan terbaik." />
-  <meta name="theme-color" content="#0A0A0A" />
-  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
-  <link rel="stylesheet" href="css/animations.css" />
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <style>
-    /* ── PAGE-SPECIFIC STYLES ─────────────────────────── */
-    .product-hero {
-      min-height: 44vh;
-      display: flex;
-      align-items: flex-end;
-      padding: 0 0 60px;
-      position: relative;
-      overflow: hidden;
-      background: var(--black);
-    }
-    .product-hero-bg {
-      position: absolute;
-      inset: 0;
-      background-image: url('Brand_assets/homepage_background.jpg');
-      background-size: cover;
-      background-position: center 30%;
-      filter: brightness(0.25) saturate(0.6);
-    }
-    .product-hero-content {
-      position: relative;
-      z-index: 1;
-      padding: 0 clamp(20px, 6vw, 80px);
-    }
-    .product-hero-eyebrow {
-      font-size: .72rem;
-      font-weight: 600;
-      letter-spacing: .22em;
-      text-transform: uppercase;
-      color: var(--red);
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .product-hero-eyebrow::before {
-      content: '';
-      display: block;
-      width: 32px;
-      height: 1px;
-      background: var(--red);
-    }
-    .product-hero-title {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: clamp(3.5rem, 10vw, 7rem);
-      line-height: .9;
-      letter-spacing: .03em;
-      color: var(--white);
-      margin-bottom: 16px;
-    }
-    .product-hero-sub {
-      font-size: .9rem;
-      font-weight: 300;
-      color: var(--w50);
-      max-width: 480px;
-    }
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Product | Redbox Barbershop</title>
+ <meta name="description" content="Produk premium Redbox Barbershop. Hair care, grooming tools, dan perlengkapan barbershop pilihan terbaik." />
+ <meta name="theme-color" content="#0A0A0A" />
+ <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+ <link rel="preconnect" href="https://fonts.googleapis.com" />
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+ <link rel="stylesheet" href="css/style.css" />
+ <link rel="stylesheet" href="css/animations.css" />
+ <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+ <script src="https://accounts.google.com/gsi/client" async defer></script>
+ <style>
+ /* ── PAGE-SPECIFIC STYLES ─────────────────────────── */
+ .product-hero {
+ min-height: 44vh;
+ display: flex;
+ align-items: flex-end;
+ padding: 0 0 60px;
+ position: relative;
+ overflow: hidden;
+ background: var(--black);
+ }
+ .product-hero-bg {
+ position: absolute;
+ inset: 0;
+ background-image: url('Brand_assets/homepage_background.jpg');
+ background-size: cover;
+ background-position: center 30%;
+ filter: brightness(0.25) saturate(0.6);
+ }
+ .product-hero-content {
+ position: relative;
+ z-index: 1;
+ padding: 0 clamp(20px, 6vw, 80px);
+ }
+ .product-hero-eyebrow {
+ font-size: .72rem;
+ font-weight: 600;
+ letter-spacing: .22em;
+ text-transform: uppercase;
+ color: var(--red);
+ margin-bottom: 14px;
+ display: flex;
+ align-items: center;
+ gap: 12px;
+ }
+ .product-hero-eyebrow::before {
+ display: none;
+ }
+ .product-hero-title {
+ font-family: 'Bebas Neue', sans-serif;
+ font-size: clamp(3.5rem, 10vw, 7rem);
+ line-height: .9;
+ letter-spacing: .03em;
+ color: var(--white);
+ margin-bottom: 16px;
+ }
+ .product-hero-sub {
+ font-size: .9rem;
+ font-weight: 300;
+ color: var(--w50);
+ max-width: 480px;
+ }
 
-    /* ── PRODUCT CATALOG ──────────────────────────────── */
-    .product-section {
-      padding: clamp(48px, 8vw, 96px) clamp(20px, 6vw, 80px);
-      background: var(--bg);
-    }
-    .product-catalog {
-      display: flex;
-      flex-direction: column;
-      gap: clamp(48px, 6vw, 80px);
-      max-width: 1100px;
-      margin: 0 auto;
-    }
+ /* ── PRODUCT CATALOG ──────────────────────────────── */
+ .product-section {
+ padding: clamp(48px, 8vw, 96px) clamp(20px, 6vw, 80px);
+ background: var(--bg);
+ }
+ .product-catalog {
+ display: grid;
+ grid-template-columns: repeat(3, 1fr);
+ gap: 24px;
+ max-width: 1200px;
+ margin: 0 auto;
+ }
 
-    /* ── PRODUCT CARD ─────────────────────────────────── */
-    .pcard {
-      display: grid;
-      grid-template-columns: 1fr 1.4fr;
-      gap: clamp(24px, 4vw, 56px);
-      background: #111;
-      border-radius: 20px;
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.06);
-      transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease;
-    }
-    .pcard:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 24px 64px rgba(0,0,0,.5);
-    }
-    .pcard-img {
-      aspect-ratio: 3/4;
-      overflow: hidden;
-      position: relative;
-    }
-    .pcard-img img {
-      width: 100%; height: 100%;
-      object-fit: cover;
-      display: block;
-      transition: transform .6s cubic-bezier(.16,1,.3,1);
-    }
-    .pcard:hover .pcard-img img {
-      transform: scale(1.05);
-    }
-    .pcard-body {
-      padding: clamp(24px, 4vw, 48px) clamp(20px, 3vw, 40px);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-    }
-    .pcard-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: rgba(193, 18, 31, .12);
-      border: 1px solid rgba(193, 18, 31, .3);
-      color: #ef4444;
-      font-size: .65rem;
-      font-weight: 700;
-      letter-spacing: .15em;
-      text-transform: uppercase;
-      padding: 5px 12px;
-      border-radius: 99px;
-      width: fit-content;
-      margin-bottom: 14px;
-    }
-    .pcard-name {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: clamp(1.8rem, 4vw, 2.8rem);
-      line-height: 1;
-      letter-spacing: .02em;
-      color: #fff;
-      margin-bottom: 8px;
-    }
-    .pcard-price {
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #ef4444;
-      margin-bottom: 18px;
-    }
-    .pcard-price span {
-      font-size: .8rem;
-      font-weight: 400;
-      color: rgba(255,255,255,.4);
-      margin-left: 6px;
-    }
-    .pcard-desc {
-      font-size: .82rem;
-      line-height: 1.7;
-      color: rgba(255,255,255,.6);
-      margin-bottom: 20px;
-    }
-    .pcard-details {
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .pcard-detail-block {
-      background: rgba(255,255,255,.03);
-      border: 1px solid rgba(255,255,255,.06);
-      border-radius: 12px;
-      padding: 14px 16px;
-    }
-    .pcard-detail-title {
-      font-size: .65rem;
-      font-weight: 700;
-      letter-spacing: .18em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,.35);
-      margin-bottom: 8px;
-    }
-    .pcard-detail-text {
-      font-size: .78rem;
-      line-height: 1.6;
-      color: rgba(255,255,255,.55);
-    }
-    .pcard-cta {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      margin-top: 24px;
-      padding: 12px 28px;
-      background: #C1121F;
-      color: #fff;
-      font-size: .78rem;
-      font-weight: 700;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      border-radius: 99px;
-      text-decoration: none;
-      width: fit-content;
-      transition: background .2s, transform .2s;
-    }
-    .pcard-cta:hover {
-      background: #a00f1a;
-      transform: translateY(-2px);
-    }
+ /* ── PRODUCT CARD ─────────────────────────────────── */
+ .pcard {
+ display: flex;
+ flex-direction: column;
+ background: #111;
+ border-radius: 16px;
+ overflow: hidden;
+ border: 1px solid rgba(255,255,255,.06);
+ transition: transform .4s cubic-bezier(.16,1,.3,1), box-shadow .4s ease;
+ }
+ .pcard:hover {
+ transform: translateY(-4px);
+ box-shadow: 0 24px 64px rgba(0,0,0,.5);
+ }
+ .pcard-img {
+ aspect-ratio: 4/3;
+ overflow: hidden;
+ position: relative;
+ }
+ .pcard-img img {
+ width: 100%; height: 100%;
+ object-fit: cover;
+ display: block;
+ transition: transform .6s cubic-bezier(.16,1,.3,1);
+ }
+ .pcard:hover .pcard-img img {
+ transform: scale(1.05);
+ }
+ .pcard-body {
+ padding: 20px;
+ display: flex;
+ flex-direction: column;
+ flex: 1;
+ }
+ .pcard-badge {
+ display: inline-flex;
+ align-items: center;
+ gap: 6px;
+ background: linear-gradient(135deg, #C1121F, #E63946);
+ border: none;
+ color: #fff;
+ font-size: .6rem;
+ font-weight: 700;
+ letter-spacing: .15em;
+ text-transform: uppercase;
+ padding: 4px 10px;
+ border-radius: 6px;
+ width: fit-content;
+ margin-bottom: 10px;
+ }
+ .pcard-name {
+ font-family: 'Bebas Neue', sans-serif;
+ font-size: 1.4rem;
+ line-height: 1.1;
+ letter-spacing: .02em;
+ color: #fff;
+ margin-bottom: 6px;
+ }
+ .pcard-price {
+ font-size: .95rem;
+ font-weight: 700;
+ color: #ef4444;
+ margin-bottom: 10px;
+ }
+ .pcard-price span {
+ font-size: .72rem;
+ font-weight: 400;
+ color: rgba(255,255,255,.4);
+ margin-left: 4px;
+ }
+ .pcard-desc {
+ font-size: .78rem;
+ line-height: 1.6;
+ color: rgba(255,255,255,.55);
+ margin-bottom: 16px;
+ display: -webkit-box;
+ -webkit-line-clamp: 3; line-clamp: 3;
+ -webkit-box-orient: vertical;
+ overflow: hidden;
+ }
+ .pcard-actions {
+ display: flex;
+ gap: 10px;
+ margin-top: auto;
+ flex-wrap: nowrap;
+ }
+ .pcard-cta {
+ display: inline-flex;
+ align-items: center;
+ gap: 6px;
+ padding: 11px 14px;
+ flex: 1; justify-content: center; background: #C1121F;
+ color: #fff;
+ font-size: .72rem;
+ font-weight: 700;
+ letter-spacing: .06em;
+ text-transform: uppercase;
+ border-radius: 10px;
+ text-decoration: none;
+ border: none;
+ cursor: pointer;
+ transition: background .2s, transform .2s;
+ }
+ .pcard-cta:hover {
+ background: #a00f1a;
+ transform: translateY(-2px);
+ }
+ .pcard-detail-btn {
+ display: inline-flex;
+ align-items: center;
+ gap: 6px;
+ padding: 11px 14px;
+ flex: 1; justify-content: center; background: transparent;
+ color: rgba(255,255,255,.7);
+ font-size: .72rem;
+ font-weight: 600;
+ letter-spacing: .04em;
+ border-radius: 10px;
+ border: 1px solid rgba(255,255,255,.15);
+ cursor: pointer;
+ transition: all .2s;
+ }
+ .pcard-detail-btn:hover {
+ border-color: var(--red);
+ color: #fff;
+ }
 
-    /* ── PARFUM NOTES DISPLAY ─────────────────────────── */
-    .parfum-notes {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .parfum-note-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-    }
-    .parfum-note-label {
-      font-size: .65rem;
-      font-weight: 700;
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: #ef4444;
-      min-width: 52px;
-      padding-top: 2px;
-    }
-    .parfum-note-value {
-      font-size: .78rem;
-      color: rgba(255,255,255,.55);
-      line-height: 1.5;
-    }
+ /* ── DETAIL MODAL ─────────────────────────────────── */
+ .pcard-modal-overlay {
+ position: fixed;
+ inset: 0;
+ background: rgba(0,0,0,.8);
+ backdrop-filter: blur(6px);
+ z-index: 9999;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ padding: 24px;
+ opacity: 0;
+ pointer-events: none;
+ transition: opacity .3s ease;
+ }
+ .pcard-modal-overlay.active {
+ opacity: 1;
+ pointer-events: all;
+ }
+ .pcard-modal {
+ background: #1a1a1c;
+ border: 1px solid rgba(255,255,255,.08);
+ border-radius: 20px;
+ max-width: 600px;
+ width: 100%;
+ max-height: 80vh;
+ overflow-y: auto;
+ padding: 32px;
+ position: relative;
+ }
+ .pcard-modal-close {
+ position: absolute;
+ top: 16px;
+ right: 16px;
+ width: 36px;
+ height: 36px;
+ border-radius: 50%;
+ background: rgba(255,255,255,.06);
+ border: 1px solid rgba(255,255,255,.1);
+ color: #fff;
+ font-size: 1.2rem;
+ cursor: pointer;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ transition: background .2s;
+ }
+ .pcard-modal-close:hover {
+ background: rgba(255,255,255,.12);
+ }
+ .pcard-modal-name {
+ font-family: 'Bebas Neue', sans-serif;
+ font-size: 2rem;
+ color: #fff;
+ margin-bottom: 6px;
+ }
+ .pcard-modal-price {
+ font-size: 1rem;
+ font-weight: 700;
+ color: #ef4444;
+ margin-bottom: 16px;
+ }
+ .pcard-modal-desc {
+ font-size: .85rem;
+ line-height: 1.7;
+ color: rgba(255,255,255,.6);
+ margin-bottom: 24px;
+ }
+ .pcard-details {
+ display: flex;
+ flex-direction: column;
+ gap: 14px;
+ }
+ .pcard-detail-block {
+ background: rgba(255,255,255,.03);
+ border: 1px solid rgba(255,255,255,.06);
+ border-radius: 12px;
+ padding: 14px 16px;
+ }
+ .pcard-detail-title {
+ font-size: .65rem;
+ font-weight: 700;
+ letter-spacing: .18em;
+ text-transform: uppercase;
+ color: rgba(255,255,255,.35);
+ margin-bottom: 8px;
+ }
+ .pcard-detail-text {
+ font-size: .78rem;
+ line-height: 1.6;
+ color: rgba(255,255,255,.55);
+ }
 
-    /* ── RESPONSIVE ───────────────────────────────────── */
-    @media (max-width: 768px) {
-      .pcard {
-        grid-template-columns: 1fr;
-      }
-      .pcard-img {
-        aspect-ratio: 4/3;
-        max-height: 320px;
-      }
-    }
+ /* ── PARFUM NOTES DISPLAY ─────────────────────────── */
+ .parfum-notes {
+ display: flex;
+ flex-direction: column;
+ gap: 10px;
+ }
+ .parfum-note-row {
+ display: flex;
+ align-items: flex-start;
+ gap: 10px;
+ }
+ .parfum-note-label {
+ font-size: .65rem;
+ font-weight: 700;
+ letter-spacing: .12em;
+ text-transform: uppercase;
+ color: #ef4444;
+ min-width: 52px;
+ padding-top: 2px;
+ }
+ .parfum-note-value {
+ font-size: .78rem;
+ color: rgba(255,255,255,.55);
+ line-height: 1.5;
+ }
+
+ /* ── RESPONSIVE ───────────────────────────────────── */
+ @media (max-width: 900px) {
+ .product-catalog {
+ grid-template-columns: repeat(2, 1fr);
+ gap: 16px;
+ }
+ }
+ @media (max-width: 560px) {
+ .product-catalog {
+ grid-template-columns: repeat(2, 1fr);
+ gap: 16px;
+ }
+ }
+ @media (max-width: 560px) {
+    .pcard-body { padding: 14px; }
+    .pcard-actions { gap: 8px; }
+    .pcard-cta, .pcard-detail-btn { padding: 10px 6px; font-size: .66rem; letter-spacing: .02em; }
+    .pcard-name { font-size: 1.15rem; }
+    .pcard-desc { -webkit-line-clamp: 2; line-clamp: 2; }
+  }
   </style>
 </head>
 <body>
 
-  <!-- Scroll Progress -->
-  <div class="rb-progress" aria-hidden="true"></div>
+ <!-- Scroll Progress -->
+ <div class="rb-progress" aria-hidden="true"></div>
 
-  <!-- ========== NAVBAR ========== -->
-  <nav class="navbar" id="navbar">
-    <div class="container nav-container">
-      <a href="index.html" class="nav-logo">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Barbershop" />
-        <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
-      </a>
-      <div class="nav-pill-wrapper" id="navPillWrapper">
-        <span class="nav-pill-track" id="navPillTrack"></span>
-        <ul class="nav-links" id="navLinks">
-          <li><a href="index.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            Home
-          </a></li>
-          <li><a href="index.html#services" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
-            Services
-          </a></li>
-          <li><a href="index.html#professionals" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Pros
-          </a></li>
-          <li><a href="products.html" class="nav-link active">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            Product
-          </a></li>
-          <li><a href="index.html#location" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            Location
-          </a></li>
-          <li><a href="membership.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            Membership
-          </a></li>
-          <li><a href="sundaze.html" class="nav-link nav-sundaze">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            SUNDAZE
-          </a></li>
-        </ul>
-      </div>
-      <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Member</span>
-      </button>
-      <a href="booking.html" class="btn-book-nav">Book Now</a>
-      <button class="hamburger" id="hamburger" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </nav>
+ <!-- ========== NAVBAR ========== -->
+ <nav class="navbar" id="navbar">
+ <div class="container nav-container">
+ <a href="index.html" class="nav-logo">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Barbershop" />
+ <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
+ </a>
+ <div class="nav-pill-wrapper" id="navPillWrapper">
+ <span class="nav-pill-track" id="navPillTrack"></span>
+ <ul class="nav-links" id="navLinks">
+ <li><a href="index.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z"/><path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z"/></svg>
+ Home
+ </a></li>
+ <li><a href="index.html#services" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.128 9.155a3.751 3.751 0 1 1 .713-1.321l1.136.656a.75.75 0 0 1 .222 1.104l-.006.007a.75.75 0 0 1-1.032.157l-.113-.072-.92-.531ZM3.3 5.625a2.25 2.25 0 1 1 3.994 2.063.756.756 0 0 0-.122.23 2.25 2.25 0 0 1-3.872-2.293Zm12.572 3.53a3.751 3.751 0 1 0-.713-1.321l-1.136.656a.75.75 0 0 0-.222 1.104l.006.007a.75.75 0 0 0 1.032.157l.113-.072.92-.531Zm4.827-3.53a2.25 2.25 0 0 0-3.994 2.063.756.756 0 0 1 .122.23 2.25 2.25 0 0 0 3.872-2.293ZM14.678 11.492a.75.75 0 0 1 .738.144l5.063 4.5a.75.75 0 0 1-.988 1.128l-5.063-4.5a.75.75 0 0 1 .25-1.272ZM6.388 14.718l5.063 4.5a.75.75 0 0 0 .988-1.128l-5.063-4.5a.75.75 0 0 0-.988 1.128Z" clip-rule="evenodd"/></svg>
+ Services
+ </a></li>
+ <li><a href="index.html#professionals" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM15.75 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM2.25 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM6.31 15.117A6.745 6.745 0 0 1 12 12a6.745 6.745 0 0 1 6.709 7.498.75.75 0 0 1-.372.568A12.696 12.696 0 0 1 12 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 0 1-.372-.568 6.787 6.787 0 0 1 1.019-4.38Z" clip-rule="evenodd"/><path d="M5.082 14.254a8.287 8.287 0 0 0-1.308 5.135 9.687 9.687 0 0 1-1.764-.44l-.115-.04a.563.563 0 0 1-.373-.487l-.01-.121a3.75 3.75 0 0 1 3.57-4.047ZM20.226 19.389a8.287 8.287 0 0 0-1.308-5.135 3.75 3.75 0 0 1 3.57 4.047l-.01.121a.563.563 0 0 1-.373.486l-.115.04c-.567.2-1.156.349-1.764.441Z"/></svg>
+ Pros
+ </a></li>
+ <li><a href="products.html" class="nav-link active">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12.378 1.602a.75.75 0 0 0-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03ZM21.75 7.93l-9 5.25v9l8.628-5.032a.75.75 0 0 0 .372-.648V7.93ZM11.25 22.18v-9l-9-5.25v8.57a.75.75 0 0 0 .372.648l8.628 5.033Z"/></svg>
+ Product
+ </a></li>
+ <li><a href="index.html#location" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ Location
+ </a></li>
+ <li><a href="membership.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z"/></svg>
+ Membership
+ </a></li>
+ <li><a href="sundaze.html" class="nav-link nav-sundaze">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25a.75.75 0 0 1 .75.75v2.25a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM7.5 12a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM18.894 6.166a.75.75 0 0 0-1.06-1.06l-1.591 1.59a.75.75 0 1 0 1.06 1.061l1.591-1.59ZM21.75 12a.75.75 0 0 1-.75.75h-2.25a.75.75 0 0 1 0-1.5H21a.75.75 0 0 1 .75.75ZM17.834 18.894a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 1 0-1.061 1.06l1.59 1.591ZM12 18a.75.75 0 0 1 .75.75V21a.75.75 0 0 1-1.5 0v-2.25A.75.75 0 0 1 12 18ZM7.758 17.303a.75.75 0 0 0-1.061-1.06l-1.591 1.59a.75.75 0 0 0 1.06 1.061l1.591-1.59ZM6 12a.75.75 0 0 1-.75.75H3a.75.75 0 0 1 0-1.5h2.25A.75.75 0 0 1 6 12ZM6.697 7.757a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 0 0-1.061 1.06l1.59 1.591Z"/></svg>
+ SUNDAZE
+ </a></li>
+ </ul>
+ </div>
+ <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ <span>Member</span>
+ </button>
+ <a href="booking.html" class="btn-book-nav">Book Now</a>
+ <button class="hamburger" id="hamburger" aria-label="Menu">
+ <span></span><span></span><span></span>
+ </button>
+ </div>
+ </nav>
 
-  <!-- ========== HERO ========== -->
-  <section class="product-hero">
-    <div class="product-hero-bg"></div>
-    <div class="product-hero-content container">
-      <p class="product-hero-eyebrow">Redbox Barbershop</p>
-      <h1 class="product-hero-title">Product</h1>
-      <p class="product-hero-sub">Produk grooming premium pilihan Redbox — formulasi eksklusif untuk tampilan terbaik Anda setiap hari.</p>
-    </div>
-  </section>
+ <!-- ========== HERO ========== -->
+ <section class="product-hero">
+ <div class="product-hero-bg"></div>
+ <div class="product-hero-content container">
+ <p class="product-hero-eyebrow">Redbox Barbershop</p>
+ <h1 class="product-hero-title">Product</h1>
+ <p class="product-hero-sub">Produk grooming premium pilihan Redbox. Formulasi eksklusif untuk tampilan terbaik Anda setiap hari.</p>
+ </div>
+ </section>
 
-  <!-- ========== PRODUCT CATALOG ========== -->
-  <section class="product-section" id="products">
-    <div class="product-catalog">
+ <!-- ========== PRODUCT CATALOG ========== -->
+ <section class="product-section" id="products">
+ <div class="product-catalog">
 
-      <!-- ─── 1. REDBOX CLAY ─────────────────────────────── -->
-      <article class="pcard reveal">
-        <div class="pcard-img">
-          <img src="Brand_assets/product/IMG_6523.JPG.jpeg" alt="Redbox Clay" loading="lazy" />
-        </div>
-        <div class="pcard-body">
-          <div class="pcard-badge">Hair Styling</div>
-          <h2 class="pcard-name">Redbox Clay</h2>
-          <div class="pcard-price">Rp 100.000</div>
-          <p class="pcard-desc">
-            Membantu rambut menjadi lebih padat dan bervolume. Mengurangi rambut rontok dan membantu mempercepat pertumbuhan rambut. Mengandung Biotin, Charcoal Extract, dan Sunflower Seed Oil untuk menutrisi rambut.
-          </p>
-          <div class="pcard-details">
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Cara Pemakaian</div>
-              <div class="pcard-detail-text">Rambut harus dalam kondisi kering sebelum digunakan. Ambil secukupnya, ratakan di telapak tangan, kemudian aplikasikan ke rambut secara merata.</div>
-            </div>
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Cara Penyimpanan</div>
-              <div class="pcard-detail-text">Simpan di tempat sejuk dan hindari sinar matahari langsung.</div>
-            </div>
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Komposisi</div>
-              <div class="pcard-detail-text">Aqua, Hydrogenated Castor Oil, Propylene Glycol, PEG-7 Glyceryl Cocoate, Corn Starch Modified, Biotin, Charcoal Extract, Sunflower Seed Oil, dan bahan tambahan lainnya.</div>
-            </div>
-          </div>
-          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Clay" target="_blank" class="pcard-cta">
-            Beli Sekarang
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </a>
-        </div>
-      </article>
+ <!-- ─── 1. REDBOX CLAY ─────────────────────────────── -->
+ <article class="pcard reveal">
+ <div class="pcard-img">
+ <img src="Brand_assets/product/IMG_6523.JPG.jpeg" alt="Redbox Clay" loading="lazy" />
+ </div>
+ <div class="pcard-body">
+ <div class="pcard-badge">Hair Styling</div>
+ <h2 class="pcard-name">Redbox Clay</h2>
+ <div class="pcard-price">Rp 100.000</div>
+ <p class="pcard-desc">Membantu rambut menjadi lebih padat dan bervolume. Mengurangi rambut rontok dan membantu mempercepat pertumbuhan rambut.</p>
+ <div class="pcard-actions">
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Clay" target="_blank" class="pcard-cta">Beli</a>
+ <button class="pcard-detail-btn" data-detail="clay">Detail</button>
+ </div>
+ </div>
+ </article>
 
-      <!-- ─── 2. REDBOX POMADE - WATERBASED ──────────────── -->
-      <article class="pcard reveal">
-        <div class="pcard-img">
-          <img src="Brand_assets/product/IMG_6524.JPG.jpeg" alt="Redbox Pomade Waterbased" loading="lazy" />
-        </div>
-        <div class="pcard-body">
-          <div class="pcard-badge">Hair Styling</div>
-          <h2 class="pcard-name">Redbox Pomade — Waterbased</h2>
-          <div class="pcard-price">Rp 100.000 <span>(30gr)</span> &nbsp;/&nbsp; Rp 150.000 <span>(80gr)</span></div>
-          <p class="pcard-desc">
-            Membantu rambut menjadi lebih padat dan bervolume. Mengurangi rambut rontok dan membantu mempercepat pertumbuhan rambut. Mengandung Biotin, Charcoal Extract, dan Sunflower Seed Oil untuk menutrisi rambut.
-          </p>
-          <div class="pcard-details">
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Cara Pemakaian</div>
-              <div class="pcard-detail-text">Rambut harus dalam kondisi kering sebelum digunakan. Ambil secukupnya, ratakan di telapak tangan, kemudian aplikasikan ke rambut secara merata.</div>
-            </div>
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Cara Penyimpanan</div>
-              <div class="pcard-detail-text">Simpan di tempat sejuk dan hindari sinar matahari langsung.</div>
-            </div>
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Komposisi</div>
-              <div class="pcard-detail-text">Aqua, Hydrogenated Castor Oil, Propylene Glycol, PEG-7 Glyceryl Cocoate, Corn Starch Modified, Biotin, Charcoal Extract, Sunflower Seed Oil, dan bahan tambahan lainnya.</div>
-            </div>
-          </div>
-          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Waterbased" target="_blank" class="pcard-cta">
-            Beli Sekarang
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </a>
-        </div>
-      </article>
+ <!-- ─── 2. REDBOX POMADE - WATERBASED ──────────────── -->
+ <article class="pcard reveal">
+ <div class="pcard-img">
+ <img src="Brand_assets/product/IMG_6524.JPG.jpeg" alt="Redbox Pomade Waterbased" loading="lazy" />
+ </div>
+ <div class="pcard-body">
+ <div class="pcard-badge">Hair Styling</div>
+ <h2 class="pcard-name">Redbox Pomade Waterbased</h2>
+ <div class="pcard-price">Rp 100.000 <span>(30gr)</span> / Rp 150.000 <span>(80gr)</span></div>
+ <p class="pcard-desc">Membantu rambut menjadi lebih padat dan bervolume. Mengandung Biotin, Charcoal Extract, dan Sunflower Seed Oil untuk menutrisi rambut.</p>
+ <div class="pcard-actions">
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Waterbased" target="_blank" class="pcard-cta">Beli</a>
+ <button class="pcard-detail-btn" data-detail="waterbased">Detail</button>
+ </div>
+ </div>
+ </article>
 
-      <!-- ─── 3. REDBOX POMADE - OIL BASED ───────────────── -->
-      <article class="pcard reveal">
-        <div class="pcard-img">
-          <img src="Brand_assets/product/IMG_6528.JPG.jpeg" alt="Redbox Pomade Oil Based" loading="lazy" />
-        </div>
-        <div class="pcard-body">
-          <div class="pcard-badge">Hair Styling</div>
-          <h2 class="pcard-name">Redbox Pomade — Oil Based</h2>
-          <div class="pcard-price">Rp 100.000 <span>(30gr)</span> &nbsp;/&nbsp; Rp 150.000 <span>(80gr)</span></div>
-          <p class="pcard-desc">
-            Membantu menata rambut yang susah diatur, memiliki efek shine dan cocok digunakan di luar ruangan. Mengandung Castor Oil, Vitamin E, Sunflower Seed Oil dan Jojoba Oil yang membantu menutrisi dan melindungi rambut.
-          </p>
-          <div class="pcard-details">
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Cara Pemakaian</div>
-              <div class="pcard-detail-text">Pastikan rambut dalam kondisi kering agar produk bekerja dengan maksimal. Ambil secukupnya menggunakan jari, ratakan di telapak tangan, aplikasikan di rambut hingga merata dan sisir sesuai keinginan.</div>
-            </div>
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Cara Penyimpanan</div>
-              <div class="pcard-detail-text">Simpan di tempat sejuk dan terhindar dari sinar matahari secara langsung.</div>
-            </div>
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Komposisi</div>
-              <div class="pcard-detail-text">Petrolatum, Microcrystalline Wax, Beeswax, Lanolin, Castor (Ricinus Communis) Oil, Hydrogenated Coconut Oil, Helianthus Annuus Seed Oil, Parfum, Simmondsia Chinensis (Jojoba) Seed Oil, Tocopheryl Acetate, BHT, Propylparaben.</div>
-            </div>
-          </div>
-          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Oil%20Based" target="_blank" class="pcard-cta">
-            Beli Sekarang
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </a>
-        </div>
-      </article>
+ <!-- ─── 3. REDBOX POMADE - OIL BASED ───────────────── -->
+ <article class="pcard reveal">
+ <div class="pcard-img">
+ <img src="Brand_assets/product/IMG_6528.JPG.jpeg" alt="Redbox Pomade Oil Based" loading="lazy" />
+ </div>
+ <div class="pcard-body">
+ <div class="pcard-badge">Hair Styling</div>
+ <h2 class="pcard-name">Redbox Pomade Oil Based</h2>
+ <div class="pcard-price">Rp 100.000 <span>(30gr)</span> / Rp 150.000 <span>(80gr)</span></div>
+ <p class="pcard-desc">Membantu menata rambut yang susah diatur, memiliki efek shine dan cocok digunakan di luar ruangan.</p>
+ <div class="pcard-actions">
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Redbox%20Pomade%20Oil%20Based" target="_blank" class="pcard-cta">Beli</a>
+ <button class="pcard-detail-btn" data-detail="oilbased">Detail</button>
+ </div>
+ </div>
+ </article>
 
-      <!-- ─── 4. REDBOX EXTRAIT DE PARFUM - ELEFTHEREE ───── -->
-      <article class="pcard reveal">
-        <div class="pcard-img">
-          <img src="Brand_assets/product/IMG_6532.JPG.jpeg" alt="Redbox Parfum Eleftheree" loading="lazy" />
-        </div>
-        <div class="pcard-body">
-          <div class="pcard-badge">Fragrance</div>
-          <h2 class="pcard-name">Extrait de Parfum — Eleftheree</h2>
-          <div class="pcard-price">Rp 150.000</div>
-          <p class="pcard-desc">
-            Aroma maskulin yang bold dan sophisticated. Perpaduan buah apricot yang segar dengan sentuhan floral, diperkaya base musk dan leather yang tahan lama.
-          </p>
-          <div class="pcard-details">
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Fragrance Notes</div>
-              <div class="parfum-notes">
-                <div class="parfum-note-row">
-                  <span class="parfum-note-label">Top</span>
-                  <span class="parfum-note-value">Apricot, Orange Blossom, Lychee, Rose, White Flower</span>
-                </div>
-                <div class="parfum-note-row">
-                  <span class="parfum-note-label">Middle</span>
-                  <span class="parfum-note-value">Red Fruits, Cloves, Sandalwood, Peach Tree Blossom, Gardenia</span>
-                </div>
-                <div class="parfum-note-row">
-                  <span class="parfum-note-label">Base</span>
-                  <span class="parfum-note-value">Musk, Incense, Dry Amber, Leathery Accord, Animalic, Wood</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Eleftheree" target="_blank" class="pcard-cta">
-            Beli Sekarang
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </a>
-        </div>
-      </article>
+ <!-- ─── 4. REDBOX EXTRAIT DE PARFUM - ELEFTHEREE ───── -->
+ <article class="pcard reveal">
+ <div class="pcard-img">
+ <img src="Brand_assets/product/IMG_6532.JPG.jpeg" alt="Redbox Parfum Eleftheree" loading="lazy" />
+ </div>
+ <div class="pcard-body">
+ <div class="pcard-badge">Fragrance</div>
+ <h2 class="pcard-name">Extrait de Parfum Eleftheree</h2>
+ <div class="pcard-price">Rp 150.000</div>
+ <p class="pcard-desc">Aroma maskulin yang bold dan sophisticated. Perpaduan buah apricot yang segar dengan sentuhan floral.</p>
+ <div class="pcard-actions">
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Eleftheree" target="_blank" class="pcard-cta">Beli</a>
+ <button class="pcard-detail-btn" data-detail="eleftheree">Detail</button>
+ </div>
+ </div>
+ </article>
 
-      <!-- ─── 5. REDBOX EXTRAIT DE PARFUM - PSYHI ────────── -->
-      <article class="pcard reveal">
-        <div class="pcard-img">
-          <img src="Brand_assets/product/IMG_6534.JPG.jpeg" alt="Redbox Parfum Psyhi" loading="lazy" />
-        </div>
-        <div class="pcard-body">
-          <div class="pcard-badge">Fragrance</div>
-          <h2 class="pcard-name">Extrait de Parfum — Psyhi</h2>
-          <div class="pcard-price">Rp 150.000</div>
-          <p class="pcard-desc">
-            Karakter hangat dan manis yang elegan. Dibuka dengan citrus bergamot yang segar, berlapis cinnamon dan freesia, ditutup brown sugar dan vanilla yang sensual.
-          </p>
-          <div class="pcard-details">
-            <div class="pcard-detail-block">
-              <div class="pcard-detail-title">Fragrance Notes</div>
-              <div class="parfum-notes">
-                <div class="parfum-note-row">
-                  <span class="parfum-note-label">Top</span>
-                  <span class="parfum-note-value">Apricot, Orange Blossom, Bergamote, Lemon, White Flower</span>
-                </div>
-                <div class="parfum-note-row">
-                  <span class="parfum-note-label">Middle</span>
-                  <span class="parfum-note-value">Cinnamon, Freesia, Sandalwood, Peach Tree Blossom, Gardenia</span>
-                </div>
-                <div class="parfum-note-row">
-                  <span class="parfum-note-label">Base</span>
-                  <span class="parfum-note-value">Brown Sugar, Dry Amber, Vanilla, Leathery Accord, Animalic</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Psyhi" target="_blank" class="pcard-cta">
-            Beli Sekarang
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </a>
-        </div>
-      </article>
+ <!-- ─── 5. REDBOX EXTRAIT DE PARFUM - PSYHI ────────── -->
+ <article class="pcard reveal">
+ <div class="pcard-img">
+ <img src="Brand_assets/product/IMG_6534.JPG.jpeg" alt="Redbox Parfum Psyhi" loading="lazy" />
+ </div>
+ <div class="pcard-body">
+ <div class="pcard-badge">Fragrance</div>
+ <h2 class="pcard-name">Extrait de Parfum Psyhi</h2>
+ <div class="pcard-price">Rp 150.000</div>
+ <p class="pcard-desc">Karakter hangat dan manis yang elegan. Dibuka dengan citrus bergamot yang segar, berlapis cinnamon dan freesia.</p>
+ <div class="pcard-actions">
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20beli%20Parfum%20Psyhi" target="_blank" class="pcard-cta">Beli</a>
+ <button class="pcard-detail-btn" data-detail="psyhi">Detail</button>
+ </div>
+ </div>
+ </article>
 
-    </div>
-  </section>
+ </div>
+ </section>
 
-  <!-- ========== FOOTER ========== -->
-  <footer class="footer">
-    <div class="container footer-simple">
-      <div class="footer-simple-top">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" class="footer-logo-img" />
-        <span class="footer-tagline">Precision Cut. Elevated Confidence.</span>
-      </div>
-      <div class="footer-social">
-        <a href="https://www.instagram.com/redboxbarbershop/" target="_blank" rel="noopener" aria-label="Instagram">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-        </a>
-        <a href="https://www.tiktok.com/@redboxbarbershop" target="_blank" rel="noopener" aria-label="TikTok">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.22 6.22 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.52V6.75a4.85 4.85 0 01-1.02-.06z"/></svg>
-        </a>
-        <a href="https://www.facebook.com/" target="_blank" aria-label="Facebook">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-        </a>
-      </div>
-      <p class="footer-copy">&copy; 2026 Redbox Barbershop. All rights reserved. &mdash; Since 2014</p>
-      <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
-    </div>
-  </footer>
+ <!-- ========== PRODUCT DETAIL MODAL ========== -->
+ <div class="pcard-modal-overlay" id="pcardModal">
+ <div class="pcard-modal">
+ <button class="pcard-modal-close" id="pcardModalClose">&times;</button>
+ <h3 class="pcard-modal-name" id="modalName"></h3>
+ <div class="pcard-modal-price" id="modalPrice"></div>
+ <p class="pcard-modal-desc" id="modalDesc"></p>
+ <div class="pcard-details" id="modalDetails"></div>
+ </div>
+ </div>
 
-  <!-- WhatsApp Float -->
-  <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tanya%20tentang%20produk" target="_blank" class="wa-float" aria-label="WhatsApp">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-  </a>
+ <script>
+ const productData = {
+ clay: {
+ name: 'Redbox Clay',
+ price: 'Rp 100.000',
+ desc: 'Membantu rambut menjadi lebih padat dan bervolume. Mengurangi rambut rontok dan membantu mempercepat pertumbuhan rambut. Mengandung Biotin, Charcoal Extract, dan Sunflower Seed Oil untuk menutrisi rambut.',
+ details: [
+ { title: 'Cara Pemakaian', text: 'Rambut harus dalam kondisi kering sebelum digunakan. Ambil secukupnya, ratakan di telapak tangan, kemudian aplikasikan ke rambut secara merata.' },
+ { title: 'Cara Penyimpanan', text: 'Simpan di tempat sejuk dan hindari sinar matahari langsung.' },
+ { title: 'Komposisi', text: 'Aqua, Hydrogenated Castor Oil, Propylene Glycol, PEG-7 Glyceryl Cocoate, Corn Starch Modified, Biotin, Charcoal Extract, Sunflower Seed Oil, dan bahan tambahan lainnya.' }
+ ]
+ },
+ waterbased: {
+ name: 'Redbox Pomade Waterbased',
+ price: 'Rp 100.000 (30gr) / Rp 150.000 (80gr)',
+ desc: 'Membantu rambut menjadi lebih padat dan bervolume. Mengurangi rambut rontok dan membantu mempercepat pertumbuhan rambut. Mengandung Biotin, Charcoal Extract, dan Sunflower Seed Oil untuk menutrisi rambut.',
+ details: [
+ { title: 'Cara Pemakaian', text: 'Rambut harus dalam kondisi kering sebelum digunakan. Ambil secukupnya, ratakan di telapak tangan, kemudian aplikasikan ke rambut secara merata.' },
+ { title: 'Cara Penyimpanan', text: 'Simpan di tempat sejuk dan hindari sinar matahari langsung.' },
+ { title: 'Komposisi', text: 'Aqua, Hydrogenated Castor Oil, Propylene Glycol, PEG-7 Glyceryl Cocoate, Corn Starch Modified, Biotin, Charcoal Extract, Sunflower Seed Oil, dan bahan tambahan lainnya.' }
+ ]
+ },
+ oilbased: {
+ name: 'Redbox Pomade Oil Based',
+ price: 'Rp 100.000 (30gr) / Rp 150.000 (80gr)',
+ desc: 'Membantu menata rambut yang susah diatur, memiliki efek shine dan cocok digunakan di luar ruangan. Mengandung Castor Oil, Vitamin E, Sunflower Seed Oil dan Jojoba Oil yang membantu menutrisi dan melindungi rambut.',
+ details: [
+ { title: 'Cara Pemakaian', text: 'Pastikan rambut dalam kondisi kering agar produk bekerja dengan maksimal. Ambil secukupnya menggunakan jari, ratakan di telapak tangan, aplikasikan di rambut hingga merata dan sisir sesuai keinginan.' },
+ { title: 'Cara Penyimpanan', text: 'Simpan di tempat sejuk dan terhindar dari sinar matahari secara langsung.' },
+ { title: 'Komposisi', text: 'Petrolatum, Microcrystalline Wax, Beeswax, Lanolin, Castor (Ricinus Communis) Oil, Hydrogenated Coconut Oil, Helianthus Annuus Seed Oil, Parfum, Simmondsia Chinensis (Jojoba) Seed Oil, Tocopheryl Acetate, BHT, Propylparaben.' }
+ ]
+ },
+ eleftheree: {
+ name: 'Extrait de Parfum Eleftheree',
+ price: 'Rp 150.000',
+ desc: 'Aroma maskulin yang bold dan sophisticated. Perpaduan buah apricot yang segar dengan sentuhan floral, diperkaya base musk dan leather yang tahan lama.',
+ details: [
+ { title: 'Fragrance Notes', text: '<strong style="color:#ef4444">Top:</strong> Apricot, Orange Blossom, Lychee, Rose, White Flower<br><strong style="color:#ef4444">Middle:</strong> Red Fruits, Cloves, Sandalwood, Peach Tree Blossom, Gardenia<br><strong style="color:#ef4444">Base:</strong> Musk, Incense, Dry Amber, Leathery Accord, Animalic, Wood' }
+ ]
+ },
+ psyhi: {
+ name: 'Extrait de Parfum Psyhi',
+ price: 'Rp 150.000',
+ desc: 'Karakter hangat dan manis yang elegan. Dibuka dengan citrus bergamot yang segar, berlapis cinnamon dan freesia, ditutup brown sugar dan vanilla yang sensual.',
+ details: [
+ { title: 'Fragrance Notes', text: '<strong style="color:#ef4444">Top:</strong> Apricot, Orange Blossom, Bergamote, Lemon, White Flower<br><strong style="color:#ef4444">Middle:</strong> Cinnamon, Freesia, Sandalwood, Peach Tree Blossom, Gardenia<br><strong style="color:#ef4444">Base:</strong> Brown Sugar, Dry Amber, Vanilla, Leathery Accord, Animalic' }
+ ]
+ }
+ };
 
-  <!-- Mobile Sticky CTA -->
-  <div class="mobile-sticky-cta" id="mobileCta">
-    <a href="booking.html" class="mobile-cta-book">Book Now</a>
-  </div>
+ const modal = document.getElementById('pcardModal');
+ const modalClose = document.getElementById('pcardModalClose');
 
-  <script>
-    // Navbar scroll effect
-    const navbar = document.getElementById('navbar');
-    window.addEventListener('scroll', () => {
-      navbar.classList.toggle('scrolled', window.scrollY > 50);
-    }, { passive: true });
+ document.querySelectorAll('.pcard-detail-btn').forEach(btn => {
+ btn.addEventListener('click', () => {
+ const key = btn.dataset.detail;
+ const data = productData[key];
+ if (!data) return;
+ document.getElementById('modalName').textContent = data.name;
+ document.getElementById('modalPrice').textContent = data.price;
+ document.getElementById('modalDesc').textContent = data.desc;
+ document.getElementById('modalDetails').innerHTML = data.details.map(d =>
+ `<div class="pcard-detail-block"><div class="pcard-detail-title">${d.title}</div><div class="pcard-detail-text">${d.text}</div></div>`
+ ).join('');
+ modal.classList.add('active');
+ document.body.style.overflow = 'hidden';
+ });
+ });
 
-    // Hamburger
-    const hamburger = document.getElementById('hamburger');
-    const navLinksEl = document.getElementById('navLinks');
-    if (hamburger && navLinksEl) {
-      hamburger.addEventListener('click', () => {
-        hamburger.classList.toggle('active');
-        navLinksEl.classList.toggle('open');
-        document.body.style.overflow = navLinksEl.classList.contains('open') ? 'hidden' : '';
-      });
-    }
+ modalClose.addEventListener('click', () => {
+ modal.classList.remove('active');
+ document.body.style.overflow = '';
+ });
+ modal.addEventListener('click', (e) => {
+ if (e.target === modal) {
+ modal.classList.remove('active');
+ document.body.style.overflow = '';
+ }
+ });
+ </script>
 
-    // Pill indicator
-    function updateNavPill() {
-      const activeLink = document.querySelector('#navPillWrapper .nav-link.active');
-      const track = document.getElementById('navPillTrack');
-      const wrapper = document.getElementById('navPillWrapper');
-      if (!activeLink || !track || !wrapper) return;
-      const wRect = wrapper.getBoundingClientRect();
-      const lRect = activeLink.getBoundingClientRect();
-      track.style.left   = (lRect.left - wRect.left) + 'px';
-      track.style.top    = (lRect.top  - wRect.top)  + 'px';
-      track.style.width  = lRect.width  + 'px';
-      track.style.height = lRect.height + 'px';
-    }
-    updateNavPill();
-    window.addEventListener('load', updateNavPill);
-    window.addEventListener('resize', updateNavPill);
+ <!-- ========== FOOTER ========== -->
+ <footer class="footer">
+ <div class="container footer-simple">
+ <div class="footer-simple-top">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" class="footer-logo-img" />
+ <span class="footer-tagline">Precision Cut. Elevated Confidence.</span>
+ </div>
+ <div class="footer-social">
+ <a href="https://www.instagram.com/redboxbarbershop/" target="_blank" rel="noopener" aria-label="Instagram">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+ </a>
+ <a href="https://www.tiktok.com/@redboxbarbershop" target="_blank" rel="noopener" aria-label="TikTok">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.22 6.22 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.52V6.75a4.85 4.85 0 01-1.02-.06z"/></svg>
+ </a>
+ <a href="https://www.facebook.com/" target="_blank" aria-label="Facebook">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+ </a>
+ </div>
+ <p class="footer-copy">&copy; 2026 Redbox Barbershop. All rights reserved. &mdash; Since 2014</p>
+ <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
+ </div>
+ </footer>
 
-    // Scroll reveal
-    const revealObs = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); }
-      });
-    }, { threshold: 0.08 });
-    document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+ <!-- WhatsApp Float -->
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tanya%20tentang%20produk" target="_blank" class="wa-float" aria-label="WhatsApp">
+ <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+ </a>
 
-    // Strip black background from logo at runtime
-    (function applyTransparentLogo() {
-      document.querySelectorAll('.nav-logo img').forEach(img => {
-        function process(src) {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          const tmp = new Image();
-          tmp.crossOrigin = 'anonymous';
-          tmp.onload = function() {
-            canvas.width = tmp.naturalWidth;
-            canvas.height = tmp.naturalHeight;
-            ctx.drawImage(tmp, 0, 0);
-            try {
-              const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              for (let i = 0; i < d.data.length; i += 4) {
-                if (d.data[i] < 40 && d.data[i+1] < 40 && d.data[i+2] < 40) d.data[i+3] = 0;
-              }
-              ctx.putImageData(d, 0, 0);
-              img.src = canvas.toDataURL('image/png');
-            } catch(e) {}
-          };
-          tmp.src = src;
-        }
-        img.complete ? process(img.src) : img.addEventListener('load', () => process(img.src), { once: true });
-      });
-    })();
-  </script>
-  <!-- Auth Modal -->
-  <div class="modal-overlay" id="loginModal">
-    <div class="modal-login" id="loginFormContainer">
-      <div class="modal-header">
-        <div class="modal-header-left">
-          <div class="modal-header-icon" id="authIcon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-          <div><h3 id="authTitle">MASUK</h3></div>
-        </div>
-        <button class="modal-close" id="modalClose" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-      <div class="modal-body">
-        <div class="auth-mode-toggle">
-          <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
-          <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
-        </div>
-        <button class="btn-google" type="button" id="googleLoginBtn"><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> <span id="googleBtnText">Login dengan Google</span></button>
-        <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
-        <form id="loginForm">
-          <div class="form-group name-field" id="nameField"><label for="userName">NAMA LENGKAP</label><input type="text" id="userName" placeholder="Nama lengkap Anda"></div>
-          <div class="form-group"><label for="loginEmail">EMAIL / NO. HP</label><input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required></div>
-          <div class="form-group"><label for="loginPassword">PASSWORD</label><input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8"></div>
-          <button type="submit" class="btn-login-submit" id="submitBtn"><span id="submitBtnText">Masuk Sekarang</span> <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-        </form>
-        <div class="benefits-list" id="benefitsList" style="display:none">
-          <p class="benefits-title">Keuntungan Member:</p>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Simpan riwayat kunjungan & poin</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Tracking tier & benefits real-time</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Akses diskon eksklusif member</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Prioritas booking & customer support</span></div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-success" id="signupSuccess" style="display:none">
-      <div class="success-header">
-        <div class="success-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l.324.995c.235.721.953 1.672 1.597 2.113.644.442 1.849.92 2.674.928.825.008 1.084.185 1.083.983-.001.798-.272 2.456-.604 3.685-.331 1.229-1.068 3.097-1.638 4.152-.571 1.055-1.639 2.346-2.373 2.87-.734.524-1.872.932-2.536.932s-1.802-.408-2.536-.932c-.734-.524-1.802-1.815-2.373-2.87-.57-1.055-1.307-2.923-1.638-4.152-.332-1.229-.603-2.887-.604-3.685-.001-.798.258-.975 1.083-.983.825-.008 2.03-.486 2.674-.928.644-.441 1.362-1.392 1.597-2.113L12 2z"/><path d="M4 14l2.5 2.5"/><path d="M20 14l-2.5 2.5"/></svg></div>
-        <h2 class="success-title">SELAMAT BERGABUNG!</h2>
-        <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
-      </div>
-      <div class="success-body">
-        <div class="success-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Member Redbox Barbershop</div>
-        <p class="success-message" id="successUserName">Selamat!</p>
-        <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
-        <div class="success-email-box"><div class="success-email-label">Email Terdaftar</div><div class="success-email" id="successUserEmail">member@redbox.com</div></div>
-        <button class="btn-success-cta" id="successCtaBtn">Mulai Petualangan <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-      </div>
-    </div>
-  </div>
+ <!-- Mobile Sticky CTA -->
+ <div class="mobile-sticky-cta" id="mobileCta">
+ <a href="booking.html" class="mobile-cta-book">Book Now</a>
+ </div>
 
-  <!-- Confetti Container -->
-  <div class="confetti-container" id="confettiContainer" style="display:none">
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div>
-  </div>
+ <script>
+ // Navbar scroll effect
+ const navbar = document.getElementById('navbar');
+ window.addEventListener('scroll', () => {
+ navbar.classList.toggle('scrolled', window.scrollY > 50);
+ }, { passive: true });
 
-  <script type="module" src="js/animations.js"></script>
+ // Hamburger
+ const hamburger = document.getElementById('hamburger');
+ const navLinksEl = document.getElementById('navLinks');
+ if (hamburger && navLinksEl) {
+ hamburger.addEventListener('click', () => {
+ hamburger.classList.toggle('active');
+ navLinksEl.classList.toggle('open');
+ document.body.style.overflow = navLinksEl.classList.contains('open') ? 'hidden' : '';
+ });
+ }
+
+ // Pill indicator
+ function updateNavPill() {
+ const activeLink = document.querySelector('#navPillWrapper .nav-link.active');
+ const track = document.getElementById('navPillTrack');
+ const wrapper = document.getElementById('navPillWrapper');
+ if (!activeLink || !track || !wrapper) return;
+ const wRect = wrapper.getBoundingClientRect();
+ const lRect = activeLink.getBoundingClientRect();
+ track.style.left = (lRect.left - wRect.left) + 'px';
+ track.style.top = (lRect.top - wRect.top) + 'px';
+ track.style.width = lRect.width + 'px';
+ track.style.height = lRect.height + 'px';
+ }
+ updateNavPill();
+ window.addEventListener('load', updateNavPill);
+ window.addEventListener('resize', updateNavPill);
+
+ // Scroll reveal
+ const revealObs = new IntersectionObserver((entries) => {
+ entries.forEach(e => {
+ if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); }
+ });
+ }, { threshold: 0.08 });
+ document.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+
+ // Strip black background from logo at runtime
+ (function applyTransparentLogo() {
+ document.querySelectorAll('.nav-logo img').forEach(img => {
+ function process(src) {
+ const canvas = document.createElement('canvas');
+ const ctx = canvas.getContext('2d');
+ const tmp = new Image();
+ tmp.crossOrigin = 'anonymous';
+ tmp.onload = function() {
+ canvas.width = tmp.naturalWidth;
+ canvas.height = tmp.naturalHeight;
+ ctx.drawImage(tmp, 0, 0);
+ try {
+ const d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+ for (let i = 0; i < d.data.length; i += 4) {
+ if (d.data[i] < 40 && d.data[i+1] < 40 && d.data[i+2] < 40) d.data[i+3] = 0;
+ }
+ ctx.putImageData(d, 0, 0);
+ img.src = canvas.toDataURL('image/png');
+ } catch(e) {}
+ };
+ tmp.src = src;
+ }
+ img.complete ? process(img.src) : img.addEventListener('load', () => process(img.src), { once: true });
+ });
+ })();
+ </script>
+ <!-- Auth Modal -->
+ <div class="modal-overlay" id="loginModal">
+ <div class="modal-login" id="loginFormContainer">
+ <div class="modal-header">
+ <div class="modal-header-left">
+ <div class="modal-header-icon" id="authIcon"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg></div>
+ <div><h3 id="authTitle">MASUK</h3></div>
+ </div>
+ <button class="modal-close" id="modalClose" aria-label="Close"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg></button>
+ </div>
+ <div class="modal-body">
+ <div class="auth-mode-toggle">
+ <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
+ <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
+ </div>
+ <button class="btn-google" type="button" id="googleLoginBtn"><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg> <span id="googleBtnText">Login dengan Google</span></button>
+ <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
+ <form id="loginForm">
+ <div class="form-group name-field" id="nameField"><label for="userName">NAMA LENGKAP</label><input type="text" id="userName" placeholder="Nama lengkap Anda"></div>
+ <div class="form-group"><label for="loginEmail">EMAIL / NO. HP</label><input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required></div>
+ <div class="form-group"><label for="loginPassword">PASSWORD</label><input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8"></div>
+ <button type="submit" class="btn-login-submit" id="submitBtn"><span id="submitBtnText">Masuk Sekarang</span> <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg></button>
+ </form>
+ <div class="benefits-list" id="benefitsList" style="display:none">
+ <p class="benefits-title">Keuntungan Member:</p>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Simpan riwayat kunjungan & poin</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Tracking tier & benefits real-time</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Akses diskon eksklusif member</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Prioritas booking & customer support</span></div>
+ </div>
+ </div>
+ </div>
+ <div class="modal-success" id="signupSuccess" style="display:none">
+ <div class="success-header">
+ <div class="success-icon-wrap"><svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.166 2.621v.858c0 1.31.781 2.553 2.066 3.428s3.015 1.343 4.768 1.343 3.483-.468 4.768-1.343c1.285-.875 2.066-2.119 2.066-3.428v-.858a.75.75 0 0 0-1.5 0v.858c0 .796-.573 1.655-1.635 2.377C14.637 7.087 13.37 7.5 12 7.5s-2.637-.413-3.699-1.134C7.24 5.634 6.666 4.775 6.666 3.979v-.858a.75.75 0 0 0-1.5 0ZM12 12.75a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-1.5 0v-7.5a.75.75 0 0 1 .75-.75ZM7.5 15a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 7.5 15Zm9 0a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg></div>
+ <h2 class="success-title">SELAMAT BERGABUNG!</h2>
+ <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
+ </div>
+ <div class="success-body">
+ <div class="success-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg> Member Redbox Barbershop</div>
+ <p class="success-message" id="successUserName">Selamat!</p>
+ <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
+ <div class="success-email-box"><div class="success-email-label">Email Terdaftar</div><div class="success-email" id="successUserEmail">member@redbox.com</div></div>
+ <button class="btn-success-cta" id="successCtaBtn">Mulai Petualangan <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg></button>
+ </div>
+ </div>
+ </div>
+
+ <!-- Confetti Container -->
+ <div class="confetti-container" id="confettiContainer" style="display:none">
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div>
+ </div>
+
+ <script type="module" src="js/animations.js"></script>
 </body>
 </html>

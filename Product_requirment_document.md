@@ -19,10 +19,10 @@ Membangun website yang:
 - Pria 17–35 tahun
 - Datang dari Instagram
 - Mencari:
-  - referensi
-  - harga
-  - lokasi
-  - kemudahan booking
+ - referensi
+ - harga
+ - lokasi
+ - kemudahan booking
 
 ---
 
@@ -117,10 +117,10 @@ Sistem CRM terintegrasi untuk:
 
 ### Slot System
 
-| Jam        | Status      |
+| Jam | Status |
 |------------|------------|
-| 10:00–11:00 | Available  |
-| 11:00–12:00 | Booked     |
+| 10:00–11:00 | Available |
+| 11:00–12:00 | Booked |
 
 ---
 
@@ -172,11 +172,11 @@ Data yang terhubung:
 
 ### Use Case Flow
 
-1. Customer booking via website  
-2. Data masuk ke CRM  
-3. Saat customer datang → data muncul di POS  
-4. Setelah transaksi → data tersimpan sebagai history  
-5. CRM update customer profile  
+1. Customer booking via website 
+2. Data masuk ke CRM 
+3. Saat customer datang → data muncul di POS 
+4. Setelah transaksi → data tersimpan sebagai history 
+5. CRM update customer profile 
 
 ---
 
@@ -197,8 +197,8 @@ Data yang terhubung:
 
 - Integrasi via API (jika POS support)
 - Alternatif:
-  - Export/import data
-  - Middleware (bridge system)
+ - Export/import data
+ - Middleware (bridge system)
 
 ---
 

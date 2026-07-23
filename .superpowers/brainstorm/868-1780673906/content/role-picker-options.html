@@ -1,0 +1,211 @@
+<style>
+ body { background: #070508; }
+
+ .question {
+ text-align: center;
+ margin-bottom: 32px;
+ }
+ .question h2 { color: #fff; font-size: 1.4rem; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+ .question p { color: #888; font-size: 0.9rem; }
+
+ /* ── OPTION A: Vertical stacked cards ── */
+ .design-a .role-screen {
+ background: #070508;
+ border: 1px solid #1e1e1e;
+ border-radius: 12px;
+ padding: 28px 24px;
+ max-width: 340px;
+ margin: 0 auto;
+ }
+ .design-a .logo { text-align:center; margin-bottom: 20px; }
+ .design-a .logo-box {
+ display:inline-block; background:#C72820; border-radius:6px;
+ width:36px; height:36px; line-height:36px; color:#fff; font-weight:700; font-size:1rem;
+ }
+ .design-a .heading { text-align:center; color:#fff; font-size:1rem; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:4px; }
+ .design-a .sub { text-align:center; color:#555; font-size:0.75rem; margin-bottom:20px; }
+ .design-a .role-card {
+ border: 1px solid #222; border-radius:8px; padding:12px 16px;
+ display:flex; align-items:center; gap:14px; margin-bottom:10px;
+ cursor:pointer; transition: border-color 0.15s;
+ background:#0e0e10;
+ }
+ .design-a .role-card:hover { border-color:#C72820; }
+ .design-a .role-icon { font-size:1.3rem; width:28px; text-align:center; }
+ .design-a .role-label { color:#ddd; font-size:0.9rem; font-weight:500; }
+ .design-a .role-desc { color:#555; font-size:0.72rem; margin-top:2px; }
+ .design-a .role-arrow { margin-left:auto; color:#444; font-size:0.9rem; }
+
+ /* ── OPTION B: Icon grid (3 column) ── */
+ .design-b .role-screen {
+ background: #070508;
+ border: 1px solid #1e1e1e;
+ border-radius: 12px;
+ padding: 28px 24px;
+ max-width: 380px;
+ margin: 0 auto;
+ }
+ .design-b .logo { text-align:center; margin-bottom: 20px; }
+ .design-b .logo-box {
+ display:inline-block; background:#C72820; border-radius:6px;
+ width:36px; height:36px; line-height:36px; color:#fff; font-weight:700; font-size:1rem;
+ }
+ .design-b .heading { text-align:center; color:#fff; font-size:1rem; letter-spacing:0.12em; text-transform:uppercase; margin-bottom:4px; }
+ .design-b .sub { text-align:center; color:#555; font-size:0.75rem; margin-bottom:24px; }
+ .design-b .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+ .design-b .grid-card {
+ border:1px solid #222; border-radius:10px; padding:20px 10px;
+ display:flex; flex-direction:column; align-items:center; gap:10px;
+ cursor:pointer; background:#0e0e10;
+ }
+ .design-b .grid-card:hover { border-color:#C72820; }
+ .design-b .g-icon { font-size:1.8rem; }
+ .design-b .g-label { color:#ddd; font-size:0.82rem; font-weight:600; text-align:center; }
+
+ /* ── OPTION C: Full-width dark minimal ── */
+ .design-c .role-screen {
+ background: #070508;
+ border: 1px solid #1e1e1e;
+ border-radius: 12px;
+ padding: 32px 28px;
+ max-width: 360px;
+ margin: 0 auto;
+ }
+ .design-c .logo { text-align:center; margin-bottom: 28px; }
+ .design-c .logo-text { color:#fff; font-size:1.1rem; letter-spacing:0.25em; text-transform:uppercase; }
+ .design-c .logo-text span { color:#C72820; }
+ .design-c .heading { text-align:center; color:#777; font-size:0.75rem; letter-spacing:0.18em; text-transform:uppercase; margin-bottom:24px; }
+ .design-c .btn-role {
+ width:100%; padding:16px; margin-bottom:10px;
+ background:transparent; border:1px solid #2a2a2a; border-radius:8px;
+ color:#ccc; font-size:0.88rem; letter-spacing:0.08em; text-transform:uppercase;
+ cursor:pointer; text-align:left; display:flex; align-items:center; gap:12px;
+ }
+ .design-c .btn-role:hover { border-color:#C72820; color:#fff; }
+ .design-c .btn-role .num {
+ width:26px; height:26px; border-radius:50%; border:1px solid #333;
+ display:flex; align-items:center; justify-content:center;
+ font-size:0.75rem; color:#555; flex-shrink:0;
+ }
+ .design-c .btn-role:last-child { margin-bottom:0; }
+
+ /* Layout */
+ .designs { display:flex; gap:24px; justify-content:center; flex-wrap:wrap; margin-top:8px; }
+ .design-wrapper {
+ flex:1; min-width:280px; max-width:420px;
+ }
+ .design-label {
+ text-align:center; margin-bottom:12px;
+ }
+ .design-label .letter {
+ display:inline-block; width:28px; height:28px; border-radius:50%;
+ background:#1a1a1a; border:1px solid #333;
+ line-height:28px; font-size:0.8rem; color:#aaa; margin-bottom:6px;
+ }
+ .design-label h3 { color:#ccc; font-size:0.85rem; margin:0; }
+</style>
+
+<div class="question">
+ <h2>Pilih tampilan role picker</h2>
+ <p>Ketiga desain cocok untuk dark theme RedBox. Pilih yang paling sesuai vibe-nya.</p>
+</div>
+
+<div class="designs">
+
+ <!-- OPTION A -->
+ <div class="design-wrapper option" data-choice="a" onclick="toggleSelect(this)">
+ <div class="design-label">
+ <div class="letter">A</div>
+ <h3>Card list vertikal</h3>
+ </div>
+ <div class="design-a">
+ <div class="role-screen">
+ <div class="logo"><div class="logo-box">R</div></div>
+ <div class="heading">RedBox Barbershop</div>
+ <div class="sub">Siapakah anda?</div>
+ <div class="role-card">
+ <div class="role-icon"></div>
+ <div>
+ <div class="role-label">Owner</div>
+ <div class="role-desc">Akses penuh semua cabang</div>
+ </div>
+ <div class="role-arrow">›</div>
+ </div>
+ <div class="role-card">
+ <div class="role-icon"></div>
+ <div>
+ <div class="role-label">Kasir / Admin</div>
+ <div class="role-desc">Manajemen cabang</div>
+ </div>
+ <div class="role-arrow">›</div>
+ </div>
+ <div class="role-card">
+ <div class="role-icon"></div>
+ <div>
+ <div class="role-label">Kapster</div>
+ <div class="role-desc">Login dengan nomor HP</div>
+ </div>
+ <div class="role-arrow">›</div>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- OPTION B -->
+ <div class="design-wrapper option" data-choice="b" onclick="toggleSelect(this)">
+ <div class="design-label">
+ <div class="letter">B</div>
+ <h3>Grid 3 kolom</h3>
+ </div>
+ <div class="design-b">
+ <div class="role-screen">
+ <div class="logo"><div class="logo-box">R</div></div>
+ <div class="heading">RedBox Barbershop</div>
+ <div class="sub">Pilih akses Anda</div>
+ <div class="grid">
+ <div class="grid-card">
+ <div class="g-icon"></div>
+ <div class="g-label">Owner</div>
+ </div>
+ <div class="grid-card">
+ <div class="g-icon"></div>
+ <div class="g-label">Kasir / Admin</div>
+ </div>
+ <div class="grid-card">
+ <div class="g-icon"></div>
+ <div class="g-label">Kapster</div>
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- OPTION C -->
+ <div class="design-wrapper option" data-choice="c" onclick="toggleSelect(this)">
+ <div class="design-label">
+ <div class="letter">C</div>
+ <h3>Minimal typographic</h3>
+ </div>
+ <div class="design-c">
+ <div class="role-screen">
+ <div class="logo">
+ <div class="logo-text">RED<span>BOX</span></div>
+ </div>
+ <div class="heading">Siapakah anda?</div>
+ <button class="btn-role">
+ <div class="num">1</div>
+ Owner
+ </button>
+ <button class="btn-role">
+ <div class="num">2</div>
+ Kasir / Admin
+ </button>
+ <button class="btn-role">
+ <div class="num">3</div>
+ Kapster
+ </button>
+ </div>
+ </div>
+ </div>
+
+</div>

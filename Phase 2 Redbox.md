@@ -5,7 +5,7 @@
 
 ---
 
-## 🤖 1. WA Bot AI — `api/wa/webhook.js`
+## 1. WA Bot AI — `api/wa/webhook.js`
 
 **Engine:** OpenAI GPT-4o-mini + Fonnte WhatsApp API
 
@@ -22,7 +22,7 @@
 
 ---
 
-## 🧠 2. AI Face & Hair Analysis — `api/ai/analyze.js`
+## 2. AI Face & Hair Analysis — `api/ai/analyze.js`
 
 **Engine:** OpenAI GPT-4o Vision
 
@@ -35,7 +35,7 @@
 
 ---
 
-## 💇 3. AI Hairstyle Simulation — `api/ai/hairstyle.js`
+## 3. AI Hairstyle Simulation — `api/ai/hairstyle.js`
 
 **Engine:** OpenAI GPT-Image-2 (images.edit)
 
@@ -48,7 +48,7 @@
 
 ---
 
-## 🎨 4. AI Image Generator — `api/ai/generate-image.js`
+## 4. AI Image Generator — `api/ai/generate-image.js`
 
 **Engine:** OpenAI GPT-Image-2 (text-to-image)
 
@@ -60,7 +60,7 @@
 
 ---
 
-## 📁 5. Upload Handler — `api/ai/upload.js`
+## 5. Upload Handler — `api/ai/upload.js`
 
 | Komponen | Detail |
 |---|---|
@@ -69,7 +69,7 @@
 
 ---
 
-## 📅 6. WA Reminder H-1 — `api/cron/reminders.js`
+## 6. WA Reminder H-1 — `api/cron/reminders.js`
 
 **Jadwal:** `0 3 * * *` UTC = jam 10:00 WIB setiap hari
 
@@ -82,7 +82,7 @@
 
 ---
 
-## 🎂 7. WA Ucapan Ulang Tahun — `api/cron/birthday.js`
+## 7. WA Ucapan Ulang Tahun — `api/cron/birthday.js`
 
 **Jadwal:** `0 1 * * *` UTC = jam 08:00 WIB setiap hari
 
@@ -95,7 +95,7 @@
 
 ---
 
-## ⚡ 8. WA Reminder 1 Jam — `api/cron/remind-soon.js`
+## 8. WA Reminder 1 Jam — `api/cron/remind-soon.js`
 
 **Jadwal:** Setiap jam (auto Vercel Cron)
 
@@ -107,7 +107,7 @@
 
 ---
 
-## 🔄 9. Moka POS Customer Sync — `api/moka/sync-customers.js`
+## 9. Moka POS Customer Sync — `api/moka/sync-customers.js`
 
 **Jadwal:** `0 20 * * *` UTC = jam 03:00 WIB (cron harian) + bisa trigger manual
 
@@ -123,7 +123,7 @@
 
 ---
 
-## 📊 Ringkasan Tech Stack AI & Automation
+## Ringkasan Tech Stack AI & Automation
 
 | Layer | Teknologi |
 |---|---|
@@ -138,7 +138,7 @@
 
 ---
 
-## 📋 Changelog Harga (16 Mei 2026)
+## Changelog Harga (16 Mei 2026)
 
 | Service | Harga Lama | Harga Baru | File yang Diupdate |
 |---|---|---|---|

@@ -1,0 +1,54 @@
+<h2>3 Pendekatan Implementasi</h2>
+<p class="subtitle">Ketiganya memenuhi semua fitur yang diminta — perbedaannya ada di struktur tab & effort</p>
+
+<div class="options">
+
+ <div class="option" data-choice="a" onclick="toggleSelect(this)">
+ <div class="letter">A</div>
+ <div class="content">
+ <h3>Pure Additive — Tambah langsung, 7 tab</h3>
+ <p>Smart banner ditambahkan antara tier progress dan tab. Benefits & Shop jadi tab ke-6 dan ke-7. Tidak mengubah tab yang sudah ada.</p>
+ <ul style="margin-top:8px;padding-left:16px;color:#9ca3af;font-size:0.85rem;">
+ <li>Tab: Akun | Kunjungan | Poin | <strong>Rewards</strong> | Referral | <strong style="color:#c1121f">Benefits </strong> | <strong style="color:#fbbf24">Shop </strong></li>
+ <li style="margin-top:4px">Effort: rendah — minimal perubahan ke code existing</li>
+ <li> 7 tab bisa padat di mobile (scroll horizontal)</li>
+ </ul>
+ </div>
+ </div>
+
+ <div class="option" data-choice="b" onclick="toggleSelect(this)">
+ <div class="letter" style="background:linear-gradient(135deg,#c1121f,#9b0000)">B </div>
+ <div class="content">
+ <h3>Merge + Additive — 6 tab (Rekomendasi)</h3>
+ <p>Tab "Rewards" digabung dengan "Benefits" jadi satu tab <strong>"Benefits & Rewards"</strong> (logis: keduanya tentang apa yang member miliki). Shop jadi tab baru. Total tetap 6 tab.</p>
+ <ul style="margin-top:8px;padding-left:16px;color:#9ca3af;font-size:0.85rem;">
+ <li>Tab: Akun | Kunjungan | Poin | <strong style="color:#c1121f">Benefits & Rewards </strong> | Referral | <strong style="color:#fbbf24">Shop </strong></li>
+ <li style="margin-top:4px">Effort: sedang — refactor tab Rewards + build 2 fitur baru</li>
+ <li> Tab count ideal untuk mobile, konten lebih kohesif</li>
+ <li> "Rewards" yang dulu terpisah dari "benefit tracker" kini bersatu — lebih logis</li>
+ </ul>
+ </div>
+ </div>
+
+ <div class="option" data-choice="c" onclick="toggleSelect(this)">
+ <div class="letter">C</div>
+ <div class="content">
+ <h3>Home Panel — Tambah tab Beranda, 7 tab</h3>
+ <p>Tambah tab "Beranda" sebagai landing default yang menampilkan ringkasan semua: smart upsell card, benefit snapshot, produk featured. Benefits & Shop tetap punya tab sendiri untuk deep-dive.</p>
+ <ul style="margin-top:8px;padding-left:16px;color:#9ca3af;font-size:0.85rem;">
+ <li>Tab: <strong style="color:#4ade80">Beranda </strong> | Akun | Kunjungan | Poin | Referral | <strong style="color:#c1121f">Benefits </strong> | <strong style="color:#fbbf24">Shop </strong></li>
+ <li style="margin-top:4px">Effort: tinggi — redesign default view + 3 tab baru</li>
+ <li> Experience terbaik: member langsung lihat semua info penting</li>
+ <li> 7 tab, lebih banyak kode baru</li>
+ </ul>
+ </div>
+ </div>
+
+</div>
+
+<div style="margin-top:24px;background:#1a1a00;border:1px solid #fbbf2440;border-radius:8px;padding:16px;">
+ <p style="color:#fbbf24;font-size:0.85rem;font-weight:bold;margin-bottom:8px;"> Rekomendasi: Opsi B</p>
+ <p style="color:#9ca3af;font-size:0.85rem;margin:0">Paling seimbang — tab count tetap 6 (mobile-friendly), Rewards + Benefits digabung karena secara UX memang satu konteks, effort tidak terlalu besar, dan semua fitur yang diminta terpenuhi.</p>
+</div>
+
+<p class="subtitle" style="margin-top:16px">Klik pilihan di browser atau ketik di terminal.</p>

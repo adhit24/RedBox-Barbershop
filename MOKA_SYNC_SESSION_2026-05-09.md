@@ -29,7 +29,7 @@ User melaporkan skenario double-booking yang harus dicegah:
 
 ### File utama yang relevan
 
-- `@/Users/machintoshd/Documents/Website RedBox/server/moka/sync.js` — sync engine (Moka ↔ Supabase, cron jobs)
+- `@/Users/machintoshd/Documents/Website RedBox/server/moka/sync.js` — sync engine (Moka Supabase, cron jobs)
 - `@/Users/machintoshd/Documents/Website RedBox/server/moka/client.js` — MokaPOS REST client
 - `@/Users/machintoshd/Documents/Website RedBox/server/moka/schemaSync.js` — barber + service mapping
 - `@/Users/machintoshd/Documents/Website RedBox/server/moka_integration_schema.sql` — schema (services, schedules, transactions, dst)
@@ -72,10 +72,10 @@ const MOKA_OPENBILL_STALE_HOURS = parseInt(process.env.MOKA_OPENBILL_STALE_HOURS
 **Patch 3 — Auto-expire stale reserved bills (cron 15-min):**
 ```js
 cron.schedule('*/15 * * * *', async () => {
-  const cutoff = new Date(Date.now() - MOKA_OPENBILL_STALE_HOURS * 3600_000).toISOString();
-  await supabase.from('schedules')
-    .update({ status: 'cancelled', notes: '[auto] stale open bill — kasir lupa close di MokaPOS' })
-    .eq('source', 'moka').eq('status', 'reserved').lt('end_time', cutoff);
+ const cutoff = new Date(Date.now() - MOKA_OPENBILL_STALE_HOURS * 3600_000).toISOString();
+ await supabase.from('schedules')
+ .update({ status: 'cancelled', notes: '[auto] stale open bill — kasir lupa close di MokaPOS' })
+ .eq('source', 'moka').eq('status', 'reserved').lt('end_time', cutoff);
 });
 ```
 
@@ -131,7 +131,7 @@ Bill 625068923: 09:59 → 12:19 (queued setelah 625052085)
 
 **Fix:** pindahkan idempotency check (`SELECT * FROM schedules WHERE external_id = billId`) sebelum queue logic, dan tambahkan guard `if (!existing && !parsedStart && barberId)`.
 
-**Verifikasi rerun:** log bersih, tidak ada `(goshow queue)` shift untuk bill yang sudah di-insert sebelumnya. ✓
+**Verifikasi rerun:** log bersih, tidak ada `(goshow queue)` shift untuk bill yang sudah di-insert sebelumnya. 
 
 ---
 
@@ -182,7 +182,7 @@ Setelah deploy, jalankan test berikut:
 
 ### Test B — Multi-service bill
 1. Buat Open Bill: Bob, Hair Cut + Hair Fade Cut
-2. Cek `schedules.end_time` = start + 45 + 60 + 10 buffer = 115 menit total ✓
+2. Cek `schedules.end_time` = start + 45 + 60 + 10 buffer = 115 menit total 
 
 ### Test C — Goshow Queue
 1. Buat Open Bill A: Bob jam 14:00 (Hair Cut, 45m → end 14:55)
@@ -212,12 +212,12 @@ Setelah deploy, jalankan test berikut:
 ## 10. File Output dari Sesi Ini
 
 Tracked changes:
-- `M  server/moka/sync.js`
-- `M  server/.env.example`
-- `M  server/moka/client.js` (existing, tidak di-touch sesi ini)
-- `M  server/moka/routes.js` (existing, tidak di-touch)
-- `M  server/moka/slotEngine.js` (existing, tidak di-touch)
-- `M  crm.html`, `M  index.html`, `M  membership.html`, `M  sundaze.html`, `M  css/style.css`, `M  js/crm.js` (existing, tidak di-touch)
+- `M server/moka/sync.js`
+- `M server/.env.example`
+- `M server/moka/client.js` (existing, tidak di-touch sesi ini)
+- `M server/moka/routes.js` (existing, tidak di-touch)
+- `M server/moka/slotEngine.js` (existing, tidak di-touch)
+- `M crm.html`, `M index.html`, `M membership.html`, `M sundaze.html`, `M css/style.css`, `M js/crm.js` (existing, tidak di-touch)
 
 New files:
 - `server/moka-full-sync.js`
@@ -294,33 +294,33 @@ Tambah section **3b** setelah query `schedules`:
 // ── 3b. Also include legacy bookings (web bookings not yet bridged to schedules) ──
 const barberIds = barbers.map(b => b.id);
 if (barberIds.length) {
-  const { data: legacyBookings } = await supabase
-    .from('bookings')
-    .select('barber_id, date, time, duration')
-    .in('barber_id', barberIds)
-    .eq('date', date)
-    .not('status', 'in', '("cancelled","rejected")');
+ const { data: legacyBookings } = await supabase
+ .from('bookings')
+ .select('barber_id, date, time, duration')
+ .in('barber_id', barberIds)
+ .eq('date', date)
+ .not('status', 'in', '("cancelled","rejected")');
 
-  for (const b of legacyBookings || []) {
-    if (!b.barber_id || !b.time) continue;
-    const timeStr = String(b.time).slice(0, 5);
-    const startMs = _timeStrToMs(date, timeStr);
-    const durMins = _parseDurationStr(b.duration);
-    const endMs   = startMs + durMins * 60_000;
-    if (!busyMap[b.barber_id]) busyMap[b.barber_id] = [];
-    busyMap[b.barber_id].push({ start: startMs, end: endMs });
-  }
+ for (const b of legacyBookings || []) {
+ if (!b.barber_id || !b.time) continue;
+ const timeStr = String(b.time).slice(0, 5);
+ const startMs = _timeStrToMs(date, timeStr);
+ const durMins = _parseDurationStr(b.duration);
+ const endMs = startMs + durMins * 60_000;
+ if (!busyMap[b.barber_id]) busyMap[b.barber_id] = [];
+ busyMap[b.barber_id].push({ start: startMs, end: endMs });
+ }
 }
 ```
 
 Helper baru `_parseDurationStr(dur)` — parse string durasi dari tabel `bookings` (format `"60 menit"`, `"1.5 jam"`, atau angka):
 ```js
 function _parseDurationStr(dur) {
-  if (!dur) return 30;
-  const s = String(dur).toLowerCase().trim();
-  if (s.includes('jam')) return Math.round((parseFloat(s) || 1) * 60);
-  const m = parseInt(s, 10);
-  return (Number.isFinite(m) && m > 0) ? m : 30;
+ if (!dur) return 30;
+ const s = String(dur).toLowerCase().trim();
+ if (s.includes('jam')) return Math.round((parseFloat(s) || 1) * 60);
+ const m = parseInt(s, 10);
+ return (Number.isFinite(m) && m > 0) ? m : 30;
 }
 ```
 
@@ -334,10 +334,10 @@ function _parseDurationStr(dur) {
 
 ```js
 function _parseBarberHintFromBillName(billName) {
-  if (!billName) return null;
-  const m = billName.match(/\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}\s+(.*)/);
-  const hint = m ? m[1].trim() : null;
-  return hint || null;
+ if (!billName) return null;
+ const m = billName.match(/\d{1,2}\/\d{1,2}\s+\d{1,2}[.:]\d{2}\s+(.*)/);
+ const hint = m ? m[1].trim() : null;
+ return hint || null;
 }
 ```
 
@@ -350,20 +350,20 @@ Contoh: `"bayu 10/05 12.00 abdul"` → hint = `"abdul"`
 ```js
 const barberHint = _parseBarberHintFromBillName(billName);
 for (const b of outletBarbers || []) {
-  let score;
-  if (barberHint) {
-    const hintLower   = barberHint.toLowerCase();
-    const barberLower = b.name.toLowerCase();
-    const tokens = barberLower.split(/\s+/).filter(t => t.length >= 2);
-    const tokenHit = tokens.some(t => hintLower.includes(t));
-    score = tokenHit ? 0.95 : _matchScore(barberHint, b.name);
-  } else {
-    const bnLower  = billName.toLowerCase();
-    const tokens   = String(b.name).toLowerCase().split(/\s+/).filter(t => t.length >= 3);
-    const tokenHit = tokens.some(t => bnLower.includes(t));
-    score = tokenHit ? 0.9 : _matchScore(billName, b.name);
-  }
-  if (score > bestScore) { bestScore = score; bestId = b.id; }
+ let score;
+ if (barberHint) {
+ const hintLower = barberHint.toLowerCase();
+ const barberLower = b.name.toLowerCase();
+ const tokens = barberLower.split(/\s+/).filter(t => t.length >= 2);
+ const tokenHit = tokens.some(t => hintLower.includes(t));
+ score = tokenHit ? 0.95 : _matchScore(barberHint, b.name);
+ } else {
+ const bnLower = billName.toLowerCase();
+ const tokens = String(b.name).toLowerCase().split(/\s+/).filter(t => t.length >= 3);
+ const tokenHit = tokens.some(t => bnLower.includes(t));
+ score = tokenHit ? 0.9 : _matchScore(billName, b.name);
+ }
+ if (score > bestScore) { bestScore = score; bestId = b.id; }
 }
 const threshold = barberHint ? 0.4 : 0.5;
 ```
@@ -372,7 +372,7 @@ const threshold = barberHint ? 0.4 : 0.5;
 ```js
 const structuredHint = _parseBarberHintFromBillName(billName);
 if (structuredHint && barberId && existing.barber_id && existing.barber_id !== barberId) {
-  patch.barber_id = barberId;
+ patch.barber_id = barberId;
 }
 ```
 
@@ -392,8 +392,8 @@ Di `booking.js` (fungsi `fetchAndRenderBarbers`): fetch `today-status` setelah l
 Di render barber card: tampilkan badge absolut di pojok kanan atas:
 ```html
 <div class="barber-status-badge available|off-duty">
-  <span class="status-dot"></span>
-  <span>Available | Off Duty</span>
+ <span class="status-dot"></span>
+ <span>Available | Off Duty</span>
 </div>
 ```
 
@@ -407,9 +407,9 @@ CSS di `booking.css`: badge dengan background semi-transparan hijau/merah, dot k
 
 | Bug | Status |
 |---|---|
-| Web booking 11:00 Abdul tidak tercoret | ✅ Fixed — user konfirmasi "sudah sukses!" |
-| GoShow 12:00 + 20:00 Abdul tidak tercoret | ✅ Fix deployed, menunggu verifikasi user |
-| Barber availability badge | ✅ Deployed dan live |
+| Web booking 11:00 Abdul tidak tercoret | Fixed — user konfirmasi "sudah sukses!" |
+| GoShow 12:00 + 20:00 Abdul tidak tercoret | Fix deployed, menunggu verifikasi user |
+| Barber availability badge | Deployed dan live |
 
 ---
 
@@ -419,7 +419,7 @@ Semua fix di-push ke `main` dan auto-deploy ke Vercel. Deployment terbaru (per 1
 
 | Deployment ID | Commit | Status |
 |---|---|---|
-| `dpl_5k3ezjcjH...` | Fix GoShow barber resolution | **READY** ✅ |
+| `dpl_5k3ezjcjH...` | Fix GoShow barber resolution | **READY** |
 | `dpl_3d2fb89L5...` | Fix slot blocking (bookings table) | READY |
 | `dpl_FpvJ6fcJ2...` | Add barber availability badge | READY |
 
@@ -433,11 +433,11 @@ Sync berjalan otomatis saat halaman booking dimuat (`_refreshFreshTodayData` —
 
 ```json
 Bypass outlet open bills:
-- "-🅿Budiono 10/05 10.00 bob"   → blockedInWeb: true
-- "bayu 10/05 12.00 abdul"        → blockedInWeb: true  ✓
-- "kafka 10/05 20.00 abdul"       → blockedInWeb: true  ✓
-- "hideon 10/05 16.00 dodi"       → blockedInWeb: true  (tapi slot masih open di web)
-- "andri 10/05 18.00 bob"         → TIDAK ADA di response
+- "-🅿Budiono 10/05 10.00 bob" → blockedInWeb: true
+- "bayu 10/05 12.00 abdul" → blockedInWeb: true 
+- "kafka 10/05 20.00 abdul" → blockedInWeb: true 
+- "hideon 10/05 16.00 dodi" → blockedInWeb: true (tapi slot masih open di web)
+- "andri 10/05 18.00 bob" → TIDAK ADA di response
 ```
 
 ### Temuan
@@ -481,7 +481,7 @@ MokaPOS tidak menyediakan field tanggal/waktu terpisah — bill name adalah satu
 
 # Sesi Lanjutan: Hotfix Live — Slot UI, ID Kapster, Timeout API, Debug Blocker, Auto-Confirm Web Booking
 
-**Tanggal:** 10 Mei 2026  
+**Tanggal:** 10 Mei 2026 
 **Lanjutan dari sesi:** "Bob & Dodi Tidak Terblokir" + observasi langsung di live UI
 
 ---
@@ -606,8 +606,8 @@ Perubahan:
 
 # Sesi Lanjutan: Fix Abdul Slot Blocking + Moka OAuth Token Restoration
 
-**Tanggal:** 11 Mei 2026  
-**Lanjutan dari sesi:** 10 Mei 2026  
+**Tanggal:** 11 Mei 2026 
+**Lanjutan dari sesi:** 10 Mei 2026 
 **Status:** RESOLVED 
 
 ---
@@ -624,9 +624,9 @@ User melaporkan bahwa slot Abdul untuk jam 11:00 dan 14:00 tidak terblokir di we
 ### 26.1 Database Inspection
 | Tabel | Row Count | Status |
 |-------|-----------|--------|
-| `schedules` | 0 rows | ❌ Kosong |
-| `moka_tokens` | 0 rows | ❌ Kosong |
-| `sync_logs` | 0 rows | ❌ Kosong |
+| `schedules` | 0 rows | Kosong |
+| `moka_tokens` | 0 rows | Kosong |
+| `sync_logs` | 0 rows | Kosong |
 
 **Conclusion:** Moka OAuth token hilang dari database.
 
@@ -661,12 +661,12 @@ Dari Moka Dashboard, semua outlet ID telah didapatkan:
 Script untuk generate token menggunakan Moka Client Credentials OAuth flow:
 ```javascript
 const tokenData = await fetch('https://api.mokapos.com/oauth/token', {
-  method: 'POST',
-  body: new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: MOKA_CLIENT_ID,
-    client_secret: MOKA_CLIENT_SECRET,
-  })
+ method: 'POST',
+ body: new URLSearchParams({
+ grant_type: 'client_credentials',
+ client_id: MOKA_CLIENT_ID,
+ client_secret: MOKA_CLIENT_SECRET,
+ })
 });
 ```
 
@@ -677,11 +677,11 @@ Token disimpan ke `moka_tokens` table:
 ```sql
 INSERT INTO moka_tokens (outlet_id, access_token, token_type, expires_at, scope)
 VALUES (
-  '8a55df01-8b02-4105-b248-c73f08426aaa',
-  'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
-  'Bearer',
-  '2026-11-06T18:16:04.233Z',
-  'profile'
+ '8a55df01-8b02-4105-b248-c73f08426aaa',
+ 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+ 'Bearer',
+ '2026-11-06T18:16:04.233Z',
+ 'profile'
 );
 ```
 
@@ -700,27 +700,27 @@ Sementara sync auto belum berjalan, insert manual untuk test:
 -- Eko 11:00
 INSERT INTO schedules (outlet_id, barber_id, service_name, start_time, end_time, status, source, external_id)
 VALUES (
-  '8a55df01-8b02-4105-b248-c73f08426aaa',
-  'bypass-abdul-dul',
-  'Haircut (Goshow)',
-  '2026-05-11 11:00:00+07',
-  '2026-05-11 11:45:00+07',
-  'reserved',
-  'moka',
-  '625548454_manual'
+ '8a55df01-8b02-4105-b248-c73f08426aaa',
+ 'bypass-abdul-dul',
+ 'Haircut (Goshow)',
+ '2026-05-11 11:00:00+07',
+ '2026-05-11 11:45:00+07',
+ 'reserved',
+ 'moka',
+ '625548454_manual'
 );
 
 -- Hendra 14:00
 INSERT INTO schedules (outlet_id, barber_id, service_name, start_time, end_time, status, source, external_id)
 VALUES (
-  '8a55df01-8b02-4105-b248-c73f08426aaa',
-  'bypass-abdul-dul',
-  'Haircut (Goshow)',
-  '2026-05-11 14:00:00+07',
-  '2026-05-11 14:45:00+07',
-  'reserved',
-  'moka',
-  '625293593_manual'
+ '8a55df01-8b02-4105-b248-c73f08426aaa',
+ 'bypass-abdul-dul',
+ 'Haircut (Goshow)',
+ '2026-05-11 14:00:00+07',
+ '2026-05-11 14:45:00+07',
+ 'reserved',
+ 'moka',
+ '625293593_manual'
 );
 ```
 
@@ -731,8 +731,8 @@ VALUES (
 ```javascript
 // Di dalam requestAnimationFrame callback
 const currentBusyRanges = fallbackBusyRanges && fallbackBusyRanges.length > 0 
-  ? [...fallbackBusyRanges] 
-  : [];
+ ? [...fallbackBusyRanges] 
+ : [];
 buildTimeGrid(currentBusyRanges);
 ```
 
@@ -751,10 +751,10 @@ node server/test-sync.js
 ```
 Output:
 ```
-✅ Token retrieved from database
-✅ API test successful
-🎉 Found 4 open bills!
-📄 First bill: { id: 625548454, name: 'eko 11/05 11.00 abdul', status: 'PENDING' }
+ Token retrieved from database
+ API test successful
+ Found 4 open bills!
+ First bill: { id: 625548454, name: 'eko 11/05 11.00 abdul', status: 'PENDING' }
 ```
 
 ### 28.2 Sync Test
@@ -763,23 +763,23 @@ node server/trigger-sync.js
 ```
 Output:
 ```
-✅ Sync Result:
-  - Processed: 15
-  - Skipped: 29
-  - Errors: 0
+ Sync Result:
+ - Processed: 15
+ - Skipped: 29
+ - Errors: 0
 ```
 
 ### 28.3 Database Verification
 ```sql
 SELECT COUNT(*) FROM schedules WHERE barber_id = 'bypass-abdul-dul' 
-  AND DATE(start_time) = '2026-05-11';
+ AND DATE(start_time) = '2026-05-11';
 -- Result: 2 rows (Eko 11:00, Hendra 14:00)
 ```
 
 ### 28.4 UI Verification
-- ✅ Slot 11:00 ter-blokir
-- ✅ Slot 14:00 ter-blokir
-- ✅ Console log: `[TimeGrid] hasBusyRanges: 2`
+- Slot 11:00 ter-blokir
+- Slot 14:00 ter-blokir
+- Console log: `[TimeGrid] hasBusyRanges: 2`
 
 ---
 
@@ -787,8 +787,8 @@ SELECT COUNT(*) FROM schedules WHERE barber_id = 'bypass-abdul-dul'
 
 | Deployment | URL | Status |
 |------------|-----|--------|
-| Latest | https://redbox-barbershop-mxe0ctcgc-adhit24s-projects.vercel.app | ✅ LIVE |
-| Aliased | https://www.redboxbarbershop.com | ✅ LIVE |
+| Latest | https://redbox-barbershop-mxe0ctcgc-adhit24s-projects.vercel.app | LIVE |
+| Aliased | https://www.redboxbarbershop.com | LIVE |
 
 ---
 
@@ -819,34 +819,34 @@ SELECT COUNT(*) FROM schedules WHERE barber_id = 'bypass-abdul-dul'
 
 | Komponen | Status |
 |----------|--------|
-| Moka OAuth Token | ✅ Stored & Valid |
-| Outlet IDs (5 cabang) | ✅ Updated |
-| Database schedules | ✅ 2 manual inserts + auto sync ready |
-| UI slot blocking | ✅ Fixed & Working |
-| Auto-sync | ⚠️ Ready (will run on cron next tick) |
+| Moka OAuth Token | Stored & Valid |
+| Outlet IDs (5 cabang) | Updated |
+| Database schedules | 2 manual inserts + auto sync ready |
+| UI slot blocking | Fixed & Working |
+| Auto-sync | Ready (will run on cron next tick) |
 
-**End of Session — Abdul slot blocking RESOLVED ✅**
+**End of Session — Abdul slot blocking RESOLVED **
 
 ---
 
 # Sesi Lanjutan: Realtime Slot Blocking (All Branches) + Push Booking Per Cabang
 
-**Tanggal:** 11 Mei 2026  
-**Lanjutan dari sesi:** “Abdul slot blocking RESOLVED”  
+**Tanggal:** 11 Mei 2026 
+**Lanjutan dari sesi:** “Abdul slot blocking RESOLVED” 
 **Fokus:** memastikan slot Moka GoShow + booking web terblokir realtime tanpa harus ganti tanggal, dan memastikan push booking ke Moka masuk ke outlet cabang yang benar.
 
 ---
 
 ## 33. Masalah yang Dilaporkan (Live)
 
-1. **Slot Abdul tidak terblokir kecuali klik tanggal lain dulu**  
-   User melaporkan: jika tetap standby di tanggal hari ini saat booking, slot tidak langsung terblokir. Slot baru keblok setelah pindah ke tanggal lain lalu kembali.
+1. **Slot Abdul tidak terblokir kecuali klik tanggal lain dulu** 
+ User melaporkan: jika tetap standby di tanggal hari ini saat booking, slot tidak langsung terblokir. Slot baru keblok setelah pindah ke tanggal lain lalu kembali.
 
-2. **Implementasi perlu berlaku untuk semua cabang**  
-   Setelah fix Abdul sukses, user minta pola yang sama berlaku untuk semua cabang (Bypass/CSB/Samadikun/Sumber/Tegal).
+2. **Implementasi perlu berlaku untuk semua cabang** 
+ Setelah fix Abdul sukses, user minta pola yang sama berlaku untuk semua cabang (Bypass/CSB/Samadikun/Sumber/Tegal).
 
-3. **Samadikun (Opan) & Tegal (Epik) masih terlihat available**  
-   Open Bill terlihat di MokaPOS (PENDING), tapi UI booking masih menampilkan slot jam terkait sebagai available.
+3. **Samadikun (Opan) & Tegal (Epik) masih terlihat available** 
+ Open Bill terlihat di MokaPOS (PENDING), tapi UI booking masih menampilkan slot jam terkait sebagai available.
 
 ---
 
@@ -871,9 +871,9 @@ SELECT COUNT(*) FROM schedules WHERE barber_id = 'bypass-abdul-dul'
 ### 35.1 Robust timestamp parsing untuk fallback schedules
 File: `js/booking.js`
 - Tambah helper `_parseDateTimeToMs()` untuk handle format:
-  - `YYYY-MM-DD HH:mm:ss`
-  - timezone `+07` (dinormalisasi jadi `+07:00`)
-  - tanpa timezone (diasumsikan `+07:00`)
+ - `YYYY-MM-DD HH:mm:ss`
+ - timezone `+07` (dinormalisasi jadi `+07:00`)
+ - tanpa timezone (diasumsikan `+07:00`)
 - Saat membangun `fallbackBusyRanges`, record invalid (`NaN` atau `end<=start`) dibuang.
 
 ### 35.2 Auto-load untuk tanggal yang sudah terpilih (hari ini)
@@ -885,8 +885,8 @@ File: `js/booking.js`
 ### 35.3 Polling `/api/schedules` untuk hari ini (mengatasi sync async)
 File: `js/booking.js`
 - Untuk tanggal hari ini + barber spesifik:
-  - Jika busyRanges masih kosong, UI akan poll `/api/schedules` beberapa kali (hingga ±14 detik) sampai schedule muncul.
-  - Begitu busyRanges masuk, time grid otomatis rebuild → slot langsung tercoret tanpa user klik tanggal lain.
+ - Jika busyRanges masih kosong, UI akan poll `/api/schedules` beberapa kali (hingga ±14 detik) sampai schedule muncul.
+ - Begitu busyRanges masuk, time grid otomatis rebuild → slot langsung tercoret tanpa user klik tanggal lain.
 
 **Commit (urutan):**
 - `92b4904` — `fix(booking): auto-load tanggal terpilih + blocking slot realtime`
@@ -900,10 +900,10 @@ File: `js/booking.js`
 ### 36.1 Push booking confirmed memakai `moka_outlet_id` sesuai cabang
 File: `server/index.js`
 - `pushConfirmedBookingToMoka(booking)` sekarang:
-  - Resolve `booking.location` (slug cabang) → cari row `outlets` di Supabase
-  - Ambil `outlet.id` (UUID) + `outlet.moka_outlet_id` (numeric string Moka)
-  - Jika `moka_outlet_id` kosong → skip dengan reason `no_moka_outlet_id_configured`
-  - Inisialisasi `MokaClient` dengan outlet yang tepat, dan set `orderPayload.outlet_id = moka_outlet_id`
+ - Resolve `booking.location` (slug cabang) → cari row `outlets` di Supabase
+ - Ambil `outlet.id` (UUID) + `outlet.moka_outlet_id` (numeric string Moka)
+ - Jika `moka_outlet_id` kosong → skip dengan reason `no_moka_outlet_id_configured`
+ - Inisialisasi `MokaClient` dengan outlet yang tepat, dan set `orderPayload.outlet_id = moka_outlet_id`
 
 **Commit:**
 - `1cb785f` — `fix(moka): gunakan moka_outlet_id per cabang saat push booking`
@@ -931,16 +931,16 @@ Hasil check:
 
 ### 38.1 Samadikun — Opan
 - Setelah menjalankan `pullMokaToWeb(sb, samadikunOutetId)`:
-  - Schedule berhasil dibuat: `barber_id = samadikun-opan`, `status=reserved`, `source=moka`
-  - `start_time` tersimpan dalam UTC (`+00:00`) dan ekuivalen WIB = +7 jam.
+ - Schedule berhasil dibuat: `barber_id = samadikun-opan`, `status=reserved`, `source=moka`
+ - `start_time` tersimpan dalam UTC (`+00:00`) dan ekuivalen WIB = +7 jam.
 
 Catatan: dari bukti MokaPOS, bill yang tampak adalah `11/05 13.00 opan`, sehingga slot yang harus keblok adalah **13:00 WIB**.
 
 ### 38.2 Tegal — Epik
 - Open bill MokaPOS: `hendi 11/05 13.00 epik` (PENDING)
 - Setelah menjalankan `pullMokaToWeb(sb, tegalOutetId)`:
-  - Schedule berhasil dibuat: `barber_id = tegal-epik`, `status=reserved`, `source=moka`
-  - `external_id = 625562924`
+ - Schedule berhasil dibuat: `barber_id = tegal-epik`, `status=reserved`, `source=moka`
+ - `external_id = 625562924`
 
 ---
 
@@ -959,13 +959,13 @@ Commit penting pada sesi lanjutan ini:
 
 | Komponen | Status |
 |---|---|
-| UI Step 3 auto-load tanggal hari ini | ✅ |
-| Slot blocking dari schedules (fallback) stabil | ✅ |
-| Race condition sync async → UI auto-poll schedules | ✅ |
-| Push booking confirmed → Moka per cabang | ✅ |
-| Outlets & tokens semua cabang (Supabase) | ✅ |
+| UI Step 3 auto-load tanggal hari ini | |
+| Slot blocking dari schedules (fallback) stabil | |
+| Race condition sync async → UI auto-poll schedules | |
+| Push booking confirmed → Moka per cabang | |
+| Outlets & tokens semua cabang (Supabase) | |
 
-**End of Session — Realtime slot blocking all branches stabilized ✅**
+**End of Session — Realtime slot blocking all branches stabilized **
 
 ---
 
@@ -1052,12 +1052,12 @@ Section menjadi **prioritas kedua** yang langsung dilihat pengunjung setelah lan
 ### 44.1 Colors
 
 ```css
---red: #C1121F          /* Primary accent */
---red-hover: #E63946    /* Hover state */
---bg: #0A0A0A           /* Background */
---bg-2: #111111         /* Card background */
---white: #FFFFFF        /* Text primary */
---w70: rgba(255,255,255,0.7)  /* Text secondary */
+--red: #C1121F /* Primary accent */
+--red-hover: #E63946 /* Hover state */
+--bg: #0A0A0A /* Background */
+--bg-2: #111111 /* Card background */
+--white: #FFFFFF /* Text primary */
+--w70: rgba(255,255,255,0.7) /* Text secondary */
 ```
 
 ### 44.2 Typography
@@ -1088,22 +1088,22 @@ User Upload → Supabase Storage → Queue → OpenAI GPT-4 Vision → Results �
 ```sql
 -- AI Uploads
 CREATE TABLE ai_uploads (
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES users(id),
-  image_url TEXT,
-  service_type VARCHAR(50), -- face_analysis, hairstyle, outfit, preview
-  status VARCHAR(20), -- pending, processing, completed, failed
-  created_at TIMESTAMP
+ id UUID PRIMARY KEY,
+ user_id UUID REFERENCES users(id),
+ image_url TEXT,
+ service_type VARCHAR(50), -- face_analysis, hairstyle, outfit, preview
+ status VARCHAR(20), -- pending, processing, completed, failed
+ created_at TIMESTAMP
 );
 
 -- AI Results
 CREATE TABLE ai_results (
-  id UUID PRIMARY KEY,
-  upload_id UUID REFERENCES ai_uploads(id),
-  analysis_result JSONB,
-  recommendations JSONB[],
-  generated_images TEXT[],
-  credits_used INTEGER
+ id UUID PRIMARY KEY,
+ upload_id UUID REFERENCES ai_uploads(id),
+ analysis_result JSONB,
+ recommendations JSONB[],
+ generated_images TEXT[],
+ credits_used INTEGER
 );
 ```
 
@@ -1139,8 +1139,8 @@ CREATE TABLE ai_results (
 
 | Tier | AI Access | Features |
 |------|-----------|----------|
-| **Non-Member** | ❌ Locked | Preview only, CTA to join |
-| **Member** | ✅ FREE Unlimited | All 4 AI features |
+| **Non-Member** | Locked | Preview only, CTA to join |
+| **Member** | FREE Unlimited | All 4 AI features |
 
 ### 46.2 Pricing
 
@@ -1170,7 +1170,7 @@ CREATE TABLE ai_results (
 
 **Vercel Production:** https://www.redboxbarbershop.com
 
-**Status:** ✅ Live and functional
+**Status:** Live and functional
 
 ---
 
@@ -1178,17 +1178,17 @@ CREATE TABLE ai_results (
 
 | Komponen | Status |
 |----------|--------|
-| AI Section UI | ✅ |
-| 4 Feature Cards dengan PNG icons | ✅ |
-| Development Notice Badge | ✅ |
-| Tech Badge (Image2 AI & Nano Banana 2) | ✅ |
-| Member Exclusive Card | ✅ |
-| Locked Preview untuk non-member | ✅ |
-| Mobile responsive | ✅ |
-| Scroll animations | ✅ |
-| Backend architecture proposal | ✅ |
+| AI Section UI | |
+| 4 Feature Cards dengan PNG icons | |
+| Development Notice Badge | |
+| Tech Badge (Image2 AI & Nano Banana 2) | |
+| Member Exclusive Card | |
+| Locked Preview untuk non-member | |
+| Mobile responsive | |
+| Scroll animations | |
+| Backend architecture proposal | |
 
-**End of Session — AI Grooming Assistant Section Completed ✅**
+**End of Session — AI Grooming Assistant Section Completed **
 
 ---
 
@@ -1198,7 +1198,7 @@ CREATE TABLE ai_results (
 
 **Goal:** Deploy AI Grooming Assistant ke production (Vercel) dan test live.
 
-**Status:** ✅ Deployment berhasil, API endpoints live dan testable.
+**Status:** Deployment berhasil, API endpoints live dan testable.
 
 ---
 
@@ -1208,9 +1208,9 @@ CREATE TABLE ai_results (
 
 | Variable | Value | Status |
 |----------|-------|--------|
-| `OPENAI_API_KEY` | sk-proj-... | ✅ Added |
-| `SUPABASE_URL` | https://khcvklzxfohwkyocenaf.supabase.co | ✅ Added |
-| `SUPABASE_SERVICE_KEY` | eyJhbGciOiJIUzI1NiIs... | ✅ Added |
+| `OPENAI_API_KEY` | sk-proj-... | Added |
+| `SUPABASE_URL` | https://khcvklzxfohwkyocenaf.supabase.co | Added |
+| `SUPABASE_SERVICE_KEY` | eyJhbGciOiJIUzI1NiIs... | Added |
 
 ### 51.2 Local Environment
 
@@ -1226,13 +1226,13 @@ CREATE TABLE ai_results (
 
 | File | Changes | Purpose |
 |------|---------|---------|
-| `js/ai-grooming.js` | ✅ Updated | Frontend JS untuk AI UI dan API calls |
-| `index.html` | ✅ Updated | AI section dengan upload, service selector, results |
-| `css/ai-interactive.css` | ✅ Updated | Styling untuk upload zone, loading, results |
-| `vercel.json` | ✅ Updated | Rewrite rules untuk `/api/ai/*` endpoints |
-| `api/ai/upload.js` | ✅ Created | Serverless function untuk image upload |
-| `api/ai/analyze.js` | ✅ Created | Serverless function untuk AI analysis |
-| `package.json` | ✅ Updated | Dependencies: @supabase/supabase-js, openai |
+| `js/ai-grooming.js` | Updated | Frontend JS untuk AI UI dan API calls |
+| `index.html` | Updated | AI section dengan upload, service selector, results |
+| `css/ai-interactive.css` | Updated | Styling untuk upload zone, loading, results |
+| `vercel.json` | Updated | Rewrite rules untuk `/api/ai/*` endpoints |
+| `api/ai/upload.js` | Created | Serverless function untuk image upload |
+| `api/ai/analyze.js` | Created | Serverless function untuk AI analysis |
+| `package.json` | Updated | Dependencies: @supabase/supabase-js, openai |
 
 ### 52.2 Key Frontend Changes
 
@@ -1243,12 +1243,12 @@ this.API_BASE = isLocalhost ? 'http://localhost:3001/api/ai' : '/api/ai';
 
 // Base64 image conversion untuk Vercel compatibility
 _fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
+ return new Promise((resolve, reject) => {
+ const reader = new FileReader();
+ reader.onload = () => resolve(reader.result);
+ reader.onerror = reject;
+ reader.readAsDataURL(file);
+ });
 }
 ```
 
@@ -1260,10 +1260,10 @@ _fileToBase64(file) {
 
 | Endpoint | Method | Function | Status |
 |----------|--------|----------|--------|
-| `/api/ai/upload` | POST | Upload image, return uploadId | ✅ Live |
-| `/api/ai/analyze` | POST | AI analysis, return results | ✅ Live |
-| `/api/ai/upload` | GET | Health check | ✅ Live |
-| `/api/ai/analyze` | GET | Health check | ✅ Live |
+| `/api/ai/upload` | POST | Upload image, return uploadId | Live |
+| `/api/ai/analyze` | POST | AI analysis, return results | Live |
+| `/api/ai/upload` | GET | Health check | Live |
+| `/api/ai/analyze` | GET | Health check | Live |
 
 ### 53.2 Upload Handler (`api/ai/upload.js`)
 
@@ -1308,16 +1308,16 @@ _fileToBase64(file) {
 
 | Test | URL | Result | Status |
 |------|-----|--------|--------|
-| Upload GET | /api/ai/upload | `{"status":"ok","service":"AI Upload"}` | ✅ Pass |
-| Analyze GET | /api/ai/analyze | `{"status":"ok","service":"AI Analysis"}` | ✅ Pass |
-| Main Health | /api/health | `{"status":"ok","service":"Redbox CRM API"}` | ✅ Pass |
+| Upload GET | /api/ai/upload | `{"status":"ok","service":"AI Upload"}` | Pass |
+| Analyze GET | /api/ai/analyze | `{"status":"ok","service":"AI Analysis"}` | Pass |
+| Main Health | /api/health | `{"status":"ok","service":"Redbox CRM API"}` | Pass |
 
 ### 55.2 Frontend Test (Local)
 
-- ✅ Member detection working (hide promo, show upload)
-- ✅ Image upload (base64 conversion)
-- ✅ Service type selection
-- ⚠️ API call to localhost (need production URL)
+- Member detection working (hide promo, show upload)
+- Image upload (base64 conversion)
+- Service type selection
+- API call to localhost (need production URL)
 
 ---
 
@@ -1325,12 +1325,12 @@ _fileToBase64(file) {
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Vercel Deploy | ✅ Ready | Deployment Z7fYXRPP6 active |
-| API Endpoints | ✅ Live | /api/ai/upload, /api/ai/analyze |
-| Frontend Code | ✅ Updated | js/ai-grooming.js base64 upload |
-| Environment Vars | ✅ Set | OPENAI_API_KEY, SUPABASE_* |
-| AI Analysis | ⚠️ Mock | OpenAI integration pending |
-| Database Storage | ⚠️ Mock | Supabase integration pending |
+| Vercel Deploy | Ready | Deployment Z7fYXRPP6 active |
+| API Endpoints | Live | /api/ai/upload, /api/ai/analyze |
+| Frontend Code | Updated | js/ai-grooming.js base64 upload |
+| Environment Vars | Set | OPENAI_API_KEY, SUPABASE_* |
+| AI Analysis | Mock | OpenAI integration pending |
+| Database Storage | Mock | Supabase integration pending |
 
 ---
 
@@ -1358,11 +1358,11 @@ _fileToBase64(file) {
 
 **Files Changed:** 8 files
 **Commits:** 5 commits
-**Deploy Status:** ✅ Production Ready
+**Deploy Status:** Production Ready
 
 ---
 
-**End of Session — AI Grooming Production Deployment ✅**
+**End of Session — AI Grooming Production Deployment **
 
 ---
 
@@ -1386,23 +1386,23 @@ Model target: `gpt-image-2-2026-04-21` untuk image generation di `server/ai/serv
 ```javascript
 // server/ai/services/aiService.js (lines 109-130)
 async generatePreview(imageUrl, analysis, transformationType = 'modern_gentleman') {
-  const startTime = Date.now();
-  const prompt = PROMPTS.previewGeneration(analysis, transformationType);
+ const startTime = Date.now();
+ const prompt = PROMPTS.previewGeneration(analysis, transformationType);
 
-  const response = await openai.images.generate({
-    model: 'gpt-image-2-2026-04-21',
-    prompt: `Photorealistic hairstyle makeover image. ${prompt}`,
-    n: 1,
-    size: '1024x1024'
-  });
+ const response = await openai.images.generate({
+ model: 'gpt-image-2-2026-04-21',
+ prompt: `Photorealistic hairstyle makeover image. ${prompt}`,
+ n: 1,
+ size: '1024x1024'
+ });
 
-  const generatedImageBase64 = response.data?.[0]?.b64_json || null;
-  return {
-    generatedImageBase64,
-    model: 'gpt-image-2-2026-04-21',
-    processingTime: Date.now() - startTime,
-    cost: 0.08
-  };
+ const generatedImageBase64 = response.data?.[0]?.b64_json || null;
+ return {
+ generatedImageBase64,
+ model: 'gpt-image-2-2026-04-21',
+ processingTime: Date.now() - startTime,
+ cost: 0.08
+ };
 }
 ```
 
@@ -1412,8 +1412,8 @@ File `server/ai/test-image-gen.js` dibuat untuk isolasi test image generation.
 
 ### 59.4 Status
 
-- ✅ Code sudah benar — `openai.images.generate()` tanpa `response_format` parameter
-- ⏳ API call tetap error **"Billing hard limit reached"** — kuota OpenAI reset tanggal **14 Mei 2026**
+- Code sudah benar — `openai.images.generate()` tanpa `response_format` parameter
+- API call tetap error **"Billing hard limit reached"** — kuota OpenAI reset tanggal **14 Mei 2026**
 - Restore file: `server/check-dodi-schedule.js` yang tidak sengaja tertimpa konten lain → berhasil di-restore via `git checkout af95fea -- server/check-dodi-schedule.js`
 
 ---
@@ -1449,18 +1449,18 @@ Build fitur AI Hairstyle Analysis menggunakan GPT-4o-mini Vision API dengan UI p
 
 ```json
 {
-  "face_shape": "Oval",
-  "hair_type": "Straight / Slightly Wavy",
-  "hair_thickness": "Medium",
-  "hair_density": "Medium",
-  "current_hair_condition": "string",
-  "recommended_hairstyles": ["Two Block", "Comma Hair", "Textured Crop", "Classic Taper"],
-  "avoid_hairstyles": ["Bowl Cut", "Flat Fringe"],
-  "styling_tips": ["Keep sides tapered", "Use matte clay", "Add texture on top"],
-  "recommended_products": ["Matte Clay", "Sea Salt Spray"],
-  "recommended_hair_colors": ["Natural Black", "Dark Brown"],
-  "barber_instruction": "string",
-  "confidence_score": 87
+ "face_shape": "Oval",
+ "hair_type": "Straight / Slightly Wavy",
+ "hair_thickness": "Medium",
+ "hair_density": "Medium",
+ "current_hair_condition": "string",
+ "recommended_hairstyles": ["Two Block", "Comma Hair", "Textured Crop", "Classic Taper"],
+ "avoid_hairstyles": ["Bowl Cut", "Flat Fringe"],
+ "styling_tips": ["Keep sides tapered", "Use matte clay", "Add texture on top"],
+ "recommended_products": ["Matte Clay", "Sea Salt Spray"],
+ "recommended_hair_colors": ["Natural Black", "Dark Brown"],
+ "barber_instruction": "string",
+ "confidence_score": 87
 }
 ```
 
@@ -1481,10 +1481,10 @@ Build fitur AI Hairstyle Analysis menggunakan GPT-4o-mini Vision API dengan UI p
 
 ### 60.7 Status
 
-- ✅ UI berjalan di `http://localhost:3000/ai-hairstyle`
-- ✅ Foto upload, drag & drop, compression, loading state — semua berfungsi
-- ⚠️ API call ke OpenAI error **429 quota exceeded** — tunggu reset 14 Mei 2026
-- ✅ Deploy ke Vercel: **https://redbox-ai-frontend.vercel.app/ai-hairstyle**
+- UI berjalan di `http://localhost:3000/ai-hairstyle`
+- Foto upload, drag & drop, compression, loading state — semua berfungsi
+- API call ke OpenAI error **429 quota exceeded** — tunggu reset 14 Mei 2026
+- Deploy ke Vercel: **https://redbox-ai-frontend.vercel.app/ai-hairstyle**
 
 ---
 
@@ -1502,26 +1502,26 @@ Build production-ready WhatsApp AI chatbot untuk RedBox Barbershop dengan arsite
 
 ```
 server/whatsapp-ai/
- ├── app.js                     # Express server (port 3001)
- ├── config/index.js            # Semua config & env
- ├── routes/webhook.js          # POST /webhook + GET /webhook
+ ├── app.js # Express server (port 3001)
+ ├── config/index.js # Semua config & env
+ ├── routes/webhook.js # POST /webhook + GET /webhook
  ├── controllers/webhookController.js
  ├── services/
- │   ├── messageHandler.js      # Orchestrator — routing pesan
- │   ├── whatsappService.js     # Send text + retry (2x)
- │   ├── aiService.js           # GPT-4o-mini + short context memory
- │   ├── bookingService.js      # State machine 5-step booking flow
- │   ├── knowledgeService.js    # Load JSON knowledge base
- │   └── escalationService.js   # Human handoff logic
- ├── prompts/system.txt         # AI personality prompt
+ │ ├── messageHandler.js # Orchestrator — routing pesan
+ │ ├── whatsappService.js # Send text + retry (2x)
+ │ ├── aiService.js # GPT-4o-mini + short context memory
+ │ ├── bookingService.js # State machine 5-step booking flow
+ │ ├── knowledgeService.js # Load JSON knowledge base
+ │ └── escalationService.js # Human handoff logic
+ ├── prompts/system.txt # AI personality prompt
  ├── knowledge/
- │   ├── services.json          # 8 layanan + harga
- │   └── faq.json               # 6 FAQ entry + keywords
+ │ ├── services.json # 8 layanan + harga
+ │ └── faq.json # 6 FAQ entry + keywords
  ├── middleware/
- │   ├── rateLimiter.js         # Max 5 msg/menit per user
- │   └── costGuard.js           # Cooldown 3s + daily limit 30x AI
- ├── utils/logger.js            # File log per hari (5 tipe log)
- ├── .env                       # API keys
+ │ ├── rateLimiter.js # Max 5 msg/menit per user
+ │ └── costGuard.js # Cooldown 3s + daily limit 30x AI
+ ├── utils/logger.js # File log per hari (5 tipe log)
+ ├── .env # API keys
  ├── .env.example
  └── README.md
 ```
@@ -1530,14 +1530,14 @@ server/whatsapp-ai/
 
 ```
 Incoming WA message
-  → rateLimiter (max 5/menit)
-  → Booking flow active? → bookingService (0 token)
-  → Escalation keywords? → admin handoff (0 token)
-  → Keyword match (harga/booking)? → direct reply (0 token)
-  → FAQ match? → direct reply (0 token)
-  → Greeting? → template reply (0 token)
-  → costGuard (cooldown + daily limit)
-  → GPT-4o-mini (max 300 tokens)
+ → rateLimiter (max 5/menit)
+ → Booking flow active? → bookingService (0 token)
+ → Escalation keywords? → admin handoff (0 token)
+ → Keyword match (harga/booking)? → direct reply (0 token)
+ → FAQ match? → direct reply (0 token)
+ → Greeting? → template reply (0 token)
+ → costGuard (cooldown + daily limit)
+ → GPT-4o-mini (max 300 tokens)
 ```
 
 ### 61.5 Booking Flow (5 Steps)
@@ -1586,10 +1586,10 @@ Saat trigger → reply empati + notif admin via WA (`ADMIN_WHATSAPP` env var).
 
 ### 61.10 Status
 
-- ✅ Semua module installed (`npm install` — 122 packages)
-- ✅ Semua file syntax valid (module load test passed)
-- ✅ `.env` sudah dibuat dengan `OPENAI_API_KEY`
-- ⏳ Menunggu WhatsApp Cloud API credentials (`WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`) dari Meta Developer Portal
+- Semua module installed (`npm install` — 122 packages)
+- Semua file syntax valid (module load test passed)
+- `.env` sudah dibuat dengan `OPENAI_API_KEY`
+- Menunggu WhatsApp Cloud API credentials (`WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`) dari Meta Developer Portal
 
 ---
 
@@ -1597,10 +1597,10 @@ Saat trigger → reply empati + notif admin via WA (`ADMIN_WHATSAPP` env var).
 
 | Project | URL | Status |
 |---------|-----|--------|
-| Frontend Next.js (AI Hairstyle) | https://redbox-ai-frontend.vercel.app | ✅ LIVE |
-| AI Hairstyle Page | https://redbox-ai-frontend.vercel.app/ai-hairstyle | ✅ LIVE |
-| Root project (static + API) | https://www.redboxbarbershop.com | ✅ Tidak diubah |
-| WhatsApp AI Backend | `server/whatsapp-ai/` | ⏳ Local only — belum deploy |
+| Frontend Next.js (AI Hairstyle) | https://redbox-ai-frontend.vercel.app | LIVE |
+| AI Hairstyle Page | https://redbox-ai-frontend.vercel.app/ai-hairstyle | LIVE |
+| Root project (static + API) | https://www.redboxbarbershop.com | Tidak diubah |
+| WhatsApp AI Backend | `server/whatsapp-ai/` | Local only — belum deploy |
 
 ---
 
@@ -1614,4 +1614,4 @@ Saat trigger → reply empati + notif admin via WA (`ADMIN_WHATSAPP` env var).
 
 ---
 
-**End of Session — AI Hairstyle + WhatsApp AI Assistant completed ✅**
+**End of Session — AI Hairstyle + WhatsApp AI Assistant completed **

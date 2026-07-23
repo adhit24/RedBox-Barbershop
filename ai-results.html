@@ -1,289 +1,289 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hasil AI Grooming — Redbox Barbershop</title>
-  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #060606;
-      --panel: #111111;
-      --line: rgba(255,255,255,.08);
-      --text: #f4f4f4;
-      --muted: rgba(255,255,255,.55);
-      --green: #9bd448;
-      --white: #ffffff;
-    }
-    body {
-      min-height: 100vh;
-      background: radial-gradient(circle at top, rgba(155,212,72,.07), transparent 30%), #050505;
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-    }
-    .nav {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(6,6,6,.94);
-      backdrop-filter: blur(14px);
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-    .nav-logo {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      color: var(--text);
-      text-decoration: none;
-    }
-    .nav-logo img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
-    .nav-logo span { font-family: 'Bebas Neue', sans-serif; letter-spacing: .08em; font-size: 1.3rem; }
-    .nav-logo em { color: var(--green); font-style: normal; }
-    .nav-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .nav-btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 10px 18px; border-radius: 999px; text-decoration: none;
-      font-size: .84rem; font-weight: 700; border: 1px solid var(--line);
-      color: var(--text); background: transparent; cursor: pointer;
-    }
-    .nav-btn.primary { background: var(--white); color: #080808; border-color: transparent; }
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Hasil AI Grooming | Redbox Barbershop</title>
+ <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+ <link rel="preconnect" href="https://fonts.googleapis.com" />
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+ <style>
+ * { box-sizing: border-box; margin: 0; padding: 0; }
+ :root {
+ --bg: #060606;
+ --panel: #111111;
+ --line: rgba(255,255,255,.08);
+ --text: #f4f4f4;
+ --muted: rgba(255,255,255,.55);
+ --green: #9bd448;
+ --white: #ffffff;
+ }
+ body {
+ min-height: 100vh;
+ background: radial-gradient(circle at top, rgba(155,212,72,.07), transparent 30%), #050505;
+ color: var(--text);
+ font-family: 'Inter', sans-serif;
+ }
+ .nav {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ gap: 12px;
+ padding: 14px 18px;
+ border-bottom: 1px solid var(--line);
+ background: rgba(6,6,6,.94);
+ backdrop-filter: blur(14px);
+ position: sticky;
+ top: 0;
+ z-index: 10;
+ }
+ .nav-logo {
+ display: inline-flex;
+ align-items: center;
+ gap: 10px;
+ color: var(--text);
+ text-decoration: none;
+ }
+ .nav-logo img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
+ .nav-logo span { font-family: 'Bebas Neue', sans-serif; letter-spacing: .08em; font-size: 1.3rem; }
+ .nav-logo em { color: var(--green); font-style: normal; }
+ .nav-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+ .nav-btn {
+ display: inline-flex; align-items: center; justify-content: center;
+ padding: 10px 18px; border-radius: 999px; text-decoration: none;
+ font-size: .84rem; font-weight: 700; border: 1px solid var(--line);
+ color: var(--text); background: transparent; cursor: pointer;
+ }
+ .nav-btn.primary { background: var(--white); color: #080808; border-color: transparent; }
 
-    .page {
-      width: min(860px, calc(100% - 24px));
-      margin: 32px auto 48px;
-    }
+ .page {
+ width: min(860px, calc(100% - 24px));
+ margin: 32px auto 48px;
+ }
 
-    /* ── State screens ── */
-    .state-wrap {
-      min-height: 62vh;
-      display: flex; align-items: center; justify-content: center;
-      padding: 18px; text-align: center;
-    }
-    .state-card {
-      width: min(480px, 100%);
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 32px 24px;
-    }
-    .spinner {
-      width: 44px; height: 44px;
-      border: 3px solid rgba(255,255,255,.12);
-      border-top-color: var(--green);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-      margin: 0 auto 18px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .state-card h2 { font-size: 1.1rem; margin-bottom: 8px; }
-    .state-card p { color: var(--muted); font-size: .9rem; line-height: 1.6; }
-    .state-card .hint {
-      margin-top: 10px; font-size: .78rem;
-      color: rgba(255,255,255,.3); letter-spacing: .03em;
-    }
-    .btn-row {
-      display: flex; gap: 10px; justify-content: center;
-      flex-wrap: wrap; margin-top: 20px;
-    }
-    .btn {
-      display: inline-flex; align-items: center; gap: 7px;
-      padding: 11px 22px; border-radius: 999px;
-      font-size: .87rem; font-weight: 700;
-      border: 1px solid var(--line); color: var(--text);
-      background: transparent; cursor: pointer;
-      text-decoration: none; transition: opacity .18s;
-    }
-    .btn:hover { opacity: .78; }
-    .btn.primary { background: var(--white); color: #080808; border-color: transparent; }
-    .btn.green-btn { background: var(--green); color: #050e00; border-color: transparent; }
+ /* ── State screens ── */
+ .state-wrap {
+ min-height: 62vh;
+ display: flex; align-items: center; justify-content: center;
+ padding: 18px; text-align: center;
+ }
+ .state-card {
+ width: min(480px, 100%);
+ background: var(--panel);
+ border: 1px solid var(--line);
+ border-radius: 20px;
+ padding: 32px 24px;
+ }
+ .spinner {
+ width: 44px; height: 44px;
+ border: 3px solid rgba(255,255,255,.12);
+ border-top-color: var(--green);
+ border-radius: 50%;
+ animation: spin .8s linear infinite;
+ margin: 0 auto 18px;
+ }
+ @keyframes spin { to { transform: rotate(360deg); } }
+ .state-card h2 { font-size: 1.1rem; margin-bottom: 8px; }
+ .state-card p { color: var(--muted); font-size: .9rem; line-height: 1.6; }
+ .state-card .hint {
+ margin-top: 10px; font-size: .78rem;
+ color: rgba(255,255,255,.3); letter-spacing: .03em;
+ }
+ .btn-row {
+ display: flex; gap: 10px; justify-content: center;
+ flex-wrap: wrap; margin-top: 20px;
+ }
+ .btn {
+ display: inline-flex; align-items: center; gap: 7px;
+ padding: 11px 22px; border-radius: 999px;
+ font-size: .87rem; font-weight: 700;
+ border: 1px solid var(--line); color: var(--text);
+ background: transparent; cursor: pointer;
+ text-decoration: none; transition: opacity .18s;
+ }
+ .btn:hover { opacity: .78; }
+ .btn.primary { background: var(--white); color: #080808; border-color: transparent; }
+ .btn.green-btn { background: var(--green); color: #050e00; border-color: transparent; }
 
-    /* ── Graphic result ── */
-    .result-wrap { display: grid; gap: 18px; }
-    .graphic-frame {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 22px;
-      overflow: hidden;
-      box-shadow: 0 24px 80px rgba(0,0,0,.5);
-    }
-    .graphic-frame img {
-      width: 100%; display: block;
-      border-radius: 22px;
-    }
-    .result-actions {
-      display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-    }
-    .footer-note {
-      text-align: center; font-size: .74rem;
-      color: rgba(255,255,255,.22); letter-spacing: .04em;
-      margin-top: 6px;
-    }
-  </style>
+ /* ── Graphic result ── */
+ .result-wrap { display: grid; gap: 18px; }
+ .graphic-frame {
+ background: var(--panel);
+ border: 1px solid var(--line);
+ border-radius: 22px;
+ overflow: hidden;
+ box-shadow: 0 24px 80px rgba(0,0,0,.5);
+ }
+ .graphic-frame img {
+ width: 100%; display: block;
+ border-radius: 22px;
+ }
+ .result-actions {
+ display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+ }
+ .footer-note {
+ text-align: center; font-size: .74rem;
+ color: rgba(255,255,255,.22); letter-spacing: .04em;
+ margin-top: 6px;
+ }
+ </style>
 </head>
 <body>
-  <nav class="nav">
-    <a class="nav-logo" href="/">
-      <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Logo" />
-      <span>REDBOX <em>BARBERSHOP</em></span>
-    </a>
-    <div class="nav-actions">
-      <a class="nav-btn" href="/#ai">Coba Lagi</a>
-      <a class="nav-btn primary" href="/booking.html">Book Now</a>
-    </div>
-  </nav>
+ <nav class="nav">
+ <a class="nav-logo" href="/">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Logo" />
+ <span>REDBOX <em>BARBERSHOP</em></span>
+ </a>
+ <div class="nav-actions">
+ <a class="nav-btn" href="/#ai">Coba Lagi</a>
+ <a class="nav-btn primary" href="/booking.html">Book Now</a>
+ </div>
+ </nav>
 
-  <main class="page">
-    <div id="loading-state" class="state-wrap">
-      <div class="state-card">
-        <div class="spinner"></div>
-        <h2>Membuat hairstyle analysis graphic...</h2>
-        <p>AI sedang membuat satu gambar analisis lengkap dengan wajah kamu.</p>
-        <div class="hint">Biasanya 30–60 detik</div>
-      </div>
-    </div>
-    <div id="result-state" style="display:none"></div>
-  </main>
+ <main class="page">
+ <div id="loading-state" class="state-wrap">
+ <div class="state-card">
+ <div class="spinner"></div>
+ <h2>Membuat hairstyle analysis graphic...</h2>
+ <p>AI sedang membuat satu gambar analisis lengkap dengan wajah kamu.</p>
+ <div class="hint">Biasanya 30-60 detik</div>
+ </div>
+ </div>
+ <div id="result-state" style="display:none"></div>
+ </main>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-      const loadingEl = document.getElementById('loading-state');
-      const resultEl  = document.getElementById('result-state');
+ <script>
+ document.addEventListener('DOMContentLoaded', async () => {
+ const loadingEl = document.getElementById('loading-state');
+ const resultEl = document.getElementById('result-state');
 
-      let raw = null, uploadId = null;
-      try {
-        raw      = sessionStorage.getItem('ai_results');
-        uploadId = sessionStorage.getItem('ai_upload_id');
-      } catch (e) {}
+ let raw = null, uploadId = null;
+ try {
+ raw = sessionStorage.getItem('ai_results');
+ uploadId = sessionStorage.getItem('ai_upload_id');
+ } catch (e) {}
 
-      function showState(html) {
-        loadingEl.style.display = 'none';
-        resultEl.style.display  = 'block';
-        resultEl.innerHTML = html;
-      }
+ function showState(html) {
+ loadingEl.style.display = 'none';
+ resultEl.style.display = 'block';
+ resultEl.innerHTML = html;
+ }
 
-      if (!raw || !uploadId) {
-        showState(`<div class="state-wrap"><div class="state-card">
-          <h2>Tidak ada hasil ditemukan</h2>
-          <p>Upload foto terlebih dahulu di halaman utama.</p>
-          <div class="btn-row"><a class="btn primary" href="/#ai">Upload Foto</a></div>
-        </div></div>`);
-        return;
-      }
+ if (!raw || !uploadId) {
+ showState(`<div class="state-wrap"><div class="state-card">
+ <h2>Tidak ada hasil ditemukan</h2>
+ <p>Upload foto terlebih dahulu di halaman utama.</p>
+ <div class="btn-row"><a class="btn primary" href="/#ai">Upload Foto</a></div>
+ </div></div>`);
+ return;
+ }
 
-      let parsed;
-      try { parsed = JSON.parse(raw); } catch (e) {
-        showState(`<div class="state-wrap"><div class="state-card">
-          <h2>Hasil analisis tidak valid</h2>
-          <p>Silakan generate ulang dari halaman utama.</p>
-          <div class="btn-row"><a class="btn primary" href="/#ai">Generate Ulang</a></div>
-        </div></div>`);
-        return;
-      }
+ let parsed;
+ try { parsed = JSON.parse(raw); } catch (e) {
+ showState(`<div class="state-wrap"><div class="state-card">
+ <h2>Hasil analisis tidak valid</h2>
+ <p>Silakan generate ulang dari halaman utama.</p>
+ <div class="btn-row"><a class="btn primary" href="/#ai">Generate Ulang</a></div>
+ </div></div>`);
+ return;
+ }
 
-      const results = parsed.results || parsed;
-      const subject = results.subject || {};
-      const hair    = results.hairstyle_analysis || results.hairstyle || {};
+ const results = parsed.results || parsed;
+ const subject = results.subject || {};
+ const hair = results.hairstyle_analysis || results.hairstyle || {};
 
-      const analysisData = {
-        faceShape:   subject.face_shape?.type || 'oval',
-        hairType:    subject.hair?.type || subject.hair?.natural_texture || 'straight',
-        hairDensity: subject.hair?.density || 'medium',
-        hairLength:  subject.hair?.current_length || 'medium',
-        recs:   (hair.recommended_styles || hair.recommendations || []).slice(0, 4).map(r => ({ name: r.name || r })),
-        avoids: (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 2).map(r => ({ name: r.name || r.style || r })),
-      };
+ const analysisData = {
+ faceShape: subject.face_shape?.type || 'oval',
+ hairType: subject.hair?.type || subject.hair?.natural_texture || 'straight',
+ hairDensity: subject.hair?.density || 'medium',
+ hairLength: subject.hair?.current_length || 'medium',
+ recs: (hair.recommended_styles || hair.recommendations || []).slice(0, 4).map(r => ({ name: r.name || r })),
+ avoids: (hair.avoid_styles || hair.avoidHairstyles || []).slice(0, 2).map(r => ({ name: r.name || r.style || r })),
+ };
 
-      const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-      const API = isLocal ? 'http://localhost:3001/api/ai/hairstyle' : '/api/ai/hairstyle';
+ const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+ const API = isLocal ? 'http://localhost:3001/api/ai/hairstyle' : '/api/ai/hairstyle';
 
-      let graphicUrl = null;
+ let graphicUrl = null;
 
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 300000);
-        let res;
-        try {
-          res = await fetch(API, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uploadId, analysisData, mode: "graphic" }),
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(timer);
-        }
+ try {
+ const controller = new AbortController();
+ const timer = setTimeout(() => controller.abort(), 300000);
+ let res;
+ try {
+ res = await fetch(API, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ uploadId, analysisData, mode: "graphic" }),
+ signal: controller.signal,
+ });
+ } finally {
+ clearTimeout(timer);
+ }
 
-        const text = await res.text();
-        let json = {};
-        try { json = JSON.parse(text); } catch (e) {}
+ const text = await res.text();
+ let json = {};
+ try { json = JSON.parse(text); } catch (e) {}
 
-        if (res.ok && json.imageUrl) {
-          graphicUrl = json.imageUrl;
-        }
-      } catch (e) {}
+ if (res.ok && json.imageUrl) {
+ graphicUrl = json.imageUrl;
+ }
+ } catch (e) {}
 
-      loadingEl.style.display = 'none';
-      resultEl.style.display  = 'block';
+ loadingEl.style.display = 'none';
+ resultEl.style.display = 'block';
 
-      if (graphicUrl) {
-        resultEl.innerHTML = `
-          <div class="result-wrap">
-            <div class="graphic-frame">
-              <img src="${graphicUrl}" alt="Hairstyle Analysis Graphic" id="graphic-img" />
-            </div>
-            <div class="result-actions">
-              <button class="btn green-btn" onclick="downloadGraphic()">⬇ Download Graphic</button>
-              <a class="btn primary" href="/booking.html">✂ Book Appointment</a>
-              <a class="btn" href="/#ai">Coba Lagi</a>
-            </div>
-            <div class="footer-note">AI Hairstyle Analysis — Powered by RedBox Barbershop</div>
-          </div>`;
-      } else {
-        resultEl.innerHTML = `
-          <div class="state-wrap"><div class="state-card">
-            <h2>Graphic gagal dibuat</h2>
-            <p>Terjadi timeout atau error saat generate. Coba lagi — gambar di-cache setelah berhasil.</p>
-            <div class="btn-row">
-              <button class="btn green-btn" onclick="retryGraphic()">↻ Coba Lagi</button>
-              <a class="btn" href="/#ai">Upload Ulang</a>
-            </div>
-          </div></div>`;
-      }
-    });
+ if (graphicUrl) {
+ resultEl.innerHTML = `
+ <div class="result-wrap">
+ <div class="graphic-frame">
+ <img src="${graphicUrl}" alt="Hairstyle Analysis Graphic" id="graphic-img" />
+ </div>
+ <div class="result-actions">
+ <button class="btn green-btn" onclick="downloadGraphic()">⬇ Download Graphic</button>
+ <a class="btn primary" href="/booking.html"> Book Appointment</a>
+ <a class="btn" href="/#ai">Coba Lagi</a>
+ </div>
+ <div class="footer-note">AI Hairstyle Analysis | Powered by RedBox Barbershop</div>
+ </div>`;
+ } else {
+ resultEl.innerHTML = `
+ <div class="state-wrap"><div class="state-card">
+ <h2>Graphic gagal dibuat</h2>
+ <p>Terjadi timeout atau error saat generate. Coba lagi, gambar di-cache setelah berhasil.</p>
+ <div class="btn-row">
+ <button class="btn green-btn" onclick="retryGraphic()">↻ Coba Lagi</button>
+ <a class="btn" href="/#ai">Upload Ulang</a>
+ </div>
+ </div></div>`;
+ }
+ });
 
-    async function retryGraphic() {
-      location.reload();
-    }
+ async function retryGraphic() {
+ location.reload();
+ }
 
-    async function downloadGraphic() {
-      const img = document.getElementById('graphic-img');
-      if (!img) return;
-      try {
-        const res = await fetch(img.src);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'redbox-hairstyle-analysis.jpg';
-        a.click();
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        const a = document.createElement('a');
-        a.href = img.src;
-        a.download = 'redbox-hairstyle-analysis.jpg';
-        a.target = '_blank';
-        a.click();
-      }
-    }
-  </script>
+ async function downloadGraphic() {
+ const img = document.getElementById('graphic-img');
+ if (!img) return;
+ try {
+ const res = await fetch(img.src);
+ const blob = await res.blob();
+ const url = URL.createObjectURL(blob);
+ const a = document.createElement('a');
+ a.href = url;
+ a.download = 'redbox-hairstyle-analysis.jpg';
+ a.click();
+ URL.revokeObjectURL(url);
+ } catch (e) {
+ const a = document.createElement('a');
+ a.href = img.src;
+ a.download = 'redbox-hairstyle-analysis.jpg';
+ a.target = '_blank';
+ a.click();
+ }
+ }
+ </script>
 </body>
 </html>

@@ -10,11 +10,11 @@ Setiap cabang membutuhkan token Fonnte terpisah untuk WhatsApp AI Bot.
 
 | Variable | Cabang | Nomor WA | Status |
 |----------|--------|----------|--------|
-| `FONNTE_TOKEN` | Bypass (Pusat) | 0818-2025-69 | ✅ Aktif |
+| `FONNTE_TOKEN` | Bypass (Pusat) | 0818-2025-69 | Aktif |
 | `FONNTE_TOKEN_SUMBER` | Sumber | 0818-2025-99 | 🆕 Token: `RCmcYJ2VkQkq3JXPMe2p` |
-| `FONNTE_TOKEN_SAMADIKUN` | Samadikun | 0818-2025-89 | ⏳ Menunggu token |
-| `FONNTE_TOKEN_CSB` | CSB Mall | 0818-2028-89 | ⏳ Menunggu token |
-| `FONNTE_TOKEN_TEGAL` | Tegal | 0818-268-883 | ⏳ Menunggu token |
+| `FONNTE_TOKEN_SAMADIKUN` | Samadikun | 0818-2025-89 | Menunggu token |
+| `FONNTE_TOKEN_CSB` | CSB Mall | 0818-2028-89 | Menunggu token |
+| `FONNTE_TOKEN_TEGAL` | Tegal | 0818-268-883 | Menunggu token |
 
 ## Setup Sumber
 
@@ -38,12 +38,12 @@ Response yang diharapkan:
 
 ```json
 {
-  "status": "ok",
-  "branches": {
-    "bypass": { "available": true, ... },
-    "sumber": { "available": true, ... },
-    ...
-  }
+ "status": "ok",
+ "branches": {
+ "bypass": { "available": true, ... },
+ "sumber": { "available": true, ... },
+ ...
+ }
 }
 ```
 
@@ -65,11 +65,11 @@ curl "https://redboxbarbershop.com/api/wa/webhook?debug=redbox2026&send_to=0818x
 
 Setiap cabang dengan AI bot aktif akan:
 
-- ✅ Auto-reply dengan AI (GPT-4o-mini)
-- ✅ Memory percakapan per customer
-- ✅ Human takeover (pause AI saat admin balas manual)
-- ✅ Forward booking ke admin cabang
-- ✅ Deteksi cabang-aware (jam operasional, lokasi, dll)
+- Auto-reply dengan AI (GPT-4o-mini)
+- Memory percakapan per customer
+- Human takeover (pause AI saat admin balas manual)
+- Forward booking ke admin cabang
+- Deteksi cabang-aware (jam operasional, lokasi, dll)
 
 ## Monitoring
 

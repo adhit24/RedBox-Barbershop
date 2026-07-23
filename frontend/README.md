@@ -11,22 +11,22 @@ SEO-optimized frontend for Redbox Barbershop built with Next.js + Supabase.
 ## Setup
 
 1. **Environment Variables** (already created in `.env.local`):
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=https://khcvklzxfohwkyocenaf.supabase.co
-   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_zXzyWRuSjJbXYomkJ1ws8w_iHHq1LSg
-   ```
+ ```
+ NEXT_PUBLIC_SUPABASE_URL=https://khcvklzxfohwkyocenaf.supabase.co
+ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_zXzyWRuSjJbXYomkJ1ws8w_iHHq1LSg
+ ```
 
 2. **Run development server**:
-   ```bash
-   npm run dev
-   # Runs on http://localhost:3000
-   ```
+ ```bash
+ npm run dev
+ # Runs on http://localhost:3000
+ ```
 
 3. **Run with API backend** (from root):
-   ```bash
-   npm run dev:all
-   # Runs both frontend (3000) and API (3001)
-   ```
+ ```bash
+ npm run dev:all
+ # Runs both frontend (3000) and API (3001)
+ ```
 
 ## Supabase Integration
 
@@ -38,14 +38,14 @@ SEO-optimized frontend for Redbox Barbershop built with Next.js + Supabase.
 
 ```
 src/
-├── app/                    # Next.js pages
-│   ├── page.tsx           # Homepage
-│   └── bookings/          # Bookings page (example)
-├── utils/supabase/        # Supabase clients
-│   ├── server.ts          # Server-side client
-│   ├── client.ts          # Browser client
-│   └── middleware.ts      # Middleware helper
-└── middleware.ts          # Next.js middleware
+├── app/ # Next.js pages
+│ ├── page.tsx # Homepage
+│ └── bookings/ # Bookings page (example)
+├── utils/supabase/ # Supabase clients
+│ ├── server.ts # Server-side client
+│ ├── client.ts # Browser client
+│ └── middleware.ts # Middleware helper
+└── middleware.ts # Next.js middleware
 ```
 
 ---

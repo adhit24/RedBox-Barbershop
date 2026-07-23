@@ -61,12 +61,12 @@ Tujuan:
 
 ## 6. Do & Don't
 
-### ✅ Do
+### Do
 - Gunakan warna sesuai guideline
 - Gunakan background kontras (hitam / putih)
 - Jaga proporsi asli logo
 
-### ❌ Don't
+### Don't
 - Jangan stretch / ubah rasio
 - Jangan ganti warna sembarangan
 - Jangan tambah efek (shadow, glow, dll)
@@ -105,7 +105,7 @@ Disarankan menggunakan:
 
 ## 9. Notes
 
-Logo ini bersifat **fixed identity**  
+Logo ini bersifat **fixed identity** 
 Tidak diperbolehkan modifikasi tanpa pertimbangan brand.
 
 Untuk kebutuhan khusus (kolaborasi / campaign), gunakan versi turunan tanpa mengubah struktur utama.

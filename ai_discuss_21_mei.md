@@ -62,7 +62,7 @@ Brand_assets/product/icons/
 
 - **Command**: `vercel --prod --yes`
 - **Production URL**: https://www.redboxbarbershop.com
-- **Status**: ✓ Deployed in 42s
+- **Status**: Deployed in 42s
 - **Inspect**: https://vercel.com/adhit24s-projects/redbox-barbershop/DU1v9RmfaWhYs9uDVaLd1Mn2bdY2
 
 ---

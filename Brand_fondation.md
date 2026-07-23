@@ -40,16 +40,16 @@ Redbox menawarkan:
 
 ## 6. Core Values
 
-**Precision**  
+**Precision** 
 Detail adalah prioritas utama
 
-**Experience**  
+**Experience** 
 Layanan adalah ritual, bukan sekadar proses
 
-**Consistency**  
+**Consistency** 
 Standar harus sama di setiap kunjungan
 
-**Accessibility**  
+**Accessibility** 
 Premium tanpa eksklusif berlebihan
 
 ---

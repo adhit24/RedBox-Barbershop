@@ -1,1022 +1,1018 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Redbox Barbershop — Sharp Cuts, Bold Style</title>
-  <meta name="description" content="Redbox Barbershop Cirebon — Modern classic barbershop. Presisi, style, kepercayaan diri." />
-  <meta name="theme-color" content="#0A0A0A" />
-  <meta name="facebook-domain-verification" content="76y0omu6rg1lv6bw5khfxz1r7a5aau" />
-  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css?v=4" />
-  <link rel="stylesheet" href="css/animations.css?v=2" />
-  <link rel="stylesheet" href="css/ai-section.css?v=1" />
-  <link rel="stylesheet" href="css/ai-interactive.css?v=3" />
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Redbox Barbershop | Sharp Cuts, Bold Style</title>
+ <meta name="description" content="Redbox Barbershop Cirebon. Modern classic barbershop. Presisi, style, kepercayaan diri." />
+ <meta name="theme-color" content="#0A0A0A" />
+ <meta name="facebook-domain-verification" content="76y0omu6rg1lv6bw5khfxz1r7a5aau" />
+ <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+ <link rel="preconnect" href="https://fonts.googleapis.com" />
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap" rel="stylesheet" />
+ <link rel="stylesheet" href="css/style.css?v=4" />
+ <link rel="stylesheet" href="css/animations.css?v=2" />
+ <link rel="stylesheet" href="css/ai-section.css?v=1" />
+ <link rel="stylesheet" href="css/ai-interactive.css?v=3" />
+ <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+ <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
-  <!-- Scroll Progress -->
-  <div class="rb-progress" aria-hidden="true"></div>
-
-  <!-- ========== NAVBAR ========== -->
-  <nav class="navbar" id="navbar">
-    <div class="container nav-container">
-      <a href="#hero" class="nav-logo">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Barbershop" />
-        <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
-      </a>
-      <div class="nav-pill-wrapper" id="navPillWrapper">
-        <span class="nav-pill-track" id="navPillTrack"></span>
-        <ul class="nav-links" id="navLinks">
-          <li><a href="#hero" class="nav-link active">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            Home
-          </a></li>
-          <li><a href="#services" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
-            Services
-          </a></li>
-          <li><a href="#professionals" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Pros
-          </a></li>
-          <li><a href="products.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            Product
-          </a></li>
-          <li><a href="#location" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            Location
-          </a></li>
-          <li><a href="membership.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            Membership
-          </a></li>
-          <li><a href="sundaze.html" class="nav-link nav-sundaze">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            SUNDAZE
-          </a></li>
-          <li class="nav-menu-footer">
-            <a href="booking.html" class="nav-menu-book">Book Now</a>
-          </li>
-        </ul>
-      </div>
-      <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Member</span>
-      </button>
-      <a href="booking.html" class="btn-book-nav">Book Now</a>
-      <button class="hamburger" id="hamburger" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </nav>
-
-  <!-- ========== HERO ========== -->
-  <section class="hero" id="hero">
-    <div class="hero-bg">
-      <div class="hero-slide active" style="background-image:url('Brand_assets/homepage_background.jpg')"></div>
-      <div class="hero-overlay"></div>
-      <!-- Gradient Orbs -->
-      <div class="rb-hero-orbs" aria-hidden="true">
-        <div class="rb-orb rb-orb-1"></div>
-        <div class="rb-orb rb-orb-2"></div>
-        <div class="rb-orb rb-orb-3"></div>
-      </div>
-    </div>
-    <div class="hero-content container">
-      <div class="hero-eyebrow">
-        <span class="eyebrow-line"></span>
-        <span class="eyebrow-text">CIREBON'S PREMIUM BARBERSHOP</span>
-      </div>
-      <p class="hero-tagline"><span class="tagline-word">Precision.</span><span class="tagline-sep">&#8202;</span><span class="tagline-word">Style.</span><span class="tagline-sep">&#8202;</span><span class="tagline-word">Confidence.</span></p>
-      <h1 class="hero-title">
-        <span class="hero-line1">Precision Cut.</span>
-        <span class="hero-line2"><em>Elevated Confidence.</em></span>
-      </h1>
-      <p class="hero-sub">Since 2014, Redbox Barbershop has grown into one of Cirebon&#8217;s most trusted and trendsetting grooming destinations. With professionally trained barbers, modern grooming expertise, and a warm premium atmosphere, Redbox delivers more than just a haircut&#160;&#8212;&#160;it&#8217;s a complete grooming experience. Enjoy great coffee, relaxing vibes, and leave with a fresher, more confident version of yourself.</p>
-      <a href="booking.html" class="btn-primary hero-btn">
-        <span>Book Now</span>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-      </a>
-    </div>
-    <div class="hero-scroll-indicator">
-      <span>Scroll</span>
-      <div class="scroll-line"></div>
-    </div>
-  </section>
-
-  <hr class="rb-divider" aria-hidden="true">
-
-  <!-- ========== HYGIENE PLEDGE ========== -->
-  <div class="container" style="padding-top:32px;padding-bottom:0">
-    <div class="hygiene-pledge">
-      <div class="hp-header">
-        <div class="hp-icon-wrap">
-          <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        </div>
-        <div class="hp-header-text">
-          <div class="hp-eyebrow">Janji Kami</div>
-          <div class="hp-title">Standar Kebersihan Redbox</div>
-        </div>
-      </div>
-      <div class="hp-items">
-        <div class="hp-item">
-          <div class="hp-item-icon">
-            <img src="Brand_assets/kip.png" alt="Kip" class="hp-item-img hp-item-img--kip" />
-          </div>
-          <div class="hp-item-num">1</div>
-          <div class="hp-item-label">Kip</div>
-          <div class="hp-item-sub">Satu kip bersih per pelanggan</div>
-        </div>
-        <div class="hp-item">
-          <div class="hp-item-icon">
-            <img src="Brand_assets/towel.png" alt="Handuk" class="hp-item-img" />
-          </div>
-          <div class="hp-item-num">1</div>
-          <div class="hp-item-label">Handuk</div>
-          <div class="hp-item-sub">Satu handuk segar per kunjungan</div>
-        </div>
-        <div class="hp-item">
-          <div class="hp-item-icon">
-            <img src="Brand_assets/barbercut.png" alt="Per Orang" class="hp-item-img hp-item-img--barbercut" />
-          </div>
-          <div class="hp-item-num">1</div>
-          <div class="hp-item-label">Orang</div>
-          <div class="hp-item-sub">Diganti setiap sesi, tanpa terkecuali</div>
-        </div>
-      </div>
-      <div class="hp-footer">
-        "Kami tidak kompromi soal kebersihan. Setiap duduk di kursi kami, semua alat baru untuk kamu."
-      </div>
-    </div>
-  </div>
-  <!-- ========== END HYGIENE PLEDGE ========== -->
-
-  <section class="ai-grooming" id="ai">
-    <div class="container">
-
-      <!-- Member Gate — JS populates & shows for non-members -->
-      <div class="ai-member-promo" id="ai-member-promo" style="display:none"></div>
-
-      <!-- Upload Section — shown only for active members -->
-      <div class="ai-upload-section" id="ai-upload-section" style="display:none">
-        <div class="ai-upload-card">
-          <h3 class="ai-upload-title">Coba AI Grooming Sekarang</h3>
-          <p class="ai-upload-subtitle">Upload foto wajah dan dapatkan analisis AI instan</p>
-
-          <div class="ai-service-info">
-            <div class="ai-service-tags">
-              <span class="ai-service-tag">Face Analysis</span>
-              <span class="ai-service-tag">Hairstyle</span>
-              <span class="ai-service-tag">Outfit</span>
-              <span class="ai-service-tag">Eyewear</span>
-              <span class="ai-service-tag">Skincare</span>
-            </div>
-            <p class="ai-service-description">Upload selfie untuk mendapatkan analisis lengkap sekaligus — personal color, outfit, eyewear, skincare & hairstyle</p>
-          </div>
-
-          <div class="ai-upload-zone" id="ai-upload-zone">
-            <input type="file" id="ai-upload-input" accept="image/*" hidden />
-            <input type="file" id="ai-selfie-input" accept="image/*" capture="user" hidden />
-
-            <div class="ai-upload-placeholder" id="ai-upload-placeholder">
-              <svg class="ai-upload-icon-svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <div class="ai-upload-text">Drag & drop foto di sini</div>
-              <div class="ai-upload-hint">atau</div>
-              <div class="ai-upload-actions">
-                <button class="ai-upload-btn" id="ai-upload-btn" type="button">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                  Pilih dari Galeri
-                </button>
-                <button class="ai-upload-btn ai-selfie-btn" id="ai-selfie-btn" type="button">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                  Selfie Sekarang
-                </button>
-              </div>
-              <div class="ai-upload-formats">JPG, PNG, WebP · Max 10MB</div>
-            </div>
-
-            <img id="ai-image-preview" class="ai-image-preview" alt="Preview" style="display:none" />
-          </div>
-
-          <div class="ai-error" id="ai-error" style="display:none"></div>
-
-          <button class="ai-analyze-btn" id="ai-analyze-btn" type="button" disabled>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            Generate
-          </button>
-        </div>
-      </div>
-
-      <!-- Loading -->
-      <div class="ai-loading" id="ai-loading" style="display:none">
-        <div class="ai-loading-inner">
-          <!-- Scanner -->
-          <div class="ail-scanner">
-            <div class="ail-pulse"></div>
-            <div class="ail-pulse ail-pulse--2"></div>
-            <svg class="ail-rings" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="70" cy="70" r="66" stroke="rgba(255,255,255,.05)" stroke-width="2"/>
-              <circle class="ail-arc" cx="70" cy="70" r="66" stroke="#C1121F" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="80 335"/>
-              <circle cx="70" cy="70" r="54" stroke="rgba(255,255,255,.04)" stroke-width="1.5"/>
-              <circle class="ail-arc-inner" cx="70" cy="70" r="54" stroke="rgba(193,18,31,.3)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="45 295"/>
-            </svg>
-            <div class="ail-photo" id="ai-loading-photo">
-              <span class="ail-photo-placeholder">AI</span>
-            </div>
-          </div>
-          <!-- Progress bar -->
-          <div class="ail-progress">
-            <div class="ail-progress-fill" id="ai-progress-fill"></div>
-          </div>
-          <!-- Steps -->
-          <div class="ail-steps">
-            <div class="ail-step active" data-step="0">
-              <span class="ail-step-dot"></span>
-              <span class="ail-step-lbl">Upload</span>
-            </div>
-            <div class="ail-step-line"></div>
-            <div class="ail-step" data-step="1">
-              <span class="ail-step-dot"></span>
-              <span class="ail-step-lbl">Analisis</span>
-            </div>
-            <div class="ail-step-line"></div>
-            <div class="ail-step" data-step="2">
-              <span class="ail-step-dot"></span>
-              <span class="ail-step-lbl">Selesai</span>
-            </div>
-          </div>
-          <!-- Text -->
-          <div class="ai-loading-text" id="ai-loading-text">Mengupload foto...</div>
-          <div class="ai-loading-subtext">AI sedang memproses foto kamu</div>
-        </div>
-      </div>
-
-      <!-- Results (hidden — redirect to ai-results.html) -->
-      <div class="ai-results" id="ai-results" style="display:none">
-        <div class="ai-results-card">
-          <div class="ai-results-header">
-            <h3>Hasil AI</h3>
-            <button class="ai-results-reset" type="button" onclick="window.aiGrooming?.reset()">Coba Lagi</button>
-          </div>
-          <div id="ai-results-content"></div>
-          <div class="ai-results-actions">
-            <button class="ai-results-book" type="button" onclick="window.aiGrooming?.bookAppointment()">Book Appointment</button>
-            <button class="ai-results-download" type="button" onclick="window.aiGrooming?.downloadPreview()">Download Preview</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <hr class="rb-divider" aria-hidden="true">
-
-  <!-- ========== SERVICES ========== -->
-  <section class="services" id="services">
-    <div class="container">
-      <div class="section-header center">
-        <h2 class="section-title">Our Services</h2>
-        <span class="rb-title-line" aria-hidden="true"></span>
-        <p class="section-sub">Experience premium services tailored to your unique style.</p>
-      </div>
-
-      <!-- Service Categories -->
-      <div class="svc-filter">
-        <button class="svc-filter-btn active" data-category="haircut">Hair</button>
-        <button class="svc-filter-btn" data-category="shave">Shave</button>
-        <button class="svc-filter-btn" data-category="other">Other</button>
-        <button class="svc-filter-btn" data-category="package">Packages</button>
-      </div>
-
-      <!-- Service Grid Container -->
-      <div class="svc-grid-container">
-        <div class="svc-grid" id="svcGrid">
-          <!-- JS will generate service cards (4 per page on mobile) -->
-        </div>
-      </div>
-
-      <!-- Pagination -->
-      <div class="svc-pagination" id="svcPagination">
-        <!-- JS will generate pagination numbers -->
-      </div>
-
-      <div class="section-cta">
-        <a href="booking.html#service" class="btn-outline">View All Services &amp; Pricing</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- ========== HOME SERVICE ========== -->
-  <section class="home-service-section" id="home-service" aria-labelledby="hs-heading">
-    <div class="container">
-      <article class="hs-card" id="hsCard" aria-labelledby="hs-heading">
-
-        <!-- ── ATMOSPHERIC LAYERS ── -->
-        <div class="hs-card__atmos" aria-hidden="true">
-          <span class="hs-card__mesh"></span>
-          <span class="hs-card__grid"></span>
-          <span class="hs-card__orb hs-card__orb--a"></span>
-          <span class="hs-card__orb hs-card__orb--b"></span>
-          <span class="hs-card__trace"></span>
-        </div>
-
-        <div class="hs-card__inner">
-
-          <!-- ── LEFT: CONTENT ── -->
-          <div class="hs-card__content">
-
-            <div class="hs-card__eyebrow">
-              <span class="hs-card__pulse" aria-hidden="true"></span>
-              <span>Layanan Baru</span>
-              <span class="hs-card__eyebrow-sep" aria-hidden="true">·</span>
-              <span class="hs-card__eyebrow-meta">Home Service</span>
-            </div>
-
-            <h2 id="hs-heading" class="hs-card__title">
-              Kapster Datang
-              <em>ke Rumahmu</em>
-            </h2>
-
-            <p class="hs-card__desc">
-              Redbox Gentleman Grooming kelas barbershop — tanpa keluar rumah. Pilih kapster favorit, kami yang datang.
-            </p>
-
-            <!-- ── DUAL PRICING TIERS ── -->
-            <div class="hs-card__tiers" role="list">
-              <div class="hs-card__tier" role="listitem">
-                <span class="hs-card__tier-label">Single</span>
-                <div class="hs-card__tier-price">
-                  <span class="cur">Rp</span><span class="num">250<em>K</em></span>
-                </div>
-                <span class="hs-card__tier-foot">per orang</span>
-              </div>
-              <div class="hs-card__tier hs-card__tier--featured" role="listitem">
-                <span class="hs-card__tier-flag" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.39 7.36H22l-6.19 4.5 2.39 7.36L12 16.72l-6.2 4.5 2.39-7.36L2 9.36h7.61z"/></svg>
-                  Hemat Rp 50K
-                </span>
-                <span class="hs-card__tier-label">Family</span>
-                <div class="hs-card__tier-price">
-                  <span class="cur">Rp</span><span class="num">200<em>K</em></span>
-                </div>
-                <span class="hs-card__tier-foot">/orang · min 2</span>
-              </div>
-            </div>
-
-            <!-- ── PERKS ── -->
-            <ul class="hs-card__perks" role="list">
-              <li>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-                <span>Radius 5 KM</span>
-              </li>
-              <li>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/></svg>
-                <span>5 Cabang</span>
-              </li>
-              <li>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-                <span>Pilih Kapster</span>
-              </li>
-              <li>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span>Cirebon &amp; Tegal</span>
-              </li>
-            </ul>
-
-            <!-- ── CTAs ── -->
-            <div class="hs-card__cta">
-              <a href="home-service.html#pricing" class="hs-card__btn hs-card__btn--primary">
-                <span class="hs-card__btn-text">Pesan Sekarang</span>
-                <span class="hs-card__btn-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-                </span>
-              </a>
-              <a href="home-service.html#cara-kerja" class="hs-card__btn hs-card__btn--ghost">
-                Cara Kerja
-                <span aria-hidden="true">↓</span>
-              </a>
-            </div>
-          </div>
-
-          <!-- ── RIGHT: COVERAGE RADAR ── -->
-          <div class="hs-card__visual" aria-hidden="true">
-            <div class="hs-radar">
-              <span class="hs-radar__ring hs-radar__ring--1"></span>
-              <span class="hs-radar__ring hs-radar__ring--2"></span>
-              <span class="hs-radar__ring hs-radar__ring--3"></span>
-              <span class="hs-radar__sweep"></span>
-              <div class="hs-radar__core">
-                <strong>5 KM</strong>
-                <small>radius</small>
-              </div>
-              <span class="hs-radar__node hs-radar__node--1"><i></i></span>
-              <span class="hs-radar__node hs-radar__node--2"><i></i></span>
-              <span class="hs-radar__node hs-radar__node--3"><i></i></span>
-              <span class="hs-radar__node hs-radar__node--4"><i></i></span>
-              <span class="hs-radar__node hs-radar__node--5"><i></i></span>
-            </div>
-            <div class="hs-radar__legend">
-              <span><i class="dot dot--core"></i> Cabang Redbox</span>
-              <span><i class="dot dot--area"></i> Area cover 5 KM</span>
-            </div>
-          </div>
-
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <script>
-    /* ── Home Service card: tilt + entrance reveal ── */
-    (function(){
-      var card = document.getElementById('hsCard');
-      if (!card) return;
-      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-      /* Entrance reveal once in view */
-      if ('IntersectionObserver' in window) {
-        var io = new IntersectionObserver(function(entries){
-          entries.forEach(function(e){
-            if (e.isIntersecting) {
-              card.classList.add('is-revealed');
-              io.unobserve(card);
-            }
-          });
-        }, { threshold: 0.18, rootMargin: '0px 0px -60px 0px' });
-        io.observe(card);
-      } else {
-        card.classList.add('is-revealed');
-      }
-
-      if (reduce) return;
-      if (window.matchMedia('(hover: none)').matches) return; /* skip on touch */
-
-      /* Subtle 3D tilt on mouse move */
-      var raf = null, tx = 0, ty = 0;
-      var MAX = 4; /* deg */
-      function onMove(ev){
-        var r = card.getBoundingClientRect();
-        var px = (ev.clientX - r.left) / r.width;  /* 0..1 */
-        var py = (ev.clientY - r.top)  / r.height;
-        tx = (py - 0.5) * -MAX;
-        ty = (px - 0.5) *  MAX;
-        if (!raf) raf = requestAnimationFrame(apply);
-      }
-      function apply(){
-        raf = null;
-        card.style.setProperty('--tx', tx.toFixed(2) + 'deg');
-        card.style.setProperty('--ty', ty.toFixed(2) + 'deg');
-      }
-      function onLeave(){
-        tx = 0; ty = 0;
-        if (!raf) raf = requestAnimationFrame(apply);
-      }
-      card.addEventListener('mousemove', onMove);
-      card.addEventListener('mouseleave', onLeave);
-    })();
-  </script>
-
-  <!-- ========== WEDDING ========== -->
-  <style>
-    .wedding-section { padding: 0 0 72px; }
-    .wedding-card {
-      position: relative; overflow: hidden;
-      border: 1px solid rgba(212,160,23,.22);
-      border-radius: 24px;
-      background:
-        radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212,160,23,.1) 0%, transparent 60%),
-        linear-gradient(165deg, rgba(212,160,23,.05) 0%, rgba(10,10,10,.8) 100%);
-      padding: 48px 52px 44px;
-      box-shadow: 0 0 0 1px rgba(212,160,23,.1) inset, 0 32px 80px -32px rgba(212,160,23,.22);
-      transition: border-color .35s ease, box-shadow .4s ease;
-    }
-    .wedding-card::before {
-      content: ''; position: absolute; top: 0; left: 18%; right: 18%; height: 1px;
-      background: linear-gradient(90deg, transparent, rgba(245,158,11,.45), transparent);
-      pointer-events: none;
-    }
-    .wedding-card:hover {
-      border-color: rgba(212,160,23,.38);
-      box-shadow: 0 0 0 1px rgba(212,160,23,.18) inset, 0 40px 96px -32px rgba(212,160,23,.32);
-    }
-    .wedding-card__inner {
-      display: grid; grid-template-columns: 1fr auto; gap: 56px; align-items: center;
-    }
-    .wedding-card__eyebrow {
-      display: inline-flex; align-items: center; gap: 8px;
-      background: rgba(212,160,23,.12); border: 1px solid rgba(212,160,23,.28);
-      border-radius: 99px; padding: 6px 16px;
-      font-size: .72rem; font-weight: 700; color: #F59E0B; letter-spacing: .1em; text-transform: uppercase;
-      margin-bottom: 20px;
-    }
-    .wedding-card__title {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: clamp(2rem, 5vw, 3.2rem);
-      letter-spacing: .04em; line-height: 1.05; margin-bottom: 16px;
-    }
-    .wedding-card__title em {
-      background: linear-gradient(135deg, #F59E0B 0%, #D4A017 50%, #F59E0B 100%);
-      background-size: 200% auto;
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text; font-style: normal;
-    }
-    .wedding-card__desc {
-      font-size: .92rem; color: rgba(255,255,255,.55); max-width: 500px; line-height: 1.72; margin-bottom: 28px;
-    }
-    .wedding-card__tiers {
-      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px;
-    }
-    .wedding-card__tier {
-      border: 1px solid rgba(212,160,23,.22); border-radius: 14px;
-      padding: 12px 18px; display: flex; flex-direction: column; gap: 3px; min-width: 118px;
-      transition: border-color .2s ease, background .2s ease;
-    }
-    .wedding-card__tier:hover {
-      border-color: rgba(212,160,23,.42);
-      background: rgba(212,160,23,.06);
-    }
-    .wedding-card__tier-label {
-      font-size: .66rem; font-weight: 700; color: rgba(212,160,23,.7); letter-spacing: .12em; text-transform: uppercase;
-    }
-    .wedding-card__tier-price {
-      font-family: 'Bebas Neue', sans-serif; font-size: 1.45rem; letter-spacing: .03em; color: #F0F0F0;
-    }
-    .wedding-card__tier-sub { font-size: .67rem; color: rgba(255,255,255,.4); }
-    .wedding-card__cta { display: flex; gap: 12px; flex-wrap: wrap; }
-    .wedding-card__btn--primary {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 13px 28px; border-radius: 99px;
-      background: linear-gradient(135deg, #F59E0B 0%, #D4A017 100%);
-      color: #0A0A0A; font-size: .8rem; font-weight: 800;
-      text-decoration: none; letter-spacing: .06em; text-transform: uppercase;
-      transition: transform .2s ease, box-shadow .25s ease;
-      box-shadow: 0 8px 24px -8px rgba(212,160,23,.48);
-      position: relative; overflow: hidden;
-    }
-    .wedding-card__btn--primary::after {
-      content: ''; position: absolute; inset: 0;
-      background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,.22) 50%, transparent 75%);
-      transform: translateX(-100%); pointer-events: none;
-    }
-    .wedding-card__btn--primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px -10px rgba(212,160,23,.62); }
-    .wedding-card__btn--primary:hover::after { animation: rb-shimmer .55s ease forwards; }
-    .wedding-card__btn--ghost {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 13px 22px; border-radius: 99px;
-      border: 1px solid rgba(212,160,23,.28); color: rgba(212,160,23,.75);
-      font-size: .8rem; font-weight: 600;
-      text-decoration: none; letter-spacing: .04em;
-      transition: border-color .2s ease, color .2s ease;
-    }
-    .wedding-card__btn--ghost:hover { border-color: rgba(212,160,23,.55); color: #F59E0B; }
-    .wedding-card__visual {
-      flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 14px;
-      color: rgba(255,255,255,.28); font-size: .7rem; text-align: center; letter-spacing: .08em; text-transform: uppercase;
-    }
-    .wedding-rings-svg { opacity: .85; }
-    @media (max-width: 900px) {
-      .wedding-card__inner { grid-template-columns: 1fr; }
-      .wedding-card__visual { display: none; }
-      .wedding-card { padding: 36px 28px 32px; }
-    }
-    @media (max-width: 600px) {
-      .wedding-card__tiers { gap: 8px; }
-      .wedding-card__tier { min-width: 100px; padding: 10px 14px; }
-    }
-  </style>
-  <section class="wedding-section" id="wedding" aria-labelledby="wedding-heading">
-    <div class="container">
-      <article class="wedding-card">
-        <div class="wedding-card__inner">
-          <div class="wedding-card__content">
-            <div class="wedding-card__eyebrow">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              Layanan Premium · Wedding Grooming
-            </div>
-            <h2 id="wedding-heading" class="wedding-card__title">
-              Tampil Sempurna di
-              <em>Hari Pernikahanmu</em>
-            </h2>
-            <p class="wedding-card__desc">
-              Kapster Redbox hadir langsung ke venue atau rumah. Haircut presisi dan styling khusus pernikahan — untuk pengantin, best man, dan seluruh groomsmen.
-            </p>
-            <div class="wedding-card__tiers" role="list">
-              <div class="wedding-card__tier" role="listitem">
-                <span class="wedding-card__tier-label">Gentleman</span>
-                <span class="wedding-card__tier-price">350K</span>
-                <span class="wedding-card__tier-sub">1 orang</span>
-              </div>
-              <div class="wedding-card__tier" role="listitem">
-                <span class="wedding-card__tier-label">Silver</span>
-                <span class="wedding-card__tier-price">500K</span>
-                <span class="wedding-card__tier-sub">2 orang</span>
-              </div>
-              <div class="wedding-card__tier" role="listitem">
-                <span class="wedding-card__tier-label">Gold</span>
-                <span class="wedding-card__tier-price">750K</span>
-                <span class="wedding-card__tier-sub">3 orang</span>
-              </div>
-              <div class="wedding-card__tier" role="listitem">
-                <span class="wedding-card__tier-label">Platinum</span>
-                <span class="wedding-card__tier-price">1 Juta</span>
-                <span class="wedding-card__tier-sub">4 orang</span>
-              </div>
-            </div>
-            <div class="wedding-card__cta">
-              <a href="home-service.html#wedding-pricing" class="wedding-card__btn--primary">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-                Lihat Paket
-              </a>
-              <a href="home-service.html#wedding-pricing" class="wedding-card__btn--ghost">
-                Detail Harga ↓
-              </a>
-            </div>
-          </div>
-          <div class="wedding-card__visual" aria-hidden="true">
-            <svg class="wedding-rings-svg" width="128" height="88" viewBox="0 0 128 88" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="46" cy="44" r="32" stroke="rgba(212,160,23,0.45)" stroke-width="2.5" fill="none"/>
-              <circle cx="46" cy="44" r="32" stroke="rgba(245,158,11,0.15)" stroke-width="10" fill="none"/>
-              <circle cx="82" cy="44" r="32" stroke="rgba(212,160,23,0.45)" stroke-width="2.5" fill="none"/>
-              <circle cx="82" cy="44" r="32" stroke="rgba(245,158,11,0.15)" stroke-width="10" fill="none"/>
-              <circle cx="46" cy="44" r="5" fill="rgba(245,158,11,0.5)"/>
-              <circle cx="82" cy="44" r="5" fill="rgba(245,158,11,0.5)"/>
-            </svg>
-            <span>Wedding<br>Grooming</span>
-          </div>
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <hr class="rb-divider" aria-hidden="true">
-
-  <!-- ========== PROFESSIONALS ========== -->
-  <section class="professionals" id="professionals">
-    <div class="container">
-      <div class="section-header">
-        <h2 class="section-title">Meet Our <em>Professionals</em></h2>
-        <span class="rb-title-line" aria-hidden="true"></span>
-        <p class="section-sub">Skilled professionals ready to provide you with great service.</p>
-      </div>
-
-      <!-- Branch Filter -->
-      <div class="pro-filter">
-        <button class="filter-btn active" data-branch="bypass">Bypass</button>
-        <button class="filter-btn" data-branch="samadikun">Samadikun</button>
-        <button class="filter-btn" data-branch="csb">Csb Mall</button>
-        <button class="filter-btn" data-branch="sumber">Sumber</button>
-        <button class="filter-btn" data-branch="tegal">Tegal</button>
-      </div>
-
-      <!-- Desktop grid (Empty, populated by JS) -->
-      <div class="pro-grid pro-grid-desktop" id="proGridDesktop">
-        <!-- JS will generate pro cards -->
-      </div>
-
-      <!-- Mobile swiper (Empty, populated by JS) -->
-      <div class="pro-swiper-wrap" id="proSwiperWrap">
-        <div class="pro-swiper" id="proSwiper">
-          <!-- JS will generate pro slides -->
-        </div><!-- end pro-swiper -->
-
-        <!-- Prev / Next arrows -->
-        <button class="pro-arrow pro-arrow-prev" id="proArrowPrev" aria-label="Previous">&#8249;</button>
-        <button class="pro-arrow pro-arrow-next" id="proArrowNext" aria-label="Next">&#8250;</button>
-
-        <!-- Dots -->
-        <div class="pro-dots" id="proDots">
-          <span class="pro-dot active"></span>
-          <span class="pro-dot"></span>
-          <span class="pro-dot"></span>
-          <span class="pro-dot"></span>
-        </div>
-
-      </div><!-- end pro-swiper-wrap -->
-
-    </div>
-  </section>
-
-
-
-  <hr class="rb-divider" aria-hidden="true">
-
-  <!-- ========== GALLERY ========== -->
-  <section class="rb-gallery-scroll" id="gallery" aria-label="Gallery">
-    <div class="rb-gallery-sticky">
-      <div class="rb-gallery-stage">
-        <div class="rgb-ring rgb-ring-2" aria-hidden="true"></div>
-        <div class="rgb-ring rgb-ring-1" aria-hidden="true"></div>
-        <div class="rgb-main-ring" aria-hidden="true"></div>
-        <div class="rgb-center-text" aria-hidden="true">
-          <h2>Our<br>Gallery</h2>
-          <span>The Art of Barbering</span>
-        </div>
-        <div class="rgb-photo"><img src="Brand_assets/Talent1.jpg" alt="Haircut Result" loading="lazy"></div>
-        <div class="rgb-photo"><img src="Brand_assets/Talent2.jpg" alt="Fade Style" loading="lazy"></div>
-        <div class="rgb-photo"><img src="Brand_assets/Kapster1.jpg" alt="Barber at work" loading="lazy"></div>
-        <div class="rgb-photo"><img src="Brand_assets/Talent3.webp" alt="Braids" loading="lazy"></div>
-        <div class="rgb-photo"><img src="Brand_assets/Talent4.jpg" alt="Box Braids" loading="lazy"></div>
-        <div class="rgb-photo"><img src="Brand_assets/Talent5.jpg" alt="Sharp Cut" loading="lazy"></div>
-        <div class="rgb-photo"><img src="Brand_assets/Kapster2.jpg" alt="Style Result" loading="lazy"></div>
-        <div class="rgb-photo"><img src="Brand_assets/Kapster4.jpg" alt="Premium Cut" loading="lazy"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ========== MEMBERSHIP CTA ========== -->
-  <section class="ms-cta-section" id="membership">
-    <div class="container">
-      <div class="ms-cta-inner">
-
-        <div class="ms-cta-left">
-          <span class="ms-cta-badge">EXCLUSIVE MEMBERSHIP</span>
-          <h2 class="ms-cta-headline">Loyal Member.<br>Bigger Rewards.</h2>
-          <p class="ms-cta-sub">Setiap kunjungan kamu menghasilkan poin. Poin naik level. Level buka privilege. Satu kartu — satu komunitas barbershop terbaik di Cirebon.</p>
-          <a href="membership.html" class="ms-cta-btn">
-            Gabung Sekarang
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-          </a>
-          <p class="ms-cta-note">Aktivasi sekali · Rp100.000 · Benefit seumur hidup</p>
-        </div>
-
-        <div class="ms-glow-grid">
-
-          <!-- Card 1 -->
-          <div class="ms-glow-wrap" style="--card-delay:0.1s">
-            <div class="ms-glow-bg" style="background:linear-gradient(137deg,#FF3D77 0%,#FFB1CE 45%,#FF9D3C 100%)"></div>
-            <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#FF3D77 0%,#FFB1CE 45%,#FF9D3C 100%) border-box">
-              <div class="ms-glow-inner">
-                <div class="ms-glow-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                </div>
-                <div>
-                  <h4 class="ms-glow-title">Kumpulkan Poin</h4>
-                  <p class="ms-glow-desc">Setiap Rp10.000 = 1 poin. Makin sering datang, makin banyak reward yang bisa kamu claim.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 2 -->
-          <div class="ms-glow-wrap" style="--card-delay:0.2s">
-            <div class="ms-glow-bg" style="background:linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%)"></div>
-            <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%) border-box">
-              <div class="ms-glow-inner">
-                <div class="ms-glow-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 20c-4 0-7-2-7-5s3-5 7-5 7 2 7 5-3 5-7 5z"/></svg>
-                </div>
-                <div>
-                  <h4 class="ms-glow-title">4 Tier Eksklusif</h4>
-                  <p class="ms-glow-desc">Bronze → Silver → Gold → Platinum. Semakin tinggi tier, semakin besar diskon dan privilege-mu.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 3 -->
-          <div class="ms-glow-wrap" style="--card-delay:0.3s">
-            <div class="ms-glow-bg" style="background:linear-gradient(137deg,#4361EE 0%,#E0AEFF 45%,#F72585 100%)"></div>
-            <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#4361EE 0%,#E0AEFF 45%,#F72585 100%) border-box">
-              <div class="ms-glow-inner">
-                <div class="ms-glow-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                </div>
-                <div>
-                  <h4 class="ms-glow-title">Kartu E-Member</h4>
-                  <p class="ms-glow-desc">Dapatkan kartu E-membership premium Redbox langsung ke akunmu setelah aktivasi.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Card 4 -->
-          <div class="ms-glow-wrap" style="--card-delay:0.4s">
-            <div class="ms-glow-bg" style="background:linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%)"></div>
-            <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%) border-box">
-              <div class="ms-glow-inner">
-                <div class="ms-glow-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 20c-4 0-7-2-7-5s3-5 7-5 7 2 7 5-3 5-7 5z"/></svg>
-                </div>
-                <div>
-                  <h4 class="ms-glow-title">Referral Bonus</h4>
-                  <p class="ms-glow-desc">Ajak teman dan kalian berdua dapat bonus poin ekstra. Semakin banyak ajak, semakin banyak untung.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-  <hr class="rb-divider" aria-hidden="true">
-
-
-  <!-- ========== LOCATION ========== -->
-  <section class="location" id="location">
-    <div class="container">
-      <div class="section-header center">
-        <h2 class="section-title">Visit Redbox Barbershop</h2>
-        <span class="rb-title-line" aria-hidden="true"></span>
-        <p class="section-sub">Find us, check our hours, and see what makes us special.</p>
-      </div>
-      <div class="loc-branch-filter" id="locBranchFilter">
-        <button class="loc-branch-btn active" data-branch="bypass" data-query="Redbox Barbershop Jl. Ahmad Yani No.88 Cirebon" data-main="Jl. Ahmad Yani No.88, Kecapi, Harjamukti" data-sub="Cirebon, Jawa Barat" data-share="" data-wa="62818202569" data-wa-format="+62 818-202-569">Bypass</button>
-        <button class="loc-branch-btn" data-branch="samadikun" data-query="Redbox Barbershop Jl. Kapten Samadikun No.60 Kesenden Kejaksan Kota Cirebon Jawa Barat 45121" data-main="Jl. Kapten Samadikun No.60, Kesenden" data-sub="Kec. Kejaksan, Kota Cirebon, Jawa Barat 45121" data-share="https://share.google/MzaWPwVFzOHWnFkkw" data-wa="62818202589" data-wa-format="+62 818-202-589">Samadikun</button>
-        <button class="loc-branch-btn" data-branch="csb" data-query="Cirebon Super Block (CSB) Mall Jl. Dr. Cipto Mangunkusumo No.26 Cirebon" data-main="CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26" data-sub="Kota Cirebon, Jawa Barat" data-share="https://share.google/vs3tOuffbaFrwRoJ5" data-wa="62818202889" data-wa-format="+62 818-202-889">Csb Mall</button>
-        <button class="loc-branch-btn" data-branch="sumber" data-query="Redbox Barbershop Sumber Jl. Pangeran Cakrabuana No.2 Sumber Cirebon" data-main="Jl. Pangeran Cakrabuana No.2, Kemantren, Sumber" data-sub="Kabupaten Cirebon, Jawa Barat 45611" data-share="https://share.google/ZxGzRZKc5wfoidLS0" data-wa="62818202599" data-wa-format="+62 818-202-599">Sumber</button>
-        <button class="loc-branch-btn" data-branch="tegal" data-query="Redbox Barbershop Pekauman Jl. Kapten Sudibyo No.100 Tegal Barat Kota Tegal" data-main="Jl. Kapten Sudibyo No.100, Pekauman, Tegal Barat" data-sub="Kota Tegal, Jawa Tengah" data-share="https://share.google/lCJttmDfNwOUFkDwM" data-wa="62818268883" data-wa-format="+62 818-268-883">Tegal</button>
-      </div>
-      <div class="location-layout">
-        <div class="location-map">
-          <iframe id="locMapFrame" src="https://www.google.com/maps?q=Redbox%20Barbershop%20Jl.%20Ahmad%20Yani%20No.88%20Cirebon&output=embed" width="100%" height="100%" style="border:0" allowfullscreen="" loading="lazy" title="Lokasi Redbox"></iframe>
-        </div>
-        <div class="location-info-grid">
-          <div class="loc-card loc-address">
-            <div class="loc-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            </div>
-            <div>
-              <p class="loc-main" id="locAddressMain">Jl. Ahmad Yani No.88, Kecapi, Harjamukti</p>
-              <p class="loc-sub" id="locAddressSub">Cirebon, Jawa Barat</p>
-              <a class="loc-map-link" id="locMapLink" href="https://www.google.com/maps/search/?api=1&query=Redbox%20Barbershop%20Jl.%20Ahmad%20Yani%20No.88%20Cirebon" target="_blank" rel="noopener">Open in Google Maps</a>
-            </div>
-          </div>
-          <div class="loc-card loc-hours">
-            <h4>🕓 Operating Hours</h4>
-            <div class="hours-list" id="locHoursList">
-              <div class="hours-row"><span>Senin — Minggu</span><span id="locHoursValue">10:00 — 21:00</span></div>
-            </div>
-          </div>
-          <div class="loc-card loc-contact">
-            <h4>Contact Us</h4>
-            <a href="https://wa.me/62818202569?text=Hi%20Redbox%20Barbershop%2C%20I%27d%20like%20to%20book%20an%20appointment" target="_blank" class="contact-wa" id="locWaLink">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
-              <div>
-                <span class="wa-label">Message us on WhatsApp</span>
-                <span class="wa-number" id="locWaNumber">+62 818 202 569</span>
-              </div>
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ========== FOOTER ========== -->
-  <footer class="footer">
-    <div class="container footer-simple">
-      <div class="footer-simple-top">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" class="footer-logo-img" />
-        <span class="footer-tagline">Precision Cut. Elevated Confidence.</span>
-      </div>
-      <div class="footer-social">
-          <a href="https://www.instagram.com/redboxbarbershop/" target="_blank" rel="noopener" aria-label="Instagram">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-          </a>
-          <a href="https://www.tiktok.com/@redboxbarbershop" target="_blank" rel="noopener" aria-label="TikTok">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.22 6.22 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.52V6.75a4.85 4.85 0 01-1.02-.06z"/></svg>
-          </a>
-          <a href="https://www.facebook.com/" target="_blank" aria-label="Facebook">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-          </a>
-        </div>
-      <p class="footer-copy">&copy; 2026 Redbox Barbershop. All rights reserved. &mdash; Since 2014</p>
-      <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
-    </div>
-  </footer>
-
-  <!-- WhatsApp Float -->
-  <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20booking" target="_blank" class="wa-float" id="waFloat" aria-label="WhatsApp">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-  </a>
-
-  <!-- Mobile Sticky CTA -->
-  <div class="mobile-sticky-cta" id="mobileCta">
-    <a href="booking.html" class="mobile-cta-book">Book Now</a>
-  </div>
-
-  <!-- Confetti Container -->
-  <div class="confetti-container" id="confettiContainer" style="display:none">
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div>
-  </div>
-
-  <!-- Auth Modal -->
-  <div class="modal-overlay" id="loginModal">
-    <!-- Auth Form Container -->
-    <div class="modal-login" id="loginFormContainer">
-      <div class="modal-header">
-        <div class="modal-header-left">
-          <div class="modal-header-icon" id="authIcon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </div>
-          <div>
-            <h3 id="authTitle">MASUK</h3>
-          </div>
-        </div>
-        <button class="modal-close" id="modalClose" aria-label="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <!-- Toggle Mode -->
-        <div class="auth-mode-toggle">
-          <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
-          <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
-        </div>
-
-        <button class="btn-google" type="button" id="googleLoginBtn">
-          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          <span id="googleBtnText">Login dengan Google</span>
-        </button>
-        <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
-        <form id="loginForm">
-          <div class="form-group name-field" id="nameField">
-            <label for="userName">NAMA LENGKAP</label>
-            <input type="text" id="userName" placeholder="Nama lengkap Anda">
-          </div>
-          <div class="form-group">
-            <label for="loginEmail">EMAIL / NO. HP</label>
-            <input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required>
-          </div>
-          <div class="form-group">
-            <label for="loginPassword">PASSWORD</label>
-            <input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8">
-          </div>
-          <button type="submit" class="btn-login-submit" id="submitBtn">
-            <span id="submitBtnText">Masuk Sekarang</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </button>
-        </form>
-
-        <!-- Benefits List (Signup Only) -->
-        <div class="benefits-list" id="benefitsList" style="display:none">
-          <p class="benefits-title">Keuntungan Member:</p>
-          <div class="benefit-item">
-            <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <span>Simpan riwayat kunjungan & poin</span>
-          </div>
-          <div class="benefit-item">
-            <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <span>Tracking tier & benefits real-time</span>
-          </div>
-          <div class="benefit-item">
-            <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <span>Akses diskon eksklusif member</span>
-          </div>
-          <div class="benefit-item">
-            <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
-            <span>Prioritas booking & customer support</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Signup Success State (Hidden by default) -->
-    <div class="modal-success" id="signupSuccess" style="display:none">
-      <div class="success-header">
-        <div class="success-icon-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l.324.995c.235.721.953 1.672 1.597 2.113.644.442 1.849.92 2.674.928.825.008 1.084.185 1.083.983-.001.798-.272 2.456-.604 3.685-.331 1.229-1.068 3.097-1.638 4.152-.571 1.055-1.639 2.346-2.373 2.87-.734.524-1.872.932-2.536.932s-1.802-.408-2.536-.932c-.734-.524-1.802-1.815-2.373-2.87-.57-1.055-1.307-2.923-1.638-4.152-.332-1.229-.603-2.887-.604-3.685-.001-.798.258-.975 1.083-.983.825-.008 2.03-.486 2.674-.928.644-.441 1.362-1.392 1.597-2.113L12 2z"/><path d="M4 14l2.5 2.5"/><path d="M20 14l-2.5 2.5"/></svg>
-        </div>
-        <h2 class="success-title">SELAMAT BERGABUNG!</h2>
-        <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
-      </div>
-      <div class="success-body">
-        <div class="success-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-          Member Redbox Barbershop
-        </div>
-        <p class="success-message" id="successUserName">Selamat!</p>
-        <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
-        <div class="success-email-box">
-          <div class="success-email-label">Email Terdaftar</div>
-          <div class="success-email" id="successUserEmail">member@redbox.com</div>
-        </div>
-        <button class="btn-success-cta" id="successCtaBtn">
-          Mulai Petualangan
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <script src="js/services-data.js"></script>
-  <script src="js/main.js"></script>
-  <script src="js/ai-grooming.js?v=41076eb"></script>
-  <script type="module" src="js/animations.js"></script>
+ <!-- Scroll Progress -->
+ <div class="rb-progress" aria-hidden="true"></div>
+
+ <!-- ========== NAVBAR ========== -->
+ <nav class="navbar" id="navbar">
+ <div class="container nav-container">
+ <a href="#hero" class="nav-logo">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Barbershop" />
+ <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
+ </a>
+ <div class="nav-pill-wrapper" id="navPillWrapper">
+ <span class="nav-pill-track" id="navPillTrack"></span>
+ <ul class="nav-links" id="navLinks">
+ <li><a href="#hero" class="nav-link active">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z"/><path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z"/></svg>
+ Home
+ </a></li>
+ <li><a href="#services" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+ Services
+ </a></li>
+ <li><a href="#professionals" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM15.75 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM2.25 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM6.31 15.117A6.745 6.745 0 0 1 12 12a6.745 6.745 0 0 1 6.709 7.498.75.75 0 0 1-.372.568A12.696 12.696 0 0 1 12 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 0 1-.372-.568 6.787 6.787 0 0 1 1.019-4.38Z" clip-rule="evenodd"/><path d="M5.082 14.254a8.287 8.287 0 0 0-1.308 5.135 9.687 9.687 0 0 1-1.764-.44l-.115-.04a.563.563 0 0 1-.373-.487l-.01-.121a3.75 3.75 0 0 1 3.57-4.047ZM20.226 19.389a8.287 8.287 0 0 0-1.308-5.135 3.75 3.75 0 0 1 3.57 4.047l-.01.121a.563.563 0 0 1-.373.486l-.115.04c-.567.2-1.156.349-1.764.441Z"/></svg>
+ Pros
+ </a></li>
+ <li><a href="products.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12.378 1.602a.75.75 0 0 0-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03ZM21.75 7.93l-9 5.25v9l8.628-5.032a.75.75 0 0 0 .372-.648V7.93ZM11.25 22.18v-9l-9-5.25v8.57a.75.75 0 0 0 .372.648l8.628 5.033Z"/></svg>
+ Product
+ </a></li>
+ <li><a href="#location" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ Location
+ </a></li>
+ <li><a href="membership.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z"/></svg>
+ Membership
+ </a></li>
+ <li><a href="sundaze.html" class="nav-link nav-sundaze">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25a.75.75 0 0 1 .75.75v2.25a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM7.5 12a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM18.894 6.166a.75.75 0 0 0-1.06-1.06l-1.591 1.59a.75.75 0 1 0 1.06 1.061l1.591-1.59ZM21.75 12a.75.75 0 0 1-.75.75h-2.25a.75.75 0 0 1 0-1.5H21a.75.75 0 0 1 .75.75ZM17.834 18.894a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 1 0-1.061 1.06l1.59 1.591ZM12 18a.75.75 0 0 1 .75.75V21a.75.75 0 0 1-1.5 0v-2.25A.75.75 0 0 1 12 18ZM7.758 17.303a.75.75 0 0 0-1.061-1.06l-1.591 1.59a.75.75 0 0 0 1.06 1.061l1.591-1.59ZM6 12a.75.75 0 0 1-.75.75H3a.75.75 0 0 1 0-1.5h2.25A.75.75 0 0 1 6 12ZM6.697 7.757a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 0 0-1.061 1.06l1.59 1.591Z"/></svg>
+ SUNDAZE
+ </a></li>
+ <li class="nav-menu-footer">
+ <a href="booking.html" class="nav-menu-book">Book Now</a>
+ </li>
+ </ul>
+ </div>
+ <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ <span>Member</span>
+ </button>
+ <a href="booking.html" class="btn-book-nav">Book Now</a>
+ <button class="hamburger" id="hamburger" aria-label="Menu">
+ <span></span><span></span><span></span>
+ </button>
+ </div>
+ </nav>
+
+ <!-- ========== HERO ========== -->
+ <section class="hero" id="hero">
+ <div class="hero-bg">
+ <div class="hero-slide active" style="background-image:url('Brand_assets/homepage_background.jpg')"></div>
+ <div class="hero-overlay"></div>
+ <!-- Gradient Orbs -->
+ <div class="rb-hero-orbs" aria-hidden="true">
+ <div class="rb-orb rb-orb-1"></div>
+ <div class="rb-orb rb-orb-2"></div>
+ <div class="rb-orb rb-orb-3"></div>
+ </div>
+ </div>
+ <div class="hero-content container">
+ <div class="hero-eyebrow">
+ <span class="eyebrow-line"></span>
+ <span class="eyebrow-text">CIREBON'S PREMIUM BARBERSHOP</span>
+ </div>
+ <p class="hero-tagline"><span class="tagline-word">Precision.</span><span class="tagline-sep">&#8202;</span><span class="tagline-word">Style.</span><span class="tagline-sep">&#8202;</span><span class="tagline-word">Confidence.</span></p>
+ <h1 class="hero-title">
+ <span class="hero-line1">Precision Cut.</span>
+ <span class="hero-line2"><em>Elevated Confidence.</em></span>
+ </h1>
+ <p class="hero-sub">Since 2014, Redbox Barbershop has grown into one of Cirebon&#8217;s most trusted and trendsetting grooming destinations. With professionally trained barbers, modern grooming expertise, and a warm premium atmosphere, Redbox delivers more than just a haircut&#160;&#8212;&#160;it&#8217;s a complete grooming experience. Enjoy great coffee, relaxing vibes, and leave with a fresher, more confident version of yourself.</p>
+ <a href="booking.html" class="btn-primary hero-btn">
+ <span>Book Now</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </a>
+ </div>
+ <div class="hero-scroll-indicator">
+ <span>Scroll</span>
+ <div class="scroll-line"></div>
+ </div>
+ </section>
+
+
+ <!-- ========== HYGIENE PLEDGE ========== -->
+ <div class="container" style="padding-top:32px;padding-bottom:0">
+ <div class="hygiene-pledge">
+ <div class="hp-header">
+ <div class="hp-icon-wrap">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.516 2.17a.75.75 0 0 0-1.032 0 11.209 11.209 0 0 1-7.877 3.08.75.75 0 0 0-.722.515A12.74 12.74 0 0 0 2.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 0 0 .374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 0 0-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.734-3.08Zm3.094 8.016a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div class="hp-header-text">
+ <div class="hp-eyebrow">Janji Kami</div>
+ <div class="hp-title">Standar Kebersihan Redbox</div>
+ </div>
+ </div>
+ <div class="hp-items">
+ <div class="hp-item">
+ <div class="hp-item-icon">
+ <img src="Brand_assets/kip.png" alt="Kip" class="hp-item-img hp-item-img--kip" />
+ </div>
+ <div class="hp-item-num">1</div>
+ <div class="hp-item-label">Kip</div>
+ <div class="hp-item-sub">Satu kip bersih per pelanggan</div>
+ </div>
+ <div class="hp-item">
+ <div class="hp-item-icon">
+ <img src="Brand_assets/towel.png" alt="Handuk" class="hp-item-img" />
+ </div>
+ <div class="hp-item-num">1</div>
+ <div class="hp-item-label">Handuk</div>
+ <div class="hp-item-sub">Satu handuk segar per kunjungan</div>
+ </div>
+ <div class="hp-item">
+ <div class="hp-item-icon">
+ <img src="Brand_assets/barbercut.png" alt="Per Orang" class="hp-item-img hp-item-img--barbercut" />
+ </div>
+ <div class="hp-item-num">1</div>
+ <div class="hp-item-label">Orang</div>
+ <div class="hp-item-sub">Diganti setiap sesi, tanpa terkecuali</div>
+ </div>
+ </div>
+ <div class="hp-footer">
+ "Kami tidak kompromi soal kebersihan. Setiap duduk di kursi kami, semua alat baru untuk kamu."
+ </div>
+ </div>
+ </div>
+ <!-- ========== END HYGIENE PLEDGE ========== -->
+
+ <section class="ai-grooming" id="ai">
+ <div class="container">
+
+ <!-- Member Gate - JS populates & shows for non-members -->
+ <div class="ai-member-promo" id="ai-member-promo" style="display:none"></div>
+
+ <!-- Upload Section - shown only for active members -->
+ <div class="ai-upload-section" id="ai-upload-section" style="display:none">
+ <div class="ai-upload-card">
+ <h3 class="ai-upload-title">Coba AI Grooming Sekarang</h3>
+ <p class="ai-upload-subtitle">Upload foto wajah dan dapatkan analisis AI instan</p>
+
+ <div class="ai-service-info">
+ <div class="ai-service-tags">
+ <span class="ai-service-tag">Face Analysis</span>
+ <span class="ai-service-tag">Hairstyle</span>
+ <span class="ai-service-tag">Outfit</span>
+ <span class="ai-service-tag">Eyewear</span>
+ <span class="ai-service-tag">Skincare</span>
+ </div>
+ <p class="ai-service-description">Upload selfie untuk mendapatkan analisis lengkap sekaligus: personal color, outfit, eyewear, skincare & hairstyle</p>
+ </div>
+
+ <div class="ai-upload-zone" id="ai-upload-zone">
+ <input type="file" id="ai-upload-input" accept="image/*" hidden />
+ <input type="file" id="ai-selfie-input" accept="image/*" capture="user" hidden />
+
+ <div class="ai-upload-placeholder" id="ai-upload-placeholder">
+ <svg class="ai-upload-icon-svg" width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M11.47 2.47a.75.75 0 0 1 1.06 0l4.5 4.5a.75.75 0 0 1-1.06 1.06l-3.22-3.22V16.5a.75.75 0 0 1-1.5 0V4.81L8.03 8.03a.75.75 0 0 1-1.06-1.06l4.5-4.5ZM3.75 15.75a.75.75 0 0 1 .75.75v2.25a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V16.5a.75.75 0 0 1 1.5 0v2.25a3 3 0 0 1-3 3h-12a3 3 0 0 1-3-3V16.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ <div class="ai-upload-text">Drag & drop foto di sini</div>
+ <div class="ai-upload-hint">atau</div>
+ <div class="ai-upload-actions">
+ <button class="ai-upload-btn" id="ai-upload-btn" type="button">
+ <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M11.47 2.47a.75.75 0 0 1 1.06 0l4.5 4.5a.75.75 0 0 1-1.06 1.06l-3.22-3.22V16.5a.75.75 0 0 1-1.5 0V4.81L8.03 8.03a.75.75 0 0 1-1.06-1.06l4.5-4.5ZM3.75 15.75a.75.75 0 0 1 .75.75v2.25a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V16.5a.75.75 0 0 1 1.5 0v2.25a3 3 0 0 1-3 3h-12a3 3 0 0 1-3-3V16.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ Pilih dari Galeri
+ </button>
+ <button class="ai-upload-btn ai-selfie-btn" id="ai-selfie-btn" type="button">
+ <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 9a3.75 3.75 0 1 0 0 7.5A3.75 3.75 0 0 0 12 9Z"/><path fill-rule="evenodd" d="M9.344 3.071a49.52 49.52 0 0 1 5.312 0c.967.052 1.83.585 2.332 1.39l.821 1.317c.24.383.645.643 1.11.71.386.054.77.113 1.152.177 1.432.239 2.429 1.493 2.429 2.909V18a3 3 0 0 1-3 3H4.5a3 3 0 0 1-3-3V9.574c0-1.416.997-2.67 2.429-2.909.382-.064.766-.123 1.151-.178a1.56 1.56 0 0 0 1.11-.71l.822-1.315a2.942 2.942 0 0 1 2.332-1.39ZM12 17.25a5.25 5.25 0 1 0 0-10.5 5.25 5.25 0 0 0 0 10.5Z" clip-rule="evenodd"/></svg>
+ Selfie Sekarang
+ </button>
+ </div>
+ <div class="ai-upload-formats">JPG, PNG, WebP · Max 10MB</div>
+ </div>
+
+ <img id="ai-image-preview" class="ai-image-preview" alt="Preview" style="display:none" />
+ </div>
+
+ <div class="ai-error" id="ai-error" style="display:none"></div>
+
+ <button class="ai-analyze-btn" id="ai-analyze-btn" type="button" disabled>
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clip-rule="evenodd"/></svg>
+ Generate
+ </button>
+ </div>
+ </div>
+
+ <!-- Loading -->
+ <div class="ai-loading" id="ai-loading" style="display:none">
+ <div class="ai-loading-inner">
+ <!-- Scanner -->
+ <div class="ail-scanner">
+ <div class="ail-pulse"></div>
+ <div class="ail-pulse ail-pulse--2"></div>
+ <svg class="ail-rings" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+ <circle cx="70" cy="70" r="66" stroke="rgba(255,255,255,.05)" stroke-width="2"/>
+ <circle class="ail-arc" cx="70" cy="70" r="66" stroke="#C1121F" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="80 335"/>
+ <circle cx="70" cy="70" r="54" stroke="rgba(255,255,255,.04)" stroke-width="1.5"/>
+ <circle class="ail-arc-inner" cx="70" cy="70" r="54" stroke="rgba(193,18,31,.3)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="45 295"/>
+ </svg>
+ <div class="ail-photo" id="ai-loading-photo">
+ <span class="ail-photo-placeholder">AI</span>
+ </div>
+ </div>
+ <!-- Progress bar -->
+ <div class="ail-progress">
+ <div class="ail-progress-fill" id="ai-progress-fill"></div>
+ </div>
+ <!-- Steps -->
+ <div class="ail-steps">
+ <div class="ail-step active" data-step="0">
+ <span class="ail-step-dot"></span>
+ <span class="ail-step-lbl">Upload</span>
+ </div>
+ <div class="ail-step-line"></div>
+ <div class="ail-step" data-step="1">
+ <span class="ail-step-dot"></span>
+ <span class="ail-step-lbl">Analisis</span>
+ </div>
+ <div class="ail-step-line"></div>
+ <div class="ail-step" data-step="2">
+ <span class="ail-step-dot"></span>
+ <span class="ail-step-lbl">Selesai</span>
+ </div>
+ </div>
+ <!-- Text -->
+ <div class="ai-loading-text" id="ai-loading-text">Mengupload foto...</div>
+ <div class="ai-loading-subtext">AI sedang memproses foto kamu</div>
+ </div>
+ </div>
+
+ <!-- Results (hidden - redirect to ai-results.html) -->
+ <div class="ai-results" id="ai-results" style="display:none">
+ <div class="ai-results-card">
+ <div class="ai-results-header">
+ <h3>Hasil AI</h3>
+ <button class="ai-results-reset" type="button" onclick="window.aiGrooming?.reset()">Coba Lagi</button>
+ </div>
+ <div id="ai-results-content"></div>
+ <div class="ai-results-actions">
+ <button class="ai-results-book" type="button" onclick="window.aiGrooming?.bookAppointment()">Book Appointment</button>
+ <button class="ai-results-download" type="button" onclick="window.aiGrooming?.downloadPreview()">Download Preview</button>
+ </div>
+ </div>
+ </div>
+ </div>
+ </section>
+
+
+ <!-- ========== SERVICES ========== -->
+ <section class="services" id="services">
+ <div class="container">
+ <div class="section-header center">
+ <p class="section-pre-title">Our</p>
+ <h2 class="section-title">Service</h2>
+ <p class="section-sub">Experience premium services tailored to your unique style.</p>
+ </div>
+
+ <!-- Service Categories -->
+ <div class="svc-filter-wrap">
+ <div class="svc-filter">
+ <button class="svc-filter-btn active" data-category="haircut">Hair</button>
+ <button class="svc-filter-btn" data-category="shave">Shave</button>
+ <button class="svc-filter-btn" data-category="other">Other</button>
+ <button class="svc-filter-btn" data-category="package">Packages</button>
+ </div>
+ </div>
+
+ <!-- Service Grid Container -->
+ <div class="svc-grid-container">
+ <div class="svc-grid" id="svcGrid">
+ <!-- JS will generate service cards (4 per page on mobile) -->
+ </div>
+ </div>
+
+ <!-- Pagination -->
+ <div class="svc-pagination" id="svcPagination">
+ <!-- JS will generate pagination numbers -->
+ </div>
+
+ <div class="section-cta">
+ <a href="booking.html#service" class="btn-outline">View All Services &amp; Pricing</a>
+ </div>
+ </div>
+ </section>
+
+ <!-- ========== HOME SERVICE ========== -->
+ <section class="home-service-section" id="home-service" aria-labelledby="hs-heading">
+ <div class="container">
+ <article class="hs-card" id="hsCard" aria-labelledby="hs-heading">
+
+ <!-- ── ATMOSPHERIC LAYERS ── -->
+ <div class="hs-card__atmos" aria-hidden="true">
+ <span class="hs-card__mesh"></span>
+ <span class="hs-card__grid"></span>
+ <span class="hs-card__orb hs-card__orb--a"></span>
+ <span class="hs-card__orb hs-card__orb--b"></span>
+ <span class="hs-card__trace"></span>
+ </div>
+
+ <div class="hs-card__inner">
+
+ <!-- ── LEFT: CONTENT ── -->
+ <div class="hs-card__content">
+
+ <div class="hs-card__eyebrow">
+  <span>Layanan Baru</span>
+ <span class="hs-card__eyebrow-sep" aria-hidden="true">·</span>
+ <span class="hs-card__eyebrow-meta">Home Service</span>
+ </div>
+
+ <h2 id="hs-heading" class="hs-card__title">
+ Kapster Datang
+ <em>ke Rumahmu</em>
+ </h2>
+
+ <p class="hs-card__desc">
+ Gentleman Grooming kelas barbershop, tanpa keluar rumah. Pilih kapster favorit, kami yang datang.
+ </p>
+
+ <!-- ── DUAL PRICING TIERS ── -->
+ <div class="hs-card__tiers" role="list">
+ <div class="hs-card__tier" role="listitem">
+ <span class="hs-card__tier-label">Single</span>
+ <div class="hs-card__tier-price">
+ <span class="cur">Rp</span><span class="num">250<em>K</em></span>
+ </div>
+ <span class="hs-card__tier-foot">per orang</span>
+ </div>
+ <div class="hs-card__tier hs-card__tier--featured" role="listitem">
+ <span class="hs-card__tier-flag" aria-hidden="true">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg>
+ Hemat Rp 50K
+ </span>
+ <span class="hs-card__tier-label">Family</span>
+ <div class="hs-card__tier-price">
+ <span class="cur">Rp</span><span class="num">200<em>K</em></span>
+ </div>
+ <span class="hs-card__tier-foot">/orang · min 2</span>
+ </div>
+ </div>
+
+ <!-- ── PERKS ── -->
+ <ul class="hs-card__perks" role="list">
+ <li>
+ <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clip-rule="evenodd"/></svg>
+ <span>Radius 5 KM</span>
+ </li>
+ <li>
+ <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z"/><path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z"/></svg>
+ <span>5 Cabang</span>
+ </li>
+ <li>
+ <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ <span>Pilih Kapster</span>
+ </li>
+ <li>
+ <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ <span>Cirebon &amp; Tegal</span>
+ </li>
+ </ul>
+
+ <!-- ── CTAs ── -->
+ <div class="hs-card__cta">
+ <a href="home-service.html#pricing" class="hs-card__btn hs-card__btn--primary">
+ <span class="hs-card__btn-text">Pesan Sekarang</span>
+ <span class="hs-card__btn-icon" aria-hidden="true">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </span>
+ </a>
+ <a href="home-service.html#cara-kerja" class="hs-card__btn hs-card__btn--ghost">
+ Cara Kerja
+ <span aria-hidden="true">↓</span>
+ </a>
+ </div>
+ </div>
+
+ <!-- ── RIGHT: COVERAGE RADAR ── -->
+ <div class="hs-card__visual" aria-hidden="true">
+ <div class="hs-radar">
+ <span class="hs-radar__ring hs-radar__ring--1"></span>
+ <span class="hs-radar__ring hs-radar__ring--2"></span>
+ <span class="hs-radar__ring hs-radar__ring--3"></span>
+ <span class="hs-radar__sweep"></span>
+ <div class="hs-radar__core">
+ <strong>5 KM</strong>
+ <small>radius</small>
+ </div>
+ <span class="hs-radar__node hs-radar__node--1"><i></i></span>
+ <span class="hs-radar__node hs-radar__node--2"><i></i></span>
+ <span class="hs-radar__node hs-radar__node--3"><i></i></span>
+ <span class="hs-radar__node hs-radar__node--4"><i></i></span>
+ <span class="hs-radar__node hs-radar__node--5"><i></i></span>
+ </div>
+ <div class="hs-radar__legend">
+ <span><i class="dot dot--core"></i> Cabang Redbox</span>
+ <span><i class="dot dot--area"></i> Area cover 5 KM</span>
+ </div>
+ </div>
+
+ </div>
+ </article>
+ </div>
+ </section>
+
+ <script>
+ /* ── Home Service card: tilt + entrance reveal ── */
+ (function(){
+ var card = document.getElementById('hsCard');
+ if (!card) return;
+ var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+ /* Entrance reveal once in view */
+ if ('IntersectionObserver' in window) {
+ var io = new IntersectionObserver(function(entries){
+ entries.forEach(function(e){
+ if (e.isIntersecting) {
+ card.classList.add('is-revealed');
+ io.unobserve(card);
+ }
+ });
+ }, { threshold: 0.18, rootMargin: '0px 0px -60px 0px' });
+ io.observe(card);
+ } else {
+ card.classList.add('is-revealed');
+ }
+
+ if (reduce) return;
+ if (window.matchMedia('(hover: none)').matches) return; /* skip on touch */
+
+ /* Subtle 3D tilt on mouse move */
+ var raf = null, tx = 0, ty = 0;
+ var MAX = 4; /* deg */
+ function onMove(ev){
+ var r = card.getBoundingClientRect();
+ var px = (ev.clientX - r.left) / r.width; /* 0..1 */
+ var py = (ev.clientY - r.top) / r.height;
+ tx = (py - 0.5) * -MAX;
+ ty = (px - 0.5) * MAX;
+ if (!raf) raf = requestAnimationFrame(apply);
+ }
+ function apply(){
+ raf = null;
+ card.style.setProperty('--tx', tx.toFixed(2) + 'deg');
+ card.style.setProperty('--ty', ty.toFixed(2) + 'deg');
+ }
+ function onLeave(){
+ tx = 0; ty = 0;
+ if (!raf) raf = requestAnimationFrame(apply);
+ }
+ card.addEventListener('mousemove', onMove);
+ card.addEventListener('mouseleave', onLeave);
+ })();
+ </script>
+
+ <!-- ========== WEDDING ========== -->
+ <style>
+ .wedding-section { padding: 0 0 72px; }
+ .wedding-card {
+ position: relative; overflow: hidden;
+ border: 1px solid rgba(212,160,23,.22);
+ border-radius: 24px;
+ background:
+ radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212,160,23,.1) 0%, transparent 60%),
+ linear-gradient(165deg, rgba(212,160,23,.05) 0%, rgba(10,10,10,.8) 100%);
+ padding: 48px 52px 44px;
+ box-shadow: 0 0 0 1px rgba(212,160,23,.1) inset, 0 32px 80px -32px rgba(212,160,23,.22);
+ transition: border-color .35s ease, box-shadow .4s ease;
+ }
+ .wedding-card::before {
+ content: ''; position: absolute; top: 0; left: 18%; right: 18%; height: 1px;
+ background: linear-gradient(90deg, transparent, rgba(245,158,11,.45), transparent);
+ pointer-events: none;
+ }
+ .wedding-card:hover {
+ border-color: rgba(212,160,23,.38);
+ box-shadow: 0 0 0 1px rgba(212,160,23,.18) inset, 0 40px 96px -32px rgba(212,160,23,.32);
+ }
+ .wedding-card__inner {
+ display: grid; grid-template-columns: 1fr auto; gap: 56px; align-items: center;
+ }
+ .wedding-card__eyebrow {
+ display: inline-flex; align-items: center; gap: 8px;
+ background: linear-gradient(135deg, #D4A017, #F59E0B); border: none;
+ border-radius: 6px; padding: 6px 14px;
+ font-size: .72rem; font-weight: 700; color: #fff; letter-spacing: .1em; text-transform: uppercase;
+ margin-bottom: 20px;
+ }
+ .wedding-card__eyebrow svg { stroke: #fff; }
+ .wedding-card__title {
+ font-family: 'Bebas Neue', sans-serif;
+ font-size: clamp(2rem, 5vw, 3.2rem);
+ letter-spacing: .04em; line-height: 1.05; margin-bottom: 16px;
+ }
+ .wedding-card__title em {
+ background: linear-gradient(135deg, #F59E0B 0%, #D4A017 50%, #F59E0B 100%);
+ background-size: 200% auto;
+ -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+ background-clip: text; font-style: normal;
+ }
+ .wedding-card__desc {
+ font-size: .92rem; color: rgba(255,255,255,.55); max-width: 500px; line-height: 1.72; margin-bottom: 28px;
+ }
+ .wedding-card__tiers {
+ display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px;
+ }
+ .wedding-card__tier {
+ border: 1px solid rgba(212,160,23,.22); border-radius: 14px;
+ padding: 12px 18px; display: flex; flex-direction: column; gap: 3px; min-width: 118px;
+ transition: border-color .2s ease, background .2s ease;
+ }
+ .wedding-card__tier:hover {
+ border-color: rgba(212,160,23,.42);
+ background: rgba(212,160,23,.06);
+ }
+ .wedding-card__tier-label {
+ font-size: .66rem; font-weight: 700; color: rgba(212,160,23,.7); letter-spacing: .12em; text-transform: uppercase;
+ }
+ .wedding-card__tier-price {
+ font-family: 'Bebas Neue', sans-serif; font-size: 1.45rem; letter-spacing: .03em; color: #F0F0F0;
+ }
+ .wedding-card__tier-sub { font-size: .67rem; color: rgba(255,255,255,.4); }
+ .wedding-card__cta { display: flex; gap: 12px; flex-wrap: wrap; }
+ .wedding-card__btn--primary {
+ display: inline-flex; align-items: center; gap: 8px;
+ padding: 13px 28px; border-radius: 99px;
+ background: linear-gradient(135deg, #F59E0B 0%, #D4A017 100%);
+ color: #0A0A0A; font-size: .8rem; font-weight: 800;
+ text-decoration: none; letter-spacing: .06em; text-transform: uppercase;
+ transition: transform .2s ease, box-shadow .25s ease;
+ box-shadow: 0 8px 24px -8px rgba(212,160,23,.48);
+ position: relative; overflow: hidden;
+ }
+ .wedding-card__btn--primary::after {
+ content: ''; position: absolute; inset: 0;
+ background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,.22) 50%, transparent 75%);
+ transform: translateX(-100%); pointer-events: none;
+ }
+ .wedding-card__btn--primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px -10px rgba(212,160,23,.62); }
+ .wedding-card__btn--primary:hover::after { animation: rb-shimmer .55s ease forwards; }
+ .wedding-card__btn--ghost {
+ display: inline-flex; align-items: center; gap: 6px;
+ padding: 13px 22px; border-radius: 99px;
+ border: 1px solid rgba(212,160,23,.28); color: rgba(212,160,23,.75);
+ font-size: .8rem; font-weight: 600;
+ text-decoration: none; letter-spacing: .04em;
+ transition: border-color .2s ease, color .2s ease;
+ }
+ .wedding-card__btn--ghost:hover { border-color: rgba(212,160,23,.55); color: #F59E0B; }
+ .wedding-card__visual {
+ display: none;
+ }
+ .wedding-rings-svg { opacity: .85; }
+ @media (max-width: 900px) {
+ .wedding-card__inner { grid-template-columns: 1fr; }
+ .wedding-card__visual { display: none; }
+ .wedding-card { padding: 36px 28px 32px; }
+ }
+ @media (max-width: 600px) {
+ .wedding-card__tiers { gap: 8px; }
+ .wedding-card__tier { min-width: 100px; padding: 10px 14px; }
+ }
+ </style>
+ <section class="wedding-section" id="wedding" aria-labelledby="wedding-heading">
+ <div class="container">
+ <article class="wedding-card">
+ <div class="wedding-card__inner">
+ <div class="wedding-card__content">
+ <div class="wedding-card__eyebrow">
+  Layanan Premium · Wedding Grooming
+ </div>
+ <h2 id="wedding-heading" class="wedding-card__title">
+ Tampil Sempurna di
+ <em>Hari Pernikahanmu</em>
+ </h2>
+ <p class="wedding-card__desc">
+ Kapster Redbox hadir langsung ke venue atau rumah. Haircut presisi dan styling khusus pernikahan untuk pengantin, best man, dan seluruh groomsmen.
+ </p>
+ <div class="wedding-card__tiers" role="list">
+ <div class="wedding-card__tier" role="listitem">
+ <span class="wedding-card__tier-label">Gentleman</span>
+ <span class="wedding-card__tier-price">350K</span>
+ <span class="wedding-card__tier-sub">1 orang</span>
+ </div>
+ <div class="wedding-card__tier" role="listitem">
+ <span class="wedding-card__tier-label">Silver</span>
+ <span class="wedding-card__tier-price">500K</span>
+ <span class="wedding-card__tier-sub">2 orang</span>
+ </div>
+ <div class="wedding-card__tier" role="listitem">
+ <span class="wedding-card__tier-label">Gold</span>
+ <span class="wedding-card__tier-price">750K</span>
+ <span class="wedding-card__tier-sub">3 orang</span>
+ </div>
+ <div class="wedding-card__tier" role="listitem">
+ <span class="wedding-card__tier-label">Platinum</span>
+ <span class="wedding-card__tier-price">1 Juta</span>
+ <span class="wedding-card__tier-sub">4 orang</span>
+ </div>
+ </div>
+ <div class="wedding-card__cta">
+ <a href="home-service.html#wedding-pricing" class="wedding-card__btn--primary">
+ <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15" aria-hidden="true"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ Lihat Paket
+ </a>
+ <a href="home-service.html#wedding-pricing" class="wedding-card__btn--ghost">
+ Detail Harga ↓
+ </a>
+ </div>
+ </div>
+ <div class="wedding-card__visual" aria-hidden="true">
+ <svg class="wedding-rings-svg" width="128" height="88" viewBox="0 0 128 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+ <circle cx="46" cy="44" r="32" stroke="rgba(212,160,23,0.45)" stroke-width="2.5" fill="none"/>
+ <circle cx="46" cy="44" r="32" stroke="rgba(245,158,11,0.15)" stroke-width="10" fill="none"/>
+ <circle cx="82" cy="44" r="32" stroke="rgba(212,160,23,0.45)" stroke-width="2.5" fill="none"/>
+ <circle cx="82" cy="44" r="32" stroke="rgba(245,158,11,0.15)" stroke-width="10" fill="none"/>
+ <circle cx="46" cy="44" r="5" fill="rgba(245,158,11,0.5)"/>
+ <circle cx="82" cy="44" r="5" fill="rgba(245,158,11,0.5)"/>
+ </svg>
+ <span>Wedding<br>Grooming</span>
+ </div>
+ </div>
+ </article>
+ </div>
+ </section>
+
+
+ <!-- ========== PROFESSIONALS ========== -->
+ <section class="professionals" id="professionals">
+ <div class="container">
+ <div class="section-header center">
+ <p class="section-pre-title">Meet Our</p>
+ <h2 class="section-title">Professionals</h2>
+ <p class="section-sub">Skilled professionals ready to provide you with great service.</p>
+ </div>
+
+ <!-- Branch Filter -->
+ <div class="pro-filter">
+ <button class="filter-btn active" data-branch="bypass">Bypass</button>
+ <button class="filter-btn" data-branch="samadikun">Samadikun</button>
+ <button class="filter-btn" data-branch="csb">Csb Mall</button>
+ <button class="filter-btn" data-branch="sumber">Sumber</button>
+ <button class="filter-btn" data-branch="tegal">Tegal</button>
+ </div>
+
+ <!-- Desktop grid (Empty, populated by JS) -->
+ <div class="pro-grid pro-grid-desktop" id="proGridDesktop">
+ <!-- JS will generate pro cards -->
+ </div>
+
+ <!-- Mobile swiper (Empty, populated by JS) -->
+ <div class="pro-swiper-wrap" id="proSwiperWrap">
+ <div class="pro-swiper" id="proSwiper">
+ <!-- JS will generate pro slides -->
+ </div><!-- end pro-swiper -->
+
+ <!-- Prev / Next arrows -->
+ <button class="pro-arrow pro-arrow-prev" id="proArrowPrev" aria-label="Previous">&#8249;</button>
+ <button class="pro-arrow pro-arrow-next" id="proArrowNext" aria-label="Next">&#8250;</button>
+
+ <!-- Dots -->
+ <div class="pro-dots" id="proDots">
+ <span class="pro-dot active"></span>
+ <span class="pro-dot"></span>
+ <span class="pro-dot"></span>
+ <span class="pro-dot"></span>
+ </div>
+
+ </div><!-- end pro-swiper-wrap -->
+
+ </div>
+ </section>
+
+
+
+
+ <!-- ========== GALLERY ========== -->
+ <section class="rb-gallery-scroll" id="gallery" aria-label="Gallery">
+ <div class="rb-gallery-sticky">
+ <div class="rb-gallery-stage">
+ <div class="rgb-ring rgb-ring-2" aria-hidden="true"></div>
+ <div class="rgb-ring rgb-ring-1" aria-hidden="true"></div>
+ <div class="rgb-main-ring" aria-hidden="true"></div>
+ <div class="rgb-center-text" aria-hidden="true">
+ <h2>Our<br>Gallery</h2>
+ <span>The Art of Barbering</span>
+ </div>
+ <div class="rgb-photo"><img src="Brand_assets/Talent1.jpg" alt="Haircut Result" loading="lazy"></div>
+ <div class="rgb-photo"><img src="Brand_assets/Talent2.jpg" alt="Fade Style" loading="lazy"></div>
+ <div class="rgb-photo"><img src="Brand_assets/Kapster1.jpg" alt="Barber at work" loading="lazy"></div>
+ <div class="rgb-photo"><img src="Brand_assets/Talent3.webp" alt="Braids" loading="lazy"></div>
+ <div class="rgb-photo"><img src="Brand_assets/Talent4.jpg" alt="Box Braids" loading="lazy"></div>
+ <div class="rgb-photo"><img src="Brand_assets/Talent5.jpg" alt="Sharp Cut" loading="lazy"></div>
+ <div class="rgb-photo"><img src="Brand_assets/Kapster2.jpg" alt="Style Result" loading="lazy"></div>
+ <div class="rgb-photo"><img src="Brand_assets/Kapster4.jpg" alt="Premium Cut" loading="lazy"></div>
+ </div>
+ </div>
+ </section>
+
+ <!-- ========== MEMBERSHIP CTA ========== -->
+ <section class="ms-cta-section" id="membership">
+ <div class="container">
+ <div class="ms-cta-inner">
+
+ <div class="ms-cta-left">
+ <span class="ms-cta-badge">EXCLUSIVE MEMBERSHIP</span>
+ <h2 class="ms-cta-headline">Loyal Member.<br>Bigger Rewards.</h2>
+ <p class="ms-cta-sub">Setiap kunjungan kamu menghasilkan poin. Poin naik level. Level buka privilege. Satu kartu, satu komunitas barbershop terbaik di Cirebon.</p>
+ <a href="membership.html" class="ms-cta-btn">
+ Gabung Sekarang
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </a>
+ <p class="ms-cta-note">Aktivasi sekali · Rp100.000 · Benefit seumur hidup</p>
+ </div>
+
+ <div class="ms-glow-grid">
+
+ <!-- Card 1 -->
+ <div class="ms-glow-wrap" style="--card-delay:0.1s">
+ <div class="ms-glow-bg" style="background:linear-gradient(137deg,#C1121F 0%,#E63946 45%,#FF6B4A 100%)"></div>
+ <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#C1121F 0%,#E63946 45%,#FF6B4A 100%) border-box">
+ <div class="ms-glow-inner">
+ <div class="ms-glow-icon">
+ <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M2.25 5.25a3 3 0 0 1 3-3h13.5a3 3 0 0 1 3 3V15a3 3 0 0 1-3 3h-3v.257c0 .597.237 1.17.659 1.591l.621.622a.75.75 0 0 1-.53 1.28h-9a.75.75 0 0 1-.53-1.28l.621-.622a2.25 2.25 0 0 0 .659-1.59V18h-3a3 3 0 0 1-3-3V5.25Zm1.5 0v7.5a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5v-7.5a1.5 1.5 0 0 0-1.5-1.5H5.25a1.5 1.5 0 0 0-1.5 1.5Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div>
+ <h4 class="ms-glow-title">Kumpulkan Poin</h4>
+ <p class="ms-glow-desc">Setiap Rp10.000 = 1 poin. Makin sering datang, makin banyak reward yang bisa kamu claim.</p>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Card 2 -->
+ <div class="ms-glow-wrap" style="--card-delay:0.2s">
+ <div class="ms-glow-bg" style="background:linear-gradient(137deg,#E63946 0%,#FF4D3C 45%,#FF8A5C 100%)"></div>
+ <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#E63946 0%,#FF4D3C 45%,#FF8A5C 100%) border-box">
+ <div class="ms-glow-inner">
+ <div class="ms-glow-icon">
+ <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM15.75 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM2.25 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM6.31 15.117A6.745 6.745 0 0 1 12 12a6.745 6.745 0 0 1 6.709 7.498.75.75 0 0 1-.372.568A12.696 12.696 0 0 1 12 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 0 1-.372-.568 6.787 6.787 0 0 1 1.019-4.38Z" clip-rule="evenodd"/><path d="M5.082 14.254a8.287 8.287 0 0 0-1.308 5.135 9.687 9.687 0 0 1-1.764-.44l-.115-.04a.563.563 0 0 1-.373-.487l-.01-.121a3.75 3.75 0 0 1 3.57-4.047ZM20.226 19.389a8.287 8.287 0 0 0-1.308-5.135 3.75 3.75 0 0 1 3.57 4.047l-.01.121a.563.563 0 0 1-.373.486l-.115.04c-.567.2-1.156.349-1.764.441Z"/></svg>
+ </div>
+ <div>
+ <h4 class="ms-glow-title">4 Tier Eksklusif</h4>
+ <p class="ms-glow-desc">Bronze → Silver → Gold → Platinum. Semakin tinggi tier, semakin besar diskon dan privilege-mu.</p>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Card 3 -->
+ <div class="ms-glow-wrap" style="--card-delay:0.3s">
+ <div class="ms-glow-bg" style="background:linear-gradient(137deg,#8B0000 0%,#C1121F 45%,#E63946 100%)"></div>
+ <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#8B0000 0%,#C1121F 45%,#E63946 100%) border-box">
+ <div class="ms-glow-inner">
+ <div class="ms-glow-icon">
+ <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div>
+ <h4 class="ms-glow-title">Kartu E-Member</h4>
+ <p class="ms-glow-desc">Dapatkan kartu E-membership premium Redbox langsung ke akunmu setelah aktivasi.</p>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Card 4 -->
+ <div class="ms-glow-wrap" style="--card-delay:0.4s">
+ <div class="ms-glow-bg" style="background:linear-gradient(137deg,#C1121F 0%,#FF4D3C 45%,#FF6B4A 100%)"></div>
+ <div class="ms-glow-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box,linear-gradient(137deg,#C1121F 0%,#FF4D3C 45%,#FF6B4A 100%) border-box">
+ <div class="ms-glow-inner">
+ <div class="ms-glow-icon">
+ <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M15.75 8.25a.75.75 0 0 1 .75.75c0 1.12-.492 2.126-1.27 2.812a.75.75 0 1 1-.992-1.124A2.243 2.243 0 0 0 15 9a.75.75 0 0 1 .75-.75Z"/><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM4.575 15.6a8.25 8.25 0 0 0 9.348 4.425 1.966 1.966 0 0 0-1.84-1.275.983.983 0 0 1-.97-.822l-.073-.437c-.094-.565.25-1.11.8-1.267l.99-.282c.427-.122.708-.53.654-.968a13.579 13.579 0 0 0-.37-1.798 12.007 12.007 0 0 0-.67-1.715 1.013 1.013 0 0 0-.063-.118.985.985 0 0 1 .166-1.174 9.96 9.96 0 0 0-.67-.75 1 1 0 0 1-.075-1.283 8.217 8.217 0 0 0-3.776.64v.127a.96.96 0 0 1-.292.695 6.752 6.752 0 0 0-.613.66.985.985 0 0 1-.58.39l-1.075.308A7.485 7.485 0 0 0 4.575 15.6Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div>
+ <h4 class="ms-glow-title">Referral Bonus</h4>
+ <p class="ms-glow-desc">Ajak teman dan kalian berdua dapat bonus poin ekstra. Semakin banyak ajak, semakin banyak untung.</p>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ </div>
+
+ </div>
+ </div>
+ </section>
+
+
+
+ <!-- ========== LOCATION ========== -->
+ <section class="location" id="location">
+ <div class="container">
+ <div class="section-header center">
+ <h2 class="section-title">Visit Redbox Barbershop</h2>
+ <p class="section-sub">Find us, check our hours, and see what makes us special.</p>
+ </div>
+ <div class="loc-branch-filter-wrap">
+ <div class="loc-branch-filter" id="locBranchFilter">
+ <button class="loc-branch-btn active" data-branch="bypass" data-query="Redbox Barbershop Jl. Ahmad Yani No.88 Cirebon" data-main="Jl. Ahmad Yani No.88, Kecapi, Harjamukti" data-sub="Cirebon, Jawa Barat" data-share="" data-wa="62818202569" data-wa-format="+62 818-202-569">Bypass</button>
+ <button class="loc-branch-btn" data-branch="samadikun" data-query="Redbox Barbershop Jl. Kapten Samadikun No.60 Kesenden Kejaksan Kota Cirebon Jawa Barat 45121" data-main="Jl. Kapten Samadikun No.60, Kesenden" data-sub="Kec. Kejaksan, Kota Cirebon, Jawa Barat 45121" data-share="https://share.google/MzaWPwVFzOHWnFkkw" data-wa="62818202589" data-wa-format="+62 818-202-589">Samadikun</button>
+ <button class="loc-branch-btn" data-branch="csb" data-query="Cirebon Super Block (CSB) Mall Jl. Dr. Cipto Mangunkusumo No.26 Cirebon" data-main="CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26" data-sub="Kota Cirebon, Jawa Barat" data-share="https://share.google/vs3tOuffbaFrwRoJ5" data-wa="62818202889" data-wa-format="+62 818-202-889">Csb Mall</button>
+ <button class="loc-branch-btn" data-branch="sumber" data-query="Redbox Barbershop Sumber Jl. Pangeran Cakrabuana No.2 Sumber Cirebon" data-main="Jl. Pangeran Cakrabuana No.2, Kemantren, Sumber" data-sub="Kabupaten Cirebon, Jawa Barat 45611" data-share="https://share.google/ZxGzRZKc5wfoidLS0" data-wa="62818202599" data-wa-format="+62 818-202-599">Sumber</button>
+ <button class="loc-branch-btn" data-branch="tegal" data-query="Redbox Barbershop Pekauman Jl. Kapten Sudibyo No.100 Tegal Barat Kota Tegal" data-main="Jl. Kapten Sudibyo No.100, Pekauman, Tegal Barat" data-sub="Kota Tegal, Jawa Tengah" data-share="https://share.google/lCJttmDfNwOUFkDwM" data-wa="62818268883" data-wa-format="+62 818-268-883">Tegal</button>
+ </div>
+ </div>
+ <div class="location-layout">
+ <div class="location-map">
+ <iframe id="locMapFrame" src="https://www.google.com/maps?q=Redbox%20Barbershop%20Jl.%20Ahmad%20Yani%20No.88%20Cirebon&output=embed" width="100%" height="100%" style="border:0" allowfullscreen="" loading="lazy" title="Lokasi Redbox"></iframe>
+ </div>
+ <div class="location-info-grid">
+ <div class="loc-card loc-address">
+ <div class="loc-icon">
+ <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div>
+ <p class="loc-main" id="locAddressMain">Jl. Ahmad Yani No.88, Kecapi, Harjamukti</p>
+ <p class="loc-sub" id="locAddressSub">Cirebon, Jawa Barat</p>
+ <a class="loc-map-link" id="locMapLink" href="https://www.google.com/maps/search/?api=1&query=Redbox%20Barbershop%20Jl.%20Ahmad%20Yani%20No.88%20Cirebon" target="_blank" rel="noopener">Open in Google Maps</a>
+ </div>
+ </div>
+ <div class="loc-card loc-hours">
+ <h4> Operating Hours</h4>
+ <div class="hours-list" id="locHoursList">
+ <div class="hours-row"><span>Senin s/d Minggu</span><span id="locHoursValue">10:00 s/d 21:00</span></div>
+ </div>
+ </div>
+ <div class="loc-card loc-contact">
+ <h4>Contact Us</h4>
+ <a href="https://wa.me/62818202569?text=Hi%20Redbox%20Barbershop%2C%20I%27d%20like%20to%20book%20an%20appointment" target="_blank" class="contact-wa" id="locWaLink">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/></svg>
+ <div>
+ <span class="wa-label">Message us on WhatsApp</span>
+ <span class="wa-number" id="locWaNumber">+62 818 202 569</span>
+ </div>
+ </a>
+ </div>
+ </div>
+ </div>
+ </div>
+ </section>
+
+ <!-- ========== FOOTER ========== -->
+ <footer class="footer">
+ <div class="container footer-simple">
+ <div class="footer-simple-top">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" class="footer-logo-img" />
+ <span class="footer-tagline">Precision Cut. Elevated Confidence.</span>
+ </div>
+ <div class="footer-social">
+ <a href="https://www.instagram.com/redboxbarbershop/" target="_blank" rel="noopener" aria-label="Instagram">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+ </a>
+ <a href="https://www.tiktok.com/@redboxbarbershop" target="_blank" rel="noopener" aria-label="TikTok">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.22 6.22 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.52V6.75a4.85 4.85 0 01-1.02-.06z"/></svg>
+ </a>
+ <a href="https://www.facebook.com/" target="_blank" aria-label="Facebook">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+ </a>
+ </div>
+ <p class="footer-copy">&copy; 2026 Redbox Barbershop. All rights reserved. &mdash; Since 2014</p>
+ <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
+ </div>
+ </footer>
+
+ <!-- WhatsApp Float -->
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20booking" target="_blank" class="wa-float" id="waFloat" aria-label="WhatsApp">
+ <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+ </a>
+
+ <!-- Mobile Sticky CTA -->
+ <div class="mobile-sticky-cta" id="mobileCta">
+ <a href="booking.html" class="mobile-cta-book">Book Now</a>
+ </div>
+
+ <!-- Confetti Container -->
+ <div class="confetti-container" id="confettiContainer" style="display:none">
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div>
+ </div>
+
+ <!-- Auth Modal -->
+ <div class="modal-overlay" id="loginModal">
+ <!-- Auth Form Container -->
+ <div class="modal-login" id="loginFormContainer">
+ <div class="modal-header">
+ <div class="modal-header-left">
+ <div class="modal-header-icon" id="authIcon">
+ <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div>
+ <h3 id="authTitle">MASUK</h3>
+ </div>
+ </div>
+ <button class="modal-close" id="modalClose" aria-label="Close">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ <div class="modal-body">
+ <!-- Toggle Mode -->
+ <div class="auth-mode-toggle">
+ <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
+ <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
+ </div>
+
+ <button class="btn-google" type="button" id="googleLoginBtn">
+ <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+ <span id="googleBtnText">Login dengan Google</span>
+ </button>
+ <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
+ <form id="loginForm">
+ <div class="form-group name-field" id="nameField">
+ <label for="userName">NAMA LENGKAP</label>
+ <input type="text" id="userName" placeholder="Nama lengkap Anda">
+ </div>
+ <div class="form-group">
+ <label for="loginEmail">EMAIL / NO. HP</label>
+ <input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required>
+ </div>
+ <div class="form-group">
+ <label for="loginPassword">PASSWORD</label>
+ <input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8">
+ </div>
+ <button type="submit" class="btn-login-submit" id="submitBtn">
+ <span id="submitBtnText">Masuk Sekarang</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </form>
+
+ <!-- Benefits List (Signup Only) -->
+ <div class="benefits-list" id="benefitsList" style="display:none">
+ <p class="benefits-title">Keuntungan Member:</p>
+ <div class="benefit-item">
+ <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div>
+ <span>Simpan riwayat kunjungan & poin</span>
+ </div>
+ <div class="benefit-item">
+ <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div>
+ <span>Tracking tier & benefits real-time</span>
+ </div>
+ <div class="benefit-item">
+ <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div>
+ <span>Akses diskon eksklusif member</span>
+ </div>
+ <div class="benefit-item">
+ <div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div>
+ <span>Prioritas booking & customer support</span>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <!-- Signup Success State (Hidden by default) -->
+ <div class="modal-success" id="signupSuccess" style="display:none">
+ <div class="success-header">
+ <div class="success-icon-wrap">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.166 2.621v.858c0 1.31.781 2.553 2.066 3.428s3.015 1.343 4.768 1.343 3.483-.468 4.768-1.343c1.285-.875 2.066-2.119 2.066-3.428v-.858a.75.75 0 0 0-1.5 0v.858c0 .796-.573 1.655-1.635 2.377C14.637 7.087 13.37 7.5 12 7.5s-2.637-.413-3.699-1.134C7.24 5.634 6.666 4.775 6.666 3.979v-.858a.75.75 0 0 0-1.5 0ZM12 12.75a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-1.5 0v-7.5a.75.75 0 0 1 .75-.75ZM7.5 15a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 7.5 15Zm9 0a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ </div>
+ <h2 class="success-title">SELAMAT BERGABUNG!</h2>
+ <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
+ </div>
+ <div class="success-body">
+ <div class="success-badge">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg>
+ Member Redbox Barbershop
+ </div>
+ <p class="success-message" id="successUserName">Selamat!</p>
+ <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
+ <div class="success-email-box">
+ <div class="success-email-label">Email Terdaftar</div>
+ <div class="success-email" id="successUserEmail">member@redbox.com</div>
+ </div>
+ <button class="btn-success-cta" id="successCtaBtn">
+ Mulai Petualangan
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
+ </div>
+
+ <script src="js/services-data.js"></script>
+ <script src="js/main.js"></script>
+ <script src="js/ai-grooming.js?v=41076eb"></script>
+ <script type="module" src="js/animations.js"></script>
 </body>
 </html>

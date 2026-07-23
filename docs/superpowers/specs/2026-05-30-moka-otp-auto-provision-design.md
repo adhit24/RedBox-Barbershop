@@ -1,7 +1,7 @@
 # Design: Moka Member Auto-Provision via OTP Login
 
-**Date:** 2026-05-30  
-**Status:** Approved  
+**Date:** 2026-05-30 
+**Status:** Approved 
 **Scope:** `server/index.js` — OTP send endpoint only
 
 ---
@@ -35,24 +35,24 @@ Saat `otp/send` dipanggil dan nomor tidak ada di `customers`, server fallback ke
 
 ```
 POST /api/auth/otp/send { phone: "081234..." }
-  │
-  ├─ normalizeWa("081234...") → wa = "628xxx"
-  │
-  ├─ [1] customers.wa = wa ?
-  │       ADA  → lanjut ke send OTP (existing flow)
-  │       TIDAK ↓
-  │
-  ├─ [2] member_profiles.phone = "+628xxx" ?
-  │       TIDAK → 404 "Nomor tidak terdaftar" (same as before)
-  │       ADA  ↓
-  │
-  ├─ [3] Upsert ke customers (auto-provision, sekali saja)
-  │       onConflict: 'wa' → aman dari race condition & double-call
-  │
-  └─ [4] Lanjut kirim OTP menggunakan customer yang baru dibuat
+ │
+ ├─ normalizeWa("081234...") → wa = "628xxx"
+ │
+ ├─ [1] customers.wa = wa ?
+ │ ADA → lanjut ke send OTP (existing flow)
+ │ TIDAK ↓
+ │
+ ├─ [2] member_profiles.phone = "+628xxx" ?
+ │ TIDAK → 404 "Nomor tidak terdaftar" (same as before)
+ │ ADA ↓
+ │
+ ├─ [3] Upsert ke customers (auto-provision, sekali saja)
+ │ onConflict: 'wa' → aman dari race condition & double-call
+ │
+ └─ [4] Lanjut kirim OTP menggunakan customer yang baru dibuat
 
 POST /api/auth/otp/verify — tidak ada perubahan
-GET  /api/auth/me         — cross-ref sudah ada sebagai safety net
+GET /api/auth/me — cross-ref sudah ada sebagai safety net
 ```
 
 ---

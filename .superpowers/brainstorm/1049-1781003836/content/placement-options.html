@@ -1,0 +1,197 @@
+<style>
+ .q-label { font-size:.7rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#C1121F; margin-bottom:6px; }
+ .page-mock { background:#0e0e0e; border:1px solid #2a2a2a; border-radius:10px; overflow:hidden; font-family:'Inter',sans-serif; }
+ .pm-nav { background:#111; height:44px; display:flex; align-items:center; padding:0 16px; gap:8px; border-bottom:1px solid #222; }
+ .pm-nav-logo { width:28px; height:28px; background:#C1121F; border-radius:4px; }
+ .pm-nav-links { display:flex; gap:12px; margin-left:auto; }
+ .pm-nav-link { width:32px; height:6px; background:#333; border-radius:3px; }
+ .pm-nav-btn { width:60px; height:22px; background:#C1121F; border-radius:5px; margin-left:8px; }
+
+ /* Top bar */
+ .pm-topbar { background:#C1121F; height:32px; display:flex; align-items:center; justify-content:center; gap:8px; padding:0 12px; }
+ .pm-topbar-icon { width:14px; height:14px; background:rgba(255,255,255,.4); border-radius:50%; flex-shrink:0; }
+ .pm-topbar-text { font-size:.6rem; font-weight:600; letter-spacing:.06em; color:#fff; white-space:nowrap; }
+
+ /* Hero */
+ .pm-hero { background:#181818; height:80px; display:flex; align-items:center; padding:0 16px; }
+ .pm-hero-text { display:flex; flex-direction:column; gap:4px; }
+ .pm-hero-h { width:100px; height:8px; background:#fff; border-radius:3px; }
+ .pm-hero-sub { width:140px; height:5px; background:#444; border-radius:3px; }
+ .pm-content { padding:12px 16px; display:flex; flex-direction:column; gap:8px; }
+ .pm-row { height:6px; background:#2a2a2a; border-radius:3px; }
+ .pm-row.short { width:60%; }
+
+ /* Badge inline */
+ .pm-badge-inline { background:#1a0a0a; border:1px solid rgba(193,18,31,.4); border-radius:8px; padding:8px 10px; display:flex; align-items:center; gap:8px; margin:8px 16px; }
+ .pm-badge-icon { width:20px; height:20px; background:rgba(193,18,31,.3); border-radius:4px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.5rem; color:#C1121F; font-weight:700; }
+ .pm-badge-body { display:flex; flex-direction:column; gap:3px; }
+ .pm-badge-title { width:80px; height:5px; background:#C1121F; border-radius:2px; opacity:.7; }
+ .pm-badge-sub { width:110px; height:4px; background:#444; border-radius:2px; }
+
+ /* Floating pill */
+ .pm-float-wrap { position:relative; }
+ .pm-float { position:absolute; bottom:8px; right:12px; background:#C1121F; border-radius:20px; padding:5px 10px; display:flex; align-items:center; gap:5px; }
+ .pm-float-dot { width:8px; height:8px; background:rgba(255,255,255,.5); border-radius:50%; }
+ .pm-float-text { width:60px; height:5px; background:rgba(255,255,255,.6); border-radius:2px; }
+
+ /* Section callout */
+ .pm-section-callout { margin:8px 16px; background:#141414; border-left:3px solid #C1121F; border-radius:0 8px 8px 0; padding:8px 12px; display:flex; flex-direction:column; gap:4px; }
+ .pm-sc-title { width:70px; height:6px; background:#C1121F; border-radius:2px; opacity:.8; }
+ .pm-sc-pills { display:flex; gap:4px; margin-top:2px; }
+ .pm-sc-pill { height:14px; padding:0 6px; background:#1e1e1e; border:1px solid #333; border-radius:10px; font-size:.45rem; color:#888; display:flex; align-items:center; }
+
+ .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+ .card { cursor:pointer; }
+ .card-image { padding:0; overflow:hidden; background:#111; }
+ .placement-label { font-size:.55rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:#C1121F; padding:4px 8px; background:#1a0505; }
+ .desc-row { display:flex; gap:6px; margin-top:4px; flex-wrap:wrap; }
+ .desc-tag { font-size:.65rem; background:#1e1e1e; border:1px solid #333; border-radius:20px; padding:2px 8px; color:#888; }
+ .desc-tag.green { border-color:#1a4a2e; color:#4ade80; background:#0a1f15; }
+ .desc-tag.yellow { border-color:#4a3a0a; color:#fbbf24; background:#1f1500; }
+</style>
+
+<h2>Di mana pesan "1 Kip · 1 Handuk · 1 Orang" ditempatkan?</h2>
+<p class="subtitle">Pilih placement yang paling cocok dengan karakter brand Redbox</p>
+
+<div class="cards">
+
+ <!-- A: Top Announcement Bar -->
+ <div class="card" data-choice="a" onclick="toggleSelect(this)">
+ <div class="placement-label">A — Top Announcement Bar</div>
+ <div class="card-image">
+ <div class="page-mock">
+ <div class="pm-topbar">
+ <div class="pm-topbar-icon"></div>
+ <div class="pm-topbar-text">1 KIP · 1 HANDUK · 1 ORANG &nbsp;—&nbsp; STANDAR KAMI</div>
+ </div>
+ <div class="pm-nav">
+ <div class="pm-nav-logo"></div>
+ <div class="pm-nav-links"><div class="pm-nav-link"></div><div class="pm-nav-link"></div><div class="pm-nav-link"></div></div>
+ <div class="pm-nav-btn"></div>
+ </div>
+ <div class="pm-hero">
+ <div class="pm-hero-text"><div class="pm-hero-h"></div><div class="pm-hero-sub"></div></div>
+ </div>
+ <div class="pm-content">
+ <div class="pm-row"></div><div class="pm-row short"></div>
+ </div>
+ </div>
+ </div>
+ <div class="card-body">
+ <h3>Selalu terlihat</h3>
+ <p>Strip tipis di atas navbar. Semua halaman. Pelanggan langsung tahu sebelum mulai scroll.</p>
+ <div class="desc-row">
+ <span class="desc-tag green">Visibility tinggi</span>
+ <span class="desc-tag green">Konsisten semua halaman</span>
+ <span class="desc-tag yellow">Menambah tinggi layout</span>
+ </div>
+ </div>
+ </div>
+
+ <!-- B: Inline Section Badge -->
+ <div class="card" data-choice="b" onclick="toggleSelect(this)">
+ <div class="placement-label">B — Inline Section Badge</div>
+ <div class="card-image">
+ <div class="page-mock">
+ <div class="pm-nav">
+ <div class="pm-nav-logo"></div>
+ <div class="pm-nav-links"><div class="pm-nav-link"></div><div class="pm-nav-link"></div></div>
+ <div class="pm-nav-btn"></div>
+ </div>
+ <div class="pm-hero">
+ <div class="pm-hero-text"><div class="pm-hero-h"></div><div class="pm-hero-sub"></div></div>
+ </div>
+ <div class="pm-badge-inline">
+ <div class="pm-badge-icon"></div>
+ <div class="pm-badge-body">
+ <div class="pm-badge-title"></div>
+ <div class="pm-badge-sub"></div>
+ </div>
+ </div>
+ <div class="pm-content">
+ <div class="pm-row"></div><div class="pm-row short"></div>
+ </div>
+ </div>
+ </div>
+ <div class="card-body">
+ <h3>Natural dalam konten</h3>
+ <p>Muncul di dalam flow halaman — dekat area services atau booking step. Terasa organik, bukan iklan.</p>
+ <div class="desc-row">
+ <span class="desc-tag green">Tidak mengganggu</span>
+ <span class="desc-tag green">Terasa premium</span>
+ <span class="desc-tag yellow">Hanya terlihat saat scroll</span>
+ </div>
+ </div>
+ </div>
+
+ <!-- C: Floating Pill Badge -->
+ <div class="card" data-choice="c" onclick="toggleSelect(this)">
+ <div class="placement-label">C — Floating Pill / Badge</div>
+ <div class="card-image">
+ <div class="page-mock">
+ <div class="pm-nav">
+ <div class="pm-nav-logo"></div>
+ <div class="pm-nav-links"><div class="pm-nav-link"></div><div class="pm-nav-link"></div></div>
+ <div class="pm-nav-btn"></div>
+ </div>
+ <div class="pm-hero" style="height:60px;"></div>
+ <div class="pm-float-wrap">
+ <div class="pm-content" style="height:60px;">
+ <div class="pm-row"></div><div class="pm-row short"></div><div class="pm-row"></div>
+ </div>
+ <div class="pm-float">
+ <div class="pm-float-dot"></div>
+ <div class="pm-float-text"></div>
+ </div>
+ </div>
+ </div>
+ </div>
+ <div class="card-body">
+ <h3>Selalu ada tanpa mengganggu</h3>
+ <p>Pill kecil yang melayang di sudut layar — seperti chat bubble. Selalu terlihat tanpa makan ruang layout.</p>
+ <div class="desc-row">
+ <span class="desc-tag green">Persistent</span>
+ <span class="desc-tag yellow">Ukuran kecil, pesan singkat</span>
+ <span class="desc-tag yellow">Bisa overlap elemen lain</span>
+ </div>
+ </div>
+ </div>
+
+ <!-- D: Section Callout -->
+ <div class="card" data-choice="d" onclick="toggleSelect(this)">
+ <div class="placement-label">D — Section Callout</div>
+ <div class="card-image">
+ <div class="page-mock">
+ <div class="pm-nav">
+ <div class="pm-nav-logo"></div>
+ <div class="pm-nav-links"><div class="pm-nav-link"></div><div class="pm-nav-link"></div></div>
+ <div class="pm-nav-btn"></div>
+ </div>
+ <div class="pm-hero">
+ <div class="pm-hero-text"><div class="pm-hero-h"></div><div class="pm-hero-sub"></div></div>
+ </div>
+ <div class="pm-section-callout">
+ <div class="pm-sc-title"></div>
+ <div class="pm-sc-pills">
+ <div class="pm-sc-pill">1 KIP</div>
+ <div class="pm-sc-pill">1 HANDUK</div>
+ <div class="pm-sc-pill">1 ORANG</div>
+ </div>
+ </div>
+ <div class="pm-content">
+ <div class="pm-row short"></div>
+ </div>
+ </div>
+ </div>
+ <div class="card-body">
+ <h3>Bold statement di antara konten</h3>
+ <p>Mini-section dedicated dengan border merah, pills, dan copy pendek. Terasa seperti brand manifesto.</p>
+ <div class="desc-row">
+ <span class="desc-tag green">Impactful</span>
+ <span class="desc-tag green">Ruang untuk cerita</span>
+ <span class="desc-tag yellow">Makan vertikal space</span>
+ </div>
+ </div>
+ </div>
+
+</div>

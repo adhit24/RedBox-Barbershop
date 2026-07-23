@@ -1,0 +1,48 @@
+<h2>Pilih Gaya Animasi</h2>
+<p class="subtitle">Ini menentukan "feel" seluruh app — pilih yang paling cocok dengan karakter RedBox</p>
+
+<div class="options">
+ <div class="option" data-choice="a" onclick="toggleSelect(this)">
+ <div class="letter">A</div>
+ <div class="content">
+ <h3>Subtle & Premium</h3>
+ <p>Micro-animations halus — fade-in ringan, hover yang tenang, transisi 200–300ms. Seperti fintech atau luxury app. Elegan, tidak noisy.</p>
+ <div style="margin-top:10px;padding:10px;background:#0a0f1a;border-radius:8px;font-size:11px;color:#64748b;">
+ Entry: <code style="color:#60a5fa">opacity 0→1, y 8px→0, 250ms ease</code><br>
+ Hover: <code style="color:#60a5fa">scale 1→1.01, border glow</code><br>
+ Page change: <code style="color:#60a5fa">crossfade 200ms</code>
+ </div>
+ </div>
+ </div>
+
+ <div class="option" data-choice="b" onclick="toggleSelect(this)">
+ <div class="letter">B</div>
+ <div class="content">
+ <h3>Fluid & Expressive</h3>
+ <p>Spring physics, staggered list entries, slide-ups, parallax kecil. Seperti Linear, Vercel, atau Raycast. Terasa "alive" dan responsive.</p>
+ <div style="margin-top:10px;padding:10px;background:#0a0f1a;border-radius:8px;font-size:11px;color:#64748b;">
+ Entry: <code style="color:#8b5cf6">spring stagger, y 20px→0</code><br>
+ Hover: <code style="color:#8b5cf6">scale 1→1.02, lift shadow</code><br>
+ Page change: <code style="color:#8b5cf6">slide + fade 350ms spring</code>
+ </div>
+ </div>
+ </div>
+
+ <div class="option" data-choice="c" onclick="toggleSelect(this)">
+ <div class="letter">C</div>
+ <div class="content">
+ <h3>Bold & Punchy</h3>
+ <p>Efek tap scale kuat, warna merah menyala saat hover, transisi dramatik. Cocok untuk barbershop yang "loud and proud". Energik.</p>
+ <div style="margin-top:10px;padding:10px;background:#0a0f1a;border-radius:8px;font-size:11px;color:#64748b;">
+ Entry: <code style="color:#f59e0b">scale 0.92→1, opacity 0→1</code><br>
+ Hover: <code style="color:#f59e0b">scale 1→1.04, red glow pulse</code><br>
+ Page change: <code style="color:#f59e0b">slide 400ms, clipPath sweep</code>
+ </div>
+ </div>
+ </div>
+</div>
+
+<div class="section" style="margin-top:16px;">
+ <div class="label">Catatan</div>
+ <p style="font-size:12px;color:#475569;">Pilihan ini menentukan easing, durasi, dan intensitas semua animasi baru. Yang sudah ada (role picker, login) akan disesuaikan.</p>
+</div>

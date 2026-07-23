@@ -51,12 +51,12 @@ Large images increase Vision API cost and response time.
 
 ## Recommended Upload Settings
 
-| Setting   | Recommended Value |
+| Setting | Recommended Value |
 | --------- | ----------------- |
-| Max Width | 768px             |
-| Max Size  | 0.4MB             |
-| Quality   | 70–80%            |
-| Format    | WEBP / JPEG       |
+| Max Width | 768px |
+| Max Size | 0.4MB |
+| Quality | 70–80% |
+| Format | WEBP / JPEG |
 
 ---
 
@@ -74,9 +74,9 @@ Example:
 import imageCompression from 'browser-image-compression';
 
 const compressedFile = await imageCompression(file, {
-  maxSizeMB: 0.4,
-  maxWidthOrHeight: 768,
-  useWebWorker: true,
+ maxSizeMB: 0.4,
+ maxWidthOrHeight: 768,
+ useWebWorker: true,
 });
 ```
 
@@ -117,13 +117,13 @@ Store count using:
 const currentUsage = localStorage.getItem("generate_count") || 0;
 
 if (currentUsage >= 3) {
-  alert("Generation limit reached");
-  return;
+ alert("Generation limit reached");
+ return;
 }
 
 localStorage.setItem(
-  "generate_count",
-  Number(currentUsage) + 1
+ "generate_count",
+ Number(currentUsage) + 1
 );
 ```
 
@@ -143,7 +143,7 @@ Example:
 button.disabled = true;
 
 setTimeout(() => {
-  button.disabled = false;
+ button.disabled = false;
 }, 30000);
 ```
 
@@ -189,13 +189,13 @@ Example:
 
 ```json
 {
-  "oval": {
-    "recommended": [
-      "Two Block",
-      "Comma Hair",
-      "Textured Crop"
-    ]
-  }
+ "oval": {
+ "recommended": [
+ "Two Block",
+ "Comma Hair",
+ "Textured Crop"
+ ]
+ }
 }
 ```
 
@@ -215,12 +215,12 @@ Recommended:
 
 ```json
 {
-  "face_shape": "Oval",
-  "hair_type": "Straight",
-  "recommended_hairstyles": [
-    "Two Block",
-    "Classic Taper"
-  ]
+ "face_shape": "Oval",
+ "hair_type": "Straight",
+ "recommended_hairstyles": [
+ "Two Block",
+ "Classic Taper"
+ ]
 }
 ```
 
@@ -304,9 +304,9 @@ Make the AI feel premium while keeping backend cost extremely low.
 
 Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional datang langsung ke lokasi pelanggan.
 
-**Layanan tersedia:** Redbox Gentleman Grooming  
-**Harga:** Rp 200.000 (sudah termasuk biaya kunjungan kapster)  
-**Durasi:** ±60 menit  
+**Layanan tersedia:** Gentleman Grooming 
+**Harga:** Rp 200.000 (sudah termasuk biaya kunjungan kapster) 
+**Durasi:** ±60 menit 
 **Halaman info:** https://www.redboxbarbershop.com/home-service.html
 
 ---
@@ -324,7 +324,7 @@ Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional d
 ## Cara Pesan
 
 1. Buka halaman booking: https://www.redboxbarbershop.com/booking.html?type=homeservice
-2. Pilih layanan Redbox Gentleman Grooming
+2. Pilih layanan Gentleman Grooming
 3. Pilih kapster dari cabang terdekat
 4. Pilih tanggal & waktu
 5. Isi nama, nomor WhatsApp, cabang terdekat, dan **alamat lengkap**
@@ -348,9 +348,9 @@ Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional d
 
 Jika pelanggan bertanya tentang home service, gunakan informasi berikut:
 
-* Layanan: Redbox Gentleman Grooming, datang ke rumah, Rp 200.000
+* Layanan: Gentleman Grooming, datang ke rumah, Rp 200.000
 * Radius: maksimal 5 KM dari cabang Redbox terdekat
 * Cabang: semua 5 cabang aktif (Bypass, Samadikun, CSB Mall, Sumber, Tegal)
 * Booking: arahkan ke https://www.redboxbarbershop.com/booking.html?type=homeservice
 * Jika pelanggan tidak tahu cabang terdekat: minta alamat mereka, lalu sebutkan cabang yang paling mungkin
-* Layanan selain Redbox Gentleman Grooming belum tersedia untuk home service
+* Layanan selain Gentleman Grooming belum tersedia untuk home service

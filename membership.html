@@ -1,1658 +1,1647 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Redbox Membership — Loyalitas Terbaik Anda</title>
-  <meta name="description" content="Redbox Barbershop Membership — Kumpulkan poin setiap kunjungan dan nikmati keistimewaan Bronze, Silver, Gold, hingga Platinum." />
-  <meta name="theme-color" content="#0A0A0A" />
-  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <style>
-  /* ================================================
-     MEMBERSHIP PAGE — INLINE STYLES
-     ================================================ */
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Redbox Membership | Loyalitas Terbaik Anda</title>
+ <meta name="description" content="Redbox Barbershop Membership. Kumpulkan poin setiap kunjungan dan nikmati keistimewaan Bronze, Silver, Gold, hingga Platinum." />
+ <meta name="theme-color" content="#0A0A0A" />
+ <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+ <link rel="preconnect" href="https://fonts.googleapis.com" />
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+ <link rel="stylesheet" href="css/style.css" />
+ <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+ <script src="https://accounts.google.com/gsi/client" async defer></script>
+ <style>
+ /* ================================================
+ MEMBERSHIP PAGE - INLINE STYLES
+ ================================================ */
 
-  /* Prevent horizontal overflow / zoom-out on mobile */
-  html, body { overflow-x: hidden; max-width: 100vw; }
+ /* Prevent horizontal overflow / zoom-out on mobile */
+ html, body { overflow-x: hidden; max-width: 100vw; }
 
-  /* ---- HERO ---- */
-  .ms-hero {
-    padding: 140px 0 80px;
-    background: var(--bg);
-    position: relative;
-    overflow: hidden;
-    text-align: center;
-  }
-  .ms-hero::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 60% 50% at 30% 50%, rgba(193,18,31,.12) 0%, transparent 70%),
-      radial-gradient(ellipse 50% 40% at 70% 50%, rgba(193,18,31,.07) 0%, transparent 70%);
-    pointer-events: none;
-  }
-  .ms-hero-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font-family: var(--font-accent);
-    font-size: .8rem;
-    letter-spacing: .18em;
-    color: var(--red);
-    margin-bottom: 20px;
-  }
-  .ms-hero-eyebrow::before,
-  .ms-hero-eyebrow::after {
-    content: '';
-    display: block;
-    width: 32px;
-    height: 1px;
-    background: var(--red);
-    opacity: .6;
-  }
-  .ms-hero h1 {
-    font-family: var(--font-display);
-    font-size: clamp(2.4rem, 5vw, 4rem);
-    font-weight: 700;
-    color: var(--white);
-    line-height: 1.15;
-    margin-bottom: 20px;
-  }
-  .ms-hero h1 em {
-    font-style: italic;
-    color: var(--red);
-  }
-  .ms-hero p {
-    max-width: 560px;
-    margin: 0 auto 40px;
-    color: var(--w70);
-    font-size: 1.05rem;
-    line-height: 1.7;
-  }
-  .ms-hero-actions {
-    display: flex;
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
+ /* ---- HERO ---- */
+ .ms-hero {
+ padding: 140px 0 80px;
+ background: var(--bg);
+ position: relative;
+ overflow: hidden;
+ text-align: center;
+ }
+ .ms-hero::before {
+ content: '';
+ position: absolute;
+ inset: 0;
+ background:
+ radial-gradient(ellipse 60% 50% at 30% 50%, rgba(193,18,31,.12) 0%, transparent 70%),
+ radial-gradient(ellipse 50% 40% at 70% 50%, rgba(193,18,31,.07) 0%, transparent 70%);
+ pointer-events: none;
+ }
+ .ms-hero-eyebrow {
+ display: inline-flex;
+ align-items: center;
+ gap: 10px;
+ font-family: var(--font-accent);
+ font-size: .8rem;
+ letter-spacing: .18em;
+ color: var(--red);
+ margin-bottom: 20px;
+ }
+ .ms-hero-eyebrow::before,
+ .ms-hero-eyebrow::after {
+ display: none;
+ }
+ .ms-hero h1 {
+ font-family: var(--font-accent);
+ font-size: clamp(2.4rem, 5vw, 4rem);
+ font-weight: 400;
+ color: var(--white);
+ line-height: 1.15;
+ margin-bottom: 20px;
+ }
+ .ms-hero h1 em {
+ font-style: italic;
+ color: var(--red);
+ }
+ .ms-hero p {
+ max-width: 560px;
+ margin: 0 auto 40px;
+ color: var(--w70);
+ font-size: 1.05rem;
+ line-height: 1.7;
+ }
+ .ms-hero-actions {
+ display: flex;
+ gap: 14px;
+ justify-content: center;
+ flex-wrap: wrap;
+ }
 
-  /* ---- SECTION BASE ---- */
-  .ms-section {
-    padding: 80px 0;
-  }
-  .ms-section-alt {
-    background: var(--bg-2);
-  }
-  .ms-title {
-    text-align: center;
-    margin-bottom: 56px;
-  }
-  .ms-title .eyebrow {
-    font-family: var(--font-accent);
-    font-size: .8rem;
-    letter-spacing: .18em;
-    color: var(--red);
-    display: block;
-    margin-bottom: 12px;
-  }
-  .ms-title h2 {
-    font-family: var(--font-display);
-    font-size: clamp(1.8rem, 3vw, 2.6rem);
-    font-weight: 700;
-    color: var(--white);
-    margin-bottom: 12px;
-  }
-  .ms-title p {
-    color: var(--w50);
-    font-size: .95rem;
-    max-width: 500px;
-    margin: 0 auto;
-  }
+ /* ---- SECTION BASE ---- */
+ .ms-section {
+ padding: 80px 0;
+ }
+ .ms-section-alt {
+ background: var(--bg-2);
+ }
+ .ms-title {
+ text-align: center;
+ margin-bottom: 56px;
+ }
+ .ms-title .eyebrow {
+ font-family: var(--font-accent);
+ font-size: .8rem;
+ letter-spacing: .18em;
+ color: var(--red);
+ display: block;
+ margin-bottom: 12px;
+ }
+ .ms-title h2 {
+ font-family: var(--font-accent);
+ font-size: clamp(1.8rem, 3vw, 2.6rem);
+ font-weight: 400;
+ color: var(--white);
+ margin-bottom: 12px;
+ }
+ .ms-title p {
+ color: var(--w50);
+ font-size: .95rem;
+ max-width: 500px;
+ margin: 0 auto;
+ }
 
-  /* ---- HOW IT WORKS ---- */
-  .ms-steps {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-  }
-  .ms-step {
-    background: var(--bg-3);
-    border: 1px solid var(--w10);
-    border-radius: 16px;
-    padding: 36px 28px;
-    text-align: center;
-    position: relative;
-    transition: var(--transition);
-  }
-  .ms-step:hover {
-    border-color: var(--red-20);
-    transform: translateY(-4px);
-  }
-  .ms-step-num {
-    font-family: var(--font-accent);
-    font-size: 3rem;
-    color: var(--red);
-    opacity: .3;
-    line-height: 1;
-    margin-bottom: 16px;
-  }
-  .ms-step-icon {
-    width: 56px;
-    height: 56px;
-    background: var(--red-10);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 20px;
-  }
-  .ms-step h3 {
-    font-family: var(--font-body);
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--white);
-    margin-bottom: 10px;
-  }
-  .ms-step p {
-    font-size: .875rem;
-    color: var(--w50);
-    line-height: 1.6;
-  }
+ /* ---- HOW IT WORKS ---- */
+ .ms-steps {
+ display: grid;
+ grid-template-columns: repeat(3, 1fr);
+ gap: 24px;
+ }
+ .ms-step {
+ background: var(--bg-3);
+ border: 1px solid var(--w10);
+ border-radius: 16px;
+ padding: 36px 28px;
+ text-align: center;
+ position: relative;
+ transition: var(--transition);
+ }
+ .ms-step:hover {
+ border-color: var(--red-20);
+ transform: translateY(-4px);
+ }
+ .ms-step-num {
+ font-family: var(--font-accent);
+ font-size: 3rem;
+ color: var(--red);
+ opacity: .3;
+ line-height: 1;
+ margin-bottom: 16px;
+ }
+ .ms-step-icon {
+ width: 56px;
+ height: 56px;
+ background: var(--red-10);
+ border-radius: 50%;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ margin: 0 auto 20px;
+ }
+ .ms-step h3 {
+ font-family: var(--font-body);
+ font-size: 1rem;
+ font-weight: 700;
+ color: var(--white);
+ margin-bottom: 10px;
+ }
+ .ms-step p {
+ font-size: .875rem;
+ color: var(--w50);
+ line-height: 1.6;
+ }
 
-  /* ---- TIER CARDS ---- */
-  .ms-tiers {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-    align-items: stretch;
-  }
-  .ms-tier {
-    border-radius: 20px;
-    overflow: hidden;
-    border: 1px solid var(--w10);
-    background: var(--bg-3);
-    transition: var(--transition);
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
-  .ms-tier:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 20px 60px rgba(0,0,0,.4);
-  }
-  .ms-tier.featured {
-    border-color: #FBBF24;
-    box-shadow: 0 0 0 1px #FBBF24, 0 20px 60px rgba(251,191,36,.15);
-    transform: translateY(-8px);
-  }
-  .ms-tier.featured:hover {
-    transform: translateY(-14px);
-  }
-  .featured-badge {
-    display: none;
-    position: absolute;
-    top: -1px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: linear-gradient(90deg, #92400E, #FBBF24);
-    color: #fff;
-    font-family: var(--font-accent);
-    font-size: .7rem;
-    letter-spacing: .12em;
-    padding: 5px 18px;
-    border-radius: 0 0 10px 10px;
-    white-space: nowrap;
-    z-index: 1;
-  }
-  .ms-tier.featured .featured-badge {
-    display: block;
-  }
+ /* ---- TIER CARDS ---- */
+ .ms-tiers {
+ display: grid;
+ grid-template-columns: repeat(3, 1fr);
+ gap: 24px;
+ align-items: stretch;
+ }
+ .ms-tier {
+ border-radius: 20px;
+ overflow: hidden;
+ border: 1px solid var(--w10);
+ background: var(--bg-3);
+ transition: var(--transition);
+ position: relative;
+ display: flex;
+ flex-direction: column;
+ height: 100%;
+ }
+ .ms-tier:hover {
+ transform: translateY(-6px);
+ box-shadow: 0 20px 60px rgba(0,0,0,.4);
+ }
+ .ms-tier.featured {
+ border-color: #FBBF24;
+ box-shadow: 0 0 0 1px #FBBF24, 0 20px 60px rgba(251,191,36,.15);
+ transform: translateY(-8px);
+ }
+ .ms-tier.featured:hover {
+ transform: translateY(-14px);
+ }
+ .featured-badge {
+ display: none;
+ position: absolute;
+ top: -1px;
+ left: 50%;
+ transform: translateX(-50%);
+ background: linear-gradient(90deg, #92400E, #FBBF24);
+ color: #fff;
+ font-family: var(--font-accent);
+ font-size: .7rem;
+ letter-spacing: .12em;
+ padding: 5px 18px;
+ border-radius: 0 0 10px 10px;
+ white-space: nowrap;
+ z-index: 1;
+ }
+ .ms-tier.featured .featured-badge {
+ display: block;
+ }
 
-  .tier-header {
-    padding: 32px 24px 24px;
-    text-align: center;
-  }
-  .tier-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 16px;
-    font-size: 2rem;
-  }
-  .tier-name {
-    font-family: var(--font-accent);
-    font-size: 1.4rem;
-    letter-spacing: .08em;
-    margin-bottom: 6px;
-  }
-  .tier-range {
-    font-size: .8rem;
-    color: var(--w50);
-    margin-bottom: 8px;
-  }
-  .tier-tagline {
-    font-size: .8rem;
-    color: var(--w50);
-    font-style: italic;
-  }
-  .tier-discount {
-    display: inline-block;
-    font-family: var(--font-accent);
-    font-size: 2rem;
-    letter-spacing: .04em;
-    margin: 12px 0 4px;
-    line-height: 1;
-  }
-  .tier-discount-label {
-    font-size: .75rem;
-    color: var(--w50);
-  }
+ .tier-header {
+ padding: 32px 24px 24px;
+ text-align: center;
+ }
+ .tier-icon {
+ width: 64px;
+ height: 64px;
+ border-radius: 50%;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ margin: 0 auto 16px;
+ font-size: 2rem;
+ }
+ .tier-name {
+ font-family: var(--font-accent);
+ font-size: 1.4rem;
+ letter-spacing: .08em;
+ margin-bottom: 6px;
+ }
+ .tier-range {
+ font-size: .8rem;
+ color: var(--w50);
+ margin-bottom: 8px;
+ }
+ .tier-tagline {
+ font-size: .8rem;
+ color: var(--w50);
+ font-style: italic;
+ }
+ .tier-discount {
+ display: inline-block;
+ font-family: var(--font-accent);
+ font-size: 2rem;
+ letter-spacing: .04em;
+ margin: 12px 0 4px;
+ line-height: 1;
+ }
+ .tier-discount-label {
+ font-size: .75rem;
+ color: var(--w50);
+ }
 
-  .tier-body {
-    padding: 0 24px 28px;
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-  }
-  .tier-benefits {
-    list-style: none;
-    margin-bottom: auto;
-    flex-grow: 1;
-  }
-  .tier-divider {
-    height: 1px;
-    background: var(--w10);
-    margin-bottom: 20px;
-  }
-  .tier-benefits li {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    font-size: .82rem;
-    padding: 6px 0;
-    color: var(--w70);
-  }
-  .tier-benefits li .b-icon {
-    flex-shrink: 0;
-    width: 16px;
-    height: 16px;
-    margin-top: 1px;
-  }
-  .tier-benefits li.yes .b-icon { color: #4ADE80; }
-  .tier-benefits li.no {
-    color: var(--w30);
-    text-decoration: line-through;
-    text-decoration-color: var(--w20);
-  }
-  .tier-benefits li.no .b-icon { color: var(--w20); }
+ .tier-body {
+ padding: 0 24px 28px;
+ display: flex;
+ flex-direction: column;
+ flex-grow: 1;
+ }
+ .tier-benefits {
+ list-style: none;
+ margin-bottom: auto;
+ flex-grow: 1;
+ }
+ .tier-divider {
+ display: none;
+ }
+ .tier-benefits li {
+ display: flex;
+ align-items: flex-start;
+ gap: 10px;
+ font-size: .82rem;
+ padding: 6px 0;
+ color: var(--w70);
+ }
+ .tier-benefits li .b-icon {
+ flex-shrink: 0;
+ width: 16px;
+ height: 16px;
+ margin-top: 1px;
+ }
+ .tier-benefits li.yes .b-icon { color: #4ADE80; }
+ .tier-benefits li.no {
+ color: var(--w30);
+ text-decoration: line-through;
+ text-decoration-color: var(--w20);
+ }
+ .tier-benefits li.no .b-icon { color: var(--w20); }
 
-  .tier-cta {
-    display: block;
-    text-align: center;
-    padding: 12px 20px;
-    border-radius: var(--radius);
-    font-size: .85rem;
-    font-weight: 600;
-    transition: var(--transition);
-    border: 1.5px solid var(--w20);
-    color: var(--w70);
-  }
-  .tier-cta:hover {
-    border-color: var(--red);
-    color: var(--white);
-    background: var(--red-10);
-  }
-  .ms-tier.featured .tier-cta {
-    background: linear-gradient(135deg, #92400E, #FBBF24);
-    border-color: transparent;
-    color: #fff;
-  }
-  .ms-tier.featured .tier-cta:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(251,191,36,.3);
-  }
+ .tier-cta {
+ display: block;
+ text-align: center;
+ padding: 12px 20px;
+ border-radius: var(--radius);
+ font-size: .85rem;
+ font-weight: 600;
+ transition: var(--transition);
+ border: 1.5px solid var(--w20);
+ color: var(--w70);
+ }
+ .tier-cta:hover {
+ border-color: var(--red);
+ color: var(--white);
+ background: var(--red-10);
+ }
+ .ms-tier.featured .tier-cta {
+ background: linear-gradient(135deg, #92400E, #FBBF24);
+ border-color: transparent;
+ color: #fff;
+ }
+ .ms-tier.featured .tier-cta:hover {
+ transform: translateY(-1px);
+ box-shadow: 0 8px 24px rgba(251,191,36,.3);
+ }
 
-  /* TIER COLORS */
-  .tier-silver .tier-header { background: linear-gradient(160deg, #1A1F29 0%, #111520 100%); }
-  .tier-silver .tier-icon   { background: rgba(156,163,175,.12); }
-  .tier-silver .tier-name   { color: #9CA3AF; }
-  .tier-silver .tier-discount { color: #9CA3AF; }
+ /* TIER COLORS */
+ .tier-silver .tier-header { background: linear-gradient(160deg, #1A1F29 0%, #111520 100%); }
+ .tier-silver .tier-icon { background: rgba(156,163,175,.12); }
+ .tier-silver .tier-name { color: #9CA3AF; }
+ .tier-silver .tier-discount { color: #9CA3AF; }
 
-  .tier-gold .tier-header   { background: linear-gradient(160deg, #1C1000 0%, #140B00 100%); }
-  .tier-gold .tier-icon     { background: rgba(251,191,36,.15); }
-  .tier-gold .tier-name     { color: #FBBF24; }
-  .tier-gold .tier-discount { color: #FBBF24; }
+ .tier-gold .tier-header { background: linear-gradient(160deg, #1C1000 0%, #140B00 100%); }
+ .tier-gold .tier-icon { background: rgba(251,191,36,.15); }
+ .tier-gold .tier-name { color: #FBBF24; }
+ .tier-gold .tier-discount { color: #FBBF24; }
 
-  .tier-platinum .tier-header {
-    background: linear-gradient(160deg, #0F1520 0%, #080D17 100%);
-    position: relative;
-    overflow: hidden;
-  }
-  .tier-platinum .tier-header::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, transparent 40%, rgba(196,181,253,.06) 100%);
-    pointer-events: none;
-  }
-  .tier-platinum .tier-icon     { background: rgba(196,181,253,.1); }
-  .tier-platinum .tier-name     {
-    background: linear-gradient(90deg, #C4B5FD, #E2E8F0, #C4B5FD);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .tier-platinum .tier-discount {
-    background: linear-gradient(90deg, #C4B5FD, #E2E8F0);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
+ .tier-platinum .tier-header {
+ background: linear-gradient(160deg, #0F1520 0%, #080D17 100%);
+ position: relative;
+ overflow: hidden;
+ }
+ .tier-platinum .tier-header::before {
+ content: '';
+ position: absolute;
+ inset: 0;
+ background: linear-gradient(135deg, transparent 40%, rgba(196,181,253,.06) 100%);
+ pointer-events: none;
+ }
+ .tier-platinum .tier-icon { background: rgba(196,181,253,.1); }
+ .tier-platinum .tier-name {
+ background: linear-gradient(90deg, #C4B5FD, #E2E8F0, #C4B5FD);
+ -webkit-background-clip: text;
+ -webkit-text-fill-color: transparent;
+ background-clip: text;
+ }
+ .tier-platinum .tier-discount {
+ background: linear-gradient(90deg, #C4B5FD, #E2E8F0);
+ -webkit-background-clip: text;
+ -webkit-text-fill-color: transparent;
+ background-clip: text;
+ }
 
-  /* ---- POINT SYSTEM ---- */
-  .ms-point-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 32px;
-  }
-  .ms-point-card {
-    background: var(--bg-3);
-    border: 1px solid var(--w10);
-    border-radius: 16px;
-    padding: 32px;
-  }
-  .ms-point-card h3 {
-    font-family: var(--font-display);
-    font-size: 1.2rem;
-    color: var(--white);
-    margin-bottom: 24px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .ms-point-card h3 svg { color: var(--red); }
-  .ms-point-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--w05);
-    font-size: .875rem;
-  }
-  .ms-point-row:last-child { border-bottom: none; }
-  .ms-point-row .label { color: var(--w60, var(--w70)); }
-  .ms-point-row .value {
-    font-weight: 600;
-    color: var(--red);
-    font-family: var(--font-accent);
-    font-size: 1rem;
-    letter-spacing: .04em;
-  }
-  .ms-point-row .value.green { color: #4ADE80; }
+ /* ---- POINT SYSTEM ---- */
+ .ms-point-grid {
+ display: grid;
+ grid-template-columns: 1fr 1fr;
+ gap: 32px;
+ }
+ .ms-point-card {
+ background: var(--bg-3);
+ border: 1px solid var(--w10);
+ border-radius: 16px;
+ padding: 32px;
+ }
+ .ms-point-card h3 {
+ font-family: var(--font-accent);
+ font-size: 1.2rem;
+ color: var(--white);
+ margin-bottom: 24px;
+ display: flex;
+ align-items: center;
+ gap: 10px;
+ }
+ .ms-point-card h3 svg { color: var(--red); }
+ .ms-point-row {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ padding: 12px 0;
+ border-bottom: 1px solid var(--w05);
+ font-size: .875rem;
+ }
+ .ms-point-row:last-child { border-bottom: none; }
+ .ms-point-row .label { color: var(--w60, var(--w70)); }
+ .ms-point-row .value {
+ font-weight: 600;
+ color: var(--red);
+ font-family: var(--font-accent);
+ font-size: 1rem;
+ letter-spacing: .04em;
+ }
+ .ms-point-row .value.green { color: #4ADE80; }
 
-  /* ---- COMPARISON TABLE ---- */
-  .ms-table-wrap { overflow-x: auto; }
-  .ms-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: .875rem;
-    min-width: 480px;
-  }
-  .ms-table th {
-    padding: 14px 18px;
-    text-align: center;
-    font-family: var(--font-accent);
-    font-size: .9rem;
-    letter-spacing: .06em;
-    border-bottom: 2px solid var(--w10);
-  }
-  .ms-table th:first-child { text-align: left; }
-  .ms-table th.col-silver { color: #9CA3AF; }
-  .ms-table th.col-gold   { color: #FBBF24; background: rgba(251,191,36,.05); }
-  .ms-table th.col-plat   { color: #C4B5FD; }
-  .ms-table td {
-    padding: 13px 18px;
-    border-bottom: 1px solid var(--w05);
-    color: var(--w70);
-    text-align: center;
-  }
-  .ms-table td:first-child {
-    text-align: left;
-    color: var(--white);
-    font-weight: 500;
-  }
-  .ms-table tr:hover td { background: var(--w05); }
-  .ms-table .col-gold { background: rgba(251,191,36,.03); }
-  .ms-table .check { color: #4ADE80; font-size: 1.1rem; }
-  .ms-table .cross { color: var(--w20); font-size: 1rem; }
-  .ms-table .category-row td {
-    padding: 18px 18px 8px;
-    font-family: var(--font-accent);
-    font-size: .75rem;
-    letter-spacing: .12em;
-    color: var(--red);
-    background: transparent !important;
-    text-align: left;
-  }
+ /* ---- COMPARISON TABLE ---- */
+ .ms-table-wrap { overflow-x: auto; }
+ .ms-table {
+ width: 100%;
+ border-collapse: collapse;
+ font-size: .875rem;
+ min-width: 480px;
+ }
+ .ms-table th {
+ padding: 14px 18px;
+ text-align: center;
+ font-family: var(--font-accent);
+ font-size: .9rem;
+ letter-spacing: .06em;
+ border-bottom: 2px solid var(--w10);
+ }
+ .ms-table th:first-child { text-align: left; }
+ .ms-table th.col-silver { color: #9CA3AF; }
+ .ms-table th.col-gold { color: #FBBF24; background: rgba(251,191,36,.05); }
+ .ms-table th.col-plat { color: #C4B5FD; }
+ .ms-table td {
+ padding: 13px 18px;
+ border-bottom: 1px solid var(--w05);
+ color: var(--w70);
+ text-align: center;
+ }
+ .ms-table td:first-child {
+ text-align: left;
+ color: var(--white);
+ font-weight: 500;
+ }
+ .ms-table tr:hover td { background: var(--w05); }
+ .ms-table .col-gold { background: rgba(251,191,36,.03); }
+ .ms-table .check { color: #4ADE80; font-size: 1.1rem; }
+ .ms-table .cross { color: var(--w20); font-size: 1rem; }
+ .ms-table .category-row td {
+ padding: 18px 18px 8px;
+ font-family: var(--font-accent);
+ font-size: .75rem;
+ letter-spacing: .12em;
+ color: var(--red);
+ background: transparent !important;
+ text-align: left;
+ }
 
-  /* ---- FAQ ---- */
-  .ms-faq { max-width: 700px; margin: 0 auto; }
-  .ms-faq-item {
-    border-bottom: 1px solid var(--w10);
-  }
-  .ms-faq-q {
-    width: 100%;
-    text-align: left;
-    padding: 20px 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: .95rem;
-    font-weight: 600;
-    color: var(--white);
-    cursor: pointer;
-    background: none;
-    border: none;
-    font-family: var(--font-body);
-    gap: 16px;
-  }
-  .ms-faq-q svg {
-    flex-shrink: 0;
-    color: var(--red);
-    transition: transform .3s;
-  }
-  .ms-faq-item.open .ms-faq-q svg { transform: rotate(45deg); }
-  .ms-faq-a {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height .35s ease;
-  }
-  .ms-faq-item.open .ms-faq-a { max-height: 200px; }
-  .ms-faq-a p {
-    padding-bottom: 18px;
-    color: var(--w50);
-    font-size: .875rem;
-    line-height: 1.7;
-  }
+ /* ---- FAQ ---- */
+ .ms-faq { max-width: 700px; margin: 0 auto; }
+ .ms-faq-item {
+ border-bottom: 1px solid var(--w10);
+ }
+ .ms-faq-q {
+ width: 100%;
+ text-align: left;
+ padding: 20px 0;
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ font-size: .95rem;
+ font-weight: 600;
+ color: var(--white);
+ cursor: pointer;
+ background: none;
+ border: none;
+ font-family: var(--font-body);
+ gap: 16px;
+ }
+ .ms-faq-q svg {
+ flex-shrink: 0;
+ color: var(--red);
+ transition: transform .3s;
+ }
+ .ms-faq-item.open .ms-faq-q svg { transform: rotate(45deg); }
+ .ms-faq-a {
+ max-height: 0;
+ overflow: hidden;
+ transition: max-height .35s ease;
+ }
+ .ms-faq-item.open .ms-faq-a { max-height: 200px; }
+ .ms-faq-a p {
+ padding-bottom: 18px;
+ color: var(--w50);
+ font-size: .875rem;
+ line-height: 1.7;
+ }
 
-  /* ---- CTA SECTION ---- */
-  .ms-cta-section {
-    background: linear-gradient(160deg, #1A0000 0%, #0A0A0A 60%);
-    padding: 80px 0;
-    text-align: center;
-    border-top: 1px solid var(--red-10);
-  }
-  .ms-cta-section h2 {
-    font-family: var(--font-display);
-    font-size: clamp(1.8rem, 3vw, 2.6rem);
-    color: var(--white);
-    margin-bottom: 16px;
-  }
-  .ms-cta-section p {
-    color: var(--w60, var(--w70));
-    max-width: 480px;
-    margin: 0 auto 32px;
-    font-size: .95rem;
-  }
+ /* ---- CTA SECTION ---- */
+ .ms-cta-section {
+ background: linear-gradient(160deg, #1A0000 0%, #0A0A0A 60%);
+ padding: 80px 0;
+ text-align: center;
+ border-top: 1px solid var(--red-10);
+ }
+ .ms-cta-section h2 {
+ font-family: var(--font-accent);
+ font-size: clamp(1.8rem, 3vw, 2.6rem);
+ color: var(--white);
+ margin-bottom: 16px;
+ }
+ .ms-cta-section p {
+ color: var(--w60, var(--w70));
+ max-width: 480px;
+ margin: 0 auto 32px;
+ font-size: .95rem;
+ }
 
-  /* ---- FEATURE CARDS ---- */
-  .ms-feature-section {
-    padding: 80px 0 60px;
-    background: var(--bg);
-  }
-  .ms-feature-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    max-width: 936px;
-    margin: 0 auto;
-  }
-  .ms-fc-wrap {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    width: 100%;
-    opacity: 0;
-    transform: translateY(30px);
-    transition: opacity .8s ease, transform .8s ease;
-  }
-  .ms-fc-wrap.visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .ms-fc-wrap:nth-child(2) { transition-delay: .1s; }
-  .ms-fc-wrap:nth-child(3) { transition-delay: .2s; }
-  .ms-fc-glow {
-    position: absolute;
-    inset: 0;
-    border-radius: 40px;
-    opacity: .6;
-    pointer-events: none;
-    filter: blur(45px);
-    z-index: 0;
-  }
-  .ms-fc-card {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    border-radius: 40px;
-    overflow: hidden;
-    border: 8px solid transparent;
-  }
-  .ms-fc-inner {
-    width: 100%;
-    height: 100%;
-    padding: 28px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 260px;
-  }
-  .ms-fc-icon {
-    color: rgba(255,255,255,.9);
-    margin-bottom: auto;
-  }
-  .ms-fc-icon svg {
-    width: 32px;
-    height: 32px;
-    stroke-width: 2.5;
-  }
-  .ms-fc-bottom { display: flex; flex-direction: column; }
-  .ms-fc-step-num {
-    font-family: var(--font-accent);
-    font-size: 2.2rem;
-    color: rgba(255,255,255,.12);
-    line-height: 1;
-    margin-bottom: 8px;
-    letter-spacing: .04em;
-  }
-  .ms-fc-title {
-    font-family: var(--font-body);
-    font-size: 1.2rem;
-    font-weight: 500;
-    color: #fff;
-    margin-bottom: 10px;
-    letter-spacing: -.02em;
-  }
-  .ms-fc-desc {
-    font-size: .875rem;
-    line-height: 1.6;
-    color: #9CA3AF;
-    font-weight: 400;
-  }
-  @media(max-width:900px) {
-    .ms-feature-grid { grid-template-columns: 1fr; gap: 28px; }
-    .ms-fc-inner { min-height: 220px; }
-  }
-  @media(max-width:480px) {
-    .ms-feature-section { padding: 56px 0 40px; }
-    .ms-fc-inner { min-height: 200px; padding: 22px; }
-    .ms-fc-title { font-size: 1.05rem; }
-  }
+ /* ---- FEATURE CARDS ---- */
+ .ms-feature-section {
+ padding: 80px 0 60px;
+ background: var(--bg);
+ }
+ .ms-feature-grid {
+ display: grid;
+ grid-template-columns: repeat(3, 1fr);
+ gap: 12px;
+ max-width: 936px;
+ margin: 0 auto;
+ }
+ .ms-fc-wrap {
+ position: relative;
+ display: flex;
+ flex-direction: column;
+ align-items: flex-start;
+ width: 100%;
+ opacity: 0;
+ transform: translateY(30px);
+ transition: opacity .8s ease, transform .8s ease;
+ }
+ .ms-fc-wrap.visible {
+ opacity: 1;
+ transform: translateY(0);
+ }
+ .ms-fc-wrap:nth-child(2) { transition-delay: .1s; }
+ .ms-fc-wrap:nth-child(3) { transition-delay: .2s; }
+ .ms-fc-glow {
+ position: absolute;
+ inset: 0;
+ border-radius: 40px;
+ opacity: .6;
+ pointer-events: none;
+ filter: blur(45px);
+ z-index: 0;
+ }
+ .ms-fc-card {
+ position: relative;
+ z-index: 1;
+ width: 100%;
+ border-radius: 40px;
+ overflow: hidden;
+ border: 8px solid transparent;
+ }
+ .ms-fc-inner {
+ width: 100%;
+ height: 100%;
+ padding: 28px;
+ display: flex;
+ flex-direction: column;
+ justify-content: space-between;
+ min-height: 260px;
+ }
+ .ms-fc-icon {
+ color: rgba(255,255,255,.9);
+ margin-bottom: auto;
+ }
+ .ms-fc-icon svg {
+ width: 32px;
+ height: 32px;
+ stroke-width: 2.5;
+ }
+ .ms-fc-bottom { display: flex; flex-direction: column; }
+ .ms-fc-step-num {
+ font-family: var(--font-accent);
+ font-size: 2.2rem;
+ color: rgba(255,255,255,.12);
+ line-height: 1;
+ margin-bottom: 8px;
+ letter-spacing: .04em;
+ }
+ .ms-fc-title {
+ font-family: var(--font-body);
+ font-size: 1.2rem;
+ font-weight: 500;
+ color: #fff;
+ margin-bottom: 10px;
+ letter-spacing: -.02em;
+ }
+ .ms-fc-desc {
+ font-size: .875rem;
+ line-height: 1.6;
+ color: #9CA3AF;
+ font-weight: 400;
+ }
+ @media(max-width:900px) {
+ .ms-feature-grid { grid-template-columns: 1fr; gap: 28px; }
+ .ms-fc-inner { min-height: 220px; }
+ }
+ @media(max-width:480px) {
+ .ms-feature-section { padding: 56px 0 40px; }
+ .ms-fc-inner { min-height: 200px; padding: 22px; }
+ .ms-fc-title { font-size: 1.05rem; }
+ }
 
-  /* ---- RESPONSIVE ---- */
-  @media(max-width:1024px) {
-    .ms-tiers { grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    .ms-tier.featured { transform: none; }
-    .ms-tier.featured:hover { transform: translateY(-6px); }
-  }
-  @media(max-width:900px) {
-    .ms-tiers { grid-template-columns: repeat(2, 1fr); gap: 16px; }
-  }
-  @media(max-width:768px) {
-    .ms-hero { padding: 110px 0 60px; }
-    .ms-steps { grid-template-columns: 1fr; gap: 16px; }
-    .ms-tiers {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .ms-tier { width: 100%; max-width: 400px; margin: 0 auto; }
-    .ms-point-grid { grid-template-columns: 1fr; gap: 20px; }
-    .ms-section { padding: 56px 0; }
-  }
-  @media(max-width:480px) {
-    .ms-hero h1 { font-size: 2rem; }
-  }
+ /* ---- RESPONSIVE ---- */
+ @media(max-width:1024px) {
+ .ms-tiers { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+ .ms-tier.featured { transform: none; }
+ .ms-tier.featured:hover { transform: translateY(-6px); }
+ }
+ @media(max-width:900px) {
+ .ms-tiers { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+ }
+ @media(max-width:768px) {
+ .ms-hero { padding: 110px 0 60px; }
+ .ms-steps { grid-template-columns: 1fr; gap: 16px; }
+ .ms-tiers {
+ display: flex;
+ flex-direction: column;
+ gap: 16px;
+ }
+ .ms-tier { width: 100%; max-width: 400px; margin: 0 auto; }
+ .ms-point-grid { grid-template-columns: 1fr; gap: 20px; }
+ .ms-section { padding: 56px 0; }
+ }
+ @media(max-width:480px) {
+ .ms-hero h1 { font-size: 2rem; }
+ }
 
-  /* ---- MOBILE-FIRST PRIORITY OVERRIDES ---- */
-  html { scroll-padding-top: 76px; }
-  * { -webkit-tap-highlight-color: transparent; }
+ /* ---- MOBILE-FIRST PRIORITY OVERRIDES ---- */
+ html { scroll-padding-top: 76px; }
+ * { -webkit-tap-highlight-color: transparent; }
 
-  .ms-mobile-bar { display: none; }
+ .ms-mobile-bar { display: none; }
 
-  @media (hover: none) {
-    .ms-step:hover,
-    .ms-tier:hover,
-    .ms-tier.featured:hover {
-      transform: none;
-      box-shadow: none;
-    }
-    .tier-cta:active,
-    .ms-hero-actions a:active,
-    .ms-cta-section a:active {
-      transform: scale(.97);
-    }
-  }
+ @media (hover: none) {
+ .ms-step:hover,
+ .ms-tier:hover,
+ .ms-tier.featured:hover {
+ transform: none;
+ box-shadow: none;
+ }
+ .tier-cta:active,
+ .ms-hero-actions a:active,
+ .ms-cta-section a:active {
+ transform: scale(.97);
+ }
+ }
 
-  @media(max-width:768px) {
-    html { scroll-padding-top: 68px; }
-    body { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
+ @media(max-width:768px) {
+ html { scroll-padding-top: 68px; }
+ body { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
 
-    .ms-hero {
-      min-height: 100svh;
-      display: flex;
-      align-items: center;
-      padding: 96px 0 56px;
-      text-align: left;
-    }
-    .ms-hero::before {
-      background:
-        radial-gradient(ellipse 85% 55% at 20% 20%, rgba(193,18,31,.16) 0%, transparent 68%),
-        linear-gradient(180deg, rgba(10,10,10,.15) 0%, rgba(10,10,10,.88) 100%);
-    }
-    .ms-hero-eyebrow {
-      justify-content: flex-start;
-      font-size: .72rem;
-      margin-bottom: 16px;
-    }
-    .ms-hero-eyebrow::after { display: none; }
-    .ms-hero h1 {
-      font-size: clamp(2.25rem, 13vw, 3.4rem);
-      line-height: 1.04;
-      margin-bottom: 18px;
-    }
-    .ms-hero p {
-      margin: 0 0 28px;
-      max-width: 34rem;
-      font-size: .94rem;
-      line-height: 1.72;
-    }
-    .ms-hero-actions,
-    .ms-cta-section .container > div {
-      display: grid !important;
-      grid-template-columns: 1fr;
-      gap: 10px !important;
-    }
-    .ms-hero-actions .btn-primary,
-    .ms-hero-actions .btn-outline,
-    .ms-cta-section .btn-primary,
-    .ms-cta-section .btn-outline {
-      width: 100%;
-      min-height: 50px;
-      justify-content: center;
-      white-space: normal;
-      text-align: center;
-      padding: 14px 18px;
-    }
+ .ms-hero {
+ min-height: 100svh;
+ display: flex;
+ align-items: center;
+ padding: 96px 0 56px;
+ text-align: left;
+ }
+ .ms-hero::before {
+ background:
+ radial-gradient(ellipse 85% 55% at 20% 20%, rgba(193,18,31,.16) 0%, transparent 68%),
+ linear-gradient(180deg, rgba(10,10,10,.15) 0%, rgba(10,10,10,.88) 100%);
+ }
+ .ms-hero-eyebrow {
+ justify-content: flex-start;
+ font-size: .72rem;
+ margin-bottom: 16px;
+ }
+ .ms-hero-eyebrow::after { display: none; }
+ .ms-hero h1 {
+ font-size: clamp(2.25rem, 13vw, 3.4rem);
+ line-height: 1.04;
+ margin-bottom: 18px;
+ }
+ .ms-hero p {
+ margin: 0 0 28px;
+ max-width: 34rem;
+ font-size: .94rem;
+ line-height: 1.72;
+ }
+ .ms-hero-actions,
+ .ms-cta-section .container > div {
+ display: grid !important;
+ grid-template-columns: 1fr;
+ gap: 10px !important;
+ }
+ .ms-hero-actions .btn-primary,
+ .ms-hero-actions .btn-outline,
+ .ms-cta-section .btn-primary,
+ .ms-cta-section .btn-outline {
+ width: 100%;
+ min-height: 50px;
+ justify-content: center;
+ white-space: normal;
+ text-align: center;
+ padding: 14px 18px;
+ }
 
-    .ms-section { padding: 52px 0; }
-    .ms-title {
-      text-align: left;
-      margin-bottom: 28px;
-    }
-    .ms-title h2 {
-      font-size: clamp(1.65rem, 8vw, 2.25rem);
-      line-height: 1.16;
-    }
-    .ms-title p { margin: 0; font-size: .9rem; }
+ .ms-section { padding: 52px 0; }
+ .ms-title {
+ text-align: left;
+ margin-bottom: 28px;
+ }
+ .ms-title h2 {
+ font-size: clamp(1.65rem, 8vw, 2.25rem);
+ line-height: 1.16;
+ }
+ .ms-title p { margin: 0; font-size: .9rem; }
 
-    .ms-steps {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 12px;
-    }
-    .ms-step {
-      padding: 24px 20px;
-      text-align: left;
-      border-radius: 14px;
-    }
-    .ms-step-icon { margin: 0 0 16px; }
-    .ms-step-num {
-      position: absolute;
-      top: 18px;
-      right: 20px;
-      font-size: 2.4rem;
-      margin: 0;
-    }
+ .ms-steps {
+ display: grid;
+ grid-template-columns: 1fr;
+ gap: 12px;
+ }
+ .ms-step {
+ padding: 24px 20px;
+ text-align: left;
+ border-radius: 14px;
+ }
+ .ms-step-icon { margin: 0 0 16px; }
+ .ms-step-num {
+ position: absolute;
+ top: 18px;
+ right: 20px;
+ font-size: 2.4rem;
+ margin: 0;
+ }
 
-    .ms-tiers {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-    .ms-tier,
-    .ms-tier.featured {
-      border-radius: 16px;
-      transform: none;
-      width: 100%;
-      max-width: 340px;
-      margin: 0 auto;
-    }
-    .tier-header { padding: 24px 18px 18px; }
-    .tier-body { padding: 0 18px 22px; }
-    .tier-icon { width: 48px; height: 48px; font-size: 1.5rem; margin-bottom: 12px; }
-    .tier-name { font-size: 1.2rem; }
-    .tier-range { font-size: .72rem; }
-    .tier-discount { font-size: 1.8rem; margin: 10px 0 4px; }
-    .tier-benefits li { font-size: .78rem; padding: 6px 0; gap: 8px; }
-    .tier-benefits li .b-icon { width: 14px; height: 14px; }
-    .tier-divider { margin-bottom: 16px; }
-    .tier-cta {
-      min-height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-top: 16px;
-    }
+ .ms-tiers {
+ display: flex;
+ flex-direction: column;
+ gap: 16px;
+ }
+ .ms-tier,
+ .ms-tier.featured {
+ border-radius: 16px;
+ transform: none;
+ width: 100%;
+ max-width: 340px;
+ margin: 0 auto;
+ }
+ .tier-header { padding: 24px 18px 18px; }
+ .tier-body { padding: 0 18px 22px; }
+ .tier-icon { width: 48px; height: 48px; font-size: 1.5rem; margin-bottom: 12px; }
+ .tier-name { font-size: 1.2rem; }
+ .tier-range { font-size: .72rem; }
+ .tier-discount { font-size: 1.8rem; margin: 10px 0 4px; }
+ .tier-benefits li { font-size: .78rem; padding: 6px 0; gap: 8px; }
+ .tier-benefits li .b-icon { width: 14px; height: 14px; }
+ .tier-divider { display: none; }
+ .tier-cta {
+ min-height: 48px;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ margin-top: 16px;
+ }
 
-    .ms-point-card {
-      padding: 22px 18px;
-      border-radius: 14px;
-    }
-    .ms-point-card h3 {
-      font-size: 1.05rem;
-      margin-bottom: 18px;
-      align-items: flex-start;
-    }
-    .ms-point-row {
-      align-items: flex-start;
-      gap: 14px;
-    }
-    .ms-point-row .label { min-width: 0; }
-    .ms-point-row .value {
-      text-align: right;
-      white-space: normal;
-      flex: 0 0 38%;
-      line-height: 1.35;
-    }
+ .ms-point-card {
+ padding: 22px 18px;
+ border-radius: 14px;
+ }
+ .ms-point-card h3 {
+ font-size: 1.05rem;
+ margin-bottom: 18px;
+ align-items: flex-start;
+ }
+ .ms-point-row {
+ align-items: flex-start;
+ gap: 14px;
+ }
+ .ms-point-row .label { min-width: 0; }
+ .ms-point-row .value {
+ text-align: right;
+ white-space: normal;
+ flex: 0 0 38%;
+ line-height: 1.35;
+ }
 
-    .ms-table-wrap {
-      overflow-x: auto;
-      scrollbar-width: thin;
-      -webkit-overflow-scrolling: touch;
-    }
-    .ms-table {
-      min-width: 400px;
-      font-size: .78rem;
-    }
-    .ms-table th,
-    .ms-table td {
-      padding: 12px 14px;
-    }
+ .ms-table-wrap {
+ overflow-x: auto;
+ scrollbar-width: thin;
+ -webkit-overflow-scrolling: touch;
+ }
+ .ms-table {
+ min-width: 400px;
+ font-size: .78rem;
+ }
+ .ms-table th,
+ .ms-table td {
+ padding: 12px 14px;
+ }
 
-    .ms-faq-q {
-      padding: 18px 0;
-      font-size: .9rem;
-      line-height: 1.45;
-    }
-    .ms-faq-item.open .ms-faq-a { max-height: 320px; }
+ .ms-faq-q {
+ padding: 18px 0;
+ font-size: .9rem;
+ line-height: 1.45;
+ }
+ .ms-faq-item.open .ms-faq-a { max-height: 320px; }
 
-    .ms-cta-section {
-      padding: 56px 0;
-      text-align: left;
-    }
-    .ms-cta-section p { margin-left: 0; }
+ .ms-cta-section {
+ padding: 56px 0;
+ text-align: left;
+ }
+ .ms-cta-section p { margin-left: 0; }
 
-    .wa-float { display: none; }
-    .ms-mobile-bar {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 9998;
-      display: grid;
-      grid-template-columns: 1.25fr .9fr;
-      gap: 8px;
-      padding: 10px 14px;
-      padding-bottom: calc(10px + env(safe-area-inset-bottom));
-      background: rgba(10,10,10,.97);
-      border-top: 1px solid var(--w10);
-      backdrop-filter: blur(22px);
-      -webkit-backdrop-filter: blur(22px);
-    }
-    .ms-mobile-bar a {
-      min-height: 48px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      border-radius: 10px;
-      font-size: .8rem;
-      font-weight: 700;
-      text-align: center;
-      transition: transform .18s ease, opacity .18s ease;
-    }
-    .ms-mobile-bar a:active {
-      transform: scale(.96);
-      opacity: .86;
-    }
-    .ms-mbar-book { background: var(--red); color: var(--white); }
-    .ms-mbar-wa {
-      background: var(--bg-4);
-      color: var(--white);
-      border: 1px solid var(--w15);
-    }
-  }
+ .wa-float { display: none; }
+ .ms-mobile-bar {
+ position: fixed;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ z-index: 9998;
+ display: grid;
+ grid-template-columns: 1.25fr .9fr;
+ gap: 8px;
+ padding: 10px 14px;
+ padding-bottom: calc(10px + env(safe-area-inset-bottom));
+ background: rgba(10,10,10,.97);
+ border-top: 1px solid var(--w10);
+ backdrop-filter: blur(22px);
+ -webkit-backdrop-filter: blur(22px);
+ }
+ .ms-mobile-bar a {
+ min-height: 48px;
+ display: inline-flex;
+ align-items: center;
+ justify-content: center;
+ gap: 8px;
+ border-radius: 10px;
+ font-size: .8rem;
+ font-weight: 700;
+ text-align: center;
+ transition: transform .18s ease, opacity .18s ease;
+ }
+ .ms-mobile-bar a:active {
+ transform: scale(.96);
+ opacity: .86;
+ }
+ .ms-mbar-book { background: var(--red); color: var(--white); }
+ .ms-mbar-wa {
+ background: var(--bg-4);
+ color: var(--white);
+ border: 1px solid var(--w15);
+ }
+ }
 
-  @media(max-width:420px) {
-    .ms-tiers { grid-template-columns: 1fr; }
-    .ms-hero h1 { font-size: clamp(2.05rem, 12.5vw, 2.85rem); }
-    .ms-hero-actions .btn-primary,
-    .ms-cta-section .btn-primary {
-      font-size: .84rem;
-    }
-    .ms-mobile-bar {
-      grid-template-columns: 1fr 1fr;
-      padding-left: 10px;
-      padding-right: 10px;
-    }
-  }
+ @media(max-width:420px) {
+ .ms-tiers { grid-template-columns: 1fr; }
+ .ms-hero h1 { font-size: clamp(2.05rem, 12.5vw, 2.85rem); }
+ .ms-hero-actions .btn-primary,
+ .ms-cta-section .btn-primary {
+ font-size: .84rem;
+ }
+ .ms-mobile-bar {
+ grid-template-columns: 1fr 1fr;
+ padding-left: 10px;
+ padding-right: 10px;
+ }
+ }
 
-  /* ── MOBILE POLISH PASS ────────────────────────────────────── */
+ /* ── MOBILE POLISH PASS ────────────────────────────────────── */
 
-  /* Override: center-align hero & section titles on mobile */
-  @media(max-width:768px) {
-    .ms-hero {
-      text-align: center;
-    }
-    .ms-hero-eyebrow {
-      justify-content: center;
-    }
-    .ms-hero-eyebrow::after {
-      display: block; /* restore right decorative line */
-    }
-    .ms-hero p {
-      text-align: center;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    .ms-title {
-      text-align: center;
-    }
-    .ms-title p {
-      margin: 0 auto;
-    }
-    .ms-cta-section {
-      text-align: center;
-    }
-    .ms-cta-section p {
-      margin-left: auto;
-      margin-right: auto;
-    }
+ /* Override: center-align hero & section titles on mobile */
+ @media(max-width:768px) {
+ .ms-hero {
+ text-align: center;
+ }
+ .ms-hero-eyebrow {
+ justify-content: center;
+ }
+ .ms-hero-eyebrow::after {
+ display: none;
+ }
+ .ms-hero p {
+ text-align: center;
+ margin-left: auto;
+ margin-right: auto;
+ }
+ .ms-title {
+ text-align: center;
+ }
+ .ms-title p {
+ margin: 0 auto;
+ }
+ .ms-cta-section {
+ text-align: center;
+ }
+ .ms-cta-section p {
+ margin-left: auto;
+ margin-right: auto;
+ }
 
-    /* Hero actions already grid-1col — ensure SVG icon doesn't shrink */
-    .ms-hero-actions .btn-primary svg,
-    .ms-hero-actions .btn-outline svg {
-      flex-shrink: 0;
-    }
+ /* Hero actions already grid-1col - ensure SVG icon doesn't shrink */
+ .ms-hero-actions .btn-primary svg,
+ .ms-hero-actions .btn-outline svg {
+ flex-shrink: 0;
+ }
 
-    /* Steps: fix text alignment back to left inside left-aligned cards */
-    .ms-step {
-      text-align: left;
-    }
+ /* Steps: fix text alignment back to left inside left-aligned cards */
+ .ms-step {
+ text-align: left;
+ }
 
-    /* Tier body text: keep left-aligned */
-    .tier-body,
-    .tier-header { text-align: center; }
+ /* Tier body text: keep left-aligned */
+ .tier-body,
+ .tier-header { text-align: center; }
 
-    /* Section: slightly less vertical padding on short phones */
-    .ms-section { padding: 48px 0; }
+ /* Section: slightly less vertical padding on short phones */
+ .ms-section { padding: 48px 0; }
 
-    /* Ensure point rows wrap label text instead of overflowing */
-    .ms-point-row .label {
-      line-height: 1.45;
-    }
+ /* Ensure point rows wrap label text instead of overflowing */
+ .ms-point-row .label {
+ line-height: 1.45;
+ }
 
-    /* FAQ: slightly larger tap area */
-    .ms-faq-q {
-      padding: 20px 0;
-    }
-    /* Allow longer FAQ answers to fully expand */
-    .ms-faq-item.open .ms-faq-a {
-      max-height: 400px;
-    }
-  }
+ /* FAQ: slightly larger tap area */
+ .ms-faq-q {
+ padding: 20px 0;
+ }
+ /* Allow longer FAQ answers to fully expand */
+ .ms-faq-item.open .ms-faq-a {
+ max-height: 400px;
+ }
+ }
 
-  /* Small phones (≤ 480px): tighten tier card internals */
-  @media(max-width:480px) {
-    .tier-header { padding: 24px 16px 18px; }
-    .tier-icon { width: 52px; height: 52px; font-size: 1.6rem; }
-    .tier-name { font-size: 1.18rem; }
-    .tier-range { font-size: .68rem; }
-    .tier-discount { font-size: 1.6rem; }
-    .tier-body { padding: 0 16px 20px; }
-    .tier-benefits li { font-size: .78rem; padding: 5px 0; }
+ /* Small phones (≤ 480px): tighten tier card internals */
+ @media(max-width:480px) {
+ .tier-header { padding: 24px 16px 18px; }
+ .tier-icon { width: 52px; height: 52px; font-size: 1.6rem; }
+ .tier-name { font-size: 1.18rem; }
+ .tier-range { font-size: .68rem; }
+ .tier-discount { font-size: 1.6rem; }
+ .tier-body { padding: 0 16px 20px; }
+ .tier-benefits li { font-size: .78rem; padding: 5px 0; }
 
-    /* Point system */
-    .ms-point-card { padding: 18px 14px; }
-    .ms-point-row { padding: 10px 0; }
-    .ms-point-row .label { font-size: .8rem; }
-    .ms-point-row .value { font-size: .92rem; flex: 0 0 42%; }
+ /* Point system */
+ .ms-point-card { padding: 18px 14px; }
+ .ms-point-row { padding: 10px 0; }
+ .ms-point-row .label { font-size: .8rem; }
+ .ms-point-row .value { font-size: .92rem; flex: 0 0 42%; }
 
-    /* FAQ */
-    .ms-faq-q { font-size: .88rem; line-height: 1.5; }
+ /* FAQ */
+ .ms-faq-q { font-size: .88rem; line-height: 1.5; }
 
-    /* CTA section */
-    .ms-cta-section h2 { font-size: 1.65rem; }
-    .ms-cta-section p { font-size: .9rem; }
-  }
+ /* CTA section */
+ .ms-cta-section h2 { font-size: 1.65rem; }
+ .ms-cta-section p { font-size: .9rem; }
+ }
 
-  /* Very small phones (≤ 370px) */
-  @media(max-width:370px) {
-    .ms-hero { padding: 80px 0 44px; }
-    .ms-hero h1 { font-size: 1.85rem; }
-    .ms-tiers { grid-template-columns: 1fr; }
-    .ms-section { padding: 40px 0; }
-    .ms-title h2 { font-size: 1.55rem; }
-    .ms-mobile-bar { gap: 6px; }
-    .ms-mbar-book, .ms-mbar-wa { font-size: .72rem; min-height: 44px; }
-  }
-  </style>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const cards = document.querySelectorAll('.ms-fc-wrap');
-      const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            observer.unobserve(entry.target);
-          }
-        });
-      }, { threshold: 0.15 });
-      cards.forEach(c => observer.observe(c));
-    });
-  </script>
+ /* Very small phones (≤ 370px) */
+ @media(max-width:370px) {
+ .ms-hero { padding: 80px 0 44px; }
+ .ms-hero h1 { font-size: 1.85rem; }
+ .ms-tiers { grid-template-columns: 1fr; }
+ .ms-section { padding: 40px 0; }
+ .ms-title h2 { font-size: 1.55rem; }
+ .ms-mobile-bar { gap: 6px; }
+ .ms-mbar-book, .ms-mbar-wa { font-size: .72rem; min-height: 44px; }
+ }
+ </style>
+ <script>
+ document.addEventListener('DOMContentLoaded', () => {
+ const cards = document.querySelectorAll('.ms-fc-wrap');
+ const observer = new IntersectionObserver((entries) => {
+ entries.forEach(entry => {
+ if (entry.isIntersecting) {
+ entry.target.classList.add('visible');
+ observer.unobserve(entry.target);
+ }
+ });
+ }, { threshold: 0.15 });
+ cards.forEach(c => observer.observe(c));
+ });
+ </script>
 </head>
 <body>
 
-  <div class="rb-progress" aria-hidden="true"></div>
+ <div class="rb-progress" aria-hidden="true"></div>
 
-  <!-- ========== NAVBAR ========== -->
-  <nav class="navbar scrolled" id="navbar">
-    <div class="container nav-container">
-      <a href="index.html" class="nav-logo">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
-        <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
-      </a>
-      <div class="nav-pill-wrapper" id="navPillWrapper">
-        <span class="nav-pill-track" id="navPillTrack"></span>
-        <ul class="nav-links" id="navLinks">
-          <li><a href="index.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            Home
-          </a></li>
-          <li><a href="index.html#services" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
-            Services
-          </a></li>
-          <li><a href="index.html#professionals" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            Pros
-          </a></li>
-          <li><a href="products.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            Product
-          </a></li>
-          <li><a href="index.html#location" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            Location
-          </a></li>
-          <li><a href="membership.html" class="nav-link active">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            Membership
-          </a></li>
-          <li><a href="sundaze.html" class="nav-link nav-sundaze">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-            SUNDAZE
-          </a></li>
-        </ul>
-      </div>
-      <a href="booking.html" class="btn-book-nav">Book Now</a>
-      <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        <span>Member</span>
-      </button>
-      <button class="hamburger" id="hamburger" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </nav>
+ <!-- ========== NAVBAR ========== -->
+ <nav class="navbar scrolled" id="navbar">
+ <div class="container nav-container">
+ <a href="index.html" class="nav-logo">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" />
+ <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
+ </a>
+ <div class="nav-pill-wrapper" id="navPillWrapper">
+ <span class="nav-pill-track" id="navPillTrack"></span>
+ <ul class="nav-links" id="navLinks">
+ <li><a href="index.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z"/><path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z"/></svg>
+ Home
+ </a></li>
+ <li><a href="index.html#services" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.128 9.155a3.751 3.751 0 1 1 .713-1.321l1.136.656a.75.75 0 0 1 .222 1.104l-.006.007a.75.75 0 0 1-1.032.157l-.113-.072-.92-.531ZM3.3 5.625a2.25 2.25 0 1 1 3.994 2.063.756.756 0 0 0-.122.23 2.25 2.25 0 0 1-3.872-2.293Zm12.572 3.53a3.751 3.751 0 1 0-.713-1.321l-1.136.656a.75.75 0 0 0-.222 1.104l.006.007a.75.75 0 0 0 1.032.157l.113-.072.92-.531Zm4.827-3.53a2.25 2.25 0 0 0-3.994 2.063.756.756 0 0 1 .122.23 2.25 2.25 0 0 0 3.872-2.293ZM14.678 11.492a.75.75 0 0 1 .738.144l5.063 4.5a.75.75 0 0 1-.988 1.128l-5.063-4.5a.75.75 0 0 1 .25-1.272ZM6.388 14.718l5.063 4.5a.75.75 0 0 0 .988-1.128l-5.063-4.5a.75.75 0 0 0-.988 1.128Z" clip-rule="evenodd"/></svg>
+ Services
+ </a></li>
+ <li><a href="index.html#professionals" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.25 6.75a3.75 3.75 0 1 1 7.5 0 3.75 3.75 0 0 1-7.5 0ZM15.75 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM2.25 9.75a3 3 0 1 1 6 0 3 3 0 0 1-6 0ZM6.31 15.117A6.745 6.745 0 0 1 12 12a6.745 6.745 0 0 1 6.709 7.498.75.75 0 0 1-.372.568A12.696 12.696 0 0 1 12 21.75c-2.305 0-4.47-.612-6.337-1.684a.75.75 0 0 1-.372-.568 6.787 6.787 0 0 1 1.019-4.38Z" clip-rule="evenodd"/><path d="M5.082 14.254a8.287 8.287 0 0 0-1.308 5.135 9.687 9.687 0 0 1-1.764-.44l-.115-.04a.563.563 0 0 1-.373-.487l-.01-.121a3.75 3.75 0 0 1 3.57-4.047ZM20.226 19.389a8.287 8.287 0 0 0-1.308-5.135 3.75 3.75 0 0 1 3.57 4.047l-.01.121a.563.563 0 0 1-.373.486l-.115.04c-.567.2-1.156.349-1.764.441Z"/></svg>
+ Pros
+ </a></li>
+ <li><a href="products.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12.378 1.602a.75.75 0 0 0-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03ZM21.75 7.93l-9 5.25v9l8.628-5.032a.75.75 0 0 0 .372-.648V7.93ZM11.25 22.18v-9l-9-5.25v8.57a.75.75 0 0 0 .372.648l8.628 5.033Z"/></svg>
+ Product
+ </a></li>
+ <li><a href="index.html#location" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ Location
+ </a></li>
+ <li><a href="membership.html" class="nav-link active">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z"/></svg>
+ Membership
+ </a></li>
+ <li><a href="sundaze.html" class="nav-link nav-sundaze">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.25a.75.75 0 0 1 .75.75v2.25a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM7.5 12a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM18.894 6.166a.75.75 0 0 0-1.06-1.06l-1.591 1.59a.75.75 0 1 0 1.06 1.061l1.591-1.59ZM21.75 12a.75.75 0 0 1-.75.75h-2.25a.75.75 0 0 1 0-1.5H21a.75.75 0 0 1 .75.75ZM17.834 18.894a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 1 0-1.061 1.06l1.59 1.591ZM12 18a.75.75 0 0 1 .75.75V21a.75.75 0 0 1-1.5 0v-2.25A.75.75 0 0 1 12 18ZM7.758 17.303a.75.75 0 0 0-1.061-1.06l-1.591 1.59a.75.75 0 0 0 1.06 1.061l1.591-1.59ZM6 12a.75.75 0 0 1-.75.75H3a.75.75 0 0 1 0-1.5h2.25A.75.75 0 0 1 6 12ZM6.697 7.757a.75.75 0 0 0 1.06-1.06l-1.59-1.591a.75.75 0 0 0-1.061 1.06l1.59 1.591Z"/></svg>
+ SUNDAZE
+ </a></li>
+ </ul>
+ </div>
+ <a href="booking.html" class="btn-book-nav">Book Now</a>
+ <button class="btn-member-nav" id="memberBtn" aria-label="Membership">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ <span>Member</span>
+ </button>
+ <button class="hamburger" id="hamburger" aria-label="Menu">
+ <span></span><span></span><span></span>
+ </button>
+ </div>
+ </nav>
 
-  <!-- ========== HERO ========== -->
-  <section class="ms-hero">
-    <div class="container">
-      <div class="ms-hero-eyebrow">REDBOX MEMBERSHIP</div>
-      <h1>Setiap Kunjungan,<br><em>Makin Berharga</em></h1>
-      <p>Pilih tier membership sesuai kebutuhanmu — Silver, Gold, atau Platinum — bayar di outlet terdekat, dan nikmati privilese eksklusif dari setiap kunjungan.</p>
-      <div class="ms-hero-actions">
-        <a href="booking.html" class="btn-primary">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
-          Mulai Kunjungi & Kumpul Poin
-        </a>
-        <a href="#tiers" class="btn-outline">Lihat Paket Tier</a>
-      </div>
-      <p style="margin-top:20px;font-size:.9rem;color:var(--w50);">
-        Sudah jadi member?
-        <a href="member-login.html" style="color:var(--red);font-weight:600;text-decoration:none;">Masuk ke Dashboard →</a>
-      </p>
-    </div>
-  </section>
+ <!-- ========== HERO ========== -->
+ <section class="ms-hero">
+ <div class="container">
+ <div class="ms-hero-eyebrow">REDBOX MEMBERSHIP</div>
+ <h1>Setiap Kunjungan,<br><em>Makin Berharga</em></h1>
+ <p>Pilih tier membership sesuai kebutuhanmu: Silver, Gold, atau Platinum. Bayar di outlet terdekat, dan nikmati privilese eksklusif dari setiap kunjungan.</p>
+ <div class="ms-hero-actions">
+ <a href="booking.html" class="btn-primary">
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 0 1 7.5 3v1.5h9V3a.75.75 0 0 1 1.5 0v1.5h.75a3 3 0 0 1 3 3v11.25a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V7.5a3 3 0 0 1 3-3H6V3a.75.75 0 0 1 .75-.75Zm13.5 9a1.5 1.5 0 0 0-1.5-1.5H5.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5v-7.5Z" clip-rule="evenodd"/></svg>
+ Mulai Kunjungi & Kumpul Poin
+ </a>
+ <a href="#tiers" class="btn-outline">Lihat Paket Tier</a>
+ </div>
+ <p style="margin-top:20px;font-size:.9rem;color:var(--w50);">
+ Sudah jadi member?
+ <a href="member-login.html" style="color:var(--red);font-weight:600;text-decoration:none;">Masuk ke Dashboard →</a>
+ </p>
+ </div>
+ </section>
 
-  <!-- ========== FEATURE CARDS ========== -->
-  <section class="ms-feature-section">
-    <div class="container">
-      <div class="ms-title" style="margin-bottom:40px">
-        <span class="eyebrow">KENAPA MEMBERSHIP</span>
-        <h2>Tiga Keistimewaan Utama</h2>
-        <p>Sistem poin, tier eksklusif, dan reward nyata — semua dalam satu kartu membership</p>
-      </div>
-      <div class="ms-feature-grid">
+ <!-- ========== FEATURE CARDS ========== -->
+ <section class="ms-feature-section">
+ <div class="container">
+ <div class="ms-title" style="margin-bottom:40px">
+ <span class="eyebrow">KENAPA MEMBERSHIP</span>
+ <h2>Tiga Keistimewaan Utama</h2>
+ <p>Sistem poin, tier eksklusif, dan reward nyata. Semua dalam satu kartu membership</p>
+ </div>
+ <div class="ms-feature-grid">
 
-        <!-- Card 1: Poin System -->
-        <div class="ms-fc-wrap">
-          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#FF3D77 0%,#FFB1CE 45%,#FF9D3C 100%)"></div>
-          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#FF3D77 0%,#FFB1CE 45%,#FF9D3C 100%) border-box">
-            <div class="ms-fc-inner">
-              <div class="ms-fc-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-              </div>
-              <div class="ms-fc-bottom">
-                <div class="ms-fc-title">Sistem Poin</div>
-                <div class="ms-fc-desc">Setiap Rp 10.000 transaksi = 1 poin. Poin bertambah otomatis setiap kunjungan, birthday bonus, dan referral teman.</div>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Card 1: Poin System -->
+ <div class="ms-fc-wrap">
+ <div class="ms-fc-glow" style="background:linear-gradient(137deg,#C1121F 0%,#E63946 45%,#FF6B4A 100%)"></div>
+ <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#C1121F 0%,#E63946 45%,#FF6B4A 100%) border-box">
+ <div class="ms-fc-inner">
+ <div class="ms-fc-icon">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div class="ms-fc-bottom">
+ <div class="ms-fc-title">Sistem Poin</div>
+ <div class="ms-fc-desc">Setiap Rp 10.000 transaksi = 1 poin. Poin bertambah otomatis setiap kunjungan, birthday bonus, dan referral teman.</div>
+ </div>
+ </div>
+ </div>
+ </div>
 
-        <!-- Card 2: Tier Level -->
-        <div class="ms-fc-wrap">
-          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%)"></div>
-          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#FFFFFF 0%,#7DD3FC 45%,#06B6D4 100%) border-box">
-            <div class="ms-fc-inner">
-              <div class="ms-fc-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="5"/><polyline points="20 12 20 22 4 22 4 12"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-              </div>
-              <div class="ms-fc-bottom">
-                <div class="ms-fc-title">Tier Eksklusif</div>
-                <div class="ms-fc-desc">Naik level dari Bronze ke Platinum secara otomatis. Setiap tier membuka privilege lebih besar — diskon, priority booking, hingga free service.</div>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Card 2: Tier Level -->
+ <div class="ms-fc-wrap">
+ <div class="ms-fc-glow" style="background:linear-gradient(137deg,#E63946 0%,#FF4D3C 45%,#FF8A5C 100%)"></div>
+ <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#E63946 0%,#FF4D3C 45%,#FF8A5C 100%) border-box">
+ <div class="ms-fc-inner">
+ <div class="ms-fc-icon">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9.375 3a1.875 1.875 0 0 0 0 3.75h1.875v4.5H3.375A1.875 1.875 0 0 1 1.5 9.375v-.75c0-1.036.84-1.875 1.875-1.875h3.193A3.375 3.375 0 0 1 12 2.753a3.375 3.375 0 0 1 5.432 3.997h3.193c1.035 0 1.875.84 1.875 1.875v.75c0 1.036-.84 1.875-1.875 1.875H12.75v-4.5h1.875a1.875 1.875 0 1 0-1.875-1.875V6.75h-1.5V4.875C11.25 3.839 10.41 3 9.375 3ZM11.25 12.75H3v6.75a2.25 2.25 0 0 0 2.25 2.25h6v-9ZM12.75 12.75v9h6A2.25 2.25 0 0 0 21 19.5v-6.75h-8.25Z"/></svg>
+ </div>
+ <div class="ms-fc-bottom">
+ <div class="ms-fc-title">Tier Eksklusif</div>
+ <div class="ms-fc-desc">Naik level dari Bronze ke Platinum secara otomatis. Setiap tier membuka privilege lebih besar: diskon, priority booking, hingga free service.</div>
+ </div>
+ </div>
+ </div>
+ </div>
 
-        <!-- Card 3: Redeem Reward -->
-        <div class="ms-fc-wrap">
-          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#4361EE 0%,#E0AEFF 45%,#F72585 100%)"></div>
-          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#4361EE 0%,#E0AEFF 45%,#F72585 100%) border-box">
-            <div class="ms-fc-inner">
-              <div class="ms-fc-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              </div>
-              <div class="ms-fc-bottom">
-                <div class="ms-fc-title">Redeem Reward</div>
-                <div class="ms-fc-desc">Tukar poin untuk mug eksklusif, free haircut, grooming gratis, hingga cashback 50%. Reward nyata, bukan sekedar poin yang menumpuk.</div>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Card 3: Redeem Reward -->
+ <div class="ms-fc-wrap">
+ <div class="ms-fc-glow" style="background:linear-gradient(137deg,#8B0000 0%,#C1121F 45%,#E63946 100%)"></div>
+ <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#8B0000 0%,#C1121F 45%,#E63946 100%) border-box">
+ <div class="ms-fc-inner">
+ <div class="ms-fc-icon">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div class="ms-fc-bottom">
+ <div class="ms-fc-title">Redeem Reward</div>
+ <div class="ms-fc-desc">Tukar poin untuk mug eksklusif, free haircut, grooming gratis, hingga cashback 50%. Reward nyata, bukan sekedar poin yang menumpuk.</div>
+ </div>
+ </div>
+ </div>
+ </div>
 
-      </div>
-    </div>
-  </section>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== HOW IT WORKS ========== -->
-  <section class="ms-section ms-section-alt">
-    <div class="container">
-      <div class="ms-title">
-        <span class="eyebrow">CARA KERJA</span>
-        <h2>Sederhana & Menguntungkan</h2>
-        <p>Tiga langkah mudah untuk memaksimalkan setiap kunjunganmu di Redbox</p>
-      </div>
-      <div class="ms-feature-grid">
+ <!-- ========== HOW IT WORKS ========== -->
+ <section class="ms-section ms-section-alt">
+ <div class="container">
+ <div class="ms-title">
+ <span class="eyebrow">CARA KERJA</span>
+ <h2>Sederhana & Menguntungkan</h2>
+ <p>Tiga langkah mudah untuk memaksimalkan setiap kunjunganmu di Redbox</p>
+ </div>
+ <div class="ms-feature-grid">
 
-        <!-- Step 1 -->
-        <div class="ms-fc-wrap">
-          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%)"></div>
-          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%) border-box">
-            <div class="ms-fc-inner">
-              <div class="ms-fc-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              </div>
-              <div class="ms-fc-bottom">
-                <div class="ms-fc-step-num">01</div>
-                <div class="ms-fc-title">Pilih Tier & Daftar Member</div>
-                <div class="ms-fc-desc">Pilih tier Silver, Gold, atau Platinum sesuai kebutuhan, lalu bayar langsung di outlet Redbox terdekat. Akun membership langsung aktif.</div>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Step 1 -->
+ <div class="ms-fc-wrap">
+ <div class="ms-fc-glow" style="background:linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%)"></div>
+ <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#C1121F 0%,#FF6B6B 45%,#FF9D3C 100%) border-box">
+ <div class="ms-fc-inner">
+ <div class="ms-fc-icon">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div class="ms-fc-bottom">
+ <div class="ms-fc-step-num">01</div>
+ <div class="ms-fc-title">Pilih Tier & Daftar Member</div>
+ <div class="ms-fc-desc">Pilih tier Silver, Gold, atau Platinum sesuai kebutuhan, lalu bayar langsung di outlet Redbox terdekat. Akun membership langsung aktif.</div>
+ </div>
+ </div>
+ </div>
+ </div>
 
-        <!-- Step 2 -->
-        <div class="ms-fc-wrap">
-          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#064E3B 0%,#34D399 45%,#6EE7B7 100%)"></div>
-          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#064E3B 0%,#34D399 45%,#6EE7B7 100%) border-box">
-            <div class="ms-fc-inner">
-              <div class="ms-fc-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-              </div>
-              <div class="ms-fc-bottom">
-                <div class="ms-fc-step-num">02</div>
-                <div class="ms-fc-title">Kumpulkan Poin</div>
-                <div class="ms-fc-desc">Setiap Rp 10.000 transaksi = 1 poin. Bonus poin untuk referral teman dan di bulan ulang tahunmu.</div>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Step 2 -->
+ <div class="ms-fc-wrap">
+ <div class="ms-fc-glow" style="background:linear-gradient(137deg,#E63946 0%,#FF4D3C 45%,#FF8A5C 100%)"></div>
+ <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#E63946 0%,#FF4D3C 45%,#FF8A5C 100%) border-box">
+ <div class="ms-fc-inner">
+ <div class="ms-fc-icon">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div class="ms-fc-bottom">
+ <div class="ms-fc-step-num">02</div>
+ <div class="ms-fc-title">Kumpulkan Poin</div>
+ <div class="ms-fc-desc">Setiap Rp 10.000 transaksi = 1 poin. Bonus poin untuk referral teman dan di bulan ulang tahunmu.</div>
+ </div>
+ </div>
+ </div>
+ </div>
 
-        <!-- Step 3 -->
-        <div class="ms-fc-wrap">
-          <div class="ms-fc-glow" style="background:linear-gradient(137deg,#4361EE 0%,#C4B5FD 45%,#F9A8D4 100%)"></div>
-          <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#4361EE 0%,#C4B5FD 45%,#F9A8D4 100%) border-box">
-            <div class="ms-fc-inner">
-              <div class="ms-fc-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              </div>
-              <div class="ms-fc-bottom">
-                <div class="ms-fc-step-num">03</div>
-                <div class="ms-fc-title">Nikmati Keistimewaan</div>
-                <div class="ms-fc-desc">Tukarkan poin untuk diskon & layanan gratis. Tier naik otomatis seiring akumulasi poinmu.</div>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Step 3 -->
+ <div class="ms-fc-wrap">
+ <div class="ms-fc-glow" style="background:linear-gradient(137deg,#8B0000 0%,#C1121F 45%,#E63946 100%)"></div>
+ <div class="ms-fc-card" style="background:linear-gradient(#1A1A1C,#1A1A1C) padding-box, linear-gradient(137deg,#8B0000 0%,#C1121F 45%,#E63946 100%) border-box">
+ <div class="ms-fc-inner">
+ <div class="ms-fc-icon">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.302H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.143Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div class="ms-fc-bottom">
+ <div class="ms-fc-step-num">03</div>
+ <div class="ms-fc-title">Nikmati Keistimewaan</div>
+ <div class="ms-fc-desc">Tukarkan poin untuk diskon & layanan gratis. Tier naik otomatis seiring akumulasi poinmu.</div>
+ </div>
+ </div>
+ </div>
+ </div>
 
-      </div>
-    </div>
-  </section>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== TIER CARDS ========== -->
-  <section class="ms-section ms-section-alt" id="tiers">
-    <div class="container">
-      <div class="ms-title">
-        <span class="eyebrow">PAKET TIER</span>
-        <h2>Pilih Level Loyalitasmu</h2>
-        <p>Semakin sering kunjungi, semakin besar keistimewaan yang kamu dapat</p>
-      </div>
-      <div class="ms-tiers">
+ <!-- ========== TIER CARDS ========== -->
+ <section class="ms-section ms-section-alt" id="tiers">
+ <div class="container">
+ <div class="ms-title">
+ <span class="eyebrow">PAKET TIER</span>
+ <h2>Pilih Level Loyalitasmu</h2>
+ <p>Semakin sering kunjungi, semakin besar keistimewaan yang kamu dapat</p>
+ </div>
+ <div class="ms-tiers">
 
-        <!-- SILVER -->
-        <div class="ms-tier tier-silver">
-          <div class="tier-header">
-            <div class="tier-icon">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" stroke="#9CA3AF" stroke-width="1.5" stroke-linejoin="round"/></svg>
-            </div>
-            <div class="tier-name">SILVER</div>
-            <div class="tier-range">Minimal 500 Poin / Rp 100.000</div>
-            <div class="tier-discount">5%</div>
-            <div class="tier-discount-label">Discount haircut</div>
-            <div class="tier-tagline" style="margin-top:8px">Berlaku 1 tahun</div>
-          </div>
-          <div class="tier-body">
-            <div class="tier-divider"></div>
-            <ul class="tier-benefits">
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                5% discount haircut
-              </li>
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Discount 50% Birthday (-7H +7)
-              </li>
-              <li class="no">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                <em>Tidak berlaku di CSB Mall</em>
-              </li>
-            </ul>
-            <a href="booking.html" class="tier-cta">Raih Silver</a>
-          </div>
-        </div>
+ <!-- SILVER -->
+ <div class="ms-tier tier-silver">
+ <div class="tier-header">
+ <div class="tier-icon">
+ <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" stroke="#9CA3AF" stroke-width="1.5" stroke-linejoin="round"/></svg>
+ </div>
+ <div class="tier-name">SILVER</div>
+ <div class="tier-range">Minimal 500 Poin / Rp 100.000</div>
+ <div class="tier-discount">5%</div>
+ <div class="tier-discount-label">Discount haircut</div>
+ <div class="tier-tagline" style="margin-top:8px">Berlaku 1 tahun</div>
+ </div>
+ <div class="tier-body">
+ <div class="tier-divider"></div>
+ <ul class="tier-benefits">
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ 5% discount haircut
+ </li>
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ Discount 50% Birthday (-7H +7)
+ </li>
+ <li class="no">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ <em>Tidak berlaku di CSB Mall</em>
+ </li>
+ </ul>
+ <a href="booking.html" class="tier-cta">Raih Silver</a>
+ </div>
+ </div>
 
-        <!-- GOLD — FEATURED -->
-        <div class="ms-tier tier-gold featured">
-          <div class="featured-badge">✦ PALING POPULER</div>
-          <div class="tier-header">
-            <div class="tier-icon">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="#FBBF24" stroke-width="1.5" stroke-linejoin="round"/></svg>
-            </div>
-            <div class="tier-name">GOLD</div>
-            <div class="tier-range">Minimal 501+ Poin / Rp 250.000</div>
-            <div class="tier-discount">10%</div>
-            <div class="tier-discount-label">Discount haircut</div>
-            <div class="tier-tagline" style="margin-top:8px">Berlaku 1 tahun</div>
-          </div>
-          <div class="tier-body">
-            <div class="tier-divider"></div>
-            <ul class="tier-benefits">
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                10% discount haircut
-              </li>
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Discount 50% Birthday (-7H +7)
-              </li>
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                <em>*Berlaku di semua Cabang Redbox</em>
-              </li>
-            </ul>
-            <a href="booking.html" class="tier-cta">Raih Gold</a>
-          </div>
-        </div>
+ <!-- GOLD - FEATURED -->
+ <div class="ms-tier tier-gold featured">
+ <div class="featured-badge"> PALING POPULER</div>
+ <div class="tier-header">
+ <div class="tier-icon">
+ <svg width="30" height="30" viewBox="0 0 24 24" fill="#FBBF24"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div class="tier-name">GOLD</div>
+ <div class="tier-range">Minimal 501+ Poin / Rp 250.000</div>
+ <div class="tier-discount">10%</div>
+ <div class="tier-discount-label">Discount haircut</div>
+ <div class="tier-tagline" style="margin-top:8px">Berlaku 1 tahun</div>
+ </div>
+ <div class="tier-body">
+ <div class="tier-divider"></div>
+ <ul class="tier-benefits">
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ 10% discount haircut
+ </li>
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ Discount 50% Birthday (-7H +7)
+ </li>
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ <em>*Berlaku di semua Cabang Redbox</em>
+ </li>
+ </ul>
+ <a href="booking.html" class="tier-cta">Raih Gold</a>
+ </div>
+ </div>
 
-        <!-- PLATINUM -->
-        <div class="ms-tier tier-platinum">
-          <div class="tier-header">
-            <div class="tier-icon">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z" stroke="#C4B5FD" stroke-width="1.5" stroke-linejoin="round"/></svg>
-            </div>
-            <div class="tier-name">PLATINUM</div>
-            <div class="tier-range">Rp 1.500.000 <span style="font-size:0.75em;color:var(--w50)">(Tidak memakai Point)</span></div>
-            <div class="tier-discount" style="font-size:1.4rem;">FREE</div>
-            <div class="tier-discount-label">Haircut & Birthday</div>
-            <div class="tier-tagline" style="margin-top:8px;color:rgba(196,181,253,.5)">Berlaku 1 tahun</div>
-          </div>
-          <div class="tier-body">
-            <div class="tier-divider"></div>
-            <ul class="tier-benefits">
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Free Haircut
-              </li>
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Free Birthday (-7H +7)
-              </li>
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                Free Americano
-              </li>
-              <li class="yes">
-                <svg class="b-icon" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                <em>*Berlaku di semua Cabang Redbox</em>
-              </li>
-            </ul>
-            <a href="booking.html" class="tier-cta" style="border-color:rgba(196,181,253,.3);color:rgba(196,181,253,.8)">Raih Platinum</a>
-          </div>
-        </div>
+ <!-- PLATINUM -->
+ <div class="ms-tier tier-platinum">
+ <div class="tier-header">
+ <div class="tier-icon">
+ <svg width="30" height="30" viewBox="0 0 24 24" fill="#C4B5FD"><path d="M12.378 1.602a.75.75 0 0 0-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03ZM21.75 7.93l-9 5.25v9l8.628-5.032a.75.75 0 0 0 .372-.648V7.93ZM11.25 22.18v-9l-9-5.25v8.57a.75.75 0 0 0 .372.648l8.628 5.033Z"/></svg>
+ </div>
+ <div class="tier-name">PLATINUM</div>
+ <div class="tier-range">Rp 1.500.000 <span style="font-size:0.75em;color:var(--w50)">(Tidak memakai Point)</span></div>
+ <div class="tier-discount" style="font-size:1.4rem;">FREE</div>
+ <div class="tier-discount-label">Haircut & Birthday</div>
+ <div class="tier-tagline" style="margin-top:8px;color:rgba(196,181,253,.5)">Berlaku 1 tahun</div>
+ </div>
+ <div class="tier-body">
+ <div class="tier-divider"></div>
+ <ul class="tier-benefits">
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ Free Haircut
+ </li>
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ Free Birthday (-7H +7)
+ </li>
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ Free Americano
+ </li>
+ <li class="yes">
+ <svg class="b-icon" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ <em>*Berlaku di semua Cabang Redbox</em>
+ </li>
+ </ul>
+ <a href="booking.html" class="tier-cta" style="border-color:rgba(196,181,253,.3);color:rgba(196,181,253,.8)">Raih Platinum</a>
+ </div>
+ </div>
 
-      </div>
-    </div>
-  </section>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== POINT SYSTEM ========== -->
-  <section class="ms-section">
-    <div class="container">
-      <div class="ms-title">
-        <span class="eyebrow">SISTEM POIN</span>
-        <h2>Cara Kumpul & Tukar Poin</h2>
-        <p>Poin tidak pernah hangus selama akun masih aktif (minimal 1 kunjungan per tahun)</p>
-      </div>
-      <div class="ms-point-grid">
-        <div class="ms-point-card">
-          <h3>
-            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            Cara Mendapatkan Poin
-          </h3>
-          <div class="ms-point-row">
-            <span class="label">Setiap transaksi Rp 10.000</span>
-            <span class="value">+1 Poin</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">Daftar member pertama kali</span>
-            <span class="value">+25 Poin</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">Referral teman (maks 3/bln)</span>
-            <span class="value">+30 Poin</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">Bonus bulan ulang tahun</span>
-            <span class="value">+50 Poin</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">Review & rating di WhatsApp</span>
-            <span class="value">+10 Poin</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">Kunjungan berturut-turut (7 hari)</span>
-            <span class="value">+20 Poin</span>
-          </div>
-        </div>
+ <!-- ========== POINT SYSTEM ========== -->
+ <section class="ms-section">
+ <div class="container">
+ <div class="ms-title">
+ <span class="eyebrow">SISTEM POIN</span>
+ <h2>Cara Kumpul & Tukar Poin</h2>
+ <p>Poin tidak pernah hangus selama akun masih aktif (minimal 1 kunjungan per tahun)</p>
+ </div>
+ <div class="ms-point-grid">
+ <div class="ms-point-card">
+ <h3>
+ <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg>
+ Cara Mendapatkan Poin
+ </h3>
+ <div class="ms-point-row">
+ <span class="label">Setiap transaksi Rp 10.000</span>
+ <span class="value">+1 Poin</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">Daftar member pertama kali</span>
+ <span class="value">+25 Poin</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">Referral teman (maks 3/bln)</span>
+ <span class="value">+30 Poin</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">Bonus bulan ulang tahun</span>
+ <span class="value">+50 Poin</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">Review & rating di WhatsApp</span>
+ <span class="value">+10 Poin</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">Kunjungan berturut-turut (7 hari)</span>
+ <span class="value">+20 Poin</span>
+ </div>
+ </div>
 
-        <div class="ms-point-card">
-          <h3>
-            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-            Tukar Poin (Redeem)
-          </h3>
-          <div class="ms-point-row">
-            <span class="label">100 Poin</span>
-            <span class="value green">= Rp 10.000 voucher</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">200 Poin</span>
-            <span class="value green">= Free Haircut</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">350 Poin</span>
-            <span class="value green">= Free Haircut + Beard Trim</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">500 Poin</span>
-            <span class="value green">= Free Premium Grooming</span>
-          </div>
-          <div class="ms-point-row">
-            <span class="label">800 Poin</span>
-            <span class="value green">= Free Royal Grooming Package</span>
-          </div>
-          <div class="ms-point-row" style="padding-top:16px;border-top:1px solid var(--w10)">
-            <span class="label" style="color:var(--w30);font-size:.8rem">*Poin bisa dikombinasikan dengan diskon tier</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+ <div class="ms-point-card">
+ <h3>
+ <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M4.5 3.75a3 3 0 0 0-3 3v.75h21v-.75a3 3 0 0 0-3-3h-15Z"/><path fill-rule="evenodd" d="M22.5 9.75h-21v7.5a3 3 0 0 0 3 3h15a3 3 0 0 0 3-3v-7.5Zm-18 3.75a.75.75 0 0 1 .75-.75h6a.75.75 0 0 1 0 1.5h-6a.75.75 0 0 1-.75-.75Zm.75 2.25a.75.75 0 0 0 0 1.5h3a.75.75 0 0 0 0-1.5h-3Z" clip-rule="evenodd"/></svg>
+ Tukar Poin (Redeem)
+ </h3>
+ <div class="ms-point-row">
+ <span class="label">100 Poin</span>
+ <span class="value green">= Rp 10.000 voucher</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">200 Poin</span>
+ <span class="value green">= Free Haircut</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">350 Poin</span>
+ <span class="value green">= Free Haircut + Beard Trim</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">500 Poin</span>
+ <span class="value green">= Free Premium Grooming</span>
+ </div>
+ <div class="ms-point-row">
+ <span class="label">800 Poin</span>
+ <span class="value green">= Free Royal Grooming Package</span>
+ </div>
+ <div class="ms-point-row" style="padding-top:16px;border-top:1px solid var(--w10)">
+ <span class="label" style="color:var(--w30);font-size:.8rem">*Poin bisa dikombinasikan dengan diskon tier</span>
+ </div>
+ </div>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== COMPARISON TABLE ========== -->
-  <section class="ms-section ms-section-alt">
-    <div class="container">
-      <div class="ms-title">
-        <span class="eyebrow">PERBANDINGAN TIER</span>
-        <h2>Semua Keuntungan Sekilas</h2>
-      </div>
-      <div class="ms-table-wrap">
-        <table class="ms-table">
-          <thead>
-            <tr>
-              <th style="width:40%">Keuntungan</th>
-              <th class="col-silver">Silver</th>
-              <th class="col-gold">Gold</th>
-              <th class="col-plat">Platinum</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="category-row"><td colspan="4">DISKON & HARGA</td></tr>
-            <tr>
-              <td>Minimal Poin / Harga</td>
-              <td>500 / Rp 100.000</td>
-              <td class="col-gold">501+ / Rp 250.000</td>
-              <td>Rp 1.500.000</td>
-            </tr>
-            <tr>
-              <td>Discount haircut</td>
-              <td>5%</td>
-              <td class="col-gold" style="font-weight:700;color:#FBBF24">10%</td>
-              <td>Free</td>
-            </tr>
-            <tr>
-              <td>Discount Birthday</td>
-              <td>50%</td>
-              <td class="col-gold">50%</td>
-              <td>Free</td>
-            </tr>
+ <!-- ========== COMPARISON TABLE ========== -->
+ <section class="ms-section ms-section-alt">
+ <div class="container">
+ <div class="ms-title">
+ <span class="eyebrow">PERBANDINGAN TIER</span>
+ <h2>Semua Keuntungan Sekilas</h2>
+ </div>
+ <div class="ms-table-wrap">
+ <table class="ms-table">
+ <thead>
+ <tr>
+ <th style="width:40%">Keuntungan</th>
+ <th class="col-silver">Silver</th>
+ <th class="col-gold">Gold</th>
+ <th class="col-plat">Platinum</th>
+ </tr>
+ </thead>
+ <tbody>
+ <tr class="category-row"><td colspan="4">DISKON & HARGA</td></tr>
+ <tr>
+ <td>Minimal Poin / Harga</td>
+ <td>500 / Rp 100.000</td>
+ <td class="col-gold">501+ / Rp 250.000</td>
+ <td>Rp 1.500.000</td>
+ </tr>
+ <tr>
+ <td>Discount haircut</td>
+ <td>5%</td>
+ <td class="col-gold" style="font-weight:700;color:#FBBF24">10%</td>
+ <td>Free</td>
+ </tr>
+ <tr>
+ <td>Discount Birthday</td>
+ <td>50%</td>
+ <td class="col-gold">50%</td>
+ <td>Free</td>
+ </tr>
 
-            <tr class="category-row"><td colspan="4">LAYANAN GRATIS</td></tr>
-            <tr>
-              <td>Free Haircut</td>
-              <td class="cross">✗</td>
-              <td class="col-gold cross">✗</td>
-              <td class="check">✓</td>
-            </tr>
-            <tr>
-              <td>Free Birthday</td>
-              <td class="cross">✗</td>
-              <td class="col-gold cross">✗</td>
-              <td class="check">✓</td>
-            </tr>
-            <tr>
-              <td>Free Americano</td>
-              <td class="cross">✗</td>
-              <td class="col-gold cross">✗</td>
-              <td class="check">✓</td>
-            </tr>
+ <tr class="category-row"><td colspan="4">LAYANAN GRATIS</td></tr>
+ <tr>
+ <td>Free Haircut</td>
+ <td class="cross"></td>
+ <td class="col-gold cross"></td>
+ <td class="check"></td>
+ </tr>
+ <tr>
+ <td>Free Birthday</td>
+ <td class="cross"></td>
+ <td class="col-gold cross"></td>
+ <td class="check"></td>
+ </tr>
+ <tr>
+ <td>Free Americano</td>
+ <td class="cross"></td>
+ <td class="col-gold cross"></td>
+ <td class="check"></td>
+ </tr>
 
-            <tr class="category-row"><td colspan="4">MASA BERLAKU & LOKASI</td></tr>
-            <tr>
-              <td>Masa berlaku</td>
-              <td>1 tahun</td>
-              <td class="col-gold">1 tahun</td>
-              <td>1 tahun</td>
-            </tr>
-            <tr>
-              <td>Berlaku di semua cabang</td>
-              <td class="cross">✗</td>
-              <td class="col-gold check">✓</td>
-              <td class="check">✓</td>
-            </tr>
-            <tr>
-              <td style="font-size:.75rem;color:var(--w50)">*Tidak berlaku di CSB Mall</td>
-              <td style="font-size:.75rem;color:var(--w50)">Silver</td>
-              <td class="col-gold" style="font-size:.75rem">—</td>
-              <td style="font-size:.75rem;color:var(--w50)">—</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </section>
+ <tr class="category-row"><td colspan="4">MASA BERLAKU & LOKASI</td></tr>
+ <tr>
+ <td>Masa berlaku</td>
+ <td>1 tahun</td>
+ <td class="col-gold">1 tahun</td>
+ <td>1 tahun</td>
+ </tr>
+ <tr>
+ <td>Berlaku di semua cabang</td>
+ <td class="cross"></td>
+ <td class="col-gold check"></td>
+ <td class="check"></td>
+ </tr>
+ <tr>
+ <td style="font-size:.75rem;color:var(--w50)">*Tidak berlaku di CSB Mall</td>
+ <td style="font-size:.75rem;color:var(--w50)">Silver</td>
+ <td class="col-gold" style="font-size:.75rem">-</td>
+ <td style="font-size:.75rem;color:var(--w50)">-</td>
+ </tr>
+ </tbody>
+ </table>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== FAQ ========== -->
-  <section class="ms-section">
-    <div class="container">
-      <div class="ms-title">
-        <span class="eyebrow">FAQ</span>
-        <h2>Pertanyaan Umum</h2>
-      </div>
-      <div class="ms-faq">
-        <div class="ms-faq-item">
-          <button class="ms-faq-q">
-            Bagaimana cara mendaftar membership?
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <div class="ms-faq-a">
-            <p>Pilih paket membership (Silver, Gold, atau Platinum) dan bayar sesuai harga paket langsung di outlet Redbox terdekat. Akun akan diaktifkan oleh kasir, dan setiap transaksi berikutnya langsung mengakumulasi poin. <a href="docs/flow-membership-pelanggan.html" style="color:var(--red-soft, #FF6B6B);font-weight:600">Lihat panduan lengkap langkah demi langkah →</a></p>
-          </div>
-        </div>
-        <div class="ms-faq-item">
-          <button class="ms-faq-q">
-            Apakah poin bisa kadaluarsa?
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <div class="ms-faq-a">
-            <p>Poin tidak hangus selama akun tetap aktif. Akun dianggap aktif jika ada minimal 1 kunjungan dalam 12 bulan terakhir. Jika tidak ada aktivitas selama 12 bulan, poin akan direset ke 0 namun akun tetap ada.</p>
-          </div>
-        </div>
-        <div class="ms-faq-item">
-          <button class="ms-faq-q">
-            Apakah tier bisa turun?
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <div class="ms-faq-a">
-            <p>Tier dievaluasi setiap 6 bulan berdasarkan total poin yang dikumpulkan dalam periode tersebut. Jika akumulasi poin dalam 6 bulan tidak mencapai threshold tier saat ini, tier bisa turun ke level sebelumnya.</p>
-          </div>
-        </div>
-        <div class="ms-faq-item">
-          <button class="ms-faq-q">
-            Bisakah poin digunakan bersamaan dengan diskon tier?
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <div class="ms-faq-a">
-            <p>Ya! Poin bisa dikombinasikan dengan diskon tier. Misalnya member Gold dengan 15% diskon bisa tambah pakai 100 poin untuk ekstra Rp 10.000 off. Beritahu kasir sebelum mulai layanan.</p>
-          </div>
-        </div>
-        <div class="ms-faq-item">
-          <button class="ms-faq-q">
-            Bagaimana cara klaim free service bulanan (Gold & Platinum)?
-            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <div class="ms-faq-a">
-            <p>Free service bulanan berlaku 1× (Gold) atau 2× (Platinum) per bulan kalender. Tidak bisa diakumulasikan ke bulan berikutnya. Tunjukkan nomor member Anda ke kasir atau barber untuk klaim. Berlaku untuk layanan Haircut atau setara.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+ <!-- ========== FAQ ========== -->
+ <section class="ms-section">
+ <div class="container">
+ <div class="ms-title">
+ <span class="eyebrow">FAQ</span>
+ <h2>Pertanyaan Umum</h2>
+ </div>
+ <div class="ms-faq">
+ <div class="ms-faq-item">
+ <button class="ms-faq-q">
+ Bagaimana cara mendaftar membership?
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ </button>
+ <div class="ms-faq-a">
+ <p>Pilih tier membership (Silver, Gold, atau Platinum) dan bayar langsung di outlet Redbox terdekat. Akun akan diaktifkan oleh kasir, dan setiap transaksi berikutnya langsung mengakumulasi poin.</p>
+ </div>
+ </div>
+ <div class="ms-faq-item">
+ <button class="ms-faq-q">
+ Apakah poin bisa kadaluarsa?
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ </button>
+ <div class="ms-faq-a">
+ <p>Poin tidak hangus selama akun tetap aktif. Akun dianggap aktif jika ada minimal 1 kunjungan dalam 12 bulan terakhir. Jika tidak ada aktivitas selama 12 bulan, poin akan direset ke 0 namun akun tetap ada.</p>
+ </div>
+ </div>
+ <div class="ms-faq-item">
+ <button class="ms-faq-q">
+ Apakah tier bisa turun?
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ </button>
+ <div class="ms-faq-a">
+ <p>Tier dievaluasi setiap 6 bulan berdasarkan total poin yang dikumpulkan dalam periode tersebut. Jika akumulasi poin dalam 6 bulan tidak mencapai threshold tier saat ini, tier bisa turun ke level sebelumnya.</p>
+ </div>
+ </div>
+ <div class="ms-faq-item">
+ <button class="ms-faq-q">
+ Bisakah poin digunakan bersamaan dengan diskon tier?
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ </button>
+ <div class="ms-faq-a">
+ <p>Ya! Poin bisa dikombinasikan dengan diskon tier. Misalnya member Gold dengan 15% diskon bisa tambah pakai 100 poin untuk ekstra Rp 10.000 off. Beritahu kasir sebelum mulai layanan.</p>
+ </div>
+ </div>
+ <div class="ms-faq-item">
+ <button class="ms-faq-q">
+ Bagaimana cara klaim free service bulanan (Gold & Platinum)?
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ </button>
+ <div class="ms-faq-a">
+ <p>Free service bulanan berlaku 1× (Gold) atau 2× (Platinum) per bulan kalender. Tidak bisa diakumulasikan ke bulan berikutnya. Tunjukkan nomor member Anda ke kasir atau barber untuk klaim. Berlaku untuk layanan Haircut atau setara.</p>
+ </div>
+ </div>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== CTA ========== -->
-  <section class="ms-cta-section">
-    <div class="container">
-      <h2>Siap Mulai Perjalanan?</h2>
-      <p>Pilih tier, bayar di outlet, dan langsung nikmati privilege member. Mudah, terjangkau, menguntungkan.</p>
-      <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-        <a href="member-login.html" class="btn-primary">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-          Masuk ke Dashboard Member
-        </a>
-        <a href="docs/flow-membership-pelanggan.html" class="btn-outline">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-          Panduan Pendaftaran
-        </a>
-        <a href="booking.html" class="btn-outline">
-          <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg>
-          Book & Kumpul Poin
-        </a>
-        <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tahu%20lebih%20lanjut%20tentang%20program%20membership" target="_blank" class="btn-outline">
-          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          Tanya via WhatsApp
-        </a>
-      </div>
-    </div>
-  </section>
+ <!-- ========== CTA ========== -->
+ <section class="ms-cta-section">
+ <div class="container">
+ <h2>Siap Mulai Perjalanan?</h2>
+ <p>Pilih tier, bayar di outlet, dan langsung nikmati privilege member. Mudah, terjangkau, menguntungkan.</p>
+ <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+ <a href="member-login.html" class="btn-primary">
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M16.5 3.75a1.5 1.5 0 0 1 1.5 1.5v13.5a1.5 1.5 0 0 1-1.5 1.5h-6a1.5 1.5 0 0 1-1.5-1.5V15a.75.75 0 0 0-1.5 0v3.75a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V5.25a3 3 0 0 0-3-3h-6a3 3 0 0 0-3 3V9A.75.75 0 0 0 9 9V5.25a1.5 1.5 0 0 1 1.5-1.5h6ZM5.78 8.47a.75.75 0 0 0-1.06 1.06l3 3a.75.75 0 0 0 1.06 0l3-3a.75.75 0 0 0-1.06-1.06l-1.72 1.72V4.5a.75.75 0 0 0-1.5 0v5.69l-1.72-1.72Z" clip-rule="evenodd"/></svg>
+ Masuk ke Dashboard Member
+ </a>
+ <a href="booking.html" class="btn-outline">
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 0 1 7.5 3v1.5h9V3a.75.75 0 0 1 1.5 0v1.5h.75a3 3 0 0 1 3 3v11.25a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V7.5a3 3 0 0 1 3-3H6V3a.75.75 0 0 1 .75-.75Zm13.5 9a1.5 1.5 0 0 0-1.5-1.5H5.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5v-7.5Z" clip-rule="evenodd"/></svg>
+ Book & Kumpul Poin
+ </a>
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tahu%20lebih%20lanjut%20tentang%20program%20membership" target="_blank" class="btn-outline">
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+ Tanya via WhatsApp
+ </a>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== FOOTER ========== -->
-  <footer class="footer">
-    <div class="container footer-simple">
-      <div class="footer-simple-top">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" class="footer-logo-img" />
-        <span class="footer-tagline">Precision Cut. Elevated Confidence.</span>
-      </div>
-      <div class="footer-social">
-        <a href="https://www.instagram.com/redboxbarbershop/" target="_blank" rel="noopener" aria-label="Instagram">
-          <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-        </a>
-        <a href="https://www.tiktok.com/@redboxbarbershop" target="_blank" rel="noopener" aria-label="TikTok">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.22 6.22 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.52V6.75a4.85 4.85 0 01-1.02-.06z"/></svg>
-        </a>
-      </div>
-      <p class="footer-copy">&copy; 2026 Redbox Barbershop. All rights reserved. &mdash; Since 2014</p>
-      <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
-    </div>
-  </footer>
+ <!-- ========== FOOTER ========== -->
+ <footer class="footer">
+ <div class="container footer-simple">
+ <div class="footer-simple-top">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox" class="footer-logo-img" />
+ <span class="footer-tagline">Precision Cut. Elevated Confidence.</span>
+ </div>
+ <div class="footer-social">
+ <a href="https://www.instagram.com/redboxbarbershop/" target="_blank" rel="noopener" aria-label="Instagram">
+ <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+ </a>
+ <a href="https://www.tiktok.com/@redboxbarbershop" target="_blank" rel="noopener" aria-label="TikTok">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.22 6.22 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.52V6.75a4.85 4.85 0 01-1.02-.06z"/></svg>
+ </a>
+ </div>
+ <p class="footer-copy">&copy; 2026 Redbox Barbershop. All rights reserved. &mdash; Since 2014</p>
+ <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
+ </div>
+ </footer>
 
-  <!-- Confetti Container -->
-  <div class="confetti-container" id="confettiContainer" style="display:none">
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
-    <div class="confetti"></div><div class="confetti"></div>
-  </div>
+ <!-- Confetti Container -->
+ <div class="confetti-container" id="confettiContainer" style="display:none">
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div><div class="confetti"></div>
+ <div class="confetti"></div><div class="confetti"></div>
+ </div>
 
-  <!-- WhatsApp Float -->
-  <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tanya%20tentang%20membership" target="_blank" class="wa-float" aria-label="WhatsApp">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-  </a>
+ <!-- WhatsApp Float -->
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tanya%20tentang%20membership" target="_blank" class="wa-float" aria-label="WhatsApp">
+ <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+ </a>
 
-  <div class="ms-mobile-bar" aria-label="Membership quick actions">
-    <a href="booking.html" class="ms-mbar-book">Book & Kumpul Poin</a>
-    <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tanya%20tentang%20membership" target="_blank" rel="noopener" class="ms-mbar-wa">WhatsApp</a>
-  </div>
+ <div class="ms-mobile-bar" aria-label="Membership quick actions">
+ <a href="booking.html" class="ms-mbar-book">Book & Kumpul Poin</a>
+ <a href="https://wa.me/62818202569?text=Halo%20Redbox,%20saya%20ingin%20tanya%20tentang%20membership" target="_blank" rel="noopener" class="ms-mbar-wa">WhatsApp</a>
+ </div>
 
-  <!-- Auth Modal -->
-  <div class="modal-overlay" id="loginModal">
-    <div class="modal-login" id="loginFormContainer">
-      <div class="modal-header">
-        <div class="modal-header-left">
-          <div class="modal-header-icon" id="authIcon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </div>
-          <div><h3 id="authTitle">MASUK</h3></div>
-        </div>
-        <button class="modal-close" id="modalClose" aria-label="Close">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="auth-mode-toggle">
-          <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
-          <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
-        </div>
-        <button class="btn-google" type="button" id="googleLoginBtn">
-          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          <span id="googleBtnText">Login dengan Google</span>
-        </button>
-        <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
-        <form id="loginForm">
-          <div class="form-group name-field" id="nameField">
-            <label for="userName">NAMA LENGKAP</label>
-            <input type="text" id="userName" placeholder="Nama lengkap Anda">
-          </div>
-          <div class="form-group">
-            <label for="loginEmail">EMAIL / NO. HP</label>
-            <input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required>
-          </div>
-          <div class="form-group">
-            <label for="loginPassword">PASSWORD</label>
-            <input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8">
-          </div>
-          <button type="submit" class="btn-login-submit" id="submitBtn">
-            <span id="submitBtnText">Masuk Sekarang</span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </button>
-        </form>
-        <div class="benefits-list" id="benefitsList" style="display:none">
-          <p class="benefits-title">Keuntungan Member:</p>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Simpan riwayat kunjungan & poin</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Tracking tier & benefits real-time</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Akses diskon eksklusif member</span></div>
-          <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><span>Prioritas booking & customer support</span></div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-success" id="signupSuccess" style="display:none">
-      <div class="success-header">
-        <div class="success-icon-wrap">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l.324.995c.235.721.953 1.672 1.597 2.113.644.442 1.849.92 2.674.928.825.008 1.084.185 1.083.983-.001.798-.272 2.456-.604 3.685-.331 1.229-1.068 3.097-1.638 4.152-.571 1.055-1.639 2.346-2.373 2.87-.734.524-1.872.932-2.536.932s-1.802-.408-2.536-.932c-.734-.524-1.802-1.815-2.373-2.87-.57-1.055-1.307-2.923-1.638-4.152-.332-1.229-.603-2.887-.604-3.685-.001-.798.258-.975 1.083-.983.825-.008 2.03-.486 2.674-.928.644-.441 1.362-1.392 1.597-2.113L12 2z"/><path d="M4 14l2.5 2.5"/><path d="M20 14l-2.5 2.5"/></svg>
-        </div>
-        <h2 class="success-title">SELAMAT BERGABUNG!</h2>
-        <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
-      </div>
-      <div class="success-body">
-        <div class="success-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Member Redbox Barbershop</div>
-        <p class="success-message" id="successUserName">Selamat!</p>
-        <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
-        <div class="success-email-box"><div class="success-email-label">Email Terdaftar</div><div class="success-email" id="successUserEmail">member@redbox.com</div></div>
-        <button class="btn-success-cta" id="successCtaBtn">Mulai Petualangan <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
-      </div>
-    </div>
-  </div>
+ <!-- Auth Modal -->
+ <div class="modal-overlay" id="loginModal">
+ <div class="modal-login" id="loginFormContainer">
+ <div class="modal-header">
+ <div class="modal-header-left">
+ <div class="modal-header-icon" id="authIcon">
+ <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ </div>
+ <div><h3 id="authTitle">MASUK</h3></div>
+ </div>
+ <button class="modal-close" id="modalClose" aria-label="Close">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ <div class="modal-body">
+ <div class="auth-mode-toggle">
+ <button type="button" class="auth-mode-btn active" id="loginModeBtn" data-mode="login">MASUK</button>
+ <button type="button" class="auth-mode-btn" id="signupModeBtn" data-mode="signup">DAFTAR</button>
+ </div>
+ <button class="btn-google" type="button" id="googleLoginBtn">
+ <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+ <span id="googleBtnText">Login dengan Google</span>
+ </button>
+ <div class="modal-divider">ATAU DENGAN EMAIL / NO. HP</div>
+ <form id="loginForm">
+ <div class="form-group name-field" id="nameField">
+ <label for="userName">NAMA LENGKAP</label>
+ <input type="text" id="userName" placeholder="Nama lengkap Anda">
+ </div>
+ <div class="form-group">
+ <label for="loginEmail">EMAIL / NO. HP</label>
+ <input type="text" id="loginEmail" placeholder="Email atau No. HP (08xxx)" required>
+ </div>
+ <div class="form-group">
+ <label for="loginPassword">PASSWORD</label>
+ <input type="password" id="loginPassword" placeholder="Minimal 8 karakter" required minlength="8">
+ </div>
+ <button type="submit" class="btn-login-submit" id="submitBtn">
+ <span id="submitBtnText">Masuk Sekarang</span>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </form>
+ <div class="benefits-list" id="benefitsList" style="display:none">
+ <p class="benefits-title">Keuntungan Member:</p>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Simpan riwayat kunjungan & poin</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Tracking tier & benefits real-time</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Akses diskon eksklusif member</span></div>
+ <div class="benefit-item"><div class="benefit-icon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg></div><span>Prioritas booking & customer support</span></div>
+ </div>
+ </div>
+ </div>
+ <div class="modal-success" id="signupSuccess" style="display:none">
+ <div class="success-header">
+ <div class="success-icon-wrap">
+ <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M5.166 2.621v.858c0 1.31.781 2.553 2.066 3.428s3.015 1.343 4.768 1.343 3.483-.468 4.768-1.343c1.285-.875 2.066-2.119 2.066-3.428v-.858a.75.75 0 0 0-1.5 0v.858c0 .796-.573 1.655-1.635 2.377C14.637 7.087 13.37 7.5 12 7.5s-2.637-.413-3.699-1.134C7.24 5.634 6.666 4.775 6.666 3.979v-.858a.75.75 0 0 0-1.5 0ZM12 12.75a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-1.5 0v-7.5a.75.75 0 0 1 .75-.75ZM7.5 15a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5A.75.75 0 0 1 7.5 15Zm9 0a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-1.5 0v-4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
+ </div>
+ <h2 class="success-title">SELAMAT BERGABUNG!</h2>
+ <p class="success-subtitle">Selangkah lagi menuju pengalaman grooming terbaik di Cirebon</p>
+ </div>
+ <div class="success-body">
+ <div class="success-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg> Member Redbox Barbershop</div>
+ <p class="success-message" id="successUserName">Selamat!</p>
+ <p class="success-desc">Kamu sekarang bagian dari <strong>Komunitas Gentleman Cirebon</strong>. Nikmati diskon eksklusif, kumpulkan poin setiap kunjungan, dan rasakan layanan premium yang hanya bisa didapatkan oleh member.</p>
+ <div class="success-email-box"><div class="success-email-label">Email Terdaftar</div><div class="success-email" id="successUserEmail">member@redbox.com</div></div>
+ <button class="btn-success-cta" id="successCtaBtn">Mulai Petualangan <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg></button>
+ </div>
+ </div>
+ </div>
 
-  <script src="js/main.js"></script>
-  <script>
-    // FAQ Accordion
-    document.querySelectorAll('.ms-faq-q').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const item = btn.closest('.ms-faq-item');
-        const isOpen = item.classList.contains('open');
-        document.querySelectorAll('.ms-faq-item').forEach(i => i.classList.remove('open'));
-        if (!isOpen) item.classList.add('open');
-      });
-    });
-  </script>
+ <script src="js/main.js"></script>
+ <script>
+ // FAQ Accordion
+ document.querySelectorAll('.ms-faq-q').forEach(btn => {
+ btn.addEventListener('click', () => {
+ const item = btn.closest('.ms-faq-item');
+ const isOpen = item.classList.contains('open');
+ document.querySelectorAll('.ms-faq-item').forEach(i => i.classList.remove('open'));
+ if (!isOpen) item.classList.add('open');
+ });
+ });
+ </script>
 </body>
 </html>

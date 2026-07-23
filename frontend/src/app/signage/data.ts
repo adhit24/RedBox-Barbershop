@@ -43,7 +43,7 @@ export const categorySlides: Record<'hair' | 'shave' | 'other', CategorySlideDat
       'Not sure where to start? Ask your barber to recommend a ritual built around your hair, your routine, your week.',
     bg: '/signage/cat-hair.jpg',
     items: [
-      { name: 'Redbox Gentleman Grooming', desc: 'Our signature ritual — cut, wash, finish.' },
+      { name: 'Gentleman Grooming', desc: 'Our signature ritual — cut, wash, finish.' },
       { name: 'Hair Tattoo · Single & Double Side', desc: 'Bold lines, hand-carved by senior artists.' },
       { name: 'Hair Color', desc: 'From discreet grey blending to statement tones.' },
       { name: 'Hair Bleaching · Highlighting', desc: 'Lifted, layered, and protected through every step.' },

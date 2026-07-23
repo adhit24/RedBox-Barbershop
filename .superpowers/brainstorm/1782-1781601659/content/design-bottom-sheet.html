@@ -1,0 +1,118 @@
+<h2>Design: Bottom Sheet Jadwal Libur Kapster</h2>
+<p class="subtitle">Tampilan lengkap — long-press kartu kapster → sheet ini muncul dari bawah</p>
+
+<div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:20px; align-items:flex-start;">
+
+  <!-- LEFT: Card + trigger -->
+  <div style="flex:1; min-width:240px;">
+    <div class="label" style="margin-bottom:10px;">1 — Card kapster (sebelum long-press)</div>
+
+    <!-- Barber card dengan hint -->
+    <div style="background:#1f1215; border:1px solid rgba(34,197,94,0.25); border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px; position:relative; cursor:pointer;">
+      <div style="width:44px;height:44px;border-radius:50%;background:#3f1e22;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#C72820;">UB</div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;color:#F0EAEB;">Ubay</div>
+        <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
+          <span style="font-size:9px;padding:2px 5px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Min</span>
+          <span style="font-size:9px;padding:2px 5px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Sen</span>
+          <span style="font-size:9px;padding:2px 5px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Sel</span>
+          <span style="font-size:9px;padding:2px 5px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Rab</span>
+          <span style="font-size:9px;padding:2px 5px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Sab</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+        <!-- three-dot button -->
+        <button style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="color:#6B5A5E;"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
+        <div style="width:40px;height:22px;background:#16a34a;border-radius:20px;position:relative;border:1px solid rgba(34,197,94,0.4);">
+          <div style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:white;border-radius:50%;"></div>
+        </div>
+        <span style="font-size:9px;color:#4ade80;">AKTIF</span>
+      </div>
+    </div>
+
+    <div style="font-size:10px;color:#4A3E40;text-align:center;margin-top:8px;">
+      ↑ long-press ATAU tap ⋮ → sheet terbuka
+    </div>
+
+    <!-- Kapster dengan upcoming block badge -->
+    <div class="label" style="margin-top:20px; margin-bottom:10px;">Kapster dengan libur terjadwal</div>
+    <div style="background:#1f1215; border:1px solid rgba(199,40,32,0.15); border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px;">
+      <div style="position:relative;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#3f1e22;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#C72820;">EG</div>
+        <!-- badge -->
+        <div style="position:absolute;top:-3px;right:-3px;background:#C72820;border-radius:20px;padding:1px 5px;font-size:8px;color:white;font-weight:700;border:1.5px solid #1a0e11;">2</div>
+      </div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;color:#F0EAEB;">Ega</div>
+        <div style="font-size:10px;color:#C72820;margin-top:3px;">2 hari libur terjadwal</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+        <button style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="color:#6B5A5E;"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        </button>
+        <div style="width:40px;height:22px;background:#3f1e22;border-radius:20px;position:relative;border:1px solid rgba(199,40,32,0.25);">
+          <div style="position:absolute;top:2px;left:2px;width:16px;height:16px;background:white;border-radius:50%;"></div>
+        </div>
+        <span style="font-size:9px;color:#6B5A5E;">LIBUR</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Bottom sheet -->
+  <div style="flex:1; min-width:260px;">
+    <div class="label" style="margin-bottom:10px;">2 — Bottom sheet (setelah long-press)</div>
+
+    <div style="background:#1f1215; border:1px solid rgba(255,255,255,0.07); border-radius:20px 20px 0 0; padding:20px 18px 24px; box-shadow: 0 -8px 32px rgba(0,0,0,0.4);">
+
+      <!-- Drag handle -->
+      <div style="width:36px;height:4px;background:rgba(255,255,255,0.12);border-radius:4px;margin:0 auto 18px;"></div>
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+        <div style="width:36px;height:36px;border-radius:50%;background:#3f1e22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#C72820;flex-shrink:0;">UB</div>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#F0EAEB;">Ubay</div>
+          <div style="font-size:10px;color:#4ade80;">● Aktif hari ini</div>
+        </div>
+      </div>
+
+      <!-- Date picker section -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:14px;">
+        <div style="font-size:10px;color:#6B5A5E;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Pilih Tanggal</div>
+        <input type="date" value="2026-06-20" style="width:100%;background:#2a1a1e;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:8px 10px;color:#F0EAEB;font-size:13px;outline:none;box-sizing:border-box;">
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button style="flex:1;background:#C72820;color:white;border:none;border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;">Set Libur</button>
+          <button style="flex:1;background:rgba(22,163,74,0.15);color:#4ade80;border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:9px;font-size:12px;font-weight:600;cursor:pointer;">Buka Lagi</button>
+        </div>
+      </div>
+
+      <!-- Upcoming blocks list -->
+      <div style="margin-top:14px;">
+        <div style="font-size:10px;color:#6B5A5E;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Libur Terjadwal</div>
+
+        <!-- Block item 1 -->
+        <div style="display:flex;align-items:center;gap:10px;background:rgba(199,40,32,0.06);border:1px solid rgba(199,40,32,0.15);border-radius:10px;padding:9px 12px;margin-bottom:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#C72820" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span style="flex:1;font-size:12px;color:#F0EAEB;">Sabtu, 20 Jun 2026</span>
+          <button style="background:rgba(199,40,32,0.15);border:1px solid rgba(199,40,32,0.2);color:#C72820;border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;">✕</button>
+        </div>
+
+        <!-- Block item 2 -->
+        <div style="display:flex;align-items:center;gap:10px;background:rgba(199,40,32,0.06);border:1px solid rgba(199,40,32,0.15);border-radius:10px;padding:9px 12px;margin-bottom:6px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#C72820" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span style="flex:1;font-size:12px;color:#F0EAEB;">Rabu, 25 Jun 2026</span>
+          <button style="background:rgba(199,40,32,0.15);border:1px solid rgba(199,40,32,0.2);color:#C72820;border-radius:6px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:12px;">✕</button>
+        </div>
+
+        <!-- Empty state variant (shown when no blocks) -->
+        <div style="text-align:center;padding:10px;color:#3D2E32;font-size:11px;display:none;">Tidak ada jadwal libur ke depan</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:24px; text-align:center;">Apakah layout dan alur ini sudah sesuai? Klik untuk konfirmasi atau balas di terminal.</p>

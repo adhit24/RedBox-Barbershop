@@ -1,7 +1,7 @@
 # Role Selection Screen — Design Spec
 
-**Date:** 2026-06-05  
-**Status:** Approved  
+**Date:** 2026-06-05 
+**Status:** Approved 
 **Feature:** Role picker sebelum login di `admin.redboxbarbershop.com`
 
 ---
@@ -16,17 +16,17 @@ Saat pengguna membuka `admin.redboxbarbershop.com`, mereka melihat halaman pemil
 
 ```
 admin.redboxbarbershop.com
-        │
-        ▼
-   middleware
-        │
-        ├── sudah login? → dashboard masing-masing (tidak berubah)
-        │
-        └── belum login? → / (role picker)
-                │
-                ├── [1] OWNER       → /login
-                ├── [2] KASIR/ADMIN → /login
-                └── [3] KAPSTER     → /barber/login
+ │
+ ▼
+ middleware
+ │
+ ├── sudah login? → dashboard masing-masing (tidak berubah)
+ │
+ └── belum login? → / (role picker)
+ │
+ ├── [1] OWNER → /login
+ ├── [2] KASIR/ADMIN → /login
+ └── [3] KAPSTER → /barber/login
 ```
 
 - `/login` (email + password) dan `/barber/login` (OTP nomor HP) tidak diubah.
@@ -42,8 +42,8 @@ admin.redboxbarbershop.com
 
 ### File diubah
 - `frontend/src/middleware.ts` — dua perubahan:
-  1. Tambah `/` ke daftar public routes
-  2. Redirect unauthenticated dari `/login` → `/`
+ 1. Tambah `/` ke daftar public routes
+ 2. Redirect unauthenticated dari `/login` → `/`
 
 ---
 
@@ -56,9 +56,9 @@ admin.redboxbarbershop.com
 - Logo teks: **RED**`BOX` (WHITE + RED), centered
 - Subtitle: `SIAPAKAH ANDA?` — uppercase, spasi lebar, warna abu-abu `#777`
 - 3 tombol full-width, border tipis `#2a2a2a`, dengan nomor lingkaran di kiri:
-  - `1  OWNER`
-  - `2  KASIR / ADMIN`
-  - `3  KAPSTER`
+ - `1 OWNER`
+ - `2 KASIR / ADMIN`
+ - `3 KAPSTER`
 - Hover state: border `#C72820`, teks `#fff`
 - Animasi: Framer Motion fade-in + slide-up saat halaman dimuat (konsisten dengan `/login`)
 
@@ -86,8 +86,8 @@ Tiga perubahan:
 ```typescript
 // (1) Authenticated user mengakses '/' → redirect ke dashboard
 if (pathname === '/' && user) {
-  const role = ...; // ambil dari session/cookie
-  return NextResponse.redirect(new URL(dashboardFor(role), req.url));
+ const role = ...; // ambil dari session/cookie
+ return NextResponse.redirect(new URL(dashboardFor(role), req.url));
 }
 
 // (2) Public routes (termasuk '/') → let through

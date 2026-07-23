@@ -1,0 +1,102 @@
+<style>
+ .banner-demo {
+ border-radius: 14px;
+ padding: 18px 20px;
+ display: flex;
+ align-items: center;
+ justify-content: space-between;
+ gap: 16px;
+ margin-bottom: 16px;
+ flex-wrap: wrap;
+ }
+ .banner-left { display: flex; align-items: center; gap: 14px; flex: 1; }
+ .banner-icon { font-size: 2rem; flex-shrink: 0; }
+ .banner-text strong { font-size: 0.95rem; color: #e5e7eb; display: block; margin-bottom: 4px; }
+ .banner-text span { font-size: 0.8rem; color: #9ca3af; }
+ .banner-bar { height: 5px; background: #333; border-radius: 3px; margin-top: 8px; width: 220px; }
+ .banner-bar-fill { height: 100%; border-radius: 3px; }
+ .banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
+ .banner-btn-primary { background: #c1121f; color: #fff; border: none; padding: 8px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+ .banner-btn-secondary { background: transparent; color: #9ca3af; border: 1px solid #333; padding: 8px 14px; border-radius: 8px; font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+ .tag { display: inline-block; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 4px; margin-bottom: 6px; }
+</style>
+
+<h2>Design: Smart Upsell Banner</h2>
+<p class="subtitle">Banner muncul otomatis di bawah tier progress. Konten berubah sesuai posisi tier member saat ini.</p>
+
+<div class="section">
+ <div class="label">State 1 — Member Gold, mendekati Platinum (kondisi user di screenshot)</div>
+ <div class="banner-demo" style="background:linear-gradient(135deg,#1a0d00,#0f0900);border:1px solid rgba(251,191,36,0.25);">
+ <div class="banner-left">
+ <div class="banner-icon"></div>
+ <div class="banner-text">
+ <div class="tag" style="background:rgba(251,191,36,0.15);color:#fbbf24;">HAMPIR PLATINUM</div>
+ <strong>1.400 poin lagi menuju Free Haircut seumur hidup</strong>
+ <span>Kunjungi 2–3x lagi untuk unlock tier Platinum — free haircut, free americano, berlaku semua cabang</span>
+ <div class="banner-bar"><div class="banner-bar-fill" style="width:65%;background:linear-gradient(90deg,#fbbf24,#f59e0b);"></div></div>
+ </div>
+ </div>
+ <div class="banner-actions">
+ <button class="banner-btn-primary">Book Sekarang</button>
+ <button class="banner-btn-secondary">Lihat Benefit</button>
+ </div>
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">State 2 — Member Silver, mendekati Gold</div>
+ <div class="banner-demo" style="background:linear-gradient(135deg,#0d1100,#0a0f00);border:1px solid rgba(74,222,128,0.2);">
+ <div class="banner-left">
+ <div class="banner-icon"></div>
+ <div class="banner-text">
+ <div class="tag" style="background:rgba(74,222,128,0.15);color:#4ade80;">MENUJU GOLD</div>
+ <strong>Butuh 800 poin lagi untuk unlock diskon 10% di semua cabang</strong>
+ <span>Gold member: haircut lebih murah, berlaku termasuk CSB Mall & Samadikun</span>
+ <div class="banner-bar"><div class="banner-bar-fill" style="width:47%;background:linear-gradient(90deg,#4ade80,#22c55e);"></div></div>
+ </div>
+ </div>
+ <div class="banner-actions">
+ <button class="banner-btn-primary">Kumpul Poin</button>
+ <button class="banner-btn-secondary">Detail Gold</button>
+ </div>
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">State 3 — Member Bronze (baru bergabung)</div>
+ <div class="banner-demo" style="background:linear-gradient(135deg,#100a00,#0a0a0a);border:1px solid rgba(205,127,50,0.25);">
+ <div class="banner-left">
+ <div class="banner-icon"></div>
+ <div class="banner-text">
+ <div class="tag" style="background:rgba(205,127,50,0.15);color:#cd7f32;">MULAI PERJALANANMU</div>
+ <strong>500 poin lagi untuk Silver — unlock diskon 5% & birthday treat</strong>
+ <span>Setiap Rp 10.000 transaksi = 1 poin. Referral teman = +50 poin bonus</span>
+ <div class="banner-bar"><div class="banner-bar-fill" style="width:12%;background:linear-gradient(90deg,#cd7f32,#b8860b);"></div></div>
+ </div>
+ </div>
+ <div class="banner-actions">
+ <button class="banner-btn-primary">Lihat Cara Poin</button>
+ <button class="banner-btn-secondary">Referral</button>
+ </div>
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">State 4 — Member Platinum (tier max)</div>
+ <div class="banner-demo" style="background:linear-gradient(135deg,#070d1a,#050810);border:1px solid rgba(196,181,253,0.25);">
+ <div class="banner-left">
+ <div class="banner-icon"></div>
+ <div class="banner-text">
+ <div class="tag" style="background:rgba(196,181,253,0.15);color:#c4b5fd;">PLATINUM MEMBER</div>
+ <strong>Selamat! Kamu sudah di puncak — nikmati semua privilege eksklusif</strong>
+ <span>Free haircut, free americano, birthday treat, berlaku di semua 5 cabang Redbox</span>
+ </div>
+ </div>
+ <div class="banner-actions">
+ <button class="banner-btn-primary" style="background:#7c3aed;">Redeem Reward</button>
+ <button class="banner-btn-secondary">Lihat Shop</button>
+ </div>
+ </div>
+</div>
+
+<p class="subtitle">Desain banner ini oke? Ketik "oke" atau feedback di terminal. Lanjut ke desain Tab Benefits & Rewards.</p>

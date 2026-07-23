@@ -73,10 +73,10 @@ Stat cards di admin dashboard (`/admin/dashboard`) saat ini hanya display-only. 
 **`StatCard` component** — tambah props:
 ```tsx
 function StatCard({
-  label, value, color, index,
-  onClick,       // () => void
-  isActive,      // boolean
-  accentColor,   // CSS color string untuk border & indicator line
+ label, value, color, index,
+ onClick, // () => void
+ isActive, // boolean
+ accentColor, // CSS color string untuk border & indicator line
 }: ...)
 ```
 
@@ -91,15 +91,15 @@ border-color: accentColor;
 **Supabase Realtime subscription** — ditambahkan di `CommandCenterPageInner`:
 ```tsx
 useEffect(() => {
-  if (!branch) return;
-  const channel = supabase
-    .channel(`dashboard-bookings-${branch}`)
-    .on('postgres_changes', {
-      event: '*', schema: 'public', table: 'bookings',
-      filter: `location=eq.${branch}`,
-    }, () => load(true))
-    .subscribe(status => setLive(status === 'SUBSCRIBED'));
-  return () => { supabase.removeChannel(channel); };
+ if (!branch) return;
+ const channel = supabase
+ .channel(`dashboard-bookings-${branch}`)
+ .on('postgres_changes', {
+ event: '*', schema: 'public', table: 'bookings',
+ filter: `location=eq.${branch}`,
+ }, () => load(true))
+ .subscribe(status => setLive(status === 'SUBSCRIBED'));
+ return () => { supabase.removeChannel(channel); };
 }, [branch, load]);
 
 const [live, setLive] = useState(false);
@@ -113,10 +113,10 @@ Indikator di header:
 **`StatDetailSheet` component** — baru, menangani semua 6 jenis konten:
 ```tsx
 function StatDetailSheet({
-  type: 'hadir' | 'tidak_hadir' | 'belum_checkin' | 'booking' | 'pending' | 'goshow',
-  data: CommandCenterData,
-  onAction: (id: string, status: string) => Promise<void>,
-  onClose: () => void,
+ type: 'hadir' | 'tidak_hadir' | 'belum_checkin' | 'booking' | 'pending' | 'goshow',
+ data: CommandCenterData,
+ onAction: (id: string, status: string) => Promise<void>,
+ onClose: () => void,
 })
 ```
 
@@ -132,7 +132,7 @@ const [activeCard, setActiveCard] = useState<string | null>(null);
 Handle click:
 ```tsx
 function handleCardClick(type: string) {
-  setActiveCard(prev => prev === type ? null : type);
+ setActiveCard(prev => prev === type ? null : type);
 }
 ```
 
@@ -152,17 +152,17 @@ function handleCardClick(type: string) {
 ## Layout Sheet (mobile)
 
 ```
-┌─────────────────────────────────┐  ← backdrop gelap (tap untuk tutup)
-│                                 │
-│  [stats grid tetap kelihatan]  │
-│                                 │
-├────────────── ▬ ────────────────┤  ← drag handle (swipe turun = tutup)
-│  JUDUL SHEET          (count)  │
-│ ─────────────────────────────  │
-│  Nama       Waktu · Info   🏷  │
-│  Nama       Waktu · Info   🏷  │
-│  [✓ Konfirmasi] [✕ Batalkan]  │  ← hanya di Pending
-│  ...                           │
+┌─────────────────────────────────┐ ← backdrop gelap (tap untuk tutup)
+│ │
+│ [stats grid tetap kelihatan] │
+│ │
+├────────────── ▬ ────────────────┤ ← drag handle (swipe turun = tutup)
+│ JUDUL SHEET (count) │
+│ ───────────────────────────── │
+│ Nama Waktu · Info │
+│ Nama Waktu · Info │
+│ [ Konfirmasi] [ Batalkan] │ ← hanya di Pending
+│ ... │
 └─────────────────────────────────┘
 ```
 

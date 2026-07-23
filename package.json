@@ -1,28 +1,28 @@
 {
-  "name": "redbox-barbershop",
-  "version": "1.0.1",
-  "private": true,
-  "engines": {
-    "node": "24.x"
-  },
-  "workspaces": [
-    "server",
-    "frontend"
-  ],
-  "scripts": {
-    "start": "npm --workspace server run start",
-    "dev": "npm --workspace server run dev",
-    "dev:frontend": "npm --workspace frontend run dev",
-    "dev:all": "concurrently \"npm run dev\" \"npm run dev:frontend\""
-  },
-  "devDependencies": {
-    "concurrently": "^9.0.0"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.100.1",
-    "@supabase/ssr": "^0.10.3",
-    "@supabase/supabase-js": "^2.105.4",
-    "motion": "^12.40.0",
-    "openai": "^6.37.0"
-  }
+ "name": "redbox-barbershop",
+ "version": "1.0.1",
+ "private": true,
+ "engines": {
+ "node": "24.x"
+ },
+ "workspaces": [
+ "server",
+ "frontend"
+ ],
+ "scripts": {
+ "start": "npm --workspace server run start",
+ "dev": "npm --workspace server run dev",
+ "dev:frontend": "npm --workspace frontend run dev",
+ "dev:all": "concurrently \"npm run dev\" \"npm run dev:frontend\""
+ },
+ "devDependencies": {
+ "concurrently": "^9.0.0"
+ },
+ "dependencies": {
+ "@anthropic-ai/sdk": "^0.100.1",
+ "@supabase/ssr": "^0.10.3",
+ "@supabase/supabase-js": "^2.105.4",
+ "motion": "^12.40.0",
+ "openai": "^6.37.0"
+ }
 }

@@ -3,7 +3,7 @@ AI BOT OVERRIDE — 5 BRANCH CROSS-BRANCH IMPLEMENTATION
 ================================================================================
 Tanggal: 1 Juni 2026
 Objective: Override AI bot ketika admin/manusia takeover percakapan.
-           AI bot OFF 30 menit, berlaku di SEMUA CABANG.
+ AI bot OFF 30 menit, berlaku di SEMUA CABANG.
 
 ================================================================================
 1. ANALISIS AWAL — ARSITEKTUR EXISTING
@@ -12,98 +12,98 @@ Objective: Override AI bot ketika admin/manusia takeover percakapan.
 Ada 2 sistem webhook yang menangani WhatsApp:
 
 A) Fonnte Webhook (api/wa/webhook.js)
-   - Vercel serverless function
-   - Menggunakan Fonnte sebagai gateway WhatsApp
-   - Sudah punya human takeover logic via:
-     - Local Map (humanTakeoverMap) — in-memory per instance
-     - Supabase table (wa_paused) — cross-instance persistence
-   - Multi-branch: 5 cabang (Bypass, Sumber, Samadikun, CSB, Tegal)
-   - Deteksi admin: via field isFromMe pada outgoing message
+ - Vercel serverless function
+ - Menggunakan Fonnte sebagai gateway WhatsApp
+ - Sudah punya human takeover logic via:
+ - Local Map (humanTakeoverMap) — in-memory per instance
+ - Supabase table (wa_paused) — cross-instance persistence
+ - Multi-branch: 5 cabang (Bypass, Sumber, Samadikun, CSB, Tegal)
+ - Deteksi admin: via field isFromMe pada outgoing message
 
 B) WhatsApp Cloud API (server/whatsapp-ai/)
-   - Express server standalone
-   - Menggunakan Meta WhatsApp Cloud API
-   - Punya handoffStore.js — file-based (handoff.json)
-   - Deteksi admin: via message status updates (sent/delivered/read)
-   - Tiap cabang jalankan instance sendiri
+ - Express server standalone
+ - Menggunakan Meta WhatsApp Cloud API
+ - Punya handoffStore.js — file-based (handoff.json)
+ - Deteksi admin: via message status updates (sent/delivered/read)
+ - Tiap cabang jalankan instance sendiri
 
 Masalah: Kedua sistem punya handoff logic sendiri-sendiri, tidak shared.
-         Kalau admin takeover di satu cabang, cabang lain tidak tahu.
+ Kalau admin takeover di satu cabang, cabang lain tidak tahu.
 
 ================================================================================
 2. FILE YANG DIMODIFIKASI
 ================================================================================
 
 A) server/whatsapp-ai/services/handoffStore.js — MAJOR UPGRADE
-   ─────────────────────────────────────────────
-   SEBELUM:
-   - Hanya file-based storage (handoff.json)
-   - enableHandoff(customerPhone, durationMinutes)
-   - isHandoffActive(customerPhone) — sync only, local only
-   
-   SESUDAH:
-   - Ditambah Supabase wa_paused table sebagai shared state cross-branch
-   - enableHandoff(customerPhone, durationMinutes, pausedBy)
-     → persist ke Supabase fire-and-forget + local file fallback
-   - disableHandoff(customerPhone)
-     → hapus dari Supabase + local
-   - isHandoffActiveAsync(customerPhone) — BARU
-     → cek local cache → fallback Supabase (cross-branch/cross-instance)
-   - getAllActive() — sekarang async, query Supabase
-   - Supabase client lazy-init via SUPABASE_URL + SUPABASE_SERVICE_KEY
-   - Tracking paused_by untuk audit siapa yang trigger override
+ ─────────────────────────────────────────────
+ SEBELUM:
+ - Hanya file-based storage (handoff.json)
+ - enableHandoff(customerPhone, durationMinutes)
+ - isHandoffActive(customerPhone) — sync only, local only
+ 
+ SESUDAH:
+ - Ditambah Supabase wa_paused table sebagai shared state cross-branch
+ - enableHandoff(customerPhone, durationMinutes, pausedBy)
+ → persist ke Supabase fire-and-forget + local file fallback
+ - disableHandoff(customerPhone)
+ → hapus dari Supabase + local
+ - isHandoffActiveAsync(customerPhone) — BARU
+ → cek local cache → fallback Supabase (cross-branch/cross-instance)
+ - getAllActive() — sekarang async, query Supabase
+ - Supabase client lazy-init via SUPABASE_URL + SUPABASE_SERVICE_KEY
+ - Tracking paused_by untuk audit siapa yang trigger override
 
 B) server/whatsapp-ai/services/messageHandler.js — ADMIN COMMANDS + ASYNC CHECK
-   ─────────────────────────────────────────────
-   SEBELUM:
-   - Hanya /ai_on command
-   - isHandoffActive() sync check (local only)
-   
-   SESUDAH:
-   - handleAdminCommand() — fungsi baru dengan 4 commands:
-     /ai_off 628xxx [menit] — matikan AI untuk customer (default 30m)
-     /ai_on 628xxx — hidupkan AI kembali
-     /ai_status — lihat semua AI yang sedang OFF (cross-branch)
-     /ai_help — tampilkan daftar commands
-   - Handoff check pakai isHandoffActiveAsync() (cross-branch via Supabase)
-   - Admin check: config.ADMIN_WHATSAPP
+ ─────────────────────────────────────────────
+ SEBELUM:
+ - Hanya /ai_on command
+ - isHandoffActive() sync check (local only)
+ 
+ SESUDAH:
+ - handleAdminCommand() — fungsi baru dengan 4 commands:
+ /ai_off 628xxx [menit] — matikan AI untuk customer (default 30m)
+ /ai_on 628xxx — hidupkan AI kembali
+ /ai_status — lihat semua AI yang sedang OFF (cross-branch)
+ /ai_help — tampilkan daftar commands
+ - Handoff check pakai isHandoffActiveAsync() (cross-branch via Supabase)
+ - Admin check: config.ADMIN_WHATSAPP
 
 C) api/wa/webhook.js (Fonnte) — ADMIN COMMANDS + IMPROVED TRACKING
-   ─────────────────────────────────────────────
-   DITAMBAH:
-   - handleAdminCommand(sender, message, device) — 4 commands sama
-     /ai_off, /ai_on, /ai_status, /ai_help
-   - Admin check: ADMIN_WA + WA_ADMIN_NUMBER
-   - Intercept /ai_* commands sebelum human takeover check di POST handler
-   
-   DIUBAH:
-   - persistHumanTakeover(phone, pausedBy) — tambah param pausedBy
-   - Caller: pass branch name (manual_reply_bypass, manual_reply_sumber, dll)
-   - listPausedSenders() — filter expired entries + include paused_by column
+ ─────────────────────────────────────────────
+ DITAMBAH:
+ - handleAdminCommand(sender, message, device) — 4 commands sama
+ /ai_off, /ai_on, /ai_status, /ai_help
+ - Admin check: ADMIN_WA + WA_ADMIN_NUMBER
+ - Intercept /ai_* commands sebelum human takeover check di POST handler
+ 
+ DIUBAH:
+ - persistHumanTakeover(phone, pausedBy) — tambah param pausedBy
+ - Caller: pass branch name (manual_reply_bypass, manual_reply_sumber, dll)
+ - listPausedSenders() — filter expired entries + include paused_by column
 
 D) server/whatsapp-ai/controllers/webhookController.js — MINOR
-   ─────────────────────────────────────────────
-   - detectAdminIntervention() pass pausedBy: 'cloud_api_status'
+ ─────────────────────────────────────────────
+ - detectAdminIntervention() pass pausedBy: 'cloud_api_status'
 
 E) server/whatsapp-ai/package.json
-   ─────────────────────────────────────────────
-   - Ditambah dependency: @supabase/supabase-js ^2.45.0
+ ─────────────────────────────────────────────
+ - Ditambah dependency: @supabase/supabase-js ^2.45.0
 
 F) server/migrations/wa_paused_add_paused_by.sql — FILE BARU
-   ─────────────────────────────────────────────
-   - DDL untuk create table wa_paused
+ ─────────────────────────────────────────────
+ - DDL untuk create table wa_paused
 
 ================================================================================
 3. SUPABASE TABLE — wa_paused
 ================================================================================
 
 CREATE TABLE IF NOT EXISTS wa_paused (
-  sender text PRIMARY KEY,          -- nomor WA customer (normalized, digits only)
-  paused_until timestamptz NOT NULL, -- kapan AI boleh aktif lagi
-  paused_at timestamptz DEFAULT now(), -- kapan di-pause
-  paused_by text DEFAULT 'unknown'  -- siapa yang trigger:
-                                    --   manual_reply_bypass, manual_reply_sumber,
-                                    --   admin_628xxx, cloud_api_status, fonnte_auto
+ sender text PRIMARY KEY, -- nomor WA customer (normalized, digits only)
+ paused_until timestamptz NOT NULL, -- kapan AI boleh aktif lagi
+ paused_at timestamptz DEFAULT now(), -- kapan di-pause
+ paused_by text DEFAULT 'unknown' -- siapa yang trigger:
+ -- manual_reply_bypass, manual_reply_sumber,
+ -- admin_628xxx, cloud_api_status, fonnte_auto
 );
 
 CREATE INDEX IF NOT EXISTS idx_wa_paused_until ON wa_paused (paused_until);
@@ -150,16 +150,16 @@ MONITORING:
 Semua commands berlaku di SEMUA CABANG via Supabase shared state.
 Bisa dipakai dari WhatsApp Cloud API maupun Fonnte webhook.
 
-  /ai_off 628xxx [menit]  — Matikan AI untuk customer (default 30 menit)
-  /ai_on 628xxx           — Hidupkan kembali AI untuk customer
-  /ai_status              — Lihat semua customer yang AI-nya sedang OFF
-  /ai_help                — Tampilkan daftar commands
+ /ai_off 628xxx [menit] — Matikan AI untuk customer (default 30 menit)
+ /ai_on 628xxx — Hidupkan kembali AI untuk customer
+ /ai_status — Lihat semua customer yang AI-nya sedang OFF
+ /ai_help — Tampilkan daftar commands
 
 Contoh:
-  /ai_off 628123456789        → AI off 30 menit
-  /ai_off 628123456789 60     → AI off 60 menit
-  /ai_on 628123456789         → AI on kembali
-  /ai_status                  → List semua yang sedang di-pause
+ /ai_off 628123456789 → AI off 30 menit
+ /ai_off 628123456789 60 → AI off 60 menit
+ /ai_on 628123456789 → AI on kembali
+ /ai_status → List semua yang sedang di-pause
 
 ================================================================================
 6. KONFIGURASI
@@ -167,25 +167,25 @@ Contoh:
 
 Environment variables yang diperlukan (sudah ada di server/.env):
 
-  SUPABASE_URL=https://xxxx.supabase.co
-  SUPABASE_SERVICE_KEY=eyJhbGci...
+ SUPABASE_URL=https://xxxx.supabase.co
+ SUPABASE_SERVICE_KEY=eyJhbGci...
 
-  # Admin WA number (untuk auth admin commands)
-  ADMIN_WHATSAPP=628xxxxxxxxxx    (Cloud API)
-  WA_ADMIN_NUMBER=628xxxxxxxxxx   (Fonnte)
+ # Admin WA number (untuk auth admin commands)
+ ADMIN_WHATSAPP=628xxxxxxxxxx (Cloud API)
+ WA_ADMIN_NUMBER=628xxxxxxxxxx (Fonnte)
 
-  # Override duration (opsional, default 30)
-  HANDOFF_DURATION_MINUTES=30
+ # Override duration (opsional, default 30)
+ HANDOFF_DURATION_MINUTES=30
 
 ================================================================================
 7. CABANG (BRANCHES)
 ================================================================================
 
-  bypass    — 0818202569 (FONNTE_TOKEN)
-  sumber    — 0818202599 (FONNTE_TOKEN_SUMBER)
-  samadikun — 0818202589 (FONNTE_TOKEN_SAMADIKUN)
-  csb       — 0818202889 (FONNTE_TOKEN_CSB)
-  tegal     — 0818268883 (FONNTE_TOKEN_TEGAL)
+ bypass — 0818202569 (FONNTE_TOKEN)
+ sumber — 0818202599 (FONNTE_TOKEN_SUMBER)
+ samadikun — 0818202589 (FONNTE_TOKEN_SAMADIKUN)
+ csb — 0818202889 (FONNTE_TOKEN_CSB)
+ tegal — 0818268883 (FONNTE_TOKEN_TEGAL)
 
 Semua cabang share 1 Supabase wa_paused table.
 Override di 1 cabang = override di semua cabang.
@@ -194,11 +194,11 @@ Override di 1 cabang = override di semua cabang.
 8. RINGKASAN PERUBAHAN
 ================================================================================
 
-| Trigger                          | Efek           | Durasi     | Scope        |
+| Trigger | Efek | Durasi | Scope |
 |----------------------------------|----------------|------------|--------------|
-| Admin balas manual dari HP       | AI OFF otomatis| 30 menit   | Semua cabang |
-| /ai_off 628xxx [menit]          | AI OFF manual  | default 30m| Semua cabang |
-| /ai_on 628xxx                   | AI ON kembali  | instant    | Semua cabang |
-| Timer habis                      | AI ON otomatis | —          | Semua cabang |
+| Admin balas manual dari HP | AI OFF otomatis| 30 menit | Semua cabang |
+| /ai_off 628xxx [menit] | AI OFF manual | default 30m| Semua cabang |
+| /ai_on 628xxx | AI ON kembali | instant | Semua cabang |
+| Timer habis | AI ON otomatis | — | Semua cabang |
 
 ================================================================================

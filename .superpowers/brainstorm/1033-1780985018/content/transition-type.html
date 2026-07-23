@@ -1,0 +1,53 @@
+<h2>Pilih Gaya Page Transition</h2>
+<p class="subtitle">Preview mockup — bayangkan ini saat berpindah dari satu halaman ke halaman lain</p>
+
+<div class="options">
+
+ <div class="option" data-choice="slide" onclick="toggleSelect(this)">
+ <div class="letter">A</div>
+ <div class="content">
+ <h3>Slide Horizontal</h3>
+ <p>Halaman baru masuk dari kanan, halaman lama keluar ke kiri. Seperti native iOS/Android. Cocok untuk flow yang ada hierarki (revenue → payment → detail).</p>
+ <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+ <div style="width:44px;height:32px;background:#1e293b;border-radius:6px;border:1px solid #334155;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;">lama</div>
+ <div style="color:#475569;font-size:11px;">←</div>
+ <div style="width:44px;height:32px;background:#C72820;border-radius:6px;border:1px solid #ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;">baru</div>
+ <div style="font-size:10px;color:#64748b;margin-left:4px;">x: 100%→0, 350ms spring</div>
+ </div>
+ </div>
+ </div>
+
+ <div class="option" data-choice="fade-scale" onclick="toggleSelect(this)">
+ <div class="letter">B</div>
+ <div class="content">
+ <h3>Fade + Scale (Rekomendasi)</h3>
+ <p>Halaman baru muncul dari scale 0.96 + opacity 0 → scale 1 + opacity 1. Halaman lama fade out. Lebih smooth, tidak tergantung arah navigasi.</p>
+ <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+ <div style="width:44px;height:32px;background:#1e293b;border-radius:6px;border:1px solid #334155;opacity:0.3;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;">lama</div>
+ <div style="color:#475569;font-size:11px;">+</div>
+ <div style="width:44px;height:32px;background:#C72820;border-radius:6px;border:1px solid #ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;transform:scale(1.04);">baru</div>
+ <div style="font-size:10px;color:#64748b;margin-left:4px;">scale 0.96→1, opacity 0→1, 280ms</div>
+ </div>
+ </div>
+ </div>
+
+ <div class="option" data-choice="slide-up" onclick="toggleSelect(this)">
+ <div class="letter">C</div>
+ <div class="content">
+ <h3>Slide Up (Bold)</h3>
+ <p>Halaman baru muncul dari bawah — y: 40px→0. Terasa lebih "punchy" dan mobile-native. Cocok dengan karakter Bold & Punchy yang dipilih.</p>
+ <div style="margin-top:10px;display:flex;gap:8px;align-items:center;">
+ <div style="width:44px;height:32px;background:#1e293b;border-radius:6px;border:1px solid #334155;opacity:0.2;display:flex;align-items:center;justify-content:center;font-size:9px;color:#64748b;">lama</div>
+ <div style="color:#475569;font-size:11px;">↑</div>
+ <div style="width:44px;height:32px;background:#C72820;border-radius:6px;border:1px solid #ef4444;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;">baru</div>
+ <div style="font-size:10px;color:#64748b;margin-left:4px;">y: 40px→0, opacity 0→1, 320ms</div>
+ </div>
+ </div>
+ </div>
+
+</div>
+
+<div class="section" style="margin-top:12px;padding:10px;background:#0a0f1a;border-radius:8px;">
+ <div class="label" style="margin-bottom:4px;">Technical note</div>
+ <p style="font-size:11px;color:#64748b;">Semua opsi pakai <code style="color:#8b5cf6">AnimatePresence</code> di root layout + <code style="color:#8b5cf6">motion.div</code> per halaman. Tidak ada breaking change ke routing Next.js App Router.</p>
+</div>

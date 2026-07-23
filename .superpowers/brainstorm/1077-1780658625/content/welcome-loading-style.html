@@ -1,0 +1,73 @@
+<h2>Pilih gaya tampilan loading screen</h2>
+<p class="subtitle">Muncul setelah OTP berhasil, selama sistem menarik data Moka di background</p>
+
+<div class="cards">
+
+ <!-- Option A -->
+ <div class="card" data-choice="A" onclick="toggleSelect(this)">
+ <div class="card-image" style="background:#0a0a0a;padding:20px;font-family:system-ui;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;">
+ <!-- Barber pole spinner -->
+ <div style="width:48px;height:48px;border-radius:50%;border:3px solid #222;border-top:3px solid #ef4444;border-right:3px solid #f5f5f5;animation:spin 1s linear infinite;"></div>
+ <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+ <div style="color:#fff;font-size:15px;font-weight:700;letter-spacing:.5px;">Selamat datang, Pandu </div>
+ <div style="color:#6b7280;font-size:11px;text-align:center;max-width:180px;line-height:1.5;">
+ Sedang mempersiapkan<br>kursi hangat untukmu...
+ </div>
+ <div style="color:#374151;font-size:10px;">⬛⬛⬛⬜⬜ 60%</div>
+ </div>
+ <div class="card-body">
+ <h3>A — Barber Dark</h3>
+ <p>Latar hitam, spinner merah-putih ala barber pole, teks lucu barbershop. Berasa masuk ke salon eksklusif.</p>
+ </div>
+ </div>
+
+ <!-- Option B -->
+ <div class="card" data-choice="B" onclick="toggleSelect(this)">
+ <div class="card-image" style="background:linear-gradient(135deg,#1e1b4b,#312e81);padding:20px;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;">
+ <div style="font-size:36px;"></div>
+ <div style="color:#e0e7ff;font-size:15px;font-weight:700;">Halo, Pandu!</div>
+ <div style="color:#a5b4fc;font-size:12px;text-align:center;line-height:1.6;max-width:190px;">
+ Kapster favorit kamu lagi<br>ngasihin minyak rambut dulu...<br>
+ <span style="color:#818cf8;font-size:10px;">(data kamu sedang dimuat)</span>
+ </div>
+ <div style="display:flex;gap:4px;margin-top:4px;">
+ <div style="width:8px;height:8px;border-radius:50%;background:#6366f1;animation:bounce 0.8s ease infinite;"></div>
+ <div style="width:8px;height:8px;border-radius:50%;background:#818cf8;animation:bounce 0.8s ease 0.15s infinite;"></div>
+ <div style="width:8px;height:8px;border-radius:50%;background:#a5b4fc;animation:bounce 0.8s ease 0.3s infinite;"></div>
+ <style>@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}</style>
+ </div>
+ </div>
+ <div class="card-body">
+ <h3>B — Indigo Fun</h3>
+ <p>Gradient ungu, emoji barbershop, teks santai. Lebih playful dan friendly — cocok buat pelanggan muda.</p>
+ </div>
+ </div>
+
+ <!-- Option C -->
+ <div class="card" data-choice="C" onclick="toggleSelect(this)">
+ <div class="card-image" style="background:#0f172a;padding:16px;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;">
+ <!-- Membership card preview -->
+ <div style="width:180px;background:linear-gradient(135deg,#7c3aed,#db2777);border-radius:10px;padding:12px;position:relative;overflow:hidden;">
+ <div style="color:rgba(255,255,255,0.4);font-size:8px;letter-spacing:2px;text-transform:uppercase;">RedBox Member</div>
+ <div style="color:#fff;font-size:13px;font-weight:700;margin-top:4px;">PANDU</div>
+ <div style="color:rgba(255,255,255,0.7);font-size:9px;margin-top:2px;">Bronze · ●●● poin</div>
+ <!-- shimmer overlay -->
+ <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);animation:shimmer 1.5s infinite;"></div>
+ <style>@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}</style>
+ </div>
+ <div style="color:#64748b;font-size:10px;text-align:center;">Memuat data terbarumu...</div>
+ <!-- thin progress bar -->
+ <div style="width:140px;height:3px;background:#1e293b;border-radius:9px;overflow:hidden;">
+ <div style="height:100%;width:70%;background:linear-gradient(90deg,#7c3aed,#db2777);border-radius:9px;animation:grow 2s ease-in-out infinite;"></div>
+ <style>@keyframes grow{0%{width:20%}60%{width:85%}100%{width:20%}}</style>
+ </div>
+ </div>
+ <div class="card-body">
+ <h3>C — Card Preview</h3>
+ <p>Kartu membership shimmer sambil loading, progress bar di bawah. Langsung kasih taste data yang akan muncul.</p>
+ </div>
+ </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Klik untuk pilih — atau ceritakan lewat terminal jika mau gabungan.</p>

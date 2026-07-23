@@ -1,0 +1,110 @@
+<h2>Pertanyaan 3: Di mana admin pilih tanggalnya?</h2>
+<p class="subtitle">Toggle sekarang langsung set hari ini. Kita perlu cara untuk pilih tanggal lain. Mana yang paling natural?</p>
+
+<div class="cards" style="gap:16px; margin-top: 20px;">
+
+  <!-- Option A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)" style="padding:0; overflow:hidden; border-radius:16px;">
+    <div class="card-image" style="background:#1a0e11; padding: 20px 16px 16px;">
+      <div style="font-size:11px; color:#6B5A5E; margin-bottom:10px; text-transform:uppercase; letter-spacing:.05em;">Tampilan card kapster</div>
+      <!-- Barber card mockup A -->
+      <div style="background:#1f1215; border:1px solid rgba(34,197,94,0.25); border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#3f1e22;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#C72820;">UB</div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:#F0EAEB;">Ubay</div>
+          <div style="display:flex;gap:4px;margin-top:4px;">
+            <span style="font-size:9px;padding:2px 6px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Min</span>
+            <span style="font-size:9px;padding:2px 6px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Sen</span>
+            <span style="font-size:9px;padding:2px 6px;border-radius:20px;background:rgba(22,163,74,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.2);">Sel</span>
+          </div>
+        </div>
+        <!-- Toggle + calendar icon side by side -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <!-- calendar icon button -->
+            <button style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8a7a7e" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+            </button>
+            <!-- toggle -->
+            <div style="width:40px;height:22px;background:#16a34a;border-radius:20px;position:relative;border:1px solid rgba(34,197,94,0.4);">
+              <div style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:white;border-radius:50%;"></div>
+            </div>
+          </div>
+          <span style="font-size:9px;color:#4ade80;">AKTIF</span>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:10px;color:#4A3E40;text-align:center;">→ tap 📅 untuk buka date picker</div>
+    </div>
+    <div class="card-body" style="padding:14px 16px;">
+      <h3 style="font-size:13px;">A — Ikon kalender di samping toggle</h3>
+      <p style="font-size:11px;">Toggle tetap untuk hari ini. Tambah ikon 📅 kecil di samping — tap untuk pilih tanggal lain lalu set off/on.</p>
+    </div>
+  </div>
+
+  <!-- Option B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)" style="padding:0; overflow:hidden; border-radius:16px;">
+    <div class="card-image" style="background:#1a0e11; padding: 20px 16px 16px;">
+      <div style="font-size:11px; color:#6B5A5E; margin-bottom:10px; text-transform:uppercase; letter-spacing:.05em;">Tampilan card kapster</div>
+      <!-- Barber card mockup B — tap card to open detail sheet -->
+      <div style="background:#1f1215; border:1px solid rgba(34,197,94,0.25); border-radius:14px; padding:12px 14px; display:flex; align-items:center; gap:12px;">
+        <div style="width:44px;height:44px;border-radius:50%;background:#3f1e22;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#C72820;">UB</div>
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:600;color:#F0EAEB;">Ubay</div>
+          <div style="font-size:10px;color:#4ade80;margin-top:3px;">● Aktif · 4 booking hari ini</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <div style="width:40px;height:22px;background:#16a34a;border-radius:20px;position:relative;border:1px solid rgba(34,197,94,0.4);">
+            <div style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:white;border-radius:50%;"></div>
+          </div>
+          <span style="font-size:9px;color:#4ade80;">AKTIF</span>
+        </div>
+      </div>
+      <!-- Bottom sheet preview -->
+      <div style="margin-top:12px; background:#2a1a1e; border:1px solid rgba(255,255,255,0.07); border-radius:14px; padding:12px 14px;">
+        <div style="font-size:10px;color:#6B5A5E;margin-bottom:8px;">📋 Long-press kartu → bottom sheet</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <div style="background:#C72820;color:white;font-size:10px;padding:5px 10px;border-radius:8px;">Set Libur Tanggal...</div>
+          <div style="background:rgba(255,255,255,0.06);color:#8a7a7e;font-size:10px;padding:5px 10px;border-radius:8px;">Lihat Jadwal</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body" style="padding:14px 16px;">
+      <h3 style="font-size:13px;">B — Long-press kartu buka bottom sheet</h3>
+      <p style="font-size:11px;">Card tetap bersih. Long-press atau tap titik tiga → menu aksi: set libur tanggal tertentu, lihat jadwal libur, dll.</p>
+    </div>
+  </div>
+
+  <!-- Option C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)" style="padding:0; overflow:hidden; border-radius:16px;">
+    <div class="card-image" style="background:#1a0e11; padding: 20px 16px 16px;">
+      <div style="font-size:11px; color:#6B5A5E; margin-bottom:10px; text-transform:uppercase; letter-spacing:.05em;">Toggle berubah jadi dua bagian</div>
+      <div style="background:#1f1215; border:1px solid rgba(199,40,32,0.25); border-radius:14px; padding:12px 14px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:44px;height:44px;border-radius:50%;background:#3f1e22;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#C72820;">UB</div>
+          <div style="flex:1;">
+            <div style="font-size:13px;font-weight:600;color:#F0EAEB;">Ubay</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+            <div style="width:40px;height:22px;background:#16a34a;border-radius:20px;position:relative;border:1px solid rgba(34,197,94,0.4);">
+              <div style="position:absolute;top:2px;right:2px;width:16px;height:16px;background:white;border-radius:50%;"></div>
+            </div>
+            <span style="font-size:9px;color:#4ade80;">AKTIF</span>
+          </div>
+        </div>
+        <!-- Date row below -->
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.05);display:flex;align-items:center;gap:8px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B5A5E" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          <span style="font-size:10px;color:#6B5A5E;">Pilih tanggal libur:</span>
+          <div style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:4px 8px;font-size:10px;color:#8a7a7e;">Hari ini (16 Jun)</div>
+          <div style="background:#C72820;border-radius:8px;padding:4px 8px;font-size:10px;color:white;cursor:pointer;">Set Off</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:10px;color:#4A3E40;text-align:center;">→ expand card langsung punya date picker inline</div>
+    </div>
+    <div class="card-body" style="padding:14px 16px;">
+      <h3 style="font-size:13px;">C — Date picker expand di dalam card</h3>
+      <p style="font-size:11px;">Tap toggle → card expand ke bawah, tampil date picker + tombol Off/On. Tanpa modal, semua inline di card.</p>
+    </div>
+  </div>
+
+</div>

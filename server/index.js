@@ -3,6 +3,10 @@
 // Backend: Node.js + MySQL (XAMPP) / Supabase
 // ================================================
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+// Node < 22 lacks a global WebSocket, which @supabase/realtime-js requires. Polyfill with `ws`.
+if (typeof globalThis.WebSocket === 'undefined') {
+  try { globalThis.WebSocket = require('ws'); } catch (_) { /* ws optional */ }
+}
 const fs = require('fs');
 const express = require('express');
 const cors    = require('cors');

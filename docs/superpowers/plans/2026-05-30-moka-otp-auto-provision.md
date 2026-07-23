@@ -38,16 +38,16 @@ Buat file `server/migrations/2026-05-30-customers-points-column.sql` dengan isi:
 -- Tambah kolom points ke customers jika belum ada.
 -- Idempotent — aman dijalankan berulang.
 ALTER TABLE customers
-  ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0;
+ ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0;
 
 -- Backfill dari member_profiles untuk member yang sudah ada
--- tapi belum punya points (matching by phone_e164 ↔ member_profiles.phone)
+-- tapi belum punya points (matching by phone_e164 member_profiles.phone)
 UPDATE customers c
-SET    points = COALESCE(mp.total_points, c.visits * 10)
-FROM   member_profiles mp
-WHERE  mp.phone      = c.phone_e164
-  AND  mp.total_points > 0
-  AND  (c.points IS NULL OR c.points = 0);
+SET points = COALESCE(mp.total_points, c.visits * 10)
+FROM member_profiles mp
+WHERE mp.phone = c.phone_e164
+ AND mp.total_points > 0
+ AND (c.points IS NULL OR c.points = 0);
 ```
 
 - [ ] **Step 2: Jalankan di Supabase SQL Editor**
@@ -61,9 +61,9 @@ Expected output: `ALTER TABLE` lalu `UPDATE X` (X = jumlah row yang ter-backfill
 Jalankan di Supabase SQL Editor:
 ```sql
 SELECT column_name, data_type, column_default
-FROM   information_schema.columns
-WHERE  table_name = 'customers'
-  AND  column_name = 'points';
+FROM information_schema.columns
+WHERE table_name = 'customers'
+ AND column_name = 'points';
 ```
 
 Expected: 1 row dengan `column_name = 'points'`, `data_type = 'integer'`.
@@ -80,14 +80,14 @@ Expected: 1 row dengan `column_name = 'points'`, `data_type = 'integer'`.
 Cari blok ini di `server/index.js` (sekitar line 1812):
 
 ```js
-    // Cek customer terdaftar
-    const { data: customer } = await supabase
-      .from('customers').select('id, name, wa').eq('wa', wa).maybeSingle();
-    if (!customer) {
-      return res.status(404).json({
-        error: 'Nomor tidak terdaftar sebagai member. Silakan kunjungi outlet untuk mendaftar.'
-      });
-    }
+ // Cek customer terdaftar
+ const { data: customer } = await supabase
+ .from('customers').select('id, name, wa').eq('wa', wa).maybeSingle();
+ if (!customer) {
+ return res.status(404).json({
+ error: 'Nomor tidak terdaftar sebagai member. Silakan kunjungi outlet untuk mendaftar.'
+ });
+ }
 ```
 
 - [ ] **Step 2: Ganti dengan implementasi baru**
@@ -95,73 +95,73 @@ Cari blok ini di `server/index.js` (sekitar line 1812):
 Ganti seluruh blok di atas dengan:
 
 ```js
-    // Cek customer terdaftar
-    let { data: customer } = await supabase
-      .from('customers').select('id, name, wa').eq('wa', wa).maybeSingle();
+ // Cek customer terdaftar
+ let { data: customer } = await supabase
+ .from('customers').select('id, name, wa').eq('wa', wa).maybeSingle();
 
-    if (!customer) {
-      // Fallback: cek member_profiles (member terdaftar via Moka POS)
-      const phoneE164 = '+' + wa;
-      const { data: profile } = await supabase
-        .from('member_profiles')
-        .select('full_name, phone, email, membership_status, membership_activated_at, total_points, total_visits, referral_code, birthdate, gender, address')
-        .eq('phone', phoneE164)
-        .maybeSingle();
+ if (!customer) {
+ // Fallback: cek member_profiles (member terdaftar via Moka POS)
+ const phoneE164 = '+' + wa;
+ const { data: profile } = await supabase
+ .from('member_profiles')
+ .select('full_name, phone, email, membership_status, membership_activated_at, total_points, total_visits, referral_code, birthdate, gender, address')
+ .eq('phone', phoneE164)
+ .maybeSingle();
 
-      if (!profile) {
-        return res.status(404).json({
-          error: 'Nomor tidak terdaftar sebagai member. Silakan kunjungi outlet untuk mendaftar.'
-        });
-      }
+ if (!profile) {
+ return res.status(404).json({
+ error: 'Nomor tidak terdaftar sebagai member. Silakan kunjungi outlet untuk mendaftar.'
+ });
+ }
 
-      // Auto-provision ke customers — satu kali saja
-      // upsert onConflict:'wa' mencegah duplikasi saat race condition
-      const isSyntheticEmail = Boolean(
-        profile.email && /^moka_.+@redbox\.internal$/.test(profile.email)
-      );
-      const bd = profile.birthdate ? new Date(profile.birthdate) : null;
-      const provisionData = {
-        name:                    profile.full_name || '',
-        wa,
-        phone_e164:              phoneE164,
-        email:                   isSyntheticEmail ? null : (profile.email || null),
-        membership_status:       profile.membership_status || 'INACTIVE',
-        membership_activated_at: profile.membership_activated_at || null,
-        points:                  Number(profile.total_points) || 0,
-        visits:                  Number(profile.total_visits) || 0,
-        referral_code:           profile.referral_code || generateReferralCode(),
-        birth_date:              profile.birthdate || null,
-        ...(bd && !isNaN(bd) ? {
-          birthday: `${String(bd.getUTCMonth()+1).padStart(2,'0')}-${String(bd.getUTCDate()).padStart(2,'0')}`
-        } : {}),
-        gender:  profile.gender  || null,
-        address: profile.address || null,
-      };
+ // Auto-provision ke customers — satu kali saja
+ // upsert onConflict:'wa' mencegah duplikasi saat race condition
+ const isSyntheticEmail = Boolean(
+ profile.email && /^moka_.+@redbox\.internal$/.test(profile.email)
+ );
+ const bd = profile.birthdate ? new Date(profile.birthdate) : null;
+ const provisionData = {
+ name: profile.full_name || '',
+ wa,
+ phone_e164: phoneE164,
+ email: isSyntheticEmail ? null : (profile.email || null),
+ membership_status: profile.membership_status || 'INACTIVE',
+ membership_activated_at: profile.membership_activated_at || null,
+ points: Number(profile.total_points) || 0,
+ visits: Number(profile.total_visits) || 0,
+ referral_code: profile.referral_code || generateReferralCode(),
+ birth_date: profile.birthdate || null,
+ ...(bd && !isNaN(bd) ? {
+ birthday: `${String(bd.getUTCMonth()+1).padStart(2,'0')}-${String(bd.getUTCDate()).padStart(2,'0')}`
+ } : {}),
+ gender: profile.gender || null,
+ address: profile.address || null,
+ };
 
-      let { data: provisioned, error: provErr } = await supabase
-        .from('customers')
-        .upsert(provisionData, { onConflict: 'wa' })
-        .select('id, name, wa')
-        .single();
+ let { data: provisioned, error: provErr } = await supabase
+ .from('customers')
+ .upsert(provisionData, { onConflict: 'wa' })
+ .select('id, name, wa')
+ .single();
 
-      // Fallback jika kolom points belum ada di DB (defensive — lihat line ~1768)
-      if (provErr?.message?.includes('points')) {
-        const { points: _, ...withoutPoints } = provisionData;
-        ({ data: provisioned, error: provErr } = await supabase
-          .from('customers')
-          .upsert(withoutPoints, { onConflict: 'wa' })
-          .select('id, name, wa')
-          .single());
-      }
+ // Fallback jika kolom points belum ada di DB (defensive — lihat line ~1768)
+ if (provErr?.message?.includes('points')) {
+ const { points: _, ...withoutPoints } = provisionData;
+ ({ data: provisioned, error: provErr } = await supabase
+ .from('customers')
+ .upsert(withoutPoints, { onConflict: 'wa' })
+ .select('id, name, wa')
+ .single());
+ }
 
-      if (provErr) {
-        console.warn('[OTP] Auto-provision gagal, lanjut in-memory:', provErr.message);
-        customer = { id: null, name: provisionData.name, wa };
-      } else {
-        customer = provisioned;
-        console.log(`[OTP] Auto-provision sukses: ${wa}`);
-      }
-    }
+ if (provErr) {
+ console.warn('[OTP] Auto-provision gagal, lanjut in-memory:', provErr.message);
+ customer = { id: null, name: provisionData.name, wa };
+ } else {
+ customer = provisioned;
+ console.log(`[OTP] Auto-provision sukses: ${wa}`);
+ }
+ }
 ```
 
 > **Catatan penting:** `generateReferralCode()` sudah terdefinisi di scope yang sama (dalam blok `{ ... }` auth section, sekitar line 1794). Tidak perlu import tambahan.
@@ -180,20 +180,20 @@ Ambil satu nomor yang ADA di `member_profiles` tapi BELUM ada di `customers`. Ja
 
 ```bash
 curl -s -X POST https://redboxbarbershop.com/api/auth/otp/send \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"08XXXXXXXXXX"}' | jq .
+ -H "Content-Type: application/json" \
+ -d '{"phone":"08XXXXXXXXXX"}' | jq .
 ```
 
 Expected response:
 ```json
-{ "success": true, "message": "Kode OTP sudah dikirim ke WhatsApp kamu 🎉" }
+{ "success": true, "message": "Kode OTP sudah dikirim ke WhatsApp kamu " }
 ```
 
 Verifikasi row terbuat di Supabase:
 ```sql
 SELECT name, wa, membership_status, points, visits
-FROM   customers
-WHERE  wa = '628XXXXXXXXXX';
+FROM customers
+WHERE wa = '628XXXXXXXXXX';
 ```
 
 Expected: 1 row dengan data dari Moka (nama benar, poin > 0, membership_status = 'ACTIVE' jika member aktif).
@@ -202,8 +202,8 @@ Expected: 1 row dengan data dari Moka (nama benar, poin > 0, membership_status =
 
 ```bash
 curl -s -X POST https://redboxbarbershop.com/api/auth/otp/send \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"08000000000"}' | jq .
+ -H "Content-Type: application/json" \
+ -d '{"phone":"08000000000"}' | jq .
 ```
 
 Expected response (404):
@@ -217,8 +217,8 @@ Ambil nomor yang sudah ada di `customers`. Kirim OTP → harus tetap sukses tanp
 
 ```bash
 curl -s -X POST https://redboxbarbershop.com/api/auth/otp/send \
-  -H "Content-Type: application/json" \
-  -d '{"phone":"08YYYYYYYYYY"}' | jq .
+ -H "Content-Type: application/json" \
+ -d '{"phone":"08YYYYYYYYYY"}' | jq .
 ```
 
 Expected: `{ "success": true, ... }` — sama seperti sebelumnya.
@@ -238,9 +238,9 @@ Expected: `{ "success": true, ... }` — sama seperti sebelumnya.
 
 ```bash
 git add server/index.js \
-        server/migrations/2026-05-30-customers-points-column.sql \
-        docs/superpowers/specs/2026-05-30-moka-otp-auto-provision-design.md \
-        docs/superpowers/plans/2026-05-30-moka-otp-auto-provision.md
+ server/migrations/2026-05-30-customers-points-column.sql \
+ docs/superpowers/specs/2026-05-30-moka-otp-auto-provision-design.md \
+ docs/superpowers/plans/2026-05-30-moka-otp-auto-provision.md
 ```
 
 - [ ] **Step 2: Commit**
@@ -265,8 +265,8 @@ EOF
 
 - [ ] Migration `points` sudah dijalankan di Supabase
 - [ ] Migration `membership_status` (dari sesi sebelumnya) sudah dijalankan
-- [ ] Test 1: Moka member dapat OTP ✓
-- [ ] Test 2: Nomor tak terdaftar tetap 404 ✓
-- [ ] Test 3: Member existing tidak terpengaruh ✓
-- [ ] Test 4: Dashboard mobile menampilkan data Moka ✓
-- [ ] Commit berhasil ✓
+- [ ] Test 1: Moka member dapat OTP 
+- [ ] Test 2: Nomor tak terdaftar tetap 404 
+- [ ] Test 3: Member existing tidak terpengaruh 
+- [ ] Test 4: Dashboard mobile menampilkan data Moka 
+- [ ] Commit berhasil 

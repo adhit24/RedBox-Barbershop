@@ -1,6 +1,6 @@
 # Home Service Extended Hours & Anti-Korupsi System
-**Tanggal:** 2026-05-30  
-**Status:** Approved — siap implementasi  
+**Tanggal:** 2026-05-30 
+**Status:** Approved — siap implementasi 
 **Scope:** Jam operasional home service 06:00–23:00 WIB + lifecycle tracking + anti-korupsi
 
 ---
@@ -35,21 +35,21 @@ RedBox Barbershop ingin membuka layanan **home service** di luar jam operasional
 
 ```
 [ Booking Form (booking.js) ]
-        ↓  type=home_service, jam 06:00–23:00
+ ↓ type=home_service, jam 06:00–23:00
 [ Slot Engine (slotEngine.js) ]
-        ↓  cek konflik jadwal outlet kapster + filter home_service_enabled
+ ↓ cek konflik jadwal outlet kapster + filter home_service_enabled
 [ API Booking (routes.js) ]
-        ↓  insert schedules (type=home_service) + insert home_service_jobs
-        ↓  push ke Moka sebagai online order (outlet = outlet asal kapster)
+ ↓ insert schedules (type=home_service) + insert home_service_jobs
+ ↓ push ke Moka sebagai online order (outlet = outlet asal kapster)
 [ WhatsApp Bot (wa/webhook.js) ]
-        ↓  notif kapster saat booking → BERANGKAT → SELESAI
-        ↓  notif pelanggan → konfirmasi YA
+ ↓ notif kapster saat booking → BERANGKAT → SELESAI
+ ↓ notif pelanggan → konfirmasi YA
 [ Lifecycle Engine ]
-        ↓  update status home_service_jobs + update Moka order status
+ ↓ update status home_service_jobs + update Moka order status
 [ Auto-flag Cron (tiap 15 menit) ]
-        ↓  deteksi no-show kapster & pelanggan tidak konfirmasi → notif admin
+ ↓ deteksi no-show kapster & pelanggan tidak konfirmasi → notif admin
 [ Admin Rekap ]
-        ↓  rekap transaksi dari Moka; flag log dari home_service_jobs
+ ↓ rekap transaksi dari Moka; flag log dari home_service_jobs
 ```
 
 ---
@@ -60,19 +60,19 @@ RedBox Barbershop ingin membuka layanan **home service** di luar jam operasional
 
 ```sql
 CREATE TABLE home_service_jobs (
-  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  schedule_id           UUID REFERENCES schedules(id) ON DELETE CASCADE,
-  status                TEXT DEFAULT 'confirmed',
-  -- confirmed | on_the_way | done_barber | completed | flagged
-  address               TEXT NOT NULL,
-  reschedule_count      INT DEFAULT 0,
-  barber_enroute_at     TIMESTAMPTZ,   -- kapster balas BERANGKAT
-  barber_done_at        TIMESTAMPTZ,   -- kapster balas SELESAI
-  customer_confirmed_at TIMESTAMPTZ,   -- pelanggan balas YA
-  flagged_at            TIMESTAMPTZ,
-  flag_reason           TEXT,          -- 'barber_no_show' | 'customer_no_confirm'
-  created_at            TIMESTAMPTZ DEFAULT NOW(),
-  updated_at            TIMESTAMPTZ DEFAULT NOW()
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ schedule_id UUID REFERENCES schedules(id) ON DELETE CASCADE,
+ status TEXT DEFAULT 'confirmed',
+ -- confirmed | on_the_way | done_barber | completed | flagged
+ address TEXT NOT NULL,
+ reschedule_count INT DEFAULT 0,
+ barber_enroute_at TIMESTAMPTZ, -- kapster balas BERANGKAT
+ barber_done_at TIMESTAMPTZ, -- kapster balas SELESAI
+ customer_confirmed_at TIMESTAMPTZ, -- pelanggan balas YA
+ flagged_at TIMESTAMPTZ,
+ flag_reason TEXT, -- 'barber_no_show' | 'customer_no_confirm'
+ created_at TIMESTAMPTZ DEFAULT NOW(),
+ updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_home_service_jobs_schedule_id ON home_service_jobs(schedule_id);
@@ -83,15 +83,15 @@ CREATE INDEX idx_home_service_jobs_status ON home_service_jobs(status);
 
 ```sql
 ALTER TABLE schedules
-  ADD COLUMN type TEXT DEFAULT 'outlet';
-  -- 'outlet' | 'home_service'
+ ADD COLUMN type TEXT DEFAULT 'outlet';
+ -- 'outlet' | 'home_service'
 ```
 
 ### 4.3 Perubahan Tabel `barbers`
 
 ```sql
 ALTER TABLE barbers
-  ADD COLUMN home_service_enabled BOOLEAN DEFAULT FALSE;
+ ADD COLUMN home_service_enabled BOOLEAN DEFAULT FALSE;
 ```
 
 Admin toggle per kapster. Hanya kapster `home_service_enabled = TRUE` yang muncul di booking form home service.
@@ -114,7 +114,7 @@ Tambah parameter `type` pada request availability:
 
 ```
 GET /api/availability?outletId=bypass&date=2026-06-02
-  &durationMinutes=60&barberId=xxx&type=home_service
+ &durationMinutes=60&barberId=xxx&type=home_service
 ```
 
 **Logika perubahan:**
@@ -134,13 +134,13 @@ Semua pesan via Fonnte. Lookup job berdasarkan **nomor HP pengirim** — tidak p
 ### 6.1 Notif Kapster — Booking Baru (otomatis saat booking dikonfirmasi)
 
 ```
-🔔 [HOME SERVICE] Booking Baru
+ [HOME SERVICE] Booking Baru
 
 Pelanggan : Budi Santoso
-Tanggal   : Senin, 2 Jun 2026 | 07:00 WIB
-Alamat    : Jl. Melati No.12, Cirebon
-Layanan   : Gentleman Grooming (60 menit)
-Harga     : Rp 250.000
+Tanggal : Senin, 2 Jun 2026 | 07:00 WIB
+Alamat : Jl. Melati No.12, Cirebon
+Layanan : Gentleman Grooming (60 menit)
+Harga : Rp 250.000
 
 Balas BERANGKAT saat berangkat ke lokasi.
 Balas SELESAI setelah pekerjaan selesai.
@@ -158,10 +158,10 @@ Balas SELESAI setelah pekerjaan selesai.
 - Sistem: `status → done_barber`, catat `barber_done_at`
 - Lookup: status = `on_the_way` untuk nomor kapster tersebut
 - Notif pelanggan:
-  ```
-  ✅ Kapster [nama] melaporkan pekerjaan selesai.
-  Sudah menerima layanan? Balas YA untuk konfirmasi.
-  ```
+ ```
+ Kapster [nama] melaporkan pekerjaan selesai.
+ Sudah menerima layanan? Balas YA untuk konfirmasi.
+ ```
 
 ### 6.4 Pelanggan Balas `YA`
 
@@ -179,33 +179,33 @@ Jika tidak ada job aktif yang cocok untuk nomor pengirim:
 
 ## 7. Auto-flag Cron
 
-**File baru:** `api/cron/home-service-flag.js`  
+**File baru:** `api/cron/home-service-flag.js` 
 **Jadwal:** Tiap 15 menit (Vercel Cron)
 
 ```
 Cek 1 — Barber No-Show:
-  Query: home_service_jobs WHERE status = 'confirmed'
-    AND schedules.start_time < NOW() - interval '30 minutes'
-    AND barber_enroute_at IS NULL
-  Aksi: set status = 'flagged', flag_reason = 'barber_no_show', flagged_at = NOW()
-  Notif: WhatsApp ke WA_ADMIN_NUMBER
+ Query: home_service_jobs WHERE status = 'confirmed'
+ AND schedules.start_time < NOW() - interval '30 minutes'
+ AND barber_enroute_at IS NULL
+ Aksi: set status = 'flagged', flag_reason = 'barber_no_show', flagged_at = NOW()
+ Notif: WhatsApp ke WA_ADMIN_NUMBER
 
 Cek 2 — Pelanggan Tidak Konfirmasi:
-  Query: home_service_jobs WHERE status = 'done_barber'
-    AND barber_done_at < NOW() - interval '45 minutes'
-    AND customer_confirmed_at IS NULL
-  Aksi: set status = 'flagged', flag_reason = 'customer_no_confirm', flagged_at = NOW()
-  Notif: WhatsApp ke WA_ADMIN_NUMBER
+ Query: home_service_jobs WHERE status = 'done_barber'
+ AND barber_done_at < NOW() - interval '45 minutes'
+ AND customer_confirmed_at IS NULL
+ Aksi: set status = 'flagged', flag_reason = 'customer_no_confirm', flagged_at = NOW()
+ Notif: WhatsApp ke WA_ADMIN_NUMBER
 ```
 
 Format notif admin:
 ```
-⚠️ FLAG HOME SERVICE
+ FLAG HOME SERVICE
 
-Job    : HS-[id singkat]
+Job : HS-[id singkat]
 Kapster: [nama]
 Alasan : Kapster tidak berangkat / Pelanggan tidak konfirmasi
-Waktu  : [start_time]
+Waktu : [start_time]
 Alamat : [address]
 ```
 
@@ -218,13 +218,13 @@ Alamat : [address]
 ```
 Request body:
 {
-  "jobId": "uuid",
-  "newStartTime": "2026-06-05T08:00:00+07:00"
+ "jobId": "uuid",
+ "newStartTime": "2026-06-05T08:00:00+07:00"
 }
 
 Validasi:
 1. Job harus status = 'confirmed'
-2. schedules.start_time > NOW() + 24 jam  (H-1 check)
+2. schedules.start_time > NOW() + 24 jam (H-1 check)
 3. Slot baru tersedia (cek availability endpoint)
 
 Jika lolos:

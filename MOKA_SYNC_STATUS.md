@@ -1,20 +1,20 @@
 # Moka Open Bill Sync - Status & Testing Guide
 
-## ✅ Barber ID Mapping - COMPLETE
+## Barber ID Mapping - COMPLETE
 
 | Cabang | Total | Mapped | Missing | Status |
 |--------|-------|--------|---------|--------|
-| **Bypass** | 4 | 4 | 0 | ✅ |
-| **CSB** | 7 | 6 | Yudha* | ✅ |
-| **Samadikun** | 5 | 5 | 0 | ✅ |
-| **Sumber** | 4 | 4 | 0 | ✅ |
-| **Tegal** | 6 | 6 | 0 | ✅ |
+| **Bypass** | 4 | 4 | 0 | |
+| **CSB** | 7 | 6 | Yudha* | |
+| **Samadikun** | 5 | 5 | 0 | |
+| **Sumber** | 4 | 4 | 0 | |
+| **Tegal** | 6 | 6 | 0 | |
 
 *Yudha (CSB): Tidak ditemukan di Item Library - perlu setup manual di Moka POS
 
 ---
 
-## 🔧 API Endpoints Created
+## API Endpoints Created
 
 ### 1. Update Tegal Barber IDs
 ```
@@ -36,7 +36,7 @@ GET /api/moka/cron-sync
 
 ---
 
-## 🚀 Testing Steps
+## Testing Steps
 
 ### Step 1: Update Tegal Barber IDs (Jika Belum)
 ```bash
@@ -78,24 +78,24 @@ Response harus menunjukkan `moka_open_bills: 1` atau lebih
 
 ---
 
-## ⚠️ Notes
+## Notes
 
 1. **Yudha (CSB)**: Perlu ditambahkan ke Item Library Moka POS, atau buat open bill manual dengan nama "Yudha" agar ID muncul
 
 2. **Cron Job**: Sudah terkonfigurasi di `vercel.json` untuk jalan setiap 5 menit:
-   ```json
-   { "path": "/api/moka/cron-sync", "schedule": "*/5 * * * *" }
-   ```
+ ```json
+ { "path": "/api/moka/cron-sync", "schedule": "*/5 * * * *" }
+ ```
 
 3. **Token Expired**: Jika token expired, perlu re-autentikasi via Moka dashboard untuk outlet yang bersangkutan
 
 4. **Barber Mapping**: Jika open bill tidak memblokir slot, cek:
-   - Barber sudah punya `moka_employee_id` (gunakan test-sync endpoint)
-   - Nama barber di Moka sama dengan `Items Name` di Item Library
+ - Barber sudah punya `moka_employee_id` (gunakan test-sync endpoint)
+ - Nama barber di Moka sama dengan `Items Name` di Item Library
 
 ---
 
-## 🔍 Debug Commands
+## Debug Commands
 
 ```bash
 # Check all outlets
@@ -107,7 +107,7 @@ curl "https://your-domain.vercel.app/api/moka/sync-barber-ids?outlet=bypass&secr
 
 ---
 
-## 📋 Barber IDs Reference
+## Barber IDs Reference
 
 ### Bypass
 - Abdul (Dul): 31396411

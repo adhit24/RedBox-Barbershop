@@ -1,0 +1,106 @@
+<h2>Animation Specs — Bold & Punchy</h2>
+<p class="subtitle">Section 2 of 3 — Nilai exact untuk setiap jenis animasi</p>
+
+<div class="section">
+ <div class="label">1. Page Transition — Slide Horizontal</div>
+ <div class="mockup">
+ <div class="mockup-body" style="font-family:monospace;font-size:11px;line-height:2;">
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+ <div style="background:#0a0f1a;border-radius:8px;padding:10px;border-left:3px solid #C72820;">
+ <div style="color:#E87068;font-size:10px;font-weight:700;margin-bottom:6px;">ENTER (forward)</div>
+ <div style="color:#64748b;">initial: <span style="color:#22c55e;">x: "100%", opacity: 0</span></div>
+ <div style="color:#64748b;">animate: <span style="color:#22c55e;">x: 0, opacity: 1</span></div>
+ <div style="color:#64748b;">spring: <span style="color:#22c55e;">stiff 300, damp 30</span></div>
+ <div style="color:#64748b;">duration: <span style="color:#22c55e;">~350ms</span></div>
+ </div>
+ <div style="background:#0a0f1a;border-radius:8px;padding:10px;border-left:3px solid #3b82f6;">
+ <div style="color:#60a5fa;font-size:10px;font-weight:700;margin-bottom:6px;">ENTER (back)</div>
+ <div style="color:#64748b;">initial: <span style="color:#60a5fa;">x: "-100%", opacity: 0</span></div>
+ <div style="color:#64748b;">animate: <span style="color:#60a5fa;">x: 0, opacity: 1</span></div>
+ <div style="color:#64748b;">spring: <span style="color:#60a5fa;">stiff 300, damp 30</span></div>
+ <div style="color:#64748b;">duration: <span style="color:#60a5fa;">~350ms</span></div>
+ </div>
+ <div style="background:#0a0f1a;border-radius:8px;padding:10px;border-left:3px solid #475569;">
+ <div style="color:#94a3b8;font-size:10px;font-weight:700;margin-bottom:6px;">EXIT (forward)</div>
+ <div style="color:#64748b;">exit: <span style="color:#94a3b8;">x: "-30%", opacity: 0</span></div>
+ <div style="color:#64748b;">easing: <span style="color:#94a3b8;">ease-in 200ms</span></div>
+ <div style="color:#475569;font-size:10px;">Tidak full slide — hanya 30% ke kiri<br>supaya tidak terlalu keras</div>
+ </div>
+ <div style="background:#0a0f1a;border-radius:8px;padding:10px;border-left:3px solid #475569;">
+ <div style="color:#94a3b8;font-size:10px;font-weight:700;margin-bottom:6px;">EXIT (back)</div>
+ <div style="color:#64748b;">exit: <span style="color:#94a3b8;">x: "30%", opacity: 0</span></div>
+ <div style="color:#64748b;">easing: <span style="color:#94a3b8;">ease-in 200ms</span></div>
+ <div style="color:#475569;font-size:10px;">Slide ke kanan sedikit<br>+ fade out</div>
+ </div>
+ </div>
+ </div>
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">2. Barber Schedule — Tambahan Framer Motion</div>
+ <div class="mockup">
+ <div class="mockup-body" style="font-size:11px;line-height:1.9;">
+ <div style="display:flex;flex-direction:column;gap:8px;">
+
+ <div style="display:flex;gap:8px;align-items:flex-start;">
+ <div style="background:#C72820;color:#fff;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;flex-shrink:0;margin-top:2px;">TAB</div>
+ <div style="color:#94a3b8;">Switch Hari/Besok/Minggu → animated underline indicator (<code style="color:#8b5cf6;">layoutId="tab-indicator"</code>), slide smooth antar tab</div>
+ </div>
+
+ <div style="display:flex;gap:8px;align-items:flex-start;">
+ <div style="background:#C72820;color:#fff;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;flex-shrink:0;margin-top:2px;">LIST</div>
+ <div style="color:#94a3b8;">Booking card stagger: <code style="color:#8b5cf6;">delay: index * 0.06</code>, masuk dari bawah (<code style="color:#8b5cf6;">y: 16→0</code>), opacity 0→1</div>
+ </div>
+
+ <div style="display:flex;gap:8px;align-items:flex-start;">
+ <div style="background:#C72820;color:#fff;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;flex-shrink:0;margin-top:2px;">EMPTY</div>
+ <div style="color:#94a3b8;">Empty state (tidak ada booking) → scale 0.8→1 + fade, ilustrasi sederhana dengan pulse animation</div>
+ </div>
+
+ <div style="display:flex;gap:8px;align-items:flex-start;">
+ <div style="background:#C72820;color:#fff;border-radius:4px;padding:2px 7px;font-size:9px;font-weight:700;flex-shrink:0;margin-top:2px;">LOAD</div>
+ <div style="color:#94a3b8;">Skeleton shimmer pulse — identik dengan admin dashboard yang sudah ada</div>
+ </div>
+ </div>
+ </div>
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">3. Micro-interactions Global (semua halaman)</div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
+ <div style="background:#0a0f1a;border-radius:8px;padding:10px;border:1px solid #1e293b;">
+ <div style="color:#E87068;font-weight:700;margin-bottom:4px;">Tombol / tap target</div>
+ <div style="color:#64748b;"><code style="color:#8b5cf6;">whileTap: scale 0.95</code><br>Sudah ada di beberapa tempat — pastikan konsisten di semua button</div>
+ </div>
+ <div style="background:#0a0f1a;border-radius:8px;padding:10px;border:1px solid #1e293b;">
+ <div style="color:#E87068;font-weight:700;margin-bottom:4px;">Nav tab aktif</div>
+ <div style="color:#64748b;"><code style="color:#8b5cf6;">layoutId="nav-dot"</code><br>Dot/indicator merah slide smooth saat ganti tab di OwnerNav & BottomNav</div>
+ </div>
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">PageTransition.tsx — Kode Inti</div>
+ <div style="background:#0a0f1a;border-radius:8px;padding:12px;font-family:monospace;font-size:10px;color:#64748b;line-height:1.8;">
+ <span style="color:#8b5cf6;">const</span> variants = {<br>
+ &nbsp;&nbsp;enter: (dir) => ({ x: dir === <span style="color:#22c55e;">'forward'</span> ? <span style="color:#22c55e;">'100%'</span> : <span style="color:#3b82f6;">'-100%'</span>, opacity: 0 }),<br>
+ &nbsp;&nbsp;center: { x: 0, opacity: 1 },<br>
+ &nbsp;&nbsp;exit: (dir) => ({ x: dir === <span style="color:#22c55e;">'forward'</span> ? <span style="color:#C72820;">'-30%'</span> : <span style="color:#3b82f6;">'30%'</span>, opacity: 0 }),<br>
+ }<br><br>
+ <span style="color:#8b5cf6;">return</span> (<br>
+ &nbsp;&nbsp;&lt;<span style="color:#C72820;">AnimatePresence</span> mode=<span style="color:#22c55e;">"wait"</span> custom={direction}&gt;<br>
+ &nbsp;&nbsp;&nbsp;&nbsp;&lt;<span style="color:#C72820;">motion.div</span> key={pathname} custom={direction}<br>
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;variants={variants}<br>
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;initial=<span style="color:#22c55e;">"enter"</span> animate=<span style="color:#22c55e;">"center"</span> exit=<span style="color:#22c55e;">"exit"</span><br>
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;transition={{ type: <span style="color:#22c55e;">'spring'</span>, stiffness: 300, damping: 30 }}<br>
+ &nbsp;&nbsp;&nbsp;&nbsp;&gt;<br>
+ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{children}<br>
+ &nbsp;&nbsp;&nbsp;&nbsp;&lt;/motion.div&gt;<br>
+ &nbsp;&nbsp;&lt;/AnimatePresence&gt;<br>
+ )
+ </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Specs ini OK? Reply di terminal untuk lanjut ke Section 3 (file map lengkap).</p>

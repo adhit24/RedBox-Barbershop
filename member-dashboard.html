@@ -1,623 +1,623 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Member Dashboard — Redbox Barbershop</title>
-  <meta name="description" content="Dashboard member Redbox Barbershop. Kelola akun, lihat poin, dan nikmati keistimewaan membership." />
-  <meta name="theme-color" content="#0A0A0A" />
-  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
-  <link rel="stylesheet" href="css/dashboard.css" />
-  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Member Dashboard | Redbox Barbershop</title>
+ <meta name="description" content="Dashboard member Redbox Barbershop. Kelola akun, lihat poin, dan nikmati keistimewaan membership." />
+ <meta name="theme-color" content="#0A0A0A" />
+ <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+ <link rel="preconnect" href="https://fonts.googleapis.com" />
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+ <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
+ <link rel="stylesheet" href="css/style.css" />
+ <link rel="stylesheet" href="css/dashboard.css" />
+ <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
-  <!-- Mobile-first form override — highest specificity, must load last -->
-  <style>
-    html,body{overflow-x:hidden!important;max-width:100vw!important}
-    #panel-account{overflow:hidden!important;width:100%!important;box-sizing:border-box!important}
-    #panel-account .account-form{display:flex!important;flex-direction:column!important;gap:16px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
-    #panel-account .form-row{display:flex!important;flex-direction:column!important;gap:16px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
-    #panel-account .form-field{display:flex!important;flex-direction:column!important;gap:6px!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}
-    #panel-account .form-field input,
-    #panel-account .form-field select{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}
-    #panel-account .password-row,
-    #panel-account .address-row{display:flex!important;flex-direction:column!important;gap:8px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
-    #panel-account .password-row input,
-    #panel-account .address-row input{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}
-    #panel-account .btn-change-pw,
-    #panel-account .btn-add-address{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;white-space:normal!important;box-sizing:border-box!important}
-    #panel-account .btn-save-account{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
-    #panel-account .gender-toggle{width:100%!important;max-width:100%!important;box-sizing:border-box!important}
-  </style>
+ <!-- Mobile-first form override - highest specificity, must load last -->
+ <style>
+ html,body{overflow-x:hidden!important;max-width:100vw!important}
+ #panel-account{overflow:hidden!important;width:100%!important;box-sizing:border-box!important}
+ #panel-account .account-form{display:flex!important;flex-direction:column!important;gap:16px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+ #panel-account .form-row{display:flex!important;flex-direction:column!important;gap:16px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+ #panel-account .form-field{display:flex!important;flex-direction:column!important;gap:6px!important;width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}
+ #panel-account .form-field input,
+ #panel-account .form-field select{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}
+ #panel-account .password-row,
+ #panel-account .address-row{display:flex!important;flex-direction:column!important;gap:8px!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+ #panel-account .password-row input,
+ #panel-account .address-row input{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}
+ #panel-account .btn-change-pw,
+ #panel-account .btn-add-address{display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;white-space:normal!important;box-sizing:border-box!important}
+ #panel-account .btn-save-account{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+ #panel-account .gender-toggle{width:100%!important;max-width:100%!important;box-sizing:border-box!important}
+ </style>
 </head>
 <body>
 
-  <!-- ========== NAVBAR ========== -->
-  <nav class="navbar scrolled" id="navbar">
-    <div class="container nav-container">
-      <a href="index.html" class="nav-logo">
-        <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Barbershop" />
-        <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
-      </a>
-      <div class="nav-pill-wrapper" id="navPillWrapper">
-        <span class="nav-pill-track" id="navPillTrack"></span>
-        <ul class="nav-links" id="navLinks">
-          <li><a href="index.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-            Home
-          </a></li>
-          <li><a href="index.html#services" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
-            Services
-          </a></li>
-          <li><a href="products.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-            Product
-          </a></li>
-          <li><a href="membership.html" class="nav-link">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-            Membership
-          </a></li>
-        </ul>
-      </div>
-      <a href="booking.html" class="btn-book-nav">Book Now</a>
-      <button class="hamburger" id="hamburger" aria-label="Menu">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-  </nav>
+ <!-- ========== NAVBAR ========== -->
+ <nav class="navbar scrolled" id="navbar">
+ <div class="container nav-container">
+ <a href="index.html" class="nav-logo">
+ <img src="Brand_assets/logo_redboxnew.jpeg" alt="Redbox Barbershop" />
+ <span class="nav-brand">Redbox<span class="brand-light">Barbershop</span></span>
+ </a>
+ <div class="nav-pill-wrapper" id="navPillWrapper">
+ <span class="nav-pill-track" id="navPillTrack"></span>
+ <ul class="nav-links" id="navLinks">
+ <li><a href="index.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z"/><path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z"/></svg>
+ Home
+ </a></li>
+ <li><a href="index.html#services" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M8.128 9.155a3.751 3.751 0 1 1 .713-1.321l1.136.656a.75.75 0 0 1 .222 1.104l-.006.007a.75.75 0 0 1-1.032.157l-.113-.072-.92-.531ZM3.3 5.625a2.25 2.25 0 1 1 3.994 2.063.756.756 0 0 0-.122.23 2.25 2.25 0 0 1-3.872-2.293Zm12.572 3.53a3.751 3.751 0 1 0-.713-1.321l-1.136.656a.75.75 0 0 0-.222 1.104l.006.007a.75.75 0 0 0 1.032.157l.113-.072.92-.531Zm4.827-3.53a2.25 2.25 0 0 0-3.994 2.063.756.756 0 0 1 .122.23 2.25 2.25 0 0 0 3.872-2.293ZM14.678 11.492a.75.75 0 0 1 .738.144l5.063 4.5a.75.75 0 0 1-.988 1.128l-5.063-4.5a.75.75 0 0 1 .25-1.272ZM6.388 14.718l5.063 4.5a.75.75 0 0 0 .988-1.128l-5.063-4.5a.75.75 0 0 0-.988 1.128Z" clip-rule="evenodd"/></svg>
+ Services
+ </a></li>
+ <li><a href="products.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12.378 1.602a.75.75 0 0 0-.756 0L3 6.632l9 5.25 9-5.25-8.622-5.03ZM21.75 7.93l-9 5.25v9l8.628-5.032a.75.75 0 0 0 .372-.648V7.93ZM11.25 22.18v-9l-9-5.25v8.57a.75.75 0 0 0 .372.648l8.628 5.033Z"/></svg>
+ Product
+ </a></li>
+ <li><a href="membership.html" class="nav-link">
+ <svg class="nav-icon" viewBox="0 0 24 24" fill="currentColor"><path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z"/></svg>
+ Membership
+ </a></li>
+ </ul>
+ </div>
+ <a href="booking.html" class="btn-book-nav">Book Now</a>
+ <button class="hamburger" id="hamburger" aria-label="Menu">
+ <span></span><span></span><span></span>
+ </button>
+ </div>
+ </nav>
 
-  <!-- ========== BREADCRUMB ========== -->
-  <div class="dash-breadcrumb">
-    <div class="container">
-      <a href="index.html">Home</a>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-      <span>Member Dashboard</span>
-    </div>
-  </div>
+ <!-- ========== BREADCRUMB ========== -->
+ <div class="dash-breadcrumb">
+ <div class="container">
+ <a href="index.html">Home</a>
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M16.28 11.47a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 0 1 1.06-1.06l7.5 7.5Z" clip-rule="evenodd"/></svg>
+ <span>Member Dashboard</span>
+ </div>
+ </div>
 
-  <!-- ========== PROFILE HEADER ========== -->
-  <section class="dash-profile-header">
-    <div class="container">
-      <div class="profile-card">
-        <div class="profile-info">
-          <div class="profile-avatar" id="profileAvatar">
-            <span id="avatarInitials">RB</span>
-            <img id="avatarImage" src="" alt="" style="display:none" />
-            <div class="avatar-badge" id="avatarBadge">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-            </div>
-          </div>
-          <div class="profile-details">
-            <h2 class="profile-name" id="profileName">Member Redbox</h2>
-            <p class="profile-since" id="profileSince">Bergabung sejak Mei 2026</p>
-            <div class="profile-tier-badge" id="profileTierBadge">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-              <span id="tierBadgeText">Level 1 - Bronze</span>
-            </div>
-            <span class="member-status-badge inactive" id="memberStatusBadge">Membership Belum Aktif</span>
-          </div>
-        </div>
-        <!-- Physical Membership Card -->
-        <div class="phys-card-wrap" id="physCardWrap">
-          <div class="phys-card-glow"></div>
-          <div class="phys-card-inner">
-            <img src="Brand_assets/membership_card.png" alt="Redbox Membership Card" class="phys-card-img" />
-            <div class="phys-card-overlay" id="physCardOverlay">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span>Aktivasi untuk<br/>dapatkan kartu fisik</span>
-            </div>
-          </div>
-          <p class="phys-card-hint" id="physCardHint">Kartu fisik dikirim setelah aktivasi</p>
-        </div>
-        <div class="profile-stats">
-          <div class="stat-box">
-            <span class="stat-number" id="statVisits">0</span>
-            <span class="stat-label">Kunjungan</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-number" id="statReviews">0</span>
-            <span class="stat-label">Ulasan</span>
-          </div>
-          <div class="stat-box stat-box-accent">
-            <span class="stat-number" id="statPoints">0</span>
-            <span class="stat-label">Total Poin</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+ <!-- ========== PROFILE HEADER ========== -->
+ <section class="dash-profile-header">
+ <div class="container">
+ <div class="profile-card">
+ <div class="profile-info">
+ <div class="profile-avatar" id="profileAvatar">
+ <span id="avatarInitials">RB</span>
+ <img id="avatarImage" src="" alt="" style="display:none" />
+ <div class="avatar-badge" id="avatarBadge">
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+ </div>
+ </div>
+ <div class="profile-details">
+ <h2 class="profile-name" id="profileName">Member Redbox</h2>
+ <p class="profile-since" id="profileSince">Bergabung sejak Mei 2026</p>
+ <div class="profile-tier-badge" id="profileTierBadge">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+ <span id="tierBadgeText">Level 1 - Bronze</span>
+ </div>
+ <span class="member-status-badge inactive" id="memberStatusBadge">Membership Belum Aktif</span>
+ </div>
+ </div>
+ <!-- Physical Membership Card -->
+ <div class="phys-card-wrap" id="physCardWrap">
+ <div class="phys-card-glow"></div>
+ <div class="phys-card-inner">
+ <img src="Brand_assets/membership_card.png" alt="Redbox Membership Card" class="phys-card-img" />
+ <div class="phys-card-overlay" id="physCardOverlay">
+ <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>
+ <span>Aktivasi untuk<br/>dapatkan kartu fisik</span>
+ </div>
+ </div>
+ <p class="phys-card-hint" id="physCardHint">Kartu fisik dikirim setelah aktivasi</p>
+ </div>
+ <div class="profile-stats">
+ <div class="stat-box">
+ <span class="stat-number" id="statVisits">0</span>
+ <span class="stat-label">Kunjungan</span>
+ </div>
+ <div class="stat-box">
+ <span class="stat-number" id="statReviews">0</span>
+ <span class="stat-label">Ulasan</span>
+ </div>
+ <div class="stat-box stat-box-accent">
+ <span class="stat-number" id="statPoints">0</span>
+ <span class="stat-label">Total Poin</span>
+ </div>
+ </div>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== TIER PROGRESS ========== -->
-  <section class="dash-tier-section">
-    <div class="container">
-      <div class="tier-card">
-        <div class="tier-header">
-          <div class="tier-title-row">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15l-2 5l9-11h-5l2-5l-9 11h5z"/></svg>
-            <h3>Membership Level</h3>
-          </div>
-          <a href="membership.html" class="tier-rewards-btn">All Rewards</a>
-        </div>
-        <div class="tier-progress-track">
-          <div class="tier-nodes">
-            <div class="tier-node active" data-tier="silver">
-              <div class="tier-node-dot">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-              </div>
-              <span class="tier-node-label">Silver</span>
-              <span class="tier-node-pts">0 pts</span>
-            </div>
-            <div class="tier-connector">
-              <div class="tier-connector-fill" id="tierFill1" style="width:0%"></div>
-            </div>
-            <div class="tier-node" data-tier="gold">
-              <div class="tier-node-dot">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-              </div>
-              <span class="tier-node-label">Gold</span>
-              <span class="tier-node-pts">500 pts</span>
-            </div>
-            <div class="tier-connector">
-              <div class="tier-connector-fill" id="tierFill2" style="width:0%"></div>
-            </div>
-            <div class="tier-node" data-tier="platinum">
-              <div class="tier-node-dot">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
-              </div>
-              <span class="tier-node-label">Platinum</span>
-              <span class="tier-node-pts">1500 pts</span>
-            </div>
-          </div>
-        </div>
-        <!-- Lock Overlay (shown when INACTIVE) -->
-        <div class="tier-lock-overlay" id="tierLockOverlay" style="display:none">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <h3>Tier Terkunci</h3>
-          <p>Aktivasi membership untuk membuka sistem tier dan mulai kumpulkan poin eksklusif.</p>
-          <button class="btn-tier-unlock" id="btnActivate">Aktivasi Membership Sekarang</button>
-        </div>
-        <div class="tier-message" id="tierMessage">
-          <p>Selamat datang di Redbox! Kumpulkan poin setiap kunjungan untuk naik level.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+ <!-- ========== TIER PROGRESS ========== -->
+ <section class="dash-tier-section">
+ <div class="container">
+ <div class="tier-card">
+ <div class="tier-header">
+ <div class="tier-title-row">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.203H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.342Z" clip-rule="evenodd"/></svg>
+ <h3>Membership Level</h3>
+ </div>
+ <a href="membership.html" class="tier-rewards-btn">All Rewards</a>
+ </div>
+ <div class="tier-progress-track">
+ <div class="tier-nodes">
+ <div class="tier-node active" data-tier="silver">
+ <div class="tier-node-dot">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+ </div>
+ <span class="tier-node-label">Silver</span>
+ <span class="tier-node-pts">0 pts</span>
+ </div>
+ <div class="tier-connector">
+ <div class="tier-connector-fill" id="tierFill1" style="width:0%"></div>
+ </div>
+ <div class="tier-node" data-tier="gold">
+ <div class="tier-node-dot">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+ </div>
+ <span class="tier-node-label">Gold</span>
+ <span class="tier-node-pts">500 pts</span>
+ </div>
+ <div class="tier-connector">
+ <div class="tier-connector-fill" id="tierFill2" style="width:0%"></div>
+ </div>
+ <div class="tier-node" data-tier="platinum">
+ <div class="tier-node-dot">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+ </div>
+ <span class="tier-node-label">Platinum</span>
+ <span class="tier-node-pts">1500 pts</span>
+ </div>
+ </div>
+ </div>
+ <!-- Lock Overlay (shown when INACTIVE) -->
+ <div class="tier-lock-overlay" id="tierLockOverlay" style="display:none">
+ <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>
+ <h3>Tier Terkunci</h3>
+ <p>Aktivasi membership untuk membuka sistem tier dan mulai kumpulkan poin eksklusif.</p>
+ <button class="btn-tier-unlock" id="btnActivate">Aktivasi Membership Sekarang</button>
+ </div>
+ <div class="tier-message" id="tierMessage">
+ <p>Selamat datang di Redbox! Kumpulkan poin setiap kunjungan untuk naik level.</p>
+ </div>
+ </div>
+ </div>
+ </section>
 
-  <!-- ========== ACTIVATION BANNER (shown when INACTIVE) ========== -->
-  <div id="activationBannerTop" class="activation-banner-top" style="display:none">
-    <div class="container">
-      <div class="act-top-inner">
-        <div class="act-top-left">
-          <span class="act-top-icon">🔒</span>
-          <div>
-            <strong>Membership Belum Aktif</strong>
-            <span>Aktivasi untuk unlock poin, tier rewards, dan privilege eksklusif.</span>
-          </div>
-        </div>
-        <button class="btn-act-top" id="btnActivateTop">Aktivasi Membership →</button>
-      </div>
-    </div>
-  </div>
+ <!-- ========== ACTIVATION BANNER (shown when INACTIVE) ========== -->
+ <div id="activationBannerTop" class="activation-banner-top" style="display:none">
+ <div class="container">
+ <div class="act-top-inner">
+ <div class="act-top-left">
+ <span class="act-top-icon"></span>
+ <div>
+ <strong>Membership Belum Aktif</strong>
+ <span>Aktivasi untuk unlock poin, tier rewards, dan privilege eksklusif.</span>
+ </div>
+ </div>
+ <button class="btn-act-top" id="btnActivateTop">Aktivasi Membership →</button>
+ </div>
+ </div>
+ </div>
 
-  <!-- ========== DASHBOARD MAIN ========== -->
-  <section class="dash-main">
-    <div class="container dash-layout">
+ <!-- ========== DASHBOARD MAIN ========== -->
+ <section class="dash-main">
+ <div class="container dash-layout">
 
-      <!-- ========== SMART UPSELL BANNER ========== -->
-      <div class="upsell-banner" id="upsellBanner" style="display:none">
-        <div class="ub-left">
-          <div class="ub-icon" id="ubIcon"></div>
-          <div class="ub-text">
-            <strong id="ubTitle"></strong>
-            <span id="ubDesc"></span>
-            <div class="ub-progress-wrap" id="ubProgressWrap">
-              <div class="ub-progress-bar"><div class="ub-progress-fill" id="ubProgressFill"></div></div>
-              <span class="ub-progress-label" id="ubProgressLabel"></span>
-            </div>
-          </div>
-        </div>
-        <div class="ub-actions" id="ubActions"></div>
-      </div>
+ <!-- ========== SMART UPSELL BANNER ========== -->
+ <div class="upsell-banner" id="upsellBanner" style="display:none">
+ <div class="ub-left">
+ <div class="ub-icon" id="ubIcon"></div>
+ <div class="ub-text">
+ <strong id="ubTitle"></strong>
+ <span id="ubDesc"></span>
+ <div class="ub-progress-wrap" id="ubProgressWrap">
+ <div class="ub-progress-bar"><div class="ub-progress-fill" id="ubProgressFill"></div></div>
+ <span class="ub-progress-label" id="ubProgressLabel"></span>
+ </div>
+ </div>
+ </div>
+ <div class="ub-actions" id="ubActions"></div>
+ </div>
 
-      <!-- Mobile nav toggle -->
-      <button class="dash-nav-toggle" id="dashNavToggle" aria-label="Menu">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        <span>Menu</span>
-      </button>
-      <div class="dash-nav-backdrop" id="dashNavBackdrop"></div>
+ <!-- Mobile nav toggle -->
+ <button class="dash-nav-toggle" id="dashNavToggle" aria-label="Menu">
+ <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75ZM3 12a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 12Zm0 5.25a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" clip-rule="evenodd"/></svg>
+ <span>Menu</span>
+ </button>
+ <div class="dash-nav-backdrop" id="dashNavBackdrop"></div>
 
-      <!-- Sidebar -->
-      <aside class="dash-sidebar" id="dashSidebar">
-        <nav class="dash-nav">
-          <button class="dash-nav-item active" data-tab="account">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span>Pengaturan Akun</span>
-          </button>
-          <button class="dash-nav-item" data-tab="bookings">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span>Riwayat Kunjungan</span>
-          </button>
-          <button class="dash-nav-item" data-tab="points">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-            <span>Riwayat Poin</span>
-          </button>
-          <button class="dash-nav-item" data-tab="benefits">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
-            <span>Benefits &amp; Rewards</span>
-          </button>
-          <button class="dash-nav-item" data-tab="shop">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
-            <span>Shop</span>
-          </button>
-          <button class="dash-nav-item" data-tab="referral">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            <span>Kode Referral</span>
-          </button>
-          <div class="dash-nav-divider"></div>
-          <button class="dash-nav-item dash-nav-logout" id="logoutBtn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-            <span>Keluar</span>
-          </button>
-        </nav>
-      </aside>
+ <!-- Sidebar -->
+ <aside class="dash-sidebar" id="dashSidebar">
+ <nav class="dash-nav">
+ <button class="dash-nav-item active" data-tab="account">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd"/></svg>
+ <span>Pengaturan Akun</span>
+ </button>
+ <button class="dash-nav-item" data-tab="bookings">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 0 1 7.5 3v1.5h9V3a.75.75 0 0 1 1.5 0v1.5h.75a3 3 0 0 1 3 3v11.25a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V7.5a3 3 0 0 1 3-3H6V3a.75.75 0 0 1 .75-.75Zm13.5 9a1.5 1.5 0 0 0-1.5-1.5H5.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5v-7.5Z" clip-rule="evenodd"/></svg>
+ <span>Riwayat Kunjungan</span>
+ </button>
+ <button class="dash-nav-item" data-tab="points">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clip-rule="evenodd"/></svg>
+ <span>Riwayat Poin</span>
+ </button>
+ <button class="dash-nav-item" data-tab="benefits">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.375 3a1.875 1.875 0 0 0 0 3.75h1.875v4.5H3.375A1.875 1.875 0 0 1 1.5 9.375v-.75c0-1.036.84-1.875 1.875-1.875h3.193A3.375 3.375 0 0 1 12 2.753a3.375 3.375 0 0 1 5.432 3.997h3.193c1.035 0 1.875.84 1.875 1.875v.75c0 1.036-.84 1.875-1.875 1.875H12.75v-4.5h1.875a1.875 1.875 0 1 0-1.875-1.875V6.75h-1.5V4.875C11.25 3.839 10.41 3 9.375 3ZM11.25 12.75H3v6.75a2.25 2.25 0 0 0 2.25 2.25h6v-9ZM12.75 12.75v9h6A2.25 2.25 0 0 0 21 19.5v-6.75h-8.25Z"/></svg>
+ <span>Benefits &amp; Rewards</span>
+ </button>
+ <button class="dash-nav-item" data-tab="shop">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 0 0 4.25 22.5h15.5a1.875 1.875 0 0 0 1.865-2.071l-1.263-12a1.875 1.875 0 0 0-1.865-1.679H16.5V6a4.5 4.5 0 1 0-9 0ZM12 3a3 3 0 0 0-3 3v.75h6V6a3 3 0 0 0-3-3Zm-3 8.25a3 3 0 1 0 6 0v-.75a.75.75 0 0 1 1.5 0v.75a4.5 4.5 0 1 1-9 0v-.75a.75.75 0 0 1 1.5 0v.75Z" clip-rule="evenodd"/></svg>
+ <span>Shop</span>
+ </button>
+ <button class="dash-nav-item" data-tab="referral">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11.47 1.72a.75.75 0 0 1 1.06 0l3 3a.75.75 0 0 1-1.06 1.06l-1.72-1.72V7.5h-1.5V4.06L9.53 5.78a.75.75 0 0 1-1.06-1.06l3-3ZM11.25 7.5V15a.75.75 0 0 0 1.5 0V7.5h3.75a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h3.75Z"/></svg>
+ <span>Kode Referral</span>
+ </button>
 
-      <!-- Content Panels -->
-      <div class="dash-content">
+ <button class="dash-nav-item dash-nav-logout" id="logoutBtn">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 3.75A1.5 1.5 0 0 0 6 5.25v13.5a1.5 1.5 0 0 0 1.5 1.5h6a1.5 1.5 0 0 0 1.5-1.5V15a.75.75 0 0 1 1.5 0v3.75a3 3 0 0 1-3 3h-6a3 3 0 0 1-3-3V5.25a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3V9a.75.75 0 0 1-1.5 0V5.25a1.5 1.5 0 0 0-1.5-1.5h-6Zm10.72 4.72a.75.75 0 0 1 1.06 0l3 3a.75.75 0 0 1 0 1.06l-3 3a.75.75 0 1 1-1.06-1.06l1.72-1.72H9a.75.75 0 0 1 0-1.5h10.94l-1.72-1.72a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ <span>Keluar</span>
+ </button>
+ </nav>
+ </aside>
 
-        <!-- Tab: Account Settings -->
-        <div class="dash-panel active" id="panel-account">
-          <h2 class="panel-title">Pengaturan Akun</h2>
-          <form class="account-form" id="accountForm">
-            <div class="form-row">
-              <div class="form-field">
-                <label>Nama Lengkap</label>
-                <input type="text" id="accName" placeholder="Nama lengkap Anda" />
-              </div>
-              <div class="form-field">
-                <label>Nomor Handphone</label>
-                <input type="tel" id="accPhone" placeholder="+62" />
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="form-field">
-                <label>Tanggal Lahir</label>
-                <input type="date" id="accBirth" />
-              </div>
-              <div class="form-field">
-                <label>Jenis Kelamin</label>
-                <div class="gender-toggle">
-                  <button type="button" class="gender-btn active" data-gender="male">Laki-laki</button>
-                  <button type="button" class="gender-btn" data-gender="female">Perempuan</button>
-                </div>
-              </div>
-            </div>
-            <div class="form-field full-width">
-              <label>Email Lengkap</label>
-              <input type="email" id="accEmail" placeholder="email@contoh.com" readonly />
-            </div>
-            <div class="form-field full-width">
-              <label>Password</label>
-              <div class="password-row">
-                <input type="password" id="accPassword" placeholder="Jika ingin mengubah password demi keamanan privasi" disabled />
-                <button type="button" class="btn-change-pw" id="changePasswordBtn">Ganti Password</button>
-              </div>
-              <div class="pwd-info-note" id="changePwdInfo" style="display:none"></div>
-            </div>
-            <div class="form-field full-width">
-              <label>Alamat</label>
-              <div class="address-row">
-                <input type="text" id="accAddr" placeholder="Belum ada alamat profile" />
-                <button type="button" class="btn-add-address" id="addAddressBtn">Tambah Alamat</button>
-              </div>
-            </div>
-            <div class="form-field full-width">
-              <label>Barber Favorit</label>
-              <select id="accFavBarber">
-                <option value="">Memuat barber...</option>
-              </select>
-            </div>
-            <button type="submit" class="btn-save-account">Simpan Perubahan</button>
-          </form>
-        </div>
+ <!-- Content Panels -->
+ <div class="dash-content">
 
-        <!-- Tab: Bookings History -->
-        <div class="dash-panel" id="panel-bookings">
-          <h2 class="panel-title">Riwayat Kunjungan</h2>
-          <div class="empty-state" id="emptyBookings">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <p>Belum ada riwayat kunjungan</p>
-            <a href="booking.html" class="btn-empty-cta">Book Sekarang</a>
-          </div>
-          <div class="bookings-list" id="bookingsList" style="display:none">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
+ <!-- Tab: Account Settings -->
+ <div class="dash-panel active" id="panel-account">
+ <h2 class="panel-title">Pengaturan Akun</h2>
+ <form class="account-form" id="accountForm">
+ <div class="form-row">
+ <div class="form-field">
+ <label>Nama Lengkap</label>
+ <input type="text" id="accName" placeholder="Nama lengkap Anda" />
+ </div>
+ <div class="form-field">
+ <label>Nomor Handphone</label>
+ <input type="tel" id="accPhone" placeholder="+62" />
+ </div>
+ </div>
+ <div class="form-row">
+ <div class="form-field">
+ <label>Tanggal Lahir</label>
+ <input type="date" id="accBirth" />
+ </div>
+ <div class="form-field">
+ <label>Jenis Kelamin</label>
+ <div class="gender-toggle">
+ <button type="button" class="gender-btn active" data-gender="male">Laki-laki</button>
+ <button type="button" class="gender-btn" data-gender="female">Perempuan</button>
+ </div>
+ </div>
+ </div>
+ <div class="form-field full-width">
+ <label>Email Lengkap</label>
+ <input type="email" id="accEmail" placeholder="email@contoh.com" readonly />
+ </div>
+ <div class="form-field full-width">
+ <label>Password</label>
+ <div class="password-row">
+ <input type="password" id="accPassword" placeholder="Jika ingin mengubah password demi keamanan privasi" disabled />
+ <button type="button" class="btn-change-pw" id="changePasswordBtn">Ganti Password</button>
+ </div>
+ <div class="pwd-info-note" id="changePwdInfo" style="display:none"></div>
+ </div>
+ <div class="form-field full-width">
+ <label>Alamat</label>
+ <div class="address-row">
+ <input type="text" id="accAddr" placeholder="Belum ada alamat profile" />
+ <button type="button" class="btn-add-address" id="addAddressBtn">Tambah Alamat</button>
+ </div>
+ </div>
+ <div class="form-field full-width">
+ <label>Barber Favorit</label>
+ <select id="accFavBarber">
+ <option value="">Memuat barber...</option>
+ </select>
+ </div>
+ <button type="submit" class="btn-save-account">Simpan Perubahan</button>
+ </form>
+ </div>
 
-        <!-- Tab: Point History -->
-        <div class="dash-panel" id="panel-points">
-          <h2 class="panel-title">Riwayat Poin</h2>
-          <div class="points-summary">
-            <div class="points-balance">
-              <span class="points-label">Saldo Poin</span>
-              <span class="points-value" id="pointsBalance">0</span>
-            </div>
-            <div class="points-info">
-              <p>Setiap transaksi Rp 10.000 = <strong>1 Poin</strong></p>
-              <p>Poin bisa ditukar untuk diskon atau layanan gratis</p>
-            </div>
-          </div>
-          <div class="points-table">
-            <div class="points-table-header">
-              <span>Tanggal</span>
-              <span>Aktivitas</span>
-              <span>Poin</span>
-            </div>
-            <div class="points-table-body" id="pointsTableBody">
-              <div class="points-row">
-                <span class="pts-date">—</span>
-                <span class="pts-activity">Belum ada aktivitas poin</span>
-                <span class="pts-amount">—</span>
-              </div>
-            </div>
-          </div>
-          <div class="points-tiers-explain">
-            <h4>Cara Naik Level</h4>
-            <div class="tier-explain-grid">
-              <div class="tier-explain-item tier-silver">
-                <div class="tier-ex-icon">🥈</div>
-                <h5>Silver</h5>
-                <p>Rp 100.000 / 500 Poin</p>
-                <ul>
-                  <li>5% discount haircut</li>
-                  <li>50% birthday discount</li>
-                  <li>Tidak berlaku di CSB Mall</li>
-                </ul>
-              </div>
-              <div class="tier-explain-item tier-gold">
-                <div class="tier-ex-icon">🥇</div>
-                <h5>Gold</h5>
-                <p>Rp 250.000 / 501+ Poin</p>
-                <ul>
-                  <li>10% discount haircut</li>
-                  <li>50% birthday discount</li>
-                  <li>Berlaku di semua cabang</li>
-                </ul>
-              </div>
-              <div class="tier-explain-item tier-platinum">
-                <div class="tier-ex-icon">💎</div>
-                <h5>Platinum</h5>
-                <p>Rp 1.500.000</p>
-                <ul>
-                  <li>Free haircut setiap kunjungan</li>
-                  <li>Free birthday penuh</li>
-                  <li>Free iced americano</li>
-                  <li>Berlaku di semua cabang</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Tab: Bookings History -->
+ <div class="dash-panel" id="panel-bookings">
+ <h2 class="panel-title">Riwayat Kunjungan</h2>
+ <div class="empty-state" id="emptyBookings">
+ <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 0 1 7.5 3v1.5h9V3a.75.75 0 0 1 1.5 0v1.5h.75a3 3 0 0 1 3 3v11.25a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V7.5a3 3 0 0 1 3-3H6V3a.75.75 0 0 1 .75-.75Zm13.5 9a1.5 1.5 0 0 0-1.5-1.5H5.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5v-7.5Z" clip-rule="evenodd"/></svg>
+ <p>Belum ada riwayat kunjungan</p>
+ <a href="booking.html" class="btn-empty-cta">Book Sekarang</a>
+ </div>
+ <div class="bookings-list" id="bookingsList" style="display:none">
+ <!-- Dynamically populated -->
+ </div>
+ </div>
 
-        <!-- Tab: Benefits & Rewards -->
-        <div class="dash-panel" id="panel-benefits">
-          <!-- Section A: Benefit Tracker -->
-          <div class="benefit-tracker" id="benefitTracker"></div>
-          <hr style="border:none;border-top:1px solid #1f1f1f;margin:24px 0;"/>
-          <!-- Section B: Redeem History -->
-          <div class="redeem-history-section">
-            <div class="section-label-sm">Riwayat Redeem</div>
-            <div id="redeemHistory"></div>
-          </div>
-          <hr style="border:none;border-top:1px solid #1f1f1f;margin:24px 0;"/>
-          <div class="rewards-panel-header">
-            <h2 class="panel-title">Katalog Rewards</h2>
-            <div class="rewards-pts-badge" id="rewardsPtsBadge">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-              <span id="rewardsPointsDisplay">0 Poin tersedia</span>
-            </div>
-          </div>
-          <p class="rewards-desc">Tukar poin untuk reward eksklusif. Semakin tinggi tier, semakin banyak pilihan tersedia.</p>
-          <div class="rewards-grid" id="rewardsGrid"></div>
-        </div>
+ <!-- Tab: Point History -->
+ <div class="dash-panel" id="panel-points">
+ <h2 class="panel-title">Riwayat Poin</h2>
+ <div class="points-summary">
+ <div class="points-balance">
+ <span class="points-label">Saldo Poin</span>
+ <span class="points-value" id="pointsBalance">0</span>
+ </div>
+ <div class="points-info">
+ <p>Setiap transaksi Rp 10.000 = <strong>1 Poin</strong></p>
+ <p>Poin bisa ditukar untuk diskon atau layanan gratis</p>
+ </div>
+ </div>
+ <div class="points-table">
+ <div class="points-table-header">
+ <span>Tanggal</span>
+ <span>Aktivitas</span>
+ <span>Poin</span>
+ </div>
+ <div class="points-table-body" id="pointsTableBody">
+ <div class="points-row">
+ <span class="pts-date">-</span>
+ <span class="pts-activity">Belum ada aktivitas poin</span>
+ <span class="pts-amount">-</span>
+ </div>
+ </div>
+ </div>
+ <div class="points-tiers-explain">
+ <h4>Cara Naik Level</h4>
+ <div class="tier-explain-grid">
+ <div class="tier-explain-item tier-silver">
+ <div class="tier-ex-icon"></div>
+ <h5>Silver</h5>
+ <p>Rp 100.000 / 500 Poin</p>
+ <ul>
+ <li>5% discount haircut</li>
+ <li>50% birthday discount</li>
+ <li>Tidak berlaku di CSB Mall</li>
+ </ul>
+ </div>
+ <div class="tier-explain-item tier-gold">
+ <div class="tier-ex-icon"></div>
+ <h5>Gold</h5>
+ <p>Rp 250.000 / 501+ Poin</p>
+ <ul>
+ <li>10% discount haircut</li>
+ <li>50% birthday discount</li>
+ <li>Berlaku di semua cabang</li>
+ </ul>
+ </div>
+ <div class="tier-explain-item tier-platinum">
+ <div class="tier-ex-icon"></div>
+ <h5>Platinum</h5>
+ <p>Rp 1.500.000</p>
+ <ul>
+ <li>Free haircut setiap kunjungan</li>
+ <li>Free birthday penuh</li>
+ <li>Free iced americano</li>
+ <li>Berlaku di semua cabang</li>
+ </ul>
+ </div>
+ </div>
+ </div>
+ </div>
 
-        <!-- Tab: Shop -->
-        <div class="dash-panel" id="panel-shop">
-          <!-- Section A: Rekomendasi Untukmu -->
-          <h2 class="panel-title">Rekomendasi Untukmu</h2>
-          <p class="section-desc">Produk pilihan sesuai tier kamu.</p>
-          <div class="shop-grid shop-grid-3" id="shopCurated"></div>
+ <!-- Tab: Benefits & Rewards -->
+ <div class="dash-panel" id="panel-benefits">
+ <!-- Section A: Benefit Tracker -->
+ <div class="benefit-tracker" id="benefitTracker"></div>
 
-          <hr style="border:none;border-top:1px solid #1f1f1f;margin:28px 0;"/>
+ <!-- Section B: Redeem History -->
+ <div class="redeem-history-section">
+ <div class="section-label-sm">Riwayat Redeem</div>
+ <div id="redeemHistory"></div>
+ </div>
 
-          <!-- Section B: Semua Produk -->
-          <h2 class="panel-title">Semua Produk</h2>
-          <div class="shop-grid shop-grid-3" id="shopProducts"></div>
+ <div class="rewards-panel-header">
+ <h2 class="panel-title">Katalog Rewards</h2>
+ <div class="rewards-pts-badge" id="rewardsPtsBadge">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+ <span id="rewardsPointsDisplay">0 Poin tersedia</span>
+ </div>
+ </div>
+ <p class="rewards-desc">Tukar poin untuk reward eksklusif. Semakin tinggi tier, semakin banyak pilihan tersedia.</p>
+ <div class="rewards-grid" id="rewardsGrid"></div>
+ </div>
 
-          <hr style="border:none;border-top:1px solid #1f1f1f;margin:28px 0;"/>
+ <!-- Tab: Shop -->
+ <div class="dash-panel" id="panel-shop">
+ <!-- Section A: Rekomendasi Untukmu -->
+ <h2 class="panel-title">Rekomendasi Untukmu</h2>
+ <p class="section-desc">Produk pilihan sesuai tier kamu.</p>
+ <div class="shop-grid shop-grid-3" id="shopCurated"></div>
 
-          <!-- Section C: Layanan Premium -->
-          <h2 class="panel-title">Tingkatkan Pengalamanmu</h2>
-          <p class="section-desc">Layanan eksklusif untuk member Gold & Platinum.</p>
-          <div class="shop-grid shop-grid-2" id="shopServices"></div>
 
-          <!-- Section D: Upgrade CTA -->
-          <div id="shopUpgradeCta"></div>
-        </div>
 
-        <!-- Tab: Referral -->
-        <div class="dash-panel" id="panel-referral">
-          <h2 class="panel-title">Kode Referral</h2>
-          <div class="referral-card">
-            <div class="referral-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            </div>
-            <h3>Ajak Teman, Dapat Bonus!</h3>
-            <p>Setiap teman yang mendaftar menggunakan kode referral kamu, kalian berdua mendapat <strong>bonus 50 poin</strong>.</p>
-            <div class="referral-code-box">
-              <span class="referral-code" id="referralCode">REDBOX-XXXXX</span>
-              <button class="btn-copy-referral" id="copyReferralBtn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                Copy
-              </button>
-            </div>
-            <!-- Lock note for inactive members -->
-            <div class="ref-lock-note" id="refLockNote" style="display:none">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span>Aktifkan membership untuk menggunakan kode referral dan dapat bonus poin.</span>
-            </div>
-            <div class="referral-stats">
-              <div class="ref-stat">
-                <span class="ref-stat-num" id="refCount">0</span>
-                <span class="ref-stat-label">Teman Terdaftar</span>
-              </div>
-              <div class="ref-stat">
-                <span class="ref-stat-num" id="refPoints">0</span>
-                <span class="ref-stat-label">Poin Didapat</span>
-              </div>
-            </div>
-          </div>
-        </div>
+ <!-- Section B: Semua Produk -->
+ <h2 class="panel-title">Semua Produk</h2>
+ <div class="shop-grid shop-grid-3" id="shopProducts"></div>
 
-      </div>
-    </div>
 
-    <!-- Mobile logout button — only shown when sidebar nav is horizontal scroll -->
-    <div class="mobile-logout-wrap">
-      <button class="mobile-logout-btn" id="mobileLogoutBtn">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Keluar
-      </button>
-    </div>
-  </section>
 
-  <!-- ========== ACTIVATION BANNER ========== -->
-  <section class="activation-banner" id="activationBanner" style="display:none">
-    <div class="container">
-      <div class="act-inner">
-        <div class="act-left">
-          <span class="act-badge">MEMBERSHIP BELUM AKTIF</span>
-          <h2>Clean cut deserves premium rewards.</h2>
-          <p>Pilih tier sesuai kebutuhan — <strong>Silver, Gold, atau Platinum</strong> — dan bayar langsung di outlet Redbox terdekat.</p>
-          <div class="act-perks">
-            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Poin setiap kunjungan</span>
-            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Silver → Platinum tier</span>
-            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Referral bonus</span>
-            <span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Diskon eksklusif</span>
-          </div>
-        </div>
-        <div class="act-right">
-          <div class="act-price-box">
-            <span class="act-price-tag">Pilih Tier Membership</span>
-            <span class="act-price-val" style="font-size:1.1rem">Silver / Gold / Platinum</span>
-            <span class="act-price-sub">Bayar di outlet terdekat</span>
-          </div>
-          <button class="btn-act-main" id="btnActivateBanner">
-            Aktivasi Membership
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
-  </section>
+ <!-- Section C: Layanan Premium -->
+ <h2 class="panel-title">Tingkatkan Pengalamanmu</h2>
+ <p class="section-desc">Layanan eksklusif untuk member Gold & Platinum.</p>
+ <div class="shop-grid shop-grid-2" id="shopServices"></div>
 
-  <!-- ========== ACTIVATION MODAL ========== -->
-  <div class="activation-modal" id="activationModal" style="display:none">
-    <div class="modal-box">
-      <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
-      <div class="modal-header">
-        <div class="modal-icon">💳</div>
-        <h2>Aktivasi Membership</h2>
-        <p>Semakin loyal, semakin eksklusif.</p>
-      </div>
-      <!-- Card preview in modal -->
-      <div class="modal-card-preview">
-        <img src="Brand_assets/membership_card.png" alt="Redbox Membership Card" />
-        <span>Kartu eksklusif ini milik kamu setelah aktivasi</span>
-      </div>
-      <div class="modal-price-display">
-        <span>Pilih tier yang sesuai kebutuhanmu</span>
-        <strong>Silver / Gold / Platinum</strong>
-      </div>
-      <div class="modal-benefits">
-        <div class="modal-benefit-item"><span>✓</span><span>+25 poin bonus langsung aktif</span></div>
-        <div class="modal-benefit-item"><span>✓</span><span>Akses penuh sistem tier Silver–Platinum</span></div>
-        <div class="modal-benefit-item"><span>✓</span><span>Kode referral aktif, earn bonus poin</span></div>
-        <div class="modal-benefit-item"><span>✓</span><span>Reward &amp; redeem poin tersedia</span></div>
-      </div>
-      <!-- How to activate steps -->
-      <div class="modal-steps">
-        <h4>Cara Aktivasi Membership</h4>
-        <ol class="activation-steps">
-          <li>
-            <span class="step-num">1</span>
-            <div><strong>Datang ke kasir</strong> di salah satu cabang Redbox Barbershop di bawah</div>
-          </li>
-          <li>
-            <span class="step-num">2</span>
-            <div><strong>Tunjukkan email</strong> atau kode referral kamu kepada staff</div>
-          </li>
-          <li>
-            <span class="step-num">3</span>
-            <div><strong>Bayar sesuai tier</strong> yang kamu pilih (Silver / Gold / Platinum)</div>
-          </li>
-          <li>
-            <span class="step-num">4</span>
-            <div><strong>Staff mengaktifkan</strong> membership kamu langsung di sistem</div>
-          </li>
-          <li>
-            <span class="step-num">5</span>
-            <div><strong>Refresh halaman ini</strong> — dashboard kamu langsung aktif ✓</div>
-          </li>
-        </ol>
-      </div>
-      <!-- Branch list -->
-      <div class="modal-branches">
-        <h4>Lokasi Cabang</h4>
-        <div class="branch-list">
-          <div class="branch-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span><strong>Bypass</strong></span>
-          </div>
-          <div class="branch-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span><strong>Samadikun</strong></span>
-          </div>
-          <div class="branch-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span><strong>Tegal</strong></span>
-          </div>
-          <div class="branch-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span><strong>CSB</strong></span>
-          </div>
-          <div class="branch-item">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span><strong>Sumber</strong></span>
-          </div>
-        </div>
-      </div>
-      <button class="btn-confirm-act btn-close-modal" id="confirmActivateBtn" onclick="document.getElementById('activationModal').style.display='none';document.body.style.overflow='';">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        Mengerti, Saya Akan ke Kasir
-      </button>
-    </div>
-  </div>
+ <!-- Section D: Upgrade CTA -->
+ <div id="shopUpgradeCta"></div>
+ </div>
 
-  <!-- Toast -->
-  <div class="dash-toast" id="dashToast" style="display:none"></div>
+ <!-- Tab: Referral -->
+ <div class="dash-panel" id="panel-referral">
+ <h2 class="panel-title">Kode Referral</h2>
+ <div class="referral-card">
+ <div class="referral-icon">
+ <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M11.47 1.72a.75.75 0 0 1 1.06 0l3 3a.75.75 0 0 1-1.06 1.06l-1.72-1.72V7.5h-1.5V4.06L9.53 5.78a.75.75 0 0 1-1.06-1.06l3-3ZM11.25 7.5V15a.75.75 0 0 0 1.5 0V7.5h3.75a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9a3 3 0 0 1 3-3h3.75Z"/></svg>
+ </div>
+ <h3>Ajak Teman, Dapat Bonus!</h3>
+ <p>Setiap teman yang mendaftar menggunakan kode referral kamu, kalian berdua mendapat <strong>bonus 50 poin</strong>.</p>
+ <div class="referral-code-box">
+ <span class="referral-code" id="referralCode">REDBOX-XXXXX</span>
+ <button class="btn-copy-referral" id="copyReferralBtn">
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.502 6h7.128A3.375 3.375 0 0 1 18 9.375v9.375a3 3 0 0 0 3-3V6.108c0-1.505-1.125-2.811-2.664-2.94a48.972 48.972 0 0 0-.673-.05A3 3 0 0 0 15 1.5h-1.5a3 3 0 0 0-2.663 1.618c-.225.015-.45.032-.673.05C8.662 3.295 7.554 4.542 7.502 6ZM13.5 3A1.5 1.5 0 0 0 12 4.5h4.5A1.5 1.5 0 0 0 15 3h-1.5Z" clip-rule="evenodd"/><path fill-rule="evenodd" d="M3 9.375C3 8.339 3.84 7.5 4.875 7.5h9.75c1.036 0 1.875.84 1.875 1.875v11.25c0 1.035-.84 1.875-1.875 1.875h-9.75A1.875 1.875 0 0 1 3 20.625V9.375Z" clip-rule="evenodd"/></svg>
+ Copy
+ </button>
+ </div>
+ <!-- Lock note for inactive members -->
+ <div class="ref-lock-note" id="refLockNote" style="display:none">
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>
+ <span>Aktifkan membership untuk menggunakan kode referral dan dapat bonus poin.</span>
+ </div>
+ <div class="referral-stats">
+ <div class="ref-stat">
+ <span class="ref-stat-num" id="refCount">0</span>
+ <span class="ref-stat-label">Teman Terdaftar</span>
+ </div>
+ <div class="ref-stat">
+ <span class="ref-stat-num" id="refPoints">0</span>
+ <span class="ref-stat-label">Poin Didapat</span>
+ </div>
+ </div>
+ </div>
+ </div>
 
-  <footer class="dash-footer">
-    <div class="container">
-      <p>&copy; 2026 Redbox Barbershop. All rights reserved.</p>
-      <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
-    </div>
-  </footer>
+ </div>
+ </div>
 
-  <script src="js/main.js"></script>
-  <script src="js/dashboard.js"></script>
+ <!-- Mobile logout button - only shown when sidebar nav is horizontal scroll -->
+ <div class="mobile-logout-wrap">
+ <button class="mobile-logout-btn" id="mobileLogoutBtn">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 3.75A1.5 1.5 0 0 0 6 5.25v13.5a1.5 1.5 0 0 0 1.5 1.5h6a1.5 1.5 0 0 0 1.5-1.5V15a.75.75 0 0 1 1.5 0v3.75a3 3 0 0 1-3 3h-6a3 3 0 0 1-3-3V5.25a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3V9a.75.75 0 0 1-1.5 0V5.25a1.5 1.5 0 0 0-1.5-1.5h-6Zm10.72 4.72a.75.75 0 0 1 1.06 0l3 3a.75.75 0 0 1 0 1.06l-3 3a.75.75 0 1 1-1.06-1.06l1.72-1.72H9a.75.75 0 0 1 0-1.5h10.94l-1.72-1.72a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ Keluar
+ </button>
+ </div>
+ </section>
+
+ <!-- ========== ACTIVATION BANNER ========== -->
+ <section class="activation-banner" id="activationBanner" style="display:none">
+ <div class="container">
+ <div class="act-inner">
+ <div class="act-left">
+ <span class="act-badge">MEMBERSHIP BELUM AKTIF</span>
+ <h2>Clean cut deserves premium rewards.</h2>
+ <p>Pilih tier sesuai kebutuhan: <strong>Silver, Gold, atau Platinum</strong>, dan bayar langsung di outlet Redbox terdekat.</p>
+ <div class="act-perks">
+ <span><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg> Poin setiap kunjungan</span>
+ <span><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg> Silver → Platinum tier</span>
+ <span><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg> Referral bonus</span>
+ <span><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg> Diskon eksklusif</span>
+ </div>
+ </div>
+ <div class="act-right">
+ <div class="act-price-box">
+ <span class="act-price-tag">Pilih Tier Membership</span>
+ <span class="act-price-val" style="font-size:1.1rem">Silver / Gold / Platinum</span>
+ <span class="act-price-sub">Bayar di outlet terdekat</span>
+ </div>
+ <button class="btn-act-main" id="btnActivateBanner">
+ Aktivasi Membership
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
+ </button>
+ </div>
+ </div>
+ </div>
+ </section>
+
+ <!-- ========== ACTIVATION MODAL ========== -->
+ <div class="activation-modal" id="activationModal" style="display:none">
+ <div class="modal-box">
+ <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
+ <div class="modal-header">
+ <div class="modal-icon"></div>
+ <h2>Aktivasi Membership</h2>
+ <p>Semakin loyal, semakin eksklusif.</p>
+ </div>
+ <!-- Card preview in modal -->
+ <div class="modal-card-preview">
+ <img src="Brand_assets/membership_card.png" alt="Redbox Membership Card" />
+ <span>Kartu eksklusif ini milik kamu setelah aktivasi</span>
+ </div>
+ <div class="modal-price-display">
+ <span>Pilih tier yang sesuai kebutuhanmu</span>
+ <strong>Silver / Gold / Platinum</strong>
+ </div>
+ <div class="modal-benefits">
+ <div class="modal-benefit-item"><span></span><span>+25 poin bonus langsung aktif</span></div>
+ <div class="modal-benefit-item"><span></span><span>Akses penuh sistem tier Silver-Platinum</span></div>
+ <div class="modal-benefit-item"><span></span><span>Kode referral aktif, earn bonus poin</span></div>
+ <div class="modal-benefit-item"><span></span><span>Reward &amp; redeem poin tersedia</span></div>
+ </div>
+ <!-- How to activate steps -->
+ <div class="modal-steps">
+ <h4>Cara Aktivasi Membership</h4>
+ <ol class="activation-steps">
+ <li>
+ <span class="step-num">1</span>
+ <div><strong>Datang ke kasir</strong> di salah satu cabang Redbox Barbershop di bawah</div>
+ </li>
+ <li>
+ <span class="step-num">2</span>
+ <div><strong>Tunjukkan email</strong> atau kode referral kamu kepada staff</div>
+ </li>
+ <li>
+ <span class="step-num">3</span>
+ <div><strong>Bayar sesuai tier</strong> yang kamu pilih (Silver / Gold / Platinum)</div>
+ </li>
+ <li>
+ <span class="step-num">4</span>
+ <div><strong>Staff mengaktifkan</strong> membership kamu langsung di sistem</div>
+ </li>
+ <li>
+ <span class="step-num">5</span>
+ <div><strong>Refresh halaman ini</strong>, dashboard kamu langsung aktif </div>
+ </li>
+ </ol>
+ </div>
+ <!-- Branch list -->
+ <div class="modal-branches">
+ <h4>Lokasi Cabang</h4>
+ <div class="branch-list">
+ <div class="branch-item">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ <span><strong>Bypass</strong></span>
+ </div>
+ <div class="branch-item">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ <span><strong>Samadikun</strong></span>
+ </div>
+ <div class="branch-item">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ <span><strong>Tegal</strong></span>
+ </div>
+ <div class="branch-item">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ <span><strong>CSB</strong></span>
+ </div>
+ <div class="branch-item">
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="m11.54 22.351.07.04.028.016a.76.76 0 0 0 .723 0l.028-.015.071-.041a16.975 16.975 0 0 0 1.144-.742 19.58 19.58 0 0 0 2.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 0 0-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 0 0 3.827 3.024ZM12 13.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clip-rule="evenodd"/></svg>
+ <span><strong>Sumber</strong></span>
+ </div>
+ </div>
+ </div>
+ <button class="btn-confirm-act btn-close-modal" id="confirmActivateBtn" onclick="document.getElementById('activationModal').style.display='none';document.body.style.overflow='';">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
+ Mengerti, Saya Akan ke Kasir
+ </button>
+ </div>
+ </div>
+
+ <!-- Toast -->
+ <div class="dash-toast" id="dashToast" style="display:none"></div>
+
+ <footer class="dash-footer">
+ <div class="container">
+ <p>&copy; 2026 Redbox Barbershop. All rights reserved.</p>
+ <div class="kinarya-credit"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka"> <strong>KINARYALOKA</strong></a></div>
+ </div>
+ </footer>
+
+ <script src="js/main.js"></script>
+ <script src="js/dashboard.js"></script>
 </body>
 </html>

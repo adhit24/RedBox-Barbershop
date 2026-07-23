@@ -1,5 +1,5 @@
 # Owner Role — Design Spec
-**Date:** 2026-06-03  
+**Date:** 2026-06-03 
 **Status:** Approved
 
 ## Overview
@@ -27,10 +27,10 @@ Tambahkan role `owner` di RedBox Barbershop admin system. Owner adalah pemilik b
 ## 2. Routes
 
 ```
-/owner/dashboard          ← cross-branch overview (NEW)
-/owner/revenue            ← revenue dashboard lengkap (NEW)
-/owner/profile            ← profil owner (NEW, simple)
-/admin/*?readonly=true    ← existing admin pages, read-only mode
+/owner/dashboard ← cross-branch overview (NEW)
+/owner/revenue ← revenue dashboard lengkap (NEW)
+/owner/profile ← profil owner (NEW, simple)
+/admin/*?readonly=true ← existing admin pages, read-only mode
 ```
 
 ---
@@ -58,15 +58,15 @@ GET /api/admin/crm/owner-overview
 Headers: x-admin-token
 Response:
 {
-  today: string,
-  branches: [{
-    slug, name,
-    revenue_moka, tx_moka,
-    revenue_web, tx_web,
-    hadir, total_barbers,
-    goshow, pending_bookings
-  }],
-  totals: { revenue_moka, revenue_web, tx_total, hadir, goshow, pending }
+ today: string,
+ branches: [{
+ slug, name,
+ revenue_moka, tx_moka,
+ revenue_web, tx_web,
+ hadir, total_barbers,
+ goshow, pending_bookings
+ }],
+ totals: { revenue_moka, revenue_web, tx_total, hadir, goshow, pending }
 }
 ```
 Semua 5 cabang di-query paralel (`Promise.all`).
@@ -92,11 +92,11 @@ GET /api/admin/crm/owner-revenue?branch=all&period=7d
 Headers: x-admin-token
 Response:
 {
-  summary: { revenue_moka, revenue_web, tx_total, avg_tx },
-  daily_trend: [{ date, moka, web }],
-  branch_compare: [{ slug, name, revenue_moka, revenue_web, tx_total }],
-  top_barbers: [{ barber_id, name, branch, tx_count, revenue }],
-  top_services: [{ service_name, count, revenue }]
+ summary: { revenue_moka, revenue_web, tx_total, avg_tx },
+ daily_trend: [{ date, moka, web }],
+ branch_compare: [{ slug, name, revenue_moka, revenue_web, tx_total }],
+ top_barbers: [{ barber_id, name, branch, tx_count, revenue }],
+ top_services: [{ service_name, count, revenue }]
 }
 ```
 

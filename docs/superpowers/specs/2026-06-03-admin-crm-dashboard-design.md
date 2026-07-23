@@ -38,13 +38,13 @@ Sistem bekerja untuk admin, bukan admin yang bekerja untuk sistem.
 ## Navigation
 
 ```
-📊 Command Center     ← rename dari Dashboard
-📋 Booking Control
-💈 Attendance
-👥 Customers
-🏆 Leaderboard
-📅 Schedule
-📣 Broadcast
+ Command Center ← rename dari Dashboard
+ Booking Control
+ Attendance
+ Customers
+ Leaderboard
+ Schedule
+ Broadcast
 ```
 
 ---
@@ -58,19 +58,19 @@ Admin tahu kondisi cabang dalam 5 detik.
 | Card | Isi |
 |------|-----|
 | 🟢 Barber Hadir | Count barber hadir hari ini |
-| 🔴 Tidak Hadir | Count izin/sakit/cuti |
-| 📋 Booking Hari Ini | Total booking hari ini |
-| ⏳ Pending | Booking belum di-confirm |
-| 🏠 Home Service Aktif | Home service sedang berjalan |
+| Tidak Hadir | Count izin/sakit/cuti |
+| Booking Hari Ini | Total booking hari ini |
+| Pending | Booking belum di-confirm |
+| Home Service Aktif | Home service sedang berjalan |
 
 ### Smart Alerts (otomatis, muncul kalau ada masalah)
 
 | Kondisi | Alert |
 |---------|-------|
-| Barber belum check-in jam > 10:00 | ⚠️ [Nama] belum hadir — ada booking jam [X] |
-| Booking pending > 1 jam | ⚠️ Booking [nama customer] jam [X] belum di-confirm |
-| Home service belum `departed` 30 menit sebelum jadwal | ⚠️ [Barber] belum berangkat untuk home service jam [X] |
-| Customer dengan visit ≥ 10x booking hari ini | ⭐ Customer VIP [nama] booking hari ini |
+| Barber belum check-in jam > 10:00 | [Nama] belum hadir — ada booking jam [X] |
+| Booking pending > 1 jam | Booking [nama customer] jam [X] belum di-confirm |
+| Home service belum `departed` 30 menit sebelum jadwal | [Barber] belum berangkat untuk home service jam [X] |
+| Customer dengan visit ≥ 10x booking hari ini | Customer VIP [nama] booking hari ini |
 
 Alert hanya muncul kalau ada kondisi bermasalah. Kalau semua oke, tidak ada alert.
 
@@ -80,7 +80,7 @@ Card per booking home service/wedding hari ini.
 
 Status pipeline:
 ```
-🟡 Terjadwal → 🔵 Berangkat → 🟢 Sampai → 🔄 Dikerjakan → ✅ Selesai
+🟡 Terjadwal → Berangkat → 🟢 Sampai → Dikerjakan → Selesai
 ```
 
 Admin tap tombol untuk advance status. Tersimpan ke `bookings.status`: `departed`, `arrived`, `in_progress`.
@@ -156,7 +156,7 @@ Fokus: identifikasi customer yang butuh follow-up, bukan analitik.
 
 ### 3 Tab
 
-**🔥 Loyal**
+** Loyal**
 Booking ≥ 5x all-time di cabang ini.
 Kolom: Nama · No HP · Total kunjungan · Kapster favorit · Terakhir datang
 
@@ -164,15 +164,15 @@ Kolom: Nama · No HP · Total kunjungan · Kapster favorit · Terakhir datang
 Pertama kali booking di cabang ini (bulan ini).
 Kolom: Nama · No HP · Tanggal pertama · Kapster · Service
 
-**😴 Dormant**
+** Dormant**
 Tidak balik > 30 hari (pernah datang sebelumnya).
 Kolom: Nama · No HP · Terakhir datang · Total kunjungan
 
 ### Aksi WA (1 klik)
 Buka `wa.me/62xxx` dengan template pre-filled:
-- Loyal: *"Makasih udah setia ke RedBox [cabang]! Kapster favoritmu siap melayani 😊"*
-- Baru: *"Halo [nama], senang kamu coba RedBox [cabang]! Gimana pengalamannya? 😊"*
-- Dormant: *"Halo [nama], sudah lama nih! Yuk balik ke RedBox [cabang] 😊"*
+- Loyal: *"Makasih udah setia ke RedBox [cabang]! Kapster favoritmu siap melayani "*
+- Baru: *"Halo [nama], senang kamu coba RedBox [cabang]! Gimana pengalamannya? "*
+- Dormant: *"Halo [nama], sudah lama nih! Yuk balik ke RedBox [cabang] "*
 
 ---
 
@@ -184,9 +184,9 @@ Visibility admin terhadap performa tim — non-finansial.
 
 | Tab | Metric | Data |
 |-----|--------|------|
-| 👥 Customer | Count bulan ini | `barber_daily_counts` |
-| 🔥 Streak | Hari aktif berturut | `barber_streaks` |
-| 🏠 Home Service | Count home service bulan ini | `bookings` |
+| Customer | Count bulan ini | `barber_daily_counts` |
+| Streak | Hari aktif berturut | `barber_streaks` |
+| Home Service | Count home service bulan ini | `bookings` |
 
 Tampilan: Rank · Nama · Count · Badge Tier · Level XP
 
@@ -221,8 +221,8 @@ Kirim pengumuman ke kapster cabang.
 
 ```
 pending → confirmed → departed → arrived → in_progress → done
-                   ↘ cancelled
-                   ↘ no_show
+ cancelled
+ no_show
 ```
 
 `departed`, `arrived`, `in_progress` hanya untuk `home_service` dan `wedding`.
@@ -234,13 +234,13 @@ pending → confirmed → departed → arrived → in_progress → done
 ```sql
 -- Absensi harian barber
 CREATE TABLE barber_attendance (
-  barber_id   TEXT NOT NULL REFERENCES barbers(id),
-  date        DATE NOT NULL,
-  status      TEXT NOT NULL, -- hadir | terlambat | izin | sakit | cuti
-  note        TEXT,
-  updated_by  UUID REFERENCES auth.users(id),
-  updated_at  TIMESTAMPTZ DEFAULT NOW(),
-  PRIMARY KEY (barber_id, date)
+ barber_id TEXT NOT NULL REFERENCES barbers(id),
+ date DATE NOT NULL,
+ status TEXT NOT NULL, -- hadir | terlambat | izin | sakit | cuti
+ note TEXT,
+ updated_by UUID REFERENCES auth.users(id),
+ updated_at TIMESTAMPTZ DEFAULT NOW(),
+ PRIMARY KEY (barber_id, date)
 );
 ```
 
@@ -250,9 +250,9 @@ CREATE TABLE barber_attendance (
 
 ```
 Frontend /admin/* pages
-  → /app/api/admin/* proxy routes (Next.js)
-    → Express server/routes/adminCrm.js (BARU)
-      → Supabase (branch-scoped queries)
+ → /app/api/admin/* proxy routes (Next.js)
+ → Express server/routes/adminCrm.js (BARU)
+ → Supabase (branch-scoped queries)
 ```
 
 ---

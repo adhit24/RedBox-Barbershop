@@ -1,7 +1,7 @@
 # Booking Calendar Tab — Design Spec
 
-**Date:** 2026-06-05  
-**Status:** Approved  
+**Date:** 2026-06-05 
+**Status:** Approved 
 **Feature:** Kalender booking bulanan sebagai tab di halaman `/admin/bookings`, + hapus Broadcast dan Schedule
 
 ---
@@ -31,7 +31,7 @@ Tambah tab "Tabel | Kalender" di halaman Booking admin. Tab Kalender menampilkan
 Di bawah header "Booking Control", sebelum filter:
 
 ```
-[📋 Tabel]  [📅 Kalender]
+[ Tabel] [ Kalender]
 ```
 
 - Aktif: background merah tipis `#C72820/15`, teks `#E87068`, border `#C72820/30`
@@ -46,7 +46,7 @@ Tidak berubah dari implementasi sekarang (date input, filter status/tipe, list k
 
 **Sub-header:**
 ```
-‹  Juni 2026  ›        [dropdown: Semua Kapster ▾]
+‹ Juni 2026 › [dropdown: Semua Kapster ▾]
 ```
 
 **Grid bulan:**
@@ -70,8 +70,8 @@ Sabtu, 7 Juni 2026
 
 Setelah load:
 ```
-08:00  Andi Santoso   Potong Rambut   [Confirmed]
-09:30  Budi Pratama   Cuci + Potong   [Pending]
+08:00 Andi Santoso Potong Rambut [Confirmed]
+09:30 Budi Pratama Cuci + Potong [Pending]
 ...
 ```
 
@@ -120,9 +120,9 @@ Barbers sudah di-fetch di parent `bookings/page.tsx` (`/api/admin/barbers?branch
 
 ```typescript
 interface CalendarViewProps {
-  branch: string;
-  barbers: { id: string; name: string }[];
-  readonly?: boolean;
+ branch: string;
+ barbers: { id: string; name: string }[];
+ readonly?: boolean;
 }
 ```
 

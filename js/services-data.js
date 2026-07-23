@@ -1,326 +1,326 @@
 // ================================================
-// REDBOX BARBERSHOP — DATA LAYANAN TERBARU
+// REDBOX BARBERSHOP - DATA LAYANAN TERBARU
 // ================================================
 
 const REDBOX_SERVICES = [
-  // ── HAIR ──────────────────────────────────────
-  {
-    id: 'gentleman-grooming',
-    category: 'haircut',
-    name: 'Redbox Gentleman Grooming',
-    icon: '✂️',
-    img: 'Brand_assets/Services/Hair_Cut.jpg',
-    duration: '60 menit',
-    price: 95000,
-    csbPrice: 120000,
-    desc: 'Paket grooming lengkap: haircut presisi + fade modern + finish styling untuk tampilan pria yang tajam dan rapi.'
-  },
-  {
-    id: 'hair-tattoo-single',
-    category: 'haircut',
-    name: 'Hair Tattoo Single Side',
-    icon: '🎨',
-    img: 'Brand_assets/Services/Hair_Tatto_Single_Side.jpg',
-    duration: '15 menit',
-    price: 45000,
-    csbPrice: 55000,
-    desc: 'Desain seni pada satu sisi rambut untuk gaya yang unik.'
-  },
-  {
-    id: 'hair-tattoo-double',
-    category: 'haircut',
-    name: 'Hair Tattoo Double Side',
-    icon: '🎨',
-    img: 'Brand_assets/Services/Hair_Tattoo_Double_Side.jpg',
-    duration: '30 menit',
-    price: 75000,
-    csbPrice: 85000,
-    desc: 'Desain seni pada kedua sisi rambut untuk tampilan yang lebih ekspresif.'
-  },
-  {
-    id: 'hair-color',
-    category: 'haircut',
-    name: 'Hair Color',
-    icon: '🌈',
-    img: 'Brand_assets/Services/Hair_Color.jpg',
-    duration: '45 menit',
-    price: 160000,
-    csbPrice: 160000,
-    desc: 'Pewarnaan rambut profesional dengan pilihan warna yang trendi.'
-  },
-  {
-    id: 'hair-bleaching',
-    category: 'haircut',
-    name: 'Hair Bleaching',
-    icon: '✨',
-    img: 'Brand_assets/Services/Hair_Bleaching.jpg',
-    duration: '180 menit',
-    price: 360000,
-    csbPrice: 370000,
-    desc: 'Proses pemutihan rambut sebelum pewarnaan untuk hasil warna yang maksimal.'
-  },
-  {
-    id: 'hair-highlight',
-    category: 'haircut',
-    name: 'Hair Highlighting',
-    icon: '🌟',
-    img: 'Brand_assets/Services/Hair_Highlighting.jpg',
-    duration: '180 menit',
-    price: 310000,
-    csbPrice: 320000,
-    desc: 'Teknik highlight untuk memberikan dimensi dan kilau pada rambut Anda.'
-  },
-  {
-    id: 'hair-curly',
-    category: 'haircut',
-    name: 'Hair Curly',
-    icon: '🌀',
-    img: 'Brand_assets/Services/Hair_Curly.jpg',
-    duration: '90 menit',
-    price: 310000,
-    csbPrice: 320000,
-    desc: 'Proses pengeritingan rambut untuk tekstur dan volume yang lebih gaya.'
-  },
-  {
-    id: 'hair-smoothing',
-    category: 'haircut',
-    name: 'Hair Smoothing',
-    icon: '🧴',
-    img: 'Brand_assets/Services/Hair_Smoothing.jpg',
-    duration: '90 menit',
-    price: 360000,
-    csbPrice: 370000,
-    desc: 'Meluruskan dan menghaluskan rambut agar lebih mudah diatur and berkilau.'
-  },
-  {
-    id: 'hair-spa',
-    category: 'haircut',
-    name: 'Hair Spa',
-    icon: '🧖',
-    img: 'Brand_assets/Services/Hair_Spa.jpg',
-    duration: '30 menit',
-    price: 110000,
-    csbPrice: 120000,
-    desc: 'Perawatan mendalam untuk kesehatan rambut yang lebih optimal.'
-  },
-  {
-    id: 'down-perm',
-    category: 'haircut',
-    name: 'Down Perm / Root Lift',
-    icon: '📏',
-    img: 'Brand_assets/Services/Down_Perm.jpg',
-    duration: '60 menit',
-    price: 175000,
-    csbPrice: 185000,
-    desc: 'Teknik untuk mengatur arah tumbuh rambut agar lebih rapi dan bervolume.'
-  },
+ // ── HAIR ──────────────────────────────────────
+ {
+ id: 'gentleman-grooming',
+ category: 'haircut',
+ name: 'Gentleman Grooming',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Cut.jpg',
+ duration: '60 menit',
+ price: 95000,
+ csbPrice: 120000,
+ desc: 'Paket grooming lengkap: haircut presisi + fade modern + finish styling untuk tampilan pria yang tajam dan rapi.'
+ },
+ {
+ id: 'hair-tattoo-single',
+ category: 'haircut',
+ name: 'Hair Tattoo Single Side',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Tatto_Single_Side.jpg',
+ duration: '15 menit',
+ price: 45000,
+ csbPrice: 55000,
+ desc: 'Desain seni pada satu sisi rambut untuk gaya yang unik.'
+ },
+ {
+ id: 'hair-tattoo-double',
+ category: 'haircut',
+ name: 'Hair Tattoo Double Side',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Tattoo_Double_Side.jpg',
+ duration: '30 menit',
+ price: 75000,
+ csbPrice: 85000,
+ desc: 'Desain seni pada kedua sisi rambut untuk tampilan yang lebih ekspresif.'
+ },
+ {
+ id: 'hair-color',
+ category: 'haircut',
+ name: 'Hair Color',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Color.jpg',
+ duration: '45 menit',
+ price: 160000,
+ csbPrice: 160000,
+ desc: 'Pewarnaan rambut profesional dengan pilihan warna yang trendi.'
+ },
+ {
+ id: 'hair-bleaching',
+ category: 'haircut',
+ name: 'Hair Bleaching',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Bleaching.jpg',
+ duration: '180 menit',
+ price: 360000,
+ csbPrice: 370000,
+ desc: 'Proses pemutihan rambut sebelum pewarnaan untuk hasil warna yang maksimal.'
+ },
+ {
+ id: 'hair-highlight',
+ category: 'haircut',
+ name: 'Hair Highlighting',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Highlighting.jpg',
+ duration: '180 menit',
+ price: 310000,
+ csbPrice: 320000,
+ desc: 'Teknik highlight untuk memberikan dimensi dan kilau pada rambut Anda.'
+ },
+ {
+ id: 'hair-curly',
+ category: 'haircut',
+ name: 'Hair Curly',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Curly.jpg',
+ duration: '90 menit',
+ price: 310000,
+ csbPrice: 320000,
+ desc: 'Proses pengeritingan rambut untuk tekstur dan volume yang lebih gaya.'
+ },
+ {
+ id: 'hair-smoothing',
+ category: 'haircut',
+ name: 'Hair Smoothing',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Smoothing.jpg',
+ duration: '90 menit',
+ price: 360000,
+ csbPrice: 370000,
+ desc: 'Meluruskan dan menghaluskan rambut agar lebih mudah diatur and berkilau.'
+ },
+ {
+ id: 'hair-spa',
+ category: 'haircut',
+ name: 'Hair Spa',
+ icon: '',
+ img: 'Brand_assets/Services/Hair_Spa.jpg',
+ duration: '30 menit',
+ price: 110000,
+ csbPrice: 120000,
+ desc: 'Perawatan mendalam untuk kesehatan rambut yang lebih optimal.'
+ },
+ {
+ id: 'down-perm',
+ category: 'haircut',
+ name: 'Down Perm / Root Lift',
+ icon: '',
+ img: 'Brand_assets/Services/Down_Perm.jpg',
+ duration: '60 menit',
+ price: 175000,
+ csbPrice: 185000,
+ desc: 'Teknik untuk mengatur arah tumbuh rambut agar lebih rapi dan bervolume.'
+ },
 
-  // ── SHAVE ─────────────────────────────────────
-  {
-    id: 'shaving',
-    category: 'shave',
-    name: 'Shaving',
-    icon: '🪒',
-    img: 'Brand_assets/Services/Shaving.jpg',
-    duration: '20 menit',
-    price: 40000,
-    csbPrice: 50000,
-    desc: 'Pencukuran jenggot atau kumis standar agar tampil bersih.'
-  },
-  {
-    id: 'traditional-shave',
-    category: 'shave',
-    name: 'Traditional Shaving',
-    icon: '🪒',
-    img: 'Brand_assets/Services/Traditional_Shaving.jpg',
-    duration: '30 menit',
-    price: 70000,
-    csbPrice: 80000,
-    desc: 'Pencukuran klasik dengan handuk hangat untuk kenyamanan ekstra.'
-  },
-  {
-    id: 'premium-head-shave',
-    category: 'shave',
-    name: 'Premium Head Shave',
-    icon: '👨‍🦲',
-    img: 'Brand_assets/Services/Premium_Head_Shave.jpg',
-    duration: '45 menit',
-    price: 130000,
-    csbPrice: 140000,
-    desc: 'Pencukuran kepala hingga licin dengan perawatan premium.'
-  },
+ // ── SHAVE ─────────────────────────────────────
+ {
+ id: 'shaving',
+ category: 'shave',
+ name: 'Shaving',
+ icon: '',
+ img: 'Brand_assets/Services/Shaving.jpg',
+ duration: '20 menit',
+ price: 40000,
+ csbPrice: 50000,
+ desc: 'Pencukuran jenggot atau kumis standar agar tampil bersih.'
+ },
+ {
+ id: 'traditional-shave',
+ category: 'shave',
+ name: 'Traditional Shaving',
+ icon: '',
+ img: 'Brand_assets/Services/Traditional_Shaving.jpg',
+ duration: '30 menit',
+ price: 70000,
+ csbPrice: 80000,
+ desc: 'Pencukuran klasik dengan handuk hangat untuk kenyamanan ekstra.'
+ },
+ {
+ id: 'premium-head-shave',
+ category: 'shave',
+ name: 'Premium Head Shave',
+ icon: '',
+ img: 'Brand_assets/Services/Premium_Head_Shave.jpg',
+ duration: '45 menit',
+ price: 130000,
+ csbPrice: 140000,
+ desc: 'Pencukuran kepala hingga licin dengan perawatan premium.'
+ },
 
-  // ── OTHER SERVICES ────────────────────────────
-  {
-    id: 'men-massage',
-    category: 'other',
-    name: 'Men Massage Service',
-    icon: '💆‍♂️',
-    img: 'Brand_assets/hair_spa.jpeg',
-    duration: '45 menit',
-    price: 145000,
-    csbPrice: 155000,
-    desc: 'Pijat relaksasi khusus pria meliputi Kepala, Wajah, Tangan & Bahu.'
-  },
-  {
-    id: 'nose-wax',
-    category: 'other',
-    name: 'Nose Wax',
-    icon: '👃',
-    img: 'Brand_assets/nose_wax.jpeg',
-    duration: '25 menit',
-    price: 70000,
-    csbPrice: 80000,
-    desc: 'Pembersihan bulu hidung dengan teknik waxing yang cepat dan efektif.'
-  },
-  {
-    id: 'ear-wax',
-    category: 'other',
-    name: 'Ear Wax',
-    icon: '👂',
-    img: 'Brand_assets/Services/ear_wax.jpg',
-    duration: '25 menit',
-    price: 70000,
-    csbPrice: 80000,
-    desc: 'Pembersihan bulu telinga dengan teknik waxing.'
-  },
-  {
-    id: 'ear-singeing',
-    category: 'other',
-    name: 'Ear Singeing',
-    icon: '🔥',
-    img: 'Brand_assets/ear_singeing.jpeg',
-    duration: '20 menit',
-    price: 75000,
-    csbPrice: 85000,
-    desc: 'Teknik tradisional menghilangkan bulu telinga menggunakan api.'
-  },
-  {
-    id: 'charcoal-cleansing',
-    category: 'other',
-    name: 'Charcoal Deep Cleansing',
-    icon: '🖤',
-    img: 'Brand_assets/charcoal.jpeg',
-    duration: '45 menit',
-    price: 105000,
-    csbPrice: 115000,
-    desc: 'Pembersihan wajah mendalam dengan masker charcoal untuk mengangkat kotoran.'
-  },
-  {
-    id: 'ear-candle',
-    category: 'other',
-    name: 'Ear Candle',
-    icon: '🕯️',
-    img: 'Brand_assets/ear_candle.jpeg',
-    duration: '25 menit',
-    price: 40000,
-    csbPrice: 50000,
-    desc: 'Terapi pembersihan telinga untuk relaksasi dan kebersihan.'
-  },
-  {
-    id: 'charcoal-nose-strip',
-    category: 'other',
-    name: 'Charcoal Nose Cleansing Strip',
-    icon: '👃',
-    img: 'Brand_assets/Services/Charcoal_Nose_Cleansing_Strip.jpg',
-    duration: '30 menit',
-    price: 65000,
-    csbPrice: 75000,
-    desc: 'Pembersihan komedo pada hidung dengan charcoal strip.'
-  },
+ // ── OTHER SERVICES ────────────────────────────
+ {
+ id: 'men-massage',
+ category: 'other',
+ name: 'Men Massage Service',
+ icon: '',
+ img: 'Brand_assets/hair_spa.jpeg',
+ duration: '45 menit',
+ price: 145000,
+ csbPrice: 155000,
+ desc: 'Pijat relaksasi khusus pria meliputi Kepala, Wajah, Tangan & Bahu.'
+ },
+ {
+ id: 'nose-wax',
+ category: 'other',
+ name: 'Nose Wax',
+ icon: '',
+ img: 'Brand_assets/nose_wax.jpeg',
+ duration: '25 menit',
+ price: 70000,
+ csbPrice: 80000,
+ desc: 'Pembersihan bulu hidung dengan teknik waxing yang cepat dan efektif.'
+ },
+ {
+ id: 'ear-wax',
+ category: 'other',
+ name: 'Ear Wax',
+ icon: '',
+ img: 'Brand_assets/Services/ear_wax.jpg',
+ duration: '25 menit',
+ price: 70000,
+ csbPrice: 80000,
+ desc: 'Pembersihan bulu telinga dengan teknik waxing.'
+ },
+ {
+ id: 'ear-singeing',
+ category: 'other',
+ name: 'Ear Singeing',
+ icon: '',
+ img: 'Brand_assets/ear_singeing.jpeg',
+ duration: '20 menit',
+ price: 75000,
+ csbPrice: 85000,
+ desc: 'Teknik tradisional menghilangkan bulu telinga menggunakan api.'
+ },
+ {
+ id: 'charcoal-cleansing',
+ category: 'other',
+ name: 'Charcoal Deep Cleansing',
+ icon: '',
+ img: 'Brand_assets/charcoal.jpeg',
+ duration: '45 menit',
+ price: 105000,
+ csbPrice: 115000,
+ desc: 'Pembersihan wajah mendalam dengan masker charcoal untuk mengangkat kotoran.'
+ },
+ {
+ id: 'ear-candle',
+ category: 'other',
+ name: 'Ear Candle',
+ icon: '',
+ img: 'Brand_assets/ear_candle.jpeg',
+ duration: '25 menit',
+ price: 40000,
+ csbPrice: 50000,
+ desc: 'Terapi pembersihan telinga untuk relaksasi dan kebersihan.'
+ },
+ {
+ id: 'charcoal-nose-strip',
+ category: 'other',
+ name: 'Charcoal Nose Cleansing Strip',
+ icon: '',
+ img: 'Brand_assets/Services/Charcoal_Nose_Cleansing_Strip.jpg',
+ duration: '30 menit',
+ price: 65000,
+ csbPrice: 75000,
+ desc: 'Pembersihan komedo pada hidung dengan charcoal strip.'
+ },
 
-  // ── GROOMING PACKAGES ─────────────────────────
-  {
-    id: 'package-royal',
-    category: 'package',
-    name: 'Redbox Royal Grooming',
-    icon: '👑',
-    img: 'Brand_assets/Redbox Royal.jpg',
-    duration: '90 menit',
-    price: 305000,
-    csbPrice: 315000,
-    badge: 'ROYAL',
-    desc: 'Haircut, Face & Back Massage, Charcoal Cleansing, Traditional Shaving, Waxing Nose & Ear.'
-  },
-  {
-    id: 'package-duxe',
-    category: 'package',
-    name: 'Redbox Duxe Grooming',
-    icon: '💎',
-    img: 'Brand_assets/Redbox Duxe.jpg',
-    duration: '90 menit',
-    price: 250000,
-    csbPrice: 260000,
-    badge: 'DUXE',
-    desc: 'Haircut, Charcoal Deep Cleansing, Face Scrub, Hair Spa.'
-  },
-  {
-    id: 'package-earl',
-    category: 'package',
-    name: 'Redbox Earl Grooming',
-    icon: '👔',
-    img: 'Brand_assets/Redbox Earl.jpg',
-    duration: '90 menit',
-    price: 185000,
-    csbPrice: 195000,
-    badge: 'EARL',
-    desc: 'Haircut, Face & Back Massage, Hair Spa.'
-  },
-  {
-    id: 'package-baron',
-    category: 'package',
-    name: 'Redbox Baron Grooming',
-    icon: '🎖️',
-    img: 'Brand_assets/Redbox Baron.jpg',
-    duration: '90 menit',
-    price: 150000,
-    csbPrice: 190000,
-    badge: 'BARON',
-    desc: 'Haircut / Fade / Long Trim.'
-  },
-  {
-    id: 'package-noble',
-    category: 'package',
-    name: 'Redbox Noble Grooming',
-    icon: '🎩',
-    img: 'Brand_assets/Redbox Noble.jpg',
-    duration: '90 menit',
-    price: 140000,
-    csbPrice: 150000,
-    badge: 'NOBLE',
-    desc: 'Haircut, Face & Back Massage, Ear Singeing.'
-  }
+ // ── GROOMING PACKAGES ─────────────────────────
+ {
+ id: 'package-royal',
+ category: 'package',
+ name: 'Redbox Royal Grooming',
+ icon: '',
+ img: 'Brand_assets/Redbox Royal.jpg',
+ duration: '90 menit',
+ price: 305000,
+ csbPrice: 315000,
+ badge: 'ROYAL',
+ desc: 'Haircut, Face & Back Massage, Charcoal Cleansing, Traditional Shaving, Waxing Nose & Ear.'
+ },
+ {
+ id: 'package-duxe',
+ category: 'package',
+ name: 'Redbox Duxe Grooming',
+ icon: '',
+ img: 'Brand_assets/Redbox Duxe.jpg',
+ duration: '90 menit',
+ price: 250000,
+ csbPrice: 260000,
+ badge: 'DUXE',
+ desc: 'Haircut, Charcoal Deep Cleansing, Face Scrub, Hair Spa.'
+ },
+ {
+ id: 'package-earl',
+ category: 'package',
+ name: 'Redbox Earl Grooming',
+ icon: '',
+ img: 'Brand_assets/Redbox Earl.jpg',
+ duration: '90 menit',
+ price: 185000,
+ csbPrice: 195000,
+ badge: 'EARL',
+ desc: 'Haircut, Face & Back Massage, Hair Spa.'
+ },
+ {
+ id: 'package-baron',
+ category: 'package',
+ name: 'Redbox Baron Grooming',
+ icon: '',
+ img: 'Brand_assets/Redbox Baron.jpg',
+ duration: '90 menit',
+ price: 150000,
+ csbPrice: 190000,
+ badge: 'BARON',
+ desc: 'Haircut / Fade / Long Trim.'
+ },
+ {
+ id: 'package-noble',
+ category: 'package',
+ name: 'Redbox Noble Grooming',
+ icon: '',
+ img: 'Brand_assets/Redbox Noble.jpg',
+ duration: '90 menit',
+ price: 140000,
+ csbPrice: 150000,
+ badge: 'NOBLE',
+ desc: 'Haircut, Face & Back Massage, Ear Singeing.'
+ }
 ];
 
 // ================================================
-// ADD-ONS — only for specific services
+// ADD-ONS - only for specific services
 // Duration in minutes (numeric for math), price in IDR
 // ================================================
 const REDBOX_ADDONS = {
-  'gentleman-grooming': [
-    {
-      id: 'addon-hair-spa',
-      name: 'Hair Spa',
-      icon: '🧖',
-      price: 110000,
-      csbPrice: 120000,
-      durationMins: 30
-    },
-    {
-      id: 'addon-shaving',
-      name: 'Shaving',
-      icon: '🪒',
-      price: 40000,
-      csbPrice: 50000,
-      durationMins: 20
-    },
-    {
-      id: 'addon-men-massage',
-      name: 'Men Massage Service',
-      icon: '💆‍♂️',
-      price: 145000,
-      csbPrice: 155000,
-      durationMins: 45
-    }
-  ]
+ 'gentleman-grooming': [
+ {
+ id: 'addon-hair-spa',
+ name: 'Hair Spa',
+ icon: '',
+ price: 110000,
+ csbPrice: 120000,
+ durationMins: 30
+ },
+ {
+ id: 'addon-shaving',
+ name: 'Shaving',
+ icon: '',
+ price: 40000,
+ csbPrice: 50000,
+ durationMins: 20
+ },
+ {
+ id: 'addon-men-massage',
+ name: 'Men Massage Service',
+ icon: '',
+ price: 145000,
+ csbPrice: 155000,
+ durationMins: 45
+ }
+ ]
 };

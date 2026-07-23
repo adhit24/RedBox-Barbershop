@@ -20,21 +20,21 @@ Perpaduan antara:
 
 **2. Highlight Precision**
 - Area terang fokus ke:
-  - rambut
-  - wajah
-  - detail cutting
+ - rambut
+ - wajah
+ - detail cutting
 
 **3. Human-Centered**
 - Selalu ada manusia:
-  - barber
-  - customer
+ - barber
+ - customer
 - Hindari terlalu banyak elemen kosong
 
 **4. Texture & Depth**
 - Gunakan:
-  - shadow
-  - grain halus
-  - lighting contrast
+ - shadow
+ - grain halus
+ - lighting contrast
 
 ---
 

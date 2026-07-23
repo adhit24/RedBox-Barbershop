@@ -1,6 +1,6 @@
 # Admin & Barber PWA — Design Spec
-**Date:** 2026-06-01  
-**Project:** RedBox Barbershop  
+**Date:** 2026-06-01 
+**Project:** RedBox Barbershop 
 **Scope:** Internal app untuk admin (owner) dan barber, dibangun sebagai PWA di atas Next.js yang sudah ada.
 
 ---
@@ -41,13 +41,13 @@ Routing diproteksi via Next.js middleware — redirect ke `/login` kalau belum a
 ## 4. Struktur Route
 
 ```
-/login                    ← semua user
-/admin/dashboard          ← owner & branch_admin
-/admin/bookings           ← list booking, filter cabang/tanggal
-/admin/barbers            ← kelola barber (toggle aktif, override)
-/barber/schedule          ← jadwal pribadi hari ini
-/barber/home-service      ← detail job home service aktif
-/barber/notifications     ← log notifikasi masuk
+/login ← semua user
+/admin/dashboard ← owner & branch_admin
+/admin/bookings ← list booking, filter cabang/tanggal
+/admin/barbers ← kelola barber (toggle aktif, override)
+/barber/schedule ← jadwal pribadi hari ini
+/barber/home-service ← detail job home service aktif
+/barber/notifications ← log notifikasi masuk
 ```
 
 ---
@@ -120,24 +120,24 @@ Web Push tidak menggantikan WA Fonnte. Keduanya berjalan paralel:
 ### Tabel `users` (baru — atau extend Supabase Auth metadata)
 ```sql
 CREATE TABLE users (
-  id UUID PRIMARY KEY REFERENCES auth.users(id),
-  name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('owner', 'branch_admin', 'barber')),
-  branch TEXT,           -- NULL untuk owner, diisi untuk branch_admin & barber
-  barber_id TEXT,        -- foreign key ke tabel barbers (untuk role barber)
-  created_at TIMESTAMPTZ DEFAULT NOW()
+ id UUID PRIMARY KEY REFERENCES auth.users(id),
+ name TEXT NOT NULL,
+ role TEXT NOT NULL CHECK (role IN ('owner', 'branch_admin', 'barber')),
+ branch TEXT, -- NULL untuk owner, diisi untuk branch_admin & barber
+ barber_id TEXT, -- foreign key ke tabel barbers (untuk role barber)
+ created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
 
 ### Tabel `push_subscriptions` (baru)
 ```sql
 CREATE TABLE push_subscriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  endpoint TEXT NOT NULL,
-  p256dh TEXT NOT NULL,
-  auth TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+ endpoint TEXT NOT NULL,
+ p256dh TEXT NOT NULL,
+ auth TEXT NOT NULL,
+ created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- GRANT wajib (sesuai policy project)

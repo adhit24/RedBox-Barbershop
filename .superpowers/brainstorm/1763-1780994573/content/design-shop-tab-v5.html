@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+ * { box-sizing: border-box; margin: 0; padding: 0; }
+ body { background: #0f0f0f; color: #e5e7eb; font-family: Inter, system-ui, sans-serif; padding: 24px; }
+
+ .page-header { margin-bottom: 24px; border-bottom: 1px solid #1a1a1a; padding-bottom: 16px; }
+ .page-title { font-size: 1.15rem; font-weight: 700; color: #f9fafb; }
+ .page-desc { font-size: 0.75rem; color: #6b7280; margin-top: 3px; }
+
+ .section-label {
+ font-size: 0.63rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+ color: #c1121f; display: flex; align-items: center; justify-content: space-between;
+ margin-bottom: 14px; margin-top: 28px;
+ }
+ .section-label:first-of-type { margin-top: 0; }
+ .sl-left { display: flex; align-items: center; gap: 7px; }
+ .see-all { font-size: 0.68rem; color: #4b5563; font-weight: 400; letter-spacing: 0; cursor: pointer; }
+ .see-all:hover { color: #9ca3af; }
+
+ /* ── Unified card style ─────────────────── */
+ .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+ .card-grid.two-col { grid-template-columns: repeat(2, 1fr); }
+
+ .uc { background: #161616; border: 1px solid #1f1f1f; border-radius: 11px; overflow: hidden; transition: border-color 0.2s; cursor: pointer; }
+ .uc:hover { border-color: #2a2a2a; }
+ .uc.hot { border-color: rgba(193,18,31,0.35); }
+ .uc.hot:hover { border-color: rgba(193,18,31,0.55); }
+ .uc.plat { border-color: rgba(196,181,253,0.2); }
+ .uc.plat:hover { border-color: rgba(196,181,253,0.35); }
+
+ .uc-img {
+ height: 110px; overflow: hidden; position: relative; background: #1a1a1a;
+ }
+ .uc-img img {
+ width: 100%; height: 100%; object-fit: cover; object-position: center top;
+ display: block; transition: transform 0.35s ease;
+ }
+ .uc:hover .uc-img img { transform: scale(1.06); }
+
+ /* dark overlay on locked cards */
+ .uc.plat .uc-img::after {
+ content: ''; position: absolute; inset: 0;
+ background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(20,10,40,0.55) 100%);
+ }
+
+ .uc-badge {
+ position: absolute; top: 8px; left: 8px; z-index: 1;
+ font-size: 0.56rem; font-weight: 800; padding: 3px 8px; border-radius: 3px;
+ letter-spacing: 0.06em; text-transform: uppercase; backdrop-filter: blur(4px);
+ }
+ .b-hot { background: rgba(193,18,31,0.92); color: #fff; }
+ .b-top { background: rgba(251,191,36,0.92); color: #451a03; }
+ .b-new { background: rgba(74,222,128,0.9); color: #052e16; }
+ .b-lock { background: rgba(196,181,253,0.15); color: #c4b5fd; border: 1px solid rgba(196,181,253,0.25); }
+
+ .uc-body { padding: 11px 12px 13px; }
+ .uc-name { font-size: 0.78rem; font-weight: 700; color: #e5e7eb; margin-bottom: 3px; line-height: 1.3; }
+ .uc-sub { font-size: 0.67rem; color: #6b7280; margin-bottom: 8px; line-height: 1.4; }
+
+ .uc-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 0.6rem; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-bottom: 9px; }
+ .tag-disc { background: rgba(193,18,31,0.12); color: #c1121f; }
+ .tag-lock { background: rgba(196,181,253,0.1); color: #c4b5fd; }
+ .tag-price { background: rgba(255,255,255,0.06); color: #9ca3af; }
+
+ .uc-btn { width: 100%; padding: 7px 10px; border-radius: 6px; border: none; font-size: 0.68rem; font-weight: 700; cursor: pointer; transition: opacity 0.15s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+ .uc-btn.primary { background: #c1121f; color: #fff; }
+ .uc-btn.ghost { background: transparent; border: 1px solid #2a2a2a; color: #6b7280; }
+ .uc-btn.plat-btn { background: rgba(196,181,253,0.1); border: 1px solid rgba(196,181,253,0.2); color: #c4b5fd; }
+ .uc-btn:hover { opacity: 0.82; }
+
+ .pc-more {
+ display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 7px;
+ min-height: 168px; border: 1px dashed #222; border-radius: 11px; cursor: pointer;
+ color: #374151; transition: border-color 0.2s, color 0.2s;
+ }
+ .pc-more:hover { border-color: #333; color: #6b7280; }
+ .pc-more span { font-size: 0.68rem; text-align: center; line-height: 1.5; }
+
+ /* Upgrade CTA */
+ .upgrade-cta {
+ margin-top: 24px; background: linear-gradient(135deg, #0f0a1e 0%, #07050f 100%);
+ border: 1px solid rgba(196,181,253,0.2); border-radius: 12px; padding: 18px 20px;
+ display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+ }
+ .uc-left { flex: 1; }
+ .uc-title { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; font-weight: 700; color: #c4b5fd; margin-bottom: 5px; }
+ .uc-text { font-size: 0.73rem; color: #6b7280; line-height: 1.55; }
+ .uc-perks { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+ .uc-perk { display: inline-flex; align-items: center; gap: 4px; font-size: 0.6rem; background: rgba(196,181,253,0.09); color: #c4b5fd; padding: 3px 8px; border-radius: 4px; }
+ .cta-btn { background: linear-gradient(135deg,#7c3aed,#5b21b6); color: #fff; border: none; padding: 10px 18px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+ <div class="page-title">Shop</div>
+ <div class="page-desc">Rekomendasi dipersonalisasi untuk member Gold</div>
+</div>
+
+<!-- ── CURATED ── -->
+<div class="section-label">
+ <div class="sl-left">
+ <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c1121f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+ Rekomendasi Untukmu
+ </div>
+ <span style="font-size:0.63rem;color:#374151;letter-spacing:0;font-weight:400">Tier Gold</span>
+</div>
+
+<div class="card-grid">
+ <div class="uc hot">
+ <div class="uc-img"><img src="/files/clay.jpeg" alt="Redbox Clay"/><span class="uc-badge b-hot">Populer</span></div>
+ <div class="uc-body">
+ <div class="uc-name">Redbox Clay</div>
+ <div class="uc-sub">Styling clay untuk tampilan natural</div>
+ <div class="uc-tag tag-price">Rp 100.000</div>
+ <button class="uc-btn primary">Beli via WA</button>
+ </div>
+ </div>
+ <div class="uc hot">
+ <div class="uc-img"><img src="/files/water_base.jpeg" alt="Pomade Waterbased"/><span class="uc-badge b-top">Top Pick</span></div>
+ <div class="uc-body">
+ <div class="uc-name">Pomade Waterbased</div>
+ <div class="uc-sub">Hold kuat, mudah dicuci bersih</div>
+ <div class="uc-tag tag-price">Rp 100rb–150rb</div>
+ <button class="uc-btn primary">Beli via WA</button>
+ </div>
+ </div>
+ <div class="uc">
+ <div class="uc-img"><img src="/files/oil_base.jpeg" alt="Pomade Oil Based"/><span class="uc-badge b-new">Baru</span></div>
+ <div class="uc-body">
+ <div class="uc-name">Pomade Oil Based</div>
+ <div class="uc-sub">Shine tinggi, tahan lama sepanjang hari</div>
+ <div class="uc-tag tag-price">Rp 100rb–150rb</div>
+ <button class="uc-btn primary">Beli via WA</button>
+ </div>
+ </div>
+</div>
+
+<!-- ── ALL PRODUCTS ── -->
+<div class="section-label">
+ <div class="sl-left">
+ <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c1121f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+ Semua Produk Redbox
+ </div>
+ <span class="see-all">Lihat semua →</span>
+</div>
+
+<div class="card-grid">
+ <div class="uc">
+ <div class="uc-img"><img src="/files/eleftheree.jpeg" alt="Parfum Eleftheree"/></div>
+ <div class="uc-body">
+ <div class="uc-name">Parfum Eleftheree</div>
+ <div class="uc-sub">Extrait de Parfum — aroma eksklusif</div>
+ <div class="uc-tag tag-price">Rp 150.000</div>
+ <button class="uc-btn ghost">Detail</button>
+ </div>
+ </div>
+ <div class="uc">
+ <div class="uc-img"><img src="/files/psyhi.jpeg" alt="Parfum Psyhi"/></div>
+ <div class="uc-body">
+ <div class="uc-name">Parfum Psyhi</div>
+ <div class="uc-sub">Extrait de Parfum — woody & intense</div>
+ <div class="uc-tag tag-price">Rp 150.000</div>
+ <button class="uc-btn ghost">Detail</button>
+ </div>
+ </div>
+ <div class="pc-more">
+ <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+ <span>Lihat semua<br/>produk</span>
+ </div>
+</div>
+
+<!-- ── SERVICES ── -->
+<div class="section-label">
+ <div class="sl-left">
+ <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#c1121f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+ Tingkatkan Pengalamanmu
+ </div>
+</div>
+
+<div class="card-grid two-col">
+
+ <!-- Haircut Premium — Gold disc -->
+ <div class="uc hot">
+ <div class="uc-img">
+ <img src="/files/svc_haircut.jpeg" alt="Haircut Premium" style="object-position:center 20%"/>
+ <span class="uc-badge b-hot">10% disc</span>
+ </div>
+ <div class="uc-body">
+ <div class="uc-name">Haircut Premium</div>
+ <div class="uc-sub">Classic Style Barber — CSB Mall</div>
+ <div class="uc-tag tag-disc">
+ <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+ Diskon 10% untuk Gold
+ </div>
+ <button class="uc-btn primary">
+ Book sekarang
+ <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+ </button>
+ </div>
+ </div>
+
+ <!-- Gentlemen Grooming — Gold disc -->
+ <div class="uc hot">
+ <div class="uc-img">
+ <img src="/files/svc_grooming.jpeg" alt="Gentlemen Grooming" style="object-position:center 30%"/>
+ <span class="uc-badge b-hot">10% disc</span>
+ </div>
+ <div class="uc-body">
+ <div class="uc-name">Gentlemen Grooming</div>
+ <div class="uc-sub">Layanan grooming & shaving lengkap</div>
+ <div class="uc-tag tag-disc">
+ <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+ Diskon 10% untuk Gold
+ </div>
+ <button class="uc-btn primary">
+ Book sekarang
+ <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+ </button>
+ </div>
+ </div>
+
+ <!-- Fadecut Grooming — Platinum locked -->
+ <div class="uc plat">
+ <div class="uc-img">
+ <img src="/files/svc_fadecut.jpeg" alt="Fadecut Grooming" style="object-position:center 25%"/>
+ <span class="uc-badge b-lock">
+ <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+ Platinum only
+ </span>
+ </div>
+ <div class="uc-body">
+ <div class="uc-name">Fadecut Grooming</div>
+ <div class="uc-sub">Premium service — gratis setiap kunjungan</div>
+ <div class="uc-tag tag-lock">
+ <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+ Free — unlock di Platinum
+ </div>
+ <button class="uc-btn plat-btn">
+ Upgrade tier
+ <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+ </button>
+ </div>
+ </div>
+
+ <!-- Free Americano — Platinum locked -->
+ <div class="uc plat">
+ <div class="uc-img">
+ <!-- Americano photo from Unsplash (free) -->
+ <img src="https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&q=75" alt="Free Americano" style="object-position:center 40%"/>
+ <span class="uc-badge b-lock">
+ <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+ Platinum only
+ </span>
+ </div>
+ <div class="uc-body">
+ <div class="uc-name">Free Americano</div>
+ <div class="uc-sub">Kopi gratis setiap kunjungan ke Redbox</div>
+ <div class="uc-tag tag-lock">
+ <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+ Free — unlock di Platinum
+ </div>
+ <button class="uc-btn plat-btn">
+ Upgrade tier
+ <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+ </button>
+ </div>
+ </div>
+
+</div>
+
+<!-- ── UPGRADE CTA ── -->
+<div class="upgrade-cta">
+ <div class="uc-left">
+ <div class="uc-title">
+ <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#c4b5fd" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z"/><polyline points="2 8 12 14 22 8"/><line x1="12" y1="14" x2="12" y2="20"/></svg>
+ Upgrade ke Platinum — 1.400 poin lagi
+ </div>
+ <div class="uc-text">Unlock free haircut, free americano, dan birthday gratis penuh di semua cabang.</div>
+ <div class="uc-perks">
+ <span class="uc-perk"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Free Haircut</span>
+ <span class="uc-perk"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Free Americano</span>
+ <span class="uc-perk"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Birthday Gratis</span>
+ <span class="uc-perk"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Semua Cabang</span>
+ </div>
+ </div>
+ <button class="cta-btn">
+ Kumpul Poin
+ <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+ </button>
+</div>
+
+</body>
+</html>

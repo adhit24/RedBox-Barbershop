@@ -1,0 +1,77 @@
+<h2>Desain — Arsitektur Page Transition</h2>
+<p class="subtitle">Section 1 of 3 — Struktur file dan cara kerja komponen</p>
+
+<div class="section">
+ <div class="label">Cara Kerja</div>
+ <div class="mockup">
+ <div class="mockup-header">Flow navigasi: Revenue → Payment</div>
+ <div class="mockup-body" style="font-size:12px;line-height:1.8;">
+
+ <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">
+ <div style="background:#1e293b;border:1px solid #334155;border-radius:6px;padding:6px 10px;font-size:11px;color:#94a3b8;">
+ useNavigationDirection()<br>
+ <span style="color:#64748b;font-size:10px;">prev: /owner/revenue<br>curr: /owner/payment<br>→ direction: "forward"</span>
+ </div>
+ <div style="color:#C72820;font-size:16px;">→</div>
+ <div style="background:#1e3a5f;border:1px solid #3b82f6;border-radius:6px;padding:6px 10px;font-size:11px;color:#60a5fa;">
+ &lt;PageTransition dir="forward"&gt;<br>
+ <span style="color:#475569;font-size:10px;">AnimatePresence mode="wait"<br>motion.div key={pathname}<br>x: 100%→0 (enter)</span>
+ </div>
+ <div style="color:#C72820;font-size:16px;">→</div>
+ <div style="background:#0a2a1a;border:1px solid #22c55e;border-radius:6px;padding:6px 10px;font-size:11px;color:#86efac;">
+ Page muncul<br>
+ <span style="color:#64748b;font-size:10px;">slide dari kanan, 350ms<br>spring stiffness 280</span>
+ </div>
+ </div>
+
+ <div style="background:#0a0f1a;border-radius:8px;padding:10px;font-family:monospace;font-size:11px;color:#64748b;line-height:1.7;">
+ <span style="color:#8b5cf6;">const</span> ROUTE_ORDER = [<br>
+ &nbsp;&nbsp;<span style="color:#22c55e;">'/owner/dashboard'</span>,<br>
+ &nbsp;&nbsp;<span style="color:#22c55e;">'/owner/revenue'</span>,<br>
+ &nbsp;&nbsp;<span style="color:#22c55e;">'/owner/payment'</span>,<br>
+ &nbsp;&nbsp;<span style="color:#22c55e;">'/barber/home'</span>,<br>
+ &nbsp;&nbsp;<span style="color:#22c55e;">'/barber/schedule'</span>, ...<br>
+ ]<br><br>
+ <span style="color:#8b5cf6;">if</span> (currIdx > prevIdx) → <span style="color:#C72820;">forward</span> (slide dari kanan)<br>
+ <span style="color:#8b5cf6;">else</span> → <span style="color:#3b82f6;">back</span> (slide dari kiri)
+ </div>
+ </div>
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">File yang Dibuat / Diubah</div>
+ <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;">
+
+ <div style="background:#0a2a1a;border:1px solid #166534;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;">
+ <span style="color:#86efac;font-family:monospace;">frontend/src/hooks/useNavigationDirection.ts</span>
+ <span style="color:#22c55e;font-weight:600;">CREATE</span>
+ </div>
+ <div style="background:#0a2a1a;border:1px solid #166534;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;">
+ <span style="color:#86efac;font-family:monospace;">frontend/src/components/PageTransition.tsx</span>
+ <span style="color:#22c55e;font-weight:600;">CREATE</span>
+ </div>
+ <div style="background:#0a2a1a;border:1px solid #166534;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;">
+ <span style="color:#86efac;font-family:monospace;">frontend/src/app/template.tsx</span>
+ <span style="color:#22c55e;font-weight:600;">CREATE</span>
+ </div>
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;">
+ <span style="color:#fde68a;font-family:monospace;">frontend/src/app/owner/layout.tsx</span>
+ <span style="color:#f59e0b;font-weight:600;">MODIFY — wrap &lt;main&gt;</span>
+ </div>
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;">
+ <span style="color:#fde68a;font-family:monospace;">frontend/src/app/barber/layout.tsx</span>
+ <span style="color:#f59e0b;font-weight:600;">MODIFY — wrap &lt;main&gt;</span>
+ </div>
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;">
+ <span style="color:#fde68a;font-family:monospace;">frontend/src/app/admin/layout.tsx</span>
+ <span style="color:#f59e0b;font-weight:600;">MODIFY — wrap &lt;main&gt;</span>
+ </div>
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;">
+ <span style="color:#fde68a;font-family:monospace;">frontend/src/app/barber/schedule/page.tsx</span>
+ <span style="color:#f59e0b;font-weight:600;">MODIFY — tambah Framer Motion</span>
+ </div>
+ </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Apakah arsitektur ini sudah OK? Reply di terminal untuk lanjut ke Section 2 (animation specs).</p>

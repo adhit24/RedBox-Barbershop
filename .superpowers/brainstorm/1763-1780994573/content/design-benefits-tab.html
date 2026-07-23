@@ -1,0 +1,200 @@
+<style>
+ .tab-mockup { background:#0f0f0f; border-radius:14px; padding:24px; font-family:Inter,sans-serif; }
+ .panel-title { font-size:1.1rem; font-weight:700; color:#e5e7eb; margin-bottom:20px; }
+ .section-label { font-size:0.7rem; font-weight:700; letter-spacing:0.12em; color:#c1121f; text-transform:uppercase; margin-bottom:12px; margin-top:24px; display:flex; align-items:center; gap:8px; }
+ .section-label:first-child { margin-top:0; }
+
+ /* Benefit Tracker */
+ .tier-group { margin-bottom:16px; }
+ .tier-group-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+ .tier-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+ .tier-group-name { font-size:0.8rem; font-weight:700; letter-spacing:0.06em; }
+ .tier-group-status { font-size:0.7rem; padding:2px 8px; border-radius:4px; margin-left:auto; font-weight:600; }
+
+ .benefit-row { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; margin-bottom:5px; }
+ .benefit-row.unlocked { background:rgba(74,222,128,0.07); border:1px solid rgba(74,222,128,0.15); }
+ .benefit-row.locked-next { background:rgba(193,18,31,0.07); border:1px solid rgba(193,18,31,0.2); }
+ .benefit-row.locked-far { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+ .benefit-icon { font-size:1rem; flex-shrink:0; width:22px; text-align:center; }
+ .benefit-text { flex:1; }
+ .benefit-name { font-size:0.82rem; font-weight:600; }
+ .benefit-row.unlocked .benefit-name { color:#e5e7eb; }
+ .benefit-row.locked-next .benefit-name { color:#9ca3af; }
+ .benefit-row.locked-far .benefit-name { color:#4b5563; }
+ .benefit-sub { font-size:0.72rem; color:#6b7280; margin-top:1px; }
+ .benefit-badge { font-size:0.68rem; font-weight:700; padding:2px 7px; border-radius:4px; flex-shrink:0; }
+ .badge-active { background:rgba(74,222,128,0.15); color:#4ade80; }
+ .badge-lock { background:rgba(193,18,31,0.15); color:#c1121f; }
+ .badge-far { background:rgba(75,85,99,0.3); color:#6b7280; }
+
+ /* Redeem history */
+ .history-table { width:100%; border-collapse:collapse; }
+ .history-table th { font-size:0.7rem; font-weight:600; color:#6b7280; text-align:left; padding:6px 10px; border-bottom:1px solid #1f2937; letter-spacing:0.06em; text-transform:uppercase; }
+ .history-table td { font-size:0.78rem; color:#9ca3af; padding:10px; border-bottom:1px solid #111827; vertical-align:middle; }
+ .history-table td:first-child { color:#e5e7eb; font-weight:500; }
+ .chip { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.68rem; font-weight:600; }
+ .chip-done { background:rgba(74,222,128,0.1); color:#4ade80; }
+ .chip-pending { background:rgba(251,191,36,0.1); color:#fbbf24; }
+
+ /* Reward cards */
+ .reward-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+ .reward-card { background:#161616; border:1px solid #222; border-radius:10px; padding:14px; }
+ .reward-card.available { border-color:rgba(193,18,31,0.3); }
+ .reward-card.locked { opacity:0.5; }
+ .reward-emoji { font-size:1.5rem; margin-bottom:6px; }
+ .reward-name { font-size:0.8rem; font-weight:600; color:#e5e7eb; margin-bottom:4px; }
+ .reward-cost { font-size:0.72rem; color:#c1121f; font-weight:700; margin-bottom:8px; }
+ .reward-card.locked .reward-cost { color:#6b7280; }
+ .reward-btn { width:100%; padding:7px; border-radius:6px; font-size:0.72rem; font-weight:700; border:none; cursor:pointer; }
+ .reward-btn.can { background:#c1121f; color:#fff; }
+ .reward-btn.cant { background:#1f2937; color:#4b5563; cursor:default; }
+</style>
+
+<h2>Design: Tab "Benefits & Rewards"</h2>
+<p class="subtitle">Menggabungkan benefit tracker + redeem history + available rewards dalam satu tab terorganisir</p>
+
+<div class="tab-mockup">
+ <div class="panel-title">Benefits & Rewards</div>
+
+ <!-- SECTION 1: Benefit Tracker -->
+ <div class="section-label">
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+ Benefit Kamu
+ </div>
+
+ <!-- GOLD (current tier) -->
+ <div class="tier-group">
+ <div class="tier-group-header">
+ <div class="tier-dot" style="background:#fbbf24"></div>
+ <div class="tier-group-name" style="color:#fbbf24">GOLD — Tier Aktif</div>
+ <div class="tier-group-status" style="background:rgba(251,191,36,0.1);color:#fbbf24;"> Aktif</div>
+ </div>
+ <div class="benefit-row unlocked">
+ <div class="benefit-icon"></div>
+ <div class="benefit-text">
+ <div class="benefit-name">10% Discount Haircut</div>
+ <div class="benefit-sub">Berlaku di semua cabang Redbox</div>
+ </div>
+ <div class="benefit-badge badge-active">AKTIF</div>
+ </div>
+ <div class="benefit-row unlocked">
+ <div class="benefit-icon"></div>
+ <div class="benefit-text">
+ <div class="benefit-name">Birthday Discount 50%</div>
+ <div class="benefit-sub">Berlaku 7 hari sebelum & sesudah ulang tahun</div>
+ </div>
+ <div class="benefit-badge badge-active">AKTIF</div>
+ </div>
+ <div class="benefit-row unlocked">
+ <div class="benefit-icon"></div>
+ <div class="benefit-text">
+ <div class="benefit-name">Berlaku di Semua Cabang</div>
+ <div class="benefit-sub">Bypass, Samadikun, Tegal, CSB Mall, Sumber</div>
+ </div>
+ <div class="benefit-badge badge-active">AKTIF</div>
+ </div>
+ </div>
+
+ <!-- PLATINUM (next tier — locked) -->
+ <div class="tier-group">
+ <div class="tier-group-header">
+ <div class="tier-dot" style="background:#c4b5fd"></div>
+ <div class="tier-group-name" style="color:#c4b5fd">PLATINUM — 1.400 poin lagi</div>
+ <div class="tier-group-status" style="background:rgba(193,18,31,0.1);color:#c1121f;"> Terkunci</div>
+ </div>
+ <div class="benefit-row locked-next">
+ <div class="benefit-icon"></div>
+ <div class="benefit-text">
+ <div class="benefit-name">Free Haircut</div>
+ <div class="benefit-sub">Potong gratis setiap kunjungan</div>
+ </div>
+ <div class="benefit-badge badge-lock">+1400 pts</div>
+ </div>
+ <div class="benefit-row locked-next">
+ <div class="benefit-icon"></div>
+ <div class="benefit-text">
+ <div class="benefit-name">Free Americano</div>
+ <div class="benefit-sub">Minuman gratis setiap kunjungan</div>
+ </div>
+ <div class="benefit-badge badge-lock">+1400 pts</div>
+ </div>
+ <div class="benefit-row locked-next">
+ <div class="benefit-icon"></div>
+ <div class="benefit-text">
+ <div class="benefit-name">Free Birthday Haircut</div>
+ <div class="benefit-sub">Gratis penuh — bukan diskon</div>
+ </div>
+ <div class="benefit-badge badge-lock">+1400 pts</div>
+ </div>
+ </div>
+
+ <!-- SECTION 2: Redeem History -->
+ <div class="section-label" style="margin-top:28px">
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+ Riwayat Klaim
+ </div>
+ <table class="history-table">
+ <thead>
+ <tr>
+ <th>Reward</th>
+ <th>Tanggal</th>
+ <th>Poin</th>
+ <th>Status</th>
+ </tr>
+ </thead>
+ <tbody>
+ <tr>
+ <td>Free Haircut / Fadecut</td>
+ <td>3 Jun 2026</td>
+ <td style="color:#c1121f;font-weight:700">−200</td>
+ <td><span class="chip chip-done"> Diklaim</span></td>
+ </tr>
+ <tr>
+ <td>Cashback 50% Haircut Regular</td>
+ <td>15 Mei 2026</td>
+ <td style="color:#c1121f;font-weight:700">−100</td>
+ <td><span class="chip chip-done"> Diklaim</span></td>
+ </tr>
+ <tr>
+ <td>Mug Redbox Eksklusif</td>
+ <td>2 Apr 2026</td>
+ <td style="color:#c1121f;font-weight:700">−75</td>
+ <td><span class="chip chip-done"> Diklaim</span></td>
+ </tr>
+ </tbody>
+ </table>
+
+ <!-- SECTION 3: Available Rewards to Redeem -->
+ <div class="section-label" style="margin-top:28px">
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+ Reward Tersedia (Saldo: 1.600 poin)
+ </div>
+ <div class="reward-grid">
+ <div class="reward-card available">
+ <div class="reward-emoji"></div>
+ <div class="reward-name">Free Haircut / Fadecut</div>
+ <div class="reward-cost">200 poin</div>
+ <button class="reward-btn can">Redeem</button>
+ </div>
+ <div class="reward-card available">
+ <div class="reward-emoji"></div>
+ <div class="reward-name">Cashback 50% Haircut Premium CSB</div>
+ <div class="reward-cost">125 poin</div>
+ <button class="reward-btn can">Redeem</button>
+ </div>
+ <div class="reward-card locked">
+ <div class="reward-emoji"></div>
+ <div class="reward-name">Free Gentlemen Grooming</div>
+ <div class="reward-cost">250 poin • Platinum only</div>
+ <button class="reward-btn cant"> Terkunci</button>
+ </div>
+ <div class="reward-card locked">
+ <div class="reward-emoji"></div>
+ <div class="reward-name">Free Fadecut Grooming</div>
+ <div class="reward-cost">250 poin • Platinum only</div>
+ <button class="reward-btn cant"> Terkunci</button>
+ </div>
+ </div>
+</div>
+
+<p class="subtitle" style="margin-top:20px">Desain tab ini oke? Ketik "oke lanjut" atau feedback di terminal.</p>

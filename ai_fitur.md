@@ -57,7 +57,7 @@ Visual direction yang harus diikuti:
 
 # THE BIGGEST MISTAKE RIGHT NOW
 
-## ❌ MENAMPILKAN SEMUA DATA
+## MENAMPILKAN SEMUA DATA
 
 Current system mencoba menampilkan:
 - semua hasil analysis
@@ -77,7 +77,7 @@ Akibatnya:
 
 # THE CORRECT APPROACH
 
-## ✅ CURATE THE BEST INSIGHTS
+## CURATE THE BEST INSIGHTS
 
 AI tidak perlu menampilkan semua hasil.
 

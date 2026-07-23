@@ -1,0 +1,100 @@
+<h2>Final File Map — Semua Perubahan</h2>
+<p class="subtitle">Section 3 of 3 — Apa yang dibuat dan diubah, plus urutan implementasi</p>
+
+<div class="section">
+ <div class="label">Files Baru (CREATE)</div>
+ <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;">
+
+ <div style="background:#0a2a1a;border:1px solid #166534;border-radius:8px;padding:10px 14px;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+ <span style="color:#86efac;font-family:monospace;font-weight:700;">hooks/useNavigationDirection.ts</span>
+ <span style="color:#22c55e;font-size:10px;font-weight:600;">NEW</span>
+ </div>
+ <div style="color:#64748b;">Hook yang bandingkan pathname lama vs baru dengan ROUTE_ORDER → return <code style="color:#8b5cf6;">"forward" | "back" | "none"</code></div>
+ </div>
+
+ <div style="background:#0a2a1a;border:1px solid #166534;border-radius:8px;padding:10px 14px;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+ <span style="color:#86efac;font-family:monospace;font-weight:700;">components/PageTransition.tsx</span>
+ <span style="color:#22c55e;font-size:10px;font-weight:600;">NEW</span>
+ </div>
+ <div style="color:#64748b;">AnimatePresence + motion.div wrapper. Props: <code style="color:#8b5cf6;">children, className?</code>. Pakai hook di atas untuk direction.</div>
+ </div>
+
+ <div style="background:#0a2a1a;border:1px solid #166534;border-radius:8px;padding:10px 14px;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+ <span style="color:#86efac;font-family:monospace;font-weight:700;">app/template.tsx</span>
+ <span style="color:#22c55e;font-size:10px;font-weight:600;">NEW</span>
+ </div>
+ <div style="color:#64748b;">Handles transition untuk <code style="color:#8b5cf6;">/</code> dan <code style="color:#8b5cf6;">/login</code> — re-mount tiap navigasi (beda dari layout)</div>
+ </div>
+
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">Files Diubah (MODIFY)</div>
+ <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;">
+
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:10px 14px;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+ <span style="color:#fde68a;font-family:monospace;font-weight:700;">app/owner/layout.tsx</span>
+ <span style="color:#f59e0b;font-size:10px;font-weight:600;">MODIFY</span>
+ </div>
+ <div style="color:#64748b;">Wrap <code style="color:#8b5cf6;">&lt;main&gt;{children}&lt;/main&gt;</code> dengan <code style="color:#8b5cf6;">&lt;PageTransition&gt;</code></div>
+ </div>
+
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:10px 14px;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+ <span style="color:#fde68a;font-family:monospace;font-weight:700;">app/barber/layout.tsx</span>
+ <span style="color:#f59e0b;font-size:10px;font-weight:600;">MODIFY</span>
+ </div>
+ <div style="color:#64748b;">Wrap <code style="color:#8b5cf6;">&lt;main&gt;{children}&lt;/main&gt;</code> dengan <code style="color:#8b5cf6;">&lt;PageTransition&gt;</code></div>
+ </div>
+
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:10px 14px;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+ <span style="color:#fde68a;font-family:monospace;font-weight:700;">app/admin/layout.tsx</span>
+ <span style="color:#f59e0b;font-size:10px;font-weight:600;">MODIFY</span>
+ </div>
+ <div style="color:#64748b;">Wrap <code style="color:#8b5cf6;">&lt;main&gt;{children}&lt;/main&gt;</code> dengan <code style="color:#8b5cf6;">&lt;PageTransition&gt;</code> — perlu cek dulu apakah sudah client component</div>
+ </div>
+
+ <div style="background:#1a1a0a;border:1px solid #713f12;border-radius:8px;padding:10px 14px;">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+ <span style="color:#fde68a;font-family:monospace;font-weight:700;">app/barber/schedule/page.tsx</span>
+ <span style="color:#f59e0b;font-size:10px;font-weight:600;">MODIFY</span>
+ </div>
+ <div style="color:#64748b;">Tambah Framer Motion: tab indicator <code style="color:#8b5cf6;">layoutId</code>, booking card stagger, skeleton, empty state</div>
+ </div>
+
+ </div>
+</div>
+
+<div class="section">
+ <div class="label">Urutan Implementasi (5 Tasks)</div>
+ <div style="display:flex;flex-direction:column;gap:5px;font-size:11px;">
+ <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:#0a0f1a;border-radius:8px;">
+ <div style="background:#C72820;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">1</div>
+ <div><span style="color:#e2e8f0;font-weight:600;">useNavigationDirection hook</span> <span style="color:#64748b;">— ROUTE_ORDER, pathname comparison, return direction</span></div>
+ </div>
+ <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:#0a0f1a;border-radius:8px;">
+ <div style="background:#C72820;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">2</div>
+ <div><span style="color:#e2e8f0;font-weight:600;">PageTransition component</span> <span style="color:#64748b;">— AnimatePresence + variants, x slide, spring 300/30</span></div>
+ </div>
+ <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:#0a0f1a;border-radius:8px;">
+ <div style="background:#C72820;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">3</div>
+ <div><span style="color:#e2e8f0;font-weight:600;">app/template.tsx + 3 layouts</span> <span style="color:#64748b;">— wire PageTransition ke semua route groups</span></div>
+ </div>
+ <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:#0a0f1a;border-radius:8px;">
+ <div style="background:#C72820;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">4</div>
+ <div><span style="color:#e2e8f0;font-weight:600;">Barber schedule animations</span> <span style="color:#64748b;">— tab layoutId, card stagger, skeleton, empty state</span></div>
+ </div>
+ <div style="display:flex;gap:10px;align-items:center;padding:8px 12px;background:#0a0f1a;border-radius:8px;">
+ <div style="background:#C72820;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;">5</div>
+ <div><span style="color:#e2e8f0;font-weight:600;">Deploy + smoke test</span> <span style="color:#64748b;">— push, cek transisi di produksi</span></div>
+ </div>
+ </div>
+</div>
+
+<p class="subtitle" style="margin-top:16px;">Desain lengkap sudah OK? Reply "ya" di terminal → saya tulis spec dokumen dan langsung mulai implementasi.</p>
