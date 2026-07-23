@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     { id:'sumber-prima',      name:'Prima',         role:'Haircut',                                               img:'https://lh3.googleusercontent.com/d/1gGTM8a6Rrlw3SgfJOvZEzAcZkIm_2ysl=w800',  branch:'sumber' },
     { id:'sumber-sigit',      name:'Sigit',         role:'Haircut;Fade;Coloring;Hair Tattoo;Beard Trim;Chemical', img:'https://lh3.googleusercontent.com/d/19Tp5LCEoNqkDU4iRUGzT--xqmRqkIue_=w800',  branch:'sumber' },
     { id:'sumber-didi',       name:'Didi',          role:'Haircut;Fade;Coloring;Hair Tattoo;Beard Trim',          img:'https://lh3.googleusercontent.com/d/1_WCEC6tHVlVqFeKrcbZZ0NEe-BDr03cI=w800',  branch:'sumber' },
-    { id:'sumber-bayu',       name:'Bayu',          role:'Haircut;Fade;Coloring;Hair Tattoo;Beard Trim',          img:'/Brand_assets/kapster/bayu.jpeg', branch:'sumber' },
+    { id:'sumber-bayu',       name:'Bayu',          role:'Haircut;Fade;Coloring;Hair Tattoo;Beard Trim',          img:'/Brand_assets/kapster/bayu-2026-07-23.jpeg', branch:'sumber' },
     { id:'tegal-faiz',        name:'Faiz',          role:'Haircut;Fade;Coloring;Beard Trim',                      img:'/Brand_assets/Kapster4.jpg',  branch:'tegal' },
     { id:'tegal-yafi',        name:'Yafi',          role:'Haircut;Fade;Coloring;Creambath',                       img:'https://lh3.googleusercontent.com/d/1vMxXb0bir4tnncM1Hk-62PPRG6FXA80T=w800',  branch:'tegal' },
     { id:'tegal-epik',        name:'Epik',          role:'Haircut;Fade;Long trim',                                img:'https://lh3.googleusercontent.com/d/10A9IZpNmmCFb13tu6OigSxEF_wTS1s9j=w800',  branch:'tegal' },

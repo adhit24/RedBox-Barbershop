@@ -2,7 +2,7 @@
 -- Run in Supabase SQL Editor or apply via the service role key.
 
 UPDATE barbers
-SET img = '/Brand_assets/kapster/bayu.jpeg',
+SET img = '/Brand_assets/kapster/bayu-2026-07-23.jpeg',
     is_active = true
 WHERE id = 'sumber-bayu'
    OR (LOWER(name) = 'bayu' AND branch = 'sumber');
