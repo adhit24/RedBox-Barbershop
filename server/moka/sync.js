@@ -1993,7 +1993,7 @@ async function bridgeBookingToMoka(supabase, booking) {
       source:       'web',
       external_id:  legacyRef,
       notes:        combinedNotes || null,
-      type:         booking.type === 'home_service' ? 'home_service' : 'outlet',
+      type:         (booking.type === 'home_service' || booking.type === 'wedding') ? 'home_service' : 'outlet',
     })
     .select().single();
 

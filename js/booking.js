@@ -71,8 +71,17 @@ document.addEventListener('DOMContentLoaded', async () => {
  const preService = rawService === 'creambath' ? 'hair-spa' : rawService;
  const preBarber = params.get('barber');
  const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
+ const rawPackage = (params.get('pkg') || '').toLowerCase().replace(/^weeding-/, 'wedding-');
+ const WEDDING_PACKAGES = {
+ 'wedding-gentleman': { label: 'Wedding Gentleman Grooming', price: 350000, duration: '120 menit', people: '1 orang' },
+ 'wedding-silver': { label: 'Wedding Royal Grooming Silver', price: 500000, duration: '120 menit', people: '2 orang' },
+ 'wedding-gold': { label: 'Wedding Royal Grooming Gold', price: 750000, duration: '120 menit', people: '3 orang' },
+ 'wedding-platinum': { label: 'Wedding Royal Grooming Platinum', price: 1000000, duration: '120 menit', people: '4 orang' },
+ };
+ const weddingPackage = WEDDING_PACKAGES[rawPackage] || null;
+ const isWeddingPackage = Boolean(weddingPackage);
  // Home Service package: 'family' = Rp 200.000/orang (min 2), default 'single' = Rp 250.000/orang
- const hsPackage = (params.get('pkg') || '').toLowerCase() === 'family' ? 'family' : 'single';
+ const hsPackage = rawPackage === 'family' ? 'family' : 'single';
  const HS_PRICE_SINGLE = 250000;
  const HS_PRICE_FAMILY = 200000;
 
@@ -1698,7 +1707,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  const totalPrice = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
  const headerLine = isGroup()
  ? ' *BOOKING GRUP (2 ORANG) - REDBOX BARBERSHOP*'
- : (isHomeService ? ' *BOOKING HOME SERVICE - REDBOX BARBERSHOP*' : ' *BOOKING REDBOX BARBERSHOP*');
+ : (isWeddingPackage ? ' *BOOKING WEDDING GROOMING - REDBOX BARBERSHOP*' : (isHomeService ? ' *BOOKING HOME SERVICE - REDBOX BARBERSHOP*' : ' *BOOKING REDBOX BARBERSHOP*'));
 
  const msg = [
  headerLine, '',
@@ -1739,7 +1748,8 @@ document.addEventListener('DOMContentLoaded', async () => {
  const addonNote = addons.length ? '[ADD-ON: ' + addons.map(a => a.name).join(', ') + ']' : '';
  const noteParts = [];
  if (groupId) noteParts.push('[GROUP:' + groupId + ', ' + personIdx + '/2]');
- if (isHomeService && state.address) noteParts.push('[HOME SERVICE] Alamat: ' + state.address);
+ if (isWeddingPackage && state.address) noteParts.push('[WEDDING] Alamat: ' + state.address);
+ else if (isHomeService && state.address) noteParts.push('[HOME SERVICE] Alamat: ' + state.address);
  if (addonNote) noteParts.push(addonNote);
  if (state.notes) noteParts.push(state.notes);
  const serviceFull = addons.length
@@ -1759,7 +1769,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  notes: noteParts.join('\n'),
  payment: state.payment?.name || '',
  status: 'pending',
- type: isHomeService ? 'home_service' : 'outlet',
+ type: isWeddingPackage ? 'wedding' : (isHomeService ? 'home_service' : 'outlet'),
  address: isHomeService ? (state.address || '') : undefined,
  };
  }
@@ -1896,20 +1906,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  // ── HOME SERVICE MODE ────────────────────────
  if (isHomeService) {
- const hsPrice = hsPackage === 'family' ? HS_PRICE_FAMILY : HS_PRICE_SINGLE;
- const hsLabel = hsPackage === 'family' ? 'Family' : 'Single';
+ const hsPrice = isWeddingPackage ? weddingPackage.price : (hsPackage === 'family' ? HS_PRICE_FAMILY : HS_PRICE_SINGLE);
+ const hsLabel = isWeddingPackage ? weddingPackage.label : (hsPackage === 'family' ? 'Family' : 'Single');
  state.service = {
- id: 'gentleman-grooming',
- name: 'Gentleman Grooming (Home Service ' + hsLabel + ')',
+ id: isWeddingPackage ? rawPackage : 'gentleman-grooming',
+ name: isWeddingPackage ? hsLabel : 'Gentleman Grooming (Home Service ' + hsLabel + ')',
  price: hsPrice,
  basePrice: hsPrice,
  csbPrice: null,
- duration: '60 menit',
+ duration: isWeddingPackage ? weddingPackage.duration : '60 menit',
  };
  state.hsPackage = hsPackage;
+ state.weddingPackage = isWeddingPackage ? rawPackage : null;
 
  // Family package = minimum 2 orang → otomatis aktifkan mode group booking
- if (hsPackage === 'family') {
+ if (!isWeddingPackage && hsPackage === 'family') {
  state.groupSize = 2;
  }
 
@@ -1923,22 +1934,26 @@ document.addEventListener('DOMContentLoaded', async () => {
  // Update sidebar hint
  const hint = document.getElementById('sidebarHint');
  if (hint) {
- hint.textContent = hsPackage === 'family'
+ hint.textContent = isWeddingPackage
+ ? 'Paket ' + weddingPackage.people + ' - pilih kapster untuk wedding'
+ : (hsPackage === 'family'
  ? 'Paket Family - pilih kapster untuk 2 orang'
- : 'Pilih kapster untuk memulai';
+ : 'Pilih kapster untuk memulai');
  }
 
  // Update page title
- document.title = (hsPackage === 'family' ? 'Home Service Family' : 'Home Service Single') + ' Booking - Redbox Barbershop';
+ document.title = (isWeddingPackage ? weddingPackage.label : (hsPackage === 'family' ? 'Home Service Family' : 'Home Service Single')) + ' Booking - Redbox Barbershop';
 
  // Update step 2 heading
  const step2Head = document.querySelector('#step2 .step-head h2');
  const step2Sub = document.querySelector('#step2 .step-head p');
  if (step2Head) step2Head.textContent = 'Pilih Kapster';
  if (step2Sub) {
- step2Sub.textContent = hsPackage === 'family'
+ step2Sub.textContent = isWeddingPackage
+ ? 'Pilih kapster favorit untuk paket wedding yang akan datang ke lokasi kamu.'
+ : (hsPackage === 'family'
  ? 'Pilih kapster favorit yang akan datang untuk 2 orang ke rumah kamu.'
- : 'Pilih kapster favorit yang akan datang ke rumah kamu.';
+ : 'Pilih kapster favorit yang akan datang ke rumah kamu.');
  }
 
  // Jump directly to step 2 (skip service selection)

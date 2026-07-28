@@ -1057,9 +1057,32 @@ async function _notifyBarberOutletBookingMysql(bookingData) {
   return assertWaSendResult(result, 'Outlet barber notification failed');
 }
 
+const WEDDING_PACKAGE_PRICES = {
+  'wedding-gentleman': 350000,
+  'wedding-silver': 500000,
+  'wedding-gold': 750000,
+  'wedding-platinum': 1000000,
+};
+
+function normalizeBookingPrice({ service_id, service, price, type }) {
+  const serviceKey = String(service_id || '').trim().toLowerCase().replace(/^weeding-/, 'wedding-');
+  const serviceName = String(service || '').trim().toLowerCase();
+  const bookingType = String(type || '').trim().toLowerCase();
+  const packagePrice = WEDDING_PACKAGE_PRICES[serviceKey];
+  if (bookingType === 'wedding' && packagePrice) return packagePrice;
+  if (bookingType === 'wedding' || serviceName.includes('wedding') || serviceName.includes('weeding')) {
+    if (serviceName.includes('platinum')) return WEDDING_PACKAGE_PRICES['wedding-platinum'];
+    if (serviceName.includes('gold')) return WEDDING_PACKAGE_PRICES['wedding-gold'];
+    if (serviceName.includes('silver')) return WEDDING_PACKAGE_PRICES['wedding-silver'];
+    if (serviceName.includes('gentleman')) return WEDDING_PACKAGE_PRICES['wedding-gentleman'];
+  }
+  return Number(price) || 0;
+}
+
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
   const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address } = req.body;
+  const bookingPrice = normalizeBookingPrice({ service_id, service, price, type });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
   const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
@@ -1109,7 +1132,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
 
       // 3. Insert booking
       const { data, error } = await supabase.from('bookings').insert([{
-        id: bookingId, name, wa, service_id: service_id || '', service, price: price || 0,
+        id: bookingId, name, wa, service_id: service_id || '', service, price: bookingPrice,
         duration: duration || '', barber_id: normalizedBarberId, date, time,
         location: resolvedLocation, status: desiredStatus, notes: notes || '', payment: payment || ''
       }]).select().single();
@@ -1188,8 +1211,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
 
           // If home service: create lifecycle tracking row
           let homeServiceJobId = null;
-          if (type === 'home_service' && r.scheduleId) {
-            const jobAddress = address || (notes?.match(/\[HOME SERVICE\] Alamat:\s*(.+)/)?.[1]?.trim()) || '';
+          if ((type === 'home_service' || type === 'wedding') && r.scheduleId) {
+            const addrPattern = type === 'wedding'
+              ? /\[WEDDING\] Alamat:\s*(.+)/
+              : /\[HOME SERVICE\] Alamat:\s*(.+)/;
+            const jobAddress = address || (notes?.match(addrPattern)?.[1]?.trim()) || '';
             if (jobAddress) {
               const { data: hsJob } = await supabase
                 .from('home_service_jobs')
@@ -1246,7 +1272,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // 4. Insert Booking
       await mysqlPool.execute(
         `INSERT INTO bookings (id, customer_id, name, wa, service_id, service, price, duration, barber_id, date, time, location, status, notes, payment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [bookingId, customerId, name, wa, service_id || '', service, price || 0, duration || '', normalizedBarberId, date, time, location || 'bypass', desiredStatus, notes || '', payment || '']
+        [bookingId, customerId, name, wa, service_id || '', service, bookingPrice, duration || '', normalizedBarberId, date, time, location || 'bypass', desiredStatus, notes || '', payment || '']
       );
 
       const [newBooking] = await mysqlPool.execute(
