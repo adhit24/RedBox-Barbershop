@@ -87,6 +87,8 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   let   sinceEpoch = sinceEpochStart;
   let   totalTx    = 0;
   let   totalSvc   = 0;
+  let   sampleKeys = null;
+  let   sampleFieldTypes = null;
 
   while (true) {
     let json;
@@ -102,6 +104,10 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
 
     // Log first payment shape on first page to help verify field names
     if (sinceEpoch === sinceEpochStart && payments.length > 0) {
+      sampleKeys = Object.keys(payments[0]);
+      sampleFieldTypes = Object.fromEntries(Object.entries(payments[0]).map(([key, value]) => [
+        key, Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value
+      ]));
       console.log(`[TxSync] ${outlet.slug} — sample payment keys:`, Object.keys(payments[0]).join(', '));
     }
 
@@ -182,7 +188,7 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   }
 
   console.log(`[TxSync] ${outlet.slug} — ${totalTx} tx, ${totalSvc} svc upserted`);
-  return { totalTx, totalSvc };
+  return { totalTx, totalSvc, sampleKeys, sampleFieldTypes };
 }
 
 module.exports = { syncCurrentMonthTx };
