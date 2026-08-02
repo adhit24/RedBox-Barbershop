@@ -67,12 +67,16 @@ function matchBarberName(rawName, barbers, preferBranch) {
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {{ id: string, slug: string, moka_outlet_id: string }} outlet
+ * @param {{ sinceEpoch?: number }} [options] - Optional lower bound for near-live syncs
  */
-async function syncCurrentMonthTx(supabase, outlet) {
+async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   const now   = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   // WIB is UTC+7 — subtract 7h to get UTC midnight of first day WIB
-  const sinceEpochStart = Math.floor((first.getTime() - 7 * 3600 * 1000) / 1000);
+  const monthStartEpoch = Math.floor((first.getTime() - 7 * 3600 * 1000) / 1000);
+  const sinceEpochStart = Number.isFinite(options.sinceEpoch)
+    ? options.sinceEpoch
+    : monthStartEpoch;
 
   // Load active barbers once for fuzzy matching
   const { data: barbers } = await supabase

@@ -31,6 +31,12 @@ const { reschedule: homeServiceReschedule }                            = require
 
 async function syncCurrentMonthTransactions(supabase, outletId = null) {
   const { syncCurrentMonthTx } = require('./txSync');
+  // The cron endpoint is serverless (60s). Pull only today's Moka data here;
+  // the historical snapshot remains in Supabase and the in-process worker
+  // still performs the full month reconciliation when available.
+  const nowWib = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const todayWib = nowWib.toISOString().slice(0, 10);
+  const todayStartEpoch = Math.floor(new Date(`${todayWib}T00:00:00+07:00`).getTime() / 1000);
   let query = supabase.from('outlets').select('id, slug, moka_outlet_id')
     .eq('is_active', true).not('moka_outlet_id', 'is', null);
   if (outletId) query = query.eq('id', outletId);
@@ -38,7 +44,7 @@ async function syncCurrentMonthTransactions(supabase, outletId = null) {
   if (error) throw error;
   const results = await Promise.all((outlets || []).map(async outlet => {
     try {
-      return { slug: outlet.slug, ...(await syncCurrentMonthTx(supabase, outlet)) };
+      return { slug: outlet.slug, ...(await syncCurrentMonthTx(supabase, outlet, { sinceEpoch: todayStartEpoch })) };
     } catch (err) {
       return { slug: outlet.slug, error: err.message };
     }
