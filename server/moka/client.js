@@ -178,6 +178,20 @@ class MokaClient {
   }
 
   /**
+   * Fetch paid transactions with line items from Moka Reporting API.
+   * Unlike get_latest_transactions, this response includes transaction items
+   * needed to attribute services to barbers.
+   */
+  async getPaidTransactionsPage({ page = 1, perPage = 1000 } = {}) {
+    const qs = new URLSearchParams({
+      page: String(page),
+      per_page: String(Math.min(1000, perPage)),
+      order: 'DESC',
+    });
+    return this._req('GET', `/integrations/mokapos/outlets/${this._mokaOutletId}/v1/reporting/transactions?${qs}`);
+  }
+
+  /**
    * Discover the correct Moka business/outlet ID by probing multiple endpoints.
    * Returns raw responses from each probe so caller can extract the correct ID.
    */

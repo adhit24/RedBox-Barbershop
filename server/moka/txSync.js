@@ -84,24 +84,24 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   const activeBarbers = barbers || [];
 
   const client     = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
-  let   sinceEpoch = sinceEpochStart;
+  let   page       = 1;
   let   totalTx    = 0;
   let   totalSvc   = 0;
 
   while (true) {
     let json;
     try {
-      json = await client.getTransactionPage({ sinceEpoch, limit: 100 });
+      json = await client.getPaidTransactionsPage({ page, perPage: 1000 });
     } catch (err) {
       if (err.status === 404 || err.status === 403) break;
       throw err;
     }
 
-    const payments = json?.data?.payments ?? [];
+    const payments = json?.data?.transactions ?? [];
     if (!payments.length) break;
 
     // Log first payment shape on first page to help verify field names
-    if (sinceEpoch === sinceEpochStart && payments.length > 0) {
+    if (page === 1 && payments.length > 0) {
       console.log(`[TxSync] ${outlet.slug} — sample payment keys:`, Object.keys(payments[0]).join(', '));
     }
 
@@ -116,6 +116,7 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
       const createdAt = p.created_at || p.updated_at || '';
       const txDate    = createdAt.slice(0, 10);
       const txTime    = createdAt.slice(11, 19);
+      if (createdAt && new Date(createdAt).getTime() < sinceEpochStart * 1000) continue;
 
       // items_raw: probe multiple candidate field names
       const rawItems = p.item_details || p.items || p.order_items || p.line_items || '';
@@ -174,11 +175,11 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
       else totalSvc += svcRows.length;
     }
 
-    if (json?.data?.completed) break;
-    const m = (json?.data?.next_url || '').match(/[?&]since=([0-9.]+)/);
-    if (!m) break;
-    sinceEpoch = parseFloat(m[1]);
-    await new Promise(r => setTimeout(r, 300));
+    if (json?.data?.completed || payments.length < 1000) break;
+    const totalPages = Number(json?.data?.total_pages || 0);
+    if (totalPages && page >= totalPages) break;
+    page += 1;
+    await new Promise(r => setTimeout(r, 150));
   }
 
   console.log(`[TxSync] ${outlet.slug} — ${totalTx} tx, ${totalSvc} svc upserted`);
