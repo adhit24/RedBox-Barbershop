@@ -36,7 +36,8 @@ async function syncCurrentMonthTransactions(supabase, outletId = null) {
   // still performs the full month reconciliation when available.
   const nowWib = new Date(Date.now() + 7 * 60 * 60 * 1000);
   const todayWib = nowWib.toISOString().slice(0, 10);
-  const todayStartEpoch = Math.floor(new Date(`${todayWib}T00:00:00+07:00`).getTime() / 1000);
+  // Include the previous 48h to absorb Moka timestamp timezone/settlement lag.
+  const todayStartEpoch = Math.floor(new Date(`${todayWib}T00:00:00+07:00`).getTime() / 1000) - 2 * 86400;
   let query = supabase.from('outlets').select('id, slug, moka_outlet_id')
     .eq('is_active', true).not('moka_outlet_id', 'is', null);
   if (outletId) query = query.eq('id', outletId);
