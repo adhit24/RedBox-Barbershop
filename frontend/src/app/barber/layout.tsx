@@ -16,10 +16,11 @@ const BARBER_NAV = [
 ];
 
 export default function BarberLayout({ children }: { children: React.ReactNode }) {
-  const { data, loading, signOut } = useBarberSession();
+  const { data, loading, refresh, signOut } = useBarberSession();
   const router = useRouter();
   const pathname = usePathname();
   const [impersonating, setImpersonating] = useState(false);
+  const [routeChecked, setRouteChecked] = useState(false);
   useEffect(() => {
     setImpersonating(document.cookie.split('; ').some(c => c.startsWith('redbox_impersonator=owner')));
   }, []);
@@ -33,8 +34,31 @@ export default function BarberLayout({ children }: { children: React.ReactNode }
 
   const isPublicBarberPage = pathname === '/barber/login' || pathname === '/barber/setup';
 
+  // The layout stays mounted when OTP login navigates to setup/home. Re-check
+  // the session for every protected route so the login page's initial null
+  // result cannot be reused after the session cookie has been set.
   useEffect(() => {
-    if (loading || isPublicBarberPage) return;
+    if (isPublicBarberPage) {
+      // Reset the protected-route gate when returning to the public auth flow.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRouteChecked(false);
+      return;
+    }
+
+    let cancelled = false;
+    // Gate protected content until this route has a fresh session check.
+    setRouteChecked(false);
+    void refresh().finally(() => {
+      if (!cancelled) setRouteChecked(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublicBarberPage, pathname, refresh]);
+
+  useEffect(() => {
+    if (loading || !routeChecked || isPublicBarberPage) return;
     if (!data) {
       router.replace('/barber/login');
       return;
@@ -42,13 +66,13 @@ export default function BarberLayout({ children }: { children: React.ReactNode }
     if (!data.profile?.setup_completed) {
       router.replace('/barber/setup');
     }
-  }, [data, loading, router, isPublicBarberPage]);
+  }, [data, loading, router, isPublicBarberPage, routeChecked]);
 
   if (isPublicBarberPage) {
     return <>{children}</>;
   }
 
-  if (loading) {
+  if (loading || (!isPublicBarberPage && !routeChecked)) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#070508' }}>
         <div className="flex flex-col items-center gap-4">

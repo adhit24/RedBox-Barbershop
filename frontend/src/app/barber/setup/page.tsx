@@ -113,7 +113,8 @@ export default function BarberSetupPage() {
               value={targetDaily}
               onChange={(e) => setTargetDaily(e.target.value)}
               required
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-gray-900 caret-gray-900 focus:outline-none focus:ring-2 focus:ring-red-400"
+              style={{ color: '#111827', WebkitTextFillColor: '#111827', opacity: 1 }}
             />
           </div>
 
@@ -125,7 +126,8 @@ export default function BarberSetupPage() {
               value={targetMonthly}
               onChange={(e) => setTargetMonthly(e.target.value)}
               required
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-red-400"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-gray-900 caret-gray-900 focus:outline-none focus:ring-2 focus:ring-red-400"
+              style={{ color: '#111827', WebkitTextFillColor: '#111827', opacity: 1 }}
             />
           </div>
 

@@ -1,6 +1,5 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { sendBarberOTP, verifyBarberOTP } from '@/lib/barberApi';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
@@ -9,7 +8,6 @@ import { Phone, ArrowRight, Loader2, RotateCcw } from 'lucide-react';
 const ease = [0.16, 1, 0.3, 1] as const;
 
 export default function BarberLoginPage() {
-  const router = useRouter();
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -40,10 +38,11 @@ export default function BarberLoginPage() {
     setLoading(true);
     try {
       const result = await verifyBarberOTP(phone, code);
+      const destination = result.setup_completed ? '/barber/home' : '/barber/setup';
       if (result.setup_completed) {
-        router.push('/barber/home');
+        window.location.replace(destination);
       } else {
-        router.push('/barber/setup');
+        window.location.replace(destination);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'OTP salah';
