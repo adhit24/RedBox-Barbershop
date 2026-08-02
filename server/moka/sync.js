@@ -22,6 +22,8 @@ const _mokaItemsCache = new Map(); // outletId → { ts: number, items: [] }
 const MOKA_ITEMS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const MOKA_PULL_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.MOKA_PULL_INTERVAL_MINUTES || '1', 10) || 1);
 const MOKA_RETRY_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.MOKA_RETRY_INTERVAL_MINUTES || '2', 10) || 2);
+// Transaction data feeds the barber leaderboard. Keep it near-live instead of hourly.
+const MOKA_TRANSACTION_SYNC_INTERVAL_MINUTES = Math.max(1, parseInt(process.env.MOKA_TRANSACTION_SYNC_INTERVAL_MINUTES || '5', 10) || 5);
 const MOKA_ON_DEMAND_SYNC_MAX_AGE_MS = Math.max(10_000, parseInt(process.env.MOKA_ON_DEMAND_SYNC_MAX_AGE_MS || '45000', 10) || 45_000);
 
 // Buffer (menit) ditambahkan ke end_time setiap Open Bill walk-in,
@@ -1416,9 +1418,9 @@ function startCronJobs(supabase) {
     }
   }, 5000);
 
-  // Cron 5: Sync transaksi bulan berjalan ke moka_transactions tiap jam.
+  // Cron 5: Sync transaksi bulan berjalan ke moka_transactions near-live.
   // Berguna untuk payment analytics & leaderboard tanpa perlu upload CSV manual.
-  cron.schedule('0 * * * *', async () => {
+  cron.schedule(`*/${MOKA_TRANSACTION_SYNC_INTERVAL_MINUTES} * * * *`, async () => {
     try {
       const { syncCurrentMonthTx } = require('./txSync');
       const { data: outlets } = await supabase
@@ -1433,17 +1435,20 @@ function startCronJobs(supabase) {
         .in('outlet_id', outlets.map(o => o.id));
       const authorizedIds = new Set((tokenRows || []).map(r => r.outlet_id));
 
-      for (const o of outlets) {
-        if (!authorizedIds.has(o.id)) continue;
-        syncCurrentMonthTx(supabase, o).catch(err =>
-          console.error(`[TxCron] ${o.slug}:`, err.message));
-      }
+      await Promise.all(outlets.map(async o => {
+        if (!authorizedIds.has(o.id)) return;
+        try {
+          await syncCurrentMonthTx(supabase, o);
+        } catch (err) {
+          console.error(`[TxCron] ${o.slug}:`, err.message);
+        }
+      }));
     } catch (err) {
       console.error('[TxCron] error:', err.message);
     }
   });
 
-  console.log(`[Cron] Moka jobs scheduled: pull ${MOKA_PULL_INTERVAL_MINUTES}min, retry ${MOKA_RETRY_INTERVAL_MINUTES}min, stale-bill expire 15min (window ${MOKA_OPENBILL_STALE_HOURS}h, buffer ${MOKA_OPENBILL_BUFFER_MIN}m), schema sync 03:00 WIB, tx-sync tiap jam`);
+  console.log(`[Cron] Moka jobs scheduled: pull ${MOKA_PULL_INTERVAL_MINUTES}min, retry ${MOKA_RETRY_INTERVAL_MINUTES}min, stale-bill expire 15min (window ${MOKA_OPENBILL_STALE_HOURS}h, buffer ${MOKA_OPENBILL_BUFFER_MIN}m), schema sync 03:00 WIB, tx-sync tiap ${MOKA_TRANSACTION_SYNC_INTERVAL_MINUTES}min`);
 }
 
 function getLastSyncAt(outletId) {

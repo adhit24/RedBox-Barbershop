@@ -57,6 +57,42 @@ async function getWeeklyCount(supabase, barberId, weekStart) {
   return (webCount || 0) + (mokaCount || 0);
 }
 
+// Pull the current month directly from Moka before rebuilding leaderboard data.
+// This is also exposed through the external cron route because in serverless
+// deployments an in-process node-cron timer is not guaranteed to stay alive.
+async function syncMokaTransactions(supabase) {
+  const { syncCurrentMonthTx } = require('../moka/txSync');
+  const { data: outlets, error: outletError } = await supabase
+    .from('outlets')
+    .select('id, slug, moka_outlet_id')
+    .eq('is_active', true)
+    .not('moka_outlet_id', 'is', null);
+  if (outletError) throw outletError;
+  if (!outlets?.length) return { outlets: 0, transactions: 0, services: 0 };
+
+  const { data: tokenRows, error: tokenError } = await supabase
+    .from('moka_tokens').select('outlet_id').in('outlet_id', outlets.map(o => o.id));
+  if (tokenError) throw tokenError;
+  const authorizedIds = new Set((tokenRows || []).map(row => row.outlet_id));
+
+  const results = await Promise.all(outlets.map(async outlet => {
+    if (!authorizedIds.has(outlet.id)) return { slug: outlet.slug, skipped: true };
+    try {
+      const result = await syncCurrentMonthTx(supabase, outlet);
+      return { slug: outlet.slug, ...result };
+    } catch (error) {
+      return { slug: outlet.slug, error: error.message };
+    }
+  }));
+
+  return {
+    outlets: results.filter(r => !r.skipped && !r.error).length,
+    transactions: results.reduce((sum, r) => sum + (r.totalTx || 0), 0),
+    services: results.reduce((sum, r) => sum + (r.totalSvc || 0), 0),
+    results,
+  };
+}
+
 function createBarberCronRoutes(supabase, adminAuth) {
   const router = express.Router();
 
@@ -454,6 +490,14 @@ function createBarberCronRoutes(supabase, adminAuth) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    let mokaSync;
+    try {
+      mokaSync = await syncMokaTransactions(supabase);
+    } catch (error) {
+      console.error('[Cron] Live Moka transaction sync failed:', error.message);
+      return res.status(502).json({ ok: false, error: 'Moka transaction sync failed' });
+    }
+
     const today = localDateStr();
     const yesterday = localDateStr(new Date(Date.now() - 86400000));
     const datesToSync = [yesterday, today];
@@ -479,41 +523,7 @@ function createBarberCronRoutes(supabase, adminAuth) {
     // Rebuild leaderboard cache setelah sync
     try { await rebuildLeaderboardCache(supabase); } catch { /* optional */ }
 
-    return res.json({ ok: true, synced, dates: datesToSync, ts: new Date().toISOString() });
-  });
-
-  // ─── SYNC MOKA DAILY (dipanggil cronjob.org tiap jam) ──
-  // GET /api/cron/sync-moka-daily?token=CRON_SECRET
-  router.get('/sync-moka-daily', async (req, res) => {
-    const secret = process.env.CRON_SECRET || process.env.ADMIN_PASSWORD;
-    if (!secret || req.query.token !== secret) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const today = localDateStr();
-    const yesterday = localDateStr(new Date(Date.now() - 86400000));
-    const datesToSync = [yesterday, today];
-
-    const { data: barberUsers } = await supabase.from('barber_users').select('barber_id');
-    if (!barberUsers?.length) return res.json({ ok: true, synced: 0 });
-
-    let synced = 0;
-    for (const dateStr of datesToSync) {
-      for (const { barber_id } of barberUsers) {
-        const count = await getDailyCount(supabase, barber_id, dateStr);
-        if (count > 0) {
-          await supabase.from('barber_daily_counts').upsert({
-            barber_id, date: dateStr, count, source: 'moka_sync',
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'barber_id,date' });
-          synced++;
-        }
-      }
-    }
-
-    try { await rebuildLeaderboardCache(supabase); } catch { /* optional */ }
-
-    return res.json({ ok: true, synced, dates: datesToSync, ts: new Date().toISOString() });
+    return res.json({ ok: true, synced, moka_sync: mokaSync, dates: datesToSync, ts: new Date().toISOString() });
   });
 
   return router;
