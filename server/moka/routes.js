@@ -29,6 +29,23 @@ const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEven
 const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
 const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
 
+async function syncCurrentMonthTransactions(supabase, outletId = null) {
+  const { syncCurrentMonthTx } = require('./txSync');
+  let query = supabase.from('outlets').select('id, slug, moka_outlet_id')
+    .eq('is_active', true).not('moka_outlet_id', 'is', null);
+  if (outletId) query = query.eq('id', outletId);
+  const { data: outlets, error } = await query;
+  if (error) throw error;
+  const results = await Promise.all((outlets || []).map(async outlet => {
+    try {
+      return { slug: outlet.slug, ...(await syncCurrentMonthTx(supabase, outlet)) };
+    } catch (err) {
+      return { slug: outlet.slug, error: err.message };
+    }
+  }));
+  return results;
+}
+
 // NOTE: member_profiles dulu di project terpisah ('adhit24's Project',
 // gtiggsilfcivuzowaexq) tapi dihapus 2026-05-28. Sekarang consolidated ke
 // primary DB — bisa pakai `supabase` client utama langsung.
@@ -856,7 +873,8 @@ function createMokaRouter(supabase) {
       };
       
       const results = await _runSync();
-      return res.json({ ok: true, syncedAt: new Date().toISOString(), results });
+      const transactions = await syncCurrentMonthTransactions(supabase, rawOutletId ? await _resolveOutletId(supabase, rawOutletId) : null);
+      return res.json({ ok: true, syncedAt: new Date().toISOString(), results, transactions });
     } catch (err) {
       console.error('[CronSync] Error:', err.message);
       return res.status(500).json({ error: err.message });
@@ -889,7 +907,8 @@ function createMokaRouter(supabase) {
       };
       
       const results = await _runSync();
-      return res.json({ ok: true, syncedAt: new Date().toISOString(), results });
+      const transactions = await syncCurrentMonthTransactions(supabase, rawOutletId ? await _resolveOutletId(supabase, rawOutletId) : null);
+      return res.json({ ok: true, syncedAt: new Date().toISOString(), results, transactions });
     } catch (err) {
       console.error('[CronSync] Error:', err.message);
       return res.status(500).json({ error: err.message });
