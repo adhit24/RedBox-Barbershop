@@ -87,6 +87,7 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   let   page       = 1;
   let   totalTx    = 0;
   let   totalSvc   = 0;
+  const unmatchedNames = new Set();
 
   while (true) {
     let json;
@@ -113,7 +114,7 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
       const receiptNumber = p.receipt_number || p.receipt_no || p.id;
       if (!receiptNumber) continue;
 
-      const createdAt = p.created_at || p.updated_at || '';
+      const createdAt = p.transaction_date || p.created_at || p.updated_at || '';
       const txDate    = createdAt.slice(0, 10);
       const txTime    = createdAt.slice(11, 19);
       if (createdAt && new Date(createdAt).getTime() < sinceEpochStart * 1000) continue;
@@ -142,7 +143,7 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
         const seenBarbers  = new Map();
         for (const item of barberItems) {
           const matched = matchBarberName(item.name, activeBarbers, outlet.slug);
-          if (!matched) continue;
+          if (!matched) { unmatchedNames.add(item.name); continue; }
           if (!seenBarbers.has(matched.id)) seenBarbers.set(matched.id, { csvName: item.name, services: [] });
           seenBarbers.get(matched.id).services.push(item.service);
         }
@@ -183,7 +184,7 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   }
 
   console.log(`[TxSync] ${outlet.slug} — ${totalTx} tx, ${totalSvc} svc upserted`);
-  return { totalTx, totalSvc };
+  return { totalTx, totalSvc, unmatchedNames: [...unmatchedNames].slice(0, 20) };
 }
 
 module.exports = { syncCurrentMonthTx };
