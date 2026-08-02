@@ -26,6 +26,7 @@ const OUTLET_SLUG_MAP = {
   'redbox barbershop csb':       'csb',
   'redbox barbershop sumber':    'sumber',
   'redbox barbershop tegal':     'tegal',
+  'parker gentlemens barbershop': 'parker',
 };
 
 function parseCSVRow(line) {
@@ -95,8 +96,11 @@ function matchBarberName(csvName, barbers, preferBranch) {
     if (lower === fw || lower === b.name.toLowerCase()) return b;
   }
   // 3. Best (minimum) edit distance ≤ 2 — prefer same branch on tie
+  const fuzzyCandidates = preferBranch
+    ? barbers.filter(b => b.branch === preferBranch)
+    : barbers;
   let best = null, bestDist = 3;
-  for (const b of barbers) {
+  for (const b of fuzzyCandidates) {
     const fw = b.name.split(' ')[0].toLowerCase();
     const d  = editDist(lower, fw);
     if (d < bestDist || (d === bestDist && preferBranch && b.branch === preferBranch)) {
@@ -188,10 +192,16 @@ async function importCSV(filePath, barbers) {
     if (error) { console.error(`  ✗ ${name} TX: ${error.message}`); return; }
   }
 
-  // Delete + re-insert barber services for these receipts
+  // Delete stale mappings for every imported receipt, then re-insert the
+  // current mapping. This prevents an earlier fuzzy match from inflating a
+  // kapster after the source CSV is corrected.
+  const receiptNums = [...new Set(txRows.map(t => t.receipt_number))];
+  if (receiptNums.length) {
+    const { error: deleteError } = await supabase.from('moka_barber_services')
+      .delete().in('receipt_number', receiptNums);
+    if (deleteError) { console.error(`  ✗ ${name} SVC cleanup: ${deleteError.message}`); return; }
+  }
   if (svcRows.length) {
-    const receiptNums = [...new Set(svcRows.map(s => s.receipt_number))];
-    await supabase.from('moka_barber_services').delete().in('receipt_number', receiptNums);
     const { error } = await supabase.from('moka_barber_services').insert(svcRows);
     if (error) { console.error(`  ✗ ${name} SVC: ${error.message}`); return; }
   }
@@ -210,10 +220,13 @@ async function main() {
   if (bErr) { console.error('Failed to load barbers:', bErr.message); process.exit(1); }
   console.log(`Loaded ${barbers.length} active barbers.\n`);
 
-  const files = fs.readdirSync(TRANSAKSI_DIR)
-    .filter(f => f.endsWith('.csv'))
-    .sort()
-    .map(f => path.join(TRANSAKSI_DIR, f));
+  const requestedFile = process.argv[2];
+  const files = requestedFile
+    ? [path.resolve(requestedFile)]
+    : fs.readdirSync(TRANSAKSI_DIR)
+      .filter(f => f.endsWith('.csv') && !/^Report Item Details/i.test(f))
+      .sort()
+      .map(f => path.join(TRANSAKSI_DIR, f));
 
   if (!files.length) { console.log('No CSV files found in', TRANSAKSI_DIR); return; }
   console.log(`Found ${files.length} CSV file(s):\n`);

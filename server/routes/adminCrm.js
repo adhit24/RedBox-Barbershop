@@ -18,6 +18,7 @@ const OUTLET_SLUG_MAP = {
   'redbox barbershop csb':       'csb',
   'redbox barbershop sumber':    'sumber',
   'redbox barbershop tegal':     'tegal',
+  'parker gentlemens barbershop': 'parker',
 };
 
 function parseCSVRow(line) {
@@ -90,9 +91,13 @@ function matchBarberName(csvName, barbers, preferBranch) {
     const fw = b.name.split(' ')[0].toLowerCase();
     if (lower === fw || lower === b.name.toLowerCase()) return b;
   }
-  // 3. Best (minimum) edit distance ≤ 2 — prefer same branch on tie
+  // 3. Best edit distance ≤ 2 within the same branch only. Never assign a
+  // Parker/unknown-branch item to a similarly named barber elsewhere.
+  const fuzzyCandidates = preferBranch
+    ? barbers.filter(b => b.branch === preferBranch)
+    : barbers;
   let best = null, bestDist = 3;
-  for (const b of barbers) {
+  for (const b of fuzzyCandidates) {
     const fw = b.name.split(' ')[0].toLowerCase();
     const d  = editDist(lower, fw);
     if (d < bestDist || (d === bestDist && preferBranch && b.branch === preferBranch)) {
@@ -130,10 +135,16 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     const iReceipt   = ci('receipt');
     const iCollBy    = ci('collected_by');
     const iItems     = ci('items');
+    const iVariant   = ci('variant');
     const iPayment   = ci('payment');
     const iEvent     = ci('event_type');
 
-    const txToUpsert = [], svcRows = [];
+    // Aggregate by receipt so both Moka report formats are safe:
+    // Report Transaction = one row/receipt; Item Details = many rows/receipt.
+    const txByReceipt = new Map();
+    const serviceByReceipt = new Map();
+    const barberIdsByReceipt = new Map();
+    const unmatchedItems = new Set();
     let skipped = 0;
 
     for (let i = 1; i < lines.length; i++) {
@@ -154,35 +165,63 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       const netSales   = parseFloat(row[iNet]       || '0') || 0;
       const grossSales = parseFloat(row[iGross]     || '0') || 0;
       const totalColl  = parseFloat(row[iCollected] || '0') || 0;
-      const itemsRaw   = (row[iItems]   || '').trim();
+      const itemName = (row[iItems] || '').trim();
+      const variant = iVariant >= 0 ? (row[iVariant] || '').trim() : '';
+      // Item Details stores barber and service in separate columns.
+      // Report Transaction already stores `Name (Service)` in Items.
+      const itemsRaw = variant && itemName && !itemName.includes('(')
+        ? `${itemName}(${variant})`
+        : itemName;
 
-      txToUpsert.push({
-        receipt_number: receiptNumber, outlet_slug: outletSlug,
-        tx_date: txDate, tx_time: (row[iTime] || '').trim(),
-        net_sales: netSales, gross_sales: grossSales, total_collected: totalColl,
-        payment_method: (row[iPayment] || '').trim(),
-        collected_by: (row[iCollBy] || '').trim(), items_raw: itemsRaw,
-      });
-
-      const seenBarbers = new Map(); // barberId → { csvName, services[] }
-      for (const item of extractBarberItems(itemsRaw)) {
-        const matched = matchBarberName(item.name, barbers, outletSlug);
-        if (!matched) continue;
-        if (!seenBarbers.has(matched.id)) seenBarbers.set(matched.id, { csvName: item.name, services: [] });
-        seenBarbers.get(matched.id).services.push(item.service);
-      }
-
-      const revenueShare = seenBarbers.size > 0 ? Math.round(netSales / seenBarbers.size) : 0;
-      for (const [barberId, { csvName, services }] of seenBarbers) {
-        svcRows.push({
-          receipt_number: receiptNumber,
-          barber_name_raw: csvName, barber_id: barberId,
-          service_name: services.join(', '),
-          outlet_slug: outletSlug, tx_date: txDate,
-          revenue_share: revenueShare,
+      const existingTx = txByReceipt.get(receiptNumber);
+      if (existingTx) {
+        existingTx.net_sales += netSales;
+        existingTx.gross_sales += grossSales;
+        existingTx.total_collected += totalColl;
+        if (itemsRaw) existingTx.items_raw = existingTx.items_raw
+          ? `${existingTx.items_raw}, ${itemsRaw}` : itemsRaw;
+      } else {
+        txByReceipt.set(receiptNumber, {
+          receipt_number: receiptNumber, outlet_slug: outletSlug,
+          tx_date: txDate, tx_time: (row[iTime] || '').trim(),
+          net_sales: netSales, gross_sales: grossSales, total_collected: totalColl,
+          payment_method: (row[iPayment] || '').trim(),
+          collected_by: (row[iCollBy] || '').trim(), items_raw: itemsRaw,
         });
       }
+
+      for (const item of extractBarberItems(itemsRaw)) {
+        const matched = matchBarberName(item.name, barbers, outletSlug);
+        if (!matched) {
+          unmatchedItems.add(item.name);
+          continue;
+        }
+        const serviceKey = `${receiptNumber}:${matched.id}`;
+        if (!serviceByReceipt.has(serviceKey)) {
+          serviceByReceipt.set(serviceKey, {
+            receipt_number: receiptNumber,
+            barber_name_raw: item.name,
+            barber_id: matched.id,
+            service_name: [],
+            outlet_slug: outletSlug,
+            tx_date: txDate,
+          });
+        }
+        serviceByReceipt.get(serviceKey).service_name.push(item.service);
+        if (!barberIdsByReceipt.has(receiptNumber)) barberIdsByReceipt.set(receiptNumber, new Set());
+        barberIdsByReceipt.get(receiptNumber).add(matched.id);
+      }
     }
+
+    const txToUpsert = [...txByReceipt.values()];
+    const svcRows = [...serviceByReceipt.values()].map(row => ({
+      ...row,
+      service_name: row.service_name.join(', '),
+      revenue_share: Math.round(
+        (txByReceipt.get(row.receipt_number)?.net_sales || 0) /
+        (barberIdsByReceipt.get(row.receipt_number)?.size || 1)
+      ),
+    }));
 
     if (txToUpsert.length) {
       const { error } = await supabase.from('moka_transactions')
@@ -190,9 +229,15 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       if (error) return res.status(500).json({ error: 'TX upsert: ' + error.message });
     }
 
+    const receiptNums = [...txByReceipt.keys()];
+    if (receiptNums.length) {
+      // Remove stale mappings too, including receipts that now contain no barber.
+      const { error: deleteError } = await supabase.from('moka_barber_services')
+        .delete().in('receipt_number', receiptNums);
+      if (deleteError) return res.status(500).json({ error: 'SVC cleanup: ' + deleteError.message });
+    }
+
     if (svcRows.length) {
-      const receiptNums = [...new Set(svcRows.map(s => s.receipt_number))];
-      await supabase.from('moka_barber_services').delete().in('receipt_number', receiptNums);
       const { error } = await supabase.from('moka_barber_services').insert(svcRows);
       if (error) return res.status(500).json({ error: 'SVC insert: ' + error.message });
     }
@@ -202,6 +247,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       transactions: txToUpsert.length,
       barber_services: svcRows.length,
       skipped,
+      unmatched_items: [...unmatchedItems].sort(),
     });
   });
 

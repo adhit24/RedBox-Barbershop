@@ -45,8 +45,11 @@ function matchBarberName(rawName, barbers, preferBranch) {
     const fw = b.name.split(' ')[0].toLowerCase();
     if (lower === fw || lower === b.name.toLowerCase()) return b;
   }
+  const fuzzyCandidates = preferBranch
+    ? barbers.filter(b => b.branch === preferBranch)
+    : barbers;
   let best = null, bestDist = 3;
-  for (const b of barbers) {
+  for (const b of fuzzyCandidates) {
     const fw = b.name.split(' ')[0].toLowerCase();
     const d  = editDist(lower, fw);
     if (d < bestDist || (d === bestDist && preferBranch && b.branch === preferBranch)) {
