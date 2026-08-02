@@ -125,7 +125,10 @@ module.exports = async function handler(req, res) {
       const msg = buildSoonMessage(booking, barberName);
 
       try {
-        await sendWA(booking.wa, msg);
+        const result = await sendWA(booking.wa, msg, { branch: booking.location });
+        if (!result || result.status === false) {
+          throw new Error(result?.reason || result?.error || 'Fonnte rejected message');
+        }
         sent++;
         console.log(`[RemindSoon] Sent to ${booking.wa} (${booking.name}) for ${booking.time}`);
         // Mark as reminded to prevent duplicate sends across Vercel instances

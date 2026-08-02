@@ -32,13 +32,24 @@ const BRANCH_WA_NUMBER = {
   tegal:     '0818268883',
 };
 
+// Canonicalize slugs and display labels before selecting a branch device.
+function normalizeBranch(branch) {
+  const value = String(branch || '').toLowerCase().trim();
+  if (!value || value === 'default' || value === 'pusat' || value === 'redbox bypass') return 'bypass';
+  if (value === 'csb mall' || value === 'redbox csb mall') return 'csb';
+  if (value === 'redbox sumber') return 'sumber';
+  if (value === 'redbox samadikun') return 'samadikun';
+  if (value === 'redbox tegal') return 'tegal';
+  return value;
+}
+
 /**
  * Mendapatkan token Fonnte untuk cabang tertentu
  * @param {string} branch - Nama cabang (bypass, sumber, samadikun, csb, tegal)
  * @returns {string|null} Token Fonnte atau null jika tidak ada
  */
 function getBranchToken(branch) {
-  const branchKey = String(branch || '').toLowerCase().trim();
+  const branchKey = normalizeBranch(branch);
   
   // Token bypass: cek FONNTE_TOKEN_BYPASS dulu, fallback ke FONNTE_TOKEN (legacy)
   const bypassToken = process.env.FONNTE_TOKEN_BYPASS || process.env.FONNTE_TOKEN || null;
@@ -52,11 +63,12 @@ function getBranchToken(branch) {
   if (envVarName) {
     const token = process.env[envVarName];
     if (token) return token;
-    // Fallback ke bypass token jika branch token tidak tersedia
-    return bypassToken;
+    // Do not silently route a branch message through Bypass. That can make
+    // one device look healthy while the intended branch device is offline.
+    return null;
   }
 
-  return bypassToken;
+  return null;
 }
 
 /**
@@ -98,19 +110,18 @@ function detectBranchFromNumber(to) {
  */
 async function sendWA(to, message, options = {}) {
   // Detect branch from options atau dari nomor tujuan
-  let branch = options.branch || detectBranchFromNumber(to);
+  let branch = normalizeBranch(options.branch || detectBranchFromNumber(to));
   let token = options.token || getBranchToken(branch);
   
-  console.log('[Fonnte] sendWA called with:', { to, branch, options, tokenFirstChars: token ? token.slice(0, 10) + '...' : 'none' });
+  console.log('[Fonnte] sendWA called:', { to, branch });
   
   // Fallback ke default token jika tidak ada
-  if (!token) {
+  if (!token && branch === 'bypass') {
     token = process.env.FONNTE_TOKEN;
     console.log('[Fonnte] Falling back to default (Bypass) token');
   }
   if (!token) {
-    console.warn('[Fonnte] FONNTE_TOKEN not set, skipping WA send');
-    return null;
+    return { status: false, reason: `FONNTE_TOKEN not configured for branch: ${branch}` };
   }
 
   // Normalize to full Indonesian international format (628xxx):
@@ -255,7 +266,9 @@ function getTokenForBranch(branch) {
 function getAvailableBranches() {
   const result = {};
   for (const [branch, envVar] of Object.entries(BRANCH_TOKEN_MAP)) {
-    const hasToken = !!process.env[envVar];
+    const hasToken = branch === 'bypass'
+      ? !!(process.env.FONNTE_TOKEN_BYPASS || process.env.FONNTE_TOKEN)
+      : !!process.env[envVar];
     result[branch] = {
       available: hasToken,
       env_var: envVar,
@@ -272,5 +285,6 @@ module.exports = {
   getTokenForBranch,
   getAvailableBranches,
   detectBranchFromNumber,
+  normalizeBranch,
   BRANCH_WA_NUMBER
 };

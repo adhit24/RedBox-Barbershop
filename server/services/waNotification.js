@@ -8,6 +8,16 @@
 
 const { sendWA } = require('./fonnte');
 
+// Fonnte may return HTTP 200 with { status: false }; never treat that as sent.
+async function sendNotification(to, message, branch) {
+  const result = await sendWA(to, message, { branch });
+  if (!result) throw new Error('Fonnte token missing or send skipped');
+  if (result.status === false) {
+    throw new Error(result.reason || result.error || result.message || 'Fonnte rejected message');
+  }
+  return result;
+}
+
 const ADMIN_NUMBER = process.env.WA_ADMIN_NUMBER;
 if (!ADMIN_NUMBER) {
   console.warn('[waNotification] WA_ADMIN_NUMBER env var not set — admin booking notifications will be skipped');
@@ -66,7 +76,7 @@ ${closingLine}
 
 ${closingQuestion}`;
 
-  return sendWA(wa, message, { branch: location });
+  return sendNotification(wa, message, location);
 }
 
 // 2. Reminder H-1 ke pelanggan (sehari sebelum) — dipakai oleh cron reminders.js
@@ -91,7 +101,7 @@ async function notifyCustomerReminderH1(booking) {
 Dateng tepat waktu ya kak biar langsung bisa dilayani! 😊
 Sampai besok! ✂️🔴`;
 
-  return sendWA(wa, message, { branch: location });
+  return sendNotification(wa, message, location);
 }
 
 // 3. Notifikasi ke admin/barber saat ada booking baru
@@ -116,7 +126,7 @@ async function notifyAdminNewBooking(booking) {
 ${barber_name ? `• Kapster : ${barber_name}\n` : ''}${notes ? `• Catatan : ${notes}\n` : ''}
 #RedBoxBooking`;
 
-  return sendWA(ADMIN_NUMBER, message, { branch: location });
+  return sendNotification(ADMIN_NUMBER, message, location);
 }
 
 // --- helpers ---
@@ -167,7 +177,7 @@ Beneran 30 detik aja — bantu kami tumbuh, kakak yang dapet hadiahnya. Win-win 
 
 _(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`;
 
-  return sendWA(wa, message, { branch: location });
+  return sendNotification(wa, message, location);
 }
 
 // 5. Notifikasi poin credited setelah review positif
@@ -196,7 +206,7 @@ Cek & redeem poin di:
 
 Makasih lagi kak udah jadi bagian dari keluarga RedBox! Sampai ketemu di kunjungan next ya 😎✂️`;
 
-  return sendWA(wa, message, { branch });
+  return sendNotification(wa, message, branch);
 }
 
 async function notifyBarberNewHomeServiceJob({
@@ -213,7 +223,7 @@ Harga     : ${price}
 
 Catat jadwal ini ya! Kamu akan mendapat pengingat beserta instruksi keberangkatan *1 jam sebelum jadwal*. 📌`;
 
-  return sendWA(barberPhone, msg, { branch });
+  return sendNotification(barberPhone, msg, branch);
 }
 
 // Remind barber 1 hour before home service booking
@@ -239,7 +249,7 @@ Jangan lupa bersiap-siap ya! 🛠️
 Balas *BERANGKAT* saat kamu mulai berangkat ke lokasi.
 Balas *SELESAI* setelah pekerjaan selesai.`;
 
-  return sendWA(barberPhone, msg, { branch });
+  return sendNotification(barberPhone, msg, branch);
 }
 
 // Notify barber of new in-outlet booking
@@ -262,7 +272,7 @@ Kamu punya pesanan baru di ${location}! 📋
 
 Jangan lupa catat ya! ✂️`;
 
-  return sendWA(barberPhone, msg, { branch });
+  return sendNotification(barberPhone, msg, branch);
 }
 
 module.exports = {

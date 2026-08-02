@@ -79,7 +79,7 @@ async function reschedule(supabase, { jobId, newStartTime }) {
 
   // 9. Notify barber & customer
   const [barberRes, customerRes] = await Promise.all([
-    supabase.from('barbers').select('name, phone').eq('id', old.barber_id).single(),
+    supabase.from('barbers').select('name, phone, branch').eq('id', old.barber_id).single(),
     supabase.from('customers').select('name, phone').eq('id', old.customer_id).single(),
   ]);
 
@@ -90,12 +90,14 @@ async function reschedule(supabase, { jobId, newStartTime }) {
 
   if (barberRes.data?.phone) {
     sendWA(barberRes.data.phone,
-      `📅 *Reschedule Home Service*\n\nJadwal kamu telah diubah:\n${dtStr} WIB\nAlamat: ${job.address}`
+      `📅 *Reschedule Home Service*\n\nJadwal kamu telah diubah:\n${dtStr} WIB\nAlamat: ${job.address}`,
+      { branch: barberRes.data.branch }
     ).catch(() => {});
   }
   if (customerRes.data?.phone) {
     sendWA(customerRes.data.phone,
-      `📅 *Reschedule Berhasil*\n\nJadwal baru kamu:\n${dtStr} WIB\n\nKapster akan hadir sesuai jadwal baru. ✂️`
+      `📅 *Reschedule Berhasil*\n\nJadwal baru kamu:\n${dtStr} WIB\n\nKapster akan hadir sesuai jadwal baru. ✂️`,
+      { branch: barberRes.data?.branch }
     ).catch(() => {});
   }
 
