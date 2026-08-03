@@ -2,6 +2,7 @@
 const express = require('express');
 const { sendPushNotifToBarber } = require('../services/barberMetrics');
 const { checkAchievements, assignRivals, crownKingOfShop, rebuildLeaderboardCache } = require('../services/gamificationService');
+const { processCustomerNotificationOutbox } = require('../services/bookingNotificationOutbox');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -490,6 +491,14 @@ function createBarberCronRoutes(supabase, adminAuth) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    let notifications;
+    try {
+      notifications = await processCustomerNotificationOutbox(supabase, 25);
+    } catch (error) {
+      console.error('[Cron] Customer notification retry failed:', error.message);
+      notifications = { error: 'retry_failed' };
+    }
+
     let mokaSync;
     try {
       mokaSync = await syncMokaTransactions(supabase);
@@ -523,7 +532,7 @@ function createBarberCronRoutes(supabase, adminAuth) {
     // Rebuild leaderboard cache setelah sync
     try { await rebuildLeaderboardCache(supabase); } catch { /* optional */ }
 
-    return res.json({ ok: true, synced, moka_sync: mokaSync, dates: datesToSync, ts: new Date().toISOString() });
+    return res.json({ ok: true, synced, notifications, moka_sync: mokaSync, dates: datesToSync, ts: new Date().toISOString() });
   });
 
   return router;

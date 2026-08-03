@@ -16,6 +16,7 @@ const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
 // NOTE: Airtable dependency removed - using Supabase as primary source for barbers
 const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest, notifyCustomerReviewPointsCredited } = require('./services/waNotification');
+const { enqueueCustomerNotification, markCustomerNotificationSent, processCustomerNotificationOutbox } = require('./services/bookingNotificationOutbox');
 const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
 
@@ -1153,6 +1154,13 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // Awaited (bukan fire-and-forget) agar selesai sebelum res.end() — Vercel kills
       // orphaned promises setelah response dikirim.
       if (desiredStatus === 'confirmed' && data.wa) {
+        let customerOutboxQueued = false;
+        try {
+          await enqueueCustomerNotification(supabase, data);
+          customerOutboxQueued = true;
+        } catch (e) {
+          console.error('[WA Confirm] customer outbox enqueue failed:', e.message);
+        }
         let barberName = null;
         if (data.barber_id) {
           try {
@@ -1162,8 +1170,9 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         }
         try {
           await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
+          if (customerOutboxQueued) await markCustomerNotificationSent(supabase, data.id);
         } catch (e) {
-          console.warn('[WA Confirm] failed:', e.message);
+          console.error('[WA Confirm] failed; queued for retry:', e.message);
         }
         // Send notification to barber regardless of booking type
         try {
@@ -3109,6 +3118,22 @@ app.get('/api/cron/review-request', async (req, res) => {
   } catch (e) {
     console.error('[ReviewRequest] error:', e.message);
     return res.status(500).json({ error: e.message });
+  }
+});
+
+// CRON — durable customer WhatsApp delivery retry (called every 2 minutes)
+app.get('/api/cron/booking-notifications', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const auth = req.headers.authorization || '';
+  const token = req.query.token || (auth.startsWith('Bearer ') ? auth.slice(7) : '');
+  if (secret && token !== secret) return res.status(401).json({ error: 'Unauthorized' });
+  if (DB_TYPE !== 'supabase' || !supabase) return res.json({ ok: true, skipped: 'supabase_not_configured' });
+  try {
+    const result = await processCustomerNotificationOutbox(supabase, 25);
+    return res.json({ ok: true, ...result, ts: new Date().toISOString() });
+  } catch (e) {
+    console.error('[BookingNotifCron] failed:', e.message);
+    return res.status(500).json({ ok: false, error: 'Notification retry failed' });
   }
 });
 
