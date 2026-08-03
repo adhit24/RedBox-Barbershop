@@ -21,11 +21,11 @@ async function enqueueCustomerNotification(supabase, booking) {
   return data;
 }
 
-async function markCustomerNotificationSent(supabase, bookingId) {
+async function markCustomerNotificationSent(supabase, bookingId, providerResponse = null) {
   if (!supabase || !bookingId) return;
   const { error } = await supabase
     .from('booking_notification_outbox')
-    .update({ status: 'sent', sent_at: new Date().toISOString(), last_error: null })
+    .update({ status: 'sent', sent_at: new Date().toISOString(), last_error: null, provider_response: providerResponse })
     .eq('booking_id', bookingId)
     .eq('kind', 'customer_booking_confirmed');
   if (error) throw error;
@@ -63,9 +63,9 @@ async function processCustomerNotificationOutbox(supabase, limit = 25) {
 
     results.processed++;
     try {
-      await notifyCustomerBookingConfirmed(row.payload || {});
+      const providerResponse = await notifyCustomerBookingConfirmed(row.payload || {});
       await supabase.from('booking_notification_outbox').update({
-        status: 'sent', sent_at: new Date().toISOString(), last_error: null,
+        status: 'sent', sent_at: new Date().toISOString(), last_error: null, provider_response: providerResponse,
       }).eq('id', row.id);
       results.sent++;
     } catch (err) {

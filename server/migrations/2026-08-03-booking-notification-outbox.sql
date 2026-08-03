@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS booking_notification_outbox (
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   locked_at TIMESTAMPTZ,
   sent_at TIMESTAMPTZ,
+  provider_response JSONB,
   last_error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (booking_id, kind)

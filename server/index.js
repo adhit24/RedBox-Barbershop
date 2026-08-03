@@ -1169,8 +1169,8 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
           } catch (_) {}
         }
         try {
-          await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
-          if (customerOutboxQueued) await markCustomerNotificationSent(supabase, data.id);
+          const providerResponse = await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
+          if (customerOutboxQueued) await markCustomerNotificationSent(supabase, data.id, providerResponse);
         } catch (e) {
           console.error('[WA Confirm] failed; queued for retry:', e.message);
         }
