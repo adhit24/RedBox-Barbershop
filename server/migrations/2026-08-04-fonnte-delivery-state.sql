@@ -13,3 +13,13 @@ CREATE INDEX IF NOT EXISTS idx_booking_notification_outbox_provider_message_ids
 
 CREATE INDEX IF NOT EXISTS idx_booking_notification_outbox_provider_state_ids
   ON booking_notification_outbox USING GIN (provider_state_ids);
+
+-- Backfill rows created before these columns existed. Fonnte returns numeric
+-- ids in provider_response, while new sends normalize ids to JSON strings.
+UPDATE booking_notification_outbox
+SET provider_message_ids = (
+  SELECT jsonb_agg(to_jsonb(value #>> '{}'))
+  FROM jsonb_array_elements(provider_response->'id') AS ids(value)
+)
+WHERE provider_message_ids IS NULL
+  AND jsonb_typeof(provider_response->'id') = 'array';

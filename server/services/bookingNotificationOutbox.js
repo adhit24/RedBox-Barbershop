@@ -53,15 +53,26 @@ async function reconcileCustomerNotificationDelivery(supabase, update) {
   const stateId = String(update.stateId || '').trim();
   if (!messageId && !stateId) return { matched: false };
 
-  let query = supabase
+  // Read a bounded set and match in JS. This intentionally supports legacy
+  // rows whose provider_response.id is numeric JSON and whose new indexed
+  // provider_message_ids column was not populated yet.
+  const { data: rows, error } = await supabase
     .from('booking_notification_outbox')
-    .select('id,attempts,status,provider_state_ids')
-    .eq('kind', 'customer_booking_confirmed');
-  query = messageId
-    ? query.contains('provider_message_ids', [messageId])
-    : query.contains('provider_state_ids', [stateId]);
-  const { data: row, error } = await query.maybeSingle();
-  if (error || !row) return { matched: false, error: error?.message };
+    .select('id,attempts,status,provider_state_ids,provider_message_ids,provider_response')
+    .eq('kind', 'customer_booking_confirmed')
+    .in('status', ['sent', 'retry', 'processing'])
+    .order('created_at', { ascending: false })
+    .limit(2000);
+  if (error) return { matched: false, error: error.message };
+  const row = (rows || []).find(candidate => {
+    const messageIds = [
+      ...asIdList(candidate.provider_message_ids),
+      ...asIdList(candidate.provider_response?.id),
+    ];
+    const stateIds = asIdList(candidate.provider_state_ids);
+    return (messageId && messageIds.includes(messageId)) || (stateId && stateIds.includes(stateId));
+  });
+  if (!row) return { matched: false };
 
   const status = String(update.status || '').toLowerCase();
   const state = update.state === undefined || update.state === null ? null : String(update.state);
