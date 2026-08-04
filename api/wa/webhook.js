@@ -1835,7 +1835,11 @@ module.exports = async function handler(req, res) {
         booking_outbox_matched: delivery?.matched ?? false,
         booking_outbox_error: delivery?.error || null,
       });
-      return res.status(200).json({ status: 'ok' });
+      return res.status(200).json({
+        status: 'ok',
+        delivery_reconciled: delivery?.matched ?? false,
+        delivery_error: delivery?.error || null,
+      });
     }
 
     const sender = body.sender || body.from || body.number || body.phone || body.target;
