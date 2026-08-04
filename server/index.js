@@ -1058,6 +1058,37 @@ async function _notifyBarberOutletBookingMysql(bookingData) {
   return assertWaSendResult(result, 'Outlet barber notification failed');
 }
 
+// Satu jalur notifikasi pelanggan untuk semua sumber konfirmasi:
+// booking publik, booking admin, dan perubahan status pending -> confirmed.
+// Outbox dibuat sebelum provider dipanggil supaya kegagalan Fonnte tidak
+// membuat notifikasi hilang saat fungsi serverless berakhir atau timeout.
+async function _notifyCustomerConfirmedWithRetry(supabaseClient, bookingData, barberName = null) {
+  if (!supabaseClient || !bookingData?.id || !bookingData?.wa) return { skipped: true };
+
+  let queued = false;
+  try {
+    await enqueueCustomerNotification(supabaseClient, bookingData);
+    queued = true;
+  } catch (e) {
+    // Kirim langsung tetap dicoba; error queue dicatat agar terlihat di log.
+    console.error('[WA Confirm] customer outbox enqueue failed:', e.message);
+  }
+
+  try {
+    const providerResponse = await notifyCustomerBookingConfirmed({
+      ...bookingData,
+      barber_name: barberName,
+    });
+    if (queued) {
+      await markCustomerNotificationSent(supabaseClient, bookingData.id, providerResponse);
+    }
+    return { sent: true, providerResponse };
+  } catch (e) {
+    console.error('[WA Confirm] customer send failed; queued for retry:', e.message);
+    return { sent: false, queued };
+  }
+}
+
 const WEDDING_PACKAGE_PRICES = {
   'wedding-gentleman': 350000,
   'wedding-silver': 500000,
@@ -1154,13 +1185,6 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // Awaited (bukan fire-and-forget) agar selesai sebelum res.end() — Vercel kills
       // orphaned promises setelah response dikirim.
       if (desiredStatus === 'confirmed' && data.wa) {
-        let customerOutboxQueued = false;
-        try {
-          await enqueueCustomerNotification(supabase, data);
-          customerOutboxQueued = true;
-        } catch (e) {
-          console.error('[WA Confirm] customer outbox enqueue failed:', e.message);
-        }
         let barberName = null;
         if (data.barber_id) {
           try {
@@ -1168,12 +1192,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
             barberName = b?.name || null;
           } catch (_) {}
         }
-        try {
-          const providerResponse = await notifyCustomerBookingConfirmed({ ...data, barber_name: barberName });
-          if (customerOutboxQueued) await markCustomerNotificationSent(supabase, data.id, providerResponse);
-        } catch (e) {
-          console.error('[WA Confirm] failed; queued for retry:', e.message);
-        }
+        await _notifyCustomerConfirmedWithRetry(supabase, data, barberName);
         // Send notification to barber regardless of booking type
         try {
           if (type !== 'home_service' && type !== 'wedding') {
@@ -1294,11 +1313,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
 
       // Kirim WA konfirmasi + notif barber sebelum response selesai (serverless can kill orphan promises).
       if (desiredStatus === 'confirmed' && newBooking[0]?.wa) {
-        try {
-          await notifyCustomerBookingConfirmed({ ...newBooking[0], barber_name: null });
-        } catch (e) {
-          console.warn('[WA Confirm] failed:', e.message);
-        }
+        await _notifyCustomerConfirmedWithRetry(supabase, newBooking[0], null);
         // Send notification to barber if it's an outlet booking and barber is assigned
         try {
           if (type !== 'home_service' && type !== 'wedding') {
@@ -1343,8 +1358,9 @@ app.post('/api/bookings/:id/resend-notif', adminAuth, async (req, res) => {
   // Kirim ke pelanggan
   if (bk.wa) {
     try {
-      await notifyCustomerBookingConfirmed({ ...bk, barber_name: barberName });
-      results.customer = true;
+      const delivery = await _notifyCustomerConfirmedWithRetry(supabase, bk, barberName);
+      // True berarti terkirim ke Fonnte atau sudah masuk outbox retry.
+      results.customer = Boolean(delivery.sent || delivery.queued);
     } catch (e) {
       console.warn('[ResendNotif] Customer failed:', e.message);
     }
@@ -1387,6 +1403,18 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
 
     const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
     if (error) return res.status(500).json({ error: error.message });
+    // Dashboard confirmation must notify the customer as well as the barber.
+    // Previously this route only notified the barber, which caused the
+    // customer-missed-notification bug for pending -> confirmed bookings.
+    if (status === 'confirmed' && cur?.status !== 'confirmed' && data?.wa) {
+      let barberName = null;
+      if (data.barber_id) {
+        const { data: barber } = await supabase
+          .from('barbers').select('name').eq('id', data.barber_id).maybeSingle();
+        barberName = barber?.name || null;
+      }
+      await _notifyCustomerConfirmedWithRetry(supabase, data, barberName);
+    }
     if (status === 'confirmed' && cur?.status !== 'confirmed' && data?.barber_id) {
       try {
         const isHomeService = data.notes?.includes('[HOME SERVICE]');
@@ -1452,6 +1480,18 @@ async function handleBookingUpdate(req, res) {
       } catch (e) {
         moka = { ok: false, error: e?.message || 'MOKA sync failed', status: e?.status, details: e?.details };
       }
+    }
+
+    // Direct admin edit/status update must use the same customer notification
+    // path as public booking creation. This covers pending -> confirmed.
+    if (nextStatus === 'confirmed' && cur.status !== 'confirmed' && data?.wa) {
+      let barberName = null;
+      if (data.barber_id) {
+        const { data: barber } = await supabase
+          .from('barbers').select('name').eq('id', data.barber_id).maybeSingle();
+        barberName = barber?.name || null;
+      }
+      await _notifyCustomerConfirmedWithRetry(supabase, data, barberName);
     }
 
     // Notify kapster if: booking is confirmed AND (barber just assigned/changed OR booking just confirmed)

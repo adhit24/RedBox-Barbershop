@@ -4,6 +4,11 @@ const { notifyCustomerBookingConfirmed } = require('./waNotification');
 
 const MAX_ATTEMPTS = 8;
 
+function asIdList(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return values.map(v => String(v || '').trim()).filter(Boolean);
+}
+
 async function enqueueCustomerNotification(supabase, booking) {
   if (!supabase || !booking?.id || !booking?.wa) return null;
   const { data, error } = await supabase
@@ -25,10 +30,74 @@ async function markCustomerNotificationSent(supabase, bookingId, providerRespons
   if (!supabase || !bookingId) return;
   const { error } = await supabase
     .from('booking_notification_outbox')
-    .update({ status: 'sent', sent_at: new Date().toISOString(), last_error: null, provider_response: providerResponse })
+    .update({
+      status: 'sent',
+      sent_at: new Date().toISOString(),
+      last_error: null,
+      provider_response: providerResponse,
+      provider_message_ids: asIdList(providerResponse?.id),
+      provider_delivery_status: providerResponse?.process || 'queued',
+    })
     .eq('booking_id', bookingId)
     .eq('kind', 'customer_booking_confirmed');
   if (error) throw error;
+}
+
+// Fonnte sends delivery updates asynchronously. A response with status=true
+// only means WhatsApp accepted the request; state=0 means the target did not
+// receive it and must never remain marked as successfully delivered.
+async function reconcileCustomerNotificationDelivery(supabase, update) {
+  if (!supabase || !update) return { matched: false };
+
+  const messageId = String(update.messageId || '').trim();
+  const stateId = String(update.stateId || '').trim();
+  if (!messageId && !stateId) return { matched: false };
+
+  let query = supabase
+    .from('booking_notification_outbox')
+    .select('id,attempts,status,provider_state_ids')
+    .eq('kind', 'customer_booking_confirmed');
+  query = messageId
+    ? query.contains('provider_message_ids', [messageId])
+    : query.contains('provider_state_ids', [stateId]);
+  const { data: row, error } = await query.maybeSingle();
+  if (error || !row) return { matched: false, error: error?.message };
+
+  const status = String(update.status || '').toLowerCase();
+  const state = update.state === undefined || update.state === null ? null : String(update.state);
+  const failed = state === '0' || ['failed', 'expired', 'invalid'].includes(status);
+  const terminal = Number(row.attempts || 0) >= MAX_ATTEMPTS;
+  const now = new Date().toISOString();
+  const nextStateIds = Array.from(new Set([
+    ...asIdList(row.provider_state_ids),
+    ...(stateId ? [stateId] : []),
+  ]));
+  const patch = {
+    provider_delivery_status: status || null,
+    provider_delivery_state: state,
+    provider_state_ids: nextStateIds,
+    last_delivery_at: now,
+    delivery_webhook_payload: update.raw || update,
+  };
+
+  if (failed) {
+    patch.status = terminal ? 'failed' : 'retry';
+    patch.next_attempt_at = terminal
+      ? now
+      : new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    patch.last_error = `Fonnte delivery rejected: status=${status || '-'} state=${state || '-'}`;
+    patch.sent_at = null;
+  } else if (['delivered', 'read'].includes(status)) {
+    patch.status = 'sent';
+    patch.sent_at = now;
+    patch.last_error = null;
+  }
+
+  const { error: updateError } = await supabase
+    .from('booking_notification_outbox')
+    .update(patch)
+    .eq('id', row.id);
+  return { matched: !updateError, bookingNotificationId: row.id, error: updateError?.message };
 }
 
 async function processCustomerNotificationOutbox(supabase, limit = 25) {
@@ -86,5 +155,6 @@ async function processCustomerNotificationOutbox(supabase, limit = 25) {
 module.exports = {
   enqueueCustomerNotification,
   markCustomerNotificationSent,
+  reconcileCustomerNotificationDelivery,
   processCustomerNotificationOutbox,
 };
