@@ -1508,6 +1508,46 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
   });
 
+  router.post('/membership/registrations/:registrationId/cancel', adminAuth, async (req, res) => {
+    const access = getVerifiedMembershipAdmin(req);
+    if (!access) return res.status(403).json({ error: 'verified membership admin session required' });
+
+    const registrationId = String(req.params.registrationId || '').trim();
+    if (!registrationId) return res.status(400).json({ error: 'registrationId required' });
+
+    try {
+      const { data: registration, error: lookupError } = await supabase
+        .from('membership_registrations')
+        .select('id,status,requested_branch')
+        .eq('id', registrationId)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!registration) return res.status(404).json({ error: 'membership registration not found' });
+      if (registration.status !== 'PENDING') {
+        return res.status(409).json({ error: 'only pending membership registrations can be cancelled' });
+      }
+      const requestedBranch = typeof registration.requested_branch === 'string'
+        ? registration.requested_branch.trim().toLowerCase()
+        : '';
+      if (access.role === 'branch_admin' && requestedBranch && requestedBranch !== access.branch) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+
+      const { data: cancelled, error: updateError } = await supabase
+        .from('membership_registrations')
+        .update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+        .eq('id', registrationId)
+        .eq('status', 'PENDING')
+        .select('id,status')
+        .maybeSingle();
+      if (updateError) throw updateError;
+      if (!cancelled) return res.status(409).json({ error: 'membership registration is no longer pending' });
+      return res.json({ success: true, registrationId: cancelled.id, status: cancelled.status });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'membership registration cancellation failed' });
+    }
+  });
+
   router.post('/membership/registrations/:registrationId/activate', adminAuth, async (req, res) => {
     const access = getVerifiedMembershipAdmin(req);
     if (!access) return res.status(403).json({ error: 'verified membership admin session required' });

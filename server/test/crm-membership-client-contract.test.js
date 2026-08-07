@@ -34,6 +34,7 @@ test('Next CRM shows paid registration states and activates only the selected re
   const proxySecret = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', '_proxySecret.ts'));
   const registrationsProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', 'route.ts'));
   const activationProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'activate', 'route.ts'));
+  const cancellationProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'cancel', 'route.ts'));
   const changeProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'change', 'route.ts'));
   const backend = source(path.join('server', 'routes', 'adminCrm.js'));
 
@@ -57,6 +58,9 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(page, /Nominal penuh tier tujuan/);
   assert.match(page, /registrations\/\$\{changeSelection\.registration\.id\}\/change/);
   assert.match(page, /registrationType:\s*changeSelection\.kind/);
+  assert.match(page, /Batalkan/);
+  assert.match(page, /handleCancel/);
+  assert.match(page, /registrations\/\$\{registration\.id\}\/cancel/);
   assert.match(page, /TIER_PRICES\[destinationTier\]/);
   assert.doesNotMatch(page, /userKey:\s*activating/);
   assert.doesNotMatch(page, /tier:\s*tier/);
@@ -83,6 +87,9 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(activationProxy, /JSON\.stringify\(\{ paymentMethod, paymentReference, branch: branchDecision\.value \}\)/);
   assert.doesNotMatch(activationProxy, /JSON\.stringify\(body\)/);
   assert.doesNotMatch(activationProxy, /body\.(?:staffId|tier|amount)/);
+  assert.match(cancellationProxy, /requireMembershipAdminSession\(\)/);
+  assert.match(cancellationProxy, /registrations\/\$\{encodeURIComponent\(registrationId\)\}\/cancel/);
+  assert.match(cancellationProxy, /createMembershipAdminProxyHeaders\(auth\.session\)/);
   assert.match(changeProxy, /requireMembershipAdminSession\(\)/);
   assert.match(changeProxy, /createMembershipAdminProxyHeaders\(auth\.session\)/);
   assert.match(changeProxy, /registrations\/\$\{encodeURIComponent\(registrationId\)\}\/change/);
@@ -95,6 +102,9 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(backend, /p_confirmed_by:\s*staffId/);
   assert.match(backend, /p_requested_by:\s*access\.staffId/);
   assert.match(backend, /p_requested_branch:\s*sourceBranch/);
+  assert.match(backend, /router\.post\('\/membership\/registrations\/:registrationId\/cancel'/);
+  assert.match(backend, /only pending membership registrations can be cancelled/);
+  assert.match(backend, /status: 'CANCELLED'/);
 });
 
 test('Next membership admin policy returns 401, 403, branch scope, and preserves owner flow', () => {
