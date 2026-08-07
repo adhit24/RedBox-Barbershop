@@ -33,6 +33,29 @@ Verification:
 
 Caveats:
 
-- This task does not apply or verify the paid-membership migration/RPC in Supabase production.
-- Per-person activation audit still depends on the backend authentication design and `ADMIN_AUDIT_STAFF_ID`; the browser session display is informational and is never accepted as the authoritative staff identity.
+- This task does not apply or verify the paid-membership migration/RPC or the `users` role-integrity migration in Supabase production.
+- Production may set a separate `ADMIN_SESSION_PROXY_SECRET`; when absent, the existing server-only `ADMIN_PASSWORD` is used as the HMAC secret so deployment remains backward-compatible.
 - The commit is local only until it is pushed and deployed.
+
+## Fix round 1 — server-side session authorization and branch scope
+
+Reviewer finding addressed:
+
+- The Next adapters no longer expose the global admin proxy to every authenticated user.
+- Both adapters verify the Supabase session from cookies with `createClient(cookieStore)` and `auth.getUser()`, then load the matching `users` row.
+- Unauthenticated callers receive `401`; roles other than `owner` and `branch_admin` receive `403`.
+- `branch_admin` activation is fixed to the branch stored in the verified profile. A different browser-supplied branch is rejected with `403`.
+- Owners retain the ability to activate at a configured RedBox branch.
+- The adapter signs the verified user ID, role, branch, and issue time with a short-lived HMAC assertion. The backend verifies it before listing or activating registrations.
+- The new membership endpoints reject a global admin token without a verified session assertion. Activation audit now writes the verified Supabase user ID, not a browser field or `ADMIN_AUDIT_STAFF_ID`.
+- Backend list results expose only unassigned Pending registrations plus the branch admin's own Active/Expired history. Owners retain the complete view.
+- Added a role-integrity migration that makes `users.role` and `users.branch` read-only to browser sessions while allowing each authenticated user to read only their own profile.
+
+Fix verification:
+
+- Focused authorization, activation, assertion, and client contract tests: 25/25 passed.
+- Full server suite: 72/72 passed.
+- Task 5 ESLint: passed.
+- TypeScript `tsc --noEmit`: passed.
+- Production frontend build: passed, including both membership API routes.
+- Node syntax checks and `git diff --check`: passed.

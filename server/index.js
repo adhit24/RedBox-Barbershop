@@ -845,13 +845,33 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, '..')));
 
+const { verifyAdminSessionAssertion } = require('./services/adminSessionAssertion');
+
 function adminAuth(req, res, next) {
   const token = req.headers['x-admin-token'] || '';
   const validTokens = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
   if (!token || !validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+
+  const sessionAssertion = req.headers['x-redbox-admin-session'];
+  if (sessionAssertion) {
+    if (token !== process.env.ADMIN_PASSWORD) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+      const signingSecret = process.env.ADMIN_SESSION_PROXY_SECRET || process.env.ADMIN_PASSWORD || '';
+      req.adminAuth = verifyAdminSessionAssertion(String(sessionAssertion), signingSecret);
+      return next();
+    } catch {
+      return res.status(401).json({ error: 'Invalid admin session' });
+    }
+  }
+
   const credentialId = token === process.env.ADMIN_PASSWORD ? 'crm-admin' : 'cron-service';
   req.adminAuth = {
     staffId: String(process.env.ADMIN_AUDIT_STAFF_ID || credentialId).trim(),
+    role: null,
+    branch: null,
+    sessionVerified: false,
   };
   next();
 }

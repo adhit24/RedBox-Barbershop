@@ -5,11 +5,16 @@ const express = require('express');
 const test = require('node:test');
 const { createAdminCrmRoutes } = require('../routes/adminCrm');
 
-async function withServer(supabase, fn, { staffId = 'authenticated-staff-42' } = {}) {
+async function withServer(supabase, fn, {
+  staffId = 'authenticated-staff-42',
+  role = 'owner',
+  branch = null,
+  sessionVerified = true,
+} = {}) {
   const app = express();
   app.use(express.json());
   app.use(createAdminCrmRoutes(supabase, (req, _res, next) => {
-    if (staffId) req.adminAuth = { staffId };
+    req.adminAuth = { staffId, role, branch, sessionVerified };
     next();
   }));
   const server = await new Promise((resolve) => {
@@ -201,6 +206,50 @@ test('CRM registration list exposes identity, stored amount, payment audit, peri
   assert.equal(supabase.state.activationReads, 1);
 });
 
+test('branch admin list cannot read registrations activated by another branch', async () => {
+  const supabase = createMembershipStatusSupabase({
+    registrations: [
+      {
+        id: 'pending-unassigned', registration_code: 'RBM-PENDING', user_key: 'pending-user',
+        full_name: 'Pending Person', phone: '+628111111111', tier: 'silver', price_snapshot: 100000,
+        status: 'PENDING', expires_at: '2099-08-15T10:00:00.000Z',
+      },
+      {
+        id: 'active-csb', registration_code: 'RBM-CSB', user_key: 'csb-user',
+        full_name: 'CSB Person', phone: '+628122222222', tier: 'gold', price_snapshot: 250000,
+        status: 'ACTIVATED', expires_at: '2099-08-15T10:00:00.000Z',
+      },
+      {
+        id: 'active-tegal', registration_code: 'RBM-TEGAL', user_key: 'tegal-user',
+        full_name: 'Tegal Person', phone: '+628133333333', tier: 'gold', price_snapshot: 250000,
+        status: 'ACTIVATED', expires_at: '2099-08-15T10:00:00.000Z',
+      },
+    ],
+    profiles: [
+      { user_key: 'csb-user', membership_status: 'ACTIVE', membership_started_at: '2026-01-01T00:00:00.000Z', membership_expires_at: '2099-01-01T00:00:00.000Z' },
+      { user_key: 'tegal-user', membership_status: 'ACTIVE', membership_started_at: '2026-01-01T00:00:00.000Z', membership_expires_at: '2099-01-01T00:00:00.000Z' },
+    ],
+    activations: [
+      { id: 'activation-csb', registration_id: 'active-csb', branch: 'csb', status: 'completed', starts_at: '2026-01-01T00:00:00.000Z', expires_at: '2099-01-01T00:00:00.000Z' },
+      { id: 'activation-tegal', registration_id: 'active-tegal', branch: 'tegal', status: 'completed', starts_at: '2026-01-01T00:00:00.000Z', expires_at: '2099-01-01T00:00:00.000Z' },
+    ],
+  });
+
+  await withServer(supabase, async (url) => {
+    const response = await fetch(`${url}/membership/registrations`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.registrations.map((row) => row.id), ['pending-unassigned', 'active-csb']);
+  }, { role: 'branch_admin', branch: 'csb' });
+
+  await withServer(supabase, async (url) => {
+    const response = await fetch(`${url}/membership/registrations`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.registrations.map((row) => row.id), ['pending-unassigned', 'active-csb', 'active-tegal']);
+  }, { role: 'owner' });
+});
+
 test('CRM registration list matches a profile by canonical phone when the stored user key changed', async () => {
   const supabase = createMembershipStatusSupabase({
     registrations: [{
@@ -307,6 +356,69 @@ test('CRM registration activation uses the stored registration only and returns 
       p_payment_reference: 'QRIS-123', p_branch: 'csb', p_confirmed_by: 'authenticated-staff-42',
     },
   }]);
+});
+
+test('branch admin activation rejects another branch and audits the verified session user', async () => {
+  const activation = {
+    registration_id: 'reg-branch', activation_id: 'activation-branch', tier: 'silver', amount: 100000,
+    starts_at: '2026-08-08T10:00:00.000Z', expires_at: '2027-08-08T10:00:00.000Z',
+  };
+  const supabase = createMembershipStatusSupabase({ activation });
+
+  await withServer(supabase, async (url) => {
+    const mismatch = await fetch(`${url}/membership/registrations/reg-branch/activate`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ branch: 'tegal', paymentMethod: 'cash', paymentReference: 'CASH-1' }),
+    });
+    assert.equal(mismatch.status, 403);
+    assert.match((await mismatch.json()).error, /branch access denied/i);
+
+    const allowed = await fetch(`${url}/membership/registrations/reg-branch/activate`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        branch: 'csb', paymentMethod: 'cash', paymentReference: 'CASH-2', staffId: 'spoofed-browser',
+      }),
+    });
+    assert.equal(allowed.status, 200);
+  }, { staffId: 'session-user-42', role: 'branch_admin', branch: 'csb' });
+
+  assert.equal(supabase.state.rpcCalls.length, 1);
+  assert.deepEqual(supabase.state.rpcCalls[0].args, {
+    p_registration_id: 'reg-branch',
+    p_payment_method: 'cash',
+    p_payment_reference: 'CASH-2',
+    p_branch: 'csb',
+    p_confirmed_by: 'session-user-42',
+  });
+});
+
+test('new membership routes reject a global-token identity without a verified staff session', async () => {
+  const supabase = createMembershipStatusSupabase();
+  await withServer(supabase, async (url) => {
+    const list = await fetch(`${url}/membership/registrations`);
+    assert.equal(list.status, 403);
+
+    const activation = await fetch(`${url}/membership/registrations/reg-1/activate`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ branch: 'csb', paymentMethod: 'cash', paymentReference: 'CASH-1' }),
+    });
+    assert.equal(activation.status, 403);
+  }, { sessionVerified: false });
+  assert.equal(supabase.state.profileReads, 0);
+  assert.equal(supabase.state.rpcCalls.length, 0);
+});
+
+test('owner activation accepts only a configured branch', async () => {
+  const supabase = createMembershipStatusSupabase();
+  await withServer(supabase, async (url) => {
+    const response = await fetch(`${url}/membership/registrations/reg-1/activate`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ branch: 'unknown', paymentMethod: 'cash', paymentReference: 'CASH-1' }),
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /invalid branch/i);
+  });
+  assert.equal(supabase.state.rpcCalls.length, 0);
 });
 
 test('CRM registration activation validates method, payment reference, and branch before the atomic function', async () => {

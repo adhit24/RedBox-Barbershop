@@ -119,6 +119,30 @@ function getAuthenticatedStaffId(req) {
   return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
 }
 
+const MEMBERSHIP_ADMIN_BRANCHES = new Set(['bypass', 'sumber', 'samadikun', 'csb', 'tegal']);
+
+function getVerifiedMembershipAdmin(req) {
+  const auth = req.adminAuth;
+  if (!auth?.sessionVerified || !['owner', 'branch_admin'].includes(auth.role)) return null;
+  if (auth.role === 'owner') return { role: 'owner', branch: null, staffId: auth.staffId };
+  const branch = typeof auth.branch === 'string' ? auth.branch.trim().toLowerCase() : '';
+  if (!MEMBERSHIP_ADMIN_BRANCHES.has(branch)) return null;
+  return { role: 'branch_admin', branch, staffId: auth.staffId };
+}
+
+function resolveMembershipActivationBranch(access, requestedBranch) {
+  const branch = typeof requestedBranch === 'string' ? requestedBranch.trim().toLowerCase() : '';
+  if (!branch) return { status: 400, error: 'branch required' };
+  if (access.role === 'branch_admin') {
+    return branch === access.branch
+      ? { branch: access.branch }
+      : { status: 403, error: 'branch access denied' };
+  }
+  return MEMBERSHIP_ADMIN_BRANCHES.has(branch)
+    ? { branch }
+    : { status: 400, error: 'invalid branch' };
+}
+
 const MEMBERSHIP_ACTIVATION_CONFLICT_MESSAGES = [
   'active membership already exists',
   'membership registration already activated',
@@ -1224,6 +1248,9 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   });
 
   router.get('/membership/registrations', adminAuth, async (req, res) => {
+    const access = getVerifiedMembershipAdmin(req);
+    if (!access) return res.status(403).json({ error: 'verified membership admin session required' });
+
     const requestedStatus = String(req.query.status || 'all').toUpperCase();
     const allowedStatuses = new Set(['ALL', 'PENDING', 'ACTIVE', 'EXPIRED']);
     if (!allowedStatuses.has(requestedStatus)) {
@@ -1329,9 +1356,15 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           updatedAt: registration.updated_at || null,
         };
       });
-      const filtered = requestedStatus === 'ALL'
+      const scoped = access.role === 'owner'
         ? mapped
-        : mapped.filter((registration) => registration.status === requestedStatus);
+        : mapped.filter((registration) => (
+          registration.branch === access.branch
+          || (registration.registrationStatus === 'PENDING' && !registration.activationId)
+        ));
+      const filtered = requestedStatus === 'ALL'
+        ? scoped
+        : scoped.filter((registration) => registration.status === requestedStatus);
       return res.json({ registrations: filtered });
     } catch (err) {
       return res.status(500).json({ error: err.message || 'membership registrations unavailable' });
@@ -1339,12 +1372,15 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   });
 
   router.post('/membership/registrations/:registrationId/activate', adminAuth, async (req, res) => {
+    const access = getVerifiedMembershipAdmin(req);
+    if (!access) return res.status(403).json({ error: 'verified membership admin session required' });
+
     const body = req.body || {};
     const registrationId = req.params.registrationId;
-    const branch = body.branch;
+    const branchDecision = resolveMembershipActivationBranch(access, body.branch);
     const paymentMethod = body.payMethod || body.paymentMethod || body.payment_method;
     const paymentReference = body.paymentReference || body.payment_reference;
-    const staffId = getAuthenticatedStaffId(req);
+    const staffId = access.staffId;
     let payment;
     try {
       payment = validatePaymentInput({ paymentMethod, paymentReference });
@@ -1352,7 +1388,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       return res.status(400).json({ error: err.message });
     }
     if (!registrationId) return res.status(400).json({ error: 'registrationId required' });
-    if (typeof branch !== 'string' || !branch.trim()) return res.status(400).json({ error: 'branch required' });
+    if (branchDecision.error) return res.status(branchDecision.status).json({ error: branchDecision.error });
     if (!staffId) return res.status(403).json({ error: 'authenticated staff identity required' });
 
     try {
@@ -1360,7 +1396,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         p_registration_id: registrationId,
         p_payment_method: payment.paymentMethod,
         p_payment_reference: payment.paymentReference,
-        p_branch: branch.trim(),
+        p_branch: branchDecision.branch,
         p_confirmed_by: staffId,
       });
       if (error) {
