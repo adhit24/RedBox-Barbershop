@@ -87,9 +87,8 @@ test('CRM requires a staff identity before it can call the activation RPC', asyn
   assert.equal(rpcCalls, 0);
 });
 
-test('legacy userKey activation first persists a canonical pending registration then calls the atomic RPC', async () => {
-  let registrationPayload;
-  let rpcArgs;
+test('legacy userKey activation creates or reuses a canonical pending registration through the RPC', async () => {
+  const rpcCalls = [];
   const supabase = {
     from(table) {
       if (table === 'member_profiles') {
@@ -101,17 +100,18 @@ test('legacy userKey activation first persists a canonical pending registration 
           },
         };
       }
-      if (table === 'membership_registrations') {
-        return {
-          insert(payload) {
-            registrationPayload = payload;
-            return { select() { return { async single() { return { data: { id: 'reg-1' }, error: null }; } }; } };
-          },
-        };
-      }
       throw new Error(`unexpected table ${table}`);
     },
-    async rpc(_name, args) { rpcArgs = args; return { data: [{ registration_id: 'reg-1' }], error: null }; },
+    async rpc(name, args) {
+      rpcCalls.push({ name, args });
+      if (name === 'create_membership_registration') {
+        return {
+          data: [{ outcome: 'CREATED', was_created: true, registration_id: 'reg-1' }],
+          error: null,
+        };
+      }
+      return { data: [{ registration_id: args.p_registration_id }], error: null };
+    },
   };
   await withServer(supabase, async (url) => {
     const response = await fetch(`${url}/membership/activate`, {
@@ -120,8 +120,15 @@ test('legacy userKey activation first persists a canonical pending registration 
     });
     assert.equal(response.status, 200);
   });
-  assert.equal(registrationPayload.phone, '+628123456789');
-  assert.equal(registrationPayload.phone_normalized, '+628123456789');
-  assert.equal(registrationPayload.price_snapshot, 100000);
-  assert.equal(rpcArgs.p_registration_id, 'reg-1');
+  assert.deepEqual(rpcCalls[0], {
+    name: 'create_membership_registration',
+    args: {
+      p_full_name: 'Member One',
+      p_phone: '+628123456789',
+      p_email: 'one@example.test',
+      p_tier: 'silver',
+    },
+  });
+  assert.equal(rpcCalls[1].name, 'activate_membership_registration');
+  assert.equal(rpcCalls[1].args.p_registration_id, 'reg-1');
 });

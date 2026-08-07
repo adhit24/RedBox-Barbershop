@@ -40,6 +40,21 @@ test('phone format variants normalize to one canonical membership identity', () 
   assert.equal(normalizePhone('0812-3456-789'), '+628123456789');
   assert.equal(normalizePhone('+62 812 3456 789'), '+628123456789');
   assert.equal(normalizePhone('628123456789'), '+628123456789');
+  assert.equal(normalizePhone('(0812) 3456-789'), '+628123456789');
+  assert.equal(normalizePhone('8123456789'), '+628123456789');
+});
+
+test('short, non-mobile, foreign, malformed, and overlong phones are rejected', () => {
+  for (const phone of [
+    '08123',
+    '021-555-1234',
+    '+1 202 555 0100',
+    '0812abc3456789',
+    '0812345678901234',
+    '0062 812 3456 789',
+  ]) {
+    assert.throws(() => normalizePhone(phone), /invalid Indonesian mobile phone/i, phone);
+  }
 });
 
 test('activation period ends one year after its start date', () => {

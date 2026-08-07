@@ -38,6 +38,36 @@ test('database contract constrains payment methods and canonical phone uniquenes
   assert.match(migration, /ON member_profiles \(normalize_membership_phone\(phone\)\)/);
 });
 
+test('registration RPC serializes canonical identities and uniquely guards pending phone+tier', () => {
+  const registrationRpc = position('CREATE OR REPLACE FUNCTION create_membership_registration');
+  const advisoryLock = position("pg_advisory_xact_lock(hashtextextended('membership-registration:' || v_phone, 0))");
+  const pendingLookup = position('SELECT mr.* INTO v_registration');
+  assert.ok(registrationRpc < advisoryLock);
+  assert.ok(advisoryLock < pendingLookup);
+  assert.match(
+    migration,
+    /CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_registrations_pending_phone_tier\s+ON membership_registrations \(phone_normalized, tier\)\s+WHERE status = 'PENDING'/
+  );
+});
+
+test('registration RPC owns all identity and registration writes in one database transaction', () => {
+  const start = position('CREATE OR REPLACE FUNCTION create_membership_registration');
+  const end = position('CREATE OR REPLACE FUNCTION activate_membership_registration');
+  const registrationRpc = migration.slice(start, end);
+  assert.match(registrationRpc, /INSERT INTO member_profiles/);
+  assert.match(registrationRpc, /INSERT INTO customers/);
+  assert.match(registrationRpc, /INSERT INTO membership_registrations/);
+  assert.match(registrationRpc, /normalize_membership_phone\(mp\.phone\) = v_phone/);
+  assert.match(
+    registrationRpc,
+    /COALESCE\(\s*normalize_membership_phone\(c\.phone_e164\),\s*normalize_membership_phone\(c\.wa\)\s*\) = v_phone/
+  );
+});
+
+test('database phone normalization rejects invalid Indonesian mobile lengths', () => {
+  assert.match(migration, /value ~ '\^\[\+\]628\[1-9\]\[0-9\]\{7,10\}\$'/);
+});
+
 test('atomic duplicate protection recognizes both paid periods and grandfathered legacy members', () => {
   assert.match(
     migration,
