@@ -330,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
  // ---- HAMBURGER ----
  const hamburger = document.getElementById('hamburger');
  const navLinksEl = document.getElementById('navLinks');
- if (hamburger && navLinksEl) {
+ if (hamburger && navLinksEl && typeof window.toggleMemberNav !== 'function') {
  hamburger.addEventListener('click', () => {
  hamburger.classList.toggle('active');
  navLinksEl.classList.toggle('open');
