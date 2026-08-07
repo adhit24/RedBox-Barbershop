@@ -13,7 +13,7 @@ const { sendReengagementBatch } = require('../../server/services/reengagement');
 
 module.exports = async function handler(req, res) {
   // PAUSED — no. bypass kena warning Meta, semua WA reminder ditangguhkan sementara
-  return res.status(503).json({ paused: true, reason: 'WA reminders suspended — Meta warning on bypass number' });
+  return res.status(200).json({ paused: true, reason: 'WA reminders suspended — Meta warning on bypass number' });
 
   if (req.method !== 'GET') return res.status(405).end();
 
