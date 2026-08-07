@@ -88,3 +88,62 @@ test('atomic duplicate protection recognizes both paid periods and grandfathered
     /membership_status = 'ACTIVE'[\s\S]{0,180}membership_expires_at > v_now[\s\S]{0,180}membership_started_at IS NULL[\s\S]{0,100}membership_expires_at IS NULL/
   );
 });
+
+test('membership workflow table is RLS-protected and service-role-only', () => {
+  assert.match(
+    migration,
+    /ALTER TABLE public\.membership_registrations ENABLE ROW LEVEL SECURITY;/
+  );
+  for (const role of ['PUBLIC', 'anon', 'authenticated']) {
+    assert.match(
+      migration,
+      new RegExp(`REVOKE ALL PRIVILEGES ON TABLE public\\.membership_registrations FROM ${role};`, 'i'),
+      `${role} must not access membership registrations directly`
+    );
+  }
+  assert.match(
+    migration,
+    /GRANT SELECT, INSERT, UPDATE ON TABLE public\.membership_registrations TO service_role;/i
+  );
+  assert.match(
+    migration,
+    /REVOKE ALL PRIVILEGES ON TABLE public\.membership_registrations FROM service_role;/i,
+    'service_role must not retain Supabase default DELETE or DDL-adjacent table privileges'
+  );
+  assert.doesNotMatch(
+    migration,
+    /GRANT\s+(?:ALL(?:\s+PRIVILEGES)?|SELECT|INSERT|UPDATE|DELETE)[^;]*ON TABLE public\.membership_registrations TO (?:PUBLIC|anon|authenticated)/i
+  );
+});
+
+test('mutating membership RPCs are executable only through the backend service role', () => {
+  const rpcSignatures = [
+    'create_membership_registration\\(TEXT, TEXT, TEXT, TEXT\\)',
+    'create_membership_change_registration\\(UUID, TEXT, TEXT, TEXT, TEXT\\)',
+    'activate_membership_registration\\(UUID, TEXT, TEXT, TEXT, TEXT\\)',
+  ];
+
+  for (const signature of rpcSignatures) {
+    for (const role of ['PUBLIC', 'anon', 'authenticated']) {
+      assert.match(
+        migration,
+        new RegExp(`REVOKE ALL PRIVILEGES ON FUNCTION public\\.${signature} FROM ${role};`, 'i'),
+        `${role} must not execute ${signature}`
+      );
+    }
+    assert.match(
+      migration,
+      new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${signature} TO service_role;`, 'i'),
+      `service_role must execute ${signature}`
+    );
+    assert.match(
+      migration,
+      new RegExp(`REVOKE ALL PRIVILEGES ON FUNCTION public\\.${signature} FROM service_role;`, 'i'),
+      `service_role default privileges must be reset before the explicit grant for ${signature}`
+    );
+    assert.doesNotMatch(
+      migration,
+      new RegExp(`GRANT EXECUTE ON FUNCTION public\\.${signature} TO (?:PUBLIC|anon|authenticated);`, 'i')
+    );
+  }
+});

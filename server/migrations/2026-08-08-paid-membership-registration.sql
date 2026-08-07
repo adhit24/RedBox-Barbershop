@@ -757,3 +757,39 @@ BEGIN
   RETURN QUERY SELECT r.id, v_activation_id, r.tier, r.price_snapshot, v_starts_at, v_expires_at;
 END;
 $$;
+
+-- Supabase exposes objects in the public schema through its Data API and may
+-- automatically grant table/function privileges to anon and authenticated.
+-- This workflow is intentionally server-to-server: every caller reaches these
+-- objects through the Express backend client configured with
+-- SUPABASE_SERVICE_KEY (the database service_role), never from a browser key.
+--
+-- Keep this block after every CREATE OR REPLACE FUNCTION statement. Replacing
+-- an existing function preserves its old ACL, while a newly created function
+-- starts with EXECUTE for PUBLIC; these idempotent REVOKE/GRANT statements make
+-- both migration paths converge on the same least-privilege result.
+ALTER TABLE public.membership_registrations ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL PRIVILEGES ON TABLE public.membership_registrations FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON TABLE public.membership_registrations FROM anon;
+REVOKE ALL PRIVILEGES ON TABLE public.membership_registrations FROM authenticated;
+REVOKE ALL PRIVILEGES ON TABLE public.membership_registrations FROM service_role;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.membership_registrations TO service_role;
+
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_registration(TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_registration(TEXT, TEXT, TEXT, TEXT) FROM anon;
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_registration(TEXT, TEXT, TEXT, TEXT) FROM authenticated;
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_registration(TEXT, TEXT, TEXT, TEXT) FROM service_role;
+GRANT EXECUTE ON FUNCTION public.create_membership_registration(TEXT, TEXT, TEXT, TEXT) TO service_role;
+
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_change_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_change_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM anon;
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_change_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM authenticated;
+REVOKE ALL PRIVILEGES ON FUNCTION public.create_membership_change_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM service_role;
+GRANT EXECUTE ON FUNCTION public.create_membership_change_registration(UUID, TEXT, TEXT, TEXT, TEXT) TO service_role;
+
+REVOKE ALL PRIVILEGES ON FUNCTION public.activate_membership_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON FUNCTION public.activate_membership_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM anon;
+REVOKE ALL PRIVILEGES ON FUNCTION public.activate_membership_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM authenticated;
+REVOKE ALL PRIVILEGES ON FUNCTION public.activate_membership_registration(UUID, TEXT, TEXT, TEXT, TEXT) FROM service_role;
+GRANT EXECUTE ON FUNCTION public.activate_membership_registration(UUID, TEXT, TEXT, TEXT, TEXT) TO service_role;
