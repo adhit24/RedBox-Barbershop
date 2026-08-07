@@ -1204,6 +1204,129 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
   });
 
+  router.get('/membership/registrations', adminAuth, async (req, res) => {
+    const requestedStatus = String(req.query.status || 'all').toUpperCase();
+    const allowedStatuses = new Set(['ALL', 'PENDING', 'ACTIVE', 'EXPIRED']);
+    if (!allowedStatuses.has(requestedStatus)) {
+      return res.status(400).json({ error: 'invalid membership registration status' });
+    }
+
+    try {
+      const { data: registrations, error: registrationsError } = await supabase
+        .from('membership_registrations')
+        .select('id,registration_code,user_key,full_name,phone,email,tier,price_snapshot,status,expires_at,created_at,updated_at')
+        .order('created_at', { ascending: false });
+      if (registrationsError) throw registrationsError;
+
+      let profiles = [];
+      if ((registrations || []).length) {
+        const { data, error } = await supabase
+          .from('member_profiles')
+          .select('user_key,phone,membership_status,current_tier,membership_started_at,membership_expires_at');
+        if (error) throw error;
+        profiles = data || [];
+      }
+      const profilesByUserKey = new Map(profiles.map((profile) => [profile.user_key, profile]));
+      const profilesByPhone = new Map();
+      for (const profile of profiles) {
+        try {
+          profilesByPhone.set(normalizePhone(profile.phone), profile);
+        } catch (_) {
+          // Historical profile phones may be malformed; they must not block the CRM list.
+        }
+      }
+      const now = new Date();
+      const mapped = (registrations || []).map((registration) => {
+        let normalizedPhone = null;
+        try {
+          normalizedPhone = normalizePhone(registration.phone);
+        } catch (_) {
+          // The registration row is historical data. Keep it visible as-is.
+        }
+        const profile = profilesByUserKey.get(registration.user_key)
+          || (normalizedPhone ? profilesByPhone.get(normalizedPhone) : null)
+          || null;
+        const pendingExpiresAt = registration.expires_at || null;
+        const pendingIsLive = pendingExpiresAt && new Date(pendingExpiresAt) > now;
+        const membershipIsActive = profile && isActiveMembership({
+          status: profile.membership_status,
+          startsAt: profile.membership_started_at,
+          expiresAt: profile.membership_expires_at,
+          now,
+        });
+        let status = registration.status;
+        if (registration.status === 'PENDING') status = pendingIsLive ? 'PENDING' : 'EXPIRED';
+        else if (registration.status === 'ACTIVATED') status = membershipIsActive ? 'ACTIVE' : 'EXPIRED';
+
+        return {
+          id: registration.id,
+          registrationCode: registration.registration_code,
+          userKey: registration.user_key,
+          fullName: registration.full_name,
+          phone: registration.phone,
+          email: registration.email,
+          tier: registration.tier,
+          amount: registration.price_snapshot,
+          status,
+          registrationStatus: registration.status,
+          pendingExpiresAt,
+          startsAt: profile?.membership_started_at || null,
+          membershipExpiresAt: profile?.membership_expires_at || null,
+          createdAt: registration.created_at || null,
+          updatedAt: registration.updated_at || null,
+        };
+      });
+      const filtered = requestedStatus === 'ALL'
+        ? mapped
+        : mapped.filter((registration) => registration.status === requestedStatus);
+      return res.json({ registrations: filtered });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'membership registrations unavailable' });
+    }
+  });
+
+  router.post('/membership/registrations/:registrationId/activate', adminAuth, async (req, res) => {
+    const body = req.body || {};
+    const registrationId = req.params.registrationId;
+    const branch = body.branch;
+    const paymentMethod = body.payMethod || body.paymentMethod || body.payment_method;
+    const paymentReference = body.paymentReference || body.payment_reference;
+    const staffId = body.staffId || body.staff_id || body.confirmedBy || body.confirmed_by;
+    let payment;
+    try {
+      payment = validatePaymentInput({ paymentMethod, paymentReference });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!registrationId) return res.status(400).json({ error: 'registrationId required' });
+    if (typeof branch !== 'string' || !branch.trim()) return res.status(400).json({ error: 'branch required' });
+    if (typeof staffId !== 'string' || !staffId.trim()) return res.status(400).json({ error: 'staff identity required' });
+
+    try {
+      const { data, error } = await supabase.rpc('activate_membership_registration', {
+        p_registration_id: registrationId,
+        p_payment_method: payment.paymentMethod,
+        p_payment_reference: payment.paymentReference,
+        p_branch: branch.trim(),
+        p_confirmed_by: staffId.trim(),
+      });
+      if (error) return res.status(409).json({ error: error.message });
+      const activation = Array.isArray(data) ? data[0] : data;
+      if (!activation) throw new Error('membership activation returned no result');
+      return res.json({
+        success: true,
+        registrationId: activation.registration_id || registrationId,
+        activationId: activation.activation_id,
+        tier: activation.tier,
+        amount: activation.amount,
+        startsAt: activation.starts_at,
+        expiresAt: activation.expires_at,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'membership activation failed' });
+    }
+  });
+
   router.post('/membership/activate', adminAuth, async (req, res) => {
     const body = req.body || {};
     const userKey = body.userKey || body.user_key;
