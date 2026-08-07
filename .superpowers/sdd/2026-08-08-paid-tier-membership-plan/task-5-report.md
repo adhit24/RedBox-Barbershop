@@ -34,7 +34,7 @@ Verification:
 Caveats:
 
 - This task does not apply or verify the paid-membership migration/RPC or the `users` role-integrity migration in Supabase production.
-- Production may set a separate `ADMIN_SESSION_PROXY_SECRET`; when absent, the existing server-only `ADMIN_PASSWORD` is used as the HMAC secret so deployment remains backward-compatible.
+- Production must set `ADMIN_SESSION_PROXY_SECRET` on both the Next frontend deployment and backend deployment. Both deployments must use the same high-entropy value, and it must differ from `ADMIN_PASSWORD`; missing or equal values now fail closed.
 - The commit is local only until it is pushed and deployed.
 
 ## Fix round 1 — server-side session authorization and branch scope
@@ -59,3 +59,29 @@ Fix verification:
 - TypeScript `tsc --noEmit`: passed.
 - Production frontend build: passed, including both membership API routes.
 - Node syntax checks and `git diff --check`: passed.
+
+## Fix round 2 — mandatory dedicated session assertion secret
+
+Reviewer finding addressed:
+
+- Removed the `ADMIN_PASSWORD` fallback from the Next membership adapter and backend assertion verifier.
+- Added a dedicated secret resolver on each side. `ADMIN_SESSION_PROXY_SECRET` is mandatory and is rejected when blank or equal to `ADMIN_PASSWORD`.
+- The backend verifier now receives both configured values and fails closed before verifying an assertion when the dedicated secret is unsafe or missing.
+- An assertion forged with the browser-exposed `ADMIN_PASSWORD` is rejected when the dedicated proxy secret is configured.
+- Session, role, branch, and verified staff audit enforcement from fix round 1 remain unchanged.
+- Updated `server/.env.example` with the mandatory deployment variable.
+
+Fix verification:
+
+- Focused security and client contract tests: `node --test server/test/admin-session-assertion.test.js server/test/crm-membership-client-contract.test.js` — 9/9 passed.
+- Full server suite: `node --test server/test/*.test.js` — 75/75 passed.
+- Task 5 ESLint: `npx --workspace frontend eslint src/app/api/admin/crm/membership/_auth.ts src/app/api/admin/crm/membership/_proxySecret.ts src/app/api/admin/crm/membership/registrations/route.ts "src/app/api/admin/crm/membership/registrations/[registrationId]/activate/route.ts"` — passed.
+- TypeScript: `npx --workspace frontend tsc --noEmit` — passed.
+- Production frontend build: `npm --workspace frontend run build` — passed; membership page and both secured adapter routes were generated.
+- Backend syntax checks and `git diff --check` — passed.
+
+Deployment requirement:
+
+- Configure `ADMIN_SESSION_PROXY_SECRET` in both Vercel projects/environments that run the Next frontend adapter and the backend API.
+- Use the same random high-entropy secret in both places, but never reuse `ADMIN_PASSWORD`.
+- Deploy both sides together. Until the environment variable exists on both sides, the new membership admin proxy intentionally rejects access.

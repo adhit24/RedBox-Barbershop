@@ -6,6 +6,7 @@ import {
   authorizeMembershipAdmin,
   type MembershipAdminSession,
 } from './_policy';
+import { requireAdminSessionProxySecret } from './_proxySecret';
 
 type SessionResult =
   | { ok: true; session: MembershipAdminSession }
@@ -49,8 +50,8 @@ export async function requireMembershipAdminSession(): Promise<SessionResult> {
 
 export function createMembershipAdminProxyHeaders(session: MembershipAdminSession): Record<string, string> {
   const token = process.env.ADMIN_PASSWORD ?? '';
-  const signingSecret = process.env.ADMIN_SESSION_PROXY_SECRET || token;
-  if (!token || !signingSecret) throw new Error('membership admin proxy is not configured');
+  const signingSecret = requireAdminSessionProxySecret(process.env);
+  if (!token) throw new Error('membership admin proxy is not configured securely');
 
   const payload = Buffer.from(JSON.stringify({
     sub: session.userId,

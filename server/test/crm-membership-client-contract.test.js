@@ -31,6 +31,7 @@ test('legacy CRM activation uses the authenticated atomic API with paid-tier aud
 test('Next CRM shows paid registration states and activates only the selected registration', () => {
   const page = source(path.join('frontend', 'src', 'app', 'admin', 'membership', 'page.tsx'));
   const authProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', '_auth.ts'));
+  const proxySecret = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', '_proxySecret.ts'));
   const registrationsProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', 'route.ts'));
   const activationProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'activate', 'route.ts'));
   const backend = source(path.join('server', 'routes', 'adminCrm.js'));
@@ -60,6 +61,11 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(authProxy, /\.eq\('id', user\.id\)/);
   assert.match(authProxy, /x-redbox-admin-session/);
   assert.match(authProxy, /createHmac\('sha256'/);
+  assert.match(authProxy, /requireAdminSessionProxySecret\(process\.env\)/);
+  assert.doesNotMatch(authProxy, /ADMIN_SESSION_PROXY_SECRET\s*\|\|/);
+  assert.match(proxySecret, /ADMIN_SESSION_PROXY_SECRET/);
+  assert.match(proxySecret, /ADMIN_PASSWORD/);
+  assert.match(proxySecret, /proxySecret\s*===\s*adminPassword/);
   assert.match(registrationsProxy, /\/api\/admin\/crm\/membership\/registrations/);
   assert.match(registrationsProxy, /requireMembershipAdminSession\(\)/);
   assert.match(registrationsProxy, /createMembershipAdminProxyHeaders\(auth\.session\)/);

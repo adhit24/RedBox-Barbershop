@@ -5,8 +5,25 @@ const { createHmac, timingSafeEqual } = require('node:crypto');
 const ALLOWED_ROLES = new Set(['owner', 'branch_admin']);
 const ALLOWED_BRANCHES = new Set(['bypass', 'sumber', 'samadikun', 'csb', 'tegal']);
 
-function verifyAdminSessionAssertion(assertion, secret, { now = Date.now(), maxAgeSeconds = 120 } = {}) {
-  if (typeof assertion !== 'string' || !assertion || typeof secret !== 'string' || !secret) {
+function requireAdminSessionProxySecret({
+  adminSessionProxySecret = process.env.ADMIN_SESSION_PROXY_SECRET,
+  adminPassword = process.env.ADMIN_PASSWORD,
+} = {}) {
+  const proxySecret = typeof adminSessionProxySecret === 'string'
+    ? adminSessionProxySecret.trim()
+    : '';
+  const legacyPassword = typeof adminPassword === 'string' ? adminPassword.trim() : '';
+
+  if (!proxySecret || (legacyPassword && proxySecret === legacyPassword)) {
+    throw new Error('admin session proxy is not configured securely');
+  }
+
+  return proxySecret;
+}
+
+function verifyAdminSessionAssertion(assertion, credentials, { now = Date.now(), maxAgeSeconds = 120 } = {}) {
+  const secret = requireAdminSessionProxySecret(credentials);
+  if (typeof assertion !== 'string' || !assertion) {
     throw new Error('invalid admin session assertion');
   }
 
@@ -51,4 +68,4 @@ function verifyAdminSessionAssertion(assertion, secret, { now = Date.now(), maxA
   };
 }
 
-module.exports = { verifyAdminSessionAssertion };
+module.exports = { requireAdminSessionProxySecret, verifyAdminSessionAssertion };

@@ -858,8 +858,10 @@ function adminAuth(req, res, next) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-      const signingSecret = process.env.ADMIN_SESSION_PROXY_SECRET || process.env.ADMIN_PASSWORD || '';
-      req.adminAuth = verifyAdminSessionAssertion(String(sessionAssertion), signingSecret);
+      req.adminAuth = verifyAdminSessionAssertion(String(sessionAssertion), {
+        adminSessionProxySecret: process.env.ADMIN_SESSION_PROXY_SECRET,
+        adminPassword: process.env.ADMIN_PASSWORD,
+      });
       return next();
     } catch {
       return res.status(401).json({ error: 'Invalid admin session' });
