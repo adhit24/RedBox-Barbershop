@@ -32,7 +32,7 @@ test('CRM activation delegates a registration to the atomic RPC with payment met
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         registrationId: '01234567-89ab-cdef-0123-456789abcdef', branch: 'csb',
-        payMethod: 'qris', paymentReference: 'QRIS-123',
+        payMethod: 'qris', paymentReference: 'QRIS-123', staffId: 'staff-42',
       }),
     });
     assert.equal(response.status, 200);
@@ -43,7 +43,7 @@ test('CRM activation delegates a registration to the atomic RPC with payment met
     args: {
       p_registration_id: '01234567-89ab-cdef-0123-456789abcdef',
       p_payment_method: 'qris', p_payment_reference: 'QRIS-123',
-      p_branch: 'csb', p_confirmed_by: 'admin-csb',
+      p_branch: 'csb', p_confirmed_by: 'staff-42',
     },
   }]);
 });
@@ -53,7 +53,7 @@ test('CRM rejects invalid payment methods before it can call the activation RPC'
   await withServer({ rpc: async () => { rpcCalls++; return { data: [], error: null }; } }, async (url) => {
     const response = await fetch(`${url}/membership/activate`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'card', paymentReference: 'CARD-1' }),
+      body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'card', paymentReference: 'CARD-1', staffId: 'staff-42' }),
     });
     assert.equal(response.status, 400);
     assert.match((await response.json()).error, /invalid payment method/i);
@@ -66,10 +66,23 @@ test('CRM requires a payment reference before it can call the activation RPC', a
   await withServer({ rpc: async () => { rpcCalls++; return { data: [], error: null }; } }, async (url) => {
     const response = await fetch(`${url}/membership/activate`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'cash', paymentReference: '  ' }),
+      body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'cash', paymentReference: '  ', staffId: 'staff-42' }),
     });
     assert.equal(response.status, 400);
     assert.match((await response.json()).error, /payment reference/i);
+  });
+  assert.equal(rpcCalls, 0);
+});
+
+test('CRM requires a staff identity before it can call the activation RPC', async () => {
+  let rpcCalls = 0;
+  await withServer({ rpc: async () => { rpcCalls++; return { data: [], error: null }; } }, async (url) => {
+    const response = await fetch(`${url}/membership/activate`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1' }),
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /staff/i);
   });
   assert.equal(rpcCalls, 0);
 });
@@ -103,7 +116,7 @@ test('legacy userKey activation first persists a canonical pending registration 
   await withServer(supabase, async (url) => {
     const response = await fetch(`${url}/membership/activate`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ userKey: 'member-1', tier: 'silver', branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1' }),
+      body: JSON.stringify({ userKey: 'member-1', tier: 'silver', branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1', staffId: 'staff-42' }),
     });
     assert.equal(response.status, 200);
   });

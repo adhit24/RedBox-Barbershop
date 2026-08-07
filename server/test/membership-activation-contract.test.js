@@ -37,3 +37,10 @@ test('database contract constrains payment methods and canonical phone uniquenes
   assert.match(migration, /ON membership_registrations \(phone_normalized\)/);
   assert.match(migration, /ON member_profiles \(normalize_membership_phone\(phone\)\)/);
 });
+
+test('atomic duplicate protection recognizes both paid periods and grandfathered legacy members', () => {
+  assert.match(
+    migration,
+    /membership_status = 'ACTIVE'[\s\S]{0,180}membership_expires_at > v_now[\s\S]{0,180}membership_started_at IS NULL[\s\S]{0,100}membership_expires_at IS NULL/
+  );
+});

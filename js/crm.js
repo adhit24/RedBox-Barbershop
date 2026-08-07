@@ -913,9 +913,9 @@ async function renderCustomers(search = '', segment = currentSegment) {
  try {
  const waNumbers = customers.map(c => c.wa).filter(Boolean);
  if (waNumbers.length) {
- const memberRows = await sbMem(`member_profiles?select=phone,current_tier,membership_status&membership_status=eq.ACTIVE`);
+ const memberRows = await sbMem(`member_profiles?select=phone,current_tier,membership_status,membership_started_at,membership_expires_at&membership_status=eq.ACTIVE`);
  if (memberRows) {
- memberRows.forEach(m => {
+ memberRows.filter(hasActiveMembership).forEach(m => {
  if (m.phone) {
  const cleaned = m.phone.replace(/[^0-9]/g, '').replace(/^62/, '0').replace(/^0+/, '');
  memberTierMap[cleaned] = m.current_tier;
@@ -1200,7 +1200,7 @@ async function openCustomerDetailModal(wa) {
  let segLabel = '';
  if (visits >= 5) segLabel = '<span style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:99px;padding:2px 8px;font-size:.7rem">Loyal Customer</span>';
 
- const isActiveMember = c.membership_status === 'ACTIVE';
+ const isActiveMember = hasActiveMembership(c);
  const memberBadge = isActiveMember
  ? `<span style="background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);border-radius:99px;padding:2px 8px;font-size:.7rem"> Member Aktif</span>`
  : `<span style="background:rgba(100,116,139,.15);color:#94a3b8;border:1px solid rgba(100,116,139,.3);border-radius:99px;padding:2px 8px;font-size:.7rem">Non-Member</span>`;
@@ -1464,6 +1464,31 @@ async function sbMem(path, opts = {}) {
  return res.json().catch(() => true);
 }
 
+function hasActiveMembership(record) {
+ return window.RedboxMembership.isActiveMembership(record);
+}
+
+async function apiActivateMembership(payload) {
+ if (!USE_API) throw new Error('Server CRM harus online untuk aktivasi membership.');
+ const res = await fetch(`${API_URL}/admin/crm/membership/activate`, {
+ method: 'POST',
+ headers: apiHeaders(),
+ body: JSON.stringify(payload),
+ });
+ const data = await res.json().catch(() => ({}));
+ if (!res.ok) {
+ if (res.status === 401) await handleApiError(res);
+ throw new Error(data.error || `Aktivasi gagal (HTTP ${res.status})`);
+ }
+ return data;
+}
+
+const MEMBERSHIP_TIER_PRICES = { silver: 100000, gold: 250000, platinum: 1500000 };
+function membershipActivationLabel(tier, prefix = 'Aktivasi Membership') {
+ const amount = MEMBERSHIP_TIER_PRICES[tier] || MEMBERSHIP_TIER_PRICES.silver;
+ return `${prefix} - Rp ${amount.toLocaleString('id-ID')}`;
+}
+
 let _memCurrentKey = null; // user_key of currently found member
 
 async function initMembershipView() {
@@ -1474,10 +1499,10 @@ async function initMembershipView() {
 }
 
 async function loadMemStats() {
- const all = await sbMem('member_profiles?select=membership_status,membership_activated_at');
+ const all = await sbMem('member_profiles?select=membership_status,membership_activated_at,membership_started_at,membership_expires_at');
  if (!all) return;
  const total = all.length;
- const active = all.filter(r => r.membership_status === 'ACTIVE').length;
+ const active = all.filter(hasActiveMembership).length;
  const inactive = total - active;
  const now = new Date();
  const thisMonth= all.filter(r => {
@@ -1519,7 +1544,7 @@ async function searchMember(query) {
  const opts = document.getElementById('memActivateOpts');
  const already = document.getElementById('memAlreadyActive');
 
- if (r.membership_status === 'ACTIVE') {
+ if (hasActiveMembership(r)) {
  badge.textContent = ' AKTIF';
  badge.className = 'mem-found-badge status-active';
  opts.style.display = 'none';
@@ -1537,39 +1562,21 @@ async function activateMember() {
  if (!_memCurrentKey) return;
  const branch = document.getElementById('memBranch').value;
  const payMethod = document.getElementById('memPayMethod').value;
+ const tier = document.getElementById('memTier').value;
+ const paymentReference = document.getElementById('memPaymentReference').value.trim();
+ const staffId = document.getElementById('memStaffId').value.trim();
  const btn = document.getElementById('memActivateBtn');
+ if (!paymentReference || !staffId) {
+ showToast('Referensi pembayaran dan nama/ID kasir wajib diisi.', 'error');
+ return;
+ }
  btn.disabled = true;
  btn.textContent = 'Memproses...';
 
- const now = new Date().toISOString();
-
- // 1. PATCH member profile → ACTIVE
- const patchOk = await sbMem(`member_profiles?user_key=eq.${encodeURIComponent(_memCurrentKey)}`, {
- method: 'PATCH',
- headers: { 'Prefer': 'return=minimal' },
- body: JSON.stringify({
- membership_status: 'ACTIVE',
- membership_activated_at: now,
- total_points: 0,
- current_tier: 'bronze',
- updated_at: now
- })
+ try {
+ await apiActivateMembership({
+ userKey: _memCurrentKey, branch, payMethod, tier, paymentReference, staffId,
  });
-
- // 2. Record activation
- await sbMem('member_activations', {
- method: 'POST',
- prefer: 'return=minimal',
- body: JSON.stringify({
- user_key: _memCurrentKey,
- amount: 100000,
- payment_method: payMethod,
- status: 'completed',
- confirmed_by: 'admin-' + branch
- })
- });
-
- if (patchOk !== null) {
  showToast(' Membership berhasil diaktifkan!', 'success');
  // Refresh UI
  document.getElementById('memFoundBadge').textContent = ' AKTIF';
@@ -1579,12 +1586,12 @@ async function activateMember() {
  await loadMemStats();
  await loadRecentActivations();
  await loadAllMembers();
- } else {
- showToast('Gagal mengaktifkan. Coba lagi.', 'error');
- }
-
+ } catch (err) {
+ showToast('Gagal mengaktifkan: ' + err.message, 'error');
+ } finally {
  btn.disabled = false;
- btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktivasi Membership - Rp 100.000';
+ btn.textContent = membershipActivationLabel(tier);
+ }
 }
 
 async function loadRecentActivations() {
@@ -1619,14 +1626,14 @@ async function loadRecentActivations() {
 }
 
 async function loadAllMembers() {
- const rows = await sbMem('member_profiles?select=full_name,email,membership_status,current_tier,total_points,total_visits,created_at&order=created_at.desc');
+ const rows = await sbMem('member_profiles?select=full_name,email,user_key,membership_status,membership_started_at,membership_expires_at,current_tier,total_points,total_visits,created_at&order=created_at.desc');
  const tbody = document.getElementById('memAllBody');
  if (!tbody) return;
  if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="mem-empty">Belum ada member</td></tr>'; return; }
  const TIER_ICONS = { bronze:'', silver:'', gold:'', platinum:'' };
  const TIER_COLORS = { bronze:'#cd7f32', silver:'#94a3b8', gold:'#fbbf24', platinum:'#67e8f9' };
  tbody.innerHTML = rows.map(r => {
- const isActive = r.membership_status === 'ACTIVE';
+ const isActive = hasActiveMembership(r);
  const statusBadge = isActive
  ? '<span class="mem-badge-ok">Aktif</span>'
  : '<span class="mem-badge-pend">Belum Aktif</span>';
@@ -1651,14 +1658,14 @@ async function loadAllMembers() {
 }
 
 async function loadPointsLeaderboard() {
- const rows = await sbMem('member_profiles?select=full_name,email,current_tier,total_points,total_visits,membership_status&membership_status=eq.ACTIVE&order=total_points.desc&limit=50');
+ const rows = await sbMem('member_profiles?select=full_name,email,current_tier,total_points,total_visits,membership_status,membership_started_at,membership_expires_at&membership_status=eq.ACTIVE&order=total_points.desc&limit=50');
  const tbody = document.getElementById('memPointsBody');
  if (!tbody) return;
  if (!rows || !rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="mem-empty">Belum ada data poin</td></tr>'; return; }
  const TIER_ICONS = { bronze:'', silver:'', gold:'', platinum:'' };
  const TIER_COLORS = { bronze:'#cd7f32', silver:'#94a3b8', gold:'#fbbf24', platinum:'#67e8f9' };
  const RANK_MEDALS = ['','',''];
- tbody.innerHTML = rows.map((r, i) => {
+ tbody.innerHTML = rows.filter(hasActiveMembership).map((r, i) => {
  const rank = i < 3 ? `<span style="font-size:1.1rem">${RANK_MEDALS[i]}</span>` : `<span style="color:var(--w50);font-weight:600">#${i+1}</span>`;
  const tierName = r.current_tier || 'bronze';
  const tierColor = TIER_COLORS[tierName] || '#aaa';
@@ -1747,7 +1754,9 @@ function openQuickActivate(userKey, userName) {
  document.getElementById('qaName').textContent = userName || userKey;
  const btn = document.getElementById('qaConfirmBtn');
  btn.disabled = false;
- btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktifkan - Rp 100.000';
+ document.getElementById('qaPaymentReference').value = '';
+ document.getElementById('qaStaffId').value = '';
+ btn.textContent = membershipActivationLabel(document.getElementById('qaTier').value, 'Aktifkan');
  document.getElementById('quickActivateOverlay').style.display = 'flex';
 }
 
@@ -1760,45 +1769,31 @@ async function confirmQuickActivate() {
  if (!_qaCurrentKey) return;
  const branch = document.getElementById('qaBranch').value;
  const payMethod = document.getElementById('qaPayMethod').value;
+ const tier = document.getElementById('qaTier').value;
+ const paymentReference = document.getElementById('qaPaymentReference').value.trim();
+ const staffId = document.getElementById('qaStaffId').value.trim();
  const btn = document.getElementById('qaConfirmBtn');
+ if (!paymentReference || !staffId) {
+ showToast('Referensi pembayaran dan nama/ID kasir wajib diisi.', 'error');
+ return;
+ }
  btn.disabled = true;
  btn.textContent = 'Memproses...';
 
- const now = new Date().toISOString();
- const patchOk = await sbMem(`member_profiles?user_key=eq.${encodeURIComponent(_qaCurrentKey)}`, {
- method: 'PATCH',
- headers: { 'Prefer': 'return=minimal' },
- body: JSON.stringify({
- membership_status: 'ACTIVE',
- membership_activated_at: now,
- total_points: 0,
- current_tier: 'bronze',
- updated_at: now
- })
+ try {
+ await apiActivateMembership({
+ userKey: _qaCurrentKey, branch, payMethod, tier, paymentReference, staffId,
  });
-
- await sbMem('member_activations', {
- method: 'POST',
- prefer: 'return=minimal',
- body: JSON.stringify({
- user_key: _qaCurrentKey,
- amount: 100000,
- payment_method: payMethod,
- status: 'completed',
- confirmed_by: 'admin-' + branch
- })
- });
-
- if (patchOk !== null) {
  showToast(' Membership berhasil diaktifkan!', 'success');
  closeQuickActivate();
  await loadMemStats();
  await loadRecentActivations();
  await loadAllMembers();
- } else {
- showToast('Gagal mengaktifkan. Coba lagi.', 'error');
+ } catch (err) {
+ showToast('Gagal mengaktifkan: ' + err.message, 'error');
+ } finally {
  btn.disabled = false;
- btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Aktifkan - Rp 100.000';
+ btn.textContent = membershipActivationLabel(tier, 'Aktifkan');
  }
 }
 
@@ -1815,4 +1810,12 @@ document.addEventListener('DOMContentLoaded', () => {
  if (e.key === 'Enter') searchMember(e.target.value);
  });
  document.getElementById('memActivateBtn')?.addEventListener('click', activateMember);
-});
+ document.getElementById('memTier')?.addEventListener('change', (event) => {
+ const button = document.getElementById('memActivateBtn');
+ if (button) button.textContent = membershipActivationLabel(event.target.value);
+ });
+ document.getElementById('qaTier')?.addEventListener('change', (event) => {
+ const button = document.getElementById('qaConfirmBtn');
+ if (button) button.textContent = membershipActivationLabel(event.target.value, 'Aktifkan');
+ });
+ });

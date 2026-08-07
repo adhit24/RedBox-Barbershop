@@ -24,6 +24,15 @@ const PAY_METHODS = [
   { value: 'transfer', label: 'Transfer Bank' },
 ];
 
+const BRANCHES = [
+  { value: 'bypass', label: 'Bypass' },
+  { value: 'csb', label: 'CSB' },
+  { value: 'samadikun', label: 'Samadikun' },
+  { value: 'sumber', label: 'Sumber' },
+  { value: 'tegal', label: 'Tegal' },
+  { value: 'parker', label: 'Parker' },
+];
+
 const TIERS = [
   { value: 'silver',   label: 'Silver',   price: 100000,  active: 'bg-slate-300 text-slate-900 border-slate-300' },
   { value: 'gold',     label: 'Gold',     price: 250000,  active: 'bg-yellow-400 text-slate-900 border-yellow-400' },
@@ -65,7 +74,7 @@ function phoneFromEmail(email: string) {
 function MembershipPageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
-  const branch = searchParams.get('branch') || user?.branch || '';
+  const defaultBranch = searchParams.get('branch') || user?.branch || '';
 
   const [members, setMembers]     = useState<Member[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -74,6 +83,8 @@ function MembershipPageInner() {
   const [activating, setActivating] = useState<string | null>(null);
   const [payMethod, setPayMethod]   = useState('cash');
   const [tier, setTier]             = useState('silver');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [activationBranch, setActivationBranch] = useState('');
   const [processing, setProcessing] = useState(false);
   const [syncing, setSyncing]       = useState<string | null>(null);
   const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
@@ -89,7 +100,20 @@ function MembershipPageInner() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadInitialMembers() {
+      try {
+        const res = await fetch('/api/admin/crm/membership');
+        const data = await res.json();
+        if (!cancelled) setMembers(Array.isArray(data) ? data : []);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadInitialMembers();
+    return () => { cancelled = true; };
+  }, []);
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok });
@@ -98,21 +122,39 @@ function MembershipPageInner() {
 
   async function handleActivate() {
     if (!activating) return;
+    if (!paymentReference.trim()) {
+      showToast('Referensi pembayaran wajib diisi.', false);
+      return;
+    }
+    if (!activationBranch || !user?.id) {
+      showToast('Cabang dan identitas staff wajib tersedia.', false);
+      return;
+    }
     setProcessing(true);
     try {
       const res = await fetch('/api/admin/crm/membership/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userKey: activating, branch, payMethod, tier }),
+        body: JSON.stringify({
+          userKey: activating,
+          branch: activationBranch,
+          payMethod,
+          tier,
+          paymentReference: paymentReference.trim(),
+          staffId: user?.id,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         showToast(`✓ Membership ${TIERS.find(t => t.value === tier)?.label ?? ''} berhasil diaktifkan!`);
         setActivating(null);
+        setPaymentReference('');
         await load();
       } else {
-        showToast('Gagal mengaktifkan. Coba lagi.', false);
+        showToast(data.error || 'Gagal mengaktifkan. Coba lagi.', false);
       }
+    } catch {
+      showToast('Tidak dapat terhubung ke server aktivasi.', false);
     } finally {
       setProcessing(false);
     }
@@ -268,7 +310,13 @@ function MembershipPageInner() {
                     </>
                   ) : (
                     <button
-                      onClick={() => { setActivating(m.user_key); setPayMethod('cash'); setTier('silver'); }}
+                      onClick={() => {
+                        setActivating(m.user_key);
+                        setPayMethod('cash');
+                        setTier('silver');
+                        setPaymentReference('');
+                        setActivationBranch(defaultBranch);
+                      }}
                       className="bg-green-400/15 border border-green-400/40 text-green-400 text-xs font-bold rounded-xl px-3 py-1.5 active:scale-95 transition-transform"
                     >
                       Aktifkan
@@ -334,7 +382,7 @@ function MembershipPageInner() {
               </div>
 
               <p className="text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">Metode Bayar</p>
-              <div className="grid grid-cols-3 gap-2 mb-5">
+              <div className="grid grid-cols-3 gap-2 mb-4">
                 {PAY_METHODS.map(pm => (
                   <button
                     key={pm.value}
@@ -350,9 +398,48 @@ function MembershipPageInner() {
                 ))}
               </div>
 
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <label htmlFor="activationBranch" className="block text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">
+                    Cabang
+                  </label>
+                  <select
+                    id="activationBranch"
+                    value={activationBranch}
+                    onChange={e => setActivationBranch(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-green-400"
+                    required
+                  >
+                    <option value="">Pilih cabang</option>
+                    {BRANCHES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">
+                    Staff
+                  </label>
+                  <div className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-300 truncate">
+                    {user?.name || user?.email || 'Memuat...'}
+                  </div>
+                </div>
+              </div>
+
+              <label htmlFor="paymentReference" className="block text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">
+                Referensi Pembayaran
+              </label>
+              <input
+                id="paymentReference"
+                type="text"
+                value={paymentReference}
+                onChange={e => setPaymentReference(e.target.value)}
+                placeholder="No. struk / referensi transaksi"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 mb-5 text-sm text-white placeholder-slate-500 outline-none focus:border-green-400"
+                required
+              />
+
               <button
                 onClick={handleActivate}
-                disabled={processing}
+                disabled={processing || !paymentReference.trim() || !activationBranch || !user?.id}
                 className="w-full bg-green-400 text-slate-900 font-bold rounded-xl py-3.5 text-sm flex items-center justify-center gap-2 active:scale-[.98] transition-transform disabled:opacity-60"
               >
                 <CheckCircle size={16} />

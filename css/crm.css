@@ -459,7 +459,7 @@ input,select,textarea{font-family:var(--font)}
 .mem-activate-opts{display:flex;flex-direction:column;gap:12px}
 .mem-opt-row{display:flex;align-items:center;gap:12px}
 .mem-opt-row label{font-size:.8rem;color:var(--w50);min-width:100px}
-.mem-opt-row select{
+.mem-opt-row select,.mem-opt-row input{
  flex:1;background:var(--bg5);border:1px solid var(--w10);border-radius:var(--radius-xs);
  padding:8px 10px;color:var(--w90);font-size:.85rem;outline:none;
 }
@@ -510,5 +510,5 @@ input,select,textarea{font-family:var(--font)}
  .mem-stats-row{grid-template-columns:1fr 1fr}
  .mem-opt-row{flex-direction:column;align-items:flex-start}
  .mem-opt-row label{min-width:auto}
- .mem-opt-row select{width:100%}
+ .mem-opt-row select,.mem-opt-row input{width:100%}
 }

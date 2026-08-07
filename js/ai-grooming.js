@@ -280,7 +280,7 @@ class AIGroomingUI {
  const userData = JSON.parse(localStorage.getItem('redbox_user') || 'null');
  if (!userData || !userData.loggedIn) return 'guest';
  const memberData = JSON.parse(localStorage.getItem('redbox_member') || 'null');
- if (memberData && memberData.membership_status === 'ACTIVE') return 'active_member';
+ if (memberData && window.RedboxMembership.isActiveMembership(memberData)) return 'active_member';
  return 'logged_in';
  } catch (e) {
  return 'guest';

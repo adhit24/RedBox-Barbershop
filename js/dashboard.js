@@ -135,6 +135,8 @@ document.addEventListener('DOMContentLoaded', () => {
  joinDate: new Date().toISOString(),
  membership_status: 'INACTIVE',
  membership_activated_at: null,
+ membership_started_at: null,
+ membership_expires_at: null,
  pointsHistory: []
  };
 
@@ -143,9 +145,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
  if (!memberData.membership_status) memberData.membership_status = 'INACTIVE';
 
- // ── KEY LOGIC: gate everything behind membership status ──
- const ACTIVE = memberData.membership_status === 'ACTIVE';
- const point_system = ACTIVE;
+ // ── KEY LOGIC: paid access requires an unexpired period; undated legacy ACTIVE stays compatible ──
+ function memberHasActiveAccess(record = memberData) {
+ return window.RedboxMembership.isActiveMembership(record);
+ }
+ let ACTIVE = memberHasActiveAccess();
+ let point_system = ACTIVE;
+ function refreshMembershipAccess() {
+ ACTIVE = memberHasActiveAccess();
+ point_system = ACTIVE;
+ return ACTIVE;
+ }
 
  // Referral code
  if (!memberData.referralCode) {
@@ -956,8 +966,11 @@ document.addEventListener('DOMContentLoaded', () => {
  memberData.address = c.address || memberData.address;
  memberData.favBarber = c.fav_barber || memberData.favBarber;
  memberData.email = c.email || memberData.email || '';
- memberData.membership_status = c.membership_status || memberData.membership_status;
- memberData.membership_activated_at= c.membership_activated_at || memberData.membership_activated_at;
+ memberData.membership_status = c.membership_status || 'INACTIVE';
+ memberData.membership_activated_at = c.membership_activated_at || null;
+ memberData.membership_started_at = c.membership_started_at ?? null;
+ memberData.membership_expires_at = c.membership_expires_at ?? null;
+ refreshMembershipAccess();
  // first_visit = tanggal transaksi Moka paling awal - sumber kebenaran "Bergabung sejak"
  if (c.first_visit) memberData.joinDate = c.first_visit;
  if (c.referral_code) memberData.referralCode = c.referral_code;
@@ -969,7 +982,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const dj = new Date(memberData.joinDate);
  profileSince.textContent = `Bergabung sejak ${MONTHS[dj.getMonth()]} ${dj.getFullYear()}`;
  }
- const isACTIVE = memberData.membership_status === 'ACTIVE';
+ const isACTIVE = memberHasActiveAccess();
  const pts = isACTIVE ? memberData.points : 0;
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
@@ -1011,14 +1024,15 @@ document.addEventListener('DOMContentLoaded', () => {
  const r = rows[0];
  const changed =
  r.membership_status !== memberData.membership_status ||
+ r.membership_started_at !== memberData.membership_started_at ||
+ r.membership_expires_at !== memberData.membership_expires_at ||
  r.total_points !== memberData.points;
 
- // Remote ACTIVE always wins; remote INACTIVE never downgrades local ACTIVE
- if (r.membership_status === 'ACTIVE') {
- memberData.membership_status = 'ACTIVE';
- } else if (memberData.membership_status !== 'ACTIVE') {
+ // Remote profile is authoritative. Access is then normalized through the shared policy.
  memberData.membership_status = r.membership_status || 'INACTIVE';
- }
+ memberData.membership_started_at = r.membership_started_at ?? null;
+ memberData.membership_expires_at = r.membership_expires_at ?? null;
+ refreshMembershipAccess();
  memberData.points = r.total_points ?? memberData.points;
  memberData.visits = r.total_visits ?? memberData.visits;
  memberData.membership_activated_at= r.membership_activated_at|| memberData.membership_activated_at;
@@ -1036,7 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
  // Re-render affected UI elements
  if (profileName) profileName.textContent = userData.name || 'Member Redbox';
- const isACTIVE = memberData.membership_status === 'ACTIVE';
+ const isACTIVE = memberHasActiveAccess();
  const pts = isACTIVE ? memberData.points : 0;
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
@@ -1063,7 +1077,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
  if (changed) {
  // Refresh banners visibility
- const isNowActive = memberData.membership_status === 'ACTIVE';
+ const isNowActive = memberHasActiveAccess();
  if (activationBanner) activationBanner.style.display = isNowActive ? 'none' : 'block';
  if (activationBannerTop) activationBannerTop.style.display = isNowActive ? 'none' : 'block';
  if (tierLockOverlay) tierLockOverlay.style.display = isNowActive ? 'none' : 'flex';
@@ -1094,7 +1108,7 @@ document.addEventListener('DOMContentLoaded', () => {
  // Refresh rewards points display
  const rpd = document.getElementById('rewardsPointsDisplay');
  if (rpd) {
- const isACTIVE = memberData.membership_status === 'ACTIVE';
+ const isACTIVE = memberHasActiveAccess();
  rpd.textContent = isACTIVE ? `${memberData.points.toLocaleString('id-ID')} Poin tersedia` : 'Aktivasi untuk mulai';
  }
  }

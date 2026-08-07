@@ -9,9 +9,10 @@ function source(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', relativePath), 'utf8');
 }
 
-test('active-member benefit and sync filters require an unexpired membership period', () => {
+test('active-member benefit and sync filters allow only unexpired paid or undated legacy memberships', () => {
   const reengagement = source(path.join('services', 'reengagement.js'));
   const mokaRoutes = source(path.join('moka', 'routes.js'));
-  assert.match(reengagement, /eq\('membership_status', 'ACTIVE'\)[\s\S]{0,160}\.gt\('membership_expires_at', new Date\(\)\.toISOString\(\)\)/);
-  assert.match(mokaRoutes, /eq\('membership_status', 'ACTIVE'\)[\s\S]{0,160}\.gt\('membership_expires_at', new Date\(\)\.toISOString\(\)\)/);
+  const safeFilter = /eq\('membership_status', 'ACTIVE'\)[\s\S]{0,240}\.or\(`membership_expires_at\.gt\.\$\{now\},and\(membership_started_at\.is\.null,membership_expires_at\.is\.null\)`\)/;
+  assert.match(reengagement, safeFilter);
+  assert.match(mokaRoutes, safeFilter);
 });

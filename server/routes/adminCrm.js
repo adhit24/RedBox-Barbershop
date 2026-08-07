@@ -1002,7 +1002,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   router.get('/membership', adminAuth, async (req, res) => {
     const { data, error } = await supabase
       .from('member_profiles')
-      .select('user_key,full_name,email,membership_status,membership_activated_at,membership_expires_at,current_tier,total_points,total_visits,created_at,phone')
+      .select('user_key,full_name,email,membership_status,membership_activated_at,membership_started_at,membership_expires_at,current_tier,total_points,total_visits,created_at,phone')
       .order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
 
@@ -1022,6 +1022,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       ...m,
       membership_status: isActiveMembership({
         status: m.membership_status,
+        startsAt: m.membership_started_at,
         expiresAt: m.membership_expires_at,
       }) ? 'ACTIVE' : 'INACTIVE',
       last_visit: lastVisitMap[m.phone] || null,
@@ -1109,13 +1110,14 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
       // Fetch existing member_profiles to decide insert vs update
       const { data: existing } = await supabase.from('member_profiles')
-        .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_expires_at')
+        .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
         .eq('phone', phoneE164).maybeSingle();
 
       if (existing) {
         const membership = membershipStateForSync({
           existingStatus: existing.membership_status,
           existingActivatedAt: existing.membership_activated_at,
+          existingStartedAt: existing.membership_started_at,
           existingExpiresAt: existing.membership_expires_at,
         });
         await supabase.from('member_profiles').update({
@@ -1126,7 +1128,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       } else {
         // Create member_profiles entry (no prior entry for this phone)
         const { data: cust } = await supabase.from('customers')
-          .select('name,phone_e164,email,birth_date,gender,address,referral_code,membership_status,membership_activated_at,membership_expires_at')
+          .select('name,phone_e164,email,birth_date,gender,address,referral_code,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
           .eq('wa', waNorm).maybeSingle();
         const phoneNormShort = targetNorm;
         const userKey  = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}`;
@@ -1134,6 +1136,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         const membership = membershipStateForSync({
           customerStatus: cust?.membership_status,
           customerActivatedAt: cust?.membership_activated_at,
+          customerStartedAt: cust?.membership_started_at,
           customerExpiresAt: cust?.membership_expires_at,
         });
         await supabase.from('member_profiles').upsert({
@@ -1161,6 +1164,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     const tier = body.tier;
     const paymentMethod = body.payMethod || body.paymentMethod || body.payment_method;
     const paymentReference = body.paymentReference || body.payment_reference;
+    const staffId = body.staffId || body.staff_id || body.confirmedBy || body.confirmed_by;
     let payment;
     try {
       payment = validatePaymentInput({ paymentMethod, paymentReference });
@@ -1169,6 +1173,9 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
     if (typeof branch !== 'string' || !branch.trim()) {
       return res.status(400).json({ error: 'branch required' });
+    }
+    if (typeof staffId !== 'string' || !staffId.trim()) {
+      return res.status(400).json({ error: 'staff identity required' });
     }
 
     let registrationId = body.registrationId || body.registration_id;
@@ -1225,7 +1232,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           p_payment_method: payment.paymentMethod,
           p_payment_reference: payment.paymentReference,
           p_branch: branch.trim(),
-          p_confirmed_by: `admin-${branch.trim()}`,
+          p_confirmed_by: staffId.trim(),
         }
       );
       if (activationErr) return res.status(409).json({ error: activationErr.message });

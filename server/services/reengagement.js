@@ -43,10 +43,11 @@ function normalizePhone(raw) {
 /** Ambil daftar nomor phone member ACTIVE dari member_profiles (same DB sekarang). */
 async function fetchActiveMemberPhones(supabase) {
   try {
+    const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('member_profiles').select('phone')
       .eq('membership_status', 'ACTIVE')
-      .gt('membership_expires_at', new Date().toISOString());
+      .or(`membership_expires_at.gt.${now},and(membership_started_at.is.null,membership_expires_at.is.null)`);
     if (error) {
       console.warn('[Reengagement] Failed to fetch member phones:', error.message);
       return new Set();

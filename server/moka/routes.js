@@ -1401,10 +1401,11 @@ function createMokaRouter(supabase) {
       if (outletErr) throw new Error('DB outlets: ' + outletErr.message);
       if (!outlets?.length) return res.status(200).json({ updated: 0, note: 'No active outlets with moka_outlet_id' });
 
+      const now = new Date().toISOString();
       const { data: members, error: memErr } = await supabase
         .from('member_profiles').select('id, user_key, phone, full_name, total_points, total_visits, current_tier')
         .eq('membership_status', 'ACTIVE')
-        .gt('membership_expires_at', new Date().toISOString());
+        .or(`membership_expires_at.gt.${now},and(membership_started_at.is.null,membership_expires_at.is.null)`);
       if (memErr) throw new Error('DB member_profiles: ' + memErr.message);
       if (!members?.length) return res.status(200).json({ updated: 0, note: 'No active members' });
 
@@ -1466,10 +1467,10 @@ function createMokaRouter(supabase) {
         unmatched: unmatched.length, preview: updates.slice(0, 20), unmatched_list: unmatched });
 
       let successCount = 0, errorCount = 0;
-      const now = new Date().toISOString();
+      const updatedAt = new Date().toISOString();
       for (const u of updates) {
         const { error } = await supabase.from('member_profiles')
-          .update({ total_points: u.new_points, total_visits: u.new_visits, current_tier: u.new_tier, updated_at: now })
+          .update({ total_points: u.new_points, total_visits: u.new_visits, current_tier: u.new_tier, updated_at: updatedAt })
           .eq('id', u.id);
         if (error) { console.error(`[SyncMemberPoints] Update ${u.full_name}: ${error.message}`); errorCount++; }
         else successCount++;

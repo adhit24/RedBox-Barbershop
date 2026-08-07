@@ -169,7 +169,10 @@ BEGIN
     SELECT 1 FROM member_profiles
     WHERE normalize_membership_phone(phone) = r.phone_normalized
       AND membership_status = 'ACTIVE'
-      AND membership_expires_at > v_now
+      AND (
+        membership_expires_at > v_now
+        OR (membership_started_at IS NULL AND membership_expires_at IS NULL)
+      )
   ) THEN
     RAISE EXCEPTION 'active membership already exists';
   END IF;

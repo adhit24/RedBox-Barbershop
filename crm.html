@@ -313,12 +313,28 @@
  </select>
  </div>
  <div class="mem-opt-row">
+ <label>Paket</label>
+ <select id="memTier">
+ <option value="silver">Silver - Rp 100.000</option>
+ <option value="gold">Gold - Rp 250.000</option>
+ <option value="platinum">Platinum - Rp 1.500.000</option>
+ </select>
+ </div>
+ <div class="mem-opt-row">
  <label>Metode Bayar</label>
  <select id="memPayMethod">
  <option value="cash">Cash / Tunai</option>
  <option value="qris">QRIS</option>
  <option value="transfer">Transfer Bank</option>
  </select>
+ </div>
+ <div class="mem-opt-row">
+ <label>Referensi Bayar</label>
+ <input id="memPaymentReference" type="text" placeholder="No. struk / referensi transaksi" required />
+ </div>
+ <div class="mem-opt-row">
+ <label>Kasir / Staff</label>
+ <input id="memStaffId" type="text" placeholder="Nama atau ID staff" required />
  </div>
  <button class="btn-mem-activate" id="memActivateBtn">
  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd"/></svg>
@@ -619,6 +635,14 @@
  <div class="modal-body" style="gap:14px">
  <p style="font-size:.9rem;color:var(--w70)">Member: <strong id="qaName" style="color:var(--white)">-</strong></p>
  <div class="form-group">
+ <label style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">PAKET</label>
+ <select id="qaTier" style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem">
+ <option value="silver">Silver - Rp 100.000</option>
+ <option value="gold">Gold - Rp 250.000</option>
+ <option value="platinum">Platinum - Rp 1.500.000</option>
+ </select>
+ </div>
+ <div class="form-group">
  <label style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">CABANG</label>
  <select id="qaBranch" style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem">
  <option value="bypass">Bypass</option>
@@ -637,6 +661,14 @@
  <option value="transfer">Transfer Bank</option>
  </select>
  </div>
+ <div class="form-group">
+ <label for="qaPaymentReference" style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">REFERENSI PEMBAYARAN</label>
+ <input id="qaPaymentReference" type="text" placeholder="No. struk / referensi transaksi" required style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem" />
+ </div>
+ <div class="form-group">
+ <label for="qaStaffId" style="font-size:.8rem;color:var(--w50);font-weight:600;letter-spacing:.04em">KASIR / STAFF</label>
+ <input id="qaStaffId" type="text" placeholder="Nama atau ID staff" required style="background:var(--bg2);border:1px solid var(--w10);color:var(--white);padding:9px 12px;border-radius:8px;font-size:.88rem" />
+ </div>
  </div>
  <div class="modal-foot">
  <button class="btn-ghost" onclick="closeQuickActivate()">Batal</button>
@@ -649,6 +681,7 @@
  </div>
 
  <script src="js/services-data.js"></script>
+ <script src="js/membership-access.js?v=20260808"></script>
  <script src="js/crm.js?v=20260605d"></script>
 <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 0 20px;font-size:.68rem;letter-spacing:.05em;"><a href="https://www.kinaryaloka.com/" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.3);font-weight:500;text-decoration:none;">Powered by <img src="Brand_assets/logo_kinarya.png" alt="Kinaryaloka" style="width:16px;height:16px;border-radius:3px;opacity:.4;"> <strong>KINARYALOKA</strong></a></div>
 </body>

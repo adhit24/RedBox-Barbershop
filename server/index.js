@@ -2652,6 +2652,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       const profileMembership = membershipStateForSync({
         existingStatus: profile.membership_status,
         existingActivatedAt: profile.membership_activated_at,
+        existingStartedAt: profile.membership_started_at,
         existingExpiresAt: profile.membership_expires_at,
       });
       const provisionData = {
@@ -2801,10 +2802,12 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
 
       const profileIsActive = isActiveMembership({
         status: profile?.membership_status,
+        startsAt: profile?.membership_started_at,
         expiresAt: profile?.membership_expires_at,
       });
       const customerIsActive = isActiveMembership({
         status: customer.membership_status,
+        startsAt: customer.membership_started_at,
         expiresAt: customer.membership_expires_at,
       });
       if (profileIsActive) {
@@ -2925,13 +2928,14 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       if (custErr) throw new Error(`customers update failed: ${custErr.message}`);
 
       const { data: existing } = await supabase.from('member_profiles')
-        .select('id,full_name,phone,membership_status,membership_activated_at,membership_expires_at')
+        .select('id,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
         .eq('phone', phoneE164).maybeSingle();
 
       if (existing) {
         const membership = membershipStateForSync({
           existingStatus: existing.membership_status,
           existingActivatedAt: existing.membership_activated_at,
+          existingStartedAt: existing.membership_started_at,
           existingExpiresAt: existing.membership_expires_at,
         });
         const { error: profErr } = await supabase.from('member_profiles').update({
@@ -2942,7 +2946,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         if (profErr) throw new Error(`member_profiles update failed: ${profErr.message}`);
       } else {
         const { data: cust } = await supabase.from('customers')
-          .select('name,email,referral_code,membership_status,membership_activated_at,membership_expires_at')
+          .select('name,email,referral_code,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
           .eq('wa', waNorm).maybeSingle();
         const phoneNormShort = targetNorm;
         const userKey = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}`;
@@ -2950,6 +2954,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         const membership = membershipStateForSync({
           customerStatus: cust?.membership_status,
           customerActivatedAt: cust?.membership_activated_at,
+          customerStartedAt: cust?.membership_started_at,
           customerExpiresAt: cust?.membership_expires_at,
         });
         const { error: upsertErr } = await supabase.from('member_profiles').upsert({
