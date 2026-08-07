@@ -60,10 +60,10 @@ document.addEventListener('DOMContentLoaded', () => {
  // CONSTANTS
  // ============================================================
  const TIERS = [
- { name:'Bronze', min:0, max:499, class:'bronze', color:'#CD7F32', glow:'rgba(205,127,50,.5)', multiplier:1.0, label:'Level 1' },
- { name:'Silver', min:500, max:1499, class:'silver', color:'#C0C0C0', glow:'rgba(192,192,192,.5)', multiplier:1.2, label:'Level 2' },
- { name:'Gold', min:1500, max:2999, class:'gold', color:'#FFD700', glow:'rgba(255,215,0,.5)', multiplier:1.5, label:'Level 3' },
- { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', multiplier:2.0, label:'Level 4' }
+ { name:'Bronze', min:0, max:499, class:'bronze', color:'#CD7F32', glow:'rgba(205,127,50,.5)', label:'Level 1' },
+ { name:'Silver', min:500, max:1499, class:'silver', color:'#C0C0C0', glow:'rgba(192,192,192,.5)', label:'Level 2' },
+ { name:'Gold', min:1500, max:2999, class:'gold', color:'#FFD700', glow:'rgba(255,215,0,.5)', label:'Level 3' },
+ { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', label:'Level 4' }
  ];
 
  const REWARDS = [
@@ -71,8 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
  { id:'r2', tier:'bronze', name:'Free Redbox Oilbased Mini', desc:'Dapatkan produk oilbased mini eksklusif Redbox secara gratis.', cost:75, icon:'', type:'redeem' },
  { id:'r3', tier:'silver', name:'Free Baileys Coffee', desc:'Nikmati segelas Baileys Coffee gratis dari Redbox.', cost:100, icon:'', type:'redeem' },
  { id:'r4', tier:'silver', name:'Free Express Cleaning (All Varians)', desc:'Layanan express cleaning untuk semua varian secara gratis.', cost:100, icon:'', type:'redeem' },
- { id:'r5', tier:'silver', name:'Cashback 50% Haircut Regular', desc:'Dapatkan cashback 50% untuk layanan Haircut Regular.', cost:100, icon:'', type:'redeem' },
- { id:'r6', tier:'gold', name:'Cashback 50% Haircut Premium (CSB)', desc:'Dapatkan cashback 50% untuk layanan Haircut Premium Classic Style Barber.', cost:125, icon:'', type:'redeem' },
  { id:'r7', tier:'gold', name:'Free Haircut / Fadecut', desc:'Haircut atau Fadecut gratis pilihan kamu.', cost:200, icon:'', type:'redeem' },
  { id:'r8', tier:'platinum', name:'Free Gentlemen Grooming', desc:'Layanan Gentlemen Grooming lengkap gratis untukmu.', cost:250, icon:'', type:'redeem' },
  { id:'r9', tier:'platinum', name:'Free Fadecut Grooming', desc:'Layanan Fadecut Grooming eksklusif gratis untukmu.', cost:250, icon:'', type:'redeem' },
@@ -83,19 +81,16 @@ document.addEventListener('DOMContentLoaded', () => {
  { tier:'bronze', name:'Akses dashboard member', desc:'Lihat riwayat kunjungan, poin, dan profil.', auto:true },
  { tier:'bronze', name:'Kode referral', desc:'Bagikan kode, dapat bonus poin tiap teman daftar.', auto:true },
  { tier:'bronze', name:'Riwayat kunjungan & poin', desc:'Pantau semua aktivitas membership kamu.', auto:true },
- // Silver (3)
- { tier:'silver', name:'Poin multiplier ×1.2', desc:'Setiap kunjungan menghasilkan lebih banyak poin.', auto:true },
- { tier:'silver', name:'Cashback 50% Haircut Regular', desc:'Tersedia di katalog rewards untuk diredeem.', auto:false },
+ // Silver (2)
+ { tier:'silver', name:'Diskon 50% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
  { tier:'silver', name:'Akses Katalog Produk', desc:'Beli produk Redbox langsung dari dashboard.', auto:true },
- // Gold (3)
- { tier:'gold', name:'Poin multiplier ×1.5', desc:'Setiap kunjungan menghasilkan poin lebih banyak lagi.', auto:true },
- { tier:'gold', name:'Diskon 10% semua layanan', desc:'Berlaku di semua cabang Redbox.', auto:true },
- { tier:'gold', name:'Cashback 50% Haircut Premium CSB', desc:'Tersedia di katalog rewards untuk diredeem.', auto:false },
+ // Gold (2)
+ { tier:'gold', name:'Diskon 50% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
+ { tier:'gold', name:'Diskon 10% layanan', desc:'Berlaku di semua cabang kecuali CSB Mall.', auto:true },
  // Platinum (5)
- { tier:'platinum', name:'Poin multiplier ×2.0', desc:'Poin terbanyak per kunjungan.', auto:true },
+ { tier:'platinum', name:'Diskon 50% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
  { tier:'platinum', name:'Free Gentlemen Grooming', desc:'Layanan grooming gratis tiap kunjungan.', auto:true },
  { tier:'platinum', name:'Free Iced Americano', desc:'Kopi gratis tiap kunjungan ke Redbox.', auto:true },
- { tier:'platinum', name:'Birthday gratis penuh', desc:'Layanan gratis saat hari ulang tahunmu.', auto:true },
  { tier:'platinum', name:'Priority semua cabang', desc:'Akses priority booking di seluruh cabang Redbox.', auto:true },
  ];
 
@@ -108,8 +103,8 @@ document.addEventListener('DOMContentLoaded', () => {
  ];
 
  const SERVICES_SHOP = [
- { id:'grooming', name:'Gentlemen Grooming', sub:'Cukur + styling presisi', img:'Brand_assets/Services/Shaving.jpg', tier:'gold', discount:'Disc 10%' },
- { id:'hairspa', name:'Hairspa', sub:'Perawatan kulit kepala', img:'Brand_assets/Services/Creambath.jpg', tier:'gold', discount:'Disc 10%' },
+ { id:'grooming', name:'Gentlemen Grooming', sub:'Cukur + styling presisi', img:'Brand_assets/Services/Shaving.jpg', tier:'gold', discount:'Disc 10%*' },
+ { id:'hairspa', name:'Hairspa', sub:'Perawatan kulit kepala', img:'Brand_assets/Services/Creambath.jpg', tier:'gold', discount:'Disc 10%*' },
  { id:'massage', name:"Men's Massage", sub:'Pijat relaksasi premium', img:'Brand_assets/Services/Men_Massage_Service.jpg', tier:'platinum', discount:null },
  { id:'americano',name:'Iced Americano', sub:'Free tiap kunjungan Platinum', img:'https://images.unsplash.com/photo-1630184799082-05623dbdc7f7?w=400&q=75', tier:'platinum', discount:null },
  ];
