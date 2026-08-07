@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   TIER_PRICES,
   getTierPrice,
+  normalizePhone,
   makePendingRegistration,
   getMembershipPeriod,
   validateActivationInput,
@@ -32,6 +33,13 @@ test('registration defaults to PENDING and expires seven days later', () => {
   assert.equal(registration.priceSnapshot, 250000);
   assert.equal(registration.createdAt, '2026-08-08T10:00:00.000Z');
   assert.equal(registration.expiresAt, '2026-08-15T10:00:00.000Z');
+  assert.equal(registration.phone, '+628123456789');
+});
+
+test('phone format variants normalize to one canonical membership identity', () => {
+  assert.equal(normalizePhone('0812-3456-789'), '+628123456789');
+  assert.equal(normalizePhone('+62 812 3456 789'), '+628123456789');
+  assert.equal(normalizePhone('628123456789'), '+628123456789');
 });
 
 test('activation period ends one year after its start date', () => {

@@ -22,6 +22,14 @@ function getTierPrice(tier) {
   return TIER_PRICES[tier];
 }
 
+function normalizePhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) throw new Error('phone is required');
+  if (digits.startsWith('62')) return `+${digits}`;
+  if (digits.startsWith('0')) return `+62${digits.slice(1)}`;
+  return `+62${digits}`;
+}
+
 function makePendingRegistration({ now = new Date(), ...customer } = {}) {
   const createdAt = asDate(now, 'now');
   const expiresAt = new Date(createdAt.getTime());
@@ -30,12 +38,21 @@ function makePendingRegistration({ now = new Date(), ...customer } = {}) {
 
   return {
     ...customer,
+    phone: normalizePhone(customer.phone),
     priceSnapshot,
     status: 'PENDING',
     createdAt: createdAt.toISOString(),
     updatedAt: createdAt.toISOString(),
     expiresAt: expiresAt.toISOString(),
   };
+}
+
+function validatePaymentInput({ paymentMethod, paymentReference } = {}) {
+  if (!PAYMENT_METHODS.has(paymentMethod)) throw new Error('invalid payment method');
+  if (typeof paymentReference !== 'string' || !paymentReference.trim()) {
+    throw new Error('payment reference is required');
+  }
+  return { paymentMethod, paymentReference: paymentReference.trim() };
 }
 
 function getMembershipPeriod(start) {
@@ -59,10 +76,7 @@ function validateActivationInput({
 } = {}) {
   const expectedAmount = getTierPrice(tier);
   if (amount !== expectedAmount) throw new Error('amount does not match tier price');
-  if (!PAYMENT_METHODS.has(paymentMethod)) throw new Error('invalid payment method');
-  if (typeof paymentReference !== 'string' || !paymentReference.trim()) {
-    throw new Error('payment reference is required');
-  }
+  const payment = validatePaymentInput({ paymentMethod, paymentReference });
   if (
     activeMembership ||
     hasActiveMembership ||
@@ -73,15 +87,17 @@ function validateActivationInput({
   return {
     tier,
     amount: expectedAmount,
-    paymentMethod,
-    paymentReference: paymentReference.trim(),
+    ...payment,
   };
 }
 
 module.exports = {
   TIER_PRICES,
+  PAYMENT_METHODS,
   getTierPrice,
+  normalizePhone,
   makePendingRegistration,
   getMembershipPeriod,
+  validatePaymentInput,
   validateActivationInput,
 };

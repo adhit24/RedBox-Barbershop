@@ -1403,7 +1403,8 @@ function createMokaRouter(supabase) {
 
       const { data: members, error: memErr } = await supabase
         .from('member_profiles').select('id, user_key, phone, full_name, total_points, total_visits, current_tier')
-        .eq('membership_status', 'ACTIVE');
+        .eq('membership_status', 'ACTIVE')
+        .gt('membership_expires_at', new Date().toISOString());
       if (memErr) throw new Error('DB member_profiles: ' + memErr.message);
       if (!members?.length) return res.status(200).json({ updated: 0, note: 'No active members' });
 

@@ -19,6 +19,7 @@ const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerRev
 const { enqueueCustomerNotification, markCustomerNotificationSent, processCustomerNotificationOutbox } = require('./services/bookingNotificationOutbox');
 const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
+const { membershipStateForSync, isActiveMembership } = require('./membership-policy');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -2632,7 +2633,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       const phoneE164 = '+' + wa;
       const { data: profile } = await supabase
         .from('member_profiles')
-        .select('full_name, phone, email, membership_status, membership_activated_at, total_points, total_visits, referral_code, birthdate, gender, address')
+        .select('full_name, phone, email, membership_status, membership_activated_at, membership_started_at, membership_expires_at, total_points, total_visits, referral_code, birthdate, gender, address')
         .eq('phone', phoneE164)
         .maybeSingle();
 
@@ -2648,13 +2649,18 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         profile.email && /^moka_.+@redbox\.internal$/.test(profile.email)
       );
       const bd = profile.birthdate ? new Date(profile.birthdate) : null;
+      const profileMembership = membershipStateForSync({
+        existingStatus: profile.membership_status,
+        existingActivatedAt: profile.membership_activated_at,
+        existingExpiresAt: profile.membership_expires_at,
+      });
       const provisionData = {
         name:                    profile.full_name || '',
         wa,
         phone_e164:              phoneE164,
         email:                   isSyntheticEmail ? null : (profile.email || null),
-        membership_status:       profile.membership_status || 'INACTIVE',
-        membership_activated_at: profile.membership_activated_at || null,
+        ...profileMembership,
+        membership_started_at:   profileMembership.membership_status === 'ACTIVE' ? profile.membership_started_at || null : null,
         points:                  Number(profile.total_points) || 0,
         visits:                  Number(profile.total_visits) || 0,
         referral_code:           profile.referral_code || generateReferralCode(),
@@ -2789,13 +2795,23 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       // dengan data membership yang berbeda — ambil yang terbaik.
       const phoneE164 = customer.phone_e164 || ('+' + session.customer_wa);
       const { data: profile } = await supabase.from('member_profiles')
-        .select('membership_status, total_points, total_visits, membership_activated_at, referral_code, full_name, current_tier')
+        .select('membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier')
         .eq('phone', phoneE164)
         .maybeSingle();
 
-      if (profile && profile.membership_status === 'ACTIVE' && customer.membership_status !== 'ACTIVE') {
+      const profileIsActive = isActiveMembership({
+        status: profile?.membership_status,
+        expiresAt: profile?.membership_expires_at,
+      });
+      const customerIsActive = isActiveMembership({
+        status: customer.membership_status,
+        expiresAt: customer.membership_expires_at,
+      });
+      if (profileIsActive) {
         customer.membership_status      = 'ACTIVE';
-        customer.membership_activated_at= profile.membership_activated_at ?? customer.membership_activated_at;
+        customer.membership_activated_at= profile.membership_activated_at ?? null;
+        customer.membership_started_at  = profile.membership_started_at ?? null;
+        customer.membership_expires_at  = profile.membership_expires_at;
         customer.points                 = profile.total_points   ?? customer.points ?? 0;
         customer.visits                 = profile.total_visits   ?? customer.visits ?? 0;
         customer.referral_code          = profile.referral_code  ?? customer.referral_code;
@@ -2805,6 +2821,15 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         supabase.from('customers').update({
           membership_status:       'ACTIVE',
           membership_activated_at: profile.membership_activated_at,
+          membership_started_at:   profile.membership_started_at,
+          membership_expires_at:   profile.membership_expires_at,
+        }).eq('wa', session.customer_wa).catch(() => {});
+      } else if (!customerIsActive && customer.membership_status !== 'INACTIVE') {
+        customer.membership_status = 'INACTIVE';
+        customer.membership_activated_at = null;
+        supabase.from('customers').update({
+          membership_status: 'INACTIVE',
+          membership_activated_at: null,
         }).eq('wa', session.customer_wa).catch(() => {});
       }
     }
@@ -2900,24 +2925,36 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       if (custErr) throw new Error(`customers update failed: ${custErr.message}`);
 
       const { data: existing } = await supabase.from('member_profiles')
-        .select('id,full_name,phone').eq('phone', phoneE164).maybeSingle();
+        .select('id,full_name,phone,membership_status,membership_activated_at,membership_expires_at')
+        .eq('phone', phoneE164).maybeSingle();
 
       if (existing) {
+        const membership = membershipStateForSync({
+          existingStatus: existing.membership_status,
+          existingActivatedAt: existing.membership_activated_at,
+          existingExpiresAt: existing.membership_expires_at,
+        });
         const { error: profErr } = await supabase.from('member_profiles').update({
           total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
-          membership_status: 'ACTIVE', updated_at: now,
+          ...membership,
+          updated_at: now,
         }).eq('id', existing.id);
         if (profErr) throw new Error(`member_profiles update failed: ${profErr.message}`);
       } else {
         const { data: cust } = await supabase.from('customers')
-          .select('name,email,referral_code,membership_activated_at')
+          .select('name,email,referral_code,membership_status,membership_activated_at,membership_expires_at')
           .eq('wa', waNorm).maybeSingle();
         const phoneNormShort = targetNorm;
         const userKey = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}`;
         const email   = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}@redbox.internal`;
+        const membership = membershipStateForSync({
+          customerStatus: cust?.membership_status,
+          customerActivatedAt: cust?.membership_activated_at,
+          customerExpiresAt: cust?.membership_expires_at,
+        });
         const { error: upsertErr } = await supabase.from('member_profiles').upsert({
           user_key: userKey, email, full_name: cust?.name || '', phone: phoneE164,
-          membership_status: 'ACTIVE', membership_activated_at: cust?.membership_activated_at || now,
+          ...membership,
           total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
         }, { onConflict: 'user_key' });
         if (upsertErr) throw new Error(`member_profiles upsert failed: ${upsertErr.message}`);

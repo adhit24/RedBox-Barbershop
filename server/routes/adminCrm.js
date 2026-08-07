@@ -1,6 +1,13 @@
 // server/routes/adminCrm.js
 'use strict';
 const express = require('express');
+const { randomUUID } = require('crypto');
+const { membershipStateForSync, isActiveMembership } = require('../membership-policy');
+const {
+  getTierPrice,
+  makePendingRegistration,
+  validatePaymentInput,
+} = require('../services/membershipRegistration');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -995,7 +1002,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   router.get('/membership', adminAuth, async (req, res) => {
     const { data, error } = await supabase
       .from('member_profiles')
-      .select('user_key,full_name,email,membership_status,current_tier,total_points,total_visits,created_at,phone')
+      .select('user_key,full_name,email,membership_status,membership_activated_at,membership_expires_at,current_tier,total_points,total_visits,created_at,phone')
       .order('created_at', { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
 
@@ -1011,7 +1018,14 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         if (c.phone_e164) lastVisitMap[c.phone_e164] = c.last_visit;
       }
     }
-    const enriched = (data || []).map(m => ({ ...m, last_visit: lastVisitMap[m.phone] || null }));
+    const enriched = (data || []).map((m) => ({
+      ...m,
+      membership_status: isActiveMembership({
+        status: m.membership_status,
+        expiresAt: m.membership_expires_at,
+      }) ? 'ACTIVE' : 'INACTIVE',
+      last_visit: lastVisitMap[m.phone] || null,
+    }));
     res.json(enriched);
   });
 
@@ -1095,24 +1109,36 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
       // Fetch existing member_profiles to decide insert vs update
       const { data: existing } = await supabase.from('member_profiles')
-        .select('id,user_key,full_name,phone').eq('phone', phoneE164).maybeSingle();
+        .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_expires_at')
+        .eq('phone', phoneE164).maybeSingle();
 
       if (existing) {
+        const membership = membershipStateForSync({
+          existingStatus: existing.membership_status,
+          existingActivatedAt: existing.membership_activated_at,
+          existingExpiresAt: existing.membership_expires_at,
+        });
         await supabase.from('member_profiles').update({
           total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
-          membership_status: 'ACTIVE', updated_at: now,
+          ...membership,
+          updated_at: now,
         }).eq('id', existing.id);
       } else {
         // Create member_profiles entry (no prior entry for this phone)
         const { data: cust } = await supabase.from('customers')
-          .select('name,phone_e164,email,birth_date,gender,address,referral_code,membership_activated_at')
+          .select('name,phone_e164,email,birth_date,gender,address,referral_code,membership_status,membership_activated_at,membership_expires_at')
           .eq('wa', waNorm).maybeSingle();
         const phoneNormShort = targetNorm;
         const userKey  = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}`;
         const email    = (cust?.email && !/^moka_/.test(cust.email)) ? cust.email : `moka_${phoneNormShort}@redbox.internal`;
+        const membership = membershipStateForSync({
+          customerStatus: cust?.membership_status,
+          customerActivatedAt: cust?.membership_activated_at,
+          customerExpiresAt: cust?.membership_expires_at,
+        });
         await supabase.from('member_profiles').upsert({
           user_key: userKey, email, full_name: cust?.name || '', phone: phoneE164,
-          membership_status: 'ACTIVE', membership_activated_at: cust?.membership_activated_at || now,
+          ...membership,
           total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
         }, { onConflict: 'user_key' });
       }
@@ -1128,28 +1154,86 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
   });
 
-  // Harga paket membership — aktivasi mengikuti paket yang dipilih pelanggan
-  const TIER_PRICES = { silver: 100000, gold: 250000, platinum: 1500000 };
-
   router.post('/membership/activate', adminAuth, async (req, res) => {
-    const { userKey, branch, payMethod, tier } = req.body;
-    if (!userKey) return res.status(400).json({ error: 'userKey required' });
-    const price = TIER_PRICES[tier];
-    if (!price) return res.status(400).json({ error: 'tier harus silver, gold, atau platinum' });
-    const now = new Date().toISOString();
-    // total_points sengaja TIDAK direset — poin pelanggan lama (sync Moka) tetap utuh
-    const { error: patchErr } = await supabase
-      .from('member_profiles')
-      .update({ membership_status: 'ACTIVE', membership_activated_at: now, current_tier: tier, updated_at: now })
-      .eq('user_key', userKey);
-    if (patchErr) return res.status(500).json({ error: patchErr.message });
-    const { error: activationErr } = await supabase.from('member_activations').insert({
-      user_key: userKey, amount: price, tier,
-      payment_method: payMethod || 'cash', status: 'completed',
-      confirmed_by: 'admin-' + (branch || 'unknown')
-    });
-    if (activationErr) return res.status(500).json({ error: activationErr.message });
-    res.json({ success: true, tier, amount: price });
+    const body = req.body || {};
+    const userKey = body.userKey || body.user_key;
+    const branch = body.branch;
+    const tier = body.tier;
+    const paymentMethod = body.payMethod || body.paymentMethod || body.payment_method;
+    const paymentReference = body.paymentReference || body.payment_reference;
+    let payment;
+    try {
+      payment = validatePaymentInput({ paymentMethod, paymentReference });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (typeof branch !== 'string' || !branch.trim()) {
+      return res.status(400).json({ error: 'branch required' });
+    }
+
+    let registrationId = body.registrationId || body.registration_id;
+    try {
+      // Compatibility for the current CRM caller: it may still identify a member by userKey.
+      // It is deliberately routed through a persisted pending registration before activation.
+      if (!registrationId) {
+        if (!userKey) return res.status(400).json({ error: 'registrationId or userKey required' });
+        let price;
+        try {
+          price = getTierPrice(tier);
+        } catch (err) {
+          return res.status(400).json({ error: err.message });
+        }
+        const { data: profile, error: profileErr } = await supabase.from('member_profiles')
+          .select('user_key,full_name,phone,email')
+          .eq('user_key', userKey)
+          .maybeSingle();
+        if (profileErr) throw profileErr;
+        if (!profile) return res.status(404).json({ error: 'member profile not found' });
+
+        const registration = makePendingRegistration({
+          registrationCode: `RBM-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`,
+          userKey: profile.user_key,
+          fullName: profile.full_name || '',
+          phone: profile.phone,
+          email: profile.email || null,
+          tier,
+        });
+        const { data: created, error: registrationErr } = await supabase
+          .from('membership_registrations')
+          .insert({
+            registration_code: registration.registrationCode,
+            user_key: registration.userKey,
+            full_name: registration.fullName,
+            phone: registration.phone,
+            phone_normalized: registration.phone,
+            email: registration.email,
+            tier: registration.tier,
+            price_snapshot: price,
+            status: registration.status,
+            expires_at: registration.expiresAt,
+          })
+          .select('id')
+          .single();
+        if (registrationErr) throw registrationErr;
+        registrationId = created.id;
+      }
+
+      const { data: activation, error: activationErr } = await supabase.rpc(
+        'activate_membership_registration',
+        {
+          p_registration_id: registrationId,
+          p_payment_method: payment.paymentMethod,
+          p_payment_reference: payment.paymentReference,
+          p_branch: branch.trim(),
+          p_confirmed_by: `admin-${branch.trim()}`,
+        }
+      );
+      if (activationErr) return res.status(409).json({ error: activationErr.message });
+      const result = Array.isArray(activation) ? activation[0] : activation;
+      return res.json({ success: true, registrationId, ...(result || {}) });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'membership activation failed' });
+    }
   });
 
   // ─── OWNER PAYMENT ANALYTICS ──────────────────────────────────────────

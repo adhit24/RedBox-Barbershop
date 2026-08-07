@@ -1,12 +1,32 @@
 -- Paid membership registration and cashier activation persistence.
 -- Safe to run after the existing member_profiles/member_activations migrations.
 
+-- Canonicalise Indonesian phone variants before any membership deduplication.
+CREATE OR REPLACE FUNCTION normalize_membership_phone(p_phone TEXT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+  WITH phone_digits AS (
+    SELECT regexp_replace(COALESCE(p_phone, ''), '[^0-9]', '', 'g') AS value
+  )
+  SELECT CASE
+    WHEN value = '' THEN NULL
+    WHEN value LIKE '62%' THEN '+' || value
+    WHEN value LIKE '0%' THEN '+62' || substring(value FROM 2)
+    ELSE '+62' || value
+  END
+  FROM phone_digits;
+$$;
+
 CREATE TABLE IF NOT EXISTS membership_registrations (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   registration_code TEXT NOT NULL UNIQUE,
   user_key          TEXT NOT NULL,
   full_name         TEXT NOT NULL,
   phone             TEXT NOT NULL,
+  phone_normalized  TEXT NOT NULL CHECK (phone_normalized = normalize_membership_phone(phone)),
   email             TEXT,
   tier              TEXT NOT NULL CHECK (tier IN ('silver', 'gold', 'platinum')),
   price_snapshot    INTEGER NOT NULL CHECK (price_snapshot IN (100000, 250000, 1500000)),
@@ -17,14 +37,39 @@ CREATE TABLE IF NOT EXISTS membership_registrations (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE membership_registrations
+  ADD COLUMN IF NOT EXISTS phone_normalized TEXT;
+
+UPDATE membership_registrations
+SET phone_normalized = normalize_membership_phone(phone)
+WHERE phone_normalized IS NULL;
+
+ALTER TABLE membership_registrations
+  ALTER COLUMN phone_normalized SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'membership_registrations_phone_normalized_check'
+      AND conrelid = 'membership_registrations'::regclass
+  ) THEN
+    ALTER TABLE membership_registrations
+      ADD CONSTRAINT membership_registrations_phone_normalized_check
+      CHECK (phone_normalized = normalize_membership_phone(phone)) NOT VALID;
+  END IF;
+END;
+$$;
+
 CREATE INDEX IF NOT EXISTS idx_membership_registrations_status
   ON membership_registrations (status);
 CREATE INDEX IF NOT EXISTS idx_membership_registrations_phone
   ON membership_registrations (phone);
 CREATE INDEX IF NOT EXISTS idx_membership_registrations_expires_at
   ON membership_registrations (expires_at);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_registrations_active_phone
-  ON membership_registrations (phone)
+DROP INDEX IF EXISTS uq_membership_registrations_active_phone;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_registrations_active_phone_normalized
+  ON membership_registrations (phone_normalized)
   WHERE status = 'ACTIVATED';
 
 ALTER TABLE member_activations
@@ -35,12 +80,32 @@ ALTER TABLE member_activations
   ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ;
 
+-- Historical rows are retained; NOT VALID still enforces the allowlist for all new writes.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'member_activations_payment_method_check'
+      AND conrelid = 'member_activations'::regclass
+  ) THEN
+    ALTER TABLE member_activations
+      ADD CONSTRAINT member_activations_payment_method_check
+      CHECK (payment_method IS NOT NULL AND payment_method IN ('cash', 'qris', 'transfer')) NOT VALID;
+  END IF;
+END;
+$$;
+
 ALTER TABLE member_profiles
   ADD COLUMN IF NOT EXISTS membership_started_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS membership_expires_at TIMESTAMPTZ;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_member_profiles_active_phone
-  ON member_profiles (phone)
+ALTER TABLE customers
+  ADD COLUMN IF NOT EXISTS membership_started_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS membership_expires_at TIMESTAMPTZ;
+
+DROP INDEX IF EXISTS uq_member_profiles_active_phone;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_member_profiles_active_phone_normalized
+  ON member_profiles (normalize_membership_phone(phone))
   WHERE membership_status = 'ACTIVE';
 
 CREATE OR REPLACE FUNCTION activate_membership_registration(
@@ -67,6 +132,8 @@ DECLARE
   v_starts_at TIMESTAMPTZ := v_now;
   v_expires_at TIMESTAMPTZ := v_now + INTERVAL '1 year';
   v_expected_price INTEGER;
+  v_profile_rows INTEGER;
+  v_customer_rows INTEGER;
 BEGIN
   SELECT * INTO r
   FROM membership_registrations
@@ -75,6 +142,9 @@ BEGIN
 
   IF NOT FOUND OR r.status <> 'PENDING' THEN
     RAISE EXCEPTION 'membership registration is not pending';
+  END IF;
+  IF r.expires_at <= v_now THEN
+    RAISE EXCEPTION 'membership registration has expired';
   END IF;
 
   v_expected_price := CASE r.tier
@@ -97,12 +167,35 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM member_profiles
-    WHERE phone = r.phone
+    WHERE normalize_membership_phone(phone) = r.phone_normalized
       AND membership_status = 'ACTIVE'
-      AND (membership_expires_at IS NULL OR membership_expires_at > v_now)
+      AND membership_expires_at > v_now
   ) THEN
     RAISE EXCEPTION 'active membership already exists';
   END IF;
+
+  -- The activation audit and registration status must never advance without both targets.
+  PERFORM 1 FROM member_profiles
+  WHERE user_key = r.user_key
+    AND normalize_membership_phone(phone) = r.phone_normalized
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'member profile target is missing';
+  END IF;
+
+  PERFORM 1 FROM customers
+  WHERE normalize_membership_phone(phone_e164) = r.phone_normalized
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'customer target is missing';
+  END IF;
+
+  -- An old completed registration ceases to be active when its profile period expired.
+  -- This releases the canonical-phone uniqueness guard for a renewal while keeping its audit row.
+  UPDATE membership_registrations
+  SET status = 'EXPIRED', updated_at = v_now
+  WHERE phone_normalized = r.phone_normalized
+    AND status = 'ACTIVATED';
 
   INSERT INTO member_activations (
     user_key, amount, tier, payment_method, payment_reference, branch,
@@ -121,12 +214,22 @@ BEGIN
       current_tier = r.tier,
       updated_at = v_now
   WHERE user_key = r.user_key;
+  GET DIAGNOSTICS v_profile_rows = ROW_COUNT;
+  IF v_profile_rows = 0 THEN
+    RAISE EXCEPTION 'member profile target was not updated';
+  END IF;
 
   UPDATE customers
   SET membership_status = 'ACTIVE',
       membership_activated_at = v_now,
+      membership_started_at = v_starts_at,
+      membership_expires_at = v_expires_at,
       updated_at = v_now
-  WHERE phone_e164 = r.phone;
+  WHERE normalize_membership_phone(phone_e164) = r.phone_normalized;
+  GET DIAGNOSTICS v_customer_rows = ROW_COUNT;
+  IF v_customer_rows = 0 THEN
+    RAISE EXCEPTION 'customer target was not updated';
+  END IF;
 
   UPDATE membership_registrations
   SET status = 'ACTIVATED', updated_at = v_now
