@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#090909" />
+  <meta name="description" content="Daftar membership Redbox. Pilih tier, bayar di outlet, lalu kasir mengaktifkan membership Anda." />
+  <title>Daftar Membership | Redbox Barbershop</title>
+  <link rel="icon" type="image/jpeg" href="Brand_assets/logo_redboxnew.jpeg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    :root { --reg-bg:#090909; --reg-panel:#111113; --reg-line:rgba(255,255,255,.12); --reg-red:#d71920; --reg-muted:#a6a6a8; --reg-gold:#f2b73d; --reg-radius:22px; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { min-height:100vh; background:var(--reg-bg); color:#f8f8f8; font-family:Inter,system-ui,sans-serif; overflow-x:hidden; }
+    .skip-nav { position:absolute; left:16px; top:-60px; z-index:100; background:#fff; color:#111; border-radius:8px; padding:10px 14px; font-weight:700; transition:top .2s; }
+    .skip-nav:focus { top:14px; }
+    .register-nav { height:76px; border-bottom:1px solid var(--reg-line); display:flex; align-items:center; background:rgba(9,9,9,.93); position:sticky; top:0; z-index:10; backdrop-filter:blur(16px); }
+    .register-nav__inner { width:min(1180px,calc(100% - 40px)); margin:auto; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .register-logo { display:inline-flex; align-items:center; gap:10px; color:#fff; font-family:'Bebas Neue',sans-serif; letter-spacing:.08em; font-size:1.3rem; }
+    .register-logo img { width:44px; height:44px; object-fit:contain; }
+    .back-link { color:#d7d7d7; font-size:.82rem; font-weight:600; display:inline-flex; gap:8px; align-items:center; }
+    .back-link:hover { color:#fff; }
+    main { position:relative; isolation:isolate; }
+    main::before { content:''; position:absolute; z-index:-1; inset:0 0 auto; height:540px; background:radial-gradient(ellipse 70% 50% at 78% 0%,rgba(215,25,32,.19),transparent 67%),repeating-linear-gradient(132deg,rgba(255,255,255,.025) 0 1px,transparent 1px 6px); pointer-events:none; }
+    .register-shell { width:min(1180px,calc(100% - 40px)); margin:0 auto; padding:58px 0 72px; display:grid; grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr); gap:52px; align-items:start; }
+    .eyebrow { color:#ff5c62; font-size:.72rem; font-weight:700; letter-spacing:.18em; text-transform:uppercase; display:flex; align-items:center; gap:9px; }
+    .eyebrow::before { content:''; width:26px; height:2px; background:var(--reg-red); }
+    h1 { font:400 clamp(3.25rem,7vw,5.75rem)/.89 'Bebas Neue',sans-serif; letter-spacing:.02em; margin:16px 0 22px; max-width:650px; }
+    h1 span { display:block; color:var(--reg-red); }
+    .lead { color:#d1d1d3; max-width:560px; line-height:1.75; font-size:1rem; margin:0; }
+    .flow { list-style:none; padding:0; margin:46px 0 0; border-top:1px solid var(--reg-line); }
+    .flow li { display:grid; grid-template-columns:42px 1fr; gap:16px; padding:18px 0; border-bottom:1px solid var(--reg-line); }
+    .flow__number { color:var(--reg-red); font:400 1.7rem/1 'Bebas Neue',sans-serif; }
+    .flow strong { display:block; font-size:.9rem; margin-bottom:4px; }
+    .flow p { color:var(--reg-muted); font-size:.82rem; line-height:1.55; margin:0; }
+    .outlet-note { border:1px solid rgba(215,25,32,.42); background:linear-gradient(110deg,rgba(215,25,32,.14),rgba(215,25,32,.025)); border-radius:14px; padding:16px 18px; color:#f0dfe0; font-size:.83rem; line-height:1.55; margin-top:30px; }
+    .outlet-note strong { color:#fff; }
+    .form-panel { background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.018)); border:1px solid var(--reg-line); box-shadow:0 24px 70px rgba(0,0,0,.38); border-radius:var(--reg-radius); padding:28px; position:sticky; top:96px; }
+    .form-panel__heading { display:flex; justify-content:space-between; gap:16px; align-items:start; margin-bottom:22px; }
+    .form-panel h2 { font:400 2rem/1 'Bebas Neue',sans-serif; letter-spacing:.04em; margin:0; }
+    .form-panel__heading p { margin:4px 0 0; color:var(--reg-muted); font-size:.78rem; line-height:1.5; max-width:240px; }
+    fieldset { border:0; padding:0; margin:0 0 22px; }
+    legend, .field-label { font-size:.74rem; font-weight:700; color:#e6e6e7; display:block; margin-bottom:9px; letter-spacing:.06em; text-transform:uppercase; }
+    .tier-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+    .tier-option { position:relative; min-width:0; }
+    .tier-option input { position:absolute; opacity:0; inset:0; width:1px; height:1px; }
+    .tier-option label { display:block; min-height:94px; padding:12px 10px; cursor:pointer; border:1px solid var(--reg-line); border-radius:14px; background:#0c0c0e; transition:border-color .2s,transform .2s,background .2s; }
+    .tier-option input:focus-visible + label { outline:3px solid rgba(255,255,255,.7); outline-offset:2px; }
+    .tier-option input:checked + label { border-color:var(--tier-color,var(--reg-red)); background:linear-gradient(145deg,color-mix(in srgb,var(--tier-color,var(--reg-red)) 17%,#111),#101012); box-shadow:inset 0 0 0 1px var(--tier-color,var(--reg-red)); transform:translateY(-2px); }
+    .tier-option__name { display:block; color:var(--tier-color,#fff); font:400 1.2rem/1 'Bebas Neue',sans-serif; letter-spacing:.07em; }
+    .tier-option__price { display:block; color:#f4f4f5; font-size:.74rem; font-weight:700; margin-top:9px; white-space:nowrap; }
+    .tier-option__term { display:block; color:var(--reg-muted); font-size:.65rem; margin-top:4px; }
+    .form-grid { display:grid; gap:15px; }
+    .field { display:grid; gap:8px; }
+    input[type="text"], input[type="tel"], input[type="email"] { width:100%; min-height:49px; color:#fff; background:#0b0b0d; border:1px solid var(--reg-line); border-radius:11px; padding:0 13px; font:400 .9rem Inter,sans-serif; transition:border-color .2s,box-shadow .2s; }
+    input::placeholder { color:#6e6e72; }
+    input:focus { outline:none; border-color:rgba(215,25,32,.9); box-shadow:0 0 0 3px rgba(215,25,32,.13); }
+    .field-help { color:#88888c; font-size:.71rem; line-height:1.45; margin:0; }
+    .submit-button { width:100%; min-height:52px; margin-top:24px; cursor:pointer; border:0; color:#fff; background:linear-gradient(135deg,#b30c15,#e3262e); border-radius:12px; font:600 .9rem Inter,sans-serif; transition:transform .2s,filter .2s,opacity .2s; }
+    .submit-button:hover { filter:brightness(1.08); transform:translateY(-1px); }
+    .submit-button:disabled { cursor:wait; opacity:.65; transform:none; }
+    .form-status { min-height:20px; margin:14px 0 0; font-size:.79rem; line-height:1.5; color:#dedee0; }
+    .form-status.is-error { color:#ff858a; }
+    .form-status.is-success { color:#9df0bb; }
+    .form-footnote { color:#89898d; font-size:.69rem; line-height:1.5; margin:12px 0 0; text-align:center; }
+    .confirmation { display:none; text-align:left; }
+    .confirmation.is-visible { display:block; }
+    .confirmation__mark { width:42px; height:42px; display:grid; place-items:center; border-radius:50%; color:#b7f5cb; background:rgba(65,201,119,.12); border:1px solid rgba(65,201,119,.35); font-size:1.25rem; margin-bottom:14px; }
+    .confirmation h2 { font:400 2rem/1 'Bebas Neue',sans-serif; margin:0 0 10px; letter-spacing:.04em; }
+    .confirmation p { color:#d1d1d3; font-size:.85rem; line-height:1.65; margin:0 0 14px; }
+    .registration-code { background:#090909; border:1px dashed rgba(255,255,255,.32); border-radius:12px; padding:13px; margin:16px 0; }
+    .registration-code span { display:block; color:#929296; font-size:.66rem; text-transform:uppercase; letter-spacing:.12em; margin-bottom:5px; }
+    .registration-code strong { color:#fff; font:400 1.55rem/1 'Bebas Neue',sans-serif; letter-spacing:.1em; overflow-wrap:anywhere; }
+    .confirmation__deadline { color:#ffe4a0 !important; border-left:2px solid var(--reg-gold); padding-left:11px; }
+    .confirmation a { color:#fff; display:inline-flex; padding:12px 15px; margin-top:6px; border:1px solid var(--reg-line); border-radius:10px; font-size:.8rem; font-weight:700; }
+    .confirmation a:hover { border-color:#fff; }
+    @media (max-width:900px) { .register-shell { grid-template-columns:1fr; gap:32px; padding-top:42px; } .form-panel { position:static; max-width:620px; width:100%; } }
+    @media (max-width:560px) { .register-nav { height:68px; } .register-nav__inner,.register-shell { width:min(100% - 32px,1180px); } .register-logo { font-size:1.1rem; } .register-logo img { width:38px;height:38px; } .back-link { font-size:.75rem; } .register-shell { padding:36px 0 48px; } h1 { font-size:3.35rem; } .lead { font-size:.9rem; } .flow { margin-top:32px; } .flow li { grid-template-columns:32px 1fr; gap:11px; } .form-panel { padding:20px 16px; border-radius:18px; } .form-panel__heading { display:block; } .form-panel h2 { font-size:1.8rem; } .form-panel__heading p { margin-top:7px; } .tier-grid { gap:6px; } .tier-option label { min-height:88px; padding:10px 7px; } .tier-option__name { font-size:1.06rem; } .tier-option__price { font-size:.66rem; } .tier-option__term { font-size:.59rem; } }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; } }
+  </style>
+</head>
+<body>
+  <a class="skip-nav" href="#main">Lewati navigasi</a>
+  <header class="register-nav">
+    <div class="register-nav__inner">
+      <a class="register-logo" href="index.html" aria-label="Redbox Barbershop beranda"><img src="Brand_assets/logo_redboxnew.jpeg" alt="Logo Redbox" /> REDBOX BARBERSHOP</a>
+      <a class="back-link" href="membership.html">← Lihat benefit tier</a>
+    </div>
+  </header>
+  <main id="main">
+    <div class="register-shell">
+      <section aria-labelledby="register-title">
+        <div class="eyebrow">MEMBERSHIP 12 BULAN</div>
+        <h1 id="register-title">PILIH TIER.<span>BAYAR DI OUTLET.</span></h1>
+        <p class="lead">Daftarkan data Anda sekarang. Membership baru aktif setelah pembayaran dikonfirmasi kasir Redbox—bukan saat formulir dikirim.</p>
+        <ol class="flow" aria-label="Alur pendaftaran membership">
+          <li><span class="flow__number">01</span><div><strong>Pilih tier &amp; daftar</strong><p>Pilih Silver, Gold, atau Platinum dengan harga tetap untuk masa berlaku satu tahun.</p></div></li>
+          <li><span class="flow__number">02</span><div><strong>Bayar di outlet</strong><p>Simpan kode pendaftaran, lalu tunjukkan ke kasir di cabang Redbox pilihan Anda dalam tujuh hari.</p></div></li>
+          <li><span class="flow__number">03</span><div><strong>Kasir mengaktifkan</strong><p>Setelah pembayaran diverifikasi, tier dan masa aktif Anda tercatat selama satu tahun.</p></div></li>
+        </ol>
+        <aside class="outlet-note"><strong>Belum aktif sebelum kasir mengonfirmasi.</strong> Formulir ini tidak meminta atau menyimpan data pembayaran Anda.</aside>
+      </section>
+      <section class="form-panel" aria-labelledby="form-title">
+        <div id="registrationFormView">
+          <div class="form-panel__heading"><div><h2 id="form-title">DAFTAR MEMBER</h2><p>Pilih tier lalu isi data yang akan dicocokkan kasir di outlet.</p></div></div>
+          <form id="membershipRegistrationForm" novalidate>
+            <fieldset>
+              <legend>Pilih tier</legend>
+              <div class="tier-grid" role="radiogroup" aria-label="Tier membership">
+                <div class="tier-option" style="--tier-color:#c7ccd4"><input id="tierSilver" name="tier" type="radio" value="silver" /><label for="tierSilver"><span class="tier-option__name">SILVER</span><span class="tier-option__price">Rp100.000</span><span class="tier-option__term">12 bulan</span></label></div>
+                <div class="tier-option" style="--tier-color:#f2b73d"><input id="tierGold" name="tier" type="radio" value="gold" checked /><label for="tierGold"><span class="tier-option__name">GOLD</span><span class="tier-option__price">Rp250.000</span><span class="tier-option__term">12 bulan</span></label></div>
+                <div class="tier-option" style="--tier-color:#c4b5fd"><input id="tierPlatinum" name="tier" type="radio" value="platinum" /><label for="tierPlatinum"><span class="tier-option__name">PLATINUM</span><span class="tier-option__price">Rp1.500.000</span><span class="tier-option__term">12 bulan</span></label></div>
+              </div>
+            </fieldset>
+            <div class="form-grid">
+              <label class="field" for="fullName"><span class="field-label">Nama lengkap</span><input id="fullName" name="fullName" type="text" autocomplete="name" placeholder="Nama sesuai identitas" required /></label>
+              <label class="field" for="phone"><span class="field-label">Nomor WhatsApp</span><input id="phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="0812 3456 789" required /><span class="field-help">Gunakan nomor aktif yang akan Anda tunjukkan ke kasir.</span></label>
+              <label class="field" for="email"><span class="field-label">Email <em style="color:#777;font-style:normal;font-weight:500">(opsional)</em></span><input id="email" name="email" type="email" autocomplete="email" placeholder="nama@email.com" /></label>
+            </div>
+            <button id="registrationSubmit" class="submit-button" type="submit">Lanjutkan Pendaftaran</button>
+            <p id="formStatus" class="form-status" aria-live="polite"></p>
+            <p class="form-footnote">Dengan lanjut, Anda membuat kode pendaftaran yang berlaku 7 hari untuk pembayaran di outlet.</p>
+          </form>
+        </div>
+        <section id="registrationConfirmation" class="confirmation" tabindex="-1" aria-live="polite" aria-labelledby="confirmationTitle">
+          <div class="confirmation__mark" aria-hidden="true">✓</div>
+          <h2 id="confirmationTitle">KODE SUDAH DIBUAT</h2>
+          <p>Terima kasih. Tunjukkan kode ini saat melakukan pembayaran di outlet Redbox.</p>
+          <div class="registration-code"><span>Kode pendaftaran</span><strong id="registrationCode">RBM-</strong></div>
+          <p id="confirmationSummary"></p>
+          <p id="confirmationDeadline" class="confirmation__deadline"></p>
+          <a href="membership.html">Kembali ke detail membership</a>
+        </section>
+      </section>
+    </div>
+  </main>
+  <script src="js/member-registration.js"></script>
+</body>
+</html>
