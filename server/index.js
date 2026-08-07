@@ -3056,8 +3056,9 @@ const { createBarberRoutes } = require('./routes/barber');
 app.use('/api/barber', createBarberRoutes(supabase));
 const { createBarberCronRoutes } = require('./routes/barberCron');
 app.use('/api/cron', createBarberCronRoutes(supabase, adminAuth));
-const { createAdminCrmRoutes } = require('./routes/adminCrm');
+const { createAdminCrmRoutes, createMembershipRegistrationRoutes } = require('./routes/adminCrm');
 app.use('/api/admin/crm', createAdminCrmRoutes(supabase, adminAuth));
+app.use('/api', createMembershipRegistrationRoutes(supabase));
 
 // POST /api/push/subscribe — save push subscription token
 app.post('/api/push/subscribe', async (req, res) => {

@@ -47,6 +47,17 @@ function makePendingRegistration({ now = new Date(), ...customer } = {}) {
   };
 }
 
+function toPublicRegistration(registration) {
+  return {
+    registrationId: registration.registrationId || registration.id,
+    registrationCode: registration.registrationCode || registration.registration_code,
+    tier: registration.tier,
+    amount: registration.amount ?? registration.priceSnapshot ?? registration.price_snapshot,
+    status: registration.status,
+    expiresAt: registration.expiresAt || registration.expires_at,
+  };
+}
+
 function validatePaymentInput({ paymentMethod, paymentReference } = {}) {
   if (!PAYMENT_METHODS.has(paymentMethod)) throw new Error('invalid payment method');
   if (typeof paymentReference !== 'string' || !paymentReference.trim()) {
@@ -97,6 +108,7 @@ module.exports = {
   getTierPrice,
   normalizePhone,
   makePendingRegistration,
+  toPublicRegistration,
   getMembershipPeriod,
   validatePaymentInput,
   validateActivationInput,

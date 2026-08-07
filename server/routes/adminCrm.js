@@ -5,7 +5,9 @@ const { randomUUID } = require('crypto');
 const { membershipStateForSync, isActiveMembership } = require('../membership-policy');
 const {
   getTierPrice,
+  normalizePhone,
   makePendingRegistration,
+  toPublicRegistration,
   validatePaymentInput,
 } = require('../services/membershipRegistration');
 
@@ -112,6 +114,143 @@ function matchBarberName(csvName, barbers, preferBranch) {
     }
   }
   return best;
+}
+
+function createMembershipRegistrationRoutes(supabase) {
+  const router = express.Router();
+
+  router.post('/membership/registrations', async (req, res) => {
+    const body = req.body || {};
+    const fullName = typeof body.fullName === 'string' ? body.fullName.trim() : '';
+    if (!fullName) return res.status(400).json({ error: 'fullName required' });
+
+    let phone;
+    let amount;
+    try {
+      phone = normalizePhone(body.phone);
+      amount = getTierPrice(body.tier);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const now = new Date();
+    try {
+      const { data: existingProfile, error: profileLookupError } = await supabase
+        .from('member_profiles')
+        .select('id,user_key,full_name,email,phone,membership_status,membership_expires_at,current_tier')
+        .eq('phone', phone)
+        .maybeSingle();
+      if (profileLookupError) throw profileLookupError;
+
+      const profileIsActive = existingProfile?.membership_status === 'ACTIVE' && (
+        !existingProfile.membership_expires_at || new Date(existingProfile.membership_expires_at) > now
+      );
+      if (profileIsActive) {
+        return res.status(409).json({
+          error: 'active membership already exists',
+          tier: existingProfile.current_tier || null,
+          expiresAt: existingProfile.membership_expires_at || null,
+        });
+      }
+
+      const { data: existingCustomer, error: customerLookupError } = await supabase
+        .from('customers')
+        .select('id,name,email,phone_e164,membership_status,membership_expires_at,current_tier')
+        .eq('phone_e164', phone)
+        .maybeSingle();
+      if (customerLookupError) throw customerLookupError;
+      const customerIsActive = existingCustomer?.membership_status === 'ACTIVE' && (
+        !existingCustomer.membership_expires_at || new Date(existingCustomer.membership_expires_at) > now
+      );
+      if (customerIsActive) {
+        return res.status(409).json({
+          error: 'active membership already exists',
+          tier: existingCustomer.current_tier || null,
+          expiresAt: existingCustomer.membership_expires_at || null,
+        });
+      }
+
+      const { data: existingPending, error: pendingLookupError } = await supabase
+        .from('membership_registrations')
+        .select('id,registration_code,tier,price_snapshot,status,expires_at')
+        .eq('phone_normalized', phone)
+        .eq('tier', body.tier)
+        .eq('status', 'PENDING')
+        .gt('expires_at', now.toISOString())
+        .maybeSingle();
+      if (pendingLookupError) throw pendingLookupError;
+      if (existingPending) return res.status(200).json(toPublicRegistration(existingPending));
+
+      const email = typeof body.email === 'string' && body.email.trim()
+        ? body.email.trim()
+        : (existingProfile?.email || existingCustomer?.email || `member_${phone.slice(3)}@redbox.internal`);
+      const digits = phone.slice(1);
+      const userKey = existingProfile?.user_key || `member_${digits}`;
+
+      if (!existingCustomer) {
+        const { error } = await supabase.from('customers').insert({
+          wa: digits,
+          phone_e164: phone,
+          name: fullName,
+          email,
+          membership_status: 'INACTIVE',
+          membership_activated_at: null,
+          membership_started_at: null,
+          membership_expires_at: null,
+        });
+        if (error) throw error;
+      }
+      if (!existingProfile) {
+        const { error } = await supabase.from('member_profiles').insert({
+          user_key: userKey,
+          full_name: fullName,
+          email,
+          phone,
+          membership_status: 'INACTIVE',
+          membership_activated_at: null,
+          membership_started_at: null,
+          membership_expires_at: null,
+          current_tier: null,
+        });
+        if (error) throw error;
+      }
+
+      const registration = makePendingRegistration({
+        registrationCode: `RBM-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`,
+        userKey,
+        fullName,
+        phone,
+        email,
+        tier: body.tier,
+        now,
+      });
+      const { data: created, error: registrationError } = await supabase
+        .from('membership_registrations')
+        .insert({
+          registration_code: registration.registrationCode,
+          user_key: registration.userKey,
+          full_name: registration.fullName,
+          phone: registration.phone,
+          phone_normalized: registration.phone,
+          email: registration.email,
+          tier: registration.tier,
+          price_snapshot: registration.priceSnapshot,
+          status: registration.status,
+          expires_at: registration.expiresAt,
+          created_at: registration.createdAt,
+          updated_at: registration.updatedAt,
+        })
+        .select('id,registration_code,tier,price_snapshot,status,expires_at')
+        .single();
+      if (registrationError) throw registrationError;
+
+      return res.status(201).json(toPublicRegistration({ ...created, amount }));
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'membership registration failed' });
+    }
+  });
+
+  return router;
 }
 
 function createAdminCrmRoutes(supabase, adminAuth) {
@@ -1449,4 +1588,4 @@ Terima kasih 🙏
   return router;
 }
 
-module.exports = { createAdminCrmRoutes };
+module.exports = { createAdminCrmRoutes, createMembershipRegistrationRoutes };
