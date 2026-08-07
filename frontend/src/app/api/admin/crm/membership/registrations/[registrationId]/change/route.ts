@@ -6,6 +6,7 @@ import {
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 const PAID_TIERS = new Set(['silver', 'gold', 'platinum']);
+const MEMBERSHIP_CHANGE_TYPES = new Set(['RENEWAL', 'UPGRADE']);
 
 export async function POST(
   request: NextRequest,
@@ -17,8 +18,13 @@ export async function POST(
   const { registrationId } = await params;
   const body = await request.json().catch(() => ({}));
   const tier = typeof body.tier === 'string' ? body.tier.trim().toLowerCase() : '';
-  if (!registrationId || !PAID_TIERS.has(tier)) {
-    return NextResponse.json({ error: 'registrationId and valid destination tier are required' }, { status: 400 });
+  const registrationType = typeof body.registrationType === 'string'
+    ? body.registrationType.trim().toUpperCase()
+    : '';
+  if (!registrationId || !PAID_TIERS.has(tier) || !MEMBERSHIP_CHANGE_TYPES.has(registrationType)) {
+    return NextResponse.json({
+      error: 'registrationId, valid destination tier, and registrationType are required',
+    }, { status: 400 });
   }
 
   try {
@@ -27,7 +33,7 @@ export async function POST(
       signal: AbortSignal.timeout(10_000),
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tier }),
+      body: JSON.stringify({ tier, registrationType }),
     });
     return NextResponse.json(await response.json(), { status: response.status });
   } catch (error) {

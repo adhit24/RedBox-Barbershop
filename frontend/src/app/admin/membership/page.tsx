@@ -166,7 +166,7 @@ function MembershipPageInner() {
       const response = await fetch(`/api/admin/crm/membership/registrations/${changeSelection.registration.id}/change`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: destinationTier }),
+        body: JSON.stringify({ tier: destinationTier, registrationType: changeSelection.kind }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || 'Pendaftaran membership lanjutan gagal.');

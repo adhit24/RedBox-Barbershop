@@ -56,6 +56,7 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(page, /registration\.canRenew/);
   assert.match(page, /Nominal penuh tier tujuan/);
   assert.match(page, /registrations\/\$\{changeSelection\.registration\.id\}\/change/);
+  assert.match(page, /registrationType:\s*changeSelection\.kind/);
   assert.match(page, /TIER_PRICES\[destinationTier\]/);
   assert.doesNotMatch(page, /userKey:\s*activating/);
   assert.doesNotMatch(page, /tier:\s*tier/);
@@ -85,7 +86,8 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(changeProxy, /requireMembershipAdminSession\(\)/);
   assert.match(changeProxy, /createMembershipAdminProxyHeaders\(auth\.session\)/);
   assert.match(changeProxy, /registrations\/\$\{encodeURIComponent\(registrationId\)\}\/change/);
-  assert.match(changeProxy, /JSON\.stringify\(\{ tier \}\)/);
+  assert.match(changeProxy, /body\.registrationType/);
+  assert.match(changeProxy, /JSON\.stringify\(\{ tier, registrationType \}\)/);
   assert.doesNotMatch(changeProxy, /JSON\.stringify\(body\)/);
   assert.doesNotMatch(changeProxy, /body\.(?:staffId|amount|branch|role)/);
   assert.match(backend, /verified membership admin session required/);

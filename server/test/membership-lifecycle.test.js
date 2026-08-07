@@ -77,7 +77,9 @@ test('expired member renewal creates a full-price Pending registration from trus
   await withServer(supabase, async (url) => {
     const response = await fetch(`${url}/membership/registrations/source-registration/change`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ tier: 'silver', amount: 1, branch: 'tegal', staffId: 'spoofed' }),
+      body: JSON.stringify({
+        tier: 'silver', registrationType: 'RENEWAL', amount: 1, branch: 'tegal', staffId: 'spoofed',
+      }),
     });
     assert.equal(response.status, 201);
     assert.deepEqual(await response.json(), {
@@ -90,6 +92,7 @@ test('expired member renewal creates a full-price Pending registration from trus
     name: 'create_membership_change_registration',
     args: {
       p_source_registration_id: 'source-registration', p_tier: 'silver',
+      p_registration_type: 'RENEWAL',
       p_requested_by: 'staff-session-42', p_requested_branch: 'csb',
     },
   }]);
@@ -103,7 +106,7 @@ test('active member upgrade uses the full destination-tier snapshot and duplicat
     await withServer(supabase, async (url) => {
       const response = await fetch(`${url}/membership/registrations/source-registration/change`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tier: 'platinum', amount: 100000 }),
+        body: JSON.stringify({ tier: 'platinum', registrationType: 'UPGRADE', amount: 100000 }),
       });
       assert.equal(response.status, wasCreated ? 201 : 200);
       const body = await response.json();
@@ -111,7 +114,31 @@ test('active member upgrade uses the full destination-tier snapshot and duplicat
       assert.equal(body.registrationType, 'UPGRADE');
       assert.equal(body.status, 'PENDING');
     });
-    assert.equal(supabase.state.rpcCalls.length, 1);
+    assert.deepEqual(supabase.state.rpcCalls, [{
+      name: 'create_membership_change_registration',
+      args: {
+        p_source_registration_id: 'source-registration', p_tier: 'platinum',
+        p_registration_type: 'UPGRADE',
+        p_requested_by: 'staff-session-42', p_requested_branch: 'csb',
+      },
+    }]);
+  }
+});
+
+test('renewal duplicate request is idempotent for the same source and operation type', async () => {
+  for (const wasCreated of [true, false]) {
+    const supabase = changeSupabase({ wasCreated, registrationType: 'RENEWAL' });
+    await withServer(supabase, async (url) => {
+      const response = await fetch(`${url}/membership/registrations/source-registration/change`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tier: 'silver', registrationType: 'RENEWAL' }),
+      });
+      assert.equal(response.status, wasCreated ? 201 : 200);
+      const body = await response.json();
+      assert.equal(body.registrationType, 'RENEWAL');
+      assert.equal(body.sourceRegistrationId, 'source-registration');
+    });
+    assert.equal(supabase.state.rpcCalls[0].args.p_registration_type, 'RENEWAL');
   }
 });
 
@@ -120,7 +147,7 @@ test('branch admin cannot create renewal or upgrade from another branch', async 
   await withServer(supabase, async (url) => {
     const response = await fetch(`${url}/membership/registrations/source-registration/change`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ tier: 'gold' }),
+      body: JSON.stringify({ tier: 'gold', registrationType: 'UPGRADE' }),
     });
     assert.equal(response.status, 403);
     assert.match((await response.json()).error, /branch access denied/i);
@@ -128,17 +155,34 @@ test('branch admin cannot create renewal or upgrade from another branch', async 
   assert.equal(supabase.state.rpcCalls.length, 0);
 });
 
+test('membership change requires an explicit renewal or upgrade operation type', async () => {
+  const supabase = changeSupabase();
+  await withServer(supabase, async (url) => {
+    for (const registrationType of [undefined, 'NEW', 'invalid']) {
+      const response = await fetch(`${url}/membership/registrations/source-registration/change`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tier: 'gold', registrationType }),
+      });
+      assert.equal(response.status, 400);
+      assert.match((await response.json()).error, /registrationtype/i);
+    }
+  });
+  assert.equal(supabase.state.activationReads, 0);
+  assert.equal(supabase.state.rpcCalls.length, 0);
+});
+
 test('membership change maps business conflicts to 409 and infrastructure failures to 500', async () => {
   for (const [message, expectedStatus] of [
     ['upgrade destination tier must be higher than current tier', 409],
     ['source membership registration is not the latest paid period', 409],
+    ['membership change type does not match current state', 409],
     ['database connection unavailable', 500],
   ]) {
     const supabase = changeSupabase({ rpcError: message });
     await withServer(supabase, async (url) => {
       const response = await fetch(`${url}/membership/registrations/source-registration/change`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tier: 'gold' }),
+        body: JSON.stringify({ tier: 'gold', registrationType: 'UPGRADE' }),
       });
       assert.equal(response.status, expectedStatus);
       assert.match((await response.json()).error, new RegExp(message, 'i'));
@@ -158,6 +202,8 @@ test('renewal and upgrade lifecycle SQL preserves activation history and starts 
 
   assert.match(changeSql, /v_kind := 'UPGRADE'/);
   assert.match(changeSql, /v_kind := 'RENEWAL'/);
+  assert.match(changeSql, /p_registration_type TEXT/);
+  assert.match(changeSql, /membership change type does not match current state/);
   assert.match(changeSql, /p_tier, v_price, v_kind/);
   assert.match(changeSql, /source membership registration is not the latest paid period/);
   assert.match(changeSql, /'EXISTING_PENDING'::TEXT, FALSE/);
@@ -165,6 +211,25 @@ test('renewal and upgrade lifecycle SQL preserves activation history and starts 
   assert.match(activationSql, /r\.registration_type <> 'UPGRADE'/);
   assert.doesNotMatch(changeSql, /(?:UPDATE|DELETE FROM)\s+member_activations/i);
   assert.doesNotMatch(activationSql, /(?:UPDATE|DELETE FROM)\s+member_activations/i);
+});
+
+test('old NEW Pending for the same tier is cancelled and never reused as an upgrade', () => {
+  const migration = fs.readFileSync(path.join(
+    __dirname, '..', 'migrations', '2026-08-08-paid-membership-registration.sql'
+  ), 'utf8');
+  const changeStart = migration.indexOf('CREATE OR REPLACE FUNCTION create_membership_change_registration');
+  const activationStart = migration.indexOf('CREATE OR REPLACE FUNCTION activate_membership_registration');
+  const changeSql = migration.slice(changeStart, activationStart);
+
+  assert.match(migration, /DROP INDEX IF EXISTS uq_membership_registrations_pending_phone_tier/);
+  assert.match(migration, /CREATE UNIQUE INDEX[^;]+registration_type[^;]+COALESCE\(source_registration_id/si);
+  assert.match(changeSql, /registration_type IS DISTINCT FROM v_kind[\s\S]+source_registration_id IS DISTINCT FROM v_source\.id/);
+  assert.match(changeSql, /registration_type = v_kind[\s\S]+source_registration_id = v_source\.id/);
+  assert.ok(
+    changeSql.indexOf('registration_type IS DISTINCT FROM v_kind')
+      < changeSql.indexOf('registration_type = v_kind'),
+    'irrelevant Pending rows must be cancelled before exact idempotent lookup',
+  );
 });
 
 test('CRM list expires stale Pending rows before reading registrations', () => {

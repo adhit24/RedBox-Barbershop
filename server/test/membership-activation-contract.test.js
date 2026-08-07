@@ -38,7 +38,7 @@ test('database contract constrains payment methods and canonical phone uniquenes
   assert.match(migration, /ON member_profiles \(normalize_membership_phone\(phone\)\)/);
 });
 
-test('registration RPC serializes canonical identities and uniquely guards pending phone+tier', () => {
+test('registration RPC serializes canonical identities and uniquely guards pending operation identity', () => {
   const registrationRpc = position('CREATE OR REPLACE FUNCTION create_membership_registration');
   const advisoryLock = position("pg_advisory_xact_lock(hashtextextended('membership-registration:' || v_phone, 0))");
   const pendingLookup = position('SELECT mr.* INTO v_registration');
@@ -46,7 +46,7 @@ test('registration RPC serializes canonical identities and uniquely guards pendi
   assert.ok(advisoryLock < pendingLookup);
   assert.match(
     migration,
-    /CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_registrations_pending_phone_tier\s+ON membership_registrations \(phone_normalized, tier\)\s+WHERE status = 'PENDING'/
+    /CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_registrations_pending_operation[\s\S]+phone_normalized,[\s\S]+tier,[\s\S]+registration_type,[\s\S]+COALESCE\(source_registration_id[\s\S]+WHERE status = 'PENDING'/
   );
 });
 

@@ -165,7 +165,11 @@ function membershipActivationErrorStatus(error) {
 function membershipChangeErrorStatus(error) {
   const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
   if (message.includes('branch access denied')) return 403;
-  if (message.includes('invalid tier') || message.includes('invalid branch')) return 400;
+  if (
+    message.includes('invalid tier')
+    || message.includes('invalid branch')
+    || message.includes('invalid membership change type')
+  ) return 400;
   const conflicts = [
     'source membership registration not found',
     'paid membership history required',
@@ -173,6 +177,7 @@ function membershipChangeErrorStatus(error) {
     'upgrade destination tier must be higher than current tier',
     'legacy active membership',
     'membership is still active',
+    'membership change type does not match current state',
   ];
   return conflicts.some((known) => message.includes(known)) ? 409 : 500;
 }
@@ -1434,7 +1439,13 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
     const registrationId = String(req.params.registrationId || '').trim();
     const destinationTier = typeof req.body?.tier === 'string' ? req.body.tier.trim().toLowerCase() : '';
+    const registrationType = typeof req.body?.registrationType === 'string'
+      ? req.body.registrationType.trim().toUpperCase()
+      : '';
     if (!registrationId) return res.status(400).json({ error: 'registrationId required' });
+    if (!['RENEWAL', 'UPGRADE'].includes(registrationType)) {
+      return res.status(400).json({ error: 'valid registrationType required' });
+    }
     try {
       getTierPrice(destinationTier);
     } catch (err) {
@@ -1469,6 +1480,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       const { data, error } = await supabase.rpc('create_membership_change_registration', {
         p_source_registration_id: registrationId,
         p_tier: destinationTier,
+        p_registration_type: registrationType,
         p_requested_by: access.staffId,
         p_requested_branch: sourceBranch,
       });
@@ -1479,6 +1491,12 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       }
       const registration = Array.isArray(data) ? data[0] : data;
       if (!registration) throw new Error('membership change registration returned no result');
+      if (
+        registration.registration_type !== registrationType
+        || registration.source_registration_id !== registrationId
+      ) {
+        throw new Error('membership change operation identity mismatch');
+      }
       const publicRegistration = toPublicRegistration(registration);
       return res.status(registration.was_created ? 201 : 200).json({
         ...publicRegistration,

@@ -133,16 +133,18 @@ CREATE INDEX IF NOT EXISTS idx_membership_registrations_expires_at
 CREATE INDEX IF NOT EXISTS idx_membership_registrations_source
   ON membership_registrations (source_registration_id);
 
--- Keep one live Pending row per canonical phone+tier. PostgreSQL cannot use
--- NOW() in a partial-index predicate, so the RPC expires stale rows while
--- this index serialises every remaining Pending insert.
+-- Keep one live Pending row per authoritative operation identity. NEW rows
+-- have no source, while RENEWAL/UPGRADE rows are keyed to their paid source
+-- period. PostgreSQL cannot use NOW() in a partial-index predicate, so the
+-- RPC expires stale rows while this index serialises live Pending inserts.
 UPDATE membership_registrations
 SET status = 'EXPIRED', updated_at = NOW()
 WHERE status = 'PENDING' AND expires_at <= NOW();
 
 WITH duplicate_pending AS (
   SELECT id, ROW_NUMBER() OVER (
-    PARTITION BY phone_normalized, tier
+    PARTITION BY phone_normalized, tier, registration_type,
+      COALESCE(source_registration_id, '00000000-0000-0000-0000-000000000000'::UUID)
     ORDER BY created_at ASC, id ASC
   ) AS duplicate_rank
   FROM membership_registrations
@@ -153,8 +155,14 @@ SET status = 'CANCELLED', updated_at = NOW()
 FROM duplicate_pending AS duplicate
 WHERE mr.id = duplicate.id AND duplicate.duplicate_rank > 1;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_registrations_pending_phone_tier
-  ON membership_registrations (phone_normalized, tier)
+DROP INDEX IF EXISTS uq_membership_registrations_pending_phone_tier;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_membership_registrations_pending_operation
+  ON membership_registrations (
+    phone_normalized,
+    tier,
+    registration_type,
+    (COALESCE(source_registration_id, '00000000-0000-0000-0000-000000000000'::UUID))
+  )
   WHERE status = 'PENDING';
 
 DROP INDEX IF EXISTS uq_membership_registrations_active_phone;
@@ -310,6 +318,8 @@ BEGIN
   WHERE mr.phone_normalized = v_phone
     AND mr.tier = p_tier
     AND mr.status = 'PENDING'
+    AND mr.registration_type = 'NEW'
+    AND mr.source_registration_id IS NULL
     AND mr.expires_at > v_now
   ORDER BY mr.created_at ASC, mr.id ASC
   LIMIT 1
@@ -376,11 +386,13 @@ BEGIN
 
   INSERT INTO membership_registrations (
     registration_code, user_key, full_name, phone, phone_normalized,
-    email, tier, price_snapshot, status, expires_at, created_at, updated_at
+    email, tier, price_snapshot, registration_type, source_registration_id,
+    status, expires_at, created_at, updated_at
   ) VALUES (
     'RBM-' || UPPER(substring(replace(gen_random_uuid()::TEXT, '-', '') FROM 1 FOR 12)),
     v_user_key, BTRIM(p_full_name), v_phone, v_phone,
-    v_email, p_tier, v_price, 'PENDING', v_now + INTERVAL '7 days', v_now, v_now
+    v_email, p_tier, v_price, 'NEW', NULL,
+    'PENDING', v_now + INTERVAL '7 days', v_now, v_now
   ) RETURNING * INTO v_registration;
 
   RETURN QUERY SELECT
@@ -391,9 +403,12 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS create_membership_change_registration(UUID, TEXT, TEXT, TEXT);
+
 CREATE OR REPLACE FUNCTION create_membership_change_registration(
   p_source_registration_id UUID,
   p_tier TEXT,
+  p_registration_type TEXT,
   p_requested_by TEXT,
   p_requested_branch TEXT
 )
@@ -416,6 +431,7 @@ DECLARE
   v_price INTEGER;
   v_phone TEXT;
   v_kind TEXT;
+  v_requested_kind TEXT := UPPER(BTRIM(COALESCE(p_registration_type, '')));
   v_current_tier TEXT;
   v_source membership_registrations%ROWTYPE;
   v_registration membership_registrations%ROWTYPE;
@@ -428,6 +444,9 @@ BEGIN
   END IF;
   IF NULLIF(BTRIM(p_requested_by), '') IS NULL THEN
     RAISE EXCEPTION 'authenticated staff identity required';
+  END IF;
+  IF v_requested_kind NOT IN ('RENEWAL', 'UPGRADE') THEN
+    RAISE EXCEPTION 'invalid membership change type';
   END IF;
   p_requested_branch := LOWER(BTRIM(COALESCE(p_requested_branch, '')));
   IF p_requested_branch NOT IN ('bypass', 'sumber', 'samadikun', 'csb', 'tegal') THEN
@@ -515,11 +534,30 @@ BEGIN
     v_kind := 'RENEWAL';
   END IF;
 
+  IF v_requested_kind <> v_kind THEN
+    RAISE EXCEPTION 'membership change type does not match current state';
+  END IF;
+
   UPDATE membership_registrations AS mr
   SET status = 'EXPIRED', updated_at = v_now
   WHERE mr.phone_normalized = v_phone
     AND mr.status = 'PENDING'
     AND mr.expires_at <= v_now;
+
+  -- A live Pending row from another operation (for example an old NEW row
+  -- for the same destination tier) is not idempotent with this change. Keep
+  -- its history, but cancel it so it can never be returned or activated as
+  -- the requested renewal/upgrade.
+  UPDATE membership_registrations AS mr
+  SET status = 'CANCELLED', updated_at = v_now
+  WHERE mr.phone_normalized = v_phone
+    AND mr.tier = p_tier
+    AND mr.status = 'PENDING'
+    AND mr.expires_at > v_now
+    AND (
+      mr.registration_type IS DISTINCT FROM v_kind
+      OR mr.source_registration_id IS DISTINCT FROM v_source.id
+    );
 
   SELECT mr.* INTO v_registration
   FROM membership_registrations AS mr
@@ -527,6 +565,8 @@ BEGIN
     AND mr.tier = p_tier
     AND mr.status = 'PENDING'
     AND mr.expires_at > v_now
+    AND mr.registration_type = v_kind
+    AND mr.source_registration_id = v_source.id
   ORDER BY mr.created_at ASC, mr.id ASC
   LIMIT 1
   FOR UPDATE;
