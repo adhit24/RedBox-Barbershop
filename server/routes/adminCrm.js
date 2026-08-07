@@ -119,6 +119,20 @@ function getAuthenticatedStaffId(req) {
   return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
 }
 
+const MEMBERSHIP_ACTIVATION_CONFLICT_MESSAGES = [
+  'active membership already exists',
+  'membership registration already activated',
+  'membership registration is not pending',
+  'membership registration has expired',
+];
+
+function membershipActivationErrorStatus(error) {
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+  return MEMBERSHIP_ACTIVATION_CONFLICT_MESSAGES.some((known) => message.includes(known))
+    ? 409
+    : 500;
+}
+
 function createMembershipRegistrationRoutes(supabase, { rateLimiters = [] } = {}) {
   const router = express.Router();
 
@@ -1349,7 +1363,11 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         p_branch: branch.trim(),
         p_confirmed_by: staffId,
       });
-      if (error) return res.status(409).json({ error: error.message });
+      if (error) {
+        return res.status(membershipActivationErrorStatus(error)).json({
+          error: error.message || 'membership activation failed',
+        });
+      }
       const activation = Array.isArray(data) ? data[0] : data;
       if (!activation) throw new Error('membership activation returned no result');
       return res.json({
@@ -1368,74 +1386,47 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
   router.post('/membership/activate', adminAuth, async (req, res) => {
     const body = req.body || {};
-    const userKey = body.userKey || body.user_key;
+    const registrationId = body.registrationId || body.registration_id;
     const branch = body.branch;
-    const tier = body.tier;
     const paymentMethod = body.payMethod || body.paymentMethod || body.payment_method;
     const paymentReference = body.paymentReference || body.payment_reference;
-    const staffId = body.staffId || body.staff_id || body.confirmedBy || body.confirmed_by;
+    const staffId = getAuthenticatedStaffId(req);
+    if (typeof registrationId !== 'string' || !registrationId.trim()) {
+      return res.status(400).json({ error: 'registrationId required' });
+    }
+    if (typeof branch !== 'string' || !branch.trim()) {
+      return res.status(400).json({ error: 'branch required' });
+    }
+    if (!staffId) {
+      return res.status(403).json({ error: 'authenticated staff identity required' });
+    }
+
     let payment;
     try {
       payment = validatePaymentInput({ paymentMethod, paymentReference });
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
-    if (typeof branch !== 'string' || !branch.trim()) {
-      return res.status(400).json({ error: 'branch required' });
-    }
-    if (typeof staffId !== 'string' || !staffId.trim()) {
-      return res.status(400).json({ error: 'staff identity required' });
-    }
 
-    let registrationId = body.registrationId || body.registration_id;
     try {
-      // Compatibility for the current CRM caller: it may still identify a member by userKey.
-      // It is deliberately routed through a persisted pending registration before activation.
-      if (!registrationId) {
-        if (!userKey) return res.status(400).json({ error: 'registrationId or userKey required' });
-        try {
-          getTierPrice(tier);
-        } catch (err) {
-          return res.status(400).json({ error: err.message });
-        }
-        const { data: profile, error: profileErr } = await supabase.from('member_profiles')
-          .select('user_key,full_name,phone,email')
-          .eq('user_key', userKey)
-          .maybeSingle();
-        if (profileErr) throw profileErr;
-        if (!profile) return res.status(404).json({ error: 'member profile not found' });
-
-        const { data: registrationRows, error: registrationErr } = await supabase.rpc(
-          'create_membership_registration',
-          {
-            p_full_name: profile.full_name || 'Member RedBox',
-            p_phone: normalizePhone(profile.phone),
-            p_email: profile.email || null,
-            p_tier: tier,
-          }
-        );
-        if (registrationErr) throw registrationErr;
-        const registration = Array.isArray(registrationRows) ? registrationRows[0] : registrationRows;
-        if (!registration) throw new Error('membership registration returned no result');
-        if (registration.outcome === 'ACTIVE_MEMBERSHIP') {
-          return res.status(409).json({ error: 'active membership already exists' });
-        }
-        registrationId = registration.registration_id;
-      }
-
       const { data: activation, error: activationErr } = await supabase.rpc(
         'activate_membership_registration',
         {
-          p_registration_id: registrationId,
+          p_registration_id: registrationId.trim(),
           p_payment_method: payment.paymentMethod,
           p_payment_reference: payment.paymentReference,
           p_branch: branch.trim(),
-          p_confirmed_by: staffId.trim(),
+          p_confirmed_by: staffId,
         }
       );
-      if (activationErr) return res.status(409).json({ error: activationErr.message });
+      if (activationErr) {
+        return res.status(membershipActivationErrorStatus(activationErr)).json({
+          error: activationErr.message || 'membership activation failed',
+        });
+      }
       const result = Array.isArray(activation) ? activation[0] : activation;
-      return res.json({ success: true, registrationId, ...(result || {}) });
+      if (!result) throw new Error('membership activation returned no result');
+      return res.json({ success: true, registrationId: registrationId.trim(), ...result });
     } catch (err) {
       return res.status(500).json({ error: err.message || 'membership activation failed' });
     }

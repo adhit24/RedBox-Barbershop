@@ -63,7 +63,7 @@ function createMembershipStatusSupabase({ registrations = [], profiles = [], act
   };
 }
 
-test('CRM activation delegates a registration to the atomic RPC with payment metadata', async () => {
+test('legacy CRM activation ignores spoofed staff, tier, and amount and delegates the persisted registration', async () => {
   const calls = [];
   const supabase = {
     rpc: async (name, args) => {
@@ -76,7 +76,8 @@ test('CRM activation delegates a registration to the atomic RPC with payment met
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         registrationId: '01234567-89ab-cdef-0123-456789abcdef', branch: 'csb',
-        payMethod: 'qris', paymentReference: 'QRIS-123', staffId: 'staff-42',
+        payMethod: 'qris', paymentReference: 'QRIS-123', staffId: 'spoofed-staff',
+        confirmedBy: 'spoofed-confirmer', tier: 'silver', amount: 1,
       }),
     });
     assert.equal(response.status, 200);
@@ -87,7 +88,7 @@ test('CRM activation delegates a registration to the atomic RPC with payment met
     args: {
       p_registration_id: '01234567-89ab-cdef-0123-456789abcdef',
       p_payment_method: 'qris', p_payment_reference: 'QRIS-123',
-      p_branch: 'csb', p_confirmed_by: 'staff-42',
+      p_branch: 'csb', p_confirmed_by: 'authenticated-staff-42',
     },
   }]);
 });
@@ -123,58 +124,26 @@ test('CRM requires a staff identity before it can call the activation RPC', asyn
   await withServer({ rpc: async () => { rpcCalls++; return { data: [], error: null }; } }, async (url) => {
     const response = await fetch(`${url}/membership/activate`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1' }),
+      body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1', staffId: 'spoofed-staff' }),
     });
-    assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /staff/i);
-  });
+    assert.equal(response.status, 403);
+    assert.match((await response.json()).error, /authenticated staff identity/i);
+  }, { staffId: null });
   assert.equal(rpcCalls, 0);
 });
 
-test('legacy userKey activation creates or reuses a canonical pending registration through the RPC', async () => {
-  const rpcCalls = [];
-  const supabase = {
-    from(table) {
-      if (table === 'member_profiles') {
-        return {
-          select() { return this; },
-          eq() { return this; },
-          async maybeSingle() {
-            return { data: { user_key: 'member-1', full_name: 'Member One', phone: '0812 3456 789', email: 'one@example.test' }, error: null };
-          },
-        };
-      }
-      throw new Error(`unexpected table ${table}`);
-    },
-    async rpc(name, args) {
-      rpcCalls.push({ name, args });
-      if (name === 'create_membership_registration') {
-        return {
-          data: [{ outcome: 'CREATED', was_created: true, registration_id: 'reg-1' }],
-          error: null,
-        };
-      }
-      return { data: [{ registration_id: args.p_registration_id }], error: null };
-    },
-  };
+test('legacy CRM activation requires a persisted registrationId and rejects the userKey plus tier fallback', async () => {
+  let rpcCalls = 0;
+  const supabase = { rpc: async () => { rpcCalls++; return { data: [], error: null }; } };
   await withServer(supabase, async (url) => {
     const response = await fetch(`${url}/membership/activate`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ userKey: 'member-1', tier: 'silver', branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1', staffId: 'staff-42' }),
     });
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /registrationId required/i);
   });
-  assert.deepEqual(rpcCalls[0], {
-    name: 'create_membership_registration',
-    args: {
-      p_full_name: 'Member One',
-      p_phone: '+628123456789',
-      p_email: 'one@example.test',
-      p_tier: 'silver',
-    },
-  });
-  assert.equal(rpcCalls[1].name, 'activate_membership_registration');
-  assert.equal(rpcCalls[1].args.p_registration_id, 'reg-1');
+  assert.equal(rpcCalls, 0);
 });
 
 test('CRM registration list exposes identity, stored amount, payment audit, periods, and derived status', async () => {
@@ -372,39 +341,53 @@ test('CRM registration activation requires staff identity supplied by admin auth
   assert.equal(supabase.state.rpcCalls.length, 0);
 });
 
-test('CRM registration activation returns duplicate and active-member conflicts without claiming success', async () => {
-  for (const message of ['membership registration is not pending', 'active membership already exists']) {
-    const supabase = createMembershipStatusSupabase({ activationError: message });
-    await withServer(supabase, async (url) => {
-      const response = await fetch(`${url}/membership/registrations/reg-1/activate`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1' }),
+test('both CRM activation routes return only known business conflicts as 409', async () => {
+  const messages = [
+    'membership registration is not pending',
+    'membership registration has expired',
+    'membership registration already activated',
+    'active membership already exists',
+  ];
+  const endpoints = ['/membership/activate', '/membership/registrations/reg-1/activate'];
+
+  for (const endpoint of endpoints) {
+    for (const message of messages) {
+      const supabase = createMembershipStatusSupabase({ activationError: message });
+      await withServer(supabase, async (url) => {
+        const response = await fetch(`${url}${endpoint}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'cash', paymentReference: 'CASH-1' }),
+        });
+        assert.equal(response.status, 409);
+        const body = await response.json();
+        assert.equal(body.success, undefined);
+        assert.match(body.error, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
       });
-      assert.equal(response.status, 409);
-      const body = await response.json();
-      assert.equal(body.success, undefined);
-      assert.match(body.error, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
-    });
-    assert.equal(supabase.state.rpcCalls.length, 1);
+      assert.equal(supabase.state.rpcCalls.length, 1);
+    }
   }
 });
 
-test('CRM registration activation reports an RPC failure without any separate table write', async () => {
-  const tableWrites = [];
-  const supabase = {
-    from(table) {
-      tableWrites.push(table);
-      throw new Error('route must not perform separate writes');
-    },
-    async rpc() { return { data: null, error: { message: 'activation transaction rolled back' } }; },
-  };
-  await withServer(supabase, async (url) => {
-    const response = await fetch(`${url}/membership/registrations/reg-1/activate`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ branch: 'csb', payMethod: 'transfer', paymentReference: 'TRX-1' }),
+test('both CRM activation routes map infrastructure RPC failures to 500 without separate writes', async () => {
+  const endpoints = ['/membership/activate', '/membership/registrations/reg-1/activate'];
+
+  for (const endpoint of endpoints) {
+    const tableWrites = [];
+    const supabase = {
+      from(table) {
+        tableWrites.push(table);
+        throw new Error('route must not perform separate writes');
+      },
+      async rpc() { return { data: null, error: { message: 'database connection unavailable' } }; },
+    };
+    await withServer(supabase, async (url) => {
+      const response = await fetch(`${url}${endpoint}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ registrationId: 'reg-1', branch: 'csb', payMethod: 'transfer', paymentReference: 'TRX-1' }),
+      });
+      assert.equal(response.status, 500);
+      assert.match((await response.json()).error, /database connection unavailable/i);
     });
-    assert.equal(response.status, 409);
-    assert.match((await response.json()).error, /rolled back/i);
-  });
-  assert.deepEqual(tableWrites, []);
+    assert.deepEqual(tableWrites, []);
+  }
 });
