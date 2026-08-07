@@ -6,8 +6,10 @@ const test = require('node:test');
 const {
   TIER_PRICES,
   getTierPrice,
+  isTierUpgrade,
   normalizePhone,
   makePendingRegistration,
+  expirePendingMembershipRegistrations,
   getMembershipPeriod,
   validateActivationInput,
 } = require('../services/membershipRegistration');
@@ -93,4 +95,53 @@ test('active duplicate membership is rejected', () => {
     }),
     /active membership/i
   );
+});
+
+test('pending expiry is idempotent and only marks stale PENDING registrations', async () => {
+  const registrations = [
+    { id: 'stale', status: 'PENDING', expires_at: '2026-08-08T09:59:59.999Z' },
+    { id: 'live', status: 'PENDING', expires_at: '2026-08-08T10:00:00.001Z' },
+    { id: 'activated', status: 'ACTIVATED', expires_at: '2025-01-01T00:00:00.000Z' },
+    { id: 'history', status: 'EXPIRED', expires_at: '2024-01-01T00:00:00.000Z' },
+  ];
+  const activationHistory = [{ id: 'activation-1', registration_id: 'activated', amount: 250000 }];
+  const supabase = {
+    from(table) {
+      assert.equal(table, 'membership_registrations');
+      const filters = [];
+      let patch;
+      return {
+        update(value) { patch = value; return this; },
+        eq(column, value) { filters.push((row) => row[column] === value); return this; },
+        lte(column, value) { filters.push((row) => row[column] <= value); return this; },
+        async select() {
+          const matched = registrations.filter((row) => filters.every((filter) => filter(row)));
+          for (const row of matched) Object.assign(row, patch);
+          return { data: matched.map(({ id }) => ({ id })), error: null };
+        },
+      };
+    },
+  };
+
+  const first = await expirePendingMembershipRegistrations(supabase, '2026-08-08T10:00:00.000Z');
+  const second = await expirePendingMembershipRegistrations(supabase, '2026-08-08T10:00:00.000Z');
+
+  assert.equal(first.expiredCount, 1);
+  assert.equal(second.expiredCount, 0);
+  assert.deepEqual(registrations.map(({ id, status }) => ({ id, status })), [
+    { id: 'stale', status: 'EXPIRED' },
+    { id: 'live', status: 'PENDING' },
+    { id: 'activated', status: 'ACTIVATED' },
+    { id: 'history', status: 'EXPIRED' },
+  ]);
+  assert.deepEqual(activationHistory, [{ id: 'activation-1', registration_id: 'activated', amount: 250000 }]);
+});
+
+test('upgrade accepts only a higher destination tier and always uses its catalog price', () => {
+  assert.equal(isTierUpgrade('silver', 'gold'), true);
+  assert.equal(isTierUpgrade('silver', 'platinum'), true);
+  assert.equal(isTierUpgrade('gold', 'platinum'), true);
+  assert.equal(isTierUpgrade('gold', 'silver'), false);
+  assert.equal(isTierUpgrade('platinum', 'platinum'), false);
+  assert.equal(getTierPrice('platinum'), 1500000);
 });

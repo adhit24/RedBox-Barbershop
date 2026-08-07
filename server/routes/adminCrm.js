@@ -3,7 +3,10 @@
 const express = require('express');
 const { membershipStateForSync, isActiveMembership } = require('../membership-policy');
 const {
+  TIER_PRICES,
+  expirePendingMembershipRegistrations,
   getTierPrice,
+  isTierUpgrade,
   normalizePhone,
   toPublicRegistration,
   validatePaymentInput,
@@ -148,6 +151,8 @@ const MEMBERSHIP_ACTIVATION_CONFLICT_MESSAGES = [
   'membership registration already activated',
   'membership registration is not pending',
   'membership registration has expired',
+  'upgrade destination tier must be higher than current tier',
+  'legacy active membership cannot be upgraded before migration',
 ];
 
 function membershipActivationErrorStatus(error) {
@@ -155,6 +160,21 @@ function membershipActivationErrorStatus(error) {
   return MEMBERSHIP_ACTIVATION_CONFLICT_MESSAGES.some((known) => message.includes(known))
     ? 409
     : 500;
+}
+
+function membershipChangeErrorStatus(error) {
+  const message = typeof error?.message === 'string' ? error.message.toLowerCase() : '';
+  if (message.includes('branch access denied')) return 403;
+  if (message.includes('invalid tier') || message.includes('invalid branch')) return 400;
+  const conflicts = [
+    'source membership registration not found',
+    'paid membership history required',
+    'source membership registration is not the latest paid period',
+    'upgrade destination tier must be higher than current tier',
+    'legacy active membership',
+    'membership is still active',
+  ];
+  return conflicts.some((known) => message.includes(known)) ? 409 : 500;
 }
 
 function createMembershipRegistrationRoutes(supabase, { rateLimiters = [] } = {}) {
@@ -1258,9 +1278,11 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
 
     try {
+      const now = new Date();
+      await expirePendingMembershipRegistrations(supabase, now);
       const { data: registrations, error: registrationsError } = await supabase
         .from('membership_registrations')
-        .select('id,registration_code,user_key,full_name,phone,email,tier,price_snapshot,status,expires_at,created_at,updated_at')
+        .select('id,registration_code,user_key,full_name,phone,email,tier,price_snapshot,registration_type,source_registration_id,requested_by,requested_branch,status,expires_at,created_at,updated_at')
         .order('created_at', { ascending: false });
       if (registrationsError) throw registrationsError;
 
@@ -1298,7 +1320,14 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           activationsByRegistrationId.set(activation.registration_id, activation);
         }
       }
-      const now = new Date();
+      const registrationsById = new Map((registrations || []).map((registration) => [registration.id, registration]));
+      const latestActivationByUserKey = new Map();
+      for (const activation of activations) {
+        const registration = registrationsById.get(activation.registration_id);
+        if (registration?.user_key && !latestActivationByUserKey.has(registration.user_key)) {
+          latestActivationByUserKey.set(registration.user_key, activation);
+        }
+      }
       const mapped = (registrations || []).map((registration) => {
         let normalizedPhone = null;
         try {
@@ -1310,6 +1339,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           || (normalizedPhone ? profilesByPhone.get(normalizedPhone) : null)
           || null;
         const activation = activationsByRegistrationId.get(registration.id) || null;
+        const latestActivation = latestActivationByUserKey.get(registration.user_key) || null;
         const pendingExpiresAt = registration.expires_at || null;
         const pendingIsLive = pendingExpiresAt && new Date(pendingExpiresAt) > now;
         const startsAt = activation?.starts_at || profile?.membership_started_at || null;
@@ -1330,6 +1360,22 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         let status = registration.status;
         if (registration.status === 'PENDING') status = pendingIsLive ? 'PENDING' : 'EXPIRED';
         else if (registration.status === 'ACTIVATED') status = membershipIsActive ? 'ACTIVE' : 'EXPIRED';
+        const isLatestPaidPeriod = Boolean(activation && latestActivation?.id === activation.id);
+        const currentTier = profile?.current_tier || registration.tier;
+        const actionBranch = typeof activation?.branch === 'string' ? activation.branch.trim().toLowerCase() : '';
+        const hasActionBranch = MEMBERSHIP_ADMIN_BRANCHES.has(actionBranch);
+        let canUpgrade = false;
+        try {
+          canUpgrade = status === 'ACTIVE'
+            && isLatestPaidPeriod
+            && hasActionBranch
+            && Object.keys(TIER_PRICES).some((tier) => isTierUpgrade(currentTier, tier));
+        } catch (_) {
+          canUpgrade = false;
+        }
+        const canRenew = Boolean(
+          status === 'EXPIRED' && activation && isLatestPaidPeriod && hasActionBranch && !profileIsActive
+        );
 
         return {
           id: registration.id,
@@ -1340,13 +1386,17 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           email: registration.email,
           tier: registration.tier,
           amount: registration.price_snapshot,
+          registrationType: registration.registration_type || 'NEW',
+          sourceRegistrationId: registration.source_registration_id || null,
+          requestedBy: registration.requested_by || null,
+          requestedBranch: registration.requested_branch || null,
           status,
           registrationStatus: registration.status,
           pendingExpiresAt,
           activationId: activation?.id || null,
           paymentMethod: activation?.payment_method || null,
           paymentReference: activation?.payment_reference || null,
-          branch: activation?.branch || null,
+          branch: activation?.branch || registration.requested_branch || null,
           confirmedBy: activation?.confirmed_by || null,
           paymentStatus: activation?.status || null,
           startsAt,
@@ -1354,13 +1404,20 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           activatedAt: activation?.activated_at || null,
           createdAt: registration.created_at || null,
           updatedAt: registration.updated_at || null,
+          canRenew,
+          canUpgrade,
+          currentTier,
         };
       });
       const scoped = access.role === 'owner'
         ? mapped
         : mapped.filter((registration) => (
           registration.branch === access.branch
-          || (registration.registrationStatus === 'PENDING' && !registration.activationId)
+          || (
+            registration.registrationStatus === 'PENDING'
+            && !registration.activationId
+            && (!registration.requestedBranch || registration.requestedBranch === access.branch)
+          )
         ));
       const filtered = requestedStatus === 'ALL'
         ? scoped
@@ -1368,6 +1425,68 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       return res.json({ registrations: filtered });
     } catch (err) {
       return res.status(500).json({ error: err.message || 'membership registrations unavailable' });
+    }
+  });
+
+  router.post('/membership/registrations/:registrationId/change', adminAuth, async (req, res) => {
+    const access = getVerifiedMembershipAdmin(req);
+    if (!access) return res.status(403).json({ error: 'verified membership admin session required' });
+
+    const registrationId = String(req.params.registrationId || '').trim();
+    const destinationTier = typeof req.body?.tier === 'string' ? req.body.tier.trim().toLowerCase() : '';
+    if (!registrationId) return res.status(400).json({ error: 'registrationId required' });
+    try {
+      getTierPrice(destinationTier);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!access.staffId) return res.status(403).json({ error: 'authenticated staff identity required' });
+
+    try {
+      const { data: sourceActivation, error: sourceActivationError } = await supabase
+        .from('member_activations')
+        .select('registration_id,branch,status,activated_at')
+        .eq('registration_id', registrationId)
+        .eq('status', 'completed')
+        .order('activated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (sourceActivationError) throw sourceActivationError;
+      if (!sourceActivation) {
+        return res.status(409).json({ error: 'paid membership history required' });
+      }
+
+      const sourceBranch = typeof sourceActivation.branch === 'string'
+        ? sourceActivation.branch.trim().toLowerCase()
+        : '';
+      if (!MEMBERSHIP_ADMIN_BRANCHES.has(sourceBranch)) {
+        return res.status(409).json({ error: 'source membership branch is invalid' });
+      }
+      if (access.role === 'branch_admin' && sourceBranch !== access.branch) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+
+      const { data, error } = await supabase.rpc('create_membership_change_registration', {
+        p_source_registration_id: registrationId,
+        p_tier: destinationTier,
+        p_requested_by: access.staffId,
+        p_requested_branch: sourceBranch,
+      });
+      if (error) {
+        return res.status(membershipChangeErrorStatus(error)).json({
+          error: error.message || 'membership renewal or upgrade failed',
+        });
+      }
+      const registration = Array.isArray(data) ? data[0] : data;
+      if (!registration) throw new Error('membership change registration returned no result');
+      const publicRegistration = toPublicRegistration(registration);
+      return res.status(registration.was_created ? 201 : 200).json({
+        ...publicRegistration,
+        registrationType: registration.registration_type,
+        sourceRegistrationId: registration.source_registration_id || registrationId,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message || 'membership renewal or upgrade failed' });
     }
   });
 

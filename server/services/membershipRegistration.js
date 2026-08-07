@@ -8,6 +8,7 @@ const TIER_PRICES = Object.freeze({
 
 const PAYMENT_METHODS = new Set(['cash', 'qris', 'transfer']);
 const PENDING_REGISTRATION_DAYS = 7;
+const TIER_ORDER = Object.freeze({ silver: 1, gold: 2, platinum: 3 });
 const MEMBERSHIP_REGISTRATION_RATE_LIMIT = Object.freeze({
   windowMs: 60_000,
   maxPerIp: 10,
@@ -25,6 +26,12 @@ function getTierPrice(tier) {
     throw new Error('invalid tier');
   }
   return TIER_PRICES[tier];
+}
+
+function isTierUpgrade(currentTier, destinationTier) {
+  getTierPrice(destinationTier);
+  if (!Object.prototype.hasOwnProperty.call(TIER_ORDER, currentTier)) return false;
+  return TIER_ORDER[destinationTier] > TIER_ORDER[currentTier];
 }
 
 function normalizePhone(phone) {
@@ -142,6 +149,22 @@ function makePendingRegistration({ now = new Date(), ...customer } = {}) {
   };
 }
 
+async function expirePendingMembershipRegistrations(supabase, now = new Date()) {
+  if (!supabase || typeof supabase.from !== 'function') {
+    throw new TypeError('supabase client is required');
+  }
+  const expiredAt = asDate(now, 'now').toISOString();
+  const query = supabase
+    .from('membership_registrations')
+    .update({ status: 'EXPIRED', updated_at: expiredAt })
+    .eq('status', 'PENDING')
+    .lte('expires_at', expiredAt)
+    .select('id');
+  const { data, error } = await query;
+  if (error) throw error;
+  return { expiredCount: Array.isArray(data) ? data.length : 0, expiredAt };
+}
+
 function toPublicRegistration(registration) {
   return {
     registrationId: registration.registrationId || registration.registration_id || registration.id,
@@ -200,11 +223,14 @@ function validateActivationInput({
 module.exports = {
   TIER_PRICES,
   PAYMENT_METHODS,
+  TIER_ORDER,
   MEMBERSHIP_REGISTRATION_RATE_LIMIT,
   getTierPrice,
+  isTierUpgrade,
   normalizePhone,
   createMembershipRegistrationRateLimiters,
   makePendingRegistration,
+  expirePendingMembershipRegistrations,
   toPublicRegistration,
   getMembershipPeriod,
   validatePaymentInput,

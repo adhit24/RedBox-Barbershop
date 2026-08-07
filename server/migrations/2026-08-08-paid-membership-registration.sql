@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS membership_registrations (
   email             TEXT,
   tier              TEXT NOT NULL CHECK (tier IN ('silver', 'gold', 'platinum')),
   price_snapshot    INTEGER NOT NULL CHECK (price_snapshot IN (100000, 250000, 1500000)),
+  registration_type TEXT NOT NULL DEFAULT 'NEW'
+                    CHECK (registration_type IN ('NEW', 'RENEWAL', 'UPGRADE')),
+  source_registration_id UUID,
+  requested_by      TEXT,
+  requested_branch  TEXT,
   status            TEXT NOT NULL DEFAULT 'PENDING'
                     CHECK (status IN ('PENDING', 'ACTIVATED', 'EXPIRED', 'CANCELLED')),
   expires_at        TIMESTAMPTZ NOT NULL,
@@ -52,7 +57,51 @@ CREATE TABLE IF NOT EXISTS membership_registrations (
 );
 
 ALTER TABLE membership_registrations
-  ADD COLUMN IF NOT EXISTS phone_normalized TEXT;
+  ADD COLUMN IF NOT EXISTS phone_normalized TEXT,
+  ADD COLUMN IF NOT EXISTS registration_type TEXT NOT NULL DEFAULT 'NEW',
+  ADD COLUMN IF NOT EXISTS source_registration_id UUID,
+  ADD COLUMN IF NOT EXISTS requested_by TEXT,
+  ADD COLUMN IF NOT EXISTS requested_branch TEXT;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'membership_registrations_registration_type_check'
+      AND conrelid = 'membership_registrations'::regclass
+  ) THEN
+    ALTER TABLE membership_registrations
+      ADD CONSTRAINT membership_registrations_registration_type_check
+      CHECK (registration_type IN ('NEW', 'RENEWAL', 'UPGRADE')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'membership_registrations_source_registration_fkey'
+      AND conrelid = 'membership_registrations'::regclass
+  ) THEN
+    ALTER TABLE membership_registrations
+      ADD CONSTRAINT membership_registrations_source_registration_fkey
+      FOREIGN KEY (source_registration_id) REFERENCES membership_registrations(id) NOT VALID;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'membership_registrations_change_source_check'
+      AND conrelid = 'membership_registrations'::regclass
+  ) THEN
+    ALTER TABLE membership_registrations
+      ADD CONSTRAINT membership_registrations_change_source_check
+      CHECK (
+        (registration_type = 'NEW' AND source_registration_id IS NULL)
+        OR (
+          registration_type IN ('RENEWAL', 'UPGRADE')
+          AND source_registration_id IS NOT NULL
+          AND NULLIF(BTRIM(requested_by), '') IS NOT NULL
+          AND requested_branch IN ('bypass', 'sumber', 'samadikun', 'csb', 'tegal')
+        )
+      ) NOT VALID;
+  END IF;
+END;
+$$;
 
 UPDATE membership_registrations
 SET phone_normalized = normalize_membership_phone(phone)
@@ -81,6 +130,8 @@ CREATE INDEX IF NOT EXISTS idx_membership_registrations_phone
   ON membership_registrations (phone);
 CREATE INDEX IF NOT EXISTS idx_membership_registrations_expires_at
   ON membership_registrations (expires_at);
+CREATE INDEX IF NOT EXISTS idx_membership_registrations_source
+  ON membership_registrations (source_registration_id);
 
 -- Keep one live Pending row per canonical phone+tier. PostgreSQL cannot use
 -- NOW() in a partial-index predicate, so the RPC expires stale rows while
@@ -340,6 +391,178 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION create_membership_change_registration(
+  p_source_registration_id UUID,
+  p_tier TEXT,
+  p_requested_by TEXT,
+  p_requested_branch TEXT
+)
+RETURNS TABLE (
+  outcome TEXT,
+  was_created BOOLEAN,
+  registration_id UUID,
+  registration_code TEXT,
+  tier TEXT,
+  amount INTEGER,
+  status TEXT,
+  expires_at TIMESTAMPTZ,
+  registration_type TEXT,
+  source_registration_id UUID
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_now TIMESTAMPTZ := NOW();
+  v_price INTEGER;
+  v_phone TEXT;
+  v_kind TEXT;
+  v_current_tier TEXT;
+  v_source membership_registrations%ROWTYPE;
+  v_registration membership_registrations%ROWTYPE;
+  v_profile member_profiles%ROWTYPE;
+  v_source_activation member_activations%ROWTYPE;
+  v_latest_activation member_activations%ROWTYPE;
+BEGIN
+  IF p_source_registration_id IS NULL THEN
+    RAISE EXCEPTION 'source registration required';
+  END IF;
+  IF NULLIF(BTRIM(p_requested_by), '') IS NULL THEN
+    RAISE EXCEPTION 'authenticated staff identity required';
+  END IF;
+  p_requested_branch := LOWER(BTRIM(COALESCE(p_requested_branch, '')));
+  IF p_requested_branch NOT IN ('bypass', 'sumber', 'samadikun', 'csb', 'tegal') THEN
+    RAISE EXCEPTION 'invalid branch';
+  END IF;
+
+  v_price := CASE p_tier
+    WHEN 'silver' THEN 100000
+    WHEN 'gold' THEN 250000
+    WHEN 'platinum' THEN 1500000
+  END;
+  IF v_price IS NULL THEN
+    RAISE EXCEPTION 'invalid tier';
+  END IF;
+
+  SELECT mr.* INTO v_source
+  FROM membership_registrations AS mr
+  WHERE mr.id = p_source_registration_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'source membership registration not found';
+  END IF;
+
+  SELECT ma.* INTO v_source_activation
+  FROM member_activations AS ma
+  WHERE ma.registration_id = v_source.id
+    AND ma.status = 'completed'
+  ORDER BY ma.activated_at DESC NULLS LAST, ma.starts_at DESC NULLS LAST, ma.id DESC
+  LIMIT 1;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'paid membership history required';
+  END IF;
+  IF LOWER(BTRIM(COALESCE(v_source_activation.branch, ''))) <> p_requested_branch THEN
+    RAISE EXCEPTION 'branch access denied';
+  END IF;
+
+  v_phone := v_source.phone_normalized;
+  IF v_phone IS NULL THEN
+    v_phone := normalize_membership_phone(v_source.phone);
+  END IF;
+  IF v_phone IS NULL THEN
+    RAISE EXCEPTION 'invalid membership phone';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended('membership-registration:' || v_phone, 0));
+
+  SELECT mp.* INTO v_profile
+  FROM member_profiles AS mp
+  WHERE mp.user_key = v_source.user_key
+     OR normalize_membership_phone(mp.phone) = v_phone
+  ORDER BY (mp.user_key = v_source.user_key) DESC, mp.created_at DESC NULLS LAST, mp.id DESC
+  LIMIT 1
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'member profile target is missing';
+  END IF;
+
+  SELECT ma.* INTO v_latest_activation
+  FROM member_activations AS ma
+  JOIN membership_registrations AS mr ON mr.id = ma.registration_id
+  WHERE mr.phone_normalized = v_phone
+    AND ma.status = 'completed'
+  ORDER BY ma.activated_at DESC NULLS LAST, ma.starts_at DESC NULLS LAST, ma.id DESC
+  LIMIT 1;
+  IF NOT FOUND OR v_latest_activation.registration_id <> v_source.id THEN
+    RAISE EXCEPTION 'source membership registration is not the latest paid period';
+  END IF;
+
+  v_current_tier := COALESCE(NULLIF(v_profile.current_tier, ''), v_source.tier);
+  IF v_profile.membership_status = 'ACTIVE'
+     AND v_profile.membership_expires_at > v_now THEN
+    v_kind := 'UPGRADE';
+    IF (CASE v_current_tier WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'platinum' THEN 3 ELSE 0 END)
+       >= (CASE p_tier WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'platinum' THEN 3 ELSE 0 END) THEN
+      RAISE EXCEPTION 'upgrade destination tier must be higher than current tier';
+    END IF;
+  ELSE
+    IF v_profile.membership_status = 'ACTIVE'
+       AND v_profile.membership_started_at IS NULL
+       AND v_profile.membership_expires_at IS NULL THEN
+      RAISE EXCEPTION 'legacy active membership cannot be renewed before migration';
+    END IF;
+    IF v_source_activation.expires_at IS NULL OR v_source_activation.expires_at > v_now THEN
+      RAISE EXCEPTION 'membership is still active';
+    END IF;
+    v_kind := 'RENEWAL';
+  END IF;
+
+  UPDATE membership_registrations AS mr
+  SET status = 'EXPIRED', updated_at = v_now
+  WHERE mr.phone_normalized = v_phone
+    AND mr.status = 'PENDING'
+    AND mr.expires_at <= v_now;
+
+  SELECT mr.* INTO v_registration
+  FROM membership_registrations AS mr
+  WHERE mr.phone_normalized = v_phone
+    AND mr.tier = p_tier
+    AND mr.status = 'PENDING'
+    AND mr.expires_at > v_now
+  ORDER BY mr.created_at ASC, mr.id ASC
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    RETURN QUERY SELECT
+      'EXISTING_PENDING'::TEXT, FALSE, v_registration.id,
+      v_registration.registration_code, v_registration.tier,
+      v_registration.price_snapshot, v_registration.status,
+      v_registration.expires_at, v_registration.registration_type,
+      v_registration.source_registration_id;
+    RETURN;
+  END IF;
+
+  INSERT INTO membership_registrations (
+    registration_code, user_key, full_name, phone, phone_normalized,
+    email, tier, price_snapshot, registration_type, source_registration_id,
+    requested_by, requested_branch, status, expires_at, created_at, updated_at
+  ) VALUES (
+    'RBM-' || UPPER(substring(replace(gen_random_uuid()::TEXT, '-', '') FROM 1 FOR 12)),
+    v_profile.user_key, COALESCE(NULLIF(BTRIM(v_profile.full_name), ''), v_source.full_name),
+    v_phone, v_phone, COALESCE(NULLIF(BTRIM(v_profile.email), ''), v_source.email),
+    p_tier, v_price, v_kind, v_source.id,
+    BTRIM(p_requested_by), p_requested_branch, 'PENDING',
+    v_now + INTERVAL '7 days', v_now, v_now
+  ) RETURNING * INTO v_registration;
+
+  RETURN QUERY SELECT
+    'CREATED'::TEXT, TRUE, v_registration.id,
+    v_registration.registration_code, v_registration.tier,
+    v_registration.price_snapshot, v_registration.status,
+    v_registration.expires_at, v_registration.registration_type,
+    v_registration.source_registration_id;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION activate_membership_registration(
   p_registration_id UUID,
   p_payment_method TEXT,
@@ -366,6 +589,7 @@ DECLARE
   v_expected_price INTEGER;
   v_profile_rows INTEGER;
   v_customer_rows INTEGER;
+  v_active_profile member_profiles%ROWTYPE;
 BEGIN
   SELECT * INTO r
   FROM membership_registrations
@@ -397,16 +621,30 @@ BEGIN
     RAISE EXCEPTION 'branch and confirmed_by are required';
   END IF;
 
-  IF EXISTS (
-    SELECT 1 FROM member_profiles
-    WHERE normalize_membership_phone(phone) = r.phone_normalized
-      AND membership_status = 'ACTIVE'
-      AND (
-        membership_expires_at > v_now
-        OR (membership_started_at IS NULL AND membership_expires_at IS NULL)
-      )
-  ) THEN
-    RAISE EXCEPTION 'active membership already exists';
+  SELECT mp.* INTO v_active_profile
+  FROM member_profiles AS mp
+  WHERE normalize_membership_phone(mp.phone) = r.phone_normalized
+    AND mp.membership_status = 'ACTIVE'
+    AND (
+      mp.membership_expires_at > v_now
+      OR (mp.membership_started_at IS NULL AND mp.membership_expires_at IS NULL)
+    )
+  ORDER BY mp.created_at DESC NULLS LAST, mp.id DESC
+  LIMIT 1
+  FOR UPDATE;
+
+  IF FOUND THEN
+    IF r.registration_type <> 'UPGRADE' THEN
+      RAISE EXCEPTION 'active membership already exists';
+    END IF;
+    IF v_active_profile.membership_started_at IS NULL
+       OR v_active_profile.membership_expires_at IS NULL THEN
+      RAISE EXCEPTION 'legacy active membership cannot be upgraded before migration';
+    END IF;
+    IF (CASE v_active_profile.current_tier WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'platinum' THEN 3 ELSE 0 END)
+       >= (CASE r.tier WHEN 'silver' THEN 1 WHEN 'gold' THEN 2 WHEN 'platinum' THEN 3 ELSE 0 END) THEN
+      RAISE EXCEPTION 'upgrade destination tier must be higher than current tier';
+    END IF;
   END IF;
 
   -- The activation audit and registration status must never advance without both targets.
@@ -428,8 +666,8 @@ BEGIN
     RAISE EXCEPTION 'customer target is missing';
   END IF;
 
-  -- An old completed registration ceases to be active when its profile period expired.
-  -- This releases the canonical-phone uniqueness guard for a renewal while keeping its audit row.
+  -- Supersede the prior registration state while preserving every immutable activation audit row.
+  -- This also releases the canonical-phone uniqueness guard for renewal and paid upgrade.
   UPDATE membership_registrations
   SET status = 'EXPIRED', updated_at = v_now
   WHERE phone_normalized = r.phone_normalized

@@ -34,6 +34,7 @@ test('Next CRM shows paid registration states and activates only the selected re
   const proxySecret = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', '_proxySecret.ts'));
   const registrationsProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', 'route.ts'));
   const activationProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'activate', 'route.ts'));
+  const changeProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'change', 'route.ts'));
   const backend = source(path.join('server', 'routes', 'adminCrm.js'));
 
   assert.match(page, /\/api\/admin\/crm\/membership\/registrations/);
@@ -51,6 +52,11 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(page, /branch:\s*activationBranch/);
   assert.match(page, /value=\{paymentReference\}/);
   assert.match(page, /value=\{activationBranch\}/);
+  assert.match(page, /registration\.canUpgrade/);
+  assert.match(page, /registration\.canRenew/);
+  assert.match(page, /Nominal penuh tier tujuan/);
+  assert.match(page, /registrations\/\$\{changeSelection\.registration\.id\}\/change/);
+  assert.match(page, /TIER_PRICES\[destinationTier\]/);
   assert.doesNotMatch(page, /userKey:\s*activating/);
   assert.doesNotMatch(page, /tier:\s*tier/);
   assert.doesNotMatch(page, /staffId\s*:/);
@@ -76,9 +82,17 @@ test('Next CRM shows paid registration states and activates only the selected re
   assert.match(activationProxy, /JSON\.stringify\(\{ paymentMethod, paymentReference, branch: branchDecision\.value \}\)/);
   assert.doesNotMatch(activationProxy, /JSON\.stringify\(body\)/);
   assert.doesNotMatch(activationProxy, /body\.(?:staffId|tier|amount)/);
+  assert.match(changeProxy, /requireMembershipAdminSession\(\)/);
+  assert.match(changeProxy, /createMembershipAdminProxyHeaders\(auth\.session\)/);
+  assert.match(changeProxy, /registrations\/\$\{encodeURIComponent\(registrationId\)\}\/change/);
+  assert.match(changeProxy, /JSON\.stringify\(\{ tier \}\)/);
+  assert.doesNotMatch(changeProxy, /JSON\.stringify\(body\)/);
+  assert.doesNotMatch(changeProxy, /body\.(?:staffId|amount|branch|role)/);
   assert.match(backend, /verified membership admin session required/);
   assert.match(backend, /registration\.branch === access\.branch/);
   assert.match(backend, /p_confirmed_by:\s*staffId/);
+  assert.match(backend, /p_requested_by:\s*access\.staffId/);
+  assert.match(backend, /p_requested_branch:\s*sourceBranch/);
 });
 
 test('Next membership admin policy returns 401, 403, branch scope, and preserves owner flow', () => {

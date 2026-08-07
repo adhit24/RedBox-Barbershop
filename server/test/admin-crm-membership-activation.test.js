@@ -28,15 +28,32 @@ async function withServer(supabase, fn, {
 }
 
 function createMembershipStatusSupabase({ registrations = [], profiles = [], activations = [], activation = null, activationError = null } = {}) {
-  const state = { rpcCalls: [], profileReads: 0, activationReads: 0 };
+  const state = {
+    rpcCalls: [], profileReads: 0, activationReads: 0, expiryWrites: 0,
+    registrations: structuredClone(registrations),
+  };
   return {
     state,
     from(table) {
       if (table === 'membership_registrations') {
-        return {
-          select() { return this; },
-          order() { return Promise.resolve({ data: structuredClone(registrations), error: null }); },
+        const filters = [];
+        const query = {
+          patch: null,
+          update(value) { query.patch = value; return query; },
+          eq(column, value) { filters.push((row) => row[column] === value); return query; },
+          lte(column, value) { filters.push((row) => row[column] <= value); return query; },
+          select() { return query; },
+          execute() {
+            if (!query.patch) return { data: structuredClone(state.registrations), error: null };
+            const matched = state.registrations.filter((row) => filters.every((filter) => filter(row)));
+            for (const row of matched) Object.assign(row, query.patch);
+            state.expiryWrites += matched.length;
+            return { data: matched.map(({ id }) => ({ id })), error: null };
+          },
+          order() { return Promise.resolve(query.execute()); },
+          then(resolve, reject) { return Promise.resolve(query.execute()).then(resolve, reject); },
         };
+        return query;
       }
       if (table === 'member_profiles') {
         const query = {
@@ -204,6 +221,8 @@ test('CRM registration list exposes identity, stored amount, payment audit, peri
   });
   assert.equal(supabase.state.profileReads, 1);
   assert.equal(supabase.state.activationReads, 1);
+  assert.equal(supabase.state.expiryWrites, 1);
+  assert.equal(supabase.state.registrations.find((row) => row.id === 'expired-1').status, 'EXPIRED');
 });
 
 test('branch admin list cannot read registrations activated by another branch', async () => {
@@ -315,6 +334,57 @@ test('CRM registration list marks an old paid period expired even when the membe
     assert.equal(body.registrations.length, 1);
     assert.equal(body.registrations[0].status, 'EXPIRED');
     assert.equal(body.registrations[0].membershipExpiresAt, '2025-08-01T00:00:00.000Z');
+  });
+});
+
+test('CRM list exposes renewal only for the latest expired paid period and upgrade for the current active tier', async () => {
+  const supabase = createMembershipStatusSupabase({
+    registrations: [
+      {
+        id: 'expired-latest', user_key: 'expired-member', phone: '+628111111111', tier: 'gold',
+        price_snapshot: 250000, status: 'ACTIVATED', expires_at: '2025-08-08T00:00:00.000Z',
+      },
+      {
+        id: 'active-latest', user_key: 'active-member', phone: '+628122222222', tier: 'gold',
+        price_snapshot: 250000, status: 'ACTIVATED', expires_at: '2026-08-15T00:00:00.000Z',
+      },
+    ],
+    profiles: [
+      {
+        user_key: 'expired-member', phone: '+628111111111', membership_status: 'ACTIVE', current_tier: 'gold',
+        membership_started_at: '2024-08-08T00:00:00.000Z', membership_expires_at: '2025-08-08T00:00:00.000Z',
+      },
+      {
+        user_key: 'active-member', phone: '+628122222222', membership_status: 'ACTIVE', current_tier: 'gold',
+        membership_started_at: '2026-01-01T00:00:00.000Z', membership_expires_at: '2099-01-01T00:00:00.000Z',
+      },
+    ],
+    activations: [
+      {
+        id: 'expired-activation', registration_id: 'expired-latest', branch: 'csb', status: 'completed',
+        starts_at: '2024-08-08T00:00:00.000Z', expires_at: '2025-08-08T00:00:00.000Z',
+        activated_at: '2024-08-08T00:00:00.000Z',
+      },
+      {
+        id: 'active-activation', registration_id: 'active-latest', branch: 'csb', status: 'completed',
+        starts_at: '2026-01-01T00:00:00.000Z', expires_at: '2099-01-01T00:00:00.000Z',
+        activated_at: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+  });
+
+  await withServer(supabase, async (url) => {
+    const response = await fetch(`${url}/membership/registrations`);
+    assert.equal(response.status, 200);
+    const rows = (await response.json()).registrations;
+    const expired = rows.find((row) => row.id === 'expired-latest');
+    const active = rows.find((row) => row.id === 'active-latest');
+    assert.equal(expired.status, 'EXPIRED');
+    assert.equal(expired.canRenew, true);
+    assert.equal(expired.canUpgrade, false);
+    assert.equal(active.status, 'ACTIVE');
+    assert.equal(active.canRenew, false);
+    assert.equal(active.canUpgrade, true);
   });
 });
 
@@ -459,6 +529,8 @@ test('both CRM activation routes return only known business conflicts as 409', a
     'membership registration has expired',
     'membership registration already activated',
     'active membership already exists',
+    'upgrade destination tier must be higher than current tier',
+    'legacy active membership cannot be upgraded before migration',
   ];
   const endpoints = ['/membership/activate', '/membership/registrations/reg-1/activate'];
 
