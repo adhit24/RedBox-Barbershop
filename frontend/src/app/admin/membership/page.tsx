@@ -1,27 +1,34 @@
 'use client';
-import { useEffect, useState, Suspense } from 'react';
+
+import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
-import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, Search, X, CreditCard, RefreshCw } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CalendarDays, CheckCircle2, Clock3, CreditCard, RefreshCw, Search, X } from 'lucide-react';
 
-interface Member {
-  user_key: string;
-  full_name: string;
-  email: string;
-  phone: string;
-  membership_status: string;
-  current_tier: string;
-  total_points: number;
-  total_visits: number;
-  last_visit: string | null;
-  created_at: string;
+type RegistrationStatus = 'PENDING' | 'ACTIVE' | 'EXPIRED';
+
+interface MembershipRegistration {
+  id: string;
+  registrationCode: string | null;
+  userKey: string | null;
+  fullName: string | null;
+  phone: string | null;
+  email: string | null;
+  tier: string;
+  amount: number;
+  status: RegistrationStatus;
+  registrationStatus: string;
+  pendingExpiresAt: string | null;
+  startsAt: string | null;
+  membershipExpiresAt: string | null;
+  createdAt: string | null;
 }
 
 const PAY_METHODS = [
-  { value: 'cash',     label: 'Cash / Tunai' },
-  { value: 'qris',     label: 'QRIS' },
-  { value: 'transfer', label: 'Transfer Bank' },
+  { value: 'cash', label: 'Cash / Tunai' },
+  { value: 'qris', label: 'QRIS' },
+  { value: 'transfer', label: 'Transfer' },
 ];
 
 const BRANCHES = [
@@ -33,446 +40,179 @@ const BRANCHES = [
   { value: 'parker', label: 'Parker' },
 ];
 
-const TIERS = [
-  { value: 'silver',   label: 'Silver',   price: 100000,  active: 'bg-slate-300 text-slate-900 border-slate-300' },
-  { value: 'gold',     label: 'Gold',     price: 250000,  active: 'bg-yellow-400 text-slate-900 border-yellow-400' },
-  { value: 'platinum', label: 'Platinum', price: 1500000, active: 'bg-cyan-300 text-slate-900 border-cyan-300' },
+const TABS: Array<{ value: RegistrationStatus; label: string; active: string }> = [
+  { value: 'PENDING', label: 'Pending', active: 'bg-amber-300 text-slate-950 border-amber-300' },
+  { value: 'ACTIVE', label: 'Aktif', active: 'bg-emerald-400 text-slate-950 border-emerald-400' },
+  { value: 'EXPIRED', label: 'Kedaluwarsa', active: 'bg-slate-300 text-slate-950 border-slate-300' },
 ];
 
-const fmtRp = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
-
-const TIER_COLOR: Record<string, string> = {
-  platinum: 'text-cyan-300',
-  gold:     'text-yellow-400',
-  silver:   'text-slate-300',
-  bronze:   'text-orange-400',
+const tierColor: Record<string, string> = {
+  silver: 'text-slate-200 border-slate-500/50 bg-slate-400/10',
+  gold: 'text-amber-300 border-amber-400/40 bg-amber-300/10',
+  platinum: 'text-cyan-200 border-cyan-300/40 bg-cyan-300/10',
 };
 
+const fmtRp = (amount: number) => `Rp ${Number(amount || 0).toLocaleString('id-ID')}`;
+
+function fmtDate(value: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 function Skeleton() {
-  return (
-    <motion.div
-      animate={{ opacity: [0.3, 0.6, 0.3] }}
-      transition={{ duration: 1.4, repeat: Infinity }}
-      className="h-20 bg-slate-800 rounded-xl"
-    />
-  );
-}
-
-function fmtDate(d: string | null) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function phoneFromEmail(email: string) {
-  // Extract wa from synthetic email: moka_87838544015@redbox.internal → 6287838544015
-  const m = email?.match(/^moka_(\d+)@redbox\.internal$/);
-  if (m) return '62' + m[1];
-  return null;
+  return <div className="h-28 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />;
 }
 
 function MembershipPageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
   const defaultBranch = searchParams.get('branch') || user?.branch || '';
-
-  const [members, setMembers]     = useState<Member[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [search, setSearch]       = useState('');
-  const [filter, setFilter]       = useState<'all' | 'inactive' | 'active'>('inactive');
-  const [activating, setActivating] = useState<string | null>(null);
-  const [payMethod, setPayMethod]   = useState('cash');
-  const [tier, setTier]             = useState('silver');
+  const [registrations, setRegistrations] = useState<MembershipRegistration[]>([]);
+  const [activeTab, setActiveTab] = useState<RegistrationStatus>('PENDING');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<MembershipRegistration | null>(null);
+  const [payMethod, setPayMethod] = useState('cash');
   const [paymentReference, setPaymentReference] = useState('');
   const [activationBranch, setActivationBranch] = useState('');
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [syncing, setSyncing]       = useState<string | null>(null);
-  const [toast, setToast]           = useState<{ msg: string; ok: boolean } | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null);
 
-  async function load() {
+  const notify = useCallback((message: string, ok = true) => {
+    setToast({ message, ok });
+    window.setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  const loadRegistrations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/crm/membership');
-      const data = await res.json();
-      setMembers(Array.isArray(data) ? data : []);
+      const response = await fetch('/api/admin/crm/membership/registrations?status=all');
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Data pendaftaran tidak dapat dimuat.');
+      setRegistrations(Array.isArray(data.registrations) ? data.registrations : []);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Data pendaftaran tidak dapat dimuat.', false);
+      setRegistrations([]);
     } finally {
       setLoading(false);
     }
-  }
+  }, [notify]);
 
   useEffect(() => {
-    let cancelled = false;
-    async function loadInitialMembers() {
-      try {
-        const res = await fetch('/api/admin/crm/membership');
-        const data = await res.json();
-        if (!cancelled) setMembers(Array.isArray(data) ? data : []);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void loadInitialMembers();
-    return () => { cancelled = true; };
-  }, []);
+    const frame = window.requestAnimationFrame(() => { void loadRegistrations(); });
+    return () => window.cancelAnimationFrame(frame);
+  }, [loadRegistrations]);
 
-  function showToast(msg: string, ok = true) {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3500);
+  const visibleRegistrations = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return registrations.filter((registration) => {
+      if (registration.status !== activeTab) return false;
+      if (!query) return true;
+      return [registration.fullName, registration.email, registration.phone, registration.registrationCode]
+        .some((value) => value?.toLowerCase().includes(query));
+    });
+  }, [activeTab, registrations, search]);
+
+  const counts = useMemo(() => registrations.reduce<Record<RegistrationStatus, number>>((accumulator, registration) => {
+    accumulator[registration.status] += 1;
+    return accumulator;
+  }, { PENDING: 0, ACTIVE: 0, EXPIRED: 0 }), [registrations]);
+
+  function openActivation(registration: MembershipRegistration) {
+    setSelected(registration);
+    setPayMethod('cash');
+    setPaymentReference('');
+    setActivationBranch(defaultBranch);
+    setPaymentConfirmed(false);
   }
 
   async function handleActivate() {
-    if (!activating) return;
-    if (!paymentReference.trim()) {
-      showToast('Referensi pembayaran wajib diisi.', false);
-      return;
-    }
-    if (!activationBranch || !user?.id) {
-      showToast('Cabang dan identitas staff wajib tersedia.', false);
-      return;
-    }
+    if (!selected || !paymentReference.trim() || !activationBranch || !paymentConfirmed) return;
     setProcessing(true);
     try {
-      const res = await fetch('/api/admin/crm/membership/activate', {
+      const response = await fetch(`/api/admin/crm/membership/registrations/${selected.id}/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userKey: activating,
-          branch: activationBranch,
-          payMethod,
-          tier,
+          paymentMethod: payMethod,
           paymentReference: paymentReference.trim(),
-          staffId: user?.id,
+          branch: activationBranch,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`✓ Membership ${TIERS.find(t => t.value === tier)?.label ?? ''} berhasil diaktifkan!`);
-        setActivating(null);
-        setPaymentReference('');
-        await load();
-      } else {
-        showToast(data.error || 'Gagal mengaktifkan. Coba lagi.', false);
-      }
-    } catch {
-      showToast('Tidak dapat terhubung ke server aktivasi.', false);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Aktivasi membership gagal.');
+      notify(`Membership ${data.tier || selected.tier} aktif sampai ${fmtDate(data.expiresAt)}.`);
+      setSelected(null);
+      await loadRegistrations();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Aktivasi membership gagal.', false);
     } finally {
       setProcessing(false);
     }
   }
 
-  async function handleSyncMoka(m: Member) {
-    const wa = m.phone
-      ? m.phone.replace(/^\+/, '')
-      : phoneFromEmail(m.email);
-    if (!wa) { showToast('Nomor WA tidak tersedia.', false); return; }
-    setSyncing(m.user_key);
+  async function handleSyncMoka(registration: MembershipRegistration) {
+    if (!registration.phone) return notify('Nomor WhatsApp tidak tersedia.', false);
+    setSyncing(registration.id);
     try {
-      const res = await fetch('/api/admin/crm/membership/sync-moka', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wa }),
+      const response = await fetch('/api/admin/crm/membership/sync-moka', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wa: registration.phone.replace(/^\+/, '') }),
       });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`✓ Data Moka diperbarui — ${data.visits} kunjungan, ${data.points} poin`);
-        await load();
-      } else {
-        showToast(data.error || 'Sync gagal.', false);
-      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) throw new Error(data.error || 'Sync Moka gagal.');
+      notify(`Moka tersinkron: ${data.visits} kunjungan, ${data.points} poin.`);
+      await loadRegistrations();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Sync Moka gagal.', false);
     } finally {
       setSyncing(null);
     }
   }
 
-  const filtered = members.filter(m => {
-    const matchSearch = !search ||
-      m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-      m.email?.toLowerCase().includes(search.toLowerCase());
-    const matchFilter =
-      filter === 'all'      ? true :
-      filter === 'inactive' ? m.membership_status !== 'ACTIVE' :
-                              m.membership_status === 'ACTIVE';
-    return matchSearch && matchFilter;
-  });
-
-  const totalActive   = members.filter(m => m.membership_status === 'ACTIVE').length;
-  const totalInactive = members.filter(m => m.membership_status !== 'ACTIVE').length;
-  const activatingMember = members.find(m => m.user_key === activating);
-
   return (
-    <div className="min-h-screen bg-[#020617] pb-24">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#020617]/95 backdrop-blur-md border-b border-slate-800 px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2 mb-3">
-          <CreditCard size={18} className="text-green-400" />
-          <h1 className="text-white font-bold text-base">Aktivasi Member</h1>
-        </div>
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-            <p className="text-green-400 font-bold text-xl">{totalActive}</p>
-            <p className="text-slate-500 text-xs">Aktif</p>
+    <div className="min-h-screen bg-[#020617] pb-24 text-slate-100">
+      <header className="sticky top-0 z-10 border-b border-slate-800 bg-[#020617]/95 px-4 pb-3 pt-4 backdrop-blur-md">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2"><CreditCard size={19} className="text-amber-300" /><div><h1 className="text-base font-bold text-white">Membership Berbayar</h1><p className="text-[11px] text-slate-500">Verifikasi pembayaran dan aktivasi kasir</p></div></div>
+            <button onClick={() => void loadRegistrations()} disabled={loading} className="rounded-lg border border-slate-700 p-2 text-slate-400 transition hover:border-slate-500 hover:text-white disabled:opacity-50" aria-label="Muat ulang data"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} /></button>
           </div>
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-            <p className="text-orange-400 font-bold text-xl">{totalInactive}</p>
-            <p className="text-slate-500 text-xs">Belum Aktif</p>
+          <div className="mb-3 grid grid-cols-3 gap-2">
+            {TABS.map((tab) => <button key={tab.value} onClick={() => setActiveTab(tab.value)} className={`rounded-xl border px-2 py-2 text-center transition ${activeTab === tab.value ? tab.active : 'border-slate-800 bg-slate-900 text-slate-400'}`}><span className="block text-lg font-bold">{counts[tab.value]}</span><span className="block text-[10px] font-semibold uppercase tracking-wide">{tab.label}</span></button>)}
           </div>
+          <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari kode, nama, email, atau WhatsApp..." className="w-full rounded-xl border border-slate-800 bg-slate-900 py-2.5 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-slate-600" /></div>
         </div>
-        {/* Search */}
-        <div className="relative mb-2">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Cari nama atau email..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-8 pr-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-slate-600"
-          />
-        </div>
-        {/* Filter tabs */}
-        <div className="flex gap-2">
-          {(['inactive', 'active', 'all'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                filter === f
-                  ? 'bg-green-400 text-slate-900'
-                  : 'bg-slate-800 text-slate-400'
-              }`}
-            >
-              {f === 'inactive' ? 'Belum Aktif' : f === 'active' ? 'Aktif' : 'Semua'}
-            </button>
-          ))}
-        </div>
-      </div>
+      </header>
 
-      {/* List */}
-      <div className="px-4 pt-3 flex flex-col gap-2">
-        {loading ? (
-          Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} />)
-        ) : filtered.length === 0 ? (
-          <div className="text-center text-slate-500 py-16 text-sm">Tidak ada member ditemukan</div>
-        ) : filtered.map(m => {
-          const isActive    = m.membership_status === 'ACTIVE';
-          const join        = fmtDate(m.created_at);
-          const tierColor   = TIER_COLOR[m.current_tier] || 'text-slate-400';
-          const isSyncing   = syncing === m.user_key;
-
-          return (
-            <motion.div
-              key={m.user_key}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-[#0F172A] border border-slate-800 rounded-xl px-4 py-3"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-sm font-bold text-slate-300 shrink-0 mt-0.5">
-                  {(m.full_name || m.email || '?')[0].toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm font-semibold truncate">{m.full_name || '—'}</p>
-                  <p className="text-slate-500 text-xs truncate">{m.email}</p>
-                  {isActive && (
-                    <div className="flex items-center gap-3 mt-1 flex-wrap">
-                      <span className={`text-[10px] font-bold uppercase ${tierColor}`}>
-                        {m.current_tier || 'bronze'}
-                      </span>
-                      <span className="text-slate-500 text-[10px]">
-                        {m.total_points ?? 0} poin · {m.total_visits ?? 0} kunjungan
-                      </span>
-                      {m.last_visit && (
-                        <span className="text-slate-600 text-[10px]">
-                          Terakhir {fmtDate(m.last_visit)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {!isActive && (
-                    <p className="text-slate-600 text-[10px] mt-0.5">Bergabung {join}</p>
-                  )}
-                </div>
-
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  {isActive ? (
-                    <>
-                      <span className="text-green-400 text-[10px] font-bold bg-green-400/10 border border-green-400/20 rounded-full px-2 py-0.5">
-                        ✓ Aktif
-                      </span>
-                      <button
-                        onClick={() => handleSyncMoka(m)}
-                        disabled={isSyncing}
-                        className="flex items-center gap-1 text-slate-400 hover:text-blue-400 text-[10px] font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg px-2 py-1 transition-colors disabled:opacity-50"
-                      >
-                        <RefreshCw size={10} className={isSyncing ? 'animate-spin' : ''} />
-                        {isSyncing ? 'Sync...' : 'Sync Moka'}
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setActivating(m.user_key);
-                        setPayMethod('cash');
-                        setTier('silver');
-                        setPaymentReference('');
-                        setActivationBranch(defaultBranch);
-                      }}
-                      className="bg-green-400/15 border border-green-400/40 text-green-400 text-xs font-bold rounded-xl px-3 py-1.5 active:scale-95 transition-transform"
-                    >
-                      Aktifkan
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          );
+      <main className="mx-auto flex max-w-5xl flex-col gap-3 px-4 pt-4">
+        {loading ? Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} />) : visibleRegistrations.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-800 py-16 text-center text-sm text-slate-500">Tidak ada pendaftaran pada status ini.</div> : visibleRegistrations.map((registration) => {
+          const active = registration.status === 'ACTIVE';
+          const pending = registration.status === 'PENDING';
+          const deadline = pending
+            ? registration.pendingExpiresAt
+            : registration.membershipExpiresAt || registration.pendingExpiresAt;
+          return <motion.article key={registration.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+            <div className="flex items-start gap-3">
+              <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border text-sm font-bold ${tierColor[registration.tier] || 'border-slate-600 bg-slate-800 text-slate-200'}`}>{(registration.fullName || '?').slice(0, 1).toUpperCase()}</div>
+              <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-sm font-semibold text-white">{registration.fullName || '—'}</h2><span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${tierColor[registration.tier] || 'border-slate-600 text-slate-300'}`}>{registration.tier}</span></div><p className="mt-1 truncate font-mono text-[11px] text-slate-400">{registration.registrationCode || registration.id}</p><p className="mt-1 truncate text-xs text-slate-500">{registration.phone || registration.email || 'Kontak tidak tersedia'}</p><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"><span className="font-bold text-white">{fmtRp(registration.amount)}</span><span className="inline-flex items-center gap-1 text-slate-500">{active ? <CalendarDays size={12} /> : <Clock3 size={12} />}{active ? `Berakhir ${fmtDate(deadline)}` : pending ? `Bayar sebelum ${fmtDate(deadline)}` : `Kedaluwarsa ${fmtDate(deadline)}`}</span></div></div>
+              <div className="flex shrink-0 flex-col items-end gap-2"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${pending ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : active ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' : 'border-slate-600 bg-slate-800 text-slate-400'}`}>{pending ? 'Pending' : active ? 'Aktif' : 'Kedaluwarsa'}</span>{pending ? <button onClick={() => openActivation(registration)} className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-300 transition hover:bg-emerald-400 hover:text-slate-950">Aktifkan</button> : active ? <button onClick={() => void handleSyncMoka(registration)} disabled={syncing === registration.id} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-slate-500 hover:text-white disabled:opacity-50"><RefreshCw size={10} className={syncing === registration.id ? 'animate-spin' : ''} />{syncing === registration.id ? 'Sync…' : 'Sync Moka'}</button> : null}</div>
+            </div>
+          </motion.article>;
         })}
-      </div>
+      </main>
 
-      {/* Bottom sheet: konfirmasi aktivasi */}
-      <AnimatePresence>
-        {activating && activatingMember && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/70 z-40"
-              onClick={() => !processing && setActivating(null)}
-            />
-            <motion.div
-              initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-[#0F172A] border-t border-slate-700 rounded-t-2xl p-5"
-            >
-              <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-4" />
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white font-bold text-base">Aktifkan Member</h2>
-                <button onClick={() => !processing && setActivating(null)}>
-                  <X size={20} className="text-slate-400" />
-                </button>
-              </div>
+      <AnimatePresence>{selected && <><motion.button aria-label="Tutup aktivasi" onClick={() => !processing && setSelected(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 cursor-default bg-black/70" /><motion.section role="dialog" aria-modal="true" aria-labelledby="activationTitle" initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 30, stiffness: 320 }} className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-2xl rounded-t-3xl border-t border-slate-700 bg-[#0f172a] p-5 shadow-2xl"><div className="mx-auto mb-4 h-1 w-10 rounded-full bg-slate-700" /><div className="mb-4 flex items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-emerald-300">Konfirmasi kasir</p><h2 id="activationTitle" className="mt-1 text-base font-bold text-white">Aktifkan {selected.fullName || 'member'}</h2></div><button onClick={() => !processing && setSelected(null)} className="rounded-lg p-1 text-slate-400 hover:text-white" aria-label="Tutup"><X size={20} /></button></div><div className="mb-4 rounded-xl border border-slate-700 bg-slate-800/70 p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Tier dan nominal tersimpan</p><div className="mt-2 grid grid-cols-2 gap-3"><div><p className={`text-sm font-bold uppercase ${tierColor[selected.tier]?.split(' ')[0] || 'text-white'}`}>{selected.tier}</p><p className="font-mono text-[11px] text-slate-500">{selected.registrationCode}</p></div><input aria-label="Nominal membership tersimpan" readOnly value={fmtRp(selected.amount)} className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-right text-sm font-bold text-white outline-none" /></div></div><div className="mb-4 grid grid-cols-3 gap-2">{PAY_METHODS.map((method) => <button key={method.value} onClick={() => setPayMethod(method.value)} className={`rounded-xl border px-1 py-2.5 text-xs font-semibold transition ${payMethod === method.value ? 'border-emerald-400 bg-emerald-400 text-slate-950' : 'border-slate-700 bg-slate-800 text-slate-300'}`}>{method.label}</button>)}</div><div className="mb-4 grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-slate-400">Cabang<select value={activationBranch} onChange={(event) => setActivationBranch(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none focus:border-emerald-400"><option value="">Pilih cabang</option>{BRANCHES.map((branch) => <option key={branch.value} value={branch.value}>{branch.label}</option>)}</select></label><div><p className="text-xs font-semibold text-slate-400">Sesi staff</p><p className="mt-2 truncate rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-300">{user?.name || user?.email || 'Memuat staff…'}</p></div></div><label className="block text-xs font-semibold text-slate-400">Referensi pembayaran<input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="No. struk / referensi transaksi" className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-400" /></label><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-700 bg-slate-800/70 p-3 text-xs leading-relaxed text-slate-300"><input type="checkbox" checked={paymentConfirmed} onChange={(event) => setPaymentConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-400" /><span>Saya sudah menerima dan memverifikasi pembayaran sesuai tier serta nominal tersimpan di atas.</span></label><button onClick={() => void handleActivate()} disabled={processing || !paymentReference.trim() || !activationBranch || !paymentConfirmed} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-45"><CheckCircle2 size={17} />{processing ? 'Menyimpan aktivasi…' : 'Konfirmasi Pembayaran & Aktifkan'}</button></motion.section></>}</AnimatePresence>
 
-              <div className="bg-slate-800/50 rounded-xl px-4 py-3 mb-4 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                  {(activatingMember.full_name || activatingMember.email || '?')[0].toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-white text-sm font-semibold">{activatingMember.full_name || '—'}</p>
-                  <p className="text-slate-400 text-xs">{activatingMember.email}</p>
-                </div>
-              </div>
-
-              <p className="text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">Pilih Paket</p>
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {TIERS.map(t => (
-                  <button
-                    key={t.value}
-                    onClick={() => setTier(t.value)}
-                    className={`rounded-xl py-2.5 px-1 border transition-all ${
-                      tier === t.value
-                        ? t.active
-                        : 'bg-slate-800 text-slate-300 border-slate-700'
-                    }`}
-                  >
-                    <span className="block text-sm font-bold">{t.label}</span>
-                    <span className={`block text-[10px] font-semibold ${tier === t.value ? 'opacity-70' : 'text-slate-500'}`}>
-                      {fmtRp(t.price)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              <p className="text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">Metode Bayar</p>
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                {PAY_METHODS.map(pm => (
-                  <button
-                    key={pm.value}
-                    onClick={() => setPayMethod(pm.value)}
-                    className={`rounded-xl py-2.5 text-sm font-semibold border transition-all ${
-                      payMethod === pm.value
-                        ? 'bg-green-400 text-slate-900 border-green-400'
-                        : 'bg-slate-800 text-slate-300 border-slate-700'
-                    }`}
-                  >
-                    {pm.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <label htmlFor="activationBranch" className="block text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">
-                    Cabang
-                  </label>
-                  <select
-                    id="activationBranch"
-                    value={activationBranch}
-                    onChange={e => setActivationBranch(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-green-400"
-                    required
-                  >
-                    <option value="">Pilih cabang</option>
-                    {BRANCHES.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">
-                    Staff
-                  </label>
-                  <div className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-300 truncate">
-                    {user?.name || user?.email || 'Memuat...'}
-                  </div>
-                </div>
-              </div>
-
-              <label htmlFor="paymentReference" className="block text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">
-                Referensi Pembayaran
-              </label>
-              <input
-                id="paymentReference"
-                type="text"
-                value={paymentReference}
-                onChange={e => setPaymentReference(e.target.value)}
-                placeholder="No. struk / referensi transaksi"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 mb-5 text-sm text-white placeholder-slate-500 outline-none focus:border-green-400"
-                required
-              />
-
-              <button
-                onClick={handleActivate}
-                disabled={processing || !paymentReference.trim() || !activationBranch || !user?.id}
-                className="w-full bg-green-400 text-slate-900 font-bold rounded-xl py-3.5 text-sm flex items-center justify-center gap-2 active:scale-[.98] transition-transform disabled:opacity-60"
-              >
-                <CheckCircle size={16} />
-                {processing ? 'Memproses...' : `Aktifkan — ${fmtRp(TIERS.find(t => t.value === tier)?.price ?? 0)}`}
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-            className={`fixed bottom-24 left-4 right-4 z-50 border rounded-xl px-4 py-3 text-sm font-medium text-center shadow-lg ${
-              toast.ok
-                ? 'bg-slate-800 border-slate-700 text-white'
-                : 'bg-red-900/80 border-red-700 text-red-200'
-            }`}
-          >
-            {toast.msg}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <AnimatePresence>{toast && <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 14 }} className={`fixed bottom-5 left-4 right-4 z-[60] mx-auto max-w-md rounded-xl border px-4 py-3 text-sm font-semibold shadow-2xl ${toast.ok ? 'border-emerald-400/40 bg-emerald-950 text-emerald-100' : 'border-red-400/40 bg-red-950 text-red-100'}`}>{toast.message}</motion.div>}</AnimatePresence>
     </div>
   );
 }
 
 export default function MembershipPage() {
-  return (
-    <Suspense>
-      <MembershipPageInner />
-    </Suspense>
-  );
+  return <Suspense fallback={<div className="min-h-screen bg-[#020617]" />}><MembershipPageInner /></Suspense>;
 }
