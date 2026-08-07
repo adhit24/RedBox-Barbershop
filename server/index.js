@@ -849,6 +849,10 @@ function adminAuth(req, res, next) {
   const token = req.headers['x-admin-token'] || '';
   const validTokens = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
   if (!token || !validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  const credentialId = token === process.env.ADMIN_PASSWORD ? 'crm-admin' : 'cron-service';
+  req.adminAuth = {
+    staffId: String(process.env.ADMIN_AUDIT_STAFF_ID || credentialId).trim(),
+  };
   next();
 }
 

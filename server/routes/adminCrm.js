@@ -114,6 +114,11 @@ function matchBarberName(csvName, barbers, preferBranch) {
   return best;
 }
 
+function getAuthenticatedStaffId(req) {
+  const candidate = req.adminAuth?.staffId || req.admin?.id || req.user?.id;
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+}
+
 function createMembershipRegistrationRoutes(supabase, { rateLimiters = [] } = {}) {
   const router = express.Router();
 
@@ -1219,12 +1224,23 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       if (registrationsError) throw registrationsError;
 
       let profiles = [];
+      let activations = [];
       if ((registrations || []).length) {
-        const { data, error } = await supabase
-          .from('member_profiles')
-          .select('user_key,phone,membership_status,current_tier,membership_started_at,membership_expires_at');
-        if (error) throw error;
-        profiles = data || [];
+        const registrationIds = registrations.map((registration) => registration.id);
+        const [profileResult, activationResult] = await Promise.all([
+          supabase
+            .from('member_profiles')
+            .select('user_key,phone,membership_status,current_tier,membership_started_at,membership_expires_at'),
+          supabase
+            .from('member_activations')
+            .select('id,registration_id,amount,tier,payment_method,payment_reference,branch,confirmed_by,status,starts_at,expires_at,activated_at')
+            .in('registration_id', registrationIds)
+            .order('activated_at', { ascending: false }),
+        ]);
+        if (profileResult.error) throw profileResult.error;
+        if (activationResult.error) throw activationResult.error;
+        profiles = profileResult.data || [];
+        activations = activationResult.data || [];
       }
       const profilesByUserKey = new Map(profiles.map((profile) => [profile.user_key, profile]));
       const profilesByPhone = new Map();
@@ -1233,6 +1249,12 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           profilesByPhone.set(normalizePhone(profile.phone), profile);
         } catch (_) {
           // Historical profile phones may be malformed; they must not block the CRM list.
+        }
+      }
+      const activationsByRegistrationId = new Map();
+      for (const activation of activations) {
+        if (activation.registration_id && !activationsByRegistrationId.has(activation.registration_id)) {
+          activationsByRegistrationId.set(activation.registration_id, activation);
         }
       }
       const now = new Date();
@@ -1246,14 +1268,24 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         const profile = profilesByUserKey.get(registration.user_key)
           || (normalizedPhone ? profilesByPhone.get(normalizedPhone) : null)
           || null;
+        const activation = activationsByRegistrationId.get(registration.id) || null;
         const pendingExpiresAt = registration.expires_at || null;
         const pendingIsLive = pendingExpiresAt && new Date(pendingExpiresAt) > now;
-        const membershipIsActive = profile && isActiveMembership({
+        const startsAt = activation?.starts_at || profile?.membership_started_at || null;
+        const membershipExpiresAt = activation?.expires_at || profile?.membership_expires_at || null;
+        const profileIsActive = profile && isActiveMembership({
           status: profile.membership_status,
           startsAt: profile.membership_started_at,
           expiresAt: profile.membership_expires_at,
           now,
         });
+        const paidPeriodIsActive = Boolean(
+          membershipExpiresAt
+          && new Date(membershipExpiresAt) > now
+          && (!startsAt || new Date(startsAt) <= now)
+          && (!activation || activation.status === 'completed')
+        );
+        const membershipIsActive = Boolean(profileIsActive && paidPeriodIsActive);
         let status = registration.status;
         if (registration.status === 'PENDING') status = pendingIsLive ? 'PENDING' : 'EXPIRED';
         else if (registration.status === 'ACTIVATED') status = membershipIsActive ? 'ACTIVE' : 'EXPIRED';
@@ -1270,8 +1302,15 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           status,
           registrationStatus: registration.status,
           pendingExpiresAt,
-          startsAt: profile?.membership_started_at || null,
-          membershipExpiresAt: profile?.membership_expires_at || null,
+          activationId: activation?.id || null,
+          paymentMethod: activation?.payment_method || null,
+          paymentReference: activation?.payment_reference || null,
+          branch: activation?.branch || null,
+          confirmedBy: activation?.confirmed_by || null,
+          paymentStatus: activation?.status || null,
+          startsAt,
+          membershipExpiresAt,
+          activatedAt: activation?.activated_at || null,
           createdAt: registration.created_at || null,
           updatedAt: registration.updated_at || null,
         };
@@ -1291,7 +1330,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     const branch = body.branch;
     const paymentMethod = body.payMethod || body.paymentMethod || body.payment_method;
     const paymentReference = body.paymentReference || body.payment_reference;
-    const staffId = body.staffId || body.staff_id || body.confirmedBy || body.confirmed_by;
+    const staffId = getAuthenticatedStaffId(req);
     let payment;
     try {
       payment = validatePaymentInput({ paymentMethod, paymentReference });
@@ -1300,7 +1339,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
     if (!registrationId) return res.status(400).json({ error: 'registrationId required' });
     if (typeof branch !== 'string' || !branch.trim()) return res.status(400).json({ error: 'branch required' });
-    if (typeof staffId !== 'string' || !staffId.trim()) return res.status(400).json({ error: 'staff identity required' });
+    if (!staffId) return res.status(403).json({ error: 'authenticated staff identity required' });
 
     try {
       const { data, error } = await supabase.rpc('activate_membership_registration', {
@@ -1308,7 +1347,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         p_payment_method: payment.paymentMethod,
         p_payment_reference: payment.paymentReference,
         p_branch: branch.trim(),
-        p_confirmed_by: staffId.trim(),
+        p_confirmed_by: staffId,
       });
       if (error) return res.status(409).json({ error: error.message });
       const activation = Array.isArray(data) ? data[0] : data;
