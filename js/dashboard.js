@@ -25,6 +25,26 @@ async function sbFetch(path, opts = {}) {
 
 document.addEventListener('DOMContentLoaded', () => {
 
+ // ---- Mobile navbar must be wired before member data initialization ----
+ const hamburger = document.getElementById('hamburger');
+ const navLinksEl = document.getElementById('navLinks');
+ if (hamburger && navLinksEl) {
+  const closeMobileMenu = () => {
+   hamburger.classList.remove('active');
+   navLinksEl.classList.remove('open');
+   hamburger.setAttribute('aria-expanded', 'false');
+   document.body.style.overflow = '';
+  };
+  hamburger.addEventListener('click', () => {
+   const isOpen = !navLinksEl.classList.contains('open');
+   hamburger.classList.toggle('active', isOpen);
+   navLinksEl.classList.toggle('open', isOpen);
+   hamburger.setAttribute('aria-expanded', String(isOpen));
+   document.body.style.overflow = isOpen ? 'hidden' : '';
+  });
+  navLinksEl.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMobileMenu));
+ }
+
  // ---- Check login state ----
  const userData = JSON.parse(localStorage.getItem('redbox_user') || 'null');
  const rbToken = localStorage.getItem('rb_member_token');
@@ -841,19 +861,6 @@ document.addEventListener('DOMContentLoaded', () => {
  }
  document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
  document.getElementById('mobileLogoutBtn')?.addEventListener('click', doLogout);
-
- // ============================================================
- // HAMBURGER (mobile)
- // ============================================================
- const hamburger = document.getElementById('hamburger');
- const navLinksEl = document.getElementById('navLinks');
- if (hamburger && navLinksEl) {
- hamburger.addEventListener('click', () => {
- hamburger.classList.toggle('active');
- navLinksEl.classList.toggle('open');
- document.body.style.overflow = navLinksEl.classList.contains('open') ? 'hidden' : '';
- });
- }
 
  // Pill
  function updateNavPill() {
