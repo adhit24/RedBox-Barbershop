@@ -25,6 +25,10 @@ const app  = express();
 const PORT = process.env.PORT || 3001;
 const DB_TYPE = process.env.DATABASE_TYPE || 'supabase';
 
+// Vercel is the only trusted reverse-proxy hop in production. Outside Vercel,
+// Express ignores client-supplied forwarding headers and uses the socket IP.
+app.set('trust proxy', process.env.VERCEL === '1' ? 1 : false);
+
 // Returns YYYY-MM-DD in local (server) timezone — avoids UTC shift near midnight
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;

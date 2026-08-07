@@ -58,10 +58,24 @@ test('registration RPC owns all identity and registration writes in one database
   assert.match(registrationRpc, /INSERT INTO customers/);
   assert.match(registrationRpc, /INSERT INTO membership_registrations/);
   assert.match(registrationRpc, /normalize_membership_phone\(mp\.phone\) = v_phone/);
-  assert.match(
-    registrationRpc,
-    /COALESCE\(\s*normalize_membership_phone\(c\.phone_e164\),\s*normalize_membership_phone\(c\.wa\)\s*\) = v_phone/
-  );
+});
+
+test('customer matching checks both canonical phone fields across registration and activation', () => {
+  const registrationStart = position('CREATE OR REPLACE FUNCTION create_membership_registration');
+  const activationStart = position('CREATE OR REPLACE FUNCTION activate_membership_registration');
+  const registrationRpc = migration.slice(registrationStart, activationStart);
+  const activationRpc = migration.slice(activationStart);
+  const registrationMatches = registrationRpc.match(
+    /\(\s*normalize_membership_phone\(c\.phone_e164\) = v_phone\s+OR\s+normalize_membership_phone\(c\.wa\) = v_phone\s*\)/g
+  ) || [];
+  const activationMatches = activationRpc.match(
+    /\(\s*normalize_membership_phone\(phone_e164\) = r\.phone_normalized\s+OR\s+normalize_membership_phone\(wa\) = r\.phone_normalized\s*\)/g
+  ) || [];
+
+  assert.equal(registrationMatches.length, 2, 'active conflict and identity lookup must both use OR matching');
+  assert.equal(activationMatches.length, 2, 'activation target lock and update must both use OR matching');
+  assert.doesNotMatch(registrationRpc, /COALESCE\(\s*normalize_membership_phone\(c\.phone_e164\)/);
+  assert.doesNotMatch(activationRpc, /COALESCE\(\s*normalize_membership_phone\(phone_e164\)/);
 });
 
 test('database phone normalization rejects invalid Indonesian mobile lengths', () => {

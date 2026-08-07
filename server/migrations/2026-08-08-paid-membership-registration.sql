@@ -226,10 +226,10 @@ BEGIN
   SELECT c.membership_expires_at
   INTO v_active_expires_at
   FROM customers AS c
-  WHERE COALESCE(
-      normalize_membership_phone(c.phone_e164),
-      normalize_membership_phone(c.wa)
-    ) = v_phone
+  WHERE (
+      normalize_membership_phone(c.phone_e164) = v_phone
+      OR normalize_membership_phone(c.wa) = v_phone
+    )
     AND c.membership_status = 'ACTIVE'
     AND (
       c.membership_expires_at > v_now
@@ -283,10 +283,10 @@ BEGIN
 
   SELECT c.* INTO v_customer
   FROM customers AS c
-  WHERE COALESCE(
-      normalize_membership_phone(c.phone_e164),
-      normalize_membership_phone(c.wa)
-    ) = v_phone
+  WHERE (
+      normalize_membership_phone(c.phone_e164) = v_phone
+      OR normalize_membership_phone(c.wa) = v_phone
+    )
   ORDER BY c.created_at ASC NULLS LAST, c.id ASC
   LIMIT 1
   FOR UPDATE;
@@ -419,10 +419,10 @@ BEGIN
   END IF;
 
   PERFORM 1 FROM customers
-  WHERE COALESCE(
-      normalize_membership_phone(phone_e164),
-      normalize_membership_phone(wa)
-    ) = r.phone_normalized
+  WHERE (
+      normalize_membership_phone(phone_e164) = r.phone_normalized
+      OR normalize_membership_phone(wa) = r.phone_normalized
+    )
   FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'customer target is missing';
@@ -463,10 +463,10 @@ BEGIN
       membership_started_at = v_starts_at,
       membership_expires_at = v_expires_at,
       updated_at = v_now
-  WHERE COALESCE(
-      normalize_membership_phone(phone_e164),
-      normalize_membership_phone(wa)
-    ) = r.phone_normalized;
+  WHERE (
+      normalize_membership_phone(phone_e164) = r.phone_normalized
+      OR normalize_membership_phone(wa) = r.phone_normalized
+    );
   GET DIAGNOSTICS v_customer_rows = ROW_COUNT;
   IF v_customer_rows = 0 THEN
     RAISE EXCEPTION 'customer target was not updated';

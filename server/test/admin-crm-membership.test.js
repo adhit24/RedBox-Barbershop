@@ -186,10 +186,11 @@ function createFakeSupabase(seed = {}) {
   };
 }
 
-async function withServer(supabase, fn, routeOptions) {
+async function withServer(supabase, fn, { rateLimiters = [], trustProxy = false } = {}) {
   const app = express();
+  app.set('trust proxy', trustProxy);
   app.use(express.json());
-  app.use(createMembershipRegistrationRoutes(supabase, routeOptions));
+  app.use(createMembershipRegistrationRoutes(supabase, { rateLimiters }));
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
   });
@@ -210,10 +211,12 @@ function requestBody(overrides = {}) {
   };
 }
 
-function postRegistration(url, body = requestBody(), ip = '203.0.113.10') {
+function postRegistration(url, body = requestBody(), forwardedIp = '203.0.113.10') {
+  const headers = { 'content-type': 'application/json' };
+  if (forwardedIp) headers['x-forwarded-for'] = forwardedIp;
   return fetch(`${url}/membership/registrations`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-forwarded-for': ip },
+    headers,
     body: JSON.stringify(body),
   });
 }
@@ -292,7 +295,7 @@ test('resolves legacy profile and customer phone formats without duplicate ident
       email: 'legacy@example.test', membership_status: 'INACTIVE',
     }],
     customers: [{
-      id: 'customer-legacy', wa: '628123456789', phone_e164: null,
+      id: 'customer-legacy', wa: '628123456789', phone_e164: '+628111111111',
       email: 'legacy@example.test', membership_status: 'INACTIVE',
     }],
   });
@@ -304,6 +307,28 @@ test('resolves legacy profile and customer phone formats without duplicate ident
   assert.equal(supabase.state.profiles[0].phone, '0812 3456 789');
   assert.equal(supabase.state.customers[0].wa, '628123456789');
   assert.equal(supabase.state.registrations[0].user_key, 'legacy-user');
+});
+
+test('rejects active customer when wa matches even if phone_e164 contains another valid number', async () => {
+  const supabase = createFakeSupabase({
+    customers: [{
+      id: 'customer-active',
+      wa: '628123456789',
+      phone_e164: '+628111111111',
+      membership_status: 'ACTIVE',
+      membership_started_at: '2026-08-08T00:00:00.000Z',
+      membership_expires_at: '2027-08-08T00:00:00.000Z',
+      current_tier: 'gold',
+    }],
+  });
+  await withServer(supabase, async (url) => {
+    const response = await postRegistration(url, requestBody({ phone: '+628123456789' }));
+    assert.equal(response.status, 409);
+    const body = await response.json();
+    assert.equal(body.tier, 'gold');
+    assert.equal(body.expiresAt, '2027-08-08T00:00:00.000Z');
+  });
+  assert.equal(supabase.state.registrations.length, 0);
 });
 
 test('rejects a canonical phone that already has an unexpired active membership', async () => {
@@ -359,7 +384,7 @@ test('rate limits canonical phone variants before any rejected-request write', a
   assert.equal(supabase.state.registrations.length, 1);
 });
 
-test('rate limits one IP across different canonical phones without authentication', async () => {
+test('ignores spoofed forwarded IPs when the direct connection is not a trusted proxy', async () => {
   const supabase = createFakeSupabase();
   const rateLimiters = createMembershipRegistrationRateLimiters({ maxPerIp: 1, maxPerPhone: 10 });
   await withServer(supabase, async (url) => {
@@ -367,11 +392,36 @@ test('rate limits one IP across different canonical phones without authenticatio
     const rejected = await postRegistration(
       url,
       requestBody({ phone: '0821-9876-5432' }),
-      '203.0.113.30'
+      '198.51.100.90'
     );
     assert.equal(rejected.status, 429);
     assert.match((await rejected.json()).error, /jaringan ini/i);
   }, { rateLimiters });
   assert.equal(supabase.state.rpcCalls.length, 1);
   assert.equal(supabase.state.registrations.length, 1);
+});
+
+test('uses Express trusted-proxy resolution for distinct forwarded clients', async () => {
+  const supabase = createFakeSupabase();
+  const rateLimiters = createMembershipRegistrationRateLimiters({ maxPerIp: 1, maxPerPhone: 10 });
+  await withServer(supabase, async (url) => {
+    assert.equal((await postRegistration(
+      url,
+      requestBody({ phone: '0812-3456-789' }),
+      '203.0.113.40'
+    )).status, 201);
+    assert.equal((await postRegistration(
+      url,
+      requestBody({ phone: '0821-9876-5432' }),
+      '198.51.100.40'
+    )).status, 201);
+    const rejected = await postRegistration(
+      url,
+      requestBody({ phone: '0857-1111-2222' }),
+      '203.0.113.40'
+    );
+    assert.equal(rejected.status, 429);
+  }, { rateLimiters, trustProxy: 1 });
+  assert.equal(supabase.state.rpcCalls.length, 2);
+  assert.equal(supabase.state.registrations.length, 2);
 });

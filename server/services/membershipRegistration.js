@@ -57,7 +57,7 @@ function normalizePhone(phone) {
 }
 
 function requestIp(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+  return req.ip
     || req.socket?.remoteAddress
     || 'unknown';
 }

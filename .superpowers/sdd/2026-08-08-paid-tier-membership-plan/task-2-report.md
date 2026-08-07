@@ -25,21 +25,21 @@ Before implementation:
 
 ```text
 node --test server/test/admin-crm-membership.test.js
-Result: 5 failed, 0 passed; endpoint returned 404 because the route was not implemented.
+Result: 6 failed, 0 passed; endpoint returned 404 because the route was not implemented.
 ```
 
 After implementation:
 
 ```text
 node --test server/test/admin-crm-membership.test.js
-Result: 5 passed, 0 failed
+Result: 6 passed, 0 failed
 ```
 
 Focused regression suite:
 
 ```text
 node --test server/test/admin-crm-membership*.test.js server/test/membership*.test.js
-Result: 28 passed, 0 failed
+Result: 29 passed, 0 failed
 ```
 
 Full server test suite:
@@ -109,11 +109,66 @@ git diff --check
 Result: passed
 ```
 
-Count correction: the original post-implementation endpoint file contained 6 tests, so the earlier `5 passed, 0 failed` statement was incomplete. This fix round replaces that evidence with the exact current counts above.
+Historical count correction: the original endpoint file contained 6 tests and the original focused glob contained 29 tests. The initial evidence above now records those exact counts.
 
 ## Migration concerns
 
 - Per request, no live Supabase migration check was performed. The migration has static contract coverage but must be applied before deploying the RPC-based route; otherwise the endpoint will fail because `create_membership_registration` is unavailable.
 - On migration, expired Pending rows become `EXPIRED`; if historical concurrent duplicates exist for one canonical phone+tier, the oldest live row is retained and later duplicates become `CANCELLED` before the unique index is created.
 - Rate limiting follows the existing in-memory convention and is instance-local; counters reset on restart and are not shared across multiple server instances.
+- Unrelated pre-existing `claude-skills` and `Transaksi/*.csv` changes remain untouched and excluded.
+
+---
+
+# Fix Round 2 — Canonical Customer Matching and Trusted Client IP
+
+## Status
+
+The three remaining review findings were fixed. Customer identity resolution now checks normalized `phone_e164` and `wa` independently for registration conflict detection, identity reuse, activation target locking, and activation updates. Public IP limiting now keys exclusively from Express `req.ip`; the production app trusts exactly one reverse-proxy hop only when running on Vercel, while direct/non-Vercel requests ignore client-supplied forwarding headers.
+
+## Regression evidence
+
+Before implementation, the new focused regressions failed at the intended boundaries:
+
+```text
+node --test server/test/admin-crm-membership.test.js server/test/membership-activation-contract.test.js
+Result: 18 passed, 2 failed
+Failures: spoofed X-Forwarded-For bypassed the IP limiter; SQL still used COALESCE customer matching.
+```
+
+After implementation:
+
+```text
+node --test server/test/admin-crm-membership.test.js server/test/membership-activation-contract.test.js
+Result: 20 passed, 0 failed
+```
+
+Focused Task 2/activation suite:
+
+```text
+node --test server/test/admin-crm-membership.test.js server/test/admin-crm-membership-activation.test.js server/test/membership-registration.test.js server/test/membership-activation-contract.test.js
+Result: 33 passed, 0 failed
+```
+
+Full server suite:
+
+```text
+node --test server/test/*.test.js
+Result: 51 passed, 0 failed, 0 cancelled
+```
+
+Syntax and diff checks:
+
+```text
+node --check server/routes/adminCrm.js
+node --check server/services/membershipRegistration.js
+node --check server/index.js
+git diff --check
+Result: all commands passed with no errors
+```
+
+## Deployment caveats
+
+- The updated migration and both RPCs still require application in a non-production Supabase environment before deployment; no live database mutation was performed in this task.
+- The limiter remains in-memory and instance-local, so it is a first-line abuse control rather than a distributed quota. Vercel overwrites the public `X-Forwarded-For` value before the function runs; outside Vercel, forwarded headers are not trusted.
 - Unrelated pre-existing `claude-skills` and `Transaksi/*.csv` changes remain untouched and excluded.
