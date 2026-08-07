@@ -12,8 +12,9 @@ test('member dashboard hamburger is an accessible button wired before dashboard 
   assert.match(html, /<button[^>]+type="button"[^>]+id="hamburger"/);
   assert.match(html, /id="hamburger"[^>]+aria-controls="navLinks"/);
   assert.match(html, /id="hamburger"[^>]+aria-expanded="false"/);
+  assert.match(html, /id="hamburger"[^>]+onclick="window\.toggleMemberNav\(this\)"/);
   assert.match(js, /const hamburger = document\.getElementById\('hamburger'\);/);
-  assert.match(js, /hamburger\.setAttribute\('aria-expanded', String\(isOpen\)\)/);
+  assert.match(js, /window\.toggleMemberNav = function/);
   assert.ok(
     js.indexOf("const hamburger = document.getElementById('hamburger');") <
       js.indexOf('// ---- Check login state ----'),

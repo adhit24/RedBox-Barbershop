@@ -8,6 +8,16 @@
 const SUPABASE_URL = 'https://khcvklzxfohwkyocenaf.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtoY3ZrbHp4Zm9od2t5b2NlbmFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyOTE0ODksImV4cCI6MjA5Mjg2NzQ4OX0.YlqcppDA7xB4ZpOstzjFsnt_0v4nPf09kRXdLf1bCAk';
 
+window.toggleMemberNav = function (button) {
+ const navLinks = document.getElementById('navLinks');
+ if (!navLinks) return;
+ const isOpen = !navLinks.classList.contains('open');
+ button.classList.toggle('active', isOpen);
+ navLinks.classList.toggle('open', isOpen);
+ button.setAttribute('aria-expanded', String(isOpen));
+ document.body.style.overflow = isOpen ? 'hidden' : '';
+};
+
 async function sbFetch(path, opts = {}) {
  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
  ...opts,
@@ -35,13 +45,6 @@ document.addEventListener('DOMContentLoaded', () => {
    hamburger.setAttribute('aria-expanded', 'false');
    document.body.style.overflow = '';
   };
-  hamburger.addEventListener('click', () => {
-   const isOpen = !navLinksEl.classList.contains('open');
-   hamburger.classList.toggle('active', isOpen);
-   navLinksEl.classList.toggle('open', isOpen);
-   hamburger.setAttribute('aria-expanded', String(isOpen));
-   document.body.style.overflow = isOpen ? 'hidden' : '';
-  });
   navLinksEl.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMobileMenu));
  }
 
