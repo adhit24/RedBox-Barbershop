@@ -58,10 +58,10 @@ export function fetchAdminLeaderboard(branch: string, category: 'customer' | 'st
   );
 }
 
-export function syncAdminLeaderboardMoka() {
+export function syncAdminLeaderboardMoka(branch = '') {
   return crmFetch<{ ok: boolean; synced_at: string; outlets: number; transactions: number; services: number; results?: unknown[] }>(
     '/api/admin/crm/leaderboard/sync-moka',
-    { method: 'POST', body: JSON.stringify({}) }
+    { method: 'POST', body: JSON.stringify({ branch }) }
   );
 }
 

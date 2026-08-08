@@ -59,7 +59,7 @@ export default function AdminLeaderboardPage() {
     setSyncing(true);
     setSyncMessage('');
     try {
-      const result = await syncAdminLeaderboardMoka();
+      const result = await syncAdminLeaderboardMoka(branch);
       setSyncMessage(`Sync selesai · ${result.transactions} transaksi · ${result.services} layanan`);
       const refreshed = await fetchAdminLeaderboard(branch, category, period);
       setItems(refreshed.items);

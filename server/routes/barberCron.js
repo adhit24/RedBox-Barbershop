@@ -61,13 +61,15 @@ async function getWeeklyCount(supabase, barberId, weekStart) {
 // Pull the current month directly from Moka before rebuilding leaderboard data.
 // This is also exposed through the external cron route because in serverless
 // deployments an in-process node-cron timer is not guaranteed to stay alive.
-async function syncMokaTransactions(supabase) {
+async function syncMokaTransactions(supabase, branch = null) {
   const { syncCurrentMonthTx } = require('../moka/txSync');
-  const { data: outlets, error: outletError } = await supabase
+  let outletQuery = supabase
     .from('outlets')
     .select('id, slug, moka_outlet_id')
     .eq('is_active', true)
     .not('moka_outlet_id', 'is', null);
+  if (branch && branch !== 'all') outletQuery = outletQuery.eq('slug', branch);
+  const { data: outlets, error: outletError } = await outletQuery;
   if (outletError) throw outletError;
   if (!outlets?.length) return { outlets: 0, transactions: 0, services: 0 };
 

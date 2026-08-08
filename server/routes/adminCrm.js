@@ -822,7 +822,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   // used by the scheduled job, so the admin can compare fresh POS data.
   router.post('/leaderboard/sync-moka', adminAuth, async (req, res) => {
     try {
-      const result = await syncMokaTransactions(supabase);
+      const result = await syncMokaTransactions(supabase, req.body?.branch || null);
       return res.json({ ok: true, synced_at: new Date().toISOString(), ...result });
     } catch (error) {
       console.error('[Admin] Leaderboard Moka sync failed:', error.message);
