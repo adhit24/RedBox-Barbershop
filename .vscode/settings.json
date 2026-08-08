@@ -1,3 +1,4 @@
 {
-  "aider-composer.pythonPath": "C:\\Program Files\\Python313\\python.exe"
+  "aider-composer.pythonPath": "C:\\Program Files\\Python313\\python.exe",
+  "chatgpt.followUpQueueMode": "interrupt"
 }

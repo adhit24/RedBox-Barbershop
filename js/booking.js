@@ -73,10 +73,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
  const rawPackage = (params.get('pkg') || '').toLowerCase().replace(/^weeding-/, 'wedding-');
  const WEDDING_PACKAGES = {
- 'wedding-gentleman': { label: 'Wedding Gentleman Grooming', price: 350000, duration: '120 menit', people: '1 orang' },
- 'wedding-silver': { label: 'Wedding Royal Grooming Silver', price: 500000, duration: '120 menit', people: '2 orang' },
- 'wedding-gold': { label: 'Wedding Royal Grooming Gold', price: 750000, duration: '120 menit', people: '3 orang' },
- 'wedding-platinum': { label: 'Wedding Royal Grooming Platinum', price: 1000000, duration: '120 menit', people: '4 orang' },
+ 'wedding-gentleman': { label: 'Wedding Gentleman Grooming', price: 350000, duration: '120 menit', people: '1 orang', peopleCount: 1 },
+ 'wedding-silver': { label: 'Wedding Royal Grooming Silver', price: 500000, duration: '120 menit', people: '2 orang', peopleCount: 2 },
+ 'wedding-gold': { label: 'Wedding Royal Grooming Gold', price: 750000, duration: '120 menit', people: '3 orang', peopleCount: 3 },
+ 'wedding-platinum': { label: 'Wedding Royal Grooming Platinum', price: 1000000, duration: '120 menit', people: '4 orang', peopleCount: 4 },
  };
  const weddingPackage = WEDDING_PACKAGES[rawPackage] || null;
  const isWeddingPackage = Boolean(weddingPackage);
@@ -90,34 +90,41 @@ document.addEventListener('DOMContentLoaded', async () => {
  // activePerson: tab yang sedang aktif di step 1 (service) atau step 2 (barber)
  state.groupSize = 1;
  state.activePerson = 1;
- state.person2 = null; // { name, service, barber } - diisi saat groupSize===2
+ state.person2 = null; // Legacy alias for person 2
+ state.weddingPeople = []; // Additional people for wedding packages (person 3+)
 
- function isGroup() { return state.groupSize === 2; }
+ function isGroup() { return state.groupSize > 1; }
+ function bookingPeopleCount() { return isGroup() ? state.groupSize : 1; }
+ function getPersonRecord(person) {
+ if (person === 1) return state;
+ if (person === 2) {
+ state.person2 = state.person2 || { name: '', service: null, barber: null };
+ return state.person2;
+ }
+ const index = person - 3;
+ state.weddingPeople[index] = state.weddingPeople[index] || { name: '', service: null, barber: null };
+ return state.weddingPeople[index];
+ }
+ function getPersonService(person) { return person === 1 ? state.service : getPersonRecord(person).service; }
+ function setPersonService(person, svc) { if (person === 1) state.service = svc; else getPersonRecord(person).service = svc; }
+ function getPersonBarber(person) { return person === 1 ? state.barber : getPersonRecord(person).barber; }
+ function setPersonBarber(person, barber) { if (person === 1) state.barber = barber; else getPersonRecord(person).barber = barber; }
+ function getPersonName(person) { return person === 1 ? state.name : getPersonRecord(person).name; }
+ function setPersonName(person, name) { if (person === 1) state.name = name; else getPersonRecord(person).name = name; }
+ function allBookingPeople() { return Array.from({ length: bookingPeopleCount() }, (_, i) => getPersonRecord(i + 1)); }
 
  // helper: get/set current person's service/barber (active tab when group)
  function getActiveService() {
- if (isGroup() && state.activePerson === 2) return state.person2?.service || null;
- return state.service;
+ return getPersonService(state.activePerson) || null;
  }
  function setActiveService(svc) {
- if (isGroup() && state.activePerson === 2) {
- state.person2 = state.person2 || { name: '', service: null, barber: null };
- state.person2.service = svc;
- } else {
- state.service = svc;
- }
+ setPersonService(state.activePerson, svc);
  }
  function getActiveBarber() {
- if (isGroup() && state.activePerson === 2) return state.person2?.barber || null;
- return state.barber;
+ return getPersonBarber(state.activePerson) || null;
  }
  function setActiveBarber(b) {
- if (isGroup() && state.activePerson === 2) {
- state.person2 = state.person2 || { name: '', service: null, barber: null };
- state.person2.barber = b;
- } else {
- state.barber = b;
- }
+ setPersonBarber(state.activePerson, b);
  }
 
  // Update person-tab UI status text + filled checkmark
@@ -126,16 +133,12 @@ document.addEventListener('DOMContentLoaded', async () => {
  const isBarberStep = tabs.id === 'personTabsBarber';
  tabs.querySelectorAll('.person-tab').forEach(t => {
  const p = parseInt(t.dataset.person, 10);
- const filled = isBarberStep
- ? (p === 1 ? !!state.barber : !!state.person2?.barber)
- : (p === 1 ? !!state.service : !!state.person2?.service);
+ const filled = isBarberStep ? !!getPersonBarber(p) : !!getPersonService(p);
  t.classList.toggle('filled', filled);
  const statusEl = t.querySelector('.person-tab-status');
  if (statusEl) {
  if (filled) {
- const name = isBarberStep
- ? (p === 1 ? state.barber?.name : state.person2?.barber?.name)
- : (p === 1 ? state.service?.name : state.person2?.service?.name);
+ const name = isBarberStep ? getPersonBarber(p)?.name : getPersonService(p)?.name;
  statusEl.textContent = name || (isBarberStep ? 'Dipilih' : 'Dipilih');
  } else {
  statusEl.textContent = isBarberStep ? 'Pilih kapster' : 'Pilih service';
@@ -154,26 +157,28 @@ document.addEventListener('DOMContentLoaded', async () => {
  });
  }
  // Update barber-card highlight to match active person's barber
- function refreshBarberCardSelection() {
+function refreshBarberCardSelection() {
  const activeB = getActiveBarber();
- document.querySelectorAll('.barber-card').forEach(c => {
+ document.querySelectorAll('.barber-card, .pro-pick-card').forEach(c => {
  c.classList.toggle('selected', !!activeB && String(c.dataset.barber) === String(activeB.id));
+  if (c.classList.contains('pro-pick-card')) {
+   c.setAttribute('aria-selected', String(!!activeB && String(c.dataset.barber) === String(activeB.id)));
+  }
  });
- }
+}
 
  // Are step-1 / step-2 requirements satisfied for current group size?
  function step1Ready() {
  if (!isGroup()) return !!state.service;
- return !!state.service && !!state.person2?.service;
+ return allBookingPeople().every(p => !!p.service);
  }
  function step2Ready() {
  if (!isGroup()) return !!state.barber;
- if (!state.barber || !state.person2?.barber) return false;
- // must be different kapster
- if (String(state.barber.id) === String(state.person2.barber.id)) return false;
- // must be same branch (paralel di 1 cabang)
- if (state.barber.branch !== state.person2.barber.branch) return false;
- return true;
+ const people = allBookingPeople();
+ if (people.some(p => !p.barber)) return false;
+ const barberIds = people.map(p => String(p.barber.id));
+ if (new Set(barberIds).size !== barberIds.length) return false;
+ return people.every(p => p.barber.branch === people[0].barber.branch);
  }
 
  function updateStep1Cta() {
@@ -189,7 +194,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (sc) {
  if (!ready) sc.textContent = '';
  else if (!isGroup()) sc.textContent = '- ' + state.service.name + ' selected';
- else sc.textContent = '- ' + state.service.name + ' + ' + state.person2.service.name;
+ else sc.textContent = '- ' + allBookingPeople().map(p => p.service.name).join(' + ');
  }
  }
 
@@ -205,14 +210,38 @@ document.addEventListener('DOMContentLoaded', async () => {
  const personTabsBarber = document.getElementById('personTabsBarber');
  const svcListWrap = document.getElementById('svcList');
 
+ function ensurePersonTabs(count) {
+ [personTabsService, personTabsBarber].forEach(tabs => {
+ if (!tabs) return;
+ const template = tabs.querySelector('.person-tab[data-person="2"]');
+ if (!template) return;
+ for (let person = 3; person <= count; person++) {
+ if (tabs.querySelector(`.person-tab[data-person="${person}"]`)) continue;
+ const button = template.cloneNode(true);
+ button.dataset.person = String(person);
+ button.querySelector('.person-tab-badge').textContent = String(person);
+ const label = button.querySelector('.person-tab-label');
+ if (label) label.textContent = tabs.id === 'personTabsBarber' ? 'Kapster Orang ' + person : 'Orang ' + person;
+ const status = button.querySelector('.person-tab-status');
+ if (status) status.textContent = tabs.id === 'personTabsBarber' ? 'Pilih kapster' : 'Pilih service';
+ button.classList.remove('active', 'filled');
+ tabs.appendChild(button);
+ }
+ tabs.querySelectorAll('.person-tab').forEach(button => {
+ button.style.display = parseInt(button.dataset.person, 10) <= count ? '' : 'none';
+ });
+ });
+ }
+
  function setGroupSize(n) {
  state.groupSize = n;
  // pills
  groupSelector?.querySelectorAll('.group-pill').forEach(p => {
  p.classList.toggle('active', parseInt(p.dataset.size, 10) === n);
  });
- // 3+ banner: hide service list & person tabs
- if (n === 3) {
+ // Unsupported manual 3+ booking remains disabled; wedding packages use
+ // the same group UI for their declared 2–4 people.
+ if (n > 2 && !isWeddingPackage) {
  if (groupBanner) groupBanner.style.display = '';
  if (personTabsService) personTabsService.style.display = 'none';
  if (personTabsBarber) personTabsBarber.style.display = 'none';
@@ -227,21 +256,26 @@ document.addEventListener('DOMContentLoaded', async () => {
  // 1 or 2 orang
  if (groupBanner) groupBanner.style.display = 'none';
  if (svcListWrap) svcListWrap.style.display = '';
- const showTabs = (n === 2);
+ const showTabs = (n > 1);
+ ensurePersonTabs(n);
  if (personTabsService) personTabsService.style.display = showTabs ? '' : 'none';
  if (personTabsBarber) personTabsBarber.style.display = showTabs ? '' : 'none';
  // Reset person2 when switching back to 1
  if (n === 1) {
  state.person2 = null;
+ state.weddingPeople = [];
  state.activePerson = 1;
  } else {
  state.person2 = state.person2 || { name: '', service: null, barber: null };
+ state.weddingPeople = Array.from({ length: Math.max(0, n - 2) }, (_, index) =>
+ state.weddingPeople[index] || { name: '', service: null, barber: null }
+ );
  }
  // Toggle 2nd name field & relabel 1st name
  const name2Group = document.getElementById('custName2Group');
  const nameLabel = document.getElementById('custNameLabel');
  if (name2Group) name2Group.style.display = showTabs ? '' : 'none';
- if (nameLabel) nameLabel.textContent = showTabs ? 'Nama Orang 1 (Kontak Utama)' : 'Full Name';
+ if (nameLabel) nameLabel.textContent = showTabs ? 'Nama Kontak Utama' : 'Full Name';
 
  refreshPersonTabs();
  refreshSvcListSelection();
@@ -447,9 +481,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  recalcServiceWithAddons(newSvc);
  refreshSvcListSelection();
 
- // Group mode: auto-switch ke person 2 jika belum dipilih
- if (isGroup() && state.activePerson === 1 && !state.person2?.service) {
- state.activePerson = 2;
+ // Group mode: auto-switch ke orang berikutnya yang belum memilih service
+ if (isGroup()) {
+ const nextPerson = allBookingPeople().findIndex(person => !person.service);
+ if (nextPerson >= 0) state.activePerson = nextPerson + 1;
  refreshSvcListSelection();
  }
  refreshPersonTabs();
@@ -607,9 +642,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  setActiveService(svcData);
  refreshSvcListSelection();
 
- // Group mode: auto-switch ke tab person 2 supaya alur intuitif
- if (isGroup() && state.activePerson === 1 && !state.person2?.service) {
- state.activePerson = 2;
+ // Group mode: auto-switch ke orang berikutnya yang belum memilih service
+ if (isGroup()) {
+ const nextPerson = allBookingPeople().findIndex(person => !person.service);
+ if (nextPerson >= 0) state.activePerson = nextPerson + 1;
  refreshPersonTabs();
  refreshSvcListSelection();
  } else {
@@ -929,10 +965,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (sumServiceEl) sumServiceEl.innerHTML = '';
  if (sumAddonsEl) {
  const useCsb = state.location === 'csb';
- const blocks = [
- { tag: 'Orang 1', svc: state.service, barber: state.barber },
- { tag: 'Orang 2', svc: state.person2?.service, barber: state.person2?.barber }
- ].map(p => {
+ const blocks = allBookingPeople().map((person, index) => ({
+ tag: 'Orang ' + (index + 1),
+ svc: person.service,
+ barber: person.barber
+ })).map(p => {
  if (!p.svc && !p.barber) {
  return `<div class="sb-group-block"><span class="sb-group-tag">${p.tag}</span><span class="sb-group-line">-</span></div>`;
  }
@@ -951,9 +988,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  sumAddonsEl.innerHTML = blocks;
  sumAddonsEl.style.display = '';
  }
- document.getElementById('sumBarber').textContent = (state.barber && state.person2?.barber)
- ? state.barber.name + ' + ' + state.person2.barber.name
- : (state.barber ? state.barber.name : '-');
+ document.getElementById('sumBarber').textContent = allBookingPeople().map(person => person.barber?.name).filter(Boolean).join(' + ') || '-';
  } else {
  // Solo mode (default)
  if (sumServiceEl) sumServiceEl.textContent = state.service ? state.service.name + ' - ' + state.service.duration : '-';
@@ -983,7 +1018,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  : '-';
 
  // Total = person1 + person2 price (when group)
- const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+ const total = allBookingPeople().reduce((sum, person) => sum + (person.service?.price || 0), 0);
  document.getElementById('sumTotal').textContent = total ? fmt(total) : '-';
  }
 
@@ -1152,10 +1187,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  const barberData = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
 
- // Group mode: prevent picking same kapster for both persons
+ // Group mode: prevent picking the same kapster for different persons
  if (isGroup()) {
- const otherBarber = state.activePerson === 1 ? state.person2?.barber : state.barber;
- if (otherBarber && String(otherBarber.id) === String(barberData.id)) {
+ const duplicate = allBookingPeople().some((person, index) =>
+ index + 1 !== state.activePerson && person.barber && String(person.barber.id) === String(barberData.id)
+ );
+ if (duplicate) {
  alert('Kapster ini sudah dipilih untuk orang yang lain. Pilih kapster berbeda agar bisa paralel di waktu yang sama.');
  return;
  }
@@ -1176,11 +1213,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  // Apply CSB-specific pricing when CSB branch is selected - untuk SEMUA service person
  applyCsbPricingTo(state.service);
- if (isGroup()) applyCsbPricingTo(state.person2?.service);
+ if (isGroup()) allBookingPeople().slice(1).forEach(person => applyCsbPricingTo(person.service));
 
- // Group mode: auto-switch ke tab person 2 jika belum dipilih
- if (isGroup() && state.activePerson === 1 && !state.person2?.barber) {
- state.activePerson = 2;
+ // Group mode: auto-switch ke orang berikutnya yang belum memilih kapster
+ if (isGroup()) {
+ const nextPerson = allBookingPeople().findIndex(person => !person.barber);
+ if (nextPerson >= 0) state.activePerson = nextPerson + 1;
  refreshBarberCardSelection();
  }
  refreshPersonTabs();
@@ -1496,9 +1534,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  
  if (!isBooked && !mokaAvailabilityActive) {
  isBooked = hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
- // Group mode: slot juga harus available untuk barber person 2
- if (!isBooked && isGroup() && state.person2?.barber) {
- isBooked = hasConflict(state.person2.barber.id, state.date, slot, state.person2.service?.duration);
+ // Group mode: every selected kapster must be available at this slot.
+ if (!isBooked && isGroup()) {
+ isBooked = allBookingPeople().some(person =>
+ person.barber && hasConflict(person.barber.id, state.date, slot, person.service?.duration)
+ );
  }
  }
 
@@ -1622,11 +1662,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
 
  const groupRows = isGroup()
- ? personRows('Orang 1', state.service, state.barber, state.name) +
- personRows('Orang 2', state.person2?.service, state.person2?.barber, state.person2?.name)
+ ? allBookingPeople().map((person, index) => personRows('Orang ' + (index + 1), person.service, person.barber, person.name)).join('')
  : personRows('', state.service, state.barber);
 
- const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+ const total = allBookingPeople().reduce((sum, person) => sum + (person.service?.price || 0), 0);
 
  box.innerHTML = `
  ${groupRows}
@@ -1673,14 +1712,9 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
 
  document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
- if (hasConflict(state.barber?.id, state.date, state.time, state.service?.duration)) {
+ if (allBookingPeople().some(person => hasConflict(person.barber?.id, state.date, state.time, person.service?.duration))) {
  alert('Mohon maaf, kapster ' + state.barber?.name + ' baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');
  goToStep(3); // Go back to Date & Time step
- return;
- }
- if (isGroup() && state.person2?.barber && hasConflict(state.person2.barber.id, state.date, state.time, state.person2.service?.duration)) {
- alert('Mohon maaf, kapster ' + state.person2.barber.name + ' (orang 2) baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');
- goToStep(3);
  return;
  }
 
@@ -1704,18 +1738,17 @@ document.addEventListener('DOMContentLoaded', async () => {
  ].filter(Boolean);
  }
 
- const totalPrice = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+ const totalPrice = allBookingPeople().reduce((sum, person) => sum + (person.service?.price || 0), 0);
  const headerLine = isGroup()
- ? ' *BOOKING GRUP (2 ORANG) - REDBOX BARBERSHOP*'
+ ? ' *BOOKING GRUP (' + bookingPeopleCount() + ' ORANG) - REDBOX BARBERSHOP*'
  : (isWeddingPackage ? ' *BOOKING WEDDING GROOMING - REDBOX BARBERSHOP*' : (isHomeService ? ' *BOOKING HOME SERVICE - REDBOX BARBERSHOP*' : ' *BOOKING REDBOX BARBERSHOP*'));
 
  const msg = [
  headerLine, '',
  ...(isGroup()
- ? [
- ..._waBlockFor('ORANG 1', state.name, state.service, state.barber), '',
- ..._waBlockFor('ORANG 2', state.person2?.name, state.person2?.service, state.person2?.barber), '',
- ]
+ ? allBookingPeople().flatMap((person, index) => [
+ ..._waBlockFor('ORANG ' + (index + 1), person.name, person.service, person.barber), '',
+ ])
  : _waBlockFor('', '', state.service, state.barber)),
  ' *Jadwal:* ' + (state.date ? formatDate(state.date) : '-') + ' at ' + state.time,
  ' *Cabang Terdekat:* ' + locLabel,
@@ -1771,15 +1804,13 @@ document.addEventListener('DOMContentLoaded', async () => {
  status: 'pending',
  type: isWeddingPackage ? 'wedding' : (isHomeService ? 'home_service' : 'outlet'),
  address: isHomeService ? (state.address || '') : undefined,
+ package_people: isWeddingPackage ? weddingPackage.peopleCount : undefined,
  };
  }
 
- const payloads = isGroup()
- ? [
- _buildPayloadFor(1, state.name, state.service, state.barber),
- _buildPayloadFor(2, state.person2?.name, state.person2?.service, state.person2?.barber),
- ]
- : [_buildPayloadFor(1, state.name, state.service, state.barber)];
+ const payloads = allBookingPeople().map((person, index) =>
+ _buildPayloadFor(index + 1, person.name || state.name, person.service, person.barber)
+ );
 
  const confirmedTime = payloads[0]?.time || state.time;
 
@@ -1854,8 +1885,9 @@ document.addEventListener('DOMContentLoaded', async () => {
  `;
  }
  const personBlocks = isGroup()
- ? _successPerson('Orang 1', state.name, state.service, state.barber) +
- _successPerson('Orang 2', state.person2?.name, state.person2?.service, state.person2?.barber)
+ ? allBookingPeople().map((person, index) =>
+ _successPerson('Orang ' + (index + 1), person.name || state.name, person.service, person.barber)
+ ).join('')
  : _successPerson('', '', state.service, state.barber);
  successBox.innerHTML = `
  ${personBlocks}
@@ -1906,7 +1938,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  // ── HOME SERVICE MODE ────────────────────────
  if (isHomeService) {
- const hsPrice = isWeddingPackage ? weddingPackage.price : (hsPackage === 'family' ? HS_PRICE_FAMILY : HS_PRICE_SINGLE);
+ const hsPrice = isWeddingPackage
+ ? weddingPackage.price / weddingPackage.peopleCount
+ : (hsPackage === 'family' ? HS_PRICE_FAMILY : HS_PRICE_SINGLE);
  const hsLabel = isWeddingPackage ? weddingPackage.label : (hsPackage === 'family' ? 'Family' : 'Single');
  state.service = {
  id: isWeddingPackage ? rawPackage : 'gentleman-grooming',
@@ -1919,9 +1953,17 @@ document.addEventListener('DOMContentLoaded', async () => {
  state.hsPackage = hsPackage;
  state.weddingPackage = isWeddingPackage ? rawPackage : null;
 
- // Family package = minimum 2 orang → otomatis aktifkan mode group booking
- if (!isWeddingPackage && hsPackage === 'family') {
- state.groupSize = 2;
+ // Multi-person packages must initialize one service record per person.
+ const packagePeople = isWeddingPackage ? weddingPackage.peopleCount : (hsPackage === 'family' ? 2 : 1);
+ if (packagePeople > 1) {
+ setGroupSize(packagePeople);
+ // The package price is per person. Services are pre-filled for every person;
+ // kapsters remain independently selectable in the next step.
+ allBookingPeople().slice(1).forEach(person => { person.service = state.service; });
+ state.activePerson = 1;
+ refreshPersonTabs();
+ updateStep1Cta();
+ updateSidebar();
  }
 
  // Show address field in step 4

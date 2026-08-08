@@ -237,7 +237,32 @@
 .barber-status-badge.available .status-dot{background:#10b981}
 .barber-status-badge.off-duty .status-dot{background:#e53e3e}
 .pro-pick-card:hover{border-color:var(--red-20);transform:translateY(-2px)}
-.pro-pick-card.selected{border-color:var(--red);background:rgba(193,18,31,.06)}
+.pro-pick-card.selected{
+ border-color:var(--red);
+ background:linear-gradient(145deg,rgba(193,18,31,.24),rgba(193,18,31,.08) 58%,var(--bg-3));
+ box-shadow:0 0 0 1px rgba(193,18,31,.18),0 12px 28px rgba(193,18,31,.16);
+ transform:translateY(-3px);
+ animation:proPickSelected .38s ease-out;
+}
+.pro-pick-card.selected::after{
+ content:'✓';
+ position:absolute;top:10px;right:10px;
+ width:24px;height:24px;border-radius:50%;
+ display:grid;place-items:center;
+ color:#fff;background:var(--red);
+ font-size:.78rem;font-weight:800;
+ box-shadow:0 4px 12px rgba(193,18,31,.35);
+ animation:proPickCheck .28s ease-out both;
+}
+@keyframes proPickSelected{
+ 0%{transform:translateY(0) scale(.985);box-shadow:0 0 0 0 rgba(193,18,31,0)}
+ 65%{transform:translateY(-4px) scale(1.012)}
+ 100%{transform:translateY(-3px) scale(1);}
+}
+@keyframes proPickCheck{
+ 0%{opacity:0;transform:scale(.55) rotate(-12deg)}
+ 100%{opacity:1;transform:scale(1) rotate(0)}
+}
 .pro-pick-card.barber-off{}
 .pro-pick-card.barber-off .pro-pick-img img{}
 .pro-pick-card.barber-off:hover{}

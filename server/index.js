@@ -1127,25 +1127,26 @@ const WEDDING_PACKAGE_PRICES = {
   'wedding-platinum': 1000000,
 };
 
-function normalizeBookingPrice({ service_id, service, price, type }) {
+function normalizeBookingPrice({ service_id, service, price, type, package_people }) {
   const serviceKey = String(service_id || '').trim().toLowerCase().replace(/^weeding-/, 'wedding-');
   const serviceName = String(service || '').trim().toLowerCase();
   const bookingType = String(type || '').trim().toLowerCase();
   const packagePrice = WEDDING_PACKAGE_PRICES[serviceKey];
-  if (bookingType === 'wedding' && packagePrice) return packagePrice;
+  const packagePeople = Math.max(1, Number(package_people) || 1);
+  if (bookingType === 'wedding' && packagePrice) return packagePeople > 1 ? packagePrice / packagePeople : packagePrice;
   if (bookingType === 'wedding' || serviceName.includes('wedding') || serviceName.includes('weeding')) {
-    if (serviceName.includes('platinum')) return WEDDING_PACKAGE_PRICES['wedding-platinum'];
-    if (serviceName.includes('gold')) return WEDDING_PACKAGE_PRICES['wedding-gold'];
-    if (serviceName.includes('silver')) return WEDDING_PACKAGE_PRICES['wedding-silver'];
-    if (serviceName.includes('gentleman')) return WEDDING_PACKAGE_PRICES['wedding-gentleman'];
+    if (serviceName.includes('platinum')) return WEDDING_PACKAGE_PRICES['wedding-platinum'] / packagePeople;
+    if (serviceName.includes('gold')) return WEDDING_PACKAGE_PRICES['wedding-gold'] / packagePeople;
+    if (serviceName.includes('silver')) return WEDDING_PACKAGE_PRICES['wedding-silver'] / packagePeople;
+    if (serviceName.includes('gentleman')) return WEDDING_PACKAGE_PRICES['wedding-gentleman'] / packagePeople;
   }
   return Number(price) || 0;
 }
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
-  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address } = req.body;
-  const bookingPrice = normalizeBookingPrice({ service_id, service, price, type });
+  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address, package_people } = req.body;
+  const bookingPrice = normalizeBookingPrice({ service_id, service, price, type, package_people });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
   const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
