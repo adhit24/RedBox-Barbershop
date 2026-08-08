@@ -43,3 +43,16 @@ body {
 .scrollbar-none::-webkit-scrollbar {
  display: none;
 }
+
+/* Membership activation/change sheets must remain usable above the mobile nav. */
+@media (max-width: 640px) {
+ [role="dialog"][aria-labelledby="activationTitle"],
+ [role="dialog"][aria-labelledby="membershipChangeTitle"] {
+  z-index: 70;
+  max-height: calc(100dvh - 1rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  touch-action: pan-y;
+ }
+}
