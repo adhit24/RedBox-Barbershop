@@ -2633,7 +2633,11 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
   const { sendWA: sendWAFonnte } = require('./services/fonnte');
 
   function normalizeWa(phone) {
-    return String(phone || '').replace(/\D/g, '').replace(/^0/, '62');
+    let digits = String(phone || '').replace(/\D/g, '');
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    if (digits.startsWith('0')) return '62' + digits.slice(1);
+    if (digits.startsWith('62')) return digits;
+    return '62' + digits;
   }
 
   function generateReferralCode() {
@@ -2654,18 +2658,33 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       return res.status(400).json({ error: 'Format nomor HP tidak valid (contoh: 08123456789)' });
     }
 
-    // Cek customer terdaftar
-    let { data: customer } = await supabase
-      .from('customers').select('id, name, wa').eq('wa', wa).maybeSingle();
+    const phoneE164 = '+' + wa;
+    const localPhone = '0' + wa.slice(2);
+
+    // Cek customer dengan format nomor lama maupun format normal baru.
+    let customer = null;
+    for (const candidate of [wa, phoneE164, localPhone]) {
+      const result = await supabase
+        .from('customers').select('id, name, wa, phone_e164').eq('wa', candidate).maybeSingle();
+      if (result.data) { customer = result.data; break; }
+    }
+    if (!customer) {
+      const result = await supabase
+        .from('customers').select('id, name, wa, phone_e164').eq('phone_e164', phoneE164).maybeSingle();
+      if (result.data) customer = result.data;
+    }
 
     if (!customer) {
       // Fallback: cek member_profiles (member terdaftar via Moka POS)
-      const phoneE164 = '+' + wa;
-      const { data: profile } = await supabase
-        .from('member_profiles')
-        .select('full_name, phone, email, membership_status, membership_activated_at, membership_started_at, membership_expires_at, total_points, total_visits, current_tier, referral_code, birthdate, gender, address')
-        .eq('phone', phoneE164)
-        .maybeSingle();
+      let profile = null;
+      for (const candidate of [phoneE164, localPhone, wa]) {
+        const result = await supabase
+          .from('member_profiles')
+          .select('full_name, phone, email, membership_status, membership_activated_at, membership_started_at, membership_expires_at, total_points, total_visits, current_tier, referral_code, birthdate, gender, address')
+          .eq('phone', candidate)
+          .maybeSingle();
+        if (result.data) { profile = result.data; break; }
+      }
 
       if (!profile) {
         return res.status(404).json({
@@ -2728,6 +2747,14 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       }
     }
 
+    // Naikkan data lama ke format canonical setelah nomor berhasil dikenali.
+    if (customer?.id && customer.wa !== wa) {
+      const { data: normalizedCustomer } = await supabase.from('customers')
+        .update({ wa, phone_e164: phoneE164 }).eq('id', customer.id)
+        .select('id, name, wa, phone_e164').maybeSingle();
+      if (normalizedCustomer) customer = normalizedCustomer;
+    }
+
     // Rate limit: max 3 OTP per 10 menit
     const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     const { count } = await supabase.from('otp_codes')
@@ -2762,6 +2789,8 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     if (!phone || !code) return res.status(400).json({ error: 'Phone dan kode OTP wajib diisi' });
 
     const wa = normalizeWa(phone);
+    const phoneE164 = '+' + wa;
+    const localPhone = '0' + wa.slice(2);
 
     const { data: otp } = await supabase
       .from('otp_codes')
@@ -2789,8 +2818,21 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     await supabase.from('otp_codes')
       .update({ verified_at: new Date().toISOString() }).eq('id', otp.id);
 
-    // Get/update customer — ensure referral_code exists
-    let { data: customer } = await supabase.from('customers').select('*').eq('wa', wa).maybeSingle();
+    // Get/update customer — support legacy phone formats and converge to canonical WA.
+    let customer = null;
+    for (const candidate of [wa, phoneE164, localPhone]) {
+      const result = await supabase.from('customers').select('*').eq('wa', candidate).maybeSingle();
+      if (result.data) { customer = result.data; break; }
+    }
+    if (!customer) {
+      const result = await supabase.from('customers').select('*').eq('phone_e164', phoneE164).maybeSingle();
+      if (result.data) customer = result.data;
+    }
+    if (customer?.id && customer.wa !== wa) {
+      const { data: normalizedCustomer } = await supabase.from('customers')
+        .update({ wa, phone_e164: phoneE164 }).eq('id', customer.id).select('*').maybeSingle();
+      if (normalizedCustomer) customer = normalizedCustomer;
+    }
     if (customer && !customer.referral_code) {
       const refCode = generateReferralCode();
       const { data: updated } = await supabase.from('customers')
@@ -2825,10 +2867,15 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       // Orang yang sama bisa punya akun OTP (customers) dan Google (member_profiles)
       // dengan data membership yang berbeda — ambil yang terbaik.
       const phoneE164 = customer.phone_e164 || ('+' + session.customer_wa);
-      const { data: profile } = await supabase.from('member_profiles')
-        .select('membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier')
-        .eq('phone', phoneE164)
-        .maybeSingle();
+      const localPhone = '0' + session.customer_wa.slice(2);
+      const wa = session.customer_wa;
+      let profile = null;
+      for (const candidate of [phoneE164, localPhone, wa]) {
+        const result = await supabase.from('member_profiles')
+          .select('membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier')
+          .eq('phone', candidate).maybeSingle();
+        if (result.data) { profile = result.data; break; }
+      }
 
       const profileIsActive = isActiveMembership({
         status: profile?.membership_status,

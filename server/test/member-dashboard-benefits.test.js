@@ -24,8 +24,7 @@ test('member dashboard only advertises approved membership benefits', () => {
   assert.match(dashboardScript, /Birthday service gratis/);
   assert.match(dashboardScript, /Cashback 50% Haircut Regular/);
   assert.match(dashboardScript, /Cashback 50% Haircut Premium \(CSB\)/);
-  assert.match(dashboardScript, /POINT_VALUE_IDR = 10000/);
-  assert.match(dashboardScript, /MAX_POINT_REDEMPTIONS_PER_TRANSACTION = 1/);
+  assert.doesNotMatch(dashboardScript, /POINT_VALUE_IDR|MAX_POINT_REDEMPTIONS_PER_TRANSACTION|shop-product-discount/);
   assert.match(dashboardScript, /current_tier/);
   assert.match(dashboardScript, /renderShop\(\);/);
   assert.doesNotMatch(dashboardPage, /5% discount haircut|Free birthday penuh|Berlaku di semua cabang/);

@@ -1125,6 +1125,15 @@ section{padding:100px 0}
 }
 .btn-google:active{transform:translateY(0);box-shadow:none}
 
+.btn-otp-login{
+ display:flex;align-items:center;justify-content:center;width:100%;margin-top:12px;
+ padding:13px 16px;border:1.5px solid var(--red);border-radius:12px;
+ background:#fff7f7;color:var(--red);font-size:.9rem;font-weight:700;
+ text-decoration:none;cursor:pointer;transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+.btn-otp-login:hover{background:#fef2f2;box-shadow:0 4px 12px rgba(193,18,31,.1);transform:translateY(-1px)}
+.otp-login-hint{margin:8px 0 0;text-align:center;color:#94a3b8;font-size:.7rem;line-height:1.4}
+
 /* --- Divider --- */
 .modal-divider{
  display:flex;align-items:center;gap:16px;
