@@ -82,10 +82,18 @@ test('database phone normalization rejects invalid Indonesian mobile lengths', (
   assert.match(migration, /value ~ '\^\[\+\]628\[1-9\]\[0-9\]\{7,10\}\$'/);
 });
 
-test('atomic duplicate protection recognizes both paid periods and grandfathered legacy members', () => {
+test('atomic duplicate protection ignores legacy Moka status without a paid membership period', () => {
+  const registrationRpc = migration.slice(
+    migration.indexOf('CREATE OR REPLACE FUNCTION create_membership_registration'),
+    migration.indexOf('CREATE OR REPLACE FUNCTION create_membership_change_registration')
+  );
   assert.match(
-    migration,
-    /membership_status = 'ACTIVE'[\s\S]{0,180}membership_expires_at > v_now[\s\S]{0,180}membership_started_at IS NULL[\s\S]{0,100}membership_expires_at IS NULL/
+    registrationRpc,
+    /membership_status = 'ACTIVE'[\s\S]{0,180}membership_started_at IS NOT NULL[\s\S]{0,80}membership_expires_at > v_now/
+  );
+  assert.doesNotMatch(
+    registrationRpc,
+    /membership_status = 'ACTIVE'[\s\S]{0,180}membership_expires_at > v_now[\s\S]{0,180}OR \(mp\.membership_started_at IS NULL/
   );
 });
 

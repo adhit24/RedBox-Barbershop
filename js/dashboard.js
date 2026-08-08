@@ -145,10 +145,12 @@ document.addEventListener('DOMContentLoaded', () => {
  return window.RedboxMembership.isActiveMembership(record);
  }
  let ACTIVE = memberHasActiveAccess();
- let point_system = ACTIVE;
+ // Legacy members keep their historical points and may redeem base rewards.
+ // Paid tier benefits remain gated by ACTIVE paid-period access.
+ let point_system = true;
  function refreshMembershipAccess() {
  ACTIVE = memberHasActiveAccess();
- point_system = ACTIVE;
+ point_system = true;
  return ACTIVE;
  }
 
@@ -338,14 +340,14 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  // Update rewards points display
  const rewardsPointsDisplay = document.getElementById('rewardsPointsDisplay');
- if (rewardsPointsDisplay) rewardsPointsDisplay.textContent = ACTIVE ? `${memberData.points.toLocaleString('id-ID')} Poin tersedia` : 'Aktivasi untuk mulai';
+ if (rewardsPointsDisplay) rewardsPointsDisplay.textContent = `${memberData.points.toLocaleString('id-ID')} Poin tersedia`;
 
  const rewardsGrid = document.getElementById('rewardsGrid');
  if (rewardsGrid) {
  rewardsGrid.innerHTML = REWARDS.map(r => {
  const rTierIdx = tierLevelOf(r.tier);
  const userTierIdx = tier.level - 1;
- const unlocked = ACTIVE && userTierIdx >= rTierIdx;
+ const unlocked = rTierIdx === 0 || (ACTIVE && userTierIdx >= rTierIdx);
  const tierInfo = TIERS[rTierIdx];
  return `
  <div class="reward-card ${unlocked ? 'unlocked' : 'locked'} tier-${r.tier}">
@@ -729,9 +731,9 @@ document.addEventListener('DOMContentLoaded', () => {
  function renderPointsHistory() {
  const bal = document.getElementById('pointsBalance');
  const body = document.getElementById('pointsTableBody');
- if (bal) animateCount(bal, ACTIVE ? memberData.points : 0, 600);
+ if (bal) animateCount(bal, memberData.points, 600);
  if (!body) return;
- const history = ACTIVE ? memberData.pointsHistory : [];
+ const history = memberData.pointsHistory || [];
  body.innerHTML = history.length
  ? history.map(e => `<div class="points-row"><span class="pts-date">${e.date}</span><span class="pts-activity">${e.activity}</span><span class="pts-amount ${e.amount>=0?'positive':'negative'}">${e.amount>=0?'+':''}${e.amount}</span></div>`).join('')
  : `<div class="points-row points-row-empty"><span class="pts-activity" style="grid-column:1/-1;color:var(--w30);text-align:center;">${ACTIVE ? 'Belum ada aktivitas poin' : ' Aktivasi membership untuk mulai mengumpulkan poin'}</span></div>`;
@@ -1053,7 +1055,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const rpd = document.getElementById('rewardsPointsDisplay');
  if (rpd) {
  const isACTIVE = memberHasActiveAccess();
- rpd.textContent = isACTIVE ? `${memberData.points.toLocaleString('id-ID')} Poin tersedia` : 'Aktivasi untuk mulai';
+ rpd.textContent = `${memberData.points.toLocaleString('id-ID')} Poin tersedia`;
  }
  }
  })();

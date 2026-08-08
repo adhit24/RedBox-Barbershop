@@ -7,10 +7,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const formView = document.getElementById('registrationFormView');
   const confirmation = document.getElementById('registrationConfirmation');
   const registrationCode = document.getElementById('registrationCode');
+  const legacyMemberHint = document.getElementById('legacyMemberHint');
   const confirmationSummary = document.getElementById('confirmationSummary');
   const confirmationDeadline = document.getElementById('confirmationDeadline');
   const tierInputs = Array.from(document.querySelectorAll('input[name="tier"]'));
   const allowedTiers = new Set(['silver', 'gold', 'platinum']);
+
+  function prefillLegacyMember() {
+    if (!localStorage.getItem('rb_member_token')) return;
+    let member = {};
+    let user = {};
+    try { member = JSON.parse(localStorage.getItem('redbox_member') || '{}') || {}; } catch {}
+    try { user = JSON.parse(localStorage.getItem('redbox_user') || '{}') || {}; } catch {}
+    const values = {
+      fullName: member.full_name || member.name || user.name || '',
+      phone: member.phone || user.phone || '',
+      email: member.email || user.email || '',
+    };
+    if (!values.fullName || !values.phone) return;
+    for (const [id, value] of Object.entries(values)) {
+      const input = document.getElementById(id);
+      if (!input || !value) continue;
+      input.value = value;
+      input.readOnly = true;
+      input.setAttribute('aria-readonly', 'true');
+    }
+    if (legacyMemberHint) legacyMemberHint.hidden = false;
+  }
+
+  prefillLegacyMember();
   const tierLabels = { silver: 'Silver', gold: 'Gold', platinum: 'Platinum' };
 
   function normalizePhone(value) {

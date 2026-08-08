@@ -208,6 +208,8 @@ test('renewal and upgrade lifecycle SQL preserves activation history and starts 
   assert.match(changeSql, /source membership registration is not the latest paid period/);
   assert.match(changeSql, /'EXISTING_PENDING'::TEXT, FALSE/);
   assert.match(activationSql, /v_expires_at TIMESTAMPTZ := v_now \+ INTERVAL '1 year'/);
+  assert.match(activationSql, /r\.registration_type = 'RENEWAL'[\s\S]{0,500}v_starts_at := GREATEST\(v_now, v_source_expires_at\)/);
+  assert.match(activationSql, /v_source_expires_at TIMESTAMPTZ/);
   assert.match(activationSql, /r\.registration_type <> 'UPGRADE'/);
   assert.doesNotMatch(changeSql, /(?:UPDATE|DELETE FROM)\s+member_activations/i);
   assert.doesNotMatch(activationSql, /(?:UPDATE|DELETE FROM)\s+member_activations/i);

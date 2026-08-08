@@ -70,7 +70,7 @@ input,select,textarea{font-family:var(--font)}
 .sb-back:hover{color:var(--white);transform:translateX(-3px)}
 
 /* ===== MAIN ===== */
-.crm-main{margin-left:var(--sb-width);width:calc(100% - var(--sb-width));max-width:calc(100% - var(--sb-width));flex:1 1 auto;padding:0;min-height:100vh;display:flex;flex-direction:column;position:relative}
+.crm-main{margin-left:var(--sb-width);flex:1;padding:0;min-height:100vh;display:flex;flex-direction:column;position:relative}
 
 /* ===== TOPBAR ===== */
 .crm-topbar{
@@ -145,8 +145,8 @@ input,select,textarea{font-family:var(--font)}
 .slot-item:hover{background:var(--w03)}
 .slot-item:last-child{border-bottom:none}
 .slot-time{font-size:.76rem;font-weight:700;color:var(--w40);width:54px;flex-shrink:0;font-variant-numeric:tabular-nums}
-.slot-info{flex:1;min-width:0}
-.slot-name{font-size:.85rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot-info{flex:1}
+.slot-name{font-size:.85rem;font-weight:600}
 .slot-meta{font-size:.74rem;color:var(--w50);margin-top:2px}
 .slot-status{padding:4px 10px;border-radius:100px;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
 
@@ -251,7 +251,6 @@ input,select,textarea{font-family:var(--font)}
 .barber-crm-card.barber-inactive{opacity:0.7}
 .barber-crm-card.barber-off-today{border-color:rgba(239,68,68,.35)}
 .barber-crm-top{display:flex;align-items:center;gap:16px;padding:22px;flex-shrink:0}
-.barber-crm-top > div:last-child{min-width:0;flex:1}
 .barber-toggle-wrap{margin-top:auto;padding:18px 22px;border-top:1px solid var(--w10);display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(0,0,0,.2)}
 .barber-toggle-wrap.off-today{background:rgba(239,68,68,.07);border-top-color:rgba(239,68,68,.2)}
 .toggle-switch{position:relative;display:inline-block;width:44px;height:22px;cursor:pointer;flex-shrink:0}
@@ -267,7 +266,6 @@ input,select,textarea{font-family:var(--font)}
 .barber-crm-name{font-size:1rem;font-weight:700;margin-bottom:3px}
 .barber-crm-role{font-size:.74rem;color:var(--w50);margin-bottom:3px}
 .barber-crm-branch{font-size:.68rem;color:var(--red-h);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
-.barber-crm-name,.barber-crm-role,.barber-crm-branch{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .barber-crm-stats{display:flex;flex-direction:row;border-top:1px solid var(--w10);border-bottom:1px solid var(--w10)}
 .bcs{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 8px;border-right:1px solid var(--w10);transition:background .2s;min-height:70px}
 .bcs:hover{background:var(--w03)}
@@ -513,90 +511,4 @@ input,select,textarea{font-family:var(--font)}
  .mem-opt-row{flex-direction:column;align-items:flex-start}
  .mem-opt-row label{min-width:auto}
  .mem-opt-row select,.mem-opt-row input{width:100%}
-}
-
-/* ============================================================
- MOBILE FIT-TO-SCREEN HARDENING
- Keep wide data tables scrollable inside their card instead of
- allowing them to expand the document viewport horizontally.
- ============================================================ */
-.crm-main,.crm-view,.crm-card,.mem-section,.table-wrap,.mem-table-wrap{min-width:0}
-.table-wrap,.mem-table-wrap{
- max-width:100%;
- overflow-x:auto;
- -webkit-overflow-scrolling:touch;
- scrollbar-width:thin;
-}
-.crm-table,.mem-table{min-width:640px}
-
-@media(max-width:768px){
- html,body{width:100%;max-width:100%;min-width:0}
- .crm-main{margin-left:0;width:100%;max-width:100%;flex:0 0 100%}
- .crm-topbar{min-height:var(--topbar-h);gap:10px}
- .topbar-left,.topbar-right{min-width:0}
- .topbar-left{flex:1}
- .page-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .topbar-right{gap:8px;flex-shrink:0}
- .topbar-date{display:none}
- .admin-badge{padding:5px 9px;font-size:.62rem}
- .sidebar-toggle{width:40px;height:40px;align-items:center;justify-content:center;flex-shrink:0}
- .crm-view{width:100%;max-width:100%;overflow:visible}
- .greeting-banner,.crm-card,.mem-section{width:100%;max-width:100%}
- .card-head{padding:16px}
- .card-head h3{font-size:.76rem}
- .stat-card{padding:16px 12px;gap:10px}
- .stat-icon{width:42px;height:42px;font-size:1.45rem;flex-shrink:0}
- .stat-val{font-size:1.55rem}
- .stat-label{font-size:.65rem}
- .barbers-grid{grid-template-columns:minmax(0,1fr);width:100%;min-width:0}
- .filter-row{width:100%;align-items:stretch}
- .card-head .filter-row{flex:1 1 100%}
- .filter-row .crm-input,.filter-row .crm-select{width:100%;min-width:0;flex:1 1 100%}
- .filter-row .action-btn{min-height:42px;flex:1 1 auto}
- #view-customers .filter-row .action-btn{flex:1 1 calc(50% - 8px)}
- .slot-item{gap:9px;padding:12px 12px}
- .slot-time{width:46px}
- .slot-status{padding:4px 7px}
- .barber-crm-top{gap:12px;padding:18px 16px}
- .barber-crm-img{width:58px;height:58px}
- .modal-overlay{padding:10px}
- .modal{width:100%;max-width:none;max-height:calc(100dvh - 20px)}
- .modal-head{padding:16px 18px}
- .modal-body{padding:18px}
- .modal-foot{padding:14px 18px;flex-wrap:wrap}
- .modal-foot > button{flex:1 1 140px;min-height:44px}
- .mem-section{padding:16px}
- .mem-section-title{margin-bottom:16px;font-size:.82rem}
- .mem-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:stretch}
- .mem-search-row input{min-width:0;width:100%}
- .btn-mem-search{min-height:44px;padding:10px 16px}
- .mem-found-info{align-items:flex-start}
- .mem-found-badge{margin-left:auto;white-space:nowrap}
- .btn-mem-activate{width:100%;justify-content:center;min-height:46px}
- .mem-table{min-width:680px}
- .mem-table th,.mem-table td{padding:10px 11px}
- .mem-table-wrap{margin:0 -4px;padding:0 4px}
-}
-
-@media(max-width:480px){
- .crm-topbar{padding:10px 12px}
- .crm-view{padding:14px 12px;gap:16px}
- .greeting-banner{padding:18px 16px}
- .greeting-text h2{font-size:1.35rem}
- .stats-grid{gap:10px}
- .stat-card{min-width:0}
- .stat-info{min-width:0}
- .stat-label{white-space:normal;line-height:1.25}
- .mem-stats-row{gap:10px}
- .mem-stat-card{padding:15px 12px}
- .mem-stat-val{font-size:1.55rem}
- .mem-stat-label{font-size:.64rem;line-height:1.25}
- .mem-search-row{grid-template-columns:1fr}
- .btn-mem-search{width:100%}
- .mem-found-info{flex-wrap:wrap}
- .mem-found-badge{margin-left:58px;margin-top:-6px}
- .modal-overlay{padding:8px}
- .modal{max-height:calc(100dvh - 16px);border-radius:var(--radius-md)}
- .modal-foot{flex-direction:column-reverse}
- .modal-foot > button{width:100%;flex-basis:auto}
 }

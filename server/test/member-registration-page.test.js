@@ -47,3 +47,12 @@ test('registration script preselects the URL tier and submits only the public re
   assert.doesNotMatch(script, /paymentReference|payment_method|paymentMethod/);
   assert.match(script, /disabled\s*=\s*true/);
 });
+
+test('logged-in legacy members are prefilled from the OTP session and do not need to retype biodata', () => {
+  const page = fs.readFileSync(registrationPagePath, 'utf8');
+  const script = fs.readFileSync(path.join(root, 'js', 'member-registration.js'), 'utf8');
+  assert.match(script, /rb_member_token/);
+  assert.match(script, /redbox_member/);
+  assert.match(script, /readOnly = true/);
+  assert.match(page, /legacyMemberHint/);
+});

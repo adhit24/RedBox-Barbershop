@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowUpCircle, Ban, CalendarDays, CheckCircle2, Clock3, CreditCard, RefreshCw, Repeat2, Search, X } from 'lucide-react';
+import { ArrowUpCircle, CalendarDays, CheckCircle2, Clock3, CreditCard, RefreshCw, Repeat2, Search, X } from 'lucide-react';
 
 type RegistrationStatus = 'PENDING' | 'ACTIVE' | 'EXPIRED';
 
@@ -92,7 +92,6 @@ function MembershipPageInner() {
   const [activationBranch, setActivationBranch] = useState('');
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [cancelling, setCancelling] = useState<string | null>(null);
   const [changeSelection, setChangeSelection] = useState<{
     registration: MembershipRegistration;
     kind: MembershipChangeKind;
@@ -207,24 +206,6 @@ function MembershipPageInner() {
     }
   }
 
-  async function handleCancel(registration: MembershipRegistration) {
-    if (!window.confirm(`Batalkan pendaftaran ${registration.registrationCode || registration.fullName || 'ini'}?`)) return;
-    setCancelling(registration.id);
-    try {
-      const response = await fetch(`/api/admin/crm/membership/registrations/${registration.id}/cancel`, {
-        method: 'POST',
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.success) throw new Error(data.error || 'Pendaftaran membership gagal dibatalkan.');
-      notify('Pendaftaran membership dibatalkan.');
-      await loadRegistrations();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : 'Pendaftaran membership gagal dibatalkan.', false);
-    } finally {
-      setCancelling(null);
-    }
-  }
-
   async function handleSyncMoka(registration: MembershipRegistration) {
     if (!registration.phone) return notify('Nomor WhatsApp tidak tersedia.', false);
     setSyncing(registration.id);
@@ -272,10 +253,7 @@ function MembershipPageInner() {
               <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-sm font-semibold text-white">{registration.fullName || '—'}</h2><span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${tierColor[registration.tier] || 'border-slate-600 text-slate-300'}`}>{registration.tier}</span></div><p className="mt-1 truncate font-mono text-[11px] text-slate-400">{registration.registrationCode || registration.id}</p><p className="mt-1 truncate text-xs text-slate-500">{registration.phone || registration.email || 'Kontak tidak tersedia'}</p><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"><span className="font-bold text-white">{fmtRp(registration.amount)}</span><span className="inline-flex items-center gap-1 text-slate-500">{active ? <CalendarDays size={12} /> : <Clock3 size={12} />}{active ? `Berakhir ${fmtDate(deadline)}` : pending ? `Bayar sebelum ${fmtDate(deadline)}` : `Kedaluwarsa ${fmtDate(deadline)}`}</span></div></div>
               <div className="flex shrink-0 flex-col items-end gap-2">
                 <span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${pending ? 'border-amber-400/30 bg-amber-400/10 text-amber-300' : active ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300' : 'border-slate-600 bg-slate-800 text-slate-400'}`}>{pending ? 'Pending' : active ? 'Aktif' : 'Kedaluwarsa'}</span>
-                {pending && <>
-                  <button onClick={() => openActivation(registration)} className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-300 transition hover:bg-emerald-400 hover:text-slate-950">Aktifkan</button>
-                  <button onClick={() => void handleCancel(registration)} disabled={cancelling === registration.id} className="inline-flex items-center gap-1 rounded-lg border border-rose-400/40 bg-rose-400/10 px-2 py-1 text-[10px] font-semibold text-rose-300 transition hover:bg-rose-400 hover:text-slate-950 disabled:cursor-wait disabled:opacity-50"><Ban size={11} />{cancelling === registration.id ? 'Membatalkan…' : 'Batalkan'}</button>
-                </>}
+                {pending && <button onClick={() => openActivation(registration)} className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-1.5 text-xs font-bold text-emerald-300 transition hover:bg-emerald-400 hover:text-slate-950">Aktifkan</button>}
                 {registration.canUpgrade && <button onClick={() => openMembershipChange(registration, 'UPGRADE')} className="inline-flex items-center gap-1 rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-2 py-1 text-[10px] font-semibold text-cyan-200 transition hover:bg-cyan-300 hover:text-slate-950"><ArrowUpCircle size={11} />Upgrade</button>}
                 {registration.canRenew && <button onClick={() => openMembershipChange(registration, 'RENEWAL')} className="inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-[10px] font-semibold text-amber-200 transition hover:bg-amber-300 hover:text-slate-950"><Repeat2 size={11} />Perpanjang</button>}
                 {active && <button onClick={() => void handleSyncMoka(registration)} disabled={syncing === registration.id} className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-slate-500 hover:text-white disabled:opacity-50"><RefreshCw size={10} className={syncing === registration.id ? 'animate-spin' : ''} />{syncing === registration.id ? 'Sync…' : 'Sync Moka'}</button>}

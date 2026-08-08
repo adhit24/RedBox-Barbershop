@@ -265,10 +265,8 @@ BEGIN
   FROM member_profiles AS mp
   WHERE normalize_membership_phone(mp.phone) = v_phone
     AND mp.membership_status = 'ACTIVE'
-    AND (
-      mp.membership_expires_at > v_now
-      OR (mp.membership_started_at IS NULL AND mp.membership_expires_at IS NULL)
-    )
+    AND mp.membership_started_at IS NOT NULL
+    AND mp.membership_expires_at > v_now
   ORDER BY mp.created_at ASC NULLS LAST, mp.id ASC
   LIMIT 1
   FOR UPDATE;
@@ -290,10 +288,8 @@ BEGIN
       OR normalize_membership_phone(c.wa) = v_phone
     )
     AND c.membership_status = 'ACTIVE'
-    AND (
-      c.membership_expires_at > v_now
-      OR (c.membership_started_at IS NULL AND c.membership_expires_at IS NULL)
-    )
+    AND c.membership_started_at IS NOT NULL
+    AND c.membership_expires_at > v_now
   ORDER BY c.created_at ASC NULLS LAST, c.id ASC
   LIMIT 1
   FOR UPDATE;
@@ -626,6 +622,7 @@ DECLARE
   v_activation_id UUID;
   v_starts_at TIMESTAMPTZ := v_now;
   v_expires_at TIMESTAMPTZ := v_now + INTERVAL '1 year';
+  v_source_expires_at TIMESTAMPTZ;
   v_expected_price INTEGER;
   v_profile_rows INTEGER;
   v_customer_rows INTEGER;
@@ -704,6 +701,21 @@ BEGIN
   FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'customer target is missing';
+  END IF;
+
+  -- Renewal preserves the unused remainder of the previous paid period.
+  -- Upgrade starts immediately because it changes the active benefit tier.
+  IF r.registration_type = 'RENEWAL' THEN
+    SELECT MAX(ma.expires_at)
+    INTO v_source_expires_at
+    FROM member_activations AS ma
+    WHERE ma.registration_id = r.source_registration_id
+      AND ma.status = 'completed';
+    IF v_source_expires_at IS NULL THEN
+      RAISE EXCEPTION 'renewal source membership period is missing';
+    END IF;
+    v_starts_at := GREATEST(v_now, v_source_expires_at);
+    v_expires_at := v_starts_at + INTERVAL '1 year';
   END IF;
 
   -- Supersede the prior registration state while preserving every immutable activation audit row.

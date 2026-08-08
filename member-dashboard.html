@@ -138,11 +138,11 @@
  <div class="tier-header">
  <div class="tier-title-row">
  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.203H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.342Z" clip-rule="evenodd"/></svg>
- <h3>Poin &amp; Rewards</h3>
+ <h3>Membership Level</h3>
  </div>
  <a href="membership.html" class="tier-rewards-btn">All Rewards</a>
  </div>
- <div class="tier-progress-track" aria-hidden="true" style="display:none">
+ <div class="tier-progress-track">
  <div class="tier-nodes">
  <div class="tier-node active" data-tier="silver">
  <div class="tier-node-dot">
@@ -176,12 +176,12 @@
  <!-- Lock Overlay (shown when INACTIVE) -->
  <div class="tier-lock-overlay" id="tierLockOverlay" style="display:none">
  <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>
- <h3>Rewards Terkunci</h3>
- <p>Aktivasi membership untuk mulai mengumpulkan poin dan menukarnya dengan produk atau layanan.</p>
- <button class="btn-tier-unlock" id="btnActivate" style="display:none">Aktivasi Membership Sekarang</button>
+ <h3>Tier Terkunci</h3>
+ <p>Aktivasi membership untuk membuka sistem tier dan mulai kumpulkan poin eksklusif.</p>
+ <button class="btn-tier-unlock" id="btnActivate">Aktivasi Membership Sekarang</button>
  </div>
  <div class="tier-message" id="tierMessage">
- <p>Poin dikumpulkan dari aktivitas membership dan digunakan untuk redeem produk atau layanan di Katalog Rewards.</p>
+ <p>Selamat datang di Redbox! Kumpulkan poin setiap kunjungan untuk naik level.</p>
  </div>
  </div>
  </div>
@@ -195,10 +195,10 @@
  <span class="act-top-icon"></span>
  <div>
  <strong>Membership Belum Aktif</strong>
- <span>Aktivasi untuk mengumpulkan poin, redeem rewards, dan menikmati privilege eksklusif.</span>
+ <span>Aktivasi untuk unlock poin, tier rewards, dan privilege eksklusif.</span>
  </div>
  </div>
- <button class="btn-act-top" id="btnActivateTop" onclick="window.location.href='member-register.html?tier=silver'">Aktivasi Sekarang →</button>
+ <button class="btn-act-top" id="btnActivateTop">Aktivasi Membership →</button>
  </div>
  </div>
  </div>
@@ -365,37 +365,37 @@
  </div>
  </div>
  <div class="points-tiers-explain">
- <h4>Membership Tier Berbayar</h4>
+ <h4>Cara Naik Level</h4>
  <div class="tier-explain-grid">
  <div class="tier-explain-item tier-silver">
  <div class="tier-ex-icon"></div>
  <h5>Silver</h5>
- <p>Rp 100.000 · Dipilih saat pendaftaran</p>
+ <p>Rp 100.000 / 500 Poin</p>
  <ul>
+ <li>Diskon 10% layanan</li>
  <li>50% birthday discount</li>
- <li>Berlaku -7 sampai +7 hari dari tanggal ulang tahun</li>
- <li>Akses katalog produk</li>
+ <li>Tidak berlaku di CSB Mall</li>
  </ul>
  </div>
  <div class="tier-explain-item tier-gold">
  <div class="tier-ex-icon"></div>
  <h5>Gold</h5>
- <p>Rp 250.000 · Dipilih saat pendaftaran</p>
+ <p>Rp 250.000 / 501+ Poin</p>
  <ul>
- <li>10% discount layanan</li>
+ <li>10% discount haircut</li>
+ <li>50% birthday discount</li>
  <li>Tidak berlaku di CSB Mall</li>
- <li>50% birthday discount (-7 sampai +7 hari)</li>
  </ul>
  </div>
  <div class="tier-explain-item tier-platinum">
  <div class="tier-ex-icon"></div>
  <h5>Platinum</h5>
- <p>Rp 1.500.000 · Dipilih saat pendaftaran</p>
+ <p>Rp 1.500.000</p>
  <ul>
- <li>Free Gentlemen Grooming</li>
+ <li>Free haircut setiap kunjungan</li>
+ <li>Diskon 50% saat birthday</li>
  <li>Free iced americano</li>
- <li>50% birthday discount (-7 sampai +7 hari)</li>
- <li>Priority booking semua cabang</li>
+ <li>Tidak berlaku di CSB Mall</li>
  </ul>
  </div>
  </div>
@@ -442,7 +442,6 @@
  <!-- Section C: Layanan Premium -->
  <h2 class="panel-title">Tingkatkan Pengalamanmu</h2>
  <p class="section-desc">Layanan eksklusif untuk member Gold & Platinum.</p>
- <p class="section-desc" style="font-size:.72rem;color:#8b7f80">*Diskon 10% Gold tidak berlaku di CSB Mall.</p>
  <div class="shop-grid shop-grid-2" id="shopServices"></div>
 
  <!-- Section D: Upgrade CTA -->
@@ -545,7 +544,7 @@
  </div>
  <div class="modal-benefits">
  <div class="modal-benefit-item"><span></span><span>+25 poin bonus langsung aktif</span></div>
- <div class="modal-benefit-item"><span></span><span>Benefit sesuai tier yang dibeli</span></div>
+ <div class="modal-benefit-item"><span></span><span>Akses penuh sistem tier Silver-Platinum</span></div>
  <div class="modal-benefit-item"><span></span><span>Kode referral aktif, earn bonus poin</span></div>
  <div class="modal-benefit-item"><span></span><span>Reward &amp; redeem poin tersedia</span></div>
  </div>
@@ -620,6 +619,6 @@
 
  <script src="js/main.js"></script>
  <script src="js/membership-access.js?v=20260808"></script>
- <script src="js/dashboard.js?v=20260808-points-redeem"></script>
+ <script src="js/dashboard.js?v=20260807"></script>
 </body>
 </html>
