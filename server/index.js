@@ -3087,11 +3087,34 @@ app.use('/api/barber', createBarberRoutes(supabase));
 const { createBarberCronRoutes } = require('./routes/barberCron');
 app.use('/api/cron', createBarberCronRoutes(supabase, adminAuth));
 const { createAdminCrmRoutes, createMembershipRegistrationRoutes } = require('./routes/adminCrm');
-const { createMembershipRegistrationRateLimiters } = require('./services/membershipRegistration');
+const {
+  createMembershipRegistrationRateLimiters,
+  expirePendingMembershipRegistrations,
+} = require('./services/membershipRegistration');
 app.use('/api/admin/crm', createAdminCrmRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));
+
+// GET /api/cron/expire-membership-registrations
+// Called by cron-job.org. Keep this inside the catch-all API function so the
+// Vercel Hobby 12-function limit is not increased by a dedicated function.
+app.get('/api/cron/expire-membership-registrations', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const authorized = Boolean(secret) && (
+    req.headers['x-vercel-cron'] === '1'
+    || req.headers.authorization === `Bearer ${secret}`
+  );
+  if (!authorized) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await expirePendingMembershipRegistrations(supabase, new Date());
+    return res.status(200).json({ ok: true, ...result });
+  } catch (error) {
+    console.error('[ExpireMembershipRegistrations] Unexpected error:', error.message);
+    return res.status(500).json({ error: error.message });
+  }
+});
 
 // POST /api/push/subscribe — save push subscription token
 app.post('/api/push/subscribe', async (req, res) => {
