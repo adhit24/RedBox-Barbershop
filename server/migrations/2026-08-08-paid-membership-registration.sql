@@ -137,6 +137,12 @@ CREATE INDEX IF NOT EXISTS idx_membership_registrations_source
 -- have no source, while RENEWAL/UPGRADE rows are keyed to their paid source
 -- period. PostgreSQL cannot use NOW() in a partial-index predicate, so the
 -- RPC expires stale rows while this index serialises live Pending inserts.
+-- Enforce the 48-hour payment window for rows created by an earlier version too.
+UPDATE membership_registrations
+SET expires_at = LEAST(expires_at, created_at + INTERVAL '48 hours'),
+    updated_at = NOW()
+WHERE status = 'PENDING' AND created_at IS NOT NULL;
+
 UPDATE membership_registrations
 SET status = 'EXPIRED', updated_at = NOW()
 WHERE status = 'PENDING' AND expires_at <= NOW();
@@ -388,7 +394,7 @@ BEGIN
     'RBM-' || UPPER(substring(replace(gen_random_uuid()::TEXT, '-', '') FROM 1 FOR 12)),
     v_user_key, BTRIM(p_full_name), v_phone, v_phone,
     v_email, p_tier, v_price, 'NEW', NULL,
-    'PENDING', v_now + INTERVAL '7 days', v_now, v_now
+    'PENDING', v_now + INTERVAL '48 hours', v_now, v_now
   ) RETURNING * INTO v_registration;
 
   RETURN QUERY SELECT
@@ -587,7 +593,7 @@ BEGIN
     v_phone, v_phone, COALESCE(NULLIF(BTRIM(v_profile.email), ''), v_source.email),
     p_tier, v_price, v_kind, v_source.id,
     BTRIM(p_requested_by), p_requested_branch, 'PENDING',
-    v_now + INTERVAL '7 days', v_now, v_now
+    v_now + INTERVAL '48 hours', v_now, v_now
   ) RETURNING * INTO v_registration;
 
   RETURN QUERY SELECT

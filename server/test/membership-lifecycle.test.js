@@ -242,3 +242,11 @@ test('CRM list expires stale Pending rows before reading registrations', () => {
   assert.ok(listRoute.indexOf('await expirePendingMembershipRegistrations(supabase, now)')
     < listRoute.indexOf(".from('membership_registrations')"));
 });
+
+test('membership registrations use a 48-hour payment window', () => {
+  const migration = fs.readFileSync(path.join(
+    __dirname, '..', 'migrations', '2026-08-08-paid-membership-registration.sql'
+  ), 'utf8');
+  assert.equal((migration.match(/INTERVAL '48 hours'/g) || []).length, 3);
+  assert.doesNotMatch(migration, /INTERVAL '7 days'/i);
+});

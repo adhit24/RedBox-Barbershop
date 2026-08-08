@@ -21,7 +21,7 @@ test('tier catalog returns the fixed price for each paid tier', () => {
   assert.equal(getTierPrice('platinum'), 1500000);
 });
 
-test('registration defaults to PENDING and expires seven days later', () => {
+test('registration defaults to PENDING and expires 48 hours later', () => {
   const registration = makePendingRegistration({
     registrationCode: 'RB-TEST01',
     userKey: 'user-1',
@@ -34,7 +34,7 @@ test('registration defaults to PENDING and expires seven days later', () => {
   assert.equal(registration.status, 'PENDING');
   assert.equal(registration.priceSnapshot, 250000);
   assert.equal(registration.createdAt, '2026-08-08T10:00:00.000Z');
-  assert.equal(registration.expiresAt, '2026-08-15T10:00:00.000Z');
+  assert.equal(registration.expiresAt, '2026-08-10T10:00:00.000Z');
   assert.equal(registration.phone, '+628123456789');
 });
 

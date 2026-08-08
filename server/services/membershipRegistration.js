@@ -7,7 +7,7 @@ const TIER_PRICES = Object.freeze({
 });
 
 const PAYMENT_METHODS = new Set(['cash', 'qris', 'transfer']);
-const PENDING_REGISTRATION_DAYS = 7;
+const PENDING_REGISTRATION_HOURS = 48;
 const TIER_ORDER = Object.freeze({ silver: 1, gold: 2, platinum: 3 });
 const MEMBERSHIP_REGISTRATION_RATE_LIMIT = Object.freeze({
   windowMs: 60_000,
@@ -135,7 +135,7 @@ function createMembershipRegistrationRateLimiters(options = {}) {
 function makePendingRegistration({ now = new Date(), ...customer } = {}) {
   const createdAt = asDate(now, 'now');
   const expiresAt = new Date(createdAt.getTime());
-  expiresAt.setUTCDate(expiresAt.getUTCDate() + PENDING_REGISTRATION_DAYS);
+  expiresAt.setUTCHours(expiresAt.getUTCHours() + PENDING_REGISTRATION_HOURS);
   const priceSnapshot = getTierPrice(customer.tier);
 
   return {
@@ -225,6 +225,7 @@ module.exports = {
   PAYMENT_METHODS,
   TIER_ORDER,
   MEMBERSHIP_REGISTRATION_RATE_LIMIT,
+  PENDING_REGISTRATION_HOURS,
   getTierPrice,
   isTierUpgrade,
   normalizePhone,
