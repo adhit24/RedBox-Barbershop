@@ -302,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const physCardHint = document.getElementById('physCardHint');
 
  if (!ACTIVE) {
- if (activationBanner) activationBanner.style.display = 'block';
+ if (activationBanner) activationBanner.style.display = 'none';
  if (activationBannerTop) activationBannerTop.style.display = 'block';
  if (tierLockOverlay) tierLockOverlay.style.display = 'flex';
  if (memberStatusBadge) { memberStatusBadge.textContent = 'Membership Belum Aktif'; memberStatusBadge.className = 'member-status-badge inactive'; }
@@ -330,10 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (ACTIVE) {
  if (tierMessage) tierMessage.innerHTML = `<p>Poin kamu: <strong>${displayPoints.toLocaleString('id-ID')}</strong>. Tukarkan poin dengan produk dan layanan yang tersedia di Katalog Rewards.</p>`;
  } else {
- if (tierMessage) tierMessage.innerHTML = `<p>Aktivasi membership untuk mulai mengumpulkan poin dan menukarnya dengan produk atau layanan. <a href="#" id="tierActivateCta" style="color:var(--red);font-weight:600;">Aktivasi sekarang →</a></p>`;
- setTimeout(() => {
- document.getElementById('tierActivateCta')?.addEventListener('click', (e) => { e.preventDefault(); showActivationModal(); });
- }, 100);
+ if (tierMessage) tierMessage.innerHTML = '<p>Aktivasi membership untuk mulai mengumpulkan poin dan menukarnya dengan produk atau layanan. Gunakan tombol aktivasi di bagian atas halaman.</p>';
  }
 
  // ============================================================
@@ -521,7 +518,7 @@ document.addEventListener('DOMContentLoaded', () => {
  <div style="text-align:center;padding:40px 20px;color:#4b5563;">
  ${inactiveSvg}
  <p style="margin-top:12px;font-size:0.8rem;">Aktivasi membership untuk mengakses Shop.</p>
- <button onclick="location.href='membership.html'" style="margin-top:14px;padding:8px 18px;border-radius:6px;border:none;background:#c1121f;color:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;">Aktivasi Sekarang</button>
+ <p style="margin-top:14px;font-size:0.75rem;">Gunakan tombol aktivasi di bagian atas halaman.</p>
  </div>`;
  curatedEl.closest('#panel-shop').innerHTML = inactiveHtml;
  return;
@@ -778,9 +775,11 @@ document.addEventListener('DOMContentLoaded', () => {
  if (modal) { modal.style.display = 'none'; document.body.style.overflow = ''; }
  }
 
- document.getElementById('btnActivate')?.addEventListener('click', showActivationModal);
- document.getElementById('btnActivateBanner')?.addEventListener('click', showActivationModal);
- document.getElementById('btnActivateTop')?.addEventListener('click', showActivationModal);
+ const membershipRegistrationUrl = 'member-register.html?tier=silver';
+ const goToMembershipRegistration = () => { window.location.href = membershipRegistrationUrl; };
+ document.getElementById('btnActivate')?.addEventListener('click', goToMembershipRegistration);
+ document.getElementById('btnActivateBanner')?.addEventListener('click', goToMembershipRegistration);
+ document.getElementById('btnActivateTop')?.addEventListener('click', goToMembershipRegistration);
  document.getElementById('modalClose')?.addEventListener('click', hideActivationModal);
  document.getElementById('activationModal')?.addEventListener('click', (e) => {
  if (e.target === e.currentTarget) hideActivationModal();
@@ -1023,7 +1022,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (changed) {
  // Refresh banners visibility
  const isNowActive = memberHasActiveAccess();
- if (activationBanner) activationBanner.style.display = isNowActive ? 'none' : 'block';
+ if (activationBanner) activationBanner.style.display = 'none';
  if (activationBannerTop) activationBannerTop.style.display = isNowActive ? 'none' : 'block';
  if (tierLockOverlay) tierLockOverlay.style.display = isNowActive ? 'none' : 'flex';
  }
