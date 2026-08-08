@@ -1,6 +1,7 @@
 // server/routes/adminCrm.js
 'use strict';
 const express = require('express');
+const { syncMokaTransactions } = require('./barberCron');
 const { membershipStateForSync, isActiveMembership } = require('../membership-policy');
 const {
   TIER_PRICES,
@@ -17,8 +18,36 @@ function localDateStr(d = new Date()) {
 }
 
 function getMonthStart() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  return getLeaderboardPeriodRange('month').start;
+}
+
+function jakartaDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
+  return { year: Number(values.year), month: Number(values.month), day: Number(values.day) };
+}
+
+function dateOnlyUtc(year, month, day) {
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function dateOnlyString(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getLeaderboardPeriodRange(period = 'month', now = new Date()) {
+  const { year, month, day } = jakartaDateParts(now);
+  const today = dateOnlyUtc(year, month, day);
+  if (period === 'week') {
+    const mondayOffset = (today.getUTCDay() + 6) % 7;
+    const start = new Date(today);
+    start.setUTCDate(start.getUTCDate() - mondayOffset);
+    return { type: 'week', start: dateOnlyString(start), end: dateOnlyString(today) };
+  }
+  const start = dateOnlyUtc(year, month, 1);
+  return { type: 'month', start: dateOnlyString(start), end: dateOnlyString(today) };
 }
 
 // ── Moka CSV import: outlet name → slug ─────────────────────────────────────
@@ -701,8 +730,10 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   router.get('/leaderboard', adminAuth, async (req, res) => {
     const branch = req.query.branch;
     const category = req.query.category || 'customer';
-    const monthStart = getMonthStart();
-    const today = localDateStr();
+    const period = req.query.period === 'week' ? 'week' : 'month';
+    const periodRange = getLeaderboardPeriodRange(period);
+    const periodStart = periodRange.start;
+    const periodEnd = periodRange.end;
 
     const { data: barbers } = await supabase
       .from('barbers').select('id, name, branch')
@@ -713,33 +744,39 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     const barberIds = barbers.map(b => b.id);
 
     if (category === 'customer') {
-      // Primary: actual Moka POS customers (1 receipt = 1 customer)
+      // Primary: actual Moka POS customers. One receipt represents one visit,
+      // even when the receipt contains multiple service rows for the barber.
       const { data: mokaSvc } = await supabase
-        .from('moka_barber_services').select('barber_id')
+        .from('moka_barber_services').select('barber_id, receipt_number')
         .in('barber_id', barberIds)
-        .gte('tx_date', monthStart).lte('tx_date', today);
+        .gte('tx_date', periodStart).lte('tx_date', periodEnd)
+        .limit(10000);
 
-      const mokaMap = {};
-      for (const r of (mokaSvc || [])) mokaMap[r.barber_id] = (mokaMap[r.barber_id] || 0) + 1;
+      const mokaReceipts = {};
+      for (const r of (mokaSvc || [])) {
+        if (!mokaReceipts[r.barber_id]) mokaReceipts[r.barber_id] = new Set();
+        if (r.receipt_number) mokaReceipts[r.barber_id].add(r.receipt_number);
+      }
 
       // Fallback: web bookings (barber_daily_counts) for barbers with no Moka CSV data
       const { data: counts } = await supabase
         .from('barber_daily_counts').select('barber_id, count')
         .in('barber_id', barberIds)
-        .gte('date', monthStart).lte('date', today);
+        .gte('date', periodStart).lte('date', periodEnd);
 
       const dailyMap = {};
       for (const r of (counts || [])) dailyMap[r.barber_id] = (dailyMap[r.barber_id] || 0) + r.count;
 
       const ranked = barbers
         .map(b => {
-          const score = (mokaMap[b.id] || 0) > 0 ? mokaMap[b.id] : (dailyMap[b.id] || 0);
-          return { ...b, score, display: `${score} customer` };
+          const mokaScore = mokaReceipts[b.id]?.size || 0;
+          const score = mokaScore > 0 ? mokaScore : (dailyMap[b.id] || 0);
+          return { ...b, score, display: `${score} customer`, source: mokaScore > 0 ? 'moka' : 'web_fallback' };
         })
         .sort((a, b) => b.score - a.score)
         .map((b, i) => ({ rank: i + 1, ...b }));
 
-      return res.json({ items: ranked, category });
+      return res.json({ items: ranked, category, period: periodRange });
     }
 
     if (category === 'streak') {
@@ -755,7 +792,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         .sort((a, b) => b.score - a.score)
         .map((b, i) => ({ rank: i + 1, ...b }));
 
-      return res.json({ items: ranked, category });
+      return res.json({ items: ranked, category, period: periodRange });
     }
 
     if (category === 'home_service') {
@@ -763,7 +800,8 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         .from('bookings').select('barber_id')
         .in('barber_id', barberIds)
         .eq('status', 'done')
-        .gte('date', monthStart)
+        .gte('date', periodStart)
+        .lte('date', periodEnd)
         .ilike('notes', '%HOME SERVICE%');
 
       const map = {};
@@ -774,10 +812,22 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         .sort((a, b) => b.score - a.score)
         .map((b, i) => ({ rank: i + 1, ...b }));
 
-      return res.json({ items: ranked, category });
+      return res.json({ items: ranked, category, period: periodRange });
     }
 
     return res.status(400).json({ error: 'Unknown category' });
+  });
+
+  // Manual refresh for ranking audit. Reuses the same current-month Moka sync
+  // used by the scheduled job, so the admin can compare fresh POS data.
+  router.post('/leaderboard/sync-moka', adminAuth, async (req, res) => {
+    try {
+      const result = await syncMokaTransactions(supabase);
+      return res.json({ ok: true, synced_at: new Date().toISOString(), ...result });
+    } catch (error) {
+      console.error('[Admin] Leaderboard Moka sync failed:', error.message);
+      return res.status(502).json({ ok: false, error: 'Moka sync gagal', detail: error.message });
+    }
   });
 
   // ─── BOOKING ACTIONS ──────────────────────────────────────────

@@ -538,4 +538,4 @@ function createBarberCronRoutes(supabase, adminAuth) {
   return router;
 }
 
-module.exports = { createBarberCronRoutes };
+module.exports = { createBarberCronRoutes, syncMokaTransactions };

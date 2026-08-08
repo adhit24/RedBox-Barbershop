@@ -52,9 +52,16 @@ export function fetchDormantCustomers(branch: string) {
   return crmFetch<{ customers: CustomerRow[] }>(`/api/admin/crm/customers/dormant?branch=${branch}`);
 }
 
-export function fetchAdminLeaderboard(branch: string, category: 'customer' | 'streak' | 'home_service') {
-  return crmFetch<{ items: LeaderboardItem[]; category: string }>(
-    `/api/admin/crm/leaderboard?branch=${branch}&category=${category}`
+export function fetchAdminLeaderboard(branch: string, category: 'customer' | 'streak' | 'home_service', period: 'week' | 'month' = 'month') {
+  return crmFetch<{ items: LeaderboardItem[]; category: string; period: { type: string; start: string; end: string } }>(
+    `/api/admin/crm/leaderboard?branch=${encodeURIComponent(branch)}&category=${category}&period=${period}`
+  );
+}
+
+export function syncAdminLeaderboardMoka() {
+  return crmFetch<{ ok: boolean; synced_at: string; outlets: number; transactions: number; services: number; results?: unknown[] }>(
+    '/api/admin/crm/leaderboard/sync-moka',
+    { method: 'POST', body: JSON.stringify({}) }
   );
 }
 
