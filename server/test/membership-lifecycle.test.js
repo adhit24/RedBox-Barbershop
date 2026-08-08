@@ -250,3 +250,16 @@ test('membership registrations use a 48-hour payment window', () => {
   assert.equal((migration.match(/INTERVAL '48 hours'/g) || []).length, 3);
   assert.doesNotMatch(migration, /INTERVAL '7 days'/i);
 });
+
+test('first paid activation ignores undated legacy ACTIVE status', () => {
+  const migration = fs.readFileSync(path.join(
+    __dirname, '..', 'migrations', '2026-08-08-paid-membership-registration.sql'
+  ), 'utf8');
+  const activationStart = migration.indexOf('CREATE OR REPLACE FUNCTION activate_membership_registration');
+  const activationSql = migration.slice(activationStart);
+  assert.match(activationSql, /mp\.membership_started_at IS NOT NULL[\s\S]+mp\.membership_expires_at > v_now/);
+  assert.doesNotMatch(
+    activationSql,
+    /mp\.membership_expires_at > v_now[\s\S]{0,180}OR \(mp\.membership_started_at IS NULL/,
+  );
+});

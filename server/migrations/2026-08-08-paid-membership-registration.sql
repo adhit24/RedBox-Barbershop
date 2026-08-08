@@ -668,10 +668,10 @@ BEGIN
   FROM member_profiles AS mp
   WHERE normalize_membership_phone(mp.phone) = r.phone_normalized
     AND mp.membership_status = 'ACTIVE'
-    AND (
-      mp.membership_expires_at > v_now
-      OR (mp.membership_started_at IS NULL AND mp.membership_expires_at IS NULL)
-    )
+    -- Undated ACTIVE rows are legacy Moka memberships, not paid-tier periods.
+    -- They must remain linked to this account but must not block first paid activation.
+    AND mp.membership_started_at IS NOT NULL
+    AND mp.membership_expires_at > v_now
   ORDER BY mp.created_at DESC NULLS LAST, mp.id DESC
   LIMIT 1
   FOR UPDATE;
