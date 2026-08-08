@@ -242,19 +242,10 @@ document.addEventListener('DOMContentLoaded', () => {
  const banner = document.getElementById('upsellBanner');
  if (!banner) return;
 
- const tierIdx = tier.level - 1; // 0=Bronze, 1=Silver, 2=Gold, 3=Platinum
- const nextTier = TIERS[tierIdx + 1] || null;
-
- // Tier progress within current band
- const rangeWidth = tier.max === Infinity ? 1 : (tier.max - tier.min + 1);
- const inRange = displayPoints - tier.min;
- const progress = Math.min(Math.round((inRange / rangeWidth) * 100), 100);
-
- // Banner config per tier
  const configs = {
- silver: { title:'Silver Member - Kumpul Poin untuk Naik Gold', desc:'Capai 500 poin untuk upgrade Gold - diskon 10% di semua cabang.', cta:'Lihat Semua Tier', ctaClass:'' },
- gold: { title:'Upgrade ke Platinum - Benefit Terlengkap', desc:'Free haircut, free iced americano, dan birthday gratis di semua cabang.', cta:'Upgrade ke Platinum', ctaClass:'plat' },
- platinum: { title:'Kamu di Tingkat Tertinggi', desc:'Nikmati semua benefit eksklusif Redbox Platinum.', cta:null, ctaClass:'' },
+ silver: { title:'Silver Member - Kumpulkan Poin Reward', desc:'Poin dapat ditukar dengan produk dan layanan Redbox sesuai katalog rewards.', cta:'Lihat Katalog Rewards', ctaClass:'' },
+ gold: { title:'Gold Member - Kumpulkan Poin Reward', desc:'Gunakan poinmu untuk redeem produk dan layanan Redbox yang tersedia.', cta:'Lihat Katalog Rewards', ctaClass:'' },
+ platinum: { title:'Platinum Member - Kumpulkan Poin Reward', desc:'Nikmati benefit Platinum dan tukarkan poin dengan produk atau layanan pilihanmu.', cta:'Lihat Katalog Rewards', ctaClass:'plat' },
  };
  const cfg = configs[tier.class] || configs.silver;
 
@@ -282,17 +273,15 @@ document.addEventListener('DOMContentLoaded', () => {
  if (ubTitle) ubTitle.textContent = cfg.title;
  if (ubDesc) ubDesc.textContent = cfg.desc;
 
- // Progress bar - show for non-Platinum
+ // Poin tidak lagi menjadi progres kenaikan tier. Tier ditentukan saat pembelian.
  if (ubProgressWrap) {
- ubProgressWrap.style.display = (tier.class === 'platinum' || !ACTIVE) ? 'none' : 'block';
- if (ubProgressFill) { ubProgressFill.style.width = progress + '%'; ubProgressFill.style.background = accentColor; }
- if (ubProgressLabel && nextTier) ubProgressLabel.textContent = `${displayPoints.toLocaleString('id-ID')} / ${tier.max.toLocaleString('id-ID')} poin - ${tier.max - displayPoints} lagi ke ${nextTier.name}`;
+ ubProgressWrap.style.display = 'none';
  }
 
  // CTA button
  if (ubActions) {
  ubActions.innerHTML = cfg.cta
- ? `<button class="ub-btn ${cfg.ctaClass}" onclick="window.location.href='membership.html'">${cfg.cta}</button>`
+ ? `<button class="ub-btn ${cfg.ctaClass}" onclick="document.querySelector('.dash-nav-item[data-tab=\\'benefits\\']')?.click()">${cfg.cta}</button>`
  : '';
  }
 
@@ -334,33 +323,14 @@ document.addEventListener('DOMContentLoaded', () => {
  }
 
  // ============================================================
- // TIER PROGRESS
+ // POINT REWARD PURPOSE
  // ============================================================
  const tierMessage = document.getElementById('tierMessage');
 
  if (ACTIVE) {
- const tierNodes = document.querySelectorAll('.tier-node');
- tierNodes.forEach((node, i) => {
- if (i < tier.level - 1) node.classList.add('completed');
- if (i === tier.level - 2) node.classList.add('active');
- });
- setTimeout(() => {
- [[0,0,500],[1,500,1500]].forEach(([i,start,end]) => {
- const fill = document.getElementById('tierFill' + (i+1));
- if (!fill) return;
- const pct = memberData.points >= end ? 100
- : memberData.points > start ? ((memberData.points-start)/(end-start))*100 : 0;
- fill.style.width = Math.min(pct,100) + '%';
- });
- }, 400);
- if (tierMessage) {
- const next = TIERS[tier.level] || null;
- tierMessage.innerHTML = next
- ? `<p>Sedikit lagi naik ke <strong>${next.name}</strong>! Butuh <strong>${(next.min - memberData.points).toLocaleString('id-ID')} poin</strong> lagi. Keep grinding. </p>`
- : `<p> Kamu sudah di level tertinggi <strong>Platinum</strong>. Nikmati semua keistimewaan VIP Redbox!</p>`;
- }
+ if (tierMessage) tierMessage.innerHTML = `<p>Poin kamu: <strong>${displayPoints.toLocaleString('id-ID')}</strong>. Tukarkan poin dengan produk dan layanan yang tersedia di Katalog Rewards.</p>`;
  } else {
- if (tierMessage) tierMessage.innerHTML = `<p>Aktivasi membership untuk mulai mengumpulkan poin dan naik tier. <a href="#" id="tierActivateCta" style="color:var(--red);font-weight:600;">Aktivasi sekarang →</a></p>`;
+ if (tierMessage) tierMessage.innerHTML = `<p>Aktivasi membership untuk mulai mengumpulkan poin dan menukarnya dengan produk atau layanan. <a href="#" id="tierActivateCta" style="color:var(--red);font-weight:600;">Aktivasi sekarang →</a></p>`;
  setTimeout(() => {
  document.getElementById('tierActivateCta')?.addEventListener('click', (e) => { e.preventDefault(); showActivationModal(); });
  }, 100);
@@ -590,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
  ? `<span class="shop-tag tag-disc">${s.discount} untuk kamu</span>`
  : '';
  const btnHtml = locked
- ? `<button class="shop-btn shop-btn-plat" onclick="location.href='membership.html'">Upgrade Sekarang</button>`
+ ? `<span class="shop-tag tag-lock">Tersedia untuk ${s.tier === 'platinum' ? 'Platinum' : 'Gold'}</span>`
  : `<button class="shop-btn shop-btn-red" onclick="location.href='booking.html'">Book sekarang</button>`;
  return `
  <div class="shop-card ${cardClass}">
@@ -607,29 +577,9 @@ document.addEventListener('DOMContentLoaded', () => {
  </div>`;
  }).join('');
 
- // Section D: Upgrade CTA (only if not Platinum)
+ // Section D: higher tiers are purchased during registration, not with points.
  if (!ctaEl) return;
- if (ACTIVE && tierIdx >= 3) { ctaEl.innerHTML = ''; return; }
- const nextT = TIERS[Math.min(tierIdx + 1, TIERS.length - 1)];
- ctaEl.innerHTML = `
- <div class="suc-block">
- <div class="suc-info">
- <div class="suc-title">
- <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
- Upgrade ke ${nextT.name}
- </div>
- <div class="suc-sub">Unlock lebih banyak benefit eksklusif Redbox.</div>
- <div class="suc-tags">
- ${BENEFITS.filter(b => b.tier === nextT.class).slice(0,3).map(b =>
- `<span class="suc-tag"> ${b.name}</span>`
- ).join('')}
- </div>
- </div>
- <button class="suc-btn" onclick="location.href='membership.html'">
- Upgrade Sekarang
- <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
- </button>
- </div>`;
+ ctaEl.innerHTML = '';
  }
 
  renderShop();
