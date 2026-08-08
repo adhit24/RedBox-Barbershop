@@ -312,6 +312,36 @@ test('CRM registration list filters the derived status without hiding expired hi
   });
 });
 
+test('CRM derives ACTIVE from a valid paid activation period even if legacy profile status is stale', async () => {
+  const supabase = createMembershipStatusSupabase({
+    registrations: [{
+      id: 'paid-legacy-profile', user_key: 'legacy-user', registration_code: 'RBM-PAID-LEGACY',
+      full_name: 'Biagi Wijaya', phone: '+628123456789', email: null, tier: 'gold',
+      price_snapshot: 250000, registration_type: 'NEW', source_registration_id: null,
+      requested_by: null, requested_branch: null, status: 'ACTIVATED',
+      expires_at: '2026-08-10T10:00:00.000Z', created_at: '2026-08-08T10:00:00.000Z',
+    }],
+    profiles: [{
+      user_key: 'legacy-user', phone: '+628123456789', membership_status: 'INACTIVE',
+      current_tier: null, membership_started_at: null, membership_expires_at: null,
+    }],
+    activations: [{
+      id: 'paid-activation', registration_id: 'paid-legacy-profile', amount: 250000, tier: 'gold',
+      payment_method: 'cash', payment_reference: 'RBX-0122', branch: 'bypass', confirmed_by: 'staff',
+      status: 'completed', starts_at: '2026-08-08T10:00:00.000Z', expires_at: '2027-08-08T10:00:00.000Z',
+      activated_at: '2026-08-08T10:00:00.000Z',
+    }],
+  });
+
+  await withServer(supabase, async (url) => {
+    const response = await fetch(`${url}/membership/registrations?status=active`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.registrations[0].status, 'ACTIVE');
+    assert.equal(body.registrations[0].membershipExpiresAt, '2027-08-08T10:00:00.000Z');
+  });
+});
+
 test('CRM registration list marks an old paid period expired even when the member has a newer active period', async () => {
   const supabase = createMembershipStatusSupabase({
     registrations: [{

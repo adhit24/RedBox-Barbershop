@@ -1361,7 +1361,10 @@ function createAdminCrmRoutes(supabase, adminAuth) {
           && (!startsAt || new Date(startsAt) <= now)
           && (!activation || activation.status === 'completed')
         );
-        const membershipIsActive = Boolean(profileIsActive && paidPeriodIsActive);
+        // Paid activation is the source of truth for this CRM workflow. A legacy
+        // profile can still carry an old/incomplete membership_status from Moka;
+        // that must not make a completed paid activation appear EXPIRED.
+        const membershipIsActive = paidPeriodIsActive;
         let status = registration.status;
         if (registration.status === 'PENDING') status = pendingIsLive ? 'PENDING' : 'EXPIRED';
         else if (registration.status === 'ACTIVATED') status = membershipIsActive ? 'ACTIVE' : 'EXPIRED';
