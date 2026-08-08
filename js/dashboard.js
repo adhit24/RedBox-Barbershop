@@ -71,10 +71,14 @@ document.addEventListener('DOMContentLoaded', () => {
  { id:'r2', tier:'bronze', name:'Free Redbox Oilbased Mini', desc:'Dapatkan produk oilbased mini eksklusif Redbox secara gratis.', cost:75, icon:'', type:'redeem' },
  { id:'r3', tier:'silver', name:'Free Baileys Coffee', desc:'Nikmati segelas Baileys Coffee gratis dari Redbox.', cost:100, icon:'', type:'redeem' },
  { id:'r4', tier:'silver', name:'Free Express Cleaning (All Varians)', desc:'Layanan express cleaning untuk semua varian secara gratis.', cost:100, icon:'', type:'redeem' },
- { id:'r7', tier:'gold', name:'Free Haircut / Fadecut', desc:'Haircut atau Fadecut gratis pilihan kamu.', cost:200, icon:'', type:'redeem' },
- { id:'r8', tier:'platinum', name:'Free Gentlemen Grooming', desc:'Layanan Gentlemen Grooming lengkap gratis untukmu.', cost:250, icon:'', type:'redeem' },
- { id:'r9', tier:'platinum', name:'Free Fadecut Grooming', desc:'Layanan Fadecut Grooming eksklusif gratis untukmu.', cost:250, icon:'', type:'redeem' },
+ { id:'r5', tier:'bronze', name:'Cashback 50% Haircut Regular', desc:'Gunakan sekali dalam satu transaksi.', cost:100, icon:'', type:'redeem' },
+ { id:'r6', tier:'bronze', name:'Cashback 50% Haircut Premium (CSB)', desc:'Gunakan sekali dalam satu transaksi di CSB.', cost:125, icon:'', type:'redeem' },
+ { id:'r7', tier:'bronze', name:'Free Haircut / Fadecut', desc:'Haircut atau Fadecut gratis pilihan kamu.', cost:200, icon:'', type:'redeem' },
+ { id:'r8', tier:'bronze', name:'Free Gentlemen Grooming / Fadecut Grooming', desc:'Pilih salah satu layanan grooming gratis.', cost:250, icon:'', type:'redeem' },
  ];
+
+ const POINT_VALUE_IDR = 10000;
+ const MAX_POINT_REDEMPTIONS_PER_TRANSACTION = 1;
 
  const BENEFITS = [
  // Bronze (3)
@@ -82,24 +86,24 @@ document.addEventListener('DOMContentLoaded', () => {
  { tier:'bronze', name:'Kode referral', desc:'Bagikan kode, dapat bonus poin tiap teman daftar.', auto:true },
  { tier:'bronze', name:'Riwayat kunjungan & poin', desc:'Pantau semua aktivitas membership kamu.', auto:true },
  // Silver (2)
- { tier:'silver', name:'Diskon 50% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
+ { tier:'silver', name:'Diskon 20% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
  { tier:'silver', name:'Akses Katalog Produk', desc:'Beli produk Redbox langsung dari dashboard.', auto:true },
  // Gold (2)
- { tier:'gold', name:'Diskon 50% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
+ { tier:'gold', name:'Diskon 20% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
  { tier:'gold', name:'Diskon 10% layanan', desc:'Berlaku di semua cabang kecuali CSB Mall.', auto:true },
  // Platinum (5)
- { tier:'platinum', name:'Diskon 50% saat birthday', desc:'Berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
+ { tier:'platinum', name:'Birthday service gratis', desc:'Layanan gratis berlaku 7 hari sebelum sampai 7 hari sesudah tanggal ulang tahun.', auto:true },
  { tier:'platinum', name:'Free Gentlemen Grooming', desc:'Layanan grooming gratis tiap kunjungan.', auto:true },
  { tier:'platinum', name:'Free Iced Americano', desc:'Kopi gratis tiap kunjungan ke Redbox.', auto:true },
  { tier:'platinum', name:'Priority semua cabang', desc:'Akses priority booking di seluruh cabang Redbox.', auto:true },
  ];
 
  const PRODUCTS = [
- { id:'clay', name:'Redbox Clay', sub:'Styling clay natural finish', price:'Rp 100.000', img:'Brand_assets/product/clay.jpeg', badge:'Populer' },
- { id:'water', name:'Pomade Waterbased', sub:'Formula water-based rinse', price:'Rp 100.000-150.000',img:'Brand_assets/product/water_base.jpeg', badge:null },
- { id:'oil', name:'Pomade Oil Based', sub:'Hold kuat tahan lama', price:'Rp 100.000-150.000',img:'Brand_assets/product/oil_base.jpeg', badge:null },
- { id:'elfree', name:'Parfum Eleftheree', sub:'Aroma segar maskulin', price:'Rp 150.000', img:'Brand_assets/product/IMG_6532.JPG.jpeg', badge:null },
- { id:'psyhi', name:'Parfum Psyhi', sub:'Aroma woody premium', price:'Rp 150.000', img:'Brand_assets/product/psyi.jpeg', badge:null },
+ { id:'clay', name:'Redbox Clay', sub:'Styling clay natural finish', priceOptions:[{label:'100gr',price:100000}], img:'Brand_assets/product/clay.jpeg', badge:'Populer' },
+ { id:'water', name:'Pomade Waterbased', sub:'Formula water-based rinse', priceOptions:[{label:'30gr',price:100000},{label:'80gr',price:150000}], img:'Brand_assets/product/water_base.jpeg', badge:null },
+ { id:'oil', name:'Pomade Oil Based', sub:'Hold kuat tahan lama', priceOptions:[{label:'30gr',price:100000},{label:'80gr',price:150000}], img:'Brand_assets/product/oil_base.jpeg', badge:null },
+ { id:'elfree', name:'Parfum Eleftheree', sub:'Aroma segar maskulin', priceOptions:[{label:'30ml',price:150000}], img:'Brand_assets/product/IMG_6532.JPG.jpeg', badge:null },
+ { id:'psyhi', name:'Parfum Psyhi', sub:'Aroma woody premium', priceOptions:[{label:'30ml',price:150000}], img:'Brand_assets/product/psyi.jpeg', badge:null },
  ];
 
  const SERVICES_SHOP = [
@@ -129,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
  referralCode: '', referralCount: 0, referralPoints: 0,
  joinDate: new Date().toISOString(),
  membership_status: 'INACTIVE',
+ current_tier: null,
  membership_activated_at: null,
  membership_started_at: null,
  membership_expires_at: null,
@@ -176,7 +181,12 @@ document.addEventListener('DOMContentLoaded', () => {
  requestAnimationFrame(step);
  }
 
- function getCurrentTier(pts) {
+ function getCurrentTier(pts, paidTier = memberData.current_tier) {
+ const paidClass = String(paidTier || '').toLowerCase();
+ const paidIndex = TIERS.findIndex(t => t.class === paidClass);
+ if (paidIndex >= 0 && paidTier) {
+ return { ...TIERS[paidIndex], level: paidIndex + 1 };
+ }
  for (let i = TIERS.length - 1; i >= 0; i--)
  if (pts >= TIERS[i].min) return { ...TIERS[i], level: i + 1 };
  return { ...TIERS[0], level: 1 };
@@ -233,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const tierBadge = document.getElementById('profileTierBadge');
  const tierBadgeText = document.getElementById('tierBadgeText');
 
- const tier = getCurrentTier(displayPoints);
+ let tier = getCurrentTier(displayPoints);
 
  // ============================================================
  // SMART UPSELL BANNER
@@ -343,22 +353,19 @@ document.addEventListener('DOMContentLoaded', () => {
  const rewardsGrid = document.getElementById('rewardsGrid');
  if (rewardsGrid) {
  rewardsGrid.innerHTML = REWARDS.map(r => {
- const rTierIdx = tierLevelOf(r.tier);
- const userTierIdx = tier.level - 1;
- const unlocked = ACTIVE && userTierIdx >= rTierIdx;
- const tierInfo = TIERS[rTierIdx];
+ const unlocked = ACTIVE && memberData.points >= r.cost;
  return `
- <div class="reward-card ${unlocked ? 'unlocked' : 'locked'} tier-${r.tier}">
+ <div class="reward-card ${unlocked ? 'unlocked' : 'locked'}">
  ${!unlocked ? '<div class="reward-lock-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 11H5V21H19V11ZM17 9V7A5 5 0 0 0 7 7V9H17ZM12 14A2 2 0 1 0 12 18 2 2 0 0 0 12 14Z"/></svg></div>' : ''}
  <div class="reward-icon">${r.icon}</div>
  <div class="reward-meta">
- <span class="reward-tier-label">${tierInfo.name}</span>
+ <span class="reward-tier-label">Reward Redbox</span>
  <h4 class="reward-name">${r.name}</h4>
  <p class="reward-desc">${r.desc}</p>
  </div>
  ${r.type === 'redeem' && r.cost > 0
- ? `<button class="reward-btn ${unlocked ? '' : 'disabled'}" data-id="${r.id}" data-cost="${r.cost}" ${!unlocked ? 'disabled' : ''}>${unlocked ? `Tukar ${r.cost} Poin` : ` ${tierInfo.name}+`}</button>`
- : `<span class="reward-badge-auto">${unlocked ? 'Aktif Otomatis' : ` ${tierInfo.name}+`}</span>`
+ ? `<button class="reward-btn ${unlocked ? '' : 'disabled'}" data-id="${r.id}" data-cost="${r.cost}" ${!unlocked ? 'disabled' : ''}>${unlocked ? `Tukar ${r.cost} Poin` : `Butuh ${r.cost} Poin`}</button>`
+ : `<span class="reward-badge-auto">${unlocked ? 'Aktif Otomatis' : 'Terkunci'}</span>`
  }
  </div>`;
  }).join('');
@@ -487,8 +494,13 @@ document.addEventListener('DOMContentLoaded', () => {
  if (!p) return '';
  const badgeHtml = p.badge
  ? `<span class="shop-badge badge-${p.badge==='New'?'new':'red'}">${esc(p.badge)}</span>` : '';
+ const options = p.priceOptions || [];
+ const optionHtml = options.length > 1
+ ? `<label class="shop-variant-label">Variant<select class="shop-product-variant">${options.map((o, i) => `<option value="${o.price}" ${i === 0 ? 'selected' : ''}>${esc(o.label)} — ${formatMoney(o.price)}</option>`).join('')}</select></label>`
+ : '';
+ const initialPrice = options[0]?.price || 0;
  return `
- <div class="shop-card red">
+ <div class="shop-card red shop-product-card" data-product-id="${esc(p.id)}" data-price="${initialPrice}">
  <div class="shop-card-img">
  <img src="${esc(p.img)}" alt="${esc(p.name)}" loading="lazy"/>
  ${badgeHtml}
@@ -496,13 +508,46 @@ document.addEventListener('DOMContentLoaded', () => {
  <div class="shop-card-body">
  <div class="shop-card-name">${esc(p.name)}</div>
  <div class="shop-card-sub">${esc(p.sub)}</div>
- <span class="shop-tag tag-price">${esc(p.price)}</span>
- <button class="shop-btn shop-btn-red" onclick="window.open('https://wa.me/6289635379441?text=Halo%20Redbox%2C%20saya%20ingin%20memesan%20${encodeURIComponent(p.name)}','_blank')">
+ ${optionHtml}
+ <span class="shop-tag tag-price shop-product-price"></span>
+ <span class="shop-product-discount"></span>
+ <button class="shop-btn shop-btn-red shop-product-order" type="button">
  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.555 4.13 1.535 5.875L.057 23.857c-.072.267.162.501.43.43l6.062-1.476A11.965 11.965 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.98 0-3.849-.576-5.42-1.566l-.39-.23-3.6.876.893-3.51-.253-.4A9.962 9.962 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
- Beli via WA
+ Gunakan poin & pesan
  </button>
  </div>
  </div>`;
+ }
+
+ function formatMoney(value) {
+ return `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+ }
+
+ function updateProductCard(card) {
+ const product = PRODUCTS.find(p => p.id === card.dataset.productId);
+ if (!product) return;
+ const select = card.querySelector('.shop-product-variant');
+ const price = Number(select?.value || product.priceOptions?.[0]?.price || 0);
+ const points = ACTIVE ? Math.max(0, Math.floor(Number(memberData.points) || 0)) : 0;
+ const discount = Math.min(price, points * POINT_VALUE_IDR);
+ const finalPrice = price - discount;
+ card.dataset.price = String(price);
+ const priceEl = card.querySelector('.shop-product-price');
+ const discountEl = card.querySelector('.shop-product-discount');
+ if (priceEl) priceEl.textContent = formatMoney(price);
+ if (discountEl) discountEl.innerHTML = points > 0
+ ? `Pakai hingga ${points.toLocaleString('id-ID')} poin: <strong>potongan ${formatMoney(discount)}</strong><br><small>Harga setelah poin: ${formatMoney(finalPrice)} · ${MAX_POINT_REDEMPTIONS_PER_TRANSACTION}x per transaksi · tidak digabung diskon tier</small>`
+ : 'Belum ada poin untuk potongan produk.';
+ const orderBtn = card.querySelector('.shop-product-order');
+ if (orderBtn) {
+ orderBtn.disabled = points <= 0;
+ orderBtn.textContent = points > 0 ? 'Gunakan poin & pesan' : 'Poin belum tersedia';
+ orderBtn.onclick = () => {
+ if (!points) return;
+ const message = `Halo Redbox, saya ingin memesan ${product.name}${select ? ` (${select.options[select.selectedIndex].text})` : ''}. Harga ${formatMoney(price)}, menggunakan ${Math.min(points, Math.ceil(price / POINT_VALUE_IDR))} poin sebagai potongan ${formatMoney(discount)}. Harga setelah poin ${formatMoney(finalPrice)}. Penggunaan poin ${MAX_POINT_REDEMPTIONS_PER_TRANSACTION}x transaksi dan tidak digabung diskon tier.`;
+ window.open(`https://wa.me/6289635379441?text=${encodeURIComponent(message)}`, '_blank');
+ };
+ }
  }
 
  function renderShop() {
@@ -520,7 +565,10 @@ document.addEventListener('DOMContentLoaded', () => {
  <p style="margin-top:12px;font-size:0.8rem;">Aktivasi membership untuk mengakses Shop.</p>
  <p style="margin-top:14px;font-size:0.75rem;">Gunakan tombol aktivasi di bagian atas halaman.</p>
  </div>`;
- curatedEl.closest('#panel-shop').innerHTML = inactiveHtml;
+ curatedEl.innerHTML = inactiveHtml;
+ productsEl.innerHTML = '';
+ servicesEl.innerHTML = '';
+ if (ctaEl) ctaEl.innerHTML = '';
  return;
  }
 
@@ -534,6 +582,10 @@ document.addEventListener('DOMContentLoaded', () => {
  curatedEl.innerHTML = curatedIds
  .map(id => { const p = PRODUCTS.find(x => x.id === id); return p ? shopCardHtml(p) : ''; })
  .join('');
+ curatedEl.querySelectorAll('.shop-product-card').forEach(card => {
+ updateProductCard(card);
+ card.querySelector('.shop-product-variant')?.addEventListener('change', () => updateProductCard(card));
+ });
 
  // Section B: All products (5 + "Lihat semua" card)
  productsEl.innerHTML = PRODUCTS.map(shopCardHtml).join('') + `
@@ -541,6 +593,10 @@ document.addEventListener('DOMContentLoaded', () => {
  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
  <span>Lihat semua<br>produk →</span>
  </a>`;
+ productsEl.querySelectorAll('.shop-product-card').forEach(card => {
+ updateProductCard(card);
+ card.querySelector('.shop-product-variant')?.addEventListener('change', () => updateProductCard(card));
+ });
 
  // Section C: Service upsell cards
  servicesEl.innerHTML = SERVICES_SHOP.map(s => {
@@ -911,6 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
  memberData.favBarber = c.fav_barber || memberData.favBarber;
  memberData.email = c.email || memberData.email || '';
  memberData.membership_status = c.membership_status || 'INACTIVE';
+ memberData.current_tier = c.current_tier || memberData.current_tier || null;
  memberData.membership_activated_at = c.membership_activated_at || null;
  memberData.membership_started_at = c.membership_started_at ?? null;
  memberData.membership_expires_at = c.membership_expires_at ?? null;
@@ -931,6 +988,10 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getCurrentTier(pts);
+ tier = t2;
+ renderUpsellBanner(tier);
+ renderBenefitTracker();
+ renderShop();
  if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
@@ -974,6 +1035,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
  // Remote profile is authoritative. Access is then normalized through the shared policy.
  memberData.membership_status = r.membership_status || 'INACTIVE';
+ memberData.current_tier = r.current_tier || memberData.current_tier || null;
  memberData.membership_started_at = r.membership_started_at ?? null;
  memberData.membership_expires_at = r.membership_expires_at ?? null;
  refreshMembershipAccess();
@@ -999,6 +1061,10 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getCurrentTier(pts);
+ tier = t2;
+ renderUpsellBanner(tier);
+ renderBenefitTracker();
+ renderShop();
  if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';

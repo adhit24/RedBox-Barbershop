@@ -796,16 +796,35 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
 
     if (category === 'home_service') {
-      const { data: rows } = await supabase
+      const [{ data: rows }, { data: mokaRows }] = await Promise.all([
+        supabase
         .from('bookings').select('barber_id')
         .in('barber_id', barberIds)
         .eq('status', 'done')
         .gte('date', periodStart)
         .lte('date', periodEnd)
-        .ilike('notes', '%HOME SERVICE%');
+        .ilike('notes', '%HOME SERVICE%'),
+        // Moka walk-ins are not inserted into bookings. Their service line
+        // still contains the authoritative "Home Service" service name.
+        supabase
+          .from('moka_barber_services')
+          .select('barber_id, receipt_number')
+          .in('barber_id', barberIds)
+          .gte('tx_date', periodStart)
+          .lte('tx_date', periodEnd)
+          .ilike('service_name', '%HOME SERVICE%'),
+      ]);
 
       const map = {};
       for (const r of (rows || [])) map[r.barber_id] = (map[r.barber_id] || 0) + 1;
+      const mokaReceipts = {};
+      for (const r of (mokaRows || [])) {
+        if (!mokaReceipts[r.barber_id]) mokaReceipts[r.barber_id] = new Set();
+        if (r.receipt_number) mokaReceipts[r.barber_id].add(r.receipt_number);
+      }
+      for (const [barberId, receipts] of Object.entries(mokaReceipts)) {
+        map[barberId] = (map[barberId] || 0) + receipts.size;
+      }
 
       const ranked = barbers
         .map(b => ({ ...b, score: map[b.id] || 0, display: `${map[b.id] || 0}x home service` }))

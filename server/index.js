@@ -2663,7 +2663,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       const phoneE164 = '+' + wa;
       const { data: profile } = await supabase
         .from('member_profiles')
-        .select('full_name, phone, email, membership_status, membership_activated_at, membership_started_at, membership_expires_at, total_points, total_visits, referral_code, birthdate, gender, address')
+        .select('full_name, phone, email, membership_status, membership_activated_at, membership_started_at, membership_expires_at, total_points, total_visits, current_tier, referral_code, birthdate, gender, address')
         .eq('phone', phoneE164)
         .maybeSingle();
 
@@ -2847,6 +2847,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         customer.membership_expires_at  = profile.membership_expires_at;
         customer.points                 = profile.total_points   ?? customer.points ?? 0;
         customer.visits                 = profile.total_visits   ?? customer.visits ?? 0;
+        customer.current_tier           = profile.current_tier ?? customer.current_tier ?? null;
         customer.referral_code          = profile.referral_code  ?? customer.referral_code;
         // Sync nama dari member_profiles jika customer belum punya nama lengkap
         if (!customer.name && profile.full_name) customer.name = profile.full_name;
