@@ -3099,7 +3099,19 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       const now       = new Date().toISOString();
 
       const persistVisitHistory = async (userKey, payments) => {
-        if (!userKey || !payments.length) return;
+        if (!userKey) return;
+
+        // Legacy lump-sum rows from the old sync-run ledger writer must be
+        // purged unconditionally (even when this sync found zero new visits)
+        // so they never double-count alongside the per-transaction
+        // moka-visit rows below in the member-facing points history.
+        const { error: legacyDeleteError } = await supabase.from('member_point_transactions')
+          .delete()
+          .eq('user_key', userKey)
+          .like('notes', 'moka-sync:%');
+        if (legacyDeleteError) console.warn('[Member Sync] legacy ledger cleanup skipped:', legacyDeleteError.message);
+
+        if (!payments.length) return;
 
         const visitRows = payments.map(p => ({
           user_key: userKey,
