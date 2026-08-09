@@ -12,3 +12,10 @@ const vercelConfig = JSON.parse(
 test('Vercel Hobby deployment does not declare unsupported frequent cron jobs', () => {
   assert.deepEqual(vercelConfig.crons ?? [], [], 'frequent Vercel cron jobs fail on Hobby');
 });
+
+test('catch-all API function is not routed through a static rewrite', () => {
+  assert.equal(vercelConfig.outputDirectory, '.');
+  assert.equal(vercelConfig.rewrites?.some((rewrite) =>
+    rewrite.destination === '/api/[...path].js'
+  ), false);
+});
