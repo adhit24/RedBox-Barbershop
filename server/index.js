@@ -2830,6 +2830,10 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         .eq('phone', phoneE164)
         .maybeSingle();
 
+      // Paid tier is authoritative in member_profiles. Points are a separate
+      // loyalty balance and must not downgrade a purchased tier.
+      if (profile?.current_tier) customer.current_tier = profile.current_tier;
+
       const profileIsActive = isActiveMembership({
         status: profile?.membership_status,
         startsAt: profile?.membership_started_at,
@@ -2949,7 +2953,9 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       }
 
       const newPoints = totalVisits * POINTS_PER_VISIT;
-      const newTier   = getTier(newPoints);
+      // Points remain a loyalty balance; the purchased tier is resolved after
+      // loading the existing profile below.
+      const pointsTier = getTier(newPoints);
       const now       = new Date().toISOString();
 
       const custPatch = { visits: totalVisits, points: newPoints, total_spent: totalSpent, last_visit: lastVisit, updated_at: now };
@@ -2958,8 +2964,12 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       if (custErr) throw new Error(`customers update failed: ${custErr.message}`);
 
       const { data: existing } = await supabase.from('member_profiles')
-        .select('id,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
+        .select('id,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at,current_tier')
         .eq('phone', phoneE164).maybeSingle();
+
+      // Preserve purchased Silver/Gold/Platinum across Moka syncs. The
+      // points-derived tier is only a fallback for profiles without a tier.
+      const newTier = existing?.current_tier || pointsTier;
 
       if (existing) {
         const membership = membershipStateForSync({

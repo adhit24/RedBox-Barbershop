@@ -129,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
  referralCode: '', referralCount: 0, referralPoints: 0,
  joinDate: new Date().toISOString(),
  membership_status: 'INACTIVE',
+ current_tier: 'bronze',
  membership_activated_at: null,
  membership_started_at: null,
  membership_expires_at: null,
@@ -184,6 +185,11 @@ document.addEventListener('DOMContentLoaded', () => {
  return { ...TIERS[0], level: 1 };
  }
 
+ function getDisplayTier(pts) {
+ const configured = String(memberData.current_tier || '').toLowerCase();
+ return TIERS.find(t => t.class === configured) || getCurrentTier(pts);
+ }
+
  function tierLevelOf(tierClass) {
  const idx = TIERS.findIndex(t => t.class === tierClass);
  return idx >= 0 ? idx : 0;
@@ -235,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const tierBadge = document.getElementById('profileTierBadge');
  const tierBadgeText = document.getElementById('tierBadgeText');
 
- const tier = getCurrentTier(displayPoints);
+ const tier = getDisplayTier(displayPoints);
 
  // ============================================================
  // SMART UPSELL BANNER
@@ -913,6 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
  memberData.favBarber = c.fav_barber || memberData.favBarber;
  memberData.email = c.email || memberData.email || '';
  memberData.membership_status = c.membership_status || 'INACTIVE';
+ memberData.current_tier = c.current_tier || memberData.current_tier || 'bronze';
  memberData.membership_activated_at = c.membership_activated_at || null;
  memberData.membership_started_at = c.membership_started_at ?? null;
  memberData.membership_expires_at = c.membership_expires_at ?? null;
@@ -932,7 +939,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const pts = isACTIVE ? memberData.points : 0;
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
- const t2 = getCurrentTier(pts);
+ const t2 = getDisplayTier(pts);
  if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
@@ -976,6 +983,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
  // Remote profile is authoritative. Access is then normalized through the shared policy.
  memberData.membership_status = r.membership_status || 'INACTIVE';
+ memberData.current_tier = r.current_tier || memberData.current_tier || 'bronze';
  memberData.membership_started_at = r.membership_started_at ?? null;
  memberData.membership_expires_at = r.membership_expires_at ?? null;
  refreshMembershipAccess();
@@ -1000,7 +1008,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const pts = isACTIVE ? memberData.points : 0;
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
- const t2 = getCurrentTier(pts);
+ const t2 = getDisplayTier(pts);
  if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
