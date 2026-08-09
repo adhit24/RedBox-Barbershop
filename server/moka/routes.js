@@ -1378,13 +1378,6 @@ function createMokaRouter(supabase) {
     const PAGE_DELAY_MS    = 150;
     const MAX_BUDGET_MS    = 100_000;
     const POINTS_PER_VISIT = 50;
-    const TIER_THRESHOLDS  = [
-      { name: 'platinum', min: 3000 },
-      { name: 'gold',     min: 1000 },
-      { name: 'silver',   min: 500  },
-      { name: 'bronze',   min: 0    },
-    ];
-    const getTier = (pts) => { for (const t of TIER_THRESHOLDS) if (pts >= t.min) return t.name; return 'bronze'; };
     const normPhone = (raw) => {
       if (!raw) return '';
       let d = String(raw).replace(/\D/g, '');
@@ -1460,7 +1453,7 @@ function createMokaRouter(supabase) {
         updates.push({ id: member.id, full_name: member.full_name, phone: member.phone,
           old_points: member.total_points, old_tier: member.current_tier,
           new_points: mokaData.visits * POINTS_PER_VISIT, new_visits: mokaData.visits,
-          new_tier: resolveMembershipTier(member.current_tier, mokaData.visits * POINTS_PER_VISIT, getTier), last_visit: mokaData.last_visit });
+          new_tier: resolveMembershipTier(member.current_tier), last_visit: mokaData.last_visit });
       }
 
       if (dryRun) return res.status(200).json({ dry_run: true, members_active: members.length,

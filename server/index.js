@@ -3110,9 +3110,9 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at,current_tier,total_points,total_visits')
         .eq('phone', phoneE164).maybeSingle();
 
-      // Preserve purchased Silver/Gold/Platinum across Moka syncs. The
-      // points-derived tier is only a fallback for profiles without a tier.
-      const newTier = resolveMembershipTier(existing?.current_tier, syncedPoints, getTier);
+      // Preserve purchased Silver/Gold/Platinum across Moka syncs. A profile
+      // with no configured tier stays Bronze — points never promote a tier.
+      const newTier = resolveMembershipTier(existing?.current_tier);
 
       if (existing) {
         const nextPoints = Math.max(syncedPoints, Number(existing.total_points) || 0);

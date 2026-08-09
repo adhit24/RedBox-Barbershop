@@ -1228,7 +1228,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at,current_tier')
         .eq('phone', phoneE164).maybeSingle();
 
-      const newTier = resolveMembershipTier(existing?.current_tier, newPoints, getTier);
+      const newTier = resolveMembershipTier(existing?.current_tier);
 
       if (existing) {
         const membership = membershipStateForSync({

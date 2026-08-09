@@ -5,18 +5,20 @@ const test = require('node:test');
 
 const { isActiveMembership, membershipStateForSync, resolveMembershipTier } = require('../membership-policy');
 
-const pointsTier = (points) => points >= 3000 ? 'platinum' : points >= 1000 ? 'gold' : points >= 500 ? 'silver' : 'bronze';
-
-test('sync never downgrades a purchased tier from the points balance', () => {
-  assert.equal(resolveMembershipTier('platinum', 0, pointsTier), 'platinum');
-  assert.equal(resolveMembershipTier('gold', 50, pointsTier), 'gold');
-  assert.equal(resolveMembershipTier('silver', 0, pointsTier), 'silver');
+test('sync preserves a purchased tier regardless of the points balance', () => {
+  assert.equal(resolveMembershipTier('platinum'), 'platinum');
+  assert.equal(resolveMembershipTier('gold'), 'gold');
+  assert.equal(resolveMembershipTier('silver'), 'silver');
 });
 
-test('sync uses points only as a fallback for an unconfigured tier', () => {
-  assert.equal(resolveMembershipTier(null, 3000, pointsTier), 'platinum');
-  assert.equal(resolveMembershipTier('', 1000, pointsTier), 'gold');
-  assert.equal(resolveMembershipTier('unknown', 0, pointsTier), 'bronze');
+test('sync never promotes an unconfigured tier from points — it always stays Bronze', () => {
+  // Regression test: resolveMembershipTier used to accept (currentTier, points,
+  // pointsTierResolver) and silently auto-promote a member with no configured
+  // tier to Silver/Gold/even Platinum purely from accumulated points, contradicting
+  // the paid-tier business model (tier changes only via a staff CRM activation).
+  assert.equal(resolveMembershipTier(null), 'bronze');
+  assert.equal(resolveMembershipTier(''), 'bronze');
+  assert.equal(resolveMembershipTier('unknown'), 'bronze');
 });
 
 test('sync keeps an existing inactive membership inactive', () => {

@@ -4,12 +4,13 @@ const { isActiveMembership: isActiveMembershipRecord } = require('../js/membersh
 
 const MEMBERSHIP_TIERS = new Set(['bronze', 'silver', 'gold', 'platinum']);
 
-// Purchased membership tier is authoritative. Points are a separate loyalty
-// balance and may only provide a fallback for a profile without a tier.
-function resolveMembershipTier(currentTier, points, pointsTierResolver) {
+// Purchased membership tier is authoritative. Points never determine or
+// change a member's tier — only a staff activation in the CRM can move a
+// member off Bronze. A profile with no configured tier is Bronze, never a
+// points-derived guess.
+function resolveMembershipTier(currentTier) {
   const configuredTier = String(currentTier || '').trim().toLowerCase();
-  if (MEMBERSHIP_TIERS.has(configuredTier)) return configuredTier;
-  return typeof pointsTierResolver === 'function' ? pointsTierResolver(Number(points) || 0) : 'bronze';
+  return MEMBERSHIP_TIERS.has(configuredTier) ? configuredTier : 'bronze';
 }
 
 function isActiveMembership({ status, startsAt, expiresAt, now = new Date() } = {}) {
