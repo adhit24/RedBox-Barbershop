@@ -2930,14 +2930,41 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     }
 
     const customer = await getMergedMemberCustomer(session.customer_wa);
-    const completedVisits = (bookings || []).filter(row => ['done', 'completed'].includes(String(row.status || '').toLowerCase())).length;
+    let historyBookings = bookings || [];
+    // Legacy Moka visits are stored as aggregates, not always as booking rows.
+    // Keep that history visible instead of showing a misleading empty state.
+    if (!historyBookings.length && customer?.last_visit && Number(customer.visits) > 0) {
+      historyBookings = [{
+        id: `legacy-moka-${customer.last_visit}`,
+        name: customer.name || 'Member RedBox',
+        wa: customer.wa,
+        date: customer.last_visit,
+        time: null,
+        status: 'done',
+        service: 'Kunjungan dari Moka',
+        price: Number(customer.total_spent) || 0,
+        location: 'RedBox Barbershop',
+        legacy: true,
+      }];
+    }
+    if (!pointRows.length && Number(profile?.total_points) > 0) {
+      pointRows = [{
+        id: `legacy-points-${profile.user_key}`,
+        user_key: profile.user_key,
+        activity: 'Saldo poin tersinkronisasi',
+        points: Number(profile.total_points),
+        notes: 'Saldo historis dari data member',
+        created_at: profile.updated_at || new Date().toISOString(),
+      }];
+    }
+    const completedVisits = historyBookings.filter(row => ['done', 'completed'].includes(String(row.status || '').toLowerCase())).length;
     return res.json({
       customer: customer || {},
       summary: {
         visits: Math.max(Number(customer?.visits) || 0, completedVisits),
         points: Math.max(Number(customer?.points) || 0, Number(profile?.total_points) || 0),
       },
-      bookings: bookings || [],
+      bookings: historyBookings,
       points: pointRows,
     });
   });

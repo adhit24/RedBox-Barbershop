@@ -839,8 +839,17 @@ document.addEventListener('DOMContentLoaded', () => {
  function renderBookingsHistory(bookings = []) {
  const empty = document.getElementById('emptyBookings');
  const list = document.getElementById('bookingsList');
+ const count = document.getElementById('historyVisitCount');
+ const lastVisit = document.getElementById('historyLastVisit');
  if (!empty || !list) return;
  const rows = bookings.filter(b => String(b.status || '').toLowerCase() !== 'cancelled');
+ if (count) count.textContent = rows.length;
+ if (lastVisit) {
+ const latest = rows.find(b => b.date);
+ lastVisit.textContent = latest
+ ? `Kunjungan terakhir ${fmtDate(latest.date)}${latest.legacy ? ' · tersinkronisasi dari Moka' : ''}`
+ : 'Data kunjungan tersimpan otomatis dari RedBox.';
+ }
  if (!rows.length) {
  empty.style.display = 'flex';
  list.style.display = 'none';
@@ -853,10 +862,12 @@ document.addEventListener('DOMContentLoaded', () => {
  const date = b.date ? new Date(`${b.date}T${b.time || '00:00:00'}`).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) : '-';
  const status = String(b.status || 'confirmed').toLowerCase();
  const statusLabel = status === 'done' || status === 'completed' ? 'Selesai' : status === 'confirmed' ? 'Dikonfirmasi' : status;
- return `<div class="booking-history-row">
- <div class="booking-history-date">${esc(date)}</div>
- <div class="booking-history-main"><strong>${esc(b.service || 'Layanan Redbox')}</strong><span>${esc(b.location || 'Redbox Barbershop')} · ${esc(b.time || '-')}</span></div>
- <span class="booking-history-status ${esc(status)}">${esc(statusLabel)}</span>
+ const price = Number(b.price) > 0 ? `Rp ${Number(b.price).toLocaleString('id-ID')}` : 'Member visit';
+ return `<article class="booking-history-row">
+ <div class="booking-history-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M7 3v3m10-3v3M4.5 9.5h15M6 5h12a2 2 0 0 1 2 2v11.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+ <div class="booking-history-date"><strong>${esc(date.split(' ')[0])}</strong><span>${esc(date.split(' ').slice(1).join(' '))}</span></div>
+ <div class="booking-history-main"><strong>${esc(b.service || 'Layanan Redbox')}</strong><span>${esc(b.location || 'Redbox Barbershop')} · ${esc(b.time || 'Riwayat tersimpan')}</span></div>
+ <div class="booking-history-side"><strong>${esc(price)}</strong><span class="booking-history-status ${esc(status)}">${esc(statusLabel)}</span></div>
  </div>`;
  }).join('');
  }
@@ -897,7 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (!body) return;
  const history = memberData.pointsHistory || [];
  body.innerHTML = history.length
- ? history.map(e => `<div class="points-row"><span class="pts-date">${e.date}</span><span class="pts-activity">${e.activity}</span><span class="pts-amount ${e.amount>=0?'positive':'negative'}">${e.amount>=0?'+':''}${e.amount}</span></div>`).join('')
+ ? history.map(e => `<div class="points-row"><span class="pts-date">${esc(e.date)}</span><span class="pts-activity"><strong>${esc(e.activity)}</strong><small>Aktivitas loyalty RedBox</small></span><span class="pts-amount ${e.amount>=0?'positive':'negative'}">${e.amount>=0?'+':''}${esc(e.amount)}</span></div>`).join('')
  : `<div class="points-row points-row-empty"><span class="pts-activity" style="grid-column:1/-1;color:var(--w30);text-align:center;">${ACTIVE ? 'Belum ada aktivitas poin' : ' Aktivasi membership untuk mulai mengumpulkan poin'}</span></div>`;
  }
  renderPointsHistory();

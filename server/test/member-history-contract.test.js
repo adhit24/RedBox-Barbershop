@@ -14,6 +14,8 @@ test('authenticated member history endpoint reads bookings and point transaction
   assert.match(server, /from\('bookings'\)/);
   assert.match(server, /from\('member_point_transactions'\)/);
   assert.match(server, /getMemberPhoneVariants\(session\.customer_wa\)/);
+  assert.match(server, /Legacy Moka visits are stored as aggregates/);
+  assert.match(server, /Saldo poin tersinkronisasi/);
 });
 
 test('dashboard renders server-provided visit history and loads it for OTP members', () => {
@@ -22,6 +24,9 @@ test('dashboard renders server-provided visit history and loads it for OTP membe
   assert.match(dashboard, /fetch\('\/api\/member\/history'/);
   assert.match(dashboard, /await loadMemberHistory\(tok\)/);
   assert.match(dashboard, /bookingsList/);
+  assert.match(dashboard, /historyVisitCount/);
+  assert.match(dashboard, /booking-history-icon/);
+  assert.match(dashboard, /esc\(e\.activity\)/);
 });
 
 test('dashboard does not expose a fake password-change control for OTP accounts', () => {
