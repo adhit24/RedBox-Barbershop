@@ -302,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
  // Call after tier is determined
  renderUpsellBanner(tier);
 
- if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (ACTIVE ? tier.class : 'inactive');
+ if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (ACTIVE ? tier.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = ACTIVE ? `${tier.label} - ${tier.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = ACTIVE ? tier.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
 
@@ -971,7 +971,7 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
  window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
- if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
+ if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
  if (memberStatusBadge) {
@@ -1041,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
  window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
- if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
+ if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
  if (memberStatusBadge) {
