@@ -62,6 +62,28 @@ document.addEventListener('DOMContentLoaded', () => {
         animate(shimmer, SHIMMER_KEYFRAMES, SHIMMER_OPTS);
       }, { amount: 0.4 });
       injectParticles(physCard, tierClass);
+
+      // Bronze (tiltMaxDeg 0) gets no pointer listeners; CSS-only hover remains.
+      if (theme.getTierTokens(tierClass).tiltMaxDeg <= 0) return;
+      const tokens = theme.getTierTokens(tierClass);
+      const wrap = document.querySelector('.phys-card-wrap');
+      if (wrap) {
+        wrap.addEventListener('pointermove', (e) => {
+          const rect = wrap.getBoundingClientRect();
+          const px = (e.clientX - rect.left) / rect.width - 0.5;
+          const py = (e.clientY - rect.top) / rect.height - 0.5;
+          animate(physCard, {
+            rotateY: px * tokens.tiltMaxDeg,
+            rotateX: -py * tokens.tiltMaxDeg,
+          }, { duration: 0.4, ease: 'ease-out' });
+          const sheenX = 50 + px * 60;
+          const sheenY = 50 + py * 60;
+          physCard.style.setProperty('--sheen-pos', `${sheenX}% ${sheenY}%`);
+        });
+        wrap.addEventListener('pointerleave', () => {
+          animate(physCard, { rotateY: 0, rotateX: 0 }, { duration: 0.5, ease: 'ease-out' });
+        });
+      }
     }
   }
 });
