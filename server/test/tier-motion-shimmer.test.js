@@ -68,6 +68,22 @@ test('the shimmer sweep travels the full width of the card', () => {
   assert.match(tierMotion, /x:\s*\['0%',\s*'350%'\]/);
 });
 
+test('tier-motion.js exposes a re-initializable refresh so a mid-session tier change is not stuck with stale motion', () => {
+  const tierMotion = source('js/tier-motion.js');
+  assert.match(tierMotion, /function initTierMotion\(tierClass\)/);
+  assert.match(tierMotion, /window\.RedboxTierMotion\s*=\s*\{\s*refresh:\s*initTierMotion\s*\}/);
+  // Must detach previously-attached pointer listeners before re-evaluating
+  // tiltMaxDeg for the new tier, and clear previously-injected particles.
+  assert.match(tierMotion, /tiltController\.abort\(\)/);
+  assert.match(tierMotion, /physCard\.querySelectorAll\('\.tier-particle'\)\.forEach\(\(p\) => p\.remove\(\)\)/);
+});
+
+test('dashboard.js re-runs tier-motion after each async tier re-sync', () => {
+  const js = source('js/dashboard.js');
+  const refreshCalls = js.match(/window\.RedboxTierMotion\?\.refresh\(/g) || [];
+  assert.ok(refreshCalls.length >= 2, `expected at least 2 refresh calls (OTP + Google/email re-sync), found ${refreshCalls.length}`);
+});
+
 test('the tier-up banner and chime mute toggle render below the mobile nav drawer', () => {
   const css = source('css/dashboard.css');
   const bannerMatch = css.match(/\.tier-up-banner\{[^}]*z-index:(\d+)/);

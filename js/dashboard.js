@@ -1134,7 +1134,12 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
- window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
+ const t2Class = isACTIVE ? t2.class : 'bronze';
+ window.RedboxTierTheme.applyTierTheme(t2Class);
+ // tier-motion.js only initializes particle count/tilt intensity once at page
+ // load from whatever tier was cached; the async re-sync above can resolve a
+ // different tier, so re-run it here or the card's motion goes stale until reload.
+ window.RedboxTierMotion?.refresh(t2Class);
  if (isACTIVE) maybeShowTierUpBanner(t2.class);
  if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
@@ -1206,7 +1211,12 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
- window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
+ const t2Class = isACTIVE ? t2.class : 'bronze';
+ window.RedboxTierTheme.applyTierTheme(t2Class);
+ // tier-motion.js only initializes particle count/tilt intensity once at page
+ // load from whatever tier was cached; the async re-sync above can resolve a
+ // different tier, so re-run it here or the card's motion goes stale until reload.
+ window.RedboxTierMotion?.refresh(t2Class);
  if (isACTIVE) maybeShowTierUpBanner(t2.class);
  if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';

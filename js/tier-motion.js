@@ -55,40 +55,64 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── member-dashboard.html: profile badge + physical card ──
   const tierCardEl = document.querySelector('.tier-card');
   if (tierCardEl) {
-    const tierClass = document.body.dataset.tier || 'bronze';
     const physCard = document.querySelector('.phys-card-inner');
+    const wrap = document.querySelector('.phys-card-wrap');
+    let shimmerPlayed = false;
+    // Re-entrant pointer-tracking teardown: dashboard.js re-applies the
+    // member's tier asynchronously (after the OTP/Supabase re-sync resolves,
+    // which can land a *different* tier than what was cached in localStorage
+    // at page load). Each re-init must detach the previous tier's listeners
+    // before attaching new ones for the new tier's tiltMaxDeg — otherwise a
+    // member who upgrades/downgrades mid-session keeps the stale tier's
+    // pointer-tilt behavior (and stale particle count) until they reload.
+    let tiltController = null;
+
     if (physCard) {
       const shimmer = addShimmerLayer(physCard);
-      let played = false;
       inView(physCard, () => {
-        if (played) return;
-        played = true;
+        if (shimmerPlayed) return;
+        shimmerPlayed = true;
         animate(shimmer, SHIMMER_KEYFRAMES, SHIMMER_OPTS);
       }, { amount: 0.4 });
+    }
+
+    function initTierMotion(tierClass) {
+      if (!physCard) return;
+      physCard.querySelectorAll('.tier-particle').forEach((p) => p.remove());
       injectParticles(physCard, tierClass);
 
-      // Bronze (tiltMaxDeg 0) gets no pointer listeners; CSS-only hover remains.
-      if (theme.getTierTokens(tierClass).tiltMaxDeg <= 0) return;
-      const tokens = theme.getTierTokens(tierClass);
-      const wrap = document.querySelector('.phys-card-wrap');
-      if (wrap) {
-        wrap.addEventListener('pointermove', (e) => {
-          const rect = wrap.getBoundingClientRect();
-          const px = (e.clientX - rect.left) / rect.width - 0.5;
-          const py = (e.clientY - rect.top) / rect.height - 0.5;
-          animate(physCard, {
-            rotateZ: -4,
-            rotateY: px * tokens.tiltMaxDeg,
-            rotateX: -py * tokens.tiltMaxDeg,
-          }, { duration: 0.4, ease: 'ease-out' });
-          const sheenX = 50 + px * 60;
-          const sheenY = 50 + py * 60;
-          physCard.style.setProperty('--sheen-pos', `${sheenX}% ${sheenY}%`);
-        });
-        wrap.addEventListener('pointerleave', () => {
-          animate(physCard, { rotateZ: -4, rotateY: 0, rotateX: 0 }, { duration: 0.5, ease: 'ease-out' });
-        });
+      if (tiltController) {
+        tiltController.abort();
+        tiltController = null;
       }
+      const tokens = theme.getTierTokens(tierClass);
+      // Bronze (tiltMaxDeg 0) gets no pointer listeners; CSS-only hover remains.
+      if (tokens.tiltMaxDeg <= 0 || !wrap) return;
+      tiltController = new AbortController();
+      const { signal } = tiltController;
+      wrap.addEventListener('pointermove', (e) => {
+        const rect = wrap.getBoundingClientRect();
+        const px = (e.clientX - rect.left) / rect.width - 0.5;
+        const py = (e.clientY - rect.top) / rect.height - 0.5;
+        animate(physCard, {
+          rotateZ: -4,
+          rotateY: px * tokens.tiltMaxDeg,
+          rotateX: -py * tokens.tiltMaxDeg,
+        }, { duration: 0.4, ease: 'ease-out' });
+        const sheenX = 50 + px * 60;
+        const sheenY = 50 + py * 60;
+        physCard.style.setProperty('--sheen-pos', `${sheenX}% ${sheenY}%`);
+      }, { signal });
+      wrap.addEventListener('pointerleave', () => {
+        animate(physCard, { rotateZ: -4, rotateY: 0, rotateX: 0 }, { duration: 0.5, ease: 'ease-out' });
+      }, { signal });
     }
+
+    initTierMotion(document.body.dataset.tier || 'bronze');
+    // Exposed so dashboard.js can re-run this after an async tier re-sync
+    // changes document.body.dataset.tier mid-session (see applyTierTheme
+    // call sites in js/dashboard.js). Optional-chained there since this
+    // global is never defined when prefers-reduced-motion is on.
+    window.RedboxTierMotion = { refresh: initTierMotion };
   }
 });

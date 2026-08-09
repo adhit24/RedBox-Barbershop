@@ -33,3 +33,14 @@ test('only gold and platinum get the particle-drift animation', () => {
   assert.match(css, /\[data-tier="gold"\]\s*\.tier-particle\s*{[^}]*animation:\s*tierParticleDrift/);
   assert.match(css, /\[data-tier="platinum"\]\s*\.tier-particle\s*{[^}]*animation:\s*tierParticleDrift/);
 });
+
+test('the badge breathing-glow animates a ::before layer, not the badge itself, so the tier label text stays fully opaque', () => {
+  // Regression guard: .tier-badge-emblem also contains #tierBadgeText. Animating
+  // the badge's own opacity made the tier label permanently semi-transparent and
+  // pulsing. The glow must live on a ::before layer instead.
+  const css = source('css/tier-tokens.css');
+  const badgeRuleMatch = css.match(/\.tier-badge-emblem\s*\{([^}]*)\}/);
+  assert.ok(badgeRuleMatch, 'expected a .tier-badge-emblem rule');
+  assert.doesNotMatch(badgeRuleMatch[1], /animation:/, '.tier-badge-emblem itself must not animate (would affect its text content)');
+  assert.match(css, /\.tier-badge-emblem::before\s*\{[^}]*animation:\s*tierBreathe/);
+});
