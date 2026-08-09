@@ -882,19 +882,27 @@ document.addEventListener('DOMContentLoaded', () => {
  }).join('');
  }
 
- async function loadMemberHistory(token) {
- if (!token) return;
- const renderAggregateFallback = () => {
- const fallbackBookings = Number(memberData.visits) > 0 && (memberData.lastVisit || memberData.joinDate)
+ // Shared by both the OTP (server-backed) and Google/email (Supabase-direct)
+ // sync paths: renders real booking rows when available, otherwise a single
+ // synthesized row from the member's aggregate visits/points so "Riwayat
+ // Kunjungan"/"Riwayat Poin" never sit empty while the header stats above
+ // them show non-zero totals.
+ function renderMemberHistoryFallback(bookingsFromServer, summaryFromServer) {
+ const bookings = Array.isArray(bookingsFromServer) && bookingsFromServer.length
+ ? bookingsFromServer
+ : (Number(memberData.visits) > 0 && (memberData.lastVisit || memberData.joinDate)
  ? [{ date: memberData.lastVisit || memberData.joinDate, status: 'done', service: 'Kunjungan tercatat dari RedBox', location: 'Riwayat legacy Moka', visit_count: Number(memberData.visits) }]
- : [];
+ : []);
  if (!memberData.pointsHistory?.length && Number(memberData.points) > 0) {
  memberData.pointsHistory = [{ date: memberData.lastVisit || memberData.joinDate, activity: 'Saldo poin tersinkronisasi', amount: Number(memberData.points) }];
  }
- renderBookingsHistory(fallbackBookings, { visits: Number(memberData.visits) || 0 });
+ renderBookingsHistory(bookings, summaryFromServer || { visits: Number(memberData.visits) || 0 });
  renderPointsHistory();
- };
- renderAggregateFallback();
+ }
+
+ async function loadMemberHistory(token) {
+ if (!token) return;
+ renderMemberHistoryFallback();
  try {
  const res = await fetch('/api/member/history', { headers: { Authorization: 'Bearer ' + token } });
  if (!res.ok) return;
@@ -915,12 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
  }
  save();
  const serverBookings = Array.isArray(payload.bookings) ? payload.bookings : [];
- if (serverBookings.length || !(Number(payload.summary?.visits) > 0)) {
- renderBookingsHistory(serverBookings, payload.summary || {});
- } else {
- renderAggregateFallback();
- }
- renderPointsHistory();
+ renderMemberHistoryFallback(serverBookings, payload.summary);
  renderRedeemHistory();
  } catch (err) {
  console.warn('[History] Member history load failed:', err.message);
@@ -1266,8 +1269,6 @@ document.addEventListener('DOMContentLoaded', () => {
  amount : tx.points
  }));
  save();
- renderPointsHistory();
- renderRedeemHistory();
  // Refresh rewards points display
  const rpd = document.getElementById('rewardsPointsDisplay');
  if (rpd) {
@@ -1275,6 +1276,13 @@ document.addEventListener('DOMContentLoaded', () => {
  rpd.textContent = `${memberData.points.toLocaleString('id-ID')} Poin tersedia`;
  }
  }
+ // Google/email members have no server-backed booking-history endpoint
+ // (that path only exists for OTP sessions, see loadMemberHistory above) —
+ // fall back to the same synthesized aggregate row so Riwayat Kunjungan/
+ // Riwayat Poin aren't stuck on their static empty state for this login
+ // method whenever no real per-visit rows exist yet.
+ renderMemberHistoryFallback();
+ renderRedeemHistory();
  })();
 
  window.addEventListener('beforeunload', save);
