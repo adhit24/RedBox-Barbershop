@@ -479,6 +479,69 @@ document.addEventListener('DOMContentLoaded', () => {
  renderTierMap(tier);
 
  // ============================================================
+ // TIER-UP CELEBRATION
+ // ============================================================
+ function maybeShowTierUpBanner(newTierClass) {
+ if (!newTierClass) return;
+ const lastSeen = localStorage.getItem('redbox_last_seen_tier');
+ if (lastSeen === null) {
+ // First time we've ever recorded a tier for this browser: don't celebrate, just remember it.
+ localStorage.setItem('redbox_last_seen_tier', newTierClass);
+ return;
+ }
+ const order = window.RedboxTierTheme.TIER_ORDER;
+ if (order.indexOf(newTierClass) > order.indexOf(lastSeen)) {
+ const banner = document.getElementById('tierUpBanner');
+ if (banner) banner.style.display = 'flex';
+ }
+ }
+
+ document.getElementById('btnViewNewCard')?.addEventListener('click', () => {
+ // Chime playback lives inline in this click callback (never autoplayed elsewhere).
+ const tierClass = document.body.dataset.tier || 'bronze';
+ if (!window.RedboxTierTheme.isChimeMuted()) {
+ const chimePath = window.RedboxTierTheme.getTierTokens(tierClass).chime;
+ if (chimePath) {
+ const audio = new Audio(chimePath);
+ audio.preload = 'metadata';
+ audio.play().catch(() => {}); // missing/blocked audio must never break the UI
+ }
+ }
+ revealTierUp(tierClass);
+ });
+
+ function revealTierUp(tierClass) {
+ const overlay = document.getElementById('tierUpOverlay');
+ const emblem = document.getElementById('tierUpEmblem');
+ const text = document.getElementById('tierUpText');
+ if (text) text.textContent = `Selamat! Kamu sekarang member ${tierClass.charAt(0).toUpperCase() + tierClass.slice(1)}.`;
+ if (overlay) overlay.style.display = 'flex';
+ if (window.confetti) {
+ window.confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 }, colors: window.RedboxTierTheme.getTierTokens(tierClass).confettiColors, startVelocity: 45 });
+ }
+ localStorage.setItem('redbox_last_seen_tier', tierClass);
+ const banner = document.getElementById('tierUpBanner');
+ if (banner) banner.style.display = 'none';
+ }
+
+ document.getElementById('tierUpClose')?.addEventListener('click', () => {
+ const overlay = document.getElementById('tierUpOverlay');
+ if (overlay) overlay.style.display = 'none';
+ });
+
+ const muteBtn = document.getElementById('chimeMuteToggle');
+ if (muteBtn) {
+ muteBtn.classList.toggle('muted', window.RedboxTierTheme.isChimeMuted());
+ muteBtn.addEventListener('click', () => {
+ const nowMuted = !window.RedboxTierTheme.isChimeMuted();
+ window.RedboxTierTheme.setChimeMuted(nowMuted);
+ muteBtn.classList.toggle('muted', nowMuted);
+ });
+ }
+
+ if (ACTIVE) maybeShowTierUpBanner(tier.class);
+
+ // ============================================================
  // REDEEM HISTORY
  // ============================================================
  function renderRedeemHistory() {
@@ -971,6 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
  window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
+ if (isACTIVE) maybeShowTierUpBanner(t2.class);
  if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
@@ -1041,6 +1105,7 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
  window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
+ if (isACTIVE) maybeShowTierUpBanner(t2.class);
  if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
