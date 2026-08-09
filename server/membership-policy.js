@@ -2,6 +2,16 @@
 
 const { isActiveMembership: isActiveMembershipRecord } = require('../js/membership-access');
 
+const MEMBERSHIP_TIERS = new Set(['bronze', 'silver', 'gold', 'platinum']);
+
+// Purchased membership tier is authoritative. Points are a separate loyalty
+// balance and may only provide a fallback for a profile without a tier.
+function resolveMembershipTier(currentTier, points, pointsTierResolver) {
+  const configuredTier = String(currentTier || '').trim().toLowerCase();
+  if (MEMBERSHIP_TIERS.has(configuredTier)) return configuredTier;
+  return typeof pointsTierResolver === 'function' ? pointsTierResolver(Number(points) || 0) : 'bronze';
+}
+
 function isActiveMembership({ status, startsAt, expiresAt, now = new Date() } = {}) {
   return isActiveMembershipRecord({
     membership_status: status,
@@ -41,4 +51,4 @@ function membershipStateForSync({
   };
 }
 
-module.exports = { isActiveMembership, membershipStateForSync };
+module.exports = { isActiveMembership, membershipStateForSync, resolveMembershipTier };

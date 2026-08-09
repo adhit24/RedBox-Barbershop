@@ -3,7 +3,21 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { isActiveMembership, membershipStateForSync } = require('../membership-policy');
+const { isActiveMembership, membershipStateForSync, resolveMembershipTier } = require('../membership-policy');
+
+const pointsTier = (points) => points >= 3000 ? 'platinum' : points >= 1000 ? 'gold' : points >= 500 ? 'silver' : 'bronze';
+
+test('sync never downgrades a purchased tier from the points balance', () => {
+  assert.equal(resolveMembershipTier('platinum', 0, pointsTier), 'platinum');
+  assert.equal(resolveMembershipTier('gold', 50, pointsTier), 'gold');
+  assert.equal(resolveMembershipTier('silver', 0, pointsTier), 'silver');
+});
+
+test('sync uses points only as a fallback for an unconfigured tier', () => {
+  assert.equal(resolveMembershipTier(null, 3000, pointsTier), 'platinum');
+  assert.equal(resolveMembershipTier('', 1000, pointsTier), 'gold');
+  assert.equal(resolveMembershipTier('unknown', 0, pointsTier), 'bronze');
+});
 
 test('sync keeps an existing inactive membership inactive', () => {
   assert.deepEqual(

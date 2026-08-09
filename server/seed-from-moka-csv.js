@@ -245,6 +245,17 @@ async function upsertCustomers() {
 async function upsertMembers() {
   console.log(`\n── Upserting ${rows.length} rows to member_profiles (batch ${MEMBERS_BATCH_SIZE}) ──`);
   const nowISO = new Date().toISOString();
+  // Never let a repeat import replace a paid tier with the points-derived
+  // legacy tier. The CSV is a loyalty snapshot; paid membership is canonical
+  // in member_profiles.current_tier.
+  const existingTiers = new Map();
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await member.from('member_profiles')
+      .select('user_key,current_tier').range(offset, offset + 999);
+    if (error) throw new Error(`member_profiles lookup failed: ${error.message}`);
+    for (const profile of data || []) existingTiers.set(profile.user_key, profile.current_tier);
+    if (!data || data.length < 1000) break;
+  }
   let ok = 0, fail = 0;
   for (let i = 0; i < rows.length; i += MEMBERS_BATCH_SIZE) {
     const batch = rows.slice(i, i + MEMBERS_BATCH_SIZE).map(r => {
@@ -262,7 +273,7 @@ async function upsertMembers() {
         membership_activated_at: nowISO,
         total_points:           r.points,
         total_visits:           r.visits,
-        current_tier:           r.tier,
+        current_tier:           existingTiers.get(userKey) || r.tier,
         referral_code:          genReferralCode(r.phoneNorm),
       };
     });

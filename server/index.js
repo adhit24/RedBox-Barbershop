@@ -19,7 +19,7 @@ const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerRev
 const { enqueueCustomerNotification, markCustomerNotificationSent, processCustomerNotificationOutbox } = require('./services/bookingNotificationOutbox');
 const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
-const { membershipStateForSync, isActiveMembership } = require('./membership-policy');
+const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('./membership-policy');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -2969,7 +2969,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
 
       // Preserve purchased Silver/Gold/Platinum across Moka syncs. The
       // points-derived tier is only a fallback for profiles without a tier.
-      const newTier = existing?.current_tier || pointsTier;
+      const newTier = resolveMembershipTier(existing?.current_tier, newPoints, getTier);
 
       if (existing) {
         const membership = membershipStateForSync({

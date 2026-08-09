@@ -1,7 +1,7 @@
 // server/routes/adminCrm.js
 'use strict';
 const express = require('express');
-const { membershipStateForSync, isActiveMembership } = require('../membership-policy');
+const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('../membership-policy');
 const {
   TIER_PRICES,
   expirePendingMembershipRegistrations,
@@ -1215,7 +1215,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       }
 
       const newPoints = totalVisits * POINTS_PER_VISIT;
-      const newTier   = getTier(newPoints);
+      const pointsTier = getTier(newPoints);
       const now       = new Date().toISOString();
 
       // Update customers — first_visit hanya diisi jika belum ada (preserve yang sudah tersimpan)
@@ -1225,8 +1225,10 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
       // Fetch existing member_profiles to decide insert vs update
       const { data: existing } = await supabase.from('member_profiles')
-        .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
+        .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at,current_tier')
         .eq('phone', phoneE164).maybeSingle();
+
+      const newTier = resolveMembershipTier(existing?.current_tier, newPoints, getTier);
 
       if (existing) {
         const membership = membershipStateForSync({

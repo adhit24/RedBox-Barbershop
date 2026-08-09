@@ -23,6 +23,7 @@
 
 const express          = require('express');
 const { randomUUID }   = require('crypto');
+const { resolveMembershipTier } = require('../membership-policy');
 
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
@@ -1459,7 +1460,7 @@ function createMokaRouter(supabase) {
         updates.push({ id: member.id, full_name: member.full_name, phone: member.phone,
           old_points: member.total_points, old_tier: member.current_tier,
           new_points: mokaData.visits * POINTS_PER_VISIT, new_visits: mokaData.visits,
-          new_tier: getTier(mokaData.visits * POINTS_PER_VISIT), last_visit: mokaData.last_visit });
+          new_tier: resolveMembershipTier(member.current_tier, mokaData.visits * POINTS_PER_VISIT, getTier), last_visit: mokaData.last_visit });
       }
 
       if (dryRun) return res.status(200).json({ dry_run: true, members_active: members.length,
