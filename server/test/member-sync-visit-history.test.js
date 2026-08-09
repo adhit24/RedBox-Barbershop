@@ -8,6 +8,8 @@ const test = require('node:test');
 const server = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
 const syncRouteMatch = server.match(/app\.post\('\/api\/member\/sync'[\s\S]*?\n  \}\);/);
 
+const deleteGrantMigrationPath = path.join(__dirname, '..', 'migrations', '2026-08-10-member-point-transactions-delete-grant.sql');
+
 test('the /api/member/sync route exists and was located for the other assertions', () => {
   assert.ok(syncRouteMatch, 'expected to find the POST /api/member/sync route handler');
 });
@@ -61,7 +63,7 @@ test('persistVisitHistory maps every member_visit_history column defined by the 
   const fnMatch = routeBody.match(/const persistVisitHistory = async[\s\S]*?\n\s+\};/);
   assert.ok(fnMatch, 'expected to find the persistVisitHistory function body');
   const fnBody = fnMatch[0];
-  const rowsMatch = fnBody.match(/const visitRows = payments\.map\(p => \(\{[\s\S]*?\}\)\);/);
+  const rowsMatch = fnBody.match(/const visitRows = dedupedPayments\.map\(p => \(\{[\s\S]*?\}\)\);/);
   assert.ok(rowsMatch, 'expected to find the visitRows mapping');
   const rowsBody = rowsMatch[0];
   assert.match(rowsBody, /user_key: userKey,/);
@@ -72,6 +74,23 @@ test('persistVisitHistory maps every member_visit_history column defined by the 
   assert.match(rowsBody, /service_summary: p\.serviceSummary,/);
   assert.match(rowsBody, /amount: p\.amount,/);
   assert.match(rowsBody, /points_earned: POINTS_PER_VISIT,/);
+});
+
+test('persistVisitHistory dedupes matchedPayments by receiptNumber before building visitRows or newLedgerRows', () => {
+  const routeBody = syncRouteMatch[0];
+  const fnMatch = routeBody.match(/const persistVisitHistory = async[\s\S]*?\n\s+\};/);
+  assert.ok(fnMatch, 'expected to find the persistVisitHistory function body');
+  const fnBody = fnMatch[0];
+  assert.match(fnBody, /const dedupedPayments = \[\.\.\.new Map\(payments\.map\(p => \[p\.receiptNumber, p\]\)\)\.values\(\)\];/);
+  const dedupIndex = fnBody.indexOf('const dedupedPayments =');
+  const visitRowsIndex = fnBody.indexOf('const visitRows =');
+  const newLedgerRowsIndex = fnBody.indexOf('const newLedgerRows =');
+  assert.ok(dedupIndex !== -1 && visitRowsIndex !== -1 && newLedgerRowsIndex !== -1,
+    'expected dedupedPayments, visitRows, and newLedgerRows to all be present');
+  assert.ok(dedupIndex < visitRowsIndex, 'expected the dedup step to run before visitRows is built');
+  assert.ok(dedupIndex < newLedgerRowsIndex, 'expected the dedup step to run before newLedgerRows is built');
+  // Both downstream writes must consume the deduped array, not the raw payments param.
+  assert.match(fnBody, /const newLedgerRows = dedupedPayments/);
 });
 
 test('the old recordPointLedgerDelta lump-sum ledger writer is gone', () => {
@@ -86,4 +105,13 @@ test('both existing/new-profile branches call persistVisitHistory with the resol
   assert.equal(calls.length, 2, `expected 2 call sites (existing profile + new profile), found ${calls.length}`);
   assert.ok(calls.some(c => c.includes('existing.user_key')), 'expected the existing-profile branch to pass existing.user_key');
   assert.ok(calls.some(c => c.includes('userKey') && !c.includes('existing.user_key')), 'expected the new-profile branch to pass the freshly derived userKey');
+});
+
+test('a migration grants service_role DELETE on member_point_transactions, so the legacy-purge call in persistVisitHistory can actually run', () => {
+  assert.ok(fs.existsSync(deleteGrantMigrationPath), `expected migration file to exist at ${deleteGrantMigrationPath}`);
+  const sql = fs.readFileSync(deleteGrantMigrationPath, 'utf8');
+  assert.match(sql, /GRANT DELETE ON TABLE (?:public\.)?member_point_transactions TO service_role/i);
+  // Additive only — must not touch RLS or other grants on this table.
+  assert.doesNotMatch(sql, /REVOKE/i);
+  assert.doesNotMatch(sql, /ROW LEVEL SECURITY/i);
 });

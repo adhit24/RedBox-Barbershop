@@ -3138,7 +3138,14 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
 
         if (!payments.length) return;
 
-        const visitRows = payments.map(p => ({
+        // Moka pagination can return an overlapping page (retry, inclusive
+        // cursor boundary, same transaction under two outlets), so the same
+        // receiptNumber can appear more than once in this batch. Collapse to
+        // one entry per receipt before it's used to build either write below
+        // — receipt_number is the idempotency key everywhere in this flow.
+        const dedupedPayments = [...new Map(payments.map(p => [p.receiptNumber, p])).values()];
+
+        const visitRows = dedupedPayments.map(p => ({
           user_key: userKey,
           receipt_number: p.receiptNumber,
           outlet_slug: p.outletSlug,
@@ -3162,7 +3169,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
           return;
         }
         const knownReceipts = new Set((existingLedger || []).map(row => row.notes));
-        const newLedgerRows = payments
+        const newLedgerRows = dedupedPayments
           .filter(p => !knownReceipts.has(`moka-visit:${p.receiptNumber}`))
           .map(p => ({
             user_key: userKey,
