@@ -51,7 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
  // ---- Check login state ----
  const userData = JSON.parse(localStorage.getItem('redbox_user') || 'null');
  const rbToken = localStorage.getItem('rb_member_token');
- if (!rbToken && (!userData || !userData.loggedIn)) {
+ // A cached redbox_user record is not enough to authorize history reads.
+ // Require the server-issued OTP session so stale localStorage cannot render
+ // an apparently valid but permanently empty dashboard.
+ if (!rbToken) {
  window.location.href = 'member-login.html';
  return;
  }

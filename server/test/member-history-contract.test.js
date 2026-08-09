@@ -24,6 +24,7 @@ test('dashboard renders server-provided visit history and loads it for OTP membe
   assert.match(dashboard, /fetch\('\/api\/member\/history'/);
   assert.match(dashboard, /await loadMemberHistory\(tok\)/);
   assert.match(dashboard, /bookingsList/);
+  assert.match(dashboard, /if \(!rbToken\)/);
   assert.match(dashboard, /historyVisitCount/);
   assert.match(dashboard, /booking-history-icon/);
   assert.match(dashboard, /esc\(e\.activity\)/);
