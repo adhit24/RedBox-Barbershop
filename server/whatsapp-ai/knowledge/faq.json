@@ -18,7 +18,7 @@
     {
       "question": "Slot dan antrian",
       "keywords": ["antrian", "antrean", "slot", "penuh", "full", "masih ada", "masih kosong", "ada tempat", "bisa jam", "antri", "panjang ga", "rame ga", "ramai ga"],
-      "answer": "Redbox udah gak pakai sistem antrian kak 🎉 Sekarang semua booking via website — jadi kakak langsung dapet slot, gak perlu nunggu giliran.\n\nTinggal pilih cabang → kapster → jam, slot langsung terkunci buat kakak:\n→ redboxbarbershop.com/booking.html\n\nDateng tinggal duduk, kapster udah tahu jadwal kakak 😊✂️"
+      "answer": "Biar paling akurat, cek slot realtime lewat booking online ya kak ✂️ Slot yang tampil available bisa langsung dikunci di:\n→ redboxbarbershop.com/booking.html\n\nKalau datang tanpa booking, ketersediaan dan waktu tunggu belum bisa dijamin 😊"
     },
     {
       "question": "Parkir",
@@ -33,7 +33,7 @@
     {
       "question": "Walk-in",
       "keywords": ["walk in", "langsung datang", "tanpa booking", "bisa langsung", "ga perlu booking"],
-      "answer": "Bisa langsung datang kak! Tapi mending book dulu di redboxbarbershop.com/booking.html — slot kakak langsung terkunci dan gak perlu antri 😊"
+      "answer": "Boleh datang kak, tapi kalau belum booking slot dan waktu tunggunya belum dijamin 😅 Lebih aman kunci jadwal dulu di redboxbarbershop.com/booking.html 😊"
     },
     {
       "question": "Membership",
@@ -53,7 +53,7 @@
     {
       "question": "Home service — reschedule & pembatalan",
       "keywords": ["reschedule home service", "batal home service", "ganti jadwal home service", "cancel home service", "ubah jadwal panggilan"],
-      "answer": "Home service Redbox punya kebijakan reschedule kak:\n\n✅ Reschedule GRATIS jika dilakukan H-1 (minimal 24 jam sebelum jadwal)\n❌ Tidak bisa reschedule jika kurang dari 24 jam sebelum jadwal\n\nUntuk reschedule, hubungi kami lewat chat ini ya 😊"
+      "answer": "Home service RedBox punya kebijakan reschedule kak:\n\n✅ Gratis jika dilakukan minimal 24 jam sebelum jadwal\n❌ Tidak bisa reschedule jika kurang dari 24 jam sebelum jadwal\n\nUntuk permintaan perubahan, aku teruskan ke admin untuk dicek ya 😊"
     },
     {
       "question": "Home service — paket wedding / pernikahan",

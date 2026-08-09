@@ -36,8 +36,9 @@ async function start() {
     console.log(`   Health:  GET  /health`);
   });
 
-  // Start reminder scheduler
-  schedulerService.start();
+  // Website cron is the production reminder source. The legacy local scheduler
+  // is opt-in for isolated development only.
+  if (config.LOCAL_SCHEDULER_ENABLED) schedulerService.start();
 }
 
 start();

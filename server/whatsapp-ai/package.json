@@ -5,7 +5,8 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "nodemon app.js"
+    "dev": "nodemon app.js",
+    "test:policy": "node tests/policy-regression.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

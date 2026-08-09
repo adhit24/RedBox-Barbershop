@@ -37,7 +37,7 @@ const clearContext = (phone) => userContexts.delete(phone);
 const chat = async (phone, name, userMessage) => {
   addToContext(phone, 'user', userMessage);
 
-  const knowledge = knowledgeService.buildKnowledgeContext();
+  const knowledge = knowledgeService.buildKnowledgeContext(config.BRANCH_NAME);
 
   const systemMessage = `${SYSTEM_PROMPT}\n\nNAMA CUSTOMER: ${name}\n\n${knowledge}`;
 

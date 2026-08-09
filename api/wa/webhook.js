@@ -6,6 +6,7 @@
 
 const { sendWA, getDeviceInfo, detectBranchFromNumber, getAvailableBranches } = require('../../server/services/fonnte');
 const { reconcileCustomerNotificationDelivery } = require('../../server/services/bookingNotificationOutbox');
+const { STATUS: BOOKING_STATUS, getCustomerBookingStatus } = require('../../server/whatsapp-ai/services/bookingStatusService');
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -521,6 +522,16 @@ SEMUA booking WAJIB via website. JANGAN PERNAH:
 - Proses form template manual seolah valid
 - Sebut nomor WA outlet untuk tanya antrian
 
+STATUS BOOKING — SUMBER KEBENARAN
+- Database website adalah satu-satunya sumber status booking.
+- Jangan pernah menganggap booking confirmed dari chat, form manual, screenshot yang tidak jelas, atau kalimat "aku sudah booking" saja.
+- Hanya status CONFIRMED dari database yang boleh disebut booking sudah aman/terkonfirmasi.
+- Status PENDING, NOT_FOUND, CANCELLED, DONE, atau AMBIGUOUS diperlakukan sebagai belum terkonfirmasi.
+- Jangan mengarang slot, antrian, ketersediaan kapster, atau status booking.
+- OTW/di jalan/terlambat hanya boleh mendapat panduan keterlambatan jika backend menyatakan ada booking CONFIRMED aktif.
+- Jika belum terverifikasi, arahkan ke website tanpa kata "ditunggu", "sampai jumpa", atau jaminan dilayani.
+- Walk-in tidak dijamin; jangan bilang pasti diterima atau pasti langsung dilayani.
+
 ATURAN HARGA & LAYANAN — KRITIS:
 1. HANYA sebut layanan & harga dari KNOWLEDGE LAYANAN di atas. DILARANG mengarang: "beard trim", "styling", "hair cut Rp 50.000", atau apapun yang tidak ada.
 2. "potong/haircut/cut/fade" = Redbox Gentleman Grooming Rp ${branchInfo.name.includes('CSB') ? '120.000' : '95.000'}
@@ -528,11 +539,11 @@ ATURAN HARGA & LAYANAN — KRITIS:
 4. Pertanyaan antrian/slot real-time → arahkan ke booking page (bukan nomor outlet)
 
 SKENARIO SPESIFIK:
-- OTW / terlambat: "Hati-hati di jalan kak 😊 Maks telat 10-15 menit ya, kalau lebih bisa reschedule di website. Ditunggu!"
+- OTW / terlambat: hanya untuk booking CONFIRMED dari database. Jawab panduan maksimal telat 10-15 menit dan arahkan ke website/admin bila perlu; jangan menjamin slot tetap tersedia.
 - Marah/kesal: Akui, validasi, bantu — jangan defensive. "Aduh maaf banget kak, aku bantu selesaikan ya 🙏"
 - Supplier/sales: Tolak halus — "Makasih infonya, nanti aku sampaikan ke tim manajemen ya 🙏"
 - Tanya pemilik/owner: "Maaf kak, info kontak manajemen aku gak punya. Bisa coba DM ke Instagram @redboxbarbershop ya 😊"
-- Pelanggan cerita pernah nunggu/antri di outlet (mis. "td udh kesana katanya nunggu 2", "kemarin antri lama"): EMPATI dulu, JANGAN defensive. Lalu pivot ke cerita digitalisasi (sistem baru, ketersediaan live, slot terkunci), terakhir kasih link booking. Pola: "Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏 Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. Jadi kakak tinggal pilih jam yang available, slot langsung kekunci, dateng langsung dilayani tanpa antri. Lock jadwalnya di → redboxbarbershop.com/booking.html ✂️". DILARANG balas singkat "booking di web ya" tanpa empati & tanpa cerita digitalisasi.
+- Pelanggan cerita pernah nunggu/antri di outlet: EMPATI dulu, JANGAN defensive. Lalu pivot ke cerita digitalisasi (sistem baru, ketersediaan live, slot tercatat), terakhir kasih link booking. DILARANG menjanjikan walk-in pasti langsung dilayani atau membalas singkat tanpa empati.
 
 JANGAN DIJAWAB:
 - Nomor kontak owner/pemilik langsung
@@ -1377,6 +1388,46 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const msgLower = text.toLowerCase();
   const msgHas = (kws) => kws.some(k => msgLower.includes(k));
 
+  // ── Backend booking guards ────────────────────────────────────────────────
+  // Critical booking claims must be decided from the website database, not the LLM.
+  const isOtw = /\b(otw|on the way|di jalan|dijalan|lagi jalan|berangkat|telat|terlambat|kesiangan)\b/.test(msgLower);
+  const isWalkIn = /\b(walk\s*in|langsung datang|langsung dateng|datang langsung|dateng langsung|tanpa booking|tanpa bookingan)\b/.test(msgLower);
+  const isHomeService = /(home\s*service|ke rumah|datang ke rumah|panggil barber|barber ke kantor)/.test(msgLower);
+  const isWedding = /(wedding|pernikahan|nikah|pengantin|prewedding|pre-wedding)/.test(msgLower);
+
+  if (isHomeService) {
+    reply = 'Untuk home service, booking-nya lewat halaman khusus ya kak 😊 redboxbarbershop.com/home-service.html';
+    used = 'policy';
+    const sendResult = await sendWA(from, reply, { branch });
+    return { used, reply, sendResult, error: null };
+  }
+
+  if (isWedding && /\b(h-?2|2\s*hari|besok|lusa|tomorrow|day after tomorrow)\b/.test(msgLower)) {
+    reply = 'Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.';
+    used = 'policy';
+    const sendResult = await sendWA(from, reply, { branch });
+    return { used, reply, sendResult, error: null };
+  }
+
+  if (isOtw) {
+    const booking = await getCustomerBookingStatus(from, branch, { statuses: ['confirmed'], limit: 5 });
+    if (booking.status === BOOKING_STATUS.CONFIRMED) {
+      reply = 'Hati-hati di jalan ya kak 😊 Kalau keterlambatan lebih dari 10–15 menit, kabari admin/cabang karena slot bisa perlu disesuaikan.';
+    } else {
+      reply = 'Siap kak. Biar slot dan jamnya aman, cek atau buat booking dulu di redboxbarbershop.com/booking.html ya ✂️';
+    }
+    used = 'policy';
+    const sendResult = await sendWA(from, reply, { branch });
+    return { used, reply, sendResult, error: null };
+  }
+
+  if (isWalkIn) {
+    reply = 'Boleh coba datang langsung kak, tapi slot walk-in belum tentu tersedia ya 😊 Biar lebih aman, cek dan booking lewat redboxbarbershop.com/booking.html';
+    used = 'policy';
+    const sendResult = await sendWA(from, reply, { branch });
+    return { used, reply, sendResult, error: null };
+  }
+
   if (msgHas(['layanan apa', 'service apa', 'ada apa aja', 'ada apa saja', 'menu apa', 'jenis layanan',
                'list layanan', 'apa aja layanan', 'apa saja layanan', 'layanan saja', 'layanan aja',
                'service saja', 'service aja', 'ada layanan', 'ada service'])) {
@@ -1406,7 +1457,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     reply =
       `Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏\n\n` +
       `Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. ` +
-      `Jadi kakak tinggal pilih jam yang available, slot langsung kekunci, dateng langsung dilayani tanpa antri.\n\n` +
+      `Jadi kakak tinggal pilih jam yang available, slot terjamin tercatat di sistem tanpa perlu menebak-nebak antrian.\n\n` +
       `Lock jadwalnya di sini ya kak → redboxbarbershop.com/booking.html ✂️`;
     used = 'keyword';
     const sendResult = await sendWA(from, reply, { branch });
@@ -1866,18 +1917,16 @@ module.exports = async function handler(req, res) {
     // Simpan ke debug log
     pushDebug({ sender, name, type, id, isFromMe: body.isFromMe, fromMe: body.fromMe, device, receiver, message: String(message || '').slice(0, 60) });
 
-    // Log ALL keys and values in body to find any possible receiver/device fields!
-    console.log('='.repeat(80));
-    console.log('[WA Bot] 🔍 FULL RAW PAYLOAD 🔍');
-    console.log('='.repeat(80));
-    console.log(JSON.stringify(body, null, 2));
-    console.log('='.repeat(80));
-    console.log('[WA Bot] Extracted fields:', { sender, name, message, type, device, receiver, id });
-    console.log('[WA Bot] All body keys:', Object.keys(body));
-    Object.entries(body).forEach(([key, value]) => {
-      if (typeof value === 'object' && value !== null) {
-        console.log(`[WA Bot] Nested object at "${key}":`, JSON.stringify(value, null, 2));
-      }
+    // Jangan log payload mentah karena berisi nomor customer, nama, dan isi chat.
+    console.log('[WA Bot] Extracted webhook fields:', {
+      hasSender: Boolean(sender),
+      hasName: Boolean(name),
+      type,
+      hasDevice: Boolean(device),
+      hasReceiver: Boolean(receiver),
+      hasMessage: Boolean(message),
+      hasId: Boolean(id),
+      bodyKeys: Object.keys(body),
     });
     
     // 🔍 Cari nomor cabang di SELURUH payload!

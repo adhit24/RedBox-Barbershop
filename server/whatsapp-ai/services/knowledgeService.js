@@ -7,9 +7,19 @@ const load = (filename) => {
 };
 
 // Format services list for reply
-const getServicesText = () => {
+const branchSlug = (branch) => {
+  const value = String(branch || '').toLowerCase();
+  return value.includes('csb') ? 'csb' : value;
+};
+
+const priceForBranch = (service, branch) => {
+  const price = branchSlug(branch) === 'csb' ? service.price_csb : service.price;
+  return price || service.price || '-';
+};
+
+const getServicesText = (branch) => {
   const { services } = load('services.json');
-  const lines = services.map(s => `• *${s.name}* — ${s.price} (${s.duration})`);
+  const lines = services.map(s => `• *${s.name}* — ${priceForBranch(s, branch)} (${s.duration})`);
   return `Layanan RedBox Barbershop ✂️\n\n${lines.join('\n')}\n\nMau booking atau ada yang ditanyain kak? 😊`;
 };
 
@@ -21,11 +31,11 @@ const matchFaq = (text) => {
 };
 
 // Build context string for AI
-const buildKnowledgeContext = () => {
+const buildKnowledgeContext = (branch) => {
   const { services } = load('services.json');
   const { faq } = load('faq.json');
 
-  const serviceList = services.map(s => `${s.name} (${s.price}, ${s.duration})`).join(', ');
+  const serviceList = services.map(s => `${s.name} (${priceForBranch(s, branch)}, ${s.duration})`).join(', ');
   const faqList = faq.map(f => `Q: ${f.question} → A: ${f.answer}`).join('\n');
 
   return `=== LAYANAN ===\n${serviceList}\n\n=== FAQ ===\n${faqList}`;

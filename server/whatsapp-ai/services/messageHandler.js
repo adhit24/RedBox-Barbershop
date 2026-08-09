@@ -5,6 +5,7 @@ const knowledgeService = require('./knowledgeService');
 const bookingService = require('./bookingService');
 const foreignBookingService = require('./foreignBookingService');
 const aiService = require('./aiService');
+const bookingStatusService = require('./bookingStatusService');
 const costGuard = require('../middleware/costGuard');
 const escalationService = require('./escalationService');
 const handoffStore = require('./handoffStore');
@@ -13,6 +14,8 @@ const logger = require('../utils/logger');
 const sendText = whatsappService.sendText;
 
 const BOOKING_URL = 'redboxbarbershop.com/booking.html';
+const HOME_SERVICE_URL = 'redboxbarbershop.com/home-service.html';
+const WEDDING_URL = `${HOME_SERVICE_URL}#wedding-pricing`;
 
 // Track how many times each user was redirected to booking page (resets daily)
 const redirectState = new Map(); // phone → { count, date }
@@ -67,6 +70,27 @@ const isLateNotification = (text) => {
   return ['otw', 'di jalan', 'lagi jalan', 'macet', 'bentar lagi', 'sebentar lagi', 'hampir sampai', 'mau nyampe', 'mau sampai'].some(k => lower.includes(k));
 };
 
+const isWalkInIntent = (text) => {
+  const lower = text.toLowerCase();
+  return /(langsung\s+datang|datang\s+langsung|tanpa\s+booking|ga\s+perlu\s+booking|gak\s+perlu\s+booking|langsung\s+ke\s+sana|langsung\s+ke\s+outlet)/i.test(lower);
+};
+
+const isHomeServiceRequest = (text) => {
+  const lower = text.toLowerCase();
+  return lower.includes('home service') && /(booking|pesan|mau|jadwal|kapan|harga|paket|datang)/i.test(lower);
+};
+
+const isWeddingTooSoon = (text) => {
+  const lower = text.toLowerCase();
+  if (!/(wedding|nikah|pernikahan|pengantin|akad|resepsi)/i.test(lower)) return false;
+  return /h\s*-\s*[0-2]\b|besok|lusa|hari\s+ini|2\s+hari\s+lagi|1\s+hari\s+lagi/i.test(lower);
+};
+
+const isExistingBookingRequest = (text) => {
+  const lower = text.toLowerCase();
+  return /(booking\s+saya|sudah\s+booking|udah\s+booking|cek\s+booking|status\s+booking|reschedule|ubah\s+booking|ganti\s+jadwal|cancel\s+booking|batalkan\s+booking)/i.test(lower);
+};
+
 // Deteksi keluhan pernah nunggu/antri di outlet (mis. "td udh kesana katanya nunggu 2")
 // Pivot: empati → cerita digitalisasi → arahkan booking online
 const isPriorWaitComplaint = (text) => {
@@ -87,10 +111,14 @@ const classifyIntent = (text) => {
   // Cek wait complaint DULU sebelum slot_inquiry, karena keluhan masa lalu
   // butuh empati + cerita digitalisasi, bukan sekadar info slot.
   if (isPriorWaitComplaint(text)) return 'wait_complaint';
+  if (isWeddingTooSoon(text)) return 'wedding_too_soon';
+  if (isLateNotification(text)) return 'late_notification';
+  if (isExistingBookingRequest(text)) return 'existing_booking';
+  if (isWalkInIntent(text)) return 'walk_in';
+  if (isHomeServiceRequest(text)) return 'home_service_request';
   if (isSlotInquiry(text)) return 'slot_inquiry';
   if (isKapsterInquiry(text)) return 'kapster_inquiry';
   if (isBookingDetailConfirmation(text)) return 'booking_detail_confirmation';
-  if (isLateNotification(text)) return 'late_notification';
   if (['harga', 'price', 'berapa', 'tarif', 'biaya'].some(k => lower.includes(k))) return 'price_inquiry';
   if (['lokasi', 'alamat', 'dimana', 'maps', 'tempatnya', 'cabang mana', 'ada di'].some(k => lower.includes(k))) return 'location_inquiry';
   if (['booking', 'reservasi', 'pesan tempat', 'mau book', 'mau daftar', 'mau potong'].some(k => lower.includes(k))) return 'booking_request_chat';
@@ -257,7 +285,7 @@ const handle = async ({ from, name, text }) => {
       const msg =
         `Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏\n\n` +
         `Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. ` +
-        `Jadi kakak tinggal pilih jam yang available, slot langsung kekunci, dateng langsung dilayani tanpa antri.\n\n` +
+        `Jadi kakak tinggal pilih jam yang available, slot langsung kekunci dan risiko nunggu bisa diminimalkan.\n\n` +
         `Lock jadwalnya di sini ya kak → ${BOOKING_URL} ✂️`;
       await sendText(from, msg);
       return;
@@ -292,13 +320,54 @@ const handle = async ({ from, name, text }) => {
 
     // 6. OTW / late notification — quick friendly reply
     if (intent === 'late_notification') {
-      await sendText(from, `Hati-hati di jalan ya kak 😊 Maks telat 10-15 menit ya, kalau lebih bisa reschedule di ${BOOKING_URL}\n\nDitunggu! ✂️`);
+      const bookingState = await bookingStatusService.getCustomerBookingStatus(from, config.BRANCH_NAME, {
+        statuses: ['confirmed', 'pending'],
+      });
+      if (bookingState.status === bookingStatusService.STATUS.CONFIRMED) {
+        await sendText(from, `Hati-hati di jalan ya kak 😊 Maks telat 10–15 menit. Kalau lebih, perubahan jadwal perlu dibantu admin ya ✂️`);
+      } else {
+        await sendText(from, `Kalau belum ada booking confirmed, slot-nya belum terkunci ya kak 😅 Langsung pilih jadwal di ${BOOKING_URL} ✂️`);
+      }
+      return;
+    }
+
+    if (intent === 'walk_in') {
+      await sendText(from, `Boleh datang kak, tapi kalau belum booking slot-nya belum dijamin tersedia 😅 Biar gak sia-sia, kunci jadwal dulu di ${BOOKING_URL} ✂️`);
+      return;
+    }
+
+    if (intent === 'home_service_request') {
+      await sendText(from, `Untuk layanan ke rumah, detail paket dan jadwalnya ada di sini ya kak 🏠✂️\n→ ${HOME_SERVICE_URL}`);
+      return;
+    }
+
+    if (intent === 'wedding_too_soon') {
+      await sendText(from, `Untuk wedding grooming, pemesanan minimal H-3 ya kak 🙏 Kalau sudah kurang dari itu, belum bisa diproses lewat sistem. Detail paketnya ada di ${WEDDING_URL}`);
+      return;
+    }
+
+    if (intent === 'existing_booking') {
+      if (/(reschedule|ubah|ganti|cancel|batalkan)/i.test(text)) {
+        await escalationService.escalate(from, name, text);
+        return;
+      }
+      const bookingState = await bookingStatusService.getCustomerBookingStatus(from, config.BRANCH_NAME, {
+        statuses: ['pending', 'confirmed', 'done', 'cancelled'],
+      });
+      if (bookingState.status === bookingStatusService.STATUS.CONFIRMED && bookingState.booking) {
+        const b = bookingState.booking;
+        await sendText(from, `Booking confirmed kak ✅\n📅 ${b.date} • ${String(b.time).slice(0, 5)}\n✂️ ${b.service}\n📍 ${b.location}\n\nKalau mau ubah jadwal, aku teruskan ke admin ya.`);
+      } else if (bookingState.status === bookingStatusService.STATUS.PENDING) {
+        await sendText(from, `Booking-nya masih menunggu konfirmasi ya kak. Kalau sudah confirmed, sistem akan mengirim notifikasi resmi 🙏`);
+      } else {
+        await sendText(from, `Aku belum menemukan booking confirmed untuk nomor ini kak. Coba cek lagi di ${BOOKING_URL} atau kabarin admin kalau merasa sudah melakukan booking 🙏`);
+      }
       return;
     }
 
     // 7. Keyword triggers (fast, no AI cost)
     if (['harga', 'price', 'layanan', 'services', 'menu'].some(k => lower.includes(k))) {
-      const servicesText = knowledgeService.getServicesText();
+      const servicesText = knowledgeService.getServicesText(config.BRANCH_NAME);
       await sendText(from, `${servicesText}\n\nLangsung book di: ${BOOKING_URL} 😊`);
       return;
     }
@@ -338,4 +407,12 @@ const handle = async ({ from, name, text }) => {
   }
 };
 
-module.exports = { handle, sendText };
+module.exports = {
+  handle,
+  sendText,
+  classifyIntent,
+  isLateNotification,
+  isWalkInIntent,
+  isHomeServiceRequest,
+  isWeddingTooSoon,
+};

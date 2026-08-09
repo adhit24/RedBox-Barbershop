@@ -24,6 +24,10 @@ module.exports = {
   DAILY_MSG_LIMIT: 30,                     // max 30 AI calls per user per day
   MAX_MSG_LENGTH: 500,                     // ignore messages > 500 chars
 
+  // The website booking database is authoritative. The legacy local scheduler
+  // remains opt-in only to avoid duplicate reminders from this service.
+  LOCAL_SCHEDULER_ENABLED: process.env.WHATSAPP_AI_LOCAL_SCHEDULER_ENABLED === '1',
+
   // Human escalation keywords
   ESCALATION_KEYWORDS: ['komplain', 'refund', 'marah', 'kecewa', 'tipu', 'bohong', 'minta uang kembali', 'lapor'],
 

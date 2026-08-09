@@ -1,6 +1,5 @@
 const config = require('../config');
 const messageHandler = require('../services/messageHandler');
-const handoffStore = require('../services/handoffStore');
 const logger = require('../utils/logger');
 
 // Verify webhook with Meta challenge
@@ -18,22 +17,6 @@ const verify = (req, res) => {
   return res.status(403).json({ error: 'Forbidden' });
 };
 
-// Detect if message is from business/admin (outbound message detected via statuses)
-const detectAdminIntervention = (value) => {
-  // Check statuses - when business sends message, we get status updates
-  if (value?.statuses && value.statuses.length > 0) {
-    const status = value.statuses[0];
-    const recipientId = status.recipient_id; // Customer's phone number
-    
-    // If status is 'sent' or 'read', it means business recently interacted
-    if (['sent', 'delivered', 'read'].includes(status.status)) {
-      // Enable handoff when business sends message to customer (all branches)
-      handoffStore.enableHandoff(recipientId, config.HANDOFF_DURATION_MINUTES || 30, 'cloud_api_status');
-      console.log(`[Webhook] Admin intervention detected for ${recipientId}, handoff enabled (all branches)`);
-    }
-  }
-};
-
 // Receive and process incoming messages
 const receive = async (req, res) => {
   // Always respond 200 immediately to Meta (required)
@@ -47,9 +30,6 @@ const receive = async (req, res) => {
     const entry = body.entry?.[0];
     const changes = entry?.changes?.[0];
     const value = changes?.value;
-
-    // Detect admin intervention via status updates
-    detectAdminIntervention(value);
 
     // Ignore if no messages (might be just status updates)
     if (!value?.messages || value.messages.length === 0) return;

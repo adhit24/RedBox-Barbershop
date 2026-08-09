@@ -1,6 +1,6 @@
 # RedBox WhatsApp AI Assistant
 
-WhatsApp AI chatbot untuk RedBox Barbershop. Dibangun dengan Node.js + Express + OpenAI GPT-4o-mini + WhatsApp Cloud API.
+WhatsApp AI chatbot untuk RedBox Barbershop. Runtime produksi menerima webhook Fonnte di `api/wa/webhook.js` dan mengirim pesan melalui `server/services/fonnte.js`. Folder ini berisi policy, knowledge base, service status booking, dan legacy Express adapter untuk kompatibilitas/testing.
 
 ---
 
@@ -17,11 +17,13 @@ whatsapp-ai/
  │   ├── messageHandler.js     # Orchestrator — routes messages
  │   ├── whatsappService.js    # Send messages via WA Cloud API
  │   ├── aiService.js          # GPT-4o-mini integration
- │   ├── bookingService.js     # Booking state machine
+ │   ├── bookingStatusService.js # Status booking dari database website
+ │   ├── bookingService.js     # Guard legacy booking chat (disabled)
  │   ├── knowledgeService.js   # Load + query knowledge base
  │   ├── escalationService.js  # Keyword-based escalation
  │   └── handoffStore.js       # Human takeover detection & state
- ├── prompts/system.txt        # AI personality prompt
+ ├── prompts/system.txt        # AI personality + decision boundaries
+ ├── policy/                   # Policy matrix + regression scenarios
  ├── knowledge/
  │   ├── services.json         # Daftar layanan & harga
  │   └── faq.json              # FAQ dengan keywords
@@ -48,7 +50,17 @@ node app.js
 
 ---
 
-## Setup WhatsApp Cloud API
+## Gateway Produksi: Fonnte
+
+Webhook perangkat Fonnte diarahkan ke:
+
+`https://redboxbarbershop.com/api/wa/webhook`
+
+Status booking customer dibaca dari tabel `bookings` Supabase. Hanya status `confirmed` yang boleh dipakai untuk menyatakan booking aman; chat tidak dapat membuat booking outlet.
+
+## Legacy WhatsApp Cloud API Adapter
+
+Folder Express di bawah ini bukan entrypoint produksi Fonnte. Gunakan hanya untuk kompatibilitas/testing terisolasi.
 
 1. Buka https://developers.facebook.com/apps/
 2. Buat App → Business → WhatsApp
@@ -77,7 +89,7 @@ rateLimiter (max 5 msg/menit per user)
 webhookController.receive()
     ↓
 messageHandler.handle()
-    ├── Booking flow active? → bookingService.handle()
+    ├── Booking flow active? → legacy guard → website redirect
     ├── Escalation keywords? → escalationService.escalate()
     ├── Keyword match (harga/booking/faq)? → direct reply
     ├── costGuard (cooldown + daily limit)
@@ -96,25 +108,29 @@ Saat admin WhatsApp Business manual membalas pelanggan, bot akan **otomatis diam
 
 ### Cara Kerja
 
-1. **Auto-detect**: Bot mendeteksi status `sent/delivered/read` dari pesan keluar (admin membalas)
-2. **Handoff aktif**: Mode handoff otomatis nyala untuk customer tersebut
+1. **Explicit control**: Admin memakai `/ai_off` dan `/ai_on`; status `sent/delivered/read` tidak otomatis dianggap balasan admin.
+2. **Handoff aktif**: Mode handoff aktif untuk customer tersebut
 3. **Bot berhenti**: Bot tidak merespons pesan dari customer selama handoff aktif
 4. **Auto-expire**: Handoff mati sendiri setelah timeout (default 30 menit)
 
 ### Konfigurasi
 
 ```bash
-# Di .env — ubah durasi handoff (menit)
+# Di .env — ubah durasi handoff (menit) jika memakai /ai_off
 HANDOFF_DURATION_MINUTES=30
+
+# Scheduler lokal legacy tidak aktif secara default.
+WHATSAPP_AI_LOCAL_SCHEDULER_ENABLED=0
 ```
 
 ### Perintah Admin
 
 | Perintah | Fungsi |
 |----------|--------|
+| `/ai_off 628123456789 [menit]` | Matikan AI sementara untuk customer |
 | `/ai_on 628123456789` | Aktifkan kembali AI untuk customer tertentu |
 
-Contoh: Admin membalas customer → bot diam 30 menit → customer chat lagi → bot tetap diam → admin kirim `/ai_on 628xxx` → bot aktif lagi.
+Contoh: Admin kirim `/ai_off 628xxx 30` → bot diam 30 menit → admin kirim `/ai_on 628xxx` → bot aktif lagi.
 
 ---
 
@@ -129,6 +145,16 @@ Contoh: Admin membalas customer → bot diam 30 menit → customer chat lagi →
 | Rate limiter | Max 5 messages/menit/user |
 | Context limit | Max 6 messages per context |
 | Max tokens | 300 tokens per response |
+
+## Booking authority
+
+Status booking customer Indonesia dibaca dari tabel website `bookings` melalui Supabase. Flow booking manual hanya dipertahankan untuk foreign customer melalui `foreignBookingService.js`.
+
+## Local regression check
+
+```bash
+npm run test:policy
+```
 
 ---
 
