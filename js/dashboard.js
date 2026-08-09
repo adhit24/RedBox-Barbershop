@@ -332,17 +332,6 @@ document.addEventListener('DOMContentLoaded', () => {
  }
 
  // ============================================================
- // POINT REWARD PURPOSE
- // ============================================================
- const tierMessage = document.getElementById('tierMessage');
-
- if (ACTIVE) {
- if (tierMessage) tierMessage.innerHTML = `<p>Poin kamu: <strong>${displayPoints.toLocaleString('id-ID')}</strong>. Tukarkan poin dengan produk dan layanan yang tersedia di Katalog Rewards.</p>`;
- } else {
- if (tierMessage) tierMessage.innerHTML = '<p>Aktivasi membership untuk mulai mengumpulkan poin dan menukarnya dengan produk atau layanan. Gunakan tombol aktivasi di bagian atas halaman.</p>';
- }
-
- // ============================================================
  // REWARDS RENDER
  // ============================================================
  // Update rewards points display
@@ -448,6 +437,46 @@ document.addEventListener('DOMContentLoaded', () => {
  }
 
  renderBenefitTracker();
+
+ // ============================================================
+ // TIER MAP
+ // ============================================================
+ function renderTierMap(tier) {
+ const container = document.getElementById('tierMapContainer');
+ if (!container) return;
+
+ const headline = ACTIVE
+ ? `Poin kamu: <strong>${(memberData.points||0).toLocaleString('id-ID')}</strong>. Tukarkan di Katalog Rewards.`
+ : 'Aktivasi membership untuk membuka tier dan mulai kumpulkan poin.';
+
+ const userIdx = ACTIVE ? tierLevelOf(tier.class) : -1;
+
+ const rows = TIERS.map((t, idx) => {
+ const isCurrent = ACTIVE && idx === userIdx;
+ const isBelowCurrent = ACTIVE && idx < userIdx;
+ const rowClass = isCurrent ? 'current' : (isBelowCurrent ? 'unlocked' : '');
+ const statusHtml = isCurrent
+ ? '<span class="tier-map-status current">Tier saat ini</span>'
+ : isBelowCurrent
+ ? '<span class="tier-map-status unlocked">Unlocked</span>'
+ : t.class === 'bronze'
+ ? '<span class="tier-map-status unlocked">Otomatis</span>'
+ : `<a class="tier-map-upgrade" href="member-register.html?tier=${t.class}">Upgrade</a>`;
+ return `
+ <div class="tier-map-row ${rowClass}" data-tier="${t.class}">
+ <div class="tier-map-dot"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>
+ <div class="tier-map-info">
+ <span class="tier-map-name">${t.name}</span>
+ <span class="tier-map-benefit">${t.label}</span>
+ </div>
+ ${statusHtml}
+ </div>`;
+ }).join('');
+
+ container.innerHTML = `${rows}<div class="tier-message"><p>${headline}</p></div>`;
+ }
+
+ renderTierMap(tier);
 
  // ============================================================
  // REDEEM HISTORY
