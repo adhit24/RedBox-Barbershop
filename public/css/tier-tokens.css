@@ -130,17 +130,23 @@
   animation: tierParticleDrift 3.4s ease-in infinite;
 }
 
-[data-tier="platinum"] .phys-card-inner {
+/* The gradient shift lives on .phys-card-glow (the blurred ambient layer
+   behind the card), not .phys-card-inner — that div's background sits
+   directly behind an opaque 320px card <img>, which fully covers it, so
+   the animation was invisible there. .phys-card-glow already renders a
+   pulsing glow around the card's edges for every tier; Platinum's version
+   additionally cycles through the tier gradient instead of staying red. */
+[data-tier="platinum"] .phys-card-glow {
   background: var(--tier-gradient);
   background-size: 200% 200%;
-  animation: tierGradientShift 8s linear infinite;
+  animation: cardPulse 3.5s ease-in-out infinite alternate, tierGradientShift 8s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .tier-badge-emblem::before,
   [data-tier="gold"] .tier-particle,
   [data-tier="platinum"] .tier-particle,
-  [data-tier="platinum"] .phys-card-inner {
+  [data-tier="platinum"] .phys-card-glow {
     animation: none;
   }
 }

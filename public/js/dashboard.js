@@ -408,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  // BENEFIT TRACKER
  // ============================================================
- function renderBenefitTracker() {
+ function renderBenefitTracker(tier) {
  const container = document.getElementById('benefitTracker');
  if (!container) return;
 
@@ -460,7 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
  container.innerHTML = html;
  }
 
- renderBenefitTracker();
+ renderBenefitTracker(tier);
 
  // ============================================================
  // TIER MAP
@@ -643,7 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
  </div>`;
  }
 
- function renderShop() {
+ function renderShop(tier) {
  const curatedEl = document.getElementById('shopCurated');
  const productsEl = document.getElementById('shopProducts');
  const servicesEl = document.getElementById('shopServices');
@@ -717,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
  ctaEl.innerHTML = '';
  }
 
- renderShop();
+ renderShop(tier);
 
  // ============================================================
  // MOBILE NAV HAMBURGER
@@ -1168,6 +1168,18 @@ document.addEventListener('DOMContentLoaded', () => {
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
  updatePhysCardImage(t2Class);
+ // These four were only ever rendered once, synchronously, from
+ // whatever tier was cached in localStorage at page load — never
+ // re-run after this async re-sync resolves the member's real tier.
+ // A member whose fresh tier differs from the cached one (any paid
+ // member on their first load after activation/upgrade, or after the
+ // 2026-08-09 bronze-reset) saw their tier badge/card correctly update
+ // while the tier map, benefit tracker, curated shop, and upsell
+ // banner stayed stuck on the stale (often Bronze) tier.
+ renderUpsellBanner(t2);
+ renderBenefitTracker(t2);
+ renderTierMap(t2);
+ renderShop(t2);
  if (memberStatusBadge) {
  memberStatusBadge.textContent = isACTIVE ? ' Membership Aktif' : 'Membership Belum Aktif';
  memberStatusBadge.className = 'member-status-badge ' + (isACTIVE ? 'active' : 'inactive');
@@ -1246,6 +1258,18 @@ document.addEventListener('DOMContentLoaded', () => {
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
  updatePhysCardImage(t2Class);
+ // These four were only ever rendered once, synchronously, from
+ // whatever tier was cached in localStorage at page load — never
+ // re-run after this async re-sync resolves the member's real tier.
+ // A member whose fresh tier differs from the cached one (any paid
+ // member on their first load after activation/upgrade, or after the
+ // 2026-08-09 bronze-reset) saw their tier badge/card correctly update
+ // while the tier map, benefit tracker, curated shop, and upsell
+ // banner stayed stuck on the stale (often Bronze) tier.
+ renderUpsellBanner(t2);
+ renderBenefitTracker(t2);
+ renderTierMap(t2);
+ renderShop(t2);
  if (memberStatusBadge) {
  memberStatusBadge.textContent = isACTIVE ? ' Membership Aktif' : 'Membership Belum Aktif';
  memberStatusBadge.className = 'member-status-badge ' + (isACTIVE ? 'active' : 'inactive');
