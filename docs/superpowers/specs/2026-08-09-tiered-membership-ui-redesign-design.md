@@ -78,13 +78,15 @@ Trigger sekali, hanya lewat interaksi user (tombol "Lihat Kartu Baru" setelah st
 
 Ikon mute persisten (tersimpan di `localStorage`, default ON) tersedia di pojok dashboard untuk menonaktifkan chime kapan pun, termasuk di momen tier-up berikutnya.
 
-## Catatan teknis: motion tanpa React
+## Catatan teknis: motion library
 
-`member-dashboard.html` dan `membership.html` adalah situs statis vanilla HTML/CSS/JS (bukan React) — library Framer Motion tidak dapat dipasang langsung. Efek "spring motion" direplikasi dengan:
+`member-dashboard.html` dan `membership.html` adalah situs statis vanilla HTML/CSS/JS (bukan React), tapi codebase **sudah memakai `motion`** (Motion One — versi framework-agnostic dari Framer Motion, dibuat oleh tim yang sama) lewat ESM CDN import di `js/animations.js` (`import { animate, inView } from "https://cdn.jsdelivr.net/npm/motion@11/+esm"`), dipakai untuk hero entrance & scroll-reveal di halaman lain. `package.json` root juga sudah mencantumkan `"motion": "^12.40.0"` sebagai dependency.
 
-- CSS `@keyframes` + transition dengan cubic-bezier yang mendekati kurva spring.
-- Web Animations API untuk animasi yang perlu dikontrol dari JS (mis. overlay tier-up).
-- `mousemove` listener vanilla JS untuk tilt-tracking & foil-sheen kartu.
+Sistem tier ini memakai library yang sama untuk konsistensi:
+
+- `animate()` dari `motion` untuk semua animasi tier (shimmer sweep, particle drift, overlay tier-up, gradient shift Platinum) — bukan CSS `@keyframes` manual, kecuali untuk animasi loop sederhana (breathing glow Bronze) yang lebih murah lewat CSS.
+- `inView()` dari `motion` untuk trigger shimmer sweep saat card masuk viewport (dashboard & `membership.html`).
+- `mousemove` listener vanilla JS (tanpa library) untuk tilt-tracking & foil-sheen kartu, karena ini per-frame custom logic, bukan animasi deklaratif.
 
 Semua animasi hanya memakai `transform` dan `opacity` (tidak pernah `width`/`height`/`top`/`left`) untuk menghindari layout thrashing.
 
