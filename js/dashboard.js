@@ -191,7 +191,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
  function getDisplayTier(pts) {
  const configured = String(memberData.current_tier || '').toLowerCase();
- return TIERS.find(t => t.class === configured) || getCurrentTier(pts);
+ // TIERS entries don't carry a `level` property themselves — only
+ // getCurrentTier() adds one. Returning a raw TIERS.find() match left
+ // `tier.level` undefined for every configured (non-computed) tier, which
+ // made every `tier.level - 1` comparison downstream evaluate to NaN and
+ // rendered every benefit/reward as permanently locked, even the member's
+ // own current tier.
+ const idx = TIERS.findIndex(t => t.class === configured);
+ return idx >= 0 ? { ...TIERS[idx], level: idx + 1 } : getCurrentTier(pts);
  }
 
  function tierLevelOf(tierClass) {
@@ -256,11 +263,12 @@ document.addEventListener('DOMContentLoaded', () => {
  if (!banner) return;
 
  const configs = {
+ bronze: { title:'Bronze Member - Kumpulkan Poin Reward', desc:'Poin dapat ditukar dengan produk dan layanan Redbox sesuai katalog rewards. Upgrade tier untuk buka benefit eksklusif lainnya.', cta:'Lihat Katalog Rewards', ctaClass:'' },
  silver: { title:'Silver Member - Kumpulkan Poin Reward', desc:'Poin dapat ditukar dengan produk dan layanan Redbox sesuai katalog rewards.', cta:'Lihat Katalog Rewards', ctaClass:'' },
  gold: { title:'Gold Member - Kumpulkan Poin Reward', desc:'Gunakan poinmu untuk redeem produk dan layanan Redbox yang tersedia.', cta:'Lihat Katalog Rewards', ctaClass:'' },
  platinum: { title:'Platinum Member - Kumpulkan Poin Reward', desc:'Nikmati benefit Platinum dan tukarkan poin dengan produk atau layanan pilihanmu.', cta:'Lihat Katalog Rewards', ctaClass:'plat' },
  };
- const cfg = configs[tier.class] || configs.silver;
+ const cfg = configs[tier.class] || configs.bronze;
 
  // Tier accent colors for progress bar
  const progressColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#C4B5FD' };
