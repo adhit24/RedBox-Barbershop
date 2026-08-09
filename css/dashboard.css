@@ -148,6 +148,11 @@ html, body { overflow-x: hidden; max-width: 100vw; }
  transition:all .25s ease;flex-shrink:0;
 }
 .tier-map-upgrade:hover{background:var(--red);color:#fff}
+.tier-message{
+ background:var(--bg-3);border-radius:12px;padding:16px 20px;
+ border-left:3px solid var(--red);
+}
+.tier-message p{font-size:.88rem;color:var(--w70);line-height:1.6;margin:0}
 
 /* ---- Dashboard Main Layout ---- */
 .dash-main{
