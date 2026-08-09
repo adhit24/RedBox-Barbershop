@@ -20,6 +20,7 @@ const { enqueueCustomerNotification, markCustomerNotificationSent, processCustom
 const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
 const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('./membership-policy');
+const { normalizeMemberPhone, getMemberPhoneVariants, mergeCustomerRows } = require('./member-identity');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -2636,6 +2637,28 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     return String(phone || '').replace(/\D/g, '').replace(/^0/, '62');
   }
 
+  async function getMergedMemberCustomer(phone) {
+    const canonical = normalizeMemberPhone(phone);
+    if (!canonical) return null;
+    const variants = getMemberPhoneVariants(canonical);
+    const filters = [
+      ...variants.map(value => `wa.eq.${value}`),
+      `phone_e164.eq.+${canonical}`,
+    ].join(',');
+    const { data, error } = await supabase.from('customers').select('*').or(filters);
+    if (error) throw new Error(`customer lookup failed: ${error.message}`);
+    return mergeCustomerRows(data || [], canonical);
+  }
+
+  async function getMemberProfileByPhone(phone) {
+    const phoneE164 = `+${normalizeMemberPhone(phone)}`;
+    const { data, error } = await supabase.from('member_profiles')
+      .select('id, user_key, membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier')
+      .eq('phone', phoneE164).maybeSingle();
+    if (error && error.code !== 'PGRST116') throw new Error(`member profile lookup failed: ${error.message}`);
+    return data || null;
+  }
+
   function generateReferralCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = 'RBX';
@@ -2817,18 +2840,14 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       .gt('expires_at', new Date().toISOString()).maybeSingle();
     if (!session) return res.status(401).json({ error: 'Session expired, silakan login ulang' });
 
-    const { data: customer } = await supabase.from('customers')
-      .select('*').eq('wa', session.customer_wa).maybeSingle();
+    const customer = await getMergedMemberCustomer(session.customer_wa);
 
     if (customer) {
       // Cross-reference member_profiles by phone to sync membership status.
       // Orang yang sama bisa punya akun OTP (customers) dan Google (member_profiles)
       // dengan data membership yang berbeda — ambil yang terbaik.
-      const phoneE164 = customer.phone_e164 || ('+' + session.customer_wa);
-      const { data: profile } = await supabase.from('member_profiles')
-        .select('membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier')
-        .eq('phone', phoneE164)
-        .maybeSingle();
+      const phoneE164 = `+${normalizeMemberPhone(session.customer_wa)}`;
+      const profile = await getMemberProfileByPhone(session.customer_wa);
 
       // Paid tier is authoritative in member_profiles. Points are a separate
       // loyalty balance and must not downgrade a purchased tier.
@@ -2849,8 +2868,8 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         customer.membership_activated_at= profile.membership_activated_at ?? null;
         customer.membership_started_at  = profile.membership_started_at ?? null;
         customer.membership_expires_at  = profile.membership_expires_at;
-        customer.points                 = profile.total_points   ?? customer.points ?? 0;
-        customer.visits                 = profile.total_visits   ?? customer.visits ?? 0;
+        customer.points                 = Math.max(Number(profile.total_points) || 0, Number(customer.points) || 0);
+        customer.visits                 = Math.max(Number(profile.total_visits) || 0, Number(customer.visits) || 0);
         customer.referral_code          = profile.referral_code  ?? customer.referral_code;
         // Sync nama dari member_profiles jika customer belum punya nama lengkap
         if (!customer.name && profile.full_name) customer.name = profile.full_name;
@@ -2860,18 +2879,67 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
           membership_activated_at: profile.membership_activated_at,
           membership_started_at:   profile.membership_started_at,
           membership_expires_at:   profile.membership_expires_at,
-        }).eq('wa', session.customer_wa).catch(() => {});
+        }).or(getMemberPhoneVariants(session.customer_wa).map(value => `wa.eq.${value}`).join(',')).catch(() => {});
       } else if (!customerIsActive && customer.membership_status !== 'INACTIVE') {
         customer.membership_status = 'INACTIVE';
         customer.membership_activated_at = null;
         supabase.from('customers').update({
           membership_status: 'INACTIVE',
           membership_activated_at: null,
-        }).eq('wa', session.customer_wa).catch(() => {});
+        }).or(getMemberPhoneVariants(session.customer_wa).map(value => `wa.eq.${value}`).join(',')).catch(() => {});
       }
     }
 
     return res.json({ customer: customer || null });
+  });
+
+  // GET /api/member/history — authenticated visit and point history.
+  app.get('/api/member/history', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || req.headers['x-member-token'];
+    if (!token) return res.status(401).json({ error: 'Login diperlukan' });
+
+    const { data: session } = await supabase.from('member_sessions')
+      .select('customer_wa').eq('token', token)
+      .gt('expires_at', new Date().toISOString()).maybeSingle();
+    if (!session) return res.status(401).json({ error: 'Session expired, silakan login ulang' });
+
+    const variants = getMemberPhoneVariants(session.customer_wa);
+    const bookingFilters = variants.map(value => `wa.eq.${value}`).join(',');
+    const [{ data: bookings, error: bookingError }, profile] = await Promise.all([
+      supabase.from('bookings')
+        .select('id,name,wa,date,time,status,service,price,location,created_at')
+        .or(bookingFilters)
+        .neq('status', 'cancelled')
+        .order('date', { ascending: false })
+        .order('time', { ascending: false })
+        .limit(100),
+      getMemberProfileByPhone(session.customer_wa),
+    ]);
+    if (bookingError) return res.status(500).json({ error: `Riwayat kunjungan gagal dimuat: ${bookingError.message}` });
+
+    let pointRows = [];
+    if (profile?.user_key) {
+      const { data, error } = await supabase.from('member_point_transactions')
+        .select('id,user_key,activity,points,notes,created_at')
+        .eq('user_key', profile.user_key)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) return res.status(500).json({ error: `Riwayat poin gagal dimuat: ${error.message}` });
+      pointRows = data || [];
+    }
+
+    const customer = await getMergedMemberCustomer(session.customer_wa);
+    const completedVisits = (bookings || []).filter(row => ['done', 'completed'].includes(String(row.status || '').toLowerCase())).length;
+    return res.json({
+      customer: customer || {},
+      summary: {
+        visits: Math.max(Number(customer?.visits) || 0, completedVisits),
+        points: Math.max(Number(customer?.points) || 0, Number(profile?.total_points) || 0),
+      },
+      bookings: bookings || [],
+      points: pointRows,
+    });
   });
 
   // POST /api/member/sync — tarik data Moka fresh untuk member yang login
@@ -2952,26 +3020,61 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         }
       }
 
-      const newPoints = totalVisits * POINTS_PER_VISIT;
+      // Moka can return a partial window or no transactions when its report
+      // endpoint is temporarily incomplete. Never erase a stronger local
+      // aggregate in that case.
+      const existingCustomer = await getMergedMemberCustomer(wa);
+      const syncedVisits = Math.max(totalVisits, Number(existingCustomer?.visits) || 0);
+      const syncedPoints = Math.max(totalVisits * POINTS_PER_VISIT, Number(existingCustomer?.points) || 0);
+      const syncedSpent = Math.max(totalSpent, Number(existingCustomer?.total_spent) || 0);
+      const syncedLastVisit = [lastVisit, existingCustomer?.last_visit].filter(Boolean).sort().at(-1) || null;
+      const syncedFirstVisit = [firstVisit, existingCustomer?.first_visit].filter(Boolean).sort()[0] || null;
       // Points remain a loyalty balance; the purchased tier is resolved after
       // loading the existing profile below.
-      const pointsTier = getTier(newPoints);
+      const pointsTier = getTier(syncedPoints);
       const now       = new Date().toISOString();
 
-      const custPatch = { visits: totalVisits, points: newPoints, total_spent: totalSpent, last_visit: lastVisit, updated_at: now };
-      if (firstVisit) custPatch.first_visit = firstVisit;
-      const { error: custErr } = await supabase.from('customers').update(custPatch).eq('wa', waNorm);
+      const recordPointLedgerDelta = async (userKey, previousPoints, nextPoints) => {
+        const delta = Math.max(0, Number(nextPoints || 0) - Number(previousPoints || 0));
+        if (!userKey || delta <= 0) return;
+        const marker = `moka-sync:${syncedFirstVisit || 'unknown'}:${syncedVisits}:${nextPoints}`;
+        const { data: existingLedger, error: ledgerLookupError } = await supabase
+          .from('member_point_transactions')
+          .select('id')
+          .eq('user_key', userKey)
+          .eq('notes', marker)
+          .limit(1);
+        if (ledgerLookupError) {
+          console.warn('[Member Sync] point ledger lookup skipped:', ledgerLookupError.message);
+          return;
+        }
+        if (existingLedger?.length) return;
+        const { error: ledgerError } = await supabase.from('member_point_transactions').insert({
+          user_key: userKey,
+          activity: 'Sinkronisasi poin Moka',
+          points: delta,
+          notes: marker,
+        });
+        if (ledgerError) console.warn('[Member Sync] point ledger write skipped:', ledgerError.message);
+      };
+
+      const custPatch = { visits: syncedVisits, points: syncedPoints, total_spent: syncedSpent, last_visit: syncedLastVisit, updated_at: now };
+      if (syncedFirstVisit) custPatch.first_visit = syncedFirstVisit;
+      const { error: custErr } = await supabase.from('customers').update(custPatch)
+        .or(getMemberPhoneVariants(wa).map(value => `wa.eq.${value}`).join(','));
       if (custErr) throw new Error(`customers update failed: ${custErr.message}`);
 
       const { data: existing } = await supabase.from('member_profiles')
-        .select('id,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at,current_tier')
+        .select('id,user_key,full_name,phone,membership_status,membership_activated_at,membership_started_at,membership_expires_at,current_tier,total_points,total_visits')
         .eq('phone', phoneE164).maybeSingle();
 
       // Preserve purchased Silver/Gold/Platinum across Moka syncs. The
       // points-derived tier is only a fallback for profiles without a tier.
-      const newTier = resolveMembershipTier(existing?.current_tier, newPoints, getTier);
+      const newTier = resolveMembershipTier(existing?.current_tier, syncedPoints, getTier);
 
       if (existing) {
+        const nextPoints = Math.max(syncedPoints, Number(existing.total_points) || 0);
+        const nextVisits = Math.max(syncedVisits, Number(existing.total_visits) || 0);
         const membership = membershipStateForSync({
           existingStatus: existing.membership_status,
           existingActivatedAt: existing.membership_activated_at,
@@ -2979,11 +3082,14 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
           existingExpiresAt: existing.membership_expires_at,
         });
         const { error: profErr } = await supabase.from('member_profiles').update({
-          total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
+          total_points: nextPoints,
+          total_visits: nextVisits,
+          current_tier: newTier,
           ...membership,
           updated_at: now,
         }).eq('id', existing.id);
         if (profErr) throw new Error(`member_profiles update failed: ${profErr.message}`);
+        await recordPointLedgerDelta(existing.user_key, existing.total_points, nextPoints);
       } else {
         const { data: cust } = await supabase.from('customers')
           .select('name,email,referral_code,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
@@ -3000,9 +3106,10 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         const { error: upsertErr } = await supabase.from('member_profiles').upsert({
           user_key: userKey, email, full_name: cust?.name || '', phone: phoneE164,
           ...membership,
-          total_points: newPoints, total_visits: totalVisits, current_tier: newTier,
+          total_points: syncedPoints, total_visits: syncedVisits, current_tier: newTier,
         }, { onConflict: 'user_key' });
         if (upsertErr) throw new Error(`member_profiles upsert failed: ${upsertErr.message}`);
+        await recordPointLedgerDelta(userKey, 0, syncedPoints);
       }
 
       const { data: custData } = await supabase.from('customers').select('name').eq('wa', waNorm).maybeSingle();
@@ -3010,8 +3117,8 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       return res.json({
         success: true,
         full_name: existing?.full_name || custData?.name || '',
-        visits: totalVisits, points: newPoints, tier: newTier,
-        last_visit: lastVisit, first_visit: firstVisit, total_spent: totalSpent,
+        visits: syncedVisits, points: syncedPoints, tier: newTier,
+        last_visit: syncedLastVisit, first_visit: syncedFirstVisit, total_spent: syncedSpent,
       });
     } catch (err) {
       console.error('[MemberSync]', err.message);

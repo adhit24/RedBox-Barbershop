@@ -212,6 +212,7 @@ Create `js/tier-theme.js`:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test server/test/tier-theme.test.js`
+<<<<<<< HEAD
 Expected: PASS (7 tests)
 
 - [ ] **Step 5: Commit**

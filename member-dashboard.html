@@ -11,6 +11,7 @@
  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
  <link rel="stylesheet" href="css/style.css" />
+ <link rel="stylesheet" href="css/tier-tokens.css" />
  <link rel="stylesheet" href="css/dashboard.css?v=20260807" />
  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
@@ -142,46 +143,13 @@
  </div>
  <a href="membership.html" class="tier-rewards-btn">All Rewards</a>
  </div>
- <div class="tier-progress-track">
- <div class="tier-nodes">
- <div class="tier-node active" data-tier="silver">
- <div class="tier-node-dot">
- <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
- </div>
- <span class="tier-node-label">Silver</span>
- <span class="tier-node-pts">0 pts</span>
- </div>
- <div class="tier-connector">
- <div class="tier-connector-fill" id="tierFill1" style="width:0%"></div>
- </div>
- <div class="tier-node" data-tier="gold">
- <div class="tier-node-dot">
- <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
- </div>
- <span class="tier-node-label">Gold</span>
- <span class="tier-node-pts">500 pts</span>
- </div>
- <div class="tier-connector">
- <div class="tier-connector-fill" id="tierFill2" style="width:0%"></div>
- </div>
- <div class="tier-node" data-tier="platinum">
- <div class="tier-node-dot">
- <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
- </div>
- <span class="tier-node-label">Platinum</span>
- <span class="tier-node-pts">1500 pts</span>
- </div>
- </div>
- </div>
+ <div class="tier-map" id="tierMapContainer"></div>
  <!-- Lock Overlay (shown when INACTIVE) -->
  <div class="tier-lock-overlay" id="tierLockOverlay" style="display:none">
  <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>
  <h3>Tier Terkunci</h3>
  <p>Aktivasi membership untuk membuka sistem tier dan mulai kumpulkan poin eksklusif.</p>
  <button class="btn-tier-unlock" id="btnActivate">Aktivasi Membership Sekarang</button>
- </div>
- <div class="tier-message" id="tierMessage">
- <p>Selamat datang di Redbox! Kumpulkan poin setiap kunjungan untuk naik level.</p>
  </div>
  </div>
  </div>
@@ -300,12 +268,8 @@
  <input type="email" id="accEmail" placeholder="email@contoh.com" readonly />
  </div>
  <div class="form-field full-width">
- <label>Password</label>
- <div class="password-row">
- <input type="password" id="accPassword" placeholder="Jika ingin mengubah password demi keamanan privasi" disabled />
- <button type="button" class="btn-change-pw" id="changePasswordBtn">Ganti Password</button>
- </div>
- <div class="pwd-info-note" id="changePwdInfo" style="display:none"></div>
+ <label>Metode Login</label>
+ <div class="pwd-info-note" style="display:flex">Akun member menggunakan OTP WhatsApp dan tidak memakai password. Login kembali dengan nomor WhatsApp terdaftar untuk menerima kode OTP.</div>
  </div>
  <div class="form-field full-width">
  <label>Alamat</label>
@@ -610,6 +574,24 @@
  <!-- Toast -->
  <div class="dash-toast" id="dashToast" style="display:none"></div>
 
+ <!-- Tier-up banner (shown once when a synced tier differs from last-seen tier) -->
+ <div class="tier-up-banner" id="tierUpBanner" style="display:none">
+ <span>Tier kamu baru saja naik!</span>
+ <button type="button" id="btnViewNewCard">Lihat Kartu Baru</button>
+ </div>
+
+ <!-- Tier-up celebration overlay -->
+ <div class="tier-up-overlay" id="tierUpOverlay" style="display:none">
+ <div class="tier-up-emblem" id="tierUpEmblem"></div>
+ <p id="tierUpText"></p>
+ <button type="button" class="tier-up-close" id="tierUpClose">Tutup</button>
+ </div>
+
+ <!-- Persistent chime mute toggle -->
+ <button type="button" class="chime-mute-toggle" id="chimeMuteToggle" aria-label="Bisukan efek suara tier">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11 5 6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 0 1 0 14.14l-1.41-1.41a8 8 0 0 0 0-11.32l1.41-1.41z"/></svg>
+ </button>
+
  <footer class="dash-footer">
  <div class="container">
  <p>&copy; 2026 Redbox Barbershop. All rights reserved.</p>
@@ -619,6 +601,8 @@
 
  <script src="js/main.js"></script>
  <script src="js/membership-access.js?v=20260808"></script>
+ <script src="js/tier-theme.js?v=20260809"></script>
  <script src="js/dashboard.js?v=20260807"></script>
+ <script type="module" src="js/tier-motion.js?v=20260809"></script>
 </body>
 </html>

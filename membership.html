@@ -11,6 +11,7 @@
  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
  <link rel="stylesheet" href="css/style.css" />
+ <link rel="stylesheet" href="css/tier-tokens.css" />
  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
  <script src="https://accounts.google.com/gsi/client" async defer></script>
  <style>
@@ -314,43 +315,6 @@
  .ms-tier.featured .tier-cta:hover {
  transform: translateY(-1px);
  box-shadow: 0 8px 24px rgba(251,191,36,.3);
- }
-
- /* TIER COLORS */
- .tier-silver .tier-header { background: linear-gradient(160deg, #1A1F29 0%, #111520 100%); }
- .tier-silver .tier-icon { background: rgba(156,163,175,.12); }
- .tier-silver .tier-name { color: #9CA3AF; }
- .tier-silver .tier-discount { color: #9CA3AF; }
-
- .tier-gold .tier-header { background: linear-gradient(160deg, #1C1000 0%, #140B00 100%); }
- .tier-gold .tier-icon { background: rgba(251,191,36,.15); }
- .tier-gold .tier-name { color: #FBBF24; }
- .tier-gold .tier-discount { color: #FBBF24; }
-
- .tier-platinum .tier-header {
- background: linear-gradient(160deg, #0F1520 0%, #080D17 100%);
- position: relative;
- overflow: hidden;
- }
- .tier-platinum .tier-header::before {
- content: '';
- position: absolute;
- inset: 0;
- background: linear-gradient(135deg, transparent 40%, rgba(196,181,253,.06) 100%);
- pointer-events: none;
- }
- .tier-platinum .tier-icon { background: rgba(196,181,253,.1); }
- .tier-platinum .tier-name {
- background: linear-gradient(90deg, #C4B5FD, #E2E8F0, #C4B5FD);
- -webkit-background-clip: text;
- -webkit-text-fill-color: transparent;
- background-clip: text;
- }
- .tier-platinum .tier-discount {
- background: linear-gradient(90deg, #C4B5FD, #E2E8F0);
- -webkit-background-clip: text;
- -webkit-text-fill-color: transparent;
- background-clip: text;
  }
 
  /* ---- POINT SYSTEM ---- */
@@ -1080,7 +1044,7 @@
  </div>
  <div class="ms-fc-bottom">
  <div class="ms-fc-title">Tier Eksklusif</div>
- <div class="ms-fc-desc">Naik level dari Bronze ke Platinum secara otomatis. Setiap tier membuka privilege lebih besar: diskon, priority booking, hingga free service.</div>
+ <div class="ms-fc-desc">Pilih tier membership saat mendaftar dan bayar di outlet. Setiap tier membuka privilege lebih besar: diskon, priority booking, hingga free service.</div>
  </div>
  </div>
  </div>
@@ -1161,7 +1125,7 @@
  <div class="ms-fc-bottom">
  <div class="ms-fc-step-num">03</div>
  <div class="ms-fc-title">Nikmati Keistimewaan</div>
- <div class="ms-fc-desc">Tukarkan poin untuk diskon & layanan gratis. Tier naik otomatis seiring akumulasi poinmu.</div>
+ <div class="ms-fc-desc">Tukarkan poin untuk diskon & layanan gratis. Tier membership mengikuti tier yang kamu beli dan diaktifkan oleh kasir.</div>
  </div>
  </div>
  </div>
@@ -1474,7 +1438,7 @@
  <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 3.75a.75.75 0 0 1 .75.75v6.75h6.75a.75.75 0 0 1 0 1.5h-6.75v6.75a.75.75 0 0 1-1.5 0v-6.75H4.5a.75.75 0 0 1 0-1.5h6.75V4.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"/></svg>
  </button>
  <div class="ms-faq-a">
- <p>Tier dievaluasi setiap 6 bulan berdasarkan total poin yang dikumpulkan dalam periode tersebut. Jika akumulasi poin dalam 6 bulan tidak mencapai threshold tier saat ini, tier bisa turun ke level sebelumnya.</p>
+ <p>Tier tidak naik atau turun berdasarkan poin. Tier aktif mengikuti membership yang kamu beli dan diaktifkan oleh kasir selama masa berlaku. Untuk naik tier, lakukan upgrade melalui pendaftaran tier yang lebih tinggi.</p>
  </div>
  </div>
  <div class="ms-faq-item">
@@ -1644,5 +1608,6 @@
  });
  });
  </script>
+ <script type="module" src="js/tier-motion.js?v=20260809"></script>
 </body>
 </html>

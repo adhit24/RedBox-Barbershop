@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
  { name:'Bronze', min:0, max:499, class:'bronze', color:'#CD7F32', glow:'rgba(205,127,50,.5)', label:'Level 1' },
  { name:'Silver', min:500, max:1499, class:'silver', color:'#C0C0C0', glow:'rgba(192,192,192,.5)', label:'Level 2' },
  { name:'Gold', min:1500, max:2999, class:'gold', color:'#FFD700', glow:'rgba(255,215,0,.5)', label:'Level 3' },
- { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', label:'Level 4' }
+ { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#C4B5FD', glow:'rgba(196,181,253,.5)', label:'Level 4' }
  ];
 
  const REWARDS = [
@@ -242,6 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const tierBadgeText = document.getElementById('tierBadgeText');
 
  const tier = getDisplayTier(displayPoints);
+ window.RedboxTierTheme.applyTierTheme(ACTIVE ? tier.class : 'bronze');
 
  // ============================================================
  // SMART UPSELL BANNER
@@ -258,14 +259,14 @@ document.addEventListener('DOMContentLoaded', () => {
  const cfg = configs[tier.class] || configs.silver;
 
  // Tier accent colors for progress bar
- const progressColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#B9F2FF' };
+ const progressColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#C4B5FD' };
  const accentColor = progressColors[tier.class] || '#c1121f';
 
  // Tier SVG icons (24×24 stroke)
  const tierIcons = {
  silver: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
  gold: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
- platinum: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B9F2FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z"/><polyline points="2 8 12 14 22 8"/><line x1="12" y1="14" x2="12" y2="20"/></svg>`,
+ platinum: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C4B5FD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z"/><polyline points="2 8 12 14 22 8"/><line x1="12" y1="14" x2="12" y2="20"/></svg>`,
  };
 
  // Inject content
@@ -301,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
  // Call after tier is determined
  renderUpsellBanner(tier);
 
- if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (ACTIVE ? tier.class : 'inactive');
+ if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (ACTIVE ? tier.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = ACTIVE ? `${tier.label} - ${tier.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = ACTIVE ? tier.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
 
@@ -328,17 +329,6 @@ document.addEventListener('DOMContentLoaded', () => {
  // Apply tier glow to tier card
  const tierCard = document.querySelector('.tier-card');
  if (tierCard) tierCard.style.boxShadow = `0 0 40px ${tier.glow}, inset 0 0 60px ${tier.glow.replace('.5','0.04')}`;
- }
-
- // ============================================================
- // POINT REWARD PURPOSE
- // ============================================================
- const tierMessage = document.getElementById('tierMessage');
-
- if (ACTIVE) {
- if (tierMessage) tierMessage.innerHTML = `<p>Poin kamu: <strong>${displayPoints.toLocaleString('id-ID')}</strong>. Tukarkan poin dengan produk dan layanan yang tersedia di Katalog Rewards.</p>`;
- } else {
- if (tierMessage) tierMessage.innerHTML = '<p>Aktivasi membership untuk mulai mengumpulkan poin dan menukarnya dengan produk atau layanan. Gunakan tombol aktivasi di bagian atas halaman.</p>';
  }
 
  // ============================================================
@@ -399,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (!container) return;
 
  const tierNames = ['Bronze','Silver','Gold','Platinum'];
- const tierColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#B9F2FF' };
+ const tierColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#C4B5FD' };
  const userTierIdx = tier.level - 1;
 
  let html = `<h3 class="benefit-tracker-title">Benefit Kamu</h3>`;
@@ -447,6 +437,118 @@ document.addEventListener('DOMContentLoaded', () => {
  }
 
  renderBenefitTracker();
+
+ // ============================================================
+ // TIER MAP
+ // ============================================================
+ function renderTierMap(tier) {
+ const container = document.getElementById('tierMapContainer');
+ if (!container) return;
+
+ const headline = ACTIVE
+ ? `Poin kamu: <strong>${(memberData.points||0).toLocaleString('id-ID')}</strong>. Tukarkan di Katalog Rewards.`
+ : 'Aktivasi membership untuk membuka tier dan mulai kumpulkan poin.';
+
+ const userIdx = ACTIVE ? tierLevelOf(tier.class) : -1;
+
+ const rows = TIERS.map((t, idx) => {
+ const isCurrent = ACTIVE && idx === userIdx;
+ const isBelowCurrent = ACTIVE && idx < userIdx;
+ const rowClass = isCurrent ? 'current' : (isBelowCurrent ? 'unlocked' : '');
+ const statusHtml = isCurrent
+ ? '<span class="tier-map-status current">Tier saat ini</span>'
+ : isBelowCurrent
+ ? '<span class="tier-map-status unlocked">Unlocked</span>'
+ : t.class === 'bronze'
+ ? '<span class="tier-map-status unlocked">Otomatis</span>'
+ : `<a class="tier-map-upgrade" href="member-register.html?tier=${t.class}">Upgrade</a>`;
+ return `
+ <div class="tier-map-row ${rowClass}" data-tier="${t.class}">
+ <div class="tier-map-dot"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>
+ <div class="tier-map-info">
+ <span class="tier-map-name">${t.name}</span>
+ <span class="tier-map-benefit">${t.label}</span>
+ </div>
+ ${statusHtml}
+ </div>`;
+ }).join('');
+
+ container.innerHTML = `${rows}<div class="tier-message"><p>${headline}</p></div>`;
+ }
+
+ renderTierMap(tier);
+
+ // ============================================================
+ // TIER-UP CELEBRATION
+ // ============================================================
+ // Captured once, before any sync path can call maybeShowTierUpBanner, so that
+ // multiple calls within the SAME page load (e.g. an early render from cached
+ // localStorage data, followed by the real value after async OTP/Supabase sync
+ // resolves) can't each be treated as "the first time ever" and falsely fire
+ // the banner off a stale/default tier.
+ let hadStoredTierOnLoad = localStorage.getItem('redbox_last_seen_tier') !== null;
+
+ function maybeShowTierUpBanner(newTierClass) {
+ if (!newTierClass) return;
+ const lastSeen = localStorage.getItem('redbox_last_seen_tier');
+ if (lastSeen === null || !hadStoredTierOnLoad) {
+ // First time we've ever recorded a tier for this browser (or the very first
+ // call of this page load before any real value existed): don't celebrate,
+ // just remember it.
+ localStorage.setItem('redbox_last_seen_tier', newTierClass);
+ return;
+ }
+ const order = window.RedboxTierTheme.TIER_ORDER;
+ if (order.indexOf(newTierClass) > order.indexOf(lastSeen)) {
+ const banner = document.getElementById('tierUpBanner');
+ if (banner) banner.style.display = 'flex';
+ }
+ }
+
+ document.getElementById('btnViewNewCard')?.addEventListener('click', () => {
+ // Chime playback lives inline in this click callback (never autoplayed elsewhere).
+ const tierClass = document.body.dataset.tier || 'bronze';
+ if (!window.RedboxTierTheme.isChimeMuted()) {
+ const chimePath = window.RedboxTierTheme.getTierTokens(tierClass).chime;
+ if (chimePath) {
+ const audio = new Audio(chimePath);
+ audio.preload = 'metadata';
+ audio.play().catch(() => {}); // missing/blocked audio must never break the UI
+ }
+ }
+ revealTierUp(tierClass);
+ });
+
+ function revealTierUp(tierClass) {
+ const overlay = document.getElementById('tierUpOverlay');
+ const emblem = document.getElementById('tierUpEmblem');
+ const text = document.getElementById('tierUpText');
+ if (text) text.textContent = `Selamat! Kamu sekarang member ${tierClass.charAt(0).toUpperCase() + tierClass.slice(1)}.`;
+ if (overlay) overlay.style.display = 'flex';
+ if (window.confetti) {
+ window.confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 }, colors: window.RedboxTierTheme.getTierTokens(tierClass).confettiColors, startVelocity: 45 });
+ }
+ localStorage.setItem('redbox_last_seen_tier', tierClass);
+ const banner = document.getElementById('tierUpBanner');
+ if (banner) banner.style.display = 'none';
+ }
+
+ document.getElementById('tierUpClose')?.addEventListener('click', () => {
+ const overlay = document.getElementById('tierUpOverlay');
+ if (overlay) overlay.style.display = 'none';
+ });
+
+ const muteBtn = document.getElementById('chimeMuteToggle');
+ if (muteBtn) {
+ muteBtn.classList.toggle('muted', window.RedboxTierTheme.isChimeMuted());
+ muteBtn.addEventListener('click', () => {
+ const nowMuted = !window.RedboxTierTheme.isChimeMuted();
+ window.RedboxTierTheme.setChimeMuted(nowMuted);
+ muteBtn.classList.toggle('muted', nowMuted);
+ });
+ }
+
+ if (ACTIVE) maybeShowTierUpBanner(tier.class);
 
  // ============================================================
  // REDEEM HISTORY
@@ -734,6 +836,60 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  // POINTS HISTORY
  // ============================================================
+ function renderBookingsHistory(bookings = []) {
+ const empty = document.getElementById('emptyBookings');
+ const list = document.getElementById('bookingsList');
+ if (!empty || !list) return;
+ const rows = bookings.filter(b => String(b.status || '').toLowerCase() !== 'cancelled');
+ if (!rows.length) {
+ empty.style.display = 'flex';
+ list.style.display = 'none';
+ list.innerHTML = '';
+ return;
+ }
+ empty.style.display = 'none';
+ list.style.display = 'grid';
+ list.innerHTML = rows.map(b => {
+ const date = b.date ? new Date(`${b.date}T${b.time || '00:00:00'}`).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) : '-';
+ const status = String(b.status || 'confirmed').toLowerCase();
+ const statusLabel = status === 'done' || status === 'completed' ? 'Selesai' : status === 'confirmed' ? 'Dikonfirmasi' : status;
+ return `<div class="booking-history-row">
+ <div class="booking-history-date">${esc(date)}</div>
+ <div class="booking-history-main"><strong>${esc(b.service || 'Layanan Redbox')}</strong><span>${esc(b.location || 'Redbox Barbershop')} · ${esc(b.time || '-')}</span></div>
+ <span class="booking-history-status ${esc(status)}">${esc(statusLabel)}</span>
+ </div>`;
+ }).join('');
+ }
+
+ async function loadMemberHistory(token) {
+ if (!token) return;
+ try {
+ const res = await fetch('/api/member/history', { headers: { Authorization: 'Bearer ' + token } });
+ if (!res.ok) return;
+ const payload = await res.json();
+ if (payload.summary) {
+ memberData.visits = Math.max(Number(memberData.visits) || 0, Number(payload.summary.visits) || 0);
+ memberData.points = Math.max(Number(memberData.points) || 0, Number(payload.summary.points) || 0);
+ animateCount(statVisits, memberData.visits, 500);
+ animateCount(statPoints, memberHasActiveAccess() ? memberData.points : 0, 500);
+ }
+ const history = Array.isArray(payload.points) ? payload.points : [];
+ if (history.length) {
+ memberData.pointsHistory = history.map(tx => ({
+ date: new Date(tx.created_at).toLocaleDateString('id-ID'),
+ activity: tx.activity || tx.notes || 'Aktivitas poin',
+ amount: Number(tx.points) || 0,
+ }));
+ }
+ save();
+ renderBookingsHistory(Array.isArray(payload.bookings) ? payload.bookings : []);
+ renderPointsHistory();
+ renderRedeemHistory();
+ } catch (err) {
+ console.warn('[History] Member history load failed:', err.message);
+ }
+ }
+
  function renderPointsHistory() {
  const bal = document.getElementById('pointsBalance');
  const body = document.getElementById('pointsTableBody');
@@ -940,7 +1096,9 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
- if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
+ window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
+ if (isACTIVE) maybeShowTierUpBanner(t2.class);
+ if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
  if (memberStatusBadge) {
@@ -960,11 +1118,12 @@ document.addEventListener('DOMContentLoaded', () => {
  if (refCodeEl) refCodeEl.textContent = memberData.referralCode;
  document.querySelectorAll('.gender-btn').forEach(b => b.classList.toggle('active', b.dataset.gender === memberData.gender));
  }
+ await loadMemberHistory(tok);
  }
  } catch (err) {
  console.warn('[Auth] Token validation error:', err.message);
  }
- return; // OTP members skip Supabase direct path
+ return; // OTP members skip Supabase direct profile path
  }
 
  // ── Google/email members: Supabase direct sync ──
@@ -1009,7 +1168,9 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
- if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
+ window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
+ if (isACTIVE) maybeShowTierUpBanner(t2.class);
+ if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
  if (memberStatusBadge) {
