@@ -3024,6 +3024,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     const getTier = (pts) => { for (const t of TIER_THRESHOLDS) if (pts >= t.min) return t.name; return 'bronze'; };
 
     let totalVisits = 0, totalSpent = 0, lastVisit = null, firstVisit = null;
+    const matchedPayments = [];
     const startTime = Date.now();
 
     try {
@@ -3049,10 +3050,31 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
             const norm = normPhone(p.customer_phone || p.customer_phone_number || p.phone_number || p.phone || '');
             if (norm !== targetNorm) continue;
             totalVisits++;
-            totalSpent += Number(p.total_collected || p.total_transaction || 0);
+            const amount = Number(p.total_collected || p.total_transaction || 0);
+            totalSpent += amount;
             const txDate = (p.created_at || p.updated_at || '').slice(0, 10);
+            const txTime = (p.created_at || p.updated_at || '').slice(11, 19) || null;
             if (txDate && (!lastVisit  || txDate > lastVisit))  lastVisit  = txDate;
             if (txDate && (!firstVisit || txDate < firstVisit)) firstVisit = txDate;
+            const receiptNumber = p.receipt_number || p.receipt_no || p.id;
+            if (receiptNumber && txDate) {
+              // service_summary is best-effort: this endpoint (v3 report API)
+              // doesn't have a confirmed line-item field name the way
+              // server/moka/txSync.js's different endpoint does. Falls back
+              // to null rather than guessing wrong.
+              const rawItems = p.item_details || p.items || p.order_items || p.line_items || '';
+              const serviceSummary = Array.isArray(rawItems)
+                ? (rawItems.map(i => i.name || i.item_name || i.service || '').filter(Boolean).join(', ') || null)
+                : (typeof rawItems === 'string' && rawItems ? rawItems : null);
+              matchedPayments.push({
+                receiptNumber: String(receiptNumber),
+                outletSlug: outlet.slug,
+                visitDate: txDate,
+                visitTime: txTime,
+                serviceSummary,
+                amount,
+              });
+            }
           }
           if (json?.data?.completed || !payments.length) break;
           const m2 = (json?.data?.next_url || '').match(/[?&]since=([0-9.]+)/);
@@ -3076,27 +3098,43 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       const pointsTier = getTier(syncedPoints);
       const now       = new Date().toISOString();
 
-      const recordPointLedgerDelta = async (userKey, previousPoints, nextPoints) => {
-        const delta = Math.max(0, Number(nextPoints || 0) - Number(previousPoints || 0));
-        if (!userKey || delta <= 0) return;
-        const marker = `moka-sync:${syncedFirstVisit || 'unknown'}:${syncedVisits}:${nextPoints}`;
+      const persistVisitHistory = async (userKey, payments) => {
+        if (!userKey || !payments.length) return;
+
+        const visitRows = payments.map(p => ({
+          user_key: userKey,
+          receipt_number: p.receiptNumber,
+          outlet_slug: p.outletSlug,
+          visit_date: p.visitDate,
+          visit_time: p.visitTime,
+          service_summary: p.serviceSummary,
+          amount: p.amount,
+          points_earned: POINTS_PER_VISIT,
+        }));
+        const { error: visitError } = await supabase.from('member_visit_history')
+          .upsert(visitRows, { onConflict: 'receipt_number', ignoreDuplicates: true });
+        if (visitError) console.warn('[Member Sync] visit history write skipped:', visitError.message);
+
         const { data: existingLedger, error: ledgerLookupError } = await supabase
           .from('member_point_transactions')
-          .select('id')
+          .select('notes')
           .eq('user_key', userKey)
-          .eq('notes', marker)
-          .limit(1);
+          .like('notes', 'moka-visit:%');
         if (ledgerLookupError) {
           console.warn('[Member Sync] point ledger lookup skipped:', ledgerLookupError.message);
           return;
         }
-        if (existingLedger?.length) return;
-        const { error: ledgerError } = await supabase.from('member_point_transactions').insert({
-          user_key: userKey,
-          activity: 'Sinkronisasi poin Moka',
-          points: delta,
-          notes: marker,
-        });
+        const knownReceipts = new Set((existingLedger || []).map(row => row.notes));
+        const newLedgerRows = payments
+          .filter(p => !knownReceipts.has(`moka-visit:${p.receiptNumber}`))
+          .map(p => ({
+            user_key: userKey,
+            activity: 'Kunjungan Moka',
+            points: POINTS_PER_VISIT,
+            notes: `moka-visit:${p.receiptNumber}`,
+          }));
+        if (!newLedgerRows.length) return;
+        const { error: ledgerError } = await supabase.from('member_point_transactions').insert(newLedgerRows);
         if (ledgerError) console.warn('[Member Sync] point ledger write skipped:', ledgerError.message);
       };
 
@@ -3131,7 +3169,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
           updated_at: now,
         }).eq('id', existing.id);
         if (profErr) throw new Error(`member_profiles update failed: ${profErr.message}`);
-        await recordPointLedgerDelta(existing.user_key, existing.total_points, nextPoints);
+        await persistVisitHistory(existing.user_key, matchedPayments);
       } else {
         const { data: cust } = await supabase.from('customers')
           .select('name,email,referral_code,membership_status,membership_activated_at,membership_started_at,membership_expires_at')
@@ -3151,7 +3189,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
           total_points: syncedPoints, total_visits: syncedVisits, current_tier: newTier,
         }, { onConflict: 'user_key' });
         if (upsertErr) throw new Error(`member_profiles upsert failed: ${upsertErr.message}`);
-        await recordPointLedgerDelta(userKey, 0, syncedPoints);
+        await persistVisitHistory(userKey, matchedPayments);
       }
 
       const { data: custData } = await supabase.from('customers').select('name').eq('wa', waNorm).maybeSingle();
