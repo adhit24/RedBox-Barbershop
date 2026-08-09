@@ -2863,6 +2863,14 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         startsAt: customer.membership_started_at,
         expiresAt: customer.membership_expires_at,
       });
+      // getMemberPhoneVariants returns [] for an empty/malformed customer_wa,
+      // which used to produce an empty .or('') filter — that breaks the
+      // Supabase query builder chain (observed in production as "TypeError:
+      // ...or(...).catch is not a function", an unhandled rejection inside
+      // this request that could stall it toward Vercel's 60s timeout).
+      // Guard it out entirely: an update with no reliable row filter isn't
+      // safe to run anyway.
+      const phoneFilter = getMemberPhoneVariants(session.customer_wa).map(value => `wa.eq.${value}`).join(',');
       if (profileIsActive) {
         customer.membership_status      = 'ACTIVE';
         customer.membership_activated_at= profile.membership_activated_at ?? null;
@@ -2874,19 +2882,26 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
         // Sync nama dari member_profiles jika customer belum punya nama lengkap
         if (!customer.name && profile.full_name) customer.name = profile.full_name;
         // Persist ke customers agar next login tidak perlu cross-ref lagi
-        supabase.from('customers').update({
-          membership_status:       'ACTIVE',
-          membership_activated_at: profile.membership_activated_at,
-          membership_started_at:   profile.membership_started_at,
-          membership_expires_at:   profile.membership_expires_at,
-        }).or(getMemberPhoneVariants(session.customer_wa).map(value => `wa.eq.${value}`).join(',')).catch(() => {});
+        // (fire-and-forget: .then(ok, err) rather than .catch(), since a
+        // Postgrest query builder is only thenable, not a full Promise —
+        // .catch() isn't guaranteed to exist on it.)
+        if (phoneFilter) {
+          supabase.from('customers').update({
+            membership_status:       'ACTIVE',
+            membership_activated_at: profile.membership_activated_at,
+            membership_started_at:   profile.membership_started_at,
+            membership_expires_at:   profile.membership_expires_at,
+          }).or(phoneFilter).then(() => {}, () => {});
+        }
       } else if (!customerIsActive && customer.membership_status !== 'INACTIVE') {
         customer.membership_status = 'INACTIVE';
         customer.membership_activated_at = null;
-        supabase.from('customers').update({
-          membership_status: 'INACTIVE',
-          membership_activated_at: null,
-        }).or(getMemberPhoneVariants(session.customer_wa).map(value => `wa.eq.${value}`).join(',')).catch(() => {});
+        if (phoneFilter) {
+          supabase.from('customers').update({
+            membership_status: 'INACTIVE',
+            membership_activated_at: null,
+          }).or(phoneFilter).then(() => {}, () => {});
+        }
       }
     }
 
