@@ -13,7 +13,9 @@
  "start": "npm --workspace server run start",
  "dev": "npm --workspace server run dev",
  "dev:frontend": "npm --workspace frontend run dev",
- "dev:all": "concurrently \"npm run dev\" \"npm run dev:frontend\""
+ "dev:all": "concurrently \"npm run dev\" \"npm run dev:frontend\"",
+ "test": "node --test server/test/*.test.js",
+ "build": "npm run test"
  },
  "devDependencies": {
  "concurrently": "^9.0.0"
