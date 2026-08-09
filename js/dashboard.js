@@ -206,6 +206,17 @@ document.addEventListener('DOMContentLoaded', () => {
  return idx >= 0 ? idx : 0;
  }
 
+ const TIER_CARD_IMAGES = {
+ silver: 'Brand_assets/membership_card_silver.png',
+ gold: 'Brand_assets/membership_card_gold.png',
+ platinum: 'Brand_assets/membership_card_platinum.png',
+ };
+ function updatePhysCardImage(tierClass) {
+ const img = document.getElementById('physCardImg');
+ if (!img) return;
+ img.src = TIER_CARD_IMAGES[tierClass] || 'Brand_assets/membership_card.png';
+ }
+
  function fmtDate(iso) {
  const d = new Date(iso);
  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
@@ -317,6 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (ACTIVE ? tier.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = ACTIVE ? `${tier.label} - ${tier.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = ACTIVE ? tier.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
+ updatePhysCardImage(ACTIVE ? tier.class : 'bronze');
 
  const activationBannerTop = document.getElementById('activationBannerTop');
  const physCardWrap = document.getElementById('physCardWrap');
@@ -1155,6 +1167,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
+ updatePhysCardImage(t2Class);
  if (memberStatusBadge) {
  memberStatusBadge.textContent = isACTIVE ? ' Membership Aktif' : 'Membership Belum Aktif';
  memberStatusBadge.className = 'member-status-badge ' + (isACTIVE ? 'active' : 'inactive');
@@ -1232,6 +1245,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (tierBadge) tierBadge.className = 'profile-tier-badge tier-badge-emblem ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
+ updatePhysCardImage(t2Class);
  if (memberStatusBadge) {
  memberStatusBadge.textContent = isACTIVE ? ' Membership Aktif' : 'Membership Belum Aktif';
  memberStatusBadge.className = 'member-status-badge ' + (isACTIVE ? 'active' : 'inactive');
