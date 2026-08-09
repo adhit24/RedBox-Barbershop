@@ -836,6 +836,60 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  // POINTS HISTORY
  // ============================================================
+ function renderBookingsHistory(bookings = []) {
+ const empty = document.getElementById('emptyBookings');
+ const list = document.getElementById('bookingsList');
+ if (!empty || !list) return;
+ const rows = bookings.filter(b => String(b.status || '').toLowerCase() !== 'cancelled');
+ if (!rows.length) {
+ empty.style.display = 'flex';
+ list.style.display = 'none';
+ list.innerHTML = '';
+ return;
+ }
+ empty.style.display = 'none';
+ list.style.display = 'grid';
+ list.innerHTML = rows.map(b => {
+ const date = b.date ? new Date(`${b.date}T${b.time || '00:00:00'}`).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) : '-';
+ const status = String(b.status || 'confirmed').toLowerCase();
+ const statusLabel = status === 'done' || status === 'completed' ? 'Selesai' : status === 'confirmed' ? 'Dikonfirmasi' : status;
+ return `<div class="booking-history-row">
+ <div class="booking-history-date">${esc(date)}</div>
+ <div class="booking-history-main"><strong>${esc(b.service || 'Layanan Redbox')}</strong><span>${esc(b.location || 'Redbox Barbershop')} · ${esc(b.time || '-')}</span></div>
+ <span class="booking-history-status ${esc(status)}">${esc(statusLabel)}</span>
+ </div>`;
+ }).join('');
+ }
+
+ async function loadMemberHistory(token) {
+ if (!token) return;
+ try {
+ const res = await fetch('/api/member/history', { headers: { Authorization: 'Bearer ' + token } });
+ if (!res.ok) return;
+ const payload = await res.json();
+ if (payload.summary) {
+ memberData.visits = Math.max(Number(memberData.visits) || 0, Number(payload.summary.visits) || 0);
+ memberData.points = Math.max(Number(memberData.points) || 0, Number(payload.summary.points) || 0);
+ animateCount(statVisits, memberData.visits, 500);
+ animateCount(statPoints, memberHasActiveAccess() ? memberData.points : 0, 500);
+ }
+ const history = Array.isArray(payload.points) ? payload.points : [];
+ if (history.length) {
+ memberData.pointsHistory = history.map(tx => ({
+ date: new Date(tx.created_at).toLocaleDateString('id-ID'),
+ activity: tx.activity || tx.notes || 'Aktivitas poin',
+ amount: Number(tx.points) || 0,
+ }));
+ }
+ save();
+ renderBookingsHistory(Array.isArray(payload.bookings) ? payload.bookings : []);
+ renderPointsHistory();
+ renderRedeemHistory();
+ } catch (err) {
+ console.warn('[History] Member history load failed:', err.message);
+ }
+ }
+
  function renderPointsHistory() {
  const bal = document.getElementById('pointsBalance');
  const body = document.getElementById('pointsTableBody');
@@ -1064,11 +1118,12 @@ document.addEventListener('DOMContentLoaded', () => {
  if (refCodeEl) refCodeEl.textContent = memberData.referralCode;
  document.querySelectorAll('.gender-btn').forEach(b => b.classList.toggle('active', b.dataset.gender === memberData.gender));
  }
+ await loadMemberHistory(tok);
  }
  } catch (err) {
  console.warn('[Auth] Token validation error:', err.message);
  }
- return; // OTP members skip Supabase direct path
+ return; // OTP members skip Supabase direct profile path
  }
 
  // ── Google/email members: Supabase direct sync ──

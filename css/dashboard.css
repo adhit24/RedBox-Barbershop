@@ -853,6 +853,20 @@ html, body { overflow-x: hidden; max-width: 100vw; }
  border-radius:10px;padding:10px 14px;margin-top:8px;
  font-size:.8rem;color:rgba(147,197,253,.9);line-height:1.55;
 }
+.bookings-list{display:grid;gap:10px}
+.booking-history-row{
+ display:grid;grid-template-columns:86px minmax(0,1fr) auto;align-items:center;gap:12px;
+ padding:14px 16px;background:var(--bg-3);border:1px solid var(--w10);border-radius:12px;
+}
+.booking-history-date{font-size:.76rem;color:var(--w50)}
+.booking-history-main{display:grid;gap:4px;min-width:0}
+.booking-history-main strong{font-size:.86rem;color:var(--white);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.booking-history-main span{font-size:.72rem;color:var(--w40)}
+.booking-history-status{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#4ade80}
+@media(max-width:560px){
+ .booking-history-row{grid-template-columns:1fr auto}
+ .booking-history-date{grid-column:1/-1}
+}
 
 /* ---- Mobile logout button ---- */
 .mobile-logout-wrap{
