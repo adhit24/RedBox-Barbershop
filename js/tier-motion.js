@@ -4,14 +4,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const theme = window.RedboxTierTheme;
   if (!theme || window.RedboxTierTheme.prefersReducedMotion()) return;
 
-  const SHIMMER_KEYFRAMES = { opacity: [0, 1, 0], x: ['-20%', '120%'] };
+  // x percentages on a motion animate() are relative to the element's own
+  // width, so a full left-to-right sweep across the card needs the layer to
+  // start off-screen-left (left:-40%) and travel past off-screen-right
+  // (0% -> 350%, i.e. 100% + 250% = 350% of the layer's own 40%-wide box).
+  const SHIMMER_KEYFRAMES = { opacity: [0, 1, 0], x: ['0%', '350%'] };
   const SHIMMER_OPTS = { duration: 1.1, ease: [0.22, 1, 0.36, 1] };
 
   function addShimmerLayer(card) {
     const layer = document.createElement('div');
     layer.className = 'tier-shimmer-layer';
     Object.assign(layer.style, {
-      position: 'absolute', top: '0', bottom: '0', width: '40%',
+      position: 'absolute', top: '0', bottom: '0', left: '-40%', width: '40%',
       background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.18), transparent)',
       pointerEvents: 'none', opacity: '0',
     });

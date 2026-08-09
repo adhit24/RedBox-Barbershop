@@ -1169,7 +1169,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
  display:flex;align-items:center;gap:14px;justify-content:center;
  position:fixed;left:50%;bottom:20px;transform:translateX(-50%);
  background:var(--bg-2);border:1px solid var(--tier-primary,var(--red));
- border-radius:100px;padding:10px 10px 10px 20px;z-index:950;
+ border-radius:100px;padding:10px 10px 10px 20px;z-index:190;
  box-shadow:0 12px 32px rgba(0,0,0,.5);
 }
 .tier-up-banner span{font-size:.85rem;color:var(--white)}
@@ -1202,7 +1202,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 
 /* ---- Chime mute toggle ---- */
 .chime-mute-toggle{
- position:fixed;right:16px;bottom:16px;z-index:900;
+ position:fixed;right:16px;bottom:90px;z-index:190;
  width:40px;height:40px;border-radius:50%;
  background:var(--bg-3);border:1px solid var(--w10);color:var(--w50);
  display:flex;align-items:center;justify-content:center;cursor:pointer;

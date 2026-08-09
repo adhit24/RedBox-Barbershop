@@ -490,7 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
  // localStorage data, followed by the real value after async OTP/Supabase sync
  // resolves) can't each be treated as "the first time ever" and falsely fire
  // the banner off a stale/default tier.
- let hadStoredTierOnLoad = localStorage.getItem('redbox_last_seen_tier') !== null;
+ const hadStoredTierOnLoad = localStorage.getItem('redbox_last_seen_tier') !== null;
 
  function maybeShowTierUpBanner(newTierClass) {
  if (!newTierClass) return;
@@ -525,11 +525,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
  function revealTierUp(tierClass) {
  const overlay = document.getElementById('tierUpOverlay');
- const emblem = document.getElementById('tierUpEmblem');
  const text = document.getElementById('tierUpText');
  if (text) text.textContent = `Selamat! Kamu sekarang member ${tierClass.charAt(0).toUpperCase() + tierClass.slice(1)}.`;
  if (overlay) overlay.style.display = 'flex';
- if (window.confetti) {
+ if (window.confetti && !window.RedboxTierTheme.prefersReducedMotion()) {
  window.confetti({ particleCount: 90, spread: 100, origin: { y: 0.5 }, colors: window.RedboxTierTheme.getTierTokens(tierClass).confettiColors, startVelocity: 45 });
  }
  localStorage.setItem('redbox_last_seen_tier', tierClass);
@@ -544,11 +543,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
  const muteBtn = document.getElementById('chimeMuteToggle');
  if (muteBtn) {
- muteBtn.classList.toggle('muted', window.RedboxTierTheme.isChimeMuted());
+ const syncMuteBtnState = (muted) => {
+ muteBtn.classList.toggle('muted', muted);
+ muteBtn.setAttribute('aria-pressed', String(muted));
+ muteBtn.setAttribute('aria-label', muted ? 'Aktifkan efek suara tier' : 'Bisukan efek suara tier');
+ };
+ syncMuteBtnState(window.RedboxTierTheme.isChimeMuted());
  muteBtn.addEventListener('click', () => {
  const nowMuted = !window.RedboxTierTheme.isChimeMuted();
  window.RedboxTierTheme.setChimeMuted(nowMuted);
- muteBtn.classList.toggle('muted', nowMuted);
+ syncMuteBtnState(nowMuted);
  });
  }
 
