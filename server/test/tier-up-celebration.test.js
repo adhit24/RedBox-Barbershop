@@ -42,6 +42,24 @@ test('dashboard.js fires confetti with tier-specific colors on reveal', () => {
   assert.match(js, /getTierTokens\([^)]*\)\.confettiColors/);
 });
 
+test('dashboard.js does not fire confetti under prefers-reduced-motion', () => {
+  const js = source('js/dashboard.js');
+  assert.match(js, /if \(window\.confetti && !window\.RedboxTierTheme\.prefersReducedMotion\(\)\)/);
+});
+
+test('the chime mute toggle exposes its state to assistive tech', () => {
+  const html = source('member-dashboard.html');
+  const js = source('js/dashboard.js');
+  assert.match(html, /id="chimeMuteToggle"[^>]*aria-pressed="false"/);
+  assert.match(js, /muteBtn\.setAttribute\('aria-pressed'/);
+  assert.match(js, /muteBtn\.setAttribute\('aria-label'/);
+});
+
+test('revealTierUp does not reference an unused emblem variable', () => {
+  const js = source('js/dashboard.js');
+  assert.doesNotMatch(js, /const emblem = document\.getElementById\('tierUpEmblem'\)/);
+});
+
 test('dashboard.js suppresses the tier-up banner across multiple calls within the same page load', () => {
   // Regression test for: maybeShowTierUpBanner can be invoked more than once per page
   // load (an early call with cached/stale localStorage data, then again after the async
@@ -52,8 +70,9 @@ test('dashboard.js suppresses the tier-up banner across multiple calls within th
   const js = source('js/dashboard.js');
 
   // hadStoredTierOnLoad must be captured once from localStorage, before any call to
-  // maybeShowTierUpBanner can mutate redbox_last_seen_tier.
-  assert.match(js, /let\s+hadStoredTierOnLoad\s*=\s*localStorage\.getItem\(['"]redbox_last_seen_tier['"]\)\s*!==\s*null/);
+  // maybeShowTierUpBanner can mutate redbox_last_seen_tier. It's a `const` — the value
+  // is a page-load-scoped snapshot and must never be reassigned after capture.
+  assert.match(js, /const\s+hadStoredTierOnLoad\s*=\s*localStorage\.getItem\(['"]redbox_last_seen_tier['"]\)\s*!==\s*null/);
 
   const hadStoredIdx = js.indexOf('hadStoredTierOnLoad');
   const fnIdx = js.indexOf('function maybeShowTierUpBanner');

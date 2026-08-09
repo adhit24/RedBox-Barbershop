@@ -10,7 +10,8 @@ const source = (rel) => fs.readFileSync(path.join(workspace, rel), 'utf8');
 
 test('tier-motion.js reads tiltMaxDeg from the shared token registry', () => {
   const js = source('js/tier-motion.js');
-  assert.match(js, /getTierTokens\([^)]*\)\.tiltMaxDeg/);
+  assert.match(js, /theme\.getTierTokens\(tierClass\)/);
+  assert.match(js, /tokens\.tiltMaxDeg/);
 });
 
 test('tier-motion.js only attaches pointer tracking when tiltMaxDeg > 0', () => {
