@@ -1,0 +1,71 @@
+/* ================================================
+   TIER TOKENS - shared across membership.html and
+   member-dashboard.html. Values must match
+   js/tier-theme.js TOKENS for JS-driven effects
+   (confetti, chime) to stay visually consistent.
+   ================================================ */
+
+/* ---- Dashboard scope: <body data-tier="..."> ---- */
+[data-tier="bronze"] {
+  --tier-primary: #CD7F32;
+  --tier-primary-soft: rgba(205,127,50,.15);
+  --tier-glow: rgba(205,127,50,.5);
+  --tier-gradient: linear-gradient(135deg, #CD7F32, #8C5A24);
+}
+[data-tier="silver"] {
+  --tier-primary: #C0C0C0;
+  --tier-primary-soft: rgba(192,192,192,.15);
+  --tier-glow: rgba(192,192,192,.5);
+  --tier-gradient: linear-gradient(135deg, #C0C0C0, #9CA3AF);
+}
+[data-tier="gold"] {
+  --tier-primary: #FFD700;
+  --tier-primary-soft: rgba(255,215,0,.15);
+  --tier-glow: rgba(255,215,0,.5);
+  --tier-gradient: linear-gradient(135deg, #FFD700, #B45309);
+}
+[data-tier="platinum"] {
+  --tier-primary: #C4B5FD;
+  --tier-primary-soft: rgba(196,181,253,.15);
+  --tier-glow: rgba(196,181,253,.5);
+  --tier-gradient: linear-gradient(90deg, #C4B5FD, #E2E8F0, #C4B5FD);
+}
+
+/* ---- Marketing scope: membership.html .ms-tier.tier-x cards ----
+   Relocated from membership.html's inline <style> unchanged, so the
+   existing .ms-tier markup keeps working without restructuring. */
+.tier-silver .tier-header { background: linear-gradient(160deg, #1A1F29 0%, #111520 100%); }
+.tier-silver .tier-icon { background: rgba(156,163,175,.12); }
+.tier-silver .tier-name { color: #9CA3AF; }
+.tier-silver .tier-discount { color: #9CA3AF; }
+
+.tier-gold .tier-header { background: linear-gradient(160deg, #1C1000 0%, #140B00 100%); }
+.tier-gold .tier-icon { background: rgba(251,191,36,.15); }
+.tier-gold .tier-name { color: #FBBF24; }
+.tier-gold .tier-discount { color: #FBBF24; }
+
+.tier-platinum .tier-header {
+  background: linear-gradient(160deg, #0F1520 0%, #080D17 100%);
+  position: relative;
+  overflow: hidden;
+}
+.tier-platinum .tier-header::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 40%, rgba(196,181,253,.06) 100%);
+  pointer-events: none;
+}
+.tier-platinum .tier-icon { background: rgba(196,181,253,.1); }
+.tier-platinum .tier-name {
+  background: linear-gradient(90deg, #C4B5FD, #E2E8F0, #C4B5FD);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.tier-platinum .tier-discount {
+  background: linear-gradient(90deg, #C4B5FD, #E2E8F0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
