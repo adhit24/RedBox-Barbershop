@@ -84,6 +84,7 @@
   85%  { opacity: 1; }
   100% { transform: translateY(-60px) translateX(var(--particle-drift-x, 6px)); opacity: 0; }
 }
+/* Intentional exception to transform/opacity-only: background-position shift on one decorative Platinum element, accepted low-cost repaint. */
 @keyframes tierGradientShift {
   0%   { background-position: 0% 50%; }
   100% { background-position: 200% 50%; }
@@ -122,7 +123,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tier-badge-emblem,
-  .tier-particle,
+  [data-tier="gold"] .tier-particle,
+  [data-tier="platinum"] .tier-particle,
   [data-tier="platinum"] .phys-card-inner {
     animation: none;
   }

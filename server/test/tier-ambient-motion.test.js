@@ -16,12 +16,15 @@ test('ambient tier animations are defined and gated by reduced-motion', () => {
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
 });
 
-test('reduced-motion block disables all three tier keyframe animations', () => {
+test('reduced-motion block disables all three tier keyframe animations with proper specificity', () => {
   const css = source('css/tier-tokens.css');
   const reducedBlockMatch = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*{([\s\S]*?)}\s*}/);
   assert.ok(reducedBlockMatch, 'expected a reduced-motion block');
   const block = reducedBlockMatch[1];
   assert.match(block, /animation:\s*none/);
+  // Verify the block includes specificity-matched selectors for particles to override animated rules
+  assert.match(block, /\[data-tier="gold"\]\s*\.tier-particle/, 'reduced-motion must override gold particles with [data-tier="gold"] selector');
+  assert.match(block, /\[data-tier="platinum"\]\s*\.tier-particle/, 'reduced-motion must override platinum particles with [data-tier="platinum"] selector');
 });
 
 test('only gold and platinum get the particle-drift animation', () => {
