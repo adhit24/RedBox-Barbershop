@@ -133,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
  membership_activated_at: null,
  membership_started_at: null,
  membership_expires_at: null,
+ lastVisit: null,
  pointsHistory: []
  };
 
@@ -836,14 +837,15 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  // POINTS HISTORY
  // ============================================================
- function renderBookingsHistory(bookings = []) {
+ function renderBookingsHistory(bookings = [], summary = {}) {
  const empty = document.getElementById('emptyBookings');
  const list = document.getElementById('bookingsList');
  const count = document.getElementById('historyVisitCount');
  const lastVisit = document.getElementById('historyLastVisit');
  if (!empty || !list) return;
  const rows = bookings.filter(b => String(b.status || '').toLowerCase() !== 'cancelled');
- if (count) count.textContent = rows.length;
+ const totalVisits = Number(summary.visits) || rows.reduce((total, row) => total + (Number(row.visit_count) || 1), 0);
+ if (count) count.textContent = totalVisits;
  if (lastVisit) {
  const latest = rows.find(b => b.date);
  lastVisit.textContent = latest
@@ -863,10 +865,11 @@ document.addEventListener('DOMContentLoaded', () => {
  const status = String(b.status || 'confirmed').toLowerCase();
  const statusLabel = status === 'done' || status === 'completed' ? 'Selesai' : status === 'confirmed' ? 'Dikonfirmasi' : status;
  const price = Number(b.price) > 0 ? `Rp ${Number(b.price).toLocaleString('id-ID')}` : 'Member visit';
+ const visitSummary = Number(b.visit_count) > 1 ? `${Number(b.visit_count).toLocaleString('id-ID')} kunjungan historis` : '';
  return `<article class="booking-history-row">
  <div class="booking-history-icon" aria-hidden="true"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M7 3v3m10-3v3M4.5 9.5h15M6 5h12a2 2 0 0 1 2 2v11.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
  <div class="booking-history-date"><strong>${esc(date.split(' ')[0])}</strong><span>${esc(date.split(' ').slice(1).join(' '))}</span></div>
- <div class="booking-history-main"><strong>${esc(b.service || 'Layanan Redbox')}</strong><span>${esc(b.location || 'Redbox Barbershop')} · ${esc(b.time || 'Riwayat tersimpan')}</span></div>
+ <div class="booking-history-main"><strong>${esc(b.service || 'Layanan Redbox')}</strong><span>${esc(visitSummary || b.location || 'RedBox Barbershop')} · ${esc(b.time || 'Riwayat tersimpan')}</span></div>
  <div class="booking-history-side"><strong>${esc(price)}</strong><span class="booking-history-status ${esc(status)}">${esc(statusLabel)}</span></div>
  </div>`;
  }).join('');
@@ -874,6 +877,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
  async function loadMemberHistory(token) {
  if (!token) return;
+ const renderAggregateFallback = () => {
+ const fallbackBookings = Number(memberData.visits) > 0 && (memberData.lastVisit || memberData.joinDate)
+ ? [{ date: memberData.lastVisit || memberData.joinDate, status: 'done', service: 'Kunjungan tercatat dari RedBox', location: 'Riwayat legacy Moka', visit_count: Number(memberData.visits) }]
+ : [];
+ if (!memberData.pointsHistory?.length && Number(memberData.points) > 0) {
+ memberData.pointsHistory = [{ date: memberData.lastVisit || memberData.joinDate, activity: 'Saldo poin tersinkronisasi', amount: Number(memberData.points) }];
+ }
+ renderBookingsHistory(fallbackBookings, { visits: Number(memberData.visits) || 0 });
+ renderPointsHistory();
+ };
+ renderAggregateFallback();
  try {
  const res = await fetch('/api/member/history', { headers: { Authorization: 'Bearer ' + token } });
  if (!res.ok) return;
@@ -893,7 +907,12 @@ document.addEventListener('DOMContentLoaded', () => {
  }));
  }
  save();
- renderBookingsHistory(Array.isArray(payload.bookings) ? payload.bookings : []);
+ const serverBookings = Array.isArray(payload.bookings) ? payload.bookings : [];
+ if (serverBookings.length || !(Number(payload.summary?.visits) > 0)) {
+ renderBookingsHistory(serverBookings, payload.summary || {});
+ } else {
+ renderAggregateFallback();
+ }
  renderPointsHistory();
  renderRedeemHistory();
  } catch (err) {
@@ -1090,6 +1109,7 @@ document.addEventListener('DOMContentLoaded', () => {
  memberData.membership_activated_at = c.membership_activated_at || null;
  memberData.membership_started_at = c.membership_started_at ?? null;
  memberData.membership_expires_at = c.membership_expires_at ?? null;
+ memberData.lastVisit = c.last_visit || memberData.lastVisit || null;
  refreshMembershipAccess();
  // first_visit = tanggal transaksi Moka paling awal - sumber kebenaran "Bergabung sejak"
  if (c.first_visit) memberData.joinDate = c.first_visit;

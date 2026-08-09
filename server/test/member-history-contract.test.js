@@ -20,13 +20,15 @@ test('authenticated member history endpoint reads bookings and point transaction
 
 test('dashboard renders server-provided visit history and loads it for OTP members', () => {
   const dashboard = read('js/dashboard.js');
-  assert.match(dashboard, /function renderBookingsHistory\(bookings = \[\]\)/);
+  assert.match(dashboard, /function renderBookingsHistory\(bookings = \[\], summary = \{\}\)/);
   assert.match(dashboard, /fetch\('\/api\/member\/history'/);
   assert.match(dashboard, /await loadMemberHistory\(tok\)/);
   assert.match(dashboard, /bookingsList/);
   assert.match(dashboard, /historyVisitCount/);
   assert.match(dashboard, /booking-history-icon/);
   assert.match(dashboard, /esc\(e\.activity\)/);
+  assert.match(dashboard, /renderAggregateFallback/);
+  assert.match(dashboard, /visit_count/);
 });
 
 test('dashboard does not expose a fake password-change control for OTP accounts', () => {
