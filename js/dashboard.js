@@ -481,11 +481,20 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  // TIER-UP CELEBRATION
  // ============================================================
+ // Captured once, before any sync path can call maybeShowTierUpBanner, so that
+ // multiple calls within the SAME page load (e.g. an early render from cached
+ // localStorage data, followed by the real value after async OTP/Supabase sync
+ // resolves) can't each be treated as "the first time ever" and falsely fire
+ // the banner off a stale/default tier.
+ let hadStoredTierOnLoad = localStorage.getItem('redbox_last_seen_tier') !== null;
+
  function maybeShowTierUpBanner(newTierClass) {
  if (!newTierClass) return;
  const lastSeen = localStorage.getItem('redbox_last_seen_tier');
- if (lastSeen === null) {
- // First time we've ever recorded a tier for this browser: don't celebrate, just remember it.
+ if (lastSeen === null || !hadStoredTierOnLoad) {
+ // First time we've ever recorded a tier for this browser (or the very first
+ // call of this page load before any real value existed): don't celebrate,
+ // just remember it.
  localStorage.setItem('redbox_last_seen_tier', newTierClass);
  return;
  }
