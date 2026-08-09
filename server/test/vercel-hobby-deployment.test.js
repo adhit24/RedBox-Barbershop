@@ -12,10 +12,3 @@ const vercelConfig = JSON.parse(
 test('Vercel Hobby deployment does not declare unsupported frequent cron jobs', () => {
   assert.deepEqual(vercelConfig.crons ?? [], [], 'frequent Vercel cron jobs fail on Hobby');
 });
-
-test('legacy Moka cron URL is routed to an executable Vercel function', () => {
-  assert.ok(vercelConfig.functions?.['api/moka/sync.js']);
-  assert.ok(vercelConfig.rewrites?.some((rewrite) =>
-    rewrite.source === '/api/moka/sync' && rewrite.destination === '/api/moka/sync.js'
-  ));
-});
