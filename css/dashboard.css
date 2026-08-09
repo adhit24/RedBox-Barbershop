@@ -69,7 +69,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 }
 .profile-tier-badge.silver{background:rgba(192,192,192,.15);color:#C0C0C0;border-color:rgba(192,192,192,.3)}
 .profile-tier-badge.gold{background:rgba(255,215,0,.15);color:#FFD700;border-color:rgba(255,215,0,.3)}
-.profile-tier-badge.platinum{background:rgba(185,242,255,.15);color:#B9F2FF;border-color:rgba(185,242,255,.3)}
+.profile-tier-badge.platinum{background:rgba(196,181,253,.15);color:#C4B5FD;border-color:rgba(196,181,253,.3)}
 
 /* Stats */
 .profile-stats{display:flex;gap:12px}
@@ -388,8 +388,8 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .tier-silver:hover{border-color:rgba(192,192,192,.5);box-shadow:0 8px 24px rgba(192,192,192,.1)}
 .tier-gold{border-color:rgba(255,215,0,.2)}
 .tier-gold:hover{border-color:rgba(255,215,0,.5);box-shadow:0 8px 24px rgba(255,215,0,.1)}
-.tier-platinum{border-color:rgba(185,242,255,.2)}
-.tier-platinum:hover{border-color:rgba(185,242,255,.5);box-shadow:0 8px 24px rgba(185,242,255,.1)}
+.tier-platinum{border-color:rgba(196,181,253,.2)}
+.tier-platinum:hover{border-color:rgba(196,181,253,.5);box-shadow:0 8px 24px rgba(196,181,253,.1)}
 
 /* ---- Referral Tab ---- */
 .referral-card{
@@ -702,7 +702,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .reward-card.tier-bronze.unlocked{border-color:rgba(205,127,50,.25)}
 .reward-card.tier-silver.unlocked{border-color:rgba(192,192,192,.2)}
 .reward-card.tier-gold.unlocked{border-color:rgba(255,215,0,.2)}
-.reward-card.tier-platinum.unlocked{border-color:rgba(185,242,255,.2)}
+.reward-card.tier-platinum.unlocked{border-color:rgba(196,181,253,.2)}
 
 /* ============================================================
  ACTIVATION MODAL
@@ -942,7 +942,7 @@ html, body { overflow-x: hidden; max-width: 100vw; }
 .upsell-banner.tier-bronze { background: linear-gradient(135deg, #1a1008 0%, #0d0a06 100%); border: 1px solid rgba(205,127,50,0.25); }
 .upsell-banner.tier-silver { background: linear-gradient(135deg, #111418 0%, #0a0c10 100%); border: 1px solid rgba(192,192,192,0.20); }
 .upsell-banner.tier-gold { background: linear-gradient(135deg, #12100a 0%, #0a0905 100%); border: 1px solid rgba(255,215,0,0.22); }
-.upsell-banner.tier-platinum { background: linear-gradient(135deg, #0d0818 0%, #070510 100%); border: 1px solid rgba(185,242,255,0.18); }
+.upsell-banner.tier-platinum { background: linear-gradient(135deg, #0d0818 0%, #070510 100%); border: 1px solid rgba(196,181,253,0.18); }
 .ub-left { display: flex; align-items: flex-start; gap: 14px; flex: 1; min-width: 0; }
 .ub-icon svg { flex-shrink: 0; }
 .ub-text { min-width: 0; }

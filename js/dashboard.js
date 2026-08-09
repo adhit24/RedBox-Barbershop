@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
  { name:'Bronze', min:0, max:499, class:'bronze', color:'#CD7F32', glow:'rgba(205,127,50,.5)', label:'Level 1' },
  { name:'Silver', min:500, max:1499, class:'silver', color:'#C0C0C0', glow:'rgba(192,192,192,.5)', label:'Level 2' },
  { name:'Gold', min:1500, max:2999, class:'gold', color:'#FFD700', glow:'rgba(255,215,0,.5)', label:'Level 3' },
- { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#B9F2FF', glow:'rgba(185,242,255,.5)', label:'Level 4' }
+ { name:'Platinum', min:3000, max:Infinity, class:'platinum', color:'#C4B5FD', glow:'rgba(196,181,253,.5)', label:'Level 4' }
  ];
 
  const REWARDS = [
@@ -242,6 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
  const tierBadgeText = document.getElementById('tierBadgeText');
 
  const tier = getDisplayTier(displayPoints);
+ window.RedboxTierTheme.applyTierTheme(ACTIVE ? tier.class : 'bronze');
 
  // ============================================================
  // SMART UPSELL BANNER
@@ -258,14 +259,14 @@ document.addEventListener('DOMContentLoaded', () => {
  const cfg = configs[tier.class] || configs.silver;
 
  // Tier accent colors for progress bar
- const progressColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#B9F2FF' };
+ const progressColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#C4B5FD' };
  const accentColor = progressColors[tier.class] || '#c1121f';
 
  // Tier SVG icons (24×24 stroke)
  const tierIcons = {
  silver: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
  gold: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
- platinum: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B9F2FF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z"/><polyline points="2 8 12 14 22 8"/><line x1="12" y1="14" x2="12" y2="20"/></svg>`,
+ platinum: `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C4B5FD" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-6 10 6v8l-10 6L2 16V8z"/><polyline points="2 8 12 14 22 8"/><line x1="12" y1="14" x2="12" y2="20"/></svg>`,
  };
 
  // Inject content
@@ -399,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
  if (!container) return;
 
  const tierNames = ['Bronze','Silver','Gold','Platinum'];
- const tierColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#B9F2FF' };
+ const tierColors = { bronze:'#CD7F32', silver:'#C0C0C0', gold:'#FFD700', platinum:'#C4B5FD' };
  const userTierIdx = tier.level - 1;
 
  let html = `<h3 class="benefit-tracker-title">Benefit Kamu</h3>`;
@@ -940,6 +941,7 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
+ window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
  if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
@@ -1009,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', () => {
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
  const t2 = getDisplayTier(pts);
+ window.RedboxTierTheme.applyTierTheme(isACTIVE ? t2.class : 'bronze');
  if (tierBadge) tierBadge.className = 'profile-tier-badge ' + (isACTIVE ? t2.class : 'inactive');
  if (tierBadgeText) tierBadgeText.textContent = isACTIVE ? `${t2.label} - ${t2.name}` : 'Membership Belum Aktif';
  if (cardTier) cardTier.textContent = isACTIVE ? t2.name.toUpperCase() + ' MEMBER' : 'INACTIVE';
