@@ -2944,8 +2944,33 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       pointRows = data || [];
     }
 
+    let visitHistoryRows = [];
+    if (profile?.user_key) {
+      const { data, error } = await supabase.from('member_visit_history')
+        .select('id,receipt_number,outlet_slug,visit_date,visit_time,service_summary,amount,created_at')
+        .eq('user_key', profile.user_key)
+        .order('visit_date', { ascending: false })
+        .limit(100);
+      if (error) return res.status(500).json({ error: `Riwayat kunjungan gagal dimuat: ${error.message}` });
+      visitHistoryRows = data || [];
+    }
+    const mappedVisitHistory = visitHistoryRows.map(row => ({
+      id: `moka-visit-${row.receipt_number}`,
+      date: row.visit_date,
+      time: row.visit_time,
+      status: 'done',
+      service: row.service_summary || 'Kunjungan Moka',
+      price: Number(row.amount) || 0,
+      location: row.outlet_slug || 'RedBox Barbershop',
+    }));
+
     const customer = await getMergedMemberCustomer(session.customer_wa);
-    let historyBookings = bookings || [];
+    let historyBookings = [...(bookings || []), ...mappedVisitHistory]
+      .sort((a, b) => {
+        const dateCompare = String(b.date || '').localeCompare(String(a.date || ''));
+        return dateCompare !== 0 ? dateCompare : String(b.time || '').localeCompare(String(a.time || ''));
+      })
+      .slice(0, 100);
     // Legacy Moka visits are stored as aggregates, not always as booking rows.
     // Keep that history visible instead of showing a misleading empty state.
     if (!historyBookings.length && customer?.last_visit && Number(customer.visits) > 0) {
