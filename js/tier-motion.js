@@ -73,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const px = (e.clientX - rect.left) / rect.width - 0.5;
           const py = (e.clientY - rect.top) / rect.height - 0.5;
           animate(physCard, {
+            rotateZ: -4,
             rotateY: px * tokens.tiltMaxDeg,
             rotateX: -py * tokens.tiltMaxDeg,
           }, { duration: 0.4, ease: 'ease-out' });
@@ -81,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
           physCard.style.setProperty('--sheen-pos', `${sheenX}% ${sheenY}%`);
         });
         wrap.addEventListener('pointerleave', () => {
-          animate(physCard, { rotateY: 0, rotateX: 0 }, { duration: 0.5, ease: 'ease-out' });
+          animate(physCard, { rotateZ: -4, rotateY: 0, rotateX: 0 }, { duration: 0.5, ease: 'ease-out' });
         });
       }
     }
