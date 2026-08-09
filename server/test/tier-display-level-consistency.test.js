@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const workspace = path.join(__dirname, '..', '..');
+const workspace = path.join(__dirname, '..', '..', 'public');
 const source = (rel) => fs.readFileSync(path.join(workspace, rel), 'utf8');
 
 test('getDisplayTier always attaches a level, even for a configured (non-computed) tier', () => {

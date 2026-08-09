@@ -19,7 +19,7 @@ test('authenticated member history endpoint reads bookings and point transaction
 });
 
 test('dashboard renders server-provided visit history and loads it for OTP members', () => {
-  const dashboard = read('js/dashboard.js');
+  const dashboard = read('public/js/dashboard.js');
   assert.match(dashboard, /function renderBookingsHistory\(bookings = \[\], summary = \{\}\)/);
   assert.match(dashboard, /fetch\('\/api\/member\/history'/);
   assert.match(dashboard, /await loadMemberHistory\(tok\)/);
@@ -33,7 +33,7 @@ test('dashboard renders server-provided visit history and loads it for OTP membe
 });
 
 test('Google/email members also get the aggregate history fallback, not just OTP members', () => {
-  const dashboard = read('js/dashboard.js');
+  const dashboard = read('public/js/dashboard.js');
   // The shared fallback function must be defined once and reused by both
   // sync paths, not duplicated — regression guard for the bug where
   // Google/email-login members saw permanently empty Riwayat
@@ -54,7 +54,7 @@ test('Google/email members also get the aggregate history fallback, not just OTP
 });
 
 test('dashboard does not expose a fake password-change control for OTP accounts', () => {
-  const html = read('member-dashboard.html');
+  const html = read('public/member-dashboard.html');
   assert.match(html, /Akun member menggunakan OTP WhatsApp dan tidak memakai password/);
   assert.doesNotMatch(html, /id="changePasswordBtn"/);
 });

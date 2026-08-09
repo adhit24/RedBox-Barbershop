@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const root = path.join(__dirname, '..', '..');
+const root = path.join(__dirname, '..', '..', 'public');
 const registrationPagePath = path.join(root, 'member-register.html');
 const membershipPagePath = path.join(root, 'membership.html');
 

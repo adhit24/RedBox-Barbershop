@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const workspace = path.join(__dirname, '..', '..');
+const workspace = path.join(__dirname, '..', '..', 'public');
 const source = (rel) => fs.readFileSync(path.join(workspace, rel), 'utf8');
 
 test('tier-tokens.css defines dashboard (data-tier) scope for all four tiers', () => {

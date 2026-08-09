@@ -12,8 +12,8 @@ function source(relativePath) {
 }
 
 test('legacy CRM activation uses the authenticated atomic API with paid-tier audit fields', () => {
-  const crm = source(path.join('js', 'crm.js'));
-  const html = source('crm.html');
+  const crm = source(path.join('public', 'js', 'crm.js'));
+  const html = source(path.join('public', 'crm.html'));
 
   assert.match(crm, /API_URL}\/admin\/crm\/membership\/activate/);
   assert.match(crm, /paymentReference/);

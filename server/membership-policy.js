@@ -1,6 +1,6 @@
 'use strict';
 
-const { isActiveMembership: isActiveMembershipRecord } = require('../js/membership-access');
+const { isActiveMembership: isActiveMembershipRecord } = require('../public/js/membership-access');
 
 const MEMBERSHIP_TIERS = new Set(['bronze', 'silver', 'gold', 'platinum']);
 

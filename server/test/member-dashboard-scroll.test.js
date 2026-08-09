@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const css = fs.readFileSync(path.join(__dirname, '..', '..', 'css', 'dashboard.css'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'dashboard.css'), 'utf8');
 
 test('activation modal provides its own mobile scroll area', () => {
   const modal = css.match(/\.activation-modal\{([^}]*)\}/)?.[1] || '';

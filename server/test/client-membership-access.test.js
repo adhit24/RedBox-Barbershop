@@ -5,14 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const workspace = path.join(__dirname, '..', '..');
+const workspace = path.join(__dirname, '..', '..', 'public');
 
 function source(relativePath) {
   return fs.readFileSync(path.join(workspace, relativePath), 'utf8');
 }
 
 test('paid membership access requires an expiry later than now', () => {
-  const { isActiveMembership } = require('../../js/membership-access');
+  const { isActiveMembership } = require('../../public/js/membership-access');
   const now = '2026-08-08T10:00:00.000Z';
 
   assert.equal(isActiveMembership({
@@ -33,7 +33,7 @@ test('paid membership access requires an expiry later than now', () => {
 });
 
 test('grandfathered active legacy members remain compatible without paid period fields', () => {
-  const { isActiveMembership } = require('../../js/membership-access');
+  const { isActiveMembership } = require('../../public/js/membership-access');
 
   assert.equal(isActiveMembership({ membership_status: 'ACTIVE' }, '2026-08-08T10:00:00.000Z'), true);
   assert.equal(isActiveMembership({ membership_status: 'INACTIVE' }, '2026-08-08T10:00:00.000Z'), false);

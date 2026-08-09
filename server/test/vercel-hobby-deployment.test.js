@@ -13,29 +13,32 @@ test('Vercel Hobby deployment does not declare unsupported frequent cron jobs', 
   assert.deepEqual(vercelConfig.crons ?? [], [], 'frequent Vercel cron jobs fail on Hobby');
 });
 
-test('outputDirectory stays "." so the static root deploys without a public/ folder', () => {
-  // Removing this outright breaks every deploy, not just the API catch-all:
-  // this repo serves static HTML from the repo root, and without this
-  // override Vercel's project settings look for a public/ folder that
-  // doesn't exist here ("No Output Directory named 'public' found" --
-  // confirmed live in a failed deployment).
-  assert.equal(vercelConfig.outputDirectory, '.');
+test('static assets live under public/ so no outputDirectory override is needed', () => {
+  // Tonight's outage traced to outputDirectory: "." -- with the repo root
+  // (including the api/ folder's own source) copied into static output,
+  // a Vercel Function reached only via a rewrite (any rewrite, wildcard or
+  // exact-match, to any filename, dynamic-route-named or plain) got
+  // shadowed by its own static copy: GET returned raw source, POST 405'd
+  // (all confirmed live, repeatedly, across five different rewrite/naming
+  // combinations). Moving the static site into public/ removes api/ from
+  // the static output entirely, so there's nothing left to collide with --
+  // and it's what Vercel's zero-config "Other" framework expects by
+  // default (the earlier failed attempt to just delete outputDirectory
+  // without a public/ folder broke the whole deploy: "No Output Directory
+  // named 'public' found").
+  assert.equal(vercelConfig.outputDirectory, undefined);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'public', 'index.html')), true);
+  assert.equal(fs.existsSync(path.join(__dirname, '..', '..', 'index.html')), false);
 });
 
-test('the express catch-all function is not a Vercel dynamic route file', () => {
-  // outputDirectory: "." copies every source file (including the api
-  // catch-all's own) into static output. For a plain-named function file,
-  // Vercel's Function routing still wins over that static copy. But for a
-  // file using Vercel's [...bracket] dynamic-route syntax, a rewrite whose
-  // destination is that literal bracketed path does not resolve against
-  // the function's wildcard route -- it falls through to the static copy
-  // instead, so the catch-all gets served as raw source (405 on POST,
-  // confirmed live) rather than executed. Keep the catch-all as a
-  // plain-named file (api/index.js) forwarding req/res to Express, which
-  // does its own internal routing and never needed the dynamic segment.
+test('the express catch-all stays a genuine Vercel dynamic route file', () => {
+  // With api/ no longer inside the static output tree, api/[...path].js's
+  // [...bracket] dynamic-route syntax is what makes it reachable at any
+  // /api/* path via Vercel's own zero-config routing -- no rewrite needed
+  // or wanted for it.
   const functionFiles = Object.keys(vercelConfig.functions ?? {});
-  assert.equal(functionFiles.some((file) => file.includes('[')), false);
+  assert.equal(functionFiles.includes('api/[...path].js'), true);
   assert.equal(vercelConfig.rewrites?.some((rewrite) =>
-    rewrite.source === '/api/(.*)' && !rewrite.destination.includes('[')
-  ), true);
+    rewrite.source === '/api/(.*)'
+  ), false);
 });

@@ -5,9 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
-const html = fs.readFileSync(path.join(__dirname, '..', '..', 'member-dashboard.html'), 'utf8');
-const js = fs.readFileSync(path.join(__dirname, '..', '..', 'js', 'dashboard.js'), 'utf8');
-const mainJs = fs.readFileSync(path.join(__dirname, '..', '..', 'js', 'main.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'member-dashboard.html'), 'utf8');
+const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'dashboard.js'), 'utf8');
+const mainJs = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
 
 test('member dashboard hamburger is an accessible button wired before dashboard data loading', () => {
   assert.match(html, /<button[^>]+type="button"[^>]+id="hamburger"/);

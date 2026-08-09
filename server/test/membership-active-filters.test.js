@@ -18,7 +18,7 @@ test('active-member benefit and sync filters allow only unexpired paid or undate
 });
 
 test('legacy dashboard keeps points visible and permits base reward redemption without paid tier access', () => {
-  const dashboard = source(path.join('..', 'js', 'dashboard.js'));
+  const dashboard = source(path.join('..', 'public', 'js', 'dashboard.js'));
   assert.match(dashboard, /let point_system = true/);
   assert.match(dashboard, /const unlocked = rTierIdx === 0 \|\| \(ACTIVE && userTierIdx >= rTierIdx\)/);
   assert.match(dashboard, /const history = memberData\.pointsHistory \|\| \[\]/);

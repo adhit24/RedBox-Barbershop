@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { TIER_ORDER, TOKENS, getTierIndex, getTierTokens, getParticleCount } =
-  require('../../js/tier-theme');
+  require('../../public/js/tier-theme');
 
 test('TIER_ORDER lists all four tiers low to high', () => {
   assert.deepEqual(TIER_ORDER, ['bronze', 'silver', 'gold', 'platinum']);

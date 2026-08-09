@@ -4,11 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const dashboardScript = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'js', 'dashboard.js'),
+  path.join(__dirname, '..', '..', 'public', 'js', 'dashboard.js'),
   'utf8',
 );
 const dashboardPage = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'member-dashboard.html'),
+  path.join(__dirname, '..', '..', 'public', 'member-dashboard.html'),
   'utf8',
 );
 
