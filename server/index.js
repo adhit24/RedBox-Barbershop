@@ -1129,13 +1129,24 @@ const WEDDING_PACKAGE_PRICES = {
   'wedding-platinum': 1000000,
 };
 
+// Shared by normalizeBookingPrice (which prices a booking as a wedding
+// package whenever the service text mentions "wedding"/"weeding", not just
+// when type === 'wedding') and the tier-discount eligibility gate below —
+// they must agree, or a mismatched type/service payload could get wedding
+// pricing while still qualifying for an automatic tier discount.
+function isWeddingBooking({ type, service }) {
+  const bookingType = String(type || '').trim().toLowerCase();
+  const serviceName = String(service || '').trim().toLowerCase();
+  return bookingType === 'wedding' || serviceName.includes('wedding') || serviceName.includes('weeding');
+}
+
 function normalizeBookingPrice({ service_id, service, price, type }) {
   const serviceKey = String(service_id || '').trim().toLowerCase().replace(/^weeding-/, 'wedding-');
   const serviceName = String(service || '').trim().toLowerCase();
   const bookingType = String(type || '').trim().toLowerCase();
   const packagePrice = WEDDING_PACKAGE_PRICES[serviceKey];
   if (bookingType === 'wedding' && packagePrice) return packagePrice;
-  if (bookingType === 'wedding' || serviceName.includes('wedding') || serviceName.includes('weeding')) {
+  if (isWeddingBooking({ type, service })) {
     if (serviceName.includes('platinum')) return WEDDING_PACKAGE_PRICES['wedding-platinum'];
     if (serviceName.includes('gold')) return WEDDING_PACKAGE_PRICES['wedding-gold'];
     if (serviceName.includes('silver')) return WEDDING_PACKAGE_PRICES['wedding-silver'];
@@ -1202,8 +1213,12 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       let originalPrice = null;
       let discountLabel = null;
       const bookingType = String(type || '').trim().toLowerCase();
-      const isGroupBooking = !!group;
-      if (!isAdmin && bookingType !== 'wedding' && bookingType !== 'home_service' && !isGroupBooking) {
+      // Cross-check the client-supplied `group` flag against the [GROUP:...]
+      // marker booking.js already writes into notes for real group bookings
+      // — a mismatched payload (group: false on an actual group leg) must
+      // not be able to force discount eligibility through.
+      const isGroupBooking = !!group || /\[GROUP:/.test(String(notes || ''));
+      if (!isAdmin && !isWeddingBooking({ type, service }) && bookingType !== 'home_service' && !isGroupBooking) {
         try {
           const memberProfile = await getMemberProfileByPhone(wa);
           const memberActive = isActiveMembership({

@@ -42,7 +42,7 @@ async function notifyCustomerBookingConfirmed(booking) {
   const fn     = (name || 'Kak').split(' ')[0];
   const branch = branchLabel(location);
   const tgl    = formatDate(date);
-  const harga  = price ? `\n💰 *Rp ${Number(price).toLocaleString('id-ID')}*` : '';
+  const harga  = (price === 0 || price) ? `\n💰 *Rp ${Number(price).toLocaleString('id-ID')}*` : '';
   const durasi = duration ? `\n⏱ Durasi ±${duration}` : '';
   const kapster = barber_name ? `\n💈 Kapster: *${barber_name}*` : '';
   const diskon = discount_label
