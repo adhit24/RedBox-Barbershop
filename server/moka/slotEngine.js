@@ -275,4 +275,46 @@ function _parseDurationStr(dur) {
   return (Number.isFinite(m) && m > 0) ? m : 30;
 }
 
-module.exports = { getAvailableSlots, isSlotAvailable };
+/**
+ * Keep a booking's linked `schedules` row in sync with the booking itself.
+ *
+ * Booking creation bridges each web booking into a `schedules` row (see
+ * moka/sync.js#bridgeBookingToMoka) which is what getAvailableSlots() actually
+ * checks for conflicts. If a booking is later rescheduled or reassigned without
+ * updating that row, the schedule keeps blocking the OLD time/barber forever
+ * even though the booking itself now shows the new time/barber.
+ *
+ * Callers must pass the fully-resolved (post-update) date/time/barberId — not
+ * partial values — since this only ever writes what it's given.
+ *
+ * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {{ scheduleId:string, date?:string, time?:string, barberId?:string }} params
+ */
+async function syncScheduleForBooking(supabase, { scheduleId, date, time, barberId }) {
+  if (!scheduleId) return;
+
+  const { data: schedule } = await supabase
+    .from('schedules')
+    .select('start_time, end_time, barber_id, status')
+    .eq('id', scheduleId)
+    .maybeSingle();
+  if (!schedule || schedule.status === 'cancelled') return;
+
+  const patch = {};
+  if (barberId !== undefined && barberId !== schedule.barber_id) {
+    patch.barber_id = barberId;
+  }
+  if (date !== undefined && time !== undefined) {
+    const durationMs = new Date(schedule.end_time).getTime() - new Date(schedule.start_time).getTime();
+    const newStartMs  = _timeStrToMs(date, String(time).slice(0, 5));
+    if (newStartMs !== new Date(schedule.start_time).getTime()) {
+      patch.start_time = new Date(newStartMs).toISOString();
+      patch.end_time   = new Date(newStartMs + durationMs).toISOString();
+    }
+  }
+
+  if (!Object.keys(patch).length) return;
+  await supabase.from('schedules').update(patch).eq('id', scheduleId).neq('status', 'cancelled');
+}
+
+module.exports = { getAvailableSlots, isSlotAvailable, syncScheduleForBooking };

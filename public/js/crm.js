@@ -372,8 +372,10 @@ async function hasConflict(barber, date, time, durationStr = '60 menit', exclude
  const { schedules } = await res.json();
  const newStartMs = new Date(`${date}T${time.slice(0, 5)}:00+07:00`).getTime();
  const newEndMs = newStartMs + parseDuration(durationStr) * 60_000;
+ const excludeExternalId = excludeId ? `booking:${excludeId}` : null;
  return (schedules || []).some(s => {
  if (s.status === 'cancelled' || s.status === 'rejected') return false;
+ if (excludeExternalId && s.external_id === excludeExternalId) return false;
  const sStart = new Date(s.start_time).getTime();
  const sEnd = new Date(s.end_time).getTime();
  return (newStartMs < sEnd) && (sStart < newEndMs);

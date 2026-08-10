@@ -11,6 +11,7 @@ const {
   toPublicRegistration,
   validatePaymentInput,
 } = require('../services/membershipRegistration');
+const { syncScheduleForBooking } = require('../moka/slotEngine');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -787,13 +788,62 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       return res.status(400).json({ error: 'booking_id and new_barber_id required' });
     }
 
+    const { data: cur } = await supabase
+      .from('bookings').select('schedule_id, date, time, status').eq('id', booking_id).maybeSingle();
+
     const { error } = await supabase
       .from('bookings')
       .update({ barber_id: new_barber_id })
       .eq('id', booking_id);
 
     if (error) return res.status(500).json({ error: error.message });
+
+    // Keep the linked schedule's barber in sync so the OLD barber's slot frees up.
+    if (cur?.schedule_id && cur.status !== 'cancelled') {
+      try {
+        await syncScheduleForBooking(supabase, {
+          scheduleId: cur.schedule_id, date: cur.date, time: cur.time, barberId: new_barber_id,
+        });
+      } catch (e) {
+        console.error('[reassign] schedule sync failed:', e.message);
+      }
+    }
     return res.json({ ok: true });
+  });
+
+  router.post('/booking/reschedule', adminAuth, async (req, res) => {
+    const { booking_id, date, time, barber_id } = req.body;
+    if (!booking_id || !date || !time) {
+      return res.status(400).json({ error: 'booking_id, date and time required' });
+    }
+
+    const { data: cur, error: curError } = await supabase
+      .from('bookings').select('schedule_id, date, time, barber_id, status').eq('id', booking_id).single();
+    if (curError) return res.status(500).json({ error: curError.message });
+    if (['cancelled', 'done'].includes(cur.status)) {
+      return res.status(400).json({ error: `Booking berstatus "${cur.status}" tidak bisa dijadwal ulang.` });
+    }
+
+    const nextBarberId = barber_id || cur.barber_id;
+    const { data, error } = await supabase
+      .from('bookings')
+      .update({ date, time, ...(barber_id ? { barber_id } : {}) })
+      .eq('id', booking_id)
+      .select()
+      .single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Keep the linked schedule in sync so the OLD time slot frees up immediately.
+    if (cur.schedule_id) {
+      try {
+        await syncScheduleForBooking(supabase, {
+          scheduleId: cur.schedule_id, date, time, barberId: nextBarberId,
+        });
+      } catch (e) {
+        console.error('[reschedule] schedule sync failed:', e.message);
+      }
+    }
+    return res.json({ ok: true, booking: data });
   });
 
   router.post('/booking/walkin', adminAuth, async (req, res) => {

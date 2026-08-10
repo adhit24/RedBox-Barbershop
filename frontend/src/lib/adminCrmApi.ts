@@ -65,6 +65,13 @@ export function reassignBooking(booking_id: string, new_barber_id: string) {
   });
 }
 
+export function rescheduleBooking(booking_id: string, date: string, time: string, barber_id?: string) {
+  return crmFetch<{ ok: boolean }>('/api/admin/crm/booking?action=reschedule', {
+    method: 'POST',
+    body: JSON.stringify({ booking_id, date, time, barber_id }),
+  });
+}
+
 export function createWalkIn(data: { name?: string; wa?: string; barber_id: string; service: string; branch: string }) {
   return crmFetch<{ ok: boolean }>('/api/admin/crm/booking?action=walkin', {
     method: 'POST',

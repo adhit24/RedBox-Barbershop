@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useUser } from '@/hooks/useUser';
-import { reassignBooking, createWalkIn } from '@/lib/adminCrmApi';
+import { reassignBooking, rescheduleBooking, createWalkIn } from '@/lib/adminCrmApi';
 import { createClient } from '@/utils/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, Check, UserX, Shuffle, Home, ChevronRight } from 'lucide-react';
+import { Plus, X, Check, UserX, Shuffle, Home, ChevronRight, CalendarClock } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { CalendarView } from './CalendarView';
@@ -52,6 +52,8 @@ function BookingControlPageInner() {
   const [walkinOpen, setWalkinOpen]       = useState(false);
   const [walkinData, setWalkinData]       = useState({ name:'', wa:'', barber_id:'', service:'' });
   const [reassignId, setReassignId]       = useState<string | null>(null);
+  const [rescheduleBk, setRescheduleBk]   = useState<{ id: string; date: string; time: string } | null>(null);
+  const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [tab, setTab]                     = useState<'tabel' | 'kalender'>('tabel');
   const [confirmAction, setConfirmAction] = useState<{ id: string; status: string; name: string; danger: boolean } | null>(null);
   const [toastMsg, setToastMsg]           = useState<string | null>(null);
@@ -136,6 +138,21 @@ function BookingControlPageInner() {
     await reassignBooking(reassignId, barber_id);
     setReassignId(null);
     load();
+  }
+
+  async function doReschedule() {
+    if (!rescheduleBk) return;
+    setRescheduleBusy(true);
+    try {
+      await rescheduleBooking(rescheduleBk.id, rescheduleBk.date, rescheduleBk.time);
+      setRescheduleBk(null);
+      showToast('Booking berhasil dijadwal ulang');
+      load();
+    } catch (e: any) {
+      showToast(e?.message || 'Gagal reschedule booking');
+    } finally {
+      setRescheduleBusy(false);
+    }
   }
 
   async function submitWalkIn() {
@@ -297,11 +314,13 @@ function BookingControlPageInner() {
                         <ActionBtn color="green" icon={<Check size={12}/>} label="Konfirmasi"   onClick={() => updateStatus(bk.id,'confirmed')} />
                         <ActionBtn color="red"   icon={<X size={12}/>}     label="Batalkan"     onClick={() => askConfirm(bk,'cancelled',true)} />
                         <ActionBtn color="slate" icon={<Shuffle size={12}/>} label="Reassign"   onClick={() => setReassignId(bk.id)} />
+                        <ActionBtn color="cyan"  icon={<CalendarClock size={12}/>} label="Reschedule" onClick={() => setRescheduleBk({ id: bk.id, date: bk.date, time: bk.time })} />
                       </>}
                       {bk.status === 'confirmed' && <>
                         <ActionBtn color="green" icon={<Check size={12}/>}  label="Done"        onClick={() => updateStatus(bk.id,'done')} />
                         <ActionBtn color="slate" icon={<UserX size={12}/>}  label="No-show"     onClick={() => askConfirm(bk,'no_show',false)} />
                         <ActionBtn color="red"   icon={<X size={12}/>}      label="Batalkan"    onClick={() => askConfirm(bk,'cancelled',true)} />
+                        <ActionBtn color="cyan"  icon={<CalendarClock size={12}/>} label="Reschedule" onClick={() => setRescheduleBk({ id: bk.id, date: bk.date, time: bk.time })} />
                         {isHS(bk) && <ActionBtn color="indigo" icon={<ChevronRight size={12}/>} label="Berangkat" onClick={() => updateStatus(bk.id,'departed')} />}
                       </>}
                       {bk.status === 'departed'    && <ActionBtn color="cyan"   icon={<ChevronRight size={12}/>} label="Sampai"      onClick={() => updateStatus(bk.id,'arrived')} />}
@@ -377,6 +396,36 @@ function BookingControlPageInner() {
                       {b.name}
                     </button>
                   ))}
+                </div>
+              </Sheet>
+            )}
+          </AnimatePresence>
+
+          {/* Reschedule Bottom Sheet */}
+          <AnimatePresence>
+            {rescheduleBk && (
+              <Sheet onClose={() => setRescheduleBk(null)} title="Reschedule Booking">
+                <label className="block text-xs text-slate-400 mb-1">Tanggal Baru</label>
+                <input
+                  type="date" value={rescheduleBk.date} min={today()}
+                  onChange={e => setRescheduleBk(b => b && ({ ...b, date: e.target.value }))}
+                  className="w-full h-11 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
+                />
+                <label className="block text-xs text-slate-400 mb-1 mt-2">Jam Baru</label>
+                <input
+                  type="time" value={rescheduleBk.time}
+                  onChange={e => setRescheduleBk(b => b && ({ ...b, time: e.target.value }))}
+                  className="w-full h-11 bg-slate-800 border border-slate-700 rounded-xl px-3 text-sm text-slate-200 focus:outline-none focus:border-slate-500 [color-scheme:dark]"
+                />
+                <div className="flex gap-2 pt-3">
+                  <button onClick={() => setRescheduleBk(null)}
+                    className="flex-1 h-11 border border-slate-700 rounded-xl text-sm text-slate-400 cursor-pointer active:scale-95 transition-all">
+                    Batal
+                  </button>
+                  <button onClick={doReschedule} disabled={rescheduleBusy}
+                    className="flex-1 h-11 bg-cyan-500 text-white rounded-xl text-sm font-semibold cursor-pointer active:scale-95 transition-all disabled:opacity-50">
+                    {rescheduleBusy ? 'Menyimpan...' : 'Simpan'}
+                  </button>
                 </div>
               </Sheet>
             )}

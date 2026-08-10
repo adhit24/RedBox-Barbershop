@@ -1557,6 +1557,21 @@ async function handleBookingUpdate(req, res) {
         .eq('id', cur.schedule_id).neq('status', 'cancelled')
         .then().catch(e => console.error('[PATCH] schedule cancel sync failed:', e.message));
     }
+    // Propagate reschedule/reassign to linked schedule so the OLD slot is freed and
+    // the NEW slot is blocked (see slotEngine.js#syncScheduleForBooking for why).
+    if (nextStatus !== 'cancelled' && cur.schedule_id &&
+        (updates.date !== undefined || updates.time !== undefined || updates.barber_id !== undefined)) {
+      try {
+        await require('./moka/slotEngine').syncScheduleForBooking(supabase, {
+          scheduleId: cur.schedule_id,
+          date:       updates.date !== undefined ? updates.date : cur.date,
+          time:       updates.time !== undefined ? updates.time : cur.time,
+          barberId:   updates.barber_id !== undefined ? updates.barber_id : cur.barber_id,
+        });
+      } catch (e) {
+        console.error('[PATCH] schedule reschedule sync failed:', e.message);
+      }
+    }
     let moka = null;
     if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
       try {
