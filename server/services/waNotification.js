@@ -37,7 +37,7 @@ function branchLabel(location) {
 
 // 1. Konfirmasi booking ke pelanggan — dikirim otomatis setelah booking berhasil
 async function notifyCustomerBookingConfirmed(booking) {
-  const { name, wa, service, date, time, location, barber_name, price, duration, notes, type } = booking;
+  const { name, wa, service, date, time, location, barber_name, price, duration, notes, type, discount_label, original_price } = booking;
 
   const fn     = (name || 'Kak').split(' ')[0];
   const branch = branchLabel(location);
@@ -45,6 +45,9 @@ async function notifyCustomerBookingConfirmed(booking) {
   const harga  = price ? `\n💰 *Rp ${Number(price).toLocaleString('id-ID')}*` : '';
   const durasi = duration ? `\n⏱ Durasi ±${duration}` : '';
   const kapster = barber_name ? `\n💈 Kapster: *${barber_name}*` : '';
+  const diskon = discount_label
+    ? `\n🎉 ${discount_label} diterapkan (harga asli Rp ${Number(original_price).toLocaleString('id-ID')})`
+    : '';
 
   const isWedding     = type === 'wedding'      || Boolean(notes?.includes('[WEDDING]'));
   const isHomeService = (type === 'home_service' || Boolean(notes?.includes('[HOME SERVICE]'))) && !isWedding;
@@ -67,7 +70,7 @@ async function notifyCustomerBookingConfirmed(booking) {
 Yeay, booking kamu sudah *CONFIRMED* nih! 🎉✅
 
 📋 *Detail Booking:*
-✂️ ${service}${harga}${durasi}
+✂️ ${service}${harga}${durasi}${diskon}
 📅 ${tgl}
 ⏰ Jam *${time} WIB*${kapster}
 📍 *${branch}*

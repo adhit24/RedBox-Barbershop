@@ -43,6 +43,28 @@ document.addEventListener('DOMContentLoaded', async () => {
  calMonth: new Date().getMonth(),
  };
 
+ // Only used for the optimistic checkout-summary discount preview — the
+ // actual discount is always recomputed server-side at submit time from
+ // the submitted WA number, never trusted from here.
+ let memberBenefitContext = null;
+ (async () => {
+ const memberToken = localStorage.getItem('rb_member_token');
+ if (!memberToken) return;
+ try {
+ const res = await fetch(API_URL + '/auth/me', { headers: { Authorization: 'Bearer ' + memberToken } });
+ const json = await res.json();
+ const customer = json?.customer;
+ if (customer) {
+ memberBenefitContext = {
+ tier: customer.current_tier,
+ membershipActive: customer.membership_status === 'ACTIVE',
+ birthdate: customer.birthdate || null,
+ };
+ updateSidebar();
+ }
+ } catch {}
+ })();
+
  const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID');
  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -912,6 +934,73 @@ document.addEventListener('DOMContentLoaded', async () => {
  checkBarberOffDuty();
  }
 
+ // ── TIER DISCOUNT PREVIEW (mirrors server/membership-benefits.js) ──
+ // Duplicated intentionally: these rules are public (shown on the
+ // membership page), only the *inputs* (tier/active/birthdate, from the
+ // member's own authenticated session) need to be trustworthy — the
+ // authoritative recompute always happens server-side at submit time.
+ function isWithinBirthdayWindow(bookingDateStr, birthdateStr) {
+ if (!bookingDateStr || !birthdateStr) return false;
+ const booking = new Date(bookingDateStr + 'T00:00:00Z');
+ const birth = new Date(birthdateStr + 'T00:00:00Z');
+ if (isNaN(booking.getTime()) || isNaN(birth.getTime())) return false;
+ const bookingYear = booking.getUTCFullYear();
+ const candidates = [bookingYear - 1, bookingYear, bookingYear + 1].map(year =>
+ Date.UTC(year, birth.getUTCMonth(), birth.getUTCDate())
+ );
+ const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+ return candidates.some(bdayMs => Math.abs(booking.getTime() - bdayMs) <= WINDOW_MS);
+ }
+
+ // Real price of Gentleman Grooming is Rp95.000 (standard branches) or
+ // Rp120.000 (CSB Mall) — see public/js/services-data.js REDBOX_SERVICES.
+ // Mirrors server/membership-benefits.js's cap exactly: the Platinum "free
+ // grooming" benefit must never be shown as fully free once add-ons push
+ // basePrice above the real service price, since the server never lets the
+ // discount exceed this cap either.
+ const GENTLEMAN_GROOMING_MAX_PRICE = 120000;
+
+ function computeServiceDiscountPreview({ tier, membershipActive, birthdate, serviceId, location, bookingDate, basePrice }) {
+ const price = Number(basePrice) || 0;
+ const none = { discountPercent: 0, discountAmount: 0, finalPrice: price, benefitLabel: null };
+ if (!membershipActive) return none;
+ const applyPercent = (percent, label) => {
+ const discountAmount = Math.round(price * (percent / 100));
+ return { discountPercent: percent, discountAmount, finalPrice: price - discountAmount, benefitLabel: label };
+ };
+ const applyGroomingFree = () => {
+ const discountAmount = Math.min(price, GENTLEMAN_GROOMING_MAX_PRICE);
+ const finalPrice = price - discountAmount;
+ const benefitLabel = finalPrice > 0
+ ? `Potongan Benefit Platinum Rp${discountAmount.toLocaleString('id-ID')}`
+ : 'Gratis — Benefit Platinum';
+ return {
+ discountPercent: price > 0 ? Math.round((discountAmount / price) * 100) : 100,
+ discountAmount,
+ finalPrice,
+ benefitLabel,
+ };
+ };
+ const bestOf = (candidates) => {
+ const real = candidates.filter(Boolean);
+ return real.length ? real.reduce((best, c) => (c.discountAmount > best.discountAmount ? c : best)) : none;
+ };
+ const normalizedTier = String(tier || '').trim().toLowerCase();
+ const birthdayCandidate = isWithinBirthdayWindow(bookingDate, birthdate) ? applyPercent(50, 'Diskon Ulang Tahun 50%') : null;
+ if (normalizedTier === 'silver') return birthdayCandidate || none;
+ if (normalizedTier === 'gold') {
+ const isCsb = String(location || '').trim().toLowerCase() === 'csb';
+ const generalCandidate = isCsb ? null : applyPercent(10, 'Diskon Gold 10%');
+ return bestOf([birthdayCandidate, generalCandidate]);
+ }
+ if (normalizedTier === 'platinum') {
+ const isGrooming = String(serviceId || '').trim().toLowerCase() === 'gentleman-grooming';
+ const groomingCandidate = isGrooming ? applyGroomingFree() : null;
+ return bestOf([birthdayCandidate, groomingCandidate]);
+ }
+ return none;
+ }
+
  // ── SIDEBAR ─────────────────────────────────
  function updateSidebar() {
  const hasAny = state.service || state.barber || state.date;
@@ -984,7 +1073,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  // Total = person1 + person2 price (when group)
  const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+
+ const discountRow = document.getElementById('sumDiscountRow');
+ const discountBadge = document.getElementById('sumDiscountBadge');
+ const totalOriginalEl = document.getElementById('sumTotalOriginal');
+ const eligibleForDiscount = memberBenefitContext && !isGroup() && !isWeddingPackage && !isHomeService && state.service && total > 0;
+ const discount = eligibleForDiscount
+ ? computeServiceDiscountPreview({
+ tier: memberBenefitContext.tier,
+ membershipActive: memberBenefitContext.membershipActive,
+ birthdate: memberBenefitContext.birthdate,
+ serviceId: state.service?.id,
+ location: state.location,
+ bookingDate: state.date,
+ basePrice: total,
+ })
+ : null;
+
+ if (discount && discount.discountPercent > 0) {
+ discountRow.style.display = '';
+ discountBadge.textContent = discount.benefitLabel;
+ totalOriginalEl.style.display = '';
+ totalOriginalEl.textContent = fmt(total);
+ document.getElementById('sumTotal').textContent = fmt(discount.finalPrice);
+ } else {
+ discountRow.style.display = 'none';
+ totalOriginalEl.style.display = 'none';
  document.getElementById('sumTotal').textContent = total ? fmt(total) : '-';
+ }
  }
 
  // ── STEP 1 NEXT ─────────────────────────────
@@ -1628,6 +1744,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
 
+ // Same optimistic discount preview used in the sidebar (updateSidebar()),
+ // applied here too so this pre-submit confirm box doesn't show a stale
+ // pre-discount total — the server always recomputes authoritatively at
+ // submit time, this is preview-only.
+ const eligibleForDiscount = memberBenefitContext && !isGroup() && !isWeddingPackage && !isHomeService && state.service && total > 0;
+ const discount = eligibleForDiscount
+ ? computeServiceDiscountPreview({
+ tier: memberBenefitContext.tier,
+ membershipActive: memberBenefitContext.membershipActive,
+ birthdate: memberBenefitContext.birthdate,
+ serviceId: state.service?.id,
+ location: state.location,
+ bookingDate: state.date,
+ basePrice: total,
+ })
+ : null;
+ const hasDiscount = discount && discount.discountPercent > 0;
+ const totalRow = hasDiscount
+ ? `<div class="confirm-row"><span class="cr-label">Benefit</span><span class="cr-val sb-discount-badge">${discount.benefitLabel}</span></div>
+ <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val"><span class="sb-total-original">${fmt(total)}</span>${fmt(discount.finalPrice)}</span></div>`
+ : `<div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(total)}</span></div>`;
+
  box.innerHTML = `
  ${groupRows}
  <div class="confirm-row"><span class="cr-label">Date</span><span class="cr-val">${state.date ? formatDate(state.date) : '-'}</span></div>
@@ -1637,7 +1775,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  <div class="confirm-row"><span class="cr-label">${isGroup() ? 'Kontak Utama' : 'Name'}</span><span class="cr-val">${state.name}</span></div>
  <div class="confirm-row"><span class="cr-label">WhatsApp</span><span class="cr-val">+62 ${state.wa}</span></div>
  ${state.notes ? `<div class="confirm-row"><span class="cr-label">Notes</span><span class="cr-val">${state.notes}</span></div>` : ''}
- <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(total)}</span></div>
+ ${totalRow}
  `;
  }
 
@@ -1709,7 +1847,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  ? ' *BOOKING GRUP (2 ORANG) - REDBOX BARBERSHOP*'
  : (isWeddingPackage ? ' *BOOKING WEDDING GROOMING - REDBOX BARBERSHOP*' : (isHomeService ? ' *BOOKING HOME SERVICE - REDBOX BARBERSHOP*' : ' *BOOKING REDBOX BARBERSHOP*'));
 
- const msg = [
+ // Built as a function of the total actually charged, so it can be called
+ // again after the server responds with the authoritative (possibly
+ // discounted) price instead of baking in the stale pre-submit total.
+ function _buildWaMessage(displayTotal) {
+ return [
  headerLine, '',
  ...(isGroup()
  ? [
@@ -1724,9 +1866,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  ' *WhatsApp:* +62' + state.wa,
  state.notes ? ' *Catatan:* ' + state.notes : '',
  ' *Pembayaran:* ' + state.payment?.name,
- '', ' *Total:* ' + fmt(totalPrice),
+ '', ' *Total:* ' + fmt(displayTotal),
  '', isHomeService ? '_Tim Redbox akan konfirmasi via WhatsApp_ ' : '_Sharp Cuts, Bold Style_ ',
  ].filter(Boolean).join('\n');
+ }
 
  const branchPhones = {
  'csb': '62818202889',
@@ -1737,7 +1880,6 @@ document.addEventListener('DOMContentLoaded', async () => {
  'default': '62818202569'
  };
  const targetPhone = branchPhones[state.location] || branchPhones['default'];
- const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
 
  // ── Save to CRM (localStorage + API) ──
  // Generate group_id for linking when 2 orang
@@ -1771,6 +1913,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  status: 'pending',
  type: isWeddingPackage ? 'wedding' : (isHomeService ? 'home_service' : 'outlet'),
  address: isHomeService ? (state.address || '') : undefined,
+ group: isGroup(),
  };
  }
 
@@ -1784,6 +1927,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  const confirmedTime = payloads[0]?.time || state.time;
 
  let savedToApi = false;
+ // Holds each booking row exactly as the server stored it (authoritative
+ // price, post-discount) — used to show the real charged total instead of
+ // the stale pre-submit `totalPrice` once the loop finishes successfully.
+ const bookingResults = [];
 
  if (USE_API) {
  try {
@@ -1804,6 +1951,8 @@ document.addEventListener('DOMContentLoaded', async () => {
  alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));
  return;
  }
+ const resBody = await res.json().catch(() => null);
+ if (resBody?.data) bookingResults.push(resBody.data);
  }
  console.log('Booking synced to Supabase');
  savedToApi = true;
@@ -1816,6 +1965,15 @@ document.addEventListener('DOMContentLoaded', async () => {
  return;
  }
  }
+
+ // The server recomputes the tier discount authoritatively and stores the
+ // real charged price per row — use the sum of those (when available)
+ // instead of the pre-submit `totalPrice`, which never reflects a discount.
+ const realTotal = (savedToApi && bookingResults.length === payloads.length)
+ ? bookingResults.reduce((sum, b) => sum + (Number(b.price) || 0), 0)
+ : totalPrice;
+ const msg = _buildWaMessage(realTotal);
+ const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
 
  // Local fallback hanya untuk mode offline / dev (USE_API = false)
  if (!USE_API) {
@@ -1861,7 +2019,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  ${personBlocks}
  <div class="confirm-row"><span class="cr-label">Schedule</span><span class="cr-val">${formatDate(state.date)}, ${confirmedTime}</span></div>
  <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
- <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(totalPrice)}</span></div>
+ <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(realTotal)}</span></div>
  `;
  }
  const waBtn = document.getElementById('shareWaBtn');
