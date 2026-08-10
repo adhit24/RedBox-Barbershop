@@ -1204,25 +1204,29 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       const bookingType = String(type || '').trim().toLowerCase();
       const isGroupBooking = !!group;
       if (!isAdmin && bookingType !== 'wedding' && !isGroupBooking) {
-        const memberProfile = await getMemberProfileByPhone(wa);
-        const memberActive = isActiveMembership({
-          status: memberProfile?.membership_status,
-          startsAt: memberProfile?.membership_started_at,
-          expiresAt: memberProfile?.membership_expires_at,
-        });
-        const discount = computeServiceDiscount({
-          tier: memberProfile?.current_tier,
-          membershipActive: memberActive,
-          birthdate: memberProfile?.birthdate,
-          serviceId: service_id,
-          location: resolvedLocation,
-          bookingDate: date,
-          basePrice: bookingPrice,
-        });
-        if (discount.discountPercent > 0) {
-          finalPrice = discount.finalPrice;
-          originalPrice = bookingPrice;
-          discountLabel = discount.benefitLabel;
+        try {
+          const memberProfile = await getMemberProfileByPhone(wa);
+          const memberActive = isActiveMembership({
+            status: memberProfile?.membership_status,
+            startsAt: memberProfile?.membership_started_at,
+            expiresAt: memberProfile?.membership_expires_at,
+          });
+          const discount = computeServiceDiscount({
+            tier: memberProfile?.current_tier,
+            membershipActive: memberActive,
+            birthdate: memberProfile?.birthdate,
+            serviceId: service_id,
+            location: resolvedLocation,
+            bookingDate: date,
+            basePrice: bookingPrice,
+          });
+          if (discount.discountPercent > 0) {
+            finalPrice = discount.finalPrice;
+            originalPrice = bookingPrice;
+            discountLabel = discount.benefitLabel;
+          }
+        } catch (err) {
+          console.warn('[Booking] tier discount lookup skipped:', err.message);
         }
       }
 
@@ -2662,6 +2666,22 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
   });
 });
 
+// getMemberProfileByPhone must be a top-level (module-scope) declaration —
+// it is called both from inside the MEMBER AUTH block below and from
+// POST /api/bookings above, which is a separate top-level statement outside
+// that block. `async function` declarations are block-scoped even in
+// non-strict mode (legacy Annex B hoisting only rescues plain `function`
+// declarations), so nesting it inside the block below would make it
+// invisible to POST /api/bookings and throw a ReferenceError at runtime.
+async function getMemberProfileByPhone(phone) {
+  const phoneE164 = `+${normalizeMemberPhone(phone)}`;
+  const { data, error } = await supabase.from('member_profiles')
+    .select('id, user_key, membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier, birthdate')
+    .eq('phone', phoneE164).maybeSingle();
+  if (error && error.code !== 'PGRST116') throw new Error(`member profile lookup failed: ${error.message}`);
+  return data || null;
+}
+
 // ── MEMBER AUTH (OTP via WhatsApp) ───────────────────────────────────────────
 {
   const { sendWA: sendWAFonnte } = require('./services/fonnte');
@@ -2681,15 +2701,6 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
     const { data, error } = await supabase.from('customers').select('*').or(filters);
     if (error) throw new Error(`customer lookup failed: ${error.message}`);
     return mergeCustomerRows(data || [], canonical);
-  }
-
-  async function getMemberProfileByPhone(phone) {
-    const phoneE164 = `+${normalizeMemberPhone(phone)}`;
-    const { data, error } = await supabase.from('member_profiles')
-      .select('id, user_key, membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier')
-      .eq('phone', phoneE164).maybeSingle();
-    if (error && error.code !== 'PGRST116') throw new Error(`member profile lookup failed: ${error.message}`);
-    return data || null;
   }
 
   function generateReferralCode() {

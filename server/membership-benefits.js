@@ -5,6 +5,14 @@ const BIRTHDAY_DISCOUNT_PERCENT = 50;
 const GOLD_GENERAL_DISCOUNT_PERCENT = 10;
 const GENTLEMAN_GROOMING_SERVICE_ID = 'gentleman-grooming';
 const CSB_LOCATION = 'csb';
+// Real price of Gentleman Grooming is Rp95.000 (standard branches) or
+// Rp120.000 (CSB Mall) — see public/js/services-data.js REDBOX_SERVICES.
+// The Platinum "free grooming" benefit must never be worth more than the
+// real service, even if a client submits a mismatched service_id/price
+// pair (e.g. claiming grooming while actually booking a pricier service).
+// We cap at the higher of the two known prices rather than threading
+// branch-specific logic through this rule.
+const GENTLEMAN_GROOMING_MAX_PRICE = 120000;
 
 function isWithinBirthdayWindow(bookingDateStr, birthdateStr) {
   if (!bookingDateStr || !birthdateStr) return false;
@@ -26,6 +34,19 @@ function applyPercent(basePrice, percent, label) {
   const discountAmount = Math.round(basePrice * (percent / 100));
   return {
     discountPercent: percent,
+    discountAmount,
+    finalPrice: basePrice - discountAmount,
+    benefitLabel: label,
+  };
+}
+
+// Platinum's "free Gentleman Grooming" benefit — capped at the real service
+// price so a spoofed/mismatched service_id + inflated basePrice can't turn
+// an unrelated, pricier service fully free.
+function applyGroomingFree(basePrice, label) {
+  const discountAmount = Math.min(basePrice, GENTLEMAN_GROOMING_MAX_PRICE);
+  return {
+    discountPercent: basePrice > 0 ? Math.round((discountAmount / basePrice) * 100) : 100,
     discountAmount,
     finalPrice: basePrice - discountAmount,
     benefitLabel: label,
@@ -59,7 +80,7 @@ function computeServiceDiscount({ tier, membershipActive, birthdate, serviceId, 
 
   if (normalizedTier === 'platinum') {
     const isGrooming = String(serviceId || '').trim().toLowerCase() === GENTLEMAN_GROOMING_SERVICE_ID;
-    const groomingCandidate = isGrooming ? applyPercent(price, 100, 'Gratis — Benefit Platinum') : null;
+    const groomingCandidate = isGrooming ? applyGroomingFree(price, 'Gratis — Benefit Platinum') : null;
     return bestOf([birthdayCandidate, groomingCandidate], price);
   }
 

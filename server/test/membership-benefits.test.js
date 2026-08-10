@@ -74,6 +74,16 @@ test('platinum gets 100% off Gentlemen Grooming specifically, not other services
   assert.deepEqual(otherService, { discountPercent: 0, discountAmount: 0, finalPrice: 160000, benefitLabel: null });
 });
 
+test('platinum free grooming is capped at the real Gentleman Grooming price, not whatever basePrice is submitted', () => {
+  // A spoofed/mismatched service_id + basePrice pair (e.g. claiming grooming
+  // while actually booking a pricier Rp160.000 service) must not become
+  // fully free — the discount amount is capped at the known real price.
+  const spoofed = computeServiceDiscount({ tier: 'platinum', membershipActive: true, birthdate: '1990-01-01', serviceId: 'gentleman-grooming', location: 'bypass', bookingDate: '2026-08-10', basePrice: 160000 });
+  assert.equal(spoofed.discountAmount, 120000);
+  assert.equal(spoofed.finalPrice, 40000);
+  assert.equal(spoofed.benefitLabel, 'Gratis — Benefit Platinum');
+});
+
 test('platinum birthday 50% wins over free grooming when both would apply (50% of a nonzero price beats a free-only-on-one-service rule elsewhere)', () => {
   // On a non-grooming service during the birthday window, only birthday applies.
   const result = computeServiceDiscount({ tier: 'platinum', membershipActive: true, birthdate: '1990-08-10', serviceId: 'hair-color', location: 'bypass', bookingDate: '2026-08-10', basePrice: 160000 });
