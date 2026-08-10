@@ -21,6 +21,7 @@ const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
 const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('./membership-policy');
 const { normalizeMemberPhone, getMemberPhoneVariants, mergeCustomerRows } = require('./member-identity');
+const { computeServiceDiscount } = require('./membership-benefits');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1145,7 +1146,7 @@ function normalizeBookingPrice({ service_id, service, price, type }) {
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
-  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address } = req.body;
+  const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address, group } = req.body;
   const bookingPrice = normalizeBookingPrice({ service_id, service, price, type });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
   const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
@@ -1194,11 +1195,43 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
+      // 2.5. Hitung diskon tier member (jika eligible). Server selalu hitung
+      // ulang dari nomor WA yang dikirim — tidak pernah percaya klaim tier
+      // dari client, supaya tidak ada celah orang mengaku-ngaku tier.
+      let finalPrice = bookingPrice;
+      let originalPrice = null;
+      let discountLabel = null;
+      const bookingType = String(type || '').trim().toLowerCase();
+      const isGroupBooking = !!group;
+      if (!isAdmin && bookingType !== 'wedding' && !isGroupBooking) {
+        const memberProfile = await getMemberProfileByPhone(wa);
+        const memberActive = isActiveMembership({
+          status: memberProfile?.membership_status,
+          startsAt: memberProfile?.membership_started_at,
+          expiresAt: memberProfile?.membership_expires_at,
+        });
+        const discount = computeServiceDiscount({
+          tier: memberProfile?.current_tier,
+          membershipActive: memberActive,
+          birthdate: memberProfile?.birthdate,
+          serviceId: service_id,
+          location: resolvedLocation,
+          bookingDate: date,
+          basePrice: bookingPrice,
+        });
+        if (discount.discountPercent > 0) {
+          finalPrice = discount.finalPrice;
+          originalPrice = bookingPrice;
+          discountLabel = discount.benefitLabel;
+        }
+      }
+
       // 3. Insert booking
       const { data, error } = await supabase.from('bookings').insert([{
-        id: bookingId, name, wa, service_id: service_id || '', service, price: bookingPrice,
+        id: bookingId, name, wa, service_id: service_id || '', service, price: finalPrice,
         duration: duration || '', barber_id: normalizedBarberId, date, time,
-        location: resolvedLocation, status: desiredStatus, notes: notes || '', payment: payment || ''
+        location: resolvedLocation, status: desiredStatus, notes: notes || '', payment: payment || '',
+        original_price: originalPrice, discount_label: discountLabel
       }]).select().single();
       if (error) return res.status(500).json({ error: error.message });
 
@@ -2852,6 +2885,7 @@ app.post('/api/admin/sync-customers-full', adminAuth, async (req, res) => {
       // Paid tier is authoritative in member_profiles. Points are a separate
       // loyalty balance and must not downgrade a purchased tier.
       if (profile?.current_tier) customer.current_tier = profile.current_tier;
+      if (profile?.birthdate) customer.birthdate = profile.birthdate;
 
       const profileIsActive = isActiveMembership({
         status: profile?.membership_status,
