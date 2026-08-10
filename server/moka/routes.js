@@ -1011,15 +1011,18 @@ function createMokaRouter(supabase) {
     }
   });
 
-  // ── POST /api/moka/sync ───────────────────────────────────
+  // ── GET/POST /api/moka/sync ────────────────────────────────
   // Manual trigger for Moka → Web pull sync.
-  // Body (optional): { "outletId": "uuid-or-slug", "wait": true }
+  // Params (optional): outletId (uuid-or-slug), wait (true to block for result)
+  // — GET reads them from the query string, POST from the JSON body.
   // If omitted, syncs ALL authorized outlets.
   // Auth: Bearer <CRON_SECRET|ADMIN_PASSWORD> or x-admin-token <CRON_SECRET|ADMIN_PASSWORD>
   //
   // Default: respond 202 immediately, sync runs in background.
-  // Pass "wait": true in body to wait for sync completion (manual use only).
-  router.post('/moka/sync', async (req, res) => {
+  // Pass "wait": true to wait for sync completion (manual use only).
+  // GET is registered alongside POST because cron-job.org defaults new jobs
+  // to GET, which previously 405'd against a POST-only route.
+  const _mokaSyncHandler = async (req, res) => {
     const cronSecret = process.env.CRON_SECRET;
     const adminPassword = process.env.ADMIN_PASSWORD;
     const validTokens = [cronSecret, adminPassword].filter(Boolean);
@@ -1032,7 +1035,9 @@ function createMokaRouter(supabase) {
       }
     }
     try {
-      const { outletId: rawOutletId, wait = false } = req.body || {};
+      const source = req.method === 'GET' ? req.query : (req.body || {});
+      const { outletId: rawOutletId, wait } = source;
+      const shouldWait = wait === true || wait === 'true';
 
       const _runSync = async () => {
         const results = [];
@@ -1054,7 +1059,7 @@ function createMokaRouter(supabase) {
         return results;
       };
 
-      if (wait) {
+      if (shouldWait) {
         // Blocking mode — for manual calls that need the result
         const results = await _runSync();
         return res.json({ message: 'Sync complete', results });
@@ -1068,7 +1073,9 @@ function createMokaRouter(supabase) {
     } catch (err) {
       _serverError(res, err);
     }
-  });
+  };
+  router.get('/moka/sync', _mokaSyncHandler);
+  router.post('/moka/sync', _mokaSyncHandler);
 
   // ── GET /api/moka/sync-logs ───────────────────────────────
   // Returns recent sync audit log entries.
