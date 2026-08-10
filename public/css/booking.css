@@ -492,6 +492,8 @@
 .sb-val{font-size:.85rem;font-weight:600;color:var(--white);text-align:right}
 .total-row{margin-top:4px;padding-top:16px !important;border-top:1px solid var(--w10) !important}
 .sb-total{font-size:1.2rem !important;color:#f87171 !important;font-family:var(--font-accent) !important}
+.sb-discount-badge{display:inline-block;font-size:.72rem;font-weight:700;color:#f87171;background:rgba(248,113,113,.12);padding:3px 10px;border-radius:999px}
+.sb-total-original{display:block;font-size:.78rem;font-weight:500;color:var(--w50);text-decoration:line-through;margin-bottom:2px}
 .sidebar-wa{margin-top:20px;padding-top:16px;border-top:1px solid var(--w05);text-align:center}
 .sidebar-wa a{font-size:.82rem;color:var(--w50);transition:color .2s}
 .sidebar-wa a:hover{color:#25D366}

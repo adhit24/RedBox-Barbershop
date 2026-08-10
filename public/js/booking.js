@@ -43,6 +43,28 @@ document.addEventListener('DOMContentLoaded', async () => {
  calMonth: new Date().getMonth(),
  };
 
+ // Only used for the optimistic checkout-summary discount preview — the
+ // actual discount is always recomputed server-side at submit time from
+ // the submitted WA number, never trusted from here.
+ let memberBenefitContext = null;
+ (async () => {
+ const memberToken = localStorage.getItem('rb_member_token');
+ if (!memberToken) return;
+ try {
+ const res = await fetch(API_URL + '/auth/me', { headers: { Authorization: 'Bearer ' + memberToken } });
+ const json = await res.json();
+ const customer = json?.customer;
+ if (customer) {
+ memberBenefitContext = {
+ tier: customer.current_tier,
+ membershipActive: customer.membership_status === 'ACTIVE',
+ birthdate: customer.birthdate || null,
+ };
+ updateSidebar();
+ }
+ } catch {}
+ })();
+
  const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID');
  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -912,6 +934,52 @@ document.addEventListener('DOMContentLoaded', async () => {
  checkBarberOffDuty();
  }
 
+ // ── TIER DISCOUNT PREVIEW (mirrors server/membership-benefits.js) ──
+ // Duplicated intentionally: these rules are public (shown on the
+ // membership page), only the *inputs* (tier/active/birthdate, from the
+ // member's own authenticated session) need to be trustworthy — the
+ // authoritative recompute always happens server-side at submit time.
+ function isWithinBirthdayWindow(bookingDateStr, birthdateStr) {
+ if (!bookingDateStr || !birthdateStr) return false;
+ const booking = new Date(bookingDateStr + 'T00:00:00Z');
+ const birth = new Date(birthdateStr + 'T00:00:00Z');
+ if (isNaN(booking.getTime()) || isNaN(birth.getTime())) return false;
+ const bookingYear = booking.getUTCFullYear();
+ const candidates = [bookingYear - 1, bookingYear, bookingYear + 1].map(year =>
+ Date.UTC(year, birth.getUTCMonth(), birth.getUTCDate())
+ );
+ const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+ return candidates.some(bdayMs => Math.abs(booking.getTime() - bdayMs) <= WINDOW_MS);
+ }
+
+ function computeServiceDiscountPreview({ tier, membershipActive, birthdate, serviceId, location, bookingDate, basePrice }) {
+ const price = Number(basePrice) || 0;
+ const none = { discountPercent: 0, discountAmount: 0, finalPrice: price, benefitLabel: null };
+ if (!membershipActive) return none;
+ const applyPercent = (percent, label) => {
+ const discountAmount = Math.round(price * (percent / 100));
+ return { discountPercent: percent, discountAmount, finalPrice: price - discountAmount, benefitLabel: label };
+ };
+ const bestOf = (candidates) => {
+ const real = candidates.filter(Boolean);
+ return real.length ? real.reduce((best, c) => (c.discountAmount > best.discountAmount ? c : best)) : none;
+ };
+ const normalizedTier = String(tier || '').trim().toLowerCase();
+ const birthdayCandidate = isWithinBirthdayWindow(bookingDate, birthdate) ? applyPercent(50, 'Diskon Ulang Tahun 50%') : null;
+ if (normalizedTier === 'silver') return birthdayCandidate || none;
+ if (normalizedTier === 'gold') {
+ const isCsb = String(location || '').trim().toLowerCase() === 'csb';
+ const generalCandidate = isCsb ? null : applyPercent(10, 'Diskon Gold 10%');
+ return bestOf([birthdayCandidate, generalCandidate]);
+ }
+ if (normalizedTier === 'platinum') {
+ const isGrooming = String(serviceId || '').trim().toLowerCase() === 'gentleman-grooming';
+ const groomingCandidate = isGrooming ? applyPercent(100, 'Gratis — Benefit Platinum') : null;
+ return bestOf([birthdayCandidate, groomingCandidate]);
+ }
+ return none;
+ }
+
  // ── SIDEBAR ─────────────────────────────────
  function updateSidebar() {
  const hasAny = state.service || state.barber || state.date;
@@ -984,7 +1052,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  // Total = person1 + person2 price (when group)
  const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
+
+ const discountRow = document.getElementById('sumDiscountRow');
+ const discountBadge = document.getElementById('sumDiscountBadge');
+ const totalOriginalEl = document.getElementById('sumTotalOriginal');
+ const eligibleForDiscount = memberBenefitContext && !isGroup() && !isWeddingPackage && state.service && total > 0;
+ const discount = eligibleForDiscount
+ ? computeServiceDiscountPreview({
+ tier: memberBenefitContext.tier,
+ membershipActive: memberBenefitContext.membershipActive,
+ birthdate: memberBenefitContext.birthdate,
+ serviceId: state.service?.id,
+ location: state.location,
+ bookingDate: state.date,
+ basePrice: total,
+ })
+ : null;
+
+ if (discount && discount.discountPercent > 0) {
+ discountRow.style.display = '';
+ discountBadge.textContent = discount.benefitLabel;
+ totalOriginalEl.style.display = '';
+ totalOriginalEl.textContent = fmt(total);
+ document.getElementById('sumTotal').textContent = fmt(discount.finalPrice);
+ } else {
+ discountRow.style.display = 'none';
+ totalOriginalEl.style.display = 'none';
  document.getElementById('sumTotal').textContent = total ? fmt(total) : '-';
+ }
  }
 
  // ── STEP 1 NEXT ─────────────────────────────
@@ -1771,6 +1866,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  status: 'pending',
  type: isWeddingPackage ? 'wedding' : (isHomeService ? 'home_service' : 'outlet'),
  address: isHomeService ? (state.address || '') : undefined,
+ group: isGroup(),
  };
  }
 
