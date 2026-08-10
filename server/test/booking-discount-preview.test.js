@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const { computeServiceDiscount } = require('../membership-benefits');
 
 const workspace = path.join(__dirname, '..', '..', 'public');
 // Normalize CRLF -> LF: this checkout has CRLF line endings, and some of
@@ -96,7 +97,10 @@ test('computeServiceDiscountPreview caps the Platinum grooming benefit the same 
   assert.notStrictEqual(overCap.discountPercent, 100);
   assert.strictEqual(overCap.discountAmount, 120000);
   assert.strictEqual(overCap.finalPrice, 85000);
-  assert.strictEqual(overCap.benefitLabel, 'Gratis — Benefit Platinum');
+  // finalPrice is non-zero here (customer is still charged Rp85.000), so the
+  // label must not claim the booking is free — see server/membership-benefits.js's
+  // applyGroomingFree, which picks the label based on whether finalPrice is 0.
+  assert.strictEqual(overCap.benefitLabel, 'Potongan Benefit Platinum Rp120.000');
 
   // Plain Gentleman Grooming with no add-ons (Rp95.000) stays under the
   // cap and is still fully free, matching the server's uncapped case.
@@ -112,4 +116,59 @@ test('computeServiceDiscountPreview caps the Platinum grooming benefit the same 
   assert.strictEqual(underCap.discountPercent, 100);
   assert.strictEqual(underCap.discountAmount, 95000);
   assert.strictEqual(underCap.finalPrice, 0);
+});
+
+test('computeServiceDiscount (server) and computeServiceDiscountPreview (client) agree across a matrix of tier/membership/birthday/service/location/price combinations', () => {
+  const js = source('js/booking.js');
+  const blockMatch = js.match(/\/\/ ── TIER DISCOUNT PREVIEW[\s\S]*?\/\/ ── SIDEBAR/);
+  assert.ok(blockMatch, 'expected to find the TIER DISCOUNT PREVIEW block');
+  const block = blockMatch[0].replace(/\/\/ ── SIDEBAR[\s\S]*$/, '');
+
+  const context = {};
+  vm.createContext(context);
+  vm.runInContext(block, context);
+  assert.strictEqual(typeof context.computeServiceDiscountPreview, 'function');
+
+  const bookingDate = '2026-08-10';
+  const tiers = ['bronze', 'silver', 'gold', 'platinum'];
+  const membershipActiveOptions = [true, false];
+  // '1990-08-10' lands exactly on the booking date -> inside the birthday
+  // window. '1990-01-01' is nowhere near it -> outside the window.
+  const birthdates = ['1990-08-10', '1990-01-01'];
+  const serviceIds = ['gentleman-grooming', 'hair-color'];
+  const locations = ['csb', 'bypass'];
+  // One basePrice below the Rp120.000 grooming cap, one above it.
+  const basePrices = [90000, 200000];
+
+  let combos = 0;
+  for (const tier of tiers) {
+    for (const membershipActive of membershipActiveOptions) {
+      for (const birthdate of birthdates) {
+        for (const serviceId of serviceIds) {
+          for (const location of locations) {
+            for (const basePrice of basePrices) {
+              const input = { tier, membershipActive, birthdate, serviceId, location, bookingDate, basePrice };
+              const serverResult = computeServiceDiscount(input);
+              const clientResult = context.computeServiceDiscountPreview(input);
+              // clientResult is an object from the vm context's own realm (a
+              // different Object/Array constructor than the host realm), so
+              // assert.deepEqual would fail on prototype identity alone even
+              // when every value matches. Round-trip both through JSON first
+              // to compare plain host-realm values only.
+              const serverPlain = JSON.parse(JSON.stringify(serverResult));
+              const clientPlain = JSON.parse(JSON.stringify(clientResult));
+              assert.deepEqual(
+                clientPlain,
+                serverPlain,
+                `mismatch for ${JSON.stringify(input)}: server=${JSON.stringify(serverPlain)} client=${JSON.stringify(clientPlain)}`
+              );
+              combos++;
+            }
+          }
+        }
+      }
+    }
+  }
+  // Sanity check that the matrix actually ran (4*2*2*2*2*2 = 128 combos).
+  assert.strictEqual(combos, 128);
 });

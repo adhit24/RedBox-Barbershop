@@ -1203,7 +1203,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       let discountLabel = null;
       const bookingType = String(type || '').trim().toLowerCase();
       const isGroupBooking = !!group;
-      if (!isAdmin && bookingType !== 'wedding' && !isGroupBooking) {
+      if (!isAdmin && bookingType !== 'wedding' && bookingType !== 'home_service' && !isGroupBooking) {
         try {
           const memberProfile = await getMemberProfileByPhone(wa);
           const memberActive = isActiveMembership({
@@ -1226,7 +1226,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
             discountLabel = discount.benefitLabel;
           }
         } catch (err) {
-          console.warn('[Booking] tier discount lookup skipped:', err.message);
+          console.warn('[Booking] tier discount lookup skipped:', err?.message);
         }
       }
 

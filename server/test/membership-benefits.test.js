@@ -81,7 +81,9 @@ test('platinum free grooming is capped at the real Gentleman Grooming price, not
   const spoofed = computeServiceDiscount({ tier: 'platinum', membershipActive: true, birthdate: '1990-01-01', serviceId: 'gentleman-grooming', location: 'bypass', bookingDate: '2026-08-10', basePrice: 160000 });
   assert.equal(spoofed.discountAmount, 120000);
   assert.equal(spoofed.finalPrice, 40000);
-  assert.equal(spoofed.benefitLabel, 'Gratis — Benefit Platinum');
+  // finalPrice is non-zero (Rp40.000 still charged), so the label must not
+  // claim the booking is free.
+  assert.equal(spoofed.benefitLabel, 'Potongan Benefit Platinum Rp120.000');
 });
 
 test('platinum birthday 50% wins over free grooming when both would apply (50% of a nonzero price beats a free-only-on-one-service rule elsewhere)', () => {

@@ -43,13 +43,17 @@ function applyPercent(basePrice, percent, label) {
 // Platinum's "free Gentleman Grooming" benefit — capped at the real service
 // price so a spoofed/mismatched service_id + inflated basePrice can't turn
 // an unrelated, pricier service fully free.
-function applyGroomingFree(basePrice, label) {
+function applyGroomingFree(basePrice) {
   const discountAmount = Math.min(basePrice, GENTLEMAN_GROOMING_MAX_PRICE);
+  const finalPrice = basePrice - discountAmount;
+  const benefitLabel = finalPrice > 0
+    ? `Potongan Benefit Platinum Rp${discountAmount.toLocaleString('id-ID')}`
+    : 'Gratis — Benefit Platinum';
   return {
     discountPercent: basePrice > 0 ? Math.round((discountAmount / basePrice) * 100) : 100,
     discountAmount,
-    finalPrice: basePrice - discountAmount,
-    benefitLabel: label,
+    finalPrice,
+    benefitLabel,
   };
 }
 
@@ -80,7 +84,7 @@ function computeServiceDiscount({ tier, membershipActive, birthdate, serviceId, 
 
   if (normalizedTier === 'platinum') {
     const isGrooming = String(serviceId || '').trim().toLowerCase() === GENTLEMAN_GROOMING_SERVICE_ID;
-    const groomingCandidate = isGrooming ? applyGroomingFree(price, 'Gratis — Benefit Platinum') : null;
+    const groomingCandidate = isGrooming ? applyGroomingFree(price) : null;
     return bestOf([birthdayCandidate, groomingCandidate], price);
   }
 

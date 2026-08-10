@@ -21,9 +21,9 @@ test('the route destructures a group flag from the request body', () => {
   assert.match(routeBody, /const \{ name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address, group \} = req\.body;/);
 });
 
-test('discount computation is skipped for admin, wedding, and group bookings', () => {
+test('discount computation is skipped for admin, wedding, home service, and group bookings', () => {
   const routeBody = bookingRouteMatch[0];
-  assert.match(routeBody, /if \(!isAdmin && bookingType !== 'wedding' && !isGroupBooking\)/);
+  assert.match(routeBody, /if \(!isAdmin && bookingType !== 'wedding' && bookingType !== 'home_service' && !isGroupBooking\)/);
 });
 
 test('discount is computed from a server-side member lookup by phone, never from client input', () => {
