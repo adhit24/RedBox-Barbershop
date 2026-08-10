@@ -952,6 +952,14 @@ document.addEventListener('DOMContentLoaded', async () => {
  return candidates.some(bdayMs => Math.abs(booking.getTime() - bdayMs) <= WINDOW_MS);
  }
 
+ // Real price of Gentleman Grooming is Rp95.000 (standard branches) or
+ // Rp120.000 (CSB Mall) — see public/js/services-data.js REDBOX_SERVICES.
+ // Mirrors server/membership-benefits.js's cap exactly: the Platinum "free
+ // grooming" benefit must never be shown as fully free once add-ons push
+ // basePrice above the real service price, since the server never lets the
+ // discount exceed this cap either.
+ const GENTLEMAN_GROOMING_MAX_PRICE = 120000;
+
  function computeServiceDiscountPreview({ tier, membershipActive, birthdate, serviceId, location, bookingDate, basePrice }) {
  const price = Number(basePrice) || 0;
  const none = { discountPercent: 0, discountAmount: 0, finalPrice: price, benefitLabel: null };
@@ -959,6 +967,15 @@ document.addEventListener('DOMContentLoaded', async () => {
  const applyPercent = (percent, label) => {
  const discountAmount = Math.round(price * (percent / 100));
  return { discountPercent: percent, discountAmount, finalPrice: price - discountAmount, benefitLabel: label };
+ };
+ const applyGroomingFree = (label) => {
+ const discountAmount = Math.min(price, GENTLEMAN_GROOMING_MAX_PRICE);
+ return {
+ discountPercent: price > 0 ? Math.round((discountAmount / price) * 100) : 100,
+ discountAmount,
+ finalPrice: price - discountAmount,
+ benefitLabel: label,
+ };
  };
  const bestOf = (candidates) => {
  const real = candidates.filter(Boolean);
@@ -974,7 +991,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  if (normalizedTier === 'platinum') {
  const isGrooming = String(serviceId || '').trim().toLowerCase() === 'gentleman-grooming';
- const groomingCandidate = isGrooming ? applyPercent(100, 'Gratis — Benefit Platinum') : null;
+ const groomingCandidate = isGrooming ? applyGroomingFree('Gratis — Benefit Platinum') : null;
  return bestOf([birthdayCandidate, groomingCandidate]);
  }
  return none;
