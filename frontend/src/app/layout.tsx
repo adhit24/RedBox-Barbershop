@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 
@@ -29,6 +30,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="id" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-7F482X9X9Y"
+          strategy="afterInteractive"
+        />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-7F482X9X9Y');
+          `}
+        </Script>
       </head>
       <body className="min-h-full flex flex-col bg-gray-50">
         {children}
