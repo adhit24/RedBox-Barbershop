@@ -65,8 +65,24 @@ document.addEventListener('DOMContentLoaded', async () => {
  } catch {}
  })();
 
- const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID');
- const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+	 const fmt = n => 'Rp ' + Number(n).toLocaleString('id-ID');
+	 const pushGaEcommerce = (eventName, ecommerce) => {
+	 window.dataLayer = window.dataLayer || [];
+	 window.dataLayer.push({ event: eventName, ecommerce });
+	 if (typeof window.gtag === 'function') window.gtag('event', eventName, ecommerce);
+	 };
+	 const buildGaItems = () => {
+	 const people = isGroup()
+	 ? [state.service, state.person2?.service].filter(Boolean)
+	 : [state.service].filter(Boolean);
+	 return people.map((svc, index) => ({
+	 item_id: String(svc.id || svc.slug || ('booking-service-' + index)),
+	 item_name: svc.name || 'Redbox Booking',
+	 price: Number(svc.price) || 0,
+	 quantity: 1,
+	 }));
+	 };
+	 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
  let activeLoadSeq = 0;
@@ -1704,9 +1720,17 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  state.wa = custWa.value.trim();
  state.location = custLoc.value;
- state.address = isHomeService ? (custAddr?.value.trim() || '') : '';
- state.notes = document.getElementById('custNotes')?.value.trim() || '';
- updateSidebar();
+	 state.address = isHomeService ? (custAddr?.value.trim() || '') : '';
+	 state.notes = document.getElementById('custNotes')?.value.trim() || '';
+	 const cartValue = buildGaItems().reduce((sum, item) => sum + (item.price * item.quantity), 0);
+	 pushGaEcommerce('add_to_cart', {
+	 currency: 'IDR',
+	 value: cartValue,
+	 items: buildGaItems(),
+	 booking_location: state.location,
+	 payment_method: state.payment?.method || 'cash',
+	 });
+	 updateSidebar();
  buildConfirmSummary();
  goToStep(5);
  });
@@ -1969,10 +1993,19 @@ document.addEventListener('DOMContentLoaded', async () => {
  // The server recomputes the tier discount authoritatively and stores the
  // real charged price per row — use the sum of those (when available)
  // instead of the pre-submit `totalPrice`, which never reflects a discount.
- const realTotal = (savedToApi && bookingResults.length === payloads.length)
- ? bookingResults.reduce((sum, b) => sum + (Number(b.price) || 0), 0)
- : totalPrice;
- const msg = _buildWaMessage(realTotal);
+	 const realTotal = (savedToApi && bookingResults.length === payloads.length)
+	 ? bookingResults.reduce((sum, b) => sum + (Number(b.price) || 0), 0)
+	 : totalPrice;
+	 const transactionId = bookingResults.map(b => b.id).filter(Boolean).join('-') || ('booking-' + Date.now());
+	 pushGaEcommerce('purchase', {
+	 transaction_id: transactionId,
+	 currency: 'IDR',
+	 value: realTotal,
+	 items: buildGaItems(),
+	 booking_status: 'pending',
+	 payment_method: state.payment?.method || 'cash',
+	 });
+	 const msg = _buildWaMessage(realTotal);
  const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
 
  // Local fallback hanya untuk mode offline / dev (USE_API = false)
