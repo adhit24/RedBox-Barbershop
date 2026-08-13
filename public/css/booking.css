@@ -215,6 +215,7 @@
  flex-direction: column;
  height: 100%;
  position: relative;
+ touch-action: manipulation;
 }
 .barber-status-badge{
  position:absolute;top:8px;right:8px;
@@ -284,6 +285,14 @@
  overflow:hidden;
 }
 .pro-pick-card.selected .pro-pick-info h4{color:var(--red)}
+.change-hint-badge{
+ position:absolute;inset:0;z-index:3;
+ display:flex;align-items:center;justify-content:center;
+ background:rgba(10,10,10,.72);color:#fff;font-size:.72rem;font-weight:700;
+ text-align:center;padding:10px;border-radius:14px;
+ opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.change-hint-badge.visible{opacity:1}
 
 /* ======================================================
  STEP 3 - CALENDAR & TIME

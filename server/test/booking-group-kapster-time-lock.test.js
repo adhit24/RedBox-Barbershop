@@ -291,3 +291,16 @@ test('refreshBarberCardSelection targets the real kapster card class (.pro-pick-
   assert.match(fnBody, /querySelectorAll\('\.pro-pick-card'\)/);
   assert.doesNotMatch(fnBody, /querySelectorAll\('\.barber-card'\)/);
 });
+
+const bookingCss = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'booking.css'), 'utf8');
+
+test('.pro-pick-card disables native double-tap-to-zoom so our manual double-click detection works on mobile', () => {
+  const ruleMatch = bookingCss.match(/\.pro-pick-card\{[^}]*\}/);
+  assert.ok(ruleMatch, 'expected to find the .pro-pick-card rule');
+  assert.match(ruleMatch[0], /touch-action:\s*manipulation/);
+});
+
+test('.change-hint-badge styles exist for the "tap again to change kapster" hint', () => {
+  assert.match(bookingCss, /\.change-hint-badge\{/);
+  assert.match(bookingCss, /\.change-hint-badge\.visible\{/);
+});
