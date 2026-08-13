@@ -282,7 +282,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  state.person2 = null;
  state.activePerson = 1;
  } else {
- state.person2 = state.person2 || { name: '', service: null, barber: null, time: null };
+ state.person2 = state.person2 || { name: '', service: null, barber: null };
  }
  // Toggle 2nd name field & relabel 1st name
  const name2Group = document.getElementById('custName2Group');
@@ -1715,7 +1715,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  state.name = custName.value.trim();
  if (isGroup()) {
- state.person2 = state.person2 || { time: null };
+ state.person2 = state.person2 || {};
  state.person2.name = custName2.value.trim();
  }
  state.wa = custWa.value.trim();
