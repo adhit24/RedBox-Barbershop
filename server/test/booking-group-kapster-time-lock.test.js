@@ -127,6 +127,41 @@ test('loadAndRenderDate writes in-flight fetch results to local variables, not d
   assert.doesNotMatch(fnBody, /\n\s*state\.barberOffOnDate = !bs\.isWorking;/);
 });
 
+test('the four local fetch-result variables are declared at function scope, not inside the if (USE_API) block', () => {
+  // Regression guard: these four `let` bindings were briefly declared *inside*
+  // `if (USE_API) { ... }`, which made them block-scoped. Since the cache-build and
+  // publish steps read them *after* that block closes, that shape threw
+  // `ReferenceError: localMokaSlots is not defined` on every single call to
+  // loadAndRenderDate (not just the race-condition scenario) - a fully broken step 3.
+  // The fix mirrors how `barberIdFixed` was already hoisted to function scope for the
+  // same reason (it too is written inside the block and read after it).
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.ok(fnBody, 'expected to find loadAndRenderDate()');
+
+  // Match the real block opener specifically (immediately followed by a newline),
+  // not any mention of the literal text `if (USE_API) {` inside a comment.
+  const useApiBlockMatch = fnBody.match(/if \(USE_API\) \{\r?\n/);
+  assert.ok(useApiBlockMatch, 'expected the if (USE_API) { block');
+  const idxUseApiBlock = useApiBlockMatch.index;
+
+  for (const name of ['localMokaSlots', 'localMokaActive', 'localBusyRanges', 'localBarberOffOnDate']) {
+    const declRe = new RegExp(`let ${name} = `);
+    const declMatch = fnBody.match(declRe);
+    assert.ok(declMatch, `expected a \`let ${name} = ...\` declaration`);
+    assert.ok(
+      declMatch.index < idxUseApiBlock,
+      `\`${name}\` must be declared before \`if (USE_API) {\` (function-scoped), not inside it`
+    );
+    // Exactly one `let` declaration for this name in the whole function - if a second
+    // `let name = ...` snuck back in inside the if-block (re-declaring/shadowing the
+    // function-scoped one), later reads outside the block would silently read the
+    // *outer* (never-assigned) binding instead of throwing, which text-matching a
+    // single occurrence elsewhere wouldn't catch on its own.
+    const allDecls = fnBody.match(new RegExp(`let ${name} = `, 'g')) || [];
+    assert.equal(allDecls.length, 1, `expected exactly one \`let ${name} = ...\` declaration, found ${allDecls.length}`);
+  }
+});
+
 test('loadAndRenderDate clears the calendar loading state unconditionally, and only publishes local fetch results to the shared vars after the activePerson guard', () => {
   const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
   assert.ok(fnBody, 'expected to find loadAndRenderDate()');

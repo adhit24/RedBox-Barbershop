@@ -832,6 +832,20 @@ document.addEventListener('DOMContentLoaded', async () => {
  await new Promise(resolve => requestAnimationFrame(resolve));
 
  let barberIdFixed = null;
+ // In-flight fetches write to these LOCAL variables, not the shared module-scope
+ // vars (mokaAvailableSlots/mokaAvailabilityActive/fallbackBusyRanges/state.barberOffOnDate).
+ // An abandoned load (user switched person/date/seq before this settles) must never
+ // corrupt the live state of whichever person is currently on screen. These locals are
+ // only "published" into the shared vars below, after confirming seq+activePerson still
+ // match this load (see the seq/forPerson guard right before the publish step).
+ // NOTE: declared at function scope (like barberIdFixed above), NOT inside the
+ // `if (USE_API) { ... }` block below - a block-scoped `let` here would go out of
+ // scope the moment that block closes, and the cache-build/publish steps that read
+ // them run *after* the block closes, throwing ReferenceError on every call.
+ let localMokaSlots = [];
+ let localMokaActive = false;
+ let localBusyRanges = [];
+ let localBarberOffOnDate = false;
  if (USE_API) {
  // Home service / wedding: durasi selalu 120 menit per kapster (aturan bisnis),
  // bukan durasi service yang dipilih pelanggan.
@@ -839,17 +853,6 @@ document.addEventListener('DOMContentLoaded', async () => {
  const outletIdFixed = state.location || 'bypass';
  barberIdFixed = getActiveBarber()?.id || null;
  const promises = [];
-
- // In-flight fetches write to these LOCAL variables, not the shared module-scope
- // vars (mokaAvailableSlots/mokaAvailabilityActive/fallbackBusyRanges/state.barberOffOnDate).
- // An abandoned load (user switched person/date/seq before this settles) must never
- // corrupt the live state of whichever person is currently on screen. These locals are
- // only "published" into the shared vars below, after confirming seq+activePerson still
- // match this load (see the seq/forPerson guard right before the publish step).
- let localMokaSlots = [];
- let localMokaActive = false;
- let localBusyRanges = [];
- let localBarberOffOnDate = false;
 
  promises.push((async () => {
  try {
