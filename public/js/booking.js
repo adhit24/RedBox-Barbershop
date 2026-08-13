@@ -840,6 +840,17 @@ document.addEventListener('DOMContentLoaded', async () => {
  barberIdFixed = getActiveBarber()?.id || null;
  const promises = [];
 
+ // In-flight fetches write to these LOCAL variables, not the shared module-scope
+ // vars (mokaAvailableSlots/mokaAvailabilityActive/fallbackBusyRanges/state.barberOffOnDate).
+ // An abandoned load (user switched person/date/seq before this settles) must never
+ // corrupt the live state of whichever person is currently on screen. These locals are
+ // only "published" into the shared vars below, after confirming seq+activePerson still
+ // match this load (see the seq/forPerson guard right before the publish step).
+ let localMokaSlots = [];
+ let localMokaActive = false;
+ let localBusyRanges = [];
+ let localBarberOffOnDate = false;
+
  promises.push((async () => {
  try {
  const params = new URLSearchParams({
@@ -852,8 +863,8 @@ document.addEventListener('DOMContentLoaded', async () => {
  const res = await fetch(`${API_URL}/availability?${params}`, { signal: AbortSignal.timeout(12000) });
  if (res.ok) {
  const json = await res.json();
- mokaAvailableSlots = json.slots || [];
- mokaAvailabilityActive = true;
+ localMokaSlots = json.slots || [];
+ localMokaActive = true;
  }
  } catch (e) {
  console.warn('[Availability] Moka slot API unavailable', e.message);
@@ -870,7 +881,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (sRes.ok) {
  const sJson = await sRes.json();
  if (sJson.schedules && sJson.schedules.length > 0) {
- fallbackBusyRanges = sJson.schedules
+ localBusyRanges = sJson.schedules
  .map(s => {
  const start = _parseDateTimeToMs(s.start_time);
  const end = _parseDateTimeToMs(s.end_time);
@@ -879,7 +890,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  })
  .filter(Boolean);
  } else {
- fallbackBusyRanges = [];
+ localBusyRanges = [];
  }
  }
  } catch (e) {
@@ -888,7 +899,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  })());
 
  // Check barber off-duty status for this specific date - runs in parallel so
- // state.barberOffOnDate is guaranteed to be set before buildTimeGrid() is called.
+ // localBarberOffOnDate is guaranteed to be set before buildTimeGrid() is called.
  promises.push((async () => {
  try {
  const tsRes = await fetch(
@@ -898,7 +909,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (tsRes.ok) {
  const tsJson = await tsRes.json();
  const bs = (tsJson.barbers || []).find(b => String(b.id) === String(barberIdFixed));
- if (bs !== undefined) state.barberOffOnDate = !bs.isWorking;
+ if (bs !== undefined) localBarberOffOnDate = !bs.isWorking;
  }
  } catch (e) {
  console.warn('[OffDuty] Status check failed:', e.message);
@@ -959,7 +970,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  setTimeout(pollOnce, 2200);
  };
 
- const needsImmediatePoll = !fallbackBusyRanges || fallbackBusyRanges.length === 0;
+ const needsImmediatePoll = !localBusyRanges || localBusyRanges.length === 0;
  if (needsImmediatePoll) {
  setTimeout(pollOnce, 900);
  }
@@ -968,18 +979,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  if (seq !== activeLoadSeq) return;
 
+ // Build the cache entry from the LOCAL fetch results unconditionally, so the cache
+ // for `forPerson` stays fresh even if the user isn't currently viewing that person
+ // (e.g. they tabbed away while this load was in flight).
  personAvailabilityCache[forPerson] = {
  date: dateStr,
  barberId: barberIdFixed,
- mokaAvailableSlots: [...mokaAvailableSlots],
- mokaAvailabilityActive,
- fallbackBusyRanges: [...fallbackBusyRanges],
- barberOffOnDate: state.barberOffOnDate,
+ mokaAvailableSlots: [...localMokaSlots],
+ mokaAvailabilityActive: localMokaActive,
+ fallbackBusyRanges: [...localBusyRanges],
+ barberOffOnDate: localBarberOffOnDate,
  };
+
+ // Always clear the calendar day's loading shimmer once the fetch settles, regardless
+ // of which person's tab is active by the time it resolves - otherwise a cache-hit tab
+ // switch away from `forPerson` (which never calls loadAndRenderDate again for this
+ // date) leaves `.cal-day.selected` stuck in its infinite loading animation forever.
+ if (selectedEl) selectedEl.classList.remove('loading');
 
  if (state.activePerson !== forPerson) return;
 
- if (selectedEl) selectedEl.classList.remove('loading');
+ // Publish the freshly-fetched LOCAL results into the shared module-scope vars only
+ // now that we've confirmed this load is still the one the screen should show (same
+ // seq, same active person). This is the guard the writes above were missing: without
+ // it, an abandoned fetch could overwrite the live state of whichever person the user
+ // has since switched back to.
+ mokaAvailableSlots = localMokaSlots;
+ mokaAvailabilityActive = localMokaActive;
+ fallbackBusyRanges = localBusyRanges;
+ state.barberOffOnDate = localBarberOffOnDate;
 
  requestAnimationFrame(() => {
  if (seq !== activeLoadSeq) return;

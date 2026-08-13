@@ -109,6 +109,51 @@ test('loadAndRenderDate guards its final render against the user having switched
   assert.match(fnBody, /state\.activePerson !== forPerson/);
 });
 
+test('loadAndRenderDate writes in-flight fetch results to local variables, not directly to the shared module-scope vars', () => {
+  // An abandoned fetch (user switched person/date before it settles) must not be able
+  // to corrupt mokaAvailableSlots/mokaAvailabilityActive/fallbackBusyRanges/
+  // state.barberOffOnDate directly - those writes have to go through locals first and
+  // get "published" only after a seq/activePerson check (see the next test).
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.ok(fnBody, 'expected to find loadAndRenderDate()');
+  assert.match(fnBody, /localMokaSlots = json\.slots \|\| \[\];/);
+  assert.match(fnBody, /localMokaActive = true;/);
+  assert.match(fnBody, /localBusyRanges = sJson\.schedules/);
+  assert.match(fnBody, /localBarberOffOnDate = !bs\.isWorking;/);
+  // The old unguarded direct-write forms must be gone from the fetch callbacks.
+  assert.doesNotMatch(fnBody, /\n\s*mokaAvailableSlots = json\.slots/);
+  assert.doesNotMatch(fnBody, /\n\s*mokaAvailabilityActive = true;/);
+  assert.doesNotMatch(fnBody, /\n\s*fallbackBusyRanges = sJson\.schedules/);
+  assert.doesNotMatch(fnBody, /\n\s*state\.barberOffOnDate = !bs\.isWorking;/);
+});
+
+test('loadAndRenderDate clears the calendar loading state unconditionally, and only publishes local fetch results to the shared vars after the activePerson guard', () => {
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.ok(fnBody, 'expected to find loadAndRenderDate()');
+
+  const idxCacheBuild = fnBody.indexOf('personAvailabilityCache[forPerson] = {');
+  // Anchored on `selectedEl.classList.remove(...)` specifically (not the earlier
+  // `dayEls.forEach(d => d.classList.remove('loading'))` at the top of the function,
+  // which clears loading off *all* calendar days before the fetch even starts and is
+  // unrelated to this guard-ordering check).
+  const idxLoadingClear = fnBody.indexOf("selectedEl.classList.remove('loading')");
+  const idxGuard = fnBody.indexOf('if (state.activePerson !== forPerson) return;', idxLoadingClear);
+  const idxPublish = fnBody.indexOf('mokaAvailableSlots = localMokaSlots;');
+
+  assert.ok(idxCacheBuild !== -1, 'expected the per-person cache write');
+  assert.ok(idxLoadingClear !== -1, 'expected the calendar day loading-class removal');
+  assert.ok(idxGuard !== -1, 'expected an activePerson guard after the loading-class removal');
+  assert.ok(idxPublish !== -1, 'expected the local-to-shared publish step');
+
+  // Order matters: cache is built from locals unconditionally, then the loading
+  // shimmer is cleared unconditionally (so it never gets stuck on a cache-hit tab
+  // switch), and only after that does the activePerson guard gate the publish of
+  // locals into the live module-scope vars.
+  assert.ok(idxCacheBuild < idxLoadingClear, 'cache build must happen before the loading-class removal');
+  assert.ok(idxLoadingClear < idxGuard, 'loading-class removal must happen before the activePerson guard, not after');
+  assert.ok(idxGuard < idxPublish, 'the module-scope var publish must happen after the activePerson guard');
+});
+
 test('switchTimeGridToActivePerson exists and reuses cache before re-fetching', () => {
   const fnBody = extractFunctionBody(bookingJs, /function switchTimeGridToActivePerson\(\)\s*\{/);
   assert.ok(fnBody, 'expected to find switchTimeGridToActivePerson()');
