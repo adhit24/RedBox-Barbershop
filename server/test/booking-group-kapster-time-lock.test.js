@@ -304,3 +304,24 @@ test('.change-hint-badge styles exist for the "tap again to change kapster" hint
   assert.match(bookingCss, /\.change-hint-badge\{/);
   assert.match(bookingCss, /\.change-hint-badge\.visible\{/);
 });
+
+test('showChangeHint helper exists and toggles the .visible class with a timeout', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function showChangeHint\(card\)\s*\{/);
+  assert.ok(fnBody, 'expected to find showChangeHint()');
+  assert.match(fnBody, /change-hint-badge/);
+  assert.match(fnBody, /setTimeout/);
+});
+
+test('the kapster-card click handler requires a second click within 400ms to change an already-picked kapster', () => {
+  const clickHandlerBody = extractFunctionBody(bookingJs, /proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{/);
+  assert.ok(clickHandlerBody, 'expected to find the kapster-card click handler');
+  assert.match(clickHandlerBody, /currentActive/);
+  assert.match(clickHandlerBody, /isSameCard/);
+  assert.match(clickHandlerBody, /now - last > 400/);
+  assert.match(clickHandlerBody, /showChangeHint\(card\)/);
+});
+
+test('the first pick for a person (no current kapster yet) does not require a double click', () => {
+  const clickHandlerBody = extractFunctionBody(bookingJs, /proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{/);
+  assert.match(clickHandlerBody, /if \(currentActive && !isSameCard\) \{/);
+});

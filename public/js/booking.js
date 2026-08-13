@@ -1241,6 +1241,19 @@ document.addEventListener('DOMContentLoaded', async () => {
  });
 
  // ── STEP 3: PROFESSIONAL (Dynamic Rendering) ──
+ function showChangeHint(card) {
+ let badge = card.querySelector('.change-hint-badge');
+ if (!badge) {
+ badge = document.createElement('div');
+ badge.className = 'change-hint-badge';
+ badge.textContent = 'Ketuk sekali lagi untuk ganti kapster';
+ card.appendChild(badge);
+ }
+ badge.classList.add('visible');
+ clearTimeout(card._hintTimer);
+ card._hintTimer = setTimeout(() => badge.classList.remove('visible'), 1500);
+ }
+
  const proPickGrid = document.getElementById('proPickGrid');
  const proBranchFilter = document.getElementById('proBranchFilter');
  let allBarbers = [];
@@ -1391,6 +1404,19 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (card.dataset.barber === 'none') return;
 
  const barberData = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
+ const currentActive = getActiveBarber();
+ const isSameCard = currentActive && String(currentActive.id) === String(barberData.id);
+
+ if (currentActive && !isSameCard) {
+ const now = Date.now();
+ const last = Number(card.dataset.lastTap || 0);
+ card.dataset.lastTap = String(now);
+ if (now - last > 400) {
+ showChangeHint(card);
+ return;
+ }
+ card.dataset.lastTap = '0';
+ }
 
  setActiveBarber(barberData);
  refreshBarberCardSelection();
