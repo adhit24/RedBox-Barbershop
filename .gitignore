@@ -106,3 +106,6 @@ run-reengagement-now.js
 server/run-reengagement-now.js
 aibot_5_branch.md
 redbox-barbershop-log-export-*.json
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
