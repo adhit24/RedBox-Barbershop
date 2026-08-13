@@ -1182,9 +1182,14 @@ document.addEventListener('DOMContentLoaded', async () => {
  document.getElementById('sumBarber').textContent = state.barber ? state.barber.name : '-';
  }
 
- document.getElementById('sumDatetime').textContent =
- (state.date && state.time) ? formatDate(state.date) + ', ' + state.time
- : state.date ? formatDate(state.date) : '-';
+ const groupTimeLabel = (state.time && state.person2?.time)
+ ? state.time + ' & ' + state.person2.time
+ : (state.time || state.person2?.time || null);
+ document.getElementById('sumDatetime').textContent = !state.date
+ ? '-'
+ : isGroup()
+ ? formatDate(state.date) + (groupTimeLabel ? ', ' + groupTimeLabel : '')
+ : (state.time ? formatDate(state.date) + ', ' + state.time : formatDate(state.date));
  const locSel = document.getElementById('custLocation');
  document.getElementById('sumLocation').textContent = state.location
  ? (locSel?.querySelector('[value="' + state.location + '"]')?.textContent || state.location)
@@ -1862,7 +1867,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  const useCsb = state.location === 'csb';
 
  // Build per-person service rows (handles both solo & group)
- function personRows(label, svc, barber, name) {
+ function personRows(label, svc, barber, name, time) {
  const addons = svc?.addons || [];
  const baseSvcPrice = svc?.basePrice
  ? (useCsb && svc.baseCsbPrice ? svc.baseCsbPrice : svc.basePrice)
@@ -1876,13 +1881,14 @@ document.addEventListener('DOMContentLoaded', async () => {
  <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${svc?.name || '-'}${addons.length ? ' - ' + fmt(baseSvcPrice) : ''}</span></div>
  ${addonRows}
  <div class="confirm-row"><span class="cr-label">Duration</span><span class="cr-val">${svc?.duration || '-'}</span></div>
+ ${label ? `<div class="confirm-row"><span class="cr-label">Jam</span><span class="cr-val">${time || '-'}</span></div>` : ''}
  ${label ? '' : `<div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${barber?.name || '-'}</span></div>`}
  `;
  }
 
  const groupRows = isGroup()
- ? personRows('Orang 1', state.service, state.barber, state.name) +
- personRows('Orang 2', state.person2?.service, state.person2?.barber, state.person2?.name)
+ ? personRows('Orang 1', state.service, state.barber, state.name, state.time) +
+ personRows('Orang 2', state.person2?.service, state.person2?.barber, state.person2?.name, state.person2?.time)
  : personRows('', state.service, state.barber);
 
  const total = (state.service?.price || 0) + (isGroup() ? (state.person2?.service?.price || 0) : 0);
@@ -1912,7 +1918,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  box.innerHTML = `
  ${groupRows}
  <div class="confirm-row"><span class="cr-label">Date</span><span class="cr-val">${state.date ? formatDate(state.date) : '-'}</span></div>
- <div class="confirm-row"><span class="cr-label">Time</span><span class="cr-val">${state.time || '-'}</span></div>
+ ${isGroup() ? '' : `<div class="confirm-row"><span class="cr-label">Time</span><span class="cr-val">${state.time || '-'}</span></div>`}
  <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
  ${isHomeService && state.address ? `<div class="confirm-row"><span class="cr-label">Alamat</span><span class="cr-val">${state.address}</span></div>` : ''}
  <div class="confirm-row"><span class="cr-label">${isGroup() ? 'Kontak Utama' : 'Name'}</span><span class="cr-val">${state.name}</span></div>

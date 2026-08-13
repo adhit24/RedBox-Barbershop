@@ -243,3 +243,16 @@ test('the step3Next click handler gates on step3Ready, not a shared state.time',
   assert.ok(listenerMatch, 'expected to find the step3Next click listener');
   assert.match(listenerMatch[0], /step3Ready\(\)/);
 });
+
+test('buildConfirmSummary shows a per-person Jam row in group mode instead of one shared time', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function buildConfirmSummary\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find buildConfirmSummary()');
+  assert.match(fnBody, /personRows\('Orang 1', state\.service, state\.barber, state\.name, state\.time\)/);
+  assert.match(fnBody, /personRows\('Orang 2', state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.name, state\.person2\?\.time\)/);
+});
+
+test('updateSidebar shows both people\'s time in group mode', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function updateSidebar\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find updateSidebar()');
+  assert.match(fnBody, /groupTimeLabel/);
+});
