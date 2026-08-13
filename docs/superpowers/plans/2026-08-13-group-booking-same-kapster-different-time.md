@@ -246,12 +246,20 @@ test('getActiveTime/setActiveTime helpers exist next to the existing per-person 
   assert.match(bookingJs, /function setActiveTime\(t\)\s*\{/);
 });
 
-test('person2 is initialized with a time field everywhere it is created', () => {
-  const initSites = bookingJs.match(/state\.person2 = state\.person2 \|\| \{[^}]*\}/g) || [];
-  assert.ok(initSites.length >= 3, `expected at least 3 person2 init sites, found ${initSites.length}`);
-  for (const site of initSites) {
-    assert.match(site, /time:\s*null/, `expected "time: null" in: ${site}`);
-  }
+test('person2 gets a time field in setActiveService and setActiveBarber (the two sites this task owns)', () => {
+  const setActiveServiceMatch = bookingJs.match(/function setActiveService\(svc\)\s*\{[\s\S]*?\n  \}/);
+  const setActiveBarberMatch = bookingJs.match(/function setActiveBarber\(b\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(setActiveServiceMatch, 'expected to find setActiveService()');
+  assert.ok(setActiveBarberMatch, 'expected to find setActiveBarber()');
+  assert.match(setActiveServiceMatch[0], /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/);
+  assert.match(setActiveBarberMatch[0], /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/);
+});
+
+test('the setGroupSize and step-4-details person2 init sites are untouched by this task (reserved for Task 4 / intentionally left alone)', () => {
+  const setGroupSizeMatch = bookingJs.match(/function setGroupSize\(n\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(setGroupSizeMatch, 'expected to find setGroupSize()');
+  assert.match(setGroupSizeMatch[0], /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null \};/, 'setGroupSize\'s person2 init site must stay in its pre-Task-3 form; Task 4 edits it');
+  assert.match(bookingJs, /state\.person2 = state\.person2 \|\| \{\};/, 'the step-4-details bare fallback must stay untouched');
 });
 ```
 
@@ -298,7 +306,7 @@ Immediately after the `setActiveBarber` function closes (right after the block e
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (5 tests) — note: this leaves 1 remaining `state.person2 = state.person2 || {...}` init site (in `setGroupSize`, handled in Task 4) and the `state.person2 = state.person2 || {}` bare fallback at the step4 details handler (~line 1718, intentionally left untouched — see Task 4 note).
+Expected: PASS (6 tests) — note: this leaves 1 remaining `state.person2 = state.person2 || {...}` init site (in `setGroupSize`, handled in Task 4) and the `state.person2 = state.person2 || {}` bare fallback at the step4 details handler (~line 1718, intentionally left untouched — see Task 4 note).
 
 - [ ] **Step 6: Commit**
 
@@ -445,7 +453,7 @@ Read `public/js/booking.js` around lines 162-185 to confirm current text, then r
 - [ ] **Step 6: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (8 tests)
+Expected: PASS (9 tests)
 
 - [ ] **Step 7: Commit**
 
@@ -774,7 +782,7 @@ Then read `public/js/booking.js` lines 756-778 (the `if (n === 3) { ... }` branc
 - [ ] **Step 7: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (14 tests)
+Expected: PASS (15 tests)
 
 - [ ] **Step 8: Commit**
 
@@ -1026,7 +1034,7 @@ to:
 - [ ] **Step 6: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (20 tests)
+Expected: PASS (21 tests)
 
 - [ ] **Step 7: Commit**
 
@@ -1132,7 +1140,7 @@ with:
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (22 tests)
+Expected: PASS (23 tests)
 
 - [ ] **Step 6: Commit**
 
@@ -1220,7 +1228,7 @@ Then read lines ~1877-1896 (`_buildWaMessage`) and:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (24 tests)
+Expected: PASS (25 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1331,7 +1339,7 @@ to:
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (26 tests)
+Expected: PASS (27 tests)
 
 - [ ] **Step 6: Commit**
 
@@ -1396,7 +1404,7 @@ to:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (27 tests)
+Expected: PASS (28 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1487,7 +1495,7 @@ Read `public/css/booking.css` around line 286-288 (`.pro-pick-card.selected .pro
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (29 tests)
+Expected: PASS (30 tests)
 
 - [ ] **Step 6: Commit**
 
@@ -1616,7 +1624,7 @@ Read `public/js/booking.js` around lines 1281-1322 (the current state after Task
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `node --test server/test/booking-group-kapster-time-lock.test.js`
-Expected: PASS (32 tests)
+Expected: PASS (33 tests)
 
 - [ ] **Step 6: Run the full suite**
 
