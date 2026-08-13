@@ -247,21 +247,49 @@ test('getActiveTime/setActiveTime helpers exist next to the existing per-person 
 });
 
 test('person2 gets a time field in setActiveService and setActiveBarber (the two sites this task owns)', () => {
-  const setActiveServiceMatch = bookingJs.match(/function setActiveService\(svc\)\s*\{[\s\S]*?\n  \}/);
-  const setActiveBarberMatch = bookingJs.match(/function setActiveBarber\(b\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(setActiveServiceMatch, 'expected to find setActiveService()');
-  assert.ok(setActiveBarberMatch, 'expected to find setActiveBarber()');
-  assert.match(setActiveServiceMatch[0], /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/);
-  assert.match(setActiveBarberMatch[0], /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/);
+  const setActiveServiceBody = extractFunctionBody(bookingJs, /function setActiveService\(svc\)\s*\{/);
+  const setActiveBarberBody = extractFunctionBody(bookingJs, /function setActiveBarber\(b\)\s*\{/);
+  assert.ok(setActiveServiceBody, 'expected to find setActiveService()');
+  assert.ok(setActiveBarberBody, 'expected to find setActiveBarber()');
+  assert.match(setActiveServiceBody, /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/);
+  assert.match(setActiveBarberBody, /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/);
 });
 
 test('the setGroupSize and step-4-details person2 init sites are untouched by this task (reserved for Task 4 / intentionally left alone)', () => {
-  const setGroupSizeMatch = bookingJs.match(/function setGroupSize\(n\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(setGroupSizeMatch, 'expected to find setGroupSize()');
-  assert.match(setGroupSizeMatch[0], /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null \};/, 'setGroupSize\'s person2 init site must stay in its pre-Task-3 form; Task 4 edits it');
+  const setGroupSizeBody = extractFunctionBody(bookingJs, /function setGroupSize\(n\)\s*\{/);
+  assert.ok(setGroupSizeBody, 'expected to find setGroupSize()');
+  assert.match(setGroupSizeBody, /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null \};/, 'setGroupSize\'s person2 init site must stay in its pre-Task-3 form; Task 4 edits it');
   assert.match(bookingJs, /state\.person2 = state\.person2 \|\| \{\};/, 'the step-4-details bare fallback must stay untouched');
 });
 ```
+
+**Note:** this task also adds a shared helper, `extractFunctionBody(src, signaturePattern)`, at the top of `server/test/booking-group-kapster-time-lock.test.js` (right after the `bookingJs`/`bookingHtml` constants). A naive `bookingJs.match(/function X\(\)\s*\{[\s\S]*?\n\s*\}/)` regex only captures up to the *first* closing brace after the opening one — for any function containing a nested block (`if (...) { ... }`, a `.forEach(cb => { ... })` callback, etc.) that stops at the inner block's closing brace, not the function's own one, silently truncating the match. `extractFunctionBody` instead brace-counts from the function's opening `{` to find its true matching `}`, so it works regardless of nesting depth:
+
+```js
+// Extracts a whole function body by brace-counting from its declaration,
+// so nested blocks (if/else, forEach callbacks, etc.) don't cause an early
+// cutoff the way a lazy "first closing brace" regex would. signaturePattern
+// must match through to and include the function's own opening '{' (not
+// a '{' that appears earlier, e.g. inside a default parameter value).
+function extractFunctionBody(src, signaturePattern) {
+  const sigMatch = src.match(signaturePattern);
+  if (!sigMatch) return null;
+  const start = sigMatch.index;
+  const openBraceIdx = src.indexOf('{', start);
+  if (openBraceIdx === -1) return null;
+  let depth = 0;
+  for (let i = openBraceIdx; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+```
+
+All later tasks in this plan (4 onward) use this same helper instead of the naive regex pattern — look for it already present at the top of the test file rather than redefining it.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -341,16 +369,16 @@ test('booking.html has a personTabsTime block in step 3, mirroring personTabsBar
 });
 
 test('setGroupSize toggles personTabsTime the same way as the other person-tab blocks', () => {
-  const fnMatch = bookingJs.match(/function setGroupSize\(n\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find setGroupSize()');
-  assert.match(fnMatch[0], /personTabsTime/);
+  const fnBody = extractFunctionBody(bookingJs, /function setGroupSize\(n\)\s*\{/);
+  assert.ok(fnBody, 'expected to find setGroupSize()');
+  assert.match(fnBody, /personTabsTime/);
 });
 
 test('refreshPersonTabs handles the time step (isTimeStep branch)', () => {
-  const fnMatch = bookingJs.match(/function refreshPersonTabs\(\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find refreshPersonTabs()');
-  assert.match(fnMatch[0], /isTimeStep/);
-  assert.match(fnMatch[0], /state\.time/);
+  const fnBody = extractFunctionBody(bookingJs, /function refreshPersonTabs\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find refreshPersonTabs()');
+  assert.match(fnBody, /isTimeStep/);
+  assert.match(fnBody, /state\.time/);
 });
 ```
 
@@ -486,38 +514,62 @@ test('personAvailabilityCache exists as a module-scope cache keyed by person', (
 });
 
 test('loadAndRenderDate accepts an opts param and only resets both people\'s time on a real date change', () => {
-  const fnMatch = bookingJs.match(/async function loadAndRenderDate\([\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find loadAndRenderDate()');
-  assert.match(fnMatch[0], /opts = \{\}/);
-  assert.match(fnMatch[0], /isDateChange/);
-  assert.match(fnMatch[0], /state\.person2\.time = null/);
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.ok(fnBody, 'expected to find loadAndRenderDate()');
+  assert.match(fnBody, /isDateChange/);
+  assert.match(fnBody, /state\.person2\.time = null/);
 });
 
 test('loadAndRenderDate reads the active person\'s barber/service, not a single global barber', () => {
-  const fnMatch = bookingJs.match(/async function loadAndRenderDate\([\s\S]*?\n  \}/);
-  assert.match(fnMatch[0], /getActiveBarber\(\)\?\.id/);
-  assert.match(fnMatch[0], /getActiveService\(\)\?\.duration/);
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.match(fnBody, /getActiveBarber\(\)\?\.id/);
+  assert.match(fnBody, /getActiveService\(\)\?\.duration/);
 });
 
 test('loadAndRenderDate guards its final render against the user having switched person tabs mid-fetch', () => {
-  const fnMatch = bookingJs.match(/async function loadAndRenderDate\([\s\S]*?\n  \}/);
-  assert.match(fnMatch[0], /state\.activePerson !== forPerson/);
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.match(fnBody, /state\.activePerson !== forPerson/);
 });
 
 test('switchTimeGridToActivePerson exists and reuses cache before re-fetching', () => {
-  const fnMatch = bookingJs.match(/function switchTimeGridToActivePerson\(\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find switchTimeGridToActivePerson()');
-  assert.match(fnMatch[0], /personAvailabilityCache\[state\.activePerson\]/);
-  assert.match(fnMatch[0], /loadAndRenderDate\(/);
+  const fnBody = extractFunctionBody(bookingJs, /function switchTimeGridToActivePerson\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find switchTimeGridToActivePerson()');
+  assert.match(fnBody, /personAvailabilityCache\[state\.activePerson\]/);
+  assert.match(fnBody, /loadAndRenderDate\(/);
 });
 
 test('the person-tabs click handler re-renders the time grid when switching tabs on the time step', () => {
-  const listenerMatch = bookingJs.match(/document\.querySelectorAll\('\.person-tabs'\)\.forEach\(tabs => \{[\s\S]*?\n  \}\);/);
-  assert.ok(listenerMatch, 'expected to find the person-tabs click wiring');
-  assert.match(listenerMatch[0], /personTabsTime/);
-  assert.match(listenerMatch[0], /switchTimeGridToActivePerson/);
+  const listenerBody = extractFunctionBody(bookingJs, /document\.querySelectorAll\('\.person-tabs'\)\.forEach\(tabs => \{/);
+  assert.ok(listenerBody, 'expected to find the person-tabs click wiring');
+  assert.match(listenerBody, /personTabsTime/);
+  assert.match(listenerBody, /switchTimeGridToActivePerson/);
 });
 ```
+
+**Important — hardening `extractFunctionBody` before this task can use it on `loadAndRenderDate`:** the helper Task 3 added (see its section above) finds the opening brace via `src.indexOf('{', start)`, where `start` is the *beginning* of the signature match. That's fine for every function used so far because none of their signatures contain a `{` before the real body brace — but `loadAndRenderDate(dateStr, dayEl = null, opts = {})` does (the `opts = {}` default). Searching for `{` from the start of the match would find that empty `{}` first and brace-count from the wrong position. Fix the helper (in `server/test/booking-group-kapster-time-lock.test.js`, near the top) to use the *end* of the signature match when the pattern itself ends with `{` (which all this plan's signature patterns do — they're written to include the function's own opening brace):
+
+```js
+function extractFunctionBody(src, signaturePattern) {
+  const sigMatch = src.match(signaturePattern);
+  if (!sigMatch) return null;
+  const start = sigMatch.index;
+  const openBraceIdx = sigMatch[0].endsWith('{')
+    ? start + sigMatch[0].length - 1
+    : src.indexOf('{', start + sigMatch[0].length);
+  if (openBraceIdx === -1) return null;
+  let depth = 0;
+  for (let i = openBraceIdx; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+```
+
+Replace the existing (Task 3) definition with this one — same name, same call sites elsewhere keep working unchanged since the signature patterns used so far all end with `{` and had no earlier stray `{`, so this is a strict superset fix, not a behavior change for existing callers.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -809,34 +861,34 @@ Append to `server/test/booking-group-kapster-time-lock.test.js`:
 
 ```js
 test('step3Ready requires both people to have a time when in group mode', () => {
-  const fnMatch = bookingJs.match(/function step3Ready\(\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find step3Ready()');
-  assert.match(fnMatch[0], /state\.person2\?\.time/);
+  const fnBody = extractFunctionBody(bookingJs, /function step3Ready\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find step3Ready()');
+  assert.match(fnBody, /state\.person2\?\.time/);
 });
 
 test('buildTimeGrid renders for the active person, not a single global barber/service/time', () => {
-  const fnMatch = bookingJs.match(/function buildTimeGrid\([\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find buildTimeGrid()');
-  assert.match(fnMatch[0], /const activeBarber = getActiveBarber\(\);/);
-  assert.match(fnMatch[0], /const activeService = getActiveService\(\);/);
-  assert.match(fnMatch[0], /getActiveTime\(\) === slot/);
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.ok(fnBody, 'expected to find buildTimeGrid()');
+  assert.match(fnBody, /const activeBarber = getActiveBarber\(\);/);
+  assert.match(fnBody, /const activeService = getActiveService\(\);/);
+  assert.match(fnBody, /getActiveTime\(\) === slot/);
 });
 
 test('buildTimeGrid no longer cross-checks both people against the same shared slot', () => {
-  const fnMatch = bookingJs.match(/function buildTimeGrid\([\s\S]*?\n  \}/);
-  assert.doesNotMatch(fnMatch[0], /Group mode: slot juga harus available untuk barber person 2/);
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.doesNotMatch(fnBody, /Group mode: slot juga harus available untuk barber person 2/);
 });
 
 test('buildTimeGrid blocks slots that overlap the other person\'s time when they share a kapster', () => {
-  const fnMatch = bookingJs.match(/function buildTimeGrid\([\s\S]*?\n  \}/);
-  assert.match(fnMatch[0], /RedboxBookingOverlap\.timeRangesOverlap/);
-  assert.match(fnMatch[0], /sameBarberAsOther/);
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.match(fnBody, /RedboxBookingOverlap\.timeRangesOverlap/);
+  assert.match(fnBody, /sameBarberAsOther/);
 });
 
 test('the time-slot click handler advances the active person via setActiveTime and auto-switches to person 2', () => {
-  const fnMatch = bookingJs.match(/function buildTimeGrid\([\s\S]*?\n  \}/);
-  assert.match(fnMatch[0], /setActiveTime\(slot\)/);
-  assert.match(fnMatch[0], /state\.activePerson = 2/);
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.match(fnBody, /setActiveTime\(slot\)/);
+  assert.match(fnBody, /state\.activePerson = 2/);
 });
 
 test('the step3Next click handler gates on step3Ready, not a shared state.time', () => {
@@ -1060,16 +1112,16 @@ Append to `server/test/booking-group-kapster-time-lock.test.js`:
 
 ```js
 test('buildConfirmSummary shows a per-person Jam row in group mode instead of one shared time', () => {
-  const fnMatch = bookingJs.match(/function buildConfirmSummary\(\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find buildConfirmSummary()');
-  assert.match(fnMatch[0], /personRows\('Orang 1', state\.service, state\.barber, state\.name, state\.time\)/);
-  assert.match(fnMatch[0], /personRows\('Orang 2', state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.name, state\.person2\?\.time\)/);
+  const fnBody = extractFunctionBody(bookingJs, /function buildConfirmSummary\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find buildConfirmSummary()');
+  assert.match(fnBody, /personRows\('Orang 1', state\.service, state\.barber, state\.name, state\.time\)/);
+  assert.match(fnBody, /personRows\('Orang 2', state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.name, state\.person2\?\.time\)/);
 });
 
 test('updateSidebar shows both people\'s time in group mode', () => {
-  const fnMatch = bookingJs.match(/function updateSidebar\(\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find updateSidebar()');
-  assert.match(fnMatch[0], /groupTimeLabel/);
+  const fnBody = extractFunctionBody(bookingJs, /function updateSidebar\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find updateSidebar()');
+  assert.match(fnBody, /groupTimeLabel/);
 });
 ```
 
@@ -1168,16 +1220,16 @@ Append to `server/test/booking-group-kapster-time-lock.test.js`:
 
 ```js
 test('_waBlockFor accepts a time param and includes a Jam line when present', () => {
-  const fnMatch = bookingJs.match(/function _waBlockFor\(label, name, svc, barber, time\)\s*\{[\s\S]*?\n\s*\}/);
-  assert.ok(fnMatch, 'expected _waBlockFor to accept a time param');
-  assert.match(fnMatch[0], /Jam: ' \+ time/);
+  const fnBody = extractFunctionBody(bookingJs, /function _waBlockFor\(label, name, svc, barber, time\)\s*\{/);
+  assert.ok(fnBody, 'expected _waBlockFor to accept a time param');
+  assert.match(fnBody, /Jam: ' \+ time/);
 });
 
 test('_buildWaMessage passes each person\'s own time to _waBlockFor', () => {
-  const fnMatch = bookingJs.match(/function _buildWaMessage\(displayTotal\)\s*\{[\s\S]*?\n\s*\}/);
-  assert.ok(fnMatch, 'expected to find _buildWaMessage()');
-  assert.match(fnMatch[0], /_waBlockFor\('ORANG 1', state\.name, state\.service, state\.barber, state\.time\)/);
-  assert.match(fnMatch[0], /_waBlockFor\('ORANG 2', state\.person2\?\.name, state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.time\)/);
+  const fnBody = extractFunctionBody(bookingJs, /function _buildWaMessage\(displayTotal\)\s*\{/);
+  assert.ok(fnBody, 'expected to find _buildWaMessage()');
+  assert.match(fnBody, /_waBlockFor\('ORANG 1', state\.name, state\.service, state\.barber, state\.time\)/);
+  assert.match(fnBody, /_waBlockFor\('ORANG 2', state\.person2\?\.name, state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.time\)/);
 });
 ```
 
@@ -1255,9 +1307,9 @@ Append to `server/test/booking-group-kapster-time-lock.test.js`:
 
 ```js
 test('_buildPayloadFor takes a time param and both group payloads pass their own person time', () => {
-  const fnMatch = bookingJs.match(/function _buildPayloadFor\(personIdx, name, svc, barber, time\)\s*\{[\s\S]*?\n\s*\}/);
-  assert.ok(fnMatch, 'expected _buildPayloadFor to accept a time param');
-  assert.match(fnMatch[0], /time: time,/);
+  const fnBody = extractFunctionBody(bookingJs, /function _buildPayloadFor\(personIdx, name, svc, barber, time\)\s*\{/);
+  assert.ok(fnBody, 'expected _buildPayloadFor to accept a time param');
+  assert.match(fnBody, /time: time,/);
 
   const payloadsMatch = bookingJs.match(/const payloads = isGroup\(\)[\s\S]*?\];/);
   assert.ok(payloadsMatch, 'expected to find the payloads array construction');
@@ -1365,10 +1417,10 @@ Append to `server/test/booking-group-kapster-time-lock.test.js`:
 
 ```js
 test('refreshBarberCardSelection targets the real kapster card class (.pro-pick-card), not the unused .barber-card', () => {
-  const fnMatch = bookingJs.match(/function refreshBarberCardSelection\(\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find refreshBarberCardSelection()');
-  assert.match(fnMatch[0], /querySelectorAll\('\.pro-pick-card'\)/);
-  assert.doesNotMatch(fnMatch[0], /querySelectorAll\('\.barber-card'\)/);
+  const fnBody = extractFunctionBody(bookingJs, /function refreshBarberCardSelection\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find refreshBarberCardSelection()');
+  assert.match(fnBody, /querySelectorAll\('\.pro-pick-card'\)/);
+  assert.doesNotMatch(fnBody, /querySelectorAll\('\.barber-card'\)/);
 });
 ```
 
@@ -1522,24 +1574,24 @@ Append to `server/test/booking-group-kapster-time-lock.test.js`:
 
 ```js
 test('showChangeHint helper exists and toggles the .visible class with a timeout', () => {
-  const fnMatch = bookingJs.match(/function showChangeHint\(card\)\s*\{[\s\S]*?\n  \}/);
-  assert.ok(fnMatch, 'expected to find showChangeHint()');
-  assert.match(fnMatch[0], /change-hint-badge/);
-  assert.match(fnMatch[0], /setTimeout/);
+  const fnBody = extractFunctionBody(bookingJs, /function showChangeHint\(card\)\s*\{/);
+  assert.ok(fnBody, 'expected to find showChangeHint()');
+  assert.match(fnBody, /change-hint-badge/);
+  assert.match(fnBody, /setTimeout/);
 });
 
 test('the kapster-card click handler requires a second click within 400ms to change an already-picked kapster', () => {
-  const clickHandlerMatch = bookingJs.match(/proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{[\s\S]*?\n  \}\);/);
-  assert.ok(clickHandlerMatch, 'expected to find the kapster-card click handler');
-  assert.match(clickHandlerMatch[0], /currentActive/);
-  assert.match(clickHandlerMatch[0], /isSameCard/);
-  assert.match(clickHandlerMatch[0], /now - last > 400/);
-  assert.match(clickHandlerMatch[0], /showChangeHint\(card\)/);
+  const clickHandlerBody = extractFunctionBody(bookingJs, /proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{/);
+  assert.ok(clickHandlerBody, 'expected to find the kapster-card click handler');
+  assert.match(clickHandlerBody, /currentActive/);
+  assert.match(clickHandlerBody, /isSameCard/);
+  assert.match(clickHandlerBody, /now - last > 400/);
+  assert.match(clickHandlerBody, /showChangeHint\(card\)/);
 });
 
 test('the first pick for a person (no current kapster yet) does not require a double click', () => {
-  const clickHandlerMatch = bookingJs.match(/proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{[\s\S]*?\n  \}\);/);
-  assert.match(clickHandlerMatch[0], /if \(currentActive && !isSameCard\) \{/);
+  const clickHandlerBody = extractFunctionBody(bookingJs, /proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{/);
+  assert.match(clickHandlerBody, /if \(currentActive && !isSameCard\) \{/);
 });
 ```
 
