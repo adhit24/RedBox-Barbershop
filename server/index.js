@@ -22,6 +22,7 @@ const { onBookingCompleted } = require('./services/barberMetrics');
 const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('./membership-policy');
 const { normalizeMemberPhone, getMemberPhoneVariants, mergeCustomerRows } = require('./member-identity');
 const { computeServiceDiscount } = require('./membership-benefits');
+const { getBarberDateAvailability } = require('./moka/slotEngine');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1191,6 +1192,15 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         }
         if (!isAdmin && barberCheck.is_active === false) {
           return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
+        }
+        if (!isAdmin) {
+          const barberAvailability = await getBarberDateAvailability(supabase, {
+            barberId: normalizedBarberId,
+            date,
+          });
+          if (!barberAvailability.isWorking) {
+            return res.status(409).json({ error: 'Kapster sedang libur pada tanggal tersebut' });
+          }
         }
         // Cabang booking WAJIB ikut cabang asli kapster — mencegah booking tersimpan
         // dengan barber_id dan location yang tidak sinkron (kapster "pindah cabang"

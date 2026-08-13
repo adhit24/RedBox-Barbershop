@@ -1282,7 +1282,15 @@ document.addEventListener('DOMContentLoaded', async () => {
  card.addEventListener('click', () => {
  if (card.dataset.barber === 'none') return;
 
- const barberData = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
+ const barberId = card.dataset.barber;
+ const dateBeingBooked = state.date || todayStr();
+ if (dateBeingBooked === todayStr() && barberOffToday.has(barberId)) {
+ alert('Kapster ini sedang libur hari ini. Pilih tanggal lain terlebih dahulu.');
+ goToStep(3);
+ return;
+ }
+
+ const barberData = { id: barberId, name: card.dataset.barberName, branch: card.dataset.branch };
 
  // Group mode: prevent picking same kapster for both persons
  if (isGroup()) {
@@ -1524,8 +1532,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  } catch (e) {
  console.warn('[Off Duty Check] Failed to check barber status:', e.message);
- warningEl.style.display = 'none';
- state.barberOffOnDate = false;
+ warningEl.style.display = 'block';
+ barberNameEl.textContent = state.barber.name;
+ state.barberOffOnDate = true;
+ document.getElementById('step3Next').disabled = true;
+ buildTimeGrid(fallbackBusyRanges);
  }
  }
 

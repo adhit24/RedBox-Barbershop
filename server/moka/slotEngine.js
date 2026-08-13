@@ -236,6 +236,37 @@ async function isSlotAvailable(supabase, { barberId, startTime, endTime, exclude
   return conflict === false; // RPC returns TRUE when there IS an overlap
 }
 
+/** Resolve effective availability for one barber on one date. */
+async function getBarberDateAvailability(supabase, { barberId, date }) {
+  const { data: barber, error: barberErr } = await supabase
+    .from('barbers').select('id, is_active, work_days').eq('id', barberId).maybeSingle();
+  if (barberErr) throw new Error(`Barber availability lookup failed: ${barberErr.message}`);
+  if (!barber) return { exists: false, isWorking: false };
+
+  const dayOfWeek = _dayOfWeek(date);
+  const [{ data: hours, error: hoursErr }, { data: override, error: overrideErr }] = await Promise.all([
+    supabase.from('barber_working_hours').select('is_off').eq('barber_id', barberId)
+      .eq('day_of_week', dayOfWeek).maybeSingle(),
+    supabase.from('barber_date_overrides').select('is_off').eq('barber_id', barberId)
+      .eq('date', date).maybeSingle(),
+  ]);
+  if (hoursErr) throw new Error(`Barber working-hours lookup failed: ${hoursErr.message}`);
+  if (overrideErr) throw new Error(`Barber date-override lookup failed: ${overrideErr.message}`);
+
+  if (override) return { exists: true, isActive: barber.is_active !== false, isWorking: !override.is_off };
+  if (hours) return { exists: true, isActive: barber.is_active !== false, isWorking: !hours.is_off };
+
+  let workDays = barber.work_days;
+  if (typeof workDays === 'string') {
+    try { workDays = JSON.parse(workDays); } catch { workDays = workDays.split(',').map(s => s.trim()).filter(Boolean); }
+  }
+  return {
+    exists: true,
+    isActive: barber.is_active !== false,
+    isWorking: _barberWorksOnDay(Array.isArray(workDays) ? workDays : [], dayOfWeek),
+  };
+}
+
 // ── PRIVATE ───────────────────────────────────────────────
 
 /** 'YYYY-MM-DD' → 0..6 (0=Sunday) */
@@ -318,3 +349,4 @@ async function syncScheduleForBooking(supabase, { scheduleId, date, time, barber
 }
 
 module.exports = { getAvailableSlots, isSlotAvailable, syncScheduleForBooking };
+module.exports = { getAvailableSlots, isSlotAvailable, getBarberDateAvailability, syncScheduleForBooking };
