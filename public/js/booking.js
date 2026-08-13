@@ -212,7 +212,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  // Update barber-card highlight to match active person's barber
  function refreshBarberCardSelection() {
  const activeB = getActiveBarber();
- document.querySelectorAll('.barber-card').forEach(c => {
+ document.querySelectorAll('.pro-pick-card').forEach(c => {
  c.classList.toggle('selected', !!activeB && String(c.dataset.barber) === String(activeB.id));
  });
  }

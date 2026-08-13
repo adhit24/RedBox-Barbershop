@@ -284,3 +284,10 @@ test('_buildPayloadFor takes a time param and both group payloads pass their own
 test('the final-submit conflict recheck for person 2 uses person2.time, not the shared state.time', () => {
   assert.match(bookingJs, /hasConflict\(state\.person2\.barber\.id, state\.date, state\.person2\.time, state\.person2\.service\?\.duration\)/);
 });
+
+test('refreshBarberCardSelection targets the real kapster card class (.pro-pick-card), not the unused .barber-card', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function refreshBarberCardSelection\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find refreshBarberCardSelection()');
+  assert.match(fnBody, /querySelectorAll\('\.pro-pick-card'\)/);
+  assert.doesNotMatch(fnBody, /querySelectorAll\('\.barber-card'\)/);
+});
