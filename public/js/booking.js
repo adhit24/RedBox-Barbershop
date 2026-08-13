@@ -207,9 +207,6 @@ document.addEventListener('DOMContentLoaded', async () => {
  function step2Ready() {
  if (!isGroup()) return !!state.barber;
  if (!state.barber || !state.person2?.barber) return false;
- // must be different kapster
- if (String(state.barber.id) === String(state.person2.barber.id)) return false;
- // must be same branch (paralel di 1 cabang)
  if (state.barber.branch !== state.person2.barber.branch) return false;
  return true;
  }
@@ -1283,15 +1280,6 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (card.dataset.barber === 'none') return;
 
  const barberData = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
-
- // Group mode: prevent picking same kapster for both persons
- if (isGroup()) {
- const otherBarber = state.activePerson === 1 ? state.person2?.barber : state.barber;
- if (otherBarber && String(otherBarber.id) === String(barberData.id)) {
- alert('Kapster ini sudah dipilih untuk orang yang lain. Pilih kapster berbeda agar bisa paralel di waktu yang sama.');
- return;
- }
- }
 
  setActiveBarber(barberData);
  refreshBarberCardSelection();
