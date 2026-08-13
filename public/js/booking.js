@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  function setActiveService(svc) {
  if (isGroup() && state.activePerson === 2) {
- state.person2 = state.person2 || { name: '', service: null, barber: null };
+ state.person2 = state.person2 || { name: '', service: null, barber: null, time: null };
  state.person2.service = svc;
  } else {
  state.service = svc;
@@ -151,10 +151,22 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  function setActiveBarber(b) {
  if (isGroup() && state.activePerson === 2) {
- state.person2 = state.person2 || { name: '', service: null, barber: null };
+ state.person2 = state.person2 || { name: '', service: null, barber: null, time: null };
  state.person2.barber = b;
  } else {
  state.barber = b;
+ }
+ }
+ function getActiveTime() {
+ if (isGroup() && state.activePerson === 2) return state.person2?.time || null;
+ return state.time;
+ }
+ function setActiveTime(t) {
+ if (isGroup() && state.activePerson === 2) {
+ state.person2 = state.person2 || { name: '', service: null, barber: null, time: null };
+ state.person2.time = t;
+ } else {
+ state.time = t;
  }
  }
 
@@ -270,7 +282,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  state.person2 = null;
  state.activePerson = 1;
  } else {
- state.person2 = state.person2 || { name: '', service: null, barber: null };
+ state.person2 = state.person2 || { name: '', service: null, barber: null, time: null };
  }
  // Toggle 2nd name field & relabel 1st name
  const name2Group = document.getElementById('custName2Group');
@@ -1703,7 +1715,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  state.name = custName.value.trim();
  if (isGroup()) {
- state.person2 = state.person2 || {};
+ state.person2 = state.person2 || { time: null };
  state.person2.name = custName2.value.trim();
  }
  state.wa = custWa.value.trim();

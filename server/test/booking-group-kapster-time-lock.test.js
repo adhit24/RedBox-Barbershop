@@ -23,3 +23,16 @@ test('step2Ready still requires the two people to be in the same branch', () => 
 test('the kapster-card click handler no longer blocks picking the same kapster for both people', () => {
   assert.doesNotMatch(bookingJs, /Kapster ini sudah dipilih untuk orang yang lain/);
 });
+
+test('getActiveTime/setActiveTime helpers exist next to the existing per-person accessors', () => {
+  assert.match(bookingJs, /function getActiveTime\(\)\s*\{/);
+  assert.match(bookingJs, /function setActiveTime\(t\)\s*\{/);
+});
+
+test('person2 is initialized with a time field everywhere it is created', () => {
+  const initSites = bookingJs.match(/state\.person2 = state\.person2 \|\| \{[^}]*\}/g) || [];
+  assert.ok(initSites.length >= 3, `expected at least 3 person2 init sites, found ${initSites.length}`);
+  for (const site of initSites) {
+    assert.match(site, /time:\s*null/, `expected "time: null" in: ${site}`);
+  }
+});
