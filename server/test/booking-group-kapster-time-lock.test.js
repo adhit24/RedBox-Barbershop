@@ -256,3 +256,16 @@ test('updateSidebar shows both people\'s time in group mode', () => {
   assert.ok(fnBody, 'expected to find updateSidebar()');
   assert.match(fnBody, /groupTimeLabel/);
 });
+
+test('_waBlockFor accepts a time param and includes a Jam line when present', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function _waBlockFor\(label, name, svc, barber, time\)\s*\{/);
+  assert.ok(fnBody, 'expected _waBlockFor to accept a time param');
+  assert.match(fnBody, /Jam: ' \+ time/);
+});
+
+test('_buildWaMessage passes each person\'s own time to _waBlockFor', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function _buildWaMessage\(displayTotal\)\s*\{/);
+  assert.ok(fnBody, 'expected to find _buildWaMessage()');
+  assert.match(fnBody, /_waBlockFor\('ORANG 1', state\.name, state\.service, state\.barber, state\.time\)/);
+  assert.match(fnBody, /_waBlockFor\('ORANG 2', state\.person2\?\.name, state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.time\)/);
+});

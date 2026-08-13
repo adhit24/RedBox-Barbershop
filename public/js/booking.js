@@ -1975,7 +1975,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  const _useCsbWa = state.location === 'csb';
 
  // Build group-aware WA blocks
- function _waBlockFor(label, name, svc, barber) {
+ function _waBlockFor(label, name, svc, barber, time) {
  const addons = svc?.addons || [];
  const addonLines = addons.map(a => {
  const p = (_useCsbWa && a.csbPrice) ? a.csbPrice : a.price;
@@ -1987,6 +1987,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  ...(addonLines.length ? [' Add-On:', ...addonLines] : []),
  ' Duration: ' + (svc?.duration || '-'),
  ' Kapster: ' + (barber?.name || '-'),
+ ...(time ? [' Jam: ' + time] : []),
  ' Subtotal: ' + fmt(svc?.price || 0),
  ].filter(Boolean);
  }
@@ -2004,11 +2005,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  headerLine, '',
  ...(isGroup()
  ? [
- ..._waBlockFor('ORANG 1', state.name, state.service, state.barber), '',
- ..._waBlockFor('ORANG 2', state.person2?.name, state.person2?.service, state.person2?.barber), '',
+ ..._waBlockFor('ORANG 1', state.name, state.service, state.barber, state.time), '',
+ ..._waBlockFor('ORANG 2', state.person2?.name, state.person2?.service, state.person2?.barber, state.person2?.time), '',
  ]
  : _waBlockFor('', '', state.service, state.barber)),
- ' *Jadwal:* ' + (state.date ? formatDate(state.date) : '-') + ' at ' + state.time,
+ ' *Jadwal:* ' + (state.date ? formatDate(state.date) : '-') + (isGroup() ? '' : ' at ' + state.time),
  ' *Cabang Terdekat:* ' + locLabel,
  isHomeService && state.address ? ' *Alamat Kamu:* ' + state.address : '',
  ' *' + (isGroup() ? 'Kontak Utama' : 'Nama') + ':* ' + state.name,
