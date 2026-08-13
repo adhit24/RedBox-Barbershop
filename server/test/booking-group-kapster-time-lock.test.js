@@ -206,3 +206,40 @@ test('the person-tabs click handler re-renders the time grid when switching tabs
   assert.match(listenerBody, /personTabsTime/);
   assert.match(listenerBody, /switchTimeGridToActivePerson/);
 });
+
+test('step3Ready requires both people to have a time when in group mode', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function step3Ready\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find step3Ready()');
+  assert.match(fnBody, /state\.person2\?\.time/);
+});
+
+test('buildTimeGrid renders for the active person, not a single global barber/service/time', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.ok(fnBody, 'expected to find buildTimeGrid()');
+  assert.match(fnBody, /const activeBarber = getActiveBarber\(\);/);
+  assert.match(fnBody, /const activeService = getActiveService\(\);/);
+  assert.match(fnBody, /getActiveTime\(\) === slot/);
+});
+
+test('buildTimeGrid no longer cross-checks both people against the same shared slot', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.doesNotMatch(fnBody, /Group mode: slot juga harus available untuk barber person 2/);
+});
+
+test('buildTimeGrid blocks slots that overlap the other person\'s time when they share a kapster', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.match(fnBody, /RedboxBookingOverlap\.timeRangesOverlap/);
+  assert.match(fnBody, /sameBarberAsOther/);
+});
+
+test('the time-slot click handler advances the active person via setActiveTime and auto-switches to person 2', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.match(fnBody, /setActiveTime\(slot\)/);
+  assert.match(fnBody, /state\.activePerson = 2/);
+});
+
+test('the step3Next click handler gates on step3Ready, not a shared state.time', () => {
+  const listenerMatch = bookingJs.match(/document\.getElementById\('step3Next'\)\?\.addEventListener\('click', \(\) => \{[\s\S]*?\}\);/);
+  assert.ok(listenerMatch, 'expected to find the step3Next click listener');
+  assert.match(listenerMatch[0], /step3Ready\(\)/);
+});

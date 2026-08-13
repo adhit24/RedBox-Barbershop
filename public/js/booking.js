@@ -251,6 +251,12 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (btn) btn.disabled = !step2Ready();
  }
 
+ function step3Ready() {
+ if (!state.date) return false;
+ if (!isGroup()) return !!state.time;
+ return !!state.time && !!state.person2?.time;
+ }
+
  // ── GROUP SELECTOR & PERSON-TAB EVENT WIRING ──
  const groupSelector = document.getElementById('groupSelector');
  const groupBanner = document.getElementById('groupBanner');
@@ -1638,7 +1644,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  function buildTimeGrid(busyRanges = fallbackBusyRanges) {
  const grid = document.getElementById('timeGrid');
  if (!grid) return;
- 
+
  const slotsDefault = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
  const slotsCsb = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
  // Home service / wedding: 06:00-23:00 WIB (sesuai slotEngine server)
@@ -1648,10 +1654,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  const isToday = state.date === today;
  const floorHourMins = Math.floor(currentLocalMins() / 60) * 60;
  const visibleSlots = isToday ? slots.filter(s => timeToMins(s) > floorHourMins) : slots;
- 
+
  // Use DocumentFragment for batch DOM updates
  const fragment = document.createDocumentFragment();
- 
+
  if (!visibleSlots.length) {
  const emptyMsg = document.createElement('div');
  emptyMsg.style.cssText = 'grid-column:1/-1;color:var(--w50);font-size:.85rem;padding:8px 2px';
@@ -1661,7 +1667,10 @@ document.addEventListener('DOMContentLoaded', async () => {
  grid.appendChild(fragment);
  return;
  }
- 
+
+ const activeBarber = getActiveBarber();
+ const activeService = getActiveService();
+
  // Pre-calculate: Build Set of available slot start-times from Moka API
  const mokaFreeSet = new Set();
  if (mokaAvailabilityActive) {
@@ -1672,16 +1681,25 @@ document.addEventListener('DOMContentLoaded', async () => {
  mokaFreeSet.add(`${wibH}:${wibM}`);
  }
  }
- 
+
  // Pre-calculate busy ranges check (avoid creating Date objects in loop)
- const hasBusyRanges = state.barber?.id && state.barber.id !== 'any' && busyRanges && busyRanges.length;
- const durMins = hasBusyRanges ? (isHomeService ? 120 : _parseDurToMins(state.service?.duration)) : 0;
- 
- console.log('[TimeGrid] Building for', state.barber?.name, 'on', state.date);
+ const hasBusyRanges = activeBarber?.id && activeBarber.id !== 'any' && busyRanges && busyRanges.length;
+ const durMins = hasBusyRanges ? (isHomeService ? 120 : _parseDurToMins(activeService?.duration)) : 0;
+
+ // Kapster yang sama dipilih 2 orang: cegah slot yang bentrok dengan jam orang lain.
+ const otherPerson = state.activePerson === 1 ? 2 : 1;
+ const otherBarber = otherPerson === 1 ? state.barber : state.person2?.barber;
+ const otherTime = otherPerson === 1 ? state.time : state.person2?.time;
+ const otherService = otherPerson === 1 ? state.service : state.person2?.service;
+ const sameBarberAsOther = isGroup() && activeBarber && otherBarber && String(activeBarber.id) === String(otherBarber.id);
+ const otherStartMins = sameBarberAsOther && otherTime ? timeToMins(otherTime) : null;
+ const otherDurMins = sameBarberAsOther && otherTime ? (isHomeService ? 120 : _parseDurToMins(otherService?.duration)) : null;
+
+ console.log('[TimeGrid] Building for', activeBarber?.name, 'on', state.date);
  console.log('[TimeGrid] hasBusyRanges:', hasBusyRanges, 'busyRanges:', busyRanges);
 
  let availableCount = 0;
- 
+
  // Batch create all slot elements
  visibleSlots.forEach(slot => {
  const el = document.createElement('div');
@@ -1695,7 +1713,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (state.barberOffOnDate) {
  isBooked = true;
  }
- 
+
  if (hasBusyRanges) {
  // Pre-calculate slot timestamps once
  const slotStartMs = new Date(`${state.date}T${slot}:00+07:00`).getTime();
@@ -1709,16 +1727,22 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  }
  }
- 
+
  if (!isBooked && mokaAvailabilityActive) {
  isBooked = !mokaFreeSet.has(slot);
  }
- 
+
  if (!isBooked && !mokaAvailabilityActive) {
- isBooked = hasConflict(state.barber?.id, state.date, slot, state.service?.duration);
- // Group mode: slot juga harus available untuk barber person 2
- if (!isBooked && isGroup() && state.person2?.barber) {
- isBooked = hasConflict(state.person2.barber.id, state.date, slot, state.person2.service?.duration);
+ isBooked = hasConflict(activeBarber?.id, state.date, slot, activeService?.duration);
+ }
+
+ // Same kapster picked for both people: block slots that overlap the other person's time.
+ if (!isBooked && otherStartMins !== null && typeof RedboxBookingOverlap !== 'undefined') {
+ const slotStartMins = timeToMins(slot);
+ const slotDurMins = isHomeService ? 120 : _parseDurToMins(activeService?.duration);
+ if (RedboxBookingOverlap.timeRangesOverlap(slotStartMins, slotDurMins, otherStartMins, otherDurMins)) {
+ isBooked = true;
+ el.title = 'Bentrok dengan jadwal Orang ' + otherPerson;
  }
  }
 
@@ -1726,37 +1750,44 @@ document.addEventListener('DOMContentLoaded', async () => {
  el.classList.add('unavailable');
  } else {
  availableCount++;
- if (state.time === slot) el.classList.add('selected');
- 
+ if (getActiveTime() === slot) el.classList.add('selected');
+
  // Use delegated event handling for better performance
  el.dataset.slot = slot;
  }
- 
+
  fragment.appendChild(el);
  });
- 
+
  // Single DOM write for all slots
  grid.innerHTML = '';
  grid.appendChild(fragment);
- 
+
  // Add single delegated click handler
  if (!grid.dataset.rbClickBound) {
  grid.dataset.rbClickBound = '1';
  grid.addEventListener('click', function timeSlotClickHandler(e) {
  const slotEl = e.target.closest('.time-slot:not(.unavailable)');
  if (!slotEl) return;
- 
+
  const slot = slotEl.dataset.slot;
  if (!slot) return;
- 
- state.time = slot;
+
+ setActiveTime(slot);
  grid.querySelectorAll('.time-slot').forEach(s => s.classList.remove('selected'));
  slotEl.classList.add('selected');
- document.getElementById('step3Next').disabled = false;
+ document.getElementById('step3Next').disabled = !step3Ready();
+ refreshPersonTabs();
  updateSidebar();
+
+ if (isGroup() && state.activePerson === 1 && !state.person2?.time) {
+ state.activePerson = 2;
+ refreshPersonTabs();
+ switchTimeGridToActivePerson();
+ }
  });
  }
- 
+
  // Show message if no slots available
  if (availableCount === 0 && (isToday || state.barberOffOnDate)) {
  const note = document.createElement('div');
@@ -1780,7 +1811,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  buildCalendar();
  });
  document.getElementById('step3Next')?.addEventListener('click', () => {
- if (state.date && state.time) goToStep(4);
+ if (step3Ready()) goToStep(4);
  });
 
  // ── STEP 4: DETAILS ────────────────────────
