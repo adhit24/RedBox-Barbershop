@@ -58,9 +58,29 @@ test('person2 gets a time field in setActiveService and setActiveBarber (the two
   assert.match(setActiveBarberBody, /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/);
 });
 
-test('the setGroupSize and step-4-details person2 init sites are untouched by this task (reserved for Task 4 / intentionally left alone)', () => {
+test('after Task 4: setGroupSize person2 init site now has time field, step-4-details still untouched', () => {
   const setGroupSizeBody = extractFunctionBody(bookingJs, /function setGroupSize\(n\)\s*\{/);
   assert.ok(setGroupSizeBody, 'expected to find setGroupSize()');
-  assert.match(setGroupSizeBody, /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null \};/, 'setGroupSize\'s person2 init site must stay in its pre-Task-3 form; Task 4 edits it');
+  assert.match(setGroupSizeBody, /state\.person2 = state\.person2 \|\| \{ name: '', service: null, barber: null, time: null \};/, 'setGroupSize\'s person2 init site now has time field (Task 4 edit)');
   assert.match(bookingJs, /state\.person2 = state\.person2 \|\| \{\};/, 'the step-4-details bare fallback must stay untouched');
+});
+
+test('booking.html has a personTabsTime block in step 3, mirroring personTabsBarber', () => {
+  assert.match(bookingHtml, /id="personTabsTime"/);
+  const step3Match = bookingHtml.match(/<!-- STEP 3: DATE & TIME -->[\s\S]*?<div class="cal-wrap">/);
+  assert.ok(step3Match, 'expected to find step 3 markup before the calendar wrap');
+  assert.match(step3Match[0], /id="personTabsTime"/);
+});
+
+test('setGroupSize toggles personTabsTime the same way as the other person-tab blocks', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function setGroupSize\(n\)\s*\{/);
+  assert.ok(fnBody, 'expected to find setGroupSize()');
+  assert.match(fnBody, /personTabsTime/);
+});
+
+test('refreshPersonTabs handles the time step (isTimeStep branch)', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function refreshPersonTabs\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find refreshPersonTabs()');
+  assert.match(fnBody, /isTimeStep/);
+  assert.match(fnBody, /state\.time/);
 });

@@ -174,21 +174,26 @@ document.addEventListener('DOMContentLoaded', async () => {
  function refreshPersonTabs() {
  document.querySelectorAll('.person-tabs').forEach(tabs => {
  const isBarberStep = tabs.id === 'personTabsBarber';
+ const isTimeStep = tabs.id === 'personTabsTime';
  tabs.querySelectorAll('.person-tab').forEach(t => {
  const p = parseInt(t.dataset.person, 10);
- const filled = isBarberStep
+ const filled = isTimeStep
+ ? (p === 1 ? !!state.time : !!state.person2?.time)
+ : isBarberStep
  ? (p === 1 ? !!state.barber : !!state.person2?.barber)
  : (p === 1 ? !!state.service : !!state.person2?.service);
  t.classList.toggle('filled', filled);
  const statusEl = t.querySelector('.person-tab-status');
  if (statusEl) {
  if (filled) {
- const name = isBarberStep
+ const name = isTimeStep
+ ? (p === 1 ? state.time : state.person2?.time)
+ : isBarberStep
  ? (p === 1 ? state.barber?.name : state.person2?.barber?.name)
  : (p === 1 ? state.service?.name : state.person2?.service?.name);
- statusEl.textContent = name || (isBarberStep ? 'Dipilih' : 'Dipilih');
+ statusEl.textContent = name || 'Dipilih';
  } else {
- statusEl.textContent = isBarberStep ? 'Pilih kapster' : 'Pilih service';
+ statusEl.textContent = isTimeStep ? 'Pilih jam' : (isBarberStep ? 'Pilih kapster' : 'Pilih service');
  }
  }
  t.classList.toggle('active', state.activePerson === p);
@@ -250,6 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  const groupBanner = document.getElementById('groupBanner');
  const personTabsService = document.getElementById('personTabsService');
  const personTabsBarber = document.getElementById('personTabsBarber');
+ const personTabsTime = document.getElementById('personTabsTime');
  const svcListWrap = document.getElementById('svcList');
 
  function setGroupSize(n) {
@@ -263,6 +269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (groupBanner) groupBanner.style.display = '';
  if (personTabsService) personTabsService.style.display = 'none';
  if (personTabsBarber) personTabsBarber.style.display = 'none';
+ if (personTabsTime) personTabsTime.style.display = 'none';
  if (svcListWrap) svcListWrap.style.display = 'none';
  document.getElementById('step1Next').disabled = true;
  const mCont = document.getElementById('mobileContinue');
@@ -277,12 +284,13 @@ document.addEventListener('DOMContentLoaded', async () => {
  const showTabs = (n === 2);
  if (personTabsService) personTabsService.style.display = showTabs ? '' : 'none';
  if (personTabsBarber) personTabsBarber.style.display = showTabs ? '' : 'none';
+ if (personTabsTime) personTabsTime.style.display = showTabs ? '' : 'none';
  // Reset person2 when switching back to 1
  if (n === 1) {
  state.person2 = null;
  state.activePerson = 1;
  } else {
- state.person2 = state.person2 || { name: '', service: null, barber: null };
+ state.person2 = state.person2 || { name: '', service: null, barber: null, time: null };
  }
  // Toggle 2nd name field & relabel 1st name
  const name2Group = document.getElementById('custName2Group');
