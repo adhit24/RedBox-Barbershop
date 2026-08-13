@@ -269,3 +269,18 @@ test('_buildWaMessage passes each person\'s own time to _waBlockFor', () => {
   assert.match(fnBody, /_waBlockFor\('ORANG 1', state\.name, state\.service, state\.barber, state\.time\)/);
   assert.match(fnBody, /_waBlockFor\('ORANG 2', state\.person2\?\.name, state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.time\)/);
 });
+
+test('_buildPayloadFor takes a time param and both group payloads pass their own person time', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function _buildPayloadFor\(personIdx, name, svc, barber, time\)\s*\{/);
+  assert.ok(fnBody, 'expected _buildPayloadFor to accept a time param');
+  assert.match(fnBody, /time: time,/);
+
+  const payloadsMatch = bookingJs.match(/const payloads = isGroup\(\)[\s\S]*?\];/);
+  assert.ok(payloadsMatch, 'expected to find the payloads array construction');
+  assert.match(payloadsMatch[0], /_buildPayloadFor\(1, state\.name, state\.service, state\.barber, state\.time\)/);
+  assert.match(payloadsMatch[0], /_buildPayloadFor\(2, state\.person2\?\.name, state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.time\)/);
+});
+
+test('the final-submit conflict recheck for person 2 uses person2.time, not the shared state.time', () => {
+  assert.match(bookingJs, /hasConflict\(state\.person2\.barber\.id, state\.date, state\.person2\.time, state\.person2\.service\?\.duration\)/);
+});

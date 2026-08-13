@@ -1965,7 +1965,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  goToStep(3); // Go back to Date & Time step
  return;
  }
- if (isGroup() && state.person2?.barber && hasConflict(state.person2.barber.id, state.date, state.time, state.person2.service?.duration)) {
+ if (isGroup() && state.person2?.barber && hasConflict(state.person2.barber.id, state.date, state.person2.time, state.person2.service?.duration)) {
  alert('Mohon maaf, kapster ' + state.person2.barber.name + ' (orang 2) baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');
  goToStep(3);
  return;
@@ -2035,7 +2035,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  // Generate group_id for linking when 2 orang
  const groupId = isGroup() ? 'GRP-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6).toUpperCase() : null;
 
- function _buildPayloadFor(personIdx, name, svc, barber) {
+ function _buildPayloadFor(personIdx, name, svc, barber, time) {
  const addons = svc?.addons || [];
  const addonNote = addons.length ? '[ADD-ON: ' + addons.map(a => a.name).join(', ') + ']' : '';
  const noteParts = [];
@@ -2056,7 +2056,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  duration: svc?.duration || '',
  barber_id: barber?.id || 'any',
  date: state.date,
- time: state.time,
+ time: time,
  location: state.location,
  notes: noteParts.join('\n'),
  payment: state.payment?.name || '',
@@ -2069,10 +2069,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  const payloads = isGroup()
  ? [
- _buildPayloadFor(1, state.name, state.service, state.barber),
- _buildPayloadFor(2, state.person2?.name, state.person2?.service, state.person2?.barber),
+ _buildPayloadFor(1, state.name, state.service, state.barber, state.time),
+ _buildPayloadFor(2, state.person2?.name, state.person2?.service, state.person2?.barber, state.person2?.time),
  ]
- : [_buildPayloadFor(1, state.name, state.service, state.barber)];
+ : [_buildPayloadFor(1, state.name, state.service, state.barber, state.time)];
 
  const confirmedTime = payloads[0]?.time || state.time;
 
