@@ -115,6 +115,23 @@ Ubah rendering slot (`booking.js` sekitar baris 1600-1682):
 - **Tambah** guard baru: kalau kedua orang pakai kapster yang **sama** (`state.barber.id === state.person2.barber.id`) dan orang yang **tidak aktif** sudah punya `time` terpilih, maka slot yang overlap dengan `[waktu lawan, waktu lawan + durasi service lawan]` ditandai `unavailable` (dengan pesan singkat/tooltip "Bentrok dengan jadwal Orang X"). Overlap dihitung dengan cara yang sama seperti `hasConflict()` (start/end dalam menit, bandingkan rentang).
 - Klik slot (delegated handler, `booking.js:1657-1670`): ganti `state.time = slot` menjadi `setActiveTime(slot)`; setelah set, panggil `refreshPersonTabs()`; kalau mode group dan orang aktif = 1 dan orang 2 belum punya `time`, auto-switch `state.activePerson = 2` lalu re-render grid (pola sama seperti auto-switch di step 1 baris 489-490 dan step 2 baris 1314-1317).
 
+### A4b. Addendum: cache availability per orang (koreksi setelah baca kode lebih dalam)
+
+Ternyata `mokaAvailableSlots`, `fallbackBusyRanges`, `mokaAvailabilityActive` (`booking.js:14-16`) dan `state.barberOffOnDate` bukan per-orang — semua module-scope/global, diisi oleh `loadAndRenderDate(dateStr, dayEl)` (`booking.js:782-951`) yang fetch berdasar `state.barber?.id` tunggal, termasuk sebuah polling loop (`pollOnce`, baris 885-932) yang terus refresh `fallbackBusyRanges` untuk barber itu selama tanggal hari-ini dipilih. `buildTimeGrid()` (baris 1550) juga baca langsung dari variabel-variabel global ini, bukan dari state per-orang.
+
+Supaya pindah tab Orang 1 ↔ Orang 2 di step 3 tidak saling menimpa data availability, dan supaya waktu yang sudah dipilih salah satu orang tidak ke-reset saat pindah tab:
+
+- Tambah cache `let personAvailabilityCache = { 1: null, 2: null };` (module scope, sejajar dengan `mokaAvailableSlots` dkk). Tiap entri: `{ mokaAvailableSlots, mokaAvailabilityActive, fallbackBusyRanges, barberOffOnDate }`.
+- `loadAndRenderDate(dateStr, dayEl, forPerson = state.activePerson)`: dapat parameter baru `forPerson`. **Tidak lagi** unconditionally `state.time = null` (baris 786) — reset time HANYA saat dipanggil dari klik kalender (tanggal berubah beneran), reset KEDUA orang (`state.time = null; if (state.person2) state.person2.time = null;`), bukan saat dipanggil akibat pindah tab.
+- Di akhir `loadAndRenderDate`, simpan hasil fetch ke `personAvailabilityCache[forPerson] = {...}`, lalu HANYA salin ke variabel global + panggil `buildTimeGrid()` kalau `state.activePerson === forPerson` masih benar saat itu (mencegah race: user sempat pindah tab sebelum fetch selesai). Mekanisme `activeLoadSeq`/`seq` yang sudah ada (baris 783, 889, 911) dipakai lagi buat guard yang sama di jalur poll.
+- Tab-switch handler (di dalam `.person-tabs` click listener, `booking.js:301-310`, untuk `personTabsTime` khususnya): kalau `personAvailabilityCache[newPerson]` sudah ada (untuk `state.date` yang sama) → langsung restore ke variabel global + `buildTimeGrid()`, tanpa fetch ulang. Kalau belum ada → panggil `loadAndRenderDate(state.date, null, newPerson)`.
+- Ganti kondisi highlight slot terpilih di `buildTimeGrid()` (baris 1641, `if (state.time === slot)`) jadi `if (getActiveTime() === slot)`.
+- `personAvailabilityCache` di-clear (`{1: null, 2: null}`) tiap kali: tanggal kalender berganti (klik hari baru), atau kapster salah satu orang berubah (di handler klik kartu kapster step 2, baris 1298-1300 yang sudah reset `mokaAvailableSlots`/`fallbackBusyRanges` — tambahkan clear cache di situ juga).
+
+### A4c. Addendum: sidebar ringkasan (`updateSidebar()`)
+
+`updateSidebar()` (`booking.js:1021-1120`) baris 1082-1084 (`sumDatetime`) pakai `state.date` + `state.time` global. Saat group, ubah supaya menampilkan jam kedua orang, mengikuti pola `sumBarber` yang sudah menangani group di baris 1059-1061 (`name + ' + ' + name`) — format: `formatDate(state.date) + ', ' + state.time + ' & ' + state.person2.time` (fallback `'-'` per bagian yang belum dipilih).
+
 ### A5. `step3Ready()` + tombol Continue
 
 Ganti pengecekan di `step3Next` click handler (`booking.js:1694-1696`) dan tempat lain yang menge-disable tombol, dengan fungsi baru:
