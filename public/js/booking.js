@@ -14,6 +14,7 @@ let apiBookings = []; // Cache for server-side bookings to detect conflicts (leg
 let mokaAvailableSlots = []; // Slots from /api/availability (includes Moka walk-ins)
 let mokaAvailabilityActive = false; // true when new availability API responded successfully
 let fallbackBusyRanges = []; // Used when /api/availability fails: blocks from /api/schedules
+let personAvailabilityCache = { 1: null, 2: null }; // per-person snapshot: { date, barberId, mokaAvailableSlots, mokaAvailabilityActive, fallbackBusyRanges, barberOffOnDate }
 
 async function detectApiMode() {
  try {
@@ -323,6 +324,9 @@ document.addEventListener('DOMContentLoaded', async () => {
  refreshPersonTabs();
  refreshSvcListSelection();
  refreshBarberCardSelection();
+ if (tabs.id === 'personTabsTime') {
+ switchTimeGridToActivePerson();
+ }
  });
  });
 
@@ -779,11 +783,12 @@ document.addEventListener('DOMContentLoaded', async () => {
  fallbackBusyRanges = [];
  mokaAvailabilityActive = false;
  mokaAvailableSlots = [];
+ personAvailabilityCache = { 1: null, 2: null };
  buildCalendar();
  buildTimeGrid([]); // Pass empty initially, will load on date click
  const ts = document.getElementById('timeSection');
  if (ts) ts.style.display = '';
- document.getElementById('step3Next').disabled = !(state.date && state.time);
+ document.getElementById('step3Next').disabled = !step3Ready();
  updateSidebar();
  
  // Check if selected barber is off duty on the selected date
@@ -796,11 +801,16 @@ document.addEventListener('DOMContentLoaded', async () => {
  window.scrollTo({ top: 0, behavior: 'smooth' });
  }
 
- async function loadAndRenderDate(dateStr, dayEl = null) {
+ async function loadAndRenderDate(dateStr, dayEl = null, opts = {}) {
+ const forPerson = opts.forPerson || state.activePerson;
+ const isDateChange = opts.isDateChange !== false;
  const seq = ++activeLoadSeq;
 
  state.date = dateStr;
+ if (isDateChange) {
  state.time = null;
+ if (state.person2) state.person2.time = null;
+ }
  state.barberOffOnDate = false;
  mokaAvailabilityActive = false;
  mokaAvailableSlots = [];
@@ -821,12 +831,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  await new Promise(resolve => requestAnimationFrame(resolve));
 
+ let barberIdFixed = null;
  if (USE_API) {
  // Home service / wedding: durasi selalu 120 menit per kapster (aturan bisnis),
  // bukan durasi service yang dipilih pelanggan.
- const durMins = isHomeService ? 120 : _parseDurToMins(state.service?.duration);
+ const durMins = isHomeService ? 120 : _parseDurToMins(getActiveService()?.duration);
  const outletIdFixed = state.location || 'bypass';
- const barberIdFixed = state.barber?.id || null;
+ barberIdFixed = getActiveBarber()?.id || null;
  const promises = [];
 
  promises.push((async () => {
@@ -927,14 +938,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  if (seq !== activeLoadSeq) return;
  if (nextRanges.length > 0) {
- const prevLen = fallbackBusyRanges ? fallbackBusyRanges.length : 0;
+ const cacheEntry = personAvailabilityCache[forPerson];
+ const prevLen = cacheEntry ? cacheEntry.fallbackBusyRanges.length : 0;
+ if (cacheEntry) cacheEntry.fallbackBusyRanges = nextRanges;
+ if (state.activePerson === forPerson) {
  fallbackBusyRanges = nextRanges;
  if (prevLen !== nextRanges.length) {
  requestAnimationFrame(() => {
  if (seq !== activeLoadSeq) return;
+ if (state.activePerson !== forPerson) return;
  buildTimeGrid([...fallbackBusyRanges]);
  updateSidebar();
  });
+ }
  }
  return;
  }
@@ -952,10 +968,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  if (seq !== activeLoadSeq) return;
 
+ personAvailabilityCache[forPerson] = {
+ date: dateStr,
+ barberId: barberIdFixed,
+ mokaAvailableSlots: [...mokaAvailableSlots],
+ mokaAvailabilityActive,
+ fallbackBusyRanges: [...fallbackBusyRanges],
+ barberOffOnDate: state.barberOffOnDate,
+ };
+
+ if (state.activePerson !== forPerson) return;
+
  if (selectedEl) selectedEl.classList.remove('loading');
 
  requestAnimationFrame(() => {
  if (seq !== activeLoadSeq) return;
+ if (state.activePerson !== forPerson) return;
  const currentBusyRanges = fallbackBusyRanges && fallbackBusyRanges.length > 0
  ? [...fallbackBusyRanges]
  : [];
@@ -965,6 +993,27 @@ document.addEventListener('DOMContentLoaded', async () => {
  });
 
  checkBarberOffDuty();
+ }
+
+ function switchTimeGridToActivePerson() {
+ if (!state.date) return;
+ const cached = personAvailabilityCache[state.activePerson];
+ const activeBarberId = getActiveBarber()?.id || null;
+ if (cached && cached.date === state.date && cached.barberId === activeBarberId) {
+ mokaAvailableSlots = cached.mokaAvailableSlots;
+ mokaAvailabilityActive = cached.mokaAvailabilityActive;
+ fallbackBusyRanges = cached.fallbackBusyRanges;
+ state.barberOffOnDate = cached.barberOffOnDate;
+ const warningEl = document.getElementById('barberOffWarning');
+ const barberNameEl = document.getElementById('offDutyBarberName');
+ if (warningEl) warningEl.style.display = state.barberOffOnDate ? 'block' : 'none';
+ if (barberNameEl && state.barberOffOnDate) barberNameEl.textContent = getActiveBarber()?.name || '';
+ buildTimeGrid(fallbackBusyRanges);
+ document.getElementById('step3Next').disabled = !step3Ready();
+ updateSidebar();
+ } else {
+ loadAndRenderDate(state.date, null, { forPerson: state.activePerson, isDateChange: false });
+ }
  }
 
  // ── TIER DISCOUNT PREVIEW (mirrors server/membership-benefits.js) ──

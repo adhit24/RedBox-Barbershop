@@ -15,7 +15,9 @@ function extractFunctionBody(src, signaturePattern) {
   const sigMatch = src.match(signaturePattern);
   if (!sigMatch) return null;
   const start = sigMatch.index;
-  const openBraceIdx = src.indexOf('{', start);
+  const openBraceIdx = sigMatch[0].endsWith('{')
+    ? start + sigMatch[0].length - 1
+    : src.indexOf('{', start + sigMatch[0].length);
   if (openBraceIdx === -1) return null;
   let depth = 0;
   for (let i = openBraceIdx; i < src.length; i++) {
@@ -83,4 +85,44 @@ test('refreshPersonTabs handles the time step (isTimeStep branch)', () => {
   assert.ok(fnBody, 'expected to find refreshPersonTabs()');
   assert.match(fnBody, /isTimeStep/);
   assert.match(fnBody, /state\.time/);
+});
+
+test('personAvailabilityCache exists as a module-scope cache keyed by person', () => {
+  assert.match(bookingJs, /let personAvailabilityCache = \{ 1: null, 2: null \};/);
+});
+
+test('loadAndRenderDate accepts an opts param and only resets both people\'s time on a real date change', () => {
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.ok(fnBody, 'expected to find loadAndRenderDate()');
+  assert.match(fnBody, /isDateChange/);
+  assert.match(fnBody, /state\.person2\.time = null/);
+});
+
+test('loadAndRenderDate reads the active person\'s barber/service, not a single global barber', () => {
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.match(fnBody, /getActiveBarber\(\)\?\.id/);
+  assert.match(fnBody, /getActiveService\(\)\?\.duration/);
+});
+
+test('loadAndRenderDate guards its final render against the user having switched person tabs mid-fetch', () => {
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.match(fnBody, /state\.activePerson !== forPerson/);
+});
+
+test('switchTimeGridToActivePerson exists and reuses cache before re-fetching', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function switchTimeGridToActivePerson\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find switchTimeGridToActivePerson()');
+  assert.match(fnBody, /personAvailabilityCache\[state\.activePerson\]/);
+  assert.match(fnBody, /loadAndRenderDate\(/);
+});
+
+test('the person-tabs click handler re-renders the time grid when switching tabs on the time step', () => {
+  // Anchored on the click callback itself (not the outer `.forEach(tabs => {`
+  // wrapper), because that wrapper text also appears verbatim in
+  // refreshPersonTabs() earlier in the file — matching the outer wrapper
+  // would silently extract the wrong function body.
+  const listenerBody = extractFunctionBody(bookingJs, /tabs\.addEventListener\('click', e => \{/);
+  assert.ok(listenerBody, 'expected to find the person-tabs click wiring');
+  assert.match(listenerBody, /personTabsTime/);
+  assert.match(listenerBody, /switchTimeGridToActivePerson/);
 });
