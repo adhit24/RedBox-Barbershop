@@ -1126,9 +1126,20 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     // Reactivate jika bill masih PENDING di Moka tapi schedule di-cancel stale cleanup.
     // Tanpa ini, slot tidak pernah bisa diblok lagi setelah di-cancel.
     if (existing.status === 'cancelled') {
-      patch.status = 'reserved';
-      patch.notes  = null;
+      // Do not resurrect an ancient Open Bill that stale cleanup intentionally
+      // cancelled. Moka can keep forgotten PENDING bills for days; reviving one
+      // on every pull both re-blocks old slots and can create an invalid range
+      // when duration correction is based on a stale createdAt timestamp.
+      const staleCutoffMs = Date.now() - MOKA_OPENBILL_STALE_HOURS * 60 * 60 * 1000;
+      if (endTime.getTime() > staleCutoffMs) {
+        patch.status = 'reserved';
+        patch.notes  = null;
+      } else {
+        console.log(`[Sync] Open bill ${billId} remains cancelled: computed end ${endTime.toISOString()} is older than stale window`);
+      }
     }
+
+    const canPatchTiming = existing.status !== 'cancelled' || patch.status === 'reserved';
 
     // If barber was missing before but we resolved it now — patch it
     if (!existing.barber_id && barberId) {
@@ -1148,7 +1159,7 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     }
 
     // If start_time was stored wrong (e.g. used createdAt before this fix), correct it
-    if (parsedStart) {
+    if (canPatchTiming && parsedStart) {
       const existingMs = new Date(existing.start_time).getTime();
       const correctMs  = parsedStart.getTime();
       if (Math.abs(existingMs - correctMs) > 5 * 60_000) { // lebih dari 5 menit beda
@@ -1160,7 +1171,7 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     // Correct end_time if stored duration is shorter than what we now compute.
     // This fixes old records created before the 60-min default was in place (were 30 min).
     // Only extend; never shrink — avoids overwriting a correctly-resolved duration.
-    if (!patch.end_time) {
+    if (canPatchTiming && !patch.end_time) {
       const existingEndMs = new Date(existing.end_time).getTime();
       if (endTime.getTime() > existingEndMs + 5 * 60_000) {
         patch.end_time = endTime.toISOString();
@@ -1169,10 +1180,22 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
 
     // Jika sebelumnya ada buffer, dan sekarang buffer = 0, maka end_time lama bisa terlalu panjang.
     // Untuk open-bill schedules, kita boleh shrink supaya slot per jam tidak ikut terblokir.
-    if (!patch.end_time) {
+    if (canPatchTiming && !patch.end_time) {
       const existingEndMs = new Date(existing.end_time).getTime();
       if (endTime.getTime() < existingEndMs - 5 * 60_000) {
         patch.end_time = endTime.toISOString();
+      }
+    }
+
+    // Absolute last guard before touching the exclusion-constrained range.
+    // Never send a patch whose resulting end_time is <= start_time.
+    if (patch.start_time || patch.end_time) {
+      const guardedStart = new Date(patch.start_time || existing.start_time);
+      const guardedEnd = new Date(patch.end_time || existing.end_time);
+      if (!(guardedEnd > guardedStart)) {
+        console.warn(`[Sync] Open bill ${billId} invalid timing patch suppressed: ${guardedStart.toISOString()} → ${guardedEnd.toISOString()}`);
+        delete patch.start_time;
+        delete patch.end_time;
       }
     }
 
