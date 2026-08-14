@@ -3677,7 +3677,7 @@ app.post('/api/reviews/submit', async (req, res) => {
     // Validate booking exists with wa number for points credit
     const { data: booking } = await supabase
       .from('bookings')
-      .select('id, name, wa, barber_id, location')
+      .select('id, name, wa, barber_id, location, schedule_id')
       .eq('id', booking_id)
       .neq('status', 'cancelled')
       .single();
@@ -3760,7 +3760,7 @@ app.post('/api/reviews/submit', async (req, res) => {
               totalPoints = balance?.total_points || 5;
 
               // Send WA notification about points (non-blocking)
-              notifyCustomerReviewPointsCredited(customer.wa, customer.wa, rating, 5, totalPoints, booking.location).catch(() => {});
+              notifyCustomerReviewPointsCredited(customer.wa, booking.name, rating, 5, totalPoints, booking.location).catch(() => {});
             }
           }
         }
@@ -3783,11 +3783,13 @@ app.post('/api/reviews/submit', async (req, res) => {
           .maybeSingle();
 
         // Get moka_order_id from schedules if exists
-        const { data: schedule } = await supabase
-          .from('schedules')
-          .select('external_id')
-          .eq('id', booking_id)
-          .maybeSingle();
+        const { data: schedule } = booking.schedule_id
+          ? await supabase
+              .from('schedules')
+              .select('external_id')
+              .eq('id', booking.schedule_id)
+              .maybeSingle()
+          : { data: null };
 
         if (outlet?.moka_outlet_id) {
           const MokaClient = require('./moka/client');
