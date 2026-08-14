@@ -2184,9 +2184,11 @@ app.post('/api/admin/moka-backfill', adminAuth, async (req, res) => {
   res.json({ ok: true, message: `Cursor reset to ${days} days ago. Next cron tick will backfill.`, since, outlets: results });
 });
 
-// ── GET /api/admin/moka-token-debug ────────────────────────────────────────────
+// ── GET /api/admin/moka-oauth-debug ────────────────────────────────────────────
 // Debug: cek apakah client_credentials menghasilkan token valid dari Moka
-app.get('/api/admin/moka-token-debug', async (req, res) => {
+// (path berbeda dari /api/admin/moka-token-debug di atas — dulu keduanya
+// terdaftar di path yang sama sehingga handler ini tidak pernah tercapai)
+app.get('/api/admin/moka-oauth-debug', async (req, res) => {
   const tok = req.headers['x-admin-token'] || req.query.token || '';
   const valid = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
   if (!tok || !valid.includes(tok)) return res.status(401).json({ error: 'Unauthorized' });
