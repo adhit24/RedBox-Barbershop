@@ -1,0 +1,173 @@
+name: One-time Moka schedule conflict patch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'fix(sync): preflight Moka schedule conflicts'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch sync conflict handling
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('server/moka/sync.js')
+          s = p.read_text()
+
+          old_queue = '''  if (!existing && !parsedStart && barberId) {
+    const { data: queueAhead } = await supabase
+      .from('schedules')
+      .select('id, end_time, external_id')
+      .eq('barber_id', barberId)
+      .eq('source', 'moka')
+      .eq('status', 'reserved')
+      .neq('external_id', billId)               // exclude diri sendiri
+      .gt('end_time', startTime.toISOString())  // masih akan/sedang aktif
+      .order('end_time', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (queueAhead?.end_time) {
+      const queuedStart = new Date(queueAhead.end_time);
+      console.log(`[Sync] Open bill ${billId} (goshow queue) → di-queue setelah ${queueAhead.external_id}: ${startTime.toISOString()} → ${queuedStart.toISOString()}`);
+      startTime = queuedStart;
+      endTime   = new Date(startTime.getTime() + durationMin * 60_000);
+    }
+  }
+'''
+
+          new_queue = '''  if (!existing && !parsedStart && barberId) {
+    // Find the first free interval across ALL active schedules, not only Moka
+    // reserved rows. The DB exclusion constraint protects against web,
+    // confirmed, in-progress, and completed overlaps too, so the preflight
+    // must use the same effective rule.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const { data: conflict, error: conflictErr } = await supabase
+        .from('schedules')
+        .select('id, end_time, external_id, source, status')
+        .eq('barber_id', barberId)
+        .neq('status', 'cancelled')
+        .neq('external_id', billId)
+        .lt('start_time', endTime.toISOString())
+        .gt('end_time', startTime.toISOString())
+        .order('end_time', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (conflictErr) throw new Error(`Open bill conflict preflight failed: ${conflictErr.message}`);
+      if (!conflict?.end_time) break;
+
+      const queuedStart = new Date(conflict.end_time);
+      console.log(`[Sync] Open bill ${billId} (goshow queue) → conflict ${conflict.external_id || conflict.id} (${conflict.source}/${conflict.status}); ${startTime.toISOString()} → ${queuedStart.toISOString()}`);
+      startTime = queuedStart;
+      endTime   = new Date(startTime.getTime() + durationMin * 60_000);
+    }
+  }
+
+  // Advance appointments must keep their requested clock time. If Moka sends
+  // an appointment for a slot already occupied (commonly the same booking
+  // already created by the web flow), skip it before INSERT instead of using
+  // the exclusion constraint as normal control flow and producing HTTP 400.
+  if (!existing && parsedStart && barberId) {
+    const { data: advanceConflict, error: advanceConflictErr } = await supabase
+      .from('schedules')
+      .select('id, external_id, source, status')
+      .eq('barber_id', barberId)
+      .neq('status', 'cancelled')
+      .neq('external_id', billId)
+      .lt('start_time', endTime.toISOString())
+      .gt('end_time', startTime.toISOString())
+      .limit(1)
+      .maybeSingle();
+
+    if (advanceConflictErr) throw new Error(`Advance appointment conflict preflight failed: ${advanceConflictErr.message}`);
+    if (advanceConflict) {
+      console.log(`[Sync] Open bill ${billId} advance appointment skipped before insert: slot already occupied by ${advanceConflict.external_id || advanceConflict.id} (${advanceConflict.source}/${advanceConflict.status})`);
+      return 'skipped';
+    }
+  }
+'''
+
+          if old_queue not in s:
+            raise SystemExit('Expected goshow queue block not found; refusing unsafe patch')
+          s = s.replace(old_queue, new_queue, 1)
+
+          old_update = '''    if (Object.keys(patch).length > 0) {
+      await supabase.from('schedules').update(patch).eq('id', existing.id);
+      return 'updated';
+    }
+'''
+
+          new_update = '''    if (Object.keys(patch).length > 0) {
+      // A stale-cancelled Moka row may now collide with a web reservation.
+      // Preflight any patch that changes the exclusion-key fields; on conflict,
+      // keep the existing slot/barber/status and only apply harmless metadata.
+      if (barberId && (patch.status || patch.barber_id || patch.start_time || patch.end_time)) {
+        const proposedStatus = patch.status || existing.status;
+        const proposedBarber = patch.barber_id || existing.barber_id || barberId;
+        const proposedStart = new Date(patch.start_time || existing.start_time);
+        const proposedEnd = new Date(patch.end_time || existing.end_time);
+
+        if (proposedStatus !== 'cancelled' && proposedBarber && proposedEnd > proposedStart) {
+          const { data: patchConflict, error: patchConflictErr } = await supabase
+            .from('schedules')
+            .select('id, external_id, source, status')
+            .eq('barber_id', proposedBarber)
+            .neq('status', 'cancelled')
+            .neq('id', existing.id)
+            .lt('start_time', proposedEnd.toISOString())
+            .gt('end_time', proposedStart.toISOString())
+            .limit(1)
+            .maybeSingle();
+
+          if (patchConflictErr) throw new Error(`Open bill update conflict preflight failed: ${patchConflictErr.message}`);
+          if (patchConflict) {
+            console.log(`[Sync] Open bill ${billId} conflicting slot patch suppressed: occupied by ${patchConflict.external_id || patchConflict.id} (${patchConflict.source}/${patchConflict.status})`);
+            delete patch.status;
+            delete patch.barber_id;
+            delete patch.start_time;
+            delete patch.end_time;
+          }
+        }
+      }
+
+      if (Object.keys(patch).length > 0) {
+        const { error: patchErr } = await supabase.from('schedules').update(patch).eq('id', existing.id);
+        if (patchErr) throw new Error(`Open bill update failed: ${patchErr.message}`);
+        return 'updated';
+      }
+    }
+'''
+
+          if old_update not in s:
+            raise SystemExit('Expected update block not found; refusing unsafe patch')
+          s = s.replace(old_update, new_update, 1)
+          p.write_text(s)
+
+      - name: Syntax and diff checks
+        run: |
+          node --check server/moka/sync.js
+          git diff --check
+          grep -q "Advance appointments must keep their requested clock time" server/moka/sync.js
+          grep -q "conflicting slot patch suppressed" server/moka/sync.js
+
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/moka/sync.js
+          git commit -m "fix(sync): preflight Moka schedule conflicts"
+          git push
