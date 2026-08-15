@@ -188,7 +188,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_products_updated
+CREATE OR REPLACE TRIGGER trg_products_updated
   BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
