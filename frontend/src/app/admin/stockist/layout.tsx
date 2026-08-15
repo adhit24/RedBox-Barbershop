@@ -1,11 +1,13 @@
 'use client';
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
+import Link from 'next/link';
 
 export default function StockistLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useUser();
+  const { user, loading, signOut } = useUser();
   const router = useRouter();
+  const pathname = usePathname() || '';
 
   useEffect(() => {
     if (loading) return;
@@ -16,20 +18,89 @@ export default function StockistLayout({ children }: { children: React.ReactNode
 
   if (loading || !user) return null;
 
+  const isOwner = user.role === 'owner';
+  
+  const tabs = [
+    {
+      label: 'Beranda',
+      icon: 'home',
+      href: '/admin/stockist',
+      active: pathname === '/admin/stockist'
+    },
+    {
+      label: isOwner ? 'Produk' : 'Stok Saya',
+      icon: 'inventory',
+      href: isOwner ? '/admin/stockist/products' : '/admin/stockist/branch-stock',
+      active: isOwner ? pathname.startsWith('/admin/stockist/products') : pathname.startsWith('/admin/stockist/branch-stock')
+    },
+    {
+      label: 'Transfer',
+      icon: 'receipt_long',
+      href: '/admin/stockist/transfers',
+      active: pathname.startsWith('/admin/stockist/transfers')
+    },
+    ...(!isOwner ? [{
+      label: 'Terima',
+      icon: 'warehouse',
+      href: '/admin/stockist/warehouse',
+      active: pathname.startsWith('/admin/stockist/warehouse')
+    }] : [])
+  ];
+
   return (
-    <div className="min-h-dvh pb-20" style={{ background: '#070508', color: '#F0EAEB' }}>
-      <header
-        className="backdrop-blur-md border-b px-4 py-2.5"
-        style={{ background: 'rgba(8,5,9,0.96)', borderColor: '#201618' }}
-      >
-        <h1 className="font-bold text-[13px] tracking-widest uppercase" style={{ color: '#F0EAEB' }}>
-          RedBox Stockist
-        </h1>
-        {user.role === 'branch_admin' && (
-          <p className="text-[10px] capitalize font-medium" style={{ color: '#C72820' }}>{user.branch}</p>
-        )}
+    <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
+      {/* TopAppBar */}
+      <header className="bg-surface-dim fixed top-0 w-full z-50 flex justify-between items-center px-4 h-[48px] shadow-[0_4px_24px_rgba(0,0,0,0.6)] max-w-[430px] left-1/2 -translate-x-1/2 border-b border-border-base">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary-container text-[20px] ml-1">inventory_2</span>
+          <span className="font-bold text-[15px] tracking-wider uppercase text-text-primary">
+            RedBox Stockist
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {user.role === 'branch_admin' && (
+            <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
+              {user.branch}
+            </span>
+          )}
+          <button 
+            onClick={() => {
+              if (confirm('Keluar dari aplikasi?')) {
+                signOut();
+                router.replace('/login');
+              }
+            }}
+            className="text-text-muted hover:text-text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full"
+          >
+            <span className="material-symbols-outlined text-[20px]">logout</span>
+          </button>
+        </div>
       </header>
-      <main className="px-4 py-4">{children}</main>
+
+      {/* Main Container */}
+      <main className="pt-[calc(48px+16px)] pb-[calc(70px+24px)] px-4 w-full max-w-[430px] mx-auto min-h-screen flex flex-col gap-4">
+        {children}
+      </main>
+
+      {/* BottomNavBar */}
+      <nav className="bg-surface-container-highest fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] flex justify-around items-center px-4 py-2 z-50 rounded-t-xl shadow-[0_-8px_32px_rgba(0,0,0,0.4)] border-t border-border-base">
+        {tabs.map((tab) => (
+          <Link
+            key={tab.label}
+            href={tab.href}
+            className={`flex flex-col items-center justify-center rounded-xl px-4 py-1.5 transition-all duration-200 min-w-[64px] ${
+              tab.active
+                ? 'text-primary-container font-bold bg-primary-container/10 scale-95'
+                : 'text-text-secondary hover:text-primary-container active:scale-95'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: tab.active ? "'FILL' 1" : "'FILL' 0" }}>
+              {tab.icon}
+            </span>
+            <span className="text-[10px] mt-0.5 tracking-tight font-medium">{tab.label}</span>
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }

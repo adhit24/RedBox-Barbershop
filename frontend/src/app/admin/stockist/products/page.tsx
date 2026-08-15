@@ -6,59 +6,336 @@ import { listProducts, createProduct, type StockistProduct } from '@/lib/stockis
 export default function ProductsPage() {
   const { user } = useUser();
   const [products, setProducts] = useState<StockistProduct[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({ sku: '', name: '', unit: 'pcs', purchase_price: '', retail_price: '' });
+  
+  // Search & Filter
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Semua');
+
+  // Form State
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [form, setForm] = useState({
+    sku: '',
+    name: '',
+    unit: 'pcs',
+    category: '',
+    brand: '',
+    purchase_price: '',
+    retail_price: '',
+    minimum_stock: '5'
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function refresh() {
+    setLoading(true);
     try {
       const { products } = await listProducts();
       setProducts(products);
+      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load products');
+      setError(err instanceof Error ? err.message : 'Gagal memuat produk');
+    } finally {
+      setLoading(false);
     }
   }
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+  }, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
+    setFormError(null);
+    setSubmitting(true);
     try {
       await createProduct({
-        sku: form.sku, name: form.name, unit: form.unit,
+        sku: form.sku,
+        name: form.name,
+        unit: form.unit,
+        category: form.category || null,
+        brand: form.brand || null,
         purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
         retail_price: form.retail_price ? Number(form.retail_price) : null,
+        minimum_stock: Number(form.minimum_stock),
       });
-      setForm({ sku: '', name: '', unit: 'pcs', purchase_price: '', retail_price: '' });
+      // Reset form
+      setForm({
+        sku: '',
+        name: '',
+        unit: 'pcs',
+        category: '',
+        brand: '',
+        purchase_price: '',
+        retail_price: '',
+        minimum_stock: '5'
+      });
+      setShowAddForm(false);
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to create product');
+      setFormError(err instanceof Error ? err.message : 'Gagal membuat produk');
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  return (
-    <div>
-      <h2 className="text-lg font-bold mb-3">Produk</h2>
-      {error && <p className="text-red-400 text-sm mb-3">{error}</p>}
+  const isOwner = user?.role === 'owner';
 
-      {user?.role === 'owner' && (
-        <form onSubmit={handleCreate} className="grid grid-cols-2 gap-2 mb-6 text-sm">
-          <input placeholder="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="col-span-1 p-2 rounded bg-black/40 border border-white/10" required />
-          <input placeholder="Nama produk" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="col-span-1 p-2 rounded bg-black/40 border border-white/10" required />
-          <input placeholder="Harga beli" type="number" value={form.purchase_price} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} className="p-2 rounded bg-black/40 border border-white/10" />
-          <input placeholder="Harga jual" type="number" value={form.retail_price} onChange={(e) => setForm({ ...form, retail_price: e.target.value })} className="p-2 rounded bg-black/40 border border-white/10" />
-          <button type="submit" className="col-span-2 p-2 rounded font-medium" style={{ background: '#C72820' }}>Tambah Produk</button>
+  // Categories list extracted from products
+  const categories = ['Semua', ...Array.from(new Set(products.map(p => p.category).filter((c): c is string => !!c)))];
+
+  // Filter products
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          p.sku.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'Semua' || p.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const getProductImage = (sku: string, name: string) => {
+    const lowerName = name.toLowerCase();
+    if (lowerName.includes('clay') || lowerName.includes('pomade')) return '/uploads/clay.jpeg';
+    if (lowerName.includes('oil')) return '/uploads/oil_base.jpeg';
+    if (lowerName.includes('water') || lowerName.includes('spray')) return '/uploads/water_base.jpeg';
+    if (lowerName.includes('shave') || lowerName.includes('cream') || lowerName.includes('psyi')) return '/uploads/psyi.jpeg';
+    return '/uploads/E_left_here.jpeg';
+  };
+
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
+  };
+
+  return (
+    <div className="flex flex-col gap-5 animate-fade-in">
+      {/* Header Area */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Katalog Produk</h2>
+          <p className="text-[12px] text-text-muted mt-1">Kelola katalog produk dan harga.</p>
+        </div>
+        {isOwner && (
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-text-primary text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95 border border-[#302728]"
+          >
+            <span className="material-symbols-outlined text-[16px]">{showAddForm ? 'close' : 'add'}</span>
+            {showAddForm ? 'Batal' : 'Produk'}
+          </button>
+        )}
+      </div>
+
+      {/* Add Product Form (Collapsible) */}
+      {isOwner && showAddForm && (
+        <form onSubmit={handleCreate} className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-4 shadow-lg animate-slide-up">
+          <h3 className="font-semibold text-[14px] text-text-primary flex items-center gap-1.5 border-b border-border-base pb-2">
+            <span className="material-symbols-outlined text-[18px]">add_box</span>
+            Tambah Produk Baru
+          </h3>
+          
+          {formError && (
+            <div className="bg-danger/10 border border-danger text-danger text-[12px] rounded-lg p-2.5 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px]">error</span>
+              <span>{formError}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="text-[11px] font-medium text-text-secondary">SKU Produk *</label>
+              <input
+                placeholder="Mis: RBX-CLY-001"
+                value={form.sku}
+                onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="text-[11px] font-medium text-text-secondary">Nama Produk *</label>
+              <input
+                placeholder="Mis: RedBox Matte Clay Premium"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-medium text-text-secondary">Kategori</label>
+              <input
+                placeholder="Pomade, Equipment, etc."
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-medium text-text-secondary">Satuan Unit</label>
+              <input
+                placeholder="pcs, botol, pack"
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-medium text-text-secondary">Harga Beli</label>
+              <input
+                type="number"
+                placeholder="Harga Modal"
+                value={form.purchase_price}
+                onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
+                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-medium text-text-secondary">Harga Jual *</label>
+              <input
+                type="number"
+                placeholder="Harga Retail"
+                value={form.retail_price}
+                onChange={(e) => setForm({ ...form, retail_price: e.target.value })}
+                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                required
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-medium text-text-secondary">Minimum Stock</label>
+              <input
+                type="number"
+                placeholder="Batas warning limit"
+                value={form.minimum_stock}
+                onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })}
+                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                required
+              />
+            </div>
+            
+            <div className="flex items-end col-span-1 pt-1.5">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-xs h-[38px] rounded-lg flex items-center justify-center gap-1 active:scale-95 transition-all shadow border border-[#302728]"
+              >
+                {submitting ? 'Menyimpan...' : 'Simpan Produk'}
+              </button>
+            </div>
+          </div>
         </form>
       )}
 
-      <ul className="space-y-2">
-        {products.map((p) => (
-          <li key={p.id} className="p-3 rounded border border-white/10 text-sm flex justify-between">
-            <span>{p.name} <span className="opacity-50">({p.sku})</span></span>
-            {p.retail_price != null && <span>Rp{p.retail_price.toLocaleString('id-ID')}</span>}
-          </li>
-        ))}
-      </ul>
+      {/* Search & Filter bar */}
+      <section className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 shadow-sm">
+        {/* Search Input */}
+        <div className="relative">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">search</span>
+          <input
+            type="text"
+            placeholder="Cari nama atau SKU..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
+          />
+        </div>
+
+        {/* Categories Chips */}
+        {categories.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                  selectedCategory === cat
+                    ? 'bg-primary-container border-primary-container text-text-primary'
+                    : 'bg-surface-container-low border-border-base text-text-secondary hover:border-text-muted'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Products Listing */}
+      {error && (
+        <div className="bg-danger/10 border border-danger text-danger text-sm rounded-lg p-3 flex items-center gap-2">
+          <span className="material-symbols-outlined">error</span>
+          <span>{error}</span>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="w-6 h-6 border-2 border-primary-container border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      ) : (
+        <section className="flex flex-col gap-3">
+          {filteredProducts.length === 0 ? (
+            <p className="text-center text-text-muted text-sm py-8 bg-surface-elevated border border-border-base rounded-xl">
+              Tidak ada produk ditemukan.
+            </p>
+          ) : (
+            filteredProducts.map((p) => (
+              <div 
+                key={p.id} 
+                className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 hover:bg-surface-container transition-colors"
+              >
+                <div className="flex gap-3 items-start">
+                  {/* Thumbnail */}
+                  <div className="w-12 h-12 rounded-lg bg-[#171415] border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    <img 
+                      className="w-full h-full object-cover opacity-85 mix-blend-luminosity" 
+                      src={getProductImage(p.sku, p.name)} 
+                      alt={p.name} 
+                    />
+                  </div>
+
+                  {/* Core info */}
+                  <div className="flex-grow flex flex-col justify-center min-h-[48px]">
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <h3 className="font-semibold text-text-primary text-[14px] leading-tight">{p.name}</h3>
+                        <span className="text-[10px] text-text-muted mt-1 font-mono block">SKU: {p.sku}</span>
+                      </div>
+                      <span className={`px-2 py-0.5 text-[9px] font-semibold rounded border uppercase tracking-wider ${
+                        p.is_active 
+                          ? 'bg-success/10 border-success/30 text-success' 
+                          : 'bg-danger/10 border-danger/30 text-danger'
+                      }`}>
+                        {p.is_active ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border-base/50 mt-1 text-[12px]">
+                  <div className="flex flex-col">
+                    <span className="text-text-muted font-medium text-[10px] uppercase tracking-wide">Kategori & Unit</span>
+                    <span className="text-text-primary font-semibold mt-0.5">{p.category || 'Lainnya'} • {p.unit}</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-text-muted font-medium text-[10px] uppercase tracking-wide">Harga Jual</span>
+                    <span className="text-[14px] font-bold text-text-primary tabular-nums mt-0.5">
+                      {p.retail_price != null ? formatCurrency(p.retail_price) : '-'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </section>
+      )}
     </div>
   );
 }

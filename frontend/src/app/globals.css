@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
- --background: #070508;
- --foreground: #F0EAEB;
+ --background: #151313;
+ --foreground: #e8e1e0;
 
  /* RedBox brand tokens */
  --rb-red: #C72820;
  --rb-red-light: #E87068;
  --rb-red-muted: rgba(199, 40, 32, 0.15);
 
- --rb-bg: #070508;
+ --rb-bg: #151313;
  --rb-surface-1: #110B0E;
  --rb-surface-2: #1A1215;
  --rb-border: #201618;
@@ -18,6 +18,26 @@
  --rb-text: #F0EAEB;
  --rb-text-muted: #7A6A6D;
  --rb-text-faint: #4A3E40;
+
+ /* Stitch custom theme tokens */
+ --color-surface-dim: #151313;
+ --color-surface-bright: #3c3838;
+ --color-surface-elevated: #211B1C;
+ --color-surface-container: #221f1f;
+ --color-surface-container-low: #1e1b1b;
+ --color-surface-container-lowest: #100e0e;
+ --color-surface-container-high: #2c2929;
+ --color-surface-container-highest: #373434;
+ --color-border-base: #302728;
+ --color-text-primary: #F5EEEE;
+ --color-text-secondary: #B8AAAC;
+ --color-text-muted: #786D6F;
+ --color-success: #36B56B;
+ --color-warning: #E3A43B;
+ --color-danger: #E0504B;
+ --color-info: #8A9BA8;
+ --color-primary-container: #c72820;
+ --color-inverse-primary: #b91d18;
 }
 
 @theme inline {
@@ -25,12 +45,31 @@
  --color-foreground: var(--foreground);
  --font-sans: var(--font-geist-sans);
  --font-mono: var(--font-geist-mono);
+
+ /* Stitch Custom Colors mapped to Tailwind v4 classes */
+ --color-surface-dim: var(--color-surface-dim);
+ --color-surface-bright: var(--color-surface-bright);
+ --color-surface-elevated: var(--color-surface-elevated);
+ --color-surface-container: var(--color-surface-container);
+ --color-surface-container-low: var(--color-surface-container-low);
+ --color-surface-container-lowest: var(--color-surface-container-lowest);
+ --color-surface-container-high: var(--color-surface-container-high);
+ --color-surface-container-highest: var(--color-surface-container-highest);
+ --color-border-base: var(--color-border-base);
+ --color-text-primary: var(--color-text-primary);
+ --color-text-secondary: var(--color-text-secondary);
+ --color-text-muted: var(--color-text-muted);
+ --color-success: var(--color-success);
+ --color-warning: var(--color-warning);
+ --color-danger: var(--color-danger);
+ --color-info: var(--color-info);
+ --color-primary-container: var(--color-primary-container);
+ --color-inverse-primary: var(--color-inverse-primary);
 }
 
 body {
- background: var(--rb-bg);
- color: var(--rb-text);
- font-family: var(--font-geist-sans, Arial, Helvetica, sans-serif);
+ background: var(--background);
+ color: var(--foreground);
  -webkit-font-smoothing: antialiased;
  -moz-osx-font-smoothing: grayscale;
 }
