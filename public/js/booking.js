@@ -110,6 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  const rawService = params.get('service');
  const preService = rawService === 'creambath' ? 'hair-spa' : rawService;
  const preBarber = params.get('barber');
+ const requestedBranch = (params.get('branch') || '').trim().toLowerCase();
  const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
  const rawPackage = (params.get('pkg') || '').toLowerCase().replace(/^weeding-/, 'wedding-');
  const WEDDING_PACKAGES = {
@@ -1286,7 +1287,12 @@ document.addEventListener('DOMContentLoaded', async () => {
  const proBranchFilter = document.getElementById('proBranchFilter');
  let allBarbers = [];
  let barberOffToday = new Map(); // barber_id → true jika libur hari ini
- let currentBranchFilter = 'bypass';
+ let currentBranchFilter = requestedBranch || 'bypass';
+ if (['bypass', 'samadikun', 'csb', 'sumber', 'tegal'].includes(requestedBranch)) {
+ state.location = requestedBranch;
+ const initialLocation = document.getElementById('custLocation');
+ if (initialLocation) initialLocation.value = requestedBranch;
+ }
 
  function setBranchActive(branch) {
  if (!proBranchFilter) return;

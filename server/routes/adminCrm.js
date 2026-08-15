@@ -12,6 +12,7 @@ const {
   validatePaymentInput,
 } = require('../services/membershipRegistration');
 const { syncScheduleForBooking } = require('../moka/slotEngine');
+const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('../services/bookingGuard');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -789,7 +790,13 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
 
     const { data: cur } = await supabase
-      .from('bookings').select('schedule_id, date, time, status').eq('id', booking_id).maybeSingle();
+      .from('bookings').select('schedule_id, date, time, status, location, barber_id').eq('id', booking_id).maybeSingle();
+    if (!cur) return res.status(404).json({ error: 'Booking not found' });
+    const { data: barber } = await getBarberForBooking(supabase, new_barber_id);
+    if (!barber) return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+    if (!branchMatchesBarber(barber, cur.location)) {
+      return res.status(409).json({ error: `Kapster tidak tersedia di cabang ${cur.location}` });
+    }
 
     const { error } = await supabase
       .from('bookings')
@@ -818,13 +825,19 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
 
     const { data: cur, error: curError } = await supabase
-      .from('bookings').select('schedule_id, date, time, barber_id, status').eq('id', booking_id).single();
+      .from('bookings').select('schedule_id, date, time, barber_id, status, location').eq('id', booking_id).single();
     if (curError) return res.status(500).json({ error: curError.message });
     if (['cancelled', 'done'].includes(cur.status)) {
       return res.status(400).json({ error: `Booking berstatus "${cur.status}" tidak bisa dijadwal ulang.` });
     }
 
     const nextBarberId = barber_id || cur.barber_id;
+    if (!nextBarberId) return res.status(400).json({ error: 'Kapster wajib dipilih' });
+    const { data: nextBarber } = await getBarberForBooking(supabase, nextBarberId);
+    if (!nextBarber) return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+    if (!branchMatchesBarber(nextBarber, cur.location)) {
+      return res.status(409).json({ error: `Kapster tidak tersedia di cabang ${cur.location}` });
+    }
     const { data, error } = await supabase
       .from('bookings')
       .update({ date, time, ...(barber_id ? { barber_id } : {}) })
@@ -850,6 +863,11 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     const { name, wa, barber_id, service, branch } = req.body;
     if (!barber_id || !service || !branch) {
       return res.status(400).json({ error: 'barber_id, service, branch required' });
+    }
+    const { data: walkinBarber } = await getBarberForBooking(supabase, barber_id);
+    if (!walkinBarber) return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+    if (!branchMatchesBarber(walkinBarber, normalizeBranch(branch))) {
+      return res.status(409).json({ error: `Kapster tidak tersedia di cabang ${normalizeBranch(branch)}` });
     }
 
     const today = localDateStr();

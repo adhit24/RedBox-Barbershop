@@ -28,6 +28,10 @@ const BRANCH_LABEL = {
   sumber:    'RedBox Sumber',
   tegal:     'RedBox Tegal',
 };
+function bookingUrl(branch) {
+  const key = ['bypass', 'samadikun', 'csb', 'sumber', 'tegal'].includes(branch) ? branch : 'bypass';
+  return `redboxbarbershop.com/booking.html?branch=${key}`;
+}
 const BOOT_TS = Date.now();
 
 const debugLog = [];
@@ -494,7 +498,7 @@ Setiap percakapan ikuti alur: DENGAR → JAWAB → GALI → UPSELL (relevan) →
 2. JAWAB dengan info yang akurat dan jelas berdasarkan knowledge di atas
 3. GALI kebutuhan dengan 1 pertanyaan relevan ("Rambut kakak sekarang panjang atau pendek?" / "Sering banyak acara, kak?")
 4. UPSELL secara natural — jangan langsung sebut harga. Ceritakan manfaat dulu, baru harga kalau ditanya atau relevan
-5. KONVERSI ke booking: arahkan ke redboxbarbershop.com/booking.html
+5. KONVERSI ke booking: arahkan ke ${bookingUrl(branch)}
 
 ATURAN UPSELLING:
 - Tawarkan max 1 add-on/upsell per giliran — jangan bombardir
@@ -516,7 +520,7 @@ Kalau pelanggan mau booking manual via chat: "Aku ngerti kak, tapi kalau via cha
 ═══════════════════════════════════
 ATURAN BOOKING — NON-NEGOTIABLE
 ═══════════════════════════════════
-Website booking: redboxbarbershop.com/booking.html
+Website booking: ${bookingUrl(branch)}
 SEMUA booking WAJIB via website. JANGAN PERNAH:
 - Konfirmasi booking via chat ("Oke jam 18:00 ya" — slot belum tentu tersedia!)
 - Proses form template manual seolah valid
@@ -616,7 +620,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass') {
 // ── Fallback (keyword-based) ──────────────────────────────────────────────────
 // Used only when OpenAI is unavailable or times out.
 
-function fallbackReply(text, name) {
+function fallbackReply(text, name, branch = 'bypass') {
   const t = text.toLowerCase();
   const fn = (name || 'Kak').split(' ')[0];
   const has = (kws) => kws.some(k => t.includes(k));
@@ -624,9 +628,9 @@ function fallbackReply(text, name) {
   if (has(['halo','hai','hi ','hello','hei','hey','pagi','siang','sore','malam','selamat']))
     return `Heyy! Selamat datang di RedBox Barbershop ✂️ Ada yang bisa aku bantu nih?`;
   if (has(['harga','berapa','layanan','menu','paket','price']))
-    return `Ini beberapa layanan kita ${fn} 💈\n\n✂️ Hair Cut — Rp 85.000\n✂️ Hair & Fade Cut — Rp 95.000\n🪒 Shaving — Rp 40.000\n💆 Men Massage — Rp 145.000\n👑 Noble Grooming — Rp 140.000\n👑 Royal Grooming — Rp 305.000\n\nInfo lengkap: redboxbarbershop.com/booking.html`;
+    return `Ini beberapa layanan kita ${fn} 💈\n\n✂️ Hair Cut — Rp 85.000\n✂️ Hair & Fade Cut — Rp 95.000\n🪒 Shaving — Rp 40.000\n💆 Men Massage — Rp 145.000\n👑 Noble Grooming — Rp 140.000\n👑 Royal Grooming — Rp 305.000\n\nInfo lengkap: ${bookingUrl(branch)}`;
   if (has(['booking','reservasi','jadwal','pesan','mau potong','mau cukur']))
-    return `Yuk langsung booking di sini aja ${fn} 📅\nredboxbarbershop.com/booking.html\n\nTinggal pilih layanan, kapster, sama slot waktu — gampang!`;
+    return `Yuk langsung booking di sini aja ${fn} 📅\n${bookingUrl(branch)}\n\nTinggal pilih layanan, kapster, sama slot waktu — gampang!`;
   if (has(['lokasi','alamat','dimana','maps','cabang']))
     return `Cabang RedBox ada di sini ${fn} 📍\n• Bypass (pusat) — Jl. Bypass Kedawung | 10.00–22.00\n• Samadikun — Jl. Samadikun | 10.00–21.00\n• CSB Mall — Lt. 1 | 10.00–21.00\n• Sumber — Jl. Raya Sumber | 10.00–21.00\n• Tegal — Jl. Raya Tegal | 10.00–21.00`;
   if (has(['konfirmasi booking','konfirmasi bkng','sudah booking','mau konfirmasi','ini konfirmasi']))
@@ -1414,7 +1418,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     if (booking.status === BOOKING_STATUS.CONFIRMED) {
       reply = 'Hati-hati di jalan ya kak 😊 Kalau keterlambatan lebih dari 10–15 menit, kabari admin/cabang karena slot bisa perlu disesuaikan.';
     } else {
-      reply = 'Siap kak. Biar slot dan jamnya aman, cek atau buat booking dulu di redboxbarbershop.com/booking.html ya ✂️';
+      reply = `Siap kak. Biar slot dan jamnya aman, cek atau buat booking dulu di ${bookingUrl(branch)} ya ✂️`;
     }
     used = 'policy';
     const sendResult = await sendWA(from, reply, { branch });
@@ -1422,7 +1426,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   }
 
   if (isWalkIn) {
-    reply = 'Boleh coba datang langsung kak, tapi slot walk-in belum tentu tersedia ya 😊 Biar lebih aman, cek dan booking lewat redboxbarbershop.com/booking.html';
+    reply = `Boleh coba datang langsung kak, tapi slot walk-in belum tentu tersedia ya 😊 Biar lebih aman, cek dan booking lewat ${bookingUrl(branch)}`;
     used = 'policy';
     const sendResult = await sendWA(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1433,7 +1437,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
                'service saja', 'service aja', 'ada layanan', 'ada service'])) {
     const firstName = (name || 'Kak').split(' ')[0];
     const svcText = buildServicesText(branch);
-    reply = `Ini layanan lengkap RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nAda yang mau dicoba, ${firstName}? Langsung book di: redboxbarbershop.com/booking.html ✂️`;
+    reply = `Ini layanan lengkap RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nAda yang mau dicoba, ${firstName}? Langsung book di: ${bookingUrl(branch)} ✂️`;
     used = 'keyword';
     const sendResult = await sendWA(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1441,7 +1445,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
   if (msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
     const svcText = buildServicesText(branch);
-    reply = `Ini harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nMau langsung lock slot? → redboxbarbershop.com/booking.html ✂️`;
+    reply = `Ini harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nMau langsung lock slot? → ${bookingUrl(branch)} ✂️`;
     used = 'keyword';
     const sendResult = await sendWA(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1458,7 +1462,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       `Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏\n\n` +
       `Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. ` +
       `Jadi kakak tinggal pilih jam yang available, slot terjamin tercatat di sistem tanpa perlu menebak-nebak antrian.\n\n` +
-      `Lock jadwalnya di sini ya kak → redboxbarbershop.com/booking.html ✂️`;
+      `Lock jadwalnya di sini ya kak → ${bookingUrl(branch)} ✂️`;
     used = 'keyword';
     const sendResult = await sendWA(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1468,7 +1472,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     reply = await callOpenAI(from, text, name, branch);
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
-    reply = fallbackReply(text, name);
+    reply = fallbackReply(text, name, branch);
     used = 'fallback';
     error = err?.message || String(err);
   }

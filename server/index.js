@@ -24,6 +24,7 @@ const { normalizeMemberPhone, getMemberPhoneVariants, mergeCustomerRows } = requ
 const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membership-identity');
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
+const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1174,17 +1175,24 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
   }
 
   const bookingId = randomUUID();
-  let resolvedLocation = location || 'bypass';
+  const resolvedInputLocation = normalizeBranch(location);
+  if (!resolvedInputLocation) {
+    return res.status(400).json({ error: 'Cabang wajib dipilih' });
+  }
+  let resolvedLocation = resolvedInputLocation;
+
+  // Public website bookings must always identify a kapster. The UI uses
+  // `any` only as a legacy placeholder; accepting it here creates bookings
+  // that cannot be routed to a barber or a branch reliably.
+  if (!normalizedBarberId || normalizedBarberId === 'any') {
+    return res.status(400).json({ error: 'Kapster wajib dipilih sebelum booking' });
+  }
 
   if (DB_TYPE === 'supabase') {
     try {
       // 1. Validasi barber aktif (kecuali admin)
       if (normalizedBarberId && normalizedBarberId !== 'any') {
-        const { data: barberCheck, error: barberErr } = await supabase
-          .from('barbers')
-          .select('id, is_active, branch')
-          .eq('id', normalizedBarberId)
-          .single();
+        const { data: barberCheck, error: barberErr } = await getBarberForBooking(supabase, normalizedBarberId);
         if (barberErr && barberErr.code !== 'PGRST116') {
           return res.status(500).json({ error: 'Gagal memvalidasi kapster' });
         }
@@ -1203,12 +1211,12 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
             return res.status(409).json({ error: 'Kapster sedang libur pada tanggal tersebut' });
           }
         }
-        // Cabang booking WAJIB ikut cabang asli kapster — mencegah booking tersimpan
-        // dengan barber_id dan location yang tidak sinkron (kapster "pindah cabang"
-        // secara keliru di notifikasi WA). Berlaku untuk submit pelanggan maupun admin.
-        if (barberCheck.branch && barberCheck.branch !== resolvedLocation) {
-          console.warn(`[Booking] location "${resolvedLocation}" tidak sinkron dengan cabang kapster ${normalizedBarberId} ("${barberCheck.branch}") — dikoreksi otomatis.`);
-          resolvedLocation = barberCheck.branch;
+        // Never silently move a booking to the barber's branch. A client that
+        // submits CSB + a Bypass barber must be rejected, not corrected.
+        if (!branchMatchesBarber(barberCheck, resolvedLocation)) {
+          return res.status(409).json({
+            error: `Kapster ${barberCheck.name || normalizedBarberId} tidak tersedia di cabang ${resolvedLocation}`,
+          });
         }
       }
 
@@ -1390,7 +1398,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
       // 1. Validasi barber aktif (kecuali admin)
       if (normalizedBarberId && normalizedBarberId !== 'any') {
         const [barberCheck] = await mysqlPool.execute(
-          'SELECT id, is_active FROM barbers WHERE id = ?',
+          'SELECT id, is_active, branch FROM barbers WHERE id = ?',
           [normalizedBarberId]
         );
         if (barberCheck.length === 0) {
@@ -1398,6 +1406,9 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
         }
         if (!isAdmin && barberCheck[0].is_active === 0) {
           return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
+        }
+        if (!branchMatchesBarber(barberCheck[0], resolvedLocation)) {
+          return res.status(409).json({ error: `Kapster tidak tersedia di cabang ${resolvedLocation}` });
         }
       }
 
@@ -1582,6 +1593,17 @@ async function handleBookingUpdate(req, res) {
       .single();
     if (curError) return res.status(500).json({ error: curError.message });
 
+    const nextBarberIdForValidation = updates.barber_id !== undefined ? updates.barber_id : cur.barber_id;
+    const nextLocation = normalizeBranch(updates.location !== undefined ? updates.location : cur.location);
+    if (!nextBarberIdForValidation) return res.status(400).json({ error: 'Kapster wajib dipilih' });
+    const { data: nextBarber, error: nextBarberError } = await getBarberForBooking(supabase, nextBarberIdForValidation);
+    if (nextBarberError) return res.status(500).json({ error: 'Gagal memvalidasi kapster' });
+    if (!nextBarber) return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+    if (!branchMatchesBarber(nextBarber, nextLocation)) {
+      return res.status(409).json({ error: `Kapster tidak tersedia di cabang ${nextLocation}` });
+    }
+    if (updates.location !== undefined) updates.location = nextLocation;
+
     const nextStatus = updates.status !== undefined ? updates.status : cur.status;
 
     const { data, error } = await supabase.from('bookings').update(updates).eq('id', req.params.id).select().single();
@@ -1657,7 +1679,7 @@ async function handleBookingUpdate(req, res) {
   } else {
     try {
       const [curRows] = await mysqlPool.execute(
-        `SELECT id, barber_id, DATE_FORMAT(date, '%Y-%m-%d') AS date, TIME_FORMAT(time, '%H:%i') AS time, duration, status, wa, service, price FROM bookings WHERE id = ?`,
+        `SELECT id, barber_id, DATE_FORMAT(date, '%Y-%m-%d') AS date, TIME_FORMAT(time, '%H:%i') AS time, duration, status, wa, service, price, location FROM bookings WHERE id = ?`,
         [req.params.id]
       );
       const cur = curRows?.[0];
@@ -1668,6 +1690,14 @@ async function handleBookingUpdate(req, res) {
       const nextDate     = updates.date      !== undefined ? updates.date      : cur.date;
       const nextTime     = updates.time      !== undefined ? updates.time      : cur.time;
       const nextDuration = updates.duration  !== undefined ? updates.duration  : cur.duration;
+      if (!nextBarber) return res.status(400).json({ error: 'Kapster wajib dipilih' });
+      const nextLocation = normalizeBranch(updates.location !== undefined ? updates.location : cur.location);
+      const [nextBarberRows] = await mysqlPool.execute('SELECT id, branch FROM barbers WHERE id = ?', [nextBarber]);
+      if (!nextBarberRows?.[0]) return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+      if (!branchMatchesBarber(nextBarberRows[0], nextLocation)) {
+        return res.status(409).json({ error: `Kapster tidak tersedia di cabang ${nextLocation}` });
+      }
+      if (updates.location !== undefined) updates.location = nextLocation;
 
       if (nextStatus !== 'cancelled') {
         if (await hasOverlapMysql({ barberId: nextBarber, date: nextDate, time: nextTime, duration: nextDuration, excludeId: req.params.id })) {

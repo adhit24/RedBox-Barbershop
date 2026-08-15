@@ -29,6 +29,7 @@ const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured
 const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
 const { getAvailableSlots, isSlotAvailable, getBarberDateAvailability } = require('./slotEngine');
 const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
+const { getBarberForBooking, branchMatchesBarber }                     = require('../services/bookingGuard');
 
 async function syncCurrentMonthTransactions(supabase, outletId = null) {
   const { syncCurrentMonthTx } = require('./txSync');
@@ -362,6 +363,17 @@ function createMokaRouter(supabase) {
       // ── Resolve outlet ──────────────────────────────────────
       const outletId = await _resolveOutletId(supabase, rawOutletId);
       if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+      const { data: outlet } = await supabase.from('outlets').select('id, slug').eq('id', outletId).single();
+      if (!outlet) return res.status(404).json({ error: `Outlet not found: ${rawOutletId}` });
+      if (!barberId || barberId === 'any') {
+        return res.status(400).json({ error: 'Kapster wajib dipilih sebelum booking' });
+      }
+      const { data: selectedBarber, error: barberError } = await getBarberForBooking(supabase, barberId);
+      if (barberError) return res.status(500).json({ error: 'Gagal memvalidasi kapster' });
+      if (!selectedBarber) return res.status(400).json({ error: 'Kapster tidak ditemukan' });
+      if (!branchMatchesBarber(selectedBarber, outlet.slug, outletId)) {
+        return res.status(409).json({ error: `Kapster tidak tersedia di cabang ${outlet.slug}` });
+      }
 
       // ── Resolve service ─────────────────────────────────────
       let service = null;
@@ -378,18 +390,8 @@ function createMokaRouter(supabase) {
       if (isNaN(startMs)) return res.status(400).json({ error: 'Invalid startTime format' });
       const endTime = new Date(startMs + duration * 60_000).toISOString();
 
-      // ── Resolve barber (auto-assign if null or 'any') ────────
-      let resolvedBarberId = barberId && barberId !== 'any' ? barberId : null;
-      if (!resolvedBarberId) {
-        const { data: autoBarber } = await supabase.rpc('find_available_barber', {
-          p_outlet_id: outletId,
-          p_start:     startTime,
-          p_end:       endTime,
-        });
-        resolvedBarberId = autoBarber || null;
-        if (!resolvedBarberId)
-          return res.status(409).json({ error: 'No barbers available for the requested time slot' });
-      }
+      // ── Barber is explicit and was verified against the requested outlet ──
+      const resolvedBarberId = barberId;
 
       const reservationDate = new Date(startTime);
       const date = new Intl.DateTimeFormat('en-CA', {
