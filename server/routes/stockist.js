@@ -1,8 +1,9 @@
 'use strict';
 
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { getVerifiedStockistAccess, resolveStockistLocationScope, STOCKIST_BRANCHES } = require('../services/stockistAccess');
-const { applyInventoryMovement, stripPurchasePrice } = require('../services/stockistInventory');
+const { applyInventoryMovement, stripPurchasePrice, calculateTransferDiscrepancy } = require('../services/stockistInventory');
 
 function createStockistRoutes(supabase, adminAuth) {
   const router = express.Router();
@@ -140,6 +141,119 @@ function createStockistRoutes(supabase, adminAuth) {
     if (error) return res.status(500).json({ error: error.message });
 
     return res.json({ ledger: data || [] });
+  });
+
+  // ─── TRANSFERS ───────────────────────────────────────────────
+  router.post('/transfers', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can create transfers' });
+    }
+
+    const { destination_branch, items } = req.body || {};
+    if (!STOCKIST_BRANCHES.has(destination_branch)) {
+      return res.status(400).json({ error: 'destination_branch invalid' });
+    }
+    if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.product_id || !Number.isInteger(i.quantity) || i.quantity <= 0)) {
+      return res.status(400).json({ error: 'items must be a non-empty list of { product_id, quantity > 0 }' });
+    }
+
+    const warehouse = await findLocation('warehouse', null);
+    const destination = await findLocation('branch', destination_branch);
+    if (!warehouse || !destination) return res.status(500).json({ error: 'location not configured' });
+
+    const { data: transfer, error: transferError } = await supabase.from('stock_transfers').insert({
+      transfer_number: `TRF-${Date.now()}-${randomUUID().slice(0, 6)}`,
+      source_location_id: warehouse.id,
+      destination_location_id: destination.id,
+      status: 'SENT',
+      sent_by: access.staffId,
+    }).select().single();
+    if (transferError) return res.status(500).json({ error: transferError.message });
+
+    try {
+      for (const item of items) {
+        await applyInventoryMovement(supabase, {
+          productId: item.product_id, locationId: warehouse.id, quantityDelta: -item.quantity,
+          movementType: 'TRANSFER_OUT', performedBy: access.staffId,
+          referenceType: 'stock_transfer', referenceId: transfer.id,
+        });
+      }
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    await supabase.from('stock_transfer_items').insert(
+      items.map((i) => ({ stock_transfer_id: transfer.id, product_id: i.product_id, quantity_sent: i.quantity, quantity_received: null }))
+    );
+
+    return res.json({ transfer });
+  });
+
+  router.get('/transfers', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    let query = supabase.from('stock_transfers').select('*');
+    if (access.role === 'branch_admin') {
+      const location = await findLocation('branch', access.branch);
+      if (!location) return res.status(500).json({ error: 'location not configured' });
+      query = query.eq('destination_location_id', location.id);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json({ transfers: data || [] });
+  });
+
+  router.patch('/transfers/:id/receive', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
+    if (transferError) return res.status(500).json({ error: transferError.message });
+    const transfer = (transfers || [])[0];
+    if (!transfer) return res.status(404).json({ error: 'transfer not found' });
+
+    if (access.role === 'branch_admin') {
+      const ownBranchLocation = await findLocation('branch', access.branch);
+      if (!ownBranchLocation || ownBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+
+    const { items } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.item_id || !Number.isInteger(i.quantity_received) || i.quantity_received < 0)) {
+      return res.status(400).json({ error: 'items must be a non-empty list of { item_id, quantity_received >= 0 }' });
+    }
+
+    const { data: transferItems, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    const byId = new Map((transferItems || []).map((i) => [i.id, i]));
+    try {
+      for (const submitted of items) {
+        const existing = byId.get(submitted.item_id);
+        if (!existing) throw new Error(`unknown transfer item ${submitted.item_id}`);
+        await applyInventoryMovement(supabase, {
+          productId: existing.product_id, locationId: transfer.destination_location_id, quantityDelta: submitted.quantity_received,
+          movementType: 'TRANSFER_IN', performedBy: access.staffId,
+          referenceType: 'stock_transfer', referenceId: transfer.id,
+        });
+        await supabase.from('stock_transfer_items').update({ quantity_received: submitted.quantity_received }).eq('id', submitted.item_id);
+        existing.quantity_received = submitted.quantity_received;
+      }
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const { data: updatedTransfers } = await supabase.from('stock_transfers').update({
+      status: 'RECEIVED', received_by: access.staffId, received_at: new Date().toISOString(),
+    }).eq('id', transfer.id);
+    const updatedTransfer = (updatedTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
+
+    return res.json({ transfer: updatedTransfer, has_discrepancy: calculateTransferDiscrepancy([...byId.values()]) });
   });
 
   return router;
