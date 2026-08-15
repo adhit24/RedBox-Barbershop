@@ -62,6 +62,9 @@ export const createTransfer = (input: { destination_branch: string; items: { pro
 
 export const listTransfers = () => req<{ transfers: StockTransfer[] }>('/api/stockist/transfers');
 
+export const getTransfer = (id: string) =>
+  req<{ transfer: StockTransfer; items: StockTransferItem[] }>(`/api/stockist/transfers/${id}`);
+
 export const receiveTransfer = (id: string, items: { item_id: string; quantity_received: number }[]) =>
   req<{ transfer: StockTransfer; has_discrepancy: boolean }>(`/api/stockist/transfers/${id}/receive`, {
     method: 'PATCH', body: JSON.stringify({ items }),

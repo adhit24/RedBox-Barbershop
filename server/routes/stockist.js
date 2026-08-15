@@ -211,6 +211,28 @@ function createStockistRoutes(supabase, adminAuth) {
     return res.json({ transfers: data || [] });
   });
 
+  router.get('/transfers/:id', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
+    if (transferError) return res.status(500).json({ error: transferError.message });
+    const transfer = (transfers || [])[0];
+    if (!transfer) return res.status(404).json({ error: 'transfer not found' });
+
+    if (access.role === 'branch_admin') {
+      const ownBranchLocation = await findLocation('branch', access.branch);
+      if (!ownBranchLocation || ownBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+
+    const { data: items, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    return res.json({ transfer, items: items || [] });
+  });
+
   router.patch('/transfers/:id/receive', adminAuth, async (req, res) => {
     const access = requireAccess(req, res);
     if (!access) return;

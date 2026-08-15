@@ -141,6 +141,24 @@ test('PATCH /transfers/:id/receive lets the destination branch_admin confirm qua
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
+test('GET /transfers/:id returns transfer with items, scoped to destination branch_admin', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.items[0].quantity_sent, 10);
+  }, { role: 'branch_admin', branch: 'csb' });
+
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1`);
+    assert.equal(res.status, 403);
+  }, { role: 'branch_admin', branch: 'tegal' });
+});
+
 test('PATCH /transfers/:id/receive rejects a branch_admin from a different branch', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],

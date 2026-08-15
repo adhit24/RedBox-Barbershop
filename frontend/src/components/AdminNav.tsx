@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { LayoutDashboard, CalendarCheck, Scissors, Trophy, CreditCard } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, Scissors, Trophy, CreditCard, Package } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const NAV_ITEMS = [
@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { href: '/admin/barbers',     label: 'Kapster',  Icon: Scissors },
   { href: '/admin/leaderboard', label: 'Ranking',  Icon: Trophy },
   { href: '/admin/membership',  label: 'Member',   Icon: CreditCard },
+  { href: '/admin/stockist',    label: 'Stockist', Icon: Package },
 ];
 
 export function AdminNav() {
