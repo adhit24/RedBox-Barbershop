@@ -53,6 +53,34 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Everything below can fail before the WebView ever gets a chance to
+        // fire any of its own error callbacks (e.g. WebView construction
+        // itself throwing if the device's WebView provider is broken/
+        // disabled). Without this, a crash here just leaves the theme's
+        // black windowBackground visible forever with zero feedback — which
+        // is indistinguishable on-screen from "page is still loading".
+        // A plain native TextView is used for the fallback specifically
+        // because it does not depend on WebView working at all.
+        try {
+            setupWebView()
+        } catch (t: Throwable) {
+            android.util.Log.e("StockistWebView", "Fatal error during WebView setup", t)
+            val errorView = android.widget.TextView(this).apply {
+                setBackgroundColor(android.graphics.Color.parseColor("#0b0708"))
+                setTextColor(android.graphics.Color.parseColor("#f0eaeb"))
+                textSize = 14f
+                setPadding(48, 96, 48, 48)
+                text = "Gagal memuat aplikasi\n\n" +
+                    "${t.javaClass.simpleName}: ${t.message}\n\n" +
+                    t.stackTraceToString().take(2000) +
+                    "\n\nScreenshot ini dan kirim ke developer."
+                setOnClickListener { }
+            }
+            setContentView(android.widget.ScrollView(this).apply { addView(errorView) })
+        }
+    }
+
+    private fun setupWebView() {
         // Initialize WebView programmatically
         webView = WebView(this)
         setContentView(webView)
