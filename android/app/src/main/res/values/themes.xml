@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.RedBoxStockist" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/redbox_red</item>
+        <item name="android:statusBarColor">@color/black_background</item>
+        <item name="android:navigationBarColor">@color/black_background</item>
+        <item name="android:windowBackground">@color/black_background</item>
+    </style>
+</resources>

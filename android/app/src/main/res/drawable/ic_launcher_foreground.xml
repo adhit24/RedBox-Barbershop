@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A simple red box matching the RedBox theme -->
+    <path
+        android:fillColor="#C72820"
+        android:pathData="M24,24 h60 v60 h-60 z" />
+    <path
+        android:strokeColor="#F5EEEE"
+        android:strokeWidth="4"
+        android:pathData="M34,34 h40 v40 h-40 z" />
+</vector>
