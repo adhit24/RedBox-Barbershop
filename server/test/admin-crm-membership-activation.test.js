@@ -175,7 +175,7 @@ test('CRM registration list exposes identity, stored amount, payment audit, peri
         id: 'pending-1', registration_code: 'RBM-PENDING', user_key: 'pending-user',
         full_name: 'Pending Person', phone: '+628111111111', email: 'pending@example.test',
         tier: 'silver', price_snapshot: 100000, status: 'PENDING',
-        expires_at: '2026-08-15T10:00:00.000Z', created_at: '2026-08-08T10:00:00.000Z',
+        expires_at: '2099-08-15T10:00:00.000Z', created_at: '2026-08-08T10:00:00.000Z',
       },
       {
         id: 'active-1', registration_code: 'RBM-ACTIVE', user_key: 'active-user',
@@ -208,7 +208,7 @@ test('CRM registration list exposes identity, stored amount, payment audit, peri
     const body = await response.json();
     assert.deepEqual(body.registrations.map((row) => row.status), ['PENDING', 'ACTIVE', 'EXPIRED']);
     assert.equal(body.registrations[0].amount, 100000);
-    assert.equal(body.registrations[0].pendingExpiresAt, '2026-08-15T10:00:00.000Z');
+    assert.equal(body.registrations[0].pendingExpiresAt, '2099-08-15T10:00:00.000Z');
     assert.equal(body.registrations[0].paymentMethod, null);
     assert.equal(body.registrations[1].tier, 'gold');
     assert.equal(body.registrations[1].activationId, 'activation-active-1');
@@ -298,7 +298,7 @@ test('CRM registration list matches a profile by canonical phone when the stored
 test('CRM registration list filters the derived status without hiding expired history', async () => {
   const supabase = createMembershipStatusSupabase({
     registrations: [
-      { id: 'pending-1', user_key: 'pending-user', tier: 'silver', price_snapshot: 100000, status: 'PENDING', expires_at: '2026-08-15T10:00:00.000Z' },
+    { id: 'pending-1', user_key: 'pending-user', tier: 'silver', price_snapshot: 100000, status: 'PENDING', expires_at: '2099-08-15T10:00:00.000Z' },
       { id: 'expired-1', user_key: 'expired-user', tier: 'gold', price_snapshot: 250000, status: 'EXPIRED', expires_at: '2026-08-01T10:00:00.000Z' },
     ],
   });
