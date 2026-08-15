@@ -8,13 +8,21 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   const { user, loading, signOut } = useUser();
   const router = useRouter();
   const pathname = usePathname() || '';
+  const isLoginRoute = pathname === '/admin/stockist/login' || pathname.endsWith('/stockist/login');
 
   useEffect(() => {
+    if (isLoginRoute) return;
     if (loading) return;
     if (!user || !['owner', 'branch_admin'].includes(user.role)) {
       router.replace('/admin/stockist/login');
     }
-  }, [user, loading, router]);
+  }, [isLoginRoute, user, loading, router]);
+
+  // The login page is rendered inside this layout because it shares the
+  // /admin/stockist route tree. It must remain visible while no user exists;
+  // otherwise the auth gate below returns null and the standalone stockist
+  // domain shows a completely blank page.
+  if (isLoginRoute) return <>{children}</>;
 
   if (loading || !user) return null;
 
