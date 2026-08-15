@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { AdminNav } from '@/components/AdminNav';
 import { LogOut, ChevronLeft, Loader2 } from 'lucide-react';
@@ -16,16 +16,17 @@ function AdminShell({ children, user, signOut, signingOut }: {
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const readonly = searchParams.get('readonly') === 'true';
   const branchParam = searchParams.get('branch');
   const isOwner = user?.role === 'owner';
   const ownerMode = isOwner && !readonly;
 
   useEffect(() => {
-    if (isOwner && !branchParam && !readonly) {
+    if (isOwner && !branchParam && !readonly && !pathname?.startsWith('/admin/stockist')) {
       router.replace('/owner/branches');
     }
-  }, [isOwner, branchParam, readonly, router]);
+  }, [isOwner, branchParam, readonly, pathname, router]);
 
   return (
     <div className="min-h-dvh pb-20" style={{ background: '#070508' }}>
