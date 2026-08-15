@@ -1070,23 +1070,53 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   // BERLAKU untuk goshow saja. Advance booking ("Adit 15.00 Sabtu") tetap
   // dihormati — tidak digeser ke antrian.
   if (!existing && !parsedStart && barberId) {
-    const { data: queueAhead } = await supabase
+    // Find the first free interval across ALL active schedules, not only Moka
+    // reserved rows. The DB exclusion constraint protects against web,
+    // confirmed, in-progress, and completed overlaps too, so the preflight
+    // must use the same effective rule.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const { data: conflict, error: conflictErr } = await supabase
+        .from('schedules')
+        .select('id, end_time, external_id, source, status')
+        .eq('barber_id', barberId)
+        .neq('status', 'cancelled')
+        .neq('external_id', billId)
+        .lt('start_time', endTime.toISOString())
+        .gt('end_time', startTime.toISOString())
+        .order('end_time', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (conflictErr) throw new Error(`Open bill conflict preflight failed: ${conflictErr.message}`);
+      if (!conflict?.end_time) break;
+
+      const queuedStart = new Date(conflict.end_time);
+      console.log(`[Sync] Open bill ${billId} (goshow queue) → conflict ${conflict.external_id || conflict.id} (${conflict.source}/${conflict.status}); ${startTime.toISOString()} → ${queuedStart.toISOString()}`);
+      startTime = queuedStart;
+      endTime   = new Date(startTime.getTime() + durationMin * 60_000);
+    }
+  }
+
+  // Advance appointments must keep their requested clock time. If Moka sends
+  // an appointment for a slot already occupied (commonly the same booking
+  // already created by the web flow), skip it before INSERT instead of using
+  // the exclusion constraint as normal control flow and producing HTTP 400.
+  if (!existing && parsedStart && barberId) {
+    const { data: advanceConflict, error: advanceConflictErr } = await supabase
       .from('schedules')
-      .select('id, end_time, external_id')
+      .select('id, external_id, source, status')
       .eq('barber_id', barberId)
-      .eq('source', 'moka')
-      .eq('status', 'reserved')
-      .neq('external_id', billId)               // exclude diri sendiri
-      .gt('end_time', startTime.toISOString())  // masih akan/sedang aktif
-      .order('end_time', { ascending: false })
+      .neq('status', 'cancelled')
+      .neq('external_id', billId)
+      .lt('start_time', endTime.toISOString())
+      .gt('end_time', startTime.toISOString())
       .limit(1)
       .maybeSingle();
 
-    if (queueAhead?.end_time) {
-      const queuedStart = new Date(queueAhead.end_time);
-      console.log(`[Sync] Open bill ${billId} (goshow queue) → di-queue setelah ${queueAhead.external_id}: ${startTime.toISOString()} → ${queuedStart.toISOString()}`);
-      startTime = queuedStart;
-      endTime   = new Date(startTime.getTime() + durationMin * 60_000);
+    if (advanceConflictErr) throw new Error(`Advance appointment conflict preflight failed: ${advanceConflictErr.message}`);
+    if (advanceConflict) {
+      console.log(`[Sync] Open bill ${billId} advance appointment skipped before insert: slot already occupied by ${advanceConflict.external_id || advanceConflict.id} (${advanceConflict.source}/${advanceConflict.status})`);
+      return 'skipped';
     }
   }
 
@@ -1096,9 +1126,20 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     // Reactivate jika bill masih PENDING di Moka tapi schedule di-cancel stale cleanup.
     // Tanpa ini, slot tidak pernah bisa diblok lagi setelah di-cancel.
     if (existing.status === 'cancelled') {
-      patch.status = 'reserved';
-      patch.notes  = null;
+      // Do not resurrect an ancient Open Bill that stale cleanup intentionally
+      // cancelled. Moka can keep forgotten PENDING bills for days; reviving one
+      // on every pull both re-blocks old slots and can create an invalid range
+      // when duration correction is based on a stale createdAt timestamp.
+      const staleCutoffMs = Date.now() - MOKA_OPENBILL_STALE_HOURS * 60 * 60 * 1000;
+      if (endTime.getTime() > staleCutoffMs) {
+        patch.status = 'reserved';
+        patch.notes  = null;
+      } else {
+        console.log(`[Sync] Open bill ${billId} remains cancelled: computed end ${endTime.toISOString()} is older than stale window`);
+      }
     }
+
+    const canPatchTiming = existing.status !== 'cancelled' || patch.status === 'reserved';
 
     // If barber was missing before but we resolved it now — patch it
     if (!existing.barber_id && barberId) {
@@ -1118,7 +1159,7 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     }
 
     // If start_time was stored wrong (e.g. used createdAt before this fix), correct it
-    if (parsedStart) {
+    if (canPatchTiming && parsedStart) {
       const existingMs = new Date(existing.start_time).getTime();
       const correctMs  = parsedStart.getTime();
       if (Math.abs(existingMs - correctMs) > 5 * 60_000) { // lebih dari 5 menit beda
@@ -1130,7 +1171,7 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
     // Correct end_time if stored duration is shorter than what we now compute.
     // This fixes old records created before the 60-min default was in place (were 30 min).
     // Only extend; never shrink — avoids overwriting a correctly-resolved duration.
-    if (!patch.end_time) {
+    if (canPatchTiming && !patch.end_time) {
       const existingEndMs = new Date(existing.end_time).getTime();
       if (endTime.getTime() > existingEndMs + 5 * 60_000) {
         patch.end_time = endTime.toISOString();
@@ -1139,16 +1180,63 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
 
     // Jika sebelumnya ada buffer, dan sekarang buffer = 0, maka end_time lama bisa terlalu panjang.
     // Untuk open-bill schedules, kita boleh shrink supaya slot per jam tidak ikut terblokir.
-    if (!patch.end_time) {
+    if (canPatchTiming && !patch.end_time) {
       const existingEndMs = new Date(existing.end_time).getTime();
       if (endTime.getTime() < existingEndMs - 5 * 60_000) {
         patch.end_time = endTime.toISOString();
       }
     }
 
+    // Absolute last guard before touching the exclusion-constrained range.
+    // Never send a patch whose resulting end_time is <= start_time.
+    if (patch.start_time || patch.end_time) {
+      const guardedStart = new Date(patch.start_time || existing.start_time);
+      const guardedEnd = new Date(patch.end_time || existing.end_time);
+      if (!(guardedEnd > guardedStart)) {
+        console.warn(`[Sync] Open bill ${billId} invalid timing patch suppressed: ${guardedStart.toISOString()} → ${guardedEnd.toISOString()}`);
+        delete patch.start_time;
+        delete patch.end_time;
+      }
+    }
+
     if (Object.keys(patch).length > 0) {
-      await supabase.from('schedules').update(patch).eq('id', existing.id);
-      return 'updated';
+      // A stale-cancelled Moka row may now collide with a web reservation.
+      // Preflight any patch that changes the exclusion-key fields; on conflict,
+      // keep the existing slot/barber/status and only apply harmless metadata.
+      if (barberId && (patch.status || patch.barber_id || patch.start_time || patch.end_time)) {
+        const proposedStatus = patch.status || existing.status;
+        const proposedBarber = patch.barber_id || existing.barber_id || barberId;
+        const proposedStart = new Date(patch.start_time || existing.start_time);
+        const proposedEnd = new Date(patch.end_time || existing.end_time);
+
+        if (proposedStatus !== 'cancelled' && proposedBarber && proposedEnd > proposedStart) {
+          const { data: patchConflict, error: patchConflictErr } = await supabase
+            .from('schedules')
+            .select('id, external_id, source, status')
+            .eq('barber_id', proposedBarber)
+            .neq('status', 'cancelled')
+            .neq('id', existing.id)
+            .lt('start_time', proposedEnd.toISOString())
+            .gt('end_time', proposedStart.toISOString())
+            .limit(1)
+            .maybeSingle();
+
+          if (patchConflictErr) throw new Error(`Open bill update conflict preflight failed: ${patchConflictErr.message}`);
+          if (patchConflict) {
+            console.log(`[Sync] Open bill ${billId} conflicting slot patch suppressed: occupied by ${patchConflict.external_id || patchConflict.id} (${patchConflict.source}/${patchConflict.status})`);
+            delete patch.status;
+            delete patch.barber_id;
+            delete patch.start_time;
+            delete patch.end_time;
+          }
+        }
+      }
+
+      if (Object.keys(patch).length > 0) {
+        const { error: patchErr } = await supabase.from('schedules').update(patch).eq('id', existing.id);
+        if (patchErr) throw new Error(`Open bill update failed: ${patchErr.message}`);
+        return 'updated';
+      }
     }
     return 'skipped';
   }

@@ -27,7 +27,7 @@ const { resolveMembershipTier } = require('../membership-policy');
 
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
-const { getAvailableSlots, isSlotAvailable }                           = require('./slotEngine');
+const { getAvailableSlots, isSlotAvailable, getBarberDateAvailability } = require('./slotEngine');
 const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
 
 async function syncCurrentMonthTransactions(supabase, outletId = null) {
@@ -389,6 +389,21 @@ function createMokaRouter(supabase) {
         resolvedBarberId = autoBarber || null;
         if (!resolvedBarberId)
           return res.status(409).json({ error: 'No barbers available for the requested time slot' });
+      }
+
+      const reservationDate = new Date(startTime);
+      const date = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(reservationDate);
+      const barberAvailability = await getBarberDateAvailability(supabase, {
+        barberId: resolvedBarberId,
+        date,
+      });
+      if (!barberAvailability.exists || barberAvailability.isActive === false) {
+        return res.status(409).json({ error: 'Kapster tidak aktif dan tidak bisa dipesan' });
+      }
+      if (!barberAvailability.isWorking) {
+        return res.status(409).json({ error: 'Kapster sedang libur pada tanggal tersebut' });
       }
 
       // ── Check slot availability ─────────────────────────────

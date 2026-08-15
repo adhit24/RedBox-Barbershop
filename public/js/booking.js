@@ -1431,7 +1431,15 @@ document.addEventListener('DOMContentLoaded', async () => {
  card.addEventListener('click', () => {
  if (card.dataset.barber === 'none') return;
 
- const barberData = { id: card.dataset.barber, name: card.dataset.barberName, branch: card.dataset.branch };
+ const barberId = card.dataset.barber;
+ const dateBeingBooked = state.date || todayStr();
+ if (dateBeingBooked === todayStr() && barberOffToday.has(barberId)) {
+  alert('Kapster ini sedang libur hari ini. Pilih tanggal lain terlebih dahulu.');
+  goToStep(3);
+  return;
+ }
+
+ const barberData = { id: barberId, name: card.dataset.barberName, branch: card.dataset.branch };
  const currentActive = getActiveBarber();
  const isSameCard = currentActive && String(currentActive.id) === String(barberData.id);
 
@@ -1685,7 +1693,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  } catch (e) {
  console.warn('[Off Duty Check] Failed to check barber status:', e.message);
- applyOffDutyState(forPerson, false, '');
+ const changed = applyOffDutyState(forPerson, true, barber.name);
+ if (changed) {
+  document.getElementById('step3Next').disabled = true;
+  buildTimeGrid(fallbackBusyRanges);
+ }
  }
  }
 
@@ -2180,11 +2192,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  if (USE_API) {
  try {
+ // Forward the OTP-verified member session so the server can confirm the
+ // person submitting this booking is really the member on the phone
+ // number entered (see server/index.js's MEMBER_LOGIN_REQUIRED guard).
+ const memberToken = localStorage.getItem('rb_member_token');
+ const requestHeaders = { 'Content-Type': 'application/json' };
+ if (memberToken) {
+ requestHeaders.Authorization = 'Bearer ' + memberToken;
+ }
  // POST sequentially so conflicts on the 2nd booking can be detected per-row
  for (let i = 0; i < payloads.length; i++) {
  const res = await fetch(API_URL + '/bookings', {
  method: 'POST',
- headers: { 'Content-Type': 'application/json' },
+ headers: requestHeaders,
  body: JSON.stringify(payloads[i])
  });
  if (!res.ok) {
