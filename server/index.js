@@ -21,6 +21,7 @@ const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
 const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('./membership-policy');
 const { normalizeMemberPhone, getMemberPhoneVariants, mergeCustomerRows } = require('./member-identity');
+const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membership-identity');
 const { computeServiceDiscount } = require('./membership-benefits');
 
 const app  = express();
@@ -1226,6 +1227,30 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
             startsAt: memberProfile?.membership_started_at,
             expiresAt: memberProfile?.membership_expires_at,
           });
+
+          // A phone number alone is not proof that the person booking is the
+          // member. Personal membership benefits require the OTP session that
+          // belongs to the same phone and the registered member name. Without
+          // this server-side gate, anyone could type a Platinum member's WA
+          // number into the public booking form and receive the discount.
+          if (memberActive) {
+            const memberToken = getMemberToken(req.headers);
+            const memberSession = await getMemberSessionByToken(memberToken);
+            const sessionMatchesPhone = sameIdentityPhone(memberSession?.customer_wa, wa);
+            if (!sessionMatchesPhone) {
+              return res.status(401).json({
+                code: 'MEMBER_LOGIN_REQUIRED',
+                error: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
+              });
+            }
+            if (!sameIdentityName(name, memberProfile?.full_name)) {
+              return res.status(403).json({
+                code: 'MEMBER_IDENTITY_MISMATCH',
+                error: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
+              });
+            }
+          }
+
           const discount = computeServiceDiscount({
             tier: memberProfile?.current_tier,
             membershipActive: memberActive,
@@ -2709,6 +2734,17 @@ async function getMemberProfileByPhone(phone) {
     .select('id, user_key, membership_status, total_points, total_visits, membership_activated_at, membership_started_at, membership_expires_at, referral_code, full_name, current_tier, birthdate')
     .eq('phone', phoneE164).maybeSingle();
   if (error && error.code !== 'PGRST116') throw new Error(`member profile lookup failed: ${error.message}`);
+  return data || null;
+}
+
+async function getMemberSessionByToken(token) {
+  if (!supabase || !token) return null;
+  const { data, error } = await supabase.from('member_sessions')
+    .select('customer_wa, expires_at')
+    .eq('token', token)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+  if (error && error.code !== 'PGRST116') throw new Error(`member session lookup failed: ${error.message}`);
   return data || null;
 }
 
