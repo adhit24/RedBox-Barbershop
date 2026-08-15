@@ -172,6 +172,14 @@ function createStockistRoutes(supabase, adminAuth) {
     }).select().single();
     if (transferError) return res.status(500).json({ error: transferError.message });
 
+    // Insert the tracking rows BEFORE applying any inventory movements so that,
+    // even if the movement loop below fails partway through, the transfer and
+    // its intended items are still visible for manual reconciliation.
+    const { error: itemsInsertError } = await supabase.from('stock_transfer_items').insert(
+      items.map((i) => ({ stock_transfer_id: transfer.id, product_id: i.product_id, quantity_sent: i.quantity, quantity_received: null }))
+    );
+    if (itemsInsertError) return res.status(500).json({ error: itemsInsertError.message });
+
     try {
       for (const item of items) {
         await applyInventoryMovement(supabase, {
@@ -183,10 +191,6 @@ function createStockistRoutes(supabase, adminAuth) {
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
-
-    await supabase.from('stock_transfer_items').insert(
-      items.map((i) => ({ stock_transfer_id: transfer.id, product_id: i.product_id, quantity_sent: i.quantity, quantity_received: null }))
-    );
 
     return res.json({ transfer });
   });
@@ -232,25 +236,27 @@ function createStockistRoutes(supabase, adminAuth) {
     if (itemsError) return res.status(500).json({ error: itemsError.message });
 
     const byId = new Map((transferItems || []).map((i) => [i.id, i]));
-    try {
-      for (const submitted of items) {
-        const existing = byId.get(submitted.item_id);
-        if (!existing) throw new Error(`unknown transfer item ${submitted.item_id}`);
+    for (const submitted of items) {
+      const existing = byId.get(submitted.item_id);
+      if (!existing) return res.status(400).json({ error: `unknown transfer item ${submitted.item_id}` });
+      try {
         await applyInventoryMovement(supabase, {
           productId: existing.product_id, locationId: transfer.destination_location_id, quantityDelta: submitted.quantity_received,
           movementType: 'TRANSFER_IN', performedBy: access.staffId,
           referenceType: 'stock_transfer', referenceId: transfer.id,
         });
-        await supabase.from('stock_transfer_items').update({ quantity_received: submitted.quantity_received }).eq('id', submitted.item_id);
-        existing.quantity_received = submitted.quantity_received;
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
       }
-    } catch (err) {
-      return res.status(400).json({ error: err.message });
+      const { error: itemUpdateError } = await supabase.from('stock_transfer_items').update({ quantity_received: submitted.quantity_received }).eq('id', submitted.item_id);
+      if (itemUpdateError) return res.status(500).json({ error: itemUpdateError.message });
+      existing.quantity_received = submitted.quantity_received;
     }
 
-    const { data: updatedTransfers } = await supabase.from('stock_transfers').update({
+    const { data: updatedTransfers, error: transferUpdateError } = await supabase.from('stock_transfers').update({
       status: 'RECEIVED', received_by: access.staffId, received_at: new Date().toISOString(),
     }).eq('id', transfer.id);
+    if (transferUpdateError) return res.status(500).json({ error: transferUpdateError.message });
     const updatedTransfer = (updatedTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
 
     return res.json({ transfer: updatedTransfer, has_discrepancy: calculateTransferDiscrepancy([...byId.values()]) });
