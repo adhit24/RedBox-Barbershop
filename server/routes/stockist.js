@@ -3,7 +3,7 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const { getVerifiedStockistAccess, resolveStockistLocationScope, STOCKIST_BRANCHES } = require('../services/stockistAccess');
-const { applyInventoryMovement, stripPurchasePrice, calculateTransferDiscrepancy } = require('../services/stockistInventory');
+const { applyInventoryMovement, stripPurchasePrice, calculateTransferDiscrepancy, validateAdjustmentReason } = require('../services/stockistInventory');
 
 function createStockistRoutes(supabase, adminAuth) {
   const router = express.Router();
@@ -260,6 +260,44 @@ function createStockistRoutes(supabase, adminAuth) {
     const updatedTransfer = (updatedTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
 
     return res.json({ transfer: updatedTransfer, has_discrepancy: calculateTransferDiscrepancy([...byId.values()]) });
+  });
+
+  // ─── MANUAL ADJUSTMENT ───────────────────────────────────────
+  router.post('/inventory/adjustment', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can perform manual adjustments' });
+    }
+
+    const { product_id, location_type, location_branch, quantity_delta, reason } = req.body || {};
+    try {
+      validateAdjustmentReason(reason);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (typeof product_id !== 'string' || !product_id) {
+      return res.status(400).json({ error: 'product_id required' });
+    }
+    if (!Number.isInteger(quantity_delta) || quantity_delta === 0) {
+      return res.status(400).json({ error: 'quantity_delta must be a non-zero integer' });
+    }
+    if (location_type !== 'warehouse' && location_type !== 'branch') {
+      return res.status(400).json({ error: 'location_type must be warehouse or branch' });
+    }
+
+    const location = await findLocation(location_type, location_type === 'branch' ? location_branch : null);
+    if (!location) return res.status(404).json({ error: 'location not found' });
+
+    try {
+      const ledger = await applyInventoryMovement(supabase, {
+        productId: product_id, locationId: location.id, quantityDelta: quantity_delta,
+        movementType: 'ADJUSTMENT', performedBy: access.staffId, reason,
+      });
+      return res.json({ ledger });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
   });
 
   return router;
