@@ -15,6 +15,7 @@ let mokaAvailableSlots = []; // Slots from /api/availability (includes Moka walk
 let mokaAvailabilityActive = false; // true when new availability API responded successfully
 let fallbackBusyRanges = []; // Used when /api/availability fails: blocks from /api/schedules
 let personAvailabilityCache = { 1: null, 2: null }; // per-person snapshot: { date, barberId, mokaAvailableSlots, mokaAvailabilityActive, fallbackBusyRanges, barberOffOnDate }
+let overlapGuardWarned = false; // logs once if RedboxBookingOverlap is missing while the same-kapster guard needs it
 
 async function detectApiMode() {
  try {
@@ -807,6 +808,29 @@ document.addEventListener('DOMContentLoaded', async () => {
  window.scrollTo({ top: 0, behavior: 'smooth' });
  }
 
+ // Single source of truth for state.barberOffOnDate + the #barberOffWarning banner.
+ // Person-aware: `forPerson` is the person this off-duty result is *for*. If the user
+ // has since switched to the other person's tab (state.activePerson !== forPerson),
+ // this only updates that person's entry in personAvailabilityCache and leaves the
+ // live state/DOM alone - a stale/in-flight check for a person the user tabbed away
+ // from must never clobber whichever person is actually on screen now. Returns
+ // whether the *live* state.barberOffOnDate value actually changed (false when
+ // guarded off), so callers can decide whether a grid rebuild is warranted.
+ function applyOffDutyState(forPerson, isOff, barberName) {
+ const cacheEntry = personAvailabilityCache[forPerson];
+ if (cacheEntry) cacheEntry.barberOffOnDate = isOff;
+
+ if (state.activePerson !== forPerson) return false;
+
+ const changed = state.barberOffOnDate !== isOff;
+ state.barberOffOnDate = isOff;
+ const warningEl = document.getElementById('barberOffWarning');
+ const barberNameEl = document.getElementById('offDutyBarberName');
+ if (warningEl) warningEl.style.display = isOff ? 'block' : 'none';
+ if (barberNameEl && isOff) barberNameEl.textContent = barberName || '';
+ return changed;
+ }
+
  async function loadAndRenderDate(dateStr, dayEl = null, opts = {}) {
  const forPerson = opts.forPerson || state.activePerson;
  const isDateChange = opts.isDateChange !== false;
@@ -1016,7 +1040,17 @@ document.addEventListener('DOMContentLoaded', async () => {
  mokaAvailableSlots = localMokaSlots;
  mokaAvailabilityActive = localMokaActive;
  fallbackBusyRanges = localBusyRanges;
- state.barberOffOnDate = localBarberOffOnDate;
+ // Publish through the same person-aware helper used by checkBarberOffDuty() and
+ // switchTimeGridToActivePerson(), instead of writing state.barberOffOnDate directly
+ // and then separately calling checkBarberOffDuty() (as this used to). That old
+ // trailing call re-fetched today-status unawaited and read state.barber directly
+ // regardless of which person this load was actually for - in group mode it could
+ // resolve after the user's already switched tabs and stomp the correct per-person
+ // result computed above with the *other* person's off-duty status. Calling the
+ // shared helper here instead - using data already fetched for `forPerson` above -
+ // both fixes that and avoids the redundant second fetch entirely.
+ const barberForPerson = forPerson === 2 ? state.person2?.barber : state.barber;
+ applyOffDutyState(forPerson, localBarberOffOnDate, barberForPerson?.name || '');
 
  requestAnimationFrame(() => {
  if (seq !== activeLoadSeq) return;
@@ -1028,8 +1062,6 @@ document.addEventListener('DOMContentLoaded', async () => {
  buildTimeGrid(currentBusyRanges);
  updateSidebar();
  });
-
- checkBarberOffDuty();
  }
 
  function switchTimeGridToActivePerson() {
@@ -1040,11 +1072,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  mokaAvailableSlots = cached.mokaAvailableSlots;
  mokaAvailabilityActive = cached.mokaAvailabilityActive;
  fallbackBusyRanges = cached.fallbackBusyRanges;
- state.barberOffOnDate = cached.barberOffOnDate;
- const warningEl = document.getElementById('barberOffWarning');
- const barberNameEl = document.getElementById('offDutyBarberName');
- if (warningEl) warningEl.style.display = state.barberOffOnDate ? 'block' : 'none';
- if (barberNameEl && state.barberOffOnDate) barberNameEl.textContent = getActiveBarber()?.name || '';
+ applyOffDutyState(state.activePerson, cached.barberOffOnDate, getActiveBarber()?.name || '');
  buildTimeGrid(fallbackBusyRanges);
  document.getElementById('step3Next').disabled = !step3Ready();
  updateSidebar();
@@ -1419,6 +1447,12 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
 
  setActiveBarber(barberData);
+ // Clear any lingering "tap again to change kapster" hint on the card just
+ // selected, so it doesn't linger for up to another ~1.1s after the swap
+ // already succeeded (only relevant on the double-click-confirmed swap path,
+ // since that's the only path where this card could have shown the badge).
+ card.querySelector('.change-hint-badge')?.classList.remove('visible');
+ clearTimeout(card._hintTimer);
  refreshBarberCardSelection();
  mokaAvailabilityActive = false;
  mokaAvailableSlots = [];
@@ -1614,43 +1648,44 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
 
  // ── Check if selected barber is off duty on selected date ──
- async function checkBarberOffDuty() {
- const warningEl = document.getElementById('barberOffWarning');
- const barberNameEl = document.getElementById('offDutyBarberName');
- if (!warningEl || !state.barber?.id || !state.date) {
- state.barberOffOnDate = false;
+ // Person-aware: `forPerson` defaults to whichever person is active at call time
+ // (captured synchronously, so a caller that doesn't pass it explicitly is still
+ // pinned to the right person even though the fetch below resolves later). All
+ // reads/writes go through applyOffDutyState(), which guards against this resolving
+ // after the user has switched to the other person's tab.
+ async function checkBarberOffDuty(forPerson = state.activePerson) {
+ const barber = forPerson === 2 ? state.person2?.barber : state.barber;
+ if (!barber?.id || !state.date) {
+ applyOffDutyState(forPerson, false, '');
  return;
  }
 
  try {
  const res = await fetch(`${API_URL}/barbers/today-status?date=${state.date}`);
  if (!res.ok) {
- warningEl.style.display = 'none';
- state.barberOffOnDate = false;
+ applyOffDutyState(forPerson, false, '');
  return;
  }
  const json = await res.json();
- const barberStatus = json.barbers?.find(b => String(b.id) === String(state.barber.id));
+ const barberStatus = json.barbers?.find(b => String(b.id) === String(barber.id));
 
  if (barberStatus && !barberStatus.isWorking) {
  // Barber is off on selected date - show warning and block all slots
- barberNameEl.textContent = state.barber.name;
- warningEl.style.display = 'block';
- state.barberOffOnDate = true;
+ const changed = applyOffDutyState(forPerson, true, barber.name);
+ if (changed) {
  document.getElementById('step3Next').disabled = true;
  buildTimeGrid(fallbackBusyRanges);
+ }
  } else {
  // Barber is working - hide warning, slots are normal
- warningEl.style.display = 'none';
- if (state.barberOffOnDate) {
- state.barberOffOnDate = false;
+ const changed = applyOffDutyState(forPerson, false, barber.name);
+ if (changed) {
  buildTimeGrid(fallbackBusyRanges);
  }
  }
  } catch (e) {
  console.warn('[Off Duty Check] Failed to check barber status:', e.message);
- warningEl.style.display = 'none';
- state.barberOffOnDate = false;
+ applyOffDutyState(forPerson, false, '');
  }
  }
 
@@ -1713,9 +1748,14 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  }
 
+ // Duration in minutes for the active person's service - computed once and reused
+ // both for the busy-range check below and the per-slot overlap guard further down
+ // (previously recomputed identically inside the visibleSlots loop).
+ const activeDurMins = isHomeService ? 120 : _parseDurToMins(activeService?.duration);
+
  // Pre-calculate busy ranges check (avoid creating Date objects in loop)
  const hasBusyRanges = activeBarber?.id && activeBarber.id !== 'any' && busyRanges && busyRanges.length;
- const durMins = hasBusyRanges ? (isHomeService ? 120 : _parseDurToMins(activeService?.duration)) : 0;
+ const durMins = hasBusyRanges ? activeDurMins : 0;
 
  // Kapster yang sama dipilih 2 orang: cegah slot yang bentrok dengan jam orang lain.
  const otherPerson = state.activePerson === 1 ? 2 : 1;
@@ -1725,6 +1765,15 @@ document.addEventListener('DOMContentLoaded', async () => {
  const sameBarberAsOther = isGroup() && activeBarber && otherBarber && String(activeBarber.id) === String(otherBarber.id);
  const otherStartMins = sameBarberAsOther && otherTime ? timeToMins(otherTime) : null;
  const otherDurMins = sameBarberAsOther && otherTime ? (isHomeService ? 120 : _parseDurToMins(otherService?.duration)) : null;
+
+ // If two people share a kapster but the overlap-check module isn't loaded, the
+ // per-slot guard below silently no-ops (typeof RedboxBookingOverlap !== 'undefined'
+ // gate) and same-kapster collisions go undetected. Log loudly (once) so a broken
+ // deploy is visible in the console instead of silently permissive.
+ if (sameBarberAsOther && typeof RedboxBookingOverlap === 'undefined' && !overlapGuardWarned) {
+ overlapGuardWarned = true;
+ console.error('[Overlap Guard] RedboxBookingOverlap not loaded — same-kapster collision check is disabled');
+ }
 
  console.log('[TimeGrid] Building for', activeBarber?.name, 'on', state.date);
  console.log('[TimeGrid] hasBusyRanges:', hasBusyRanges, 'busyRanges:', busyRanges);
@@ -1770,8 +1819,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  // Same kapster picked for both people: block slots that overlap the other person's time.
  if (!isBooked && otherStartMins !== null && typeof RedboxBookingOverlap !== 'undefined') {
  const slotStartMins = timeToMins(slot);
- const slotDurMins = isHomeService ? 120 : _parseDurToMins(activeService?.duration);
- if (RedboxBookingOverlap.timeRangesOverlap(slotStartMins, slotDurMins, otherStartMins, otherDurMins)) {
+ if (RedboxBookingOverlap.timeRangesOverlap(slotStartMins, activeDurMins, otherStartMins, otherDurMins)) {
  isBooked = true;
  el.title = 'Bentrok dengan jadwal Orang ' + otherPerson;
  }
@@ -1986,6 +2034,28 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
 
  document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
+ // Same-kapster overlap guard, mirrored client-side one more time right before
+ // submit (buildTimeGrid already blocks overlapping slots as they're picked, but
+ // that guard silently no-ops if RedboxBookingOverlap failed to load - see the
+ // console.error added to buildTimeGrid for that case). This is the last chance to
+ // catch it before any POST goes out, so a same-kapster overlap can't result in a
+ // half-saved group booking (person 1 saved, person 2 rejected by the server's own
+ // 409 check after the fact).
+ if (
+ isGroup() &&
+ state.barber && state.person2?.barber &&
+ String(state.barber.id) === String(state.person2.barber.id) &&
+ state.time && state.person2?.time &&
+ typeof RedboxBookingOverlap !== 'undefined'
+ ) {
+ const p1DurMins = isHomeService ? 120 : _parseDurToMins(state.service?.duration);
+ const p2DurMins = isHomeService ? 120 : _parseDurToMins(state.person2.service?.duration);
+ if (RedboxBookingOverlap.timeRangesOverlap(timeToMins(state.time), p1DurMins, timeToMins(state.person2.time), p2DurMins)) {
+ alert('Mohon maaf, jam Orang 1 dan Orang 2 bentrok untuk kapster yang sama. Silakan pilih jadwal lain.');
+ goToStep(3);
+ return;
+ }
+ }
  if (hasConflict(state.barber?.id, state.date, state.time, state.service?.duration)) {
  alert('Mohon maaf, kapster ' + state.barber?.name + ' baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');
  goToStep(3); // Go back to Date & Time step
@@ -2183,7 +2253,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  const successBox = document.getElementById('successDetails');
  if (successBox) {
  const _useCsbS = state.location === 'csb';
- function _successPerson(label, name, svc, barber) {
+ function _successPerson(label, name, svc, barber, time) {
  const addons = svc?.addons || [];
  const addonRows = addons.map(a => {
  const p = (_useCsbS && a.csbPrice) ? a.csbPrice : a.price;
@@ -2193,16 +2263,17 @@ document.addEventListener('DOMContentLoaded', async () => {
  ${label ? `<div class="confirm-row group-header"><span class="cr-label">${label}${name ? ' - ' + name : ''}</span><span class="cr-val">${barber?.name || '-'}</span></div>` : ''}
  <div class="confirm-row"><span class="cr-label">Service</span><span class="cr-val">${svc?.name || '-'}</span></div>
  ${addonRows}
+ ${label ? `<div class="confirm-row"><span class="cr-label">Jam</span><span class="cr-val">${time || '-'}</span></div>` : ''}
  ${label ? '' : `<div class="confirm-row"><span class="cr-label">Professional</span><span class="cr-val">${barber?.name || '-'}</span></div>`}
  `;
  }
  const personBlocks = isGroup()
- ? _successPerson('Orang 1', state.name, state.service, state.barber) +
- _successPerson('Orang 2', state.person2?.name, state.person2?.service, state.person2?.barber)
+ ? _successPerson('Orang 1', state.name, state.service, state.barber, state.time) +
+ _successPerson('Orang 2', state.person2?.name, state.person2?.service, state.person2?.barber, state.person2?.time)
  : _successPerson('', '', state.service, state.barber);
  successBox.innerHTML = `
  ${personBlocks}
- <div class="confirm-row"><span class="cr-label">Schedule</span><span class="cr-val">${formatDate(state.date)}, ${confirmedTime}</span></div>
+ <div class="confirm-row"><span class="cr-label">Schedule</span><span class="cr-val">${formatDate(state.date)}${isGroup() ? '' : ', ' + confirmedTime}</span></div>
  <div class="confirm-row"><span class="cr-label">Location</span><span class="cr-val">${locLabel}</span></div>
  <div class="confirm-row total-confirm"><span class="cr-label">Total</span><span class="cr-val">${fmt(realTotal)}</span></div>
  `;

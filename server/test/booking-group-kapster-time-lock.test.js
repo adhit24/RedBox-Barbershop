@@ -325,3 +325,121 @@ test('the first pick for a person (no current kapster yet) does not require a do
   const clickHandlerBody = extractFunctionBody(bookingJs, /proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{/);
   assert.match(clickHandlerBody, /if \(currentActive && !isSameCard\) \{/);
 });
+
+// ── Final-review fix wave ──────────────────────────────────────────────
+
+test('applyOffDutyState exists as the single person-aware source of truth for barberOffOnDate + the warning banner', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function applyOffDutyState\(forPerson, isOff, barberName\)\s*\{/);
+  assert.ok(fnBody, 'expected to find applyOffDutyState()');
+  assert.match(fnBody, /state\.activePerson !== forPerson\) return false;/, 'must guard against a stale/inactive person clobbering the live state/DOM');
+  assert.match(fnBody, /state\.barberOffOnDate = isOff;/);
+  assert.match(fnBody, /barberOffWarning/);
+  assert.match(fnBody, /offDutyBarberName/);
+});
+
+test('checkBarberOffDuty is person-aware (reads the given person\'s barber, not a hardcoded state.barber) and publishes via applyOffDutyState', () => {
+  const fnBody = extractFunctionBody(bookingJs, /async function checkBarberOffDuty\(forPerson = state\.activePerson\)\s*\{/);
+  assert.ok(fnBody, 'expected to find checkBarberOffDuty(forPerson = state.activePerson)');
+  assert.match(fnBody, /forPerson === 2 \? state\.person2\?\.barber : state\.barber/);
+  assert.match(fnBody, /applyOffDutyState\(forPerson,/);
+  // The old unguarded direct reads/writes must be gone.
+  assert.doesNotMatch(fnBody, /state\.barber\.id/);
+  assert.doesNotMatch(fnBody, /\n\s*state\.barberOffOnDate = (true|false);/);
+});
+
+test('switchTimeGridToActivePerson delegates the off-duty banner update to applyOffDutyState instead of hand-rolling it', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function switchTimeGridToActivePerson\(\)\s*\{/);
+  assert.ok(fnBody, 'expected to find switchTimeGridToActivePerson()');
+  assert.match(fnBody, /applyOffDutyState\(state\.activePerson, cached\.barberOffOnDate, getActiveBarber\(\)\?\.name \|\| ''\)/);
+  // The old inline DOM-poking block must be gone - it drifted from the guarded
+  // helper and was one of the three ad hoc off-duty-state writers this task fixed.
+  assert.doesNotMatch(fnBody, /document\.getElementById\('barberOffWarning'\)/);
+  assert.doesNotMatch(fnBody, /document\.getElementById\('offDutyBarberName'\)/);
+});
+
+test('loadAndRenderDate publishes the off-duty result via applyOffDutyState and no longer calls checkBarberOffDuty() unawaited at the end', () => {
+  const fnBody = extractFunctionBody(bookingJs, /async function loadAndRenderDate\(dateStr, dayEl = null, opts = \{\}\) \{/);
+  assert.ok(fnBody, 'expected to find loadAndRenderDate()');
+  assert.match(fnBody, /applyOffDutyState\(forPerson, localBarberOffOnDate, barberForPerson\?\.name \|\| ''\)/);
+  // This was the critical bug's exact trigger: an unawaited, unguarded
+  // checkBarberOffDuty() call at the end of loadAndRenderDate that read
+  // state.barber directly regardless of which person the load was for. It must
+  // not come back - the fetch already done above is published directly instead.
+  assert.doesNotMatch(fnBody, /\n\s*checkBarberOffDuty\(\);/);
+});
+
+test('no path writes state.barberOffOnDate directly outside applyOffDutyState (single source of truth)', () => {
+  // Every live write to state.barberOffOnDate must go through the guarded helper.
+  // The only bare assignment left should be the `false` reset at the very top of
+  // loadAndRenderDate, which unconditionally clears stale state before a fresh
+  // load starts (not a "publish" of a fetch result, so it's exempt from the guard).
+  const directWrites = bookingJs.match(/state\.barberOffOnDate\s*=\s*(true|false|localBarberOffOnDate|cached\.barberOffOnDate|isOff)/g) || [];
+  const nonHelperWrites = directWrites.filter(w => !/isOff/.test(w));
+  assert.equal(nonHelperWrites.length, 1, `expected exactly one bare state.barberOffOnDate write (the loadAndRenderDate reset), found ${nonHelperWrites.length}: ${JSON.stringify(nonHelperWrites)}`);
+});
+
+test('the success screen renders a per-person Jam row in group mode, mirroring buildConfirmSummary\'s personRows convention', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function _successPerson\(label, name, svc, barber, time\)\s*\{/);
+  assert.ok(fnBody, 'expected _successPerson to accept a time param');
+  assert.match(fnBody, /label \? `<div class="confirm-row"><span class="cr-label">Jam<\/span><span class="cr-val">\$\{time \|\| '-'\}<\/span><\/div>` : ''/);
+
+  const callSitesMatch = bookingJs.match(/const personBlocks = isGroup\(\)[\s\S]*?: _successPerson\('', '', state\.service, state\.barber\);/);
+  assert.ok(callSitesMatch, 'expected to find the personBlocks construction');
+  assert.match(callSitesMatch[0], /_successPerson\('Orang 1', state\.name, state\.service, state\.barber, state\.time\)/);
+  assert.match(callSitesMatch[0], /_successPerson\('Orang 2', state\.person2\?\.name, state\.person2\?\.service, state\.person2\?\.barber, state\.person2\?\.time\)/);
+});
+
+test('the success screen\'s shared Schedule line drops the single confirmedTime in group mode (each person now has their own Jam row)', () => {
+  const scheduleMatch = bookingJs.match(/<span class="cr-label">Schedule<\/span><span class="cr-val">[\s\S]*?<\/span><\/div>/);
+  assert.ok(scheduleMatch, 'expected to find the success screen Schedule row');
+  assert.match(scheduleMatch[0], /isGroup\(\) \? '' : ', ' \+ confirmedTime/, 'solo mode must keep the single shared schedule line unchanged');
+});
+
+test('finalBookBtn pre-submit overlap guard: same-kapster group bookings are checked for time overlap before any POST', () => {
+  const listenerBody = extractFunctionBody(bookingJs, /document\.getElementById\('finalBookBtn'\)\?\.addEventListener\('click', async \(\) => \{/);
+  assert.ok(listenerBody, 'expected to find the finalBookBtn click listener');
+
+  const idxOverlapGuard = listenerBody.indexOf('RedboxBookingOverlap.timeRangesOverlap(timeToMins(state.time)');
+  const idxFetch = listenerBody.indexOf("fetch(API_URL + '/bookings'");
+  assert.ok(idxOverlapGuard !== -1, 'expected a pre-submit RedboxBookingOverlap.timeRangesOverlap check');
+  assert.ok(idxFetch !== -1, 'expected the POST /bookings fetch');
+  assert.ok(idxOverlapGuard < idxFetch, 'the overlap guard must run before the POST request, so nothing gets partially saved');
+
+  assert.match(listenerBody, /String\(state\.barber\.id\) === String\(state\.person2\.barber\.id\)/, 'guard must only apply when both people share the same kapster');
+  assert.match(listenerBody, /goToStep\(3\);/);
+});
+
+test('buildTimeGrid fails loudly (once) via console.error when RedboxBookingOverlap is missing while the same-kapster guard is needed', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.ok(fnBody, 'expected to find buildTimeGrid()');
+  assert.match(fnBody, /sameBarberAsOther && typeof RedboxBookingOverlap === 'undefined' && !overlapGuardWarned/);
+  assert.match(fnBody, /console\.error\('\[Overlap Guard\] RedboxBookingOverlap not loaded/);
+  assert.match(fnBody, /overlapGuardWarned = true;/);
+});
+
+test('overlapGuardWarned is declared once at module scope (so the console.error only fires the first time)', () => {
+  const decls = bookingJs.match(/let overlapGuardWarned = false;/g) || [];
+  assert.equal(decls.length, 1, 'expected exactly one module-scope overlapGuardWarned declaration');
+});
+
+test('buildTimeGrid hoists a single activeDurMins and reuses it for both the busy-range check and the per-slot overlap guard', () => {
+  const fnBody = extractFunctionBody(bookingJs, /function buildTimeGrid\(busyRanges = fallbackBusyRanges\)\s*\{/);
+  assert.ok(fnBody, 'expected to find buildTimeGrid()');
+  assert.match(fnBody, /const activeDurMins = isHomeService \? 120 : _parseDurToMins\(activeService\?\.duration\);/);
+  assert.match(fnBody, /const durMins = hasBusyRanges \? activeDurMins : 0;/);
+  assert.match(fnBody, /RedboxBookingOverlap\.timeRangesOverlap\(slotStartMins, activeDurMins, otherStartMins, otherDurMins\)/);
+  // The duplicate per-slot recomputation must be gone.
+  assert.doesNotMatch(fnBody, /const slotDurMins = isHomeService \? 120 : _parseDurToMins\(activeService\?\.duration\);/);
+});
+
+test('the kapster-card click handler clears the change-hint badge/timer on the card right after a swap succeeds', () => {
+  const clickHandlerBody = extractFunctionBody(bookingJs, /proPickGrid\.querySelectorAll\('\.pro-pick-card'\)\.forEach\(card => \{/);
+  assert.ok(clickHandlerBody, 'expected to find the kapster-card click handler');
+  const idxSetActive = clickHandlerBody.indexOf('setActiveBarber(barberData);');
+  const idxBadgeClear = clickHandlerBody.indexOf(".change-hint-badge')?.classList.remove('visible')");
+  const idxTimerClear = clickHandlerBody.indexOf('clearTimeout(card._hintTimer);', idxSetActive);
+  assert.ok(idxSetActive !== -1, 'expected setActiveBarber(barberData) call');
+  assert.ok(idxBadgeClear !== -1, 'expected the badge to be cleared');
+  assert.ok(idxTimerClear !== -1, 'expected card._hintTimer to be cleared after the swap');
+  assert.ok(idxSetActive < idxBadgeClear, 'badge clear must happen after the swap succeeds, not before');
+});
