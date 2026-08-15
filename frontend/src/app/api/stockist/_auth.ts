@@ -1,0 +1,56 @@
+import { createHmac } from 'node:crypto';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+import { createClient } from '@/utils/supabase/server';
+import { authorizeStockistAdmin, type StockistSession } from './_policy';
+import { requireAdminSessionProxySecret } from '../admin/crm/membership/_proxySecret';
+
+type SessionResult =
+  | { ok: true; session: StockistSession }
+  | { ok: false; response: NextResponse };
+
+export async function requireStockistSession(): Promise<SessionResult> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('users')
+    .select('id,role,branch')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    return { ok: false, response: NextResponse.json({ error: 'Unable to verify stockist access' }, { status: 500 }) };
+  }
+
+  const decision = authorizeStockistAdmin(user, profile);
+  if (!decision.ok) {
+    return { ok: false, response: NextResponse.json({ error: decision.error }, { status: decision.status }) };
+  }
+
+  return { ok: true, session: decision.value };
+}
+
+export function createStockistProxyHeaders(session: StockistSession): Record<string, string> {
+  const token = process.env.ADMIN_PASSWORD ?? '';
+  const signingSecret = requireAdminSessionProxySecret(process.env);
+  if (!token) throw new Error('stockist admin proxy is not configured securely');
+
+  const payload = Buffer.from(JSON.stringify({
+    sub: session.userId,
+    role: session.role,
+    branch: session.branch,
+    iat: Math.floor(Date.now() / 1000),
+  })).toString('base64url');
+  const signature = createHmac('sha256', signingSecret).update(payload).digest('base64url');
+
+  return {
+    'x-admin-token': token,
+    'x-redbox-admin-session': `${payload}.${signature}`,
+  };
+}

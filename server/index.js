@@ -3486,6 +3486,8 @@ const {
   expirePendingMembershipRegistrations,
 } = require('./services/membershipRegistration');
 app.use('/api/admin/crm', createAdminCrmRoutes(supabase, adminAuth));
+const { createStockistRoutes } = require('./routes/stockist');
+app.use('/api/stockist', createStockistRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));
