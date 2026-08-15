@@ -9,6 +9,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [receivedQty, setReceivedQty] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   async function refresh() {
     const { transfer, items } = await getTransfer(id);
@@ -23,6 +24,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setSubmitting(true);
     try {
       const payload = items.map((item) => ({ item_id: item.id, quantity_received: Number(receivedQty[item.id] ?? item.quantity_sent) }));
       const { has_discrepancy } = await receiveTransfer(id, payload);
@@ -30,9 +32,12 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to confirm receipt');
+    } finally {
+      setSubmitting(false);
     }
   }
 
+  if (error && !transfer) return <p className="text-red-400 text-sm">{error}</p>;
   if (!transfer) return <p className="text-sm opacity-70">Memuat...</p>;
 
   return (
@@ -54,9 +59,16 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
             />
           </div>
         ))}
+        {/* The SENT guard below already covers the RECEIVED case, so `submitting`
+            is the only remaining reason to disable the submit button. */}
         {transfer.status === 'SENT' && (
-          <button type="submit" className="w-full p-2 rounded font-medium" style={{ background: '#C72820' }}>
-            Konfirmasi Diterima
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full p-2 rounded font-medium disabled:opacity-50"
+            style={{ background: '#C72820' }}
+          >
+            {submitting ? 'Memproses...' : 'Konfirmasi Diterima'}
           </button>
         )}
       </form>

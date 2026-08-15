@@ -12,7 +12,11 @@ export default function NewTransferPage() {
   const [lines, setLines] = useState([{ product_id: '', quantity: '' }]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { listProducts().then(({ products }) => setProducts(products)); }, []);
+  useEffect(() => {
+    listProducts()
+      .then(({ products }) => setProducts(products))
+      .catch((err) => setError(err instanceof Error ? err.message : 'failed to load products'));
+  }, []);
 
   function updateLine(i: number, patch: Partial<{ product_id: string; quantity: string }>) {
     setLines((prev) => prev.map((line, idx) => (idx === i ? { ...line, ...patch } : line)));

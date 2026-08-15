@@ -19,7 +19,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   return (
     <div className="min-h-dvh pb-20" style={{ background: '#070508', color: '#F0EAEB' }}>
       <header
-        className="sticky top-0 z-40 backdrop-blur-md border-b px-4 py-2.5"
+        className="backdrop-blur-md border-b px-4 py-2.5"
         style={{ background: 'rgba(8,5,9,0.96)', borderColor: '#201618' }}
       >
         <h1 className="font-bold text-[13px] tracking-widest uppercase" style={{ color: '#F0EAEB' }}>

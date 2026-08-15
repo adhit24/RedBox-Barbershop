@@ -159,6 +159,22 @@ function createStockistRoutes(supabase, adminAuth) {
       return res.status(400).json({ error: 'items must be a non-empty list of { product_id, quantity > 0 }' });
     }
 
+    const warehouseForCheck = await findLocation('warehouse', null);
+    if (!warehouseForCheck) return res.status(500).json({ error: 'warehouse location not configured' });
+
+    const { data: currentBalances, error: balanceCheckError } = await supabase
+      .from('inventory_balances')
+      .select('product_id, quantity')
+      .eq('location_id', warehouseForCheck.id)
+      .in('product_id', items.map((i) => i.product_id));
+    if (balanceCheckError) return res.status(500).json({ error: balanceCheckError.message });
+
+    const balanceByProduct = new Map((currentBalances || []).map((b) => [b.product_id, b.quantity]));
+    const insufficientItem = items.find((i) => (balanceByProduct.get(i.product_id) || 0) < i.quantity);
+    if (insufficientItem) {
+      return res.status(400).json({ error: `insufficient warehouse stock for product ${insufficientItem.product_id}` });
+    }
+
     const warehouse = await findLocation('warehouse', null);
     const destination = await findLocation('branch', destination_branch);
     if (!warehouse || !destination) return res.status(500).json({ error: 'location not configured' });
@@ -180,6 +196,7 @@ function createStockistRoutes(supabase, adminAuth) {
     );
     if (itemsInsertError) return res.status(500).json({ error: itemsInsertError.message });
 
+    const appliedItems = [];
     try {
       for (const item of items) {
         await applyInventoryMovement(supabase, {
@@ -187,8 +204,20 @@ function createStockistRoutes(supabase, adminAuth) {
           movementType: 'TRANSFER_OUT', performedBy: access.staffId,
           referenceType: 'stock_transfer', referenceId: transfer.id,
         });
+        appliedItems.push(item);
       }
     } catch (err) {
+      // Reverse any movements already applied in this failed attempt, then remove
+      // the now-invalid transfer so it can never be received.
+      for (const applied of appliedItems) {
+        await applyInventoryMovement(supabase, {
+          productId: applied.product_id, locationId: warehouse.id, quantityDelta: applied.quantity,
+          movementType: 'TRANSFER_OUT', performedBy: access.staffId,
+          referenceType: 'stock_transfer', referenceId: transfer.id,
+          reason: 'compensating reversal: transfer creation failed partway',
+        });
+      }
+      await supabase.from('stock_transfers').delete().eq('id', transfer.id);
       return res.status(400).json({ error: err.message });
     }
 
@@ -249,6 +278,10 @@ function createStockistRoutes(supabase, adminAuth) {
       }
     }
 
+    if (transfer.status !== 'SENT') {
+      return res.status(409).json({ error: 'transfer already received' });
+    }
+
     const { items } = req.body || {};
     if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.item_id || !Number.isInteger(i.quantity_received) || i.quantity_received < 0)) {
       return res.status(400).json({ error: 'items must be a non-empty list of { item_id, quantity_received >= 0 }' });
@@ -257,10 +290,21 @@ function createStockistRoutes(supabase, adminAuth) {
     const { data: transferItems, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
     if (itemsError) return res.status(500).json({ error: itemsError.message });
 
+    const allItemIds = new Set((transferItems || []).map((i) => i.id));
+    const submittedIds = new Set(items.map((i) => i.item_id));
+    if (allItemIds.size !== submittedIds.size || [...allItemIds].some((id) => !submittedIds.has(id))) {
+      return res.status(400).json({ error: 'all transfer items must be included in the receive request' });
+    }
+
     const byId = new Map((transferItems || []).map((i) => [i.id, i]));
     for (const submitted of items) {
       const existing = byId.get(submitted.item_id);
       if (!existing) return res.status(400).json({ error: `unknown transfer item ${submitted.item_id}` });
+      if (existing.quantity_received != null) {
+        // Already processed in a prior attempt (e.g. after a partial failure on a
+        // previous request) — do not re-apply the movement.
+        continue;
+      }
       try {
         await applyInventoryMovement(supabase, {
           productId: existing.product_id, locationId: transfer.destination_location_id, quantityDelta: submitted.quantity_received,
