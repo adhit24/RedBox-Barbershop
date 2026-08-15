@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">RedBox Stockist</string>
-    <string name="target_url">https://redbox-barbershop.vercel.app/admin/stockist</string>
+    <string name="target_url">https://admin.redboxbarbershop.com/admin/stockist</string>
 </resources>
