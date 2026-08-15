@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/login') ||
     pathname.startsWith('/barber/login') ||
+    pathname.startsWith('/admin/stockist/login') ||
     pathname.startsWith('/signage') ||
     pathname.startsWith('/ai-hairstyle') ||
     pathname.startsWith('/api/ai-hairstyle') ||
@@ -73,6 +74,9 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     if (pathname === '/') return response;
+    if (pathname.startsWith('/admin/stockist')) {
+      return NextResponse.redirect(new URL('/admin/stockist/login', request.url));
+    }
     return NextResponse.redirect(new URL('/', request.url));
   }
 

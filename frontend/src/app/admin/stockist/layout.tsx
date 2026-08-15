@@ -12,7 +12,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   useEffect(() => {
     if (loading) return;
     if (!user || !['owner', 'branch_admin'].includes(user.role)) {
-      router.replace('/login');
+      router.replace('/admin/stockist/login');
     }
   }, [user, loading, router]);
 
@@ -67,7 +67,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
             onClick={() => {
               if (confirm('Keluar dari aplikasi?')) {
                 signOut();
-                router.replace('/login');
+                router.replace('/admin/stockist/login');
               }
             }}
             className="text-text-muted hover:text-text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full"
