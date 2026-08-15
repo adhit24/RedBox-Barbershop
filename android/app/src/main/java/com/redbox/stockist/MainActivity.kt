@@ -73,6 +73,9 @@ class MainActivity : AppCompatActivity() {
         cookieManager.setAcceptCookie(true)
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
+        // Surface real errors in chrome://inspect instead of only Logcat
+        WebView.setWebContentsDebuggingEnabled(true)
+
         // Set Clients
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -86,9 +89,73 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
                 return true
             }
+
+            // A blank screen with no feedback is undiagnosable — render the
+            // actual failure so it's visible on-device without ADB/USB debugging.
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                super.onReceivedError(view, request, error)
+                if (request?.isForMainFrame != true) return
+                val description = error?.description ?: "unknown error"
+                val code = error?.errorCode ?: 0
+                val failedUrl = request.url?.toString() ?: "?"
+                view?.loadData(
+                    """
+                    <html><body style="font-family:sans-serif;padding:24px;background:#0b0708;color:#f0eaeb;">
+                    <h3 style="color:#e87068;">Gagal memuat halaman</h3>
+                    <p><b>URL:</b> $failedUrl</p>
+                    <p><b>Kode error:</b> $code</p>
+                    <p><b>Deskripsi:</b> $description</p>
+                    <p style="color:#9a8b8d;font-size:12px;">Screenshot pesan ini dan kirim ke developer.</p>
+                    </body></html>
+                    """.trimIndent(),
+                    "text/html",
+                    "UTF-8"
+                )
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (request?.isForMainFrame != true) return
+                val status = errorResponse?.statusCode ?: 0
+                val failedUrl = request.url?.toString() ?: "?"
+                view?.loadData(
+                    """
+                    <html><body style="font-family:sans-serif;padding:24px;background:#0b0708;color:#f0eaeb;">
+                    <h3 style="color:#e87068;">Server mengembalikan error</h3>
+                    <p><b>URL:</b> $failedUrl</p>
+                    <p><b>Status HTTP:</b> $status</p>
+                    <p style="color:#9a8b8d;font-size:12px;">Screenshot pesan ini dan kirim ke developer.</p>
+                    </body></html>
+                    """.trimIndent(),
+                    "text/html",
+                    "UTF-8"
+                )
+            }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
+            // Uncaught JS exceptions (e.g. a hydration crash) don't trigger
+            // onReceivedError — they just leave the page blank with no
+            // network-level failure. Logging them here means they show up
+            // in `adb logcat` / chrome://inspect even without a visible
+            // on-screen error, for the cases the WebViewClient can't catch.
+            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                android.util.Log.e(
+                    "StockistWebView",
+                    "${consoleMessage?.messageLevel()}: ${consoleMessage?.message()} " +
+                        "(${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})"
+                )
+                return true
+            }
+
             // Handle file upload
             override fun onShowFileChooser(
                 webView: WebView?,
