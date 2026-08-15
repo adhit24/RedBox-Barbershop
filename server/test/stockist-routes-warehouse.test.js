@@ -12,13 +12,13 @@ async function withServer(supabase, fn, { staffId = 'owner-1', role = 'owner', b
     req.adminAuth = { staffId, role, branch, sessionVerified };
     next();
   }));
-  const server = await new Promise((resolve) => app.listen(0, '127.0.0.1', () => resolve(app.listen)));
-  const actualServer = app.listen(0, '127.0.0.1');
-  await new Promise((resolve) => actualServer.on('listening', resolve));
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+  });
   try {
-    return await fn(`http://127.0.0.1:${actualServer.address().port}`);
+    return await fn(`http://127.0.0.1:${server.address().port}`);
   } finally {
-    await new Promise((resolve, reject) => actualServer.close((err) => err ? reject(err) : resolve()));
+    await new Promise((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
   }
 }
 
