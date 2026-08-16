@@ -11,26 +11,24 @@ import { createClient } from '@/utils/supabase/client';
 import { ParallaxScrollSecond } from '@/components/ui/parallax-scroll';
 
 const GALLERY_IMAGES = [
-  "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1554080353-a576cf803bda?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1505144808419-1957a94ca61e?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1605497746444-ac9dbd324ce8?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1512864084360-7c0c4d0a0845?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1682686581854-5e71f58e7e3f?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1510784722466-f2aa9c52fff6?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1505765050516-f72dcac9c60e?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1439853949127-fa647821eba0?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1634480256802-7cb5b451f99a?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=600",
-  "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?auto=format&fit=crop&q=80&w=600"
+  "/Brand_assets/Gallery/IMG_0855.jpeg",
+  "/Brand_assets/Gallery/IMG_2265.jpeg",
+  "/Brand_assets/Gallery/IMG_3070.JPG",
+  "/Brand_assets/Gallery/IMG_3215.jpeg",
+  "/Brand_assets/Gallery/IMG_3389.jpeg",
+  "/Brand_assets/Gallery/IMG_3720.jpeg",
+  "/Brand_assets/Gallery/IMG_4209.jpeg",
+  "/Brand_assets/Gallery/IMG_5366.jpeg",
+  "/Brand_assets/Gallery/IMG_7263.jpeg",
+  "/Brand_assets/Gallery/IMG_7285.jpeg",
+  "/Brand_assets/Gallery/IMG_9089.jpg",
+  "/Brand_assets/Gallery/IMG_9109.jpeg",
+  "/Brand_assets/Gallery/IMG_9132.jpg",
+  "/Brand_assets/Gallery/IMG_9147.jpg",
+  "/Brand_assets/Gallery/Kapster1.jpg",
+  "/Brand_assets/Gallery/Kapster2.jpg",
+  "/Brand_assets/Gallery/Kapster3.jpg",
+  "/Brand_assets/Gallery/Kapster4.jpg"
 ];
 
 // Prefetched/Fallback branches data based on rules_ai.md
