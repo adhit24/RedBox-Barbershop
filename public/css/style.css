@@ -2322,3 +2322,29 @@ section{padding:100px 0}
  .hp-item-num { font-size: 1rem; }
  .hp-item-sub { display: none; }
 }
+
+/* Mobile Section Spacing Overrides */
+@media (max-width: 768px) {
+  section,
+  .services,
+  .professionals,
+  .location,
+  .home-service-section,
+  .wedding-section,
+  .ms-cta-section,
+  .ai-grooming {
+    padding-top: 28px !important;
+    padding-bottom: 28px !important;
+  }
+  .rb-gallery-scroll {
+    min-height: auto !important;
+    padding-top: 28px !important;
+    padding-bottom: 28px !important;
+  }
+  .section-header {
+    margin-bottom: 20px !important;
+  }
+  .section-cta {
+    margin-top: 20px !important;
+  }
+}
