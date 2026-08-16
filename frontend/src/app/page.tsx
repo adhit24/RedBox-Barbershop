@@ -390,6 +390,30 @@ export default function PremiumLandingPage() {
               AI Style Analyzer
             </a>
           </motion.div>
+
+          {/* Running Tag Ticker */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.8, delay: 0.6 }}
+            className="w-full max-w-4xl mx-auto overflow-hidden py-3 bg-[#C72820]/10 border-y border-[#C72820]/20 rounded-xl mt-12 relative z-20"
+          >
+            <style>{`
+              @keyframes marquee {
+                0% { transform: translateX(0%); }
+                100% { transform: translateX(-50%); }
+              }
+              .animate-marquee {
+                display: flex;
+                width: max-content;
+                animation: marquee 25s linear infinite;
+              }
+            `}</style>
+            <div className="animate-marquee flex gap-8 whitespace-nowrap text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-[#E87068]">
+              <span>★ 1 KIP BERSIH PER PELANGGAN ★ 1 HANDUK SEGAR PER KUNJUNGAN ★ 1 SET ALAT STERIL PER SESI ★ STANDAR HIGIENITAS REDBOX: TANPA KOMPROMI ★</span>
+              <span>★ 1 KIP BERSIH PER PELANGGAN ★ 1 HANDUK SEGAR PER KUNJUNGAN ★ 1 SET ALAT STERIL PER SESI ★ STANDAR HIGIENITAS REDBOX: TANPA KOMPROMI ★</span>
+            </div>
+          </motion.div>
         </div>
       </header>
 
@@ -410,54 +434,6 @@ export default function PremiumLandingPage() {
         </div>
       </section>
 
-      {/* HIGHLIGHT HYGIENE BAR */}
-      <section className="relative w-full z-20 bg-white/[0.01] border-y border-white/5 py-5">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#C72820]/10 border border-[#C72820]/20 flex items-center justify-center text-[#C72820]">
-              <Shield size={16} />
-            </div>
-            <div>
-              <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-[#C72820]">Janji Kami</p>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-white">Standar Higienitas Redbox</h4>
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs">
-            <div className="flex items-center gap-2.5">
-              <span className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center font-mono font-bold text-[#E87068] text-xs">1</span>
-              <div className="text-left">
-                <p className="font-bold text-[11px] text-white uppercase tracking-wider">Kip Bersih</p>
-                <p className="text-[10px] text-gray-500">Satu kip bersih per pelanggan</p>
-              </div>
-            </div>
-            
-            <span className="text-white/10 hidden md:inline font-mono">/</span>
-            
-            <div className="flex items-center gap-2.5">
-              <span className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center font-mono font-bold text-[#E87068] text-xs">1</span>
-              <div className="text-left">
-                <p className="font-bold text-[11px] text-white uppercase tracking-wider">Handuk Segar</p>
-                <p className="text-[10px] text-gray-500">Satu handuk segar per kunjungan</p>
-              </div>
-            </div>
-            
-            <span className="text-white/10 hidden md:inline font-mono">/</span>
-            
-            <div className="flex items-center gap-2.5">
-              <span className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center font-mono font-bold text-[#E87068] text-xs">1</span>
-              <div className="text-left">
-                <p className="font-bold text-[11px] text-white uppercase tracking-wider">Kapster Steril</p>
-                <p className="text-[10px] text-gray-500">Alat diganti setiap sesi baru</p>
-              </div>
-            </div>
-          </div>
-          
-          <p className="text-[10.5px] italic text-gray-500 text-center md:text-right max-w-[200px] leading-relaxed hidden lg:block font-medium">
-            "Kami tidak kompromi soal kebersihan."
-          </p>
-        </div>
-      </section>
 
       {/* SERVICES LIST */}
       <section className="max-w-7xl mx-auto px-6 py-24 z-20 space-y-12">
