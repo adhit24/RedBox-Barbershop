@@ -696,27 +696,150 @@
 
 
  <!-- ========== GALLERY ========== -->
- <section class="rb-gallery-scroll" id="gallery" aria-label="Gallery">
- <div class="rb-gallery-sticky">
- <div class="rb-gallery-stage">
- <div class="rgb-ring rgb-ring-2" aria-hidden="true"></div>
- <div class="rgb-ring rgb-ring-1" aria-hidden="true"></div>
- <div class="rgb-main-ring" aria-hidden="true"></div>
- <div class="rgb-center-text" aria-hidden="true">
- <h2>Our<br>Gallery</h2>
- <span>The Art of Barbering</span>
- </div>
- <div class="rgb-photo"><img src="Brand_assets/Talent1.jpg" alt="Haircut Result" loading="lazy"></div>
- <div class="rgb-photo"><img src="Brand_assets/Talent2.jpg" alt="Fade Style" loading="lazy"></div>
- <div class="rgb-photo"><img src="Brand_assets/Kapster1.jpg" alt="Barber at work" loading="lazy"></div>
- <div class="rgb-photo"><img src="Brand_assets/Talent3.webp" alt="Braids" loading="lazy"></div>
- <div class="rgb-photo"><img src="Brand_assets/Talent4.jpg" alt="Box Braids" loading="lazy"></div>
- <div class="rgb-photo"><img src="Brand_assets/Talent5.jpg" alt="Sharp Cut" loading="lazy"></div>
- <div class="rgb-photo"><img src="Brand_assets/Kapster2.jpg" alt="Style Result" loading="lazy"></div>
- <div class="rgb-photo"><img src="Brand_assets/Kapster4.jpg" alt="Premium Cut" loading="lazy"></div>
- </div>
- </div>
- </section>
+  <section class="lookbook-gallery-section" id="gallery" aria-label="Gallery" style="position:relative; background:#08060a; border-top:1px solid rgba(255,255,255,0.05); padding: 80px 0 0 0;">
+    <div class="container" style="text-align:center; margin-bottom: 40px;">
+      <p style="font-size:11px; font-weight:700; letter-spacing:0.25em; text-transform:uppercase; color:#C72820; margin-bottom:10px;">Lookbook Premium</p>
+      <h2 style="font-family:'Bebas Neue', sans-serif; font-size:clamp(2.5rem,6vw,4.2rem); letter-spacing:0.04em; color:#fff; text-transform:uppercase; margin-bottom:14px; line-height: 1;">Inspirasi Potongan Rambut</h2>
+      <div style="width:48px; height:2px; background:#C72820; margin:0 auto;"></div>
+    </div>
+
+    <div class="parallax-gallery-container">
+      <style>
+        .parallax-gallery-container {
+          width: 100%;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 0 24px 80px 24px;
+          box-sizing: border-box;
+        }
+        .parallax-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 32px;
+          height: 45rem;
+          overflow-y: auto;
+          padding: 24px;
+          background: rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 20px;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(199, 40, 32, 0.3) transparent;
+        }
+        .parallax-grid::-webkit-scrollbar {
+          width: 6px;
+        }
+        .parallax-grid::-webkit-scrollbar-thumb {
+          background-color: rgba(199, 40, 32, 0.3);
+          border-radius: 10px;
+        }
+        @media (min-width: 768px) {
+          .parallax-grid {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+        .parallax-column {
+          display: grid;
+          gap: 32px;
+          height: max-content;
+          transition: transform 0.1s ease-out;
+        }
+        .parallax-card {
+          position: relative;
+          border-radius: 12px;
+          overflow: hidden;
+          height: 320px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+          transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .parallax-card img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          object-position: center;
+          transition: transform 0.5s ease;
+        }
+        .parallax-card:hover img {
+          transform: scale(1.05);
+        }
+        
+        @media (min-width: 1024px) {
+          .parallax-col-1 {
+            transform: translateY(0px) rotate(-1.5deg);
+          }
+          .parallax-col-2 {
+            transform: translateY(40px);
+          }
+          .parallax-col-3 {
+            transform: translateY(-20px) rotate(1.5deg);
+          }
+        }
+      </style>
+      
+      <div class="parallax-grid" id="parallaxGrid">
+        <!-- Column 1 -->
+        <div class="parallax-column parallax-col-1">
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1554080353-a576cf803bda?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1505144808419-1957a94ca61e?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1605497746444-ac9dbd324ce8?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+        </div>
+        
+        <!-- Column 2 -->
+        <div class="parallax-column parallax-col-2">
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1512864084360-7c0c4d0a0845?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1682686581854-5e71f58e7e3f?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1510784722466-f2aa9c52fff6?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+        </div>
+        
+        <!-- Column 3 -->
+        <div class="parallax-column parallax-col-3">
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1505765050516-f72dcac9c60e?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1439853949127-fa647821eba0?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+          <div class="parallax-card"><img src="https://images.unsplash.com/photo-1634480256802-7cb5b451f99a?auto=format&fit=crop&q=80&w=600" alt="RedBox Lookbook"></div>
+        </div>
+      </div>
+      
+      <script>
+        const grid = document.getElementById('parallaxGrid');
+        const col1 = document.querySelector('.parallax-col-1');
+        const col3 = document.querySelector('.parallax-col-3');
+        
+        if (grid) {
+          const handleScroll = () => {
+            if (window.innerWidth < 1024) {
+              col1.style.transform = '';
+              col3.style.transform = '';
+              return;
+            }
+            const maxScroll = grid.scrollHeight - grid.clientHeight;
+            if (maxScroll <= 0) return;
+            const pct = grid.scrollTop / maxScroll;
+            
+            const transY1 = -200 * pct;
+            const transX1 = -200 * pct;
+            const rot1 = -20 * pct;
+            
+            const transY3 = -200 * pct;
+            const transX3 = 200 * pct;
+            const rot3 = 20 * pct;
+            
+            col1.style.transform = `translate3d(${transX1}px, ${transY1}px, 0) rotate(${rot1 - 1.5}deg)`;
+            col3.style.transform = `translate3d(${transX3}px, ${transY3}px, 0) rotate(${rot3 + 1.5}deg)`;
+          };
+          grid.addEventListener('scroll', handleScroll);
+          window.addEventListener('resize', handleScroll);
+        }
+      </script>
+    </div>
+  </section>
 
  <!-- ========== MEMBERSHIP CTA ========== -->
  <section class="ms-cta-section" id="membership">
