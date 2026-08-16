@@ -115,58 +115,40 @@
  <span>Book Now</span>
  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.97 3.97a.75.75 0 0 1 1.06 0l7.5 7.5a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 1 1-1.06-1.06l6.22-6.22H3a.75.75 0 0 1 0-1.5h16.19l-6.22-6.22a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
  </a>
+
+  <!-- Running Tag Ticker (Standar Higienitas) -->
+  <div class="running-ticker-container" style="width:100%; overflow:hidden; background:rgba(199,40,32,0.08); border-top:1px solid rgba(199,40,32,0.15); border-bottom:1px solid rgba(199,40,32,0.15); margin-top:40px; padding:10px 0; border-radius:12px; position: relative; z-index: 10;">
+    <style>
+      @keyframes ticker {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+      }
+      .ticker-wrap {
+        display: flex;
+        width: max-content;
+        animation: ticker 25s linear infinite;
+      }
+      .ticker-item {
+        padding-right: 32px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #E87068;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        white-space: nowrap;
+      }
+    </style>
+    <div class="ticker-wrap">
+      <span class="ticker-item">★ 1 KIP BERSIH PER PELANGGAN ★ 1 HANDUK SEGAR PER KUNJUNGAN ★ 1 SET ALAT STERIL PER SESI ★ STANDAR HIGIENITAS REDBOX: TANPA KOMPROMI ★</span>
+      <span class="ticker-item">★ 1 KIP BERSIH PER PELANGGAN ★ 1 HANDUK SEGAR PER KUNJUNGAN ★ 1 SET ALAT STERIL PER SESI ★ STANDAR HIGIENITAS REDBOX: TANPA KOMPROMI ★</span>
+    </div>
+  </div>
  </div>
  <div class="hero-scroll-indicator">
  <span>Scroll</span>
  <div class="scroll-line"></div>
  </div>
  </section>
-
-
- <!-- ========== HYGIENE PLEDGE ========== -->
- <div class="container" style="padding-top:32px;padding-bottom:0">
- <div class="hygiene-pledge">
- <div class="hp-header">
- <div class="hp-icon-wrap">
- <svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12.516 2.17a.75.75 0 0 0-1.032 0 11.209 11.209 0 0 1-7.877 3.08.75.75 0 0 0-.722.515A12.74 12.74 0 0 0 2.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 0 0 .374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 0 0-.722-.516l-.143.001c-2.996 0-5.717-1.17-7.734-3.08Zm3.094 8.016a.75.75 0 1 0-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 0 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.14-.094l3.75-5.25Z" clip-rule="evenodd"/></svg>
- </div>
- <div class="hp-header-text">
- <div class="hp-eyebrow">Janji Kami</div>
- <div class="hp-title">Standar Kebersihan Redbox</div>
- </div>
- </div>
- <div class="hp-items">
- <div class="hp-item">
- <div class="hp-item-icon">
- <img src="Brand_assets/kip.png" alt="Kip" class="hp-item-img hp-item-img--kip" />
- </div>
- <div class="hp-item-num">1</div>
- <div class="hp-item-label">Kip</div>
- <div class="hp-item-sub">Satu kip bersih per pelanggan</div>
- </div>
- <div class="hp-item">
- <div class="hp-item-icon">
- <img src="Brand_assets/towel.png" alt="Handuk" class="hp-item-img" />
- </div>
- <div class="hp-item-num">1</div>
- <div class="hp-item-label">Handuk</div>
- <div class="hp-item-sub">Satu handuk segar per kunjungan</div>
- </div>
- <div class="hp-item">
- <div class="hp-item-icon">
- <img src="Brand_assets/barbercut.png" alt="Per Orang" class="hp-item-img hp-item-img--barbercut" />
- </div>
- <div class="hp-item-num">1</div>
- <div class="hp-item-label">Orang</div>
- <div class="hp-item-sub">Diganti setiap sesi, tanpa terkecuali</div>
- </div>
- </div>
- <div class="hp-footer">
- "Kami tidak kompromi soal kebersihan. Setiap duduk di kursi kami, semua alat baru untuk kamu."
- </div>
- </div>
- </div>
- <!-- ========== END HYGIENE PLEDGE ========== -->
 
  <section class="ai-grooming" id="ai">
  <div class="container">
