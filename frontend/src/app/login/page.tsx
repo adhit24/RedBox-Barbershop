@@ -277,7 +277,7 @@ function LoginForm() {
 
         {/* Back to role picker */}
         <motion.button
-          onClick={() => router.push('/')}
+          onClick={() => router.push('/portal')}
           className="w-full text-center text-[11px] mt-5 tracking-[0.08em] transition-colors cursor-pointer"
           style={{ color: '#3A3033' }}
           initial={{ opacity: 0 }}

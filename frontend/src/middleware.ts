@@ -82,6 +82,7 @@ export async function middleware(request: NextRequest) {
 
   // Public routes — no auth needed
   if (
+    pathname.startsWith('/portal') ||
     pathname.startsWith('/login') ||
     pathname.startsWith('/barber/login') ||
     pathname.startsWith('/admin/stockist/login') ||
@@ -153,9 +154,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
-  // Authenticated user at '/' → redirect to dashboard.
+  // Authenticated user at '/' or '/portal' → redirect to dashboard.
   // Barbers are already caught above by the cookie check.
-  if (pathname === '/') {
+  if (pathname === '/' || pathname === '/portal') {
     return NextResponse.redirect(new URL('/admin/dashboard', request.url));
   }
 
