@@ -25,9 +25,20 @@ test('active member identity guard runs before server-side discount calculation'
   assert.ok(sessionGuardStart > routeStart, 'session guard must be inside the booking route');
   assert.ok(nameGuardStart > routeStart, 'name guard must be inside the booking route');
   assert.ok(discountBlockStart > nameGuardStart, 'discount must not be calculated before identity validation');
-  assert.match(serverSource.slice(routeStart, discountBlockStart), /if \(memberActive\)/);
+  assert.match(serverSource.slice(routeStart, discountBlockStart), /requiresMemberIdentity/);
+  assert.match(serverSource.slice(routeStart, discountBlockStart), /\['silver', 'gold', 'platinum'\]\.includes\(memberTier\)/);
   assert.match(serverSource.slice(routeStart, discountBlockStart), /sameIdentityPhone\(memberSession\?\.customer_wa, wa\)/);
   assert.match(serverSource.slice(routeStart, discountBlockStart), /sameIdentityName\(name, memberProfile\?\.full_name\)/);
+});
+
+test('identity protection is limited to active Silver, Gold, and Platinum tiers', () => {
+  const routeStart = serverSource.indexOf("app.post('/api/bookings'");
+  const discountBlockStart = serverSource.indexOf('const discount = computeServiceDiscount({', routeStart);
+  const block = serverSource.slice(routeStart, discountBlockStart);
+  assert.match(block, /const memberTier = resolveMembershipTier\(memberProfile\?\.current_tier\)/);
+  assert.match(block, /const requiresMemberIdentity = memberActive/);
+  assert.match(block, /\['silver', 'gold', 'platinum'\]\.includes\(memberTier\)/);
+  assert.doesNotMatch(block, /\['bronze', 'silver', 'gold', 'platinum'\]\.includes\(memberTier\)/);
 });
 
 test('group bookings remain excluded from personal membership discount logic', () => {

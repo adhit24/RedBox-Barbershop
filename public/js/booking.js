@@ -2213,16 +2213,51 @@ document.addEventListener('DOMContentLoaded', async () => {
  headers: requestHeaders,
  body: JSON.stringify(payloads[i])
  });
- if (!res.ok) {
- const errData = await res.json().catch(() => ({}));
- if (res.status === 409) {
- alert('Mohon maaf' + (isGroup() ? ' (booking orang ' + (i + 1) + ')' : '') + ': ' + (errData.error || 'slot bentrok'));
- goToStep(3);
- return;
- }
- alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));
- return;
- }
+		 if (!res.ok) {
+		 const errData = await res.json().catch(() => ({}));
+		 if (res.status === 409) {
+		 alert('Mohon maaf' + (isGroup() ? ' (booking orang ' + (i + 1) + ')' : '') + ': ' + (errData.error || 'slot bentrok'));
+		 goToStep(3);
+		 return;
+		 }
+
+		 // Beri panduan yang bisa langsung diikuti pelanggan saat benefit
+		 // membership ditolak oleh verifikasi identitas server.
+		 if (errData.code === 'MEMBER_LOGIN_REQUIRED') {
+		 alert(`Booking belum dapat disimpan.
+
+Benefit Silver, Gold, dan Platinum hanya bisa digunakan setelah login member melalui OTP.
+
+Langkah:
+1. Tutup pesan ini.
+2. Buka menu Member lalu pilih Login via OTP.
+3. Masukkan nomor WhatsApp yang terdaftar sebagai member.
+4. Verifikasi OTP, lalu kembali ke halaman booking.
+5. Pastikan nomor WhatsApp booking sama dengan nomor yang dipakai login.
+
+Jika tidak ingin menggunakan benefit member, hapus atau ganti nomor member pada form booking.`);
+		 return;
+		 }
+
+		 if (errData.code === 'MEMBER_IDENTITY_MISMATCH') {
+		 alert(`Booking belum dapat disimpan karena data member belum cocok.
+
+Untuk benefit Silver, Gold, dan Platinum, nama booking harus sama persis dengan nama member yang terdaftar untuk nomor WhatsApp tersebut.
+
+Langkah:
+1. Tutup pesan ini.
+2. Periksa nomor WhatsApp pada form booking.
+3. Isi nama lengkap persis seperti nama saat mendaftar member.
+4. Jika belum login, masuk melalui menu Member > Login via OTP.
+5. Kirim booking kembali.
+
+Jika nama terdaftar sudah benar tetapi tetap ditolak, hubungi admin RedBox untuk memeriksa data membership. Jangan mengulang pembayaran sebelum booking berhasil tersimpan.`);
+		 return;
+		 }
+
+		 alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));
+		 return;
+		 }
  const resBody = await res.json().catch(() => null);
  if (resBody?.data) bookingResults.push(resBody.data);
  }

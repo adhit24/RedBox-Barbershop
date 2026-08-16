@@ -1245,13 +1245,20 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, r
             startsAt: memberProfile?.membership_started_at,
             expiresAt: memberProfile?.membership_expires_at,
           });
+          // Identity protection is required for paid benefit tiers only.
+          // Bronze/legacy members may continue booking without OTP/name
+          // matching because they do not receive the protected tier benefits.
+          const memberTier = resolveMembershipTier(memberProfile?.current_tier);
+          const requiresMemberIdentity = memberActive
+            && ['silver', 'gold', 'platinum'].includes(memberTier);
 
           // A phone number alone is not proof that the person booking is the
-          // member. Personal membership benefits require the OTP session that
-          // belongs to the same phone and the registered member name. Without
-          // this server-side gate, anyone could type a Platinum member's WA
-          // number into the public booking form and receive the discount.
-          if (memberActive) {
+          // member. Paid tier benefits require the OTP session that belongs to
+          // the same phone and the registered member name. Without this
+          // server-side gate, anyone could type a paid member's WA number into
+          // the public booking form and receive the discount. Bronze/legacy
+          // members intentionally do not enter this gate.
+          if (requiresMemberIdentity) {
             const memberToken = getMemberToken(req.headers);
             const memberSession = await getMemberSessionByToken(memberToken);
             const sessionMatchesPhone = sameIdentityPhone(memberSession?.customer_wa, wa);
