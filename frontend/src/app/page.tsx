@@ -8,6 +8,30 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { createClient } from '@/utils/supabase/client';
+import { ParallaxScrollSecond } from '@/components/ui/parallax-scroll';
+
+const GALLERY_IMAGES = [
+  "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1554080353-a576cf803bda?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1505144808419-1957a94ca61e?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1605497746444-ac9dbd324ce8?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1512864084360-7c0c4d0a0845?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1682686581854-5e71f58e7e3f?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1510784722466-f2aa9c52fff6?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1505765050516-f72dcac9c60e?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1439853949127-fa647821eba0?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1634480256802-7cb5b451f99a?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=600",
+  "https://images.unsplash.com/photo-1519345182560-3f2917c472ef?auto=format&fit=crop&q=80&w=600"
+];
 
 // Prefetched/Fallback branches data based on rules_ai.md
 const FALLBACK_BRANCHES = [
@@ -510,31 +534,14 @@ export default function PremiumLandingPage() {
 
       {/* LOOKBOOK / GALLERY */}
       <section className="max-w-7xl mx-auto px-6 py-24 border-t border-white/5 bg-[#08060a]">
-        <div className="text-center space-y-3 mb-16">
+        <div className="text-center space-y-3 mb-8">
           <p className="text-[10px] uppercase font-bold tracking-[0.3em] text-[#C72820]">Lookbook Premium</p>
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight uppercase">Inspirasi Potongan Rambut</h2>
           <div className="w-12 h-0.5 bg-[#C72820] mx-auto" />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          {[
-            { title: 'Modern Pompadour', img: 'https://images.unsplash.com/photo-1621605815971-fbc98d665033?auto=format&fit=crop&q=80&w=400' },
-            { title: 'Classic Side Part', img: 'https://images.unsplash.com/photo-1512864084360-7c0c4d0a0845?auto=format&fit=crop&q=80&w=400' },
-            { title: 'Textured Crop Fade', img: 'https://images.unsplash.com/photo-1605497746444-ac9dbd324ce8?auto=format&fit=crop&q=80&w=400' }
-          ].map((item, i) => (
-            <div key={i} className="group relative rounded-2xl overflow-hidden aspect-[4/5] border border-white/5">
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80 z-10" />
-              <img 
-                src={item.img} 
-                alt={item.title} 
-                className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105" 
-              />
-              <div className="absolute bottom-6 left-6 z-20">
-                <p className="text-xs uppercase font-bold tracking-widest text-[#C72820] mb-1">Gaya Populer</p>
-                <h3 className="text-lg font-bold text-white uppercase tracking-wide">{item.title}</h3>
-              </div>
-            </div>
-          ))}
+        <div className="w-full relative">
+          <ParallaxScrollSecond images={GALLERY_IMAGES} className="h-[40rem] rounded-2xl border border-white/5 bg-black/20" />
         </div>
       </section>
 
