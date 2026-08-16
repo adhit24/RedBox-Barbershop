@@ -29,7 +29,7 @@ test('legacy CRM activation uses the authenticated atomic API with paid-tier aud
 });
 
 test('Next CRM shows paid registration states and activates only the selected registration', () => {
-  const page = source(path.join('frontend', 'src', 'app', 'admin', 'membership', 'page.tsx'));
+  const page = source(path.join('frontend', 'src', 'app', 'admin', '(admin_portal)', 'membership', 'page.tsx'));
   const authProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', '_auth.ts'));
   const proxySecret = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', '_proxySecret.ts'));
   const registrationsProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', 'route.ts'));
