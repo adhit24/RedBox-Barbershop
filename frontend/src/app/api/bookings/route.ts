@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { bookingSchema } from '@/lib/validation/booking';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 const TOKEN   = process.env.ADMIN_PASSWORD ?? '';
@@ -27,9 +28,13 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
-
+    const parsed = bookingSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? 'Data booking tidak valid' },
+        { status: 400 }
+      );
+    }
     const {
       name,
       wa,
@@ -43,11 +48,10 @@ export async function POST(req: NextRequest) {
       location,
       payment,
       notes,
-    } = body;
+    } = parsed.data;
 
-    if (!name || !wa || !service || !date || !time || !location) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
 
     const { data, error } = await supabase
       .from('bookings')
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
           wa,
           service_id: service_id || null,
           service,
-          price: price ? parseInt(price) : null,
+          price: price ? parseInt(String(price), 10) : null,
           duration: duration || null,
           barber_id: barber_id || null,
           date,
