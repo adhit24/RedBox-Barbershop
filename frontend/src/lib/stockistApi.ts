@@ -41,6 +41,31 @@ export interface StockTransfer {
   destination_name?: string;
 }
 
+export type StockRequestStatus =
+  | 'SUBMITTED' | 'APPROVED' | 'PARTIALLY_APPROVED' | 'REJECTED' | 'CANCELLED' | 'FULFILLED';
+
+export interface StockRequestItem {
+  id: string;
+  product_id: string;
+  quantity_requested: number;
+  quantity_approved: number | null;
+}
+
+export interface StockRequest {
+  id: string;
+  request_number: string;
+  branch_location_id: string;
+  status: StockRequestStatus;
+  requested_by: string;
+  reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  fulfilling_transfer_id: string | null;
+  created_at: string;
+  branch_name?: string;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
   const body = await res.json();
@@ -71,3 +96,28 @@ export const receiveTransfer = (id: string, items: { item_id: string; quantity_r
   req<{ transfer: StockTransfer; has_discrepancy: boolean }>(`/api/stockist/transfers/${id}/receive`, {
     method: 'PATCH', body: JSON.stringify({ items }),
   });
+
+export const createStockRequest = (input: { items: { product_id: string; quantity_requested: number }[]; reason?: string }) =>
+  req<{ request: StockRequest }>('/api/stockist/requests', { method: 'POST', body: JSON.stringify(input) });
+
+export const listStockRequests = (status?: string) =>
+  req<{ requests: StockRequest[] }>(`/api/stockist/requests${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+
+export const getStockRequest = (id: string) =>
+  req<{ request: StockRequest; items: StockRequestItem[] }>(`/api/stockist/requests/${id}`);
+
+export const approveStockRequest = (id: string, items: { item_id: string; quantity_approved: number }[]) =>
+  req<{ request: StockRequest }>(`/api/stockist/requests/${id}/approve`, {
+    method: 'PATCH', body: JSON.stringify({ items }),
+  });
+
+export const rejectStockRequest = (id: string, reason: string) =>
+  req<{ request: StockRequest }>(`/api/stockist/requests/${id}/reject`, {
+    method: 'PATCH', body: JSON.stringify({ reason }),
+  });
+
+export const cancelStockRequest = (id: string) =>
+  req<{ request: StockRequest }>(`/api/stockist/requests/${id}/cancel`, { method: 'PATCH' });
+
+export const fulfillStockRequest = (id: string) =>
+  req<{ request: StockRequest; transfer: StockTransfer }>(`/api/stockist/requests/${id}/fulfill`, { method: 'POST' });

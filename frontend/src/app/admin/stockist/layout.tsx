@@ -51,8 +51,18 @@ export default function StockistLayout({ children }: { children: React.ReactNode
       href: '/admin/stockist/transfers',
       active: pathname.startsWith('/admin/stockist/transfers')
     },
-    ...(!isOwner ? [{
-      label: 'Terima',
+    {
+      label: 'Permintaan',
+      icon: 'assignment',
+      href: '/admin/stockist/requests',
+      active: pathname.startsWith('/admin/stockist/requests')
+    },
+    // `/admin/stockist/warehouse` shows Gudang Pusat stock and its receive
+    // form is owner-only — branch_admin has no use for it (and the summary
+    // API 403s them there). Branch receiving happens via the Transfer tab
+    // (transfer detail → confirm receipt), which is already listed above.
+    ...(isOwner ? [{
+      label: 'Gudang',
       icon: 'warehouse',
       href: '/admin/stockist/warehouse',
       active: pathname.startsWith('/admin/stockist/warehouse')

@@ -75,11 +75,11 @@ export default function StockistDashboard() {
   // Calculate total stock qty
   const totalStock = balances.reduce((sum, b) => sum + b.quantity, 0);
 
-  // Filter active transfers (status 'SENT' matching this branch)
-  const activeTransfersCount = transfers.filter(t => 
-    t.status === 'SENT' && 
-    (isOwner ? true : (t.destination_location_id === branch || t.source_location_id === branch))
-  ).length;
+  // GET /transfers already scopes results server-side (branch_admin only ever
+  // receives transfers destined for their own branch), so no further branch
+  // comparison is needed here — `branch` is a slug and can never equal a
+  // transfer's location UUID.
+  const activeTransfersCount = transfers.filter(t => t.status === 'SENT').length;
 
   // Map image based on SKU/name for premium aesthetic
   const getProductImage = (sku: string, name: string) => {
@@ -238,19 +238,30 @@ export default function StockistDashboard() {
             <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Aksi Cepat</h3>
             
             <div className="flex flex-col gap-2">
-              {/* Restock Transfer Action */}
-              <Link 
-                href="/admin/stockist/transfers/new"
-                className="bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg border border-[#302728]"
-              >
-                <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
-                Buat Transfer Restok
-              </Link>
+              {/* Primary action: owner pushes stock out ad-hoc, branch_admin
+                  asks for restock — POST /transfers is owner-only, so a
+                  branch_admin must never land on that form directly. */}
+              {isOwner ? (
+                <Link
+                  href="/admin/stockist/transfers/new"
+                  className="bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg border border-[#302728]"
+                >
+                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
+                  Buat Transfer Restok
+                </Link>
+              ) : (
+                <Link
+                  href="/admin/stockist/requests/new"
+                  className="bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg border border-[#302728]"
+                >
+                  <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
+                  Ajukan Permintaan Stok
+                </Link>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
-                {/* Opname / Receive Action */}
                 {isOwner ? (
-                  <Link 
+                  <Link
                     href="/admin/stockist/products"
                     className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[48px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
                   >
@@ -258,23 +269,32 @@ export default function StockistDashboard() {
                     Tambah Produk
                   </Link>
                 ) : (
-                  <Link 
-                    href="/admin/stockist/warehouse"
+                  <Link
+                    href="/admin/stockist/transfers"
                     className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[48px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
                   >
-                    <span className="material-symbols-outlined text-[18px]">warehouse</span>
-                    Terima dari Gudang
+                    <span className="material-symbols-outlined text-[18px]">call_received</span>
+                    Terima Transfer
                   </Link>
                 )}
-                
-                {/* View Transfers Action */}
-                <Link 
-                  href="/admin/stockist/transfers"
-                  className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[48px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[18px]">list_alt</span>
-                  Riwayat Transfer
-                </Link>
+
+                {isOwner ? (
+                  <Link
+                    href="/admin/stockist/requests?status=NEEDS_ACTION"
+                    className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[48px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">fact_check</span>
+                    Tinjau Permintaan
+                  </Link>
+                ) : (
+                  <Link
+                    href="/admin/stockist/requests"
+                    className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[48px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">list_alt</span>
+                    Riwayat Permintaan
+                  </Link>
+                )}
               </div>
             </div>
           </section>

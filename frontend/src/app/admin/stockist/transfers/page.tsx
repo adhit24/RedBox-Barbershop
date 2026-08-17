@@ -42,13 +42,12 @@ export default function TransfersPage() {
                           sourceName.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
-    
-    // Non-owner should only see transfers related to their branch
-    const isRelated = isOwner || 
-                      t.destination_location_id === user?.branch || 
-                      t.source_location_id === user?.branch;
 
-    return matchesSearch && matchesStatus && isRelated;
+    // Branch scoping already happened server-side (GET /transfers only returns
+    // this branch_admin's own transfers) — `user.branch` is a slug like
+    // "bypass", never the transfer's location UUID, so comparing them here
+    // would incorrectly filter out every transfer for non-owner users.
+    return matchesSearch && matchesStatus;
   });
 
   const formatDate = (dateStr: string) => {

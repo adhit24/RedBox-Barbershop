@@ -4,8 +4,19 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const { getVerifiedStockistAccess, resolveStockistLocationScope, STOCKIST_BRANCHES } = require('../services/stockistAccess');
 const { applyInventoryMovement, stripPurchasePrice, calculateTransferDiscrepancy, validateAdjustmentReason } = require('../services/stockistInventory');
+const {
+  generateRequestNumber, validateApprovalItems, deriveRequestStatus, validateRejectionReason,
+  reserveInventoryStock, releaseInventoryReservation, fulfillReservedTransferOut,
+} = require('../services/stockistRequests');
 
-function createStockistRoutes(supabase, adminAuth) {
+// A push notification failing (e.g. no subscription, provider outage) must
+// never fail the transaction it's attached to — every call site awaits this
+// wrapper so tests stay deterministic, but any rejection is swallowed.
+async function notifyBestEffort(fn) {
+  try { await fn(); } catch { /* best-effort */ }
+}
+
+function createStockistRoutes(supabase, adminAuth, notifications = require('../services/stockistNotifications')) {
   const router = express.Router();
 
   function requireAccess(req, res) {
@@ -68,6 +79,24 @@ function createStockistRoutes(supabase, adminAuth) {
     if (!outlets) return null;
     const { data } = await query.eq('outlet_id', outlets.id);
     return (data || [])[0] || null;
+  }
+
+  // Maps inventory_locations.id -> human-readable name for enriching lists/details.
+  async function getLocationNames() {
+    const { data: locations } = await supabase
+      .from('inventory_locations')
+      .select('id, type, outlet:outlets(name)');
+    const locationNames = {};
+    if (locations) {
+      for (const loc of locations) {
+        if (loc.type === 'warehouse') {
+          locationNames[loc.id] = 'Gudang Pusat';
+        } else if (loc.type === 'branch' && loc.outlet) {
+          locationNames[loc.id] = loc.outlet.name;
+        }
+      }
+    }
+    return locationNames;
   }
 
   // ─── WAREHOUSE ───────────────────────────────────────────────
@@ -237,20 +266,7 @@ function createStockistRoutes(supabase, adminAuth) {
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
 
-    // Fetch location names to enrich UUIDs with human-readable branch/warehouse names
-    const { data: locations } = await supabase
-      .from('inventory_locations')
-      .select('id, type, outlet:outlets(name)');
-    const locationNames = {};
-    if (locations) {
-      for (const loc of locations) {
-        if (loc.type === 'warehouse') {
-          locationNames[loc.id] = 'Gudang Pusat';
-        } else if (loc.type === 'branch' && loc.outlet) {
-          locationNames[loc.id] = loc.outlet.name;
-        }
-      }
-    }
+    const locationNames = await getLocationNames();
 
     const enrichedTransfers = (data || []).map((t) => ({
       ...t,
@@ -280,20 +296,7 @@ function createStockistRoutes(supabase, adminAuth) {
     const { data: items, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
     if (itemsError) return res.status(500).json({ error: itemsError.message });
 
-    // Fetch location names to enrich UUIDs with human-readable branch/warehouse names
-    const { data: locations } = await supabase
-      .from('inventory_locations')
-      .select('id, type, outlet:outlets(name)');
-    const locationNames = {};
-    if (locations) {
-      for (const loc of locations) {
-        if (loc.type === 'warehouse') {
-          locationNames[loc.id] = 'Gudang Pusat';
-        } else if (loc.type === 'branch' && loc.outlet) {
-          locationNames[loc.id] = loc.outlet.name;
-        }
-      }
-    }
+    const locationNames = await getLocationNames();
 
     const enrichedTransfer = {
       ...transfer,
@@ -367,7 +370,12 @@ function createStockistRoutes(supabase, adminAuth) {
     if (transferUpdateError) return res.status(500).json({ error: transferUpdateError.message });
     const updatedTransfer = (updatedTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
 
-    return res.json({ transfer: updatedTransfer, has_discrepancy: calculateTransferDiscrepancy([...byId.values()]) });
+    const hasDiscrepancy = calculateTransferDiscrepancy([...byId.values()]);
+    if (hasDiscrepancy) {
+      await notifyBestEffort(() => notifications.notifyTransferDiscrepancy(supabase, { transfer: updatedTransfer }));
+    }
+
+    return res.json({ transfer: updatedTransfer, has_discrepancy: hasDiscrepancy });
   });
 
   // ─── MANUAL ADJUSTMENT ───────────────────────────────────────
@@ -402,10 +410,319 @@ function createStockistRoutes(supabase, adminAuth) {
         productId: product_id, locationId: location.id, quantityDelta: quantity_delta,
         movementType: 'ADJUSTMENT', performedBy: access.staffId, reason,
       });
+
+      if (location_type === 'branch') {
+        await notifyBestEffort(async () => {
+          const { data: product } = await supabase.from('products').select('name, minimum_stock').eq('id', product_id).single();
+          if (!product) return;
+          await notifications.checkAndNotifyLowStock(supabase, {
+            productId: product_id, locationId: location.id, branchSlug: location_branch,
+            productName: product.name, newQuantity: ledger.quantity_after, minimumStock: product.minimum_stock,
+          });
+        });
+      }
+
       return res.json({ ledger });
     } catch (err) {
       return res.status(400).json({ error: err.message });
     }
+  });
+
+  // ─── STOCK REQUESTS (branch asks warehouse for restock) ───────
+  router.post('/requests', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'branch_admin') {
+      return res.status(403).json({ error: 'only branch_admin can submit a stock request' });
+    }
+
+    const { items, reason } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.product_id || !Number.isInteger(i.quantity_requested) || i.quantity_requested <= 0)) {
+      return res.status(400).json({ error: 'items must be a non-empty list of { product_id, quantity_requested > 0 }' });
+    }
+
+    const branchLocation = await findLocation('branch', access.branch);
+    if (!branchLocation) return res.status(500).json({ error: 'location not configured' });
+
+    const { data: request, error: requestError } = await supabase.from('stock_requests').insert({
+      request_number: generateRequestNumber(access.branch),
+      branch_location_id: branchLocation.id,
+      status: 'SUBMITTED',
+      requested_by: access.staffId,
+      reason: reason || null,
+    }).select().single();
+    if (requestError) return res.status(500).json({ error: requestError.message });
+
+    const { error: itemsInsertError } = await supabase.from('stock_request_items').insert(
+      items.map((i) => ({ stock_request_id: request.id, product_id: i.product_id, quantity_requested: i.quantity_requested, quantity_approved: null }))
+    );
+    if (itemsInsertError) return res.status(500).json({ error: itemsInsertError.message });
+
+    const locationNames = await getLocationNames();
+    await notifyBestEffort(() => notifications.notifyStockRequestSubmitted(supabase, {
+      request, branchName: locationNames[branchLocation.id] || access.branch, itemCount: items.length,
+    }));
+
+    return res.json({ request });
+  });
+
+  router.get('/requests', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    let query = supabase.from('stock_requests').select('*').order('created_at', { ascending: false });
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation) return res.status(500).json({ error: 'location not configured' });
+      query = query.eq('branch_location_id', branchLocation.id);
+    }
+    if (typeof req.query.status === 'string' && req.query.status) {
+      query = query.eq('status', req.query.status);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const locationNames = await getLocationNames();
+    const enrichedRequests = (data || []).map((r) => ({
+      ...r,
+      branch_name: locationNames[r.branch_location_id] || r.branch_location_id,
+    }));
+
+    return res.json({ requests: enrichedRequests });
+  });
+
+  router.get('/requests/:id', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: requests, error: requestError } = await supabase.from('stock_requests').select('*').eq('id', req.params.id);
+    if (requestError) return res.status(500).json({ error: requestError.message });
+    const request = (requests || [])[0];
+    if (!request) return res.status(404).json({ error: 'request not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== request.branch_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+
+    const { data: items, error: itemsError } = await supabase.from('stock_request_items').select('*').eq('stock_request_id', request.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    const locationNames = await getLocationNames();
+    const enrichedRequest = { ...request, branch_name: locationNames[request.branch_location_id] || request.branch_location_id };
+
+    return res.json({ request: enrichedRequest, items: items || [] });
+  });
+
+  router.patch('/requests/:id/approve', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can approve a stock request' });
+    }
+
+    const { data: requests, error: requestError } = await supabase.from('stock_requests').select('*').eq('id', req.params.id);
+    if (requestError) return res.status(500).json({ error: requestError.message });
+    const request = (requests || [])[0];
+    if (!request) return res.status(404).json({ error: 'request not found' });
+    if (request.status !== 'SUBMITTED') {
+      return res.status(409).json({ error: 'only a SUBMITTED request can be approved' });
+    }
+
+    const { data: requestItems, error: itemsError } = await supabase.from('stock_request_items').select('*').eq('stock_request_id', request.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    const { items } = req.body || {};
+    try {
+      validateApprovalItems(requestItems || [], items);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const warehouse = await findLocation('warehouse', null);
+    if (!warehouse) return res.status(500).json({ error: 'warehouse location not configured' });
+
+    const requestItemById = new Map((requestItems || []).map((i) => [i.id, i]));
+    const reservedSoFar = [];
+    for (const submitted of items) {
+      if (submitted.quantity_approved <= 0) continue;
+      const productId = requestItemById.get(submitted.item_id).product_id;
+      try {
+        await reserveInventoryStock(supabase, { productId, locationId: warehouse.id, quantity: submitted.quantity_approved });
+        reservedSoFar.push({ productId, quantity: submitted.quantity_approved });
+      } catch (err) {
+        // Undo reservations already made in this attempt before reporting the failure.
+        for (const done of reservedSoFar) {
+          await releaseInventoryReservation(supabase, { productId: done.productId, locationId: warehouse.id, quantity: done.quantity });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+    }
+
+    for (const submitted of items) {
+      const { error: itemUpdateError } = await supabase.from('stock_request_items').update({ quantity_approved: submitted.quantity_approved }).eq('id', submitted.item_id);
+      if (itemUpdateError) return res.status(500).json({ error: itemUpdateError.message });
+    }
+
+    const status = deriveRequestStatus(requestItems || [], items);
+    const { data: updatedRequest, error: updateReqError } = await supabase.from('stock_requests').update({
+      status, reviewed_by: access.staffId, reviewed_at: new Date().toISOString(),
+    }).eq('id', request.id).select().single();
+    if (updateReqError) return res.status(500).json({ error: updateReqError.message });
+
+    await notifyBestEffort(() => notifications.notifyStockRequestReviewed(supabase, { request: updatedRequest }));
+
+    return res.json({ request: updatedRequest });
+  });
+
+  router.patch('/requests/:id/reject', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can reject a stock request' });
+    }
+
+    const { reason } = req.body || {};
+    try {
+      validateRejectionReason(reason);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const { data: requests, error: requestError } = await supabase.from('stock_requests').select('*').eq('id', req.params.id);
+    if (requestError) return res.status(500).json({ error: requestError.message });
+    const request = (requests || [])[0];
+    if (!request) return res.status(404).json({ error: 'request not found' });
+    if (request.status !== 'SUBMITTED') {
+      return res.status(409).json({ error: 'only a SUBMITTED request can be rejected' });
+    }
+
+    const { data: updatedRequest, error: updateError } = await supabase.from('stock_requests').update({
+      status: 'REJECTED', reviewed_by: access.staffId, reviewed_at: new Date().toISOString(), rejection_reason: reason,
+    }).eq('id', request.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    await notifyBestEffort(() => notifications.notifyStockRequestReviewed(supabase, { request: updatedRequest }));
+
+    return res.json({ request: updatedRequest });
+  });
+
+  router.patch('/requests/:id/cancel', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: requests, error: requestError } = await supabase.from('stock_requests').select('*').eq('id', req.params.id);
+    if (requestError) return res.status(500).json({ error: requestError.message });
+    const request = (requests || [])[0];
+    if (!request) return res.status(404).json({ error: 'request not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== request.branch_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+      if (request.status !== 'SUBMITTED') {
+        return res.status(409).json({ error: 'branch_admin can only cancel a request before it has been reviewed' });
+      }
+    } else if (!['SUBMITTED', 'APPROVED', 'PARTIALLY_APPROVED'].includes(request.status)) {
+      return res.status(409).json({ error: 'request cannot be cancelled in its current status' });
+    }
+
+    if (request.status === 'APPROVED' || request.status === 'PARTIALLY_APPROVED') {
+      const { data: requestItems, error: itemsError } = await supabase.from('stock_request_items').select('*').eq('stock_request_id', request.id);
+      if (itemsError) return res.status(500).json({ error: itemsError.message });
+      const warehouse = await findLocation('warehouse', null);
+      if (!warehouse) return res.status(500).json({ error: 'warehouse location not configured' });
+      for (const item of requestItems || []) {
+        if (item.quantity_approved > 0) {
+          await releaseInventoryReservation(supabase, { productId: item.product_id, locationId: warehouse.id, quantity: item.quantity_approved });
+        }
+      }
+    }
+
+    const { data: updatedRequest, error: updateError } = await supabase.from('stock_requests').update({ status: 'CANCELLED' }).eq('id', request.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    return res.json({ request: updatedRequest });
+  });
+
+  router.post('/requests/:id/fulfill', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can fulfill a stock request' });
+    }
+
+    const { data: requests, error: requestError } = await supabase.from('stock_requests').select('*').eq('id', req.params.id);
+    if (requestError) return res.status(500).json({ error: requestError.message });
+    const request = (requests || [])[0];
+    if (!request) return res.status(404).json({ error: 'request not found' });
+    if (request.status !== 'APPROVED' && request.status !== 'PARTIALLY_APPROVED') {
+      return res.status(409).json({ error: 'only an approved request can be fulfilled' });
+    }
+    if (request.fulfilling_transfer_id) {
+      return res.status(409).json({ error: 'request has already been fulfilled' });
+    }
+
+    const { data: requestItems, error: itemsError } = await supabase.from('stock_request_items').select('*').eq('stock_request_id', request.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+    const itemsToShip = (requestItems || []).filter((i) => i.quantity_approved > 0);
+    if (itemsToShip.length === 0) return res.status(400).json({ error: 'no approved items to ship' });
+
+    const warehouse = await findLocation('warehouse', null);
+    if (!warehouse) return res.status(500).json({ error: 'warehouse location not configured' });
+
+    const { data: transfer, error: transferError } = await supabase.from('stock_transfers').insert({
+      transfer_number: `TRF-${Date.now()}-${randomUUID().slice(0, 6)}`,
+      source_location_id: warehouse.id,
+      destination_location_id: request.branch_location_id,
+      status: 'SENT',
+      sent_by: access.staffId,
+    }).select().single();
+    if (transferError) return res.status(500).json({ error: transferError.message });
+
+    const { error: transferItemsError } = await supabase.from('stock_transfer_items').insert(
+      itemsToShip.map((i) => ({ stock_transfer_id: transfer.id, product_id: i.product_id, quantity_sent: i.quantity_approved, quantity_received: null }))
+    );
+    if (transferItemsError) return res.status(500).json({ error: transferItemsError.message });
+
+    const applied = [];
+    try {
+      for (const item of itemsToShip) {
+        await fulfillReservedTransferOut(supabase, {
+          productId: item.product_id, locationId: warehouse.id, quantity: item.quantity_approved,
+          performedBy: access.staffId, referenceType: 'stock_transfer', referenceId: transfer.id,
+        });
+        applied.push(item);
+      }
+    } catch (err) {
+      // Reverse fulfillment already applied in this failed attempt (restore
+      // physical quantity and re-reserve it), then remove the now-invalid
+      // transfer so it can never be received.
+      for (const done of applied) {
+        await applyInventoryMovement(supabase, {
+          productId: done.product_id, locationId: warehouse.id, quantityDelta: done.quantity_approved,
+          movementType: 'TRANSFER_OUT', performedBy: access.staffId,
+          referenceType: 'stock_transfer', referenceId: transfer.id,
+          reason: 'compensating reversal: fulfillment failed partway',
+        });
+        await reserveInventoryStock(supabase, { productId: done.product_id, locationId: warehouse.id, quantity: done.quantity_approved });
+      }
+      await supabase.from('stock_transfer_items').delete().eq('stock_transfer_id', transfer.id);
+      await supabase.from('stock_transfers').delete().eq('id', transfer.id);
+      return res.status(400).json({ error: err.message });
+    }
+
+    const { data: updatedRequest, error: updateReqError } = await supabase.from('stock_requests').update({
+      status: 'FULFILLED', fulfilling_transfer_id: transfer.id,
+    }).eq('id', request.id).select().single();
+    if (updateReqError) return res.status(500).json({ error: updateReqError.message });
+
+    await notifyBestEffort(() => notifications.notifyStockRequestFulfilled(supabase, { request: updatedRequest }));
+
+    return res.json({ request: updatedRequest, transfer });
   });
 
   return router;

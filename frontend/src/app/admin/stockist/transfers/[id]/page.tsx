@@ -1,14 +1,12 @@
 'use client';
 import { useEffect, useState, use as usePromise } from 'react';
 import { useRouter } from 'next/navigation';
-import { useUser } from '@/hooks/useUser';
 import { getTransfer, receiveTransfer, listProducts, type StockTransfer, type StockTransferItem, type StockistProduct } from '@/lib/stockistApi';
 
 export default function TransferDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = usePromise(params);
   const router = useRouter();
-  const { user } = useUser();
-  
+
   const [transfer, setTransfer] = useState<StockTransfer | null>(null);
   const [items, setItems] = useState<StockTransferItem[]>([]);
   const [products, setProducts] = useState<StockistProduct[]>([]);
@@ -87,9 +85,14 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
 
   if (!transfer) return null;
 
-  const isOwner = user?.role === 'owner';
-  const isBranchDestination = user?.branch === transfer.destination_location_id;
-  const showConfirmForm = transfer.status === 'SENT' && (isOwner || isBranchDestination);
+  // Access is already enforced server-side: GET /transfers/:id 403s a
+  // branch_admin whose branch isn't the destination, so reaching this point
+  // with a loaded `transfer` means the current user is authorized to view
+  // (and, for a SENT transfer, receive) it. `user.branch` is a slug like
+  // "bypass" and can never equal `destination_location_id` (a UUID) — that
+  // comparison always evaluated to false and hid the receive form from every
+  // branch_admin.
+  const showConfirmForm = transfer.status === 'SENT';
 
   // Map product info by ID
   const productMap = new Map(products.map(p => [p.id, p]));
