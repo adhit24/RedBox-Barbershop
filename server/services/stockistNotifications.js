@@ -61,6 +61,25 @@ async function notifyTransferDiscrepancy(supabase, { transfer }) {
   });
 }
 
+async function notifyStockOpnameSubmitted(supabase, { opname, locationName, discrepancyCount }) {
+  const ownerIds = await findOwnerUserIds(supabase);
+  await notifyUsers(supabase, ownerIds, {
+    title: 'Stock Opname Menunggu Persetujuan',
+    body: discrepancyCount > 0
+      ? `${locationName} — ${opname.opname_number} punya ${discrepancyCount} produk dengan selisih.`
+      : `${locationName} — ${opname.opname_number} siap disetujui, tidak ada selisih.`,
+    url: `/admin/stockist/stock-opname/${opname.id}`,
+  });
+}
+
+async function notifyStockOpnameApproved(supabase, { opname }) {
+  await notifyUsers(supabase, [opname.created_by], {
+    title: 'Stock Opname Disetujui',
+    body: `${opname.opname_number} telah disetujui dan stok telah disesuaikan.`,
+    url: `/admin/stockist/stock-opname/${opname.id}`,
+  });
+}
+
 // Called after any movement that can reduce a branch's balance. Decides
 // whether this particular dip deserves a fresh push, using stock_alert_state
 // as the anti-spam ledger: always notify on a NORMAL->LOW transition, and
@@ -100,4 +119,6 @@ module.exports = {
   notifyStockRequestFulfilled,
   notifyTransferDiscrepancy,
   checkAndNotifyLowStock,
+  notifyStockOpnameSubmitted,
+  notifyStockOpnameApproved,
 };

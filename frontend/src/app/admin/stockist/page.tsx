@@ -296,6 +296,14 @@ export default function StockistDashboard() {
                   </Link>
                 )}
               </div>
+
+              <Link
+                href="/admin/stockist/stock-opname"
+                className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
+              >
+                <span className="material-symbols-outlined text-[18px]">checklist</span>
+                Stock Opname
+              </Link>
             </div>
           </section>
         </>

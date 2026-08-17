@@ -8,6 +8,9 @@ const {
   generateRequestNumber, validateApprovalItems, deriveRequestStatus, validateRejectionReason,
   reserveInventoryStock, releaseInventoryReservation, fulfillReservedTransferOut,
 } = require('../services/stockistRequests');
+const {
+  generateOpnameNumber, computeDifference, validateOpnameSubmission,
+} = require('../services/stockistOpname');
 
 // A push notification failing (e.g. no subscription, provider outage) must
 // never fail the transaction it's attached to — every call site awaits this
@@ -830,6 +833,270 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     await notifyBestEffort(() => notifications.notifyStockRequestFulfilled(supabase, { request: updatedRequest }));
 
     return res.json({ request: updatedRequest, transfer });
+  });
+
+  // ─── STOCK OPNAME (physical count session) ─────────────────────
+  router.post('/stock-opname', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { location_type, location_branch } = req.body || {};
+    if (location_type !== 'warehouse' && location_type !== 'branch') {
+      return res.status(400).json({ error: 'location_type must be warehouse or branch' });
+    }
+    const scope = resolveStockistLocationScope(access, location_type, location_type === 'branch' ? location_branch : null);
+    if (!scope.ok) return res.status(scope.status).json({ error: scope.error });
+
+    const location = await findLocation(location_type, location_type === 'branch' ? location_branch : null);
+    if (!location) return res.status(404).json({ error: 'location not found' });
+
+    const { data: openOpnames, error: openCheckError } = await supabase
+      .from('stock_opnames').select('id').eq('location_id', location.id).in('status', ['DRAFT', 'SUBMITTED']);
+    if (openCheckError) return res.status(500).json({ error: openCheckError.message });
+    if ((openOpnames || []).length > 0) {
+      return res.status(409).json({ error: 'an open stock opname already exists for this location' });
+    }
+
+    const { data: activeProducts, error: productsError } = await supabase.from('products').select('id').eq('is_active', true);
+    if (productsError) return res.status(500).json({ error: productsError.message });
+    if (!activeProducts || activeProducts.length === 0) {
+      return res.status(400).json({ error: 'no active products to count' });
+    }
+
+    const { data: balances, error: balancesError } = await supabase
+      .from('inventory_balances').select('product_id, quantity').eq('location_id', location.id);
+    if (balancesError) return res.status(500).json({ error: balancesError.message });
+    const balanceByProduct = new Map((balances || []).map((b) => [b.product_id, b.quantity]));
+
+    const locationLabel = location_type === 'warehouse' ? 'WH' : location_branch;
+    const { data: opname, error: opnameError } = await supabase.from('stock_opnames').insert({
+      opname_number: generateOpnameNumber(locationLabel),
+      location_id: location.id,
+      status: 'DRAFT',
+      created_by: access.staffId,
+    }).select().single();
+    if (opnameError) return res.status(500).json({ error: opnameError.message });
+
+    const { error: itemsInsertError } = await supabase.from('stock_opname_items').insert(
+      activeProducts.map((p) => ({
+        stock_opname_id: opname.id, product_id: p.id,
+        system_quantity: balanceByProduct.get(p.id) || 0, physical_quantity: null, difference: null, reason: null,
+      }))
+    );
+    if (itemsInsertError) return res.status(500).json({ error: itemsInsertError.message });
+
+    return res.json({ opname });
+  });
+
+  router.get('/stock-opname', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    let query = supabase.from('stock_opnames').select('*').order('created_at', { ascending: false });
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation) return res.status(500).json({ error: 'location not configured' });
+      query = query.eq('location_id', branchLocation.id);
+    }
+    if (typeof req.query.status === 'string' && req.query.status) {
+      query = query.eq('status', req.query.status);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const locationNames = await getLocationNames();
+    const enrichedOpnames = (data || []).map((o) => ({ ...o, location_name: locationNames[o.location_id] || o.location_id }));
+
+    return res.json({ opnames: enrichedOpnames });
+  });
+
+  router.get('/stock-opname/:id', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: opnames, error: opnameError } = await supabase.from('stock_opnames').select('*').eq('id', req.params.id);
+    if (opnameError) return res.status(500).json({ error: opnameError.message });
+    const opname = (opnames || [])[0];
+    if (!opname) return res.status(404).json({ error: 'opname not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== opname.location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+
+    const { data: items, error: itemsError } = await supabase.from('stock_opname_items').select('*').eq('stock_opname_id', opname.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    const locationNames = await getLocationNames();
+    const enrichedOpname = { ...opname, location_name: locationNames[opname.location_id] || opname.location_id };
+
+    return res.json({ opname: enrichedOpname, items: items || [] });
+  });
+
+  router.patch('/stock-opname/:id/count', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: opnames, error: opnameError } = await supabase.from('stock_opnames').select('*').eq('id', req.params.id);
+    if (opnameError) return res.status(500).json({ error: opnameError.message });
+    const opname = (opnames || [])[0];
+    if (!opname) return res.status(404).json({ error: 'opname not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== opname.location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+    if (opname.status !== 'DRAFT') {
+      return res.status(409).json({ error: 'only a DRAFT opname can be counted' });
+    }
+
+    const { items } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.item_id || !Number.isInteger(i.physical_quantity) || i.physical_quantity < 0)) {
+      return res.status(400).json({ error: 'items must be a non-empty list of { item_id, physical_quantity >= 0 }' });
+    }
+
+    for (const submitted of items) {
+      const { error: itemUpdateError } = await supabase.from('stock_opname_items').update({
+        physical_quantity: submitted.physical_quantity, reason: submitted.reason || null,
+      }).eq('id', submitted.item_id).eq('stock_opname_id', opname.id);
+      if (itemUpdateError) return res.status(500).json({ error: itemUpdateError.message });
+    }
+
+    const { data: updatedItems, error: fetchError } = await supabase.from('stock_opname_items').select('*').eq('stock_opname_id', opname.id);
+    if (fetchError) return res.status(500).json({ error: fetchError.message });
+
+    return res.json({ items: updatedItems || [] });
+  });
+
+  router.patch('/stock-opname/:id/submit', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: opnames, error: opnameError } = await supabase.from('stock_opnames').select('*').eq('id', req.params.id);
+    if (opnameError) return res.status(500).json({ error: opnameError.message });
+    const opname = (opnames || [])[0];
+    if (!opname) return res.status(404).json({ error: 'opname not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== opname.location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+    if (opname.status !== 'DRAFT') {
+      return res.status(409).json({ error: 'only a DRAFT opname can be submitted' });
+    }
+
+    const { data: items, error: itemsError } = await supabase.from('stock_opname_items').select('*').eq('stock_opname_id', opname.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    try {
+      validateOpnameSubmission(items || []);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    let discrepancyCount = 0;
+    for (const item of items) {
+      const difference = computeDifference(item.system_quantity, item.physical_quantity);
+      if (difference !== 0) discrepancyCount += 1;
+      const { error: updateError } = await supabase.from('stock_opname_items').update({ difference }).eq('id', item.id);
+      if (updateError) return res.status(500).json({ error: updateError.message });
+    }
+
+    const { data: updatedOpname, error: updateOpnameError } = await supabase.from('stock_opnames').update({
+      status: 'SUBMITTED', submitted_at: new Date().toISOString(),
+    }).eq('id', opname.id).select().single();
+    if (updateOpnameError) return res.status(500).json({ error: updateOpnameError.message });
+
+    const locationNames = await getLocationNames();
+    await notifyBestEffort(() => notifications.notifyStockOpnameSubmitted(supabase, {
+      opname: updatedOpname, locationName: locationNames[opname.location_id] || opname.location_id, discrepancyCount,
+    }));
+
+    return res.json({ opname: updatedOpname });
+  });
+
+  router.patch('/stock-opname/:id/approve', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can approve a stock opname' });
+    }
+
+    const { data: opnames, error: opnameError } = await supabase.from('stock_opnames').select('*').eq('id', req.params.id);
+    if (opnameError) return res.status(500).json({ error: opnameError.message });
+    const opname = (opnames || [])[0];
+    if (!opname) return res.status(404).json({ error: 'opname not found' });
+    if (opname.status !== 'SUBMITTED') {
+      return res.status(409).json({ error: 'only a SUBMITTED opname can be approved' });
+    }
+
+    const { data: items, error: itemsError } = await supabase.from('stock_opname_items').select('*').eq('stock_opname_id', opname.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    const toAdjust = (items || []).filter((i) => i.difference !== 0);
+    const applied = [];
+    try {
+      for (const item of toAdjust) {
+        await applyInventoryMovement(supabase, {
+          productId: item.product_id, locationId: opname.location_id, quantityDelta: item.difference,
+          movementType: 'ADJUSTMENT', performedBy: access.staffId,
+          referenceType: 'stock_opname', referenceId: opname.id, reason: item.reason,
+        });
+        applied.push(item);
+      }
+    } catch (err) {
+      // Reverse adjustments already applied in this failed attempt; leave the
+      // opname SUBMITTED so it can be corrected (e.g. re-count) and retried.
+      for (const done of applied) {
+        await applyInventoryMovement(supabase, {
+          productId: done.product_id, locationId: opname.location_id, quantityDelta: -done.difference,
+          movementType: 'ADJUSTMENT', performedBy: access.staffId,
+          referenceType: 'stock_opname', referenceId: opname.id,
+          reason: 'compensating reversal: opname approval failed partway',
+        });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    const { data: updatedOpname, error: updateError } = await supabase.from('stock_opnames').update({
+      status: 'APPROVED', approved_by: access.staffId, approved_at: new Date().toISOString(),
+    }).eq('id', opname.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    await notifyBestEffort(() => notifications.notifyStockOpnameApproved(supabase, { opname: updatedOpname }));
+
+    return res.json({ opname: updatedOpname });
+  });
+
+  router.patch('/stock-opname/:id/cancel', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: opnames, error: opnameError } = await supabase.from('stock_opnames').select('*').eq('id', req.params.id);
+    if (opnameError) return res.status(500).json({ error: opnameError.message });
+    const opname = (opnames || [])[0];
+    if (!opname) return res.status(404).json({ error: 'opname not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== opname.location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+    if (opname.status !== 'DRAFT' && opname.status !== 'SUBMITTED') {
+      return res.status(409).json({ error: 'opname cannot be cancelled in its current status' });
+    }
+
+    const { data: updatedOpname, error: updateError } = await supabase.from('stock_opnames').update({ status: 'CANCELLED' }).eq('id', opname.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    return res.json({ opname: updatedOpname });
   });
 
   return router;

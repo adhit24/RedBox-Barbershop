@@ -130,3 +130,48 @@ export const cancelStockRequest = (id: string) =>
 
 export const fulfillStockRequest = (id: string) =>
   req<{ request: StockRequest; transfer: StockTransfer }>(`/api/stockist/requests/${id}/fulfill`, { method: 'POST' });
+
+export type StockOpnameStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'CANCELLED';
+
+export interface StockOpnameItem {
+  id: string;
+  product_id: string;
+  system_quantity: number;
+  physical_quantity: number | null;
+  difference: number | null;
+  reason: string | null;
+}
+
+export interface StockOpname {
+  id: string;
+  opname_number: string;
+  location_id: string;
+  status: StockOpnameStatus;
+  created_by: string;
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  location_name?: string;
+}
+
+export const createStockOpname = (input: { location_type: 'warehouse' | 'branch'; location_branch?: string }) =>
+  req<{ opname: StockOpname }>('/api/stockist/stock-opname', { method: 'POST', body: JSON.stringify(input) });
+
+export const listStockOpnames = (status?: string) =>
+  req<{ opnames: StockOpname[] }>(`/api/stockist/stock-opname${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+
+export const getStockOpname = (id: string) =>
+  req<{ opname: StockOpname; items: StockOpnameItem[] }>(`/api/stockist/stock-opname/${id}`);
+
+export const countStockOpname = (id: string, items: { item_id: string; physical_quantity: number; reason?: string }[]) =>
+  req<{ items: StockOpnameItem[] }>(`/api/stockist/stock-opname/${id}/count`, { method: 'PATCH', body: JSON.stringify({ items }) });
+
+export const submitStockOpname = (id: string) =>
+  req<{ opname: StockOpname }>(`/api/stockist/stock-opname/${id}/submit`, { method: 'PATCH' });
+
+export const approveStockOpname = (id: string) =>
+  req<{ opname: StockOpname }>(`/api/stockist/stock-opname/${id}/approve`, { method: 'PATCH' });
+
+export const cancelStockOpname = (id: string) =>
+  req<{ opname: StockOpname }>(`/api/stockist/stock-opname/${id}/cancel`, { method: 'PATCH' });
