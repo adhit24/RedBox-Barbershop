@@ -5,6 +5,15 @@ import { listProducts, createTransfer, type StockistProduct } from '@/lib/stocki
 
 const BRANCHES = ['bypass', 'sumber', 'samadikun', 'csb', 'tegal'];
 
+const BRANCH_NAMES: Record<string, string> = {
+  warehouse: 'Gudang Pusat',
+  bypass: 'Cabang Bypass',
+  sumber: 'Cabang Sumber',
+  samadikun: 'Cabang Samadikun',
+  csb: 'Cabang CSB Mall',
+  tegal: 'Cabang Tegal'
+};
+
 export default function NewTransferPage() {
   const router = useRouter();
   const [products, setProducts] = useState<StockistProduct[]>([]);
@@ -142,8 +151,8 @@ export default function NewTransferPage() {
                 >
                   <option value="">Pilih cabang tujuan...</option>
                   {BRANCHES.map((b) => (
-                    <option key={b} value={b} className="capitalize">
-                      {b}
+                    <option key={b} value={b}>
+                      {BRANCH_NAMES[b] || b}
                     </option>
                   ))}
                 </select>

@@ -4,6 +4,15 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import Link from 'next/link';
 
+const BRANCH_NAMES: Record<string, string> = {
+  warehouse: 'Gudang Pusat',
+  bypass: 'Cabang Bypass',
+  sumber: 'Cabang Sumber',
+  samadikun: 'Cabang Samadikun',
+  csb: 'Cabang CSB Mall',
+  tegal: 'Cabang Tegal'
+};
+
 export default function StockistLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
   const router = useRouter();
@@ -20,8 +29,6 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   // auth is unresolved or absent; middleware still protects server requests,
   // and the client redirect above protects in-app navigation.
   if (loading || !user) return <>{children}</>;
-
-  if (loading || !user) return null;
 
   const isOwner = user.role === 'owner';
   
@@ -65,7 +72,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
         <div className="flex items-center gap-2">
           {user.role === 'branch_admin' && (
             <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
-              {user.branch}
+              {BRANCH_NAMES[user.branch || ''] || user.branch}
             </span>
           )}
           <button 

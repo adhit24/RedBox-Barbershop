@@ -11,6 +11,15 @@ import {
   type StockTransfer
 } from '@/lib/stockistApi';
 
+const BRANCH_NAMES: Record<string, string> = {
+  warehouse: 'Gudang Pusat',
+  bypass: 'Cabang Bypass',
+  sumber: 'Cabang Sumber',
+  samadikun: 'Cabang Samadikun',
+  csb: 'Cabang CSB Mall',
+  tegal: 'Cabang Tegal'
+};
+
 export default function StockistDashboard() {
   const { user } = useUser();
   const router = useRouter();
@@ -25,7 +34,7 @@ export default function StockistDashboard() {
   // Set branch when user profile is loaded
   useEffect(() => {
     if (user) {
-      setBranch(user.role === 'owner' ? 'Gudang Pusat' : (user.branch || 'Gudang Pusat'));
+      setBranch(user.role === 'owner' ? 'warehouse' : (user.branch || 'warehouse'));
     }
   }, [user]);
 
@@ -103,7 +112,7 @@ export default function StockistDashboard() {
         <div className="flex items-center gap-3 text-text-muted text-[12px] font-medium font-body-secondary">
           <span className="flex items-center gap-1">
             <span className="material-symbols-outlined text-[14px]">storefront</span>
-            {branch}
+            {BRANCH_NAMES[branch] || branch}
           </span>
           <span className="flex items-center gap-1">
             <span className="material-symbols-outlined text-[14px]">schedule</span>
@@ -121,9 +130,12 @@ export default function StockistDashboard() {
             onChange={(e) => setBranch(e.target.value)}
             className="w-full bg-[#171415] border border-border-base rounded-lg text-text-primary px-3 py-2 text-sm focus:outline-none focus:border-primary-container"
           >
-            <option value="Gudang Pusat">Gudang Pusat (Main Warehouse)</option>
-            <option value="Sudirman">Cabang Sudirman</option>
-            <option value="Setiabudi">Cabang Setiabudi</option>
+            <option value="warehouse">Gudang Pusat (Main Warehouse)</option>
+            <option value="bypass">Cabang Bypass</option>
+            <option value="sumber">Cabang Sumber</option>
+            <option value="samadikun">Cabang Samadikun</option>
+            <option value="csb">Cabang CSB Mall</option>
+            <option value="tegal">Cabang Tegal</option>
           </select>
         </section>
       )}

@@ -35,9 +35,11 @@ export default function TransfersPage() {
 
   // Filter transfers
   const filteredTransfers = transfers.filter((t) => {
+    const sourceName = t.source_name || t.source_location_id;
+    const destName = t.destination_name || t.destination_location_id;
     const matchesSearch = t.transfer_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          t.destination_location_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          t.source_location_id.toLowerCase().includes(searchQuery.toLowerCase());
+                          destName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          sourceName.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
     
@@ -161,9 +163,9 @@ export default function TransfersPage() {
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-text-muted font-mono leading-none">NO: {t.transfer_number}</span>
                     <h4 className="font-semibold text-text-primary text-[14px] leading-tight mt-1 flex items-center gap-1.5">
-                      <span className="text-text-muted text-xs font-normal">{t.source_location_id}</span>
+                      <span className="text-text-muted text-xs font-normal">{t.source_name || t.source_location_id}</span>
                       <span className="material-symbols-outlined text-[14px] text-text-muted">arrow_forward</span>
-                      <span>{t.destination_location_id}</span>
+                      <span>{t.destination_name || t.destination_location_id}</span>
                     </h4>
                   </div>
 

@@ -4,11 +4,20 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { listProducts, getInventorySummary, type StockistProduct, type InventoryBalance } from '@/lib/stockistApi';
 
+const BRANCH_NAMES: Record<string, string> = {
+  warehouse: 'Gudang Pusat',
+  bypass: 'Cabang Bypass',
+  sumber: 'Cabang Sumber',
+  samadikun: 'Cabang Samadikun',
+  csb: 'Cabang CSB Mall',
+  tegal: 'Cabang Tegal'
+};
+
 function BranchStockContent() {
   const { user } = useUser();
   const searchParams = useSearchParams() || new URLSearchParams();
   const router = useRouter();
-  const branch = user?.role === 'owner' ? (searchParams.get('branch') || 'Sudirman') : (user?.branch || '');
+  const branch = user?.role === 'owner' ? (searchParams.get('branch') || 'bypass') : (user?.branch || '');
 
   const [products, setProducts] = useState<StockistProduct[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
@@ -95,7 +104,7 @@ function BranchStockContent() {
             {isOwner ? `Stok Cabang` : 'Stok Saya'}
           </h2>
           <p className="text-[12px] text-text-muted mt-1">
-            {isOwner ? `Lokasi: ${branch}` : `Cabang: ${branch}`}
+            {isOwner ? `Lokasi: ${BRANCH_NAMES[branch] || branch}` : `Cabang: ${BRANCH_NAMES[branch] || branch}`}
           </p>
         </div>
       </div>
@@ -109,8 +118,11 @@ function BranchStockContent() {
             onChange={(e) => router.push(`/admin/stockist/branch-stock?branch=${encodeURIComponent(e.target.value)}`)}
             className="w-full bg-[#171415] border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
           >
-            <option value="Sudirman">Sudirman</option>
-            <option value="Setiabudi">Setiabudi</option>
+            <option value="bypass">Cabang Bypass</option>
+            <option value="sumber">Cabang Sumber</option>
+            <option value="samadikun">Cabang Samadikun</option>
+            <option value="csb">Cabang CSB Mall</option>
+            <option value="tegal">Cabang Tegal</option>
           </select>
         </section>
       )}

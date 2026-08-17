@@ -168,7 +168,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
         <div className="flex justify-between items-center text-center">
           <div className="flex flex-col flex-1 items-start">
             <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Pengirim</span>
-            <span className="text-[13px] font-bold text-text-primary mt-1">{transfer.source_location_id}</span>
+            <span className="text-[13px] font-bold text-text-primary mt-1">{transfer.source_name || transfer.source_location_id}</span>
             <span className="text-[10px] text-text-muted mt-0.5 font-mono">{transfer.sent_by}</span>
           </div>
 
@@ -179,7 +179,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
 
           <div className="flex flex-col flex-1 items-end">
             <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Penerima</span>
-            <span className="text-[13px] font-bold text-text-primary mt-1">{transfer.destination_location_id}</span>
+            <span className="text-[13px] font-bold text-text-primary mt-1">{transfer.destination_name || transfer.destination_location_id}</span>
             <span className="text-[10px] text-text-muted mt-0.5 font-mono">
               {transfer.received_by || '-'}
             </span>
@@ -216,7 +216,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
               <span className={`text-[12px] font-semibold ${
                 transfer.status === 'RECEIVED' ? 'text-text-primary' : 'text-text-muted'
               }`}>
-                Diterima di {transfer.destination_location_id}
+                Diterima di {transfer.destination_name || transfer.destination_location_id}
               </span>
               {transfer.status === 'RECEIVED' && (
                 <span className="text-[10px] text-text-secondary mt-0.5">{formatDate(transfer.received_at)}</span>

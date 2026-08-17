@@ -37,6 +37,8 @@ export interface StockTransfer {
   sent_at: string;
   received_by: string | null;
   received_at: string | null;
+  source_name?: string;
+  destination_name?: string;
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {

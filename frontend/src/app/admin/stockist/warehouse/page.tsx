@@ -25,7 +25,7 @@ export default function WarehousePage() {
     try {
       const [{ products }, { balances }] = await Promise.all([
         listProducts(),
-        getInventorySummary('Gudang Pusat') // central warehouse location is 'Gudang Pusat'
+        getInventorySummary('warehouse') // central warehouse location is 'warehouse'
       ]);
       setProducts(products);
       setBalances(balances);

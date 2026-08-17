@@ -237,7 +237,28 @@ function createStockistRoutes(supabase, adminAuth) {
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
 
-    return res.json({ transfers: data || [] });
+    // Fetch location names to enrich UUIDs with human-readable branch/warehouse names
+    const { data: locations } = await supabase
+      .from('inventory_locations')
+      .select('id, type, outlet:outlets(name)');
+    const locationNames = {};
+    if (locations) {
+      for (const loc of locations) {
+        if (loc.type === 'warehouse') {
+          locationNames[loc.id] = 'Gudang Pusat';
+        } else if (loc.type === 'branch' && loc.outlet) {
+          locationNames[loc.id] = loc.outlet.name;
+        }
+      }
+    }
+
+    const enrichedTransfers = (data || []).map((t) => ({
+      ...t,
+      source_name: locationNames[t.source_location_id] || t.source_location_id,
+      destination_name: locationNames[t.destination_location_id] || t.destination_location_id,
+    }));
+
+    return res.json({ transfers: enrichedTransfers });
   });
 
   router.get('/transfers/:id', adminAuth, async (req, res) => {
@@ -259,7 +280,28 @@ function createStockistRoutes(supabase, adminAuth) {
     const { data: items, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
     if (itemsError) return res.status(500).json({ error: itemsError.message });
 
-    return res.json({ transfer, items: items || [] });
+    // Fetch location names to enrich UUIDs with human-readable branch/warehouse names
+    const { data: locations } = await supabase
+      .from('inventory_locations')
+      .select('id, type, outlet:outlets(name)');
+    const locationNames = {};
+    if (locations) {
+      for (const loc of locations) {
+        if (loc.type === 'warehouse') {
+          locationNames[loc.id] = 'Gudang Pusat';
+        } else if (loc.type === 'branch' && loc.outlet) {
+          locationNames[loc.id] = loc.outlet.name;
+        }
+      }
+    }
+
+    const enrichedTransfer = {
+      ...transfer,
+      source_name: locationNames[transfer.source_location_id] || transfer.source_location_id,
+      destination_name: locationNames[transfer.destination_location_id] || transfer.destination_location_id,
+    };
+
+    return res.json({ transfer: enrichedTransfer, items: items || [] });
   });
 
   router.patch('/transfers/:id/receive', adminAuth, async (req, res) => {
