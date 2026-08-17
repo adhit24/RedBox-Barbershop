@@ -9,6 +9,7 @@ if (typeof globalThis.WebSocket === 'undefined') {
 }
 const fs = require('fs');
 const express = require('express');
+const helmet = require('helmet');
 const cors    = require('cors');
 const path    = require('path');
 const { randomUUID } = require('crypto');
@@ -34,6 +35,8 @@ const DB_TYPE = process.env.DATABASE_TYPE || 'supabase';
 // Vercel is the only trusted reverse-proxy hop in production. Outside Vercel,
 // Express ignores client-supplied forwarding headers and uses the socket IP.
 app.set('trust proxy', process.env.VERCEL === '1' ? 1 : false);
+
+app.use(helmet());
 
 // Returns YYYY-MM-DD in local (server) timezone — avoids UTC shift near midnight
 function localDateStr(d = new Date()) {
