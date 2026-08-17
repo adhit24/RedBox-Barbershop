@@ -10,7 +10,6 @@ const NAV_ITEMS = [
   { href: '/admin/barbers',     label: 'Kapster',  Icon: Scissors },
   { href: '/admin/leaderboard', label: 'Ranking',  Icon: Trophy },
   { href: '/admin/membership',  label: 'Member',   Icon: CreditCard },
-  { href: '/admin/stockist',    label: 'Stockist', Icon: Package },
 ];
 
 export function AdminNav() {
