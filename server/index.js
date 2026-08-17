@@ -16,6 +16,7 @@ const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
 const { rateLimit } = require('./middleware/rateLimit');
+const { escapePostgrestValue } = require('./utils/postgrestEscape');
 // NOTE: Airtable dependency removed - using Supabase as primary source for barbers
 const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest, notifyCustomerReviewPointsCredited } = require('./services/waNotification');
 const { enqueueCustomerNotification, markCustomerNotificationSent, processCustomerNotificationOutbox } = require('./services/bookingNotificationOutbox');
@@ -928,7 +929,10 @@ app.get('/api/bookings', async (req, res) => {
     if (bid && bid !== 'all' && bid !== 'any') q = q.eq('barber_id', bid);
     if (status && status !== 'all') q = q.eq('status', status);
     else q = q.neq('status', 'cancelled');
-    if (search) q = q.or(`name.ilike.%${search}%,wa.ilike.%${search}%,service.ilike.%${search}%`);
+    if (search) {
+      const safeSearch = escapePostgrestValue(search);
+      q = q.or(`name.ilike.%${safeSearch}%,wa.ilike.%${safeSearch}%,service.ilike.%${safeSearch}%`);
+    }
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ data: data || [], total: data?.length || 0 });
@@ -1966,7 +1970,10 @@ app.get('/api/customers', adminAuth, async (req, res) => {
 
   if (DB_TYPE === 'supabase') {
     let q = supabase.from('customers').select('*', { count: 'exact' }).order('visits', { ascending: false }).range(Number(offset), Number(offset) + Number(limit) - 1);
-    if (search) q = q.or(`name.ilike.%${search}%,wa.ilike.%${search}%`);
+    if (search) {
+      const safeSearch = escapePostgrestValue(search);
+      q = q.or(`name.ilike.%${safeSearch}%,wa.ilike.%${safeSearch}%`);
+    }
     // Segmentasi
     if (segment === 'loyal')  q = q.gte('visits', 5);
     if (segment === 'atrisk') q = q.lt('last_visit', thirtyStr).gte('last_visit', ninetyStr);

@@ -4,6 +4,7 @@ require('../loadEnv').loadEnv();
 const { createClient } = require('@supabase/supabase-js');
 const { sendWA } = require('../../services/fonnte');
 const config = require('../config');
+const { escapePostgrestValue } = require('../utils/postgrestEscape');
 
 // sendWA wrapper: kirim dari nomor cabang ini (bukan Bypass)
 const sendFromBranch = (to, text) => sendWA(to, text, { branch: config.BRANCH_NAME.toLowerCase() });
@@ -64,7 +65,7 @@ async function _jobByBarberPhone(supabase, phone, status) {
 async function _jobByCustomerPhone(supabase, phone, status) {
   const { data: customer } = await supabase
     .from('customers').select('id, name')
-    .or(`phone.eq.${phone},phone_e164.eq.${phone},wa.eq.${phone}`)
+    .or(`phone.eq.${escapePostgrestValue(phone)},phone_e164.eq.${escapePostgrestValue(phone)},wa.eq.${escapePostgrestValue(phone)}`)
     .maybeSingle();
   if (!customer) return null;
 
