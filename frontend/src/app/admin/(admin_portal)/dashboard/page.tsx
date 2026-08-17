@@ -9,9 +9,40 @@ import {
   Users, CalendarCheck, RefreshCw,
   ChevronRight, Circle, ShoppingBag,
 } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense } from 'react';
 import { createClient } from '@/utils/supabase/client';
+
+// ─── Constants & Helpers ──────────────────────────────────────────────────────
+
+const BRANCHES = [
+  { id: 'samadikun', name: 'Samadikun' },
+  { id: 'bypass', name: 'Bypass' },
+  { id: 'csb', name: 'CSB Mall' },
+  { id: 'sumber', name: 'Sumber' },
+  { id: 'tegal', name: 'Tegal Kota' }
+];
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M12.012 2C6.48 2 2.016 6.48 2.016 12c0 1.908.54 3.732 1.548 5.34L2.004 22l4.812-1.26c1.548.84 3.3 1.284 5.184 1.284 5.532 0 9.996-4.476 9.996-10S17.544 2 12.012 2zm4.956 14.16c-.204.576-1.176 1.092-1.68 1.152-.456.06-1.02.096-2.904-.684-2.4-1-3.924-3.444-4.044-3.612-.12-.168-.972-1.296-.972-2.472 0-1.176.612-1.752.828-1.992.216-.24.48-.3.636-.3.156 0 .312 0 .444.012.132.006.312-.048.492.384.18.432.612 1.5.672 1.62.06.12.096.264.012.432-.084.168-.18.276-.3.42-.12.144-.252.324-.36.432-.12.12-.246.252-.108.492.138.24.612 1.008 1.308 1.632.9.804 1.656 1.056 1.896 1.176.24.12.384.102.528-.066.144-.168.624-.732.792-.984.168-.252.336-.216.564-.132.228.084 1.44.684 1.692.816.252.132.42.198.48.3.06.102.06.588-.144 1.164z" />
+    </svg>
+  );
+}
+
+function getWhatsAppUrl(phone: string, message: string) {
+  let clean = phone.replace(/[^0-9]/g, '');
+  if (clean.startsWith('0')) {
+    clean = '62' + clean.slice(1);
+  }
+  return `https://wa.me/${clean}?text=${encodeURIComponent(message)}`;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -45,11 +76,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function Skeleton({ className }: { className?: string }) {
   return (
-    <motion.div
-      animate={{ opacity: [0.4, 0.7, 0.4] }}
-      transition={{ duration: 1.4, repeat: Infinity }}
-      className={`bg-slate-800 rounded-lg ${className}`}
-    />
+    <div className={`animate-shimmer rounded-2xl ${className}`} />
   );
 }
 
@@ -66,16 +93,36 @@ function StatCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05, duration: 0.3, ease: 'easeOut' }}
+      whileHover={onClick ? { 
+        scale: 1.03, 
+        y: -3, 
+        borderColor: accentColor || 'rgba(255,255,255,0.2)',
+        boxShadow: accentColor ? `0 8px 24px -4px ${accentColor}18, inset 0 1px 0 rgba(255,255,255,0.05)` : undefined
+      } : undefined}
+      whileTap={onClick ? { scale: 0.98 } : undefined}
       onClick={onClick}
-      className={`bg-[#0F172A] border border-slate-800 rounded-2xl p-3 text-center relative transition-all${onClick ? ' cursor-pointer active:scale-95 select-none' : ''}`}
-      style={{ borderColor: isActive && accentColor ? accentColor : undefined }}
+      className="p-3 text-center relative rounded-2xl border transition-colors duration-250 select-none cursor-pointer"
+      style={{
+        background: isActive && accentColor
+          ? `linear-gradient(135deg, ${accentColor}0e 0%, rgba(255,255,255,0.01) 100%)`
+          : 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+        borderColor: isActive && accentColor ? accentColor : 'rgba(255,255,255,0.06)',
+        boxShadow: isActive && accentColor 
+          ? `0 0 20px -5px ${accentColor}25, inset 0 1px 0 rgba(255,255,255,0.05)`
+          : 'inset 0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.3)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }}
     >
-      <p className={`text-2xl font-bold tabular-nums ${color}`}>{value}</p>
-      <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">{label}</p>
+      <p className={`text-2xl font-bold tabular-nums tracking-tight ${color}`}>{value}</p>
+      <p className="text-[11px] text-slate-400 mt-1.5 font-medium leading-tight tracking-wide">{label}</p>
       {isActive && accentColor && (
         <span
-          className="absolute -bottom-[2px] left-1/2 -translate-x-1/2 w-5 h-[3px] rounded-full"
-          style={{ background: accentColor }}
+          className="absolute -bottom-[1px] left-1/2 -translate-x-1/2 w-6 h-[2.5px] rounded-full"
+          style={{ 
+            background: accentColor,
+            boxShadow: `0 0 8px ${accentColor}`
+          }}
         />
       )}
     </motion.div>
@@ -89,17 +136,42 @@ function BookingCard({ bk, onAction, index }: {
   onAction: (id: string, status: string) => void;
   index: number;
 }) {
+  const waMsg = bk.status === 'pending'
+    ? `Halo kak ${bk.name}, kami dari RedBox Barbershop ingin mengonfirmasi jadwal booking Anda untuk layanan ${bk.service} pada jam ${bk.time}. Apakah jadwal ini sudah sesuai?`
+    : `Halo kak ${bk.name}, kami mengonfirmasi jadwal booking Anda untuk layanan ${bk.service} pada jam ${bk.time} hari ini. Kami tunggu kedatangannya ya kak!`;
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.06, duration: 0.25, ease: 'easeOut' }}
-      className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+      whileHover={{ y: -2, borderColor: 'rgba(255,255,255,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03), 0 12px 28px rgba(0,0,0,0.4)' }}
+      className="border rounded-2xl px-4 py-3 space-y-2.5 transition-all duration-200"
+      style={{
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+        borderColor: 'rgba(255,255,255,0.06)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.3)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-semibold text-white text-sm truncate">{bk.name}</p>
-          <p className="text-xs text-slate-500 mt-0.5">{bk.time} · {bk.service}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="font-semibold text-white text-sm truncate">{bk.name}</p>
+            {bk.wa && (
+              <a
+                href={getWhatsAppUrl(bk.wa, waMsg)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500/10 hover:bg-green-500/20 text-green-400 hover:text-green-300 transition-all flex-shrink-0 cursor-pointer"
+                title="Hubungi via WhatsApp"
+              >
+                <WhatsAppIcon className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 mt-1">{bk.time} · {bk.service}</p>
         </div>
         <StatusBadge status={bk.status} />
       </div>
@@ -132,19 +204,42 @@ function HomeServiceCard({ hs, onAdvance, index, readonly }: {
   readonly?: boolean;
 }) {
   const next = HS_NEXT[hs.status];
+  const waMsg = `Halo kak ${hs.name}, kapster kami sedang bersiap menuju lokasi Anda untuk pengerjaan layanan ${hs.service}. Mohon ditunggu ya kak!`;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.07, duration: 0.28 }}
-      className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 space-y-2.5"
+      whileHover={{ y: -2, borderColor: 'rgba(255,255,255,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03), 0 12px 28px rgba(0,0,0,0.4)' }}
+      className="border rounded-2xl px-4 py-3 space-y-2.5 transition-all duration-200"
+      style={{
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+        borderColor: 'rgba(255,255,255,0.06)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.3)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Home size={14} className="text-slate-500 flex-shrink-0" />
+          <Home size={14} className="text-slate-400 flex-shrink-0" />
           <div className="min-w-0">
-            <p className="font-semibold text-white text-sm truncate">{hs.name}</p>
-            <p className="text-xs text-slate-500">{hs.time}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="font-semibold text-white text-sm truncate">{hs.name}</p>
+              {hs.wa && (
+                <a
+                  href={getWhatsAppUrl(hs.wa, waMsg)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-500/10 hover:bg-green-500/20 text-green-400 hover:text-green-300 transition-all flex-shrink-0 cursor-pointer"
+                  title="Hubungi via WhatsApp"
+                >
+                  <WhatsAppIcon className="w-3 h-3" />
+                </a>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">{hs.time} · {hs.service}</p>
           </div>
         </div>
         <StatusBadge status={hs.status} />
@@ -173,11 +268,19 @@ function MokaCard({ bill, index }: {
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.05, duration: 0.22 }}
-      className="bg-[#0F172A] border border-slate-800 rounded-2xl px-4 py-3 flex items-center justify-between gap-2"
+      whileHover={{ y: -2, borderColor: 'rgba(255,255,255,0.12)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.03), 0 12px 28px rgba(0,0,0,0.4)' }}
+      className="border rounded-2xl px-4 py-3 flex items-center justify-between gap-2 transition-all duration-200"
+      style={{
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+        borderColor: 'rgba(255,255,255,0.06)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.3)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+      }}
     >
       <div className="min-w-0">
         <p className="font-semibold text-white text-sm truncate">{bill.service_name}</p>
-        <p className="text-xs text-slate-500 mt-0.5">{bill.time} · {bill.barber_name}</p>
+        <p className="text-xs text-slate-400 mt-0.5">{bill.time} · {bill.barber_name}</p>
       </div>
       {bill.unassigned && (
         <span className="flex-shrink-0 text-[11px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full">
@@ -359,6 +462,7 @@ function StatDetailSheet({
 function CommandCenterPageInner() {
   const { user } = useUser();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const readonly = searchParams.get('readonly') === 'true';
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -367,6 +471,12 @@ function CommandCenterPageInner() {
   const [live, setLive] = useState(false);
   const loadRef = useRef<(silent?: boolean) => void>(() => {});
   const branch = searchParams.get('branch') || user?.branch || '';
+
+  const handleBranchChange = (newBranch: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('branch', newBranch);
+    router.push(`/admin/dashboard?${params.toString()}`);
+  };
 
   const load = useCallback(async (silent = false) => {
     if (!branch) { if (!silent) setLoading(false); return; }
@@ -452,6 +562,15 @@ function CommandCenterPageInner() {
     { label: 'GoShow',       value: data.stats.moka_open_bills ?? 0, color: 'text-teal-400',   type: 'goshow',        accentColor: '#2dd4bf' },
   ];
 
+  const totalBarbersOnDuty = data.barbers.filter(
+    b => b.attendance_status === 'hadir' || b.attendance_status === 'terlambat'
+  ).length;
+  const activeCuts = data.booking_feed.filter(b => b.status === 'in_progress').length;
+  const activeMokaCuts = data.moka_open_bills.filter(bill => !bill.unassigned).length;
+  const totalActiveCuts = activeCuts + activeMokaCuts;
+  const busyBarbers = Math.min(totalActiveCuts, totalBarbersOnDuty);
+  const utilizationRate = totalBarbersOnDuty > 0 ? Math.round((busyBarbers / totalBarbersOnDuty) * 100) : 0;
+
   return (
     <div className="p-4 space-y-5 pb-6">
 
@@ -461,8 +580,11 @@ function CommandCenterPageInner() {
           <div className="flex items-center gap-2">
             <h2 className="text-white font-bold text-base capitalize">{branch}</h2>
             {live && (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-green-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-green-400 tracking-wider">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
                 LIVE
               </span>
             )}
@@ -477,6 +599,32 @@ function CommandCenterPageInner() {
           <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
         </button>
       </div>
+
+      {/* Instan Branch Switcher for Owner */}
+      {user?.role === 'owner' && (
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1">
+          {BRANCHES.map((br) => {
+            const isActive = branch.toLowerCase() === br.id.toLowerCase();
+            return (
+              <button
+                key={br.id}
+                onClick={() => handleBranchChange(br.id)}
+                className="flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide border transition-all duration-200 select-none cursor-pointer"
+                style={{
+                  background: isActive 
+                    ? 'linear-gradient(135deg, rgba(199,40,32,0.15) 0%, rgba(199,40,32,0.05) 100%)' 
+                    : 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.005) 100%)',
+                  borderColor: isActive ? '#C72820' : 'rgba(255,255,255,0.07)',
+                  color: isActive ? '#FFFFFF' : '#7A6A6D',
+                  boxShadow: isActive ? '0 0 12px rgba(199,40,32,0.12)' : 'none'
+                }}
+              >
+                {br.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Alerts */}
       <AnimatePresence>
@@ -508,6 +656,63 @@ function CommandCenterPageInner() {
           />
         ))}
       </div>
+
+      {/* Barber Utilization Widget */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="border rounded-2xl p-4 space-y-3"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.015) 100%)',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02), 0 8px 32px rgba(0,0,0,0.3)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+        }}
+      >
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-1.5">
+            <Users size={14} className="text-[#C72820]" />
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Kapasitas & Produktivitas</p>
+          </div>
+          <span className="text-[10px] text-slate-500 font-mono font-bold tracking-wider uppercase bg-slate-800/40 px-2 py-0.5 rounded-full border border-slate-700/30">
+            {utilizationRate > 75 ? '🔥 Padat' : utilizationRate > 30 ? '⚡ Stabil' : '☕ Senggang'}
+          </span>
+        </div>
+        
+        <div className="space-y-1.5">
+          <div className="flex justify-between items-end">
+            <p className="text-sm font-semibold text-white">
+              {busyBarbers} dari {totalBarbersOnDuty} Kapster
+            </p>
+            <p className="text-xs font-bold text-[#E87068] font-mono">{utilizationRate}%</p>
+          </div>
+          
+          <div className="w-full h-2 rounded-full bg-[#1A1215] overflow-hidden relative border border-slate-700/20">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${utilizationRate}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+              className="h-full rounded-full"
+              style={{
+                background: utilizationRate > 75 
+                  ? 'linear-gradient(90deg, #EF4444 0%, #C72820 100%)' 
+                  : utilizationRate > 30 
+                    ? 'linear-gradient(90deg, #F59E0B 0%, #E87068 100%)' 
+                    : 'linear-gradient(90deg, #10B981 0%, #34D399 100%)',
+                boxShadow: utilizationRate > 75 ? '0 0 8px rgba(239,68,68,0.4)' : 'none'
+              }}
+            />
+          </div>
+        </div>
+        
+        <p className="text-[10px] text-slate-500 italic font-medium">
+          {busyBarbers > 0 
+            ? `${busyBarbers} kapster sedang melayani pengerjaan rambut di kursi.` 
+            : 'Seluruh kapster yang bertugas saat ini sedang stand-by.'}
+        </p>
+      </motion.div>
 
       {/* Home Service Tracker */}
       {data.home_service.length > 0 && (
@@ -555,7 +760,16 @@ function CommandCenterPageInner() {
           <Users size={13} className="text-slate-500" />
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">Kapster Hari Ini</p>
         </div>
-        <div className="bg-[#0F172A] border border-slate-800 rounded-2xl overflow-hidden">
+        <div 
+          className="border rounded-2xl overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
+            borderColor: 'rgba(255,255,255,0.06)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02), 0 8px 24px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+          }}
+        >
           {data.barbers.map((b, i) => {
             const isPresent = b.attendance_status === 'hadir' || b.attendance_status === 'terlambat';
             const isAbsent = b.attendance_status && !isPresent;
