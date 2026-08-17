@@ -36,7 +36,9 @@ const DB_TYPE = process.env.DATABASE_TYPE || 'supabase';
 // Express ignores client-supplied forwarding headers and uses the socket IP.
 app.set('trust proxy', process.env.VERCEL === '1' ? 1 : false);
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 // Returns YYYY-MM-DD in local (server) timezone — avoids UTC shift near midnight
 function localDateStr(d = new Date()) {
