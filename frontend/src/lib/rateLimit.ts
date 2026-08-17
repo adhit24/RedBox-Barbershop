@@ -1,4 +1,4 @@
-type Bucket = { count: number; start: number };
+type Bucket = { count: number; start: number; windowMs: number };
 
 const buckets = new Map<string, Bucket>();
 
@@ -12,7 +12,7 @@ export function checkRateLimit(
     'unknown';
   const key = `${name}:${ip}`;
   const now = Date.now();
-  const record = buckets.get(key) ?? { count: 0, start: now };
+  const record = buckets.get(key) ?? { count: 0, start: now, windowMs };
 
   if (now - record.start > windowMs) {
     record.count = 1;
@@ -20,6 +20,7 @@ export function checkRateLimit(
   } else {
     record.count++;
   }
+  record.windowMs = windowMs;
   buckets.set(key, record);
 
   if (record.count > max) {
@@ -27,3 +28,11 @@ export function checkRateLimit(
   }
   return { allowed: true };
 }
+
+const sweepInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of buckets.entries()) {
+    if (now - record.start > record.windowMs * 2) buckets.delete(key);
+  }
+}, 5 * 60_000);
+sweepInterval.unref?.();
