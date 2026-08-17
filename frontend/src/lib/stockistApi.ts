@@ -175,3 +175,53 @@ export const approveStockOpname = (id: string) =>
 
 export const cancelStockOpname = (id: string) =>
   req<{ opname: StockOpname }>(`/api/stockist/stock-opname/${id}/cancel`, { method: 'PATCH' });
+
+export type ReturnCategory = 'RUSAK' | 'KEDALUWARSA' | 'SALAH_KIRIM' | 'KELEBIHAN' | 'LAINNYA';
+export type StockReturnStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'SHIPPED' | 'RECEIVED' | 'CANCELLED';
+
+export interface StockReturnItem {
+  id: string;
+  product_id: string;
+  quantity: number;
+}
+
+export interface StockReturn {
+  id: string;
+  return_number: string;
+  branch_location_id: string;
+  category: ReturnCategory;
+  status: StockReturnStatus;
+  reason: string | null;
+  requested_by: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  rejection_reason: string | null;
+  shipped_at: string | null;
+  received_at: string | null;
+  created_at: string;
+  branch_name?: string;
+}
+
+export const createStockReturn = (input: { category: ReturnCategory; reason?: string; items: { product_id: string; quantity: number }[] }) =>
+  req<{ return: StockReturn }>('/api/stockist/returns', { method: 'POST', body: JSON.stringify(input) });
+
+export const listStockReturns = (status?: string) =>
+  req<{ returns: StockReturn[] }>(`/api/stockist/returns${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+
+export const getStockReturn = (id: string) =>
+  req<{ return: StockReturn; items: StockReturnItem[] }>(`/api/stockist/returns/${id}`);
+
+export const approveStockReturn = (id: string) =>
+  req<{ return: StockReturn }>(`/api/stockist/returns/${id}/approve`, { method: 'PATCH' });
+
+export const rejectStockReturn = (id: string, reason: string) =>
+  req<{ return: StockReturn }>(`/api/stockist/returns/${id}/reject`, { method: 'PATCH', body: JSON.stringify({ reason }) });
+
+export const shipStockReturn = (id: string) =>
+  req<{ return: StockReturn }>(`/api/stockist/returns/${id}/ship`, { method: 'PATCH' });
+
+export const receiveStockReturn = (id: string) =>
+  req<{ return: StockReturn }>(`/api/stockist/returns/${id}/receive`, { method: 'PATCH' });
+
+export const cancelStockReturn = (id: string) =>
+  req<{ return: StockReturn }>(`/api/stockist/returns/${id}/cancel`, { method: 'PATCH' });

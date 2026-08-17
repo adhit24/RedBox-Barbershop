@@ -80,6 +80,34 @@ async function notifyStockOpnameApproved(supabase, { opname }) {
   });
 }
 
+async function notifyStockReturnSubmitted(supabase, { stockReturn, branchName, itemCount }) {
+  const ownerIds = await findOwnerUserIds(supabase);
+  await notifyUsers(supabase, ownerIds, {
+    title: 'Retur Barang Baru',
+    body: `${branchName} mengajukan retur ${itemCount} produk.`,
+    url: `/admin/stockist/returns/${stockReturn.id}`,
+  });
+}
+
+async function notifyStockReturnReviewed(supabase, { stockReturn }) {
+  const isRejected = stockReturn.status === 'REJECTED';
+  await notifyUsers(supabase, [stockReturn.requested_by], {
+    title: isRejected ? 'Retur Ditolak' : 'Retur Disetujui',
+    body: isRejected
+      ? `Retur ${stockReturn.return_number} ditolak: ${stockReturn.rejection_reason}`
+      : `Retur ${stockReturn.return_number} disetujui, siap dikirim ke gudang.`,
+    url: `/admin/stockist/returns/${stockReturn.id}`,
+  });
+}
+
+async function notifyStockReturnReceived(supabase, { stockReturn }) {
+  await notifyUsers(supabase, [stockReturn.requested_by], {
+    title: 'Retur Diterima Gudang',
+    body: `Retur ${stockReturn.return_number} telah diterima dan diproses gudang.`,
+    url: `/admin/stockist/returns/${stockReturn.id}`,
+  });
+}
+
 // Called after any movement that can reduce a branch's balance. Decides
 // whether this particular dip deserves a fresh push, using stock_alert_state
 // as the anti-spam ledger: always notify on a NORMAL->LOW transition, and
@@ -121,4 +149,7 @@ module.exports = {
   checkAndNotifyLowStock,
   notifyStockOpnameSubmitted,
   notifyStockOpnameApproved,
+  notifyStockReturnSubmitted,
+  notifyStockReturnReviewed,
+  notifyStockReturnReceived,
 };

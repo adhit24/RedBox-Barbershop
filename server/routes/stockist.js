@@ -11,6 +11,9 @@ const {
 const {
   generateOpnameNumber, computeDifference, validateOpnameSubmission,
 } = require('../services/stockistOpname');
+const {
+  RETURN_CATEGORIES, isSellableOnReceive, generateReturnNumber, validateReturnReason,
+} = require('../services/stockistReturns');
 
 // A push notification failing (e.g. no subscription, provider outage) must
 // never fail the transaction it's attached to — every call site awaits this
@@ -1097,6 +1100,296 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     if (updateError) return res.status(500).json({ error: updateError.message });
 
     return res.json({ opname: updatedOpname });
+  });
+
+  // ─── RETURNS (branch ships defective/excess stock back to warehouse) ──
+  router.post('/returns', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'branch_admin') {
+      return res.status(403).json({ error: 'only branch_admin can submit a return' });
+    }
+
+    const { category, reason, items } = req.body || {};
+    if (!RETURN_CATEGORIES.has(category)) {
+      return res.status(400).json({ error: 'category invalid' });
+    }
+    if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.product_id || !Number.isInteger(i.quantity) || i.quantity <= 0)) {
+      return res.status(400).json({ error: 'items must be a non-empty list of { product_id, quantity > 0 }' });
+    }
+
+    const branchLocation = await findLocation('branch', access.branch);
+    if (!branchLocation) return res.status(500).json({ error: 'location not configured' });
+
+    const { data: currentBalances, error: balanceCheckError } = await supabase
+      .from('inventory_balances').select('product_id, quantity')
+      .eq('location_id', branchLocation.id).in('product_id', items.map((i) => i.product_id));
+    if (balanceCheckError) return res.status(500).json({ error: balanceCheckError.message });
+    const balanceByProduct = new Map((currentBalances || []).map((b) => [b.product_id, b.quantity]));
+    const insufficientItem = items.find((i) => (balanceByProduct.get(i.product_id) || 0) < i.quantity);
+    if (insufficientItem) {
+      return res.status(400).json({ error: `insufficient branch stock for product ${insufficientItem.product_id}` });
+    }
+
+    const { data: stockReturn, error: returnError } = await supabase.from('stock_returns').insert({
+      return_number: generateReturnNumber(access.branch),
+      branch_location_id: branchLocation.id,
+      category, reason: reason || null, status: 'SUBMITTED', requested_by: access.staffId,
+    }).select().single();
+    if (returnError) return res.status(500).json({ error: returnError.message });
+
+    const { error: itemsInsertError } = await supabase.from('stock_return_items').insert(
+      items.map((i) => ({ stock_return_id: stockReturn.id, product_id: i.product_id, quantity: i.quantity }))
+    );
+    if (itemsInsertError) return res.status(500).json({ error: itemsInsertError.message });
+
+    const locationNames = await getLocationNames();
+    await notifyBestEffort(() => notifications.notifyStockReturnSubmitted(supabase, {
+      stockReturn, branchName: locationNames[branchLocation.id] || access.branch, itemCount: items.length,
+    }));
+
+    return res.json({ return: stockReturn });
+  });
+
+  router.get('/returns', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    let query = supabase.from('stock_returns').select('*').order('created_at', { ascending: false });
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation) return res.status(500).json({ error: 'location not configured' });
+      query = query.eq('branch_location_id', branchLocation.id);
+    }
+    if (typeof req.query.status === 'string' && req.query.status) {
+      query = query.eq('status', req.query.status);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const locationNames = await getLocationNames();
+    const enrichedReturns = (data || []).map((r) => ({ ...r, branch_name: locationNames[r.branch_location_id] || r.branch_location_id }));
+
+    return res.json({ returns: enrichedReturns });
+  });
+
+  router.get('/returns/:id', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: returns, error: returnError } = await supabase.from('stock_returns').select('*').eq('id', req.params.id);
+    if (returnError) return res.status(500).json({ error: returnError.message });
+    const stockReturn = (returns || [])[0];
+    if (!stockReturn) return res.status(404).json({ error: 'return not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== stockReturn.branch_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+
+    const { data: items, error: itemsError } = await supabase.from('stock_return_items').select('*').eq('stock_return_id', stockReturn.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    const locationNames = await getLocationNames();
+    const enrichedReturn = { ...stockReturn, branch_name: locationNames[stockReturn.branch_location_id] || stockReturn.branch_location_id };
+
+    return res.json({ return: enrichedReturn, items: items || [] });
+  });
+
+  router.patch('/returns/:id/approve', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can approve a return' });
+    }
+
+    const { data: returns, error: returnError } = await supabase.from('stock_returns').select('*').eq('id', req.params.id);
+    if (returnError) return res.status(500).json({ error: returnError.message });
+    const stockReturn = (returns || [])[0];
+    if (!stockReturn) return res.status(404).json({ error: 'return not found' });
+    if (stockReturn.status !== 'SUBMITTED') {
+      return res.status(409).json({ error: 'only a SUBMITTED return can be approved' });
+    }
+
+    const { data: updatedReturn, error: updateError } = await supabase.from('stock_returns').update({
+      status: 'APPROVED', reviewed_by: access.staffId, reviewed_at: new Date().toISOString(),
+    }).eq('id', stockReturn.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    await notifyBestEffort(() => notifications.notifyStockReturnReviewed(supabase, { stockReturn: updatedReturn }));
+
+    return res.json({ return: updatedReturn });
+  });
+
+  router.patch('/returns/:id/reject', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can reject a return' });
+    }
+
+    const { reason } = req.body || {};
+    try {
+      validateReturnReason(reason);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const { data: returns, error: returnError } = await supabase.from('stock_returns').select('*').eq('id', req.params.id);
+    if (returnError) return res.status(500).json({ error: returnError.message });
+    const stockReturn = (returns || [])[0];
+    if (!stockReturn) return res.status(404).json({ error: 'return not found' });
+    if (stockReturn.status !== 'SUBMITTED') {
+      return res.status(409).json({ error: 'only a SUBMITTED return can be rejected' });
+    }
+
+    const { data: updatedReturn, error: updateError } = await supabase.from('stock_returns').update({
+      status: 'REJECTED', reviewed_by: access.staffId, reviewed_at: new Date().toISOString(), rejection_reason: reason,
+    }).eq('id', stockReturn.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    await notifyBestEffort(() => notifications.notifyStockReturnReviewed(supabase, { stockReturn: updatedReturn }));
+
+    return res.json({ return: updatedReturn });
+  });
+
+  router.patch('/returns/:id/ship', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: returns, error: returnError } = await supabase.from('stock_returns').select('*').eq('id', req.params.id);
+    if (returnError) return res.status(500).json({ error: returnError.message });
+    const stockReturn = (returns || [])[0];
+    if (!stockReturn) return res.status(404).json({ error: 'return not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== stockReturn.branch_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+    if (stockReturn.status !== 'APPROVED') {
+      return res.status(409).json({ error: 'only an APPROVED return can be shipped' });
+    }
+
+    const { data: items, error: itemsError } = await supabase.from('stock_return_items').select('*').eq('stock_return_id', stockReturn.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+    const applied = [];
+    try {
+      for (const item of items || []) {
+        await applyInventoryMovement(supabase, {
+          productId: item.product_id, locationId: stockReturn.branch_location_id, quantityDelta: -item.quantity,
+          movementType: 'RETURN_TO_CENTER', performedBy: access.staffId,
+          referenceType: 'stock_return', referenceId: stockReturn.id,
+        });
+        applied.push(item);
+      }
+    } catch (err) {
+      // Reverse decrements already applied in this failed attempt.
+      for (const done of applied) {
+        await applyInventoryMovement(supabase, {
+          productId: done.product_id, locationId: stockReturn.branch_location_id, quantityDelta: done.quantity,
+          movementType: 'RETURN_TO_CENTER', performedBy: access.staffId,
+          referenceType: 'stock_return', referenceId: stockReturn.id,
+          reason: 'compensating reversal: ship failed partway',
+        });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    const { data: updatedReturn, error: updateError } = await supabase.from('stock_returns').update({
+      status: 'SHIPPED', shipped_by: access.staffId, shipped_at: new Date().toISOString(),
+    }).eq('id', stockReturn.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    return res.json({ return: updatedReturn });
+  });
+
+  router.patch('/returns/:id/receive', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can receive a return at the warehouse' });
+    }
+
+    const { data: returns, error: returnError } = await supabase.from('stock_returns').select('*').eq('id', req.params.id);
+    if (returnError) return res.status(500).json({ error: returnError.message });
+    const stockReturn = (returns || [])[0];
+    if (!stockReturn) return res.status(404).json({ error: 'return not found' });
+    if (stockReturn.status !== 'SHIPPED') {
+      return res.status(409).json({ error: 'only a SHIPPED return can be received' });
+    }
+
+    const warehouse = await findLocation('warehouse', null);
+    if (!warehouse) return res.status(500).json({ error: 'warehouse location not configured' });
+
+    if (isSellableOnReceive(stockReturn.category)) {
+      const { data: items, error: itemsError } = await supabase.from('stock_return_items').select('*').eq('stock_return_id', stockReturn.id);
+      if (itemsError) return res.status(500).json({ error: itemsError.message });
+
+      const applied = [];
+      try {
+        for (const item of items || []) {
+          await applyInventoryMovement(supabase, {
+            productId: item.product_id, locationId: warehouse.id, quantityDelta: item.quantity,
+            movementType: 'WAREHOUSE_RECEIVE', performedBy: access.staffId,
+            referenceType: 'stock_return', referenceId: stockReturn.id,
+          });
+          applied.push(item);
+        }
+      } catch (err) {
+        for (const done of applied) {
+          await applyInventoryMovement(supabase, {
+            productId: done.product_id, locationId: warehouse.id, quantityDelta: -done.quantity,
+            movementType: 'WAREHOUSE_RECEIVE', performedBy: access.staffId,
+            referenceType: 'stock_return', referenceId: stockReturn.id,
+            reason: 'compensating reversal: receive failed partway',
+          });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+    }
+    // Damaged/expired categories skip the warehouse increment entirely —
+    // the goods left the branch at /ship, and never re-enter sellable stock.
+
+    const { data: updatedReturn, error: updateError } = await supabase.from('stock_returns').update({
+      status: 'RECEIVED', received_by: access.staffId, received_at: new Date().toISOString(),
+    }).eq('id', stockReturn.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    await notifyBestEffort(() => notifications.notifyStockReturnReceived(supabase, { stockReturn: updatedReturn }));
+
+    return res.json({ return: updatedReturn });
+  });
+
+  router.patch('/returns/:id/cancel', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: returns, error: returnError } = await supabase.from('stock_returns').select('*').eq('id', req.params.id);
+    if (returnError) return res.status(500).json({ error: returnError.message });
+    const stockReturn = (returns || [])[0];
+    if (!stockReturn) return res.status(404).json({ error: 'return not found' });
+
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation || branchLocation.id !== stockReturn.branch_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+      if (stockReturn.status !== 'SUBMITTED') {
+        return res.status(409).json({ error: 'branch_admin can only cancel a return before it has been reviewed' });
+      }
+    } else if (!['SUBMITTED', 'APPROVED'].includes(stockReturn.status)) {
+      return res.status(409).json({ error: 'return cannot be cancelled in its current status' });
+    }
+
+    const { data: updatedReturn, error: updateError } = await supabase.from('stock_returns').update({ status: 'CANCELLED' }).eq('id', stockReturn.id).select().single();
+    if (updateError) return res.status(500).json({ error: updateError.message });
+
+    return res.json({ return: updatedReturn });
   });
 
   return router;

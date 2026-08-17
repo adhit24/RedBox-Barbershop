@@ -297,13 +297,22 @@ export default function StockistDashboard() {
                 )}
               </div>
 
-              <Link
-                href="/admin/stockist/stock-opname"
-                className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
-              >
-                <span className="material-symbols-outlined text-[18px]">checklist</span>
-                Stock Opname
-              </Link>
+              <div className="grid grid-cols-2 gap-2">
+                <Link
+                  href="/admin/stockist/stock-opname"
+                  className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">checklist</span>
+                  Stock Opname
+                </Link>
+                <Link
+                  href="/admin/stockist/returns"
+                  className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[18px]">keyboard_return</span>
+                  Retur Barang
+                </Link>
+              </div>
             </div>
           </section>
         </>
