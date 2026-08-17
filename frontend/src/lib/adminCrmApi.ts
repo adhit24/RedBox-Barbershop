@@ -59,7 +59,7 @@ export function fetchAdminLeaderboard(branch: string, category: 'customer' | 'st
 }
 
 export function syncAdminLeaderboard(branch: string) {
-  return crmFetch<{ ok: boolean; branch: string; syncedAt: string }>(
+  return crmFetch<{ ok: boolean; branch: string; scope: 'current_month'; syncedAt: string }>(
     '/api/admin/crm/leaderboard/sync',
     {
       method: 'POST',

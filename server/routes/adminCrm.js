@@ -719,12 +719,18 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       if (outletError) return res.status(500).json({ error: outletError.message });
       if (!outlet) return res.status(404).json({ error: `Moka outlet tidak ditemukan untuk cabang ${branch}` });
 
-      const synced = await syncCurrentMonthTx(supabase, outlet, {
-        // Ranking needs near-live data, while preserving the current month's history.
-        sinceEpoch: Math.floor(Date.now() / 1000) - (48 * 60 * 60),
-      });
+      // The admin refresh is the explicit reconciliation action. Pull the full
+      // current month so the dashboard can backfill transactions that were not
+      // present during an earlier near-live sync.
+      const synced = await syncCurrentMonthTx(supabase, outlet);
 
-      return res.json({ ok: true, branch, syncedAt: new Date().toISOString(), synced });
+      return res.json({
+        ok: true,
+        branch,
+        scope: 'current_month',
+        syncedAt: new Date().toISOString(),
+        synced,
+      });
     } catch (error) {
       console.error('[LeaderboardSync] Error:', error.message);
       return res.status(502).json({ error: `Sinkronisasi Moka gagal: ${error.message}` });
