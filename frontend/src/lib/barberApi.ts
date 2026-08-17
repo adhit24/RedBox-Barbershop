@@ -113,6 +113,13 @@ export function fetchBarberLeaderboard() {
   return jsonFetch<LeaderboardData>('/api/barber/leaderboard');
 }
 
+export function refreshBarberLeaderboard() {
+  return jsonFetch<{ ok: true; branch: string; scope: 'current_month'; syncedAt: string }>(
+    '/api/barber/leaderboard',
+    { method: 'POST' },
+  );
+}
+
 export function fetchBarberFavorites() {
   return jsonFetch<{ favorites: Array<{ name: string; visits: number; service: string }> }>('/api/barber/favorites');
 }

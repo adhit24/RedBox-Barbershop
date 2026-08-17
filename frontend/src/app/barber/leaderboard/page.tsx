@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Crown, Flame, RefreshCw, Sparkles, Trophy, Users, Zap } from 'lucide-react';
 import { useBarberSession } from '@/hooks/useBarberSession';
-import { fetchBarberLeaderboard, fetchLeaderboardCategory } from '@/lib/barberApi';
+import { fetchBarberLeaderboard, fetchLeaderboardCategory, refreshBarberLeaderboard } from '@/lib/barberApi';
 import { TierIndicator } from '@/components/barber/TierIndicator';
 import { LeaderboardCard } from '@/components/ui/leaderboard-card';
 import { ProgressiveFluxLoader } from '@/components/ui/progressive-flux-loader';
@@ -32,7 +32,7 @@ export default function LeaderboardPage() {
   const [loadError, setLoadError] = useState('');
   const requestRef = useRef(0);
 
-  const loadLeaderboard = useCallback(async () => {
+  const loadLeaderboard = useCallback(async (syncMoka = false) => {
     if (!session) return;
     const requestId = requestRef.current + 1;
     requestRef.current = requestId;
@@ -42,6 +42,10 @@ export default function LeaderboardPage() {
     setProgress(12);
 
     try {
+      if (syncMoka) {
+        setProgress(30);
+        await refreshBarberLeaderboard();
+      }
       const liveData = await fetchBarberLeaderboard();
       if (!isCurrentRequest()) return;
       setData(liveData);
@@ -133,7 +137,7 @@ export default function LeaderboardPage() {
           </div>
           <button
             type="button"
-            onClick={() => { void loadLeaderboard(); }}
+            onClick={() => { void loadLeaderboard(true); }}
             disabled={loading}
             aria-label="Refresh leaderboard"
             title="Refresh leaderboard"

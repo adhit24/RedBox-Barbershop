@@ -2,6 +2,7 @@
 const express = require('express');
 const { sendBarberOTP, verifyBarberOTP, destroyBarberSession } = require('../services/barberOTP');
 const { createBarberAuth } = require('../services/barberAuth');
+const { syncCurrentMonthTx } = require('../moka/txSync');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -345,6 +346,39 @@ function createBarberRoutes(supabase) {
   });
 
   // ─── LEADERBOARD ─────────────────────────────────────
+  // A refresh from the barber app is an explicit Moka reconciliation action,
+  // scoped to the barber's own outlet. A plain GET must stay fast and read-only
+  // because it is also used during the initial page load.
+  router.post('/leaderboard/refresh', barberAuth, async (req, res) => {
+    const branch = String(req.barber?.branch || '').trim().toLowerCase();
+    if (!branch) return res.status(400).json({ error: 'Cabang kapster tidak ditemukan' });
+
+    try {
+      const { data: outlet, error: outletError } = await supabase
+        .from('outlets')
+        .select('id, slug, moka_outlet_id')
+        .eq('is_active', true)
+        .eq('slug', branch)
+        .not('moka_outlet_id', 'is', null)
+        .maybeSingle();
+
+      if (outletError) return res.status(500).json({ error: outletError.message });
+      if (!outlet) return res.status(404).json({ error: `Moka outlet tidak ditemukan untuk cabang ${branch}` });
+
+      const synced = await syncCurrentMonthTx(supabase, outlet);
+      return res.json({
+        ok: true,
+        branch,
+        scope: 'current_month',
+        syncedAt: new Date().toISOString(),
+        synced,
+      });
+    } catch (error) {
+      console.error('[BarberLeaderboardRefresh] Error:', error.message);
+      return res.status(502).json({ error: `Sinkronisasi Moka gagal: ${error.message}` });
+    }
+  });
+
   router.get('/leaderboard', barberAuth, async (req, res) => {
     const now = new Date();
     const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
