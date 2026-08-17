@@ -1,33 +1,24 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { fetchAdminLeaderboard } from '@/lib/adminCrmApi';
 import type { LeaderboardItem } from '@/lib/adminCrmTypes';
-import { motion, AnimatePresence } from 'framer-motion';
+import { LeaderboardCard } from '@/components/ui/leaderboard-card';
 import { Trophy, Users, Flame, Home } from 'lucide-react';
 
 type Category = 'customer' | 'streak' | 'home_service';
 
-const CATS: { key: Category; label: string; Icon: React.ElementType }[] = [
-  { key: 'customer',     label: 'Customer',    Icon: Users },
-  { key: 'streak',       label: 'Streak',      Icon: Flame },
-  { key: 'home_service', label: 'Home Svc',    Icon: Home },
+const CATS = [
+  { key: 'customer',     label: 'Customer Count', Icon: Users },
+  { key: 'streak',       label: 'Attendance Streak', Icon: Flame },
+  { key: 'home_service', label: 'Home Service Bookings', Icon: Home },
 ];
-
-const RANK_STYLE: Record<number, { bg: string; text: string; label: string }> = {
-  1: { bg: 'bg-amber-500/15 border-amber-500/30',  text: 'text-amber-400',  label: '#1' },
-  2: { bg: 'bg-slate-500/15 border-slate-500/30',  text: 'text-slate-300',  label: '#2' },
-  3: { bg: 'bg-orange-500/10 border-orange-500/25',text: 'text-orange-400', label: '#3' },
-};
 
 function Skeleton({ className }: { className?: string }) {
   return (
-    <motion.div
-      animate={{ opacity: [0.4, 0.7, 0.4] }}
-      transition={{ duration: 1.4, repeat: Infinity }}
-      className={`bg-slate-800 rounded-lg ${className}`}
-    />
+    <div className={`animate-shimmer rounded-2xl ${className}`} />
   );
 }
 
@@ -48,82 +39,130 @@ export default function AdminLeaderboardPage() {
       .finally(() => setLoading(false));
   }, [branch, category]);
 
+  const runOptions = CATS.map(c => ({
+    id: c.key,
+    label: c.label
+  }));
+
+  const podiumRankings = items
+    .filter(item => item.rank <= 3)
+    .map(item => ({
+      userId: item.id,
+      userName: item.name,
+      rank: item.rank,
+      value: item.score
+    }));
+
+  const rankings = items.map(item => ({
+    userId: item.id,
+    rank: item.rank,
+    userName: item.name,
+    byline: item.branch ? `Cabang ${item.branch}` : undefined,
+    value: item.score,
+    displayed: true
+  }));
+
+  const today = new Date();
+  // Get date range (current week or current day)
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Monday
+
+  if (loading) {
+    return (
+      <div className="p-4 space-y-5 pb-6">
+        {/* Header Skeleton */}
+        <div className="flex items-center gap-2">
+          <Trophy size={16} className="text-slate-600 animate-pulse" />
+          <Skeleton className="h-5 w-40" />
+        </div>
+
+        {/* Card Wrapper Skeleton */}
+        <div 
+          className="border rounded-2xl p-5 space-y-6"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0.01) 100%)',
+            borderColor: 'rgba(255,255,255,0.05)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          }}
+        >
+          {/* Header section skeleton */}
+          <div className="flex justify-between items-start gap-4">
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+            <Skeleton className="h-8 w-32" />
+          </div>
+
+          {/* Podium section skeleton */}
+          <div className="flex items-end justify-center gap-4 h-40 pt-4">
+            <Skeleton className="h-28 w-20" />
+            <Skeleton className="h-36 w-20" />
+            <Skeleton className="h-20 w-20" />
+          </div>
+
+          {/* List items skeleton */}
+          <div className="space-y-2.5 pt-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 space-y-4 pb-6">
-
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Trophy size={16} className="text-slate-500" />
-        <h2 className="text-white font-bold text-base">Leaderboard Cabang</h2>
+        <Trophy size={16} className="text-[#C72820]" />
+        <h2 className="text-white font-bold text-base">Ranking & Kinerja</h2>
       </div>
 
-      {/* Category Tabs */}
-      <div className="flex gap-2 bg-slate-900 p-1 rounded-2xl">
-        {CATS.map(({ key, label, Icon }) => (
-          <button key={key} onClick={() => setCategory(key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              category === key
-                ? 'bg-slate-700 text-white shadow-sm'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}>
-            <Icon size={12} />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={category}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0 }}
-          className="space-y-2"
+      {items.length === 0 ? (
+        <div 
+          className="border rounded-2xl py-16 text-center space-y-3"
+          style={{
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.015) 100%)',
+            borderColor: 'rgba(255,255,255,0.06)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(16px)',
+          }}
         >
-          {loading ? (
-            Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14" />)
-          ) : items.length === 0 ? (
-            <div className="text-center py-12 space-y-2">
-              <Trophy size={28} className="mx-auto text-slate-600" />
-              <p className="text-slate-500 text-sm">Belum ada data</p>
-            </div>
-          ) : (
-            items.map((item, i) => {
-              const rs = RANK_STYLE[item.rank];
-              return (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.06, duration: 0.25 }}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-2xl border ${
-                    rs ? `${rs.bg}` : 'bg-[#0F172A] border-slate-800'
-                  }`}
-                >
-                  {/* Rank */}
-                  <div className="w-8 flex-shrink-0 text-center">
-                    {rs ? (
-                      <span className={`text-sm font-bold ${rs.text}`}>{rs.label}</span>
-                    ) : (
-                      <span className="text-xs text-slate-500">#{item.rank}</span>
-                    )}
-                  </div>
-
-                  {/* Name */}
-                  <p className={`flex-1 font-semibold text-sm ${rs ? rs.text : 'text-slate-200'}`}>
-                    {item.name}
-                  </p>
-
-                  {/* Score */}
-                  <span className={`text-sm font-bold tabular-nums ${rs ? rs.text : 'text-slate-400'}`}>
-                    {item.display}
-                  </span>
-                </motion.div>
-              );
-            })
-          )}
-        </motion.div>
-      </AnimatePresence>
+          <Trophy size={36} className="mx-auto text-slate-600" />
+          <div className="space-y-1">
+            <p className="text-slate-300 font-semibold text-sm">Belum Ada Data Kinerja</p>
+            <p className="text-slate-500 text-xs">Pilih kategori lain atau tunggu update sinkronisasi kasir.</p>
+          </div>
+          <div className="flex justify-center pt-2">
+            <select
+              aria-label="Select leaderboard category"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as Category)}
+              className="bg-[#1A1215] text-white rounded-xl border border-white/[0.08] px-3 py-1.5 text-xs font-semibold cursor-pointer outline-none"
+            >
+              {runOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : (
+        <LeaderboardCard
+          title="Leaderboard Cabang"
+          fromDate={startOfWeek}
+          toDate={today}
+          podiumRankings={podiumRankings}
+          rankings={rankings}
+          currentUserId={user?.id}
+          runOptions={runOptions}
+          selectedRunId={category}
+          onRunChange={(val) => setCategory(val as Category)}
+        />
+      )}
     </div>
   );
 }
