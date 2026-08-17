@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Award, Crown, Flame, RefreshCw, Sparkles, Trophy, Users, Zap } from 'lucide-react';
 import { useBarberSession } from '@/hooks/useBarberSession';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { fetchBarberLeaderboard, fetchLeaderboardCategory, refreshBarberLeaderboard } from '@/lib/barberApi';
 import { TierIndicator } from '@/components/barber/TierIndicator';
 import { LeaderboardCard } from '@/components/ui/leaderboard-card';
@@ -71,6 +72,11 @@ export default function LeaderboardPage() {
     }
   }, [category, session]);
 
+  const pullRefresh = usePullToRefresh({
+    enabled: Boolean(session) && !loading,
+    onRefresh: () => loadLeaderboard(true),
+  });
+
   useEffect(() => {
     const timer = window.setTimeout(() => { void loadLeaderboard(); }, 0);
     return () => window.clearTimeout(timer);
@@ -122,6 +128,18 @@ export default function LeaderboardPage() {
 
   return (
     <div className="relative min-h-[calc(100vh-70px)] overflow-hidden px-4 pb-24 pt-5 text-white sm:px-6">
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed left-1/2 z-50 flex -translate-x-1/2 items-center overflow-hidden rounded-full border border-white/[0.10] bg-[#171114]/95 px-3 text-[10px] font-bold text-slate-300 shadow-xl backdrop-blur transition-all"
+        style={{
+          top: `${Math.max(8, pullRefresh.distance - 28)}px`,
+          height: `${Math.min(pullRefresh.distance, 42)}px`,
+          opacity: pullRefresh.distance > 4 ? 1 : 0,
+        }}
+      >
+        <RefreshCw size={14} className={`${pullRefresh.ready ? 'text-[#F4C58B]' : 'text-slate-400'} ${pullRefresh.ready ? 'rotate-180' : ''} transition-transform`} />
+        <span className="ml-2">{pullRefresh.ready ? 'Lepaskan untuk refresh' : 'Tarik untuk refresh'}</span>
+      </div>
       <div className="pointer-events-none absolute -right-28 -top-24 h-72 w-72 rounded-full bg-[#C72820]/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-24 -left-28 h-72 w-72 rounded-full bg-orange-500/[0.06] blur-3xl" />
 
