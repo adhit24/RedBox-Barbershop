@@ -9,6 +9,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
 // transparently rewritten so the browser never shows the /admin/stockist
 // prefix — the app behaves like it has its own root.
 const STOCKIST_HOST = 'stockist.redboxbarbershop.com';
+const ADMIN_HOST = 'admin.redboxbarbershop.com';
 
 async function getAuthenticatedUser(request: NextRequest): Promise<{ id: string } | null> {
   if (!supabaseUrl || !supabaseKey) return null;
@@ -147,11 +148,16 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!user) {
-    if (pathname === '/') return response;
+    if (pathname === '/') {
+      if (requestHost === ADMIN_HOST) {
+        return NextResponse.redirect(new URL('/portal', request.url));
+      }
+      return response;
+    }
     if (pathname.startsWith('/admin/stockist')) {
       return NextResponse.redirect(new URL('/admin/stockist/login', request.url));
     }
-    return NextResponse.redirect(new URL('/', request.url));
+    return NextResponse.redirect(new URL('/portal', request.url));
   }
 
   // Authenticated user at '/' or '/portal' → redirect to dashboard.
