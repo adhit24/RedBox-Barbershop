@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import Link from 'next/link';
-import { 
-  listProducts, 
-  getInventorySummary, 
-  listTransfers, 
+import {
+  listProducts,
+  getInventorySummary,
+  listTransfers,
+  getDashboardOverview,
   type InventoryBalance,
-  type StockTransfer
+  type StockTransfer,
+  type DashboardOverview
 } from '@/lib/stockistApi';
 
 const BRANCH_NAMES: Record<string, string> = {
@@ -30,6 +32,8 @@ export default function StockistDashboard() {
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
 
   // Set branch when user profile is loaded
   useEffect(() => {
@@ -37,6 +41,18 @@ export default function StockistDashboard() {
       setBranch(user.role === 'owner' ? 'warehouse' : (user.branch || 'warehouse'));
     }
   }, [user]);
+
+  // Company-wide overview is an owner-only endpoint — every location
+  // (including the warehouse, even though it shares a physical address with
+  // Cabang Bypass) comes back as its own row and must be rendered that way.
+  useEffect(() => {
+    if (user?.role !== 'owner') return;
+    setOverviewLoading(true);
+    getDashboardOverview()
+      .then(setOverview)
+      .catch(() => setOverview(null))
+      .finally(() => setOverviewLoading(false));
+  }, [user?.role]);
 
   useEffect(() => {
     if (!branch) return;
@@ -120,6 +136,94 @@ export default function StockistDashboard() {
           </span>
         </div>
       </section>
+
+      {/* Company-wide Overview — owner only. Every location (warehouse
+          included) is its own card; never combine warehouse and Cabang
+          Bypass into a single figure here. */}
+      {isOwner && !overviewLoading && overview && (
+        <section className="flex flex-col gap-3">
+          <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Ringkasan Perusahaan</h3>
+
+          <div className="flex flex-col gap-2">
+            {overview.locations.map((loc) => (
+              <div key={loc.location_id} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-text-muted text-[18px]">
+                    {loc.type === 'warehouse' ? 'warehouse' : 'storefront'}
+                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-[13px] font-semibold text-text-primary">{loc.location_name}</span>
+                    <span className="text-[10px] text-text-muted">{loc.sku_count} SKU aktif</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-end">
+                    <span className="text-[15px] font-bold text-text-primary font-display tabular-nums leading-none">{loc.total_quantity.toLocaleString('id-ID')}</span>
+                    <span className="text-[9px] text-text-muted uppercase tracking-wide mt-0.5">Total Pcs</span>
+                  </div>
+                  {loc.low_stock_count > 0 && (
+                    <span className="text-[10px] font-semibold text-status-menipis bg-status-menipis/10 border border-status-menipis/30 px-2 py-1 rounded">
+                      {loc.low_stock_count} menipis
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Link
+              href="/admin/stockist/requests?status=NEEDS_ACTION"
+              className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col justify-between min-h-[80px] hover:border-primary-container transition-colors"
+            >
+              <span className="text-text-muted text-[11px] font-medium">Permintaan Tertunda</span>
+              <span className="text-[22px] font-bold text-text-primary font-display tabular-nums">{overview.pending_requests_count}</span>
+            </Link>
+            <div className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col justify-between min-h-[80px]">
+              <span className="text-text-muted text-[11px] font-medium">Pengiriman Bermasalah</span>
+              <span className="text-[22px] font-bold text-danger font-display tabular-nums">{overview.problem_shipments.length}</span>
+            </div>
+          </div>
+
+          {overview.problem_shipments.length > 0 && (
+            <div className="bg-surface-elevated border border-danger/30 rounded-xl p-3 flex flex-col gap-2">
+              <span className="text-[11px] font-semibold text-danger uppercase tracking-wide">Selisih Penerimaan Transfer</span>
+              {overview.problem_shipments.slice(0, 3).map((s) => (
+                <Link key={s.id} href={`/admin/stockist/transfers/${s.id}`} className="flex justify-between items-center text-[12px] text-text-secondary hover:text-text-primary">
+                  <span className="font-mono">{s.transfer_number}</span>
+                  <span>{s.source_name} → {s.destination_name}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {overview.top_discrepancies.length > 0 && (
+            <div className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col gap-2">
+              <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">Selisih Stock Opname Terbesar</span>
+              {overview.top_discrepancies.map((d) => (
+                <div key={`${d.stock_opname_id}-${d.product_name}`} className="flex justify-between items-center text-[12px]">
+                  <span className="text-text-secondary">{d.product_name} — {d.location_name}</span>
+                  <span className={`font-bold tabular-nums ${d.difference < 0 ? 'text-danger' : 'text-success'}`}>
+                    {d.difference > 0 ? `+${d.difference}` : d.difference}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {overview.top_requested_products.length > 0 && (
+            <div className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col gap-2">
+              <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">Produk Paling Sering Diminta</span>
+              {overview.top_requested_products.map((p) => (
+                <div key={p.product_id} className="flex justify-between items-center text-[12px]">
+                  <span className="text-text-secondary">{p.product_name}</span>
+                  <span className="font-bold text-text-primary tabular-nums">{p.total_requested}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Owner Branch Selector */}
       {isOwner && (

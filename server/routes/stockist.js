@@ -14,6 +14,9 @@ const {
 const {
   RETURN_CATEGORIES, isSellableOnReceive, generateReturnNumber, validateReturnReason,
 } = require('../services/stockistReturns');
+const {
+  summarizeLocations, findProblemShipments, topOpnameDiscrepancies, topRequestedProducts,
+} = require('../services/stockistDashboard');
 
 // A push notification failing (e.g. no subscription, provider outage) must
 // never fail the transaction it's attached to — every call site awaits this
@@ -1390,6 +1393,87 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     if (updateError) return res.status(500).json({ error: updateError.message });
 
     return res.json({ return: updatedReturn });
+  });
+
+  // ─── OWNER DASHBOARD OVERVIEW ──────────────────────────────────
+  // Every location — including the warehouse, which is physically
+  // co-located with Cabang Bypass — is summarized as its own row. Never
+  // collapse warehouse and Cabang Bypass into one combined number here.
+  router.get('/dashboard/overview', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can view the dashboard overview' });
+    }
+
+    const { data: locations, error: locationsError } = await supabase.from('inventory_locations').select('*');
+    if (locationsError) return res.status(500).json({ error: locationsError.message });
+
+    const { data: balances, error: balancesError } = await supabase.from('inventory_balances').select('*');
+    if (balancesError) return res.status(500).json({ error: balancesError.message });
+
+    const { data: products, error: productsError } = await supabase.from('products').select('*');
+    if (productsError) return res.status(500).json({ error: productsError.message });
+    const productById = new Map((products || []).map((p) => [p.id, p]));
+
+    const locationNames = await getLocationNames();
+    const locationSummaries = summarizeLocations(locations || [], balances || [], products || [])
+      .map((s) => ({ ...s, location_name: locationNames[s.location_id] || s.location_id }));
+
+    const { data: submittedRequests, error: requestsError } = await supabase.from('stock_requests').select('id').eq('status', 'SUBMITTED');
+    if (requestsError) return res.status(500).json({ error: requestsError.message });
+
+    // NOTE: fetches every RECEIVED transfer and every transfer item to spot
+    // discrepancies — fine at current data volume, but a future reports
+    // module should add date-range filtering before this table grows large.
+    const { data: receivedTransfers, error: transfersError } = await supabase.from('stock_transfers').select('*').eq('status', 'RECEIVED');
+    if (transfersError) return res.status(500).json({ error: transfersError.message });
+    const { data: transferItems, error: transferItemsError } = await supabase.from('stock_transfer_items').select('*');
+    if (transferItemsError) return res.status(500).json({ error: transferItemsError.message });
+    const itemsByTransferId = new Map();
+    for (const item of transferItems || []) {
+      if (!itemsByTransferId.has(item.stock_transfer_id)) itemsByTransferId.set(item.stock_transfer_id, []);
+      itemsByTransferId.get(item.stock_transfer_id).push(item);
+    }
+    const problemShipments = findProblemShipments(receivedTransfers || [], itemsByTransferId).map((t) => ({
+      id: t.id,
+      transfer_number: t.transfer_number,
+      source_name: locationNames[t.source_location_id] || t.source_location_id,
+      destination_name: locationNames[t.destination_location_id] || t.destination_location_id,
+      received_at: t.received_at,
+    }));
+
+    const { data: approvedOpnames, error: opnamesError } = await supabase.from('stock_opnames').select('*').eq('status', 'APPROVED');
+    if (opnamesError) return res.status(500).json({ error: opnamesError.message });
+    const { data: opnameItems, error: opnameItemsError } = await supabase.from('stock_opname_items').select('*');
+    if (opnameItemsError) return res.status(500).json({ error: opnameItemsError.message });
+    const opnameById = new Map((approvedOpnames || []).map((o) => [o.id, o]));
+    const enrichedOpnameItems = (opnameItems || [])
+      .filter((i) => opnameById.has(i.stock_opname_id))
+      .map((i) => {
+        const opname = opnameById.get(i.stock_opname_id);
+        const product = productById.get(i.product_id);
+        return {
+          ...i,
+          opname_number: opname.opname_number,
+          location_name: locationNames[opname.location_id] || opname.location_id,
+          product_name: product ? product.name : i.product_id,
+        };
+      });
+    const topDiscrepancies = topOpnameDiscrepancies(enrichedOpnameItems, 5);
+
+    const { data: allRequestItems, error: requestItemsError } = await supabase.from('stock_request_items').select('*');
+    if (requestItemsError) return res.status(500).json({ error: requestItemsError.message });
+    const topProducts = topRequestedProducts(allRequestItems || [], 5)
+      .map((row) => ({ ...row, product_name: productById.get(row.product_id)?.name || row.product_id }));
+
+    return res.json({
+      locations: locationSummaries,
+      pending_requests_count: (submittedRequests || []).length,
+      problem_shipments: problemShipments,
+      top_discrepancies: topDiscrepancies,
+      top_requested_products: topProducts,
+    });
   });
 
   return router;

@@ -225,3 +225,45 @@ export const receiveStockReturn = (id: string) =>
 
 export const cancelStockReturn = (id: string) =>
   req<{ return: StockReturn }>(`/api/stockist/returns/${id}/cancel`, { method: 'PATCH' });
+
+export interface DashboardLocationSummary {
+  location_id: string;
+  type: 'warehouse' | 'branch';
+  total_quantity: number;
+  low_stock_count: number;
+  sku_count: number;
+  location_name: string;
+}
+
+export interface DashboardProblemShipment {
+  id: string;
+  transfer_number: string;
+  source_name: string;
+  destination_name: string;
+  received_at: string;
+}
+
+export interface DashboardOpnameDiscrepancy {
+  stock_opname_id: string;
+  opname_number: string;
+  location_name: string;
+  product_name: string;
+  difference: number;
+}
+
+export interface DashboardTopRequestedProduct {
+  product_id: string;
+  product_name: string;
+  total_requested: number;
+}
+
+export interface DashboardOverview {
+  locations: DashboardLocationSummary[];
+  pending_requests_count: number;
+  problem_shipments: DashboardProblemShipment[];
+  top_discrepancies: DashboardOpnameDiscrepancy[];
+  top_requested_products: DashboardTopRequestedProduct[];
+}
+
+export const getDashboardOverview = () =>
+  req<DashboardOverview>('/api/stockist/dashboard/overview');
