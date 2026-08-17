@@ -11,6 +11,7 @@ export interface LeaderboardRanking {
   rank: number
   value: number
   avatarUrl?: string
+  valueLabel?: string
 }
 
 export interface LeaderboardPodiumProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -22,6 +23,7 @@ const PODIUM_CONFIG: Record<number, {
   color: string
   borderColor: string
   bgColor: string
+  gradient: string
   textColor: string
   label: string
   delay: number
@@ -32,6 +34,7 @@ const PODIUM_CONFIG: Record<number, {
     color: "text-amber-400",
     borderColor: "border-amber-500/30",
     bgColor: "from-amber-500/10 to-amber-500/5",
+    gradient: "linear-gradient(180deg, rgba(245,158,11,.16), rgba(245,158,11,.04))",
     textColor: "text-amber-400",
     label: "1st",
     delay: 0.1,
@@ -42,6 +45,7 @@ const PODIUM_CONFIG: Record<number, {
     color: "text-slate-300",
     borderColor: "border-slate-400/30",
     bgColor: "from-slate-400/10 to-slate-400/5",
+    gradient: "linear-gradient(180deg, rgba(148,163,184,.16), rgba(148,163,184,.04))",
     textColor: "text-slate-300",
     label: "2nd",
     delay: 0.2,
@@ -52,6 +56,7 @@ const PODIUM_CONFIG: Record<number, {
     color: "text-orange-400",
     borderColor: "border-orange-500/25",
     bgColor: "from-orange-500/10 to-orange-500/5",
+    gradient: "linear-gradient(180deg, rgba(249,115,22,.14), rgba(249,115,22,.035))",
     textColor: "text-orange-400",
     label: "3rd",
     delay: 0.3,
@@ -161,7 +166,7 @@ export function LeaderboardPodium({ rankings, className, ...props }: Leaderboard
                   config.glow
                 )}
                 style={{
-                  background: `linear-gradient(180deg, ${config.bgColor.split(" ")[0]} 0%, ${config.bgColor.split(" ")[2]} 100%)`,
+                  background: config.gradient,
                   backdropFilter: "blur(12px)",
                   WebkitBackdropFilter: "blur(12px)",
                 }}
@@ -178,7 +183,7 @@ export function LeaderboardPodium({ rankings, className, ...props }: Leaderboard
                 </div>
 
                 <p className={cn("text-[10px] sm:text-xs font-black font-mono tracking-tight", config.textColor)}>
-                  {item.value.toLocaleString()}
+                  {item.valueLabel ?? item.value.toLocaleString()}
                 </p>
               </div>
             </motion.div>

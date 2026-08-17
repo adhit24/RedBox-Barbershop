@@ -1,26 +1,25 @@
 'use client';
-import { useEffect, useState } from 'react';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Award, Crown, Flame, RefreshCw, Sparkles, Trophy, Users, Zap } from 'lucide-react';
 import { useBarberSession } from '@/hooks/useBarberSession';
 import { fetchBarberLeaderboard, fetchLeaderboardCategory } from '@/lib/barberApi';
 import { TierIndicator } from '@/components/barber/TierIndicator';
-import { TIER_CONFIG } from '@/lib/achievementDefs';
+import { LeaderboardCard } from '@/components/ui/leaderboard-card';
+import { ProgressiveFluxLoader } from '@/components/ui/progressive-flux-loader';
 import type { LeaderboardData, LeaderboardCategoryItem } from '@/lib/barberTypes';
-
-const MEDAL = ['🥇', '🥈', '🥉'];
 
 type Category = 'live' | 'customer_champion' | 'streak_champion';
 
-const CATEGORIES: { key: Category; label: string; icon: string }[] = [
-  { key: 'live',              label: 'Live',    icon: '⚡' },
-  { key: 'customer_champion', label: 'Customer', icon: '👥' },
-  { key: 'streak_champion',   label: 'Streak',   icon: '🔥' },
+const CATEGORIES: { key: Category; label: string; description: string; icon: typeof Zap }[] = [
+  { key: 'live', label: 'Live', description: 'Performa bulan ini', icon: Zap },
+  { key: 'customer_champion', label: 'Customer', description: 'Paling banyak melayani', icon: Users },
+  { key: 'streak_champion', label: 'Streak', description: 'Konsistensi terbaik', icon: Flame },
 ];
 
-function getTier(positionPct: number): 'LEGEND' | 'ELITE' | 'ADVANCED' | 'RISING' {
-  if (positionPct <= 10) return 'LEGEND';
-  if (positionPct <= 30) return 'ELITE';
-  if (positionPct <= 70) return 'ADVANCED';
-  return 'RISING';
+function dateLabel(month: string) {
+  const parsed = new Date(`${month}-01T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? 'Bulan ini' : parsed.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
 }
 
 export default function LeaderboardPage() {
@@ -29,139 +28,201 @@ export default function LeaderboardPage() {
   const [category, setCategory] = useState<Category>('live');
   const [categoryItems, setCategoryItems] = useState<LeaderboardCategoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [catLoading, setCatLoading] = useState(false);
+  const [progress, setProgress] = useState(8);
+  const [loadError, setLoadError] = useState('');
+  const requestRef = useRef(0);
 
-  useEffect(() => {
+  const loadLeaderboard = useCallback(async () => {
     if (!session) return;
-    fetchBarberLeaderboard()
-      .then(setData)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [session]);
+    const requestId = requestRef.current + 1;
+    requestRef.current = requestId;
+    const isCurrentRequest = () => requestRef.current === requestId;
+    setLoading(true);
+    setLoadError('');
+    setProgress(12);
 
-  useEffect(() => {
-    if (!session || category === 'live') return;
-    setCatLoading(true);
-    fetchLeaderboardCategory(category as 'customer_champion' | 'streak_champion')
-      .then(res => setCategoryItems(res.items))
-      .catch(console.error)
-      .finally(() => setCatLoading(false));
+    try {
+      const liveData = await fetchBarberLeaderboard();
+      if (!isCurrentRequest()) return;
+      setData(liveData);
+      setProgress(category === 'live' ? 82 : 52);
+
+      if (category === 'live') {
+        setCategoryItems([]);
+      } else {
+        const result = await fetchLeaderboardCategory(category);
+        if (!isCurrentRequest()) return;
+        setCategoryItems(result.items);
+        setProgress(82);
+      }
+
+      setProgress(100);
+      await new Promise(resolve => window.setTimeout(resolve, 360));
+    } catch (error) {
+      if (!isCurrentRequest()) return;
+      console.error(error);
+      setLoadError('Data leaderboard belum bisa dimuat. Coba refresh lagi.');
+    } finally {
+      if (isCurrentRequest()) setLoading(false);
+    }
   }, [category, session]);
 
-  if (loading || !data) {
-    return <div className="p-4 text-center text-gray-400">Memuat...</div>;
-  }
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadLeaderboard(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadLeaderboard]);
 
-  const total = data.barber_count;
+  const activeCategory = CATEGORIES.find(item => item.key === category) ?? CATEGORIES[0];
+  const categoryItemsByRank = useMemo(() => categoryItems.slice().sort((a, b) => a.rank - b.rank), [categoryItems]);
+
+  const livePodium = (data?.rankings ?? []).slice(0, 3).map(entry => ({
+    userId: entry.barber_id,
+    userName: entry.name,
+    rank: entry.rank,
+    value: entry.total_count,
+    valueLabel: `${entry.total_count} cust`,
+  }));
+
+  const liveRankings = (data?.rankings ?? []).map(entry => ({
+    userId: entry.barber_id,
+    rank: entry.rank,
+    userName: entry.name,
+    byline: `${entry.branch} · Performa bulan ini`,
+    value: entry.total_count,
+    valueLabel: `${entry.total_count} customer`,
+    displayed: true,
+  }));
+
+  const categoryPodium = categoryItemsByRank.slice(0, 3).map(item => ({
+    userId: item.barber_id,
+    userName: item.barber_name,
+    rank: item.rank,
+    value: item.score,
+    valueLabel: item.display_value,
+  }));
+
+  const categoryRankings = categoryItemsByRank.map(item => ({
+    userId: item.barber_id,
+    rank: item.rank,
+    userName: item.barber_name,
+    byline: `${item.branch} · ${activeCategory.description}`,
+    value: item.score,
+    valueLabel: item.display_value,
+    displayed: true,
+  }));
+
+  const podiumRankings = category === 'live' ? livePodium : categoryPodium;
+  const rankings = category === 'live' ? liveRankings : categoryRankings;
+  const currentUserId = session?.barber?.id;
+  const isEmpty = !loading && data && rankings.length === 0;
 
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold text-gray-900">🏆 Ranking</h2>
+    <div className="relative min-h-[calc(100vh-70px)] overflow-hidden px-4 pb-24 pt-5 text-white sm:px-6">
+      <div className="pointer-events-none absolute -right-28 -top-24 h-72 w-72 rounded-full bg-[#C72820]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-28 h-72 w-72 rounded-full bg-orange-500/[0.06] blur-3xl" />
 
-      <TierIndicator data={data} />
-
-      {data.next_tier_needed > 0 && (
-        <p className="text-sm text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-          +{data.next_tier_needed} customer lagi untuk naik tier
-        </p>
-      )}
-
-      {/* Category Tabs */}
-      <div className="flex gap-2">
-        {CATEGORIES.map(c => (
+      <div className="relative mx-auto max-w-2xl space-y-5">
+        <header className="flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-[#E87068]">
+              <Trophy size={16} />
+              <span className="text-[10px] font-black uppercase tracking-[0.22em]">Arena Performa</span>
+            </div>
+            <h2 className="text-2xl font-black tracking-tight text-[#F8F1F1]">Leaderboard</h2>
+            <p className="mt-1 text-xs font-medium text-slate-500">Buktikan konsistensimu, satu customer setiap hari.</p>
+          </div>
           <button
-            key={c.key}
-            onClick={() => setCategory(c.key)}
-            className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
-              category === c.key
-                ? 'bg-gray-900 text-white border-gray-900'
-                : 'bg-white text-gray-500 border-gray-200'
-            }`}
+            type="button"
+            onClick={() => { void loadLeaderboard(); }}
+            disabled={loading}
+            aria-label="Refresh leaderboard"
+            title="Refresh leaderboard"
+            className="mt-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/[0.10] bg-white/[0.04] text-slate-300 transition hover:border-[#C72820]/60 hover:bg-[#C72820]/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {c.icon} {c.label}
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
-        ))}
-      </div>
+        </header>
 
-      {/* Live Rankings */}
-      {category === 'live' && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bulan Ini — Semua Cabang</p>
-          {(data.rankings || []).map((entry) => {
-            const entryPct = total > 0 ? Math.round((entry.rank / total) * 100) : 100;
-            const entryTier = getTier(entryPct);
-            const tierConf = TIER_CONFIG[entryTier];
-            const medal = MEDAL[entry.rank - 1] ?? null;
+        {(loading || progress > 0 && progress < 100) && (
+          <ProgressiveFluxLoader value={progress} className="rounded-2xl border border-white/[0.06] bg-white/[0.025] px-4 py-3" />
+        )}
 
+        {loadError && !loading && (
+          <div className="rounded-2xl border border-red-400/20 bg-red-400/[0.08] px-4 py-3 text-xs font-semibold text-red-200">
+            {loadError}
+          </div>
+        )}
+
+        {data && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Posisi</p>
+              <p className="mt-1 text-lg font-black text-[#F4C58B]">#{data.rankings.find(entry => entry.is_me)?.rank ?? '-'}</p>
+            </div>
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Customer</p>
+              <p className="mt-1 text-lg font-black text-white">{data.my_count}</p>
+            </div>
+            <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3">
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Kompetitor</p>
+              <p className="mt-1 text-lg font-black text-white">{data.barber_count}</p>
+            </div>
+          </div>
+        )}
+
+        {data && <TierIndicator data={data} />}
+
+        <div role="tablist" aria-label="Kategori leaderboard" className="grid grid-cols-3 gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-1.5">
+          {CATEGORIES.map(item => {
+            const Icon = item.icon;
+            const selected = category === item.key;
             return (
-              <div
-                key={entry.barber_id}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
-                  entry.is_me
-                    ? `${tierConf.bg} border-2 border-current ${tierConf.color} shadow-sm`
-                    : 'bg-white border-gray-100'
-                }`}
+              <button
+                key={item.key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setCategory(item.key)}
+                className={`relative flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-bold transition-all ${selected ? 'bg-[#C72820] text-white shadow-[0_8px_20px_rgba(199,40,32,.24)]' : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-200'}`}
               >
-                <span className="w-7 text-center text-base font-bold">
-                  {medal ?? <span className="text-gray-400 text-sm">#{entry.rank}</span>}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className={`font-medium truncate ${entry.is_me ? tierConf.color : 'text-gray-700'}`}>
-                    {entry.name}
-                    {entry.is_me && <span className="ml-2 text-xs opacity-70">(Kamu)</span>}
-                  </p>
-                  <p className="text-xs text-gray-400 capitalize">{entry.branch}</p>
-                </div>
-                <span className={`text-sm font-bold ${entry.is_me ? tierConf.color : 'text-gray-500'}`}>
-                  {entry.total_count} cust
-                </span>
-                <span className="text-base">{tierConf.icon}</span>
-              </div>
+                <Icon size={15} />
+                <span>{item.label}</span>
+              </button>
             );
           })}
         </div>
-      )}
 
-      {/* Category Rankings (from cache) */}
-      {category !== 'live' && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-            {category === 'streak_champion' ? 'Streak Terpanjang' : 'Total Customer'} — Bulan Ini
-          </p>
-          {catLoading ? (
-            <p className="text-center text-gray-400 py-4">Memuat...</p>
-          ) : categoryItems.length === 0 ? (
-            <p className="text-center text-gray-400 py-4">Data belum tersedia (cron berjalan tengah malam)</p>
-          ) : (
-            categoryItems.map(item => {
-              const medal = MEDAL[item.rank - 1] ?? null;
-              const isMe = item.barber_id === session?.barber?.id;
-              return (
-                <div
-                  key={item.barber_id}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
-                    isMe ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-100'
-                  }`}
-                >
-                  <span className="w-7 text-center text-base font-bold">
-                    {medal ?? <span className={`text-sm ${isMe ? 'text-gray-300' : 'text-gray-400'}`}>#{item.rank}</span>}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-medium truncate ${isMe ? 'text-white' : 'text-gray-700'}`}>
-                      {item.barber_name}
-                      {isMe && <span className="ml-2 text-xs opacity-70">(Kamu)</span>}
-                    </p>
-                    <p className={`text-xs capitalize ${isMe ? 'text-gray-300' : 'text-gray-400'}`}>{item.branch}</p>
-                  </div>
-                  <span className={`text-sm font-bold ${isMe ? 'text-white' : 'text-gray-600'}`}>
-                    {item.display_value}
-                  </span>
-                </div>
-              );
-            })
-          )}
+        {data && data.next_tier_needed > 0 && category === 'live' && (
+          <div className="flex items-center gap-3 rounded-2xl border border-amber-300/15 bg-amber-300/[0.06] px-4 py-3">
+            <Sparkles size={17} className="shrink-0 text-amber-300" />
+            <p className="text-xs font-semibold text-amber-100">Tinggal <strong>{data.next_tier_needed} customer</strong> lagi untuk naik tier.</p>
+          </div>
+        )}
+
+        {isEmpty ? (
+          <div className="rounded-3xl border border-white/[0.07] bg-white/[0.025] px-5 py-14 text-center">
+            <Award size={32} className="mx-auto text-slate-600" />
+            <p className="mt-3 text-sm font-bold text-slate-300">Belum ada data kategori ini</p>
+            <p className="mt-1 text-xs text-slate-500">Data akan muncul setelah sinkronisasi leaderboard berjalan.</p>
+          </div>
+        ) : data ? (
+          <LeaderboardCard
+            title={activeCategory.key === 'live' ? 'Live Performance' : `${activeCategory.label} Champion`}
+            fromDate={data.month ? `${data.month}-01` : new Date()}
+            toDate={new Date()}
+            podiumRankings={podiumRankings}
+            rankings={rankings}
+            currentUserId={currentUserId}
+          />
+        ) : null}
+
+        <div className="flex items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+          {category === 'live' ? <Crown size={13} /> : <Flame size={13} />}
+          <span>{activeCategory.description}</span>
+          <span>·</span>
+          <span>{data ? dateLabel(data.month) : 'Bulan ini'}</span>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -58,6 +58,16 @@ export function fetchAdminLeaderboard(branch: string, category: 'customer' | 'st
   );
 }
 
+export function syncAdminLeaderboard(branch: string) {
+  return crmFetch<{ ok: boolean; branch: string; syncedAt: string }>(
+    '/api/admin/crm/leaderboard/sync',
+    {
+      method: 'POST',
+      body: JSON.stringify({ branch }),
+    },
+  );
+}
+
 export function reassignBooking(booking_id: string, new_barber_id: string) {
   return crmFetch<{ ok: boolean }>('/api/admin/crm/booking?action=reassign', {
     method: 'POST',

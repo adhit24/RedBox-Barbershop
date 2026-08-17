@@ -12,6 +12,7 @@ export interface LeaderboardRankingItem {
   byline?: string
   value: number
   displayed?: boolean
+  valueLabel?: string
 }
 
 export interface LeaderboardRankingsProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -102,7 +103,7 @@ export function LeaderboardRankings({
               {/* Value */}
               <div className="text-right flex-shrink-0">
                 <p className="text-sm font-black text-slate-100 font-mono tracking-tight">
-                  {item.value.toLocaleString()}
+                  {item.valueLabel ?? item.value.toLocaleString()}
                 </p>
               </div>
             </motion.div>

@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
-import { fetchAdminLeaderboard } from '@/lib/adminCrmApi';
+import { fetchAdminLeaderboard, syncAdminLeaderboard } from '@/lib/adminCrmApi';
 import type { LeaderboardItem } from '@/lib/adminCrmTypes';
 import { LeaderboardCard } from '@/components/ui/leaderboard-card';
-import { Trophy, Users, Flame, Home } from 'lucide-react';
+import { Trophy, Users, Flame, Home, RefreshCw } from 'lucide-react';
 
 type Category = 'customer' | 'streak' | 'home_service';
 
@@ -29,15 +29,40 @@ export default function AdminLeaderboardPage() {
   const [category, setCategory] = useState<Category>('customer');
   const [items, setItems] = useState<LeaderboardItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
 
-  useEffect(() => {
+  const loadLeaderboard = useCallback(async () => {
     if (!branch) return;
     setLoading(true);
-    fetchAdminLeaderboard(branch, category)
-      .then(r => setItems(r.items))
-      .catch(() => setItems([]))
-      .finally(() => setLoading(false));
+    try {
+      const result = await fetchAdminLeaderboard(branch, category);
+      setItems(result.items);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
   }, [branch, category]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadLeaderboard(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadLeaderboard]);
+
+  const handleRefresh = async () => {
+    if (!branch || refreshing) return;
+    setRefreshing(true);
+    setRefreshError('');
+    try {
+      await syncAdminLeaderboard(branch);
+      await loadLeaderboard();
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : 'Sinkronisasi Moka gagal');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const runOptions = CATS.map(c => ({
     id: c.key,
@@ -118,6 +143,17 @@ export default function AdminLeaderboardPage() {
       <div className="flex items-center gap-2">
         <Trophy size={16} className="text-[#C72820]" />
         <h2 className="text-white font-bold text-base">Ranking & Kinerja</h2>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={refreshing || !branch}
+          aria-label="Refresh data Ranking dan Kinerja dari Moka"
+          title={refreshError || 'Tarik data terbaru dari Moka'}
+          className="ml-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/[0.10] text-slate-300 transition hover:border-white/[0.22] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} />
+        </button>
+        {refreshError && <span className="max-w-[220px] truncate text-[10px] text-red-300">Gagal refresh</span>}
       </div>
 
       {items.length === 0 ? (

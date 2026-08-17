@@ -12,6 +12,7 @@ const {
   validatePaymentInput,
 } = require('../services/membershipRegistration');
 const { syncScheduleForBooking } = require('../moka/slotEngine');
+const { syncCurrentMonthTx } = require('../moka/txSync');
 const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('../services/bookingGuard');
 
 function localDateStr(d = new Date()) {
@@ -700,6 +701,36 @@ function createAdminCrmRoutes(supabase, adminAuth) {
   });
 
   // ─── LEADERBOARD ──────────────────────────────────────────────
+  router.post('/leaderboard/sync', adminAuth, async (req, res) => {
+    const branch = String(req.body?.branch || '').trim();
+    if (!branch || branch === 'all') {
+      return res.status(400).json({ error: 'branch is required' });
+    }
+
+    try {
+      const { data: outlet, error: outletError } = await supabase
+        .from('outlets')
+        .select('id, slug, moka_outlet_id')
+        .eq('is_active', true)
+        .eq('slug', branch)
+        .not('moka_outlet_id', 'is', null)
+        .maybeSingle();
+
+      if (outletError) return res.status(500).json({ error: outletError.message });
+      if (!outlet) return res.status(404).json({ error: `Moka outlet tidak ditemukan untuk cabang ${branch}` });
+
+      const synced = await syncCurrentMonthTx(supabase, outlet, {
+        // Ranking needs near-live data, while preserving the current month's history.
+        sinceEpoch: Math.floor(Date.now() / 1000) - (48 * 60 * 60),
+      });
+
+      return res.json({ ok: true, branch, syncedAt: new Date().toISOString(), synced });
+    } catch (error) {
+      console.error('[LeaderboardSync] Error:', error.message);
+      return res.status(502).json({ error: `Sinkronisasi Moka gagal: ${error.message}` });
+    }
+  });
+
   router.get('/leaderboard', adminAuth, async (req, res) => {
     const branch = req.query.branch;
     const category = req.query.category || 'customer';
