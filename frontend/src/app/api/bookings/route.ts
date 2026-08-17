@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 const API_URL = process.env.API_URL ?? 'http://localhost:3001';
 const TOKEN   = process.env.ADMIN_PASSWORD ?? '';
@@ -16,6 +17,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const limit = checkRateLimit(req, { windowMs: 60_000, max: 5, name: 'bookings-create' });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Terlalu banyak permintaan booking. Coba lagi dalam 1 menit.' },
+      { status: 429 }
+    );
+  }
+
   try {
     const body = await req.json();
     const cookieStore = await cookies();
