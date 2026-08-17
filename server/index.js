@@ -826,35 +826,39 @@ app.use(express.static(path.join(__dirname, '..')));
 
 const { verifyAdminSessionAssertion } = require('./services/adminSessionAssertion');
 
+const adminAuthLimiter = rateLimit({ windowMs: 60000, max: 100, name: 'admin-auth' });
+
 function adminAuth(req, res, next) {
-  const token = req.headers['x-admin-token'] || '';
-  const validTokens = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
-  if (!token || !validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
+  adminAuthLimiter(req, res, () => {
+    const token = req.headers['x-admin-token'] || '';
+    const validTokens = [process.env.ADMIN_PASSWORD, process.env.CRON_SECRET].filter(Boolean);
+    if (!token || !validTokens.includes(token)) return res.status(401).json({ error: 'Unauthorized' });
 
-  const sessionAssertion = req.headers['x-redbox-admin-session'];
-  if (sessionAssertion) {
-    if (token !== process.env.ADMIN_PASSWORD) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const sessionAssertion = req.headers['x-redbox-admin-session'];
+    if (sessionAssertion) {
+      if (token !== process.env.ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      try {
+        req.adminAuth = verifyAdminSessionAssertion(String(sessionAssertion), {
+          adminSessionProxySecret: process.env.ADMIN_SESSION_PROXY_SECRET,
+          adminPassword: process.env.ADMIN_PASSWORD,
+        });
+        return next();
+      } catch {
+        return res.status(401).json({ error: 'Invalid admin session' });
+      }
     }
-    try {
-      req.adminAuth = verifyAdminSessionAssertion(String(sessionAssertion), {
-        adminSessionProxySecret: process.env.ADMIN_SESSION_PROXY_SECRET,
-        adminPassword: process.env.ADMIN_PASSWORD,
-      });
-      return next();
-    } catch {
-      return res.status(401).json({ error: 'Invalid admin session' });
-    }
-  }
 
-  const credentialId = token === process.env.ADMIN_PASSWORD ? 'crm-admin' : 'cron-service';
-  req.adminAuth = {
-    staffId: String(process.env.ADMIN_AUDIT_STAFF_ID || credentialId).trim(),
-    role: null,
-    branch: null,
-    sessionVerified: false,
-  };
-  next();
+    const credentialId = token === process.env.ADMIN_PASSWORD ? 'crm-admin' : 'cron-service';
+    req.adminAuth = {
+      staffId: String(process.env.ADMIN_AUDIT_STAFF_ID || credentialId).trim(),
+      role: null,
+      branch: null,
+      sessionVerified: false,
+    };
+    next();
+  });
 }
 
 app.get('/api/img', async (req, res) => {
@@ -2800,7 +2804,7 @@ async function getMemberSessionByToken(token) {
   }
 
   // POST /api/auth/otp/send
-  app.post('/api/auth/otp/send', async (req, res) => {
+  app.post('/api/auth/otp/send', rateLimit({ windowMs: 10 * 60 * 1000, max: 20, name: 'otp-send-member' }), async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
     const { phone } = req.body || {};
     if (!phone) return res.status(400).json({ error: 'Nomor HP wajib diisi' });
@@ -2912,7 +2916,7 @@ async function getMemberSessionByToken(token) {
   });
 
   // POST /api/auth/otp/verify
-  app.post('/api/auth/otp/verify', async (req, res) => {
+  app.post('/api/auth/otp/verify', rateLimit({ windowMs: 10 * 60 * 1000, max: 20, name: 'otp-verify-member' }), async (req, res) => {
     if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
     const { phone, code } = req.body || {};
     if (!phone || !code) return res.status(400).json({ error: 'Phone dan kode OTP wajib diisi' });

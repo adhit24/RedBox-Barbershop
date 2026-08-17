@@ -3,6 +3,7 @@ const express = require('express');
 const { sendBarberOTP, verifyBarberOTP, destroyBarberSession } = require('../services/barberOTP');
 const { createBarberAuth } = require('../services/barberAuth');
 const { syncCurrentMonthTx } = require('../moka/txSync');
+const { rateLimit } = require('../middleware/rateLimit');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -24,7 +25,7 @@ function createBarberRoutes(supabase) {
   const barberAuth = createBarberAuth(supabase);
 
   // ─── AUTH ────────────────────────────────────────────
-  router.post('/auth/otp/send', async (req, res) => {
+  router.post('/auth/otp/send', rateLimit({ windowMs: 10 * 60 * 1000, max: 20, name: 'otp-send-barber' }), async (req, res) => {
     const { phone } = req.body || {};
     if (!phone) return res.status(400).json({ error: 'Phone required' });
     const result = await sendBarberOTP(supabase, phone);
@@ -32,7 +33,7 @@ function createBarberRoutes(supabase) {
     return res.json({ ok: true, barber: result.barber });
   });
 
-  router.post('/auth/otp/verify', async (req, res) => {
+  router.post('/auth/otp/verify', rateLimit({ windowMs: 10 * 60 * 1000, max: 20, name: 'otp-verify-barber' }), async (req, res) => {
     const { phone, code } = req.body || {};
     if (!phone || !code) return res.status(400).json({ error: 'Phone and code required' });
     const result = await verifyBarberOTP(supabase, phone, code);
