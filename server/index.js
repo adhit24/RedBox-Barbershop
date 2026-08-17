@@ -14,6 +14,7 @@ const path    = require('path');
 const { randomUUID } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const mysql = require('mysql2/promise');
+const { rateLimit } = require('./middleware/rateLimit');
 // NOTE: Airtable dependency removed - using Supabase as primary source for barbers
 const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerReviewRequest, notifyCustomerReviewPointsCredited } = require('./services/waNotification');
 const { enqueueCustomerNotification, markCustomerNotificationSent, processCustomerNotificationOutbox } = require('./services/bookingNotificationOutbox');
@@ -238,38 +239,6 @@ async function pushConfirmedBookingToMoka(booking) {
     return { ok: false, error: error.message, skipped: false };
   }
 }
-
-// ── Rate Limiting ────────────────────────────────
-// Simple in-memory rate limiter (no extra dependency needed)
-const rateLimitMap = new Map();
-function rateLimit({ windowMs = 60000, max = 10 } = {}) {
-  return (req, res, next) => {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
-    const now = Date.now();
-    const key = `${ip}`;
-    const record = rateLimitMap.get(key) || { count: 0, start: now };
-
-    if (now - record.start > windowMs) {
-      record.count = 1;
-      record.start = now;
-    } else {
-      record.count++;
-    }
-    rateLimitMap.set(key, record);
-
-    if (record.count > max) {
-      return res.status(429).json({ error: 'Terlalu banyak permintaan. Coba lagi dalam 1 menit.' });
-    }
-    next();
-  };
-}
-// Cleanup map setiap 5 menit agar tidak memory leak
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of rateLimitMap.entries()) {
-    if (now - v.start > 120000) rateLimitMap.delete(k);
-  }
-}, 300000);
 
 // ── Database Setup ──────────────────────────────
 let supabase = null;
@@ -1159,7 +1128,7 @@ function normalizeBookingPrice({ service_id, service, price, type }) {
 }
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
-app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10 }), async (req, res) => {
+app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-create' }), async (req, res) => {
   const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address, group } = req.body;
   const bookingPrice = normalizeBookingPrice({ service_id, service, price, type });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
