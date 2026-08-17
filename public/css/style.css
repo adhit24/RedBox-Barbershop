@@ -119,7 +119,7 @@ section{padding:100px 0}
  display:flex;align-items:center;height:72px;
 }
 .nav-logo{display:flex;align-items:center;gap:12px;flex-shrink:0}
-.nav-logo img{height:56px;width:auto}
+.nav-logo img{height:68px;width:auto}
 .nav-brand{
  font-family:var(--font-accent);font-size:1.45rem;font-weight:400;
  letter-spacing:.08em;color:var(--white);
@@ -1571,7 +1571,7 @@ section{padding:100px 0}
  .navbar.scrolled{background:rgba(8,8,10,.98);backdrop-filter:none;-webkit-backdrop-filter:none}
  .nav-container{height:64px;gap:8px}
  .nav-logo{min-width:0;gap:8px}
- .nav-logo img{height:44px}
+ .nav-logo img{height:52px}
  .nav-brand{font-size:1.15rem;max-width:42vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
  .nav-pill-wrapper{background:transparent;border:none;padding:0;border-radius:0;margin-left:0;margin-right:auto}
  .nav-pill-track{display:none}
@@ -1726,7 +1726,7 @@ section{padding:100px 0}
  .svc-card{flex:0 0 260px}
  .pro-grid{grid-template-columns:1fr 1fr;gap:10px}
  .container{padding-left:18px;padding-right:18px}
- .nav-logo img{height:38px}
+ .nav-logo img{height:48px}
  .nav-brand{font-size:1.05rem;max-width:34vw}
  .btn-member-nav{padding:8px 10px;margin-right:2px}
  .wa-float{right:16px;width:48px;height:48px}
