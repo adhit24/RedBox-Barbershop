@@ -22,11 +22,23 @@ async function withServer(supabase, fn, { staffId = 'owner-1', role = 'owner', b
   }
 }
 
-function fakeSupabase({ locations = [], balances = [] } = {}) {
-  const state = { locations, balances, rpcCalls: [] };
+function fakeSupabase({ locations = [], balances = [], products = [] } = {}) {
+  const state = { locations, balances, products, rpcCalls: [] };
   return {
     state,
     from(table) {
+      if (table === 'products') {
+        const query = {
+          _filters: [],
+          select() { return query; },
+          in(col, vals) { query._filters.push((row) => vals.includes(row[col])); return query; },
+          then(resolve, reject) {
+            const rows = state.products.filter((row) => query._filters.every((f) => f(row)));
+            return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+          },
+        };
+        return query;
+      }
       if (table === 'inventory_locations') {
         const query = {
           _filters: [],
@@ -87,6 +99,20 @@ test('POST /warehouse/receive is rejected for branch_admin', async () => {
     });
     assert.equal(res.status, 403);
   }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('POST /warehouse/receive rejects an inactive product', async () => {
+  const supabase = fakeSupabase({ locations: [WAREHOUSE], products: [{ id: 'p1', sku: 'RB-OLD-001', is_active: false }] });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/warehouse/receive`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: 'p1', quantity: 50 }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 400);
+    assert.match(body.error, /inactive/);
+    assert.equal(supabase.state.rpcCalls.length, 0);
+  }, { role: 'owner' });
 });
 
 test('POST /warehouse/receive rejects zero or negative quantity', async () => {

@@ -90,8 +90,13 @@ function fakeSupabase({
         return query;
       }
       if (table === 'products') {
-        const query = { _filters: [], select() { return query; }, eq(c, v) { query._filters.push((r) => r[c] === v); return query; },
-          single: async () => ({ data: state.products.find((r) => query._filters.every((f) => f(r))) || null, error: null }) };
+        const query = {
+          _filters: [], select() { return query; },
+          eq(c, v) { query._filters.push((r) => r[c] === v); return query; },
+          in(c, vals) { query._filters.push((r) => vals.includes(r[c])); return query; },
+          single: async () => ({ data: state.products.find((r) => query._filters.every((f) => f(r))) || null, error: null }),
+          then(res, rej) { return Promise.resolve({ data: state.products.filter((r) => query._filters.every((f) => f(r))), error: null }).then(res, rej); },
+        };
         return query;
       }
       if (table === 'stock_requests') return genericTable(state.requests, 'req');

@@ -121,7 +121,7 @@ export default function NewStockRequestPage() {
                         className="w-full bg-[#171415] border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container"
                       >
                         <option value="">-- Pilih produk --</option>
-                        {products.map((p) => (
+                        {products.filter((p) => p.is_active).map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name} ({p.sku})
                           </option>

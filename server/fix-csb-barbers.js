@@ -39,7 +39,7 @@ async function main() {
 
   // Manual mapping for name mismatches and wrong assignments
   const manualMap = [
-    { dbName: 'Syarif', mokaName: 'Sarif',  mokaId: '26541541' },  // name mismatch
+    { dbName: 'Sarif',  mokaName: 'Sarif',  mokaId: '26541541' },
     { dbName: 'Ragil',  mokaName: 'Ragil',  mokaId: '25658986' },  // was wrongly set to Hamami (88894856)
     { dbName: 'Ubay',   mokaName: 'Ubay',   mokaId: '25654316' },
     { dbName: 'Yuda',   mokaName: 'Yuda',   mokaId: '58487047' },

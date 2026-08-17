@@ -52,6 +52,10 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(400).json({ error: 'sku and name are required' });
     }
 
+    if (await isSkuTaken(sku.trim())) {
+      return res.status(409).json({ error: 'SKU sudah digunakan.' });
+    }
+
     const { data, error } = await supabase.from('products').insert({
       sku: sku.trim(),
       name: name.trim(),
@@ -68,6 +72,96 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
 
     return res.json({ product: data });
   });
+
+  router.patch('/products/:id', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can edit products' });
+    }
+
+    const { data: existing, error: findError } = await supabase.from('products').select('*').eq('id', req.params.id).single();
+    if (findError || !existing) return res.status(404).json({ error: 'product not found' });
+
+    const { sku, name, category, brand, unit, barcode, purchase_price, retail_price, minimum_stock, reorder_point } = req.body || {};
+    const patch = {};
+
+    if (sku !== undefined) {
+      if (typeof sku !== 'string' || !sku.trim()) return res.status(400).json({ error: 'sku cannot be empty' });
+      if (await isSkuTaken(sku.trim(), req.params.id)) return res.status(409).json({ error: 'SKU sudah digunakan.' });
+      patch.sku = sku.trim();
+    }
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ error: 'name cannot be empty' });
+      patch.name = name.trim();
+    }
+    if (category !== undefined) patch.category = category || null;
+    if (brand !== undefined) patch.brand = brand || null;
+    if (unit !== undefined) {
+      if (typeof unit !== 'string' || !unit.trim()) return res.status(400).json({ error: 'unit cannot be empty' });
+      patch.unit = unit.trim();
+    }
+    if (barcode !== undefined) patch.barcode = barcode || null;
+    if (purchase_price !== undefined) patch.purchase_price = purchase_price;
+    if (retail_price !== undefined) patch.retail_price = retail_price;
+    if (minimum_stock !== undefined) {
+      if (!Number.isInteger(minimum_stock) || minimum_stock < 0) return res.status(400).json({ error: 'minimum_stock must be a non-negative integer' });
+      patch.minimum_stock = minimum_stock;
+    }
+    if (reorder_point !== undefined) {
+      if (!Number.isInteger(reorder_point) || reorder_point < 0) return res.status(400).json({ error: 'reorder_point must be a non-negative integer' });
+      patch.reorder_point = reorder_point;
+    }
+
+    if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'no fields to update' });
+
+    const { data, error } = await supabase.from('products').update(patch).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json({ product: data });
+  });
+
+  router.patch('/products/:id/deactivate', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can deactivate products' });
+    }
+    const { data, error } = await supabase.from('products').update({ is_active: false }).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'product not found' });
+    return res.json({ product: data });
+  });
+
+  router.patch('/products/:id/activate', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can activate products' });
+    }
+    const { data, error } = await supabase.from('products').update({ is_active: true }).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'product not found' });
+    return res.json({ product: data });
+  });
+
+  async function isSkuTaken(sku, excludeId = null) {
+    let query = supabase.from('products').select('id').eq('sku', sku);
+    if (excludeId) query = query.neq('id', excludeId);
+    const { data } = await query;
+    return (data || []).length > 0;
+  }
+
+  // Guards warehouse receipts, ad-hoc transfers, and branch requests from
+  // starting a brand-new transaction against a discontinued product. Existing
+  // stock/ledger history for an inactive product is untouched — only NEW
+  // inbound/outbound transaction creation is blocked here.
+  async function assertProductsActive(productIds) {
+    const uniqueIds = [...new Set(productIds)];
+    const { data } = await supabase.from('products').select('id, sku, is_active').in('id', uniqueIds);
+    const inactive = (data || []).find((p) => !p.is_active);
+    if (inactive) throw new Error(`product ${inactive.sku} is inactive and cannot be used in a new transaction`);
+  }
 
   async function findLocation(type, branchSlug) {
     let query = supabase.from('inventory_locations').select('*').eq('type', type);
@@ -119,6 +213,7 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     if (!warehouse) return res.status(500).json({ error: 'warehouse location not configured' });
 
     try {
+      await assertProductsActive([product_id]);
       const ledger = await applyInventoryMovement(supabase, {
         productId: product_id, locationId: warehouse.id, quantityDelta: quantity,
         movementType: 'WAREHOUSE_RECEIVE', performedBy: access.staffId, reason: reason || null,
@@ -186,6 +281,12 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     }
     if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.product_id || !Number.isInteger(i.quantity) || i.quantity <= 0)) {
       return res.status(400).json({ error: 'items must be a non-empty list of { product_id, quantity > 0 }' });
+    }
+
+    try {
+      await assertProductsActive(items.map((i) => i.product_id));
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
     }
 
     const warehouseForCheck = await findLocation('warehouse', null);
@@ -439,6 +540,12 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const { items, reason } = req.body || {};
     if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.product_id || !Number.isInteger(i.quantity_requested) || i.quantity_requested <= 0)) {
       return res.status(400).json({ error: 'items must be a non-empty list of { product_id, quantity_requested > 0 }' });
+    }
+
+    try {
+      await assertProductsActive(items.map((i) => i.product_id));
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
     }
 
     const branchLocation = await findLocation('branch', access.branch);

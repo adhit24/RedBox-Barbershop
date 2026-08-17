@@ -25,7 +25,7 @@ const HOME_SERVICE_BARBERS = [
   { name: 'miftah', phone: '083131994954' },
   { name: 'dodi', phone: '085221156910' },
   { name: 'ragil', phone: '085713239794' },
-  { name: 'Syarif', phone: '087731505046' },
+  { name: 'Sarif', phone: '087731505046' },
   { name: 'Ari', phone: '089531956677' },
   { name: 'Didi', phone: '083143216880' },
   { name: 'ubay', phone: '081382282312' },

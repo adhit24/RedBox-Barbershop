@@ -35,7 +35,7 @@ function _editDistance(a, b) {
 }
 
 // Score kecocokan nama (0..1). 1 = exact match.
-// Handles typos like "Syarif" vs "Sarif" via edit distance fallback.
+// Handles minor Moka name variations via edit distance fallback.
 function _matchScore(a, b) {
   const na = _norm(a);
   const nb = _norm(b);

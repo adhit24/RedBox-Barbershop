@@ -29,11 +29,20 @@ const CSB = { id: 'loc-csb', type: 'branch', outlet_id: 'outlet-csb' };
 // insufficient-stock path pass their own `balances`.
 const DEFAULT_BALANCES = [{ product_id: 'p1', location_id: 'loc-warehouse', quantity: 100 }];
 
-function fakeSupabase({ locations = [WAREHOUSE, CSB], outlets = [{ id: 'outlet-csb', slug: 'csb' }], transfers = [], items = [], balances = DEFAULT_BALANCES } = {}) {
-  const state = { locations, outlets, balances: structuredClone(balances), transfers: structuredClone(transfers), items: structuredClone(items), rpcCalls: [] };
+function fakeSupabase({ locations = [WAREHOUSE, CSB], outlets = [{ id: 'outlet-csb', slug: 'csb' }], transfers = [], items = [], balances = DEFAULT_BALANCES, products = [] } = {}) {
+  const state = { locations, outlets, balances: structuredClone(balances), transfers: structuredClone(transfers), items: structuredClone(items), products: structuredClone(products), rpcCalls: [] };
   return {
     state,
     from(table) {
+      if (table === 'products') {
+        const query = {
+          _filters: [],
+          select() { return query; },
+          in(c, vals) { query._filters.push((r) => vals.includes(r[c])); return query; },
+          then(res, rej) { return Promise.resolve({ data: state.products.filter((r) => query._filters.every((f) => f(r))), error: null }).then(res, rej); },
+        };
+        return query;
+      }
       if (table === 'inventory_balances') {
         const query = {
           _filters: [],
@@ -207,6 +216,20 @@ test('POST /transfers rejects quantities exceeding the current warehouse balance
     assert.match(body.error, /insufficient warehouse stock for product p1/);
     // Rejected before any movement is applied and before any transfer row exists.
     assert.equal(supabase.state.rpcCalls.length, 0);
+    assert.equal(supabase.state.transfers.length, 0);
+  }, { role: 'owner' });
+});
+
+test('POST /transfers rejects a shipment containing an inactive product', async () => {
+  const supabase = fakeSupabase({ products: [{ id: 'p1', sku: 'RB-OLD-001', is_active: false }] });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destination_branch: 'csb', items: [{ product_id: 'p1', quantity: 10 }] }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 400);
+    assert.match(body.error, /inactive/);
     assert.equal(supabase.state.transfers.length, 0);
   }, { role: 'owner' });
 });

@@ -198,7 +198,7 @@ export default function WarehousePage() {
                 required
               >
                 <option value="">-- Pilih produk --</option>
-                {products.map((p) => (
+                {products.filter((p) => p.is_active).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.sku})
                   </option>

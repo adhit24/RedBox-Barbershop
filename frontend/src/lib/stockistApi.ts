@@ -78,6 +78,15 @@ export const listProducts = () => req<{ products: StockistProduct[] }>('/api/sto
 export const createProduct = (input: Partial<StockistProduct>) =>
   req<{ product: StockistProduct }>('/api/stockist/products', { method: 'POST', body: JSON.stringify(input) });
 
+export const updateProduct = (id: string, input: Partial<StockistProduct>) =>
+  req<{ product: StockistProduct }>(`/api/stockist/products/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+
+export const deactivateProduct = (id: string) =>
+  req<{ product: StockistProduct }>(`/api/stockist/products/${id}/deactivate`, { method: 'PATCH' });
+
+export const activateProduct = (id: string) =>
+  req<{ product: StockistProduct }>(`/api/stockist/products/${id}/activate`, { method: 'PATCH' });
+
 export const getInventorySummary = (location: string) =>
   req<{ balances: InventoryBalance[] }>(`/api/stockist/inventory/summary?location=${encodeURIComponent(location)}`);
 

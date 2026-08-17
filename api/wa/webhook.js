@@ -653,7 +653,7 @@ const FOREIGN_SESSION_TTL = 30 * 60 * 1000; // 30 menit
 const BARBERS_BY_BRANCH = {
   bypass:    ['Bob', 'Dodi', 'Ari', 'Onoy', 'Abdul'],
   samadikun: ['Khamami', 'Opan', 'Sofyan', 'Aden', 'Miftah'],
-  csb:       ['Syarif', 'Ubay', 'Ragil', 'Ega', 'Husen', 'Yudha'],
+  csb:       ['Sarif', 'Ubay', 'Ragil', 'Ega', 'Husen', 'Yudha'],
   sumber:    ['Prima', 'Sigit', 'Didi'],
   tegal:     ['Faiz', 'Yafi', 'Epik', 'Wawan', 'Ahmad', 'Sephril']
 };

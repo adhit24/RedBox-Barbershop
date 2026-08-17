@@ -39,6 +39,7 @@ function fakeSupabase({
   requestItems = [],
   transfers = [],
   transferItems = [],
+  products = [],
   balances = [{ product_id: 'p1', location_id: 'loc-warehouse', quantity: 100, reserved_quantity: 0 }],
 } = {}) {
   const state = {
@@ -47,6 +48,7 @@ function fakeSupabase({
     requestItems: structuredClone(requestItems),
     transfers: structuredClone(transfers),
     transferItems: structuredClone(transferItems),
+    products: structuredClone(products),
     balances: new Map(balances.map((b) => [balanceKey(b.product_id, b.location_id), { ...b }])),
     ledger: [],
     rpcCalls: [],
@@ -96,6 +98,15 @@ function fakeSupabase({
   return {
     state,
     from(table) {
+      if (table === 'products') {
+        const query = {
+          _filters: [],
+          select() { return query; },
+          in(c, vals) { query._filters.push((r) => vals.includes(r[c])); return query; },
+          then(res, rej) { return Promise.resolve({ data: state.products.filter((r) => query._filters.every((f) => f(r))), error: null }).then(res, rej); },
+        };
+        return query;
+      }
       if (table === 'inventory_locations') {
         const query = { _filters: [], select() { return query; }, eq(c, v) { query._filters.push((r) => r[c] === v); return query; },
           then(res, rej) { return Promise.resolve({ data: state.locations.filter((r) => query._filters.every((f) => f(r))), error: null }).then(res, rej); } };
@@ -185,6 +196,20 @@ test('POST /requests lets branch_admin submit a request and is rejected for owne
     });
     assert.equal(res.status, 403);
   }, { role: 'owner' });
+});
+
+test('POST /requests rejects a request containing an inactive product', async () => {
+  const supabase = fakeSupabase({ products: [{ id: 'p1', sku: 'RB-OLD-001', is_active: false }] });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/requests`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ product_id: 'p1', quantity_requested: 10 }] }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 400);
+    assert.match(body.error, /inactive/);
+    assert.equal(supabase.state.requests.length, 0);
+  }, { role: 'branch_admin', branch: 'csb' });
 });
 
 test('GET /requests is scoped to the caller branch for branch_admin, unscoped for owner', async () => {
