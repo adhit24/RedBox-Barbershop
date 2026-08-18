@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin-setup.html
+Disallow: /admin-moka.html
+Disallow: /crm.html
+Disallow: /member-dashboard.html
+Disallow: /member-loading.html
+Disallow: /ai-results.html
+Disallow: /_tmp_crm_verify.html
+Disallow: /index_backup.html
+
+Sitemap: https://www.redboxbarbershop.com/sitemap.xml
