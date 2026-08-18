@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!limit.allowed) {
     return NextResponse.json(
       { error: 'Terlalu banyak permintaan booking. Coba lagi dalam 1 menit.' },
-      { status: 429 }
+      { status: 429, headers: { 'Retry-After': String(Math.max(1, Math.ceil(limit.retryAfterMs / 1000))) } }
     );
   }
 

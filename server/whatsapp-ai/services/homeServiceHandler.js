@@ -63,9 +63,10 @@ async function _jobByBarberPhone(supabase, phone, status) {
 
 // Find the earliest job for a customer (looked up by phone) in a given status.
 async function _jobByCustomerPhone(supabase, phone, status) {
+  const safePhone = escapePostgrestValue(phone);
   const { data: customer } = await supabase
     .from('customers').select('id, name')
-    .or(`phone.eq.${escapePostgrestValue(phone)},phone_e164.eq.${escapePostgrestValue(phone)},wa.eq.${escapePostgrestValue(phone)}`)
+    .or(`phone.eq.${safePhone},phone_e164.eq.${safePhone},wa.eq.${safePhone}`)
     .maybeSingle();
   if (!customer) return null;
 

@@ -7,7 +7,7 @@ export function checkRateLimit(
   { windowMs = 60_000, max = 10, name }: { windowMs?: number; max?: number; name: string }
 ): { allowed: true } | { allowed: false; retryAfterMs: number } {
   const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    req.headers.get('x-forwarded-for')?.split(',').map((s) => s.trim()).filter(Boolean).pop() ||
     req.headers.get('x-real-ip') ||
     'unknown';
   const key = `${name}:${ip}`;

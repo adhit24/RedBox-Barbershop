@@ -38,6 +38,7 @@ const DB_TYPE = process.env.DATABASE_TYPE || 'supabase';
 app.set('trust proxy', process.env.VERCEL === '1' ? 1 : false);
 
 app.use(helmet({
+  contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
