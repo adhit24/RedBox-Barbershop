@@ -340,7 +340,7 @@ Redbox Barbershop menyediakan layanan **Home Service** — kapster profesional d
 | Samadikun | Jl. Kapten Samadikun No.60, Kesenden, Kota Cirebon | +62 818-202-589 |
 | CSB Mall | LG Floor #1270, CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26, Cirebon | +62 818-202-889 |
 | Sumber | Jl. Pangeran Cakrabuana No.2, Kemantren, Sumber, Kab. Cirebon | +62 818-202-599 |
-| Tegal Kota | Jl. Kapten Sudibyo No.100, Pekauman, Tegal Barat, Kota Tegal | +62 818-268-883 |
+| Tegal Kota | Jl. Dr. Soetomo No.29, Pekauman, Kec. Tegal Bar., Kota Tegal, Jawa Tengah 52125 | +62 818-268-883 |
 
 ---
 
