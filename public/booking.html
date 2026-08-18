@@ -31,6 +31,7 @@
  <link rel="stylesheet" href="css/animations.css" />
  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
  <script src="https://accounts.google.com/gsi/client" async defer></script>
+ <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
  <style>
  /* Home Service Mode - hide service step from progress bar */
  body.hs-mode .bstep[data-step="1"],
@@ -389,6 +390,7 @@
  </div>
  </div>
  <div class="pay-detail" id="payDetail"></div>
+ <div class="cf-turnstile" data-sitekey="0x4AAAAAAET7MSjHLx0MH0TG" data-action="turnstile-spin-v1"></div>
  <div class="step-foot">
  <button class="btn-secondary step-back" data-target="4">← Back</button>
  <button class="btn-primary" id="finalBookBtn" disabled>

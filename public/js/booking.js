@@ -2052,6 +2052,30 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
 
  document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
+ // Turnstile bot-check gate — verified server-side via the Spin-deployed
+ // Worker before any of the existing booking logic below runs.
+ const turnstileToken = document.querySelector('[name="cf-turnstile-response"]')?.value;
+ if (!turnstileToken) {
+ alert('Mohon selesaikan verifikasi keamanan sebelum konfirmasi booking.');
+ return;
+ }
+ try {
+ const verifyRes = await fetch('https://turnstile-siteverify-redbox-booking.adhit24.workers.dev', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ token: turnstileToken }),
+ });
+ const verifyData = await verifyRes.json();
+ if (!verifyData.success) {
+ alert('Verifikasi keamanan gagal. Silakan coba lagi.');
+ if (typeof turnstile !== 'undefined') turnstile.reset();
+ return;
+ }
+ } catch (e) {
+ alert('Gagal memverifikasi keamanan. Periksa koneksi internet kamu dan coba lagi.');
+ return;
+ }
+
  // Same-kapster overlap guard, mirrored client-side one more time right before
  // submit (buildTimeGrid already blocks overlapping slots as they're picked, but
  // that guard silently no-ops if RedboxBookingOverlap failed to load - see the
