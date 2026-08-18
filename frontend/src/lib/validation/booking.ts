@@ -5,7 +5,7 @@ export const bookingSchema = z.object({
   wa: z.string().trim().regex(/^[0-9+\-\s()]{8,20}$/, 'Nomor WA tidak valid'),
   service_id: z.union([z.string(), z.number()]).optional().nullable(),
   service: z.string().trim().min(1).max(200),
-  price: z.union([z.string(), z.number()]).optional().nullable(),
+  price: z.coerce.number().int().nonnegative().optional().nullable(),
   duration: z.union([z.string(), z.number()]).optional().nullable(),
   barber_id: z.string().optional().nullable(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal tidak valid (YYYY-MM-DD)'),

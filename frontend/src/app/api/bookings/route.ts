@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
           wa,
           service_id: service_id || null,
           service,
-          price: price ? parseInt(String(price), 10) : null,
+          price: price ?? null,
           duration: duration || null,
           barber_id: barber_id || null,
           date,
