@@ -229,6 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
  const profileSince = document.getElementById('profileSince');
  const avatarInitials = document.getElementById('avatarInitials');
  const avatarImage = document.getElementById('avatarImage');
+ const avatarUploadBtn = document.getElementById('avatarUploadBtn');
+ const avatarFileInput = document.getElementById('avatarFileInput');
  const statVisits = document.getElementById('statVisits');
  const statReviews = document.getElementById('statReviews');
  const statPoints = document.getElementById('statPoints');
@@ -238,13 +240,95 @@ document.addEventListener('DOMContentLoaded', () => {
  const d = new Date(memberData.joinDate);
  profileSince.textContent = `Bergabung sejak ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
  }
- if (userData.picture && avatarImage) {
+
+ function renderAvatarImage(url) {
+ if (!url || !avatarImage) return;
+ avatarImage.src = url; avatarImage.style.display = 'block';
+ if (avatarInitials) avatarInitials.style.display = 'none';
+ }
+
+ if (userData.avatar_url) {
+ renderAvatarImage(userData.avatar_url);
+ } else if (userData.picture && avatarImage) {
  avatarImage.src = userData.picture; avatarImage.style.display = 'block';
  if (avatarInitials) avatarInitials.style.display = 'none';
  } else if (avatarInitials && userData.name) {
  const parts = userData.name.split(' ');
  avatarInitials.textContent = (parts[0]?.[0]||'') + (parts[1]?.[0]||'');
  }
+
+ // ---- Avatar upload: gated to paid, active tiers (silver/gold/platinum) ----
+ const AVATAR_UPLOAD_TIERS = ['silver', 'gold', 'platinum'];
+ function updateAvatarUploadVisibility() {
+ if (!avatarUploadBtn) return;
+ const canUpload = ACTIVE && AVATAR_UPLOAD_TIERS.includes(String(memberData.current_tier || '').toLowerCase());
+ avatarUploadBtn.style.display = canUpload ? 'flex' : 'none';
+ }
+ updateAvatarUploadVisibility();
+
+ function resizeImageToDataUrl(file, maxSize, quality) {
+ return new Promise((resolve, reject) => {
+ const reader = new FileReader();
+ reader.onload = () => {
+ const img = new Image();
+ img.onload = () => {
+ let { width, height } = img;
+ if (width > height && width > maxSize) { height = Math.round(height * (maxSize / width)); width = maxSize; }
+ else if (height >= width && height > maxSize) { width = Math.round(width * (maxSize / height)); height = maxSize; }
+ const canvas = document.createElement('canvas');
+ canvas.width = width; canvas.height = height;
+ canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+ resolve(canvas.toDataURL('image/jpeg', quality));
+ };
+ img.onerror = () => reject(new Error('Gagal membaca gambar'));
+ img.src = reader.result;
+ };
+ reader.onerror = () => reject(new Error('Gagal membaca file'));
+ reader.readAsDataURL(file);
+ });
+ }
+
+ avatarUploadBtn?.addEventListener('click', () => avatarFileInput?.click());
+
+ avatarFileInput?.addEventListener('change', async (e) => {
+ const file = e.target.files?.[0];
+ e.target.value = '';
+ if (!file) return;
+ if (!file.type.startsWith('image/')) {
+ showToast('File harus berupa gambar.', 'error');
+ return;
+ }
+ if (file.size > 2 * 1024 * 1024) {
+ showToast('Ukuran file maksimal 2MB.', 'error');
+ return;
+ }
+ const tok = localStorage.getItem('rb_member_token');
+ if (!tok) return;
+
+ avatarUploadBtn.disabled = true;
+ try {
+ const dataUrl = await resizeImageToDataUrl(file, 500, 0.85);
+ const res = await fetch('/api/member/avatar/upload', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+ body: JSON.stringify({ dataUrl }),
+ });
+ const data = await res.json().catch(() => ({}));
+ if (!res.ok) {
+ showToast(data.error || 'Gagal mengunggah foto.', 'error');
+ return;
+ }
+ userData.avatar_url = data.avatar_url;
+ localStorage.setItem('redbox_user', JSON.stringify(userData));
+ renderAvatarImage(data.avatar_url);
+ showToast('Foto profil berhasil diperbarui!', 'success');
+ } catch (err) {
+ console.error('[Avatar] upload error:', err.message);
+ showToast('Gagal mengunggah foto. Coba lagi.', 'error');
+ } finally {
+ avatarUploadBtn.disabled = false;
+ }
+ });
 
  const displayPoints = ACTIVE ? memberData.points : 0;
  animateCount(statVisits, memberData.visits, 800);
@@ -1124,7 +1208,9 @@ document.addEventListener('DOMContentLoaded', () => {
  const { customer: c } = await res.json();
  if (c) {
  userData.name = c.name || userData.name;
+ userData.avatar_url = c.avatar_url || userData.avatar_url || '';
  localStorage.setItem('redbox_user', JSON.stringify(userData));
+ if (userData.avatar_url) renderAvatarImage(userData.avatar_url);
 
  memberData.points = c.points ?? memberData.points;
  memberData.visits = c.visits ?? memberData.visits;
@@ -1141,6 +1227,7 @@ document.addEventListener('DOMContentLoaded', () => {
  memberData.membership_expires_at = c.membership_expires_at ?? null;
  memberData.lastVisit = c.last_visit || memberData.lastVisit || null;
  refreshMembershipAccess();
+ updateAvatarUploadVisibility();
  // first_visit = tanggal transaksi Moka paling awal - sumber kebenaran "Bergabung sejak"
  if (c.first_visit) memberData.joinDate = c.first_visit;
  if (c.referral_code) memberData.referralCode = c.referral_code;

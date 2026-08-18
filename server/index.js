@@ -3431,6 +3431,66 @@ async function getMemberSessionByToken(token) {
     return res.json({ customer: data });
   });
 
+  // POST /api/member/avatar/upload — foto profil, khusus member berbayar (Silver/Gold/Platinum aktif)
+  app.post('/api/member/avatar/upload', async (req, res) => {
+    if (!supabase) return res.status(503).json({ error: 'Database tidak tersedia' });
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || req.headers['x-member-token'];
+    if (!token) return res.status(401).json({ error: 'Login diperlukan' });
+
+    const { data: session } = await supabase.from('member_sessions')
+      .select('customer_wa').eq('token', token)
+      .gt('expires_at', new Date().toISOString()).maybeSingle();
+    if (!session) return res.status(401).json({ error: 'Session expired' });
+
+    // Paid tier + active period is authoritative from member_profiles, same
+    // check GET /api/auth/me uses to decide membership status — never trust
+    // a client-sent tier for a gate like this.
+    const profile = await getMemberProfileByPhone(session.customer_wa);
+    const tier = resolveMembershipTier(profile?.current_tier);
+    const active = isActiveMembership({
+      status: profile?.membership_status,
+      startsAt: profile?.membership_started_at,
+      expiresAt: profile?.membership_expires_at,
+    });
+    if (tier === 'bronze' || !active) {
+      return res.status(403).json({ error: 'Fitur foto profil khusus member berbayar (Silver/Gold/Platinum) yang aktif.' });
+    }
+
+    const { dataUrl } = req.body || {};
+    if (!dataUrl || typeof dataUrl !== 'string') {
+      return res.status(400).json({ error: 'dataUrl wajib diisi (base64 data URL)' });
+    }
+    const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: 'Format file tidak valid' });
+
+    const mime = match[1];
+    const base64 = match[2];
+    const ext = mime === 'image/png' ? 'png' : (mime === 'image/webp' ? 'webp' : 'jpg');
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > 2 * 1024 * 1024) {
+      return res.status(413).json({ error: 'File terlalu besar (max 2MB)' });
+    }
+
+    const path = `${session.customer_wa}/avatar.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('member-avatars')
+      .upload(path, buffer, { contentType: mime, upsert: true });
+    if (upErr) return res.status(500).json({ error: upErr.message });
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('member-avatars')
+      .getPublicUrl(path);
+    // Cache-bust so the browser doesn't keep showing a stale image after a
+    // re-upload to the same upsert path (same filename, different bytes).
+    const bustedUrl = `${publicUrl}?v=${Date.now()}`;
+
+    const { error: updErr } = await supabase.from('customers')
+      .update({ avatar_url: bustedUrl }).eq('wa', session.customer_wa);
+    if (updErr) return res.status(500).json({ error: updErr.message });
+
+    return res.json({ ok: true, avatar_url: bustedUrl });
+  });
+
   // POST /api/auth/logout
   app.post('/api/auth/logout', async (req, res) => {
     const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || req.headers['x-member-token'];
