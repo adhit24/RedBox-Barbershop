@@ -31,8 +31,23 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   if (loading || !user) return <>{children}</>;
 
   const isOwner = user.role === 'owner';
-  
-  const tabs = [
+
+  // Owner gets a single command-center destination — no flow/technical tabs
+  // (Produk, Gudang, Transfer, Permintaan) cluttering the nav. Those pages
+  // still exist and are reachable via links inside the command center; this
+  // one tab just doubles as the "back to command center" anchor when owner
+  // is a level deep on one of those pages.
+  const isCommandCenterHome = pathname === '/admin/stockist';
+  const ownerTabs = [
+    {
+      label: 'Command Center',
+      icon: isCommandCenterHome ? 'hub' : 'arrow_back',
+      href: '/admin/stockist',
+      active: isCommandCenterHome
+    }
+  ];
+
+  const branchAdminTabs = [
     {
       label: 'Beranda',
       icon: 'home',
@@ -40,10 +55,10 @@ export default function StockistLayout({ children }: { children: React.ReactNode
       active: pathname === '/admin/stockist'
     },
     {
-      label: isOwner ? 'Produk' : 'Stok Saya',
+      label: 'Stok Saya',
       icon: 'inventory',
-      href: isOwner ? '/admin/stockist/products' : '/admin/stockist/branch-stock',
-      active: isOwner ? pathname.startsWith('/admin/stockist/products') : pathname.startsWith('/admin/stockist/branch-stock')
+      href: '/admin/stockist/branch-stock',
+      active: pathname.startsWith('/admin/stockist/branch-stock')
     },
     {
       label: 'Transfer',
@@ -56,18 +71,10 @@ export default function StockistLayout({ children }: { children: React.ReactNode
       icon: 'assignment',
       href: '/admin/stockist/requests',
       active: pathname.startsWith('/admin/stockist/requests')
-    },
-    // `/admin/stockist/warehouse` shows Gudang Pusat stock and its receive
-    // form is owner-only — branch_admin has no use for it (and the summary
-    // API 403s them there). Branch receiving happens via the Transfer tab
-    // (transfer detail → confirm receipt), which is already listed above.
-    ...(isOwner ? [{
-      label: 'Gudang',
-      icon: 'warehouse',
-      href: '/admin/stockist/warehouse',
-      active: pathname.startsWith('/admin/stockist/warehouse')
-    }] : [])
+    }
   ];
+
+  const tabs = isOwner ? ownerTabs : branchAdminTabs;
 
   return (
     <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
@@ -80,6 +87,11 @@ export default function StockistLayout({ children }: { children: React.ReactNode
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {user.role === 'owner' && (
+            <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
+              Owner
+            </span>
+          )}
           {user.role === 'branch_admin' && (
             <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
               {BRANCH_NAMES[user.branch || ''] || user.branch}
@@ -106,22 +118,41 @@ export default function StockistLayout({ children }: { children: React.ReactNode
 
       {/* BottomNavBar */}
       <nav className="bg-surface-container-highest fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] flex justify-around items-center px-4 py-2 z-50 rounded-t-xl shadow-[0_-8px_32px_rgba(0,0,0,0.4)] border-t border-border-base">
-        {tabs.map((tab) => (
+        {isOwner ? (
+          // Owner has one destination, not a tab bar — a wide anchor pill
+          // that reads as "you're here" on the command center and "go back"
+          // one level deep, rather than a lonely stacked icon mimicking a tab.
           <Link
-            key={tab.label}
-            href={tab.href}
-            className={`flex flex-col items-center justify-center rounded-xl px-4 py-1.5 transition-all duration-200 min-w-[64px] ${
-              tab.active
-                ? 'text-primary-container font-bold bg-primary-container/10 scale-95'
+            href={tabs[0].href}
+            className={`flex items-center justify-center gap-2 rounded-full px-6 py-2 w-full transition-all duration-200 ${
+              tabs[0].active
+                ? 'text-primary-container font-bold bg-primary-container/10'
                 : 'text-text-secondary hover:text-primary-container active:scale-95'
             }`}
           >
-            <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: tab.active ? "'FILL' 1" : "'FILL' 0" }}>
-              {tab.icon}
+            <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: tabs[0].active ? "'FILL' 1" : "'FILL' 0" }}>
+              {tabs[0].icon}
             </span>
-            <span className="text-[10px] mt-0.5 tracking-tight font-medium">{tab.label}</span>
+            <span className="text-[13px] tracking-tight font-semibold">{tabs[0].label}</span>
           </Link>
-        ))}
+        ) : (
+          tabs.map((tab) => (
+            <Link
+              key={tab.label}
+              href={tab.href}
+              className={`flex flex-col items-center justify-center rounded-xl px-4 py-1.5 transition-all duration-200 min-w-[64px] ${
+                tab.active
+                  ? 'text-primary-container font-bold bg-primary-container/10 scale-95'
+                  : 'text-text-secondary hover:text-primary-container active:scale-95'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: tab.active ? "'FILL' 1" : "'FILL' 0" }}>
+                {tab.icon}
+              </span>
+              <span className="text-[10px] mt-0.5 tracking-tight font-medium">{tab.label}</span>
+            </Link>
+          ))
+        )}
       </nav>
     </div>
   );

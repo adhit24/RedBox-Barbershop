@@ -1,4 +1,5 @@
 export const STOCKIST_BRANCHES = ['bypass', 'sumber', 'samadikun', 'csb', 'tegal'] as const;
+import { resolveStockistRole } from '../../admin/stockist/stockistRole';
 
 export type StockistBranch = (typeof STOCKIST_BRANCHES)[number];
 export type StockistRole = 'owner' | 'branch_admin';
@@ -9,7 +10,7 @@ export type StockistSession = {
   branch: StockistBranch | null;
 };
 
-type AuthUser = { id?: string | null } | null | undefined;
+type AuthUser = { id?: string | null; email?: string | null } | null | undefined;
 type UserProfile = { id?: string | null; role?: string | null; branch?: string | null } | null | undefined;
 
 type PolicyFailure = { ok: false; status: 401 | 403; error: string };
@@ -26,11 +27,12 @@ export function authorizeStockistAdmin(
   const userId = typeof user?.id === 'string' ? user.id.trim() : '';
   if (!userId) return { ok: false, status: 401, error: 'Unauthorized' };
 
-  if (!profile || profile.id !== userId || !['owner', 'branch_admin'].includes(profile.role || '')) {
+  const role = resolveStockistRole(user?.email, profile?.role);
+  if (!profile || profile.id !== userId || !['owner', 'branch_admin'].includes(role)) {
     return { ok: false, status: 403, error: 'Stockist access required' };
   }
 
-  if (profile.role === 'owner') {
+  if (role === 'owner') {
     return { ok: true, value: { userId, role: 'owner', branch: null } };
   }
 
