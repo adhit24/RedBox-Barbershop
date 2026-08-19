@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { motion } from 'framer-motion';
+import { resolveStockistRole } from '@/app/admin/stockist/stockistRole';
 
 export default function StockistLoginPage() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function StockistLoginPage() {
         .eq('id', user.id)
         .single();
 
-      const actualRole = profile?.role;
+      const actualRole = resolveStockistRole(user.email, profile?.role);
 
       if (actualRole !== 'owner' && actualRole !== 'branch_admin') {
         await supabase.auth.signOut();

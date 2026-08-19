@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
+import { resolveStockistRole } from '@/app/admin/stockist/stockistRole';
 
 export interface AppUser {
   id: string;
@@ -33,7 +34,7 @@ export function useUser() {
             id: authUser.id,
             email: authUser.email ?? '',
             name: data.name,
-            role: data.role,
+            role: resolveStockistRole(authUser.email, data.role) as AppUser['role'],
             branch: data.branch,
             barber_id: data.barber_id,
           });

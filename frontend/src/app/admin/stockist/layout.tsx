@@ -80,6 +80,11 @@ export default function StockistLayout({ children }: { children: React.ReactNode
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {user.role === 'owner' && (
+            <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
+              Owner
+            </span>
+          )}
           {user.role === 'branch_admin' && (
             <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
               {BRANCH_NAMES[user.branch || ''] || user.branch}
