@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import Link from 'next/link';
+import { MotionConfig } from 'framer-motion';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -113,7 +114,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
 
       {/* Main Container */}
       <main className="pt-[calc(48px+16px)] pb-[calc(70px+24px)] px-4 w-full max-w-[430px] mx-auto min-h-screen flex flex-col gap-4">
-        {children}
+        <MotionConfig reducedMotion="user">{children}</MotionConfig>
       </main>
 
       {/* BottomNavBar */}
