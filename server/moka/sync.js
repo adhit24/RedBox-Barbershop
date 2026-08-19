@@ -1523,10 +1523,22 @@ function startCronJobs(supabase) {
         .in('outlet_id', outlets.map(o => o.id));
       const authorizedIds = new Set((tokenRows || []).map(r => r.outlet_id));
 
+      // The bridge is fail-closed: unmapped items never mutate stock. Keep it
+      // enabled by default once the live migration exists, while allowing an
+      // explicit false flag during rollback or maintenance.
+      const stockistSalesSync = process.env.STOCKIST_MOKA_SALES_SYNC_ENABLED !== 'false';
+      let stockistPerformedBy = process.env.STOCKIST_MOKA_SYNC_ACTOR_ID || null;
+      if (stockistSalesSync && !stockistPerformedBy) {
+        const { data: actor } = await supabase.from('users').select('id').eq('role', 'owner').limit(1).maybeSingle();
+        stockistPerformedBy = actor?.id || null;
+      }
       await Promise.all(outlets.map(async o => {
         if (!authorizedIds.has(o.id)) return;
         try {
-          await syncCurrentMonthTx(supabase, o);
+          await syncCurrentMonthTx(supabase, o, {
+            stockistSalesSync,
+            stockistPerformedBy,
+          });
         } catch (err) {
           console.error(`[TxCron] ${o.slug}:`, err.message);
         }

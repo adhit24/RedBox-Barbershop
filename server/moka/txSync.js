@@ -1,5 +1,6 @@
 'use strict';
 const MokaClient = require('./client');
+const { processMokaSale } = require('../services/stockistMokaSync');
 
 // ── helpers (copied from server/scripts/importAllTransaksi.js) ─────────────
 function extractBarberItems(itemsRaw) {
@@ -83,6 +84,21 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
     .from('barbers').select('id, name, branch').eq('is_active', true);
   const activeBarbers = barbers || [];
 
+  const stockistSalesSync = options.stockistSalesSync === true;
+  const stockistPerformedBy = options.stockistPerformedBy || null;
+  let stockistLocationId = null;
+  let stockistMappings = [];
+  if (stockistSalesSync && stockistPerformedBy) {
+    const [{ data: location }, { data: mappings, error: mappingError }] = await Promise.all([
+      supabase.from('inventory_locations').select('id').eq('outlet_id', outlet.id).maybeSingle(),
+      supabase.from('moka_item_mappings').select('moka_item_id, moka_variant_id, product_id')
+        .eq('is_active', true).or(`outlet_id.eq.${outlet.id},outlet_id.is.null`),
+    ]);
+    if (mappingError) throw new Error(`Stockist Moka mapping lookup failed: ${mappingError.message}`);
+    stockistLocationId = location?.id || null;
+    stockistMappings = mappings || [];
+  }
+
   const client     = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
   let   page       = 1;
   let   totalTx    = 0;
@@ -118,6 +134,19 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
       const txDate    = createdAt.slice(0, 10);
       const txTime    = createdAt.slice(11, 19);
       if (createdAt && new Date(createdAt).getTime() < sinceEpochStart * 1000) continue;
+
+      if (stockistSalesSync && stockistPerformedBy) {
+        const stockistResult = await processMokaSale(supabase, {
+          payment: { ...p, status: p.status || p.transaction_status || 'PAID' },
+          outlet,
+          locationId: stockistLocationId,
+          mappings: stockistMappings,
+          performedBy: stockistPerformedBy,
+        });
+        if (stockistResult.action !== 'PROCESSED' && stockistResult.action !== 'SKIPPED_DUPLICATE') {
+          console.warn(`[StockistMoka] ${outlet.slug} ${receiptNumber}: ${stockistResult.action}`);
+        }
+      }
 
       // items_raw: probe multiple candidate field names
       const rawItems = p.item_details || p.items || p.order_items || p.line_items || '';
