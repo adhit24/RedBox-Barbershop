@@ -83,11 +83,11 @@ export default function NewTransferPage() {
 
   const getProductImage = (sku: string, name: string) => {
     const lowerName = name.toLowerCase();
-    if (lowerName.includes('clay') || lowerName.includes('pomade')) return '/uploads/clay.jpeg';
-    if (lowerName.includes('oil')) return '/uploads/oil_base.jpeg';
-    if (lowerName.includes('water') || lowerName.includes('spray')) return '/uploads/water_base.jpeg';
-    if (lowerName.includes('shave') || lowerName.includes('cream') || lowerName.includes('psyi')) return '/uploads/psyi.jpeg';
-    return '/uploads/E_left_here.jpeg';
+    if (lowerName.includes('clay') || lowerName.includes('pomade')) return '/api/stockist/product-image/clay.jpeg';
+    if (lowerName.includes('oil')) return '/api/stockist/product-image/oil_base.jpeg';
+    if (lowerName.includes('water') || lowerName.includes('spray')) return '/api/stockist/product-image/water_base.jpeg';
+    if (lowerName.includes('shave') || lowerName.includes('cream') || lowerName.includes('psyi')) return '/api/stockist/product-image/psyi.jpeg';
+    return '/api/stockist/product-image/E_left_here.jpeg';
   };
 
   return (
