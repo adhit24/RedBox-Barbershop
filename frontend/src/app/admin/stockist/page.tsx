@@ -98,7 +98,6 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
       ) : assets ? (
         <>
           <AssetDashboardPanel assets={assets} />
-          <ManagePanel />
         </>
       ) : null}
     </div>
@@ -358,35 +357,6 @@ function TopRequestedPanel({ overview }: { overview: DashboardOverview }) {
             </div>
             <span className="text-[13px] font-bold text-text-primary tabular-nums shrink-0">{p.total_requested}</span>
           </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-const MANAGE_LINKS = [
-  { href: '/admin/stockist/products', icon: 'inventory', label: 'Produk' },
-  { href: '/admin/stockist/warehouse', icon: 'warehouse', label: 'Gudang' },
-  { href: '/admin/stockist/transfers', icon: 'receipt_long', label: 'Transfer' },
-  { href: '/admin/stockist/requests', icon: 'assignment', label: 'Permintaan' },
-  { href: '/admin/stockist/stock-opname', icon: 'checklist', label: 'Stock Opname' },
-  { href: '/admin/stockist/returns', icon: 'keyboard_return', label: 'Retur' }
-];
-
-function ManagePanel() {
-  return (
-    <section className="flex flex-col gap-3">
-      <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Kelola</h3>
-      <div className="grid grid-cols-3 gap-2">
-        {MANAGE_LINKS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="bg-surface-elevated border border-border-base rounded-xl py-4 flex flex-col items-center justify-center gap-1.5 hover:border-primary-container active:scale-95 transition-all"
-          >
-            <span className="material-symbols-outlined text-text-secondary text-[22px]">{item.icon}</span>
-            <span className="text-[11px] font-medium text-text-secondary text-center leading-tight">{item.label}</span>
-          </Link>
         ))}
       </div>
     </section>
