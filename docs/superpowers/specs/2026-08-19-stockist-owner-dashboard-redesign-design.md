@@ -33,7 +33,7 @@ Eksplorasi codebase sebelum brainstorming menemukan tiga hal yang membuat sebagi
 - Motion system pakai `framer-motion` (sudah jadi dependency, v12) — staggered entrance, card hover/press, animated number, sheet transition.
 - Redesign `OwnerCommandCenter` (`frontend/src/app/admin/stockist/page.tsx`) memakai token & komponen baru.
 - KPI drill-down via bottom sheet (lokasi → breakdown SKU, "Perlu Perhatian" → detail list, "Transfer Berjalan" → detail list).
-- 1 chart baru: "Nilai Stok per Lokasi" (horizontal bar, custom SVG/CSS, tanpa dependency baru).
+- 1 chart baru: "Nilai Stok per Lokasi" (horizontal bar, pakai `recharts` yang sudah ada di `package.json`).
 - Skeleton loading menggantikan spinner full-area yang ada sekarang.
 - Responsive check di breakpoint 320/360/390/430/768/desktop.
 
@@ -94,7 +94,7 @@ Baru semua — Stockist saat ini tidak punya component library sendiri (setiap h
 | `AttentionRow` | Satu baris alert (dipakai di dashboard list & di dalam sheet) | `AttentionPanel` rows §266-288 |
 | `BottomSheet` | Container drill-down: mobile full-width sheet dari bawah, desktop side panel/dialog. Fokus-trap dasar, close on backdrop/escape. | — (belum ada) |
 | `SkeletonCard` | Skeleton berbentuk StatCard/LocationCard, dipakai saat loading | Spinner `<div className="animate-spin">` §94-97 |
-| `HorizontalBarChart` | Bar chart custom SVG/CSS untuk "Nilai Stok per Lokasi" — tanpa dependency baru | — (belum ada) |
+| `HorizontalBarChart` | Bar chart untuk "Nilai Stok per Lokasi", dibangun di atas `recharts` (sudah jadi dependency di `package.json`, belum pernah dipakai di Stockist — bukan dependency baru) | — (belum ada) |
 | `EmptyState` | Empty state generik (icon + title + subtitle) | Blok "Semua terkendali" inline §256-263 |
 
 Semua komponen presentational — terima props, tidak fetch data sendiri (kecuali `BottomSheet`'s drill-down content variant yang lazy-fetch saat dibuka, lihat §4).
