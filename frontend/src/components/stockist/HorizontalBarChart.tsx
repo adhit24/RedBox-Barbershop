@@ -1,21 +1,12 @@
 'use client';
 
 import { BarChart, Bar, XAxis, YAxis, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { formatCurrencyCompact } from '@/lib/stockist/format';
 
 export interface HorizontalBarChartDatum {
   name: string;
   value: number;
 }
-
-const formatCurrencyCompact = (value: number | undefined): string => {
-  if (value === undefined) return '';
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    notation: 'compact',
-  }).format(value);
-};
 
 export function HorizontalBarChart({ data }: { data: HorizontalBarChartDatum[] }) {
   return (

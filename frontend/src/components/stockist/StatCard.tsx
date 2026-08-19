@@ -23,7 +23,7 @@ function StatCardBody({ label, value, formatter, hint, variant = 'default', trai
     <>
       <span className={`text-[11px] font-semibold ${isDanger ? 'text-danger' : 'text-text-muted'}`}>{label}</span>
       <div
-        className={`font-display tabular-nums mt-2 flex items-baseline gap-2 ${
+        className={`font-display tabular-nums mt-2 flex items-baseline gap-2 truncate ${
           isHero ? 'text-[30px] font-bold' : 'text-[19px] font-bold'
         } ${isDanger ? 'text-danger' : 'text-text-primary'}`}
       >

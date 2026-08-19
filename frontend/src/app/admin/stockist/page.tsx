@@ -23,6 +23,7 @@ import { EmptyState } from '@/components/stockist/EmptyState';
 import { HorizontalBarChart } from '@/components/stockist/HorizontalBarChart';
 import { LocationDrillDownContent } from '@/components/stockist/LocationDrillDownContent';
 import { staggerContainer, fadeSlideItem } from '@/lib/stockist/motion';
+import { formatCurrency, formatCurrencyCompact } from '@/lib/stockist/format';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -66,12 +67,9 @@ type DrillDown =
   | { type: 'transfers' }
   | null;
 
-function formatAssetValue(value: number | null) {
-  if (value === null) return 'Tidak tersedia';
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency', currency: 'IDR', minimumFractionDigits: 0,
-  }).format(value);
-}
+// Compact adapter for the 2-up KPI grid cards, where full-notation IDR risks
+// overflowing the card's ~106-161px content box at the app's 430px width cap.
+const formatAssetValueCompact = (v: number | null) => formatCurrencyCompact(v ?? undefined);
 
 function toAttentionRows(items: StockistAssetDashboard['attention_items']): ListRowData[] {
   return items.map((item) => ({
@@ -158,15 +156,15 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
             <StatCard
               label="Aset Stok RedBox"
               value={assets.total_asset_value ?? 0}
-              formatter={formatAssetValue}
+              formatter={formatCurrency}
               variant="hero"
               hint="Total nilai stok aktif di seluruh jaringan RedBox."
             />
           </motion.div>
 
           <motion.div variants={fadeSlideItem} className="grid grid-cols-2 gap-3">
-            <StatCard label="Nilai Gudang Pusat" value={assets.warehouse_asset_value ?? 0} formatter={formatAssetValue} />
-            <StatCard label="Nilai Stok Cabang" value={assets.branch_asset_value ?? 0} formatter={formatAssetValue} />
+            <StatCard label="Nilai Gudang Pusat" value={assets.warehouse_asset_value ?? 0} formatter={formatAssetValueCompact} />
+            <StatCard label="Nilai Stok Cabang" value={assets.branch_asset_value ?? 0} formatter={formatAssetValueCompact} />
             <StatCard
               label="Barang Perlu Perhatian"
               value={assets.attention_items.length}
@@ -205,7 +203,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
                 <LocationCard
                   key={location.location_id}
                   location={location}
-                  formatValue={formatAssetValue}
+                  formatValue={formatCurrency}
                   onSelect={() => setDrillDown({ type: 'location', location })}
                 />
               ))}
