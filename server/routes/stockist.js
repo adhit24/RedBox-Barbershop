@@ -3,7 +3,13 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const { getVerifiedStockistAccess, resolveStockistLocationScope, STOCKIST_BRANCHES } = require('../services/stockistAccess');
-const { applyInventoryMovement, stripPurchasePrice, calculateTransferDiscrepancy, validateAdjustmentReason } = require('../services/stockistInventory');
+const {
+  applyInventoryMovement,
+  stripPurchasePrice,
+  calculateTransferDiscrepancy,
+  validateAdjustmentReason,
+  validateProductType,
+} = require('../services/stockistInventory');
 const {
   generateRequestNumber, validateApprovalItems, deriveRequestStatus, validateRejectionReason,
   reserveInventoryStock, releaseInventoryReservation, fulfillReservedTransferOut,
@@ -56,9 +62,21 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(403).json({ error: 'only owner can create products' });
     }
 
-    const { sku, name, category, brand, unit, barcode, purchase_price, retail_price, minimum_stock, reorder_point } = req.body || {};
+    const {
+      sku, name, category, brand, unit, barcode, purchase_price, retail_price, minimum_stock, reorder_point, product_type,
+    } = req.body || {};
     if (typeof sku !== 'string' || !sku.trim() || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'sku and name are required' });
+    }
+
+    const normalizedProductType = product_type ?? 'RETAIL';
+    try {
+      validateProductType(normalizedProductType);
+    } catch (err) {
+      if (err.code === 'INVALID_PRODUCT_TYPE') {
+        return res.status(400).json({ error_code: err.code, error: err.message });
+      }
+      return res.status(400).json({ error: err.message });
     }
 
     if (await isSkuTaken(sku.trim())) {
@@ -76,6 +94,7 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       retail_price: retail_price ?? null,
       minimum_stock: minimum_stock ?? 0,
       reorder_point: reorder_point ?? 0,
+      product_type: normalizedProductType,
     }).select().single();
     if (error) return res.status(500).json({ error: error.message });
 
@@ -92,7 +111,9 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const { data: existing, error: findError } = await supabase.from('products').select('*').eq('id', req.params.id).single();
     if (findError || !existing) return res.status(404).json({ error: 'product not found' });
 
-    const { sku, name, category, brand, unit, barcode, purchase_price, retail_price, minimum_stock, reorder_point } = req.body || {};
+    const {
+      sku, name, category, brand, unit, barcode, purchase_price, retail_price, minimum_stock, reorder_point, product_type,
+    } = req.body || {};
     const patch = {};
 
     if (sku !== undefined) {
@@ -120,6 +141,17 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     if (reorder_point !== undefined) {
       if (!Number.isInteger(reorder_point) || reorder_point < 0) return res.status(400).json({ error: 'reorder_point must be a non-negative integer' });
       patch.reorder_point = reorder_point;
+    }
+    if (product_type !== undefined) {
+      try {
+        validateProductType(product_type);
+      } catch (err) {
+        if (err.code === 'INVALID_PRODUCT_TYPE') {
+          return res.status(400).json({ error_code: err.code, error: err.message });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+      patch.product_type = product_type;
     }
 
     if (Object.keys(patch).length === 0) return res.status(400).json({ error: 'no fields to update' });

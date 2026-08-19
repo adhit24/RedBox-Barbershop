@@ -96,6 +96,30 @@ test('POST /products creates a product for owner', async () => {
   }, { role: 'owner' });
 });
 
+test('POST /products persists product_type SERVICE and defaults missing product_type to RETAIL', async () => {
+  const supabase = fakeSupabase();
+
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/products`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku: 'RB-SVC-001', name: 'Hair Tonic Backbar', product_type: 'SERVICE' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.product.product_type, 'SERVICE');
+  }, { role: 'owner' });
+
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/products`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku: 'RB-RTL-001', name: 'Pomade Travel Size' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.product.product_type, 'RETAIL');
+  }, { role: 'owner' });
+});
+
 test('POST /products rejects a duplicate SKU with a friendly message', async () => {
   const supabase = fakeSupabase({ products: [{ id: 'p1', sku: 'RB-FW-001', name: 'Facewash Lama', is_active: true }] });
   await withServer(supabase, async (base) => {
@@ -174,6 +198,27 @@ test('PATCH /products/:id edits fields, rejects a conflicting SKU, and is owner-
     });
     assert.equal(res.status, 403);
   }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('PATCH /products/:id rejects invalid product_type with INVALID_PRODUCT_TYPE', async () => {
+  const supabase = fakeSupabase({
+    products: [
+      { id: 'p1', sku: 'RB-FW-001', name: 'Facewash 100ml', product_type: 'RETAIL', is_active: true },
+    ],
+  });
+
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/products/p1`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_type: 'WHOLESALE' }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 400);
+    assert.deepEqual(body, {
+      error_code: 'INVALID_PRODUCT_TYPE',
+      error: 'product type must be RETAIL or SERVICE',
+    });
+  }, { role: 'owner' });
 });
 
 test('PATCH /products/:id/deactivate and /activate toggle is_active and are owner-only', async () => {

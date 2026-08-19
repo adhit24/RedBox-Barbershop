@@ -7,6 +7,8 @@ const {
   stripPurchasePrice,
   calculateTransferDiscrepancy,
   validateAdjustmentReason,
+  validateProductType,
+  assertProductType,
 } = require('../services/stockistInventory');
 
 test('applyInventoryMovement calls the RPC with the given params and returns the ledger row', async () => {
@@ -62,4 +64,17 @@ test('validateAdjustmentReason rejects blank or missing reasons', () => {
   assert.throws(() => validateAdjustmentReason('   '), /reason is required/);
   assert.throws(() => validateAdjustmentReason(undefined), /reason is required/);
   assert.doesNotThrow(() => validateAdjustmentReason('koreksi salah input qty'));
+});
+
+test('validateProductType accepts only RETAIL and SERVICE', () => {
+  assert.doesNotThrow(() => validateProductType('RETAIL'));
+  assert.doesNotThrow(() => validateProductType('SERVICE'));
+  assert.throws(() => validateProductType('WHOLESALE'), /product type/);
+});
+
+test('assertProductType rejects retail products in service flow', () => {
+  assert.throws(
+    () => assertProductType({ id: 'p1', product_type: 'RETAIL' }, 'SERVICE'),
+    (error) => error.code === 'SERVICE_PRODUCT_REQUIRED',
+  );
 });
