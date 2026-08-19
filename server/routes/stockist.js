@@ -22,6 +22,7 @@ const {
 } = require('../services/stockistReturns');
 const {
   summarizeLocations, findProblemShipments, topOpnameDiscrepancies, topRequestedProducts,
+  calculateAssetValue, summarizeAssetLocations, buildAttentionItems, summarizeActiveTransfers,
 } = require('../services/stockistDashboard');
 
 // A push notification failing (e.g. no subscription, provider outage) must
@@ -1505,6 +1506,66 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       problem_shipments: problemShipments,
       top_discrepancies: topDiscrepancies,
       top_requested_products: topProducts,
+    });
+  });
+
+  // ─── ASSET-FIRST DASHBOARD ────────────────────────────────────
+  router.get(['/dashboard/assets', '/dashboard/owner'], adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: allLocations, error: locationsError } = await supabase.from('inventory_locations').select('*');
+    if (locationsError) return res.status(500).json({ error: locationsError.message });
+
+    let locations = allLocations || [];
+    if (access.role === 'branch_admin') {
+      const branchLocation = await findLocation('branch', access.branch);
+      if (!branchLocation) return res.status(404).json({ error: 'branch location not found' });
+      locations = locations.filter((location) => location.id === branchLocation.id);
+    }
+    const locationIds = new Set(locations.map((location) => location.id));
+
+    const { data: balances, error: balancesError } = await supabase.from('inventory_balances').select('*');
+    if (balancesError) return res.status(500).json({ error: balancesError.message });
+    const scopedBalances = (balances || []).filter((balance) => locationIds.has(balance.location_id));
+
+    const { data: products, error: productsError } = await supabase.from('products').select('*');
+    if (productsError) return res.status(500).json({ error: productsError.message });
+    const activeProducts = (products || []).filter((product) => product.is_active !== false);
+
+    const locationNames = await getLocationNames();
+    const assetByLocation = summarizeAssetLocations(locations, scopedBalances, activeProducts)
+      .map((summary) => ({ ...summary, location_name: locationNames[summary.location_id] || summary.location_id }));
+    const { data: transfers, error: transfersError } = await supabase.from('stock_transfers').select('*');
+    if (transfersError) return res.status(500).json({ error: transfersError.message });
+    const scopedTransfers = (transfers || []).filter((transfer) => (
+      locationIds.has(transfer.source_location_id) || locationIds.has(transfer.destination_location_id)
+    ));
+    const activeTransfers = summarizeActiveTransfers(scopedTransfers, locationNames);
+    const attentionItems = buildAttentionItems(scopedBalances, activeProducts, locationNames);
+    const isOwner = access.role === 'owner';
+    const totalAssetValue = calculateAssetValue(scopedBalances, activeProducts);
+    const warehouseAssetValue = assetByLocation
+      .filter((location) => location.type === 'warehouse')
+      .reduce((sum, location) => sum + location.total_asset_value, 0);
+    const branchAssetValue = assetByLocation
+      .filter((location) => location.type === 'branch')
+      .reduce((sum, location) => sum + location.total_asset_value, 0);
+
+    return res.json({
+      total_asset_value: isOwner ? totalAssetValue : null,
+      warehouse_asset_value: isOwner ? warehouseAssetValue : null,
+      branch_asset_value: isOwner ? branchAssetValue : null,
+      asset_by_location: assetByLocation.map((location) => isOwner
+        ? location
+        : { ...location, total_asset_value: null }),
+      attention_items: attentionItems,
+      active_transfers: activeTransfers,
+      role: access.role,
+      breakdown: {
+        warehouse: isOwner ? warehouseAssetValue : null,
+        branches: isOwner ? branchAssetValue : null,
+      },
     });
   });
 

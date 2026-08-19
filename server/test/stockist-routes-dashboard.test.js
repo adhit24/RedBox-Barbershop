@@ -26,7 +26,7 @@ const BYPASS = { id: 'loc-bypass', type: 'branch', outlet_id: 'outlet-bypass' };
 
 function fakeSupabase({
   locations = [WAREHOUSE, BYPASS],
-  outlets = [{ id: 'outlet-bypass', name: 'RedBox Bypass' }],
+    outlets = [{ id: 'outlet-bypass', name: 'RedBox Bypass', slug: 'bypass' }],
   balances = [], products = [],
   requests = [], requestItems = [],
   transfers = [], transferItems = [],
@@ -135,4 +135,47 @@ test('GET /dashboard/overview reports pending request count, problem shipments, 
     assert.equal(body.top_requested_products[0].product_name, 'Pomade');
     assert.equal(body.top_requested_products[0].total_requested, 7);
   }, { role: 'owner' });
+});
+
+test('GET /dashboard/assets returns asset values, location breakdown, attention items, and active transfers', async () => {
+  const supabase = fakeSupabase({
+    products: [{ id: 'p1', name: 'Pomade', purchase_price: 12000, reorder_point: 3 }],
+    balances: [
+      { location_id: 'loc-warehouse', product_id: 'p1', quantity: 10 },
+      { location_id: 'loc-bypass', product_id: 'p1', quantity: 2 },
+    ],
+    transfers: [{ id: 't1', transfer_number: 'TRF-1', status: 'SENT', source_location_id: 'loc-warehouse', destination_location_id: 'loc-bypass', sent_at: '2026-08-19T08:00:00.000Z' }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/dashboard/assets`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.total_asset_value, 144000);
+    assert.equal(body.warehouse_asset_value, 120000);
+    assert.equal(body.branch_asset_value, 24000);
+    assert.equal(body.asset_by_location.find((row) => row.location_id === 'loc-bypass').total_asset_value, 24000);
+    assert.equal(body.attention_items[0].reason, 'LOW_STOCK');
+    assert.equal(body.active_transfers.length, 1);
+  }, { role: 'owner' });
+});
+
+test('GET /dashboard/assets scopes branch_admin to its branch and omits asset values', async () => {
+  const supabase = fakeSupabase({
+    products: [{ id: 'p1', name: 'Pomade', purchase_price: 12000, reorder_point: 3 }],
+    balances: [
+      { location_id: 'loc-warehouse', product_id: 'p1', quantity: 10 },
+      { location_id: 'loc-bypass', product_id: 'p1', quantity: 2 },
+    ],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/dashboard/assets`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.role, 'branch_admin');
+    assert.equal(body.asset_by_location.length, 1);
+    assert.equal(body.asset_by_location[0].location_id, 'loc-bypass');
+    assert.equal(body.total_asset_value, null);
+    assert.equal(body.asset_by_location[0].total_asset_value, null);
+    assert.equal('purchase_price' in body, false);
+  }, { role: 'branch_admin', branch: 'bypass' });
 });

@@ -267,3 +267,35 @@ export interface DashboardOverview {
 
 export const getDashboardOverview = () =>
   req<DashboardOverview>('/api/stockist/dashboard/overview');
+
+export interface AssetLocationSummary {
+  location_id: string;
+  location_name: string;
+  type: 'warehouse' | 'branch';
+  total_quantity: number;
+  total_asset_value: number | null;
+  sku_count: number;
+  low_stock_count: number;
+}
+
+export interface StockistAssetDashboard {
+  total_asset_value: number | null;
+  warehouse_asset_value: number | null;
+  branch_asset_value: number | null;
+  asset_by_location: AssetLocationSummary[];
+  attention_items: Array<{
+    product_id: string;
+    product_name: string;
+    location_id: string;
+    location_name: string;
+    quantity: number;
+    reorder_point: number;
+    reason: 'OUT_OF_STOCK' | 'LOW_STOCK';
+  }>;
+  active_transfers: StockTransfer[];
+  role: 'owner' | 'branch_admin';
+  breakdown: { warehouse: number | null; branches: number | null };
+}
+
+export const getAssetDashboard = () =>
+  req<StockistAssetDashboard>('/api/stockist/dashboard/assets');

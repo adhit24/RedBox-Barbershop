@@ -61,9 +61,92 @@ function topRequestedProducts(requestItems, limit = 5) {
     .slice(0, limit);
 }
 
+function numeric(value) {
+  const result = Number(value);
+  return Number.isFinite(result) ? result : 0;
+}
+
+function calculateAssetValue(balances, products) {
+  const productById = new Map(products.map((product) => [product.id, product]));
+  return balances.reduce((total, balance) => {
+    const product = productById.get(balance.product_id);
+    const quantity = Math.max(0, numeric(balance.quantity));
+    return total + quantity * Math.max(0, numeric(product?.purchase_price));
+  }, 0);
+}
+
+function summarizeAssetLocations(locations, balances, products) {
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const balancesByLocation = new Map();
+  for (const balance of balances) {
+    if (!balancesByLocation.has(balance.location_id)) balancesByLocation.set(balance.location_id, []);
+    balancesByLocation.get(balance.location_id).push(balance);
+  }
+
+  return locations.map((location) => {
+    const locationBalances = balancesByLocation.get(location.id) || [];
+    const positiveBalances = locationBalances.filter((balance) => numeric(balance.quantity) > 0);
+    const totalQuantity = positiveBalances.reduce((sum, balance) => sum + numeric(balance.quantity), 0);
+    const totalAssetValue = calculateAssetValue(positiveBalances, products.filter((product) => positiveBalances.some((b) => b.product_id === product.id)));
+    const lowStockCount = positiveBalances.filter((balance) => {
+      const product = productById.get(balance.product_id);
+      const threshold = product?.reorder_point ?? product?.minimum_stock ?? 0;
+      return product && numeric(balance.quantity) <= numeric(threshold);
+    }).length;
+
+    return {
+      location_id: location.id,
+      type: location.type,
+      total_quantity: totalQuantity,
+      total_asset_value: totalAssetValue,
+      sku_count: positiveBalances.length,
+      low_stock_count: lowStockCount,
+    };
+  });
+}
+
+function buildAttentionItems(balances, products, locationNames = {}) {
+  const productById = new Map(products.map((product) => [product.id, product]));
+  return balances.flatMap((balance) => {
+    const product = productById.get(balance.product_id);
+    if (!product) return [];
+    const quantity = numeric(balance.quantity);
+    const threshold = numeric(product.reorder_point ?? product.minimum_stock);
+    if (quantity > threshold) return [];
+    return [{
+      product_id: product.id,
+      product_name: product.name,
+      location_id: balance.location_id,
+      location_name: locationNames[balance.location_id] || balance.location_id,
+      quantity,
+      reorder_point: threshold,
+      reason: quantity <= 0 ? 'OUT_OF_STOCK' : 'LOW_STOCK',
+    }];
+  });
+}
+
+function summarizeActiveTransfers(transfers, locationNames = {}) {
+  return transfers
+    .filter((transfer) => transfer.status === 'SENT' || transfer.status === 'IN_TRANSIT')
+    .map((transfer) => ({
+      id: transfer.id,
+      transfer_number: transfer.transfer_number,
+      status: transfer.status,
+      source_location_id: transfer.source_location_id,
+      destination_location_id: transfer.destination_location_id,
+      source_name: locationNames[transfer.source_location_id] || transfer.source_location_id,
+      destination_name: locationNames[transfer.destination_location_id] || transfer.destination_location_id,
+      sent_at: transfer.sent_at,
+    }));
+}
+
 module.exports = {
   summarizeLocations,
   findProblemShipments,
   topOpnameDiscrepancies,
   topRequestedProducts,
+  calculateAssetValue,
+  summarizeAssetLocations,
+  buildAttentionItems,
+  summarizeActiveTransfers,
 };

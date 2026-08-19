@@ -1,16 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import Link from 'next/link';
 import {
   listProducts,
   getInventorySummary,
   listTransfers,
-  getDashboardOverview,
+  getAssetDashboard,
   type InventoryBalance,
   type StockTransfer,
-  type DashboardOverview
+  type StockistAssetDashboard
 } from '@/lib/stockistApi';
 
 const BRANCH_NAMES: Record<string, string> = {
@@ -24,7 +23,6 @@ const BRANCH_NAMES: Record<string, string> = {
 
 export default function StockistDashboard() {
   const { user } = useUser();
-  const router = useRouter();
   
   const [branch, setBranch] = useState<string>('');
   const [products, setProducts] = useState<any[]>([]);
@@ -32,8 +30,8 @@ export default function StockistDashboard() {
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [overview, setOverview] = useState<DashboardOverview | null>(null);
-  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [assetDashboard, setAssetDashboard] = useState<StockistAssetDashboard | null>(null);
+  const [assetLoading, setAssetLoading] = useState(true);
 
   // Set branch when user profile is loaded
   useEffect(() => {
@@ -42,17 +40,13 @@ export default function StockistDashboard() {
     }
   }, [user]);
 
-  // Company-wide overview is an owner-only endpoint — every location
-  // (including the warehouse, even though it shares a physical address with
-  // Cabang Bypass) comes back as its own row and must be rendered that way.
   useEffect(() => {
-    if (user?.role !== 'owner') return;
-    setOverviewLoading(true);
-    getDashboardOverview()
-      .then(setOverview)
-      .catch(() => setOverview(null))
-      .finally(() => setOverviewLoading(false));
-  }, [user?.role]);
+    if (!user) return;
+    getAssetDashboard()
+      .then(setAssetDashboard)
+      .catch(() => setAssetDashboard(null))
+      .finally(() => setAssetLoading(false));
+  }, [user]);
 
   useEffect(() => {
     if (!branch) return;
@@ -137,87 +131,82 @@ export default function StockistDashboard() {
         </div>
       </section>
 
-      {/* Company-wide Overview — owner only. Every location (warehouse
-          included) is its own card; never combine warehouse and Cabang
-          Bypass into a single figure here. */}
-      {isOwner && !overviewLoading && overview && (
+      {assetLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="w-6 h-6 border-2 border-primary-container border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : assetDashboard && (
         <section className="flex flex-col gap-3">
-          <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Ringkasan Perusahaan</h3>
+          <div>
+            <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Dashboard Aset Stok</h3>
+            <p className="text-[11px] text-text-muted px-1 mt-1">Ringkasan nilai dan risiko stok yang perlu dipahami cepat.</p>
+          </div>
 
-          <div className="flex flex-col gap-2">
-            {overview.locations.map((loc) => (
-              <div key={loc.location_id} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-text-muted text-[18px]">
-                    {loc.type === 'warehouse' ? 'warehouse' : 'storefront'}
-                  </span>
-                  <div className="flex flex-col">
-                    <span className="text-[13px] font-semibold text-text-primary">{loc.location_name}</span>
-                    <span className="text-[10px] text-text-muted">{loc.sku_count} SKU aktif</span>
+          {isOwner && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                ['Total Nilai Aset Stok', assetDashboard.total_asset_value],
+                ['Nilai Stok Gudang Pusat', assetDashboard.warehouse_asset_value],
+                ['Nilai Stok Semua Cabang', assetDashboard.branch_asset_value],
+              ].map(([label, value]) => (
+                <div key={label as string} className="bg-surface-elevated border border-border-base rounded-xl p-4 min-h-[96px]">
+                  <span className="text-[11px] text-text-muted">{label}</span>
+                  <div className="text-[20px] font-bold text-text-primary font-display tabular-nums mt-2">
+                    {formatCurrency(value as number)}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col items-end">
-                    <span className="text-[15px] font-bold text-text-primary font-display tabular-nums leading-none">{loc.total_quantity.toLocaleString('id-ID')}</span>
-                    <span className="text-[9px] text-text-muted uppercase tracking-wide mt-0.5">Total Pcs</span>
-                  </div>
-                  {loc.low_stock_count > 0 && (
-                    <span className="text-[10px] font-semibold text-status-menipis bg-status-menipis/10 border border-status-menipis/30 px-2 py-1 rounded">
-                      {loc.low_stock_count} menipis
-                    </span>
-                  )}
-                </div>
+              ))}
+            </div>
+          )}
+
+          {!isOwner && (
+            <div className="bg-surface-elevated border border-border-base rounded-xl p-4">
+              <span className="text-[11px] text-text-muted">Lokasi Anda</span>
+              <div className="text-[20px] font-bold text-text-primary font-display mt-2">
+                {assetDashboard.asset_by_location[0]?.location_name || 'Cabang'}
               </div>
+              <span className="text-[11px] text-text-muted">Ringkasan operasional tanpa nilai beli</span>
+            </div>
+          )}
+
+          <div className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[13px] font-semibold text-text-primary">Aset per Lokasi</h4>
+              <span className="text-[10px] text-text-muted">{assetDashboard.asset_by_location.length} lokasi</span>
+            </div>
+            {assetDashboard.asset_by_location.map((loc) => (
+              <Link key={loc.location_id} href={isOwner ? `/admin/stockist/branch-stock?location=${loc.location_id}` : '/admin/stockist/branch-stock'} className="flex items-center justify-between gap-3 border-t border-border-base pt-3 hover:text-primary-container">
+                <div>
+                  <div className="text-[12px] font-semibold text-text-primary">{loc.location_name}</div>
+                  <div className="text-[10px] text-text-muted">{loc.sku_count} SKU · {loc.low_stock_count} perlu perhatian</div>
+                </div>
+                <div className="text-right">
+                  {isOwner && <div className="text-[13px] font-bold text-text-primary tabular-nums">{formatCurrency(loc.total_asset_value as number)}</div>}
+                  <div className="text-[10px] text-text-muted">{loc.total_quantity.toLocaleString('id-ID')} unit</div>
+                </div>
+              </Link>
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Link
-              href="/admin/stockist/requests?status=NEEDS_ACTION"
-              className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col justify-between min-h-[80px] hover:border-primary-container transition-colors"
-            >
-              <span className="text-text-muted text-[11px] font-medium">Permintaan Tertunda</span>
-              <span className="text-[22px] font-bold text-text-primary font-display tabular-nums">{overview.pending_requests_count}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Link href={isOwner ? '/admin/stockist/products' : '/admin/stockist/branch-stock'} className="bg-surface-elevated border border-danger/30 rounded-xl p-4">
+              <span className="text-[11px] text-danger font-semibold">Barang Perlu Perhatian</span>
+              <div className="text-[24px] font-bold text-danger font-display mt-1">{assetDashboard.attention_items.length}</div>
+              <span className="text-[10px] text-text-muted">berdasarkan stok minimum</span>
             </Link>
-            <div className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col justify-between min-h-[80px]">
-              <span className="text-text-muted text-[11px] font-medium">Pengiriman Bermasalah</span>
-              <span className="text-[22px] font-bold text-danger font-display tabular-nums">{overview.problem_shipments.length}</span>
-            </div>
+            <Link href="/admin/stockist/transfers" className="bg-surface-elevated border border-border-base rounded-xl p-4">
+              <span className="text-[11px] text-text-muted font-semibold">Transfer Berjalan</span>
+              <div className="text-[24px] font-bold text-text-primary font-display mt-1">{assetDashboard.active_transfers.length}</div>
+              <span className="text-[10px] text-text-muted">belum selesai diterima</span>
+            </Link>
           </div>
 
-          {overview.problem_shipments.length > 0 && (
-            <div className="bg-surface-elevated border border-danger/30 rounded-xl p-3 flex flex-col gap-2">
-              <span className="text-[11px] font-semibold text-danger uppercase tracking-wide">Selisih Penerimaan Transfer</span>
-              {overview.problem_shipments.slice(0, 3).map((s) => (
-                <Link key={s.id} href={`/admin/stockist/transfers/${s.id}`} className="flex justify-between items-center text-[12px] text-text-secondary hover:text-text-primary">
-                  <span className="font-mono">{s.transfer_number}</span>
-                  <span>{s.source_name} → {s.destination_name}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-
-          {overview.top_discrepancies.length > 0 && (
-            <div className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col gap-2">
-              <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">Selisih Stock Opname Terbesar</span>
-              {overview.top_discrepancies.map((d) => (
-                <div key={`${d.stock_opname_id}-${d.product_name}`} className="flex justify-between items-center text-[12px]">
-                  <span className="text-text-secondary">{d.product_name} — {d.location_name}</span>
-                  <span className={`font-bold tabular-nums ${d.difference < 0 ? 'text-danger' : 'text-success'}`}>
-                    {d.difference > 0 ? `+${d.difference}` : d.difference}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {overview.top_requested_products.length > 0 && (
-            <div className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col gap-2">
-              <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">Produk Paling Sering Diminta</span>
-              {overview.top_requested_products.map((p) => (
-                <div key={p.product_id} className="flex justify-between items-center text-[12px]">
-                  <span className="text-text-secondary">{p.product_name}</span>
-                  <span className="font-bold text-text-primary tabular-nums">{p.total_requested}</span>
+          {assetDashboard.attention_items.length > 0 && (
+            <div className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-2">
+              {assetDashboard.attention_items.slice(0, 3).map((item) => (
+                <div key={`${item.location_id}-${item.product_id}`} className="flex justify-between text-[11px]">
+                  <span className="text-text-secondary">{item.product_name} · {item.location_name}</span>
+                  <span className="text-danger font-semibold">{item.reason === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis'}</span>
                 </div>
               ))}
             </div>
@@ -309,8 +298,8 @@ export default function StockistDashboard() {
             </div>
           </section>
 
-          {/* Stats Grid */}
-          <section className="grid grid-cols-2 gap-3">
+          {/* Raw quantity is retained only for branch operations; owner sees asset value above. */}
+          {!isOwner && <section className="grid grid-cols-2 gap-3">
             {/* Total Stok */}
             <div className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
               <div className="text-text-muted text-[12px] font-medium flex items-center gap-1.5">
@@ -335,7 +324,7 @@ export default function StockistDashboard() {
                 </span>
               </div>
             </div>
-          </section>
+          </section>}
 
           {/* Quick Actions */}
           <section className="flex flex-col gap-3">
