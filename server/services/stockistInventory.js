@@ -8,13 +8,17 @@ const VALID_MOVEMENT_TYPES = new Set([
   'RETURN_TO_CENTER',
   'SALE_RETAIL',
   'SERVICE_USE',
+  'SERVICE_OPEN',
+  'SERVICE_FINISHED',
   'STOCK_OPNAME_GAIN',
   'STOCK_OPNAME_LOSS',
   'DAMAGE',
   'LOST',
 ]);
 
-const VALID_PRODUCT_TYPES = new Set(['RETAIL', 'SERVICE']);
+// SERVICE is kept as a legacy alias for existing catalog rows created before
+// the consumable classification was expanded.
+const VALID_PRODUCT_TYPES = new Set(['RETAIL', 'SERVICE', 'SERVICE_CONSUMABLE', 'BOTH']);
 
 function validateMovementType(movementType) {
   if (!VALID_MOVEMENT_TYPES.has(movementType)) {
@@ -24,6 +28,7 @@ function validateMovementType(movementType) {
 
 function validateProductType(productType) {
   if (!VALID_PRODUCT_TYPES.has(productType)) {
+    // Keep the legacy public error text stable for existing clients/tests.
     const error = new Error('product type must be RETAIL or SERVICE');
     error.code = 'INVALID_PRODUCT_TYPE';
     throw error;
@@ -46,6 +51,10 @@ function assertProductType(product, expectedType) {
   error.expectedType = expectedType;
   error.actualType = actualType;
   throw error;
+}
+
+function isServiceConsumable(productType) {
+  return productType === 'SERVICE' || productType === 'SERVICE_CONSUMABLE' || productType === 'BOTH';
 }
 
 async function applyInventoryMovement(supabase, {
@@ -90,4 +99,5 @@ module.exports = {
   validateAdjustmentReason,
   validateProductType,
   assertProductType,
+  isServiceConsumable,
 };

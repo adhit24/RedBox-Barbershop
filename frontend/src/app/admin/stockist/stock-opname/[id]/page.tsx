@@ -220,8 +220,9 @@ export default function StockOpnameDetailPage({ params }: { params: Promise<{ id
           const name = product?.name || 'Produk Tidak Dikenal';
           const sku = product?.sku || 'UNKNOWN';
           const unit = product?.unit || 'pcs';
+          const accountedQuantity = item.total_accounted_quantity ?? item.system_quantity;
           const liveDiff = physicalInputs[item.id] !== '' && physicalInputs[item.id] !== undefined
-            ? Number(physicalInputs[item.id]) - item.system_quantity
+            ? Number(physicalInputs[item.id]) - accountedQuantity
             : item.difference;
 
           return (
@@ -233,10 +234,11 @@ export default function StockOpnameDetailPage({ params }: { params: Promise<{ id
 
               <div className="flex justify-between items-center bg-[#171415] p-3 rounded-lg border border-border-base text-center">
                 <div className="flex flex-col flex-1 items-start">
-                  <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Sistem</span>
+                  <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Available</span>
                   <span className="text-[14px] font-bold text-text-primary font-display tabular-nums mt-0.5">
                     {item.system_quantity} <span className="text-[10px] font-normal text-text-secondary ml-0.5">{unit}</span>
                   </span>
+                  <span className="text-[9px] text-accent-soft mt-1">In Use: {item.in_use_quantity ?? 0}</span>
                 </div>
                 <div className="w-[1px] h-8 bg-border-base"></div>
                 <div className="flex flex-col flex-1 items-center px-2">

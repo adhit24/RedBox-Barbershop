@@ -11,6 +11,33 @@ export interface StockistProduct {
   minimum_stock: number;
   reorder_point: number;
   is_active: boolean;
+  product_type?: 'RETAIL' | 'SERVICE' | 'SERVICE_CONSUMABLE' | 'BOTH';
+}
+
+export interface ServiceUsage {
+  id: string;
+  product_id: string;
+  product_name: string;
+  product_sku: string | null;
+  product_unit: string;
+  branch: string | null;
+  location_id: string;
+  quantity: number;
+  status: 'IN_USE' | 'FINISHED';
+  pic_user_id: string | null;
+  pic_name: string;
+  opened_at: string;
+  opened_by: string;
+  finished_at: string | null;
+  finished_by: string | null;
+  notes: string | null;
+}
+
+export interface ServiceUsageItem extends StockistProduct {
+  branch: string;
+  location_id: string;
+  available_quantity: number;
+  in_use_quantity: number;
 }
 
 export interface InventoryBalance {
@@ -90,6 +117,18 @@ export const activateProduct = (id: string) =>
 export const getInventorySummary = (location: string) =>
   req<{ balances: InventoryBalance[] }>(`/api/stockist/inventory/summary?location=${encodeURIComponent(location)}`);
 
+export const getServiceUsage = (branch?: string) =>
+  req<{ items: ServiceUsageItem[]; usages: ServiceUsage[] }>(`/api/stockist/service-usage${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`);
+
+export const getServiceUsagePicOptions = (branch?: string) =>
+  req<{ people: Array<{ id: string; name: string; role: 'branch_admin' | 'barber'; branch: string }> }>(`/api/stockist/service-usage/pic-options${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`);
+
+export const openServiceUsage = (input: { product_id: string; quantity?: number; pic_user_id?: string; notes?: string }) =>
+  req<{ usage: ServiceUsage }>('/api/stockist/service-usage/open', { method: 'POST', body: JSON.stringify(input) });
+
+export const finishServiceUsage = (id: string) =>
+  req<{ usage: ServiceUsage }>(`/api/stockist/service-usage/${id}/finish`, { method: 'PATCH' });
+
 export const receiveWarehouseStock = (input: { product_id: string; quantity: number; reason?: string }) =>
   req<{ ledger: unknown }>('/api/stockist/warehouse/receive', { method: 'POST', body: JSON.stringify(input) });
 
@@ -137,6 +176,8 @@ export interface StockOpnameItem {
   id: string;
   product_id: string;
   system_quantity: number;
+  in_use_quantity?: number;
+  total_accounted_quantity?: number;
   physical_quantity: number | null;
   difference: number | null;
   reason: string | null;

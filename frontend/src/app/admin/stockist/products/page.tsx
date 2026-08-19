@@ -6,6 +6,7 @@ import { listProducts, createProduct, updateProduct, deactivateProduct, activate
 type EditForm = {
   sku: string; name: string; unit: string; category: string; brand: string;
   purchase_price: string; retail_price: string; minimum_stock: string;
+  product_type: NonNullable<StockistProduct['product_type']>;
 };
 
 export default function ProductsPage() {
@@ -29,7 +30,8 @@ export default function ProductsPage() {
     brand: '',
     purchase_price: '',
     retail_price: '',
-    minimum_stock: '5'
+    minimum_stock: '5',
+    product_type: 'RETAIL' as NonNullable<StockistProduct['product_type']>
   });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -53,6 +55,7 @@ export default function ProductsPage() {
       purchase_price: p.purchase_price != null ? String(p.purchase_price) : '',
       retail_price: p.retail_price != null ? String(p.retail_price) : '',
       minimum_stock: String(p.minimum_stock),
+      product_type: p.product_type || 'RETAIL',
     });
   }
 
@@ -71,6 +74,7 @@ export default function ProductsPage() {
         purchase_price: editForm.purchase_price ? Number(editForm.purchase_price) : null,
         retail_price: editForm.retail_price ? Number(editForm.retail_price) : null,
         minimum_stock: Number(editForm.minimum_stock),
+        product_type: editForm.product_type,
       });
       setEditingId(null);
       setEditForm(null);
@@ -130,6 +134,7 @@ export default function ProductsPage() {
         purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
         retail_price: form.retail_price ? Number(form.retail_price) : null,
         minimum_stock: Number(form.minimum_stock),
+        product_type: form.product_type,
       });
       // Reset form
       setForm({
@@ -140,7 +145,8 @@ export default function ProductsPage() {
         brand: '',
         purchase_price: '',
         retail_price: '',
-        minimum_stock: '5'
+        minimum_stock: '5',
+        product_type: 'RETAIL'
       });
       setShowAddForm(false);
       await refresh();
@@ -167,11 +173,11 @@ export default function ProductsPage() {
 
   const getProductImage = (sku: string, name: string) => {
     const lowerName = name.toLowerCase();
-    if (lowerName.includes('clay') || lowerName.includes('pomade')) return '/uploads/clay.jpeg';
-    if (lowerName.includes('oil')) return '/uploads/oil_base.jpeg';
-    if (lowerName.includes('water') || lowerName.includes('spray')) return '/uploads/water_base.jpeg';
-    if (lowerName.includes('shave') || lowerName.includes('cream') || lowerName.includes('psyi')) return '/uploads/psyi.jpeg';
-    return '/uploads/E_left_here.jpeg';
+    if (lowerName.includes('clay') || lowerName.includes('pomade')) return '/api/stockist/product-image/clay.jpeg';
+    if (lowerName.includes('oil')) return '/api/stockist/product-image/oil_base.jpeg';
+    if (lowerName.includes('water') || lowerName.includes('spray')) return '/api/stockist/product-image/water_base.jpeg';
+    if (lowerName.includes('shave') || lowerName.includes('cream') || lowerName.includes('psyi')) return '/api/stockist/product-image/psyi.jpeg';
+    return '/api/stockist/product-image/E_left_here.jpeg';
   };
 
   const formatCurrency = (val: number) => {
@@ -254,6 +260,15 @@ export default function ProductsPage() {
                 className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
                 required
               />
+            </div>
+
+            <div className="flex flex-col gap-1.5 col-span-2">
+              <label className="text-[11px] font-medium text-text-secondary">Jenis Penggunaan</label>
+              <select value={form.product_type} onChange={(e) => setForm({ ...form, product_type: e.target.value as NonNullable<StockistProduct['product_type']> })} className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary">
+                <option value="RETAIL">Retail</option>
+                <option value="SERVICE_CONSUMABLE">Barang Pemakaian</option>
+                <option value="BOTH">Retail + Barang Pemakaian</option>
+              </select>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -488,6 +503,14 @@ export default function ProductsPage() {
                           className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                           required
                         />
+                      </div>
+                      <div className="flex flex-col gap-1.5 col-span-2">
+                        <label className="text-[11px] font-medium text-text-secondary">Jenis Penggunaan</label>
+                        <select value={editForm.product_type} onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value as NonNullable<StockistProduct['product_type']> })} className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary">
+                          <option value="RETAIL">Retail</option>
+                          <option value="SERVICE_CONSUMABLE">Barang Pemakaian</option>
+                          <option value="BOTH">Retail + Barang Pemakaian</option>
+                        </select>
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <label className="text-[11px] font-medium text-text-secondary">Harga Beli</label>

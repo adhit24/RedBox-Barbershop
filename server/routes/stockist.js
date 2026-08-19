@@ -24,6 +24,7 @@ const {
   summarizeLocations, findProblemShipments, topOpnameDiscrepancies, topRequestedProducts,
   calculateAssetValue, summarizeAssetLocations, buildAttentionItems, summarizeActiveTransfers,
 } = require('../services/stockistDashboard');
+const { isServiceConsumable } = require('../services/stockistInventory');
 
 // A push notification failing (e.g. no subscription, provider outage) must
 // never fail the transaction it's attached to — every call site awaits this
@@ -307,6 +308,138 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     if (error) return res.status(500).json({ error: error.message });
 
     return res.json({ ledger: data || [] });
+  });
+
+  // ─── SERVICE CONSUMABLE ACCOUNTABILITY ───────────────────────
+  router.get('/service-usage', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const requestedBranch = typeof req.query.branch === 'string' ? req.query.branch.trim().toLowerCase() : '';
+    const branches = access.role === 'branch_admin' ? [access.branch] : (requestedBranch ? [requestedBranch] : [...STOCKIST_BRANCHES]);
+    if (branches.some((branch) => !STOCKIST_BRANCHES.has(branch))) {
+      return res.status(400).json({ error: 'invalid branch' });
+    }
+
+    const locations = [];
+    for (const branch of branches) {
+      const location = await findLocation('branch', branch);
+      if (!location) return res.status(404).json({ error: `location not found for ${branch}` });
+      locations.push({ ...location, branch });
+    }
+    const locationIds = locations.map((location) => location.id);
+    const [{ data: products, error: productsError }, { data: balances, error: balancesError }, { data: usages, error: usagesError }] = await Promise.all([
+      supabase.from('products').select('id, sku, name, unit, product_type, minimum_stock, reorder_point, is_active').eq('is_active', true).order('name'),
+      supabase.from('inventory_balances').select('product_id, location_id, quantity').in('location_id', locationIds),
+      supabase.from('inventory_service_usage').select('*').in('location_id', locationIds).order('opened_at', { ascending: false }),
+    ]);
+    if (productsError) return res.status(500).json({ error: productsError.message });
+    if (balancesError) return res.status(500).json({ error: balancesError.message });
+    if (usagesError) return res.status(500).json({ error: usagesError.message });
+
+    const locationById = new Map(locations.map((location) => [location.id, location]));
+    const serviceProducts = (products || []).filter((product) => isServiceConsumable(product.product_type));
+    const availableByKey = new Map((balances || []).map((balance) => [`${balance.location_id}:${balance.product_id}`, balance.quantity]));
+    const inUseByKey = new Map();
+    for (const usage of usages || []) {
+      if (usage.status !== 'IN_USE') continue;
+      const key = `${usage.location_id}:${usage.product_id}`;
+      inUseByKey.set(key, (inUseByKey.get(key) || 0) + usage.quantity);
+    }
+    const productById = new Map((products || []).map((product) => [product.id, product]));
+    const items = [];
+    for (const location of locations) {
+      for (const product of serviceProducts) {
+        const key = `${location.id}:${product.id}`;
+        items.push({
+          ...product,
+          product_id: product.id,
+          branch: location.branch,
+          location_id: location.id,
+          available_quantity: availableByKey.get(key) || 0,
+          in_use_quantity: inUseByKey.get(key) || 0,
+        });
+      }
+    }
+    const enrichedUsages = (usages || []).map((usage) => ({
+      ...usage,
+      branch: locationById.get(usage.location_id)?.branch || null,
+      product_name: productById.get(usage.product_id)?.name || usage.product_id,
+      product_sku: productById.get(usage.product_id)?.sku || null,
+      product_unit: productById.get(usage.product_id)?.unit || 'unit',
+    }));
+    return res.json({ items, usages: enrichedUsages });
+  });
+
+  router.get('/service-usage/pic-options', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    const branch = access.role === 'branch_admin' ? access.branch : (typeof req.query.branch === 'string' ? req.query.branch.trim().toLowerCase() : '');
+    if (!STOCKIST_BRANCHES.has(branch)) return res.status(400).json({ error: 'valid branch is required' });
+    const { data, error } = await supabase.from('users').select('id, name, role, branch').eq('branch', branch).in('role', ['branch_admin', 'barber']).order('name');
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ people: data || [] });
+  });
+
+  router.post('/service-usage/open', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'branch_admin') return res.status(403).json({ error: 'only branch_admin can open service consumables' });
+
+    const { product_id, quantity = 1, pic_user_id, notes } = req.body || {};
+    if (typeof product_id !== 'string' || !product_id) return res.status(400).json({ error: 'product_id required' });
+    if (!Number.isInteger(quantity) || quantity <= 0) return res.status(400).json({ error: 'quantity must be a positive integer' });
+    const location = await findLocation('branch', access.branch);
+    if (!location) return res.status(404).json({ error: 'branch location not found' });
+
+    const { data: product, error: productError } = await supabase.from('products').select('id, product_type, is_active').eq('id', product_id).single();
+    if (productError || !product) return res.status(404).json({ error: 'product not found' });
+    if (!product.is_active) return res.status(400).json({ error: 'product is inactive' });
+    if (!isServiceConsumable(product.product_type)) return res.status(400).json({ error_code: 'SERVICE_PRODUCT_REQUIRED', error: 'product is not a service consumable' });
+
+    let picUserId = access.staffId;
+    let picName = null;
+    if (pic_user_id !== undefined) {
+      if (typeof pic_user_id !== 'string' || !pic_user_id) return res.status(400).json({ error: 'pic_user_id must be a valid user' });
+      const { data: pic, error: picError } = await supabase.from('users').select('id, name, branch, role').eq('id', pic_user_id).single();
+      if (picError || !pic || pic.branch !== access.branch || !['branch_admin', 'barber'].includes(pic.role)) {
+        return res.status(403).json({ error: 'PIC must belong to the authenticated branch' });
+      }
+      picUserId = pic.id;
+      picName = pic.name;
+    } else {
+      const { data: currentUser } = await supabase.from('users').select('id, name').eq('id', access.staffId).single();
+      picName = currentUser?.name || 'Branch Admin';
+    }
+
+    const { data: usage, error } = await supabase.rpc('open_service_usage', {
+      p_product_id: product_id,
+      p_location_id: location.id,
+      p_quantity: quantity,
+      p_pic_user_id: picUserId,
+      p_pic_name: picName,
+      p_opened_by: access.staffId,
+      p_notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null,
+    });
+    if (error) return res.status(400).json({ error: error.message });
+    return res.status(201).json({ usage });
+  });
+
+  router.patch('/service-usage/:id/finish', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'branch_admin') return res.status(403).json({ error: 'only branch_admin can finish service consumables' });
+    const { data: usage, error: usageError } = await supabase.from('inventory_service_usage').select('id, location_id, status').eq('id', req.params.id).single();
+    if (usageError || !usage) return res.status(404).json({ error: 'service usage not found' });
+    const branchLocation = await findLocation('branch', access.branch);
+    if (!branchLocation || usage.location_id !== branchLocation.id) return res.status(403).json({ error: 'branch access denied' });
+    if (usage.status !== 'IN_USE') return res.status(409).json({ error: 'service usage is already finished' });
+    const { data: finished, error } = await supabase.rpc('finish_service_usage', {
+      p_usage_id: usage.id,
+      p_finished_by: access.staffId,
+    });
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json({ usage: finished });
   });
 
   // ─── TRANSFERS ───────────────────────────────────────────────
@@ -906,6 +1039,19 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       .from('inventory_balances').select('product_id, quantity').eq('location_id', location.id);
     if (balancesError) return res.status(500).json({ error: balancesError.message });
     const balanceByProduct = new Map((balances || []).map((b) => [b.product_id, b.quantity]));
+    let activeServiceUsages = [];
+    try {
+      const { data: usageRows, error: usageError } = await supabase
+        .from('inventory_service_usage').select('product_id, quantity').eq('location_id', location.id).eq('status', 'IN_USE');
+      if (!usageError) activeServiceUsages = usageRows || [];
+    } catch {
+      // Existing installations can run the legacy opname flow until the
+      // service-consumable migration has been applied.
+    }
+    const inUseByProduct = new Map();
+    for (const usage of activeServiceUsages) {
+      inUseByProduct.set(usage.product_id, (inUseByProduct.get(usage.product_id) || 0) + usage.quantity);
+    }
 
     const locationLabel = location_type === 'warehouse' ? 'WH' : location_branch;
     const { data: opname, error: opnameError } = await supabase.from('stock_opnames').insert({
@@ -919,7 +1065,10 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const { error: itemsInsertError } = await supabase.from('stock_opname_items').insert(
       activeProducts.map((p) => ({
         stock_opname_id: opname.id, product_id: p.id,
-        system_quantity: balanceByProduct.get(p.id) || 0, physical_quantity: null, difference: null, reason: null,
+        system_quantity: balanceByProduct.get(p.id) || 0,
+        in_use_quantity: inUseByProduct.get(p.id) || 0,
+        total_accounted_quantity: (balanceByProduct.get(p.id) || 0) + (inUseByProduct.get(p.id) || 0),
+        physical_quantity: null, difference: null, reason: null,
       }))
     );
     if (itemsInsertError) return res.status(500).json({ error: itemsInsertError.message });
@@ -1041,7 +1190,7 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
 
     let discrepancyCount = 0;
     for (const item of items) {
-      const difference = computeDifference(item.system_quantity, item.physical_quantity);
+      const difference = computeDifference(item.total_accounted_quantity ?? item.system_quantity, item.physical_quantity);
       if (difference !== 0) discrepancyCount += 1;
       const { error: updateError } = await supabase.from('stock_opname_items').update({ difference }).eq('id', item.id);
       if (updateError) return res.status(500).json({ error: updateError.message });
