@@ -19,7 +19,8 @@
  --rb-text-muted: #7A6A6D;
  --rb-text-faint: #4A3E40;
 
- /* Motion tokens */
+ /* Motion tokens — mirrored as JS constants in frontend/src/lib/stockist/motion.ts
+    for framer-motion (which can't read CSS custom properties). Keep both in sync. */
  --motion-micro: 150ms;
  --motion-card: 200ms;
  --motion-content: 260ms;
@@ -126,33 +127,5 @@ body {
   background: linear-gradient(90deg, rgba(30, 41, 59, 0.4) 25%, rgba(51, 65, 85, 0.6) 50%, rgba(30, 41, 59, 0.4) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite linear;
-}
-
-@keyframes fade-slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-slide-in {
-  animation: fade-slide-in var(--motion-content) var(--motion-ease) both;
-}
-
-@keyframes sheet-slide-up {
-  from {
-    transform: translateY(100%);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
-.animate-sheet-slide-up {
-  animation: sheet-slide-up var(--motion-sheet) var(--motion-ease) both;
 }
 
