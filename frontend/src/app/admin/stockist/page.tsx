@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useUser } from '@/hooks/useUser';
 import type { AppUser } from '@/hooks/useUser';
 import Link from 'next/link';
@@ -10,9 +11,18 @@ import {
   getAssetDashboard,
   type InventoryBalance,
   type StockTransfer,
-  type DashboardOverview,
-  type StockistAssetDashboard
+  type StockistAssetDashboard,
+  type AssetLocationSummary
 } from '@/lib/stockistApi';
+import { StatCard } from '@/components/stockist/StatCard';
+import { LocationCard } from '@/components/stockist/LocationCard';
+import { ListRow, type ListRowData } from '@/components/stockist/ListRow';
+import { BottomSheet } from '@/components/stockist/BottomSheet';
+import { SkeletonCard } from '@/components/stockist/SkeletonCard';
+import { EmptyState } from '@/components/stockist/EmptyState';
+import { HorizontalBarChart } from '@/components/stockist/HorizontalBarChart';
+import { LocationDrillDownContent } from '@/components/stockist/LocationDrillDownContent';
+import { staggerContainer, fadeSlideItem } from '@/lib/stockist/motion';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -39,19 +49,59 @@ export default function StockistDashboard() {
 // ---------------------------------------------------------------------------
 // Owner: Command Center
 //
-// Read-only, company-wide, link-out only — the owner nav collapsed to a
-// single tab (see layout.tsx), so this screen is the sole hub for reaching
-// every other stockist page. It never mutates data itself; everything
-// actionable is a Link to the page that owns that action. Sourced entirely
-// from the company-wide `overview` endpoint — never mixes warehouse and
-// branch figures into one number, and never scopes to a single "selected"
-// location the way the old per-branch dropdown did.
+// Read-only, company-wide, primarily link-out — the owner nav collapsed to
+// a single tab (see layout.tsx), so this screen is the sole hub for reaching
+// every other stockist page. It never mutates data itself. KPI drill-down
+// (location SKU breakdown, full attention list, full transfer list) opens
+// in a BottomSheet for a quick look; every sheet still offers a link-out to
+// the full page for taking action. Sourced entirely from the company-wide
+// `assets` endpoint — never mixes warehouse and branch figures into one
+// number, and never scopes to a single "selected" location the way the old
+// per-branch dropdown did.
 // ---------------------------------------------------------------------------
+
+type DrillDown =
+  | { type: 'location'; location: AssetLocationSummary }
+  | { type: 'attention' }
+  | { type: 'transfers' }
+  | null;
+
+function formatAssetValue(value: number | null) {
+  if (value === null) return 'Tidak tersedia';
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency', currency: 'IDR', minimumFractionDigits: 0,
+  }).format(value);
+}
+
+function toAttentionRows(items: StockistAssetDashboard['attention_items']): ListRowData[] {
+  return items.map((item) => ({
+    key: `${item.location_id}-${item.product_id}`,
+    href: '/admin/stockist/products',
+    icon: item.reason === 'OUT_OF_STOCK' ? 'error' : 'inventory_2',
+    severity: item.reason === 'OUT_OF_STOCK' ? 'danger' : 'warning',
+    title: item.product_name,
+    subtitle: item.location_name,
+    trailing: item.reason === 'OUT_OF_STOCK' ? 'Habis' : `${item.quantity} tersisa`,
+  }));
+}
+
+function toTransferRows(transfers: StockTransfer[]): ListRowData[] {
+  return transfers.map((t) => ({
+    key: t.id,
+    href: `/admin/stockist/transfers/${t.id}`,
+    icon: 'local_shipping',
+    severity: 'neutral',
+    title: t.transfer_number,
+    subtitle: `${t.source_name ?? t.source_location_id} → ${t.destination_name ?? t.destination_location_id}`,
+    trailing: t.status === 'SENT' ? 'Dikirim' : 'Diterima',
+  }));
+}
 
 function OwnerCommandCenter({ user }: { user: AppUser }) {
   const [assets, setAssets] = useState<StockistAssetDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drillDown, setDrillDown] = useState<DrillDown>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -67,7 +117,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
   }, []);
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in">
+    <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-1">
         <h2 className="text-[22px] font-bold text-text-primary leading-tight font-display">
           {getGreeting()}, {user.name}
@@ -92,274 +142,125 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-primary-container border-t-transparent rounded-full animate-spin"></div>
+        <div className="flex flex-col gap-3">
+          <SkeletonCard className="min-h-[120px]" />
+          <div className="grid grid-cols-2 gap-3">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <SkeletonCard className="min-h-[220px]" />
         </div>
       ) : assets ? (
-        <>
-          <AssetDashboardPanel assets={assets} />
-        </>
-      ) : null}
-    </div>
-  );
-}
+        <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-6">
+          <motion.div variants={fadeSlideItem}>
+            <StatCard
+              label="Aset Stok RedBox"
+              value={assets.total_asset_value ?? 0}
+              formatter={formatAssetValue}
+              variant="hero"
+              hint="Total nilai stok aktif di seluruh jaringan RedBox."
+            />
+          </motion.div>
 
-function formatAssetValue(value: number | null) {
-  if (value === null) return 'Tidak tersedia';
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency', currency: 'IDR', minimumFractionDigits: 0,
-  }).format(value);
-}
+          <motion.div variants={fadeSlideItem} className="grid grid-cols-2 gap-3">
+            <StatCard label="Nilai Gudang Pusat" value={assets.warehouse_asset_value ?? 0} formatter={formatAssetValue} />
+            <StatCard label="Nilai Stok Cabang" value={assets.branch_asset_value ?? 0} formatter={formatAssetValue} />
+            <StatCard
+              label="Barang Perlu Perhatian"
+              value={assets.attention_items.length}
+              variant="danger"
+              hint="stok kosong atau di bawah reorder point"
+              onClick={() => setDrillDown({ type: 'attention' })}
+            />
+            <StatCard
+              label="Transfer Berjalan"
+              value={assets.active_transfers.length}
+              hint="belum selesai diterima"
+              onClick={() => setDrillDown({ type: 'transfers' })}
+            />
+          </motion.div>
 
-function AssetDashboardPanel({ assets }: { assets: StockistAssetDashboard }) {
-  const cards = [
-    ['Total Nilai Aset Stok', assets.total_asset_value],
-    ['Nilai Stok Gudang Pusat', assets.warehouse_asset_value],
-    ['Nilai Stok Semua Cabang', assets.branch_asset_value],
-  ] as const;
-
-  return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Dashboard Aset Stok</h3>
-        <p className="text-[11px] text-text-muted px-1 mt-1">Insight nilai aset dan risiko stok, bukan sekadar jumlah pcs.</p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {cards.map(([label, value]) => (
-          <div key={label} className="bg-surface-elevated border border-border-base rounded-xl p-4 min-h-[92px]">
-            <span className="text-[11px] text-text-muted">{label}</span>
-            <div className="text-[19px] font-bold text-text-primary font-display tabular-nums mt-2">
-              {formatAssetValue(value)}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <Link href="/admin/stockist/products" className="bg-surface-elevated border border-danger/30 rounded-xl p-4">
-          <span className="text-[11px] text-danger font-semibold">Barang Perlu Perhatian</span>
-          <div className="text-[24px] font-bold text-danger font-display mt-1">{assets.attention_items.length}</div>
-          <span className="text-[10px] text-text-muted">stok kosong atau di bawah reorder point</span>
-        </Link>
-        <Link href="/admin/stockist/transfers" className="bg-surface-elevated border border-border-base rounded-xl p-4">
-          <span className="text-[11px] text-text-muted font-semibold">Transfer Berjalan</span>
-          <div className="text-[24px] font-bold text-text-primary font-display mt-1">{assets.active_transfers.length}</div>
-          <span className="text-[10px] text-text-muted">belum selesai diterima</span>
-        </Link>
-      </div>
-
-      <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
-        <div className="p-3 flex items-center justify-between">
-          <h4 className="text-[13px] font-semibold text-text-primary">Aset per Lokasi</h4>
-          <span className="text-[10px] text-text-muted">{assets.asset_by_location.length} lokasi</span>
-        </div>
-        {assets.asset_by_location.map((location) => (
-          <Link key={location.location_id} href={`/admin/stockist/branch-stock?location=${location.location_id}`} className="flex items-center justify-between gap-3 p-3 hover:bg-surface-container-high">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="material-symbols-outlined text-text-muted text-[18px]">{location.type === 'warehouse' ? 'warehouse' : 'storefront'}</span>
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-text-primary truncate">{location.location_name}</div>
-                <div className="text-[10px] text-text-muted">{location.sku_count} SKU · {location.low_stock_count} perlu perhatian</div>
-              </div>
-            </div>
-            <div className="text-right shrink-0">
-              <div className="text-[13px] font-bold text-text-primary tabular-nums">{formatAssetValue(location.total_asset_value)}</div>
-              <div className="text-[10px] text-text-muted">{location.total_quantity.toLocaleString('id-ID')} unit</div>
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      {assets.attention_items.length > 0 && (
-        <div className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col gap-2">
-          <span className="text-[11px] font-semibold text-danger uppercase tracking-wide">Detail Perlu Perhatian</span>
-          {assets.attention_items.slice(0, 4).map((item) => (
-            <div key={`${item.location_id}-${item.product_id}`} className="flex justify-between text-[11px]">
-              <span className="text-text-secondary truncate">{item.product_name} · {item.location_name}</span>
-              <span className="text-danger font-semibold ml-2">{item.reason === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis'}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-type AttentionRow = {
-  key: string;
-  href: string;
-  icon: string;
-  severity: 'danger' | 'warning';
-  title: string;
-  subtitle: string;
-  trailing: string;
-};
-
-function AttentionPanel({ overview }: { overview: DashboardOverview }) {
-  const totalLowStock = overview.locations.reduce((sum, l) => sum + l.low_stock_count, 0);
-
-  const rows: AttentionRow[] = [];
-
-  if (overview.pending_requests_count > 0) {
-    rows.push({
-      key: 'pending-requests',
-      href: '/admin/stockist/requests?status=NEEDS_ACTION',
-      icon: 'assignment_late',
-      severity: 'warning',
-      title: 'Permintaan menunggu keputusan',
-      subtitle: 'Perlu ditinjau: setuju, tolak, atau penuhi sebagian',
-      trailing: String(overview.pending_requests_count)
-    });
-  }
-
-  overview.problem_shipments.slice(0, 3).forEach((s) => {
-    rows.push({
-      key: `shipment-${s.id}`,
-      href: `/admin/stockist/transfers/${s.id}`,
-      icon: 'report',
-      severity: 'danger',
-      title: `Selisih penerimaan · ${s.transfer_number}`,
-      subtitle: `${s.source_name} → ${s.destination_name}`,
-      trailing: ''
-    });
-  });
-
-  if (totalLowStock > 0) {
-    rows.push({
-      key: 'low-stock',
-      href: '/admin/stockist/products',
-      icon: 'inventory_2',
-      severity: 'warning',
-      title: 'Stok menipis di beberapa lokasi',
-      subtitle: 'Di bawah batas minimum yang ditetapkan per produk',
-      trailing: `${totalLowStock} SKU`
-    });
-  }
-
-  overview.top_discrepancies.slice(0, 3).forEach((d) => {
-    rows.push({
-      key: `opname-${d.stock_opname_id}-${d.product_name}`,
-      href: `/admin/stockist/stock-opname/${d.stock_opname_id}`,
-      icon: 'rule',
-      severity: 'danger',
-      title: `Selisih opname · ${d.product_name}`,
-      subtitle: d.location_name,
-      trailing: d.difference > 0 ? `+${d.difference}` : String(d.difference)
-    });
-  });
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Perlu Perhatian</h3>
-
-      {rows.length === 0 ? (
-        <div className="bg-surface-elevated border border-border-base rounded-xl p-4 flex items-center gap-3">
-          <span className="material-symbols-outlined text-success text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-          <div className="flex flex-col">
-            <span className="text-[13px] font-semibold text-text-primary">Semua terkendali</span>
-            <span className="text-[11px] text-text-muted">Tidak ada yang perlu ditindaklanjuti sekarang.</span>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
-          {rows.map((row) => (
-            <Link
-              key={row.key}
-              href={row.href}
-              className="flex items-center gap-3 p-3 hover:bg-surface-container-high active:bg-surface-container transition-colors"
-            >
-              <span className={`w-9 h-9 shrink-0 rounded-lg flex items-center justify-center ${
-                row.severity === 'danger' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning'
-              }`}>
-                <span className="material-symbols-outlined text-[18px]">{row.icon}</span>
-              </span>
-              <div className="flex flex-col min-w-0 flex-1">
-                <span className="text-[13px] font-semibold text-text-primary leading-tight truncate">{row.title}</span>
-                <span className="text-[11px] text-text-muted mt-0.5 truncate">{row.subtitle}</span>
-              </div>
-              {row.trailing && (
-                <span className={`text-[13px] font-bold tabular-nums shrink-0 ${row.severity === 'danger' ? 'text-danger' : 'text-warning'}`}>
-                  {row.trailing}
-                </span>
-              )}
-              <span className="material-symbols-outlined text-text-muted text-[18px] shrink-0">chevron_right</span>
-            </Link>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function LocationSnapshot({ overview, transfers }: { overview: DashboardOverview; transfers: StockTransfer[] }) {
-  const totalStock = overview.locations.reduce((sum, l) => sum + l.total_quantity, 0);
-  const activeTransfersCount = transfers.filter((t) => t.status === 'SENT').length;
-
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between px-1">
-        <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase">Semua Lokasi</h3>
-        <span className="text-[11px] text-text-muted tabular-nums">
-          {totalStock.toLocaleString('id-ID')} pcs · {activeTransfersCount} transfer aktif
-        </span>
-      </div>
-
-      <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
-        {overview.locations.map((loc) => (
-          <div key={loc.location_id} className="flex items-center justify-between gap-3 p-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="material-symbols-outlined text-text-muted text-[18px] shrink-0">
-                {loc.type === 'warehouse' ? 'warehouse' : 'storefront'}
-              </span>
-              <div className="flex flex-col min-w-0">
-                <span className="text-[13px] font-semibold text-text-primary truncate">{loc.location_name}</span>
-                <span className="text-[10px] text-text-muted">{loc.sku_count} SKU aktif</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <div className="flex flex-col items-end">
-                <span className="text-[15px] font-bold text-text-primary font-display tabular-nums leading-none">{loc.total_quantity.toLocaleString('id-ID')}</span>
-                <span className="text-[9px] text-text-muted uppercase tracking-wide mt-0.5">Total Pcs</span>
-              </div>
-              {loc.low_stock_count > 0 && (
-                <span className="text-[10px] font-semibold text-status-menipis bg-status-menipis/10 border border-status-menipis/30 px-2 py-1 rounded">
-                  {loc.low_stock_count} menipis
-                </span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function TopRequestedPanel({ overview }: { overview: DashboardOverview }) {
-  if (overview.top_requested_products.length === 0) return null;
-  const max = Math.max(...overview.top_requested_products.map((p) => p.total_requested), 1);
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Produk Paling Diminta</h3>
-      <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
-        {overview.top_requested_products.map((p, i) => (
-          <div key={p.product_id} className="flex items-center gap-3 p-3">
-            <span className="text-[11px] font-mono text-text-muted w-4 shrink-0">{i + 1}</span>
-            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-              <span className="text-[13px] text-text-secondary truncate">{p.product_name}</span>
-              <div className="h-1 rounded-full bg-surface-container-high overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-primary-container"
-                  style={{ width: `${Math.max(8, (p.total_requested / max) * 100)}%` }}
+          {assets.asset_by_location.length > 0 && (
+            <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
+              <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Nilai Stok per Lokasi</h3>
+              <div className="bg-surface-elevated border border-border-base rounded-xl p-3">
+                <HorizontalBarChart
+                  data={[...assets.asset_by_location]
+                    .sort((a, b) => (b.total_asset_value ?? 0) - (a.total_asset_value ?? 0))
+                    .map((l) => ({ name: l.location_name, value: l.total_asset_value ?? 0 }))}
                 />
               </div>
+            </motion.section>
+          )}
+
+          <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase">Aset per Lokasi</h3>
+              <span className="text-[10px] text-text-muted">{assets.asset_by_location.length} lokasi</span>
             </div>
-            <span className="text-[13px] font-bold text-text-primary tabular-nums shrink-0">{p.total_requested}</span>
+            <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
+              {assets.asset_by_location.map((location) => (
+                <LocationCard
+                  key={location.location_id}
+                  location={location}
+                  formatValue={formatAssetValue}
+                  onSelect={() => setDrillDown({ type: 'location', location })}
+                />
+              ))}
+            </div>
+          </motion.section>
+
+          <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
+            <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Perlu Perhatian</h3>
+            {assets.attention_items.length === 0 ? (
+              <EmptyState icon="check_circle" title="Semua terkendali" subtitle="Tidak ada yang perlu ditindaklanjuti sekarang." />
+            ) : (
+              <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
+                {toAttentionRows(assets.attention_items.slice(0, 4)).map((row) => (
+                  <ListRow key={row.key} row={row} />
+                ))}
+              </div>
+            )}
+          </motion.section>
+        </motion.div>
+      ) : null}
+
+      <BottomSheet
+        open={drillDown?.type === 'location'}
+        onClose={() => setDrillDown(null)}
+        title={drillDown?.type === 'location' ? drillDown.location.location_name : ''}
+      >
+        {drillDown?.type === 'location' && (
+          <LocationDrillDownContent locationId={drillDown.location.location_id} locationName={drillDown.location.location_name} />
+        )}
+      </BottomSheet>
+
+      <BottomSheet open={drillDown?.type === 'attention'} onClose={() => setDrillDown(null)} title="Barang Perlu Perhatian">
+        {assets && assets.attention_items.length > 0 ? (
+          <div className="flex flex-col divide-y divide-border-base -m-4">
+            {toAttentionRows(assets.attention_items).map((row) => (
+              <ListRow key={row.key} row={row} />
+            ))}
           </div>
-        ))}
-      </div>
-    </section>
+        ) : (
+          <EmptyState icon="check_circle" title="Semua terkendali" subtitle="Tidak ada yang perlu ditindaklanjuti sekarang." />
+        )}
+      </BottomSheet>
+
+      <BottomSheet open={drillDown?.type === 'transfers'} onClose={() => setDrillDown(null)} title="Transfer Berjalan">
+        {assets && assets.active_transfers.length > 0 ? (
+          <div className="flex flex-col divide-y divide-border-base -m-4">
+            {toTransferRows(assets.active_transfers).map((row) => (
+              <ListRow key={row.key} row={row} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState icon="check_circle" title="Belum ada transfer berjalan" subtitle="Semua transfer sudah selesai." />
+        )}
+      </BottomSheet>
+    </div>
   );
 }
 
