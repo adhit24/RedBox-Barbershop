@@ -84,10 +84,23 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
     .from('barbers').select('id, name, branch').eq('is_active', true);
   const activeBarbers = barbers || [];
 
-  const stockistSalesSync = options.stockistSalesSync === true;
-  const stockistPerformedBy = options.stockistPerformedBy || null;
+  // Enabled by default — every live entry point (external cron, manual sync
+  // buttons) should decrement Stockist stock, not just the in-process
+  // node-cron worker. In a serverless deployment that worker's timer is not
+  // guaranteed to stay alive, so opt-in-per-caller left the bridge dead in
+  // production even after it was wired into startCronJobs(). Opt out
+  // explicitly (options.stockistSalesSync === false, or the env var) during
+  // rollback/maintenance. The bridge itself is fail-closed on missing actor,
+  // location, or mapping — enabling it here cannot silently mutate stock.
+  const stockistSalesSync = options.stockistSalesSync !== false
+    && process.env.STOCKIST_MOKA_SALES_SYNC_ENABLED !== 'false';
+  let stockistPerformedBy = options.stockistPerformedBy || process.env.STOCKIST_MOKA_SYNC_ACTOR_ID || null;
   let stockistLocationId = null;
   let stockistMappings = [];
+  if (stockistSalesSync && !stockistPerformedBy) {
+    const { data: actor } = await supabase.from('users').select('id').eq('role', 'owner').limit(1).maybeSingle();
+    stockistPerformedBy = actor?.id || null;
+  }
   if (stockistSalesSync && stockistPerformedBy) {
     const [{ data: location }, { data: mappings, error: mappingError }] = await Promise.all([
       supabase.from('inventory_locations').select('id').eq('outlet_id', outlet.id).maybeSingle(),
