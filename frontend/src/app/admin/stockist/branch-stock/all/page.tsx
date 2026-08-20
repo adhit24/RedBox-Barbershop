@@ -161,7 +161,7 @@ function SemuaStokContent() {
           {filteredProducts.length === 0 ? (
             <EmptyState icon="search_off" title="Tidak ada stok yang sesuai" subtitle="Coba ubah kata kunci pencarian atau filter." />
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
               {filteredProducts.map((p) => {
                 const image = getKnownProductImage(p.name);
                 return (
