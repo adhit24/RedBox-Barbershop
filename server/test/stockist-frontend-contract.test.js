@@ -53,3 +53,9 @@ test('Semua Stok page has search, bottom-sheet filter, and a Perlengkapan (CONSU
   assert.match(source, /Terapkan Filter/);
   assert.match(source, /from ['"]@\/components\/stockist\/BottomSheet['"]/);
 });
+
+test('Riwayat page renders scoped ledger entries without a branch selector', () => {
+  const source = readFrontend('app/admin/stockist/ledger/page.tsx');
+  assert.match(source, /getInventoryLedger/);
+  assert.doesNotMatch(source, /Pilih Cabang/);
+});
