@@ -56,7 +56,6 @@ export function BottomNavBar({ items, className = '', stickyBottom = true }: Bot
             className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50"
           >
             <motion.span
-              layout
               whileTap={{ scale: 0.97 }}
               className={cn(
                 'flex items-center h-10 min-w-[40px] min-h-[40px] px-2.5 rounded-full transition-colors duration-200',
