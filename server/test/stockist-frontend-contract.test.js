@@ -32,3 +32,15 @@ test('Stockist layout wires BottomNavBar with 5 branch-admin tabs including Perm
   const hrefCount = (branchAdminTabsBlock.match(/href:/g) || []).length;
   assert.equal(hrefCount, 5);
 });
+
+test('Stok Saya dashboard replaces the catalog-first layout with summary cards', () => {
+  const source = readFrontend('app/admin/stockist/branch-stock/page.tsx');
+  assert.match(source, /Stok Habis/);
+  assert.match(source, /Stok Menipis/);
+  assert.match(source, /Barang Masuk/);
+  assert.match(source, /Barang Pemakaian/);
+  assert.match(source, /Semua Stok/);
+  assert.match(source, /Mulai Pakai/);
+  assert.doesNotMatch(source, /Buka Barang/);
+  assert.doesNotMatch(source, /Cari produk atau SKU/);
+});
