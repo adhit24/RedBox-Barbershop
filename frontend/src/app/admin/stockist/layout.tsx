@@ -1,9 +1,9 @@
 'use client';
 import { useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { MotionConfig } from 'framer-motion';
-import { Home, Boxes, PackageCheck, ClipboardList, History, ArrowLeft } from 'lucide-react';
+import { Home, Boxes, PackageCheck, ClipboardList, History, LayoutDashboard, Building2, Lightbulb } from 'lucide-react';
 import { BottomNavBar, type BottomNavItem } from '@/components/ui/bottom-nav-bar';
 
 const BRANCH_NAMES: Record<string, string> = {
@@ -18,8 +18,6 @@ const BRANCH_NAMES: Record<string, string> = {
 export default function StockistLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
   const router = useRouter();
-  const pathname = usePathname() || '';
-
   useEffect(() => {
     if (loading) return;
     if (!user || !['owner', 'branch_admin'].includes(user.role)) {
@@ -34,14 +32,11 @@ export default function StockistLayout({ children }: { children: React.ReactNode
 
   const isOwner = user.role === 'owner';
 
-  // Owner gets a single command-center destination — no flow/technical tabs
-  // (Produk, Gudang, Transfer, Permintaan) cluttering the nav. Those pages
-  // still exist and are reachable via links inside the command center; this
-  // one tab just doubles as the "back to command center" anchor when owner
-  // is a level deep on one of those pages.
-  const isCommandCenterHome = pathname === '/admin/stockist';
   const ownerTabs: BottomNavItem[] = [
-    { label: 'Command Center', href: '/admin/stockist', icon: isCommandCenterHome ? Home : ArrowLeft }
+    { label: 'Ringkasan', href: '/admin/stockist', icon: LayoutDashboard },
+    { label: 'Inventory', href: '/admin/stockist/products', icon: Boxes },
+    { label: 'Cabang', href: '/admin/stockist/branch-stock', icon: Building2 },
+    { label: 'Insight', href: '/admin/stockist/insights', icon: Lightbulb }
   ];
 
   const branchAdminTabs: BottomNavItem[] = [

@@ -1,7 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useUser } from '@/hooks/useUser';
-import { listProducts, createProduct, updateProduct, deactivateProduct, activateProduct, type StockistProduct } from '@/lib/stockistApi';
+import { listProducts, createProduct, updateProduct, deactivateProduct, activateProduct, getInventorySummary, type StockistProduct } from '@/lib/stockistApi';
+import { BackButton } from '@/components/stockist/BackButton';
+import { getKnownProductImage } from '@/lib/stockist/productImage';
 
 type EditForm = {
   sku: string; name: string; unit: string; category: string; brand: string;
@@ -158,6 +161,8 @@ export default function ProductsPage() {
   }
 
   const isOwner = user?.role === 'owner';
+
+  if (isOwner) return <OwnerInventoryView />;
 
   // Categories list extracted from products
   const categories = ['Semua', ...Array.from(new Set(products.map(p => p.category).filter((c): c is string => !!c)))];
@@ -566,6 +571,81 @@ export default function ProductsPage() {
               </div>
             ))
           )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+const OWNER_BRANCHES = [
+  ['bypass', 'Bypass'],
+  ['sumber', 'Sumber'],
+  ['samadikun', 'Samadikun'],
+  ['csb', 'CSB Mall'],
+  ['tegal', 'Tegal'],
+] as const;
+
+function OwnerInventoryView() {
+  const [products, setProducts] = useState<StockistProduct[]>([]);
+  const [balances, setBalances] = useState<Record<string, Map<string, number>>>({});
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<'ALL' | 'SAFE' | 'LOW' | 'OUT'>('ALL');
+  const [branch, setBranch] = useState('ALL');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([listProducts(), ...OWNER_BRANCHES.map(([slug]) => getInventorySummary(slug))])
+      .then(([productResult, ...branchResults]) => {
+        setProducts(productResult.products.filter((product) => product.is_active));
+        const next: Record<string, Map<string, number>> = {};
+        OWNER_BRANCHES.forEach(([slug], index) => {
+          next[slug] = new Map((branchResults[index] as { balances: Array<{ product_id: string; quantity: number }> }).balances.map((balance) => [balance.product_id, balance.quantity]));
+        });
+        setBalances(next);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat inventory lintas cabang'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const rows = products.map((product) => {
+    const distribution = OWNER_BRANCHES.map(([slug, label]) => ({ slug, label, quantity: balances[slug]?.get(product.id) ?? 0 }));
+    const total = distribution.reduce((sum, item) => sum + item.quantity, 0);
+    const low = distribution.filter((item) => item.quantity > 0 && item.quantity <= product.minimum_stock).length;
+    const out = distribution.filter((item) => item.quantity === 0).length;
+    const productStatus = out === OWNER_BRANCHES.length ? 'OUT' : out > 0 || low > 0 ? 'LOW' : 'SAFE';
+    return { product, distribution, total, low, out, productStatus };
+  }).filter((row) => {
+    const text = `${row.product.name} ${row.product.sku}`.toLowerCase();
+    const branchMatch = branch === 'ALL' || row.distribution.some((item) => item.slug === branch && item.quantity > 0);
+    return text.includes(query.toLowerCase()) && (status === 'ALL' || row.productStatus === status) && branchMatch;
+  });
+
+  return (
+    <div className="flex flex-col gap-5 animate-fade-in">
+      <BackButton fallbackHref="/admin/stockist" />
+      <header>
+        <p className="text-[10px] uppercase tracking-[0.18em] text-primary-container font-semibold">Owner · Decision view</p>
+        <h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Inventory</h2>
+        <p className="text-[12px] text-text-muted mt-1">Distribusi stok aktif di seluruh cabang.</p>
+      </header>
+      <section className="flex flex-col gap-2">
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari produk atau SKU" className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary-container placeholder:text-text-muted" />
+        <div className="grid grid-cols-2 gap-2">
+          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua status</option><option value="SAFE">Aman</option><option value="LOW">Menipis</option><option value="OUT">Habis</option></select>
+          <select value={branch} onChange={(event) => setBranch(event.target.value)} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua cabang</option>{OWNER_BRANCHES.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}</select>
+        </div>
+      </section>
+      {error && <div className="bg-danger/10 border border-danger text-danger text-xs rounded-lg p-3">{error}</div>}
+      {loading ? <div className="py-12 text-center text-text-muted text-sm">Memuat distribusi inventory…</div> : rows.length === 0 ? <div className="bg-surface-elevated border border-border-base rounded-xl p-6 text-center text-text-muted text-sm">Tidak ada produk yang sesuai filter.</div> : (
+        <section className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1"><h3 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">Produk lintas cabang</h3><span className="text-[11px] text-text-muted">{rows.length} produk</span></div>
+          <div className="flex flex-col gap-2">
+            {rows.map((row) => <Link key={row.product.id} href={`/admin/stockist/branch-stock/all/${row.product.id}?branch=bypass`} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex gap-3 hover:border-primary-container/50 transition-colors">
+              <div className="w-12 h-12 shrink-0 rounded-lg bg-surface-container-low flex items-center justify-center overflow-hidden">{getKnownProductImage(row.product.name) ? <img src={getKnownProductImage(row.product.name) as string} alt="" className="w-full h-full object-contain p-1" /> : <span className="material-symbols-outlined text-text-muted">inventory_2</span>}</div>
+              <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h4 className="text-[13px] font-semibold text-text-primary truncate">{row.product.name}</h4><p className="text-[10px] text-text-muted font-mono">{row.product.sku}</p></div><span className={`text-[10px] font-semibold ${row.productStatus === 'OUT' ? 'text-danger' : row.productStatus === 'LOW' ? 'text-status-menipis' : 'text-success'}`}>{row.productStatus === 'OUT' ? 'Habis' : row.productStatus === 'LOW' ? 'Perlu perhatian' : 'Aman'}</span></div><div className="flex items-end justify-between mt-2"><div><p className="text-[18px] font-bold text-text-primary tabular-nums">{row.total} <span className="text-[11px] font-normal text-text-muted">{row.product.unit} total</span></p><p className="text-[10px] text-text-muted">{row.low} menipis · {row.out} habis · {OWNER_BRANCHES.length} cabang</p></div><span className="material-symbols-outlined text-text-muted text-[18px]">chevron_right</span></div></div>
+            </Link>)}
+          </div>
         </section>
       )}
     </div>

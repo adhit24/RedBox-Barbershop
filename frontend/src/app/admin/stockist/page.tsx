@@ -120,15 +120,17 @@ function toTransferRows(transfers: StockTransfer[]): ListRowData[] {
 
 function OwnerCommandCenter({ user }: { user: AppUser }) {
   const [assets, setAssets] = useState<StockistAssetDashboard | null>(null);
+  const [activeProductCount, setActiveProductCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drillDown, setDrillDown] = useState<DrillDown>(null);
 
   useEffect(() => {
     setLoading(true);
-    getAssetDashboard()
-      .then((assetData) => {
+    Promise.all([getAssetDashboard(), listProducts()])
+      .then(([assetData, productData]) => {
         setAssets(assetData);
+        setActiveProductCount(productData.products.filter((product) => product.is_active).length);
         setError(null);
       })
       .catch((err) => {
@@ -175,6 +177,12 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
         </div>
       ) : assets ? (
         <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-6">
+          <motion.div variants={fadeSlideItem} className="grid grid-cols-2 gap-3">
+            <StatCard label="Total Produk Aktif" value={activeProductCount} hint="SKU aktif yang dipantau owner." />
+            <StatCard label="Produk Menipis" value={assets.attention_items.filter((item) => item.reason === 'LOW_STOCK').length} hint="Perlu restock atau redistribusi." />
+            <StatCard label="Produk Habis" value={assets.attention_items.filter((item) => item.reason === 'OUT_OF_STOCK').length} variant="danger" hint="Kosong di salah satu lokasi." onClick={() => setDrillDown({ type: 'attention' })} />
+            <StatCard label="Transfer Berjalan" value={assets.active_transfers.length} hint="Belum selesai diterima." onClick={() => setDrillDown({ type: 'transfers' })} />
+          </motion.div>
           <motion.div variants={fadeSlideItem}>
             <StatCard
               label="Aset Stok RedBox"

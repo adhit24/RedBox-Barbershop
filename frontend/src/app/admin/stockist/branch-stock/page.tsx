@@ -1,16 +1,19 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useUser } from '@/hooks/useUser';
 import {
   listProducts, getInventorySummary, getServiceUsage, getServiceUsagePicOptions,
   openServiceUsage, finishServiceUsage, listTransfers,
-  type StockistProduct, type InventoryBalance, type ServiceUsage, type ServiceUsageItem, type StockTransfer,
+  getAssetDashboard,
+  type StockistProduct, type InventoryBalance, type ServiceUsage, type ServiceUsageItem, type StockTransfer, type StockistAssetDashboard,
 } from '@/lib/stockistApi';
 import { StatCard } from '@/components/stockist/StatCard';
 import { BottomSheet } from '@/components/stockist/BottomSheet';
 import { SkeletonCard } from '@/components/stockist/SkeletonCard';
 import { EmptyState } from '@/components/stockist/EmptyState';
+import { BackButton } from '@/components/stockist/BackButton';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -143,6 +146,8 @@ function BranchStockDashboard() {
       setActionBusy(false);
     }
   }
+
+  if (isOwner) return <OwnerBranchesView />;
 
   return (
     <div className="flex flex-col gap-5 animate-fade-in">
@@ -305,6 +310,45 @@ function BranchStockDashboard() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const OWNER_BRANCHES = [
+  ['bypass', 'Cabang Bypass'], ['sumber', 'Cabang Sumber'], ['samadikun', 'Cabang Samadikun'],
+  ['csb', 'Cabang CSB Mall'], ['tegal', 'Cabang Tegal'],
+] as const;
+
+function OwnerBranchesView() {
+  const [rows, setRows] = useState<Array<{ slug: string; label: string; totalSku: number; low: number; out: number; quantity: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([listProducts(), ...OWNER_BRANCHES.map(([slug]) => getInventorySummary(slug)), getAssetDashboard()])
+      .then(([productResult, ...rest]) => {
+        const assetData = rest.pop() as StockistAssetDashboard;
+        const activeProducts = productResult.products.filter((product) => product.is_active);
+        const next = OWNER_BRANCHES.map(([slug, label], index) => {
+          const balances = (rest[index] as { balances: InventoryBalance[] }).balances;
+          const byProduct = new Map(balances.map((balance) => [balance.product_id, balance.quantity]));
+          const low = activeProducts.filter((product) => { const quantity = byProduct.get(product.id) ?? 0; return quantity > 0 && quantity <= product.minimum_stock; }).length;
+          const out = activeProducts.filter((product) => (byProduct.get(product.id) ?? 0) === 0).length;
+          return { slug, label, totalSku: activeProducts.length, low, out, quantity: balances.reduce((sum, balance) => sum + balance.quantity, 0) };
+        });
+        if (!assetData.asset_by_location) throw new Error('Ringkasan cabang belum tersedia');
+        setRows(next);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat kondisi cabang'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-5 animate-fade-in">
+      <BackButton fallbackHref="/admin/stockist" />
+      <header><p className="text-[10px] uppercase tracking-[0.18em] text-primary-container font-semibold">Owner · Business oversight</p><h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Cabang</h2><p className="text-[12px] text-text-muted mt-1">Bandingkan kesehatan inventory antar lokasi.</p></header>
+      {error && <div className="bg-danger/10 border border-danger text-danger text-xs rounded-lg p-3">{error}</div>}
+      {loading ? <div className="py-12 text-center text-text-muted text-sm">Memuat kondisi cabang…</div> : <div className="flex flex-col gap-3">{rows.map((row) => { const attention = row.out > 0 || row.low > 0; return <Link key={row.slug} href={`/admin/stockist/branch-stock?branch=${row.slug}`} className="bg-surface-elevated border border-border-base rounded-xl p-4 hover:border-primary-container/50 transition-colors"><div className="flex items-start justify-between gap-3"><div><p className="text-[16px] font-bold text-text-primary">{row.label}</p><p className={`text-[11px] mt-1 ${attention ? 'text-status-menipis' : 'text-success'}`}>{attention ? 'Perlu perhatian' : 'Kondisi aman'}</p></div><span className="material-symbols-outlined text-text-muted">chevron_right</span></div><div className="grid grid-cols-4 gap-2 mt-4"><div><p className="text-[17px] font-bold text-text-primary tabular-nums">{row.totalSku}</p><p className="text-[10px] text-text-muted">SKU aktif</p></div><div><p className="text-[17px] font-bold text-danger tabular-nums">{row.out}</p><p className="text-[10px] text-text-muted">Habis</p></div><div><p className="text-[17px] font-bold text-status-menipis tabular-nums">{row.low}</p><p className="text-[10px] text-text-muted">Menipis</p></div><div><p className="text-[17px] font-bold text-text-primary tabular-nums">{row.quantity}</p><p className="text-[10px] text-text-muted">Unit</p></div></div></Link>; })}</div>}
     </div>
   );
 }
