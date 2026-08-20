@@ -1,10 +1,10 @@
 'use client';
 
-import { useId } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export type BottomNavItem = {
   label: string;
@@ -18,14 +18,27 @@ export type BottomNavBarProps = {
   stickyBottom?: boolean;
 };
 
+const LABEL_WIDTH = 88;
+
 export function BottomNavBar({ items, className = '', stickyBottom = true }: BottomNavBarProps) {
   const pathname = usePathname() || '';
-  const uid = useId();
+  // A single-item nav (Owner's Command Center) always shows its label —
+  // there's nothing to disambiguate via icon-only collapse when there's
+  // only one destination, and the old inline nav it replaced always showed
+  // this label too.
+  const alwaysExpanded = items.length === 1;
 
   return (
-    <nav
+    <motion.nav
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 26 }}
       aria-label="Navigasi utama"
-      className={`${stickyBottom ? 'fixed bottom-0 left-1/2 -translate-x-1/2' : ''} w-full max-w-[430px] bg-surface-container-highest border-t border-border-base rounded-t-xl shadow-[0_-8px_32px_rgba(0,0,0,0.4)] flex justify-around items-center px-2 py-2 z-50 ${className}`}
+      className={cn(
+        'bg-surface-container-highest border border-border-base rounded-full flex items-center p-2 gap-1 shadow-[0_-8px_32px_rgba(0,0,0,0.4)] w-fit min-w-[220px] max-w-[95vw] h-[52px]',
+        stickyBottom && 'fixed inset-x-0 bottom-4 mx-auto z-50',
+        className
+      )}
     >
       {items.map((item) => {
         // Exact match for the root Stockist route so it doesn't stay "active"
@@ -33,32 +46,60 @@ export function BottomNavBar({ items, className = '', stickyBottom = true }: Bot
         const active = item.href === '/admin/stockist'
           ? pathname === item.href
           : pathname.startsWith(item.href);
+        const expanded = alwaysExpanded || active;
         const Icon = item.icon;
         return (
           <Link
             key={item.href}
             href={item.href}
             aria-current={active ? 'page' : undefined}
-            className="relative flex flex-col items-center justify-center gap-0.5 min-w-[44px] min-h-[44px] px-2 py-1 rounded-xl"
+            className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50"
           >
-            {active && (
-              <motion.div
-                layoutId={`stockist-bottom-nav-indicator-${uid}`}
-                className="absolute inset-0 rounded-xl bg-primary-container/10"
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            <motion.span
+              layout
+              whileTap={{ scale: 0.97 }}
+              className={cn(
+                'flex items-center h-10 min-w-[40px] min-h-[40px] px-2.5 rounded-full transition-colors duration-200',
+                active
+                  ? 'bg-primary-container/10 text-primary-container'
+                  : 'bg-transparent text-text-secondary hover:bg-surface-container-high'
+              )}
+            >
+              <Icon
+                size={20}
+                strokeWidth={active ? 2.4 : 2}
+                aria-hidden
+                className="shrink-0 transition-colors duration-200"
               />
-            )}
-            <Icon
-              size={20}
-              className={`relative transition-colors duration-200 ${active ? 'text-primary-container' : 'text-text-secondary'}`}
-              strokeWidth={active ? 2.4 : 2}
-            />
-            <span className={`relative text-[10px] tracking-tight transition-colors duration-200 ${active ? 'text-primary-container font-bold' : 'text-text-secondary font-medium'}`}>
-              {item.label}
-            </span>
+              <motion.span
+                initial={false}
+                animate={{
+                  width: expanded ? LABEL_WIDTH : 0,
+                  opacity: expanded ? 1 : 0,
+                  marginLeft: expanded ? 8 : 0,
+                }}
+                transition={{
+                  width: { type: 'spring', stiffness: 350, damping: 32 },
+                  opacity: { duration: 0.19 },
+                  marginLeft: { duration: 0.19 },
+                }}
+                className="overflow-hidden flex items-center"
+              >
+                <span
+                  className={cn(
+                    'font-bold text-[10px] tracking-tight whitespace-nowrap select-none',
+                    active ? 'text-primary-container' : 'text-text-secondary'
+                  )}
+                >
+                  {item.label}
+                </span>
+              </motion.span>
+            </motion.span>
           </Link>
         );
       })}
-    </nav>
+    </motion.nav>
   );
 }
+
+export default BottomNavBar;
