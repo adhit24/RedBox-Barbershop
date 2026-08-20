@@ -9,6 +9,7 @@ const {
   validateAdjustmentReason,
   validateProductType,
   assertProductType,
+  isServiceConsumable,
 } = require('../services/stockistInventory');
 
 test('applyInventoryMovement calls the RPC with the given params and returns the ledger row', async () => {
@@ -77,4 +78,9 @@ test('assertProductType rejects retail products in service flow', () => {
     () => assertProductType({ id: 'p1', product_type: 'RETAIL' }, 'SERVICE'),
     (error) => error.code === 'SERVICE_PRODUCT_REQUIRED',
   );
+});
+
+test('validateProductType accepts CONSUMABLE and isServiceConsumable treats it as non-service', () => {
+  assert.doesNotThrow(() => validateProductType('CONSUMABLE'));
+  assert.equal(isServiceConsumable('CONSUMABLE'), false);
 });

@@ -19,7 +19,7 @@ const VALID_MOVEMENT_TYPES = new Set([
 
 // SERVICE is kept as a legacy alias for existing catalog rows created before
 // the consumable classification was expanded.
-const VALID_PRODUCT_TYPES = new Set(['RETAIL', 'SERVICE', 'SERVICE_CONSUMABLE', 'BOTH']);
+const VALID_PRODUCT_TYPES = new Set(['RETAIL', 'SERVICE', 'SERVICE_CONSUMABLE', 'BOTH', 'CONSUMABLE']);
 
 function validateMovementType(movementType) {
   if (!VALID_MOVEMENT_TYPES.has(movementType)) {
