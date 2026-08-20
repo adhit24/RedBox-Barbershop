@@ -45,6 +45,16 @@ function BranchStockDashboard() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmFinishUsage, setConfirmFinishUsage] = useState<ServiceUsage | null>(null);
 
+  // Beranda's "Barang Pemakaian Aktif" card links here with ?openUsage=1 so
+  // the sheet is already open on arrival instead of landing on the plain
+  // dashboard and requiring a second tap.
+  useEffect(() => {
+    if (searchParams.get('openUsage') === '1') {
+      setUsageSheetOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function refresh() {
     if (!branch) return;
     setLoading(true);

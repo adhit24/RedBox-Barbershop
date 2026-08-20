@@ -1,13 +1,23 @@
 'use client';
 import { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
+import { Package } from 'lucide-react';
 import {
-  listProducts, getInventorySummary,
+  listProducts, getInventorySummary, getServiceUsage,
   type StockistProduct, type InventoryBalance,
 } from '@/lib/stockistApi';
 import { BottomSheet } from '@/components/stockist/BottomSheet';
 import { EmptyState } from '@/components/stockist/EmptyState';
+import { BackButton } from '@/components/stockist/BackButton';
+import { getKnownProductImage } from '@/lib/stockist/productImage';
+
+const TYPE_LABELS: Record<'RETAIL' | 'SERVICE' | 'CONSUMABLE', string> = {
+  RETAIL: 'Retail',
+  SERVICE: 'Barang Pemakaian',
+  CONSUMABLE: 'Perlengkapan',
+};
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -33,6 +43,7 @@ function SemuaStokContent() {
 
   const [products, setProducts] = useState<StockistProduct[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
+  const [inUseByProduct, setInUseByProduct] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,15 +55,20 @@ function SemuaStokContent() {
   useEffect(() => {
     if (!branch) return;
     setLoading(true);
-    Promise.all([listProducts(), getInventorySummary(branch)])
-      .then(([{ products }, { balances }]) => {
+    Promise.all([listProducts(), getInventorySummary(branch), getServiceUsage(isOwner ? undefined : branch)])
+      .then(([{ products }, { balances }, serviceData]) => {
         setProducts(products);
         setBalances(balances);
+        setInUseByProduct(new Map(
+          serviceData.items
+            .filter((item) => item.branch === branch)
+            .map((item) => [item.id, item.in_use_quantity])
+        ));
         setError(null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat stok cabang'))
       .finally(() => setLoading(false));
-  }, [branch]);
+  }, [branch, isOwner]);
 
   if (!branch) {
     return (
@@ -75,7 +91,8 @@ function SemuaStokContent() {
       let status: 'SAFE' | 'LOW' | 'OUT' = 'SAFE';
       if (isOut) status = 'OUT';
       else if (isLow) status = 'LOW';
-      return { ...p, qty, status };
+      const typeKey: 'RETAIL' | 'SERVICE' | 'CONSUMABLE' = isConsumableProduct(p) ? 'CONSUMABLE' : isServiceProduct(p) ? 'SERVICE' : 'RETAIL';
+      return { ...p, qty, status, typeKey, inUse: inUseByProduct.get(p.id) ?? 0 };
     });
 
   const filteredProducts = enrichedProducts.filter((p) => {
@@ -89,8 +106,12 @@ function SemuaStokContent() {
     return matchesSearch && matchesType && matchesStock;
   });
 
+  const activeFilterCount = (stockFilter !== 'ALL' ? 1 : 0) + (typeFilter !== 'ALL' ? 1 : 0);
+  const detailHrefFor = (id: string) => `/admin/stockist/branch-stock/all/${id}${isOwner ? `?branch=${branch}` : ''}`;
+
   return (
     <div className="flex flex-col gap-5 animate-fade-in">
+      <BackButton fallbackHref="/admin/stockist/branch-stock" />
       <div>
         <h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Semua Stok</h2>
         <p className="text-[12px] text-text-muted mt-1">
@@ -111,10 +132,12 @@ function SemuaStokContent() {
         </div>
         <button
           onClick={() => setFilterSheetOpen(true)}
-          className="shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border-base text-text-secondary text-[13px] font-semibold"
+          className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg border text-[13px] font-semibold ${
+            activeFilterCount > 0 ? 'border-primary-container text-primary-container bg-primary-container/10' : 'border-border-base text-text-secondary'
+          }`}
         >
           <span className="material-symbols-outlined text-[18px]">tune</span>
-          Filter
+          {activeFilterCount > 0 ? `Filter · ${activeFilterCount}` : 'Filter'}
         </button>
       </section>
 
@@ -138,19 +161,45 @@ function SemuaStokContent() {
           {filteredProducts.length === 0 ? (
             <EmptyState icon="search_off" title="Tidak ada stok yang sesuai" subtitle="Coba ubah kata kunci pencarian atau filter." />
           ) : (
-            <div className="flex flex-col gap-2">
-              {filteredProducts.map((p) => (
-                <div key={p.id} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex items-center gap-3">
-                  <div className="flex-1 flex flex-col min-w-0">
-                    <h4 className="font-semibold text-text-primary text-[14px] leading-tight truncate">{p.name}</h4>
-                    <span className="text-[10px] text-text-muted mt-1 font-mono">SKU {p.sku}</span>
-                  </div>
-                  <div className="flex flex-col items-end shrink-0">
-                    <p className={`text-[16px] font-bold font-display tabular-nums leading-tight ${p.status === 'OUT' ? 'text-danger' : p.status === 'LOW' ? 'text-status-menipis' : 'text-text-primary'}`}>{p.qty} {p.unit}</p>
-                    <span className="text-[10px] font-semibold mt-1 text-text-muted">{p.status === 'SAFE' ? 'Aman' : p.status === 'LOW' ? 'Menipis' : 'Habis'}</span>
-                  </div>
-                </div>
-              ))}
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+              {filteredProducts.map((p) => {
+                const image = getKnownProductImage(p.name);
+                return (
+                  <Link
+                    key={p.id}
+                    href={detailHrefFor(p.id)}
+                    className="bg-surface-elevated border border-border-base rounded-xl overflow-hidden flex flex-col active:scale-[0.98] hover:border-primary-container/40 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50"
+                  >
+                    <div className="aspect-square bg-surface-container-low flex items-center justify-center overflow-hidden">
+                      {image ? (
+                        <img className="w-full h-full object-contain p-3 opacity-90" src={image} alt={p.name} />
+                      ) : (
+                        <Package size={32} className="text-text-muted" aria-hidden />
+                      )}
+                    </div>
+                    <div className="p-3 flex flex-col gap-1.5">
+                      <h4 className="font-semibold text-text-primary text-[13px] leading-tight truncate">{p.name}</h4>
+                      <span className="text-[10px] text-text-muted font-mono">SKU {p.sku}</span>
+                      <span className="text-[10px] text-text-secondary">{TYPE_LABELS[p.typeKey]}</span>
+                      <div className="flex items-center justify-between mt-1">
+                        <div className="flex flex-col">
+                          {p.typeKey === 'SERVICE' ? (
+                            <>
+                              <span className="text-[12px] font-bold font-display tabular-nums text-text-primary">{p.qty} {p.unit} tertutup</span>
+                              {p.inUse > 0 && <span className="text-[10px] text-primary-container">{p.inUse} {p.unit} dipakai</span>}
+                            </>
+                          ) : (
+                            <span className={`text-[14px] font-bold font-display tabular-nums ${p.status === 'OUT' ? 'text-danger' : p.status === 'LOW' ? 'text-status-menipis' : 'text-text-primary'}`}>{p.qty} {p.unit}</span>
+                          )}
+                        </div>
+                        <span className={`text-[10px] font-semibold shrink-0 ${p.status === 'OUT' ? 'text-danger' : p.status === 'LOW' ? 'text-status-menipis' : 'text-success'}`}>
+                          {p.status === 'SAFE' ? 'Aman' : p.status === 'LOW' ? 'Menipis' : 'Habis'}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </section>

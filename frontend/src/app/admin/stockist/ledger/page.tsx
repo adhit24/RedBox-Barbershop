@@ -13,7 +13,7 @@ const MOVEMENT_LABELS: Record<string, string> = {
   RETURN_TO_CENTER: 'Retur ke Pusat',
   SALE_MOKA: 'Penjualan (Moka)',
   SALE_RETAIL: 'Penjualan Retail',
-  SERVICE_OPEN: 'Mulai Pakai',
+  SERVICE_OPEN: 'Pemakaian',
   SERVICE_FINISHED: 'Barang Ditandai Habis',
   STOCK_OPNAME_GAIN: 'Selisih Opname (Lebih)',
   STOCK_OPNAME_LOSS: 'Selisih Opname (Kurang)',
@@ -65,18 +65,33 @@ export default function RiwayatPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {ledger.map((entry) => (
-            <div key={entry.id} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex justify-between items-center gap-3">
-              <div className="flex flex-col min-w-0">
-                <span className="text-[13px] font-semibold text-text-primary truncate">{MOVEMENT_LABELS[entry.movement_type] || entry.movement_type}</span>
-                <span className="text-[11px] text-text-secondary mt-0.5 truncate">{productNameById.get(entry.product_id) || entry.product_id}</span>
-                <span className="text-[11px] text-text-muted mt-0.5">{new Date(entry.created_at).toLocaleString('id-ID')}</span>
+            <div key={entry.id} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex flex-col gap-2">
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">{MOVEMENT_LABELS[entry.movement_type] || entry.movement_type}</span>
+                  <span className="text-[13px] font-semibold text-text-primary mt-0.5 truncate">{productNameById.get(entry.product_id) || entry.product_id}</span>
+                </div>
+                <span className={`text-[15px] font-bold tabular-nums shrink-0 font-display ${entry.quantity_delta < 0 ? 'text-danger' : 'text-success'}`}>
+                  {entry.quantity_delta > 0 ? '+' : ''}{entry.quantity_delta}
+                </span>
+              </div>
+
+              {(entry.quantity_before != null && entry.quantity_after != null) && (
+                <div className="text-[11px] text-text-secondary tabular-nums">
+                  Stok: {entry.quantity_before} → {entry.quantity_after}
+                </div>
+              )}
+
+              {entry.reason && (
+                <div className="text-[11px] text-text-secondary truncate">Alasan: {entry.reason}</div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 pt-1 border-t border-border-base">
+                <span className="text-[10px] text-text-muted">{new Date(entry.created_at).toLocaleString('id-ID')}</span>
                 {entry.reference_type && entry.reference_id && (
-                  <span className="text-[10px] text-text-muted mt-0.5 font-mono truncate">Ref: {entry.reference_type} #{entry.reference_id.slice(0, 8)}</span>
+                  <span className="text-[10px] text-text-muted font-mono truncate">Ref: {entry.reference_type} #{entry.reference_id.slice(0, 8)}</span>
                 )}
               </div>
-              <span className={`text-[14px] font-bold tabular-nums shrink-0 ${entry.quantity_delta < 0 ? 'text-danger' : 'text-success'}`}>
-                {entry.quantity_delta > 0 ? '+' : ''}{entry.quantity_delta}
-              </span>
             </div>
           ))}
         </div>

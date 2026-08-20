@@ -9,10 +9,12 @@ import {
   getInventorySummary,
   listTransfers,
   getAssetDashboard,
+  getServiceUsage,
   type InventoryBalance,
   type StockTransfer,
   type StockistAssetDashboard,
-  type AssetLocationSummary
+  type AssetLocationSummary,
+  type ServiceUsage
 } from '@/lib/stockistApi';
 import { StatCard } from '@/components/stockist/StatCard';
 import { LocationCard } from '@/components/stockist/LocationCard';
@@ -24,6 +26,7 @@ import { HorizontalBarChart } from '@/components/stockist/HorizontalBarChart';
 import { LocationDrillDownContent } from '@/components/stockist/LocationDrillDownContent';
 import { staggerContainer, fadeSlideItem } from '@/lib/stockist/motion';
 import { formatCurrency, formatCurrencyCompact } from '@/lib/stockist/format';
+import { getKnownProductImage } from '@/lib/stockist/productImage';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -33,6 +36,26 @@ const BRANCH_NAMES: Record<string, string> = {
   csb: 'Cabang CSB Mall',
   tegal: 'Cabang Tegal'
 };
+
+// Approximation pending real per-product-category expected-duration data
+// (backend has no such field yet — only `opened_at`). Generic thresholds
+// applied uniformly to every active barang pemakaian, not the true
+// "fleksibel per jenis barang" the design brief asks for; documented here
+// as a known simplification, not a precise estimate.
+const USAGE_CHECK_THRESHOLD_DAYS = 14;
+const USAGE_OVERDUE_THRESHOLD_DAYS = 30;
+
+type UsageEstimateStatus = 'NORMAL' | 'PERLU_DICEK' | 'MELEWATI_ESTIMASI';
+
+function daysActive(openedAt: string): number {
+  return Math.floor((Date.now() - new Date(openedAt).getTime()) / 86_400_000);
+}
+
+function usageEstimateStatus(days: number): UsageEstimateStatus {
+  if (days >= USAGE_OVERDUE_THRESHOLD_DAYS) return 'MELEWATI_ESTIMASI';
+  if (days >= USAGE_CHECK_THRESHOLD_DAYS) return 'PERLU_DICEK';
+  return 'NORMAL';
+}
 
 const getGreeting = () => {
   const hr = new Date().getHours();
@@ -271,6 +294,7 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
   const [products, setProducts] = useState<any[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
+  const [activeUsages, setActiveUsages] = useState<ServiceUsage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -284,12 +308,14 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
     Promise.all([
       listProducts(),
       getInventorySummary(branch),
-      listTransfers()
+      listTransfers(),
+      getServiceUsage(branch)
     ])
-      .then(([{ products }, { balances }, { transfers }]) => {
+      .then(([{ products }, { balances }, { transfers }, serviceData]) => {
         setProducts(products);
         setBalances(balances);
         setTransfers(transfers);
+        setActiveUsages(serviceData.usages.filter((u) => u.status === 'IN_USE' && u.branch === branch));
         setError(null);
       })
       .catch((err) => {
@@ -310,14 +336,15 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
   const totalStock = balances.reduce((sum, b) => sum + b.quantity, 0);
   const activeTransfersCount = transfers.filter(t => t.status === 'SENT').length;
 
-  const getProductImage = (sku: string, name: string) => {
-    const lowerName = name.toLowerCase();
-    if (lowerName.includes('clay') || lowerName.includes('pomade')) return '/api/stockist/product-image/clay.jpeg';
-    if (lowerName.includes('oil')) return '/api/stockist/product-image/oil_base.jpeg';
-    if (lowerName.includes('water') || lowerName.includes('spray')) return '/api/stockist/product-image/water_base.jpeg';
-    if (lowerName.includes('shave') || lowerName.includes('cream') || lowerName.includes('psyi')) return '/api/stockist/product-image/psyi.jpeg';
-    return '/api/stockist/product-image/E_left_here.jpeg';
-  };
+  const usagesWithEstimate = activeUsages
+    .map((usage) => {
+      const days = daysActive(usage.opened_at);
+      return { ...usage, days, estimateStatus: usageEstimateStatus(days) };
+    })
+    .sort((a, b) => b.days - a.days);
+  const usagesNeedingCheck = usagesWithEstimate.filter((u) => u.estimateStatus !== 'NORMAL');
+
+  const getProductImage = (sku: string, name: string) => getKnownProductImage(name) ?? '/api/stockist/product-image/E_left_here.jpeg';
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
@@ -425,6 +452,47 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
               </div>
             </div>
           </section>
+
+          {/* Barang Pemakaian Aktif */}
+          {usagesWithEstimate.length > 0 && (
+            <Link
+              href="/admin/stockist/branch-stock?openUsage=1"
+              className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 shadow-lg active:scale-[0.99] transition-transform"
+            >
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2 text-text-primary font-semibold text-[14px] font-display">
+                  <span className="material-symbols-outlined text-[18px] text-primary-container" style={{ fontVariationSettings: "'FILL' 1" }}>timelapse</span>
+                  Barang Pemakaian Aktif
+                </div>
+                <span className="text-text-muted text-[11px]">Lihat Barang Pemakaian</span>
+              </div>
+
+              <p className={`text-[12px] flex items-center gap-1.5 ${usagesNeedingCheck.length > 0 ? 'text-warning' : 'text-success'}`}>
+                <span className="material-symbols-outlined text-[14px]">
+                  {usagesNeedingCheck.length > 0 ? 'error' : 'check_circle'}
+                </span>
+                {usagesWithEstimate.length} produk sedang digunakan
+                {usagesNeedingCheck.length > 0
+                  ? ` · ${usagesNeedingCheck.length} perlu dicek`
+                  : ' · semua dalam estimasi normal'}
+              </p>
+
+              <div className="flex flex-col gap-2">
+                {usagesWithEstimate.slice(0, 3).map((usage) => (
+                  <div key={usage.id} className="flex justify-between items-center bg-surface-container-low p-2 rounded-lg border border-border-base">
+                    <span className="text-[12px] font-medium text-text-primary truncate">{usage.product_name}</span>
+                    <span className={`text-[11px] font-semibold shrink-0 ml-2 ${
+                      usage.estimateStatus === 'MELEWATI_ESTIMASI' ? 'text-danger'
+                        : usage.estimateStatus === 'PERLU_DICEK' ? 'text-warning'
+                        : 'text-text-muted'
+                    }`}>
+                      Aktif {usage.days} hari
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Link>
+          )}
 
           {/* Quick Actions */}
           <section className="flex flex-col gap-3">

@@ -1,11 +1,10 @@
 'use client';
 import { useEffect, useState, use as usePromise } from 'react';
-import { useRouter } from 'next/navigation';
 import { getTransfer, receiveTransfer, listProducts, type StockTransfer, type StockTransferItem, type StockistProduct } from '@/lib/stockistApi';
+import { BackButton } from '@/components/stockist/BackButton';
 
 export default function TransferDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = usePromise(params);
-  const router = useRouter();
 
   const [transfer, setTransfer] = useState<StockTransfer | null>(null);
   const [items, setItems] = useState<StockTransferItem[]>([]);
@@ -122,19 +121,12 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
   };
 
   return (
-    <div className="flex flex-col gap-5 animate-fade-in pb-12">
+    <div className="flex flex-col gap-3 animate-fade-in pb-12">
+      <BackButton fallbackHref="/admin/stockist/transfers" />
       {/* Header Context */}
-      <div className="flex items-center gap-2">
-        <button 
-          onClick={() => router.back()}
-          className="w-10 h-10 flex items-center justify-center text-text-primary hover:bg-surface-elevated active:scale-95 transition-transform rounded-full -ml-2"
-        >
-          <span className="material-symbols-outlined">arrow_back</span>
-        </button>
-        <div>
-          <h2 className="text-[20px] font-bold text-text-primary font-display">Detail Transfer</h2>
-          <p className="text-[11px] text-text-muted font-mono">NO: {transfer.transfer_number}</p>
-        </div>
+      <div>
+        <h2 className="text-[20px] font-bold text-text-primary font-display">Detail Transfer</h2>
+        <p className="text-[11px] text-text-muted font-mono">NO: {transfer.transfer_number}</p>
       </div>
 
       {success && (
