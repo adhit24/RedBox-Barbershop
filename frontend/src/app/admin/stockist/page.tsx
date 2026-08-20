@@ -454,45 +454,52 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
           </section>
 
           {/* Barang Pemakaian Aktif */}
-          {usagesWithEstimate.length > 0 && (
-            <Link
-              href="/admin/stockist/branch-stock?openUsage=1"
-              className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 shadow-lg active:scale-[0.99] transition-transform"
-            >
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2 text-text-primary font-semibold text-[14px] font-display">
-                  <span className="material-symbols-outlined text-[18px] text-primary-container" style={{ fontVariationSettings: "'FILL' 1" }}>timelapse</span>
-                  Barang Pemakaian Aktif
-                </div>
-                <span className="text-text-muted text-[11px]">Lihat Barang Pemakaian</span>
+          <Link
+            href="/admin/stockist/branch-stock?openUsage=1"
+            className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 shadow-lg active:scale-[0.99] transition-transform"
+          >
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2 text-text-primary font-semibold text-[14px] font-display">
+                <span className="material-symbols-outlined text-[18px] text-primary-container" style={{ fontVariationSettings: "'FILL' 1" }}>timelapse</span>
+                Stok Pemakaian
               </div>
+              <span className="text-text-muted text-[11px]">Lihat Detail</span>
+            </div>
 
-              <p className={`text-[12px] flex items-center gap-1.5 ${usagesNeedingCheck.length > 0 ? 'text-warning' : 'text-success'}`}>
-                <span className="material-symbols-outlined text-[14px]">
-                  {usagesNeedingCheck.length > 0 ? 'error' : 'check_circle'}
-                </span>
-                {usagesWithEstimate.length} produk sedang digunakan
-                {usagesNeedingCheck.length > 0
-                  ? ` · ${usagesNeedingCheck.length} perlu dicek`
-                  : ' · semua dalam estimasi normal'}
+            {usagesWithEstimate.length === 0 ? (
+              <p className="text-text-muted text-[12px] flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[14px]">info</span>
+                Belum ada barang pemakaian aktif
               </p>
+            ) : (
+              <>
+                <p className={`text-[12px] flex items-center gap-1.5 ${usagesNeedingCheck.length > 0 ? 'text-warning' : 'text-success'}`}>
+                  <span className="material-symbols-outlined text-[14px]">
+                    {usagesNeedingCheck.length > 0 ? 'error' : 'check_circle'}
+                  </span>
+                  {usagesWithEstimate.length} produk sedang digunakan
+                  {usagesNeedingCheck.length > 0
+                    ? ` · ${usagesNeedingCheck.length} perlu dicek`
+                    : ' · semua dalam estimasi normal'}
+                </p>
 
-              <div className="flex flex-col gap-2">
-                {usagesWithEstimate.slice(0, 3).map((usage) => (
-                  <div key={usage.id} className="flex justify-between items-center bg-surface-container-low p-2 rounded-lg border border-border-base">
-                    <span className="text-[12px] font-medium text-text-primary truncate">{usage.product_name}</span>
-                    <span className={`text-[11px] font-semibold shrink-0 ml-2 ${
-                      usage.estimateStatus === 'MELEWATI_ESTIMASI' ? 'text-danger'
-                        : usage.estimateStatus === 'PERLU_DICEK' ? 'text-warning'
-                        : 'text-text-muted'
-                    }`}>
-                      Aktif {usage.days} hari
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Link>
-          )}
+                <div className="flex flex-col gap-2">
+                  {usagesWithEstimate.slice(0, 3).map((usage) => (
+                    <div key={usage.id} className="flex justify-between items-center bg-surface-container-low p-2 rounded-lg border border-border-base">
+                      <span className="text-[12px] font-medium text-text-primary truncate">{usage.product_name}</span>
+                      <span className={`text-[11px] font-semibold shrink-0 ml-2 ${
+                        usage.estimateStatus === 'MELEWATI_ESTIMASI' ? 'text-danger'
+                          : usage.estimateStatus === 'PERLU_DICEK' ? 'text-warning'
+                          : 'text-text-muted'
+                      }`}>
+                        Aktif {usage.days} hari
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </Link>
 
           {/* Quick Actions */}
           <section className="flex flex-col gap-3">
