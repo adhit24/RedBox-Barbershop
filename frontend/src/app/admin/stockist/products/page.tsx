@@ -268,6 +268,7 @@ export default function ProductsPage() {
                 <option value="RETAIL">Retail</option>
                 <option value="SERVICE_CONSUMABLE">Barang Pemakaian</option>
                 <option value="BOTH">Retail + Barang Pemakaian</option>
+                <option value="CONSUMABLE">Perlengkapan</option>
               </select>
             </div>
 
@@ -510,6 +511,7 @@ export default function ProductsPage() {
                           <option value="RETAIL">Retail</option>
                           <option value="SERVICE_CONSUMABLE">Barang Pemakaian</option>
                           <option value="BOTH">Retail + Barang Pemakaian</option>
+                          <option value="CONSUMABLE">Perlengkapan</option>
                         </select>
                       </div>
                       <div className="flex flex-col gap-1.5">

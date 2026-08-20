@@ -1,5 +1,6 @@
 'use client';
 
+import { useId } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -19,9 +20,11 @@ export type BottomNavBarProps = {
 
 export function BottomNavBar({ items, className = '', stickyBottom = true }: BottomNavBarProps) {
   const pathname = usePathname() || '';
+  const uid = useId();
 
   return (
     <nav
+      aria-label="Navigasi utama"
       className={`${stickyBottom ? 'fixed bottom-0 left-1/2 -translate-x-1/2' : ''} w-full max-w-[430px] bg-surface-container-highest border-t border-border-base rounded-t-xl shadow-[0_-8px_32px_rgba(0,0,0,0.4)] flex justify-around items-center px-2 py-2 z-50 ${className}`}
     >
       {items.map((item) => {
@@ -35,11 +38,12 @@ export function BottomNavBar({ items, className = '', stickyBottom = true }: Bot
           <Link
             key={item.href}
             href={item.href}
+            aria-current={active ? 'page' : undefined}
             className="relative flex flex-col items-center justify-center gap-0.5 min-w-[44px] min-h-[44px] px-2 py-1 rounded-xl"
           >
             {active && (
               <motion.div
-                layoutId="stockist-bottom-nav-indicator"
+                layoutId={`stockist-bottom-nav-indicator-${uid}`}
                 className="absolute inset-0 rounded-xl bg-primary-container/10"
                 transition={{ type: 'spring', stiffness: 500, damping: 30 }}
               />

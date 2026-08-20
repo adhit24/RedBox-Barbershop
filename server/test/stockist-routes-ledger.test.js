@@ -42,6 +42,7 @@ function fakeSupabase() {
       eq(column, value) { state.filters.push((row) => row[column] === value); return q; },
       in(column, values) { state.filters.push((row) => values.includes(row[column])); return q; },
       order(column, options) { state.order = { column, ascending: options?.ascending !== false }; return q; },
+      limit() { return q; },
       single: async () => {
         const rows = evaluate();
         return { data: rows[0] || null, error: null };

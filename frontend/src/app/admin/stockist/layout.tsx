@@ -53,7 +53,8 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   ];
 
   return (
-    <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
+    <MotionConfig reducedMotion="user">
+      <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
       {/* TopAppBar */}
       <header className="bg-surface-dim fixed top-0 w-full z-50 flex justify-between items-center px-4 h-[48px] shadow-[0_4px_24px_rgba(0,0,0,0.6)] max-w-[430px] left-1/2 -translate-x-1/2 border-b border-border-base">
         <div className="flex items-center gap-2">
@@ -89,11 +90,12 @@ export default function StockistLayout({ children }: { children: React.ReactNode
 
       {/* Main Container */}
       <main className="pt-[calc(48px+16px)] pb-[calc(70px+24px)] px-4 w-full max-w-[430px] mx-auto min-h-screen flex flex-col gap-4">
-        <MotionConfig reducedMotion="user">{children}</MotionConfig>
+        {children}
       </main>
 
       {/* BottomNavBar */}
       <BottomNavBar items={isOwner ? ownerTabs : branchAdminTabs} />
-    </div>
+      </div>
+    </MotionConfig>
   );
 }

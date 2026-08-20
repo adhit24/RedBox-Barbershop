@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useUser } from '@/hooks/useUser';
-import { getInventoryLedger, type InventoryLedgerEntry } from '@/lib/stockistApi';
+import { getInventoryLedger, listProducts, type InventoryLedgerEntry } from '@/lib/stockistApi';
 import { SkeletonCard } from '@/components/stockist/SkeletonCard';
 import { EmptyState } from '@/components/stockist/EmptyState';
 
@@ -24,14 +24,16 @@ const MOVEMENT_LABELS: Record<string, string> = {
 export default function RiwayatPage() {
   const { user } = useUser();
   const [ledger, setLedger] = useState<InventoryLedgerEntry[]>([]);
+  const [productNameById, setProductNameById] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    getInventoryLedger()
-      .then(({ ledger }) => {
+    Promise.all([getInventoryLedger(), listProducts()])
+      .then(([{ ledger }, { products }]) => {
         setLedger(ledger);
+        setProductNameById(new Map(products.map((p) => [p.id, p.name])));
         setError(null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat riwayat'))
@@ -66,7 +68,11 @@ export default function RiwayatPage() {
             <div key={entry.id} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex justify-between items-center gap-3">
               <div className="flex flex-col min-w-0">
                 <span className="text-[13px] font-semibold text-text-primary truncate">{MOVEMENT_LABELS[entry.movement_type] || entry.movement_type}</span>
+                <span className="text-[11px] text-text-secondary mt-0.5 truncate">{productNameById.get(entry.product_id) || entry.product_id}</span>
                 <span className="text-[11px] text-text-muted mt-0.5">{new Date(entry.created_at).toLocaleString('id-ID')}</span>
+                {entry.reference_type && entry.reference_id && (
+                  <span className="text-[10px] text-text-muted mt-0.5 font-mono truncate">Ref: {entry.reference_type} #{entry.reference_id.slice(0, 8)}</span>
+                )}
               </div>
               <span className={`text-[14px] font-bold tabular-nums shrink-0 ${entry.quantity_delta < 0 ? 'text-danger' : 'text-success'}`}>
                 {entry.quantity_delta > 0 ? '+' : ''}{entry.quantity_delta}

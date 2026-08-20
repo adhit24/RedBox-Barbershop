@@ -295,7 +295,7 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const access = requireAccess(req, res);
     if (!access) return;
 
-    let query = supabase.from('inventory_ledger').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('inventory_ledger').select('*').order('created_at', { ascending: false }).limit(200);
     if (typeof req.query.product_id === 'string' && req.query.product_id) {
       query = query.eq('product_id', req.query.product_id);
     }

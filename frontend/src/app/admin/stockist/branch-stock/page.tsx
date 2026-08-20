@@ -193,7 +193,7 @@ function BranchStockDashboard() {
           <StatCard
             label="Barang Masuk"
             value={incomingTransfers.length}
-            hint={incomingTransfers.length > 0 ? 'Menunggu pemeriksaan dan konfirmasi.' : 'Tidak ada barang masuk'}
+            hint={isOwner ? 'Semua cabang' : (incomingTransfers.length > 0 ? 'Menunggu pemeriksaan dan konfirmasi.' : 'Tidak ada barang masuk')}
             href="/admin/stockist/transfers"
           />
           <StatCard
@@ -228,13 +228,13 @@ function BranchStockDashboard() {
                 <div className="flex justify-between text-text-secondary"><span>Stok tertutup</span><strong className="text-text-primary">{item.available_quantity} {item.unit}</strong></div>
                 <div className="flex justify-between text-text-secondary"><span>Sedang digunakan</span><strong className="text-primary-container">{item.in_use_quantity} {item.unit}</strong></div>
                 {!isOwner && item.available_quantity > 0 && (
-                  <button onClick={() => { setOpenProduct(item); setOpenQuantity(1); }} className="rounded-lg bg-primary-container text-text-primary py-2 font-semibold">Mulai Pakai</button>
+                  <button onClick={() => { setOpenProduct(item); setOpenQuantity(1); setUsageSheetOpen(false); setActionError(null); }} className="rounded-lg bg-primary-container text-text-primary py-2 font-semibold">Mulai Pakai</button>
                 )}
                 {activeUsagesForBranch.filter((usage) => usage.product_id === item.id).map((usage) => (
                   <div key={usage.id} className="flex justify-between items-center border-t border-border-base pt-2">
                     <span className="text-text-muted">{usage.quantity} {usage.product_unit} &middot; PIC {usage.pic_name}</span>
                     {!isOwner && (
-                      <button onClick={() => setConfirmFinishUsage(usage)} disabled={actionBusy} className="rounded-lg border border-border-base text-text-secondary px-3 py-1.5 font-semibold">Tandai Habis</button>
+                      <button onClick={() => { setConfirmFinishUsage(usage); setUsageSheetOpen(false); setActionError(null); }} disabled={actionBusy} className="rounded-lg border border-border-base text-text-secondary px-3 py-1.5 font-semibold">Tandai Habis</button>
                     )}
                   </div>
                 ))}
