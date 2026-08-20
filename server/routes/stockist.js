@@ -294,16 +294,21 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
   router.get('/inventory/ledger', adminAuth, async (req, res) => {
     const access = requireAccess(req, res);
     if (!access) return;
-    // Full ledger browsing is an owner capability in this spec; branch_admin
-    // sees their own branch history via /inventory/summary + transfer detail.
-    if (access.role !== 'owner') {
-      return res.status(403).json({ error: 'only owner can browse the full ledger' });
-    }
 
     let query = supabase.from('inventory_ledger').select('*').order('created_at', { ascending: false });
     if (typeof req.query.product_id === 'string' && req.query.product_id) {
       query = query.eq('product_id', req.query.product_id);
     }
+
+    if (access.role === 'branch_admin') {
+      // branch_admin reads only their own branch history. Location is
+      // resolved from the verified session, never from the request, so a
+      // manipulated query param cannot leak another branch's ledger.
+      const location = await findLocation('branch', access.branch);
+      if (!location) return res.status(404).json({ error: `location not found for ${access.branch}` });
+      query = query.eq('location_id', location.id);
+    }
+
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: error.message });
 

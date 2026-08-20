@@ -340,3 +340,21 @@ export interface StockistAssetDashboard {
 
 export const getAssetDashboard = () =>
   req<StockistAssetDashboard>('/api/stockist/dashboard/assets');
+
+export interface InventoryLedgerEntry {
+  id: string;
+  product_id: string;
+  location_id: string;
+  movement_type: string;
+  quantity_delta: number;
+  quantity_before?: number;
+  quantity_after?: number;
+  reference_type?: string | null;
+  reference_id?: string | null;
+  performed_by?: string;
+  reason?: string | null;
+  created_at: string;
+}
+
+export const getInventoryLedger = () =>
+  req<{ ledger: InventoryLedgerEntry[] }>('/api/stockist/inventory/ledger');
