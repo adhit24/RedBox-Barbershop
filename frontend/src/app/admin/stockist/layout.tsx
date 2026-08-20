@@ -2,8 +2,9 @@
 import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
-import Link from 'next/link';
 import { MotionConfig } from 'framer-motion';
+import { Home, Boxes, PackageCheck, ClipboardList, History, ArrowLeft } from 'lucide-react';
+import { BottomNavBar, type BottomNavItem } from '@/components/ui/bottom-nav-bar';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -39,43 +40,17 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   // one tab just doubles as the "back to command center" anchor when owner
   // is a level deep on one of those pages.
   const isCommandCenterHome = pathname === '/admin/stockist';
-  const ownerTabs = [
-    {
-      label: 'Command Center',
-      icon: isCommandCenterHome ? 'hub' : 'arrow_back',
-      href: '/admin/stockist',
-      active: isCommandCenterHome
-    }
+  const ownerTabs: BottomNavItem[] = [
+    { label: 'Command Center', href: '/admin/stockist', icon: isCommandCenterHome ? Home : ArrowLeft }
   ];
 
-  const branchAdminTabs = [
-    {
-      label: 'Beranda',
-      icon: 'home',
-      href: '/admin/stockist',
-      active: pathname === '/admin/stockist'
-    },
-    {
-      label: 'Stok Saya',
-      icon: 'inventory',
-      href: '/admin/stockist/branch-stock',
-      active: pathname.startsWith('/admin/stockist/branch-stock')
-    },
-    {
-      label: 'Transfer',
-      icon: 'receipt_long',
-      href: '/admin/stockist/transfers',
-      active: pathname.startsWith('/admin/stockist/transfers')
-    },
-    {
-      label: 'Permintaan',
-      icon: 'assignment',
-      href: '/admin/stockist/requests',
-      active: pathname.startsWith('/admin/stockist/requests')
-    }
+  const branchAdminTabs: BottomNavItem[] = [
+    { label: 'Beranda', href: '/admin/stockist', icon: Home },
+    { label: 'Stok', href: '/admin/stockist/branch-stock', icon: Boxes },
+    { label: 'Barang Masuk', href: '/admin/stockist/transfers', icon: PackageCheck },
+    { label: 'Permintaan', href: '/admin/stockist/requests', icon: ClipboardList },
+    { label: 'Riwayat', href: '/admin/stockist/ledger', icon: History }
   ];
-
-  const tabs = isOwner ? ownerTabs : branchAdminTabs;
 
   return (
     <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
@@ -118,43 +93,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
       </main>
 
       {/* BottomNavBar */}
-      <nav className="bg-surface-container-highest fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] flex justify-around items-center px-4 py-2 z-50 rounded-t-xl shadow-[0_-8px_32px_rgba(0,0,0,0.4)] border-t border-border-base">
-        {isOwner ? (
-          // Owner has one destination, not a tab bar — a wide anchor pill
-          // that reads as "you're here" on the command center and "go back"
-          // one level deep, rather than a lonely stacked icon mimicking a tab.
-          <Link
-            href={tabs[0].href}
-            className={`flex items-center justify-center gap-2 rounded-full px-6 py-2 w-full transition-all duration-200 ${
-              tabs[0].active
-                ? 'text-primary-container font-bold bg-primary-container/10'
-                : 'text-text-secondary hover:text-primary-container active:scale-95'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: tabs[0].active ? "'FILL' 1" : "'FILL' 0" }}>
-              {tabs[0].icon}
-            </span>
-            <span className="text-[13px] tracking-tight font-semibold">{tabs[0].label}</span>
-          </Link>
-        ) : (
-          tabs.map((tab) => (
-            <Link
-              key={tab.label}
-              href={tab.href}
-              className={`flex flex-col items-center justify-center rounded-xl px-4 py-1.5 transition-all duration-200 min-w-[64px] ${
-                tab.active
-                  ? 'text-primary-container font-bold bg-primary-container/10 scale-95'
-                  : 'text-text-secondary hover:text-primary-container active:scale-95'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[22px]" style={{ fontVariationSettings: tab.active ? "'FILL' 1" : "'FILL' 0" }}>
-                {tab.icon}
-              </span>
-              <span className="text-[10px] mt-0.5 tracking-tight font-medium">{tab.label}</span>
-            </Link>
-          ))
-        )}
-      </nav>
+      <BottomNavBar items={isOwner ? ownerTabs : branchAdminTabs} />
     </div>
   );
 }
