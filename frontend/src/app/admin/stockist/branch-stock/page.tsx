@@ -43,6 +43,7 @@ function BranchStockDashboard() {
   const [openNotes, setOpenNotes] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmFinishUsage, setConfirmFinishUsage] = useState<ServiceUsage | null>(null);
 
   async function refresh() {
     if (!branch) return;
@@ -100,7 +101,7 @@ function BranchStockDashboard() {
 
   const serviceItemsForBranch = serviceItems.filter((item) => item.branch === branch);
   const activeUsageCount = serviceItemsForBranch.filter((item) => item.in_use_quantity > 0).length;
-  const activeUsagesForBranch = serviceUsages.filter((usage) => usage.status === 'IN_USE' && (isOwner || usage.branch === branch));
+  const activeUsagesForBranch = serviceUsages.filter((usage) => usage.status === 'IN_USE' && usage.branch === branch);
 
   async function handleMulaiPakai() {
     if (!openProduct) return;
@@ -124,6 +125,7 @@ function BranchStockDashboard() {
     setActionError(null);
     try {
       await finishServiceUsage(usage.id);
+      setConfirmFinishUsage(null);
       await refresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Gagal menandai barang sebagai habis');
@@ -232,7 +234,7 @@ function BranchStockDashboard() {
                   <div key={usage.id} className="flex justify-between items-center border-t border-border-base pt-2">
                     <span className="text-text-muted">{usage.quantity} {usage.product_unit} &middot; PIC {usage.pic_name}</span>
                     {!isOwner && (
-                      <button onClick={() => void handleTandaiHabis(usage)} disabled={actionBusy} className="rounded-lg border border-border-base text-text-secondary px-3 py-1.5 font-semibold">Tandai Habis</button>
+                      <button onClick={() => setConfirmFinishUsage(usage)} disabled={actionBusy} className="rounded-lg border border-border-base text-text-secondary px-3 py-1.5 font-semibold">Tandai Habis</button>
                     )}
                   </div>
                 ))}
@@ -245,6 +247,9 @@ function BranchStockDashboard() {
       {openProduct && (
         <div className="fixed inset-0 z-[60] bg-black/70 flex items-end justify-center p-4" role="dialog" aria-modal="true">
           <div className="w-full max-w-[430px] bg-surface-elevated border border-border-base rounded-2xl p-4 flex flex-col gap-4">
+            {actionError && (
+              <div className="bg-danger/10 border border-danger text-danger text-xs rounded-lg p-2">{actionError}</div>
+            )}
             <div>
               <h3 className="text-[16px] font-bold text-text-primary">Mulai Pakai</h3>
               <p className="text-[12px] text-text-muted mt-1">
@@ -266,6 +271,26 @@ function BranchStockDashboard() {
             <div className="flex gap-2">
               <button onClick={() => setOpenProduct(null)} disabled={actionBusy} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary">Batal</button>
               <button onClick={() => void handleMulaiPakai()} disabled={actionBusy || !openPic} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Mulai Pakai'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmFinishUsage && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-end justify-center p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-[430px] bg-surface-elevated border border-border-base rounded-2xl p-4 flex flex-col gap-4">
+            {actionError && (
+              <div className="bg-danger/10 border border-danger text-danger text-xs rounded-lg p-2">{actionError}</div>
+            )}
+            <div>
+              <h3 className="text-[16px] font-bold text-text-primary">Tandai Habis</h3>
+              <p className="text-[12px] text-text-muted mt-1">
+                Tandai barang ini sudah habis? Barang aktif akan ditutup dan riwayat pemakaian akan dicatat.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmFinishUsage(null)} disabled={actionBusy} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary">Batal</button>
+              <button onClick={() => void handleTandaiHabis(confirmFinishUsage)} disabled={actionBusy} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Tandai Habis'}</button>
             </div>
           </div>
         </div>
