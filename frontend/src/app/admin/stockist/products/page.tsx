@@ -586,12 +586,14 @@ const OWNER_BRANCHES = [
 ] as const;
 
 function OwnerInventoryView() {
+  const PAGE_SIZE = 8;
   const [products, setProducts] = useState<StockistProduct[]>([]);
   const [balances, setBalances] = useState<Record<string, Map<string, number>>>({});
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'ALL' | 'SAFE' | 'LOW' | 'OUT'>('ALL');
   const [branch, setBranch] = useState('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -621,6 +623,8 @@ function OwnerInventoryView() {
     const branchMatch = branch === 'ALL' || row.distribution.some((item) => item.slug === branch && item.quantity > 0);
     return text.includes(query.toLowerCase()) && (status === 'ALL' || row.productStatus === status) && branchMatch;
   });
+  const visibleRows = rows.slice(0, visibleCount);
+  const hasMoreRows = visibleCount < rows.length;
 
   return (
     <div className="flex flex-col gap-5 animate-fade-in">
@@ -631,18 +635,18 @@ function OwnerInventoryView() {
         <p className="text-[12px] text-text-muted mt-1">Distribusi stok aktif di seluruh cabang.</p>
       </header>
       <section className="flex flex-col gap-2">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari produk atau SKU" className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary-container placeholder:text-text-muted" />
+        <input value={query} onChange={(event) => { setQuery(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} placeholder="Cari produk atau SKU" className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary-container placeholder:text-text-muted" />
         <div className="grid grid-cols-2 gap-2">
-          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua status</option><option value="SAFE">Aman</option><option value="LOW">Menipis</option><option value="OUT">Habis</option></select>
-          <select value={branch} onChange={(event) => setBranch(event.target.value)} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua cabang</option>{OWNER_BRANCHES.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}</select>
+          <select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua status</option><option value="SAFE">Aman</option><option value="LOW">Menipis</option><option value="OUT">Habis</option></select>
+          <select value={branch} onChange={(event) => { setBranch(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua cabang</option>{OWNER_BRANCHES.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}</select>
         </div>
       </section>
       {error && <div className="bg-danger/10 border border-danger text-danger text-xs rounded-lg p-3">{error}</div>}
       {loading ? <div className="py-12 text-center text-text-muted text-sm">Memuat distribusi inventory…</div> : rows.length === 0 ? <div className="bg-surface-elevated border border-border-base rounded-xl p-6 text-center text-text-muted text-sm">Tidak ada produk yang sesuai filter.</div> : (
         <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between px-1"><h3 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">Produk lintas cabang</h3><span className="text-[11px] text-text-muted">{rows.length} produk</span></div>
-          <div className="flex flex-col gap-2">
-            {rows.map((row) => {
+          <div className="flex items-center justify-between px-1"><h3 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">Produk lintas cabang</h3><span className="text-[11px] text-text-muted">Menampilkan {visibleRows.length} dari {rows.length}</span></div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {visibleRows.map((row) => {
               const expanded = expandedId === row.product.id;
               return <div key={row.product.id} className="bg-surface-elevated border border-border-base rounded-xl overflow-hidden transition-colors hover:border-primary-container/50">
                 <button type="button" onClick={() => setExpandedId(expanded ? null : row.product.id)} aria-expanded={expanded} className="w-full text-left p-3 flex gap-3 min-h-[88px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50">
@@ -653,6 +657,7 @@ function OwnerInventoryView() {
               </div>;
             })}
           </div>
+          {hasMoreRows && <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)} className="w-full min-h-[44px] rounded-xl border border-border-base bg-surface-elevated text-[12px] font-semibold text-text-secondary hover:border-primary-container hover:text-text-primary transition-colors">Tampilkan {Math.min(PAGE_SIZE, rows.length - visibleCount)} produk berikutnya</button>}
         </section>
       )}
     </div>
