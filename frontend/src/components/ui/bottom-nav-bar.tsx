@@ -10,6 +10,7 @@ export type BottomNavItem = {
   label: string;
   href: string;
   icon: LucideIcon;
+  activePrefixes?: string[];
 };
 
 export type BottomNavBarProps = {
@@ -43,9 +44,9 @@ export function BottomNavBar({ items, className = '', stickyBottom = true }: Bot
       {items.map((item) => {
         // Exact match for the root Stockist route so it doesn't stay "active"
         // on every deeper page (which all start with the same prefix).
-        const active = item.href === '/admin/stockist'
+        const active = item.activePrefixes?.some((prefix) => pathname.startsWith(prefix)) ?? (item.href === '/admin/stockist'
           ? pathname === item.href
-          : pathname.startsWith(item.href);
+          : pathname.startsWith(item.href));
         const expanded = alwaysExpanded || active;
         const Icon = item.icon;
         return (

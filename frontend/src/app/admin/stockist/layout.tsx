@@ -35,7 +35,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   const ownerTabs: BottomNavItem[] = [
     { label: 'Ringkasan', href: '/admin/stockist', icon: LayoutDashboard },
     { label: 'Inventory', href: '/admin/stockist/products', icon: Boxes },
-    { label: 'Cabang', href: '/admin/stockist/branch-stock', icon: Building2 },
+    { label: 'Cabang', href: '/admin/stockist/branch-stock', icon: Building2, activePrefixes: ['/admin/stockist/branch-stock', '/admin/stockist/branches'] },
     { label: 'Insight', href: '/admin/stockist/insights', icon: Lightbulb }
   ];
 

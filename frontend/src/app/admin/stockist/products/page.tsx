@@ -591,6 +591,7 @@ function OwnerInventoryView() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'ALL' | 'SAFE' | 'LOW' | 'OUT'>('ALL');
   const [branch, setBranch] = useState('ALL');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -641,10 +642,16 @@ function OwnerInventoryView() {
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between px-1"><h3 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">Produk lintas cabang</h3><span className="text-[11px] text-text-muted">{rows.length} produk</span></div>
           <div className="flex flex-col gap-2">
-            {rows.map((row) => <Link key={row.product.id} href={`/admin/stockist/branch-stock/all/${row.product.id}?branch=bypass`} className="bg-surface-elevated border border-border-base rounded-xl p-3 flex gap-3 hover:border-primary-container/50 transition-colors">
-              <div className="w-12 h-12 shrink-0 rounded-lg bg-surface-container-low flex items-center justify-center overflow-hidden">{getKnownProductImage(row.product.name) ? <img src={getKnownProductImage(row.product.name) as string} alt="" className="w-full h-full object-contain p-1" /> : <span className="material-symbols-outlined text-text-muted">inventory_2</span>}</div>
-              <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h4 className="text-[13px] font-semibold text-text-primary truncate">{row.product.name}</h4><p className="text-[10px] text-text-muted font-mono">{row.product.sku}</p></div><span className={`text-[10px] font-semibold ${row.productStatus === 'OUT' ? 'text-danger' : row.productStatus === 'LOW' ? 'text-status-menipis' : 'text-success'}`}>{row.productStatus === 'OUT' ? 'Habis' : row.productStatus === 'LOW' ? 'Perlu perhatian' : 'Aman'}</span></div><div className="flex items-end justify-between mt-2"><div><p className="text-[18px] font-bold text-text-primary tabular-nums">{row.total} <span className="text-[11px] font-normal text-text-muted">{row.product.unit} total</span></p><p className="text-[10px] text-text-muted">{row.low} menipis · {row.out} habis · {OWNER_BRANCHES.length} cabang</p></div><span className="material-symbols-outlined text-text-muted text-[18px]">chevron_right</span></div></div>
-            </Link>)}
+            {rows.map((row) => {
+              const expanded = expandedId === row.product.id;
+              return <div key={row.product.id} className="bg-surface-elevated border border-border-base rounded-xl overflow-hidden transition-colors hover:border-primary-container/50">
+                <button type="button" onClick={() => setExpandedId(expanded ? null : row.product.id)} aria-expanded={expanded} className="w-full text-left p-3 flex gap-3 min-h-[88px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50">
+                  <div className="w-12 h-12 shrink-0 rounded-lg bg-surface-container-low flex items-center justify-center overflow-hidden">{getKnownProductImage(row.product.name) ? <img src={getKnownProductImage(row.product.name) as string} alt="" className="w-full h-full object-contain p-1" /> : <span className="material-symbols-outlined text-text-muted">inventory_2</span>}</div>
+                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h4 className="text-[13px] font-semibold text-text-primary truncate">{row.product.name}</h4><p className="text-[10px] text-text-muted font-mono">{row.product.sku}</p></div><span className={`text-[10px] font-semibold ${row.productStatus === 'OUT' ? 'text-danger' : row.productStatus === 'LOW' ? 'text-status-menipis' : 'text-success'}`}>{row.productStatus === 'OUT' ? 'Habis' : row.productStatus === 'LOW' ? 'Perlu perhatian' : 'Aman'}</span></div><div className="flex items-end justify-between mt-2"><div><p className="text-[18px] font-bold text-text-primary tabular-nums">{row.total} <span className="text-[11px] font-normal text-text-muted">{row.product.unit} total</span></p><p className="text-[10px] text-text-muted">{row.low} menipis · {row.out} habis · {OWNER_BRANCHES.length} cabang</p></div><span className="material-symbols-outlined text-text-muted text-[18px]">{expanded ? 'expand_less' : 'expand_more'}</span></div></div>
+                </button>
+                {expanded && <div className="border-t border-border-base px-3 pb-3 pt-2 animate-slide-up"><p className="text-[10px] uppercase tracking-wide text-text-muted mb-2">Distribusi stok</p><div className="grid grid-cols-2 gap-1.5">{row.distribution.map((item) => <div key={item.slug} className="flex items-center justify-between rounded-lg bg-surface-container-low px-2.5 py-2"><span className="text-[10px] text-text-secondary">{item.label}</span><span className={`text-[11px] font-semibold ${item.quantity === 0 ? 'text-danger' : item.quantity <= row.product.minimum_stock ? 'text-status-menipis' : 'text-text-primary'}`}>{item.quantity} {row.product.unit}</span></div>)}</div><div className="flex items-center justify-between mt-3"><span className="text-[10px] text-text-muted">Informasi teknis tersedia di detail produk.</span><Link href={`/admin/stockist/branch-stock/all/${row.product.id}?branch=bypass`} className="text-[11px] font-semibold text-primary-container px-2 py-1.5 rounded-lg hover:bg-primary-container/10">Lihat detail</Link></div></div>}
+              </div>;
+            })}
           </div>
         </section>
       )}

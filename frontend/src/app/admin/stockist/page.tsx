@@ -25,7 +25,7 @@ import { EmptyState } from '@/components/stockist/EmptyState';
 import { HorizontalBarChart } from '@/components/stockist/HorizontalBarChart';
 import { LocationDrillDownContent } from '@/components/stockist/LocationDrillDownContent';
 import { staggerContainer, fadeSlideItem } from '@/lib/stockist/motion';
-import { formatCurrency, formatCurrencyCompact } from '@/lib/stockist/format';
+import { formatCurrency } from '@/lib/stockist/format';
 import { getKnownProductImage } from '@/lib/stockist/productImage';
 
 const BRANCH_NAMES: Record<string, string> = {
@@ -92,8 +92,6 @@ type DrillDown =
 
 // Compact adapter for the 2-up KPI grid cards, where full-notation IDR risks
 // overflowing the card's ~106-161px content box at the app's 430px width cap.
-const formatAssetValueCompact = (v: number | null) => formatCurrencyCompact(v ?? undefined);
-
 function toAttentionRows(items: StockistAssetDashboard['attention_items']): ListRowData[] {
   return items.map((item) => ({
     key: `${item.location_id}-${item.product_id}`,
@@ -193,66 +191,22 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
             />
           </motion.div>
 
-          <motion.div variants={fadeSlideItem} className="grid grid-cols-2 gap-3">
-            <StatCard label="Nilai Gudang Pusat" value={assets.warehouse_asset_value ?? 0} formatter={formatAssetValueCompact} />
-            <StatCard label="Nilai Stok Cabang" value={assets.branch_asset_value ?? 0} formatter={formatAssetValueCompact} />
-            <StatCard
-              label="Barang Perlu Perhatian"
-              value={assets.attention_items.length}
-              variant="danger"
-              hint="stok kosong atau di bawah reorder point"
-              onClick={() => setDrillDown({ type: 'attention' })}
-            />
-            <StatCard
-              label="Transfer Berjalan"
-              value={assets.active_transfers.length}
-              hint="belum selesai diterima"
-              onClick={() => setDrillDown({ type: 'transfers' })}
-            />
-          </motion.div>
-
-          {assets.asset_by_location.length > 0 && (
+          {assets.asset_by_location.length > 0 ? (
             <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
-              <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Nilai Stok per Lokasi</h3>
+              <div className="flex items-center justify-between px-1">
+                <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase">Distribusi Stok per Lokasi</h3>
+                <span className="text-[10px] text-text-muted">{assets.asset_by_location.length} lokasi</span>
+              </div>
               <div className="bg-surface-elevated border border-border-base rounded-xl p-3">
-                <HorizontalBarChart
-                  data={[...assets.asset_by_location]
-                    .sort((a, b) => (b.total_asset_value ?? 0) - (a.total_asset_value ?? 0))
-                    .map((l) => ({ name: l.location_name, value: l.total_asset_value ?? 0 }))}
-                />
+                <HorizontalBarChart data={assets.asset_by_location.map((location) => ({ name: location.location_name, value: location.total_asset_value ?? 0 }))} />
+                <div className="mt-3 border-t border-border-base pt-1 divide-y divide-border-base">
+                  {assets.asset_by_location.map((location) => (
+                    <LocationCard key={location.location_id} location={location} formatValue={formatCurrency} onSelect={() => setDrillDown({ type: 'location', location })} />
+                  ))}
+                </div>
               </div>
             </motion.section>
-          )}
-
-          <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase">Aset per Lokasi</h3>
-              <span className="text-[10px] text-text-muted">{assets.asset_by_location.length} lokasi</span>
-            </div>
-            <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
-              {assets.asset_by_location.map((location) => (
-                <LocationCard
-                  key={location.location_id}
-                  location={location}
-                  formatValue={formatCurrency}
-                  onSelect={() => setDrillDown({ type: 'location', location })}
-                />
-              ))}
-            </div>
-          </motion.section>
-
-          <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
-            <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Perlu Perhatian</h3>
-            {assets.attention_items.length === 0 ? (
-              <EmptyState icon="check_circle" title="Semua terkendali" subtitle="Tidak ada yang perlu ditindaklanjuti sekarang." />
-            ) : (
-              <div className="bg-surface-elevated border border-border-base rounded-xl divide-y divide-border-base overflow-hidden">
-                {toAttentionRows(assets.attention_items.slice(0, 4)).map((row) => (
-                  <ListRow key={row.key} row={row} />
-                ))}
-              </div>
-            )}
-          </motion.section>
+          ) : null}
         </motion.div>
       ) : null}
 
