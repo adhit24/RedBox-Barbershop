@@ -11,7 +11,7 @@ export interface StockistProduct {
   minimum_stock: number;
   reorder_point: number;
   is_active: boolean;
-  product_type?: 'RETAIL' | 'SERVICE' | 'SERVICE_CONSUMABLE' | 'BOTH';
+  product_type?: 'RETAIL' | 'SERVICE' | 'SERVICE_CONSUMABLE' | 'BOTH' | 'CONSUMABLE';
 }
 
 export interface ServiceUsage {

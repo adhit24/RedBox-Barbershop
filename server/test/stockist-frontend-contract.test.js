@@ -44,3 +44,12 @@ test('Stok Saya dashboard replaces the catalog-first layout with summary cards',
   assert.doesNotMatch(source, /Buka Barang/);
   assert.doesNotMatch(source, /Cari produk atau SKU/);
 });
+
+test('Semua Stok page has search, bottom-sheet filter, and a Perlengkapan (CONSUMABLE) option', () => {
+  const source = readFrontend('app/admin/stockist/branch-stock/all/page.tsx');
+  assert.match(source, /Cari produk atau SKU/);
+  assert.match(source, /Perlengkapan/);
+  assert.match(source, /CONSUMABLE/);
+  assert.match(source, /Terapkan Filter/);
+  assert.match(source, /from ['"]@\/components\/stockist\/BottomSheet['"]/);
+});
