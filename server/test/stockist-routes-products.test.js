@@ -96,6 +96,20 @@ test('POST /products creates a product for owner', async () => {
   }, { role: 'owner' });
 });
 
+test('GET /products excludes food and beverage catalog rows', async () => {
+  const supabase = fakeSupabase({ products: [
+    { id: 'p-food', sku: 'MOKA-FOOD', name: 'Cheese Cake', category: 'Dessert', is_active: true },
+    { id: 'p-drink', sku: 'MOKA-DRINK', name: 'Virgin Tropical', category: 'CoffeeShop', is_active: true },
+    { id: 'p-goods', sku: 'RB-POM-001', name: 'Pomade Matte', category: 'Pomade', is_active: true },
+  ] });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/products`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.deepEqual(body.products.map((product) => product.id), ['p-goods']);
+  }, { role: 'branch_admin', branch: 'csb' });
+});
+
 test('POST /products persists product_type SERVICE and defaults missing product_type to RETAIL', async () => {
   const supabase = fakeSupabase();
 

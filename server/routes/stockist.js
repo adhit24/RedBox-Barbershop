@@ -24,7 +24,7 @@ const {
   summarizeLocations, findProblemShipments, topOpnameDiscrepancies, topRequestedProducts,
   calculateAssetValue, summarizeAssetLocations, buildAttentionItems, summarizeActiveTransfers,
 } = require('../services/stockistDashboard');
-const { isServiceConsumable } = require('../services/stockistInventory');
+const { isServiceConsumable, isFoodOrBeverageProduct } = require('../services/stockistInventory');
 
 // A push notification failing (e.g. no subscription, provider outage) must
 // never fail the transaction it's attached to — every call site awaits this
@@ -53,7 +53,9 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const { data, error } = await supabase.from('products').select('*').order('name');
     if (error) return res.status(500).json({ error: error.message });
 
-    const products = (data || []).map((p) => stripPurchasePrice(p, access.role));
+    const products = (data || [])
+      .filter((product) => !isFoodOrBeverageProduct(product))
+      .map((p) => stripPurchasePrice(p, access.role));
     return res.json({ products });
   });
 

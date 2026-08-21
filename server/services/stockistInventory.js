@@ -20,6 +20,10 @@ const VALID_MOVEMENT_TYPES = new Set([
 // SERVICE is kept as a legacy alias for existing catalog rows created before
 // the consumable classification was expanded.
 const VALID_PRODUCT_TYPES = new Set(['RETAIL', 'SERVICE', 'SERVICE_CONSUMABLE', 'BOTH', 'CONSUMABLE']);
+const NON_GOODS_CATEGORIES = new Set([
+  'coffee', 'coffeeshop', 'drink', 'soft drink', 'dessert', 'food',
+  'snack', 'ice cream', 'tea', 'tea base', 'non coffee',
+]);
 
 function validateMovementType(movementType) {
   if (!VALID_MOVEMENT_TYPES.has(movementType)) {
@@ -56,6 +60,10 @@ function assertProductType(product, expectedType) {
 
 function isServiceConsumable(productType) {
   return productType === 'SERVICE' || productType === 'SERVICE_CONSUMABLE' || productType === 'BOTH';
+}
+
+function isFoodOrBeverageProduct(product) {
+  return NON_GOODS_CATEGORIES.has(String(product?.category || '').trim().toLowerCase());
 }
 
 async function applyInventoryMovement(supabase, {
@@ -101,4 +109,5 @@ module.exports = {
   validateProductType,
   assertProductType,
   isServiceConsumable,
+  isFoodOrBeverageProduct,
 };
