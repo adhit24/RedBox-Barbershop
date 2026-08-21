@@ -28,13 +28,18 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   }, [user, loading, router]);
 
   useEffect(() => {
-    try {
+    const readTransition = () => {
+      try {
       const stored = sessionStorage.getItem('redbox:post-login-transition');
       if (stored) setTransition(JSON.parse(stored));
-    } catch {
-      sessionStorage.removeItem('redbox:post-login-transition');
-    }
-  }, []);
+      } catch {
+        sessionStorage.removeItem('redbox:post-login-transition');
+      }
+    };
+    readTransition();
+    window.addEventListener('redbox:login-complete', readTransition);
+    return () => window.removeEventListener('redbox:login-complete', readTransition);
+  }, [user?.id, loading]);
 
   useEffect(() => {
     if (!transition || loading || !user) return;

@@ -55,6 +55,7 @@ export default function StockistLoginPage() {
 
       // Successful login -> Redirect to stockist home
       sessionStorage.setItem('redbox:post-login-transition', JSON.stringify({ role: actualRole, name: profile?.name || null }));
+      window.dispatchEvent(new Event('redbox:login-complete'));
       router.replace('/admin/stockist');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan');
