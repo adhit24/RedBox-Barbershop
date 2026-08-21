@@ -30,6 +30,7 @@ const BRANCH_NAMES: Record<string, string> = {
 
 type StockFilter = 'ALL' | 'SAFE' | 'LOW' | 'OUT';
 type TypeFilter = 'ALL' | 'RETAIL' | 'SERVICE' | 'CONSUMABLE';
+const PRODUCT_PAGE_SIZE = 5;
 
 function isValidStockFilter(value: string | null): value is StockFilter {
   return value === 'SAFE' || value === 'LOW' || value === 'OUT' || value === 'ALL';
@@ -51,6 +52,7 @@ function SemuaStokContent() {
   const [stockFilter, setStockFilter] = useState<StockFilter>(isValidStockFilter(initialStatus) ? initialStatus : 'ALL');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PRODUCT_PAGE_SIZE);
 
   useEffect(() => {
     if (!branch) return;
@@ -105,6 +107,8 @@ function SemuaStokContent() {
     const matchesStock = stockFilter === 'ALL' || p.status === stockFilter;
     return matchesSearch && matchesType && matchesStock;
   });
+  const visibleProducts = filteredProducts.slice(0, visibleCount);
+  const hasMoreProducts = visibleCount < filteredProducts.length;
 
   const activeFilterCount = (stockFilter !== 'ALL' ? 1 : 0) + (typeFilter !== 'ALL' ? 1 : 0);
   const detailHrefFor = (id: string) => `/admin/stockist/branch-stock/all/${id}${isOwner ? `?branch=${branch}` : ''}`;
@@ -126,7 +130,7 @@ function SemuaStokContent() {
             type="text"
             placeholder="Cari produk atau SKU"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(PRODUCT_PAGE_SIZE); }}
             className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container placeholder:text-text-muted transition-colors"
           />
         </div>
@@ -156,13 +160,13 @@ function SemuaStokContent() {
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between px-1">
             <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase">Daftar Stok</h3>
-            <span className="text-[11px] text-text-muted">{filteredProducts.length} Produk</span>
+            <span className="text-[11px] text-text-muted">Menampilkan {visibleProducts.length} dari {filteredProducts.length}</span>
           </div>
           {filteredProducts.length === 0 ? (
             <EmptyState icon="search_off" title="Tidak ada stok yang sesuai" subtitle="Coba ubah kata kunci pencarian atau filter." />
           ) : (
             <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
-              {filteredProducts.map((p) => {
+              {visibleProducts.map((p) => {
                 const image = getKnownProductImage(p.name);
                 return (
                   <Link
@@ -202,6 +206,15 @@ function SemuaStokContent() {
               })}
             </div>
           )}
+          {hasMoreProducts && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((count) => count + PRODUCT_PAGE_SIZE)}
+              className="w-full min-h-[44px] mt-1 rounded-xl border border-border-base bg-surface-elevated text-[12px] font-semibold text-text-secondary hover:border-primary-container hover:text-text-primary transition-colors"
+            >
+              Tampilkan produk ({Math.min(PRODUCT_PAGE_SIZE, filteredProducts.length - visibleCount)} lagi)
+            </button>
+          )}
         </section>
       )}
 
@@ -213,7 +226,7 @@ function SemuaStokContent() {
               {([['ALL', 'Semua'], ['SAFE', 'Aman'], ['LOW', 'Menipis'], ['OUT', 'Habis']] as const).map(([value, label]) => (
                 <button
                   key={value}
-                  onClick={() => setStockFilter(value)}
+                  onClick={() => { setStockFilter(value); setVisibleCount(PRODUCT_PAGE_SIZE); }}
                   className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border ${stockFilter === value ? 'bg-primary-container border-primary-container text-text-primary' : 'bg-surface-container-low border-border-base text-text-secondary'}`}
                 >
                   {label}
@@ -227,7 +240,7 @@ function SemuaStokContent() {
               {([['ALL', 'Semua'], ['RETAIL', 'Retail'], ['SERVICE', 'Barang Pemakaian'], ['CONSUMABLE', 'Perlengkapan']] as const).map(([value, label]) => (
                 <button
                   key={value}
-                  onClick={() => setTypeFilter(value)}
+                  onClick={() => { setTypeFilter(value); setVisibleCount(PRODUCT_PAGE_SIZE); }}
                   className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border ${typeFilter === value ? 'bg-primary-container border-primary-container text-text-primary' : 'bg-surface-container-low border-border-base text-text-secondary'}`}
                 >
                   {label}
@@ -236,7 +249,7 @@ function SemuaStokContent() {
             </div>
           </div>
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setStockFilter('ALL'); setTypeFilter('ALL'); }} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary font-semibold">Reset</button>
+            <button onClick={() => { setStockFilter('ALL'); setTypeFilter('ALL'); setVisibleCount(PRODUCT_PAGE_SIZE); }} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary font-semibold">Reset</button>
             <button onClick={() => setFilterSheetOpen(false)} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">Terapkan Filter</button>
           </div>
         </div>
