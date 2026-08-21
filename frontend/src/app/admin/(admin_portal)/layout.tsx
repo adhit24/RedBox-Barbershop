@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { AdminNav } from '@/components/AdminNav';
@@ -7,6 +7,7 @@ import { LogOut, ChevronLeft, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import type { AppUser } from '@/hooks/useUser';
+import { PremiumLoginTransition, type PremiumRole } from '@/components/auth/PremiumLoginTransition';
 
 function AdminShell({ children, user, signOut, signingOut }: {
   children: React.ReactNode;
@@ -93,11 +94,34 @@ function AdminShell({ children, user, signOut, signingOut }: {
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut, signingOut } = useUser();
   const router = useRouter();
+  const [transition, setTransition] = useState<{ role: PremiumRole; name?: string | null } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/');
     if (!loading && user && user.role === 'barber') router.replace('/barber/schedule');
   }, [user, loading, router]);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('redbox:post-login-transition');
+      if (stored) setTransition(JSON.parse(stored));
+    } catch {
+      sessionStorage.removeItem('redbox:post-login-transition');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!transition || loading || !user) return;
+    const timer = window.setTimeout(() => {
+      sessionStorage.removeItem('redbox:post-login-transition');
+      setTransition(null);
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [transition, loading, user]);
+
+  if (transition && user) {
+    return <PremiumLoginTransition role={transition.role} userName={transition.name || user.name} />;
+  }
 
   if (loading) {
     return (

@@ -1,20 +1,44 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { OwnerNav } from '@/components/OwnerNav';
 import { LogOut } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
+import { PremiumLoginTransition, type PremiumRole } from '@/components/auth/PremiumLoginTransition';
 
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
   const router = useRouter();
+  const [transition, setTransition] = useState<{ role: PremiumRole; name?: string | null } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace('/login');
     if (!loading && user && user.role !== 'owner') router.replace('/login');
   }, [user, loading, router]);
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('redbox:post-login-transition');
+      if (stored) setTransition(JSON.parse(stored));
+    } catch {
+      sessionStorage.removeItem('redbox:post-login-transition');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!transition || loading || !user) return;
+    const timer = window.setTimeout(() => {
+      sessionStorage.removeItem('redbox:post-login-transition');
+      setTransition(null);
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [transition, loading, user]);
+
+  if (transition && user) {
+    return <PremiumLoginTransition role={transition.role} userName={transition.name || user.name} />;
+  }
 
   if (loading) {
     return (

@@ -37,7 +37,7 @@ function LoginForm() {
 
     const { data: profile } = await supabase
       .from('users')
-      .select('role')
+      .select('role, name')
       .eq('id', user.id)
       .single();
 
@@ -45,6 +45,7 @@ function LoginForm() {
 
     // Kapster dengan akun Supabase → barber portal
     if (actualRole === 'barber') {
+      sessionStorage.setItem('redbox:post-login-transition', JSON.stringify({ role: 'barber', name: profile?.name || null }));
       router.push('/barber/schedule');
       return;
     }
@@ -59,11 +60,13 @@ function LoginForm() {
 
     // Owner → selalu ke owner dashboard (akses penuh sudah di sana)
     if (actualRole === 'owner') {
+      sessionStorage.setItem('redbox:post-login-transition', JSON.stringify({ role: 'owner', name: profile?.name || null }));
       router.push('/owner/dashboard');
       return;
     }
 
     // branch_admin → admin dashboard
+    sessionStorage.setItem('redbox:post-login-transition', JSON.stringify({ role: 'branch_admin', name: profile?.name || null }));
     router.push('/admin/dashboard');
   }
 
@@ -125,17 +128,22 @@ function LoginForm() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, ease }}
         >
-          <div className="w-20 h-20 mb-5 relative">
+          <div className="relative mb-5 h-[86px] w-[86px]">
             <Image
-              src="/redbox-logo.png"
+              src="/Brand_assets/logo_transparant.png"
               alt="RedBox"
               fill
               className="object-contain"
               priority
             />
           </div>
+          <div className="relative h-[38px] w-full max-w-[320px]">
+            <Image src="/Brand_assets/logo_font.png" alt="RedBox Barbershop" fill className="object-contain" priority sizes="320px" />
+          </div>
+          <p className="mt-6 text-[22px] font-semibold tracking-[-0.02em] text-[#F5EEEE]">Selamat datang kembali</p>
+          <p className="mt-2 max-w-[280px] text-center text-[12px] leading-relaxed text-[#786D6F]">Masuk untuk melanjutkan ke sistem RedBox.</p>
           <p
-            className="text-[11px] tracking-[0.28em] font-semibold uppercase"
+            className="mt-5 text-[10px] tracking-[0.28em] font-semibold uppercase"
             style={{ color: '#7A6A6D' }}
           >
             {roleLabel ?? 'Staff Dashboard'}
@@ -264,20 +272,13 @@ function LoginForm() {
             }}
             whileTap={{ scale: 0.98 }}
           >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <>
-                <span>Masuk</span>
-                <ArrowRight size={15} />
-              </>
-            )}
+            {loading ? <><Loader2 size={16} className="animate-spin" /><span>Memproses...</span></> : <><span>Masuk</span><ArrowRight size={15} /></>}
           </motion.button>
         </motion.form>
 
         {/* Back to role picker */}
         <motion.button
-          onClick={() => router.push('/portal')}
+          onClick={() => router.push('/')}
           className="w-full text-center text-[11px] mt-5 tracking-[0.08em] transition-colors cursor-pointer"
           style={{ color: '#3A3033' }}
           initial={{ opacity: 0 }}
