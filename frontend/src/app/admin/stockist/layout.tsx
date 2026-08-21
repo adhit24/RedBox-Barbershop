@@ -41,7 +41,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
     const timer = window.setTimeout(() => {
       sessionStorage.removeItem('redbox:post-login-transition');
       setTransition(null);
-    }, 650);
+    }, 6000);
     return () => window.clearTimeout(timer);
   }, [transition, loading, user]);
 
