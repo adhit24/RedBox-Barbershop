@@ -1,17 +1,26 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
 import { motion } from 'framer-motion';
 import { resolveStockistRole } from '@/app/admin/stockist/stockistRole';
+import Image from 'next/image';
+import { useUser } from '@/hooks/useUser';
 
 export default function StockistLoginPage() {
   const router = useRouter();
+  const { user, loading: userLoading } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!userLoading && user && (user.role === 'owner' || user.role === 'branch_admin')) {
+      router.replace('/admin/stockist');
+    }
+  }, [router, user, userLoading]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,7 +42,7 @@ export default function StockistLoginPage() {
 
       const { data: profile } = await supabase
         .from('users')
-        .select('role')
+        .select('role, name')
         .eq('id', user.id)
         .single();
 
@@ -45,12 +54,15 @@ export default function StockistLoginPage() {
       }
 
       // Successful login -> Redirect to stockist home
+      sessionStorage.setItem('redbox:post-login-transition', JSON.stringify({ role: actualRole, name: profile?.name || null }));
       router.replace('/admin/stockist');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan');
       setLoading(false);
     }
   }
+
+  if (!userLoading && user && (user.role === 'owner' || user.role === 'branch_admin')) return null;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-5 relative overflow-hidden bg-surface-container-lowest text-text-primary max-w-[430px] mx-auto border-x border-border-base shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
@@ -60,11 +72,14 @@ export default function StockistLoginPage() {
       <div className="w-full relative z-10 flex flex-col gap-6 p-6 rounded-2xl bg-surface-elevated border border-border-base shadow-lg">
         {/* Header */}
         <div className="text-center flex flex-col gap-1">
-          <span className="material-symbols-outlined text-[36px] text-primary-container animate-pulse">inventory_2</span>
-          <h1 className="text-[20px] font-black tracking-widest uppercase font-display mt-2">
-            RED<span className="text-primary-container">BOX</span> STOCKIST
-          </h1>
-          <p className="text-[11px] text-text-muted">Aplikasi logistik &amp; distribusi cabang</p>
+          <div className="relative mx-auto h-[68px] w-[68px]">
+            <Image src="/Brand_assets/logo_transparant.png" alt="RedBox" fill priority className="object-contain" sizes="68px" />
+          </div>
+          <div className="relative mx-auto mt-3 h-[32px] w-full max-w-[280px]">
+            <Image src="/Brand_assets/logo_font.png" alt="RedBox Barbershop" fill priority className="object-contain" sizes="280px" />
+          </div>
+          <h1 className="mt-5 text-[20px] font-semibold tracking-[-0.02em] text-text-primary">Selamat datang kembali</h1>
+          <p className="mt-1 text-[11px] text-text-muted">Masuk untuk melanjutkan ke Stockist RedBox.</p>
         </div>
 
         {error && (
@@ -123,7 +138,7 @@ export default function StockistLoginPage() {
             className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728] mt-2"
           >
             <span className="material-symbols-outlined text-[18px]">login</span>
-            {loading ? 'Masuk...' : 'Masuk Aplikasi'}
+            {loading ? 'Memproses...' : 'Masuk Aplikasi'}
           </button>
         </form>
 

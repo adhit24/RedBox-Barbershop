@@ -1,10 +1,11 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { MotionConfig } from 'framer-motion';
 import { Home, Boxes, PackageCheck, ClipboardList, History, LayoutDashboard, Building2, Lightbulb } from 'lucide-react';
 import { BottomNavBar, type BottomNavItem } from '@/components/ui/bottom-nav-bar';
+import { PremiumLoginTransition, type PremiumRole } from '@/components/auth/PremiumLoginTransition';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -18,6 +19,7 @@ const BRANCH_NAMES: Record<string, string> = {
 export default function StockistLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
   const router = useRouter();
+  const [transition, setTransition] = useState<{ role: PremiumRole; name?: string | null } | null>(null);
   useEffect(() => {
     if (loading) return;
     if (!user || !['owner', 'branch_admin'].includes(user.role)) {
@@ -25,10 +27,32 @@ export default function StockistLayout({ children }: { children: React.ReactNode
     }
   }, [user, loading, router]);
 
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem('redbox:post-login-transition');
+      if (stored) setTransition(JSON.parse(stored));
+    } catch {
+      sessionStorage.removeItem('redbox:post-login-transition');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!transition || loading || !user) return;
+    const timer = window.setTimeout(() => {
+      sessionStorage.removeItem('redbox:post-login-transition');
+      setTransition(null);
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [transition, loading, user]);
+
   // The login page is rendered inside this layout. Keep children visible while
   // auth is unresolved or absent; middleware still protects server requests,
   // and the client redirect above protects in-app navigation.
   if (loading || !user) return <>{children}</>;
+
+  if (transition) {
+    return <PremiumLoginTransition role={transition.role} userName={transition.name || user.name} />;
+  }
 
   const isOwner = user.role === 'owner';
 
