@@ -18,6 +18,29 @@ async function sendNotification(to, message, branch) {
   return result;
 }
 
+function canFailoverOperationalNotification(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('disconnected device')
+    || message.includes('token missing')
+    || message.includes('send skipped');
+}
+
+// Operational alerts must not disappear just because one branch device is offline.
+// We only fail over admin/barber notifications, never customer-facing messages,
+// so customers still receive messages from the correct branch identity.
+async function sendOperationalNotification(to, message, branch) {
+  const normalizedBranch = String(branch || '').toLowerCase();
+  try {
+    return await sendNotification(to, message, normalizedBranch || 'bypass');
+  } catch (error) {
+    if (normalizedBranch && normalizedBranch !== 'bypass' && canFailoverOperationalNotification(error)) {
+      console.warn(`[WA Operational] ${normalizedBranch} unavailable; retrying via bypass device: ${error.message}`);
+      return sendNotification(to, message, 'bypass');
+    }
+    throw error;
+  }
+}
+
 const ADMIN_NUMBER = process.env.WA_ADMIN_NUMBER;
 if (!ADMIN_NUMBER) {
   console.warn('[waNotification] WA_ADMIN_NUMBER env var not set — admin booking notifications will be skipped');
@@ -129,7 +152,7 @@ async function notifyAdminNewBooking(booking) {
 ${barber_name ? `• Kapster : ${barber_name}\n` : ''}${notes ? `• Catatan : ${notes}\n` : ''}
 #RedBoxBooking`;
 
-  return sendNotification(ADMIN_NUMBER, message, location);
+  return sendOperationalNotification(ADMIN_NUMBER, message, location);
 }
 
 // --- helpers ---
@@ -226,7 +249,7 @@ Harga     : ${price}
 
 Catat jadwal ini ya! Kamu akan mendapat pengingat beserta instruksi keberangkatan *1 jam sebelum jadwal*. 📌`;
 
-  return sendNotification(barberPhone, msg, branch);
+  return sendOperationalNotification(barberPhone, msg, branch);
 }
 
 // Remind barber 1 hour before home service booking
@@ -252,7 +275,7 @@ Jangan lupa bersiap-siap ya! 🛠️
 Balas *BERANGKAT* saat kamu mulai berangkat ke lokasi.
 Balas *SELESAI* setelah pekerjaan selesai.`;
 
-  return sendNotification(barberPhone, msg, branch);
+  return sendOperationalNotification(barberPhone, msg, branch);
 }
 
 // Notify barber of new in-outlet booking
@@ -275,7 +298,7 @@ Kamu punya pesanan baru di ${location}! 📋
 
 Jangan lupa catat ya! ✂️`;
 
-  return sendNotification(barberPhone, msg, branch);
+  return sendOperationalNotification(barberPhone, msg, branch);
 }
 
 module.exports = {
