@@ -187,14 +187,14 @@ async function notifyCustomerReviewRequest(booking) {
   const message =
 `Haii kak *${fn}*! 👋
 
-Makasih banget udah percayain *${branch}* jadi grooming spot kakak hari ini — beneran berarti banget buat kami 🙏✨ Semoga hasil ${kapster} bikin pede makin nampol ya 💈
+Makasih banyak ya udah percayain *${branch}* buat grooming hari ini — beneran berarti banget buat kami 🙏✨ Semoga hasil ${kapster} bikin makin pede & fresh ya 💈
 
-Jujur kak, sebagai barbershop yang masih terus berkembang, ulasan kakak di Google itu kayak suntikan energi buat tim kami. Cuma butuh *1 menit* waktu kakak, tapi bantu banyak orang nemuin Redbox & bikin para kapster makin semangat ngasih hasil terbaik 🙏
+Jujur kak, ulasan dari kakak di Google itu *bintang utamanya tim kami*. Cuma butuh *30 detik* aja, tapi dampaknya luar biasa buat bikin para kapster tambah semangat ngasih service terbaik 💯🔥
 
-⭐ *Tulis ulasan di sini:*
+⭐ *Tulis ulasan kakak di sini:*
 👉 ${link}
 
-Beneran 30 detik aja — ulasan kakak sangat berharga buat kami 😎✂️`;
+Dukungan singkat kakak = energi besar buat RedBox terus tumbuh. Terima kasih banyak kak! 😎✂️`;
 
   return sendNotification(wa, message, location);
 }
