@@ -49,11 +49,6 @@ function setTheme(next: StockistTheme) {
   } catch {
     // ignore — theme still switches for this session even if it can't persist
   }
-  try {
-    document.documentElement.setAttribute('data-theme', next);
-  } catch {
-    // ignore — SSR or non-browser environment
-  }
   emit();
 }
 
