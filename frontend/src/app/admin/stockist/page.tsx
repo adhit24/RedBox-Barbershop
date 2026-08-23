@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useUser } from '@/hooks/useUser';
+import { useStockistTheme } from '@/lib/stockist/useTheme';
 import type { AppUser } from '@/hooks/useUser';
 import Link from 'next/link';
 import {
@@ -136,6 +137,8 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
   const [error, setError] = useState<string | null>(null);
   const [drillDown, setDrillDown] = useState<DrillDown>(null);
 
+  const { theme } = useStockistTheme();
+
   useEffect(() => {
     setLoading(true);
     Promise.all([getAssetDashboard(), listProducts()])
@@ -269,6 +272,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
               <div className="bg-surface-elevated border border-border-base rounded-xl p-3">
                 <HorizontalBarChart
                   data={assets.asset_by_location.map((location) => ({ name: location.location_name, value: location.total_asset_value ?? 0 }))}
+                  theme={theme}
                 />
                 <div className="mt-3 border-t border-border-base pt-1 divide-y divide-border-base">
                   {assets.asset_by_location.map((location) => (
