@@ -192,17 +192,14 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
       ) : assets ? (
         <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-6">
           <motion.div variants={fadeSlideItem}>
+            {/* No heroTrend/heroStats here — the API has no period-over-period delta or
+                duplicate breakdown data; the KPI grid below already covers Lokasi/SKU/Unit. */}
             <StatCard
               label="Aset Stok RedBox"
               value={assets.total_asset_value ?? 0}
               formatter={formatCurrency}
               variant="hero"
               hint="Total nilai stok aktif di seluruh jaringan RedBox."
-              heroStats={[
-                { label: 'Lokasi', value: String(assets.asset_by_location.length) },
-                { label: 'SKU aktif', value: String(activeProductCount) },
-                { label: 'Unit', value: totalStockUnits.toLocaleString('id-ID') },
-              ]}
             />
           </motion.div>
 
@@ -210,7 +207,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
             <StatCard label="Total Produk" value={activeProductCount} icon="category" tint="info" hint="SKU aktif" />
             <StatCard label="Total Stok" value={totalStockUnits} icon="inventory_2" tint="success" hint="unit di semua lokasi" />
             <StatCard
-              label="Produk Menipis"
+              label="Perlu Perhatian"
               value={assets.attention_items.length}
               icon="warning"
               tint="warning"

@@ -12,7 +12,8 @@ export interface LocationCardProps {
 }
 
 export function LocationCard({ location, onSelect, formatValue, maxValue }: LocationCardProps) {
-  const pct = maxValue > 0 ? Math.max(4, Math.round(((location.total_asset_value ?? 0) / maxValue) * 100)) : 0;
+  const rawPct = maxValue > 0 ? ((location.total_asset_value ?? 0) / maxValue) * 100 : 0;
+  const pct = rawPct > 0 ? Math.max(4, Math.round(rawPct)) : 0;
 
   return (
     <motion.button

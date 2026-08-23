@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/utils/supabase/client';
-import { motion } from 'framer-motion';
 import { resolveStockistRole } from '@/app/admin/stockist/stockistRole';
 import Image from 'next/image';
 import { useUser } from '@/hooks/useUser';
@@ -73,7 +72,7 @@ export default function StockistLoginPage() {
       <div className="w-full relative z-10 flex flex-col gap-6 p-6 rounded-2xl bg-surface-elevated border border-border-base shadow-lg">
         {/* Header */}
         <div className="text-center flex flex-col gap-1">
-          <div className="relative mx-auto h-[84px] w-[84px] rounded-[22px] bg-[#171514] shadow-[0_10px_24px_rgba(23,21,20,0.28)] flex items-center justify-center p-3.5 box-border">
+          <div className="relative mx-auto h-[84px] w-[84px] rounded-[22px] bg-[#171514] shadow-[0_10px_24px_rgba(23,21,20,0.28)]">
             <Image src="/Brand_assets/logo_transparant.png" alt="RedBox" fill priority className="object-contain p-3.5" sizes="84px" />
           </div>
           <div className="relative mx-auto mt-4 h-[42px] w-full max-w-[320px]">

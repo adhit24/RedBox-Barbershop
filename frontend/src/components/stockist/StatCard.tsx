@@ -21,6 +21,10 @@ export interface StatCardProps {
   heroStats?: { label: string; value: string }[];
 }
 
+interface StatCardBodyProps extends Omit<StatCardProps, 'href' | 'onClick'> {
+  isInteractive?: boolean;
+}
+
 const TINT_BG: Record<NonNullable<StatCardProps['tint']>, string> = {
   info: 'bg-tint-info border-info/20',
   success: 'bg-tint-success border-success/20',
@@ -35,8 +39,8 @@ const TINT_ICON: Record<NonNullable<StatCardProps['tint']>, string> = {
   danger: 'text-danger',
 };
 
-function StatCardBody(props: Omit<StatCardProps, 'href' | 'onClick'>) {
-  const { label, value, formatter, hint, variant = 'default', trailingBadge, icon, tint, heroTrend, heroStats } = props;
+function StatCardBody(props: StatCardBodyProps) {
+  const { label, value, formatter, hint, variant = 'default', trailingBadge, icon, tint, heroTrend, heroStats, isInteractive } = props;
   const isHero = variant === 'hero';
   const isDanger = variant === 'danger';
 
@@ -72,13 +76,20 @@ function StatCardBody(props: Omit<StatCardProps, 'href' | 'onClick'>) {
 
   return (
     <>
-      <div className="flex items-center gap-1.5">
-        {icon && (
-          <span className={`material-symbols-outlined text-[18px] ${tint ? TINT_ICON[tint] : isDanger ? 'text-danger' : 'text-text-muted'}`}>
-            {icon}
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {icon && (
+            <span className={`material-symbols-outlined text-[18px] ${tint ? TINT_ICON[tint] : isDanger ? 'text-danger' : 'text-text-muted'}`}>
+              {icon}
+            </span>
+          )}
+          <span className={`text-[11px] font-semibold truncate ${isDanger ? 'text-danger' : 'text-text-muted'}`}>{label}</span>
+        </div>
+        {isInteractive && (
+          <span className={`material-symbols-outlined text-[14px] shrink-0 ${tint ? TINT_ICON[tint] : isDanger ? 'text-danger' : 'text-text-muted'}`}>
+            chevron_right
           </span>
         )}
-        <span className={`text-[11px] font-semibold ${isDanger ? 'text-danger' : 'text-text-muted'}`}>{label}</span>
       </div>
       <div
         className={`font-display tabular-nums mt-2 flex items-baseline gap-2 truncate text-[19px] font-bold ${
@@ -101,6 +112,7 @@ export function StatCard(props: StatCardProps) {
   const { href, onClick, variant = 'default', tint } = props;
   const isDanger = variant === 'danger';
   const isHero = variant === 'hero';
+  const isInteractive = Boolean(href || onClick);
 
   const className = isHero
     ? 'flex flex-col text-left rounded-xl min-h-[92px] w-full p-5 border border-transparent bg-gradient-to-br from-primary-container to-inverse-primary shadow-[0_10px_26px_rgba(199,40,32,0.22)]'
@@ -112,7 +124,7 @@ export function StatCard(props: StatCardProps) {
     return (
       <Link href={href} className="block">
         <motion.div {...cardHover} className={className}>
-          <StatCardBody {...props} />
+          <StatCardBody {...props} isInteractive={isInteractive} />
         </motion.div>
       </Link>
     );
@@ -121,7 +133,7 @@ export function StatCard(props: StatCardProps) {
   if (onClick) {
     return (
       <motion.button type="button" onClick={onClick} className={className} {...cardHover}>
-        <StatCardBody {...props} />
+        <StatCardBody {...props} isInteractive={isInteractive} />
       </motion.button>
     );
   }

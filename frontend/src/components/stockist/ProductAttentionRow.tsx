@@ -30,10 +30,8 @@ function ProductAttentionRowBody({ row }: { row: ProductAttentionRowData }) {
   return (
     <>
       <span
-        className="w-14 h-14 shrink-0 rounded-xl bg-surface-container-high border border-border-base bg-cover bg-center flex items-center justify-center"
+        className="w-14 h-14 shrink-0 rounded-xl bg-surface-container-high border border-border-base bg-contain bg-no-repeat bg-center p-1 flex items-center justify-center"
         style={image ? { backgroundImage: `url(${image})` } : undefined}
-        role="img"
-        aria-label={row.name}
       >
         {!image && <span className="material-symbols-outlined text-text-muted text-[22px]">inventory_2</span>}
       </span>
