@@ -1688,9 +1688,13 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const { data: products, error: productsError } = await supabase.from('products').select('*');
     if (productsError) return res.status(500).json({ error: productsError.message });
     const activeProducts = (products || []).filter((product) => product.is_active !== false);
+    const { data: purchasePrices, error: purchasePricesError } = await supabase
+      .from('inventory_purchase_prices')
+      .select('location_id, product_id, purchase_price');
+    if (purchasePricesError) return res.status(500).json({ error: purchasePricesError.message });
 
     const locationNames = await getLocationNames();
-    const assetByLocation = summarizeAssetLocations(locations, scopedBalances, activeProducts)
+    const assetByLocation = summarizeAssetLocations(locations, scopedBalances, activeProducts, purchasePrices || [])
       .map((summary) => ({ ...summary, location_name: locationNames[summary.location_id] || summary.location_id }));
     const { data: transfers, error: transfersError } = await supabase.from('stock_transfers').select('*');
     if (transfersError) return res.status(500).json({ error: transfersError.message });
@@ -1700,7 +1704,7 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const activeTransfers = summarizeActiveTransfers(scopedTransfers, locationNames);
     const attentionItems = buildAttentionItems(scopedBalances, activeProducts, locationNames);
     const isOwner = access.role === 'owner';
-    const totalAssetValue = calculateAssetValue(scopedBalances, activeProducts);
+    const totalAssetValue = calculateAssetValue(scopedBalances, activeProducts, purchasePrices || []);
     const warehouseAssetValue = assetByLocation
       .filter((location) => location.type === 'warehouse')
       .reduce((sum, location) => sum + location.total_asset_value, 0);
