@@ -51,6 +51,25 @@
  --color-status-aman: #36B56B;
  --color-status-kritis: #E33A32;
  --color-status-menipis: #E3A43B;
+
+ /* Tint backgrounds for categorized KPI tiles — dark-theme values taken
+    directly from the Claude Design mockup's dark-mode tokens (tblue/
+    tgreen/tyellow/tred) for visual parity with the approved design. */
+ --color-tint-info: #161F26;
+ --color-tint-success: #152420;
+ --color-tint-warning: #251F14;
+ --color-tint-danger: #2A1A19;
+
+ /* Lighter red accent for small badges/labels (mockup's --red3). */
+ --color-accent-soft: #F26A61;
+
+ /* Display/body-secondary font stacks — Plus Jakarta Sans and Inter are
+    already loaded via <link> in the root layout; these just give the
+    `font-display`/`font-body-secondary` Tailwind classes (already used in
+    page.tsx and StatCard.tsx before this change, but previously undefined
+    here) something real to resolve to. */
+ --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+ --font-body-secondary: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 @theme inline {
@@ -78,6 +97,14 @@
  --color-info: var(--color-info);
  --color-primary-container: var(--color-primary-container);
  --color-inverse-primary: var(--color-inverse-primary);
+
+ --color-tint-info: var(--color-tint-info);
+ --color-tint-success: var(--color-tint-success);
+ --color-tint-warning: var(--color-tint-warning);
+ --color-tint-danger: var(--color-tint-danger);
+ --color-accent-soft: var(--color-accent-soft);
+ --font-display: var(--font-display);
+ --font-body-secondary: var(--font-body-secondary);
 
  --color-status-habis: var(--color-status-habis);
  --color-status-aman: var(--color-status-aman);
