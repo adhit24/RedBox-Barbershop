@@ -65,11 +65,17 @@ export default function StockistLoginPage() {
   if (!userLoading && user && (user.role === 'owner' || user.role === 'branch_admin')) return null;
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-5 relative overflow-hidden bg-surface-container-lowest text-text-primary max-w-[430px] mx-auto border-x border-border-base shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
+    <div
+      className="min-h-screen flex items-center justify-center p-5 relative overflow-hidden bg-surface-container-lowest text-text-primary max-w-[430px] mx-auto border-x border-border-base"
+      style={{ boxShadow: 'var(--shadow2)' }}
+    >
       {/* Ambient background glow */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-primary-container/10 via-transparent to-transparent"></div>
-      
-      <div className="w-full relative z-10 flex flex-col gap-6 p-6 rounded-2xl bg-surface-elevated border border-border-base shadow-lg">
+
+      <div
+        className="w-full relative z-10 flex flex-col gap-6 p-6 rounded-2xl bg-surface-elevated border border-border-base"
+        style={{ boxShadow: 'var(--shadow2)' }}
+      >
         {/* Header */}
         <div className="text-center flex flex-col gap-1">
           <div className="relative mx-auto h-[84px] w-[84px] rounded-[22px] bg-[#171514] shadow-[0_10px_24px_rgba(23,21,20,0.28)]">
