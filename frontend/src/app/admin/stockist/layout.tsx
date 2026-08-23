@@ -6,6 +6,7 @@ import { MotionConfig } from 'framer-motion';
 import { Home, Boxes, PackageCheck, ClipboardList, History, LayoutDashboard, Building2, Lightbulb } from 'lucide-react';
 import { BottomNavBar, type BottomNavItem } from '@/components/ui/bottom-nav-bar';
 import { PremiumLoginTransition, type PremiumRole } from '@/components/auth/PremiumLoginTransition';
+import { useStockistTheme } from '@/lib/stockist/useTheme';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -19,6 +20,7 @@ const BRANCH_NAMES: Record<string, string> = {
 export default function StockistLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
   const router = useRouter();
+  const { theme, toggleTheme } = useStockistTheme();
   const [transition, setTransition] = useState<{ role: PremiumRole; name?: string | null } | null>(null);
   useEffect(() => {
     if (loading) return;
@@ -53,10 +55,16 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   // The login page is rendered inside this layout. Keep children visible while
   // auth is unresolved or absent; middleware still protects server requests,
   // and the client redirect above protects in-app navigation.
-  if (loading || !user) return <>{children}</>;
+  if (loading || !user) {
+    return <div data-theme={theme}>{children}</div>;
+  }
 
   if (transition) {
-    return <PremiumLoginTransition role={transition.role} userName={transition.name || user.name} />;
+    return (
+      <div data-theme={theme}>
+        <PremiumLoginTransition role={transition.role} userName={transition.name || user.name} theme={theme} />
+      </div>
+    );
   }
 
   const isOwner = user.role === 'owner';
@@ -76,6 +84,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   ];
 
   return (
+    <div data-theme={theme}>
     <MotionConfig reducedMotion="user">
       <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
       {/* TopAppBar */}
@@ -97,7 +106,14 @@ export default function StockistLayout({ children }: { children: React.ReactNode
               {BRANCH_NAMES[user.branch || ''] || user.branch}
             </span>
           )}
-          <button 
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'light' ? 'Ganti ke mode gelap' : 'Ganti ke mode terang'}
+            className="text-text-muted hover:text-text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full"
+          >
+            <span className="material-symbols-outlined text-[20px]">{theme === 'light' ? 'dark_mode' : 'light_mode'}</span>
+          </button>
+          <button
             onClick={() => {
               if (confirm('Keluar dari aplikasi?')) {
                 signOut();
@@ -120,5 +136,6 @@ export default function StockistLayout({ children }: { children: React.ReactNode
       <BottomNavBar items={isOwner ? ownerTabs : branchAdminTabs} />
       </div>
     </MotionConfig>
+    </div>
   );
 }
