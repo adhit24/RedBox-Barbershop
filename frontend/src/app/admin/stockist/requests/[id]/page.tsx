@@ -277,7 +277,7 @@ export default function StockRequestDetailPage({ params }: { params: Promise<{ i
             <button
               type="submit"
               disabled={submitting}
-              className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728]"
+              className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg"
             >
               <span className="material-symbols-outlined text-[18px]">verified</span>
               {submitting ? 'Memproses...' : 'Setujui Permintaan'}
@@ -319,7 +319,7 @@ export default function StockRequestDetailPage({ params }: { params: Promise<{ i
         <button
           onClick={handleFulfill}
           disabled={submitting}
-          className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728]"
+          className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg"
         >
           <span className="material-symbols-outlined text-[18px]">local_shipping</span>
           {submitting ? 'Memproses...' : 'Kirim Barang Sekarang'}

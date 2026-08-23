@@ -111,7 +111,7 @@ export default function NewStockReturnPage() {
                   onClick={() => setCategory(c.value)}
                   className={`h-[42px] rounded-lg text-[12px] font-semibold border transition-all ${
                     category === c.value
-                      ? 'bg-primary-container border-primary-container text-text-primary'
+                      ? 'bg-primary-container border-primary-container text-white'
                       : 'bg-surface-elevated border-border-base text-text-secondary hover:border-text-muted'
                   }`}
                 >
@@ -197,7 +197,7 @@ export default function NewStockReturnPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728] mt-3"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg mt-3"
           >
             <span className="material-symbols-outlined text-[18px]">send</span>
             {submitting ? 'Mengajukan...' : 'Ajukan Retur'}

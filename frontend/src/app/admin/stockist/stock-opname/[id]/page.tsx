@@ -300,7 +300,7 @@ export default function StockOpnameDetailPage({ params }: { params: Promise<{ id
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728]"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg"
           >
             <span className="material-symbols-outlined text-[18px]">send</span>
             {submitting ? 'Memproses...' : 'Kirim untuk Persetujuan'}
@@ -312,7 +312,7 @@ export default function StockOpnameDetailPage({ params }: { params: Promise<{ id
         <button
           onClick={handleApprove}
           disabled={submitting}
-          className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728]"
+          className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg"
         >
           <span className="material-symbols-outlined text-[18px]">verified</span>
           {submitting ? 'Memproses...' : 'Setujui & Sesuaikan Stok'}

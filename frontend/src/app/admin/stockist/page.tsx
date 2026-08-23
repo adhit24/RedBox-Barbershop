@@ -547,7 +547,7 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
             <div className="flex flex-col gap-2">
               <Link
                 href="/admin/stockist/requests/new"
-                className="bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg border border-[#302728]"
+                className="bg-primary-container hover:bg-inverse-primary text-white font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
               >
                 <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
                 Ajukan Permintaan Stok

@@ -200,7 +200,7 @@ export default function ProductsPage() {
         {isOwner && (
           <button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-text-primary text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95 border border-[#302728]"
+            className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-white text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95"
           >
             <span className="material-symbols-outlined text-[16px]">{showAddForm ? 'close' : 'add'}</span>
             {showAddForm ? 'Batal' : 'Produk'}
@@ -316,7 +316,7 @@ export default function ProductsPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-xs h-[38px] rounded-lg flex items-center justify-center gap-1 active:scale-95 transition-all shadow border border-[#302728]"
+                className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-xs h-[38px] rounded-lg flex items-center justify-center gap-1 active:scale-95 transition-all shadow"
               >
                 {submitting ? 'Menyimpan...' : 'Simpan Produk'}
               </button>
@@ -347,7 +347,7 @@ export default function ProductsPage() {
               onClick={() => setStatusFilter(value)}
               className={`whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-semibold border transition-all ${
                 statusFilter === value
-                  ? 'bg-primary-container border-primary-container text-text-primary'
+                  ? 'bg-primary-container border-primary-container text-white'
                   : 'bg-surface-container-low border-border-base text-text-secondary hover:border-text-muted'
               }`}
             >
@@ -365,7 +365,7 @@ export default function ProductsPage() {
                 onClick={() => setSelectedCategory(cat)}
                 className={`whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-semibold border transition-all ${
                   selectedCategory === cat
-                    ? 'bg-primary-container border-primary-container text-text-primary'
+                    ? 'bg-primary-container border-primary-container text-white'
                     : 'bg-surface-container-low border-border-base text-text-secondary hover:border-text-muted'
                 }`}
               >
@@ -561,7 +561,7 @@ export default function ProductsPage() {
                       <button
                         type="submit"
                         disabled={editSubmitting}
-                        className="flex-1 h-[38px] rounded-lg text-xs font-bold bg-primary-container hover:bg-inverse-primary text-text-primary active:scale-95 transition-all border border-[#302728]"
+                        className="flex-1 h-[38px] rounded-lg text-xs font-bold bg-primary-container hover:bg-inverse-primary text-white active:scale-95 transition-all"
                       >
                         {editSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
                       </button>

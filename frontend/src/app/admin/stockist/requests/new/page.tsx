@@ -185,7 +185,7 @@ export default function NewStockRequestPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728] mt-3"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg mt-3"
           >
             <span className="material-symbols-outlined text-[18px]">send</span>
             {submitting ? 'Mengajukan...' : 'Ajukan Permintaan'}

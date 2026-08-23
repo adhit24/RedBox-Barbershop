@@ -70,7 +70,7 @@ export default function TransfersPage() {
         {isOwner && (
           <Link
             href="/admin/stockist/transfers/new"
-            className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-text-primary text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95 border border-[#302728]"
+            className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-white text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95"
           >
             <span className="material-symbols-outlined text-[16px]">add_shopping_cart</span>
             Buat Transfer
@@ -97,7 +97,7 @@ export default function TransfersPage() {
             onClick={() => setStatusFilter('ALL')}
             className={`whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-semibold border transition-all ${
               statusFilter === 'ALL'
-                ? 'bg-primary-container border-primary-container text-text-primary'
+                ? 'bg-primary-container border-primary-container text-white'
                 : 'bg-surface-container-low border-border-base text-text-secondary hover:border-text-muted'
             }`}
           >

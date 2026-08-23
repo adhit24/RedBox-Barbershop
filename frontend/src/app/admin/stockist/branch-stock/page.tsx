@@ -243,7 +243,7 @@ function BranchStockDashboard() {
                 <div className="flex justify-between text-text-secondary"><span>Stok tertutup</span><strong className="text-text-primary">{item.available_quantity} {item.unit}</strong></div>
                 <div className="flex justify-between text-text-secondary"><span>Sedang digunakan</span><strong className="text-primary-container">{item.in_use_quantity} {item.unit}</strong></div>
                 {!isOwner && item.available_quantity > 0 && (
-                  <button onClick={() => { setOpenProduct(item); setOpenQuantity(1); setUsageSheetOpen(false); setActionError(null); }} className="rounded-lg bg-primary-container text-text-primary py-2 font-semibold">Mulai Pakai</button>
+                  <button onClick={() => { setOpenProduct(item); setOpenQuantity(1); setUsageSheetOpen(false); setActionError(null); }} className="rounded-lg bg-primary-container text-white py-2 font-semibold">Mulai Pakai</button>
                 )}
                 {activeUsagesForBranch.filter((usage) => usage.product_id === item.id).map((usage) => (
                   <div key={usage.id} className="flex justify-between items-center border-t border-border-base pt-2">
@@ -285,7 +285,7 @@ function BranchStockDashboard() {
             </label>
             <div className="flex gap-2">
               <button onClick={() => setOpenProduct(null)} disabled={actionBusy} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary">Batal</button>
-              <button onClick={() => void handleMulaiPakai()} disabled={actionBusy || !openPic} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Mulai Pakai'}</button>
+              <button onClick={() => void handleMulaiPakai()} disabled={actionBusy || !openPic} className="flex-1 bg-primary-container rounded-lg py-2 text-white font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Mulai Pakai'}</button>
             </div>
           </div>
         </div>
@@ -305,7 +305,7 @@ function BranchStockDashboard() {
             </div>
             <div className="flex gap-2">
               <button onClick={() => setConfirmFinishUsage(null)} disabled={actionBusy} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary">Batal</button>
-              <button onClick={() => void handleTandaiHabis(confirmFinishUsage)} disabled={actionBusy} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Tandai Habis'}</button>
+              <button onClick={() => void handleTandaiHabis(confirmFinishUsage)} disabled={actionBusy} className="flex-1 bg-primary-container rounded-lg py-2 text-white font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Tandai Habis'}</button>
             </div>
           </div>
         </div>

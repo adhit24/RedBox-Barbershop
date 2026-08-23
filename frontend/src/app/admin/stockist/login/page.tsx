@@ -135,7 +135,7 @@ export default function StockistLoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-border-base mt-2"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg mt-2"
           >
             <span className="material-symbols-outlined text-[18px]">login</span>
             {loading ? 'Memproses...' : 'Masuk Aplikasi'}

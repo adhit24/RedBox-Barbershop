@@ -193,7 +193,7 @@ function SemuaStokContent() {
             onClick={() => setViewMode('CATEGORY')}
             title="Tampilan Kategori & Merek"
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${
-              viewMode === 'CATEGORY' ? 'bg-primary-container text-text-primary' : 'text-text-muted hover:text-text-secondary'
+              viewMode === 'CATEGORY' ? 'bg-primary-container text-white' : 'text-text-muted hover:text-text-secondary'
             }`}
           >
             <Layers size={14} />
@@ -203,7 +203,7 @@ function SemuaStokContent() {
             onClick={() => setViewMode('FLAT')}
             title="Tampilan Grid Semua Produk"
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold transition-colors ${
-              viewMode === 'FLAT' ? 'bg-primary-container text-text-primary' : 'text-text-muted hover:text-text-secondary'
+              viewMode === 'FLAT' ? 'bg-primary-container text-white' : 'text-text-muted hover:text-text-secondary'
             }`}
           >
             <Grid size={14} />
@@ -218,7 +218,7 @@ function SemuaStokContent() {
           onClick={() => updateCategoryUrl('ALL')}
           className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-semibold border transition-all ${
             selectedCategory === 'ALL'
-              ? 'bg-primary-container border-primary-container text-text-primary shadow-sm'
+              ? 'bg-primary-container border-primary-container text-white shadow-sm'
               : 'bg-surface-elevated border-border-base text-text-secondary hover:border-primary-container/40'
           }`}
         >
@@ -233,7 +233,7 @@ function SemuaStokContent() {
               onClick={() => updateCategoryUrl(cat)}
               className={`shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold border transition-all ${
                 selectedCategory === cat
-                  ? 'bg-primary-container border-primary-container text-text-primary shadow-sm'
+                  ? 'bg-primary-container border-primary-container text-white shadow-sm'
                   : 'bg-surface-elevated border-border-base text-text-secondary hover:border-primary-container/40'
               }`}
             >
@@ -561,7 +561,7 @@ function SemuaStokContent() {
                 <button
                   key={value}
                   onClick={() => { setStockFilter(value); setVisibleCount(PRODUCT_PAGE_SIZE); }}
-                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border ${stockFilter === value ? 'bg-primary-container border-primary-container text-text-primary' : 'bg-surface-container-low border-border-base text-text-secondary'}`}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border ${stockFilter === value ? 'bg-primary-container border-primary-container text-white' : 'bg-surface-container-low border-border-base text-text-secondary'}`}
                 >
                   {label}
                 </button>
@@ -575,7 +575,7 @@ function SemuaStokContent() {
                 <button
                   key={value}
                   onClick={() => { setTypeFilter(value); setVisibleCount(PRODUCT_PAGE_SIZE); }}
-                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border ${typeFilter === value ? 'bg-primary-container border-primary-container text-text-primary' : 'bg-surface-container-low border-border-base text-text-secondary'}`}
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border ${typeFilter === value ? 'bg-primary-container border-primary-container text-white' : 'bg-surface-container-low border-border-base text-text-secondary'}`}
                 >
                   {label}
                 </button>
@@ -584,7 +584,7 @@ function SemuaStokContent() {
           </div>
           <div className="flex gap-2 pt-2">
             <button onClick={() => { setStockFilter('ALL'); setTypeFilter('ALL'); setVisibleCount(PRODUCT_PAGE_SIZE); }} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary font-semibold">Reset</button>
-            <button onClick={() => setFilterSheetOpen(false)} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">Terapkan Filter</button>
+            <button onClick={() => setFilterSheetOpen(false)} className="flex-1 bg-primary-container rounded-lg py-2 text-white font-bold">Terapkan Filter</button>
           </div>
         </div>
       </BottomSheet>
