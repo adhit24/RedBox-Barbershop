@@ -6,11 +6,25 @@ import { CoreSpinLoader } from '@/components/ui/core-spin-loader';
 
 export type PremiumRole = 'owner' | 'manager' | 'branch_admin' | 'barber';
 
-export function PremiumLoginTransition({ role, userName }: { role: PremiumRole; userName?: string | null }) {
+const THEME_STYLES = {
+  dark: { background: '#090707', mutedText: '#786D6F' },
+  light: { background: '#F7F7F5', mutedText: '#9D9494' },
+} as const;
+
+export function PremiumLoginTransition({
+  role,
+  userName,
+  theme = 'dark',
+}: {
+  role: PremiumRole;
+  userName?: string | null;
+  theme?: 'dark' | 'light';
+}) {
+  const styles = THEME_STYLES[theme];
   return (
     <motion.div
       className="fixed inset-0 z-[100] flex min-h-dvh items-center justify-center overflow-hidden px-6"
-      style={{ background: '#090707' }}
+      style={{ background: styles.background }}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -41,7 +55,7 @@ export function PremiumLoginTransition({ role, userName }: { role: PremiumRole; 
         <div className="mt-7 w-full">
           <CoreSpinLoader />
         </div>
-        {userName && <p className="-mt-4 text-[11px] text-[#786D6F]">Menyiapkan ruang kerja, {userName}...</p>}
+        {userName && <p className="-mt-4 text-[11px]" style={{ color: styles.mutedText }}>Menyiapkan ruang kerja, {userName}...</p>}
       </div>
     </motion.div>
   );
