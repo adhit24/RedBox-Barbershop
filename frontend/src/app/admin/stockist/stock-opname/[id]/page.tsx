@@ -232,7 +232,7 @@ export default function StockOpnameDetailPage({ params }: { params: Promise<{ id
                 <span className="text-[10px] text-text-muted mt-1 font-mono">SKU: {sku}</span>
               </div>
 
-              <div className="flex justify-between items-center bg-[#171415] p-3 rounded-lg border border-border-base text-center">
+              <div className="flex justify-between items-center bg-surface-container-lowest p-3 rounded-lg border border-border-base text-center">
                 <div className="flex flex-col flex-1 items-start">
                   <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Available</span>
                   <span className="text-[14px] font-bold text-text-primary font-display tabular-nums mt-0.5">
@@ -249,7 +249,7 @@ export default function StockOpnameDetailPage({ params }: { params: Promise<{ id
                       min={0}
                       value={physicalInputs[item.id] ?? ''}
                       onChange={(e) => setPhysicalInputs({ ...physicalInputs, [item.id]: e.target.value })}
-                      className="w-16 h-[26px] bg-[#100e0e] border border-border-base rounded text-center text-[12px] font-bold text-text-primary focus:outline-none focus:border-primary-container p-0"
+                      className="w-16 h-[26px] bg-surface-container-lowest border border-border-base rounded text-center text-[12px] font-bold text-text-primary focus:outline-none focus:border-primary-container p-0"
                     />
                   ) : (
                     <span className="text-[14px] font-bold text-text-primary font-display tabular-nums mt-0.5">
@@ -273,12 +273,12 @@ export default function StockOpnameDetailPage({ params }: { params: Promise<{ id
                   value={reasonInputs[item.id] ?? ''}
                   onChange={(e) => setReasonInputs({ ...reasonInputs, [item.id]: e.target.value })}
                   placeholder="Alasan selisih (wajib sebelum dikirim)"
-                  className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary text-[12px] focus:outline-none focus:border-primary-container"
+                  className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary text-[12px] focus:outline-none focus:border-primary-container"
                 />
               )}
 
               {!canCount && item.reason && (
-                <p className="text-[11px] text-text-secondary bg-[#171415] rounded-lg p-2 border border-border-base">
+                <p className="text-[11px] text-text-secondary bg-surface-container-lowest rounded-lg p-2 border border-border-base">
                   Alasan: {item.reason}
                 </p>
               )}

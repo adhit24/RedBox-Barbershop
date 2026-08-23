@@ -194,7 +194,7 @@ export default function WarehousePage() {
               <select
                 value={form.product_id}
                 onChange={(e) => setForm({ ...form, product_id: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2.5 text-text-primary focus:outline-none focus:border-primary-container"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2.5 text-text-primary focus:outline-none focus:border-primary-container"
                 required
               >
                 <option value="">-- Pilih produk --</option>
@@ -215,7 +215,7 @@ export default function WarehousePage() {
                   placeholder="Mis: 100"
                   value={form.quantity}
                   onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                  className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                  className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                   required
                 />
               </div>
@@ -226,7 +226,7 @@ export default function WarehousePage() {
                   placeholder="No. Invoice / Supplier"
                   value={form.reason}
                   onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                  className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                  className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                 />
               </div>
             </div>
@@ -251,7 +251,7 @@ export default function WarehousePage() {
             placeholder="Cari nama atau SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
+            className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
           />
         </div>
       </section>
@@ -288,7 +288,7 @@ export default function WarehousePage() {
                 className="bg-surface-elevated border border-border-base rounded-xl p-4 flex items-center gap-3 hover:bg-surface-container transition-colors"
               >
                 {/* Thumbnail */}
-                <div className="w-12 h-12 rounded-lg bg-[#171415] border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-lg bg-surface-container-lowest border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
                   <img 
                     className="w-full h-full object-cover opacity-85 mix-blend-luminosity" 
                     src={getProductImage(p.sku, p.name)} 

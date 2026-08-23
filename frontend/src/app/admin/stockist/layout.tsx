@@ -88,7 +88,10 @@ export default function StockistLayout({ children }: { children: React.ReactNode
     <MotionConfig reducedMotion="user">
       <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
       {/* TopAppBar */}
-      <header className="bg-surface-dim fixed top-0 w-full z-50 flex justify-between items-center px-4 h-[48px] shadow-[0_4px_24px_rgba(0,0,0,0.6)] max-w-[430px] left-1/2 -translate-x-1/2 border-b border-border-base">
+      <header
+        className="bg-surface-dim fixed top-0 w-full z-50 flex justify-between items-center px-4 h-[48px] max-w-[430px] left-1/2 -translate-x-1/2 border-b border-border-base"
+        style={{ boxShadow: 'var(--shadow2)' }}
+      >
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-primary-container text-[20px] ml-1">inventory_2</span>
           <span className="font-bold text-[15px] tracking-wider uppercase text-text-primary">

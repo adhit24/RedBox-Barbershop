@@ -168,7 +168,7 @@ function BranchStockDashboard() {
           <select
             value={branch}
             onChange={(e) => router.push(`/admin/stockist/branch-stock?branch=${encodeURIComponent(e.target.value)}`)}
-            className="w-full bg-[#171415] border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
+            className="w-full bg-surface-container-lowest border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
           >
             <option value="bypass">Cabang Bypass</option>
             <option value="sumber">Cabang Sumber</option>
@@ -272,16 +272,16 @@ function BranchStockDashboard() {
               </p>
             </div>
             <label className="text-[12px] text-text-secondary">Quantity
-              <input type="number" min={1} max={openProduct.available_quantity || 1} value={openQuantity} onChange={(e) => setOpenQuantity(Math.max(1, Number(e.target.value)))} className="mt-1 w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary" />
+              <input type="number" min={1} max={openProduct.available_quantity || 1} value={openQuantity} onChange={(e) => setOpenQuantity(Math.max(1, Number(e.target.value)))} className="mt-1 w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary" />
             </label>
             <label className="text-[12px] text-text-secondary">PIC / Penanggung Jawab
-              <select value={openPic} onChange={(e) => setOpenPic(e.target.value)} className="mt-1 w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary">
+              <select value={openPic} onChange={(e) => setOpenPic(e.target.value)} className="mt-1 w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary">
                 <option value="">Pilih PIC</option>
                 {picOptions.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
               </select>
             </label>
             <label className="text-[12px] text-text-secondary">Catatan opsional
-              <textarea value={openNotes} onChange={(e) => setOpenNotes(e.target.value)} className="mt-1 w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary" rows={2} />
+              <textarea value={openNotes} onChange={(e) => setOpenNotes(e.target.value)} className="mt-1 w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary" rows={2} />
             </label>
             <div className="flex gap-2">
               <button onClick={() => setOpenProduct(null)} disabled={actionBusy} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary">Batal</button>

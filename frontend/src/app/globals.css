@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+ color-scheme: light;
  --background: #F7F7F5;
  --foreground: #1F1A1A;
 
@@ -77,6 +78,7 @@
 }
 
 [data-theme="dark"] {
+ color-scheme: dark;
  --background: #151313;
  --foreground: #e8e1e0;
 
@@ -143,8 +145,6 @@
  --color-accent-soft: var(--color-accent-soft);
  --font-display: var(--font-display);
  --font-body-secondary: var(--font-body-secondary);
- --shadow: var(--shadow);
- --shadow2: var(--shadow2);
 
  --color-status-habis: var(--color-status-habis);
  --color-status-aman: var(--color-status-aman);

@@ -137,7 +137,7 @@ export default function NewStockReturnPage() {
                       <select
                         value={line.product_id}
                         onChange={(e) => updateLine(i, { product_id: e.target.value })}
-                        className="w-full bg-[#171415] border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container"
+                        className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container"
                       >
                         <option value="">-- Pilih produk --</option>
                         {products.filter((p) => p.is_active).map((p) => (
@@ -157,7 +157,7 @@ export default function NewStockReturnPage() {
                         placeholder="Qty"
                         value={line.quantity}
                         onChange={(e) => updateLine(i, { quantity: e.target.value })}
-                        className="w-full bg-[#171415] border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container text-center font-bold font-display"
+                        className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container text-center font-bold font-display"
                         required
                       />
                     </div>
@@ -190,7 +190,7 @@ export default function NewStockReturnPage() {
               onChange={(e) => setReason(e.target.value)}
               placeholder="Mis: kemasan penyok saat pengiriman"
               rows={3}
-              className="w-full bg-[#171415] border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-primary-container resize-none"
+              className="w-full bg-surface-container-lowest border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-primary-container resize-none"
             />
           </section>
 

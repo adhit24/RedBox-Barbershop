@@ -104,7 +104,7 @@ export default function StockOpnamePage() {
           <select
             value={startLocation}
             onChange={(e) => setStartLocation(e.target.value)}
-            className="w-full bg-[#171415] border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
+            className="w-full bg-surface-container-lowest border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
           >
             <option value="warehouse">Gudang Pusat</option>
             {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}

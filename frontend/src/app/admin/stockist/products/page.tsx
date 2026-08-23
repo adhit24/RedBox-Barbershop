@@ -230,7 +230,7 @@ export default function ProductsPage() {
                 placeholder="Mis: RBX-CLY-001"
                 value={form.sku}
                 onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
                 required
               />
             </div>
@@ -241,7 +241,7 @@ export default function ProductsPage() {
                 placeholder="Mis: RedBox Matte Clay Premium"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
                 required
               />
             </div>
@@ -252,7 +252,7 @@ export default function ProductsPage() {
                 placeholder="Pomade, Equipment, etc."
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
               />
             </div>
 
@@ -262,14 +262,14 @@ export default function ProductsPage() {
                 placeholder="pcs, botol, pack"
                 value={form.unit}
                 onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
                 required
               />
             </div>
 
             <div className="flex flex-col gap-1.5 col-span-2">
               <label className="text-[11px] font-medium text-text-secondary">Jenis Penggunaan</label>
-              <select value={form.product_type} onChange={(e) => setForm({ ...form, product_type: e.target.value as NonNullable<StockistProduct['product_type']> })} className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary">
+              <select value={form.product_type} onChange={(e) => setForm({ ...form, product_type: e.target.value as NonNullable<StockistProduct['product_type']> })} className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary">
                 <option value="RETAIL">Retail</option>
                 <option value="SERVICE_CONSUMABLE">Barang Pemakaian</option>
                 <option value="BOTH">Retail + Barang Pemakaian</option>
@@ -284,7 +284,7 @@ export default function ProductsPage() {
                 placeholder="Harga Modal"
                 value={form.purchase_price}
                 onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
               />
             </div>
 
@@ -295,7 +295,7 @@ export default function ProductsPage() {
                 placeholder="Harga Retail"
                 value={form.retail_price}
                 onChange={(e) => setForm({ ...form, retail_price: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
                 required
               />
             </div>
@@ -307,7 +307,7 @@ export default function ProductsPage() {
                 placeholder="Batas warning limit"
                 value={form.minimum_stock}
                 onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })}
-                className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
+                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-colors"
                 required
               />
             </div>
@@ -335,7 +335,7 @@ export default function ProductsPage() {
             placeholder="Cari nama atau SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
+            className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
           />
         </div>
 
@@ -402,7 +402,7 @@ export default function ProductsPage() {
               >
                 <div className="flex gap-3 items-start">
                   {/* Thumbnail */}
-                  <div className="w-12 h-12 rounded-lg bg-[#171415] border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-lg bg-surface-container-lowest border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
                     <img 
                       className="w-full h-full object-cover opacity-85 mix-blend-luminosity" 
                       src={getProductImage(p.sku, p.name)} 
@@ -480,7 +480,7 @@ export default function ProductsPage() {
                         <input
                           value={editForm.sku}
                           onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })}
-                          className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                          className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                           required
                         />
                       </div>
@@ -489,7 +489,7 @@ export default function ProductsPage() {
                         <input
                           value={editForm.name}
                           onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                          className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                          className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                           required
                         />
                       </div>
@@ -498,7 +498,7 @@ export default function ProductsPage() {
                         <input
                           value={editForm.category}
                           onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                          className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                          className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                         />
                       </div>
                       <div className="flex flex-col gap-1.5">
@@ -506,13 +506,13 @@ export default function ProductsPage() {
                         <input
                           value={editForm.unit}
                           onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
-                          className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                          className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                           required
                         />
                       </div>
                       <div className="flex flex-col gap-1.5 col-span-2">
                         <label className="text-[11px] font-medium text-text-secondary">Jenis Penggunaan</label>
-                        <select value={editForm.product_type} onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value as NonNullable<StockistProduct['product_type']> })} className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary">
+                        <select value={editForm.product_type} onChange={(e) => setEditForm({ ...editForm, product_type: e.target.value as NonNullable<StockistProduct['product_type']> })} className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary">
                           <option value="RETAIL">Retail</option>
                           <option value="SERVICE_CONSUMABLE">Barang Pemakaian</option>
                           <option value="BOTH">Retail + Barang Pemakaian</option>
@@ -525,7 +525,7 @@ export default function ProductsPage() {
                           type="number"
                           value={editForm.purchase_price}
                           onChange={(e) => setEditForm({ ...editForm, purchase_price: e.target.value })}
-                          className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                          className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                         />
                       </div>
                       <div className="flex flex-col gap-1.5">
@@ -534,7 +534,7 @@ export default function ProductsPage() {
                           type="number"
                           value={editForm.retail_price}
                           onChange={(e) => setEditForm({ ...editForm, retail_price: e.target.value })}
-                          className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                          className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                           required
                         />
                       </div>
@@ -545,7 +545,7 @@ export default function ProductsPage() {
                           min={0}
                           value={editForm.minimum_stock}
                           onChange={(e) => setEditForm({ ...editForm, minimum_stock: e.target.value })}
-                          className="w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
+                          className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
                           required
                         />
                       </div>
@@ -635,10 +635,10 @@ function OwnerInventoryView() {
         <p className="text-[12px] text-text-muted mt-1">Distribusi stok aktif di seluruh cabang.</p>
       </header>
       <section className="flex flex-col gap-2">
-        <input value={query} onChange={(event) => { setQuery(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} placeholder="Cari produk atau SKU" className="w-full bg-[#171415] border border-border-base text-text-primary text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary-container placeholder:text-text-muted" />
+        <input value={query} onChange={(event) => { setQuery(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} placeholder="Cari produk atau SKU" className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary-container placeholder:text-text-muted" />
         <div className="grid grid-cols-2 gap-2">
-          <select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua status</option><option value="SAFE">Aman</option><option value="LOW">Menipis</option><option value="OUT">Habis</option></select>
-          <select value={branch} onChange={(event) => { setBranch(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-[#171415] border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua cabang</option>{OWNER_BRANCHES.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}</select>
+          <select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-surface-container-lowest border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua status</option><option value="SAFE">Aman</option><option value="LOW">Menipis</option><option value="OUT">Habis</option></select>
+          <select value={branch} onChange={(event) => { setBranch(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-surface-container-lowest border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua cabang</option>{OWNER_BRANCHES.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}</select>
         </div>
       </section>
       {error && <div className="bg-danger/10 border border-danger text-danger text-xs rounded-lg p-3">{error}</div>}

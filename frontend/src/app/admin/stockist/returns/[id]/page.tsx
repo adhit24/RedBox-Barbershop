@@ -237,7 +237,7 @@ export default function StockReturnDetailPage({ params }: { params: Promise<{ id
             required
             rows={3}
             placeholder="Mis: kategori retur tidak sesuai kondisi barang"
-            className="w-full bg-[#171415] border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-danger resize-none"
+            className="w-full bg-surface-container-lowest border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-danger resize-none"
           />
           <button
             type="submit"

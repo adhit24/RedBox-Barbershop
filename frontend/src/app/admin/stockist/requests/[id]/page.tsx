@@ -238,7 +238,7 @@ export default function StockRequestDetailPage({ params }: { params: Promise<{ i
                   <span className="text-[10px] text-text-muted mt-1 font-mono">SKU: {sku}</span>
                 </div>
 
-                <div className="flex justify-between items-center bg-[#171415] p-3 rounded-lg border border-border-base text-center">
+                <div className="flex justify-between items-center bg-surface-container-lowest p-3 rounded-lg border border-border-base text-center">
                   <div className="flex flex-col flex-1 items-start">
                     <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Diminta</span>
                     <span className="text-[14px] font-bold text-text-primary font-display tabular-nums mt-0.5">
@@ -257,7 +257,7 @@ export default function StockRequestDetailPage({ params }: { params: Promise<{ i
                         max={item.quantity_requested}
                         value={approvedQty[item.id] ?? ''}
                         onChange={(e) => setApprovedQty({ ...approvedQty, [item.id]: e.target.value })}
-                        className="w-16 h-[26px] bg-[#100e0e] border border-border-base rounded text-center text-[12px] font-bold text-text-primary focus:outline-none focus:border-primary-container p-0"
+                        className="w-16 h-[26px] bg-surface-container-lowest border border-border-base rounded text-center text-[12px] font-bold text-text-primary focus:outline-none focus:border-primary-container p-0"
                         required
                       />
                     ) : (
@@ -303,7 +303,7 @@ export default function StockRequestDetailPage({ params }: { params: Promise<{ i
             required
             rows={3}
             placeholder="Mis: stok gudang tidak mencukupi minggu ini"
-            className="w-full bg-[#171415] border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-danger resize-none"
+            className="w-full bg-surface-container-lowest border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-danger resize-none"
           />
           <button
             type="submit"
