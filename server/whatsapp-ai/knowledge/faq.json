@@ -66,19 +66,29 @@
       "answer": "Bisa banget kak — sekarang udah ada mode 2 orang, 1x checkout aja 🔥\n\n→ redboxbarbershop.com/booking.html\n\nDi Step 1 pilih chip '2 orang', terus pilih service & kapster masing-masing (sistem cegah kapster sama biar paralel), jam yang sama. Buat 3 orang ke atas, pilih chip '3+ orang' — banner WA muncul biar koordinasi langsung sama tim 😄"
     },
     {
+      "question": "Home service — paket wedding / pernikahan",
+      "keywords": ["wedding", "pernikahan", "pengantin", "nikah", "akad", "resepsi", "grooming nikah", "paket nikah", "paket pengantin", "royal grooming"],
+      "answer": "Ada paket khusus Wedding Grooming kak! Cocok buat hari pernikahanmu 💍✂️\n\n👑 *Wedding Redbox Gentleman Grooming* — Rp 350.000 / 1 orang\n🥈 *Royal Grooming Silver* — Rp 500.000 / 2 orang\n🥇 *Royal Grooming Gold* — Rp 750.000 / 3 orang (Paling Populer!)\n💎 *Royal Grooming Platinum* — Rp 1.000.000 / 4 orang\n\n⏰ Jam layanan 06:00–23:00 WIB — bisa dari pagi banget!\n📅 *Pemesanan minimal H-3* sebelum hari H (biar persiapan matang)\n\nDetail & booking: redboxbarbershop.com/home-service.html#wedding-pricing"
+    },
+    {
+      "question": "Booking 2 orang / bareng",
+      "keywords": ["2 orang", "dua orang", "berdua", "ber-2", "bareng", "sama temen", "sama teman", "anak bapak", "ayah anak", "sekalian", "duaan", "rombongan", "grup"],
+      "answer": "Bisa banget kak — sekarang udah ada mode 2 orang, 1x checkout aja 🔥\n\n→ redboxbarbershop.com/booking.html\n\nDi Step 1 pilih chip '2 orang', terus pilih service & kapster masing-masing (sistem cegah kapster sama biar paralel), jam yang sama. Buat 3 orang ke atas, pilih chip '3+ orang' — banner WA muncul biar koordinasi langsung sama tim 😄"
+    },
+    {
       "question": "Add-on Redbox Gentleman Grooming",
       "keywords": ["add on", "addon", "tambahan", "sekalian", "plus", "ditambah", "extra", "bundling", "paket gentleman"],
       "answer": "Pas kakak pilih Redbox Gentleman Grooming di booking page, popup add-on opsional otomatis muncul ✨\n\n• Hair Spa (+Rp 110rb / +30 mnt)\n• Shaving (+Rp 40rb / +20 mnt)\n• Men Massage (+Rp 145rb / +45 mnt)\n\nBoleh skip, boleh pilih 1 atau lebih — total harga & durasi auto-update. Cek: redboxbarbershop.com/booking.html"
     },
     {
-      "question": "Reward ulasan positif",
+      "question": "Ulasan Google / Review",
       "keywords": ["review", "ulasan", "rating", "bintang", "google review", "kasih bintang", "rate", "feedback"],
-      "answer": "Kasih ulasan positif (rating ⭐ 4–5 di Google) → langsung dapat 5 poin RedBox senilai Rp 50.000 🎁\n\nLink reviewnya kita auto-kirim 30 menit habis service. Tinggal tap, kasih bintang, voucher Rp 50rb otomatis masuk ke akun member kakak — bisa ditukar diskon haircut, free coffee, sampai treatment gratis ✨\n\nDetail tier reward: redboxbarbershop.com/membership.html"
+      "answer": "Ulasan kakak di Google beneran sangat berarti buat kami 🙏✨ Link review akan otomatis dikirim 30 menit setelah service selesai. Cuma butuh 1 menit waktu kakak untuk bantu RedBox terus berkembang & bikin para kapster makin semangat ngasih hasil terbaik! ✂️"
     },
     {
       "question": "Cara dapat poin / reward",
       "keywords": ["poin", "point", "reward", "bonus", "voucher", "dapet poin", "cara dapat", "redeem", "tukar poin"],
-      "answer": "Banyak cara dapet poin di RedBox kak 🔥\n\n1️⃣ Setiap kunjungan auto-dapet poin (login member dulu di booking)\n2️⃣ Ulasan positif Google rating 4–5 ⭐ → 5 poin = Rp 50.000 langsung 🎁\n3️⃣ Referral teman, ulang tahun, dst — cek tier lengkap di redboxbarbershop.com/membership.html\n\nPoin bisa ditukar diskon, free coffee, sampai Redbox Gentleman Grooming gratis ✂️"
+      "answer": "Banyak cara dapet poin di RedBox kak 🔥\n\n1️⃣ Setiap kunjungan auto-dapet poin (login member dulu di booking)\n2️⃣ Referral teman, ulang tahun, dst — cek tier lengkap di redboxbarbershop.com/membership.html\n\nPoin bisa ditukar diskon, free coffee, sampai Redbox Gentleman Grooming gratis ✂️"
     }
   ]
 }

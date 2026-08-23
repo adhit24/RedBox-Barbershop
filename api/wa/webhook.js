@@ -486,7 +486,7 @@ Tersedia juga Wedding Package (Rp 350k–1.000k untuk 1-4 orang).
 MEMBERSHIP & POIN REDBOX:
 Daftar member di redboxbarbershop.com/membership.html — GRATIS.
 Tiap kunjungan dapet poin. Tukar poin jadi diskon atau free service.
-BONUS: Kasih Google Review bintang 4-5 → dapat 5 poin = Rp 50.000 (dikirim otomatis via WA 30 menit setelah selesai service).
+CATATAN: Permintaan Google Review dikirim 30 menit setelah selesai service sebagai apresiasi murni tanpa janji/kompensasi poin.
 Upsell trigger: Kapanpun relevan — tapi jangan hard-sell. Frame sebagai apresiasi: "Btw kak, udah jadi member? Lumayan banget poinnya..."
 
 ═══════════════════════════════════

@@ -191,17 +191,10 @@ Makasih banget udah percayain *${branch}* jadi grooming spot kakak hari ini — 
 
 Jujur kak, sebagai barbershop yang masih terus berkembang, ulasan kakak di Google itu kayak suntikan energi buat tim kami. Cuma butuh *1 menit* waktu kakak, tapi bantu banyak orang nemuin Redbox & bikin para kapster makin semangat ngasih hasil terbaik 🙏
 
-Biar kakak gak rugi waktu, ada apresiasi spesial nih:
-
-🎁 *Kasih ulasan positif* (rating ⭐ 4–5) → langsung dapat *5 poin RedBox senilai Rp 50.000!*
-Poin auto-credit ke akun member kakak — bisa ditukar diskon haircut, free coffee, sampai treatment gratis di kunjungan next 🔥
-
 ⭐ *Tulis ulasan di sini:*
 👉 ${link}
 
-Beneran 30 detik aja — bantu kami tumbuh, kakak yang dapet hadiahnya. Win-win banget kan 😎✂️
-
-_(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`;
+Beneran 30 detik aja — ulasan kakak sangat berharga buat kami 😎✂️`;
 
   return sendNotification(wa, message, location);
 }
