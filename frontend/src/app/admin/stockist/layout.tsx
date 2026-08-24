@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { MotionConfig } from 'framer-motion';
-import { Home, Boxes, PackageCheck, ClipboardList, History, LayoutDashboard, Building2, Lightbulb } from 'lucide-react';
+import { Home, Boxes, Truck, User, PackageCheck } from 'lucide-react';
 import { BottomNavBar, type BottomNavItem } from '@/components/ui/bottom-nav-bar';
 import { PremiumLoginTransition, type PremiumRole } from '@/components/auth/PremiumLoginTransition';
 import { useStockistTheme } from '@/lib/stockist/useTheme';
@@ -17,10 +17,38 @@ const BRANCH_NAMES: Record<string, string> = {
   tegal: 'Cabang Tegal'
 };
 
+// Ordered longest-prefix-first so a more specific route (e.g. "/branch-stock/all")
+// matches before a shorter one ("/branch-stock") that would otherwise shadow it.
+const HEADER_ROUTES: Array<{ prefix: string; title: string; subtitle?: string }> = [
+  { prefix: '/admin/stockist/branch-stock/all', title: 'Semua Stok', subtitle: 'Sebaran per produk' },
+  { prefix: '/admin/stockist/branch-stock', title: 'Stok Cabang' },
+  { prefix: '/admin/stockist/branches', title: 'Stok Cabang' },
+  { prefix: '/admin/stockist/products', title: 'Produk', subtitle: 'Master produk RedBox' },
+  { prefix: '/admin/stockist/warehouse', title: 'Gudang Pusat', subtitle: 'Stok pusat & penerimaan' },
+  { prefix: '/admin/stockist/transfers', title: 'Transfer' },
+  { prefix: '/admin/stockist/requests', title: 'Permintaan Stok' },
+  { prefix: '/admin/stockist/returns', title: 'Retur Barang' },
+  { prefix: '/admin/stockist/stock-opname', title: 'Stock Opname' },
+  { prefix: '/admin/stockist/ledger', title: 'Inventory Ledger' },
+  { prefix: '/admin/stockist/insights', title: 'Insight' },
+  { prefix: '/admin/stockist/notifications', title: 'Notifikasi' },
+  { prefix: '/admin/stockist/profile', title: 'Profil' },
+  { prefix: '/admin/stockist/stok', title: 'Stok', subtitle: 'Pilih area yang mau dibuka' },
+];
+
+function headerFor(pathname: string, isOwner: boolean, branchLabel: string | null): { title: string; subtitle: string | null; canBack: boolean } {
+  if (pathname === '/admin/stockist') {
+    return { title: 'Beranda', subtitle: isOwner ? 'Semua lokasi' : branchLabel, canBack: false };
+  }
+  const match = HEADER_ROUTES.find((r) => pathname.startsWith(r.prefix));
+  return { title: match?.title ?? 'RedBox Stockist', subtitle: match?.subtitle ?? null, canBack: true };
+}
+
 export default function StockistLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, signOut } = useUser();
   const router = useRouter();
-  const { theme, toggleTheme } = useStockistTheme();
+  const pathname = usePathname() || '';
+  const { theme } = useStockistTheme();
   const [transition, setTransition] = useState<{ role: PremiumRole; name?: string | null } | null>(null);
   useEffect(() => {
     if (loading) return;
@@ -68,20 +96,24 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   }
 
   const isOwner = user.role === 'owner';
+  const branchLabel = user.role === 'branch_admin' ? (BRANCH_NAMES[user.branch || ''] || user.branch || null) : null;
 
   const ownerTabs: BottomNavItem[] = [
-    { label: 'Ringkasan', href: '/admin/stockist', icon: LayoutDashboard },
-    { label: 'Cabang', href: '/admin/stockist/branch-stock', icon: Building2, activePrefixes: ['/admin/stockist/branch-stock', '/admin/stockist/branches'] },
-    { label: 'Insight', href: '/admin/stockist/insights', icon: Lightbulb }
+    { label: 'Beranda', href: '/admin/stockist', icon: Home },
+    { label: 'Stok', href: '/admin/stockist/stok', icon: Boxes },
+    { label: 'Transfer', href: '/admin/stockist/transfers', icon: Truck },
+    { label: 'Profil', href: '/admin/stockist/profile', icon: User }
   ];
 
   const branchAdminTabs: BottomNavItem[] = [
     { label: 'Beranda', href: '/admin/stockist', icon: Home },
     { label: 'Stok', href: '/admin/stockist/branch-stock', icon: Boxes },
-    { label: 'Barang Masuk', href: '/admin/stockist/transfers', icon: PackageCheck },
-    { label: 'Permintaan', href: '/admin/stockist/requests', icon: ClipboardList },
-    { label: 'Riwayat', href: '/admin/stockist/ledger', icon: History }
+    { label: 'Masuk', href: '/admin/stockist/transfers', icon: PackageCheck },
+    { label: 'Profil', href: '/admin/stockist/profile', icon: User }
   ];
+
+  const header = headerFor(pathname, isOwner, branchLabel);
+  const searchHref = isOwner ? '/admin/stockist/products' : '/admin/stockist/branch-stock';
 
   return (
     <div data-theme={theme}>
@@ -89,49 +121,42 @@ export default function StockistLayout({ children }: { children: React.ReactNode
       <div className="bg-surface-container-lowest text-text-primary antialiased min-h-screen">
       {/* TopAppBar */}
       <header
-        className="bg-surface-dim fixed top-0 w-full z-50 flex justify-between items-center px-4 h-[48px] max-w-[430px] left-1/2 -translate-x-1/2 border-b border-border-base"
+        className="bg-surface-dim fixed top-0 w-full z-50 flex items-center gap-3 px-4 h-[56px] max-w-[430px] left-1/2 -translate-x-1/2 border-b border-border-base"
         style={{ boxShadow: 'var(--shadow2)' }}
       >
-        <div className="flex items-center gap-2">
-          <span className="material-symbols-outlined text-primary-container text-[20px] ml-1">inventory_2</span>
-          <span className="font-bold text-[15px] tracking-wider uppercase text-text-primary">
-            RedBox Stockist
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {user.role === 'owner' && (
-            <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
-              Owner
-            </span>
-          )}
-          {user.role === 'branch_admin' && (
-            <span className="text-[9px] bg-primary-container/20 text-accent-soft px-2 py-0.5 rounded font-semibold tracking-wide uppercase border border-primary-container/30">
-              {BRANCH_NAMES[user.branch || ''] || user.branch}
-            </span>
-          )}
+        {header.canBack ? (
           <button
-            onClick={toggleTheme}
-            aria-label={theme === 'light' ? 'Ganti ke mode gelap' : 'Ganti ke mode terang'}
-            className="text-text-muted hover:text-text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full"
+            onClick={() => router.back()}
+            aria-label="Kembali"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border-base bg-surface-elevated text-text-primary"
           >
-            <span className="material-symbols-outlined text-[20px]">{theme === 'light' ? 'dark_mode' : 'light_mode'}</span>
+            <span className="material-symbols-outlined text-[20px]">arrow_back</span>
           </button>
-          <button
-            onClick={() => {
-              if (confirm('Keluar dari aplikasi?')) {
-                signOut();
-                router.replace('/admin/stockist/login');
-              }
-            }}
-            className="text-text-muted hover:text-text-primary transition-colors flex items-center justify-center w-8 h-8 rounded-full"
-          >
-            <span className="material-symbols-outlined text-[20px]">logout</span>
-          </button>
+        ) : (
+          <span className="material-symbols-outlined text-primary-container text-[22px] shrink-0">inventory_2</span>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[17px] font-bold leading-tight text-text-primary">{header.title}</span>
+          {header.subtitle && <span className="truncate text-[11px] font-medium text-text-muted">{header.subtitle}</span>}
         </div>
+        <button
+          onClick={() => router.push(searchHref)}
+          aria-label="Cari produk"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border-base bg-surface-elevated text-text-secondary"
+        >
+          <span className="material-symbols-outlined text-[19px]">search</span>
+        </button>
+        <button
+          onClick={() => router.push('/admin/stockist/notifications')}
+          aria-label="Notifikasi"
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border-base bg-surface-elevated text-text-secondary"
+        >
+          <span className="material-symbols-outlined text-[19px]">notifications</span>
+        </button>
       </header>
 
       {/* Main Container */}
-      <main className="pt-[calc(48px+16px)] pb-[calc(70px+24px)] px-4 w-full max-w-[430px] mx-auto min-h-screen flex flex-col gap-4">
+      <main className="pt-[calc(56px+16px)] pb-[calc(70px+24px)] px-4 w-full max-w-[430px] mx-auto min-h-screen flex flex-col gap-4">
         {children}
       </main>
 
