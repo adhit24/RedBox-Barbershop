@@ -84,8 +84,8 @@
 
  --color-surface-dim: #151313;
  --color-surface-bright: #3c3838;
- --color-surface-elevated: #211B1C;
- --color-surface-container: #221f1f;
+ --color-surface-elevated: #1E1A1B;
+ --color-surface-container: #241F20;
  --color-surface-container-low: #1e1b1b;
  --color-surface-container-lowest: #100e0e;
  --color-surface-container-high: #2c2929;
@@ -96,6 +96,7 @@
  --color-text-muted: #786D6F;
  --color-danger: #E0504B;
  --color-info: #8A9BA8;
+ --color-primary-container: #E33A32;
  --color-inverse-primary: #b91d18;
 
  --color-status-habis: #E0504B;
