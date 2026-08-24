@@ -1,5 +1,7 @@
 # RedBox Stockist Barcode/QR Scanner Implementation Plan
 
+**SUPERSEDED 2026-08-24.** Task 1 (dependency + `barcode` type field) completed and remains valid — do not redo it. Tasks 2-6 below are stale: Task 2's `BarcodeScannerSheet` design was written before `design_handoff_stockist_mobile/` was found and doesn't match the corrected spec (see `docs/superpowers/specs/2026-08-24-stockist-barcode-scanner-design.md`, corrected 2026-08-24) or its real successor plan `docs/superpowers/plans/2026-08-24-stockist-barcode-scanner-component.md`. Tasks 3 and 5 (Product Master, Semua Stok integration) are superseded by `docs/superpowers/plans/2026-08-24-stockist-product-lists-consolidation.md`, which restructures those same screens and wires the scanner in as part of that restructuring. Tasks 4 and 6 (Terima Barang, Stock Opname integration) remain queued for when those screens get their own dedicated rebuilds later in the roadmap (`docs/superpowers/specs/2026-08-24-stockist-design-handoff-gap-audit.md`) — do not execute them against this plan's stale line-number references; write fresh task briefs against whatever those screens look like at that time.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a real, camera-based barcode/QR scanner to RedBox Stockist, wired into four existing screens (Product Master, Terima Barang, Semua Stok/Stok Cabang, Stock Opname).

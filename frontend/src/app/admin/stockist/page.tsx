@@ -218,7 +218,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
               icon="warning"
               tint="warning"
               hint="perlu restock"
-              href="/admin/stockist/warehouse?filter=LOW"
+              href="/admin/stockist/warehouse?filter=MENIPIS"
             />
             <StatCard
               label="Transfer Berjalan"

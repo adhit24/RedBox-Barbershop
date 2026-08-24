@@ -8,7 +8,7 @@ The user explicitly confirmed real camera-based scanning is required (not a UI-o
 - §25 STOCK OPNAME: flow step "Cari / Scan Produk", features list includes "barcode scan shortcut"
 - §31 COMPONENT SYSTEM: "barcode scanner placeholder" listed as a reusable component
 
-The live Claude Design mockup (`RedBox Stockist.dc.html`) could not be re-fetched in this session — both the DesignSync MCP tool (project not listed under the user's writable design-system projects) and a direct WebFetch (403, authenticated URL) failed to retrieve it. This design therefore works from the master spec doc's stated intent plus this app's own established visual conventions (rounded cards, soft tints, `material-symbols-outlined` icons, Tailwind v4 tokens already defined in `globals.css`) rather than pixel-matching a screen this session could not view. If the mockup becomes reachable in a later session, the scanner sheet's exact visual treatment (frame style, colors, copy) should be reconciled against it then.
+**Superseded 2026-08-24:** the `design_handoff_stockist_mobile/` folder (README.md §22 "Scan Barcode") was found mid-session and is now the authoritative source for this screen's exact visual treatment — the "Architecture" section below has been corrected to match it exactly, replacing the earlier full-screen-overlay guess this doc originally contained (written before the handoff was found, when only the thinner Stitch-prompt doc and no mockup access were available). §22's exact text: "Viewport 320px radius 20px latar gelap `#17141480`, di tengahnya kotak 210px radius 22px border dashed 2px `#ffffff66` dengan ikon `qr_code_2` 52px. Caption bawah 'Arahkan kamera ke barcode produk'. Di bawah viewport: card hint 'Barcode tidak terbaca? Masukkan SKU manual lewat pencarian.' dan tombol 'Tutup Scanner'. Bottom nav disembunyikan di layar ini."
 
 Products already have a `barcode` column (`server/migrations/2026-08-15-stockist-inventory-foundation.sql:20`), settable via the existing Tambah/Edit Produk forms. `GET /api/stockist/products` already returns the full product list with no filtering — every page this plan touches already fetches (or can cheaply fetch) that full list, so barcode-to-product matching is a client-side lookup. No backend or database change is needed for this plan.
 
@@ -47,17 +47,18 @@ interface BarcodeScannerSheetProps {
 ```
 
 Internally:
-- On `open` becoming true, requests camera access (`BrowserMultiFormatReader.decodeFromVideoDevice` from `@zxing/browser`, preferring the rear/environment-facing camera via `facingMode: 'environment'`) and starts continuous decode against a `<video>` element.
-- On a successful decode, calls `onScan(code)` once (debounced/guarded so a held-steady barcode doesn't fire twice), shows a brief success flash, then the parent is responsible for closing the sheet (via `open=false`) after handling the code — the component itself does not auto-close, so the parent can decide whether to show a "not found" toast without the camera view already having vanished mid-feedback.
-- Stops the camera stream (`reader.reset()` / stopping tracks) on unmount and whenever `open` flips to false — never leaves a camera light on in the background.
-- Renders:
-  - Full-bleed `<video>` feed behind a dark semi-transparent overlay with a centered cut-out viewfinder frame (rounded-corner bracket styling, using this app's existing border/radius tokens).
-  - Top bar: close button (X, `aria-label="Tutup pemindai"`), title "Scan Barcode".
-  - Torch/flashlight toggle button — shown only if the active camera track's `getCapabilities()` reports a `torch` capability; otherwise omitted entirely (never rendered disabled/broken).
-  - Instructional copy: "Arahkan kamera ke barcode produk".
-  - A "Masukkan kode manual" text button that swaps the camera view for a simple text input + submit button, calling `onScan(value)` on submit — always available regardless of camera state.
-  - **Permission-denied state**: if `getUserMedia` rejects with a permission error, replace the camera view with a friendly message ("Akses kamera ditolak. Kamu masih bisa masukkan kode secara manual.") and the manual-entry input, no retry-loop.
-  - **Unsupported-context state**: if the browser lacks camera APIs or the page isn't a secure context, same friendly fallback, manual entry only, no attempt to explain browser internals to the user.
+- On `open` becoming true, requests camera access (`BrowserMultiFormatReader.decodeFromConstraints` from `@zxing/browser`, preferring the rear/environment-facing camera via `facingMode: 'environment'`) and starts continuous decode against a `<video>` element.
+- On a successful decode, calls `onScan(code)` once (guarded so a held-steady barcode doesn't fire twice) — the parent is responsible for closing the sheet after handling the code.
+- Stops the camera stream on unmount and whenever `open` flips to false — never leaves a camera light on in the background.
+- Renders, matching §22 exactly:
+  - A centered **320px** viewport, **20px radius**, background `#17141480` (dark, semi-transparent) — not a full-bleed overlay.
+  - Inside it, a centered **210px** box, **22px radius**, **2px dashed border** in `#ffffff66`, containing a `qr_code_2` icon at **52px** (shown when the camera hasn't produced a frame yet / as the resting icon inside the frame) with the live camera feed as the viewport's background once active.
+  - Caption below the frame, inside the viewport: **"Arahkan kamera ke barcode produk"**.
+  - Below the viewport (outside it, as its own element): a **hint card** reading **"Barcode tidak terbaca? Masukkan SKU manual lewat pencarian."** — this is informational text pointing the user back to the host screen's own search field, not an inline text-entry form. There is no in-sheet manual-entry input; closing the scanner (via the button below) returns to the host screen, where the user can type into the search bar they already have.
+  - A **"Tutup Scanner"** button below the hint card that calls `onClose`.
+  - The screen's bottom nav is hidden while this sheet is open — since it's rendered as a fixed-position overlay above everything (`z-[70]`, matching this app's other full-screen sheets), it already visually covers the bottom nav; no separate hide-logic is needed.
+  - **Permission-denied / unsupported-context state**: no dedicated alternate layout — the same frame/hint-card/button structure renders regardless; if `getUserMedia` fails (denied or unsupported), the `<video>` simply never gets a stream, so the frame shows just the static `qr_code_2` icon with no live feed behind it, and the hint card's copy is supplemented with one short line noting the camera isn't available (exact wording is an implementation-task detail, not specified in §22, since the mockup doesn't distinguish this state visually — closing and using the search bar always remains the path forward either way).
+  - No torch/flashlight control — not part of §22's spec for this screen (the earlier draft of this doc invented one before the handoff was found; dropped).
 
 ### Integration pattern (all three screens)
 
@@ -90,9 +91,8 @@ No backend route is added or modified. No new database column, table, or migrati
 
 | Condition | Behavior |
 |---|---|
-| Camera permission denied | Friendly message, manual-entry input shown, sheet stays open |
-| No camera / insecure context | Same friendly fallback, manual entry only |
-| Torch unsupported | Toggle button not rendered at all (not shown-disabled) |
+| Camera permission denied | Frame shows no live feed (just the static `qr_code_2` icon), hint card notes the camera isn't available, "Tutup Scanner" returns to the host screen's own search field |
+| No camera / insecure context | Same as above |
 | Scanned code matches no product | Sheet closes, screen shows its existing toast/error pattern with a screen-specific fallback action (see table above) |
 | Decode never happens (user just closes) | No error — closing is a normal, silent action |
 
@@ -100,6 +100,6 @@ No backend route is added or modified. No new database column, table, or migrati
 
 This repo has no automated test suite (frontend: no `test` script in `package.json`; backend: none either) — established precedent from every prior plan in this effort is `npx tsc --noEmit` for the frontend and `node -c` for any touched backend file (none expected here, since this plan is pure-frontend). Camera behavior itself cannot be verified through type-checking; a manual smoke test on a real device with a real camera (testing all three entry points, the permission-denied path, the manual-entry fallback, and both a matching and non-matching scan) is required before this plan is considered done — flagged explicitly because this is the first camera-dependent feature built in this app this session, unlike prior plans which were fully verifiable through static checks alone.
 
-## Open Question Carried Forward
+## Resolved (was: Open Question Carried Forward)
 
-The live mockup's exact visual treatment of the Barcode Scanner screen was not viewable this session (see Context). If a future session regains access to it (DesignSync project becomes listed, or the share URL becomes fetchable), the `BarcodeScannerSheet`'s frame/overlay styling and copy should be reconciled against it — this is a cosmetic follow-up, not a functional gap, since the design above already delivers the feature's real behavior.
+The live mockup's exact visual treatment (§22) is now known via the design handoff and is fully incorporated into the Architecture section above — no open question remains.

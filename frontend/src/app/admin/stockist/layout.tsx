@@ -121,7 +121,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
   ];
 
   const header = headerFor(pathname, isOwner, branchLabel);
-  const searchHref = isOwner ? '/admin/stockist/products' : '/admin/stockist/branch-stock';
+  const searchHref = isOwner ? '/admin/stockist/products' : '/admin/stockist/branch-stock/all';
 
   return (
     <div data-theme={theme}>
