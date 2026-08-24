@@ -192,9 +192,13 @@ body {
 }
 
 .animate-shimmer {
-  background: linear-gradient(90deg, var(--color-surface-container) 25%, var(--color-border-base) 50%, var(--color-surface-container) 75%);
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.4) 25%, rgba(51, 65, 85, 0.6) 50%, rgba(30, 41, 59, 0.4) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite linear;
+}
+
+[data-theme] .animate-shimmer {
+  background: linear-gradient(90deg, var(--color-surface-container) 25%, var(--color-border-base) 50%, var(--color-surface-container) 75%);
 }
 
 @keyframes rb-fade-in {
@@ -211,5 +215,13 @@ body {
 .animate-fade-in,
 .animate-slide-up {
   animation: rb-fade-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-up,
+  .animate-shimmer {
+    animation: none;
+  }
 }
 
