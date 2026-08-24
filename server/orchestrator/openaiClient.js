@@ -5,23 +5,26 @@ const DEFAULT_MODEL = 'gpt-4o-mini';
 const REQUEST_TIMEOUT_MS = 8000;
 
 const INTENT_GUIDE = [
-  'general_question: casual or general question',
-  'price_inquiry: asks price or cost',
-  'location_inquiry: asks outlet address or location',
-  'service_inquiry: asks available barbershop service',
-  'booking_request: wants a new booking',
-  'booking_status: asks status of an existing booking',
-  'reschedule_request: wants to change an existing schedule',
-  'cancel_request: wants to cancel an existing booking',
-  'customer_history: asks visit history or when they last visited',
-  'points_inquiry: asks loyalty point balance',
-  'customer_profile: asks for customer-specific profile data',
-  'customer_preferences: asks for customer-specific preferences',
-  'customer_transaction_history: asks for customer-specific purchase or payment history',
-  'membership_inquiry: asks for general membership tier or benefit explanation',
-  'complaint: expresses a complaint or dissatisfaction',
-  'human_request: explicitly asks for a human or admin',
-  'unknown: cannot classify reliably',
+  'general_question: greeting/social/nonspecific; only if no business intent fits',
+  'price_inquiry: price/cost',
+  'location_inquiry: address/location; not hours',
+  'operating_hours_inquiry: opening/closing hours',
+  'service_inquiry: service details/comparison/difference/suitability',
+  'barber_inquiry: barber identity/list/branch; no date/time/slot',
+  'booking_request: explicitly asks to book; not availability',
+  'booking_availability_inquiry: whether barber/slot/date/time is available; classify only',
+  'booking_status: existing booking status',
+  'reschedule_request: change existing schedule',
+  'cancel_request: cancel existing booking',
+  'customer_history: past visits/events/services; not habits/favorites',
+  'points_inquiry: loyalty points balance',
+  'customer_profile: customer profile data',
+  'customer_preferences: habits/favorites (biasanya, favorit)',
+  'customer_transaction_history: purchase/payment history',
+  'membership_inquiry: membership tier/benefit explanation',
+  'complaint: complaint/dissatisfaction',
+  'human_request: explicitly asks for human/admin',
+  'unknown: uninterpretable or missing context',
 ].join('\n');
 
 function configurationError() {
@@ -62,7 +65,7 @@ async function classifyWithOpenAI(message, { client, env = process.env, model = 
       messages: [
         {
           role: 'system',
-          content: `Classify one Indonesian RedBox customer message. Return only the schema.\n${INTENT_GUIDE}`,
+          content: `Classify one Indonesian RedBox customer message. Return only the schema. No context: boleh/iya/oke/gas/lanjut MUST be unknown; halo/makasih/wkwkwk are general_question.\n${INTENT_GUIDE}`,
         },
         { role: 'user', content: message },
       ],
