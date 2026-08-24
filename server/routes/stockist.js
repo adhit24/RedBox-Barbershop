@@ -533,6 +533,8 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(400).json({ error: err.message });
     }
 
+    await notifyBestEffort(() => notifications.notifyTransferCreated(supabase, { transfer, destinationBranchSlug: destination_branch }));
+
     return res.json({ transfer });
   });
 
