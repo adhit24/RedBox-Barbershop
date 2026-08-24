@@ -9,9 +9,10 @@ export interface LocationCardProps {
   onSelect: () => void;
   formatValue: (value: number | null) => string;
   maxValue: number;
+  barColorClass: string;
 }
 
-export function LocationCard({ location, onSelect, formatValue, maxValue }: LocationCardProps) {
+export function LocationCard({ location, onSelect, formatValue, maxValue, barColorClass }: LocationCardProps) {
   const rawPct = maxValue > 0 ? ((location.total_asset_value ?? 0) / maxValue) * 100 : 0;
   const pct = rawPct > 0 ? Math.max(4, Math.round(rawPct)) : 0;
 
@@ -40,7 +41,7 @@ export function LocationCard({ location, onSelect, formatValue, maxValue }: Loca
         </div>
       </div>
       <div className="h-1.5 rounded-full bg-surface-container-high overflow-hidden">
-        <div className="h-full rounded-full bg-primary-container" style={{ width: `${pct}%` }} />
+        <div className={`h-full rounded-full ${barColorClass}`} style={{ width: `${pct}%` }} />
       </div>
     </motion.button>
   );

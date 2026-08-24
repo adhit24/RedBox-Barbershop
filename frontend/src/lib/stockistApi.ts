@@ -328,6 +328,7 @@ export interface StockistAssetDashboard {
   attention_items: Array<{
     product_id: string;
     product_name: string;
+    product_sku: string;
     location_id: string;
     location_name: string;
     quantity: number;
