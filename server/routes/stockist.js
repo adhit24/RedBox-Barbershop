@@ -510,8 +510,8 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
   router.post('/transfers', adminAuth, async (req, res) => {
     const access = requireAccess(req, res);
     if (!access) return;
-    if (access.role !== 'owner') {
-      return res.status(403).json({ error: 'only owner can create transfers' });
+    if (access.role !== 'owner' && access.role !== 'manager') {
+      return res.status(403).json({ error: 'only owner or manager can create transfers' });
     }
 
     const { destination_branch, items } = req.body || {};
