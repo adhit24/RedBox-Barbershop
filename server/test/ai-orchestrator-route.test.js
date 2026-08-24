@@ -9,6 +9,7 @@ const app = require('../index');
 const {
   createAiOrchestratorRoutes,
   orchestratorJsonErrorHandler,
+  safeSecretEqual,
 } = require('../routes/aiOrchestrator');
 
 async function listen(application) {
@@ -59,11 +60,11 @@ function createTestApp({ classifier = async () => ({
   return testApp;
 }
 
-async function post(application, { body = { message: 'berapa harganya?' }, secret = 'test-internal-secret', raw } = {}) {
+async function post(application, { body = { message: 'berapa harganya?' }, secret = 'test-internal-secret', raw, path = '/api/ai/orchestrator' } = {}) {
   const server = await listen(application);
   try {
     const { port } = server.address();
-    const response = await fetch(`http://127.0.0.1:${port}/api/ai/orchestrator`, {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -90,6 +91,18 @@ test('missing server secret or dedicated OpenAI key fails closed', async () => {
   const missingKey = createTestApp({ env: { ORCHESTRATOR_INTERNAL_SECRET: 'test-internal-secret', OPENAI_API_KEY: 'shared-key' } });
   assert.deepEqual(await post(missingSecret), { status: 503, body: { error: 'orchestrator_not_configured' } });
   assert.deepEqual(await post(missingKey), { status: 503, body: { error: 'orchestrator_not_configured' } });
+
+  const whitespaceKey = createTestApp({ env: {
+    ORCHESTRATOR_INTERNAL_SECRET: 'test-internal-secret',
+    OPENAI_ORCHESTRATOR_API_KEY: '   ',
+  } });
+  assert.deepEqual(await post(whitespaceKey), { status: 503, body: { error: 'orchestrator_not_configured' } });
+});
+
+test('secret comparison accepts only exact values regardless of input length', () => {
+  assert.equal(safeSecretEqual('same-secret', 'same-secret'), true);
+  assert.equal(safeSecretEqual('short', 'a-much-longer-secret'), false);
+  assert.equal(safeSecretEqual('same-secrex', 'same-secret'), false);
 });
 
 test('empty, non-string, and too-long messages are rejected', async () => {
@@ -104,6 +117,21 @@ test('malformed JSON returns a scoped safe 400 response', async () => {
     status: 400,
     body: { error: 'malformed_json' },
   });
+});
+
+test('malformed JSON on a trailing-slash route returns 400 without logging the raw body', async () => {
+  const originalError = console.error;
+  const logs = [];
+  console.error = (...args) => logs.push(args.map(String).join(' '));
+  try {
+    assert.deepEqual(await post(app, {
+      path: '/api/ai/orchestrator/',
+      raw: '{raw-private-marker-88',
+    }), { status: 400, body: { error: 'malformed_json' } });
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(logs.some((line) => line.includes('raw-private-marker-88')), false);
 });
 
 test('route sends only the trimmed message to classifier and never forwards customer_phone', async () => {

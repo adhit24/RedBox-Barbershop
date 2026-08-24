@@ -1,18 +1,17 @@
 const express = require('express');
-const { randomUUID, timingSafeEqual } = require('crypto');
+const { createHash, randomUUID, timingSafeEqual } = require('crypto');
 const { classifyMessage } = require('../orchestrator/classifier');
 
 function safeSecretEqual(provided, expected) {
-  const left = Buffer.from(String(provided || ''));
-  const right = Buffer.from(String(expected || ''));
-  return left.length === right.length && timingSafeEqual(left, right);
+  const digest = (value) => createHash('sha256').update(String(value || ''), 'utf8').digest();
+  return timingSafeEqual(digest(provided), digest(expected));
 }
 
 function createAiOrchestratorRoutes({ classifier = classifyMessage, env = process.env } = {}) {
   const router = express.Router();
   router.post('/', async (req, res) => {
-    const secret = String(env.ORCHESTRATOR_INTERNAL_SECRET || '');
-    const apiKey = String(env.OPENAI_ORCHESTRATOR_API_KEY || '');
+    const secret = String(env.ORCHESTRATOR_INTERNAL_SECRET || '').trim();
+    const apiKey = String(env.OPENAI_ORCHESTRATOR_API_KEY || '').trim();
     if (!secret || !apiKey) return res.status(503).json({ error: 'orchestrator_not_configured' });
     if (!safeSecretEqual(req.get('x-orchestrator-secret'), secret)) {
       return res.status(401).json({ error: 'unauthorized' });
@@ -40,7 +39,7 @@ function createAiOrchestratorRoutes({ classifier = classifyMessage, env = proces
 }
 
 function orchestratorJsonErrorHandler(error, req, res, next) {
-  if (error?.type === 'entity.parse.failed' && req.path === '/api/ai/orchestrator') {
+  if (error?.type === 'entity.parse.failed' && /^\/api\/ai\/orchestrator\/?$/.test(req.path)) {
     return res.status(400).json({ error: 'malformed_json' });
   }
   return next(error);

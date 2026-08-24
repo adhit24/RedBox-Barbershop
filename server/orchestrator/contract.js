@@ -16,8 +16,8 @@ const ROUTES = Object.freeze({
 });
 
 function decisionFor(intent, confidence) {
+  if (!Object.hasOwn(ROUTES, intent)) return null;
   const route = ROUTES[intent];
-  if (!route) return null;
   return { intent, ...route, confidence };
 }
 
@@ -25,7 +25,7 @@ function normalizeModelDecision(value) {
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value) : value;
     const confidence = parsed?.confidence;
-    if (!ROUTES[parsed?.intent] || typeof confidence !== 'number' || !Number.isFinite(confidence)
+    if (!Object.hasOwn(ROUTES, parsed?.intent) || typeof confidence !== 'number' || !Number.isFinite(confidence)
       || confidence < 0 || confidence > 1) {
       return decisionFor('unknown', 0);
     }

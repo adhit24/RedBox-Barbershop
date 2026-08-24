@@ -113,6 +113,17 @@ test('invalid model output falls back to the canonical unknown decision', async 
   assert.deepEqual(normalizeModelDecision('{not-json'), decisionFor('unknown', 0));
 });
 
+for (const inheritedName of ['__proto__', 'constructor', 'toString']) {
+  test(`inherited object property cannot bypass the canonical intent allowlist: ${inheritedName}`, () => {
+    assert.deepEqual(normalizeModelDecision({ intent: inheritedName, confidence: 0.99 }), {
+      intent: 'unknown',
+      agent: 'general_agent',
+      action: 'fallback_unknown',
+      confidence: 0,
+    });
+  });
+}
+
 test('malformed JSON returned by the real OpenAI boundary becomes unknown instead of an upstream error', async () => {
   const client = {
     chat: { completions: { create: async () => ({ choices: [{ message: { content: '{broken' } }] }) } },
