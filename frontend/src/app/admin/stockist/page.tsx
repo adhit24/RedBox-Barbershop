@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useUser } from '@/hooks/useUser';
-import { useStockistTheme } from '@/lib/stockist/useTheme';
 import type { AppUser } from '@/hooks/useUser';
 import Link from 'next/link';
 import {
@@ -25,7 +24,6 @@ import { ListRow, type ListRowData } from '@/components/stockist/ListRow';
 import { BottomSheet } from '@/components/stockist/BottomSheet';
 import { SkeletonCard } from '@/components/stockist/SkeletonCard';
 import { EmptyState } from '@/components/stockist/EmptyState';
-import { HorizontalBarChart } from '@/components/stockist/HorizontalBarChart';
 import { LocationDrillDownContent } from '@/components/stockist/LocationDrillDownContent';
 import { QuickActionGrid } from '@/components/stockist/QuickActionGrid';
 import { ProductAttentionRow, type ProductAttentionRowData } from '@/components/stockist/ProductAttentionRow';
@@ -107,6 +105,17 @@ function toAttentionRows(items: StockistAssetDashboard['attention_items']): List
   }));
 }
 
+function locationBarColorClass(location: AssetLocationSummary): string {
+  if (location.type === 'warehouse') return 'bg-primary-container';
+  const name = location.location_name;
+  if (name.includes('Bypass')) return 'bg-accent-soft';
+  if (name.includes('CSB')) return 'bg-info';
+  if (name.includes('Samadikun')) return 'bg-warning';
+  if (name.includes('Sumber')) return 'bg-success';
+  if (name.includes('Tegal')) return 'bg-text-muted';
+  return 'bg-primary-container';
+}
+
 function toProductAttentionRows(items: StockistAssetDashboard['attention_items']): ProductAttentionRowData[] {
   return items.map((item) => ({
     key: `${item.location_id}-${item.product_id}`,
@@ -138,8 +147,6 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drillDown, setDrillDown] = useState<DrillDown>(null);
-
-  const { theme } = useStockistTheme();
 
   useEffect(() => {
     setLoading(true);
@@ -278,22 +285,17 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
                 <h3 className="text-[13px] font-bold text-text-primary">Aset per lokasi</h3>
                 <span className="text-[10px] text-text-muted">{assets.asset_by_location.length} lokasi</span>
               </div>
-              <div className="bg-surface-elevated border border-border-base rounded-xl p-3">
-                <HorizontalBarChart
-                  data={assets.asset_by_location.map((location) => ({ name: location.location_name, value: location.total_asset_value ?? 0 }))}
-                  theme={theme}
-                />
-                <div className="mt-3 border-t border-border-base pt-1 divide-y divide-border-base">
-                  {assets.asset_by_location.map((location) => (
-                    <LocationCard
-                      key={location.location_id}
-                      location={location}
-                      formatValue={formatCurrency}
-                      maxValue={maxLocationValue}
-                      onSelect={() => setDrillDown({ type: 'location', location })}
-                    />
-                  ))}
-                </div>
+              <div className="bg-surface-elevated border border-border-base rounded-xl p-1 divide-y divide-border-base">
+                {assets.asset_by_location.map((location) => (
+                  <LocationCard
+                    key={location.location_id}
+                    location={location}
+                    formatValue={formatCurrency}
+                    maxValue={maxLocationValue}
+                    barColorClass={locationBarColorClass(location)}
+                    onSelect={() => setDrillDown({ type: 'location', location })}
+                  />
+                ))}
               </div>
             </motion.section>
           ) : null}
