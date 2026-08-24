@@ -43,6 +43,9 @@ function projectCustomerSelf(customer360) {
   const safeLoyalty = internal.loyalty ? {
     points_balance: typeof internal.loyalty.points_balance === 'number' ? internal.loyalty.points_balance : null,
     last_activity: internal.loyalty.last_activity || null,
+    status: internal.loyalty.status === 'ambiguous_balance_conflict'
+      ? 'ambiguous_balance_conflict'
+      : 'available',
   } : null;
 
   const safeActivity = internal.activity ? {

@@ -245,6 +245,36 @@ test('Ambiguous Identity: candidate customer rows with conflicting names MUST re
   assert.equal(res.resolution, 'ambiguous');
 });
 
+test('CRM Agent preserves ambiguous identity instead of collapsing it to not_found', async () => {
+  const supabase = createMockSupabase({
+    customers: [
+      { id: 'uuid-A', wa: '628123456789', name: 'Budi Santoso' },
+      { id: 'uuid-B', wa: '+628123456789', name: 'Andi Wijaya' },
+    ],
+  });
+
+  const res = await executeCrmTool('get_points', {}, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    phone: '628123456789',
+  });
+  assert.equal(res.status, 'ambiguous');
+  assert.equal(res.error, 'ambiguous_identity');
+  assert.equal(res.customer_found, false);
+});
+
+test('CRM Agent keeps an unknown customer distinct from zero points', async () => {
+  const res = await executeCrmTool('get_points', {}, {
+    supabase: createMockSupabase(),
+    projection: 'CUSTOMER_SELF',
+    phone: '628123456789',
+  });
+
+  assert.equal(res.status, 'not_found');
+  assert.equal(res.customer_found, false);
+  assert.equal(res.data, null);
+});
+
 // ── 6. POINTS BUSINESS RULE TESTS (FACTUAL UNITS ONLY) ───────────────────────
 test('Points: returns factual points_balance ONLY; NO monetary IDR conversion', async () => {
   const supabase = createMockSupabase({
@@ -256,6 +286,33 @@ test('Points: returns factual points_balance ONLY; NO monetary IDR conversion', 
   assert.equal(c360.loyalty.points_balance, 9);
   assert.equal(c360.loyalty.points_value_idr, undefined);
   assert.equal(c360.loyalty.loyalty_discount_equivalent_idr, undefined);
+});
+
+test('Customer-self points projection distinguishes zero from unavailable without internal identifiers', async () => {
+  const zeroProjection = projectCustomerSelf(await getCustomer360(createMockSupabase({
+    customers: [{ id: 'cust-zero', wa: '62818202570', phone_e164: '+62818202570' }],
+    memberPointsBalance: [{ customer_id: 'cust-zero', customer_wa: '62818202570', total_points: 0 }],
+  }), { phone: '62818202570' }));
+  assert.deepEqual(zeroProjection.loyalty, {
+    points_balance: 0,
+    last_activity: null,
+    status: 'available',
+  });
+
+  const unavailableProjection = projectCustomerSelf(await getCustomer360(createMockSupabase({
+    customers: [{ id: 'cust-conflict', wa: '62818202571', phone_e164: '+62818202571' }],
+    memberPointsBalance: [
+      { customer_id: 'unlinked-a', customer_wa: '62818202571', total_points: 10 },
+      { customer_id: 'unlinked-b', customer_wa: '62818202571', total_points: 50 },
+    ],
+  }), { phone: '62818202571' }));
+  assert.deepEqual(unavailableProjection.loyalty, {
+    points_balance: null,
+    last_activity: null,
+    status: 'ambiguous_balance_conflict',
+  });
+  assert.equal(unavailableProjection.identity.customer_id, undefined);
+  assert.equal(JSON.stringify(unavailableProjection).includes('cust-conflict'), false);
 });
 
 // ── 7. MEMBERSHIP BRONZE TIER ORIGIN TESTS ──────────────────────────────────

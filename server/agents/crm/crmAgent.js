@@ -153,6 +153,17 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
     };
   }
 
+  if (raw360.identity?.resolution === 'ambiguous') {
+    return {
+      status: 'ambiguous',
+      tool: toolName,
+      contract_version: CONTRACT_VERSION,
+      error: 'ambiguous_identity',
+      customer_found: false,
+      data: null,
+    };
+  }
+
   // Step 2: Apply privacy projection
   const projected360 = projection === PROJECTION_TYPES.INTERNAL
     ? projectInternal(raw360)
