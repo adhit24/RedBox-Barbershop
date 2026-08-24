@@ -17,6 +17,14 @@ const CATEGORY_ICON: Record<StockistNotification['category'], string> = {
   Pengumuman: 'campaign',
 };
 
+const CATEGORY_TINT: Record<StockistNotification['category'], { bg: string; text: string }> = {
+  Stok: { bg: 'bg-tint-warning', text: 'text-warning' },
+  Transfer: { bg: 'bg-tint-danger', text: 'text-danger' },
+  Pengiriman: { bg: 'bg-tint-success', text: 'text-success' },
+  Sistem: { bg: 'bg-tint-info', text: 'text-info' },
+  Pengumuman: { bg: 'bg-tint-info', text: 'text-info' },
+};
+
 export default function NotificationsPage() {
   const router = useRouter();
   const [chip, setChip] = useState<(typeof CATEGORIES)[number]>('Semua');
@@ -107,8 +115,8 @@ export default function NotificationsPage() {
                 n.is_read ? 'bg-surface-container border-surface-container' : 'bg-surface-elevated border-border-base'
               }`}
             >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tint-info">
-                <span className="material-symbols-outlined text-[19px] text-info">{CATEGORY_ICON[n.category]}</span>
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${CATEGORY_TINT[n.category].bg}`}>
+                <span className={`material-symbols-outlined text-[19px] ${CATEGORY_TINT[n.category].text}`}>{CATEGORY_ICON[n.category]}</span>
               </span>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <div className="flex items-center gap-2">
