@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const {
-  createTrustedIdentity,
+  issueTrustedIdentity,
   isTrustedIdentity,
 } = require('../identity/trustedIdentity');
 const { executeOrchestration } = require('../orchestrator/executionService');
@@ -19,6 +19,14 @@ const POINTS_DECISION = Object.freeze({
   confidence: 0.94,
   model_tier: 'economy',
 });
+
+function issueTestIdentity({ phone, customerId, source = 'member_session' } = {}) {
+  return issueTrustedIdentity({
+    source,
+    ...(phone ? { verifiedPhone: phone } : {}),
+    ...(customerId ? { verifiedCustomerId: customerId } : {}),
+  });
+}
 
 function resultFromCrm(overrides = {}) {
   return {
@@ -33,17 +41,17 @@ function resultFromCrm(overrides = {}) {
 }
 
 test('trusted identity accepts and normalizes a server-issued phone identity', () => {
-  const identity = createTrustedIdentity({ source: 'internal_test', phone: '0812-3456-7890' });
+  const identity = issueTestIdentity({ source: 'whatsapp', phone: '0812-3456-7890' });
 
-  assert.deepEqual(identity, { source: 'internal_test', phone: '6281234567890' });
+  assert.deepEqual(identity, { source: 'whatsapp', phone: '6281234567890' });
   assert.equal(Object.isFrozen(identity), true);
   assert.equal(isTrustedIdentity(identity), true);
 });
 
 test('trusted identity accepts a canonical customer UUID', () => {
-  const identity = createTrustedIdentity({
+  const identity = issueTrustedIdentity({
     source: 'member_session',
-    customer_id: 'A0F98A33-44B7-4D3D-9A62-54D3C16B4C20',
+    verifiedCustomerId: 'A0F98A33-44B7-4D3D-9A62-54D3C16B4C20',
   });
 
   assert.equal(identity.customer_id, 'a0f98a33-44b7-4d3d-9a62-54d3c16b4c20');
@@ -51,25 +59,61 @@ test('trusted identity accepts a canonical customer UUID', () => {
 });
 
 test('trusted identity rejects missing and malformed identity claims', () => {
-  assert.throws(() => createTrustedIdentity(), { code: 'TRUSTED_IDENTITY_REQUIRED' });
+  assert.throws(() => issueTrustedIdentity(), { code: 'TRUSTED_IDENTITY_REQUIRED' });
   assert.throws(
-    () => createTrustedIdentity({ source: 'internal_test', phone: '123' }),
+    () => issueTestIdentity({ phone: '123' }),
     { code: 'TRUSTED_IDENTITY_INVALID' },
   );
   assert.throws(
-    () => createTrustedIdentity({ source: 'browser_body', phone: '081234567890' }),
+    () => issueTestIdentity({ source: 'browser_body', phone: '081234567890' }),
     { code: 'TRUSTED_IDENTITY_SOURCE_INVALID' },
   );
 });
 
 test('an arbitrary raw request body is not a trusted identity capability', () => {
-  const rawBody = Object.freeze({ source: 'internal_test', phone: '6281234567890' });
+  const rawBody = Object.freeze({ source: 'member_session', phone: '6281234567890' });
   assert.equal(isTrustedIdentity(rawBody), false);
+  assert.throws(() => issueTrustedIdentity(rawBody), { code: 'TRUSTED_IDENTITY_INVALID' });
+});
+
+test('production issuer rejects internal_test and malformed phone identities', () => {
+  assert.throws(
+    () => issueTestIdentity({ source: 'internal_test', phone: '081234567890' }),
+    { code: 'TRUSTED_IDENTITY_SOURCE_INVALID' },
+  );
+  for (const phone of ['+1 415 555 2671', '+44 20 7946 0958', '0812abc34567890', '62812x3456789', '6214155552671']) {
+    assert.throws(() => issueTestIdentity({ phone }), { code: 'TRUSTED_IDENTITY_INVALID' });
+  }
+});
+
+test('issuer rejects inherited, custom-prototype, null-prototype, and proto-key claims', () => {
+  const inherited = Object.create({ source: 'member_session', verifiedPhone: '081234567890' });
+  const customPrototype = Object.create({ attacker: true });
+  customPrototype.source = 'member_session';
+  customPrototype.verifiedPhone = '081234567890';
+  const nullPrototype = Object.create(null);
+  nullPrototype.source = 'member_session';
+  nullPrototype.verifiedPhone = '081234567890';
+  const protoKey = JSON.parse('{"source":"member_session","verifiedPhone":"081234567890","__proto__":{"role":"owner"}}');
+
+  for (const claims of [inherited, customPrototype, nullPrototype, protoKey]) {
+    assert.throws(() => issueTrustedIdentity(claims), { code: 'TRUSTED_IDENTITY_INVALID' });
+  }
+});
+
+test('forged, cloned, spread, and serialized identities remain untrusted', () => {
+  const identity = issueTestIdentity({ phone: '081234567890' });
+  const forged = Object.freeze({ source: identity.source, phone: identity.phone });
+
+  assert.equal(isTrustedIdentity(forged), false);
+  assert.equal(isTrustedIdentity({ ...identity }), false);
+  assert.equal(isTrustedIdentity(Object.assign({}, identity)), false);
+  assert.equal(isTrustedIdentity(JSON.parse(JSON.stringify(identity))), false);
 });
 
 test('points inquiry executes get_points with empty params and trusted CUSTOMER_SELF context', async () => {
   const calls = [];
-  const trustedIdentity = createTrustedIdentity({ source: 'internal_test', phone: '081234567890' });
+  const trustedIdentity = issueTestIdentity({ phone: '081234567890' });
   const output = await executeOrchestration(POINTS_DECISION, {
     trustedIdentity,
     supabase: { marker: 'read-only-client' },
@@ -93,7 +137,7 @@ test('points inquiry executes get_points with empty params and trusted CUSTOMER_
 
 test('known customer with zero points is a successful execution', async () => {
   const output = await executeOrchestration(POINTS_DECISION, {
-    trustedIdentity: createTrustedIdentity({ source: 'internal_test', phone: '081234567890' }),
+    trustedIdentity: issueTestIdentity({ phone: '081234567890' }),
     supabase: {},
     crmExecutor: async () => resultFromCrm({ data: { points_balance: 0, status: 'available' } }),
   });
@@ -106,7 +150,7 @@ test('missing or forged trusted identity blocks CRM execution', async () => {
   let calls = 0;
   const crmExecutor = async () => { calls += 1; return resultFromCrm(); };
 
-  for (const trustedIdentity of [undefined, { source: 'internal_test', phone: '6281234567890' }]) {
+  for (const trustedIdentity of [undefined, { source: 'member_session', phone: '6281234567890' }]) {
     const output = await executeOrchestration(POINTS_DECISION, { trustedIdentity, supabase: {}, crmExecutor });
     assert.equal(output.execution_status, 'unauthorized');
     assert.equal(output.result.status, 'unauthorized');
@@ -117,15 +161,21 @@ test('missing or forged trusted identity blocks CRM execution', async () => {
 test('only the exact server-owned points allowlist can invoke CRM', async () => {
   let calls = 0;
   const dependency = {
-    trustedIdentity: createTrustedIdentity({ source: 'internal_test', phone: '081234567890' }),
+    trustedIdentity: issueTestIdentity({ phone: '081234567890' }),
     supabase: {},
     crmExecutor: async () => { calls += 1; return resultFromCrm(); },
   };
   const decisions = [
     { ...POINTS_DECISION, intent: 'customer_history', action: 'get_customer_history' },
     { ...POINTS_DECISION, route: 'reddy_agent' },
-    { intent: 'operating_hours_inquiry', route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_operating_hours', model_tier: 'economy' },
-    { intent: 'human_request', route: 'human', action: 'request_human', reason: 'customer_requested_human', model_tier: 'none' },
+    { intent: 'operating_hours_inquiry', route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_operating_hours', confidence: 0.9, model_tier: 'economy' },
+    { intent: 'human_request', route: 'human', action: 'request_human', reason: 'customer_requested_human', confidence: 1, model_tier: 'none' },
+    { intent: 'points_inquiry', route: 'crm_agent', agent: 'crm_agent', action: 'get_points', confidence: 0.94 },
+    { intent: 'points_inquiry', route: 'crm_agent', agent: 'crm_agent', action: 'get_points', model_tier: 'economy' },
+    null,
+    undefined,
+    [],
+    'points_inquiry',
   ];
 
   for (const decision of decisions) {
@@ -137,10 +187,7 @@ test('only the exact server-owned points allowlist can invoke CRM', async () => 
 });
 
 test('execution service exposes no target params and maps safe CRM failure semantics', async () => {
-  const trustedIdentity = createTrustedIdentity({
-    source: 'internal_test',
-    customer_id: 'a0f98a33-44b7-4d3d-9a62-54d3c16b4c20',
-  });
+  const trustedIdentity = issueTestIdentity({ customerId: 'a0f98a33-44b7-4d3d-9a62-54d3c16b4c20' });
   const cases = [
     [{ status: 'forbidden', error: 'idor_attempt_blocked', customer_found: false, data: null }, 'forbidden'],
     [{ status: 'not_found', customer_found: false, data: null }, 'customer_not_found'],
@@ -164,7 +211,7 @@ test('execution service exposes no target params and maps safe CRM failure seman
 
 test('an unexpected CRM exception fails closed without leaking its message', async () => {
   const output = await executeOrchestration(POINTS_DECISION, {
-    trustedIdentity: createTrustedIdentity({ source: 'internal_test', phone: '081234567890' }),
+    trustedIdentity: issueTestIdentity({ phone: '081234567890' }),
     supabase: {},
     crmExecutor: async () => { throw new Error('raw database host and customer detail'); },
   });
@@ -175,7 +222,7 @@ test('an unexpected CRM exception fails closed without leaking its message', asy
 
 test('conflicting or unavailable point balance is not reported as success', async () => {
   const output = await executeOrchestration(POINTS_DECISION, {
-    trustedIdentity: createTrustedIdentity({ source: 'internal_test', phone: '081234567890' }),
+    trustedIdentity: issueTestIdentity({ phone: '081234567890' }),
     supabase: {},
     crmExecutor: async () => resultFromCrm({
       data: { points_balance: null, status: 'ambiguous_balance_conflict' },
@@ -187,6 +234,30 @@ test('conflicting or unavailable point balance is not reported as success', asyn
     points_balance: null,
     status: 'ambiguous_balance_conflict',
   });
+});
+
+test('nested target injection never becomes CRM params or trusted context', async () => {
+  const calls = [];
+  const maliciousClassification = {
+    ...POINTS_DECISION,
+    params: { phone: '6289999999999', customer_id: 'attacker-id', user_key: 'attacker-key' },
+    metadata: { phone: '6289999999999' },
+    result: { customer_id: 'attacker-id' },
+  };
+  const output = await executeOrchestration(maliciousClassification, {
+    trustedIdentity: issueTestIdentity({ phone: '081234567890' }),
+    supabase: {},
+    crmExecutor: async (tool, params, context) => {
+      calls.push({ tool, params, context });
+      return resultFromCrm();
+    },
+  });
+
+  assert.equal(output.execution_status, 'success');
+  assert.deepEqual(calls[0].params, {});
+  assert.equal(calls[0].context.phone, '6281234567890');
+  assert.equal(calls[0].context.customer_id, undefined);
+  assert.equal(calls[0].context.user_key, undefined);
 });
 
 test('identity and execution layers contain no LLM, mutation, Fonnte, or WhatsApp side effects', () => {

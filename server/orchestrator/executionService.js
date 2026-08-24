@@ -9,24 +9,40 @@ const POINTS_EXECUTION = Object.freeze({
   route: 'crm_agent',
   agent: 'crm_agent',
   action: 'get_points',
+  model_tier: 'economy',
   tool: 'get_points',
 });
 
+function isPlainRecord(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  try {
+    return Object.getPrototypeOf(value) === Object.prototype;
+  } catch (_) {
+    return false;
+  }
+}
+
 function matchesPointsAllowlist(classification) {
-  return Boolean(classification
+  return Boolean(isPlainRecord(classification)
     && classification.intent === POINTS_EXECUTION.intent
     && classification.route === POINTS_EXECUTION.route
     && classification.agent === POINTS_EXECUTION.agent
-    && classification.action === POINTS_EXECUTION.action);
+    && classification.action === POINTS_EXECUTION.action
+    && classification.model_tier === POINTS_EXECUTION.model_tier
+    && typeof classification.confidence === 'number'
+    && Number.isFinite(classification.confidence)
+    && classification.confidence >= 0
+    && classification.confidence <= 1);
 }
 
-function safeClassification(classification = {}) {
+function safeClassification(classification) {
+  const value = isPlainRecord(classification) ? classification : {};
   return {
-    intent: typeof classification.intent === 'string' ? classification.intent : 'unknown',
-    route: typeof classification.route === 'string' ? classification.route : 'reddy_agent',
-    ...(typeof classification.agent === 'string' ? { agent: classification.agent } : {}),
-    action: typeof classification.action === 'string' ? classification.action : 'fallback_unknown',
-    ...(typeof classification.model_tier === 'string' ? { model_tier: classification.model_tier } : {}),
+    intent: typeof value.intent === 'string' ? value.intent : 'unknown',
+    route: typeof value.route === 'string' ? value.route : 'reddy_agent',
+    ...(typeof value.agent === 'string' ? { agent: value.agent } : {}),
+    action: typeof value.action === 'string' ? value.action : 'fallback_unknown',
+    ...(typeof value.model_tier === 'string' ? { model_tier: value.model_tier } : {}),
   };
 }
 

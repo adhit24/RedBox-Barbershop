@@ -162,6 +162,58 @@ test('IDOR Matrix Case F: context.customer_id = A, params.customer_id = A -> ALL
   assert.equal(res.customer_found, true);
 });
 
+test('Dual Identity Leak Regression: unknown phone plus valid customer UUID cannot return 77 points', async () => {
+  const customerId = '11111111-2222-3333-4444-555555555555';
+  const supabase = createMockSupabase({
+    customers: [{ id: customerId, wa: '6289999999999', phone_e164: '+6289999999999' }],
+    memberPointsBalance: [{ customer_id: customerId, customer_wa: '6289999999999', total_points: 77 }],
+  });
+
+  const res = await executeCrmTool('get_points', {}, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    phone: '6281111111111',
+    customer_id: customerId,
+  });
+
+  assert.equal(res.status, 'forbidden');
+  assert.equal(res.error, 'identity_unverified');
+  assert.equal(res.data, null);
+  assert.notEqual(res.data?.points_balance, 77);
+});
+
+test('Dual Identity: ambiguous phone plus customer UUID fails closed', async () => {
+  const customerId = '11111111-2222-3333-4444-555555555555';
+  const supabase = createMockSupabase({
+    customers: [
+      { id: customerId, wa: '6281234567890', name: 'Synthetic A' },
+      { id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', wa: '+6281234567890', name: 'Synthetic B' },
+    ],
+  });
+
+  const res = await executeCrmTool('get_points', {}, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    phone: '6281234567890',
+    customer_id: customerId,
+  });
+
+  assert.equal(res.status, 'forbidden');
+  assert.equal(res.error, 'identity_unverified');
+});
+
+test('Dual Identity: phone database error plus customer UUID returns db_error', async () => {
+  const res = await executeCrmTool('get_points', {}, {
+    supabase: createMockSupabase({ simulateDbError: true }),
+    projection: 'CUSTOMER_SELF',
+    phone: '6281234567890',
+    customer_id: '11111111-2222-3333-4444-555555555555',
+  });
+
+  assert.equal(res.status, 'db_error');
+  assert.equal(res.error, 'database_unavailable');
+});
+
 // ── 2. INTERNAL PROJECTION AUTHORIZATION TESTS ────────────────────────────────
 test('Internal Projection Auth: params.projection = INTERNAL is ignored', async () => {
   const supabase = createMockSupabase({

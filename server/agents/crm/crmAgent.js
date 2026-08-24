@@ -60,10 +60,50 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
       };
     }
 
-    // Check trusted context identity conflict: if both context.phone and context.customer_id are present, they MUST resolve to the same customer UUID
+    // Dual trusted claims must each resolve independently to the same customer.
+    // Never fall back to one claim when the other is unknown or ambiguous.
     if (contextPhone && contextCustId) {
       const phoneIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
-      if (phoneIdentity.found && phoneIdentity.customer_id && String(phoneIdentity.customer_id).trim() !== String(contextCustId).trim()) {
+      if (phoneIdentity.resolution === 'db_error') {
+        return {
+          status: 'db_error',
+          tool: toolName,
+          error: 'database_unavailable',
+          customer_found: false,
+          data: null,
+        };
+      }
+      if (!phoneIdentity.found || !phoneIdentity.customer_id) {
+        return {
+          status: 'forbidden',
+          tool: toolName,
+          error: 'identity_unverified',
+          customer_found: false,
+          data: null,
+        };
+      }
+
+      const customerIdIdentity = await resolveCustomerIdentity(supabase, { customer_id: String(contextCustId).trim() });
+      if (customerIdIdentity.resolution === 'db_error') {
+        return {
+          status: 'db_error',
+          tool: toolName,
+          error: 'database_unavailable',
+          customer_found: false,
+          data: null,
+        };
+      }
+      if (!customerIdIdentity.found || !customerIdIdentity.customer_id) {
+        return {
+          status: 'forbidden',
+          tool: toolName,
+          error: 'identity_unverified',
+          customer_found: false,
+          data: null,
+        };
+      }
+
+      if (String(phoneIdentity.customer_id).trim() !== String(customerIdIdentity.customer_id).trim()) {
         return {
           status: 'forbidden',
           tool: toolName,
