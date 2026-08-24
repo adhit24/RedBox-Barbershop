@@ -815,6 +815,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
+const { createAiOrchestratorRoutes, orchestratorJsonErrorHandler } = require('./routes/aiOrchestrator');
+app.use(orchestratorJsonErrorHandler);
+app.use('/api/ai/orchestrator', createAiOrchestratorRoutes());
+
 app.use((req, res, next) => {
   try {
     const { phone, wa_number, name, customer_name, otp, token, password, notes, ...safeBody } = req.body || {};
