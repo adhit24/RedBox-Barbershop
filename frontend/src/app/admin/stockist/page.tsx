@@ -9,10 +9,12 @@ import {
   listProducts,
   getInventorySummary,
   listTransfers,
+  getTransfer,
   getAssetDashboard,
   getServiceUsage,
   type InventoryBalance,
   type StockTransfer,
+  type StockTransferItem,
   type StockistAssetDashboard,
   type AssetLocationSummary,
   type ServiceUsage
@@ -339,12 +341,21 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
 // Branch admin: Beranda (unchanged from prior behavior)
 // ---------------------------------------------------------------------------
 
+function formatTransferSentAt(iso: string): string {
+  const date = new Date(iso);
+  const datePart = date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timePart = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart} · ${timePart} WIB`;
+}
+
 function BranchAdminDashboard({ user }: { user: AppUser }) {
   const [branch, setBranch] = useState<string>('');
   const [products, setProducts] = useState<any[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [activeUsages, setActiveUsages] = useState<ServiceUsage[]>([]);
+  const [pendingTransfer, setPendingTransfer] = useState<StockTransfer | null>(null);
+  const [pendingItems, setPendingItems] = useState<StockTransferItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -375,6 +386,21 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
         setLoading(false);
       });
   }, [branch]);
+
+  useEffect(() => {
+    const sent = transfers
+      .filter((t) => t.status === 'SENT')
+      .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+    const latest = sent[0] ?? null;
+    setPendingTransfer(latest);
+    if (!latest) {
+      setPendingItems([]);
+      return;
+    }
+    getTransfer(latest.id)
+      .then(({ items }) => setPendingItems(items))
+      .catch(() => setPendingItems([]));
+  }, [transfers]);
 
   const qtyByProduct = new Map(balances.map((b) => [b.product_id, b.quantity]));
 
@@ -414,6 +440,31 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
           </span>
         </div>
       </section>
+
+      {!loading && pendingTransfer && (
+        <Link
+          href={`/admin/stockist/transfers/${pendingTransfer.id}`}
+          className="flex flex-col gap-3 rounded-[20px] bg-primary-container p-4 text-white active:scale-[0.99] transition-transform"
+        >
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[20px]">local_shipping</span>
+            <span className="flex-1 text-[14px] font-semibold">1 kiriman menunggu konfirmasi</span>
+            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+          </div>
+          <div className="flex flex-col gap-1 rounded-2xl bg-white/[0.12] p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[12px] font-bold">{pendingTransfer.transfer_number}</span>
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold">Dikirim</span>
+            </div>
+            <span className="text-[12px] text-white/90">
+              {pendingTransfer.source_name || 'Gudang Pusat'} → {pendingTransfer.destination_name || BRANCH_NAMES[branch] || branch} · {pendingItems.length} item · {pendingItems.reduce((sum, item) => sum + item.quantity_sent, 0)} pcs
+            </span>
+            <span className="text-[11px] text-white/70">
+              Dikirim {formatTransferSentAt(pendingTransfer.sent_at)}
+            </span>
+          </div>
+        </Link>
+      )}
 
       {error && (
         <div className="bg-danger/10 border border-danger text-danger text-sm rounded-lg p-3 flex items-center gap-2">
