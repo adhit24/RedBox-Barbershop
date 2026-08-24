@@ -358,3 +358,23 @@ export interface InventoryLedgerEntry {
 
 export const getInventoryLedger = () =>
   req<{ ledger: InventoryLedgerEntry[] }>('/api/stockist/inventory/ledger');
+
+export interface StockistNotification {
+  id: string;
+  user_id: string;
+  category: 'Stok' | 'Transfer' | 'Pengiriman' | 'Sistem' | 'Pengumuman';
+  title: string;
+  body: string;
+  url: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export const listNotifications = (category?: string) =>
+  req<{ notifications: StockistNotification[] }>(`/api/stockist/notifications${category ? `?category=${encodeURIComponent(category)}` : ''}`);
+
+export const markNotificationRead = (id: string) =>
+  req<{ notification: StockistNotification }>(`/api/stockist/notifications/${id}/read`, { method: 'PATCH' });
+
+export const markAllNotificationsRead = () =>
+  req<{ updated: number }>('/api/stockist/notifications/read-all', { method: 'POST' });
