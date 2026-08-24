@@ -1,45 +1,57 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
+
+function subscribe(callback: () => void) {
+  window.addEventListener('storage', callback);
+  return () => window.removeEventListener('storage', callback);
+}
 
 export function useDraftPersistence<T>(key: string, initialValue: T): [T, (next: T) => void, () => void] {
-  const [value, setValue] = useState<T>(initialValue);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
+  const getSnapshot = useCallback(() => {
     try {
-      const stored = window.localStorage.getItem(key);
-      if (stored !== null) {
-        setValue(JSON.parse(stored) as T);
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }, [key]);
+
+  const getServerSnapshot = useCallback(() => null, []);
+
+  const storedRaw = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const [draft, setDraft] = useState<T | null>(null);
+
+  let value: T = initialValue;
+  if (draft !== null) {
+    value = draft;
+  } else if (storedRaw !== null) {
+    try {
+      value = JSON.parse(storedRaw) as T;
+    } catch {
+      value = initialValue;
+    }
+  }
+
+  const persist = useCallback(
+    (next: T) => {
+      setDraft(next);
+      try {
+        window.localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // ignore — draft still works for this session even if it can't persist
       }
-    } catch {
-      // localStorage unavailable or the stored value isn't valid JSON — start fresh.
-    } finally {
-      setHydrated(true);
-    }
-    // Only run once per mount for this key — re-running on `initialValue` identity
-    // changes would clobber a just-hydrated draft with the caller's default.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  const persist = useCallback((next: T) => {
-    setValue(next);
-    try {
-      window.localStorage.setItem(key, JSON.stringify(next));
-    } catch {
-      // ignore — draft still works for this session even if it can't persist
-    }
-  }, [key]);
+    },
+    [key]
+  );
 
   const clear = useCallback(() => {
-    setValue(initialValue);
+    setDraft(initialValue);
     try {
       window.localStorage.removeItem(key);
     } catch {
       // ignore
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [initialValue, key]);
 
-  return [hydrated ? value : initialValue, persist, clear];
+  return [value, persist, clear];
 }
