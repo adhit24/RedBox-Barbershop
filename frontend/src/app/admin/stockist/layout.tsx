@@ -8,6 +8,7 @@ import { BottomNavBar, type BottomNavItem } from '@/components/ui/bottom-nav-bar
 import { PremiumLoginTransition, type PremiumRole } from '@/components/auth/PremiumLoginTransition';
 import { useStockistTheme } from '@/lib/stockist/useTheme';
 import { useUnreadNotificationCount, refreshUnreadCount } from '@/lib/stockist/useUnreadNotifications';
+import { ToastHost } from '@/components/stockist/ToastHost';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -172,6 +173,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
       <BottomNavBar items={isOwner ? ownerTabs : branchAdminTabs} />
       </div>
     </MotionConfig>
+    <ToastHost />
     </div>
   );
 }

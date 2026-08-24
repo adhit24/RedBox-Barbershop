@@ -6,6 +6,7 @@ export interface StockistProduct {
   category: string | null;
   brand: string | null;
   unit: string;
+  barcode: string | null;
   purchase_price?: number | null;
   retail_price: number | null;
   minimum_stock: number;
