@@ -344,7 +344,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
 function formatTransferSentAt(iso: string): string {
   const date = new Date(iso);
   const datePart = date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-  const timePart = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   return `${datePart} · ${timePart} WIB`;
 }
 
@@ -478,12 +478,48 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
         </div>
       ) : (
         <>
+          {/* Stats Grid */}
+          <section className="grid grid-cols-2 gap-3">
+            <div className="bg-tint-success border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
+              <div className="text-text-secondary text-[12px] font-medium flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-success">inventory_2</span>
+                Stok cabang (unit)
+              </div>
+              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2">
+                {totalStock.toLocaleString('id-ID')}
+              </div>
+            </div>
+
+            <div className="bg-tint-warning border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
+              <div className="text-text-secondary text-[12px] font-medium flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-warning">warning</span>
+                Perlu restock
+              </div>
+              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2">
+                {lowStockItems.length}
+              </div>
+            </div>
+          </section>
+
+          {/* Quick Actions */}
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Aksi Cepat</h3>
+            <QuickActionGrid
+              actions={[
+                { key: 'konfirmasi-kiriman', href: '/admin/stockist/transfers', icon: 'task_alt', label: 'Konfirmasi Kiriman' },
+                { key: 'lihat-stok', href: '/admin/stockist/branch-stock', icon: 'boxes', label: 'Lihat Stok' },
+                { key: 'stock-opname', href: '/admin/stockist/stock-opname', icon: 'checklist', label: 'Stock Opname' },
+                { key: 'minta-stok', href: '/admin/stockist/requests/new', icon: 'add_shopping_cart', label: 'Minta Stok' },
+              ]}
+            />
+          </section>
+
           {/* Low Stock Alert Card */}
           <section className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 shadow-lg">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2 text-danger font-semibold text-[14px] font-display">
                 <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
-                Stok Menipis ({lowStockItems.length})
+                Stok menipis di cabang
               </div>
               {lowStockItems.length > 0 && (
                 <Link
@@ -524,29 +560,6 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
                   </div>
                 ))
               )}
-            </div>
-          </section>
-
-          {/* Stats Grid */}
-          <section className="grid grid-cols-2 gap-3">
-            <div className="bg-tint-success border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
-              <div className="text-text-secondary text-[12px] font-medium flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-success">inventory_2</span>
-                Stok cabang (unit)
-              </div>
-              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2">
-                {totalStock.toLocaleString('id-ID')}
-              </div>
-            </div>
-
-            <div className="bg-tint-warning border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
-              <div className="text-text-secondary text-[12px] font-medium flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-warning">warning</span>
-                Perlu restock
-              </div>
-              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2">
-                {lowStockItems.length}
-              </div>
             </div>
           </section>
 
@@ -597,19 +610,6 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
               </>
             )}
           </Link>
-
-          {/* Quick Actions */}
-          <section className="flex flex-col gap-3">
-            <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Aksi Cepat</h3>
-            <QuickActionGrid
-              actions={[
-                { key: 'konfirmasi-kiriman', href: '/admin/stockist/transfers', icon: 'task_alt', label: 'Konfirmasi Kiriman' },
-                { key: 'lihat-stok', href: '/admin/stockist/branch-stock', icon: 'boxes', label: 'Lihat Stok' },
-                { key: 'stock-opname', href: '/admin/stockist/stock-opname', icon: 'checklist', label: 'Stock Opname' },
-                { key: 'minta-stok', href: '/admin/stockist/requests/new', icon: 'add_shopping_cart', label: 'Minta Stok' },
-              ]}
-            />
-          </section>
         </>
       )}
     </div>
