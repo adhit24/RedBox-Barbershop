@@ -142,8 +142,9 @@ export default function ProductsPage() {
   }
 
   useEffect(() => {
+    if (!user?.branch) return;
     refresh();
-  }, []);
+  }, [user?.branch]);
 
   function handleScan(code: string) {
     setScannerOpen(false);
