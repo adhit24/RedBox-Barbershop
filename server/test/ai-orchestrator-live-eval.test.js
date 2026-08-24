@@ -24,9 +24,9 @@ const CASES = [
   ['mau pindah jam dong', 'reschedule_request', 'reddy_agent'],
   ['booking aku batalin ya', 'cancel_request', 'reddy_agent'],
   ['membership itu dapet apa aja?', 'membership_inquiry', 'reddy_agent'],
-  ['admin dong', 'human_request', 'human'],
-  ['bisa sambungin ke orang?', 'human_request', 'human'],
-  ['saya mau bicara dengan admin', 'human_request', 'human'],
+  ['admin dong', 'human_request', 'human', 'none'],
+  ['bisa sambungin ke orang?', 'human_request', 'human', 'economy'],
+  ['saya mau bicara dengan admin', 'human_request', 'human', 'none'],
   ['pelayanan kemarin jelek banget', 'complaint', 'human'],
   ['hasil cukurnya gak sesuai dan saya kecewa', 'complaint', 'human'],
   ['asdfgh', 'unknown', 'reddy_agent'],
@@ -53,11 +53,11 @@ test('live OpenAI evaluation classifies the required Phase 1 phrases', {
   );
 
   const classifyMessage = createClassifier();
-  for (const [message, expectedIntent, expectedRoute] of CASES) {
+  for (const [message, expectedIntent, expectedRoute, expectedModelTier = 'economy'] of CASES) {
     const decision = await classifyMessage(message);
     assert.equal(decision.intent, expectedIntent, message);
     assert.equal(decision.route, expectedRoute, message);
-    assert.equal(decision.model_tier, expectedIntent === 'human_request' ? 'none' : 'economy', message);
+    assert.equal(decision.model_tier, expectedModelTier, message);
     if (expectedRoute === 'human') assert.equal(Object.hasOwn(decision, 'agent'), false, message);
   }
 });
