@@ -234,12 +234,21 @@ EOF
 **Files:**
 - Create: `frontend/src/app/admin/stockist/warehouse/receive/page.tsx`
 - Modify: `frontend/src/app/admin/stockist/warehouse/page.tsx`
+- Modify: `frontend/src/hooks/useUser.ts` (type widening moved from Task 4 so Task 3 type-checks)
 
 **Interfaces:**
 - Consumes: `Stepper` (Task 2, `size='lg'`), `SuccessScreen` (Task 2), `getKnownProductImage` (existing, `frontend/src/lib/stockist/productImage.ts`), `receiveWarehouseStock`/`listProducts`/`getInventorySummary` (existing, `frontend/src/lib/stockistApi.ts` — exact signatures: `receiveWarehouseStock(input: { product_id: string; quantity: number; reason?: string }): Promise<{ ledger: unknown }>`, `listProducts(): Promise<{ products: StockistProduct[] }>`, `getInventorySummary(location: string): Promise<{ balances: InventoryBalance[] }>`), `useUser` (existing, `frontend/src/hooks/useUser.ts`).
 - Produces: route `/admin/stockist/warehouse/receive?product=<id>` (query param optional, unused for now — just don't crash if absent or unknown).
 
-- [ ] **Step 1: Write the new page**
+- [ ] **Step 1: Widen `AppUser['role']`**
+
+Edit `frontend/src/hooks/useUser.ts` line 10:
+
+```ts
+  role: 'owner' | 'branch_admin' | 'barber' | 'manager';
+```
+
+- [ ] **Step 2: Write the new page**
 
 ```tsx
 // frontend/src/app/admin/stockist/warehouse/receive/page.tsx
@@ -459,7 +468,7 @@ export default function ReceiveStockPage() {
 
 Note on this file: it does not self-gate by role. Gating who can navigate here happens at the link in `warehouse/page.tsx` (Step 2 below) — this page has no redirect-if-unauthorized logic, matching every sibling page in this codebase (none of them re-check role on the destination page; they rely on the triggering link/button simply not being shown, and the underlying `receiveWarehouseStock` API call is already server-role-checked independently). Do not import `useUser` here — it isn't needed.
 
-- [ ] **Step 2: Wire up the entry point and remove the old inline form**
+- [ ] **Step 3: Wire up the entry point and remove the old inline form**
 
 Edit `frontend/src/app/admin/stockist/warehouse/page.tsx`. Three changes:
 
@@ -481,19 +490,19 @@ Edit `frontend/src/app/admin/stockist/warehouse/page.tsx`. Three changes:
 
 3. Remove now-unused state and the now-unused handler: delete the `showForm`/`form`/`submitting`/`formError` `useState` declarations, delete the `handleReceive` function, and remove `receiveWarehouseStock` from the import on line 6 (it's no longer called from this file). Also remove the now-unused `isOwner` constant (line 129) if nothing else in the file still reads it — check with a search for `isOwner` in the file before deleting; if the receive-link change above is the only place `isOwner` was used, delete the constant too and rely on `user?.role === 'owner' || user?.role === 'manager'` inline as written.
 
-- [ ] **Step 3: Verify types**
+- [ ] **Step 4: Verify types**
 
 Run: `cd frontend && npx tsc --noEmit`
 Expected: no errors.
 
-- [ ] **Step 4: Manual verification**
+- [ ] **Step 5: Manual verification**
 
 Run the dev server (`cd frontend && npm run dev`), sign in as the owner test account, navigate to Gudang Pusat, click "Terima" — confirm it navigates to `/admin/stockist/warehouse/receive` (not an inline form anymore), the carousel shows real products, selecting a tile updates the preview panel's "Stok saat ini", changing the stepper updates "Stok setelah diterima" live, and submitting shows the new `SuccessScreen` with real values, not a redirect back to Gudang Pusat.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/app/admin/stockist/warehouse/receive/page.tsx frontend/src/app/admin/stockist/warehouse/page.tsx
+git add frontend/src/app/admin/stockist/warehouse/receive/page.tsx frontend/src/app/admin/stockist/warehouse/page.tsx frontend/src/hooks/useUser.ts
 git commit -m "$(cat <<'EOF'
 feat(stockist): rebuild Terima Barang as its own screen (spec §9)
 
@@ -518,16 +527,15 @@ EOF
 **Files:**
 - Modify: `frontend/src/app/admin/stockist/transfers/new/page.tsx` (full rewrite of the body)
 - Modify: `frontend/src/app/admin/stockist/transfers/page.tsx` (gating only)
-- Modify: `frontend/src/hooks/useUser.ts` (type widening, Global Constraints)
 - Modify: `server/routes/stockist.js` (one role-check line)
 
 **Interfaces:**
 - Consumes: `Stepper` (`size='xs'`), `SuccessScreen`, `useDraftPersistence` (Task 1), `getKnownProductImage`, `createTransfer`/`listProducts`/`getInventorySummary` (existing).
 - Produces: nothing new consumed by later tasks — this is the last task in Plan A.
 
-- [ ] **Step 1: Widen `AppUser['role']`**
+- [ ] **Step 1: Verify `AppUser['role']` widening**
 
-Edit `frontend/src/hooks/useUser.ts` line 10:
+Confirm `frontend/src/hooks/useUser.ts` line 10 already includes `'manager'` (performed in Task 3 Step 1):
 
 ```ts
   role: 'owner' | 'branch_admin' | 'barber' | 'manager';
