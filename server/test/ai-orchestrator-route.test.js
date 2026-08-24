@@ -36,19 +36,29 @@ test('POST /api/ai/orchestrator routes an explicit human request without executi
   const body = await response.json();
   assert.match(body.trace_id, /^orch_[a-f0-9-]+$/);
   assert.deepEqual(
-    { intent: body.intent, agent: body.agent, action: body.action, mode: body.mode },
+    {
+      intent: body.intent,
+      route: body.route,
+      action: body.action,
+      reason: body.reason,
+      model_tier: body.model_tier,
+      mode: body.mode,
+    },
     {
       intent: 'human_request',
-      agent: 'human_handoff',
+      route: 'human',
       action: 'request_human',
+      reason: 'customer_requested_human',
+      model_tier: 'none',
       mode: 'classify_only',
     },
   );
+  assert.equal(Object.hasOwn(body, 'agent'), false);
   assert.equal(typeof body.confidence, 'number');
 });
 
 function createTestApp({ classifier = async () => ({
-  intent: 'price_inquiry', agent: 'reddy_agent', action: 'answer_price', confidence: 0.8,
+  intent: 'price_inquiry', route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_price', confidence: 0.8, model_tier: 'economy',
 }), env = {
   ORCHESTRATOR_INTERNAL_SECRET: 'test-internal-secret',
   OPENAI_ORCHESTRATOR_API_KEY: 'test-openai-key',
@@ -138,7 +148,7 @@ test('route sends only the trimmed message to classifier and never forwards cust
   const received = [];
   const testApp = createTestApp({ classifier: async (...args) => {
     received.push(args);
-    return { intent: 'booking_status', agent: 'booking_agent', action: 'get_booking_status', confidence: 0.88 };
+    return { intent: 'booking_status', route: 'reddy_agent', agent: 'reddy_agent', action: 'get_booking_status', confidence: 0.88, model_tier: 'economy' };
   } });
   const result = await post(testApp, {
     body: { message: '  cek booking saya  ', customer_phone: '628123456789', channel: 'whatsapp' },
@@ -161,7 +171,7 @@ test('successful response contains only the classify-only contract fields', asyn
   const result = await post(createTestApp());
   assert.equal(result.status, 200);
   assert.deepEqual(Object.keys(result.body).sort(), [
-    'action', 'agent', 'confidence', 'intent', 'mode', 'trace_id',
+    'action', 'agent', 'confidence', 'intent', 'mode', 'model_tier', 'route', 'trace_id',
   ]);
   assert.equal(result.body.mode, 'classify_only');
 });

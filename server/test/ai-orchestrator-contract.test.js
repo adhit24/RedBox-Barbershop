@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  AGENTS,
+  MODEL_TIERS,
   ROUTES,
   decisionFor,
   normalizeModelDecision,
@@ -14,26 +16,43 @@ const {
 } = require('../orchestrator/openaiClient');
 
 const EXPECTED_ROUTES = {
-  general_question: { agent: 'general_agent', action: 'answer_general_question' },
-  price_inquiry: { agent: 'reddy_agent', action: 'answer_price' },
-  location_inquiry: { agent: 'reddy_agent', action: 'answer_location' },
-  service_inquiry: { agent: 'reddy_agent', action: 'answer_service' },
-  booking_request: { agent: 'booking_agent', action: 'route_booking_request' },
-  booking_status: { agent: 'booking_agent', action: 'get_booking_status' },
-  reschedule_request: { agent: 'booking_agent', action: 'route_reschedule_request' },
-  cancel_request: { agent: 'booking_agent', action: 'route_cancel_request' },
-  customer_history: { agent: 'crm_agent', action: 'get_customer_history' },
-  points_inquiry: { agent: 'crm_agent', action: 'get_points' },
-  membership_inquiry: { agent: 'crm_agent', action: 'get_membership' },
-  complaint: { agent: 'human_handoff', action: 'escalate_complaint' },
-  human_request: { agent: 'human_handoff', action: 'request_human' },
-  unknown: { agent: 'general_agent', action: 'fallback_unknown' },
+  general_question: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_general_question' },
+  price_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_price' },
+  location_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_location' },
+  service_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_service' },
+  booking_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_booking_request' },
+  booking_status: { route: 'reddy_agent', agent: 'reddy_agent', action: 'get_booking_status' },
+  reschedule_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_reschedule_request' },
+  cancel_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_cancel_request' },
+  customer_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_history' },
+  points_inquiry: { route: 'crm_agent', agent: 'crm_agent', action: 'get_points' },
+  customer_profile: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' },
+  customer_preferences: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_preferences' },
+  customer_transaction_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_transaction_history' },
+  membership_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'explain_membership' },
+  complaint: { route: 'human', action: 'escalate_complaint', reason: 'complaint_escalation' },
+  human_request: { route: 'human', action: 'request_human', reason: 'customer_requested_human' },
+  unknown: { route: 'reddy_agent', agent: 'reddy_agent', action: 'fallback_unknown' },
 };
 
-test('canonical routing contract maps every allowed intent to one server-owned agent and action', () => {
+test('canonical contract exposes only the three Phase 1 agents and four future-safe model tiers', () => {
+  assert.deepEqual(AGENTS, ['orchestrator', 'crm_agent', 'reddy_agent']);
+  assert.deepEqual(MODEL_TIERS, ['none', 'economy', 'standard', 'advanced']);
+});
+
+test('canonical routing contract maps every intent to a server-owned outcome', () => {
   assert.deepEqual(ROUTES, EXPECTED_ROUTES);
   for (const [intent, route] of Object.entries(EXPECTED_ROUTES)) {
-    assert.deepEqual(decisionFor(intent, 0.82), { intent, ...route, confidence: 0.82 });
+    assert.deepEqual(decisionFor(intent, 0.82), {
+      intent, ...route, confidence: 0.82, model_tier: 'economy',
+    });
+  }
+});
+
+test('no routing outcome can expose removed pseudo-agents', () => {
+  const serialized = JSON.stringify(Object.values(ROUTES));
+  for (const removed of ['booking_agent', 'general_agent', 'human_handoff']) {
+    assert.equal(serialized.includes(removed), false);
   }
 });
 
@@ -41,6 +60,10 @@ const intentCases = [
   ['Hai, apa kabar?', 'general_question'],
   ['Saya terakhir potong kapan?', 'customer_history'],
   ['Poin saya sekarang berapa?', 'points_inquiry'],
+  ['Poin saya berapa?', 'points_inquiry'],
+  ['Tampilkan profil pelanggan saya', 'customer_profile'],
+  ['Apa preferensi layanan saya?', 'customer_preferences'],
+  ['Tampilkan riwayat transaksi saya', 'customer_transaction_history'],
   ['Saya mau booking Abdul besok sore', 'booking_request'],
   ['Saya mau pindah jadwal', 'reschedule_request'],
   ['Batalkan booking saya', 'cancel_request'],
@@ -83,7 +106,9 @@ for (const [message, intent] of intentCases) {
 
     const result = await classifier(message);
 
-    assert.deepEqual(result, { intent, ...EXPECTED_ROUTES[intent], confidence: 0.73 });
+    assert.deepEqual(result, {
+      intent, ...EXPECTED_ROUTES[intent], confidence: 0.73, model_tier: 'economy',
+    });
     assert.equal(calls, 1);
   });
 }
@@ -95,9 +120,11 @@ for (const message of ['Saya mau bicara admin', 'admin dong', 'bicara dengan man
     });
     assert.deepEqual(await classifier(message), {
       intent: 'human_request',
-      agent: 'human_handoff',
+      route: 'human',
       action: 'request_human',
+      reason: 'customer_requested_human',
       confidence: 1,
+      model_tier: 'none',
     });
   });
 }
@@ -106,9 +133,11 @@ test('invalid model output falls back to the canonical unknown decision', async 
   const classifier = createClassifier({ modelClassifier: async () => ({ intent: 'delete_everything', confidence: 9 }) });
   assert.deepEqual(await classifier('ambiguous'), {
     intent: 'unknown',
-    agent: 'general_agent',
+    route: 'reddy_agent',
+    agent: 'reddy_agent',
     action: 'fallback_unknown',
     confidence: 0,
+    model_tier: 'economy',
   });
   assert.deepEqual(normalizeModelDecision('{not-json'), decisionFor('unknown', 0));
 });
@@ -117,9 +146,11 @@ for (const inheritedName of ['__proto__', 'constructor', 'toString']) {
   test(`inherited object property cannot bypass the canonical intent allowlist: ${inheritedName}`, () => {
     assert.deepEqual(normalizeModelDecision({ intent: inheritedName, confidence: 0.99 }), {
       intent: 'unknown',
-      agent: 'general_agent',
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
       action: 'fallback_unknown',
       confidence: 0,
+      model_tier: 'economy',
     });
   });
 }
@@ -133,9 +164,11 @@ test('malformed JSON returned by the real OpenAI boundary becomes unknown instea
   });
   assert.deepEqual(await classifier('pesan ambigu'), {
     intent: 'unknown',
-    agent: 'general_agent',
+    route: 'reddy_agent',
+    agent: 'reddy_agent',
     action: 'fallback_unknown',
     confidence: 0,
+    model_tier: 'economy',
   });
 });
 
