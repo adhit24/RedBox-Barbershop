@@ -216,8 +216,8 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
           </motion.div>
 
           <motion.div variants={fadeSlideItem} className="grid grid-cols-2 gap-3">
-            <StatCard label="Total Produk" value={activeProductCount} icon="category" tint="info" hint="SKU aktif" />
-            <StatCard label="Total Stok" value={totalStockUnits} icon="inventory_2" tint="success" hint="unit di semua lokasi" />
+            <StatCard label="Total Produk" value={activeProductCount} icon="category" tint="info" hint="SKU aktif" href="/admin/stockist/products" />
+            <StatCard label="Total Stok" value={totalStockUnits} icon="inventory_2" tint="success" hint="unit di semua lokasi" href="/admin/stockist/warehouse" />
             <StatCard
               label="Perlu Perhatian"
               value={assets.attention_items.length}

@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=block" rel="stylesheet">
+<style>
+:root{--bg:#F7F7F5;--sf:#FFFFFF;--sf2:#F1F1EF;--bd:#E4E0DE;--t1:#1F1A1A;--t2:#6F6666;--t3:#9D9494;--red:#C72820;--red2:#E33A32;--red3:#F26A61;--tred:#FDECEC;--ok:#36B56B;--warn:#E3A43B;--info:#5FA8D3;--tblue:#EAF6FD;--tgreen:#EAF8F0;--tyellow:#FFF7E8;--tpeach:#FDF0EA;--shadow:0 2px 14px rgba(31,26,26,.06);--shadow2:0 8px 26px rgba(31,26,26,.12);--desk:#EDEBE7;--imgbg:#F5F4F2}
+[data-theme="dark"]{--bg:#151313;--sf:#1E1A1B;--sf2:#241F20;--bd:#302728;--t1:#F5EEEE;--t2:#B8AAAC;--t3:#786D6F;--red:#E33A32;--red2:#E33A32;--red3:#F26A61;--tred:#2A1A19;--ok:#36B56B;--warn:#E3A43B;--info:#8A9BA8;--tblue:#161F26;--tgreen:#152420;--tyellow:#251F14;--tpeach:#251A17;--shadow:0 2px 14px rgba(0,0,0,.4);--shadow2:0 8px 26px rgba(0,0,0,.55);--desk:#0E0C0C;--imgbg:#241F20}
+body{margin:0;background:var(--desk);font-family:'Plus Jakarta Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.ms{font-family:'Material Symbols Outlined';font-weight:normal;font-style:normal;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;direction:ltr;-webkit-font-feature-settings:'liga';-webkit-font-smoothing:antialiased}
+.fill{font-variation-settings:'FILL' 1}
+.sc::-webkit-scrollbar{width:0}
+@keyframes rbup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes rbshim{0%{background-position:-200% 0}100%{background-position:200% 0}}
+</style>
+</helmet>
+<div style="min-height:100vh;background:var(--desk);display:flex;flex-direction:column;align-items:center;gap:18px;padding:28px 16px 48px;box-sizing:border-box" data-theme="{{ theme }}">
+
+  <div style="display:flex;align-items:center;gap:12px;width:100%;max-width:430px;flex-wrap:wrap">
+    <div style="display:flex;flex-direction:column;gap:2px;margin-right:auto">
+      <span style="font:800 13px/1.2 'Plus Jakarta Sans';color:var(--t1);letter-spacing:.02em">RedBox Stockist</span>
+      <span style="font:500 11px/1.2 'Plus Jakarta Sans';color:var(--t3)">Prototype operasional · {{ roleLabel }}</span>
+    </div>
+    <button onClick="{{ toggleTheme }}" style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--bd);background:var(--sf);color:var(--t2);font:600 11px 'Plus Jakarta Sans';cursor:pointer" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:15px">{{ themeIcon }}</span>{{ themeLabel }}</button>
+    <button onClick="{{ switchRole }}" style="display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--bd);background:var(--sf);color:var(--t2);font:600 11px 'Plus Jakarta Sans';cursor:pointer" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:15px">swap_horiz</span>Ganti peran</button>
+  </div>
+
+  <div style="width:390px;height:844px;background:var(--bg);border-radius:38px;box-shadow:var(--shadow2),0 0 0 9px #17151480;position:relative;overflow:hidden;display:flex;flex-direction:column">
+
+    <div style="height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:var(--bg);color:var(--t1);font:700 12px 'Plus Jakarta Sans'">
+      <span>10:24</span>
+      <div style="display:flex;align-items:center;gap:5px;color:var(--t2)"><span class="ms" style="font-size:15px">signal_cellular_alt</span><span class="ms" style="font-size:15px">wifi</span><span class="ms" style="font-size:15px">battery_full</span></div>
+    </div>
+
+    <sc-if value="{{ showHeader }}" hint-placeholder-val="{{ true }}">
+      <div style="flex:none;display:flex;align-items:center;gap:10px;padding:6px 16px 12px;background:var(--bg)">
+        <sc-if value="{{ canBack }}">
+          <button onClick="{{ back }}" style="width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);cursor:pointer"><span class="ms" style="font-size:20px">arrow_back</span></button>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:1px;min-width:0;margin-right:auto">
+          <span style="font:700 19px/1.2 'Plus Jakarta Sans';color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ title }}</span>
+          <span style="font:500 11px/1.3 'Plus Jakarta Sans';color:var(--t3)">{{ subtitle }}</span>
+        </div>
+        <button onClick="{{ goSearch }}" style="width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--bd);background:var(--sf);color:var(--t2);cursor:pointer"><span class="ms" style="font-size:19px">search</span></button>
+        <button onClick="{{ goNotif }}" style="position:relative;width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:12px;border:1px solid var(--bd);background:var(--sf);color:var(--t2);cursor:pointer"><span class="ms" style="font-size:19px">notifications</span><span style="position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:99px;background:var(--red);border:1.5px solid var(--sf)"></span></button>
+      </div>
+    </sc-if>
+
+    <div class="sc" style="flex:1;overflow-y:auto;overflow-x:hidden;scrollbar-width:none">
+      <div style="padding:0 16px 120px;display:flex;flex-direction:column;gap:20px">
+
+        <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:40px 0 0;display:flex;flex-direction:column;gap:28px;animation:rbup .3s ease-out">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+              <div style="width:92px;height:92px;border-radius:26px;background:#171514;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(23,21,20,.28);padding:8px;box-sizing:border-box"><img src="assets/logo_transparant.png" alt="RedBox Barbershop" style="width:100%;height:100%;object-fit:contain"></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:5px">
+                <span style="font:800 24px/1.2 'Plus Jakarta Sans';color:var(--t1)">RedBox Stockist</span>
+                <span style="font:500 13px/1.4 'Plus Jakarta Sans';color:var(--t2);text-align:center">Operasional stok gudang & cabang<br>RedBox Barbershop Indonesia</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t2)">Email</span>
+                <div style="display:flex;align-items:center;gap:10px;height:50px;padding:0 14px;border-radius:14px;border:1px solid var(--bd);background:var(--sf)"><span class="ms" style="font-size:19px;color:var(--t3)">mail</span><span style="font:500 14px 'Plus Jakarta Sans';color:var(--t1)">owner@redbox.id</span></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t2)">Password</span>
+                <div style="display:flex;align-items:center;gap:10px;height:50px;padding:0 14px;border-radius:14px;border:1px solid var(--bd);background:var(--sf)"><span class="ms" style="font-size:19px;color:var(--t3)">lock</span><span style="font:600 15px 'Plus Jakarta Sans';color:var(--t1);letter-spacing:.18em">••••••••</span><span class="ms" style="font-size:19px;color:var(--t3);margin-left:auto">visibility</span></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t3);text-transform:uppercase;letter-spacing:.08em">Masuk sebagai</span>
+              <button onClick="{{ loginOwner }}" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;border:1px solid var(--red);background:var(--red);color:#fff;cursor:pointer;text-align:left" style-hover="background:var(--red2)">
+                <span class="ms fill" style="font-size:22px">admin_panel_settings</span>
+                <span style="display:flex;flex-direction:column;gap:2px"><span style="font:700 14px 'Plus Jakarta Sans'">Owner</span><span style="font:500 11px 'Plus Jakarta Sans';opacity:.85">Semua cabang, gudang pusat, ledger</span></span>
+                <span class="ms" style="font-size:20px;margin-left:auto">arrow_forward</span>
+              </button>
+              <button onClick="{{ loginManager }}" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);cursor:pointer;text-align:left" style-hover="border-color:var(--red3)">
+                <span class="ms fill" style="font-size:22px;color:var(--red)">manage_accounts</span>
+                <span style="display:flex;flex-direction:column;gap:2px"><span style="font:700 14px 'Plus Jakarta Sans'">Manager</span><span style="font:500 11px 'Plus Jakarta Sans';color:var(--t2)">Baca, edit, buat & konfirmasi kiriman</span></span>
+                <span class="ms" style="font-size:20px;margin-left:auto;color:var(--t3)">arrow_forward</span>
+              </button>
+              <button onClick="{{ loginBranch }}" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);cursor:pointer;text-align:left" style-hover="border-color:var(--red3)">
+                <span class="ms fill" style="font-size:22px;color:var(--red)">storefront</span>
+                <span style="display:flex;flex-direction:column;gap:2px"><span style="font:700 14px 'Plus Jakarta Sans'">Admin Cabang</span><span style="font:500 11px 'Plus Jakarta Sans';color:var(--t2)">Cabang Bypass · stok & penerimaan</span></span>
+                <span class="ms" style="font-size:20px;margin-left:auto;color:var(--t3)">arrow_forward</span>
+              </button>
+            </div>
+            <span style="font:500 11px/1.5 'Plus Jakarta Sans';color:var(--t3);text-align:center">Akses ditentukan peran akun. Admin cabang hanya melihat data cabangnya.</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isOwnerHome }}">
+          <div style="display:flex;flex-direction:column;gap:20px;animation:rbup .28s ease-out">
+            <sc-if value="{{ isManager }}">
+              <button onClick="{{ goIncoming }}" style="width:100%;text-align:left;border:1px solid var(--warn);background:var(--tyellow);border-radius:16px;padding:13px;display:flex;align-items:center;gap:11px;cursor:pointer">
+                <span class="ms fill" style="font-size:20px;color:var(--warn);flex:none">pending_actions</span>
+                <span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span style="font:700 12.5px 'Plus Jakarta Sans';color:var(--t1)">1 kiriman menunggu konfirmasi Anda</span><span style="font:500 11px 'Plus Jakarta Sans';color:var(--t2)">TRF-20260823-001 · Cabang Bypass · 40 pcs</span></span>
+                <span class="ms" style="font-size:19px;color:var(--t3)">chevron_right</span>
+              </button>
+            </sc-if>
+            <div style="border-radius:20px;padding:18px;background:var(--red);box-shadow:0 10px 26px rgba(199,40,32,.22);display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font:600 11px 'Plus Jakarta Sans';color:#ffffffcc;text-transform:uppercase;letter-spacing:.09em">Aset stok RedBox</span>
+                <span style="display:flex;align-items:center;gap:4px;font:600 10px 'Plus Jakarta Sans';color:#fff;background:#ffffff26;padding:5px 9px;border-radius:99px"><span class="ms" style="font-size:13px">trending_up</span>+4,2%</span>
+              </div>
+              <span style="font:800 32px/1 'Plus Jakarta Sans';color:#fff;font-variant-numeric:tabular-nums">Rp 412.850.000</span>
+              <div style="display:flex;gap:8px">
+                <div style="flex:1;background:#ffffff1f;border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:2px"><span style="font:700 15px 'Plus Jakarta Sans';color:#fff;font-variant-numeric:tabular-nums">6</span><span style="font:500 10px 'Plus Jakarta Sans';color:#ffffffcc">Lokasi</span></div>
+                <div style="flex:1;background:#ffffff1f;border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:2px"><span style="font:700 15px 'Plus Jakarta Sans';color:#fff;font-variant-numeric:tabular-nums">7</span><span style="font:500 10px 'Plus Jakarta Sans';color:#ffffffcc">SKU aktif</span></div>
+                <div style="flex:1;background:#ffffff1f;border-radius:12px;padding:9px 10px;display:flex;flex-direction:column;gap:2px"><span style="font:700 15px 'Plus Jakarta Sans';color:#fff;font-variant-numeric:tabular-nums">1.284</span><span style="font:500 10px 'Plus Jakarta Sans';color:#ffffffcc">Unit</span></div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <button onClick="{{ goProducts }}" style="text-align:left;border:1px solid var(--bd);background:var(--tblue);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;cursor:pointer" style-hover="border-color:var(--info)">
+                <span class="ms" style="font-size:20px;color:var(--info)">category</span>
+                <span style="font:800 22px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">7</span>
+                <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2)">Total Produk</span>
+              </button>
+              <button onClick="{{ goWarehouse }}" style="text-align:left;border:1px solid var(--bd);background:var(--tgreen);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;cursor:pointer" style-hover="border-color:var(--ok)">
+                <span class="ms" style="font-size:20px;color:var(--ok)">inventory_2</span>
+                <span style="font:800 22px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">1.284</span>
+                <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2)">Total Stok</span>
+              </button>
+              <button onClick="{{ goLowStock }}" style="text-align:left;border:1px solid var(--bd);background:var(--tyellow);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;cursor:pointer" style-hover="border-color:var(--warn)">
+                <span class="ms" style="font-size:20px;color:var(--warn)">warning</span>
+                <span style="font:800 22px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ lowCount }}</span>
+                <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2)">Produk Menipis</span>
+              </button>
+              <button onClick="{{ goTransfers }}" style="text-align:left;border:1px solid var(--bd);background:var(--tred);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;cursor:pointer" style-hover="border-color:var(--red3)">
+                <span class="ms" style="font-size:20px;color:var(--red)">local_shipping</span>
+                <span style="font:800 22px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">2</span>
+                <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2)">Transfer Berjalan</span>
+              </button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Aksi cepat</span>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <button onClick="{{ goReceive }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">move_to_inbox</span>Terima Barang</button>
+                <button onClick="{{ goTransferNew }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">send</span>Buat Transfer</button>
+                <button onClick="{{ goLedger }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">receipt_long</span>Lihat Ledger</button>
+                <button onClick="{{ goBranchStock }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">storefront</span>Stok Cabang</button>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Perlu perhatian</span>
+                <button onClick="{{ goProducts }}" style="border:none;background:none;padding:0;font:600 11px 'Plus Jakarta Sans';color:var(--red);cursor:pointer">Lihat semua</button>
+              </div>
+              <sc-for list="{{ attention }}" as="p" hint-placeholder-count="3">
+                <button onClick="{{ p.open }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;border:1px solid var(--bd);background:var(--sf);box-shadow:var(--shadow);cursor:pointer" style-hover="border-color:var(--red3)">
+                  <span role="img" aria-label="{{ p.name }}" style="display:block;width:56px;height:56px;flex:none;border-radius:12px;background-image:url({{ p.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+                  <span style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                    <span style="font:700 13px/1.25 'Plus Jakarta Sans';color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span>
+                    <span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ p.sku }} · {{ p.loc }}</span>
+                    <span style="align-self:flex-start;font:700 9px 'Plus Jakarta Sans';padding:3px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;background:{{ p.tint }};color:{{ p.color }}">{{ p.status }}</span>
+                  </span>
+                  <span style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                    <span style="font:800 17px/1 'Plus Jakarta Sans';font-variant-numeric:tabular-nums;color:{{ p.color }}">{{ p.qty }}</span>
+                    <span style="font:600 9px 'Plus Jakarta Sans';color:var(--t3);text-transform:uppercase">{{ p.unit }}</span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Aset per lokasi</span>
+              <div style="border:1px solid var(--bd);background:var(--sf);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ locations }}" as="l" hint-placeholder-count="4">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between">
+                      <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1)">{{ l.name }}</span>
+                      <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2);font-variant-numeric:tabular-nums">{{ l.value }}</span>
+                    </div>
+                    <div style="height:7px;border-radius:99px;background:var(--sf2);overflow:hidden"><div style="height:100%;border-radius:99px;background:{{ l.color }};width:{{ l.pct }}"></div></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isBranchHome }}">
+          <div style="display:flex;flex-direction:column;gap:20px;animation:rbup .28s ease-out">
+            <button onClick="{{ goIncoming }}" style="width:100%;text-align:left;border-radius:20px;padding:16px;background:var(--red);border:none;box-shadow:0 10px 26px rgba(199,40,32,.22);display:flex;flex-direction:column;gap:12px;cursor:pointer">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="ms fill" style="font-size:19px;color:#fff">local_shipping</span>
+                <span style="font:700 13px 'Plus Jakarta Sans';color:#fff">1 kiriman menunggu konfirmasi</span>
+                <span class="ms" style="font-size:19px;color:#fff;margin-left:auto">arrow_forward</span>
+              </div>
+              <div style="background:#ffffff1f;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;justify-content:space-between"><span style="font:700 12px 'Plus Jakarta Sans';color:#fff;font-variant-numeric:tabular-nums">TRF-20260823-001</span><span style="font:600 10px 'Plus Jakarta Sans';color:#fff;background:#ffffff2e;padding:3px 8px;border-radius:99px">Dikirim</span></div>
+                <span style="font:500 11px 'Plus Jakarta Sans';color:#ffffffd9">Gudang Pusat → Cabang Bypass · 3 item · 40 pcs</span>
+                <span style="font:500 11px 'Plus Jakarta Sans';color:#ffffffd9">Dikirim 23 Agu 2026 · 10:24 WIB</span>
+              </div>
+            </button>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="border:1px solid var(--bd);background:var(--tgreen);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:7px"><span class="ms" style="font-size:19px;color:var(--ok)">inventory_2</span><span style="font:800 21px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">218</span><span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2)">Stok cabang (unit)</span></div>
+              <div style="border:1px solid var(--bd);background:var(--tyellow);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:7px"><span class="ms" style="font-size:19px;color:var(--warn)">warning</span><span style="font:800 21px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ branchLowCount }}</span><span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2)">Perlu restock</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Aksi cepat</span>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <button onClick="{{ goIncoming }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">task_alt</span>Konfirmasi Kiriman</button>
+                <button onClick="{{ goBranchStock }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">boxes</span>Lihat Stok</button>
+                <button onClick="{{ goOpname }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">checklist</span>Stock Opname</button>
+                <button onClick="{{ goRequests }}" style="min-height:48px;display:flex;align-items:center;gap:9px;padding:12px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer;text-align:left" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px;color:var(--red)">add_shopping_cart</span>Minta Stok</button>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Stok menipis di cabang</span>
+                <button onClick="{{ goBranchStock }}" style="border:none;background:none;padding:0;font:600 11px 'Plus Jakarta Sans';color:var(--red);cursor:pointer">Lihat semua</button>
+              </div>
+              <sc-for list="{{ branchAttention }}" as="p" hint-placeholder-count="3">
+                <button onClick="{{ p.open }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;border:1px solid var(--bd);background:var(--sf);box-shadow:var(--shadow);cursor:pointer" style-hover="border-color:var(--red3)">
+                  <span role="img" aria-label="{{ p.name }}" style="display:block;width:56px;height:56px;flex:none;border-radius:12px;background-image:url({{ p.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+                  <span style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                    <span style="font:700 13px/1.25 'Plus Jakarta Sans';color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span>
+                    <span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ p.sku }} · min {{ p.min }} {{ p.unit }}</span>
+                    <span style="align-self:flex-start;font:700 9px 'Plus Jakarta Sans';padding:3px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;background:{{ p.tint }};color:{{ p.color }}">{{ p.status }}</span>
+                  </span>
+                  <span style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+                    <span style="font:800 17px/1 'Plus Jakarta Sans';font-variant-numeric:tabular-nums;color:{{ p.color }}">{{ p.qty }}</span>
+                    <span style="font:600 9px 'Plus Jakarta Sans';color:var(--t3);text-transform:uppercase">{{ p.unit }}</span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+
+            <button onClick="{{ goUsage }}" style="width:100%;text-align:left;border:1px solid var(--bd);background:var(--sf);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:8px;cursor:pointer" style-hover="border-color:var(--red3)">
+              <div style="display:flex;align-items:center;gap:8px"><span class="ms fill" style="font-size:18px;color:var(--red)">timelapse</span><span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Stok pemakaian</span><span style="font:600 11px 'Plus Jakarta Sans';color:var(--t3);margin-left:auto">Detail</span></div>
+              <span style="font:500 11px 'Plus Jakarta Sans';color:var(--warn)">3 produk sedang dipakai · 1 perlu dicek</span>
+            </button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isStokHub }}">
+          <div style="display:flex;flex-direction:column;gap:10px;animation:rbup .24s ease-out">
+            <sc-for list="{{ hubItems }}" as="h" hint-placeholder-count="5">
+              <button onClick="{{ h.open }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:13px;padding:15px;border-radius:16px;border:1px solid var(--bd);background:var(--sf);box-shadow:var(--shadow);cursor:pointer" style-hover="border-color:var(--red3)">
+                <span style="width:42px;height:42px;flex:none;border-radius:13px;display:flex;align-items:center;justify-content:center;background:{{ h.tint }}"><span class="ms" style="font-size:21px;color:{{ h.color }}">{{ h.icon }}</span></span>
+                <span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+                  <span style="font:700 14px 'Plus Jakarta Sans';color:var(--t1)">{{ h.name }}</span>
+                  <span style="font:500 11px 'Plus Jakarta Sans';color:var(--t2)">{{ h.desc }}</span>
+                </span>
+                <span class="ms" style="font-size:20px;color:var(--t3)">chevron_right</span>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isList }}">
+          <div style="display:flex;flex-direction:column;gap:14px;animation:rbup .24s ease-out">
+            <div style="display:flex;align-items:center;gap:10px;height:46px;padding:0 14px;border-radius:14px;border:1px solid var(--bd);background:var(--sf)">
+              <span class="ms" style="font-size:19px;color:var(--t3)">search</span>
+              <input value="{{ query }}" onChange="{{ setQuery }}" placeholder="Cari nama produk atau SKU" style="flex:1;border:none;outline:none;background:none;font:500 13px 'Plus Jakarta Sans';color:var(--t1);min-width:0">
+              <button onClick="{{ goScan }}" style="border:none;background:none;padding:0;display:flex;cursor:pointer"><span class="ms" style="font-size:20px;color:var(--red)">qr_code_scanner</span></button>
+            </div>
+            <div class="sc" style="display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px 2px;scrollbar-width:none">
+              <sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.select }}" style="flex:none;height:34px;padding:0 14px;border-radius:99px;cursor:pointer;font:700 12px 'Plus Jakarta Sans';border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;padding:0 2px">
+              <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t3)">{{ listCount }} produk · {{ listLocation }}</span>
+              <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t3)">Urut: nama</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ visibleProducts }}" as="p" hint-placeholder-count="5">
+                <button onClick="{{ p.open }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:12px;border-radius:18px;cursor:pointer;border:1px solid {{ p.cardBd }};background:{{ p.cardBg }};box-shadow:var(--shadow)" style-hover="border-color:var(--red3)">
+                  <span style="position:relative;flex:none">
+                    <span role="img" aria-label="{{ p.name }}" style="display:block;width:66px;height:66px;border-radius:14px;background-image:url({{ p.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+                    <span style="position:absolute;bottom:-4px;left:-4px;width:12px;height:12px;border-radius:99px;border:2.5px solid var(--sf);background:{{ p.color }}"></span>
+                  </span>
+                  <span style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1">
+                    <span style="font:700 13.5px/1.25 'Plus Jakarta Sans';color:var(--t1)">{{ p.name }}</span>
+                    <span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ p.sku }}</span>
+                    <span style="display:flex;gap:5px;flex-wrap:wrap">
+                      <span style="font:700 9px 'Plus Jakarta Sans';padding:3px 7px;border-radius:99px;background:var(--sf2);color:var(--t2);text-transform:uppercase;letter-spacing:.05em">{{ p.cat }}</span>
+                      <span style="font:700 9px 'Plus Jakarta Sans';padding:3px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;background:{{ p.tint }};color:{{ p.color }}">{{ p.status }}</span>
+                    </span>
+                  </span>
+                  <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+                    <span style="font:800 19px/1 'Plus Jakarta Sans';font-variant-numeric:tabular-nums;color:{{ p.color }}">{{ p.qty }}</span>
+                    <span style="font:600 9px 'Plus Jakarta Sans';color:var(--t3);text-transform:uppercase">{{ p.unit }}</span>
+                    <span class="ms" style="font-size:18px;color:var(--t3);margin-top:2px">chevron_right</span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+            <sc-if value="{{ listEmpty }}">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:44px 20px;border:1px dashed var(--bd);border-radius:18px;background:var(--sf)">
+                <span class="ms" style="font-size:34px;color:var(--t3)">inventory_2</span>
+                <span style="font:700 14px 'Plus Jakarta Sans';color:var(--t1)">Tidak ada produk</span>
+                <span style="font:500 12px/1.5 'Plus Jakarta Sans';color:var(--t2);text-align:center">Coba ubah filter atau kata kunci pencarian.</span>
+                <button onClick="{{ resetFilter }}" style="min-height:44px;padding:0 18px;border-radius:12px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 12px 'Plus Jakarta Sans';cursor:pointer">Reset filter</button>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isProductDetail }}">
+          <div style="display:flex;flex-direction:column;gap:16px;animation:rbup .24s ease-out">
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:20px;padding:16px;display:flex;gap:14px;box-shadow:var(--shadow)">
+              <span role="img" aria-label="{{ sel.name }}" style="display:block;width:104px;height:104px;flex:none;border-radius:16px;background-image:url({{ sel.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+              <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+                <span style="font:700 16px/1.25 'Plus Jakarta Sans';color:var(--t1)">{{ sel.name }}</span>
+                <span style="font:500 11px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ sel.sku }}</span>
+                <span style="align-self:flex-start;font:700 9px 'Plus Jakarta Sans';padding:4px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;background:{{ sel.tint }};color:{{ sel.color }}">{{ sel.status }}</span>
+                <span style="font:700 15px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ sel.priceText }}</span>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <div style="border:1px solid var(--bd);background:var(--sf);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:3px"><span style="font:800 17px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ sel.qtyWh }}</span><span style="font:600 10px 'Plus Jakarta Sans';color:var(--t2)">Gudang</span></div>
+              <div style="border:1px solid var(--bd);background:var(--sf);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:3px"><span style="font:800 17px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ sel.qtyBranches }}</span><span style="font:600 10px 'Plus Jakarta Sans';color:var(--t2)">Cabang</span></div>
+              <div style="border:1px solid var(--bd);background:var(--sf);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:3px"><span style="font:800 17px/1 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ sel.min }}</span><span style="font:600 10px 'Plus Jakarta Sans';color:var(--t2)">Stok min.</span></div>
+            </div>
+
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px">
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Distribusi stok</span>
+              <sc-for list="{{ selDistribution }}" as="d" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-radius:12px;background:{{ d.tint }}">
+                  <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t2)">{{ d.name }}</span>
+                  <span style="font:700 12px 'Plus Jakarta Sans';color:{{ d.color }};font-variant-numeric:tabular-nums">{{ d.qty }} {{ d.unit }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Data master</span>
+              <sc-for list="{{ selMeta }}" as="m" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--bd)">
+                  <span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">{{ m.k }}</span>
+                  <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums;text-align:right">{{ m.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ canEdit }}">
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <button onClick="{{ goEditProduct }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 13px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px">edit</span>Edit Produk</button>
+                <button onClick="{{ goReceive }}" style="min-height:48px;border-radius:14px;border:1px solid var(--red);background:var(--red);color:#fff;font:700 13px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--red2)"><span class="ms" style="font-size:19px">move_to_inbox</span>Terima Barang</button>
+                <sc-if value="{{ isOwner }}">
+                  <button onClick="{{ showToast }}" style="min-height:48px;border-radius:14px;border:1px solid var(--red3);background:none;color:var(--red);font:700 13px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--tred)"><span class="ms" style="font-size:19px">block</span>Nonaktifkan Produk</button>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isReceive }}">
+          <div style="display:flex;flex-direction:column;gap:16px;animation:rbup .24s ease-out">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t2)">Pilih produk</span>
+              <div class="sc" style="display:flex;gap:10px;overflow-x:auto;margin:0 -16px;padding:2px 16px 4px;scrollbar-width:none">
+                <sc-for list="{{ receiveOptions }}" as="p" hint-placeholder-count="4">
+                  <button onClick="{{ p.select }}" style="flex:none;width:112px;padding:10px;border-radius:16px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:7px;border:1.5px solid {{ p.cardBd }};background:{{ p.cardBg }}">
+                    <span role="img" aria-label="{{ p.name }}" style="display:block;width:100%;height:70px;border-radius:11px;background-image:url({{ p.img }});background-size:cover;background-position:center;background-color:var(--imgbg)"></span>
+                    <span style="font:700 11px/1.3 'Plus Jakarta Sans';color:var(--t1);height:29px;overflow:hidden">{{ p.name }}</span>
+                    <span style="font:500 9px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ p.sku }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t2)">Quantity diterima</span>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:16px;border:1px solid var(--bd);background:var(--sf)">
+                <button onClick="{{ recvMinus }}" style="width:46px;height:46px;flex:none;border-radius:13px;border:1px solid var(--bd);background:var(--sf2);color:var(--t1);cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:22px">remove</span></button>
+                <span style="flex:1;text-align:center;font:800 26px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ recvQty }}</span>
+                <button onClick="{{ recvPlus }}" style="width:46px;height:46px;flex:none;border-radius:13px;border:1px solid var(--red);background:var(--red);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:var(--red2)"><span class="ms" style="font-size:22px">add</span></button>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t2)">Catatan / nomor invoice</span>
+              <div style="display:flex;align-items:center;gap:10px;height:50px;padding:0 14px;border-radius:14px;border:1px solid var(--bd);background:var(--sf)">
+                <span class="ms" style="font-size:19px;color:var(--t3)">receipt</span>
+                <input value="{{ recvNote }}" onChange="{{ setRecvNote }}" placeholder="INV/2026/08/1183" style="flex:1;border:none;outline:none;background:none;font:500 13px 'Plus Jakarta Sans';color:var(--t1);min-width:0">
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--bd);background:var(--tgreen);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Pratinjau perhitungan</span>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Stok saat ini</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ recvBefore }}</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Quantity diterima</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--ok);font-variant-numeric:tabular-nums">+{{ recvQty }}</span></div>
+              <div style="height:1px;background:var(--bd)"></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Stok setelah diterima</span><span style="font:800 20px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ recvAfter }}</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button onClick="{{ submitReceive }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--red2)"><span class="ms" style="font-size:20px">move_to_inbox</span>Terima Barang</button>
+              <button onClick="{{ back }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t2);font:700 13px 'Plus Jakarta Sans';cursor:pointer">Batal</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSuccess }}">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:56px 8px 0;animation:rbup .3s ease-out">
+            <div style="width:88px;height:88px;border-radius:99px;background:var(--tgreen);display:flex;align-items:center;justify-content:center;border:1px solid var(--ok)"><span class="ms fill" style="font-size:44px;color:var(--ok)">check_circle</span></div>
+            <span style="font:800 20px 'Plus Jakarta Sans';color:var(--t1);text-align:center">{{ successTitle }}</span>
+            <span style="font:500 13px/1.6 'Plus Jakarta Sans';color:var(--t2);text-align:center;max-width:280px">{{ successBody }}</span>
+            <div style="width:100%;border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ successRows }}" as="r" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;gap:12px"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">{{ r.k }}</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums;text-align:right">{{ r.v }}</span></div>
+              </sc-for>
+            </div>
+            <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-top:4px">
+              <button onClick="{{ goHome }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer" style-hover="background:var(--red2)">Kembali ke Beranda</button>
+              <button onClick="{{ goLedger }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 13px 'Plus Jakarta Sans';cursor:pointer">Lihat di Ledger</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isTransfers }}">
+          <div style="display:flex;flex-direction:column;gap:14px;animation:rbup .24s ease-out">
+            <div class="sc" style="display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px 2px;scrollbar-width:none">
+              <sc-for list="{{ transferChips }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.select }}" style="flex:none;height:34px;padding:0 14px;border-radius:99px;cursor:pointer;font:700 12px 'Plus Jakarta Sans';border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</button>
+              </sc-for>
+            </div>
+            <sc-for list="{{ visibleTransfers }}" as="t" hint-placeholder-count="4">
+              <button onClick="{{ t.open }}" style="width:100%;text-align:left;border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px;box-shadow:var(--shadow);cursor:pointer" style-hover="border-color:var(--red3)">
+                <span style="display:flex;align-items:center;gap:8px;width:100%">
+                  <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ t.number }}</span>
+                  <span style="margin-left:auto;font:700 9.5px 'Plus Jakarta Sans';padding:4px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;background:{{ t.tint }};color:{{ t.color }}">{{ t.status }}</span>
+                </span>
+                <span style="display:flex;align-items:center;gap:7px;font:600 11.5px 'Plus Jakarta Sans';color:var(--t2)">{{ t.from }}<span class="ms" style="font-size:15px;color:var(--red)">arrow_forward</span>{{ t.to }}</span>
+                <span style="display:flex;align-items:center;gap:10px;width:100%;font:500 11px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ t.date }}<span>·</span>{{ t.items }} item<span>·</span>{{ t.qty }} pcs<span class="ms" style="font-size:18px;margin-left:auto;color:var(--t3)">chevron_right</span></span>
+              </button>
+            </sc-for>
+            <sc-if value="{{ canCreateTransfer }}">
+              <button onClick="{{ goTransferNew }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--red2)"><span class="ms" style="font-size:20px">add</span>Buat Transfer Baru</button>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isTransferNew }}">
+          <div style="display:flex;flex-direction:column;gap:18px;animation:rbup .24s ease-out">
+            <div style="display:flex;align-items:center;gap:8px">
+              <sc-for list="{{ steps }}" as="s" hint-placeholder-count="3">
+                <span style="flex:1;display:flex;flex-direction:column;gap:6px">
+                  <span style="height:4px;border-radius:99px;background:{{ s.color }}"></span>
+                  <span style="font:600 10px 'Plus Jakarta Sans';color:{{ s.text }}">{{ s.label }}</span>
+                </span>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <span style="font:600 12px 'Plus Jakarta Sans';color:var(--t2)">Cabang tujuan</span>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <sc-for list="{{ branchChips }}" as="b" hint-placeholder-count="5">
+                  <button onClick="{{ b.select }}" style="height:38px;padding:0 14px;border-radius:99px;cursor:pointer;font:700 12px 'Plus Jakarta Sans';border:1px solid {{ b.bd }};background:{{ b.bg }};color:{{ b.fg }}">{{ b.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Produk dikirim</span>
+                <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ cartCount }} item · {{ cartQty }} pcs</span>
+              </div>
+              <sc-for list="{{ cartRows }}" as="c" hint-placeholder-count="3">
+                <div style="border:1px solid {{ c.bd }};background:{{ c.bg }};border-radius:18px;padding:12px;display:flex;align-items:center;gap:12px">
+                  <span role="img" aria-label="{{ c.name }}" style="display:block;width:56px;height:56px;flex:none;border-radius:12px;background-image:url({{ c.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+                  <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1">
+                    <span style="font:700 12.5px/1.3 'Plus Jakarta Sans';color:var(--t1)">{{ c.name }}</span>
+                    <span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">Gudang: {{ c.stock }} {{ c.unit }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:7px;flex:none">
+                    <button onClick="{{ c.minus }}" style="width:34px;height:34px;border-radius:11px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:18px">remove</span></button>
+                    <span style="min-width:26px;text-align:center;font:800 15px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ c.qty }}</span>
+                    <button onClick="{{ c.plus }}" style="width:34px;height:34px;border-radius:11px;border:1px solid var(--red);background:var(--red);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:18px">add</span></button>
+                  </div>
+                </div>
+              </sc-for>
+              <button onClick="{{ addCartItem }}" style="min-height:48px;border-radius:14px;border:1px dashed var(--bd);background:none;color:var(--t2);font:700 13px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:19px">add</span>Tambah Produk</button>
+            </div>
+
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Review transfer</span>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Asal</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1)">Gudang Pusat</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Tujuan</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1)">{{ destLabel }}</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Total unit</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ cartQty }} pcs</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Nilai perkiraan</span><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ cartValue }}</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button onClick="{{ submitTransfer }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--red2)"><span class="ms" style="font-size:20px">send</span>Kirim Transfer</button>
+              <button onClick="{{ showToast }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 13px 'Plus Jakarta Sans';cursor:pointer">Simpan Draft</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isTransferDetail }}">
+          <div style="display:flex;flex-direction:column;gap:16px;animation:rbup .24s ease-out">
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow)">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font:700 15px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ trf.number }}</span>
+                <span style="margin-left:auto;font:700 9.5px 'Plus Jakarta Sans';padding:4px 9px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;background:{{ trf.tint }};color:{{ trf.color }}">{{ trf.status }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:14px;background:var(--sf2)">
+                <div style="display:flex;flex-direction:column;gap:2px;flex:1"><span style="font:600 10px 'Plus Jakarta Sans';color:var(--t3)">Asal</span><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">{{ trf.from }}</span></div>
+                <span class="ms" style="font-size:20px;color:var(--red)">arrow_forward</span>
+                <div style="display:flex;flex-direction:column;gap:2px;flex:1;text-align:right"><span style="font:600 10px 'Plus Jakarta Sans';color:var(--t3)">Tujuan</span><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">{{ trf.to }}</span></div>
+              </div>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Dikirim</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ trf.date }} · {{ trf.time }}</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Pengirim</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1)">{{ trf.sender }}</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Rincian produk</span>
+              <sc-for list="{{ trfItems }}" as="i" hint-placeholder-count="3">
+                <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span role="img" aria-label="{{ i.name }}" style="display:block;width:52px;height:52px;flex:none;border-radius:12px;background-image:url({{ i.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font:700 12.5px/1.3 'Plus Jakarta Sans';color:var(--t1)">{{ i.name }}</span><span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ i.sku }}</span></div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+                    <div style="padding:8px;border-radius:11px;background:var(--sf2);display:flex;flex-direction:column;gap:2px"><span style="font:700 14px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ i.sent }}</span><span style="font:600 9.5px 'Plus Jakarta Sans';color:var(--t3)">Dikirim</span></div>
+                    <div style="padding:8px;border-radius:11px;background:var(--sf2);display:flex;flex-direction:column;gap:2px"><span style="font:700 14px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ i.recv }}</span><span style="font:600 9.5px 'Plus Jakarta Sans';color:var(--t3)">Diterima</span></div>
+                    <div style="padding:8px;border-radius:11px;background:{{ i.tint }};display:flex;flex-direction:column;gap:2px"><span style="font:700 14px 'Plus Jakarta Sans';color:{{ i.color }};font-variant-numeric:tabular-nums">{{ i.diff }}</span><span style="font:600 9.5px 'Plus Jakarta Sans';color:var(--t3)">Selisih</span></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:2px">
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1);margin-bottom:10px">Timeline</span>
+              <sc-for list="{{ timeline }}" as="e" hint-placeholder-count="3">
+                <div style="display:flex;gap:12px">
+                  <div style="display:flex;flex-direction:column;align-items:center;flex:none;width:14px">
+                    <span style="width:11px;height:11px;border-radius:99px;background:{{ e.dot }};border:2px solid var(--sf);box-shadow:0 0 0 1.5px {{ e.dot }}"></span>
+                    <span style="flex:1;width:1.5px;background:var(--bd);min-height:26px"></span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:2px;padding-bottom:14px">
+                    <span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">{{ e.title }}</span>
+                    <span style="font:500 10.5px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ e.meta }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ canConfirm }}">
+              <button onClick="{{ goConfirm }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--red2)"><span class="ms" style="font-size:20px">task_alt</span>Konfirmasi Penerimaan</button>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isConfirm }}">
+          <div style="display:flex;flex-direction:column;gap:16px;animation:rbup .24s ease-out">
+            <div style="border:1px solid var(--bd);background:var(--tblue);border-radius:16px;padding:13px;display:flex;gap:10px">
+              <span class="ms" style="font-size:19px;color:var(--info);flex:none">info</span>
+              <span style="font:500 11.5px/1.5 'Plus Jakarta Sans';color:var(--t2)">Hitung fisik barang dulu, lalu isi quantity yang benar-benar diterima. Selisih wajib diberi alasan.</span>
+            </div>
+            <sc-for list="{{ confirmRows }}" as="c" hint-placeholder-count="3">
+              <div style="border:1.5px solid {{ c.bd }};background:{{ c.bg }};border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span role="img" aria-label="{{ c.name }}" style="display:block;width:54px;height:54px;flex:none;border-radius:12px;background-image:url({{ c.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+                  <div style="display:flex;flex-direction:column;gap:3px;min-width:0;flex:1"><span style="font:700 12.5px/1.3 'Plus Jakarta Sans';color:var(--t1)">{{ c.name }}</span><span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">Dikirim {{ c.sent }} {{ c.unit }}</span></div>
+                  <span style="font:700 9.5px 'Plus Jakarta Sans';padding:4px 8px;border-radius:99px;background:{{ c.tint }};color:{{ c.color }};text-transform:uppercase;letter-spacing:.05em">{{ c.label }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2);flex:1">Diterima fisik</span>
+                  <button onClick="{{ c.minus }}" style="width:40px;height:40px;border-radius:12px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:19px">remove</span></button>
+                  <span style="min-width:34px;text-align:center;font:800 19px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ c.recv }}</span>
+                  <button onClick="{{ c.plus }}" style="width:40px;height:40px;border-radius:12px;border:1px solid var(--red);background:var(--red);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:19px">add</span></button>
+                </div>
+                <sc-if value="{{ c.hasDiff }}">
+                  <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:13px;background:var(--tyellow);border:1px solid var(--warn)">
+                    <span style="font:700 11px 'Plus Jakarta Sans';color:var(--t1)">Selisih {{ c.diff }} {{ c.unit }} · wajib beri alasan</span>
+                    <div style="display:flex;gap:7px;flex-wrap:wrap">
+                      <sc-for list="{{ c.reasons }}" as="r" hint-placeholder-count="3">
+                        <button onClick="{{ r.select }}" style="height:32px;padding:0 11px;border-radius:99px;cursor:pointer;font:600 11px 'Plus Jakarta Sans';border:1px solid {{ r.bd }};background:{{ r.bg }};color:{{ r.fg }}">{{ r.label }}</button>
+                      </sc-for>
+                    </div>
+                    <button onClick="{{ showToast }}" style="min-height:42px;border-radius:12px;border:1px dashed var(--warn);background:none;color:var(--t2);font:600 11px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px"><span class="ms" style="font-size:17px">photo_camera</span>Unggah foto bukti</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Ringkasan penerimaan</span>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Total dikirim</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ confirmSent }} pcs</span></div>
+              <div style="display:flex;justify-content:space-between"><span style="font:500 12px 'Plus Jakarta Sans';color:var(--t2)">Total diterima</span><span style="font:600 12px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ confirmRecv }} pcs</span></div>
+              <div style="height:1px;background:var(--bd)"></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Selisih</span><span style="font:800 20px 'Plus Jakarta Sans';font-variant-numeric:tabular-nums;color:{{ confirmDiffColor }}">{{ confirmDiff }}</span></div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button onClick="{{ submitConfirm }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--red2)"><span class="ms" style="font-size:20px">task_alt</span>Konfirmasi Penerimaan</button>
+              <button onClick="{{ showToast }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 13px 'Plus Jakarta Sans';cursor:pointer">Simpan Draft</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isLedger }}">
+          <div style="display:flex;flex-direction:column;gap:12px;animation:rbup .24s ease-out">
+            <div class="sc" style="display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px 2px;scrollbar-width:none">
+              <sc-for list="{{ ledgerChips }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.select }}" style="flex:none;height:34px;padding:0 14px;border-radius:99px;cursor:pointer;font:700 12px 'Plus Jakarta Sans';border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</button>
+              </sc-for>
+            </div>
+            <sc-for list="{{ visibleLedger }}" as="l" hint-placeholder-count="6">
+              <div style="border:1px solid var(--bd);background:var(--sf);border-radius:16px;padding:13px;display:flex;gap:12px">
+                <span style="width:38px;height:38px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;background:{{ l.tint }}"><span class="ms" style="font-size:19px;color:{{ l.color }}">{{ l.icon }}</span></span>
+                <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0">
+                  <span style="font:700 12.5px 'Plus Jakarta Sans';color:var(--t1)">{{ l.product }}</span>
+                  <span style="font:500 10.5px 'Plus Jakarta Sans';color:var(--t2)">{{ l.type }} · {{ l.location }}</span>
+                  <span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ l.date }} · {{ l.by }} · {{ l.ref }}</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:none">
+                  <span style="font:800 15px 'Plus Jakarta Sans';color:{{ l.color }};font-variant-numeric:tabular-nums">{{ l.delta }}</span>
+                  <span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ l.before }} → {{ l.after }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isOpname }}">
+          <div style="display:flex;flex-direction:column;gap:16px;animation:rbup .24s ease-out">
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Opname 23 Agu 2026</span>
+                <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2);font-variant-numeric:tabular-nums">{{ opnameDone }}/7 produk</span>
+              </div>
+              <div style="height:8px;border-radius:99px;background:var(--sf2);overflow:hidden"><div style="height:100%;border-radius:99px;background:var(--red);width:{{ opnamePct }}"></div></div>
+              <span style="font:500 11px 'Plus Jakarta Sans';color:var(--t3)">Draft tersimpan otomatis. Anda bisa lanjut nanti.</span>
+            </div>
+            <button onClick="{{ goScan }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 13px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="border-color:var(--red);color:var(--red)"><span class="ms" style="font-size:20px;color:var(--red)">qr_code_scanner</span>Scan barcode produk</button>
+            <sc-for list="{{ opnameRows }}" as="o" hint-placeholder-count="4">
+              <div style="border:1.5px solid {{ o.bd }};background:{{ o.bg }};border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:11px">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span role="img" aria-label="{{ o.name }}" style="display:block;width:50px;height:50px;flex:none;border-radius:12px;background-image:url({{ o.img }});background-size:cover;background-position:center;background-color:var(--imgbg);border:1px solid var(--bd)"></span>
+                  <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1"><span style="font:700 12.5px/1.3 'Plus Jakarta Sans';color:var(--t1)">{{ o.name }}</span><span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">Sistem {{ o.sys }} {{ o.unit }}</span></div>
+                  <span style="font:700 9.5px 'Plus Jakarta Sans';padding:4px 8px;border-radius:99px;background:{{ o.tint }};color:{{ o.color }};text-transform:uppercase;letter-spacing:.05em">{{ o.label }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font:600 11px 'Plus Jakarta Sans';color:var(--t2);flex:1">Stok fisik</span>
+                  <button onClick="{{ o.minus }}" style="width:40px;height:40px;border-radius:12px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:19px">remove</span></button>
+                  <span style="min-width:34px;text-align:center;font:800 19px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ o.phys }}</span>
+                  <button onClick="{{ o.plus }}" style="width:40px;height:40px;border-radius:12px;border:1px solid var(--red);background:var(--red);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:19px">add</span></button>
+                </div>
+              </div>
+            </sc-for>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <button onClick="{{ submitOpname }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer">Kirim Hasil Opname</button>
+              <button onClick="{{ showToast }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 13px 'Plus Jakarta Sans';cursor:pointer">Simpan Draft</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isDocs }}">
+          <div style="display:flex;flex-direction:column;gap:12px;animation:rbup .24s ease-out">
+            <sc-for list="{{ docRows }}" as="d" hint-placeholder-count="4">
+              <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:9px;box-shadow:var(--shadow)">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font:700 12.5px 'Plus Jakarta Sans';color:var(--t1);font-variant-numeric:tabular-nums">{{ d.number }}</span>
+                  <span style="margin-left:auto;font:700 9.5px 'Plus Jakarta Sans';padding:4px 8px;border-radius:99px;background:{{ d.tint }};color:{{ d.color }};text-transform:uppercase;letter-spacing:.05em">{{ d.status }}</span>
+                </div>
+                <span style="font:500 11.5px 'Plus Jakarta Sans';color:var(--t2)">{{ d.detail }}</span>
+                <span style="font:500 10.5px 'Plus Jakarta Sans';color:var(--t3);font-variant-numeric:tabular-nums">{{ d.meta }}</span>
+              </div>
+            </sc-for>
+            <button onClick="{{ showToast }}" style="min-height:52px;border-radius:14px;border:none;background:var(--red);color:#fff;font:700 14px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--red2)"><span class="ms" style="font-size:20px">add</span>{{ docCta }}</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isNotif }}">
+          <div style="display:flex;flex-direction:column;gap:12px;animation:rbup .24s ease-out">
+            <div class="sc" style="display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px 2px;scrollbar-width:none">
+              <sc-for list="{{ notifChips }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.select }}" style="flex:none;height:34px;padding:0 14px;border-radius:99px;cursor:pointer;font:700 12px 'Plus Jakarta Sans';border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</button>
+              </sc-for>
+            </div>
+            <sc-for list="{{ visibleNotifs }}" as="n" hint-placeholder-count="4">
+              <div style="border:1px solid {{ n.bd }};background:{{ n.bg }};border-radius:16px;padding:13px;display:flex;gap:11px">
+                <span style="width:36px;height:36px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;background:{{ n.tint }}"><span class="ms" style="font-size:18px;color:{{ n.color }}">{{ n.icon }}</span></span>
+                <div style="display:flex;flex-direction:column;gap:3px;flex:1;min-width:0">
+                  <span style="font:700 12.5px 'Plus Jakarta Sans';color:var(--t1)">{{ n.title }}</span>
+                  <span style="font:500 11px/1.45 'Plus Jakarta Sans';color:var(--t2)">{{ n.body }}</span>
+                  <span style="font:500 10px 'Plus Jakarta Sans';color:var(--t3)">{{ n.time }}</span>
+                </div>
+                <sc-if value="{{ n.unread }}"><span style="width:8px;height:8px;flex:none;border-radius:99px;background:var(--red);margin-top:4px"></span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isProfile }}">
+          <div style="display:flex;flex-direction:column;gap:16px;animation:rbup .24s ease-out">
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:20px;padding:18px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow)">
+              <span style="width:58px;height:58px;flex:none;border-radius:18px;background:var(--tred);display:flex;align-items:center;justify-content:center;font:800 20px 'Plus Jakarta Sans';color:var(--red)">{{ initials }}</span>
+              <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                <span style="font:700 15px 'Plus Jakarta Sans';color:var(--t1)">{{ userName }}</span>
+                <span style="font:500 11.5px 'Plus Jakarta Sans';color:var(--t2)">{{ userEmail }}</span>
+                <span style="align-self:flex-start;font:700 9.5px 'Plus Jakarta Sans';padding:4px 8px;border-radius:99px;background:var(--tred);color:var(--red);text-transform:uppercase;letter-spacing:.05em">{{ roleLabel }}</span>
+              </div>
+            </div>
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;overflow:hidden">
+              <sc-for list="{{ profileRows }}" as="r" hint-placeholder-count="5">
+                <button onClick="{{ r.action }}" style="width:100%;text-align:left;display:flex;align-items:center;gap:12px;padding:14px 16px;border:none;border-bottom:1px solid var(--bd);background:var(--sf);cursor:pointer" style-hover="background:var(--sf2)">
+                  <span class="ms" style="font-size:20px;color:var(--t2)">{{ r.icon }}</span>
+                  <span style="display:flex;flex-direction:column;gap:1px;flex:1;min-width:0"><span style="font:600 13px 'Plus Jakarta Sans';color:var(--t1)">{{ r.label }}</span><span style="font:500 10.5px 'Plus Jakarta Sans';color:var(--t3)">{{ r.value }}</span></span>
+                  <span class="ms" style="font-size:19px;color:var(--t3)">chevron_right</span>
+                </button>
+              </sc-for>
+            </div>
+            <button onClick="{{ logout }}" style="min-height:50px;border-radius:14px;border:1px solid var(--red3);background:none;color:var(--red);font:700 13px 'Plus Jakarta Sans';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px" style-hover="background:var(--tred)"><span class="ms" style="font-size:19px">logout</span>Keluar</button>
+            <span style="font:500 10.5px 'Plus Jakarta Sans';color:var(--t3);text-align:center">RedBox Stockist v2.0 · Build 2026.08.23</span>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isScan }}">
+          <div style="display:flex;flex-direction:column;gap:16px;padding-top:8px;animation:rbup .24s ease-out">
+            <div style="position:relative;border-radius:20px;overflow:hidden;background:#17141480;border:1px solid var(--bd);height:320px;display:flex;align-items:center;justify-content:center">
+              <div style="width:210px;height:210px;border-radius:22px;border:2px dashed #ffffff66;display:flex;align-items:center;justify-content:center"><span class="ms" style="font-size:52px;color:#ffffff8c">qr_code_2</span></div>
+              <span style="position:absolute;bottom:16px;left:0;right:0;text-align:center;font:600 11px 'Plus Jakarta Sans';color:#ffffffcc">Arahkan kamera ke barcode produk</span>
+            </div>
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:16px;padding:14px;display:flex;gap:10px">
+              <span class="ms" style="font-size:19px;color:var(--t3);flex:none">keyboard</span>
+              <span style="font:500 11.5px/1.5 'Plus Jakarta Sans';color:var(--t2)">Barcode tidak terbaca? Masukkan SKU manual lewat pencarian.</span>
+            </div>
+            <button onClick="{{ back }}" style="min-height:48px;border-radius:14px;border:1px solid var(--bd);background:var(--sf);color:var(--t1);font:700 13px 'Plus Jakarta Sans';cursor:pointer">Tutup Scanner</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isStates }}">
+          <div style="display:flex;flex-direction:column;gap:14px;animation:rbup .24s ease-out">
+            <div style="border:1px solid var(--warn);background:var(--tyellow);border-radius:16px;padding:13px;display:flex;gap:10px"><span class="ms" style="font-size:19px;color:var(--warn);flex:none">wifi_off</span><span style="display:flex;flex-direction:column;gap:2px"><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Koneksi sedang bermasalah.</span><span style="font:500 11px 'Plus Jakarta Sans';color:var(--t2)">Data terakhir masih ditampilkan.</span></span></div>
+            <div style="border:1px solid var(--red3);background:var(--tred);border-radius:16px;padding:13px;display:flex;gap:10px"><span class="ms" style="font-size:19px;color:var(--red);flex:none">error</span><span style="display:flex;flex-direction:column;gap:2px"><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Stok gudang tidak mencukupi.</span><span style="font:500 11px 'Plus Jakarta Sans';color:var(--t2)">Kurangi quantity transfer atau terima barang dulu.</span></span></div>
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:16px;padding:13px;display:flex;gap:10px"><span class="ms" style="font-size:19px;color:var(--t3);flex:none">lock</span><span style="display:flex;flex-direction:column;gap:2px"><span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Anda tidak memiliki akses ke data ini.</span><span style="font:500 11px 'Plus Jakarta Sans';color:var(--t2)">Hubungi owner untuk membuka akses.</span></span></div>
+            <div style="border:1px solid var(--bd);background:var(--sf);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:11px">
+              <span style="font:700 12px 'Plus Jakarta Sans';color:var(--t1)">Loading skeleton</span>
+              <sc-for list="{{ skeletons }}" as="s" hint-placeholder-count="3">
+                <div style="display:flex;gap:12px;align-items:center">
+                  <div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%);background-size:200% 100%;animation:rbshim 1.6s infinite linear"></div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:7px">
+                    <div style="height:11px;width:70%;border-radius:99px;background:linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%);background-size:200% 100%;animation:rbshim 1.6s infinite linear"></div>
+                    <div style="height:9px;width:45%;border-radius:99px;background:linear-gradient(90deg,var(--sf2) 25%,var(--bd) 50%,var(--sf2) 75%);background-size:200% 100%;animation:rbshim 1.6s infinite linear"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:36px 20px;border:1px dashed var(--bd);border-radius:18px;background:var(--sf)">
+              <span class="ms" style="font-size:32px;color:var(--t3)">local_shipping</span>
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Belum ada transfer</span>
+              <span style="font:500 11.5px/1.5 'Plus Jakarta Sans';color:var(--t2);text-align:center">Transfer dari Gudang Pusat akan muncul di sini.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:30px 20px;border:1px solid var(--bd);border-radius:18px;background:var(--sf)">
+              <span class="ms" style="font-size:30px;color:var(--red)">schedule</span>
+              <span style="font:700 13px 'Plus Jakarta Sans';color:var(--t1)">Sesi Anda berakhir</span>
+              <span style="font:500 11.5px/1.5 'Plus Jakarta Sans';color:var(--t2);text-align:center">Masuk kembali untuk melanjutkan pekerjaan. Data form tersimpan.</span>
+              <button onClick="{{ logout }}" style="min-height:44px;padding:0 20px;border-radius:12px;border:none;background:var(--red);color:#fff;font:700 12px 'Plus Jakarta Sans';cursor:pointer">Masuk Lagi</button>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+    <sc-if value="{{ toast }}">
+      <div style="position:absolute;left:16px;right:16px;bottom:96px;padding:13px 15px;border-radius:15px;background:var(--t1);color:var(--bg);display:flex;align-items:center;gap:10px;box-shadow:var(--shadow2);animation:rbup .22s ease-out">
+        <span class="ms" style="font-size:19px">check_circle</span>
+        <span style="font:600 12px 'Plus Jakarta Sans'">{{ toast }}</span>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ showNav }}">
+      <div style="position:absolute;left:0;right:0;bottom:0;background:var(--sf);border-top:1px solid var(--bd);padding:8px 8px 22px;display:flex;align-items:stretch">
+        <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="4">
+          <button onClick="{{ n.open }}" style="flex:1;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:none;background:none;cursor:pointer;color:{{ n.color }}">
+            <span class="ms {{ n.fill }}" style="font-size:23px">{{ n.icon }}</span>
+            <span style="font:700 10px 'Plus Jakarta Sans'">{{ n.label }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <div style="width:100%;max-width:430px;display:flex;flex-wrap:wrap;gap:8px">
+    <sc-for list="{{ jumpItems }}" as="j" hint-placeholder-count="6">
+      <button onClick="{{ j.open }}" style="height:30px;padding:0 11px;border-radius:99px;border:1px solid var(--bd);background:var(--sf);color:var(--t2);font:600 10.5px 'Plus Jakarta Sans';cursor:pointer" style-hover="border-color:var(--red);color:var(--red)">{{ j.label }}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:430,&quot;height&quot;:1000}}">
+const IMG = {
+  clay: 'assets/prod-clay.jpeg', oil: 'assets/prod-oil.jpeg', psyi: 'assets/prod-psyi.jpeg',
+  water: 'assets/prod-water.jpeg', e: 'assets/prod-e.jpeg'
+};
+const PRODUCTS = [
+  { id: 'p1', name: 'Clay Pomade Strong Hold', sku: 'RBX-CLY-S80', cat: 'Pomade', unit: 'pcs', price: 125000, cost: 78000, min: 10, img: IMG.clay, wh: 48, br: 12 },
+  { id: 'p2', name: 'Pomade Classic RedBox 100g', sku: 'RBX-POM-C100', cat: 'Pomade', unit: 'pcs', price: 95000, cost: 60000, min: 12, img: IMG.e, wh: 6, br: 3 },
+  { id: 'p3', name: 'Hair Tonic RedBox', sku: 'RBX-HT-100', cat: 'Perawatan', unit: 'pcs', price: 85000, cost: 52000, min: 10, img: IMG.water, wh: 0, br: 0 },
+  { id: 'p4', name: 'Hair Powder Matte', sku: 'RBX-HP-M20', cat: 'Styling', unit: 'pcs', price: 65000, cost: 38000, min: 8, img: IMG.psyi, wh: 22, br: 9 },
+  { id: 'p5', name: 'Beard Oil RedBox', sku: 'RBX-BO-30', cat: 'Perawatan', unit: 'pcs', price: 78000, cost: 45000, min: 6, img: IMG.oil, wh: 14, br: 5 },
+  { id: 'p6', name: 'Shampoo RedBox 250ml', sku: 'RBX-SHP-250', cat: 'Perawatan', unit: 'pcs', price: 72000, cost: 42000, min: 10, img: IMG.water, wh: 31, br: 18 },
+  { id: 'p7', name: 'Hair Serum RedBox', sku: 'RBX-SRM-50', cat: 'Perawatan', unit: 'pcs', price: 110000, cost: 68000, min: 6, img: IMG.oil, wh: 3, br: 2 }
+];
+const BRANCHES = [
+  { id: 'bypass', label: 'Bypass' }, { id: 'samadikun', label: 'Samadikun' },
+  { id: 'csb', label: 'CSB Mall' }, { id: 'sumber', label: 'Sumber' }, { id: 'tegal', label: 'Tegal' }
+];
+const TRANSFERS = [
+  { id: 't1', number: 'TRF-20260823-001', from: 'Gudang Pusat', to: 'Cabang Bypass', date: '23 Agu 2026', time: '10:24 WIB', sender: 'Rizky (Gudang)', status: 'Dikirim', items: 3, qty: 40 },
+  { id: 't2', number: 'TRF-20260822-004', from: 'Gudang Pusat', to: 'Cabang CSB Mall', date: '22 Agu 2026', time: '14:02 WIB', sender: 'Rizky (Gudang)', status: 'Diterima', items: 4, qty: 62 },
+  { id: 't3', number: 'TRF-20260821-002', from: 'Gudang Pusat', to: 'Cabang Samadikun', date: '21 Agu 2026', time: '09:15 WIB', sender: 'Rizky (Gudang)', status: 'Ada Selisih', items: 2, qty: 28 },
+  { id: 't4', number: 'TRF-20260820-007', from: 'Gudang Pusat', to: 'Cabang Tegal', date: '20 Agu 2026', time: '16:40 WIB', sender: 'Rizky (Gudang)', status: 'Diterima', items: 3, qty: 35 },
+  { id: 't5', number: 'TRF-DRAFT-0012', from: 'Gudang Pusat', to: 'Cabang Sumber', date: '23 Agu 2026', time: '08:05 WIB', sender: 'Owner', status: 'Draft', items: 2, qty: 18 }
+];
+const LEDGER = [
+  { id: 'l1', product: 'Clay Pomade Strong Hold', type: 'Penerimaan Gudang', location: 'Gudang Pusat', delta: 24, before: 24, after: 48, date: '23 Agu 2026 · 09:12 WIB', by: 'Rizky', ref: 'INV/2026/08/1183', kind: 'in' },
+  { id: 'l2', product: 'Clay Pomade Strong Hold', type: 'Transfer Keluar', location: 'Gudang Pusat', delta: -20, before: 48, after: 28, date: '23 Agu 2026 · 10:24 WIB', by: 'Rizky', ref: 'TRF-20260823-001', kind: 'out' },
+  { id: 'l3', product: 'Hair Powder Matte', type: 'Transfer Masuk', location: 'Cabang CSB Mall', delta: 12, before: 4, after: 16, date: '22 Agu 2026 · 15:30 WIB', by: 'Dewi', ref: 'TRF-20260822-004', kind: 'in' },
+  { id: 'l4', product: 'Pomade Classic RedBox 100g', type: 'Adjustment', location: 'Cabang Samadikun', delta: -2, before: 5, after: 3, date: '21 Agu 2026 · 18:02 WIB', by: 'Owner', ref: 'ADJ-0091', kind: 'adj' },
+  { id: 'l5', product: 'Shampoo RedBox 250ml', type: 'Transfer Masuk', location: 'Cabang Bypass', delta: 18, before: 0, after: 18, date: '20 Agu 2026 · 17:11 WIB', by: 'Andi', ref: 'TRF-20260820-007', kind: 'in' },
+  { id: 'l6', product: 'Hair Tonic RedBox', type: 'Transfer Keluar', location: 'Gudang Pusat', delta: -10, before: 10, after: 0, date: '19 Agu 2026 · 11:47 WIB', by: 'Rizky', ref: 'TRF-20260819-003', kind: 'out' }
+];
+const NOTIFS = [
+  { id: 'n1', cat: 'Transfer', icon: 'local_shipping', title: 'Kiriman baru menunggu konfirmasi', body: 'TRF-20260823-001 · 3 item dari Gudang Pusat.', time: '10:24 WIB', unread: true },
+  { id: 'n2', cat: 'Stok', icon: 'warning', title: 'Hair Serum RedBox menipis', body: 'Sisa 3 pcs di Gudang Pusat, di bawah stok minimum.', time: '09:40 WIB', unread: true },
+  { id: 'n3', cat: 'Pengiriman', icon: 'task_alt', title: 'Penerimaan Cabang CSB Mall selesai', body: '62 pcs diterima tanpa selisih.', time: '22 Agu · 15:31 WIB', unread: false },
+  { id: 'n4', cat: 'Sistem', icon: 'sync_problem', title: 'Sinkronisasi tertunda', body: 'Satu penerimaan menunggu koneksi stabil.', time: '22 Agu · 08:12 WIB', unread: false },
+  { id: 'n5', cat: 'Pengumuman', icon: 'campaign', title: 'Stock opname bulanan', body: 'Opname wajib selesai sebelum 31 Agu 2026.', time: '20 Agu · 07:00 WIB', unread: false }
+];
+const REQUESTS = [
+  { number: 'REQ-20260823-002', status: 'Menunggu', detail: 'Cabang Bypass · 2 item (Clay Pomade, Beard Oil)', meta: '23 Agu 2026 · diajukan Andi', kind: 'warn' },
+  { number: 'REQ-20260821-005', status: 'Dipenuhi', detail: 'Cabang Tegal · 3 item · TRF-20260820-007', meta: '21 Agu 2026 · disetujui Owner', kind: 'ok' },
+  { number: 'REQ-20260819-001', status: 'Ditolak', detail: 'Cabang Sumber · 1 item (Hair Tonic)', meta: '19 Agu 2026 · stok gudang kosong', kind: 'bad' }
+];
+const RETURNS = [
+  { number: 'RET-20260822-001', status: 'Diproses', detail: 'Cabang Samadikun · Pomade Classic 2 pcs · kemasan rusak', meta: '22 Agu 2026 · Dewi', kind: 'warn' },
+  { number: 'RET-20260818-003', status: 'Selesai', detail: 'Cabang Bypass · Hair Tonic 1 pcs · kedaluwarsa', meta: '18 Agu 2026 · Andi', kind: 'ok' }
+];
+const USAGE = [
+  { number: 'Clay Pomade Strong Hold', status: 'Perlu dicek', detail: 'Dibuka di meja 2 · estimasi 21 hari', meta: 'Aktif 26 hari · Andi', kind: 'warn' },
+  { number: 'Shampoo RedBox 250ml', status: 'Normal', detail: 'Dibuka di ruang cuci', meta: 'Aktif 9 hari · Dewi', kind: 'ok' },
+  { number: 'Beard Oil RedBox', status: 'Normal', detail: 'Dibuka di meja 1', meta: 'Aktif 4 hari · Andi', kind: 'ok' }
+];
+const INSIGHTS = [
+  { number: 'Hair Tonic RedBox', status: 'Habis 3 cabang', detail: 'Bypass 0 · Sumber 0 · Tegal 0 · CSB 4', meta: 'Prioritas restock tertinggi', kind: 'bad' },
+  { number: 'Pomade Classic 100g', status: 'Menipis', detail: 'Gudang 6 · Bypass 3 · Samadikun 3', meta: 'Permintaan naik 18% bulan ini', kind: 'warn' },
+  { number: 'Shampoo RedBox 250ml', status: 'Sebaran timpang', detail: 'Bypass 18 · Tegal 2 · CSB 3', meta: 'Pertimbangkan redistribusi', kind: 'warn' }
+];
+const LOCATIONS = [
+  { name: 'Gudang Pusat', value: 'Rp 198.400.000', pct: '100%', color: 'var(--red)' },
+  { name: 'Cabang Bypass', value: 'Rp 74.200.000', pct: '62%', color: 'var(--red3)' },
+  { name: 'Cabang CSB Mall', value: 'Rp 58.900.000', pct: '48%', color: 'var(--info)' },
+  { name: 'Cabang Samadikun', value: 'Rp 42.100.000', pct: '35%', color: 'var(--warn)' },
+  { name: 'Cabang Sumber', value: 'Rp 24.750.000', pct: '21%', color: 'var(--ok)' },
+  { name: 'Cabang Tegal', value: 'Rp 14.500.000', pct: '12%', color: 'var(--t3)' }
+];
+const rp = (n) => 'Rp ' + n.toLocaleString('id-ID');
+
+class Component extends DCLogic {
+  state = {
+    theme: 'light', role: 'owner', screen: 'login', stack: [], tab: 'beranda',
+    selId: 'p1', chip: 'Semua', query: '', listMode: 'warehouse',
+    recvId: 'p1', recvQty: 24, recvNote: '', trfChip: 'Semua', ledgerChip: 'Semua', notifChip: 'Semua',
+    trfId: 't1', dest: 'bypass', cart: { p1: 20, p4: 12, p6: 8 },
+    confirm: { p1: 20, p4: 10, p6: 8 }, reasons: {}, opname: { p1: 12, p4: 9, p6: 18, p5: 5 },
+    toast: null, success: null, docs: 'requests'
+  };
+
+  push(screen, patch) { this.setState((s) => ({ ...(patch || {}), screen, stack: [...s.stack, s.screen] })); }
+  back = () => this.setState((s) => ({ screen: s.stack.length ? s.stack[s.stack.length - 1] : 'home', stack: s.stack.slice(0, -1) }));
+  toast(msg) { this.setState({ toast: msg }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ toast: null }), 2200); }
+
+  statusOf(qty, min) {
+    if (qty === 0) return { status: 'Habis', color: 'var(--red)', tint: 'var(--tred)' };
+    if (qty <= min) return { status: 'Menipis', color: 'var(--warn)', tint: 'var(--tyellow)' };
+    return { status: 'Aman', color: 'var(--ok)', tint: 'var(--tgreen)' };
+  }
+  chipStyle(active) {
+    return active
+      ? { bg: 'var(--red)', fg: '#fff', bd: 'var(--red)' }
+      : { bg: 'var(--sf)', fg: 'var(--t2)', bd: 'var(--bd)' };
+  }
+  kindStyle(kind) {
+    if (kind === 'ok') return { color: 'var(--ok)', tint: 'var(--tgreen)' };
+    if (kind === 'bad') return { color: 'var(--red)', tint: 'var(--tred)' };
+    if (kind === 'warn') return { color: 'var(--warn)', tint: 'var(--tyellow)' };
+    return { color: 'var(--info)', tint: 'var(--tblue)' };
+  }
+  statusStyle(s) {
+    if (s === 'Diterima') return this.kindStyle('ok');
+    if (s === 'Ada Selisih') return this.kindStyle('bad');
+    if (s === 'Dikirim') return this.kindStyle('warn');
+    return this.kindStyle('info');
+  }
+
+  qtyFor(p) { return this.state.listMode === 'branch' ? p.br : p.wh; }
+
+  headerFor(screen) {
+    const role = this.state.role;
+    const isOwner = role !== 'branch';
+    const branch = 'Cabang Bypass';
+    const map = {
+      home: isOwner ? ['Beranda', (role === 'owner' ? 'Owner' : 'Manager') + ' · semua lokasi'] : ['Beranda', branch],
+      stok: ['Stok', 'Pilih area yang mau dibuka'],
+      products: ['Produk', 'Master produk RedBox'],
+      warehouse: ['Gudang Pusat', 'Stok pusat · 7 SKU'],
+      branchStock: [isOwner ? 'Stok Cabang' : 'Stok Cabang', branch + ' · 7 SKU'],
+      productDetail: ['Detail Produk', 'Master & distribusi'],
+      receive: ['Terima Barang', 'Masuk ke Gudang Pusat'],
+      transfers: [isOwner ? 'Transfer' : 'Barang Masuk', isOwner ? 'Semua pengiriman' : branch],
+      transferNew: ['Buat Transfer', 'Gudang Pusat → cabang'],
+      transferDetail: ['Detail Transfer', 'Rincian & timeline'],
+      confirm: ['Konfirmasi Penerimaan', 'TRF-20260823-001'],
+      ledger: ['Inventory Ledger', 'Riwayat pergerakan stok'],
+      opname: ['Stock Opname', branch + ' · 23 Agu 2026'],
+      docs: [this.docTitle()[0], this.docTitle()[1]],
+      notif: ['Notifikasi', '2 belum dibaca'],
+      profile: ['Profil', role === 'owner' ? 'Owner RedBox' : role === 'manager' ? 'Manager Operasional' : branch],
+      scan: ['Scan Barcode', 'Arahkan ke label produk'],
+      states: ['States', 'Empty · loading · error · offline'],
+      success: ['', '']
+    };
+    return map[screen] || ['RedBox Stockist', ''];
+  }
+  docTitle() {
+    const d = this.state.docs;
+    if (d === 'returns') return ['Retur Barang', 'Pengembalian dari cabang'];
+    if (d === 'usage') return ['Stok Pemakaian', 'Barang terbuka di cabang'];
+    if (d === 'insights') return ['Insight', 'Sinyal distribusi produk'];
+    return ['Permintaan Stok', 'Cabang → gudang pusat'];
+  }
+  docRowsData() {
+    const d = this.state.docs;
+    if (d === 'returns') return RETURNS;
+    if (d === 'usage') return USAGE;
+    if (d === 'insights') return INSIGHTS;
+    return REQUESTS;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const isOwner = s.role === 'owner';
+    const isManager = s.role === 'manager';
+    const isBranch = s.role === 'branch';
+    const isCentral = isOwner || isManager;
+    const screen = s.screen;
+    const [title, subtitle] = this.headerFor(screen);
+    const sel = PRODUCTS.find((p) => p.id === s.selId) || PRODUCTS[0];
+    const selQty = sel.wh;
+    const selSt = this.statusOf(selQty, sel.min);
+    const trf = TRANSFERS.find((t) => t.id === s.trfId) || TRANSFERS[0];
+
+    const enrich = (p, mode) => {
+      const qty = mode === 'branch' ? p.br : p.wh;
+      const st = this.statusOf(qty, p.min);
+      const selected = p.id === s.selId && screen === 'productDetail';
+      return {
+        ...p, qty, ...st, loc: mode === 'branch' ? 'Cabang Bypass' : 'Gudang Pusat',
+        cardBg: selected ? 'var(--tred)' : 'var(--sf)',
+        cardBd: selected ? 'var(--red3)' : 'var(--bd)',
+        open: () => this.push('productDetail', { selId: p.id })
+      };
+    };
+
+    const mode = s.listMode;
+    const q = s.query.trim().toLowerCase();
+    const visibleProducts = PRODUCTS.map((p) => enrich(p, mode)).filter((p) => {
+      if (q && !(p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))) return false;
+      if (s.chip === 'Aman') return p.status === 'Aman';
+      if (s.chip === 'Menipis') return p.status === 'Menipis';
+      if (s.chip === 'Habis') return p.status === 'Habis';
+      return true;
+    });
+
+    const cartRows = Object.keys(s.cart).map((id) => {
+      const p = PRODUCTS.find((x) => x.id === id);
+      return {
+        ...p, qty: s.cart[id], stock: p.wh, bg: 'var(--sf)', bd: 'var(--bd)',
+        minus: () => this.setState((st2) => ({ cart: { ...st2.cart, [id]: Math.max(0, st2.cart[id] - 1) } })),
+        plus: () => this.setState((st2) => ({ cart: { ...st2.cart, [id]: Math.min(p.wh, st2.cart[id] + 1) } }))
+      };
+    });
+    const cartQty = cartRows.reduce((a, b) => a + b.qty, 0);
+    const cartValue = rp(cartRows.reduce((a, b) => a + b.qty * b.cost, 0));
+
+    const trfItemIds = ['p1', 'p4', 'p6'];
+    const sentMap = { p1: 20, p4: 12, p6: 8 };
+    const confirmRows = trfItemIds.map((id) => {
+      const p = PRODUCTS.find((x) => x.id === id);
+      const recv = s.confirm[id];
+      const diff = recv - sentMap[id];
+      const hasDiff = diff !== 0;
+      const reasonList = ['Kurang kirim', 'Rusak di jalan', 'Salah hitung'].map((label) => {
+        const active = s.reasons[id] === label;
+        const cs = this.chipStyle(active);
+        return { label, ...cs, select: () => this.setState((st2) => ({ reasons: { ...st2.reasons, [id]: label } })) };
+      });
+      return {
+        ...p, sent: sentMap[id], recv, diff: diff > 0 ? '+' + diff : String(diff), hasDiff,
+        label: hasDiff ? 'Selisih' : 'Sesuai',
+        ...(hasDiff ? this.kindStyle('warn') : this.kindStyle('ok')),
+        bg: hasDiff ? 'var(--tyellow)' : 'var(--sf)', bd: hasDiff ? 'var(--warn)' : 'var(--bd)',
+        reasons: reasonList,
+        minus: () => this.setState((st2) => ({ confirm: { ...st2.confirm, [id]: Math.max(0, st2.confirm[id] - 1) } })),
+        plus: () => this.setState((st2) => ({ confirm: { ...st2.confirm, [id]: st2.confirm[id] + 1 } }))
+      };
+    });
+    const confirmSent = trfItemIds.reduce((a, id) => a + sentMap[id], 0);
+    const confirmRecv = trfItemIds.reduce((a, id) => a + s.confirm[id], 0);
+    const cDiff = confirmRecv - confirmSent;
+
+    const opnameIds = ['p1', 'p4', 'p6', 'p5'];
+    const opnameRows = opnameIds.map((id) => {
+      const p = PRODUCTS.find((x) => x.id === id);
+      const phys = s.opname[id];
+      const diff = phys - p.br;
+      const has = diff !== 0;
+      return {
+        ...p, sys: p.br, phys, label: has ? (diff > 0 ? 'Lebih ' + diff : 'Kurang ' + Math.abs(diff)) : 'Cocok',
+        ...(has ? this.kindStyle('warn') : this.kindStyle('ok')),
+        bg: has ? 'var(--tyellow)' : 'var(--sf)', bd: has ? 'var(--warn)' : 'var(--bd)',
+        minus: () => this.setState((st2) => ({ opname: { ...st2.opname, [id]: Math.max(0, st2.opname[id] - 1) } })),
+        plus: () => this.setState((st2) => ({ opname: { ...st2.opname, [id]: st2.opname[id] + 1 } }))
+      };
+    });
+
+    const recvP = PRODUCTS.find((p) => p.id === s.recvId) || PRODUCTS[0];
+    const success = s.success || {};
+
+    const navDefs = isCentral
+      ? [{ k: 'home', label: 'Beranda', icon: 'home' }, { k: 'stok', label: 'Stok', icon: 'inventory_2' },
+         { k: 'transfers', label: 'Transfer', icon: 'local_shipping' }, { k: 'profile', label: 'Profil', icon: 'person' }]
+      : [{ k: 'home', label: 'Beranda', icon: 'home' }, { k: 'branchStock', label: 'Stok', icon: 'inventory_2' },
+         { k: 'transfers', label: 'Masuk', icon: 'move_to_inbox' }, { k: 'profile', label: 'Profil', icon: 'person' }];
+
+    const jump = [
+      ['Login', () => this.setState({ screen: 'login', stack: [] })],
+      ['Beranda', () => this.setState({ screen: 'home', stack: [] })],
+      ['Produk', () => this.push('products', { listMode: 'warehouse', chip: 'Semua' })],
+      ['Detail Produk', () => this.push('productDetail')],
+      ['Gudang Pusat', () => this.push('warehouse', { listMode: 'warehouse' })],
+      ['Terima Barang', () => this.push('receive')],
+      ['Transfer', () => this.push('transfers')],
+      ['Buat Transfer', () => this.push('transferNew')],
+      ['Detail Transfer', () => this.push('transferDetail')],
+      ['Konfirmasi Terima', () => this.push('confirm')],
+      ['Stok Cabang', () => this.push('branchStock', { listMode: 'branch' })],
+      ['Ledger', () => this.push('ledger')],
+      ['Opname', () => this.push('opname')],
+      ['Permintaan', () => this.push('docs', { docs: 'requests' })],
+      ['Retur', () => this.push('docs', { docs: 'returns' })],
+      ['Pemakaian', () => this.push('docs', { docs: 'usage' })],
+      ['Insight', () => this.push('docs', { docs: 'insights' })],
+      ['Notifikasi', () => this.push('notif')],
+      ['Profil', () => this.push('profile')],
+      ['Scanner', () => this.push('scan')],
+      ['States', () => this.push('states')]
+    ];
+
+    return {
+      theme: s.theme, themeIcon: s.theme === 'light' ? 'dark_mode' : 'light_mode',
+      themeLabel: s.theme === 'light' ? 'Mode gelap' : 'Mode terang',
+      toggleTheme: () => this.setState((st) => ({ theme: st.theme === 'light' ? 'dark' : 'light' })),
+      switchRole: () => this.setState((st) => {
+        const next = st.role === 'owner' ? 'manager' : st.role === 'manager' ? 'branch' : 'owner';
+        return { role: next, screen: 'home', stack: [], listMode: next === 'branch' ? 'branch' : 'warehouse' };
+      }),
+      roleLabel: isOwner ? 'Owner' : isManager ? 'Manager' : 'Admin Cabang',
+      isOwner, isManager,
+      canEdit: isCentral,
+      canCreateTransfer: isCentral,
+      title, subtitle,
+      showHeader: screen !== 'login' && screen !== 'success',
+      canBack: s.stack.length > 0,
+      showNav: screen !== 'login' && screen !== 'success' && screen !== 'scan',
+      back: this.back,
+      goSearch: () => this.push(isCentral ? 'products' : 'branchStock', { listMode: isCentral ? 'warehouse' : 'branch' }),
+      goNotif: () => this.push('notif'),
+      goHome: () => this.setState({ screen: 'home', stack: [] }),
+      loginOwner: () => this.setState({ role: 'owner', screen: 'home', stack: [], listMode: 'warehouse' }),
+      loginManager: () => this.setState({ role: 'manager', screen: 'home', stack: [], listMode: 'warehouse' }),
+      loginBranch: () => this.setState({ role: 'branch', screen: 'home', stack: [], listMode: 'branch' }),
+      logout: () => this.setState({ screen: 'login', stack: [] }),
+
+      isLogin: screen === 'login',
+      isOwnerHome: screen === 'home' && isCentral,
+      isBranchHome: screen === 'home' && isBranch,
+      isStokHub: screen === 'stok',
+      isList: screen === 'products' || screen === 'warehouse' || screen === 'branchStock',
+      isProductDetail: screen === 'productDetail',
+      isReceive: screen === 'receive',
+      isSuccess: screen === 'success',
+      isTransfers: screen === 'transfers',
+      isTransferNew: screen === 'transferNew',
+      isTransferDetail: screen === 'transferDetail',
+      isConfirm: screen === 'confirm',
+      isLedger: screen === 'ledger',
+      isOpname: screen === 'opname',
+      isDocs: screen === 'docs',
+      isNotif: screen === 'notif',
+      isProfile: screen === 'profile',
+      isScan: screen === 'scan',
+      isStates: screen === 'states',
+
+      lowCount: PRODUCTS.filter((p) => p.wh > 0 && p.wh <= p.min).length,
+      branchLowCount: PRODUCTS.filter((p) => p.br <= p.min).length,
+      attention: PRODUCTS.filter((p) => p.wh <= p.min).map((p) => enrich(p, 'warehouse')),
+      branchAttention: PRODUCTS.filter((p) => p.br <= p.min).map((p) => enrich(p, 'branch')),
+      locations: LOCATIONS,
+
+      goProducts: () => this.push('products', { listMode: 'warehouse', chip: 'Semua' }),
+      goWarehouse: () => this.push('warehouse', { listMode: 'warehouse', chip: 'Semua' }),
+      goLowStock: () => this.push('warehouse', { listMode: 'warehouse', chip: 'Menipis' }),
+      goTransfers: () => this.push('transfers'),
+      goTransferNew: () => this.push('transferNew'),
+      goReceive: () => this.push('receive'),
+      goLedger: () => this.push('ledger'),
+      goBranchStock: () => this.push('branchStock', { listMode: 'branch', chip: 'Semua' }),
+      goIncoming: () => this.push('transferDetail', { trfId: 't1' }),
+      goOpname: () => this.push('opname'),
+      goRequests: () => this.push('docs', { docs: 'requests' }),
+      goUsage: () => this.push('docs', { docs: 'usage' }),
+      goScan: () => this.push('scan'),
+      goEditProduct: () => this.toast('Form edit produk dibuka'),
+      showToast: () => this.toast('Tersimpan sebagai draft'),
+      toast: s.toast,
+
+      hubItems: [
+        { name: 'Produk', desc: 'Master produk, harga, stok minimum', icon: 'category', ...this.kindStyle('info'), open: () => this.push('products', { listMode: 'warehouse' }) },
+        { name: 'Gudang Pusat', desc: 'Stok pusat & penerimaan barang', icon: 'warehouse', ...this.kindStyle('ok'), open: () => this.push('warehouse', { listMode: 'warehouse' }) },
+        { name: 'Stok Cabang', desc: '5 cabang · sebaran per produk', icon: 'storefront', ...this.kindStyle('warn'), open: () => this.push('branchStock', { listMode: 'branch' }) },
+        { name: 'Inventory Ledger', desc: 'Semua pergerakan stok', icon: 'receipt_long', ...this.kindStyle('bad'), open: () => this.push('ledger') },
+        { name: 'Permintaan Stok', desc: 'Pengajuan dari cabang', icon: 'add_shopping_cart', ...this.kindStyle('info'), open: () => this.push('docs', { docs: 'requests' }) },
+        { name: 'Retur Barang', desc: 'Pengembalian & barang rusak', icon: 'keyboard_return', ...this.kindStyle('warn'), open: () => this.push('docs', { docs: 'returns' }) },
+        { name: 'Insight', desc: 'Sinyal distribusi & restock', icon: 'lightbulb', ...this.kindStyle('ok'), open: () => this.push('docs', { docs: 'insights' }) }
+      ],
+
+      query: s.query,
+      setQuery: (e) => this.setState({ query: e.target.value }),
+      chips: ['Semua', 'Aman', 'Menipis', 'Habis'].map((label) => ({ label, ...this.chipStyle(s.chip === label), select: () => this.setState({ chip: label }) })),
+      visibleProducts,
+      listCount: visibleProducts.length,
+      listLocation: mode === 'branch' ? 'Cabang Bypass' : 'Gudang Pusat',
+      listEmpty: visibleProducts.length === 0,
+      resetFilter: () => this.setState({ chip: 'Semua', query: '' }),
+
+      sel: { ...sel, qty: selQty, ...selSt, qtyWh: sel.wh, qtyBranches: sel.br * 4, priceText: rp(sel.price) },
+      selDistribution: [{ name: 'Gudang Pusat', qty: sel.wh }, ...BRANCHES.map((b, i) => ({ name: 'Cabang ' + b.label, qty: Math.max(0, sel.br - i) }))].map((d) => {
+        const st = this.statusOf(d.qty, sel.min);
+        return { ...d, unit: sel.unit, color: st.color, tint: st.tint };
+      }),
+      selMeta: [
+        { k: 'Kategori', v: sel.cat }, { k: 'Satuan', v: sel.unit },
+        { k: 'Harga jual', v: rp(sel.price) }, { k: 'Harga beli', v: isCentral ? rp(sel.cost) : 'Khusus pusat' },
+        { k: 'Stok minimum', v: sel.min + ' ' + sel.unit }, { k: 'Reorder point', v: (sel.min + 4) + ' ' + sel.unit },
+        { k: 'Status', v: 'Aktif' }
+      ],
+
+      receiveOptions: PRODUCTS.map((p) => ({
+        ...p,
+        cardBg: p.id === s.recvId ? 'var(--tred)' : 'var(--sf)',
+        cardBd: p.id === s.recvId ? 'var(--red)' : 'var(--bd)',
+        select: () => this.setState({ recvId: p.id })
+      })),
+      recvQty: s.recvQty,
+      recvMinus: () => this.setState((st) => ({ recvQty: Math.max(0, st.recvQty - 1) })),
+      recvPlus: () => this.setState((st) => ({ recvQty: st.recvQty + 1 })),
+      recvNote: s.recvNote,
+      setRecvNote: (e) => this.setState({ recvNote: e.target.value }),
+      recvBefore: recvP.wh + ' ' + recvP.unit,
+      recvAfter: (recvP.wh + s.recvQty) + ' ' + recvP.unit,
+      submitReceive: () => this.push('success', {
+        success: {
+          title: 'Barang berhasil diterima', body: recvP.name + ' masuk ke Gudang Pusat dan ledger sudah tercatat.',
+          rows: [{ k: 'Produk', v: recvP.name }, { k: 'Quantity', v: '+' + s.recvQty + ' ' + recvP.unit },
+            { k: 'Stok akhir', v: (recvP.wh + s.recvQty) + ' ' + recvP.unit }, { k: 'Referensi', v: s.recvNote || 'INV/2026/08/1183' }]
+        }
+      }),
+      successTitle: success.title || '',
+      successBody: success.body || '',
+      successRows: success.rows || [],
+
+      transferChips: ['Semua', 'Draft', 'Dikirim', 'Diterima', 'Ada Selisih'].map((label) => ({ label, ...this.chipStyle(s.trfChip === label), select: () => this.setState({ trfChip: label }) })),
+      visibleTransfers: TRANSFERS.filter((t) => (isCentral ? true : t.to === 'Cabang Bypass' || t.status === 'Dikirim'))
+        .filter((t) => s.trfChip === 'Semua' || t.status === s.trfChip)
+        .map((t) => ({ ...t, ...this.statusStyle(t.status), open: () => this.push('transferDetail', { trfId: t.id }) })),
+
+      steps: [
+        { label: 'Tujuan', color: 'var(--red)', text: 'var(--red)' },
+        { label: 'Produk', color: 'var(--red)', text: 'var(--red)' },
+        { label: 'Review', color: 'var(--bd)', text: 'var(--t3)' }
+      ],
+      branchChips: BRANCHES.map((b) => ({ label: b.label, ...this.chipStyle(s.dest === b.id), select: () => this.setState({ dest: b.id }) })),
+      destLabel: 'Cabang ' + (BRANCHES.find((b) => b.id === s.dest) || BRANCHES[0]).label,
+      cartRows, cartCount: cartRows.length, cartQty, cartValue,
+      addCartItem: () => this.toast('Pilih produk dari daftar gudang'),
+      submitTransfer: () => this.push('success', {
+        success: {
+          title: 'Transfer terkirim', body: 'Admin cabang akan mendapat notifikasi untuk konfirmasi penerimaan.',
+          rows: [{ k: 'Nomor', v: 'TRF-20260823-002' }, { k: 'Tujuan', v: 'Cabang ' + (BRANCHES.find((b) => b.id === s.dest) || BRANCHES[0]).label },
+            { k: 'Total unit', v: cartQty + ' pcs' }, { k: 'Status', v: 'Dikirim' }]
+        }
+      }),
+
+      trf: { ...trf, ...this.statusStyle(trf.status) },
+      trfItems: trfItemIds.map((id) => {
+        const p = PRODUCTS.find((x) => x.id === id);
+        const recv = trf.status === 'Dikirim' ? '—' : (id === 'p4' ? sentMap[id] - 2 : sentMap[id]);
+        const diffN = trf.status === 'Dikirim' ? null : (id === 'p4' ? -2 : 0);
+        return {
+          ...p, sent: sentMap[id], recv,
+          diff: diffN === null ? '—' : (diffN === 0 ? '0' : String(diffN)),
+          ...(diffN ? this.kindStyle('bad') : this.kindStyle('info'))
+        };
+      }),
+      timeline: [
+        { title: 'Transfer dibuat', meta: '23 Agu 2026 · 10:12 WIB · Owner', dot: 'var(--ok)' },
+        { title: 'Barang dikirim dari Gudang Pusat', meta: '23 Agu 2026 · 10:24 WIB · Rizky', dot: 'var(--red)' },
+        { title: 'Menunggu konfirmasi cabang', meta: 'Cabang Bypass · belum dikonfirmasi', dot: 'var(--bd)' }
+      ],
+      canConfirm: !isOwner && trf.status === 'Dikirim',
+      goConfirm: () => this.push('confirm'),
+
+      confirmRows, confirmSent, confirmRecv,
+      confirmDiff: cDiff === 0 ? '0' : (cDiff > 0 ? '+' + cDiff : String(cDiff)),
+      confirmDiffColor: cDiff === 0 ? 'var(--ok)' : 'var(--warn)',
+      submitConfirm: () => this.push('success', {
+        success: {
+          title: cDiff === 0 ? 'Penerimaan dikonfirmasi' : 'Diterima dengan selisih',
+          body: cDiff === 0 ? 'Stok Cabang Bypass sudah diperbarui.' : 'Selisih dilaporkan ke gudang pusat untuk ditinjau.',
+          rows: [{ k: 'Transfer', v: 'TRF-20260823-001' }, { k: 'Dikirim', v: confirmSent + ' pcs' },
+            { k: 'Diterima', v: confirmRecv + ' pcs' }, { k: 'Selisih', v: cDiff === 0 ? 'Tidak ada' : cDiff + ' pcs' }]
+        }
+      }),
+
+      ledgerChips: ['Semua', 'Penerimaan Gudang', 'Transfer Keluar', 'Transfer Masuk', 'Adjustment'].map((label) => ({ label, ...this.chipStyle(s.ledgerChip === label), select: () => this.setState({ ledgerChip: label }) })),
+      visibleLedger: LEDGER.filter((l) => s.ledgerChip === 'Semua' || l.type === s.ledgerChip).map((l) => ({
+        ...l, delta: (l.delta > 0 ? '+' : '') + l.delta,
+        icon: l.kind === 'in' ? 'south_west' : l.kind === 'out' ? 'north_east' : 'tune',
+        color: l.delta > 0 ? 'var(--ok)' : 'var(--red)',
+        tint: l.delta > 0 ? 'var(--tgreen)' : 'var(--tred)'
+      })),
+
+      opnameRows,
+      opnameDone: opnameIds.length,
+      opnamePct: Math.round((opnameIds.length / 7) * 100) + '%',
+      submitOpname: () => this.push('success', {
+        success: {
+          title: 'Opname terkirim', body: 'Hasil hitung fisik dikirim ke owner untuk persetujuan adjustment.',
+          rows: [{ k: 'Cabang', v: 'Cabang Bypass' }, { k: 'Produk dihitung', v: opnameIds.length + ' dari 7' },
+            { k: 'Produk berselisih', v: opnameRows.filter((o) => o.label !== 'Cocok').length + ' produk' }]
+        }
+      }),
+
+      docRows: this.docRowsData().map((d) => ({ ...d, ...this.kindStyle(d.kind) })),
+      docCta: s.docs === 'returns' ? 'Buat Retur' : s.docs === 'usage' ? 'Catat Pemakaian' : s.docs === 'insights' ? 'Ekspor Insight' : 'Ajukan Permintaan',
+
+      notifChips: ['Semua', 'Stok', 'Transfer', 'Pengiriman', 'Sistem', 'Pengumuman'].map((label) => ({ label, ...this.chipStyle(s.notifChip === label), select: () => this.setState({ notifChip: label }) })),
+      visibleNotifs: NOTIFS.filter((n) => s.notifChip === 'Semua' || n.cat === s.notifChip).map((n) => ({
+        ...n, ...this.kindStyle(n.cat === 'Stok' ? 'warn' : n.cat === 'Transfer' ? 'bad' : n.cat === 'Pengiriman' ? 'ok' : 'info'),
+        bg: n.unread ? 'var(--sf)' : 'var(--sf2)', bd: n.unread ? 'var(--bd)' : 'var(--sf2)'
+      })),
+
+      initials: isOwner ? 'AW' : isManager ? 'SN' : 'AP',
+      userName: isOwner ? 'Ardi Wijaya' : isManager ? 'Sinta Nurhaliza' : 'Andi Prakoso',
+      userEmail: isOwner ? 'owner@redbox.id' : isManager ? 'manager@redbox.id' : 'bypass@redbox.id',
+      profileRows: [
+        { icon: 'apartment', label: isCentral ? 'Organisasi' : 'Cabang', value: isCentral ? 'RedBox Barbershop Indonesia · 6 lokasi' : 'Cabang Bypass · terkunci', action: () => this.toast('Peran mengunci akses cabang') },
+        { icon: 'key', label: 'Hak akses', value: isOwner ? 'Penuh · termasuk nonaktifkan produk & adjustment' : isManager ? 'Baca, edit, buat & konfirmasi transfer' : 'Cabang Bypass · terima, opname, minta stok', action: () => this.toast(isOwner ? 'Akses penuh' : isManager ? 'Nonaktifkan produk khusus owner' : 'Akses terbatas cabang') },
+        { icon: 'verified_user', label: 'Status akun', value: 'Aktif · terverifikasi', action: () => this.toast('Akun aktif') },
+        { icon: 'lock_reset', label: 'Ganti password', value: 'Terakhir diubah 2 bulan lalu', action: () => this.toast('Tautan ganti password dikirim') },
+        { icon: 'support_agent', label: 'Bantuan', value: 'Hubungi gudang pusat', action: () => this.toast('Menghubungi gudang pusat') },
+        { icon: 'bug_report', label: 'States & komponen', value: 'Empty, loading, error, offline', action: () => this.push('states') }
+      ],
+
+      skeletons: [1, 2, 3],
+      navItems: navDefs.map((n) => {
+        const active = screen === n.k || (n.k === 'transfers' && (screen === 'transferDetail' || screen === 'confirm' || screen === 'transferNew'));
+        return { label: n.label, icon: n.icon, color: active ? 'var(--red)' : 'var(--t3)', fill: active ? 'fill' : '', open: () => this.setState({ screen: n.k, stack: [] }) };
+      }),
+      jumpItems: jump.map(([label, fn]) => ({ label, open: fn }))
+    };
+  }
+}
+</script>
+</body>
+</html>
