@@ -3,7 +3,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useUser } from '@/hooks/useUser';
-import { listProducts, getInventorySummary, receiveWarehouseStock, type StockistProduct, type InventoryBalance } from '@/lib/stockistApi';
+import { listProducts, getInventorySummary, type StockistProduct, type InventoryBalance } from '@/lib/stockistApi';
 import { BarcodeScannerSheet } from '@/components/stockist/BarcodeScannerSheet';
 import { EmptyState } from '@/components/stockist/EmptyState';
 
@@ -27,12 +27,6 @@ function WarehousePageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
-
-  // Form State
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ product_id: '', quantity: '', reason: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,26 +57,6 @@ function WarehousePageContent() {
   useEffect(() => {
     refresh();
   }, []);
-
-  async function handleReceive(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    setSubmitting(true);
-    try {
-      await receiveWarehouseStock({
-        product_id: form.product_id,
-        quantity: Number(form.quantity),
-        reason: form.reason || undefined
-      });
-      setForm({ product_id: '', quantity: '', reason: '' });
-      setShowForm(false);
-      await refresh();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Gagal menerima barang');
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   function handleScan(code: string) {
     setScannerOpen(false);
@@ -126,8 +100,6 @@ function WarehousePageContent() {
     return '/api/stockist/product-image/E_left_here.jpeg';
   };
 
-  const isOwner = user?.role === 'owner';
-
   return (
     <div className="flex flex-col gap-5 animate-fade-in">
       {/* Header Context */}
@@ -136,14 +108,14 @@ function WarehousePageContent() {
           <h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Gudang Pusat</h2>
           <p className="text-[12px] text-text-muted mt-1">Status dan penerimaan barang gudang.</p>
         </div>
-        {isOwner && (
-          <button
-            onClick={() => setShowForm(!showForm)}
+        {(user?.role === 'owner' || user?.role === 'manager') && (
+          <Link
+            href="/admin/stockist/warehouse/receive"
             className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-white text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95"
           >
-            <span className="material-symbols-outlined text-[16px]">{showForm ? 'close' : 'call_received'}</span>
-            {showForm ? 'Batal' : 'Terima'}
-          </button>
+            <span className="material-symbols-outlined text-[16px]">call_received</span>
+            Terima
+          </Link>
         )}
       </div>
 
@@ -203,75 +175,6 @@ function WarehousePageContent() {
             </div>
           </div>
         </section>
-      )}
-
-      {/* Receive Stock Form (Collapsible) */}
-      {isOwner && showForm && (
-        <form onSubmit={handleReceive} className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-4 shadow-lg animate-slide-up">
-          <h3 className="font-semibold text-[14px] text-text-primary flex items-center gap-1.5 border-b border-border-base pb-2">
-            <span className="material-symbols-outlined text-[18px]">call_received</span>
-            Terima Barang Masuk
-          </h3>
-
-          {formError && (
-            <div className="bg-danger/10 border border-danger text-danger text-[12px] rounded-lg p-2.5 flex items-center gap-2">
-              <span className="material-symbols-outlined text-[16px]">error</span>
-              <span>{formError}</span>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-4 text-sm">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-medium text-text-secondary">Pilih Produk *</label>
-              <select
-                value={form.product_id}
-                onChange={(e) => setForm({ ...form, product_id: e.target.value })}
-                className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2.5 text-text-primary focus:outline-none focus:border-primary-container"
-                required
-              >
-                <option value="">-- Pilih produk --</option>
-                {products.filter((p) => p.is_active).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.sku})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-medium text-text-secondary">Quantity Diterima *</label>
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="Mis: 100"
-                  value={form.quantity}
-                  onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                  className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
-                  required
-                />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-medium text-text-secondary">No. Invoice / Catatan</label>
-                <input
-                  placeholder="No. Invoice / Supplier"
-                  value={form.reason}
-                  onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                  className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-primary-container"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow mt-2"
-            >
-              {submitting ? 'Memproses...' : 'Konfirmasi Terima Barang'}
-            </button>
-          </div>
-        </form>
       )}
 
       {/* Search Bar */}
