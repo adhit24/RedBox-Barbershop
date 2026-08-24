@@ -9,10 +9,12 @@ import {
   listProducts,
   getInventorySummary,
   listTransfers,
+  getTransfer,
   getAssetDashboard,
   getServiceUsage,
   type InventoryBalance,
   type StockTransfer,
+  type StockTransferItem,
   type StockistAssetDashboard,
   type AssetLocationSummary,
   type ServiceUsage
@@ -339,12 +341,21 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
 // Branch admin: Beranda (unchanged from prior behavior)
 // ---------------------------------------------------------------------------
 
+function formatTransferSentAt(iso: string): string {
+  const date = new Date(iso);
+  const datePart = date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const timePart = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return `${datePart} · ${timePart} WIB`;
+}
+
 function BranchAdminDashboard({ user }: { user: AppUser }) {
   const [branch, setBranch] = useState<string>('');
   const [products, setProducts] = useState<any[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
   const [activeUsages, setActiveUsages] = useState<ServiceUsage[]>([]);
+  const [pendingTransfer, setPendingTransfer] = useState<StockTransfer | null>(null);
+  const [pendingItems, setPendingItems] = useState<StockTransferItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -376,6 +387,21 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
       });
   }, [branch]);
 
+  useEffect(() => {
+    const sent = transfers
+      .filter((t) => t.status === 'SENT')
+      .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime());
+    const latest = sent[0] ?? null;
+    setPendingTransfer(latest);
+    if (!latest) {
+      setPendingItems([]);
+      return;
+    }
+    getTransfer(latest.id)
+      .then(({ items }) => setPendingItems(items))
+      .catch(() => setPendingItems([]));
+  }, [transfers]);
+
   const qtyByProduct = new Map(balances.map((b) => [b.product_id, b.quantity]));
 
   const lowStockItems = products.map(p => {
@@ -384,7 +410,6 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
   }).filter(item => item.isLow);
 
   const totalStock = balances.reduce((sum, b) => sum + b.quantity, 0);
-  const activeTransfersCount = transfers.filter(t => t.status === 'SENT').length;
 
   const usagesWithEstimate = activeUsages
     .map((usage) => {
@@ -415,6 +440,31 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
         </div>
       </section>
 
+      {!loading && pendingTransfer && (
+        <Link
+          href={`/admin/stockist/transfers/${pendingTransfer.id}`}
+          className="flex flex-col gap-3 rounded-[20px] bg-primary-container p-4 text-white active:scale-[0.99] transition-transform"
+        >
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[20px]">local_shipping</span>
+            <span className="flex-1 text-[14px] font-semibold">1 kiriman menunggu konfirmasi</span>
+            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+          </div>
+          <div className="flex flex-col gap-1 rounded-2xl bg-white/[0.12] p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[12px] font-bold">{pendingTransfer.transfer_number}</span>
+              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-semibold">Dikirim</span>
+            </div>
+            <span className="text-[12px] text-white/90">
+              {pendingTransfer.source_name || 'Gudang Pusat'} → {pendingTransfer.destination_name || BRANCH_NAMES[branch] || branch} · {pendingItems.length} item · {pendingItems.reduce((sum, item) => sum + item.quantity_sent, 0)} pcs
+            </span>
+            <span className="text-[11px] text-white/70">
+              Dikirim {formatTransferSentAt(pendingTransfer.sent_at)}
+            </span>
+          </div>
+        </Link>
+      )}
+
       {error && (
         <div className="bg-danger/10 border border-danger text-danger text-sm rounded-lg p-3 flex items-center gap-2">
           <span className="material-symbols-outlined">error</span>
@@ -428,12 +478,48 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
         </div>
       ) : (
         <>
+          {/* Stats Grid */}
+          <section className="grid grid-cols-2 gap-3">
+            <div className="bg-tint-success border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
+              <div className="text-text-secondary text-[12px] font-medium flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-success">inventory_2</span>
+                Stok cabang (unit)
+              </div>
+              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2">
+                {totalStock.toLocaleString('id-ID')}
+              </div>
+            </div>
+
+            <div className="bg-tint-warning border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
+              <div className="text-text-secondary text-[12px] font-medium flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-warning">warning</span>
+                Perlu restock
+              </div>
+              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2">
+                {lowStockItems.length}
+              </div>
+            </div>
+          </section>
+
+          {/* Quick Actions */}
+          <section className="flex flex-col gap-3">
+            <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Aksi Cepat</h3>
+            <QuickActionGrid
+              actions={[
+                { key: 'konfirmasi-kiriman', href: '/admin/stockist/transfers', icon: 'task_alt', label: 'Konfirmasi Kiriman' },
+                { key: 'lihat-stok', href: '/admin/stockist/branch-stock', icon: 'boxes', label: 'Lihat Stok' },
+                { key: 'stock-opname', href: '/admin/stockist/stock-opname', icon: 'checklist', label: 'Stock Opname' },
+                { key: 'minta-stok', href: '/admin/stockist/requests/new', icon: 'add_shopping_cart', label: 'Minta Stok' },
+              ]}
+            />
+          </section>
+
           {/* Low Stock Alert Card */}
           <section className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 shadow-lg">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2 text-danger font-semibold text-[14px] font-display">
                 <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
-                Stok Menipis ({lowStockItems.length})
+                Stok menipis di cabang
               </div>
               {lowStockItems.length > 0 && (
                 <Link
@@ -464,7 +550,7 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
                       </div>
                       <div className="flex flex-col">
                         <span className="text-[13px] font-semibold text-text-primary leading-tight">{item.name}</span>
-                        <span className="text-[10px] text-text-muted mt-0.5 font-mono">SKU: {item.sku}</span>
+                        <span className="text-[10px] text-text-muted mt-0.5 font-mono">{item.sku} · min {item.minimum_stock} pcs</span>
                       </div>
                     </div>
                     <div className="flex flex-col items-end">
@@ -477,36 +563,10 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
             </div>
           </section>
 
-          {/* Stats Grid */}
-          <section className="grid grid-cols-2 gap-3">
-            <div className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
-              <div className="text-text-muted text-[12px] font-medium flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px]">inventory_2</span>
-                Total Stok
-              </div>
-              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2">
-                {totalStock.toLocaleString('id-ID')}
-              </div>
-            </div>
-
-            <div className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col justify-between min-h-[96px]">
-              <div className="text-text-muted text-[12px] font-medium flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px]">local_shipping</span>
-                Transfer Aktif
-              </div>
-              <div className="text-[26px] font-bold text-text-primary tabular-nums font-display leading-none mt-2 flex items-baseline gap-2">
-                {activeTransfersCount}
-                <span className="text-[10px] text-warning font-semibold bg-warning/10 px-2 py-0.5 rounded border border-warning/20">
-                  Kirim
-                </span>
-              </div>
-            </div>
-          </section>
-
           {/* Barang Pemakaian Aktif */}
           <Link
             href="/admin/stockist/branch-stock?openUsage=1"
-            className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 shadow-lg active:scale-[0.99] transition-transform"
+            className="border border-border-base rounded-xl p-4 flex flex-col gap-3 active:scale-[0.99] transition-transform"
           >
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2 text-text-primary font-semibold text-[14px] font-display">
@@ -550,55 +610,6 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
               </>
             )}
           </Link>
-
-          {/* Quick Actions */}
-          <section className="flex flex-col gap-3">
-            <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase px-1">Aksi Cepat</h3>
-
-            <div className="flex flex-col gap-2">
-              <Link
-                href="/admin/stockist/requests/new"
-                className="bg-primary-container hover:bg-inverse-primary text-white font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
-              >
-                <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
-                Ajukan Permintaan Stok
-              </Link>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Link
-                  href="/admin/stockist/transfers"
-                  className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[48px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[18px]">call_received</span>
-                  Terima Transfer
-                </Link>
-                <Link
-                  href="/admin/stockist/requests"
-                  className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[48px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[18px]">list_alt</span>
-                  Riwayat Permintaan
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Link
-                  href="/admin/stockist/stock-opname"
-                  className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[18px]">checklist</span>
-                  Stock Opname
-                </Link>
-                <Link
-                  href="/admin/stockist/returns"
-                  className="bg-surface-elevated border border-border-base text-text-primary font-semibold text-[13px] h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:bg-surface-container transition-colors"
-                >
-                  <span className="material-symbols-outlined text-[18px]">keyboard_return</span>
-                  Retur Barang
-                </Link>
-              </div>
-            </div>
-          </section>
         </>
       )}
     </div>
