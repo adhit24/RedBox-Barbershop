@@ -11,6 +11,7 @@
  "dependencies": {
   "@supabase/ssr": "^0.10.3",
   "@supabase/supabase-js": "^2.105.4",
+  "@zxing/browser": "^0.2.1",
   "axios": "^1.19.0",
   "clsx": "^2.1.1",
   "framer-motion": "^12.40.0",
