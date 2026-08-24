@@ -63,13 +63,16 @@ Dark-theme color tokens: `--color-surface-elevated` (#1E1A1B), `--color-surface-
 
 ---
 
-## Decisions needed from the user/designer before implementation (cannot be safely inferred)
+## Decisions — resolved 2026-08-24
 
-1. **Manager's exact permission boundary beyond the 2 named capabilities.** README only explicitly says Manager = Owner minus deactivate-product, plus confirm-receipt. Ambiguous and currently undecided: can Manager approve inventory adjustments, approve/reject stock requests, approve/reject/receive returns, approve stock opname sessions, reactivate a deactivated product, receive warehouse stock (Terima Barang), see the Insight dashboard and per-branch detail views? Each of these is currently owner-only in code with no spec guidance either way.
-2. **Stock Opname's owner-approval step** — the live DRAFT→SUBMITTED→APPROVED workflow (a second person must approve before stock adjusts) isn't in the spec at all. Keep it (spec was just incomplete) or remove it (spec intends direct submission)?
-3. **Insight and Stok Pemakaian screens** — both are functionally richer live than the spec's generic document-list pattern. Keep the richer live UX (update the spec/backlog to match reality) or rebuild to match spec's plainer list?
-4. **Reorder point**: derive as `minimum_stock + 4` everywhere (removing the freestanding editable column and any data that diverges from the formula), or keep it as an independently-set value and treat the spec's formula as just the *default*?
-5. **`--color-danger`/`--color-status-habis` dark-mode value** — align to the primary red (`#E33A32`, matching the light-theme pattern) or leave as the current distinct `#E0504B`?
+1. **Manager's permission boundary — RESOLVED.** Manager gets inventory-adjustment approval, and approve/reject on Permintaan Stok / Retur / Stock Opname — all "same as Owner," consistent with the README's "Manager = Owner minus deactivate-product, plus confirm-receipt" framing (these approvals aren't in the 2 named exceptions, so they default to Owner-equivalent). Still open, not yet asked: reactivate-product, Terima Barang (warehouse receiving), Insight dashboard access, per-branch detail view access — treat these the same way (default to Owner-equivalent) unless a reason to exclude Manager surfaces during implementation.
+2. **Stock Opname approval step — RESOLVED: keep it.** The DRAFT→SUBMITTED→APPROVED workflow stays (do not remove it to match the mockup's implied direct-submit flow). Approval authority extends to both Owner and Manager (per decision #1) — the existing `canApprove`/owner-only gate on the opname approve action needs to become `role === 'owner' || role === 'manager'`, not removed.
+3. **Insight and Stok Pemakaian — RESOLVED: simplify to match the mockup.** Restyle both to the spec's generic document-list pattern (row: title/number + badge, detail line, meta line; CTA "Ekspor Insight" / "Catat Pemakaian"). Interpretation to apply when implementing: this is a **visual/structural restyle**, not a mandate to delete working functionality — Stok Pemakaian's real open/close usage lifecycle (`openServiceUsage`/`finishServiceUsage`, PIC assignment, stock deduction) and Insight's real computed decision-support data should still work, just presented through the spec's list-row shape instead of the current bespoke dashboard layout. If this interpretation turns out wrong once in progress (i.e. the user actually wants the underlying capability removed, not just restyled), stop and confirm before deleting anything — restyling is reversible, deleting working mutations is not.
+
+## Still open — not yet asked, revisit when reached
+
+4. **Reorder point**: derive as `minimum_stock + 4` everywhere, or keep as an independently-set value with the formula as just a default? Ask when this item is reached in the execution order.
+5. **`--color-danger`/`--color-status-habis` dark-mode value** — align to `#E33A32` (matching the light-theme pattern) or leave as `#E0504B`? Ask when reached.
 
 ---
 
