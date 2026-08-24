@@ -39,8 +39,12 @@ function createAiOrchestratorRoutes({ classifier = classifyMessage, env = proces
 }
 
 function orchestratorJsonErrorHandler(error, req, res, next) {
-  if (error?.type === 'entity.parse.failed' && /^\/api\/ai\/orchestrator\/?$/.test(req.path)) {
-    return res.status(400).json({ error: 'malformed_json' });
+  const isPostRoute = req.method === 'POST' && /^\/api\/ai\/orchestrator\/?$/.test(req.path);
+  const isBodyParserFailure = error?.type === 'entity.parse.failed'
+    && (error?.status === 400 || error?.statusCode === 400);
+  const isVercelFailure = error?.statusCode === 400 && error?.message === 'Invalid JSON';
+  if (isPostRoute && (isBodyParserFailure || isVercelFailure)) {
+    return res.status(400).json({ error: 'invalid_json' });
   }
   return next(error);
 }

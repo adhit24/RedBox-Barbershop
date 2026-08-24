@@ -70,12 +70,28 @@ function createTestApp({ classifier = async () => ({
   return testApp;
 }
 
-async function post(application, { body = { message: 'berapa harganya?' }, secret = 'test-internal-secret', raw, path = '/api/ai/orchestrator' } = {}) {
+function createParserErrorApp(error) {
+  const testApp = express();
+  testApp.use('/api/ai/orchestrator', (_req, _res, next) => next(error));
+  testApp.use(orchestratorJsonErrorHandler);
+  testApp.use((forwarded, _req, res, _next) => {
+    res.status(599).json({ error: 'forwarded', message: forwarded.message });
+  });
+  return testApp;
+}
+
+async function post(application, {
+  body = { message: 'berapa harganya?' },
+  secret = 'test-internal-secret',
+  raw,
+  path = '/api/ai/orchestrator',
+  method = 'POST',
+} = {}) {
   const server = await listen(application);
   try {
     const { port } = server.address();
     const response = await fetch(`http://127.0.0.1:${port}${path}`, {
-      method: 'POST',
+      method,
       headers: {
         'content-type': 'application/json',
         ...(secret === null ? {} : { 'x-orchestrator-secret': secret }),
@@ -125,7 +141,7 @@ test('empty, non-string, and too-long messages are rejected', async () => {
 test('malformed JSON returns a scoped safe 400 response', async () => {
   assert.deepEqual(await post(createTestApp(), { raw: '{bad json' }), {
     status: 400,
-    body: { error: 'malformed_json' },
+    body: { error: 'invalid_json' },
   });
 });
 
@@ -137,11 +153,58 @@ test('malformed JSON on a trailing-slash route returns 400 without logging the r
     assert.deepEqual(await post(app, {
       path: '/api/ai/orchestrator/',
       raw: '{raw-private-marker-88',
-    }), { status: 400, body: { error: 'malformed_json' } });
+    }), { status: 400, body: { error: 'invalid_json' } });
   } finally {
     console.error = originalError;
   }
   assert.equal(logs.some((line) => line.includes('raw-private-marker-88')), false);
+});
+
+test('Vercel Invalid JSON error shape returns scoped safe 400', async () => {
+  const error = new Error('Invalid JSON');
+  error.statusCode = 400;
+  assert.deepEqual(await post(createParserErrorApp(error)), {
+    status: 400,
+    body: { error: 'invalid_json' },
+  });
+});
+
+test('other statusCode 400 errors are not converted to invalid_json', async () => {
+  const error = new Error('Invalid request state');
+  error.statusCode = 400;
+  assert.deepEqual(await post(createParserErrorApp(error)), {
+    status: 599,
+    body: { error: 'forwarded', message: 'Invalid request state' },
+  });
+});
+
+test('unexpected Invalid JSON server errors remain observable', async () => {
+  const error = new Error('Invalid JSON');
+  error.statusCode = 500;
+  assert.deepEqual(await post(createParserErrorApp(error)), {
+    status: 599,
+    body: { error: 'forwarded', message: 'Invalid JSON' },
+  });
+});
+
+test('Vercel Invalid JSON errors on non-POST requests remain observable', async () => {
+  const error = new Error('Invalid JSON');
+  error.statusCode = 400;
+  assert.deepEqual(await post(createParserErrorApp(error), { method: 'PATCH' }), {
+    status: 599,
+    body: { error: 'forwarded', message: 'Invalid JSON' },
+  });
+});
+
+test('unexpected body-parser-shaped server errors remain observable', async () => {
+  const error = new Error('Unexpected parser failure');
+  error.type = 'entity.parse.failed';
+  error.status = 500;
+  error.statusCode = 500;
+  assert.deepEqual(await post(createParserErrorApp(error)), {
+    status: 599,
+    body: { error: 'forwarded', message: 'Unexpected parser failure' },
+  });
 });
 
 test('route sends only the trimmed message to classifier and never forwards customer_phone', async () => {
