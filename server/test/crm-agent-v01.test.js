@@ -7,6 +7,8 @@ const { resolveCustomerIdentity } = require('../crm/customerIdentity');
 const { getCustomer360, calculateMode } = require('../crm/customer360Service');
 const { projectInternal, projectCustomerSelf } = require('../crm/customerPrivacy');
 const { executeCrmTool, CRM_TOOLS } = require('../agents/crm/crmAgent');
+const { issueTrustedIdentity } = require('../identity/trustedIdentity');
+const { executeOrchestration } = require('../orchestrator/executionService');
 const fs = require('fs');
 const path = require('path');
 
@@ -212,6 +214,52 @@ test('Dual Identity: phone database error plus customer UUID returns db_error', 
 
   assert.equal(res.status, 'db_error');
   assert.equal(res.error, 'database_unavailable');
+});
+
+test('Dual Identity: valid phone plus unresolved customer UUID fails closed', async () => {
+  const res = await executeCrmTool('get_points', {}, {
+    supabase: createMockSupabase({
+      customers: [{
+        id: '11111111-2222-4333-8444-555555555555',
+        wa: '6281234567890',
+        phone_e164: '+6281234567890',
+      }],
+    }),
+    projection: 'CUSTOMER_SELF',
+    phone: '6281234567890',
+    customer_id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+  });
+
+  assert.equal(res.status, 'forbidden');
+  assert.equal(res.error, 'identity_unverified');
+  assert.equal(res.data, null);
+});
+
+test('End-to-end dual identity leak regression never exposes the previous 77-point balance', async () => {
+  const customerId = '11111111-2222-4333-8444-555555555555';
+  const output = await executeOrchestration({
+    intent: 'points_inquiry',
+    route: 'crm_agent',
+    agent: 'crm_agent',
+    action: 'get_points',
+    confidence: 0.94,
+    model_tier: 'economy',
+  }, {
+    trustedIdentity: issueTrustedIdentity({
+      source: 'member_session',
+      verifiedPhone: '6281111111111',
+      verifiedCustomerId: customerId,
+    }),
+    supabase: createMockSupabase({
+      customers: [{ id: customerId, wa: '6289999999999', phone_e164: '+6289999999999' }],
+      memberPointsBalance: [{ customer_id: customerId, customer_wa: '6289999999999', total_points: 77 }],
+    }),
+  });
+
+  assert.equal(output.execution_status, 'forbidden');
+  assert.equal(output.result.status, 'forbidden');
+  assert.equal(output.result.data, null);
+  assert.doesNotMatch(JSON.stringify(output), /77/);
 });
 
 // ── 2. INTERNAL PROJECTION AUTHORIZATION TESTS ────────────────────────────────

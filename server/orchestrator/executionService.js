@@ -12,18 +12,42 @@ const POINTS_EXECUTION = Object.freeze({
   model_tier: 'economy',
   tool: 'get_points',
 });
+const POINTS_CLASSIFICATION_KEYS = Object.freeze([
+  'intent',
+  'route',
+  'agent',
+  'action',
+  'confidence',
+  'model_tier',
+]);
+const POINTS_CLASSIFICATION_KEY_SET = new Set(POINTS_CLASSIFICATION_KEYS);
 
-function isPlainRecord(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+function readPointsClassification(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   try {
-    return Object.getPrototypeOf(value) === Object.prototype;
+    if (Object.getPrototypeOf(value) !== Object.prototype) return null;
+
+    const ownKeys = Reflect.ownKeys(value);
+    if (ownKeys.length !== POINTS_CLASSIFICATION_KEYS.length
+      || ownKeys.some(key => typeof key !== 'string' || !POINTS_CLASSIFICATION_KEY_SET.has(key))) {
+      return null;
+    }
+
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const classification = {};
+    for (const key of POINTS_CLASSIFICATION_KEYS) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.enumerable !== true) return null;
+      classification[key] = descriptor.value;
+    }
+    return classification;
   } catch (_) {
-    return false;
+    return null;
   }
 }
 
-function matchesPointsAllowlist(classification) {
-  return Boolean(isPlainRecord(classification)
+function matchesPointsData(classification) {
+  return Boolean(classification
     && classification.intent === POINTS_EXECUTION.intent
     && classification.route === POINTS_EXECUTION.route
     && classification.agent === POINTS_EXECUTION.agent
@@ -35,8 +59,12 @@ function matchesPointsAllowlist(classification) {
     && classification.confidence <= 1);
 }
 
+function matchesPointsAllowlist(classification) {
+  return matchesPointsData(readPointsClassification(classification));
+}
+
 function safeClassification(classification) {
-  const value = isPlainRecord(classification) ? classification : {};
+  const value = classification || {};
   return {
     intent: typeof value.intent === 'string' ? value.intent : 'unknown',
     route: typeof value.route === 'string' ? value.route : 'reddy_agent',
@@ -73,8 +101,9 @@ function mapCrmFailure(base, crmResult) {
 }
 
 async function executeOrchestration(classificationResult, dependencies = {}) {
-  const base = safeClassification(classificationResult);
-  if (!matchesPointsAllowlist(classificationResult)) {
+  const classification = readPointsClassification(classificationResult);
+  const base = safeClassification(classification);
+  if (!matchesPointsData(classification)) {
     return {
       ...base,
       mode: 'classify_only',

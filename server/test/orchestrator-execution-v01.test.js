@@ -81,7 +81,23 @@ test('production issuer rejects internal_test and malformed phone identities', (
     () => issueTestIdentity({ source: 'internal_test', phone: '081234567890' }),
     { code: 'TRUSTED_IDENTITY_SOURCE_INVALID' },
   );
-  for (const phone of ['+1 415 555 2671', '+44 20 7946 0958', '0812abc34567890', '62812x3456789', '6214155552671']) {
+  for (const phone of [
+    '+1 415 555 2671',
+    '+44 20 7946 0958',
+    '6214155552671',
+    '0812abc34567890',
+    '62812x3456789',
+    '0812é345678',
+    '０８１２３４５６７８９０',
+    '0812😀345678',
+    '6.28123456789e12',
+    '123',
+    '081234567890123456789',
+    null,
+    6281234567890,
+    {},
+    [],
+  ]) {
     assert.throws(() => issueTestIdentity({ phone }), { code: 'TRUSTED_IDENTITY_INVALID' });
   }
 });
@@ -104,6 +120,11 @@ test('issuer rejects inherited, custom-prototype, null-prototype, and proto-key 
 test('forged, cloned, spread, and serialized identities remain untrusted', () => {
   const identity = issueTestIdentity({ phone: '081234567890' });
   const forged = Object.freeze({ source: identity.source, phone: identity.phone });
+
+  assert.throws(() => {
+    identity.phone = '6289999999999';
+  }, TypeError);
+  assert.equal(identity.phone, '6281234567890');
 
   assert.equal(isTrustedIdentity(forged), false);
   assert.equal(isTrustedIdentity({ ...identity }), false);
@@ -166,22 +187,75 @@ test('only the exact server-owned points allowlist can invoke CRM', async () => 
     crmExecutor: async () => { calls += 1; return resultFromCrm(); },
   };
   const decisions = [
-    { ...POINTS_DECISION, intent: 'customer_history', action: 'get_customer_history' },
-    { ...POINTS_DECISION, route: 'reddy_agent' },
-    { intent: 'operating_hours_inquiry', route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_operating_hours', confidence: 0.9, model_tier: 'economy' },
-    { intent: 'human_request', route: 'human', action: 'request_human', reason: 'customer_requested_human', confidence: 1, model_tier: 'none' },
-    { intent: 'points_inquiry', route: 'crm_agent', agent: 'crm_agent', action: 'get_points', confidence: 0.94 },
-    { intent: 'points_inquiry', route: 'crm_agent', agent: 'crm_agent', action: 'get_points', model_tier: 'economy' },
-    null,
-    undefined,
-    [],
-    'points_inquiry',
+    ['wrong intent', { ...POINTS_DECISION, intent: 'customer_history' }],
+    ['wrong route', { ...POINTS_DECISION, route: 'reddy_agent' }],
+    ['wrong agent', { ...POINTS_DECISION, agent: 'reddy_agent' }],
+    ['wrong action', { ...POINTS_DECISION, action: 'get_customer_history' }],
+    ['wrong model tier', { ...POINTS_DECISION, model_tier: 'standard' }],
+    ['NaN confidence', { ...POINTS_DECISION, confidence: Number.NaN }],
+    ['negative confidence', { ...POINTS_DECISION, confidence: -0.01 }],
+    ['confidence above one', { ...POINTS_DECISION, confidence: 1.01 }],
+    ['string confidence', { ...POINTS_DECISION, confidence: '0.94' }],
+    ['missing model tier', (({ model_tier: _removed, ...decision }) => decision)(POINTS_DECISION)],
+    ['missing confidence', (({ confidence: _removed, ...decision }) => decision)(POINTS_DECISION)],
+    ['null', null],
+    ['undefined', undefined],
+    ['array', []],
+    ['function', () => POINTS_DECISION],
+    ['boxed primitive', Object(1)],
+    ['string', 'points_inquiry'],
+    ['number', 1],
+    ['empty object', {}],
+    ['partial object', { intent: 'points_inquiry' }],
   ];
 
-  for (const decision of decisions) {
+  for (const [label, decision] of decisions) {
     const output = await executeOrchestration(decision, dependency);
-    assert.equal(output.mode, 'classify_only');
-    assert.equal(output.execution_status, 'unsupported_execution');
+    assert.equal(output.mode, 'classify_only', label);
+    assert.equal(output.execution_status, 'unsupported_execution', label);
+  }
+  assert.equal(calls, 0);
+});
+
+test('unknown own fields, symbols, accessors, and inherited claims cannot invoke CRM', async () => {
+  const symbolKey = Symbol('target_identity');
+  const withSymbol = { ...POINTS_DECISION, [symbolKey]: { phone: '6289999999999' } };
+  const withGetter = { ...POINTS_DECISION };
+  Object.defineProperty(withGetter, 'intent', {
+    enumerable: true,
+    get() {
+      throw new Error('GETTER_ATTACK');
+    },
+  });
+  const withSetter = { ...POINTS_DECISION };
+  Object.defineProperty(withSetter, 'intent', {
+    enumerable: true,
+    set(_value) {},
+  });
+  const inherited = Object.create({ customer_id: 'attacker-id' });
+  Object.assign(inherited, POINTS_DECISION);
+
+  let calls = 0;
+  const dependency = {
+    trustedIdentity: issueTestIdentity({ phone: '081234567890' }),
+    supabase: {},
+    crmExecutor: async () => {
+      calls += 1;
+      return resultFromCrm();
+    },
+  };
+  const attacks = [
+    ['unknown key', { ...POINTS_DECISION, unknown: true }],
+    ['symbol key', withSymbol],
+    ['throwing getter', withGetter],
+    ['setter', withSetter],
+    ['inherited claim', inherited],
+  ];
+
+  for (const [label, classification] of attacks) {
+    const output = await executeOrchestration(classification, dependency);
+    assert.equal(output.execution_status, 'unsupported_execution', label);
+    assert.equal(output.mode, 'classify_only', label);
   }
   assert.equal(calls, 0);
 });
@@ -236,28 +310,32 @@ test('conflicting or unavailable point balance is not reported as success', asyn
   });
 });
 
-test('nested target injection never becomes CRM params or trusted context', async () => {
-  const calls = [];
-  const maliciousClassification = {
-    ...POINTS_DECISION,
-    params: { phone: '6289999999999', customer_id: 'attacker-id', user_key: 'attacker-key' },
-    metadata: { phone: '6289999999999' },
-    result: { customer_id: 'attacker-id' },
-  };
-  const output = await executeOrchestration(maliciousClassification, {
+test('target injection fields fail closed before CRM invocation', async () => {
+  let calls = 0;
+  const dependencies = {
     trustedIdentity: issueTestIdentity({ phone: '081234567890' }),
     supabase: {},
-    crmExecutor: async (tool, params, context) => {
-      calls.push({ tool, params, context });
+    crmExecutor: async () => {
+      calls += 1;
       return resultFromCrm();
     },
-  });
+  };
+  const attacks = [
+    ['params', { ...POINTS_DECISION, params: { phone: '6289999999999', customer_id: 'attacker-id', user_key: 'attacker-key' } }],
+    ['metadata', { ...POINTS_DECISION, metadata: { phone: '6289999999999' } }],
+    ['result', { ...POINTS_DECISION, result: { customer_id: 'attacker-id' } }],
+    ['direct phone', { ...POINTS_DECISION, phone: '6289999999999' }],
+    ['direct customer ID', { ...POINTS_DECISION, customer_id: 'attacker-id' }],
+    ['direct user key', { ...POINTS_DECISION, user_key: 'attacker-key' }],
+    ['nested identity', { ...POINTS_DECISION, nested: { identity: { phone: '6289999999999' } } }],
+  ];
 
-  assert.equal(output.execution_status, 'success');
-  assert.deepEqual(calls[0].params, {});
-  assert.equal(calls[0].context.phone, '6281234567890');
-  assert.equal(calls[0].context.customer_id, undefined);
-  assert.equal(calls[0].context.user_key, undefined);
+  for (const [label, classification] of attacks) {
+    const output = await executeOrchestration(classification, dependencies);
+    assert.equal(output.execution_status, 'unsupported_execution', label);
+    assert.equal(output.mode, 'classify_only', label);
+  }
+  assert.equal(calls, 0);
 });
 
 test('identity and execution layers contain no LLM, mutation, Fonnte, or WhatsApp side effects', () => {
