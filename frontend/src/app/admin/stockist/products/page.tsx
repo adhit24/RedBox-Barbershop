@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '@/hooks/useUser';
-import { listProducts, createProduct, updateProduct, deactivateProduct, activateProduct, getInventorySummary, type StockistProduct } from '@/lib/stockistApi';
+import { listProducts, createProduct, updateProduct, deactivateProduct, activateProduct, getInventorySummary, type StockistProduct, type InventoryBalance } from '@/lib/stockistApi';
 import { BackButton } from '@/components/stockist/BackButton';
+import { BarcodeScannerSheet } from '@/components/stockist/BarcodeScannerSheet';
+import { EmptyState } from '@/components/stockist/EmptyState';
 import { getKnownProductImage } from '@/lib/stockist/productImage';
 
 type EditForm = {
@@ -12,9 +14,23 @@ type EditForm = {
   product_type: NonNullable<StockistProduct['product_type']>;
 };
 
+type StockStatus = 'AMAN' | 'MENIPIS' | 'HABIS';
+
+function stockStatusFor(qty: number, minimumStock: number): StockStatus {
+  if (qty === 0) return 'HABIS';
+  if (qty <= minimumStock) return 'MENIPIS';
+  return 'AMAN';
+}
+
+const STATUS_DOT: Record<StockStatus, string> = { AMAN: 'bg-success', MENIPIS: 'bg-status-menipis', HABIS: 'bg-danger' };
+const STATUS_BADGE: Record<StockStatus, string> = { AMAN: 'bg-tint-success text-success', MENIPIS: 'bg-tint-warning text-status-menipis', HABIS: 'bg-tint-danger text-danger' };
+const STATUS_TEXT: Record<StockStatus, string> = { AMAN: 'text-text-primary', MENIPIS: 'text-status-menipis', HABIS: 'text-danger' };
+const STATUS_LABEL: Record<StockStatus, string> = { AMAN: 'Aman', MENIPIS: 'Menipis', HABIS: 'Habis' };
+
 export default function ProductsPage() {
   const { user } = useUser();
   const [products, setProducts] = useState<StockistProduct[]>([]);
+  const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,6 +38,8 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
+  const [stockFilter, setStockFilter] = useState<'ALL' | 'AMAN' | 'MENIPIS' | 'HABIS'>('ALL');
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   // Form State
   const [showAddForm, setShowAddForm] = useState(false);
@@ -109,8 +127,12 @@ export default function ProductsPage() {
   async function refresh() {
     setLoading(true);
     try {
-      const { products } = await listProducts();
+      const [{ products }, { balances }] = await Promise.all([
+        listProducts(),
+        getInventorySummary(user?.branch || ''),
+      ]);
       setProducts(products);
+      setBalances(balances);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Gagal memuat produk');
@@ -122,6 +144,16 @@ export default function ProductsPage() {
   useEffect(() => {
     refresh();
   }, []);
+
+  function handleScan(code: string) {
+    setScannerOpen(false);
+    const match = products.find((p) => p.barcode && p.barcode === code);
+    if (match) {
+      setSearchQuery(match.sku);
+    } else {
+      setError('Produk dengan barcode ini tidak ditemukan.');
+    }
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -167,13 +199,18 @@ export default function ProductsPage() {
   // Categories list extracted from products
   const categories = ['Semua', ...Array.from(new Set(products.map(p => p.category).filter((c): c is string => !!c)))];
 
+  const qtyByProduct = new Map(balances.map((b) => [b.product_id, b.quantity]));
+
   // Filter products
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           p.sku.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'Semua' || p.category === selectedCategory;
     const matchesStatus = statusFilter === 'ALL' || (statusFilter === 'ACTIVE' ? p.is_active : !p.is_active);
-    return matchesSearch && matchesCategory && matchesStatus;
+    const qty = qtyByProduct.get(p.id) ?? 0;
+    const stockStatus = stockStatusFor(qty, p.minimum_stock);
+    const matchesStock = stockFilter === 'ALL' || stockStatus === stockFilter;
+    return matchesSearch && matchesCategory && matchesStatus && matchesStock;
   });
 
   const getProductImage = (sku: string, name: string) => {
@@ -335,8 +372,16 @@ export default function ProductsPage() {
             placeholder="Cari nama atau SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
+            className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-10 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
           />
+          <button
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            aria-label="Scan barcode produk"
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-primary-container hover:bg-primary-container/10"
+          >
+            <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
+          </button>
         </div>
 
         {/* Status Chips */}
@@ -352,6 +397,22 @@ export default function ProductsPage() {
               }`}
             >
               {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Stock Status Chips */}
+        <div className="sc flex gap-2 overflow-x-auto pb-1">
+          {(['ALL', 'AMAN', 'MENIPIS', 'HABIS'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setStockFilter(value)}
+              className={`flex-none rounded-full border px-3.5 py-1.5 text-[12px] font-bold transition-colors ${
+                stockFilter === value ? 'border-primary-container bg-primary-container text-white' : 'border-border-base bg-surface-elevated text-text-secondary'
+              }`}
+            >
+              {value === 'ALL' ? 'Semua' : value === 'AMAN' ? 'Aman' : value === 'MENIPIS' ? 'Menipis' : 'Habis'}
             </button>
           ))}
         </div>
@@ -375,6 +436,7 @@ export default function ProductsPage() {
           </div>
         )}
       </section>
+      <BarcodeScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
 
       {/* Products Listing */}
       {error && (
@@ -391,42 +453,59 @@ export default function ProductsPage() {
       ) : (
         <section className="flex flex-col gap-3">
           {filteredProducts.length === 0 ? (
-            <p className="text-center text-text-muted text-sm py-8 bg-surface-elevated border border-border-base rounded-xl">
-              Tidak ada produk ditemukan.
-            </p>
+            <EmptyState
+              icon="inventory_2"
+              title="Tidak ada produk"
+              subtitle="Coba ubah kata kunci pencarian atau filter status."
+              action={{
+                label: 'Reset filter',
+                onClick: () => {
+                  setSearchQuery('');
+                  setSelectedCategory('Semua');
+                  setStatusFilter('ACTIVE');
+                  setStockFilter('ALL');
+                },
+              }}
+            />
           ) : (
             filteredProducts.map((p) => (
-              <div 
-                key={p.id} 
+              <div
+                key={p.id}
                 className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3 hover:bg-surface-container transition-colors"
               >
-                <div className="flex gap-3 items-start">
-                  {/* Thumbnail */}
-                  <div className="w-12 h-12 rounded-lg bg-surface-container-lowest border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
-                    <img 
-                      className="w-full h-full object-cover opacity-85 mix-blend-luminosity" 
-                      src={getProductImage(p.sku, p.name)} 
-                      alt={p.name} 
+                <Link href={`/admin/stockist/branch-stock/all/${p.id}?branch=${user?.branch || ''}`} className="flex items-center gap-3">
+                  <div className="relative h-[66px] w-[66px] shrink-0 overflow-hidden rounded-xl border border-border-base bg-surface-container-lowest">
+                    <img
+                      className="h-full w-full object-cover opacity-85 mix-blend-luminosity"
+                      src={getProductImage(p.sku, p.name)}
+                      alt={p.name}
                     />
+                    <span className={`absolute bottom-0 left-0 h-3 w-3 rounded-full border-[2.5px] border-surface-elevated ${STATUS_DOT[stockStatusFor(qtyByProduct.get(p.id) ?? 0, p.minimum_stock)]}`} />
                   </div>
-
-                  {/* Core info */}
-                  <div className="flex-grow flex flex-col justify-center min-h-[48px]">
-                    <div className="flex justify-between items-start gap-2">
-                      <div>
-                        <h3 className="font-semibold text-text-primary text-[14px] leading-tight">{p.name}</h3>
-                        <span className="text-[10px] text-text-muted mt-1 font-mono block">SKU: {p.sku}</span>
-                      </div>
-                      <span className={`px-2 py-0.5 text-[9px] font-semibold rounded border uppercase tracking-wider ${
-                        p.is_active 
-                          ? 'bg-success/10 border-success/30 text-success' 
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-[13.5px] font-bold text-text-primary">{p.name}</h3>
+                    <span className="block text-[10px] font-mono text-text-muted">{p.sku}</span>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider border ${
+                        p.is_active
+                          ? 'bg-success/10 border-success/30 text-success'
                           : 'bg-danger/10 border-danger/30 text-danger'
                       }`}>
                         {p.is_active ? 'Aktif' : 'Nonaktif'}
                       </span>
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_BADGE[stockStatusFor(qtyByProduct.get(p.id) ?? 0, p.minimum_stock)]}`}>
+                        {STATUS_LABEL[stockStatusFor(qtyByProduct.get(p.id) ?? 0, p.minimum_stock)]}
+                      </span>
                     </div>
                   </div>
-                </div>
+                  <div className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className={`text-[19px] font-bold font-display tabular-nums ${STATUS_TEXT[stockStatusFor(qtyByProduct.get(p.id) ?? 0, p.minimum_stock)]}`}>
+                      {qtyByProduct.get(p.id) ?? 0}
+                    </span>
+                    <span className="text-[9px] text-text-muted">{p.unit}</span>
+                  </div>
+                  <span className="material-symbols-outlined shrink-0 text-[18px] text-text-muted">chevron_right</span>
+                </Link>
 
                 {/* Details Grid */}
                 <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border-base/50 mt-1 text-[12px]">
