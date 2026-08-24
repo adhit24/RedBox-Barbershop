@@ -26,6 +26,7 @@ function WarehousePageContent() {
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -87,9 +88,10 @@ function WarehousePageContent() {
     setScannerOpen(false);
     const match = products.find((p) => p.barcode && p.barcode === code);
     if (match) {
+      setScanError(null);
       setSearchQuery(match.sku);
     } else {
-      setError('Produk dengan barcode ini tidak ditemukan.');
+      setScanError('Produk dengan barcode ini tidak ditemukan.');
     }
   }
 
@@ -308,6 +310,13 @@ function WarehousePageContent() {
         </div>
       </section>
       <BarcodeScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
+
+      {scanError && (
+        <div className="bg-danger/10 border border-danger text-danger text-sm rounded-lg p-3 flex items-center gap-2">
+          <span className="material-symbols-outlined">error</span>
+          <span>{scanError}</span>
+        </div>
+      )}
 
       {/* Inventory Status List */}
       {error && (

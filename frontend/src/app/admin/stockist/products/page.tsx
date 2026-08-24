@@ -686,6 +686,7 @@ function OwnerInventoryView() {
         setProducts(products.filter((product) => product.is_active));
         setBalances(balances);
         setVisibleCount(PAGE_SIZE);
+        setError(null);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat produk cabang'))
       .finally(() => setLoading(false));

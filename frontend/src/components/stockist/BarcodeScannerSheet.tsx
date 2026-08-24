@@ -16,6 +16,8 @@ export function BarcodeScannerSheet({ open, onClose, onScan }: BarcodeScannerShe
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const scannedRef = useRef(false);
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
   const [cameraState, setCameraState] = useState<CameraState>('starting');
 
   useEffect(() => {
@@ -39,7 +41,7 @@ export function BarcodeScannerSheet({ open, onClose, onScan }: BarcodeScannerShe
         (result) => {
           if (result && !scannedRef.current) {
             scannedRef.current = true;
-            onScan(result.getText());
+            onScanRef.current(result.getText());
           }
         }
       )
@@ -61,7 +63,7 @@ export function BarcodeScannerSheet({ open, onClose, onScan }: BarcodeScannerShe
       controlsRef.current?.stop();
       controlsRef.current = null;
     };
-  }, [open, onScan]);
+  }, [open]);
 
   if (!open) return null;
 

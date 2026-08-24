@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { Package } from 'lucide-react';
 import {
@@ -16,7 +16,6 @@ import { getKnownProductImage } from '@/lib/stockist/productImage';
 import {
   getCategoryForProduct,
   getBrandForProduct,
-  type StandardCategory,
 } from '@/lib/stockist/categorization';
 
 const TYPE_LABELS: Record<'RETAIL' | 'SERVICE' | 'CONSUMABLE', string> = {
@@ -34,17 +33,6 @@ const BRANCH_NAMES: Record<string, string> = {
   tegal: 'Cabang Tegal'
 };
 
-const CATEGORIES_LIST: StandardCategory[] = [
-  'Pomade',
-  'Parfume',
-  'Perawatan Rambut',
-  'Peralatan & Aksesoris',
-  'Barang Pemakaian',
-  'Perlengkapan',
-  'Merchandise',
-  'Lainnya'
-];
-
 type StockFilter = 'ALL' | 'SAFE' | 'LOW' | 'OUT';
 type TypeFilter = 'ALL' | 'RETAIL' | 'SERVICE' | 'CONSUMABLE';
 const PRODUCT_PAGE_SIZE = 6;
@@ -56,8 +44,6 @@ function isValidStockFilter(value: string | null): value is StockFilter {
 function SemuaStokContent() {
   const { user } = useUser();
   const searchParams = useSearchParams() || new URLSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
 
   const isOwner = user?.role === 'owner';
   const branch = isOwner ? (searchParams.get('branch') || 'bypass') : (user?.branch || '');
@@ -236,7 +222,7 @@ function SemuaStokContent() {
           <div className="w-6 h-6 border-2 border-primary-container border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : filteredProducts.length === 0 ? (
-        <EmptyState icon="search_off" title="Tidak ada stok yang sesuai" subtitle="Coba ubah kata kunci pencarian atau filter kategori." />
+        <EmptyState icon="search_off" title="Tidak ada stok yang sesuai" subtitle="Coba ubah kata kunci pencarian atau filter status." />
       ) : (
         /* FLAT GRID MODE */
         <section className="flex flex-col gap-2">
