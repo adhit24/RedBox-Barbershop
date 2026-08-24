@@ -317,6 +317,63 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     return res.json({ ledger: data || [] });
   });
 
+  // ─── NOTIFICATIONS ────────────────────────────────────────────
+  router.get('/notifications', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    let query = supabase
+      .from('stockist_notifications')
+      .select('*')
+      .eq('user_id', access.staffId)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+    if (category) {
+      query = query.eq('category', category);
+    }
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json({ notifications: data || [] });
+  });
+
+  router.patch('/notifications/:id/read', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data, error } = await supabase
+      .from('stockist_notifications')
+      .update({ is_read: true })
+      .eq('id', req.params.id)
+      .eq('user_id', access.staffId)
+      .select()
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'notification not found' });
+
+    return res.json({ notification: data });
+  });
+
+  router.post('/notifications/read-all', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data, error } = await supabase
+      .from('stockist_notifications')
+      .update({ is_read: true })
+      .eq('user_id', access.staffId)
+      .eq('is_read', false)
+      .select('id');
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    return res.json({ updated: (data || []).length });
+  });
+
   // ─── SERVICE CONSUMABLE ACCOUNTABILITY ───────────────────────
   router.get('/service-usage', adminAuth, async (req, res) => {
     const access = requireAccess(req, res);
