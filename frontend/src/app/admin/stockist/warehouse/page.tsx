@@ -1,8 +1,24 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useUser } from '@/hooks/useUser';
 import { listProducts, getInventorySummary, receiveWarehouseStock, type StockistProduct, type InventoryBalance } from '@/lib/stockistApi';
+import { BarcodeScannerSheet } from '@/components/stockist/BarcodeScannerSheet';
+import { EmptyState } from '@/components/stockist/EmptyState';
+
+type StockStatus = 'AMAN' | 'MENIPIS' | 'HABIS';
+
+function stockStatusFor(qty: number, minimumStock: number): StockStatus {
+  if (qty === 0) return 'HABIS';
+  if (qty <= minimumStock) return 'MENIPIS';
+  return 'AMAN';
+}
+
+const STATUS_DOT: Record<StockStatus, string> = { AMAN: 'bg-success', MENIPIS: 'bg-status-menipis', HABIS: 'bg-danger' };
+const STATUS_BADGE: Record<StockStatus, string> = { AMAN: 'bg-tint-success text-success', MENIPIS: 'bg-tint-warning text-status-menipis', HABIS: 'bg-tint-danger text-danger' };
+const STATUS_TEXT: Record<StockStatus, string> = { AMAN: 'text-text-primary', MENIPIS: 'text-status-menipis', HABIS: 'text-danger' };
+const STATUS_LABEL: Record<StockStatus, string> = { AMAN: 'Aman', MENIPIS: 'Menipis', HABIS: 'Habis' };
 
 function WarehousePageContent() {
   const { user } = useUser();
@@ -10,6 +26,7 @@ function WarehousePageContent() {
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -21,9 +38,10 @@ function WarehousePageContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const searchParams = useSearchParams();
   const initialFilter = searchParams?.get('filter');
-  const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'SAFE'>(
-    initialFilter === 'LOW' || initialFilter === 'SAFE' ? initialFilter : 'ALL'
+  const [filterType, setFilterType] = useState<'ALL' | 'AMAN' | 'MENIPIS' | 'HABIS'>(
+    initialFilter === 'AMAN' || initialFilter === 'MENIPIS' || initialFilter === 'HABIS' ? initialFilter : 'ALL'
   );
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -66,27 +84,36 @@ function WarehousePageContent() {
     }
   }
 
+  function handleScan(code: string) {
+    setScannerOpen(false);
+    const match = products.find((p) => p.barcode && p.barcode === code);
+    if (match) {
+      setScanError(null);
+      setSearchQuery(match.sku);
+    } else {
+      setScanError('Produk dengan barcode ini tidak ditemukan.');
+    }
+  }
+
   const quantityByProduct = new Map(balances.map((b) => [b.product_id, b.quantity]));
 
   // Stats calculation
   const totalSKUs = products.length;
   const totalQty = balances.reduce((sum, b) => sum + b.quantity, 0);
-  
+
   const productStats = products.map(p => {
     const qty = quantityByProduct.get(p.id) ?? 0;
-    const isLow = qty <= p.minimum_stock;
-    return { ...p, qty, isLow };
+    const status = stockStatusFor(qty, p.minimum_stock);
+    return { ...p, qty, status };
   });
 
-  const lowStockCount = productStats.filter(p => p.isLow).length;
+  const lowStockCount = productStats.filter(p => p.status === 'MENIPIS').length;
 
   // Filter products for listing
   const filteredProducts = productStats.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterType === 'ALL' || 
-                          (filterType === 'LOW' && p.isLow) || 
-                          (filterType === 'SAFE' && !p.isLow);
+    const matchesFilter = filterType === 'ALL' || p.status === filterType;
     return matchesSearch && matchesFilter;
   });
 
@@ -146,10 +173,10 @@ function WarehousePageContent() {
           </div>
 
           {/* Low Stock Items */}
-          <div 
-            onClick={() => setFilterType(filterType === 'LOW' ? 'ALL' : 'LOW')}
+          <div
+            onClick={() => setFilterType(filterType === 'MENIPIS' ? 'ALL' : 'MENIPIS')}
             className={`bg-surface-elevated border rounded-xl p-4 flex flex-col justify-between min-h-[96px] relative overflow-hidden cursor-pointer active:scale-98 transition-all ${
-              filterType === 'LOW' ? 'border-status-menipis' : 'border-border-base'
+              filterType === 'MENIPIS' ? 'border-status-menipis' : 'border-border-base'
             }`}
           >
             <div className="absolute -top-4 -right-4 w-12 h-12 bg-status-menipis opacity-10 blur-xl rounded-full"></div>
@@ -256,10 +283,40 @@ function WarehousePageContent() {
             placeholder="Cari nama atau SKU..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
+            className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg pl-9 pr-10 py-2 focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container placeholder:text-text-muted transition-colors"
           />
+          <button
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            aria-label="Scan barcode produk"
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-primary-container hover:bg-primary-container/10"
+          >
+            <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
+          </button>
+        </div>
+        <div className="sc flex gap-2 overflow-x-auto pb-1">
+          {(['ALL', 'AMAN', 'MENIPIS', 'HABIS'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilterType(value)}
+              className={`flex-none rounded-full border px-3.5 py-1.5 text-[12px] font-bold transition-colors ${
+                filterType === value ? 'border-primary-container bg-primary-container text-white' : 'border-border-base bg-surface-elevated text-text-secondary'
+              }`}
+            >
+              {value === 'ALL' ? 'Semua' : value === 'AMAN' ? 'Aman' : value === 'MENIPIS' ? 'Menipis' : 'Habis'}
+            </button>
+          ))}
         </div>
       </section>
+      <BarcodeScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
+
+      {scanError && (
+        <div className="bg-danger/10 border border-danger text-danger text-sm rounded-lg p-3 flex items-center gap-2">
+          <span className="material-symbols-outlined">error</span>
+          <span>{scanError}</span>
+        </div>
+      )}
 
       {/* Inventory Status List */}
       {error && (
@@ -283,45 +340,43 @@ function WarehousePageContent() {
           </div>
 
           {filteredProducts.length === 0 ? (
-            <p className="text-center text-text-muted text-sm py-8 bg-surface-elevated border border-border-base rounded-xl">
-              Tidak ada produk di inventori.
-            </p>
+            <EmptyState
+              icon="inventory_2"
+              title="Tidak ada produk"
+              subtitle="Coba ubah kata kunci pencarian atau filter status."
+              action={{ label: 'Reset filter', onClick: () => { setSearchQuery(''); setFilterType('ALL'); } }}
+            />
           ) : (
             filteredProducts.map((p) => (
-              <div 
-                key={p.id} 
-                className="bg-surface-elevated border border-border-base rounded-xl p-4 flex items-center gap-3 hover:bg-surface-container transition-colors"
+              <Link
+                key={p.id}
+                href={`/admin/stockist/branch-stock/all/${p.id}?branch=warehouse`}
+                className="flex items-center gap-3 rounded-xl border border-border-base bg-surface-elevated p-3 hover:border-primary-container/40 active:scale-[0.98] transition-all"
               >
-                {/* Thumbnail */}
-                <div className="w-12 h-12 rounded-lg bg-surface-container-lowest border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
-                  <img 
-                    className="w-full h-full object-cover opacity-85 mix-blend-luminosity" 
-                    src={getProductImage(p.sku, p.name)} 
-                    alt={p.name} 
+                <div className="relative h-[66px] w-[66px] shrink-0 overflow-hidden rounded-xl border border-border-base bg-surface-container-lowest">
+                  <img
+                    className="h-full w-full object-cover opacity-85 mix-blend-luminosity"
+                    src={getProductImage(p.sku, p.name)}
+                    alt={p.name}
                   />
+                  <span className={`absolute bottom-0 left-0 h-3 w-3 rounded-full border-[2.5px] border-surface-elevated ${STATUS_DOT[p.status]}`} />
                 </div>
-
-                {/* Core Info */}
-                <div className="flex-1 flex flex-col justify-center min-h-[48px]">
-                  <h4 className="font-semibold text-text-primary text-[14px] leading-tight">{p.name}</h4>
-                  <span className="text-[10px] text-text-muted mt-1 font-mono">SKU: {p.sku}</span>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate text-[13.5px] font-bold text-text-primary">{p.name}</h4>
+                  <span className="block text-[10px] font-mono text-text-muted">{p.sku}</span>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    {p.category && (
+                      <span className="rounded border border-border-base bg-surface-container px-1.5 py-0.5 text-[9px] font-semibold text-text-secondary">{p.category}</span>
+                    )}
+                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_BADGE[p.status]}`}>{STATUS_LABEL[p.status]}</span>
+                  </div>
                 </div>
-
-                {/* Balance & Status */}
-                <div className="flex flex-col items-end justify-center min-h-[48px]">
-                  <p className="text-[18px] font-bold text-text-primary font-display tabular-nums leading-tight">
-                    {p.qty}
-                  </p>
-                  <span className={`text-[10px] font-semibold mt-1 flex items-center gap-1.5 ${
-                    p.isLow ? 'text-status-menipis' : 'text-status-aman'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      p.isLow ? 'bg-status-menipis animate-pulse' : 'bg-status-aman'
-                    }`}></span>
-                    {p.isLow ? 'Menipis' : 'Aman'}
-                  </span>
+                <div className="flex shrink-0 flex-col items-end gap-0.5">
+                  <span className={`text-[19px] font-bold font-display tabular-nums ${STATUS_TEXT[p.status]}`}>{p.qty}</span>
+                  <span className="text-[9px] text-text-muted">{p.unit}</span>
                 </div>
-              </div>
+                <span className="material-symbols-outlined shrink-0 text-[18px] text-text-muted">chevron_right</span>
+              </Link>
             ))
           )}
         </section>
