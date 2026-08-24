@@ -665,44 +665,52 @@ const OWNER_BRANCHES = [
   ['tegal', 'Tegal'],
 ] as const;
 
+const BRANCH_NAMES: Record<string, string> = Object.fromEntries(OWNER_BRANCHES);
+
 function OwnerInventoryView() {
   const PAGE_SIZE = 8;
+  const [branch, setBranch] = useState<string>('bypass');
   const [products, setProducts] = useState<StockistProduct[]>([]);
-  const [balances, setBalances] = useState<Record<string, Map<string, number>>>({});
+  const [balances, setBalances] = useState<InventoryBalance[]>([]);
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<'ALL' | 'SAFE' | 'LOW' | 'OUT'>('ALL');
-  const [branch, setBranch] = useState('ALL');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [stockFilter, setStockFilter] = useState<'ALL' | 'AMAN' | 'MENIPIS' | 'HABIS'>('ALL');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([listProducts(), ...OWNER_BRANCHES.map(([slug]) => getInventorySummary(slug))])
-      .then(([productResult, ...branchResults]) => {
-        setProducts(productResult.products.filter((product) => product.is_active));
-        const next: Record<string, Map<string, number>> = {};
-        OWNER_BRANCHES.forEach(([slug], index) => {
-          next[slug] = new Map((branchResults[index] as { balances: Array<{ product_id: string; quantity: number }> }).balances.map((balance) => [balance.product_id, balance.quantity]));
-        });
-        setBalances(next);
+    setLoading(true);
+    Promise.all([listProducts(), getInventorySummary(branch)])
+      .then(([{ products }, { balances }]) => {
+        setProducts(products.filter((product) => product.is_active));
+        setBalances(balances);
+        setVisibleCount(PAGE_SIZE);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat inventory lintas cabang'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat produk cabang'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [branch]);
 
-  const rows = products.map((product) => {
-    const distribution = OWNER_BRANCHES.map(([slug, label]) => ({ slug, label, quantity: balances[slug]?.get(product.id) ?? 0 }));
-    const total = distribution.reduce((sum, item) => sum + item.quantity, 0);
-    const low = distribution.filter((item) => item.quantity > 0 && item.quantity <= product.minimum_stock).length;
-    const out = distribution.filter((item) => item.quantity === 0).length;
-    const productStatus = out === OWNER_BRANCHES.length ? 'OUT' : out > 0 || low > 0 ? 'LOW' : 'SAFE';
-    return { product, distribution, total, low, out, productStatus };
-  }).filter((row) => {
-    const text = `${row.product.name} ${row.product.sku}`.toLowerCase();
-    const branchMatch = branch === 'ALL' || row.distribution.some((item) => item.slug === branch && item.quantity > 0);
-    return text.includes(query.toLowerCase()) && (status === 'ALL' || row.productStatus === status) && branchMatch;
-  });
+  function handleScan(code: string) {
+    setScannerOpen(false);
+    const match = products.find((p) => p.barcode && p.barcode === code);
+    if (match) {
+      setQuery(match.sku);
+    } else {
+      setError('Produk dengan barcode ini tidak ditemukan.');
+    }
+  }
+
+  const qtyByProduct = new Map(balances.map((b) => [b.product_id, b.quantity]));
+  const rows = products
+    .map((product) => {
+      const qty = qtyByProduct.get(product.id) ?? 0;
+      return { product, qty, status: stockStatusFor(qty, product.minimum_stock) };
+    })
+    .filter((row) => {
+      const text = `${row.product.name} ${row.product.sku}`.toLowerCase();
+      return text.includes(query.toLowerCase()) && (stockFilter === 'ALL' || row.status === stockFilter);
+    });
   const visibleRows = rows.slice(0, visibleCount);
   const hasMoreRows = visibleCount < rows.length;
 
@@ -711,33 +719,110 @@ function OwnerInventoryView() {
       <BackButton fallbackHref="/admin/stockist" />
       <header>
         <p className="text-[10px] uppercase tracking-[0.18em] text-primary-container font-semibold">Owner · Decision view</p>
-        <h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Inventory</h2>
-        <p className="text-[12px] text-text-muted mt-1">Distribusi stok aktif di seluruh cabang.</p>
+        <h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Produk</h2>
+        <p className="text-[12px] text-text-muted mt-1">{BRANCH_NAMES[branch] || branch}</p>
       </header>
-      <section className="flex flex-col gap-2">
-        <input value={query} onChange={(event) => { setQuery(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} placeholder="Cari produk atau SKU" className="w-full bg-surface-container-lowest border border-border-base text-text-primary text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary-container placeholder:text-text-muted" />
-        <div className="grid grid-cols-2 gap-2">
-          <select value={status} onChange={(event) => { setStatus(event.target.value as typeof status); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-surface-container-lowest border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua status</option><option value="SAFE">Aman</option><option value="LOW">Menipis</option><option value="OUT">Habis</option></select>
-          <select value={branch} onChange={(event) => { setBranch(event.target.value); setVisibleCount(PAGE_SIZE); setExpandedId(null); }} className="bg-surface-container-lowest border border-border-base text-text-secondary text-xs rounded-lg px-3 py-2.5"><option value="ALL">Semua cabang</option>{OWNER_BRANCHES.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}</select>
+
+      <div className="flex flex-col gap-2">
+        <select
+          value={branch}
+          onChange={(event) => setBranch(event.target.value)}
+          className="w-full rounded-lg border border-border-base bg-surface-container-lowest px-3 py-2.5 text-xs text-text-secondary"
+        >
+          {OWNER_BRANCHES.map(([slug, label]) => <option key={slug} value={slug}>{label}</option>)}
+        </select>
+        <div className="relative">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-[18px]">search</span>
+          <input
+            value={query}
+            onChange={(event) => { setQuery(event.target.value); setVisibleCount(PAGE_SIZE); }}
+            placeholder="Cari produk atau SKU"
+            className="w-full rounded-lg border border-border-base bg-surface-container-lowest py-2.5 pl-9 pr-10 text-sm text-text-primary placeholder:text-text-muted focus:border-primary-container focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            aria-label="Scan barcode produk"
+            className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-primary-container hover:bg-primary-container/10"
+          >
+            <span className="material-symbols-outlined text-[18px]">qr_code_scanner</span>
+          </button>
         </div>
-      </section>
+        <div className="sc flex gap-2 overflow-x-auto pb-1">
+          {(['ALL', 'AMAN', 'MENIPIS', 'HABIS'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => { setStockFilter(value); setVisibleCount(PAGE_SIZE); }}
+              className={`flex-none rounded-full border px-3.5 py-1.5 text-[12px] font-bold transition-colors ${
+                stockFilter === value ? 'border-primary-container bg-primary-container text-white' : 'border-border-base bg-surface-elevated text-text-secondary'
+              }`}
+            >
+              {value === 'ALL' ? 'Semua' : value === 'AMAN' ? 'Aman' : value === 'MENIPIS' ? 'Menipis' : 'Habis'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <BarcodeScannerSheet open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
+
       {error && <div className="bg-danger/10 border border-danger text-danger text-xs rounded-lg p-3">{error}</div>}
-      {loading ? <div className="py-12 text-center text-text-muted text-sm">Memuat distribusi inventory…</div> : rows.length === 0 ? <div className="bg-surface-elevated border border-border-base rounded-xl p-6 text-center text-text-muted text-sm">Tidak ada produk yang sesuai filter.</div> : (
+      {loading ? (
+        <div className="py-12 text-center text-text-muted text-sm">Memuat produk…</div>
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon="inventory_2"
+          title="Tidak ada produk"
+          subtitle="Coba ubah kata kunci pencarian atau filter status."
+          action={{ label: 'Reset filter', onClick: () => { setQuery(''); setStockFilter('ALL'); } }}
+        />
+      ) : (
         <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between px-1"><h3 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">Produk lintas cabang</h3><span className="text-[11px] text-text-muted">Menampilkan {visibleRows.length} dari {rows.length}</span></div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {visibleRows.map((row) => {
-              const expanded = expandedId === row.product.id;
-              return <div key={row.product.id} className="bg-surface-elevated border border-border-base rounded-xl overflow-hidden transition-colors hover:border-primary-container/50">
-                <button type="button" onClick={() => setExpandedId(expanded ? null : row.product.id)} aria-expanded={expanded} className="w-full text-left p-3 flex gap-3 min-h-[88px] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50">
-                  <div className="w-12 h-12 shrink-0 rounded-lg bg-surface-container-low flex items-center justify-center overflow-hidden">{getKnownProductImage(row.product.name) ? <img src={getKnownProductImage(row.product.name) as string} alt="" className="w-full h-full object-contain p-1" /> : <span className="material-symbols-outlined text-text-muted">inventory_2</span>}</div>
-                  <div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h4 className="text-[13px] font-semibold text-text-primary truncate">{row.product.name}</h4><p className="text-[10px] text-text-muted font-mono">{row.product.sku}</p></div><span className={`text-[10px] font-semibold ${row.productStatus === 'OUT' ? 'text-danger' : row.productStatus === 'LOW' ? 'text-status-menipis' : 'text-success'}`}>{row.productStatus === 'OUT' ? 'Habis' : row.productStatus === 'LOW' ? 'Perlu perhatian' : 'Aman'}</span></div><div className="flex items-end justify-between mt-2"><div><p className="text-[18px] font-bold text-text-primary tabular-nums">{row.total} <span className="text-[11px] font-normal text-text-muted">{row.product.unit} total</span></p><p className="text-[10px] text-text-muted">{row.low} menipis · {row.out} habis · {OWNER_BRANCHES.length} cabang</p></div><span className="material-symbols-outlined text-text-muted text-[18px]">{expanded ? 'expand_less' : 'expand_more'}</span></div></div>
-                </button>
-                {expanded && <div className="border-t border-border-base px-3 pb-3 pt-2 animate-slide-up"><p className="text-[10px] uppercase tracking-wide text-text-muted mb-2">Distribusi stok</p><div className="grid grid-cols-2 gap-1.5">{row.distribution.map((item) => <div key={item.slug} className="flex items-center justify-between rounded-lg bg-surface-container-low px-2.5 py-2"><span className="text-[10px] text-text-secondary">{item.label}</span><span className={`text-[11px] font-semibold ${item.quantity === 0 ? 'text-danger' : item.quantity <= row.product.minimum_stock ? 'text-status-menipis' : 'text-text-primary'}`}>{item.quantity} {row.product.unit}</span></div>)}</div><div className="flex items-center justify-between mt-3"><span className="text-[10px] text-text-muted">Informasi teknis tersedia di detail produk.</span><Link href={`/admin/stockist/branch-stock/all/${row.product.id}?branch=bypass`} className="text-[11px] font-semibold text-primary-container px-2 py-1.5 rounded-lg hover:bg-primary-container/10">Lihat detail</Link></div></div>}
-              </div>;
-            })}
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-[13px] font-semibold text-text-secondary uppercase tracking-wide">Produk</h3>
+            <span className="text-[11px] text-text-muted">Menampilkan {visibleRows.length} dari {rows.length}</span>
           </div>
-          {hasMoreRows && <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)} className="w-full min-h-[44px] rounded-xl border border-border-base bg-surface-elevated text-[12px] font-semibold text-text-secondary hover:border-primary-container hover:text-text-primary transition-colors">Tampilkan {Math.min(PAGE_SIZE, rows.length - visibleCount)} produk berikutnya</button>}
+          <div className="flex flex-col gap-2">
+            {visibleRows.map((row) => (
+              <Link
+                key={row.product.id}
+                href={`/admin/stockist/branch-stock/all/${row.product.id}?branch=${branch}`}
+                className="flex items-center gap-3 rounded-xl border border-border-base bg-surface-elevated p-3 hover:border-primary-container/40 active:scale-[0.98] transition-all"
+              >
+                <div className="relative h-[66px] w-[66px] shrink-0 overflow-hidden rounded-xl border border-border-base bg-surface-container-lowest">
+                  {getKnownProductImage(row.product.name) ? (
+                    <img src={getKnownProductImage(row.product.name) as string} alt="" className="h-full w-full object-contain p-1" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center material-symbols-outlined text-text-muted">inventory_2</span>
+                  )}
+                  <span className={`absolute bottom-0 left-0 h-3 w-3 rounded-full border-[2.5px] border-surface-elevated ${STATUS_DOT[row.status]}`} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="truncate text-[13.5px] font-bold text-text-primary">{row.product.name}</h4>
+                  <span className="block text-[10px] font-mono text-text-muted">{row.product.sku}</span>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    {row.product.category && (
+                      <span className="rounded border border-border-base bg-surface-container px-1.5 py-0.5 text-[9px] font-semibold text-text-secondary">{row.product.category}</span>
+                    )}
+                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_BADGE[row.status]}`}>{STATUS_LABEL[row.status]}</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-0.5">
+                  <span className={`text-[19px] font-bold font-display tabular-nums ${STATUS_TEXT[row.status]}`}>{row.qty}</span>
+                  <span className="text-[9px] text-text-muted">{row.product.unit}</span>
+                </div>
+                <span className="material-symbols-outlined shrink-0 text-[18px] text-text-muted">chevron_right</span>
+              </Link>
+            ))}
+          </div>
+          {hasMoreRows && (
+            <button
+              type="button"
+              onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+              className="w-full min-h-[44px] rounded-xl border border-border-base bg-surface-elevated text-[12px] font-semibold text-text-secondary hover:border-primary-container hover:text-text-primary transition-colors"
+            >
+              Tampilkan {Math.min(PAGE_SIZE, rows.length - visibleCount)} produk berikutnya
+            </button>
+          )}
         </section>
       )}
     </div>
