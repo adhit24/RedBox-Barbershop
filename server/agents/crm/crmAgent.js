@@ -6,6 +6,7 @@
  */
 
 const { getCustomer360 } = require('../../crm/customer360Service');
+const { resolveCustomerIdentity } = require('../../crm/customerIdentity');
 const { projectInternal, projectCustomerSelf } = require('../../crm/customerPrivacy');
 const { CONTRACT_VERSION, CRM_TOOLS, PROJECTION_TYPES } = require('./contract');
 const { normalizeMemberPhone } = require('../../member-identity');
@@ -14,11 +15,11 @@ const { normalizeMemberPhone } = require('../../member-identity');
  * Executes a deterministic CRM Agent tool capability with strict IDOR authorization binding.
  * @param {string} toolName - Name of the capability tool to execute
  * @param {object} params - Input params (e.g. { phone, customer_id, limit })
- * @param {object} context - Execution context { supabase, projection, phone, customer_id, user }
+ * @param {object} context - Execution context { supabase, projection, allow_internal_projection, phone, customer_id, user }
  * @returns {Promise<object>} Tool execution result
  */
 async function executeCrmTool(toolName, params = {}, context = {}) {
-  const { supabase, projection = PROJECTION_TYPES.CUSTOMER_SELF } = context;
+  const { supabase } = context;
 
   if (!supabase) {
     return {
@@ -38,9 +39,10 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
     };
   }
 
-  // --- IDOR Authorization Safeguard ---
-  // In CUSTOMER_SELF mode, caller MUST be bound to their authenticated context identity.
-  // Attempts to pass params targeting another customer's ID or phone are rejected.
+  // Projection is strictly determined by trusted server context with explicit authorization flag
+  const isInternalAuthorized = (context.projection === PROJECTION_TYPES.INTERNAL && context.allow_internal_projection === true);
+  const projection = isInternalAuthorized ? PROJECTION_TYPES.INTERNAL : PROJECTION_TYPES.CUSTOMER_SELF;
+
   let targetPhone = null;
   let targetCustomerId = null;
 
@@ -58,7 +60,21 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
       };
     }
 
-    // Check IDOR attempt: if params specify customer_id or phone that conflicts with context
+    // Check trusted context identity conflict: if both context.phone and context.customer_id are present, they MUST resolve to the same customer UUID
+    if (contextPhone && contextCustId) {
+      const phoneIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
+      if (phoneIdentity.found && phoneIdentity.customer_id && String(phoneIdentity.customer_id).trim() !== String(contextCustId).trim()) {
+        return {
+          status: 'forbidden',
+          tool: toolName,
+          error: 'identity_conflict_blocked',
+          customer_found: false,
+          data: null,
+        };
+      }
+    }
+
+    // Check IDOR attempts from input parameters against trusted context
     if (params.customer_id && contextCustId && String(params.customer_id).trim() !== String(contextCustId).trim()) {
       return {
         status: 'forbidden',
@@ -67,6 +83,33 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
         customer_found: false,
         data: null,
       };
+    }
+
+    if (params.customer_id && contextPhone && !contextCustId) {
+      const paramIdentity = await resolveCustomerIdentity(supabase, { customer_id: params.customer_id });
+      const contextIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
+      if (paramIdentity.found && contextIdentity.found && paramIdentity.customer_id !== contextIdentity.customer_id) {
+        return {
+          status: 'forbidden',
+          tool: toolName,
+          error: 'idor_attempt_blocked',
+          customer_found: false,
+          data: null,
+        };
+      }
+    }
+
+    if (params.phone && contextCustId && !contextPhone) {
+      const paramIdentity = await resolveCustomerIdentity(supabase, { phone: params.phone });
+      if (paramIdentity.found && paramIdentity.customer_id !== String(contextCustId).trim()) {
+        return {
+          status: 'forbidden',
+          tool: toolName,
+          error: 'idor_attempt_blocked',
+          customer_found: false,
+          data: null,
+        };
+      }
     }
 
     if (params.phone && contextPhone) {
@@ -99,6 +142,16 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
 
   // Step 1: Fetch underlying Customer 360 facts
   const raw360 = await getCustomer360(supabase, identityInput);
+
+  if (raw360.identity?.resolution === 'db_error') {
+    return {
+      status: 'db_error',
+      tool: toolName,
+      error: raw360.identity.error || 'database_unavailable',
+      customer_found: false,
+      data: null,
+    };
+  }
 
   // Step 2: Apply privacy projection
   const projected360 = projection === PROJECTION_TYPES.INTERNAL

@@ -64,6 +64,29 @@ async function getCustomer360(supabase, identityInput = {}) {
   // Step 1: Resolve identity
   const identity = await resolveCustomerIdentity(supabase, identityInput);
 
+  if (identity.resolution === 'db_error') {
+    return {
+      version: 'customer360.v0.1',
+      identity: {
+        customer_found: false,
+        customer_id: null,
+        resolution: 'db_error',
+        error: identity.error || 'database_unavailable',
+      },
+      customer: null,
+      membership: null,
+      loyalty: null,
+      activity: null,
+      spending: null,
+      preferences: null,
+      data_quality: {
+        customer_resolution: 'db_error',
+        transaction_data: 'unavailable',
+        visit_metric: 'unavailable',
+      },
+    };
+  }
+
   if (!identity.found || !identity.customer_id) {
     return {
       version: 'customer360.v0.1',
@@ -92,15 +115,15 @@ async function getCustomer360(supabase, identityInput = {}) {
   const profileRow = identity.member_profile_row || {};
 
   // Step 2: Fetch related database entities in parallel
+  const pointsOr = `customer_id.eq.${customerId}${canonicalPhone ? `,customer_wa.eq.${canonicalPhone}` : ''}`;
+  const bookingsOr = `customer_id.eq.${customerId}${canonicalPhone ? `,wa.eq.${canonicalPhone}` : ''}`;
+
   const [pointsRes, txRes, bookingsRes] = await Promise.all([
-    // Loyalty Points Balance
     supabase
       .from('member_points_balance')
       .select('*')
-      .or(`customer_id.eq.${customerId}${canonicalPhone ? `,customer_wa.eq.${canonicalPhone}` : ''}`)
-      .maybeSingle(),
+      .or(pointsOr),
 
-    // Completed Transactions
     supabase
       .from('transactions')
       .select('*, transaction_items(*)')
@@ -108,15 +131,70 @@ async function getCustomer360(supabase, identityInput = {}) {
       .eq('status', 'completed')
       .order('created_at', { ascending: false }),
 
-    // Bookings
     supabase
       .from('bookings')
       .select('*')
-      .or(`customer_id.eq.${customerId}${canonicalPhone ? `,wa.eq.${canonicalPhone}` : ''}`)
+      .or(bookingsOr)
       .order('date', { ascending: false }),
   ]);
 
-  const pointsData = pointsRes.data || null;
+  if (pointsRes.error || txRes.error || bookingsRes.error) {
+    return {
+      version: 'customer360.v0.1',
+      identity: {
+        customer_found: false,
+        customer_id: customerId,
+        resolution: 'db_error',
+        error: pointsRes.error?.message || txRes.error?.message || bookingsRes.error?.message || 'database_query_error',
+      },
+      customer: null,
+      membership: null,
+      loyalty: null,
+      activity: null,
+      spending: null,
+      preferences: null,
+      data_quality: {
+        customer_resolution: 'db_error',
+        transaction_data: 'unavailable',
+        visit_metric: 'unavailable',
+      },
+    };
+  }
+
+  // --- Loyalty Section & Duplicate Point Balance Safeguard ---
+  const pointsRows = Array.isArray(pointsRes.data) ? pointsRes.data : [];
+  let totalPoints = 0;
+  let lastActivity = null;
+  let loyaltyStatus = 'available';
+
+  if (pointsRows.length > 0) {
+    // Prefer authoritative row matching canonical customer_id
+    const exactMatch = pointsRows.find(r => r.customer_id === customerId);
+    if (exactMatch) {
+      totalPoints = typeof exactMatch.total_points === 'number' ? exactMatch.total_points : 0;
+      lastActivity = exactMatch.last_activity || null;
+    } else if (pointsRows.length === 1) {
+      totalPoints = typeof pointsRows[0].total_points === 'number' ? pointsRows[0].total_points : 0;
+      lastActivity = pointsRows[0].last_activity || null;
+    } else {
+      // Multiple balance rows without an exact customer_id match
+      const distinctBalances = new Set(pointsRows.map(r => r.total_points));
+      if (distinctBalances.size > 1) {
+        // Conflicting point balances -> mark loyalty unavailable (fail closed, do NOT sum or guess)
+        loyaltyStatus = 'ambiguous_balance_conflict';
+        totalPoints = null;
+        lastActivity = null;
+      } else {
+        totalPoints = typeof pointsRows[0].total_points === 'number' ? pointsRows[0].total_points : 0;
+        lastActivity = pointsRows[0].last_activity || null;
+      }
+    }
+  }
+
+  const loyaltyObj = loyaltyStatus === 'ambiguous_balance_conflict'
+    ? { points_balance: null, last_activity: null, status: 'ambiguous_balance_conflict' }
+    : { points_balance: totalPoints, last_activity: lastActivity };
+
   const transactions = Array.isArray(txRes.data) ? txRes.data : [];
   const bookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
 
@@ -150,15 +228,6 @@ async function getCustomer360(supabase, identityInput = {}) {
     tier_origin: tierOrigin,
     activated_at: profileRow.membership_activated_at || custRow.membership_activated_at || null,
     expires_at: profileRow.membership_expires_at || null,
-  };
-
-  // --- Loyalty Section ---
-  // Exposes ONLY factual loyalty units (points_balance). No IDR monetary conversions.
-  const totalPoints = typeof pointsData?.total_points === 'number' ? pointsData.total_points : 0;
-
-  const loyaltyObj = {
-    points_balance: totalPoints,
-    last_activity: pointsData?.last_activity || null,
   };
 
   // --- Transactions / Financial Section ---

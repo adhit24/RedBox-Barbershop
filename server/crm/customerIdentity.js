@@ -30,7 +30,16 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       .eq('id', cleanId)
       .maybeSingle();
 
-    if (!error && customer) {
+    if (error) {
+      return {
+        found: false,
+        customer_id: null,
+        resolution: 'db_error',
+        error: error.message,
+      };
+    }
+
+    if (customer) {
       return {
         found: true,
         customer_id: customer.id,
@@ -63,11 +72,17 @@ async function resolveCustomerIdentity(supabase, input = {}) {
 
   const variants = getMemberPhoneVariants(canonical);
 
+  // Clean OR clauses for PostgREST syntax
+  const orConditions = variants.map(v => {
+    const digits = String(v).replace(/\D/g, '');
+    return `wa.eq.${digits},phone_e164.eq.${digits},phone_e164.eq.+${digits}`;
+  }).join(',');
+
   // Fetch candidates from `customers` table matching any phone variant
   const { data: customerRows, error: custErr } = await supabase
     .from('customers')
     .select('*')
-    .or(variants.map(v => `wa.eq.${v},phone_e164.eq.${v},phone_e164.eq.+${v.replace(/^\+/, '')}`).join(','));
+    .or(orConditions);
 
   if (custErr) {
     return {
@@ -79,11 +94,25 @@ async function resolveCustomerIdentity(supabase, input = {}) {
   }
 
   // Fetch candidate from `member_profiles` if customer row is missing
+  const profileConditions = variants.map(v => {
+    const digits = String(v).replace(/\D/g, '');
+    return `phone.eq.${digits},phone.eq.+${digits}`;
+  }).join(',');
+
   let memberProfileRow = null;
-  const { data: profileRows } = await supabase
+  const { data: profileRows, error: profErr } = await supabase
     .from('member_profiles')
     .select('*')
-    .or(variants.map(v => `phone.eq.${v},phone.eq.+${v.replace(/^\+/, '')}`).join(','));
+    .or(profileConditions);
+
+  if (profErr) {
+    return {
+      found: false,
+      customer_id: null,
+      resolution: 'db_error',
+      error: profErr.message,
+    };
+  }
 
   if (Array.isArray(profileRows) && profileRows.length > 0) {
     const distinctPhones = new Set(profileRows.map(p => normalizeMemberPhone(p.phone)).filter(Boolean));

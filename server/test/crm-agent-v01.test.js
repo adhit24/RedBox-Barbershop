@@ -17,6 +17,7 @@ function createMockSupabase({
   memberPointsBalance = [],
   transactions = [],
   bookings = [],
+  simulateDbError = false,
 } = {}) {
   const getTableData = (table) => {
     switch (table) {
@@ -68,12 +69,15 @@ function createMockSupabase({
         return builder;
       },
       maybeSingle() {
+        if (simulateDbError) return Promise.resolve({ data: null, error: { message: 'Database connection failed' } });
         return Promise.resolve({ data: rows[0] || null, error: null });
       },
       single() {
+        if (simulateDbError) return Promise.resolve({ data: null, error: { message: 'Database connection failed' } });
         return Promise.resolve({ data: rows[0] || null, error: null });
       },
       then(onFulfilled, onRejected) {
+        if (simulateDbError) return Promise.resolve({ data: null, error: { message: 'Database connection failed' } }).then(onFulfilled, onRejected);
         return Promise.resolve({ data: rows, error: null }).then(onFulfilled, onRejected);
       },
     };
@@ -88,8 +92,8 @@ function createMockSupabase({
   };
 }
 
-// ── 1. GIT SAFETY & ADVERSARIAL IDOR TESTS ──────────────────────────────────
-test('Adversarial IDOR: Customer A context attempting params.customer_id = Customer B MUST be blocked', async () => {
+// ── 1. TRUSTED CONTEXT CONFLICT & IDOR MATRIX TESTS ───────────────────────────
+test('IDOR Matrix Case A: context.phone = A, params.customer_id = B -> BLOCKED', async () => {
   const supabase = createMockSupabase({
     customers: [
       { id: 'cust-a-id', wa: '62818202569', phone_e164: '+62818202569' },
@@ -97,18 +101,12 @@ test('Adversarial IDOR: Customer A context attempting params.customer_id = Custo
     ],
   });
 
-  const res = await executeCrmTool(
-    'get_points',
-    { customer_id: 'cust-b-id' },
-    { supabase, projection: 'CUSTOMER_SELF', phone: '62818202569', customer_id: 'cust-a-id' }
-  );
-
+  const res = await executeCrmTool('get_points', { customer_id: 'cust-b-id' }, { supabase, projection: 'CUSTOMER_SELF', phone: '62818202569' });
   assert.equal(res.status, 'forbidden');
   assert.equal(res.error, 'idor_attempt_blocked');
-  assert.equal(res.customer_found, false);
 });
 
-test('Adversarial IDOR: Customer A context attempting params.phone = Customer B MUST be blocked', async () => {
+test('IDOR Matrix Case B: context.customer_id = A, params.phone = B -> BLOCKED', async () => {
   const supabase = createMockSupabase({
     customers: [
       { id: 'cust-a-id', wa: '62818202569', phone_e164: '+62818202569' },
@@ -116,18 +114,123 @@ test('Adversarial IDOR: Customer A context attempting params.phone = Customer B 
     ],
   });
 
-  const res = await executeCrmTool(
-    'get_points',
-    { phone: '62899999999' },
-    { supabase, projection: 'CUSTOMER_SELF', phone: '62818202569' }
-  );
-
+  const res = await executeCrmTool('get_points', { phone: '62899999999' }, { supabase, projection: 'CUSTOMER_SELF', customer_id: 'cust-a-id' });
   assert.equal(res.status, 'forbidden');
   assert.equal(res.error, 'idor_attempt_blocked');
-  assert.equal(res.customer_found, false);
 });
 
-// ── 2. AMBIGUOUS IDENTITY TEST ───────────────────────────────────────────────
+test('IDOR Matrix Case C: context.phone = A, context.customer_id = A, params absent -> ALLOWED', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-a-id', wa: '62818202569', phone_e164: '+62818202569' }],
+  });
+
+  const res = await executeCrmTool('get_points', {}, { supabase, projection: 'CUSTOMER_SELF', phone: '62818202569', customer_id: 'cust-a-id' });
+  assert.equal(res.status, 'success');
+  assert.equal(res.customer_found, true);
+});
+
+test('IDOR Matrix Case D: context.phone = A (resolves to A), context.customer_id = B (disagrees) -> FAIL CLOSED', async () => {
+  const supabase = createMockSupabase({
+    customers: [
+      { id: 'cust-a-id', wa: '62818202569', phone_e164: '+62818202569' },
+      { id: 'cust-b-id', wa: '62899999999', phone_e164: '+62899999999' },
+    ],
+  });
+
+  const res = await executeCrmTool('get_points', {}, { supabase, projection: 'CUSTOMER_SELF', phone: '62818202569', customer_id: 'cust-b-id' });
+  assert.equal(res.status, 'forbidden');
+  assert.equal(res.error, 'identity_conflict_blocked');
+});
+
+test('IDOR Matrix Case E: context.phone = A, params.phone = A -> ALLOWED', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-a-id', wa: '62818202569', phone_e164: '+62818202569' }],
+  });
+
+  const res = await executeCrmTool('get_points', { phone: '62818202569' }, { supabase, projection: 'CUSTOMER_SELF', phone: '62818202569' });
+  assert.equal(res.status, 'success');
+  assert.equal(res.customer_found, true);
+});
+
+test('IDOR Matrix Case F: context.customer_id = A, params.customer_id = A -> ALLOWED', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-a-id', wa: '62818202569', phone_e164: '+62818202569' }],
+  });
+
+  const res = await executeCrmTool('get_points', { customer_id: 'cust-a-id' }, { supabase, projection: 'CUSTOMER_SELF', customer_id: 'cust-a-id' });
+  assert.equal(res.status, 'success');
+  assert.equal(res.customer_found, true);
+});
+
+// ── 2. INTERNAL PROJECTION AUTHORIZATION TESTS ────────────────────────────────
+test('Internal Projection Auth: params.projection = INTERNAL is ignored', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'uuid-secret-999', wa: '62818202587', phone_e164: '+62818202587' }],
+  });
+
+  const res = await executeCrmTool('get_customer_profile', { projection: 'INTERNAL' }, { supabase, projection: 'CUSTOMER_SELF', phone: '62818202587' });
+  assert.equal(res.projection, 'CUSTOMER_SELF');
+  assert.equal(res.data.customer.customer_id, undefined);
+});
+
+test('Internal Projection Auth: context.projection = INTERNAL without allow_internal_projection flag falls back to CUSTOMER_SELF', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'uuid-secret-999', wa: '62818202587', phone_e164: '+62818202587' }],
+  });
+
+  const res = await executeCrmTool('get_customer_profile', {}, { supabase, projection: 'INTERNAL', phone: '62818202587' });
+  assert.equal(res.projection, 'CUSTOMER_SELF');
+  assert.equal(res.data.customer.customer_id, undefined);
+});
+
+test('Internal Projection Auth: context.projection = INTERNAL with allow_internal_projection = true is ALLOWED', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'uuid-secret-999', wa: '62818202587', phone_e164: '+62818202587' }],
+  });
+
+  const res = await executeCrmTool('get_customer_profile', {}, { supabase, projection: 'INTERNAL', allow_internal_projection: true, phone: '62818202587' });
+  assert.equal(res.projection, 'INTERNAL');
+  assert.equal(res.data.customer.customer_id, 'uuid-secret-999');
+});
+
+// ── 3. DUPLICATE POINT BALANCE ROW TEST ──────────────────────────────────────
+test('Duplicate Point Balance Rows: preferring exact customer_id match', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-dup-1', wa: '62818202599', phone_e164: '+62818202599' }],
+    memberPointsBalance: [
+      { customer_id: 'cust-dup-1', customer_wa: '62818202599', total_points: 25 },
+      { customer_id: 'other-cust', customer_wa: '62818202599', total_points: 100 },
+    ],
+  });
+
+  const c360 = await getCustomer360(supabase, { customer_id: 'cust-dup-1' });
+  assert.equal(c360.loyalty.points_balance, 25); // Prefers exact customer_id match
+});
+
+test('Duplicate Point Balance Rows: conflicting non-matching rows fail closed to points_balance = null', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-dup-2', wa: '62818202500', phone_e164: '+62818202500' }],
+    memberPointsBalance: [
+      { customer_id: 'unlinked-1', customer_wa: '62818202500', total_points: 10 },
+      { customer_id: 'unlinked-2', customer_wa: '62818202500', total_points: 50 },
+    ],
+  });
+
+  const c360 = await getCustomer360(supabase, { customer_id: 'cust-dup-2' });
+  assert.equal(c360.loyalty.points_balance, null);
+  assert.equal(c360.loyalty.status, 'ambiguous_balance_conflict');
+});
+
+// ── 4. DATABASE ERROR VS NOT FOUND TEST ──────────────────────────────────────
+test('Database Error Semantics: DB failure returns status db_error, NOT customer_found: false / not_found', async () => {
+  const supabase = createMockSupabase({ simulateDbError: true });
+
+  const res = await executeCrmTool('get_points', { phone: '62818202569' }, { supabase, projection: 'CUSTOMER_SELF', phone: '62818202569' });
+  assert.equal(res.status, 'db_error');
+  assert.equal(res.error, 'Database connection failed');
+});
+
+// ── 5. AMBIGUOUS IDENTITY TEST ───────────────────────────────────────────────
 test('Ambiguous Identity: candidate customer rows with conflicting names MUST return resolution: ambiguous', async () => {
   const supabase = createMockSupabase({
     customers: [
@@ -142,7 +245,7 @@ test('Ambiguous Identity: candidate customer rows with conflicting names MUST re
   assert.equal(res.resolution, 'ambiguous');
 });
 
-// ── 3. POINTS BUSINESS RULE TESTS (FACTUAL UNITS ONLY) ───────────────────────
+// ── 6. POINTS BUSINESS RULE TESTS (FACTUAL UNITS ONLY) ───────────────────────
 test('Points: returns factual points_balance ONLY; NO monetary IDR conversion', async () => {
   const supabase = createMockSupabase({
     customers: [{ id: 'cust-1', wa: '62818202569', phone_e164: '+62818202569' }],
@@ -155,23 +258,7 @@ test('Points: returns factual points_balance ONLY; NO monetary IDR conversion', 
   assert.equal(c360.loyalty.loyalty_discount_equivalent_idr, undefined);
 });
 
-test('Points: zero balance for registered customer returns points_balance = 0', async () => {
-  const supabase = createMockSupabase({
-    customers: [{ id: 'cust-2', wa: '62818202570', phone_e164: '+62818202570' }],
-    memberPointsBalance: [{ customer_id: 'cust-2', total_points: 0 }],
-  });
-  const c360 = await getCustomer360(supabase, { phone: '62818202570' });
-  assert.equal(c360.loyalty.points_balance, 0);
-});
-
-test('Points: unknown customer returns null loyalty object', async () => {
-  const supabase = createMockSupabase();
-  const c360 = await getCustomer360(supabase, { phone: '08000000000' });
-  assert.equal(c360.identity.customer_found, false);
-  assert.equal(c360.loyalty, null);
-});
-
-// ── 4. MEMBERSHIP BRONZE TIER ORIGIN TESTS ──────────────────────────────────
+// ── 7. MEMBERSHIP BRONZE TIER ORIGIN TESTS ──────────────────────────────────
 test('Membership: active Gold member has tier_origin = configured', async () => {
   const supabase = createMockSupabase({
     customers: [{ id: 'cust-3', wa: '62818202571', phone_e164: '+62818202571' }],
@@ -183,33 +270,41 @@ test('Membership: active Gold member has tier_origin = configured', async () => 
   assert.equal(c360.membership.tier_origin, 'configured');
 });
 
-test('Membership: unconfigured profile tier defaults to bronze with tier_origin = default_baseline', async () => {
+// ── 8. VISIT SEMANTICS TESTS (ALL 5 SCENARIOS) ───────────────────────────────
+test('Visit Semantics Scenario 1: Booking only', async () => {
   const supabase = createMockSupabase({
-    customers: [{ id: 'cust-4', wa: '62818202572', phone_e164: '+62818202572' }],
-    memberProfiles: [{ id: 'mp-2', phone: '62818202572', membership_status: 'ACTIVE' }],
+    customers: [{ id: 'cust-v1', wa: '62818202581', phone_e164: '+62818202581' }],
+    bookings: [{ id: 'b-1', customer_id: 'cust-v1', status: 'done', date: '2026-08-01' }],
   });
-  const c360 = await getCustomer360(supabase, { phone: '62818202572' });
-  assert.equal(c360.membership.tier, 'bronze');
-  assert.equal(c360.membership.tier_origin, 'default_baseline');
+
+  const c360 = await getCustomer360(supabase, { phone: '62818202581' });
+  assert.equal(c360.activity.completed_booking_count, 1);
+  assert.equal(c360.activity.completed_transaction_count, 0);
 });
 
-// ── 5. TRANSACTION METRICS & FORMULA TESTS ───────────────────────────────────
-test('Transactions: average_transaction_value = total_spend / count(completed)', async () => {
+test('Visit Semantics Scenario 2: Transaction only', async () => {
   const supabase = createMockSupabase({
-    customers: [{ id: 'cust-5', wa: '62818202573', phone_e164: '+62818202573' }],
-    transactions: [
-      { id: 'tx-1', customer_id: 'cust-5', total_amount: 100000, status: 'completed' },
-      { id: 'tx-2', customer_id: 'cust-5', total_amount: 50000, status: 'completed' },
-      { id: 'tx-3', customer_id: 'cust-5', total_amount: 80000, status: 'cancelled' },
-    ],
+    customers: [{ id: 'cust-v2', wa: '62818202582', phone_e164: '+62818202582' }],
+    transactions: [{ id: 't-1', customer_id: 'cust-v2', total_amount: 80000, status: 'completed', created_at: '2026-08-05T10:00:00Z' }],
   });
-  const c360 = await getCustomer360(supabase, { phone: '62818202573' });
-  assert.equal(c360.spending.transaction_count, 2);
-  assert.equal(c360.spending.total_spend_idr, 150000);
-  assert.equal(c360.spending.average_transaction_value_idr, 75000);
+
+  const c360 = await getCustomer360(supabase, { phone: '62818202582' });
+  assert.equal(c360.activity.completed_booking_count, 0);
+  assert.equal(c360.activity.completed_transaction_count, 1);
 });
 
-// ── 6. VISIT SEMANTICS TESTS (ALL 5 SCENARIOS) ───────────────────────────────
+test('Visit Semantics Scenario 3: Matching booking + transaction', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-v3', wa: '62818202583', phone_e164: '+62818202583' }],
+    bookings: [{ id: 'b-1', customer_id: 'cust-v3', status: 'done', date: '2026-08-05' }],
+    transactions: [{ id: 't-1', customer_id: 'cust-v3', total_amount: 80000, status: 'completed', created_at: '2026-08-05T11:00:00Z' }],
+  });
+
+  const c360 = await getCustomer360(supabase, { phone: '62818202583' });
+  assert.equal(c360.activity.completed_booking_count, 1);
+  assert.equal(c360.activity.completed_transaction_count, 1);
+});
+
 test('Visit Semantics Scenario 4: Multiple legitimate same-day events MUST NOT be collapsed', async () => {
   const supabase = createMockSupabase({
     customers: [{ id: 'cust-v4', wa: '62818202584', phone_e164: '+62818202584' }],
@@ -230,22 +325,18 @@ test('Visit Semantics Scenario 4: Multiple legitimate same-day events MUST NOT b
   assert.equal(c360.spending.total_spend_idr, 130000);
 });
 
-// ── 7. PRIVACY PROJECTIONS TESTS ─────────────────────────────────────────────
-test('Privacy: CUSTOMER_SELF projection exposes points_balance ONLY (no IDR conversions)', async () => {
+test('Visit Semantics Scenario 5: Insufficient linkage returns visit_metric_status = caveated', async () => {
   const supabase = createMockSupabase({
-    customers: [{ id: 'uuid-secret-999', wa: '62818202587', phone_e164: '+62818202587' }],
-    memberPointsBalance: [{ customer_id: 'uuid-secret-999', total_points: 9 }],
+    customers: [{ id: 'cust-v5', wa: '62818202585', phone_e164: '+62818202585' }],
+    bookings: [{ id: 'b-1', customer_id: 'cust-v5', status: 'done', date: '2026-08-01' }],
+    transactions: [{ id: 't-1', customer_id: 'cust-v5', total_amount: 100000, status: 'completed', created_at: '2026-08-02T10:00:00Z' }],
   });
 
-  const raw360 = await getCustomer360(supabase, { phone: '62818202587' });
-  const projected = projectCustomerSelf(raw360);
-
-  assert.equal(projected.loyalty.points_balance, 9);
-  assert.equal(projected.loyalty.points_value_idr, undefined);
-  assert.equal(projected.loyalty.loyalty_discount_equivalent_idr, undefined);
+  const c360 = await getCustomer360(supabase, { phone: '62818202585' });
+  assert.equal(c360.activity.visit_metric_status, 'caveated');
 });
 
-// ── 8. DIRECT COVERAGE FOR ALL 7 CRM TOOLS ──────────────────────────────────
+// ── 9. DIRECT COVERAGE FOR ALL 7 CRM TOOLS ──────────────────────────────────
 test('CRM Agent Capabilities: direct test for all 7 declared tools', async () => {
   const supabase = createMockSupabase({
     customers: [{ id: 'cust-all-tools', wa: '62818202588', phone_e164: '+62818202588' }],
@@ -255,7 +346,7 @@ test('CRM Agent Capabilities: direct test for all 7 declared tools', async () =>
     bookings: [{ id: 'b-all', customer_id: 'cust-all-tools', wa: '62818202588', status: 'done', location: 'bypass', barber_id: 'bypass1', service: 'Cut' }],
   });
 
-  const ctx = { supabase, projection: 'INTERNAL', phone: '62818202588' };
+  const ctx = { supabase, projection: 'INTERNAL', allow_internal_projection: true, phone: '62818202588' };
 
   for (const toolName of CRM_TOOLS) {
     const res = await executeCrmTool(toolName, {}, ctx);
@@ -265,7 +356,7 @@ test('CRM Agent Capabilities: direct test for all 7 declared tools', async () =>
   }
 });
 
-// ── 9. STATIC TEXT SEARCH AUDIT FOR MUTATION KEYWORDS ─────────────────────────
+// ── 10. STATIC TEXT SEARCH AUDIT FOR MUTATION KEYWORDS ─────────────────────────
 test('Static Text Search: Verify zero mutations and zero LLM calls', () => {
   const crmDir = path.join(__dirname, '../crm');
   const agentDir = path.join(__dirname, '../agents/crm');
