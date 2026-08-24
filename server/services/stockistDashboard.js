@@ -125,6 +125,7 @@ function buildAttentionItems(balances, products, locationNames = {}) {
     return [{
       product_id: product.id,
       product_name: product.name,
+      product_sku: product.sku,
       location_id: balance.location_id,
       location_name: locationNames[balance.location_id] || balance.location_id,
       quantity,

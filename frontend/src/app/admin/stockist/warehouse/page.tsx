@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useUser } from '@/hooks/useUser';
 import { listProducts, getInventorySummary, receiveWarehouseStock, type StockistProduct, type InventoryBalance } from '@/lib/stockistApi';
 
-export default function WarehousePage() {
+function WarehousePageContent() {
   const { user } = useUser();
   const [products, setProducts] = useState<StockistProduct[]>([]);
   const [balances, setBalances] = useState<InventoryBalance[]>([]);
@@ -18,7 +19,11 @@ export default function WarehousePage() {
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'SAFE'>('ALL');
+  const searchParams = useSearchParams();
+  const initialFilter = searchParams?.get('filter');
+  const [filterType, setFilterType] = useState<'ALL' | 'LOW' | 'SAFE'>(
+    initialFilter === 'LOW' || initialFilter === 'SAFE' ? initialFilter : 'ALL'
+  );
 
   async function refresh() {
     setLoading(true);
@@ -322,5 +327,17 @@ export default function WarehousePage() {
         </section>
       )}
     </div>
+  );
+}
+
+export default function WarehousePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-12">
+        <div className="w-6 h-6 border-2 border-primary-container border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <WarehousePageContent />
+    </Suspense>
   );
 }

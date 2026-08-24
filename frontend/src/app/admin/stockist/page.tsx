@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useUser } from '@/hooks/useUser';
-import { useStockistTheme } from '@/lib/stockist/useTheme';
 import type { AppUser } from '@/hooks/useUser';
 import Link from 'next/link';
 import {
@@ -25,7 +24,6 @@ import { ListRow, type ListRowData } from '@/components/stockist/ListRow';
 import { BottomSheet } from '@/components/stockist/BottomSheet';
 import { SkeletonCard } from '@/components/stockist/SkeletonCard';
 import { EmptyState } from '@/components/stockist/EmptyState';
-import { HorizontalBarChart } from '@/components/stockist/HorizontalBarChart';
 import { LocationDrillDownContent } from '@/components/stockist/LocationDrillDownContent';
 import { QuickActionGrid } from '@/components/stockist/QuickActionGrid';
 import { ProductAttentionRow, type ProductAttentionRowData } from '@/components/stockist/ProductAttentionRow';
@@ -92,7 +90,6 @@ export default function StockistDashboard() {
 type DrillDown =
   | { type: 'location'; location: AssetLocationSummary }
   | { type: 'attention' }
-  | { type: 'transfers' }
   | null;
 
 function toAttentionRows(items: StockistAssetDashboard['attention_items']): ListRowData[] {
@@ -102,33 +99,32 @@ function toAttentionRows(items: StockistAssetDashboard['attention_items']): List
     icon: item.reason === 'OUT_OF_STOCK' ? 'error' : 'inventory_2',
     severity: item.reason === 'OUT_OF_STOCK' ? 'danger' : 'warning',
     title: item.product_name,
-    subtitle: item.location_name,
+    subtitle: `${item.product_sku} · ${item.location_name}`,
     trailing: item.reason === 'OUT_OF_STOCK' ? 'Habis' : `${item.quantity} tersisa`,
   }));
+}
+
+function locationBarColorClass(location: AssetLocationSummary): string {
+  if (location.type === 'warehouse') return 'bg-primary-container';
+  const name = location.location_name;
+  if (name.includes('Bypass')) return 'bg-accent-soft';
+  if (name.includes('CSB')) return 'bg-info';
+  if (name.includes('Samadikun')) return 'bg-warning';
+  if (name.includes('Sumber')) return 'bg-success';
+  if (name.includes('Tegal')) return 'bg-text-muted';
+  return 'bg-primary-container';
 }
 
 function toProductAttentionRows(items: StockistAssetDashboard['attention_items']): ProductAttentionRowData[] {
   return items.map((item) => ({
     key: `${item.location_id}-${item.product_id}`,
     name: item.product_name,
-    meta: item.location_name,
+    meta: `${item.product_sku} · ${item.location_name}`,
     statusLabel: item.reason === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis',
     severity: item.reason === 'OUT_OF_STOCK' ? 'danger' : 'warning',
     trailing: String(item.quantity),
     trailingUnit: 'pcs',
     href: '/admin/stockist/products',
-  }));
-}
-
-function toTransferRows(transfers: StockTransfer[]): ListRowData[] {
-  return transfers.map((t) => ({
-    key: t.id,
-    href: `/admin/stockist/transfers/${t.id}`,
-    icon: 'local_shipping',
-    severity: 'neutral',
-    title: t.transfer_number,
-    subtitle: `${t.source_name ?? t.source_location_id} → ${t.destination_name ?? t.destination_location_id}`,
-    trailing: t.status === 'SENT' ? 'Dikirim' : 'Diterima',
   }));
 }
 
@@ -138,8 +134,6 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drillDown, setDrillDown] = useState<DrillDown>(null);
-
-  const { theme } = useStockistTheme();
 
   useEffect(() => {
     setLoading(true);
@@ -219,12 +213,12 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
             <StatCard label="Total Produk" value={activeProductCount} icon="category" tint="info" hint="SKU aktif" href="/admin/stockist/products" />
             <StatCard label="Total Stok" value={totalStockUnits} icon="inventory_2" tint="success" hint="unit di semua lokasi" href="/admin/stockist/warehouse" />
             <StatCard
-              label="Perlu Perhatian"
-              value={assets.attention_items.length}
+              label="Produk Menipis"
+              value={assets.attention_items.filter((item) => item.location_name === 'Gudang Pusat').length}
               icon="warning"
               tint="warning"
               hint="perlu restock"
-              onClick={() => setDrillDown({ type: 'attention' })}
+              href="/admin/stockist/warehouse?filter=LOW"
             />
             <StatCard
               label="Transfer Berjalan"
@@ -232,7 +226,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
               icon="local_shipping"
               tint="danger"
               hint="belum diterima"
-              onClick={() => setDrillDown({ type: 'transfers' })}
+              href="/admin/stockist/transfers"
             />
           </motion.div>
 
@@ -278,22 +272,17 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
                 <h3 className="text-[13px] font-bold text-text-primary">Aset per lokasi</h3>
                 <span className="text-[10px] text-text-muted">{assets.asset_by_location.length} lokasi</span>
               </div>
-              <div className="bg-surface-elevated border border-border-base rounded-xl p-3">
-                <HorizontalBarChart
-                  data={assets.asset_by_location.map((location) => ({ name: location.location_name, value: location.total_asset_value ?? 0 }))}
-                  theme={theme}
-                />
-                <div className="mt-3 border-t border-border-base pt-1 divide-y divide-border-base">
-                  {assets.asset_by_location.map((location) => (
-                    <LocationCard
-                      key={location.location_id}
-                      location={location}
-                      formatValue={formatCurrency}
-                      maxValue={maxLocationValue}
-                      onSelect={() => setDrillDown({ type: 'location', location })}
-                    />
-                  ))}
-                </div>
+              <div className="bg-surface-elevated border border-border-base rounded-xl p-1 divide-y divide-border-base">
+                {assets.asset_by_location.map((location) => (
+                  <LocationCard
+                    key={location.location_id}
+                    location={location}
+                    formatValue={formatCurrency}
+                    maxValue={maxLocationValue}
+                    barColorClass={locationBarColorClass(location)}
+                    onSelect={() => setDrillDown({ type: 'location', location })}
+                  />
+                ))}
               </div>
             </motion.section>
           ) : null}
@@ -319,18 +308,6 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
           </div>
         ) : (
           <EmptyState icon="check_circle" title="Semua terkendali" subtitle="Tidak ada yang perlu ditindaklanjuti sekarang." />
-        )}
-      </BottomSheet>
-
-      <BottomSheet open={drillDown?.type === 'transfers'} onClose={() => setDrillDown(null)} title="Transfer Berjalan">
-        {assets && assets.active_transfers.length > 0 ? (
-          <div className="flex flex-col divide-y divide-border-base -m-4">
-            {toTransferRows(assets.active_transfers).map((row) => (
-              <ListRow key={row.key} row={row} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon="check_circle" title="Belum ada transfer berjalan" subtitle="Semua transfer sudah selesai." />
         )}
       </BottomSheet>
     </div>
