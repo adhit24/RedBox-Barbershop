@@ -66,16 +66,21 @@ function numeric(value) {
   return Number.isFinite(result) ? result : 0;
 }
 
-function calculateAssetValue(balances, products) {
+function calculateAssetValue(balances, products, purchasePrices = []) {
   const productById = new Map(products.map((product) => [product.id, product]));
+  const priceByLocationProduct = new Map(
+    purchasePrices.map((price) => [`${price.location_id}:${price.product_id}`, numeric(price.purchase_price)])
+  );
   return balances.reduce((total, balance) => {
     const product = productById.get(balance.product_id);
     const quantity = Math.max(0, numeric(balance.quantity));
-    return total + quantity * Math.max(0, numeric(product?.purchase_price));
+    const locationPrice = priceByLocationProduct.get(`${balance.location_id}:${balance.product_id}`);
+    const purchasePrice = locationPrice ?? numeric(product?.purchase_price);
+    return total + quantity * Math.max(0, purchasePrice);
   }, 0);
 }
 
-function summarizeAssetLocations(locations, balances, products) {
+function summarizeAssetLocations(locations, balances, products, purchasePrices = []) {
   const productById = new Map(products.map((product) => [product.id, product]));
   const balancesByLocation = new Map();
   for (const balance of balances) {
@@ -87,7 +92,11 @@ function summarizeAssetLocations(locations, balances, products) {
     const locationBalances = balancesByLocation.get(location.id) || [];
     const positiveBalances = locationBalances.filter((balance) => numeric(balance.quantity) > 0);
     const totalQuantity = positiveBalances.reduce((sum, balance) => sum + numeric(balance.quantity), 0);
-    const totalAssetValue = calculateAssetValue(positiveBalances, products.filter((product) => positiveBalances.some((b) => b.product_id === product.id)));
+    const totalAssetValue = calculateAssetValue(
+      positiveBalances,
+      products.filter((product) => positiveBalances.some((b) => b.product_id === product.id)),
+      purchasePrices
+    );
     const lowStockCount = positiveBalances.filter((balance) => {
       const product = productById.get(balance.product_id);
       const threshold = product?.reorder_point ?? product?.minimum_stock ?? 0;

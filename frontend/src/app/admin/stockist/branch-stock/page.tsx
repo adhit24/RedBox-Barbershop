@@ -168,7 +168,7 @@ function BranchStockDashboard() {
           <select
             value={branch}
             onChange={(e) => router.push(`/admin/stockist/branch-stock?branch=${encodeURIComponent(e.target.value)}`)}
-            className="w-full bg-[#171415] border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
+            className="w-full bg-surface-container-lowest border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
           >
             <option value="bypass">Cabang Bypass</option>
             <option value="sumber">Cabang Sumber</option>
@@ -243,7 +243,7 @@ function BranchStockDashboard() {
                 <div className="flex justify-between text-text-secondary"><span>Stok tertutup</span><strong className="text-text-primary">{item.available_quantity} {item.unit}</strong></div>
                 <div className="flex justify-between text-text-secondary"><span>Sedang digunakan</span><strong className="text-primary-container">{item.in_use_quantity} {item.unit}</strong></div>
                 {!isOwner && item.available_quantity > 0 && (
-                  <button onClick={() => { setOpenProduct(item); setOpenQuantity(1); setUsageSheetOpen(false); setActionError(null); }} className="rounded-lg bg-primary-container text-text-primary py-2 font-semibold">Mulai Pakai</button>
+                  <button onClick={() => { setOpenProduct(item); setOpenQuantity(1); setUsageSheetOpen(false); setActionError(null); }} className="rounded-lg bg-primary-container text-white py-2 font-semibold">Mulai Pakai</button>
                 )}
                 {activeUsagesForBranch.filter((usage) => usage.product_id === item.id).map((usage) => (
                   <div key={usage.id} className="flex justify-between items-center border-t border-border-base pt-2">
@@ -272,20 +272,20 @@ function BranchStockDashboard() {
               </p>
             </div>
             <label className="text-[12px] text-text-secondary">Quantity
-              <input type="number" min={1} max={openProduct.available_quantity || 1} value={openQuantity} onChange={(e) => setOpenQuantity(Math.max(1, Number(e.target.value)))} className="mt-1 w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary" />
+              <input type="number" min={1} max={openProduct.available_quantity || 1} value={openQuantity} onChange={(e) => setOpenQuantity(Math.max(1, Number(e.target.value)))} className="mt-1 w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary" />
             </label>
             <label className="text-[12px] text-text-secondary">PIC / Penanggung Jawab
-              <select value={openPic} onChange={(e) => setOpenPic(e.target.value)} className="mt-1 w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary">
+              <select value={openPic} onChange={(e) => setOpenPic(e.target.value)} className="mt-1 w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary">
                 <option value="">Pilih PIC</option>
                 {picOptions.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
               </select>
             </label>
             <label className="text-[12px] text-text-secondary">Catatan opsional
-              <textarea value={openNotes} onChange={(e) => setOpenNotes(e.target.value)} className="mt-1 w-full bg-[#171415] border border-border-base rounded-lg px-3 py-2 text-text-primary" rows={2} />
+              <textarea value={openNotes} onChange={(e) => setOpenNotes(e.target.value)} className="mt-1 w-full bg-surface-container-lowest border border-border-base rounded-lg px-3 py-2 text-text-primary" rows={2} />
             </label>
             <div className="flex gap-2">
               <button onClick={() => setOpenProduct(null)} disabled={actionBusy} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary">Batal</button>
-              <button onClick={() => void handleMulaiPakai()} disabled={actionBusy || !openPic} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Mulai Pakai'}</button>
+              <button onClick={() => void handleMulaiPakai()} disabled={actionBusy || !openPic} className="flex-1 bg-primary-container rounded-lg py-2 text-white font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Mulai Pakai'}</button>
             </div>
           </div>
         </div>
@@ -305,7 +305,7 @@ function BranchStockDashboard() {
             </div>
             <div className="flex gap-2">
               <button onClick={() => setConfirmFinishUsage(null)} disabled={actionBusy} className="flex-1 border border-border-base rounded-lg py-2 text-text-secondary">Batal</button>
-              <button onClick={() => void handleTandaiHabis(confirmFinishUsage)} disabled={actionBusy} className="flex-1 bg-primary-container rounded-lg py-2 text-text-primary font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Tandai Habis'}</button>
+              <button onClick={() => void handleTandaiHabis(confirmFinishUsage)} disabled={actionBusy} className="flex-1 bg-primary-container rounded-lg py-2 text-white font-bold">{actionBusy ? 'Menyimpan...' : 'Ya, Tandai Habis'}</button>
             </div>
           </div>
         </div>

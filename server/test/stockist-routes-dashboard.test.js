@@ -30,9 +30,9 @@ function fakeSupabase({
   balances = [], products = [],
   requests = [], requestItems = [],
   transfers = [], transferItems = [],
-  opnames = [], opnameItems = [],
+  opnames = [], opnameItems = [], purchasePrices = [],
 } = {}) {
-  const state = { locations, outlets, balances, products, requests, requestItems, transfers, transferItems, opnames, opnameItems };
+  const state = { locations, outlets, balances, products, requests, requestItems, transfers, transferItems, opnames, opnameItems, purchasePrices };
 
   function readOnlyTable(list) {
     const query = {
@@ -65,6 +65,7 @@ function fakeSupabase({
         return query;
       }
       if (table === 'inventory_balances') return readOnlyTable(state.balances);
+      if (table === 'inventory_purchase_prices') return readOnlyTable(state.purchasePrices);
       if (table === 'products') return readOnlyTable(state.products);
       if (table === 'stock_requests') return readOnlyTable(state.requests);
       if (table === 'stock_request_items') return readOnlyTable(state.requestItems);
@@ -156,6 +157,25 @@ test('GET /dashboard/assets returns asset values, location breakdown, attention 
     assert.equal(body.asset_by_location.find((row) => row.location_id === 'loc-bypass').total_asset_value, 24000);
     assert.equal(body.attention_items[0].reason, 'LOW_STOCK');
     assert.equal(body.active_transfers.length, 1);
+  }, { role: 'owner' });
+});
+
+test('GET /dashboard/assets uses the Moka cost for each location when available', async () => {
+  const supabase = fakeSupabase({
+    products: [{ id: 'p1', name: 'Pomade', purchase_price: 12000, reorder_point: 3 }],
+    balances: [
+      { location_id: 'loc-warehouse', product_id: 'p1', quantity: 10 },
+      { location_id: 'loc-bypass', product_id: 'p1', quantity: 2 },
+    ],
+    purchasePrices: [{ location_id: 'loc-bypass', product_id: 'p1', purchase_price: 9000 }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/dashboard/assets`);
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.total_asset_value, 138000);
+    assert.equal(body.warehouse_asset_value, 120000);
+    assert.equal(body.branch_asset_value, 18000);
   }, { role: 'owner' });
 });
 

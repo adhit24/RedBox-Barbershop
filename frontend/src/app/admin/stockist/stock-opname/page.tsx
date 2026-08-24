@@ -91,7 +91,7 @@ export default function StockOpnamePage() {
         <button
           onClick={() => isOwner ? setShowStartForm((v) => !v) : handleStart()}
           disabled={starting}
-          className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-text-primary text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95 border border-[#302728]"
+          className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-white text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95"
         >
           <span className="material-symbols-outlined text-[16px]">{isOwner && showStartForm ? 'close' : 'add_task'}</span>
           {starting ? 'Memulai...' : isOwner && showStartForm ? 'Batal' : 'Mulai Opname'}
@@ -104,7 +104,7 @@ export default function StockOpnamePage() {
           <select
             value={startLocation}
             onChange={(e) => setStartLocation(e.target.value)}
-            className="w-full bg-[#171415] border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
+            className="w-full bg-surface-container-lowest border border-border-base rounded-lg text-text-primary px-3 py-2.5 text-sm focus:outline-none focus:border-primary-container"
           >
             <option value="warehouse">Gudang Pusat</option>
             {BRANCHES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
@@ -112,7 +112,7 @@ export default function StockOpnamePage() {
           <button
             onClick={handleStart}
             disabled={starting}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all border border-[#302728]"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[44px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all"
           >
             {starting ? 'Memulai...' : 'Mulai Hitung Stok'}
           </button>

@@ -205,7 +205,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
                 <span className="material-symbols-outlined text-[#090707] text-[12px] font-bold">check</span>
               </div>
             ) : (
-              <div className="w-[18px] h-[18px] rounded-full border-2 border-border-base bg-[#171415] shrink-0"></div>
+              <div className="w-[18px] h-[18px] rounded-full border-2 border-border-base bg-surface-container-lowest shrink-0"></div>
             )}
             <div className="flex flex-col text-left">
               <span className={`text-[12px] font-semibold ${
@@ -245,7 +245,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
               <div key={item.id} className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-3">
                 <div className="flex items-start gap-3">
                   {/* Thumbnail */}
-                  <div className="w-12 h-12 rounded-lg bg-[#171415] border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-lg bg-surface-container-lowest border border-border-base overflow-hidden flex-shrink-0 flex items-center justify-center">
                     <img 
                       className="w-full h-full object-cover opacity-85 mix-blend-luminosity" 
                       src={getProductImage(sku, name)} 
@@ -260,7 +260,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
                 </div>
 
                 {/* Ledger Metrics Panel */}
-                <div className="flex justify-between items-center bg-[#171415] p-3 rounded-lg border border-border-base text-center">
+                <div className="flex justify-between items-center bg-surface-container-lowest p-3 rounded-lg border border-border-base text-center">
                   {/* Sent */}
                   <div className="flex flex-col flex-1 items-start">
                     <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Dikirim</span>
@@ -280,7 +280,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
                         min={0}
                         value={receivedQty[item.id] ?? ''}
                         onChange={(e) => setReceivedQty({ ...receivedQty, [item.id]: e.target.value })}
-                        className="w-16 h-[26px] bg-[#100e0e] border border-border-base rounded text-center text-[12px] font-bold text-text-primary focus:outline-none focus:border-primary-container p-0"
+                        className="w-16 h-[26px] bg-surface-container-lowest border border-border-base rounded text-center text-[12px] font-bold text-text-primary focus:outline-none focus:border-primary-container p-0"
                         required
                       />
                     ) : (
@@ -312,7 +312,7 @@ export default function TransferDetailPage({ params }: { params: Promise<{ id: s
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728] mt-3"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg mt-3"
           >
             <span className="material-symbols-outlined text-[18px]">verified</span>
             {submitting ? 'Memproses Konfirmasi...' : 'Konfirmasi Terima Barang'}

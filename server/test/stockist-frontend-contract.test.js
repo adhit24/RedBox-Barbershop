@@ -59,3 +59,12 @@ test('Riwayat page renders scoped ledger entries without a branch selector', () 
   assert.match(source, /getInventoryLedger/);
   assert.doesNotMatch(source, /Pilih Cabang/);
 });
+
+test('Semua Stok supports Category and Brand hierarchy grouping and dedicated category views', () => {
+  const source = readFrontend('app/admin/stockist/branch-stock/all/page.tsx');
+  assert.match(source, /groupProductsByCategoryAndBrand/);
+  assert.match(source, /CATEGORIES_LIST/);
+  assert.match(source, /categoryGroups/);
+  assert.match(source, /selectedCategory/);
+});
+

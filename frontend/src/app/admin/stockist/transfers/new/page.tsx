@@ -124,7 +124,7 @@ export default function NewTransferPage() {
             {/* Source */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Lokasi Asal</label>
-              <div className="flex items-center gap-3 p-2 bg-[#171415] rounded-lg border border-border-base">
+              <div className="flex items-center gap-3 p-2 bg-surface-container-lowest rounded-lg border border-border-base">
                 <div className="w-8 h-8 rounded bg-surface-container flex items-center justify-center text-text-muted border border-border-base">
                   <span className="material-symbols-outlined text-[16px]">warehouse</span>
                 </div>
@@ -146,7 +146,7 @@ export default function NewTransferPage() {
                 <select 
                   value={destination} 
                   onChange={(e) => setDestination(e.target.value)} 
-                  className="w-full bg-[#171415] border border-border-base rounded-lg p-2.5 text-text-primary text-sm focus:outline-none focus:border-primary-container"
+                  className="w-full bg-surface-container-lowest border border-border-base rounded-lg p-2.5 text-text-primary text-sm focus:outline-none focus:border-primary-container"
                   required
                 >
                   <option value="">Pilih cabang tujuan...</option>
@@ -181,7 +181,7 @@ export default function NewTransferPage() {
                       <select
                         value={line.product_id}
                         onChange={(e) => updateLine(i, { product_id: e.target.value })}
-                        className="w-full bg-[#171415] border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container"
+                        className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container"
                       >
                         <option value="">-- Pilih produk --</option>
                         {products.filter((p) => p.is_active).map((p) => (
@@ -209,7 +209,7 @@ export default function NewTransferPage() {
                         placeholder="Qty"
                         value={line.quantity}
                         onChange={(e) => updateLine(i, { quantity: e.target.value })}
-                        className="w-full bg-[#171415] border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container text-center font-bold font-display"
+                        className="w-full bg-surface-container-lowest border border-border-base rounded-lg px-2.5 py-2 text-text-primary text-[13px] focus:outline-none focus:border-primary-container text-center font-bold font-display"
                         required
                       />
                     </div>
@@ -242,7 +242,7 @@ export default function NewTransferPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728] mt-3"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg mt-3"
           >
             <span className="material-symbols-outlined text-[18px]">send</span>
             {submitting ? 'Membuat Transfer...' : 'Kirim Transfer Stok'}

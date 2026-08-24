@@ -212,7 +212,7 @@ export default function StockReturnDetailPage({ params }: { params: Promise<{ id
           <button
             onClick={() => run(() => approveStockReturn(id), 'Retur disetujui.')}
             disabled={submitting}
-            className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728]"
+            className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg"
           >
             <span className="material-symbols-outlined text-[18px]">verified</span>
             {submitting ? 'Memproses...' : 'Setujui Retur'}
@@ -237,7 +237,7 @@ export default function StockReturnDetailPage({ params }: { params: Promise<{ id
             required
             rows={3}
             placeholder="Mis: kategori retur tidak sesuai kondisi barang"
-            className="w-full bg-[#171415] border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-danger resize-none"
+            className="w-full bg-surface-container-lowest border border-border-base rounded-lg p-3 text-text-primary text-sm focus:outline-none focus:border-danger resize-none"
           />
           <button
             type="submit"
@@ -253,7 +253,7 @@ export default function StockReturnDetailPage({ params }: { params: Promise<{ id
         <button
           onClick={() => run(() => shipStockReturn(id), 'Barang dikirim ke gudang, stok cabang diperbarui.')}
           disabled={submitting}
-          className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728]"
+          className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg"
         >
           <span className="material-symbols-outlined text-[18px]">local_shipping</span>
           {submitting ? 'Memproses...' : 'Kirim ke Gudang'}
@@ -264,7 +264,7 @@ export default function StockReturnDetailPage({ params }: { params: Promise<{ id
         <button
           onClick={() => run(() => receiveStockReturn(id), 'Retur diterima gudang.')}
           disabled={submitting}
-          className="w-full bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg border border-[#302728]"
+          className="w-full bg-primary-container hover:bg-inverse-primary text-white font-bold text-sm h-[46px] rounded-lg flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-lg"
         >
           <span className="material-symbols-outlined text-[18px]">inventory</span>
           {submitting ? 'Memproses...' : 'Konfirmasi Diterima Gudang'}

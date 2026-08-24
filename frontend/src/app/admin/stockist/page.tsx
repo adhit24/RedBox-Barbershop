@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useUser } from '@/hooks/useUser';
+import { useStockistTheme } from '@/lib/stockist/useTheme';
 import type { AppUser } from '@/hooks/useUser';
 import Link from 'next/link';
 import {
@@ -24,6 +25,8 @@ import { SkeletonCard } from '@/components/stockist/SkeletonCard';
 import { EmptyState } from '@/components/stockist/EmptyState';
 import { HorizontalBarChart } from '@/components/stockist/HorizontalBarChart';
 import { LocationDrillDownContent } from '@/components/stockist/LocationDrillDownContent';
+import { QuickActionGrid } from '@/components/stockist/QuickActionGrid';
+import { ProductAttentionRow, type ProductAttentionRowData } from '@/components/stockist/ProductAttentionRow';
 import { staggerContainer, fadeSlideItem } from '@/lib/stockist/motion';
 import { formatCurrency } from '@/lib/stockist/format';
 import { getKnownProductImage } from '@/lib/stockist/productImage';
@@ -90,8 +93,6 @@ type DrillDown =
   | { type: 'transfers' }
   | null;
 
-// Compact adapter for the 2-up KPI grid cards, where full-notation IDR risks
-// overflowing the card's ~106-161px content box at the app's 430px width cap.
 function toAttentionRows(items: StockistAssetDashboard['attention_items']): ListRowData[] {
   return items.map((item) => ({
     key: `${item.location_id}-${item.product_id}`,
@@ -101,6 +102,19 @@ function toAttentionRows(items: StockistAssetDashboard['attention_items']): List
     title: item.product_name,
     subtitle: item.location_name,
     trailing: item.reason === 'OUT_OF_STOCK' ? 'Habis' : `${item.quantity} tersisa`,
+  }));
+}
+
+function toProductAttentionRows(items: StockistAssetDashboard['attention_items']): ProductAttentionRowData[] {
+  return items.map((item) => ({
+    key: `${item.location_id}-${item.product_id}`,
+    name: item.product_name,
+    meta: item.location_name,
+    statusLabel: item.reason === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis',
+    severity: item.reason === 'OUT_OF_STOCK' ? 'danger' : 'warning',
+    trailing: String(item.quantity),
+    trailingUnit: 'pcs',
+    href: '/admin/stockist/products',
   }));
 }
 
@@ -123,6 +137,8 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
   const [error, setError] = useState<string | null>(null);
   const [drillDown, setDrillDown] = useState<DrillDown>(null);
 
+  const { theme } = useStockistTheme();
+
   useEffect(() => {
     setLoading(true);
     Promise.all([getAssetDashboard(), listProducts()])
@@ -136,6 +152,9 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  const totalStockUnits = assets ? assets.asset_by_location.reduce((sum, l) => sum + l.total_quantity, 0) : 0;
+  const maxLocationValue = assets ? Math.max(0, ...assets.asset_by_location.map((l) => l.total_asset_value ?? 0)) : 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -175,33 +194,102 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
         </div>
       ) : assets ? (
         <motion.div variants={staggerContainer} initial="hidden" animate="show" className="flex flex-col gap-6">
-          <motion.div variants={fadeSlideItem} className="grid grid-cols-2 gap-3">
-            <StatCard label="Total Produk Aktif" value={activeProductCount} hint="SKU aktif yang dipantau owner." />
-            <StatCard label="Produk Menipis" value={assets.attention_items.filter((item) => item.reason === 'LOW_STOCK').length} hint="Perlu restock atau redistribusi." />
-            <StatCard label="Produk Habis" value={assets.attention_items.filter((item) => item.reason === 'OUT_OF_STOCK').length} variant="danger" hint="Kosong di salah satu lokasi." onClick={() => setDrillDown({ type: 'attention' })} />
-            <StatCard label="Transfer Berjalan" value={assets.active_transfers.length} hint="Belum selesai diterima." onClick={() => setDrillDown({ type: 'transfers' })} />
-          </motion.div>
           <motion.div variants={fadeSlideItem}>
+            {/* heroTrend intentionally omitted — the API has no period-over-period
+                delta to show a real percentage; do not fabricate one if a future
+                change reintroduces this prop. heroStats below are real, already-
+                fetched numbers, not fabricated. */}
             <StatCard
               label="Aset Stok RedBox"
               value={assets.total_asset_value ?? 0}
               formatter={formatCurrency}
               variant="hero"
               hint="Total nilai stok aktif di seluruh jaringan RedBox."
+              heroStats={[
+                { label: 'Lokasi', value: String(assets.asset_by_location.length) },
+                { label: 'SKU aktif', value: String(activeProductCount) },
+                { label: 'Unit', value: totalStockUnits.toLocaleString('id-ID') },
+              ]}
             />
           </motion.div>
+
+          <motion.div variants={fadeSlideItem} className="grid grid-cols-2 gap-3">
+            <StatCard label="Total Produk" value={activeProductCount} icon="category" tint="info" hint="SKU aktif" />
+            <StatCard label="Total Stok" value={totalStockUnits} icon="inventory_2" tint="success" hint="unit di semua lokasi" />
+            <StatCard
+              label="Perlu Perhatian"
+              value={assets.attention_items.length}
+              icon="warning"
+              tint="warning"
+              hint="perlu restock"
+              onClick={() => setDrillDown({ type: 'attention' })}
+            />
+            <StatCard
+              label="Transfer Berjalan"
+              value={assets.active_transfers.length}
+              icon="local_shipping"
+              tint="danger"
+              hint="belum diterima"
+              onClick={() => setDrillDown({ type: 'transfers' })}
+            />
+          </motion.div>
+
+          <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
+            <h3 className="text-[13px] font-bold text-text-primary px-1">Aksi cepat</h3>
+            <QuickActionGrid
+              actions={[
+                { key: 'receive', href: '/admin/stockist/warehouse', icon: 'move_to_inbox', label: 'Terima Barang' },
+                { key: 'transfer', href: '/admin/stockist/transfers/new', icon: 'send', label: 'Buat Transfer' },
+                { key: 'ledger', href: '/admin/stockist/ledger', icon: 'receipt_long', label: 'Lihat Ledger' },
+                { key: 'branch-stock', href: '/admin/stockist/branch-stock', icon: 'storefront', label: 'Stok Cabang' },
+              ]}
+            />
+          </motion.section>
+
+          <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
+            <div className="flex items-baseline justify-between px-1">
+              <h3 className="text-[13px] font-bold text-text-primary">Perlu perhatian</h3>
+              {assets.attention_items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDrillDown({ type: 'attention' })}
+                  className="text-[11px] font-semibold text-primary-container"
+                >
+                  Lihat semua
+                </button>
+              )}
+            </div>
+            {assets.attention_items.length === 0 ? (
+              <EmptyState icon="check_circle" title="Semua terkendali" subtitle="Tidak ada yang perlu ditindaklanjuti sekarang." />
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {toProductAttentionRows(assets.attention_items.slice(0, 3)).map((row) => (
+                  <ProductAttentionRow key={row.key} row={row} />
+                ))}
+              </div>
+            )}
+          </motion.section>
 
           {assets.asset_by_location.length > 0 ? (
             <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
               <div className="flex items-center justify-between px-1">
-                <h3 className="text-[14px] font-semibold text-text-secondary tracking-wide uppercase">Distribusi Stok per Lokasi</h3>
+                <h3 className="text-[13px] font-bold text-text-primary">Aset per lokasi</h3>
                 <span className="text-[10px] text-text-muted">{assets.asset_by_location.length} lokasi</span>
               </div>
               <div className="bg-surface-elevated border border-border-base rounded-xl p-3">
-                <HorizontalBarChart data={assets.asset_by_location.map((location) => ({ name: location.location_name, value: location.total_asset_value ?? 0 }))} />
+                <HorizontalBarChart
+                  data={assets.asset_by_location.map((location) => ({ name: location.location_name, value: location.total_asset_value ?? 0 }))}
+                  theme={theme}
+                />
                 <div className="mt-3 border-t border-border-base pt-1 divide-y divide-border-base">
                   {assets.asset_by_location.map((location) => (
-                    <LocationCard key={location.location_id} location={location} formatValue={formatCurrency} onSelect={() => setDrillDown({ type: 'location', location })} />
+                    <LocationCard
+                      key={location.location_id}
+                      location={location}
+                      formatValue={formatCurrency}
+                      maxValue={maxLocationValue}
+                      onSelect={() => setDrillDown({ type: 'location', location })}
+                    />
                   ))}
                 </div>
               </div>
@@ -470,7 +558,7 @@ function BranchAdminDashboard({ user }: { user: AppUser }) {
             <div className="flex flex-col gap-2">
               <Link
                 href="/admin/stockist/requests/new"
-                className="bg-primary-container hover:bg-inverse-primary text-text-primary font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg border border-[#302728]"
+                className="bg-primary-container hover:bg-inverse-primary text-white font-bold text-[14px] h-[48px] rounded-lg flex items-center justify-center gap-2 active:scale-95 transition-all shadow-lg"
               >
                 <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>add_shopping_cart</span>
                 Ajukan Permintaan Stok
