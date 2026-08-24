@@ -90,7 +90,6 @@ export default function StockistDashboard() {
 type DrillDown =
   | { type: 'location'; location: AssetLocationSummary }
   | { type: 'attention' }
-  | { type: 'transfers' }
   | null;
 
 function toAttentionRows(items: StockistAssetDashboard['attention_items']): ListRowData[] {
@@ -100,7 +99,7 @@ function toAttentionRows(items: StockistAssetDashboard['attention_items']): List
     icon: item.reason === 'OUT_OF_STOCK' ? 'error' : 'inventory_2',
     severity: item.reason === 'OUT_OF_STOCK' ? 'danger' : 'warning',
     title: item.product_name,
-    subtitle: item.location_name,
+    subtitle: `${item.product_sku} · ${item.location_name}`,
     trailing: item.reason === 'OUT_OF_STOCK' ? 'Habis' : `${item.quantity} tersisa`,
   }));
 }
@@ -126,18 +125,6 @@ function toProductAttentionRows(items: StockistAssetDashboard['attention_items']
     trailing: String(item.quantity),
     trailingUnit: 'pcs',
     href: '/admin/stockist/products',
-  }));
-}
-
-function toTransferRows(transfers: StockTransfer[]): ListRowData[] {
-  return transfers.map((t) => ({
-    key: t.id,
-    href: `/admin/stockist/transfers/${t.id}`,
-    icon: 'local_shipping',
-    severity: 'neutral',
-    title: t.transfer_number,
-    subtitle: `${t.source_name ?? t.source_location_id} → ${t.destination_name ?? t.destination_location_id}`,
-    trailing: t.status === 'SENT' ? 'Dikirim' : 'Diterima',
   }));
 }
 
@@ -226,8 +213,8 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
             <StatCard label="Total Produk" value={activeProductCount} icon="category" tint="info" hint="SKU aktif" href="/admin/stockist/products" />
             <StatCard label="Total Stok" value={totalStockUnits} icon="inventory_2" tint="success" hint="unit di semua lokasi" href="/admin/stockist/warehouse" />
             <StatCard
-              label="Perlu Perhatian"
-              value={assets.attention_items.length}
+              label="Produk Menipis"
+              value={assets.attention_items.filter((item) => item.location_name === 'Gudang Pusat').length}
               icon="warning"
               tint="warning"
               hint="perlu restock"
@@ -321,18 +308,6 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
           </div>
         ) : (
           <EmptyState icon="check_circle" title="Semua terkendali" subtitle="Tidak ada yang perlu ditindaklanjuti sekarang." />
-        )}
-      </BottomSheet>
-
-      <BottomSheet open={drillDown?.type === 'transfers'} onClose={() => setDrillDown(null)} title="Transfer Berjalan">
-        {assets && assets.active_transfers.length > 0 ? (
-          <div className="flex flex-col divide-y divide-border-base -m-4">
-            {toTransferRows(assets.active_transfers).map((row) => (
-              <ListRow key={row.key} row={row} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState icon="check_circle" title="Belum ada transfer berjalan" subtitle="Semua transfer sudah selesai." />
         )}
       </BottomSheet>
     </div>
