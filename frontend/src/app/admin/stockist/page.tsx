@@ -111,7 +111,7 @@ function toProductAttentionRows(items: StockistAssetDashboard['attention_items']
   return items.map((item) => ({
     key: `${item.location_id}-${item.product_id}`,
     name: item.product_name,
-    meta: item.location_name,
+    meta: `${item.product_sku} · ${item.location_name}`,
     statusLabel: item.reason === 'OUT_OF_STOCK' ? 'Habis' : 'Menipis',
     severity: item.reason === 'OUT_OF_STOCK' ? 'danger' : 'warning',
     trailing: String(item.quantity),
@@ -224,7 +224,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
               icon="warning"
               tint="warning"
               hint="perlu restock"
-              onClick={() => setDrillDown({ type: 'attention' })}
+              href="/admin/stockist/warehouse?filter=LOW"
             />
             <StatCard
               label="Transfer Berjalan"
@@ -232,7 +232,7 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
               icon="local_shipping"
               tint="danger"
               hint="belum diterima"
-              onClick={() => setDrillDown({ type: 'transfers' })}
+              href="/admin/stockist/transfers"
             />
           </motion.div>
 
