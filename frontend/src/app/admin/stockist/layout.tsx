@@ -7,7 +7,7 @@ import { Home, Boxes, Truck, User, PackageCheck } from 'lucide-react';
 import { BottomNavBar, type BottomNavItem } from '@/components/ui/bottom-nav-bar';
 import { PremiumLoginTransition, type PremiumRole } from '@/components/auth/PremiumLoginTransition';
 import { useStockistTheme } from '@/lib/stockist/useTheme';
-import { listNotifications } from '@/lib/stockistApi';
+import { useUnreadNotificationCount, refreshUnreadCount } from '@/lib/stockist/useUnreadNotifications';
 
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
@@ -81,14 +81,10 @@ export default function StockistLayout({ children }: { children: React.ReactNode
     return () => window.clearTimeout(timer);
   }, [transition, loading, user]);
 
-  const [hasUnread, setHasUnread] = useState(false);
+  const unreadCount = useUnreadNotificationCount();
   useEffect(() => {
     if (loading || !user) return;
-    listNotifications()
-      .then(({ notifications }) => setHasUnread(notifications.some((n) => !n.is_read)))
-      .catch(() => {
-        // non-fatal — the bell just shows no dot if this fails
-      });
+    refreshUnreadCount();
   }, [loading, user]);
 
   // The login page is rendered inside this layout. Keep children visible while
@@ -163,7 +159,7 @@ export default function StockistLayout({ children }: { children: React.ReactNode
           className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border-base bg-surface-elevated text-text-secondary"
         >
           <span className="material-symbols-outlined text-[19px]">notifications</span>
-          {hasUnread && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary-container border border-surface-elevated" />}
+          {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary-container border border-surface-elevated" />}
         </button>
       </header>
 

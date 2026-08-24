@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { listNotifications, markNotificationRead, markAllNotificationsRead, type StockistNotification } from '@/lib/stockistApi';
 import { EmptyState } from '@/components/stockist/EmptyState';
 import { SkeletonCard } from '@/components/stockist/SkeletonCard';
+import { refreshUnreadCount, useUnreadNotificationCount } from '@/lib/stockist/useUnreadNotifications';
 
 const CATEGORIES = ['Semua', 'Stok', 'Transfer', 'Pengiriman', 'Sistem', 'Pengumuman'] as const;
 
@@ -30,13 +31,14 @@ export default function NotificationsPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Gagal memuat notifikasi'));
   }, [chip]);
 
-  const unreadCount = items?.filter((n) => !n.is_read).length ?? 0;
+  const globalUnreadCount = useUnreadNotificationCount();
 
   async function openNotification(n: StockistNotification) {
     if (!n.is_read) {
       try {
         await markNotificationRead(n.id);
         setItems((prev) => prev?.map((row) => (row.id === n.id ? { ...row, is_read: true } : row)) ?? prev);
+        refreshUnreadCount();
       } catch {
         // non-fatal — still navigate even if marking read failed
       }
@@ -48,6 +50,7 @@ export default function NotificationsPage() {
     try {
       await markAllNotificationsRead();
       setItems((prev) => prev?.map((row) => ({ ...row, is_read: true })) ?? prev);
+      refreshUnreadCount();
     } catch {
       // non-fatal
     }
@@ -56,8 +59,8 @@ export default function NotificationsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between px-1">
-        <span className="text-[12px] font-semibold text-text-muted">{unreadCount > 0 ? `${unreadCount} belum dibaca` : 'Semua sudah dibaca'}</span>
-        {unreadCount > 0 && (
+        <span className="text-[12px] font-semibold text-text-muted">{globalUnreadCount > 0 ? `${globalUnreadCount} belum dibaca` : 'Semua sudah dibaca'}</span>
+        {globalUnreadCount > 0 && chip === 'Semua' && (
           <button onClick={markAllRead} className="text-[11px] font-semibold text-primary-container">
             Tandai semua dibaca
           </button>
