@@ -18,12 +18,6 @@ import {
   getBrandForProduct,
 } from '@/lib/stockist/categorization';
 
-const TYPE_LABELS: Record<'RETAIL' | 'SERVICE' | 'CONSUMABLE', string> = {
-  RETAIL: 'Retail',
-  SERVICE: 'Barang Pemakaian',
-  CONSUMABLE: 'Perlengkapan',
-};
-
 const BRANCH_NAMES: Record<string, string> = {
   warehouse: 'Gudang Pusat',
   bypass: 'Cabang Bypass',
@@ -231,51 +225,46 @@ function SemuaStokContent() {
             <span className="text-[11px] text-text-muted">Menampilkan {visibleProducts.length} dari {filteredProducts.length}</span>
           </div>
 
-          <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
+          <div className="flex flex-col gap-2">
             {visibleProducts.map((p) => {
               const image = getKnownProductImage(p.name);
               return (
                 <Link
                   key={p.id}
                   href={detailHrefFor(p.id)}
-                  className="bg-surface-elevated border border-border-base rounded-xl overflow-hidden flex flex-col active:scale-[0.98] hover:border-primary-container/40 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50"
+                  className="flex items-center gap-3 rounded-xl border border-border-base bg-surface-elevated p-3 hover:border-primary-container/40 active:scale-[0.98] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-container/50"
                 >
-                  <div className="aspect-square bg-surface-container-low flex items-center justify-center overflow-hidden relative">
+                  <div className="relative h-[66px] w-[66px] shrink-0 overflow-hidden rounded-xl border border-border-base bg-surface-container-lowest">
                     {image ? (
-                      <img className="w-full h-full object-contain p-3 opacity-90" src={image} alt={p.name} />
+                      <img className="h-full w-full object-contain p-1" src={image} alt={p.name} />
                     ) : (
-                      <Package size={32} className="text-text-muted" aria-hidden />
+                      <span className="flex h-full w-full items-center justify-center">
+                        <Package size={28} className="text-text-muted" aria-hidden />
+                      </span>
                     )}
-                    <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-bold bg-surface-container-lowest/80 text-text-secondary border border-border-base backdrop-blur-sm">
-                      {p.inferredCategory}
-                    </span>
-                    <span className={`absolute bottom-2 left-2 h-3 w-3 rounded-full border-[2.5px] border-surface-elevated ${
+                    <span className={`absolute bottom-0 left-0 h-3 w-3 rounded-full border-[2.5px] border-surface-elevated ${
                       p.status === 'OUT' ? 'bg-danger' : p.status === 'LOW' ? 'bg-status-menipis' : 'bg-success'
                     }`} />
                   </div>
-                  <div className="p-3 flex flex-col gap-1.5">
-                    <h4 className="font-semibold text-text-primary text-[13px] leading-tight truncate">{p.name}</h4>
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="text-text-muted font-mono">SKU {p.sku}</span>
-                      <span className="text-text-muted font-medium">{p.inferredBrand}</span>
-                    </div>
-                    <span className="text-[10px] text-text-secondary">{TYPE_LABELS[p.typeKey]}</span>
-                    <div className="flex items-center justify-between mt-1">
-                      <div className="flex flex-col">
-                        {p.typeKey === 'SERVICE' ? (
-                          <>
-                            <span className="text-[12px] font-bold font-display tabular-nums text-text-primary">{p.qty} {p.unit} tertutup</span>
-                            {p.inUse > 0 && <span className="text-[10px] text-primary-container">{p.inUse} {p.unit} dipakai</span>}
-                          </>
-                        ) : (
-                          <span className={`text-[14px] font-bold font-display tabular-nums ${p.status === 'OUT' ? 'text-danger' : p.status === 'LOW' ? 'text-status-menipis' : 'text-text-primary'}`}>{p.qty} {p.unit}</span>
-                        )}
-                      </div>
-                      <span className={`text-[10px] font-semibold shrink-0 ${p.status === 'OUT' ? 'text-danger' : p.status === 'LOW' ? 'text-status-menipis' : 'text-success'}`}>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="truncate text-[13.5px] font-bold text-text-primary">{p.name}</h4>
+                    <span className="block text-[10px] font-mono text-text-muted">{p.sku}</span>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="rounded border border-border-base bg-surface-container px-1.5 py-0.5 text-[9px] font-semibold text-text-secondary">{p.inferredCategory}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
+                        p.status === 'OUT' ? 'bg-tint-danger text-danger' : p.status === 'LOW' ? 'bg-tint-warning text-status-menipis' : 'bg-tint-success text-success'
+                      }`}>
                         {p.status === 'SAFE' ? 'Aman' : p.status === 'LOW' ? 'Menipis' : 'Habis'}
                       </span>
                     </div>
                   </div>
+                  <div className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className={`text-[19px] font-bold font-display tabular-nums ${p.status === 'OUT' ? 'text-danger' : p.status === 'LOW' ? 'text-status-menipis' : 'text-text-primary'}`}>{p.qty}</span>
+                    <span className="text-[9px] text-text-muted">
+                      {p.unit}{p.typeKey === 'SERVICE' && p.inUse > 0 ? ` · ${p.inUse} dipakai` : ''}
+                    </span>
+                  </div>
+                  <span className="material-symbols-outlined shrink-0 text-[18px] text-text-muted">chevron_right</span>
                 </Link>
               );
             })}
