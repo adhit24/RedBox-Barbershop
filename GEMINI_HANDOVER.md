@@ -7,10 +7,13 @@
 
 ## Plan A & Plan B Status Matrix
 
-| Workstream | Code Implemented | Type Check | Next Build | Backend Tests | Browser Verified | Live DB Mutation |
+| Workstream | Code Implemented | Type Check | Next Build | Backend Tests | Storage & RPC Security | Local DB Execution Status |
 |---|---|---|---|---|---|---|
-| **Plan A (Terima Barang & Buat Transfer)** | ✅ Yes | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (20/20) | ⚠️ Partial (Layout & Navigation) | ⏳ Pending Staging DB |
-| **Plan B (Konfirmasi Penerimaan & Photo Upload & Offline)** | ✅ Yes | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (26/26) | ⚠️ Partial (Layout & UI) | ⏳ Pending Staging DB |
+| **Plan A (Terima Barang & Buat Transfer)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (20/20) | N/A | ⏳ `Live DB Mutation Unverified` |
+| **Plan B Task 1 (Storage & Private Bucket)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (45/45) | ✅ Verified (Private Bucket, RLS Clean, Signed URL 60s) | ⏳ `SQL reviewed, execution unverified` |
+| **Plan B Task 2 (Middleware & Evidence Upload)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (5/5 Integration) | ✅ Verified (Route 7MB JSON, Magic Bytes, Deterministic Path) | ✅ Code & Integration Verified |
+| **Plan B Task 3 (Atomic Receive & Idempotency)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (47/47) | ✅ Verified (Postgres RPC `FOR UPDATE`, Idempotency Key) | ⏳ `SQL reviewed, execution unverified` |
+| **Plan B Task 4 (UI Detail Split & Receive Form)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | N/A | N/A | ⚠️ `Offline-aware draft` |
 
 ---
 
