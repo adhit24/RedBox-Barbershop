@@ -11,6 +11,12 @@ create table if not exists public.stockist_idempotency_keys (
   created_at timestamptz not null default now()
 );
 
+-- Enable RLS and revoke all frontend access from public/anon/authenticated
+alter table public.stockist_idempotency_keys enable row level security;
+revoke all on public.stockist_idempotency_keys from public;
+revoke all on public.stockist_idempotency_keys from anon, authenticated;
+grant all on public.stockist_idempotency_keys to service_role;
+
 -- Index for auto-cleanup queries
 create index if not exists idx_stockist_idempotency_keys_created_at on public.stockist_idempotency_keys (created_at);
 
@@ -24,7 +30,7 @@ create or replace function public.confirm_stock_transfer_receive(
 ) returns jsonb
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare
   v_transfer record;
@@ -48,7 +54,7 @@ begin
     where idempotency_key = p_idempotency_key;
 
     if found then
-      if v_existing_idempotency.transfer_id = p_transfer_id and v_existing_idempotency.request_hash = coalesce(p_request_hash, '') then
+      if v_existing_idempotency.transfer_id = p_transfer_id and v_existing_idempotency.request_hash = pg_catalog.coalesce(p_request_hash, '') then
         return v_existing_idempotency.response_body;
       else
         raise exception 'IDEMPOTENCY_KEY_REUSED: idempotency key reused with different request payload or transfer id';
@@ -56,7 +62,7 @@ begin
     end if;
   end if;
 
-  -- 2. Row locking on stock_transfers (Lock before checking status)
+  -- 2. Row locking on public.stock_transfers (Lock before checking status)
   select * into v_transfer
   from public.stock_transfers
   where id = p_transfer_id
@@ -71,35 +77,35 @@ begin
   end if;
 
   -- 3. Complete item-set validation & duplicate checking
-  select count(*) into v_sent_count
+  select pg_catalog.count(*) into v_sent_count
   from public.stock_transfer_items
   where stock_transfer_id = p_transfer_id;
 
-  v_received_count := jsonb_array_length(p_items);
+  v_received_count := pg_catalog.jsonb_array_length(p_items);
 
   if v_received_count <> v_sent_count then
     raise exception 'INCOMPLETE_ITEM_SET: all transfer items must be included in the receive request';
   end if;
 
-  -- Row locking on stock_transfer_items
+  -- Row locking on public.stock_transfer_items
   perform 1
   from public.stock_transfer_items
   where stock_transfer_id = p_transfer_id
   for update;
 
   -- 4. Process items and validate discrepancies
-  for v_elem in select * from jsonb_array_elements(p_items)
+  for v_elem in select * from pg_catalog.jsonb_array_elements(p_items)
   loop
     v_item_id := (v_elem->>'id')::uuid;
     v_qty_recv := (v_elem->>'quantity_received')::integer;
-    v_reason := trim(coalesce(v_elem->>'discrepancy_reason', ''));
+    v_reason := pg_catalog.trim(pg_catalog.coalesce(v_elem->>'discrepancy_reason', ''));
     v_photo_url := v_elem->>'discrepancy_photo_url';
 
     -- Duplicate item check
     if v_item_id::text = any(v_seen_item_ids) then
       raise exception 'DUPLICATE_ITEM_SUBMITTED: item % submitted multiple times', v_item_id;
     end if;
-    v_seen_item_ids := array_append(v_seen_item_ids, v_item_id::text);
+    v_seen_item_ids := pg_catalog.array_append(v_seen_item_ids, v_item_id::text);
 
     select * into v_item
     from public.stock_transfer_items
@@ -123,7 +129,7 @@ begin
     -- Update item record
     update public.stock_transfer_items
     set quantity_received = v_qty_recv,
-        discrepancy_reason = nullif(v_reason, ''),
+        discrepancy_reason = pg_catalog.nullif(v_reason, ''),
         discrepancy_photo_url = v_photo_url
     where id = v_item_id;
 
@@ -143,7 +149,7 @@ begin
         v_transfer.destination_location_id,
         'TRANSFER_RECEIVE',
         v_qty_recv,
-        now(),
+        pg_catalog.now(),
         p_received_by
       );
 
@@ -157,12 +163,12 @@ begin
   -- 5. Update stock_transfers status
   update public.stock_transfers
   set status = 'RECEIVED',
-      received_at = now(),
+      received_at = pg_catalog.now(),
       received_by = p_received_by,
       has_discrepancy = v_has_discrepancy
   where id = p_transfer_id;
 
-  v_result := jsonb_build_object(
+  v_result := pg_catalog.jsonb_build_object(
     'success', true,
     'transfer_id', p_transfer_id,
     'status', 'RECEIVED',
@@ -172,7 +178,7 @@ begin
   -- Store Idempotency Key record
   if p_idempotency_key is not null and p_idempotency_key <> '' then
     insert into public.stockist_idempotency_keys (idempotency_key, request_path, transfer_id, request_hash, response_body, status_code)
-    values (p_idempotency_key, '/transfers/' || p_transfer_id || '/receive', p_transfer_id, coalesce(p_request_hash, ''), v_result, 200);
+    values (p_idempotency_key, '/transfers/' || p_transfer_id || '/receive', p_transfer_id, pg_catalog.coalesce(p_request_hash, ''), v_result, 200);
   end if;
 
   return v_result;

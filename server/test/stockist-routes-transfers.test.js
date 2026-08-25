@@ -373,10 +373,12 @@ test('POST /transfers/:id/items/:itemId/photo uploads and returns deterministic 
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
-test('Task 3 Security Grants inspection: ensure search_path, revokes, and service_role grant exist', async () => {
+test('Task 3.1 Security Grants inspection: ensure empty search_path, RLS, revokes, and service_role grant exist', async () => {
   const fs = require('fs');
   const sql = fs.readFileSync('server/migrations/2026-08-25-stockist-transfer-atomic-receive.sql', 'utf8');
-  assert.equal(/set\s+search_path\s*=\s*public,\s*pg_temp/i.test(sql), true);
+  assert.equal(/set\s+search_path\s*=\s*''/i.test(sql), true);
+  assert.equal(/enable\s+row\s+level\s+security/i.test(sql), true);
+  assert.equal(/revoke\s+all\s+on\s+public\.stockist_idempotency_keys\s+from\s+public/i.test(sql), true);
   assert.equal(/revoke\s+all\s+on\s+function.*from\s+public/i.test(sql), true);
   assert.equal(/revoke\s+all\s+on\s+function.*from\s+anon,\s+authenticated/i.test(sql), true);
   assert.equal(/grant\s+execute\s+on\s+function.*to\s+service_role/i.test(sql), true);
