@@ -813,8 +813,8 @@ app.use(cors({
   },
   credentials: true,
 }));
-// Route-scoped 6MB parser for Stockist discrepancy evidence photo uploads
-app.use('/api/stockist/transfers/:id/items/:itemId/photo', express.json({ limit: '6mb' }));
+// Route-scoped 7MB parser for Stockist discrepancy evidence photo uploads (accommodates 5MB binary image Base64 + JSON overhead)
+app.use('/api/stockist/transfers/:id/items/:itemId/photo', express.json({ limit: '7mb' }));
 
 // Global JSON parser (100KB limit) for all other endpoints
 app.use((req, res, next) => {

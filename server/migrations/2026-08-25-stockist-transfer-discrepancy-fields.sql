@@ -32,11 +32,11 @@ on conflict (id) do update set
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
--- 3. Storage RLS Policies for stockist-evidence bucket
--- Enable RLS on storage.objects if not enabled
+-- 3. Ensure NO direct access policies exist for authenticated users on stockist-evidence bucket
+-- Enable RLS on storage.objects
 alter table storage.objects enable row level security;
 
--- Remove broad direct access policies if present
+-- Drop all direct policies for stockist-evidence to ensure all access goes strictly through backend
 drop policy if exists "Allow authenticated read stockist evidence" on storage.objects;
 drop policy if exists "Allow authenticated upload stockist evidence" on storage.objects;
 drop policy if exists "Allow authenticated update stockist evidence" on storage.objects;

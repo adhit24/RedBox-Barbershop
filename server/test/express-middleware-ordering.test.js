@@ -118,8 +118,8 @@ function fakeSupabase({ locations = [WAREHOUSE, CSB], outlets = [{ id: 'outlet-c
 async function withFullExpressServer(supabase, fn, authOptions = { role: 'branch_admin', branch: 'csb' }) {
   const app = express();
 
-  // Replicate exact production middleware chain from server/index.js
-  app.use('/api/stockist/transfers/:id/items/:itemId/photo', express.json({ limit: '6mb' }));
+  // Replicate exact production middleware chain from server/index.js (7MB parser)
+  app.use('/api/stockist/transfers/:id/items/:itemId/photo', express.json({ limit: '7mb' }));
 
   app.use((req, res, next) => {
     if (req.method === 'POST' && req.path.match(/^\/api\/stockist\/transfers\/[^/]+\/items\/[^/]+\/photo$/)) {
@@ -152,13 +152,13 @@ async function withFullExpressServer(supabase, fn, authOptions = { role: 'branch
   }
 }
 
-test('Integration: Valid 500KB photo payload succeeds on photo upload endpoint', async () => {
+test('Integration: Valid 4.8MB decoded PNG image succeeds through 7MB JSON parser', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
     items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
   });
-  // 500KB valid PNG buffer
-  const pBuf = Buffer.alloc(500 * 1024);
+  // 4.8MB valid PNG buffer (base64 ~6.4MB, within 7MB parser limit)
+  const pBuf = Buffer.alloc(4.8 * 1024 * 1024);
   pBuf[0] = 0x89; pBuf[1] = 0x50; pBuf[2] = 0x4E; pBuf[3] = 0x47;
   const pBase64 = pBuf.toString('base64');
 
@@ -170,16 +170,39 @@ test('Integration: Valid 500KB photo payload succeeds on photo upload endpoint',
     });
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.equal(body.object_path, 'transfer-1/item-1.png');
+    assert.equal(body.object_path, 'transfer-1/item-1/evidence');
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
-test('Integration: Photo payload exceeding 6MB middleware limit is rejected on photo upload endpoint (413)', async () => {
+test('Integration: Valid 5.2MB decoded PNG image passes JSON parser but is rejected by 5MB buffer size validation (400)', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
     items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
   });
-  const pBuf = Buffer.alloc(6.5 * 1024 * 1024);
+  // 5.2MB valid PNG buffer (base64 ~6.93MB, passes 7MB JSON parser but fails 5MB buffer check)
+  const pBuf = Buffer.alloc(5.2 * 1024 * 1024);
+  pBuf[0] = 0x89; pBuf[1] = 0x50; pBuf[2] = 0x4E; pBuf[3] = 0x47;
+  const pBase64 = pBuf.toString('base64');
+
+  await withFullExpressServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data_url: `data:image/png;base64,${pBase64}` }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(body.error, /file size exceeds maximum limit of 5MB/);
+  }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('Integration: Payload exceeding 7MB middleware limit is rejected on photo upload endpoint (413)', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  // 6MB binary image -> ~8MB base64 JSON payload
+  const pBuf = Buffer.alloc(6 * 1024 * 1024);
   pBuf[0] = 0x89; pBuf[1] = 0x50; pBuf[2] = 0x4E; pBuf[3] = 0x47;
   const pBase64 = pBuf.toString('base64');
 
@@ -193,7 +216,7 @@ test('Integration: Photo payload exceeding 6MB middleware limit is rejected on p
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
-test('Integration: Regular JSON endpoint rejects payload above 100KB global limit', async () => {
+test('Integration: Regular JSON endpoint rejects payload above 100KB global limit (413)', async () => {
   const supabase = fakeSupabase();
   const largeNotes = 'x'.repeat(120 * 1024); // 120KB payload
 
@@ -207,7 +230,7 @@ test('Integration: Regular JSON endpoint rejects payload above 100KB global limi
   }, { role: 'owner', branch: null });
 });
 
-test('Integration: Corrupted base64 payload is rejected on photo upload endpoint', async () => {
+test('Integration: Corrupted base64 payload is rejected on photo upload endpoint (400)', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
     items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
@@ -223,7 +246,7 @@ test('Integration: Corrupted base64 payload is rejected on photo upload endpoint
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
-test('Integration: Non-JSON Content-Type is rejected', async () => {
+test('Integration: Non-JSON Content-Type is rejected (400)', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
     items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],

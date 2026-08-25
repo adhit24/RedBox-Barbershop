@@ -265,7 +265,14 @@ test('PATCH /transfers/:id/receive rejects a branch_admin from a different branc
   }, { role: 'branch_admin', branch: 'tegal' });
 });
 
-test('POST /transfers/:id/items/:itemId/photo uploads and returns object_path', async () => {
+test('Migration inspection: ensure no broad TO authenticated policies exist for stockist-evidence', async () => {
+  const fs = require('fs');
+  const sql = fs.readFileSync('server/migrations/2026-08-25-stockist-transfer-discrepancy-fields.sql', 'utf8');
+  assert.equal(/create\s+policy.*to\s+authenticated/i.test(sql), false);
+  assert.equal(/drop\s+policy\s+if\s+exists.*stockist\s+evidence/i.test(sql), true);
+});
+
+test('POST /transfers/:id/items/:itemId/photo uploads and returns deterministic object_path', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
     items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
@@ -278,33 +285,60 @@ test('POST /transfers/:id/items/:itemId/photo uploads and returns object_path', 
     });
     const body = await res.json();
     assert.equal(res.status, 200);
-    assert.equal(body.object_path, 'transfer-1/item-1.png');
+    assert.equal(body.object_path, 'transfer-1/item-1/evidence');
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
-test('GET /transfers/:id/items/:itemId/photo generates a short-lived signed URL for authorized branch_admin', async () => {
+test('GET /transfers/:id/items/:itemId/photo generates a short-lived signed URL for owner and destination branch_admin', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
-    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null, discrepancy_photo_url: 'transfer-1/item-1.png' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null, discrepancy_photo_url: 'transfer-1/item-1/evidence' }],
   });
+
+  // Branch Admin destination branch
   await withServer(supabase, async (base) => {
     const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
     const body = await res.json();
     assert.equal(res.status, 200);
-    assert.match(body.signed_url, /https:\/\/fake-storage\.test\/stockist-evidence\/transfer-1\/item-1\.png\?token=signed_token&expires=60/);
+    assert.match(body.signed_url, /https:\/\/fake-storage\.test\/stockist-evidence\/transfer-1\/item-1\/evidence\?token=signed_token&expires=60/);
     assert.equal(body.expires_in, 60);
   }, { role: 'branch_admin', branch: 'csb' });
+
+  // Owner
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
+    assert.equal(res.status, 200);
+  }, { role: 'owner' });
+
+  // Unauthorized role (barber / unauthenticated)
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
+    assert.equal(res.status, 403);
+  }, { role: 'barber', sessionVerified: false });
 });
 
 test('GET /transfers/:id/items/:itemId/photo is rejected for branch_admin of another branch', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
-    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null, discrepancy_photo_url: 'transfer-1/item-1/evidence' }],
   });
   await withServer(supabase, async (base) => {
     const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
     assert.equal(res.status, 403);
   }, { role: 'branch_admin', branch: 'tegal' });
+});
+
+test('GET /transfers/:id/items/:itemId/photo returns 404 if item has no evidence photo recorded', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null, discrepancy_photo_url: null }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.match(body.error, /no evidence photo/);
+  }, { role: 'branch_admin', branch: 'csb' });
 });
 
 test('GET /transfers/:id/items/:itemId/photo rejects item from a different transfer', async () => {

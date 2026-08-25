@@ -730,9 +730,9 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     return res.json({ transfer: updatedTransfer, has_discrepancy: hasDiscrepancy });
   });
 
-  const jsonBodyParser6mb = express.json({ limit: '6mb' });
+  const jsonBodyParser7mb = express.json({ limit: '7mb' });
 
-  router.post('/transfers/:id/items/:itemId/photo', adminAuth, jsonBodyParser6mb, async (req, res) => {
+  router.post('/transfers/:id/items/:itemId/photo', adminAuth, jsonBodyParser7mb, async (req, res) => {
     const access = requireAccess(req, res);
     if (!access) return;
 
@@ -772,7 +772,7 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const [, ext, base64Data] = match;
     const buffer = Buffer.from(base64Data, 'base64');
 
-    // Size limit verification (5MB)
+    // Raw file size limit verification (5MB)
     if (buffer.length > 5 * 1024 * 1024) {
       return res.status(400).json({ error: 'file size exceeds maximum limit of 5MB' });
     }
@@ -791,7 +791,8 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(400).json({ error: 'file magic bytes do not match declared image type' });
     }
 
-    const path = `${transfer.id}/${req.params.itemId}.${ext === 'jpeg' ? 'jpg' : ext}`;
+    // Deterministic object path prevents extension-based orphan files
+    const path = `${transfer.id}/${req.params.itemId}/evidence`;
 
     const { error: uploadError } = await supabase.storage.from('stockist-evidence').upload(path, buffer, {
       contentType: `image/${ext}`,
@@ -829,11 +830,13 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(404).json({ error: 'item not found for this transfer' });
     }
 
-    const objectPath = item.discrepancy_photo_url || `${transfer.id}/${req.params.itemId}.jpg`;
+    if (!item.discrepancy_photo_url) {
+      return res.status(404).json({ error: 'no evidence photo recorded for this item' });
+    }
 
     const { data: signedData, error: signedError } = await supabase.storage
       .from('stockist-evidence')
-      .createSignedUrl(objectPath, 60);
+      .createSignedUrl(item.discrepancy_photo_url, 60);
 
     if (signedError) {
       return res.status(500).json({ error: signedError.message });
