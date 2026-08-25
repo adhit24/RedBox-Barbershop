@@ -1,26 +1,30 @@
 -- server/migrations/2026-08-25-stockist-transfer-atomic-receive.sql
 
--- 1. Table for server-side Idempotency Keys
-create table if not exists stockist_idempotency_keys (
+-- 1. Table for server-side Idempotency Keys binding key, path, transfer_id, and request_hash
+create table if not exists public.stockist_idempotency_keys (
   idempotency_key text primary key,
   request_path text not null,
-  response_body jsonb not null,
+  transfer_id uuid not null,
+  request_hash text not null,
   status_code integer not null,
+  response_body jsonb not null,
   created_at timestamptz not null default now()
 );
 
--- Index for auto-cleanup queries if needed later
-create index if not exists idx_stockist_idempotency_keys_created_at on stockist_idempotency_keys (created_at);
+-- Index for auto-cleanup queries
+create index if not exists idx_stockist_idempotency_keys_created_at on public.stockist_idempotency_keys (created_at);
 
 -- 2. Atomic Database Transaction Function (RPC) for Confirming Stock Transfer Receipt
-create or replace function confirm_stock_transfer_receive(
+create or replace function public.confirm_stock_transfer_receive(
   p_transfer_id uuid,
   p_items jsonb,
   p_received_by text,
-  p_idempotency_key text default null
+  p_idempotency_key text default null,
+  p_request_hash text default null
 ) returns jsonb
 language plpgsql
 security definer
+set search_path = public, pg_temp
 as $$
 declare
   v_transfer record;
@@ -35,50 +39,55 @@ declare
   v_has_discrepancy boolean := false;
   v_result jsonb;
   v_existing_idempotency record;
+  v_seen_item_ids text[] := '{}';
 begin
-  -- Idempotency check
+  -- 1. Idempotency Check & Re-use Detection
   if p_idempotency_key is not null and p_idempotency_key <> '' then
-    select response_body, status_code into v_existing_idempotency
-    from stockist_idempotency_keys
+    select transfer_id, request_hash, response_body, status_code into v_existing_idempotency
+    from public.stockist_idempotency_keys
     where idempotency_key = p_idempotency_key;
 
     if found then
-      return v_existing_idempotency.response_body;
+      if v_existing_idempotency.transfer_id = p_transfer_id and v_existing_idempotency.request_hash = coalesce(p_request_hash, '') then
+        return v_existing_idempotency.response_body;
+      else
+        raise exception 'IDEMPOTENCY_KEY_REUSED: idempotency key reused with different request payload or transfer id';
+      end if;
     end if;
   end if;
 
-  -- 1. Row locking on stock_transfers
+  -- 2. Row locking on stock_transfers (Lock before checking status)
   select * into v_transfer
-  from stock_transfers
+  from public.stock_transfers
   where id = p_transfer_id
   for update;
 
   if not found then
-    raise exception 'transfer not found';
+    raise exception 'TRANSFER_NOT_FOUND: transfer % not found', p_transfer_id;
   end if;
 
   if v_transfer.status <> 'SENT' then
-    raise exception 'transfer already received or not in SENT status';
+    raise exception 'TRANSFER_ALREADY_RECEIVED: transfer already received or not in SENT status';
   end if;
 
-  -- 2. Complete item-set validation
+  -- 3. Complete item-set validation & duplicate checking
   select count(*) into v_sent_count
-  from stock_transfer_items
+  from public.stock_transfer_items
   where stock_transfer_id = p_transfer_id;
 
   v_received_count := jsonb_array_length(p_items);
 
   if v_received_count <> v_sent_count then
-    raise exception 'all items in transfer must be submitted for receipt confirmation';
+    raise exception 'INCOMPLETE_ITEM_SET: all transfer items must be included in the receive request';
   end if;
 
   -- Row locking on stock_transfer_items
   perform 1
-  from stock_transfer_items
+  from public.stock_transfer_items
   where stock_transfer_id = p_transfer_id
   for update;
 
-  -- 3. Process items and validate discrepancies
+  -- 4. Process items and validate discrepancies
   for v_elem in select * from jsonb_array_elements(p_items)
   loop
     v_item_id := (v_elem->>'id')::uuid;
@@ -86,35 +95,41 @@ begin
     v_reason := trim(coalesce(v_elem->>'discrepancy_reason', ''));
     v_photo_url := v_elem->>'discrepancy_photo_url';
 
+    -- Duplicate item check
+    if v_item_id::text = any(v_seen_item_ids) then
+      raise exception 'DUPLICATE_ITEM_SUBMITTED: item % submitted multiple times', v_item_id;
+    end if;
+    v_seen_item_ids := array_append(v_seen_item_ids, v_item_id::text);
+
     select * into v_item
-    from stock_transfer_items
+    from public.stock_transfer_items
     where id = v_item_id and stock_transfer_id = p_transfer_id;
 
     if not found then
-      raise exception 'item % does not belong to transfer %', v_item_id, p_transfer_id;
+      raise exception 'INVALID_ITEM: item % does not belong to transfer %', v_item_id, p_transfer_id;
     end if;
 
     if v_qty_recv is null or v_qty_recv < 0 then
-      raise exception 'quantity_received cannot be negative';
+      raise exception 'INVALID_QUANTITY: quantity_received cannot be negative for item %', v_item_id;
     end if;
 
     if v_qty_recv <> v_item.quantity_sent then
       v_has_discrepancy := true;
       if v_reason = '' then
-        raise exception 'discrepancy reason is required for mismatched quantity on item %', v_item_id;
+        raise exception 'DISCREPANCY_REASON_REQUIRED: discrepancy reason is required for mismatched quantity on item %', v_item_id;
       end if;
     end if;
 
     -- Update item record
-    update stock_transfer_items
+    update public.stock_transfer_items
     set quantity_received = v_qty_recv,
         discrepancy_reason = nullif(v_reason, ''),
         discrepancy_photo_url = v_photo_url
     where id = v_item_id;
 
-    -- Inventory Movement & Balance Update (All-or-Nothing)
+    -- Inventory Movement & Balance Update (All-or-Nothing in same transaction)
     if v_qty_recv > 0 then
-      insert into inventory_movements (
+      insert into public.inventory_movements (
         stock_transfer_id,
         product_id,
         location_id,
@@ -132,15 +147,15 @@ begin
         p_received_by
       );
 
-      insert into inventory_balances (location_id, product_id, quantity)
+      insert into public.inventory_balances (location_id, product_id, quantity)
       values (v_transfer.destination_location_id, v_item.product_id, v_qty_recv)
       on conflict (location_id, product_id)
-      do update set quantity = inventory_balances.quantity + v_qty_recv;
+      do update set quantity = public.inventory_balances.quantity + v_qty_recv;
     end if;
   end loop;
 
-  -- 4. Update stock_transfers status
-  update stock_transfers
+  -- 5. Update stock_transfers status
+  update public.stock_transfers
   set status = 'RECEIVED',
       received_at = now(),
       received_by = p_received_by,
@@ -156,10 +171,15 @@ begin
 
   -- Store Idempotency Key record
   if p_idempotency_key is not null and p_idempotency_key <> '' then
-    insert into stockist_idempotency_keys (idempotency_key, request_path, response_body, status_code)
-    values (p_idempotency_key, '/transfers/' || p_transfer_id || '/receive', v_result, 200);
+    insert into public.stockist_idempotency_keys (idempotency_key, request_path, transfer_id, request_hash, response_body, status_code)
+    values (p_idempotency_key, '/transfers/' || p_transfer_id || '/receive', p_transfer_id, coalesce(p_request_hash, ''), v_result, 200);
   end if;
 
   return v_result;
 end;
 $$;
+
+-- 3. Strict RPC Security & Permissions (Revoke Public & Direct Client Access)
+revoke all on function public.confirm_stock_transfer_receive(uuid, jsonb, text, text, text) from public;
+revoke all on function public.confirm_stock_transfer_receive(uuid, jsonb, text, text, text) from anon, authenticated;
+grant execute on function public.confirm_stock_transfer_receive(uuid, jsonb, text, text, text) to service_role;

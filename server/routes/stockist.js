@@ -1,7 +1,8 @@
 'use strict';
 
 const express = require('express');
-const { randomUUID } = require('crypto');
+const crypto = require('crypto');
+const { randomUUID } = crypto;
 const { getVerifiedStockistAccess, resolveStockistLocationScope, STOCKIST_BRANCHES } = require('../services/stockistAccess');
 const {
   applyInventoryMovement,
@@ -671,93 +672,77 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(403).json({ error: 'owner cannot confirm receipt' });
     }
 
-    if (transfer.status !== 'SENT') {
-      return res.status(409).json({ error: 'transfer already received' });
-    }
-
     const { items } = req.body || {};
     if (!Array.isArray(items) || items.length === 0 || items.some((i) => !i.item_id || !Number.isInteger(i.quantity_received) || i.quantity_received < 0)) {
       return res.status(400).json({ error: 'items must be a non-empty list of { item_id, quantity_received >= 0 }' });
     }
 
-    // Attempt RPC database transaction if available in PostgreSQL
-    if (typeof supabase.rpc === 'function') {
-      const rpcItems = items.map((i) => ({
-        id: i.item_id,
-        quantity_received: i.quantity_received,
-        discrepancy_reason: i.reason || i.discrepancy_reason || null,
-        discrepancy_photo_url: i.photo_url || i.discrepancy_photo_url || null,
-      }));
+    const rpcItems = items.map((i) => ({
+      id: i.item_id,
+      quantity_received: i.quantity_received,
+      discrepancy_reason: i.reason || i.discrepancy_reason || null,
+      discrepancy_photo_url: i.photo_url || i.discrepancy_photo_url || null,
+    }));
 
-      const { data: rpcData, error: rpcError } = await supabase.rpc('confirm_stock_transfer_receive', {
-        p_transfer_id: transfer.id,
-        p_items: rpcItems,
-        p_received_by: access.staffId,
-        p_idempotency_key: idempotencyKey,
+    // Calculate SHA-256 request hash for Idempotency binding
+    const requestHash = crypto.createHash('sha256').update(JSON.stringify({ transfer_id: transfer.id, items: rpcItems })).digest('hex');
+
+    // Atomic Database RPC Invocation (Single Source of Truth)
+    if (typeof supabase.rpc !== 'function') {
+      return res.status(503).json({
+        error: 'Layanan konfirmasi penerimaan stok belum tersedia saat ini. Silakan coba beberapa saat lagi.',
+        code: 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE',
       });
-
-      if (!rpcError && rpcData && rpcData.success) {
-        const { data: freshTransfers } = await supabase.from('stock_transfers').select('*').eq('id', transfer.id);
-        const updatedTransfer = (freshTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
-        if (rpcData.has_discrepancy) {
-          await notifyBestEffort(() => notifications.notifyTransferDiscrepancy(supabase, { transfer: updatedTransfer }));
-        }
-        return res.json({ transfer: updatedTransfer, has_discrepancy: rpcData.has_discrepancy });
-      }
-      if (rpcError && !rpcError.message.includes('function') && !rpcError.message.includes('does not exist')) {
-        return res.status(400).json({ error: rpcError.message });
-      }
     }
 
-    // Fallback JS processing logic (for test doubles or environments without RPC function installed)
-    const { data: transferItems, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
-    if (itemsError) return res.status(500).json({ error: itemsError.message });
+    const { data: rpcData, error: rpcError } = await supabase.rpc('confirm_stock_transfer_receive', {
+      p_transfer_id: transfer.id,
+      p_items: rpcItems,
+      p_received_by: access.staffId,
+      p_idempotency_key: idempotencyKey,
+      p_request_hash: requestHash,
+    });
 
-    const allItemIds = new Set((transferItems || []).map((i) => i.id));
-    const submittedIds = new Set(items.map((i) => i.item_id));
-    if (allItemIds.size !== submittedIds.size || [...allItemIds].some((id) => !submittedIds.has(id))) {
-      return res.status(400).json({ error: 'all transfer items must be included in the receive request' });
-    }
-
-    const byId = new Map((transferItems || []).map((i) => [i.id, i]));
-    for (const submitted of items) {
-      const existing = byId.get(submitted.item_id);
-      if (!existing) return res.status(400).json({ error: `unknown transfer item ${submitted.item_id}` });
-      if (submitted.quantity_received !== existing.quantity_sent && (typeof submitted.reason !== 'string' || !submitted.reason.trim())) {
-        return res.status(400).json({ error: `item ${submitted.item_id} has a discrepancy and requires a reason` });
-      }
-      if (existing.quantity_received != null) {
-        continue;
-      }
-      try {
-        await applyInventoryMovement(supabase, {
-          productId: existing.product_id, locationId: transfer.destination_location_id, quantityDelta: submitted.quantity_received,
-          movementType: 'TRANSFER_IN', performedBy: access.staffId,
-          referenceType: 'stock_transfer', referenceId: transfer.id,
+    if (rpcError) {
+      // Fail-closed: If RPC is missing / not installed on database, return HTTP 503
+      if (rpcError.message.includes('function') && rpcError.message.includes('does not exist')) {
+        return res.status(503).json({
+          error: 'Layanan konfirmasi penerimaan stok belum tersedia saat ini. Silakan coba beberapa saat lagi.',
+          code: 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE',
         });
-      } catch (err) {
-        return res.status(400).json({ error: err.message });
       }
-      const updatePayload = { quantity_received: submitted.quantity_received };
-      if (typeof submitted.reason === 'string' && submitted.reason.trim()) updatePayload.discrepancy_reason = submitted.reason.trim();
-      if (typeof submitted.photo_url === 'string' && submitted.photo_url.trim()) updatePayload.discrepancy_photo_url = submitted.photo_url.trim();
-      const { error: itemUpdateError } = await supabase.from('stock_transfer_items').update(updatePayload).eq('id', submitted.item_id);
-      if (itemUpdateError) return res.status(500).json({ error: itemUpdateError.message });
-      existing.quantity_received = submitted.quantity_received;
+      if (rpcError.message.includes('IDEMPOTENCY_KEY_REUSED')) {
+        return res.status(409).json({ error: 'idempotency key reused with different request payload or transfer id', code: 'IDEMPOTENCY_KEY_REUSED' });
+      }
+      if (rpcError.message.includes('TRANSFER_ALREADY_RECEIVED')) {
+        return res.status(409).json({ error: 'transfer already received' });
+      }
+      if (rpcError.message.includes('DISCREPANCY_REASON_REQUIRED')) {
+        return res.status(400).json({ error: 'item has a discrepancy and requires a reason' });
+      }
+      if (rpcError.message.includes('INCOMPLETE_ITEM_SET')) {
+        return res.status(400).json({ error: 'all transfer items must be included in the receive request' });
+      }
+      if (rpcError.message.includes('INVALID_QUANTITY')) {
+        return res.status(400).json({ error: 'quantity_received cannot be negative' });
+      }
+      return res.status(400).json({ error: rpcError.message });
     }
 
-    const { data: updatedTransfers, error: transferUpdateError } = await supabase.from('stock_transfers').update({
-      status: 'RECEIVED', received_by: access.staffId, received_at: new Date().toISOString(),
-    }).eq('id', transfer.id);
-    if (transferUpdateError) return res.status(500).json({ error: transferUpdateError.message });
-    const updatedTransfer = (updatedTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
+    if (!rpcData || !rpcData.success) {
+      return res.status(503).json({
+        error: 'Layanan konfirmasi penerimaan stok belum tersedia saat ini. Silakan coba beberapa saat lagi.',
+        code: 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE',
+      });
+    }
 
-    const hasDiscrepancy = calculateTransferDiscrepancy([...byId.values()]);
-    if (hasDiscrepancy) {
+    const { data: freshTransfers } = await supabase.from('stock_transfers').select('*').eq('id', transfer.id);
+    const updatedTransfer = (freshTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
+    if (rpcData.has_discrepancy) {
       await notifyBestEffort(() => notifications.notifyTransferDiscrepancy(supabase, { transfer: updatedTransfer }));
     }
 
-    return res.json({ transfer: updatedTransfer, has_discrepancy: hasDiscrepancy });
+    return res.json({ transfer: updatedTransfer, has_discrepancy: rpcData.has_discrepancy });
   });
 
   const jsonBodyParser7mb = express.json({ limit: '7mb' });
@@ -846,6 +831,11 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       const ownBranchLocation = await findLocation('branch', access.branch);
       if (!ownBranchLocation || ownBranchLocation.id !== transfer.destination_location_id) {
         return res.status(403).json({ error: 'branch access denied' });
+      }
+    } else if (access.role === 'manager' && access.branch) {
+      const managerBranchLocation = await findLocation('branch', access.branch);
+      if (!managerBranchLocation || managerBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'manager branch access denied' });
       }
     }
 

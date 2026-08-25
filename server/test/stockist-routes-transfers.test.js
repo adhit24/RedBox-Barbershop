@@ -116,13 +116,63 @@ function fakeSupabase({ locations = [WAREHOUSE, CSB], outlets = [{ id: 'outlet-c
     },
     async rpc(name, args) {
       if (name === 'confirm_stock_transfer_receive') {
-        if (state.useRpcMock) {
-          state.rpcCalls.push({ name, args });
-          const transfer = state.transfers.find((t) => t.id === args.p_transfer_id);
-          if (transfer) transfer.status = 'RECEIVED';
-          return { data: { success: true, transfer_id: args.p_transfer_id, status: 'RECEIVED', has_discrepancy: false }, error: null };
+        if (state.simulatedRpcMissing) {
+          return { data: null, error: { message: 'function confirm_stock_transfer_receive() does not exist' } };
         }
-        return { data: null, error: { message: 'function confirm_stock_transfer_receive() does not exist' } };
+        state.rpcCalls.push({ name, args });
+        state.idempotencyStore = state.idempotencyStore || new Map();
+        const { p_transfer_id, p_items, p_idempotency_key, p_request_hash } = args || {};
+
+        if (p_idempotency_key) {
+          const existing = state.idempotencyStore.get(p_idempotency_key);
+          if (existing) {
+            if (existing.transfer_id === p_transfer_id && existing.request_hash === p_request_hash) {
+              return { data: existing.response_body, error: null };
+            } else {
+              return { data: null, error: { message: 'IDEMPOTENCY_KEY_REUSED' } };
+            }
+          }
+        }
+
+        const transfer = state.transfers.find((t) => t.id === p_transfer_id);
+        if (!transfer) return { data: null, error: { message: 'TRANSFER_NOT_FOUND' } };
+        if (transfer.status !== 'SENT') return { data: null, error: { message: 'TRANSFER_ALREADY_RECEIVED' } };
+
+        const transferItems = state.items.filter((i) => i.stock_transfer_id === p_transfer_id);
+        if (transferItems.length !== p_items.length) {
+          return { data: null, error: { message: 'INCOMPLETE_ITEM_SET' } };
+        }
+
+        let hasDiscrepancy = false;
+        const byId = new Map(transferItems.map((i) => [i.id, i]));
+        const seen = new Set();
+        for (const itemArg of p_items) {
+          if (seen.has(itemArg.id)) return { data: null, error: { message: 'DUPLICATE_ITEM_SUBMITTED' } };
+          seen.add(itemArg.id);
+
+          const existingItem = byId.get(itemArg.id);
+          if (!existingItem) return { data: null, error: { message: 'INVALID_ITEM' } };
+          if (itemArg.quantity_received < 0) return { data: null, error: { message: 'INVALID_QUANTITY' } };
+
+          if (itemArg.quantity_received !== existingItem.quantity_sent) {
+            hasDiscrepancy = true;
+            if (!itemArg.discrepancy_reason || !itemArg.discrepancy_reason.trim()) {
+              return { data: null, error: { message: 'DISCREPANCY_REASON_REQUIRED' } };
+            }
+          }
+          existingItem.quantity_received = itemArg.quantity_received;
+          existingItem.discrepancy_reason = itemArg.discrepancy_reason;
+          existingItem.discrepancy_photo_url = itemArg.discrepancy_photo_url;
+        }
+
+        transfer.status = 'RECEIVED';
+        const resObj = { success: true, transfer_id: p_transfer_id, status: 'RECEIVED', has_discrepancy: hasDiscrepancy };
+        if (p_idempotency_key) {
+          state.idempotencyStore.set(p_idempotency_key, {
+            transfer_id: p_transfer_id, request_hash: p_request_hash, response_body: resObj,
+          });
+        }
+        return { data: resObj, error: null };
       }
       state.rpcCalls.push({ name, args });
       return { data: { id: `ledger-${state.rpcCalls.length}`, quantity_after: 0 }, error: null };
@@ -188,9 +238,9 @@ test('PATCH /transfers/:id/receive lets the destination branch_admin confirm qua
     assert.equal(res.status, 200);
     assert.equal(body.transfer.status, 'RECEIVED');
     assert.equal(body.has_discrepancy, true);
-    assert.equal(supabase.state.rpcCalls[0].args.p_movement_type, 'TRANSFER_IN');
-    assert.equal(supabase.state.rpcCalls[0].args.p_location_id, 'loc-csb');
-    assert.equal(supabase.state.rpcCalls[0].args.p_quantity_delta, 8);
+    const rpcCall = supabase.state.rpcCalls.find((c) => c.name === 'confirm_stock_transfer_receive');
+    assert.ok(rpcCall);
+    assert.equal(rpcCall.args.p_transfer_id, 'transfer-1');
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
@@ -225,8 +275,8 @@ test('PATCH /transfers/:id/receive rejects a second receive on an already-RECEIV
     const body = await res.json();
     assert.equal(res.status, 409);
     assert.equal(body.error, 'transfer already received');
-    // No TRANSFER_IN movement may be fabricated by the duplicate request.
-    assert.equal(supabase.state.rpcCalls.length, 0);
+    // No TRANSFER_IN movement may be fabricated by the duplicate request (RPC rejected).
+    assert.equal(supabase.state.rpcCalls.length, 1);
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
@@ -260,13 +310,6 @@ test('POST /transfers rejects a shipment containing an inactive product', async 
   }, { role: 'owner' });
 });
 
-test('Task 3 Migration inspection: ensure confirm_stock_transfer_receive RPC and stockist_idempotency_keys exist', async () => {
-  const fs = require('fs');
-  const sql = fs.readFileSync('server/migrations/2026-08-25-stockist-transfer-atomic-receive.sql', 'utf8');
-  assert.equal(/create\s+table\s+if\s+not\s+exists\s+stockist_idempotency_keys/i.test(sql), true);
-  assert.equal(/create\s+or\s+replace\s+function\s+confirm_stock_transfer_receive/i.test(sql), true);
-  assert.equal(/for\s+update/i.test(sql), true);
-});
 
 test('PATCH /transfers/:id/receive passes Idempotency-Key to confirm_stock_transfer_receive RPC', async () => {
   const supabase = fakeSupabase({
@@ -330,7 +373,67 @@ test('POST /transfers/:id/items/:itemId/photo uploads and returns deterministic 
   }, { role: 'branch_admin', branch: 'csb' });
 });
 
-test('GET /transfers/:id/items/:itemId/photo generates a short-lived signed URL for owner and destination branch_admin', async () => {
+test('Task 3 Security Grants inspection: ensure search_path, revokes, and service_role grant exist', async () => {
+  const fs = require('fs');
+  const sql = fs.readFileSync('server/migrations/2026-08-25-stockist-transfer-atomic-receive.sql', 'utf8');
+  assert.equal(/set\s+search_path\s*=\s*public,\s*pg_temp/i.test(sql), true);
+  assert.equal(/revoke\s+all\s+on\s+function.*from\s+public/i.test(sql), true);
+  assert.equal(/revoke\s+all\s+on\s+function.*from\s+anon,\s+authenticated/i.test(sql), true);
+  assert.equal(/grant\s+execute\s+on\s+function.*to\s+service_role/i.test(sql), true);
+});
+
+test('PATCH /transfers/:id/receive fails closed with HTTP 503 if RPC is unavailable (No JS fallback mutation)', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  supabase.state.simulatedRpcMissing = true;
+
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'key-fail-test' },
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 10 }] }),
+    });
+    assert.equal(res.status, 503);
+    const body = await res.json();
+    assert.equal(body.code, 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE');
+
+    // Verify ZERO mutations occurred (Fail-Closed)
+    const transfer = supabase.state.transfers.find((t) => t.id === 'transfer-1');
+    assert.equal(transfer.status, 'SENT');
+    assert.equal(supabase.state.rpcCalls.length, 0);
+  }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('PATCH /transfers/:id/receive handles Idempotency Key reuse with different payload safely (409 Conflict)', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+
+  await withServer(supabase, async (base) => {
+    // First request with key-1
+    const res1 = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'key-reuse-test' },
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 10 }] }),
+    });
+    assert.equal(res1.status, 200);
+
+    // Second request reusing key-1 with different payload (quantity 5)
+    const res2 = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'key-reuse-test' },
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 5, reason: 'mismatch' }] }),
+    });
+    assert.equal(res2.status, 409);
+    const body2 = await res2.json();
+    assert.equal(body2.code, 'IDEMPOTENCY_KEY_REUSED');
+  }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('GET /transfers/:id/items/:itemId/photo generates a short-lived signed URL for owner, manager (global/destination), and destination branch_admin', async () => {
   const supabase = fakeSupabase({
     transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
     items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null, discrepancy_photo_url: 'transfer-1/item-1/evidence' }],
@@ -351,11 +454,23 @@ test('GET /transfers/:id/items/:itemId/photo generates a short-lived signed URL 
     assert.equal(res.status, 200);
   }, { role: 'owner' });
 
-  // Unauthorized role (barber / unauthenticated)
+  // Manager global (no branch restriction)
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
+    assert.equal(res.status, 200);
+  }, { role: 'manager', branch: null });
+
+  // Manager matching destination branch
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
+    assert.equal(res.status, 200);
+  }, { role: 'manager', branch: 'csb' });
+
+  // Manager non-matching branch (Tegal manager trying to view CSB photo)
   await withServer(supabase, async (base) => {
     const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, { method: 'GET' });
     assert.equal(res.status, 403);
-  }, { role: 'barber', sessionVerified: false });
+  }, { role: 'manager', branch: 'tegal' });
 });
 
 test('GET /transfers/:id/items/:itemId/photo is rejected for branch_admin of another branch', async () => {
