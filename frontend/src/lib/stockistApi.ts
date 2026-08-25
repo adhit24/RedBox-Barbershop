@@ -141,7 +141,7 @@ export const listTransfers = () => req<{ transfers: StockTransfer[] }>('/api/sto
 export const getTransfer = (id: string) =>
   req<{ transfer: StockTransfer; items: StockTransferItem[] }>(`/api/stockist/transfers/${id}`);
 
-export const receiveTransfer = (id: string, items: { item_id: string; quantity_received: number }[]) =>
+export const receiveTransfer = (id: string, items: { item_id: string; quantity_received: number; reason?: string; photo_url?: string }[]) =>
   req<{ transfer: StockTransfer; has_discrepancy: boolean }>(`/api/stockist/transfers/${id}/receive`, {
     method: 'PATCH', body: JSON.stringify({ items }),
   });

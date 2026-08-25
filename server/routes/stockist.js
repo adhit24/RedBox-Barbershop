@@ -665,6 +665,10 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       }
     }
 
+    if (access.role === 'owner') {
+      return res.status(403).json({ error: 'owner cannot confirm receipt' });
+    }
+
     if (transfer.status !== 'SENT') {
       return res.status(409).json({ error: 'transfer already received' });
     }
@@ -687,6 +691,9 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     for (const submitted of items) {
       const existing = byId.get(submitted.item_id);
       if (!existing) return res.status(400).json({ error: `unknown transfer item ${submitted.item_id}` });
+      if (submitted.quantity_received !== existing.quantity_sent && (typeof submitted.reason !== 'string' || !submitted.reason.trim())) {
+        return res.status(400).json({ error: `item ${submitted.item_id} has a discrepancy and requires a reason` });
+      }
       if (existing.quantity_received != null) {
         // Already processed in a prior attempt (e.g. after a partial failure on a
         // previous request) — do not re-apply the movement.
@@ -701,7 +708,10 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       } catch (err) {
         return res.status(400).json({ error: err.message });
       }
-      const { error: itemUpdateError } = await supabase.from('stock_transfer_items').update({ quantity_received: submitted.quantity_received }).eq('id', submitted.item_id);
+      const updatePayload = { quantity_received: submitted.quantity_received };
+      if (typeof submitted.reason === 'string' && submitted.reason.trim()) updatePayload.discrepancy_reason = submitted.reason.trim();
+      if (typeof submitted.photo_url === 'string' && submitted.photo_url.trim()) updatePayload.discrepancy_photo_url = submitted.photo_url.trim();
+      const { error: itemUpdateError } = await supabase.from('stock_transfer_items').update(updatePayload).eq('id', submitted.item_id);
       if (itemUpdateError) return res.status(500).json({ error: itemUpdateError.message });
       existing.quantity_received = submitted.quantity_received;
     }

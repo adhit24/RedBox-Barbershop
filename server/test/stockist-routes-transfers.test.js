@@ -170,7 +170,7 @@ test('PATCH /transfers/:id/receive lets the destination branch_admin confirm qua
   await withServer(supabase, async (base) => {
     const res = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 8 }] }),
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 8, reason: 'Rusak di jalan' }] }),
     });
     const body = await res.json();
     assert.equal(res.status, 200);
@@ -305,4 +305,50 @@ test('POST /transfers/:id/items/:itemId/photo rejects a non-image data URL', asy
     });
     assert.equal(res.status, 400);
   }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('PATCH /transfers/:id/receive rejects a discrepant item with no reason', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 8 }] }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 400);
+    assert.match(body.error, /requires a reason/);
+  }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('PATCH /transfers/:id/receive accepts a discrepant item with a reason and persists it', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 8, reason: 'Rusak di jalan', photo_url: 'https://fake-storage.test/x.jpg' }] }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(supabase.state.items[0].discrepancy_reason, 'Rusak di jalan');
+    assert.equal(supabase.state.items[0].discrepancy_photo_url, 'https://fake-storage.test/x.jpg');
+  }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('PATCH /transfers/:id/receive is rejected for owner', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 10 }] }),
+    });
+    assert.equal(res.status, 403);
+  }, { role: 'owner' });
 });
