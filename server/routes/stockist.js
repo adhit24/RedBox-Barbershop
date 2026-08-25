@@ -730,7 +730,9 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     return res.json({ transfer: updatedTransfer, has_discrepancy: hasDiscrepancy });
   });
 
-  router.post('/transfers/:id/items/:itemId/photo', adminAuth, async (req, res) => {
+  const jsonBodyParser6mb = express.json({ limit: '6mb' });
+
+  router.post('/transfers/:id/items/:itemId/photo', adminAuth, jsonBodyParser6mb, async (req, res) => {
     const access = requireAccess(req, res);
     if (!access) return;
 
@@ -752,6 +754,16 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(409).json({ error: 'transfer already received' });
     }
 
+    // Verify item belongs to this specific transfer
+    const { data: items, error: itemsError } = await supabase.from('stock_transfer_items')
+      .select('*')
+      .eq('id', req.params.itemId)
+      .eq('stock_transfer_id', transfer.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+    if (!items || items.length === 0) {
+      return res.status(404).json({ error: 'item not found for this transfer' });
+    }
+
     const { data_url } = req.body || {};
     const match = typeof data_url === 'string' ? data_url.match(/^data:image\/(jpeg|png|webp);base64,(.+)$/) : null;
     if (!match) {
@@ -759,6 +771,26 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     }
     const [, ext, base64Data] = match;
     const buffer = Buffer.from(base64Data, 'base64');
+
+    // Size limit verification (5MB)
+    if (buffer.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ error: 'file size exceeds maximum limit of 5MB' });
+    }
+
+    // Magic bytes verification
+    let validMagicBytes = false;
+    if (ext === 'jpeg') {
+      validMagicBytes = buffer.length >= 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+    } else if (ext === 'png') {
+      validMagicBytes = buffer.length >= 4 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+    } else if (ext === 'webp') {
+      validMagicBytes = buffer.length >= 12 && buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP';
+    }
+
+    if (!validMagicBytes) {
+      return res.status(400).json({ error: 'file magic bytes do not match declared image type' });
+    }
+
     const path = `${transfer.id}/${req.params.itemId}.${ext === 'jpeg' ? 'jpg' : ext}`;
 
     const { error: uploadError } = await supabase.storage.from('stockist-evidence').upload(path, buffer, {

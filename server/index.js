@@ -813,7 +813,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: '6mb' }));
+app.use(express.json({ limit: '100kb' }));
 
 app.use((req, res, next) => {
   try {
