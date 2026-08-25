@@ -824,6 +824,10 @@ app.use((req, res, next) => {
   express.json({ limit: '100kb' })(req, res, next);
 });
 
+const { createAiOrchestratorRoutes, orchestratorJsonErrorHandler } = require('./routes/aiOrchestrator');
+app.use(orchestratorJsonErrorHandler);
+app.use('/api/ai/orchestrator', createAiOrchestratorRoutes());
+
 app.use((req, res, next) => {
   try {
     const { phone, wa_number, name, customer_name, otp, token, password, notes, ...safeBody } = req.body || {};

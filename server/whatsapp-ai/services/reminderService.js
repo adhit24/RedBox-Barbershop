@@ -110,21 +110,14 @@ const buildReviewMessage = (booking) => {
   return (
 `Haii kak *${fn}*! 👋
 
-Makasih banget udah percayain *RedBox ${branchName}* jadi grooming spot kakak hari ini — beneran berarti banget buat kami 🙏✨ Semoga hasilnya bikin pede makin nampol ya 💈
+Makasih banyak ya udah percayain *RedBox ${branchName}* buat grooming hari ini — beneran berarti banget buat kami 🙏✨ Semoga hasilnya bikin makin pede & fresh ya 💈
 
-Jujur kak, sebagai barbershop yang masih terus berkembang, ulasan kakak di Google itu kayak suntikan energi buat tim kami. Cuma butuh *1 menit* waktu kakak, tapi bantu banyak orang nemuin Redbox & bikin para kapster makin semangat ngasih hasil terbaik 🙏
+Jujur kak, ulasan dari kakak di Google itu *bintang utamanya tim kami*. Cuma butuh *30 detik* aja, tapi dampaknya luar biasa buat bikin para kapster tambah semangat ngasih service terbaik 💯🔥
 
-Biar kakak gak rugi waktu, ada apresiasi spesial nih:
-
-🎁 *Kasih ulasan positif* (rating ⭐ 4–5) → langsung dapat *5 poin RedBox senilai Rp 50.000!*
-Poin auto-credit ke akun member kakak — bisa ditukar diskon haircut, free coffee, sampai treatment gratis di kunjungan next 🔥
-
-⭐ *Tulis ulasan di sini:*
+⭐ *Tulis ulasan kakak di sini:*
 👉 ${link}
 
-Beneran 30 detik aja — bantu kami tumbuh, kakak yang dapet hadiahnya. Win-win banget kan 😎✂️
-
-_(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`
+Dukungan singkat kakak = energi besar buat RedBox terus tumbuh. Terima kasih banyak kak! 😎✂️`
   );
 };
 

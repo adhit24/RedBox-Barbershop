@@ -4,13 +4,15 @@
  * Powered by OpenAI gpt-4o-mini with per-user conversation memory.
  */
 
-const { sendWA, getDeviceInfo, detectBranchFromNumber, getAvailableBranches } = require('../../server/services/fonnte');
+const { sendWA, detectBranchFromNumber } = require('../../server/services/fonnte');
+const {
+  inspectFonnteWebhookShadow,
+  emitFonnteWebhookShadow,
+} = require('../../server/services/fonnteWebhookVerifier');
 const { reconcileCustomerNotificationDelivery } = require('../../server/services/bookingNotificationOutbox');
 const { STATUS: BOOKING_STATUS, getCustomerBookingStatus } = require('../../server/whatsapp-ai/services/bookingStatusService');
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
-
-const INSTANCE_ID = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
 // ── Branch Routing ─────────────────────────────────────────────────────────────
 const BRANCH_WA = {
@@ -32,14 +34,6 @@ function bookingUrl(branch) {
   const key = ['bypass', 'samadikun', 'csb', 'sumber', 'tegal'].includes(branch) ? branch : 'bypass';
   return `redboxbarbershop.com/booking.html?branch=${key}`;
 }
-const BOOT_TS = Date.now();
-
-const debugLog = [];
-function pushDebug(entry) {
-  debugLog.unshift({ ts: new Date().toISOString(), instance_id: INSTANCE_ID, ...entry });
-  if (debugLog.length > 10) debugLog.pop();
-}
-
 const messageStatusCache = new Map();
 const STATUS_TTL_MS = 2 * 60 * 60 * 1000;
 
@@ -206,7 +200,7 @@ async function handleAdminCommand(sender, message, device) {
       ).catch(() => {});
     }
     await sendWA(sender, `🔴 AI dimatikan untuk ${target} selama ${minutes} menit\n(berlaku semua cabang)`, { branch });
-    console.log(`[WA Bot] Admin ${senderNorm} paused AI for ${target}, ${minutes}min`);
+    console.log('[WA Bot] Authenticated admin pause command completed', { minutes });
     return true;
   }
 
@@ -219,7 +213,7 @@ async function handleAdminCommand(sender, message, device) {
     }
     await clearHumanTakeover(target);
     await sendWA(sender, `✅ AI diaktifkan kembali untuk ${target}\n(berlaku semua cabang)`, { branch });
-    console.log(`[WA Bot] Admin ${senderNorm} resumed AI for ${target}`);
+    console.log('[WA Bot] Authenticated admin resume command completed');
     return true;
   }
 
@@ -298,7 +292,7 @@ async function getHistory(sender) {
           return data.history;
         }
       }
-      if (error === 'timeout') console.warn('[WA Bot] getHistory Supabase timeout for', sender);
+      if (error === 'timeout') console.warn('[WA Bot] getHistory Supabase timeout');
     } catch {}
   }
   conversationCache.set(sender, []);
@@ -486,7 +480,7 @@ Tersedia juga Wedding Package (Rp 350k–1.000k untuk 1-4 orang).
 MEMBERSHIP & POIN REDBOX:
 Daftar member di redboxbarbershop.com/membership.html — GRATIS.
 Tiap kunjungan dapet poin. Tukar poin jadi diskon atau free service.
-BONUS: Kasih Google Review bintang 4-5 → dapat 5 poin = Rp 50.000 (dikirim otomatis via WA 30 menit setelah selesai service).
+CATATAN: Permintaan Google Review dikirim 30 menit setelah selesai service sebagai apresiasi murni tanpa janji/kompensasi poin.
 Upsell trigger: Kapanpun relevan — tapi jangan hard-sell. Frame sebagai apresiasi: "Btw kak, udah jadi member? Lumayan banget poinnya..."
 
 ═══════════════════════════════════
@@ -1363,14 +1357,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   if (!branch) {
     branch = detectBranchFromNumber(receiver || device || from);
   }
-  console.log('[WA Bot] Branch detection:', { branchFromPayload, receiver, device, from, detectedBranch: branch });
-  console.log(`[WA Bot] Detected branch: ${branch} for device: ${device || from}`);
+  console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
 
   // ── Foreign customer check — intercept before OpenAI ──
   // If active foreign session exists, continue it
   const existingForeignSession = getForeignSession(from);
   if (existingForeignSession) {
-    console.log(`[WA Bot] Foreign session active for ${from}, language: ${existingForeignSession.language}`);
+    console.log('[WA Bot] Foreign session active:', { language: existingForeignSession.language });
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
       const sendResult = await sendWA(from, result.reply, { branch });
@@ -1380,7 +1373,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
   // New foreign language detected → start foreign booking flow
   if (isForeignLanguage(text)) {
-    console.log(`[WA Bot] Foreign language detected from ${from} (${name}), starting foreign booking flow`);
+    console.log('[WA Bot] Foreign language detected; starting foreign booking flow');
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
       const sendResult = await sendWA(from, result.reply, { branch });
@@ -1689,146 +1682,9 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  // ── GET: diagnostic / test endpoint ────────────────────────────────────────
+  // Public GET is deliberately limited to a non-sensitive liveness check.
   if (req.method === 'GET') {
-    const { test_msg, test_name } = req.query;
-    const openaiReady = !!process.env.OPENAI_API_KEY;
-    const fonnteReady = !!process.env.FONNTE_TOKEN;
-
-    if (test_msg) {
-      const t0 = Date.now();
-      try {
-        const reply = await callOpenAI('__test__', test_msg, test_name || 'Tester');
-        return res.status(200).json({
-          status: 'ok', openai: 'ok', latency_ms: Date.now() - t0,
-          input: test_msg, reply,
-        });
-      } catch (err) {
-        return res.status(200).json({
-          status: 'error', openai: 'failed', error: err.message,
-          latency_ms: Date.now() - t0, openai_key_set: openaiReady,
-        });
-      }
-    }
-
-    if (req.query.debug === 'redbox2026') {
-      if (req.query.ping === '1') pushDebug({ step: 'ping' });
-
-      if (req.query.device_info === '1') {
-        const info = await getDeviceInfo();
-        pushDebug({ step: 'device_info', device_status: info?.device_status, status: info?.status });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, device: info });
-      }
-
-      if (req.query.branch_info === '1') {
-        const branches = getAvailableBranches();
-        pushDebug({ step: 'branch_info', branches });
-        return res.status(200).json({ 
-          status: 'ok', 
-          instance_id: INSTANCE_ID, 
-          branches,
-          note: 'Add environment variables (e.g., FONNTE_TOKEN_SUMBER) to enable AI bot for specific branches'
-        });
-      }
-
-      if (req.query.db_dump === '1') {
-        const result = await dumpPersistedStatuses(req.query.limit);
-        pushDebug({ step: 'db_dump', ok: !!result?.status });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, supabase: !!getSupabase(), result });
-      }
-
-      if (req.query.db_test === '1') {
-        const testId = `test_${Date.now()}`;
-        const persisted = await persistMessageStatus(testId, { message_status: 'test', target: 'test', raw: { test: true } });
-        const fetched = await getPersistedMessageStatus(testId);
-        pushDebug({ step: 'db_test', persisted: persisted?.status ?? null, fetched: !!fetched });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, supabase: !!getSupabase(), persisted, fetched });
-      }
-
-      if (req.query.msg_status_id) {
-        const msgId = String(req.query.msg_status_id);
-        const cached = messageStatusCache.get(msgId) || null;
-        const persisted = await getPersistedMessageStatus(msgId);
-        pushDebug({ step: 'msg_status', id: msgId, cached: !!cached });
-        return res.status(200).json({
-          status: 'ok',
-          instance_id: INSTANCE_ID,
-          message_status: cached || persisted,
-          note: 'Fonnte /status API deprecated. Endpoint ini membaca cache per-instance atau Supabase (jika tabel wa_message_status ada).',
-        });
-      }
-
-      if (req.query.conv_dump) {
-        const target = String(req.query.conv_dump);
-        const hist = await getHistory(target);
-        pushDebug({ step: 'conv_dump', sender: target, messages: hist.length });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, sender: target, history: hist });
-      }
-
-      if (req.query.reset_history) {
-        const target = String(req.query.reset_history);
-        await clearHistory(target);
-        pushDebug({ step: 'reset_history', sender: target });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, sender: target, cleared: true });
-      }
-
-      if (req.query.paused_list === '1') {
-        const list = await listPausedSenders();
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, paused: list });
-      }
-
-      if (req.query.resume_ai) {
-        const target = String(req.query.resume_ai);
-        await clearHumanTakeover(target);
-        pushDebug({ step: 'resume_ai', target });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, target, resumed: true });
-      }
-
-      if (req.query.send_to && req.query.send_msg) {
-        const to = String(req.query.send_to);
-        const msg = String(req.query.send_msg);
-        const branch = req.query.branch || detectBranchFromNumber(to);
-        const normalized = to.replace(/\D/g, '').replace(/^0/, '62');
-        if (normalized.length < 10) {
-          pushDebug({ step: 'debug_send', to, error: 'invalid_target' });
-          return res.status(200).json({ status: 'error', instance_id: INSTANCE_ID, error: 'invalid_target', target: normalized });
-        }
-
-        const result = await sendWA(to, msg, { branch });
-        if (result && Array.isArray(result.id) && result.id.length > 0) {
-          for (let i = 0; i < result.id.length; i++) {
-            const msgId = result.id[i];
-            const target = Array.isArray(result.target) ? result.target[i] : normalized;
-            await persistMessageStatus(msgId, { message_status: result.process || 'queued', target, raw: result });
-          }
-        }
-        pushDebug({ step: 'debug_send', to: String(req.query.send_to), branch, fonnte_result: result });
-        return res.status(200).json({ status: 'ok', instance_id: INSTANCE_ID, branch, result });
-      }
-
-      return res.status(200).json({
-        instance_id: INSTANCE_ID,
-        boot_ts: new Date(BOOT_TS).toISOString(),
-        received: debugLog,
-        note: 'Log ini per-instance (serverless). Kalau kosong, bisa karena request POST masuk ke instance lain.',
-      });
-    }
-
-    // Get branch token availability
-    const branches = getAvailableBranches();
-    const activeBranches = Object.entries(branches)
-      .filter(([_, info]) => info.available)
-      .map(([name, _]) => name);
-
-    return res.status(200).json({
-      status: 'ok', service: 'RedBox WA Bot (AI)',
-      openai_key_set: openaiReady, 
-      fonnte_token_set: fonnteReady,
-      multi_branch_support: true,
-      branches,
-      active_branches: activeBranches,
-      instance_id: INSTANCE_ID,
-    });
+    return res.status(200).json({ ok: true, service: 'redbox-wa-webhook' });
   }
 
   if (req.method !== 'POST') return res.status(405).end();
@@ -1836,6 +1692,8 @@ module.exports = async function handler(req, res) {
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const rawBody = await coerceBody(req.body, req);
+    const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
+    emitFonnteWebhookShadow(shadowMetadata);
     let body = rawBody;
     if (rawBody && rawBody.data) {
       if (typeof rawBody.data === 'object') {
@@ -1879,17 +1737,6 @@ module.exports = async function handler(req, res) {
         target: statusTarget,
         raw: body,
       });
-      pushDebug({
-        step: 'webhook_status',
-        id: String(statusId || statusStateId),
-        message_status: String(messageStatus),
-        state: body.state ?? null,
-        stateid: body.stateid || body.stateId || null,
-        target: Array.isArray(statusTarget) ? statusTarget[0] : statusTarget,
-        persisted: persisted?.status ?? null,
-        booking_outbox_matched: delivery?.matched ?? false,
-        booking_outbox_error: delivery?.error || null,
-      });
       return res.status(200).json({
         status: 'ok',
         delivery_reconciled: delivery?.matched ?? false,
@@ -1918,21 +1765,6 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Simpan ke debug log
-    pushDebug({ sender, name, type, id, isFromMe: body.isFromMe, fromMe: body.fromMe, device, receiver, message: String(message || '').slice(0, 60) });
-
-    // Jangan log payload mentah karena berisi nomor customer, nama, dan isi chat.
-    console.log('[WA Bot] Extracted webhook fields:', {
-      hasSender: Boolean(sender),
-      hasName: Boolean(name),
-      type,
-      hasDevice: Boolean(device),
-      hasReceiver: Boolean(receiver),
-      hasMessage: Boolean(message),
-      hasId: Boolean(id),
-      bodyKeys: Object.keys(body),
-    });
-    
     // 🔍 Cari nomor cabang di SELURUH payload!
     const BRANCH_WA = {
       bypass: '0818202569',
@@ -1946,7 +1778,7 @@ module.exports = async function handler(req, res) {
         if (typeof value === 'string') {
           for (const [branch, number] of Object.entries(BRANCH_WA)) {
             if (value.includes(number)) {
-              console.log(`[WA Bot] 🌟 Found branch "${branch}" in field "${key}" (value: ${value})`);
+              console.log('[WA Bot] Branch marker found in webhook payload:', { branch });
               return branch;
             }
           }
@@ -1958,11 +1790,11 @@ module.exports = async function handler(req, res) {
       return null;
     };
     const branchFromPayload = findBranchInPayload(body);
-    console.log(`[WA Bot] Branch found from deep payload scan: ${branchFromPayload}`);
+    console.log('[WA Bot] Branch deep-scan completed:', { branch: branchFromPayload || 'not_found' });
 
     // Dedup — abaikan jika pesan ID ini sudah pernah diproses (Fonnte retry)
     if (isDuplicate(id)) {
-      console.log('[WA Bot] Duplicate message ignored, id:', id);
+      console.log('[WA Bot] Duplicate message ignored');
       return res.status(200).json({ status: 'ignored', reason: 'duplicate' });
     }
 
@@ -1983,10 +1815,9 @@ module.exports = async function handler(req, res) {
         setHumanTakeoverLocal(targetNum);
         const branchName = detectBranchFromNumber(deviceNum || sender);
         persistHumanTakeover(targetNum, `manual_reply_${branchName}`).catch(() => {});
-        console.log(`[WA Bot] Human takeover set for ${targetNum} — admin replied manually from ${branchName} (all branches, 30 min)`);
-        pushDebug({ step: 'human_takeover_set', target: targetNum, branch: branchName });
+        console.log('[WA Bot] Human takeover set from manual reply:', { branch: branchName });
       }
-      console.log('[WA Bot] Ignored outgoing message, fields:', JSON.stringify({ isFromMe: body.isFromMe, fromMe: body.fromMe, sender, device, rawTarget }));
+      console.log('[WA Bot] Ignored outgoing message');
       return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
     }
 
@@ -1996,11 +1827,11 @@ module.exports = async function handler(req, res) {
     const BRANCH_WA_NORMALIZED = Object.values(BRANCH_WA).map(n => n.replace(/\D/g, '').replace(/^0/, '62'));
     const senderNormalized = normalizePhone(sender).replace(/^0/, '62');
     if (BRANCH_WA_NORMALIZED.includes(senderNormalized)) {
-      console.log(`[WA Bot] Ignored message from branch number: ${senderNormalized} (bot-to-bot loop prevention)`);
+      console.log('[WA Bot] Ignored message from a branch number (bot-to-bot loop prevention)');
       return res.status(200).json({ status: 'ignored', reason: 'from_branch_number' });
     }
 
-    console.log('[WA Bot] Incoming:', JSON.stringify({ sender, name, type, message: String(message || '').slice(0, 80) }));
+    console.log('[WA Bot] Incoming event:', { event_type: shadowMetadata.event_type, hasMessage: Boolean(message) });
 
     // Only block clear media types; allow text, chat, conversation, undefined, etc.
     const MEDIA_TYPES = ['image', 'video', 'audio', 'document', 'sticker', 'location', 'contact', 'gif', 'ptt'];
@@ -2024,7 +1855,6 @@ module.exports = async function handler(req, res) {
     if (String(message).trim().startsWith('/ai_')) {
       const handled = await handleAdminCommand(sender, message, device);
       if (handled) {
-        pushDebug({ step: 'admin_command', sender, cmd: String(message).slice(0, 30) });
         return res.status(200).json({ status: 'ok', admin_command: true });
       }
     }
@@ -2032,8 +1862,7 @@ module.exports = async function handler(req, res) {
     // Human takeover check — skip AI jika admin sedang handle manual
     const humanActive = await isHumanTakeover(sender);
     if (humanActive) {
-      pushDebug({ step: 'human_takeover_active', sender });
-      console.log(`[WA Bot] AI paused for ${sender} — human takeover active`);
+      console.log('[WA Bot] AI paused — human takeover active');
       return res.status(200).json({ status: 'ignored', reason: 'human_takeover' });
     }
 
@@ -2041,8 +1870,7 @@ module.exports = async function handler(req, res) {
     {
       const branchForHours = branchFromPayload || detectBranchFromNumber(receiver || device || sender);
       if (isBranchAiOff(branchForHours)) {
-        pushDebug({ step: 'branch_ai_off_hours', sender, branch: branchForHours });
-        console.log(`[WA Bot] AI off-hours for branch=${branchForHours}, sender=${sender}`);
+        console.log('[WA Bot] AI off-hours:', { branch: branchForHours });
         return res.status(200).json({ status: 'ignored', reason: 'branch_ai_off_hours', branch: branchForHours });
       }
     }
@@ -2051,20 +1879,10 @@ module.exports = async function handler(req, res) {
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
     const t0 = Date.now();
     try {
-      pushDebug({ step: 'processing_start', sender, message: message?.slice(0, 40), branchFromPayload });
       const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload });
       const ms = Date.now() - t0;
-      pushDebug({
-        step: 'processing_done',
-        ms,
-        used: result?.used,
-        reply_preview: String(result?.reply || '').slice(0, 120),
-        error: result?.error || null,
-        fonnte_result: result?.sendResult ?? null,
-      });
-      console.log(`[WA Bot] Done in ${ms}ms for sender=${sender}`, result);
+      console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
     } catch (err) {
-      pushDebug({ step: 'processing_error', error: err.message });
       console.error('[WA Bot] Process error:', err.message);
     }
 

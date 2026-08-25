@@ -18,6 +18,29 @@ async function sendNotification(to, message, branch) {
   return result;
 }
 
+function canFailoverOperationalNotification(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  return message.includes('disconnected device')
+    || message.includes('token missing')
+    || message.includes('send skipped');
+}
+
+// Operational alerts must not disappear just because one branch device is offline.
+// We only fail over admin/barber notifications, never customer-facing messages,
+// so customers still receive messages from the correct branch identity.
+async function sendOperationalNotification(to, message, branch) {
+  const normalizedBranch = String(branch || '').toLowerCase();
+  try {
+    return await sendNotification(to, message, normalizedBranch || 'bypass');
+  } catch (error) {
+    if (normalizedBranch && normalizedBranch !== 'bypass' && canFailoverOperationalNotification(error)) {
+      console.warn(`[WA Operational] ${normalizedBranch} unavailable; retrying via bypass device: ${error.message}`);
+      return sendNotification(to, message, 'bypass');
+    }
+    throw error;
+  }
+}
+
 const ADMIN_NUMBER = process.env.WA_ADMIN_NUMBER;
 if (!ADMIN_NUMBER) {
   console.warn('[waNotification] WA_ADMIN_NUMBER env var not set — admin booking notifications will be skipped');
@@ -129,7 +152,7 @@ async function notifyAdminNewBooking(booking) {
 ${barber_name ? `• Kapster : ${barber_name}\n` : ''}${notes ? `• Catatan : ${notes}\n` : ''}
 #RedBoxBooking`;
 
-  return sendNotification(ADMIN_NUMBER, message, location);
+  return sendOperationalNotification(ADMIN_NUMBER, message, location);
 }
 
 // --- helpers ---
@@ -164,21 +187,14 @@ async function notifyCustomerReviewRequest(booking) {
   const message =
 `Haii kak *${fn}*! 👋
 
-Makasih banget udah percayain *${branch}* jadi grooming spot kakak hari ini — beneran berarti banget buat kami 🙏✨ Semoga hasil ${kapster} bikin pede makin nampol ya 💈
+Makasih banyak ya udah percayain *${branch}* buat grooming hari ini — beneran berarti banget buat kami 🙏✨ Semoga hasil ${kapster} bikin makin pede & fresh ya 💈
 
-Jujur kak, sebagai barbershop yang masih terus berkembang, ulasan kakak di Google itu kayak suntikan energi buat tim kami. Cuma butuh *1 menit* waktu kakak, tapi bantu banyak orang nemuin Redbox & bikin para kapster makin semangat ngasih hasil terbaik 🙏
+Jujur kak, ulasan dari kakak di Google itu *bintang utamanya tim kami*. Cuma butuh *30 detik* aja, tapi dampaknya luar biasa buat bikin para kapster tambah semangat ngasih service terbaik 💯🔥
 
-Biar kakak gak rugi waktu, ada apresiasi spesial nih:
-
-🎁 *Kasih ulasan positif* (rating ⭐ 4–5) → langsung dapat *5 poin RedBox senilai Rp 50.000!*
-Poin auto-credit ke akun member kakak — bisa ditukar diskon haircut, free coffee, sampai treatment gratis di kunjungan next 🔥
-
-⭐ *Tulis ulasan di sini:*
+⭐ *Tulis ulasan kakak di sini:*
 👉 ${link}
 
-Beneran 30 detik aja — bantu kami tumbuh, kakak yang dapet hadiahnya. Win-win banget kan 😎✂️
-
-_(Pastikan login member di redboxbarbershop.com biar poin auto-credit ya kak)_`;
+Dukungan singkat kakak = energi besar buat RedBox terus tumbuh. Terima kasih banyak kak! 😎✂️`;
 
   return sendNotification(wa, message, location);
 }
@@ -226,7 +242,7 @@ Harga     : ${price}
 
 Catat jadwal ini ya! Kamu akan mendapat pengingat beserta instruksi keberangkatan *1 jam sebelum jadwal*. 📌`;
 
-  return sendNotification(barberPhone, msg, branch);
+  return sendOperationalNotification(barberPhone, msg, branch);
 }
 
 // Remind barber 1 hour before home service booking
@@ -252,7 +268,7 @@ Jangan lupa bersiap-siap ya! 🛠️
 Balas *BERANGKAT* saat kamu mulai berangkat ke lokasi.
 Balas *SELESAI* setelah pekerjaan selesai.`;
 
-  return sendNotification(barberPhone, msg, branch);
+  return sendOperationalNotification(barberPhone, msg, branch);
 }
 
 // Notify barber of new in-outlet booking
@@ -275,7 +291,7 @@ Kamu punya pesanan baru di ${location}! 📋
 
 Jangan lupa catat ya! ✂️`;
 
-  return sendNotification(barberPhone, msg, branch);
+  return sendOperationalNotification(barberPhone, msg, branch);
 }
 
 module.exports = {
