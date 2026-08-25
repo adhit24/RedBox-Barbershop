@@ -653,6 +653,8 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const access = requireAccess(req, res);
     if (!access) return;
 
+    const idempotencyKey = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body?.idempotency_key || null;
+
     const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
     if (transferError) return res.status(500).json({ error: transferError.message });
     const transfer = (transfers || [])[0];
@@ -678,6 +680,36 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(400).json({ error: 'items must be a non-empty list of { item_id, quantity_received >= 0 }' });
     }
 
+    // Attempt RPC database transaction if available in PostgreSQL
+    if (typeof supabase.rpc === 'function') {
+      const rpcItems = items.map((i) => ({
+        id: i.item_id,
+        quantity_received: i.quantity_received,
+        discrepancy_reason: i.reason || i.discrepancy_reason || null,
+        discrepancy_photo_url: i.photo_url || i.discrepancy_photo_url || null,
+      }));
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc('confirm_stock_transfer_receive', {
+        p_transfer_id: transfer.id,
+        p_items: rpcItems,
+        p_received_by: access.staffId,
+        p_idempotency_key: idempotencyKey,
+      });
+
+      if (!rpcError && rpcData && rpcData.success) {
+        const { data: freshTransfers } = await supabase.from('stock_transfers').select('*').eq('id', transfer.id);
+        const updatedTransfer = (freshTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
+        if (rpcData.has_discrepancy) {
+          await notifyBestEffort(() => notifications.notifyTransferDiscrepancy(supabase, { transfer: updatedTransfer }));
+        }
+        return res.json({ transfer: updatedTransfer, has_discrepancy: rpcData.has_discrepancy });
+      }
+      if (rpcError && !rpcError.message.includes('function') && !rpcError.message.includes('does not exist')) {
+        return res.status(400).json({ error: rpcError.message });
+      }
+    }
+
+    // Fallback JS processing logic (for test doubles or environments without RPC function installed)
     const { data: transferItems, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
     if (itemsError) return res.status(500).json({ error: itemsError.message });
 
@@ -695,8 +727,6 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
         return res.status(400).json({ error: `item ${submitted.item_id} has a discrepancy and requires a reason` });
       }
       if (existing.quantity_received != null) {
-        // Already processed in a prior attempt (e.g. after a partial failure on a
-        // previous request) — do not re-apply the movement.
         continue;
       }
       try {

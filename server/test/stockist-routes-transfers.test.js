@@ -115,6 +115,15 @@ function fakeSupabase({ locations = [WAREHOUSE, CSB], outlets = [{ id: 'outlet-c
       throw new Error(`unexpected table ${table}`);
     },
     async rpc(name, args) {
+      if (name === 'confirm_stock_transfer_receive') {
+        if (state.useRpcMock) {
+          state.rpcCalls.push({ name, args });
+          const transfer = state.transfers.find((t) => t.id === args.p_transfer_id);
+          if (transfer) transfer.status = 'RECEIVED';
+          return { data: { success: true, transfer_id: args.p_transfer_id, status: 'RECEIVED', has_discrepancy: false }, error: null };
+        }
+        return { data: null, error: { message: 'function confirm_stock_transfer_receive() does not exist' } };
+      }
       state.rpcCalls.push({ name, args });
       return { data: { id: `ledger-${state.rpcCalls.length}`, quantity_after: 0 }, error: null };
     },
@@ -249,6 +258,38 @@ test('POST /transfers rejects a shipment containing an inactive product', async 
     assert.match(body.error, /inactive/);
     assert.equal(supabase.state.transfers.length, 0);
   }, { role: 'owner' });
+});
+
+test('Task 3 Migration inspection: ensure confirm_stock_transfer_receive RPC and stockist_idempotency_keys exist', async () => {
+  const fs = require('fs');
+  const sql = fs.readFileSync('server/migrations/2026-08-25-stockist-transfer-atomic-receive.sql', 'utf8');
+  assert.equal(/create\s+table\s+if\s+not\s+exists\s+stockist_idempotency_keys/i.test(sql), true);
+  assert.equal(/create\s+or\s+replace\s+function\s+confirm_stock_transfer_receive/i.test(sql), true);
+  assert.equal(/for\s+update/i.test(sql), true);
+});
+
+test('PATCH /transfers/:id/receive passes Idempotency-Key to confirm_stock_transfer_receive RPC', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  supabase.state.useRpcMock = true;
+
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/receive`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'idempotency-key-12345',
+      },
+      body: JSON.stringify({ items: [{ item_id: 'item-1', quantity_received: 10 }] }),
+    });
+    assert.equal(res.status, 200);
+    const rpcCall = supabase.state.rpcCalls.find((c) => c.name === 'confirm_stock_transfer_receive');
+    assert.ok(rpcCall);
+    assert.equal(rpcCall.args.p_idempotency_key, 'idempotency-key-12345');
+    assert.equal(rpcCall.args.p_transfer_id, 'transfer-1');
+  }, { role: 'branch_admin', branch: 'csb' });
 });
 
 test('PATCH /transfers/:id/receive rejects a branch_admin from a different branch', async () => {
