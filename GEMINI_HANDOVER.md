@@ -1,14 +1,26 @@
 # Gemini Development Handover
 
-**Handover created:** 2026-08-25, mid-session, by Claude (Sonnet 5) due to approaching context/token limit.
-**Status of this document:** Everything under "Verification Results" was run and observed directly this session. Everything else is reconstructed from a long conversation plus direct repo inspection at handover time — anything not personally re-verified by reading the actual file is marked **UNVERIFIED** inline; treat those as claims to check, not facts.
+**Handover created:** 2026-08-25, updated after Plan A & Plan B execution.
+**Status of this document:** Everything under "Verification Results" was run and observed directly.
+
+---
+
+## Plan A & Plan B Status Matrix
+
+| Workstream | Code Implemented | Type Check | Next Build | Backend Tests | Browser Verified | Live DB Mutation |
+|---|---|---|---|---|---|---|
+| **Plan A (Terima Barang & Buat Transfer)** | ✅ Yes | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (20/20) | ⚠️ Partial (Layout & Navigation) | ⏳ Pending Staging DB |
+| **Plan B (Konfirmasi Penerimaan & Photo Upload & Offline)** | ✅ Yes | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (26/26) | ⚠️ Partial (Layout & UI) | ⏳ Pending Staging DB |
 
 ---
 
 ## 1. Project Identity
 
-- **Project:** RedBox Barbershop — a barbershop chain's internal ops system (booking, CRM, loyalty, WhatsApp AI, and a "Stockist" inventory/logistics sub-app). This handover concerns **only the Stockist sub-app**.
+- **Project:** RedBox Barbershop — Stockist inventory/logistics sub-app
 - **Repo root (Windows path):** `D:\Digital Market\Website RedBox-sdd-stockist-operations-extension`
+- **Active Branch:** `codex/stockist-operations-extension`
+- **HEAD commit:** `80e8a80` — `feat(stockist): build Konfirmasi Penerimaan screen (spec §13)`
+
 - **Repo root (POSIX, as seen by Bash tool):** `/d/Digital Market/Website RedBox-sdd-stockist-operations-extension`
 - **Structure:** npm workspaces monorepo. `frontend/` = Next.js 16 App Router / React 19 / TypeScript / Tailwind v4. `server/` = Express + Supabase (Postgres 17) backend, plain JS (not TS).
 - **Stockist frontend routes live under:** `frontend/src/app/admin/stockist/`
