@@ -9,6 +9,10 @@ const {
   inspectFonnteWebhookShadow,
   emitFonnteWebhookShadow,
 } = require('../../server/services/fonnteWebhookVerifier');
+const {
+  verifyRedboxWebhookTrustQuery,
+  emitRedboxWebhookTrust,
+} = require('../../server/services/fonnteWebhookTrustGate');
 const { reconcileCustomerNotificationDelivery } = require('../../server/services/bookingNotificationOutbox');
 const { STATUS: BOOKING_STATUS, getCustomerBookingStatus } = require('../../server/whatsapp-ai/services/bookingStatusService');
 const OpenAI = require('openai');
@@ -1688,6 +1692,13 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method !== 'POST') return res.status(405).end();
+
+  // Redbox-managed shared-secret verification is a dormant CRM eligibility
+  // signal only. It is not a Fonnte signature and never gates the Reddy flow.
+  let parsedTrustQuery;
+  try { parsedTrustQuery = req.query; } catch { parsedTrustQuery = null; }
+  const redboxWebhookTrust = verifyRedboxWebhookTrustQuery(parsedTrustQuery);
+  emitRedboxWebhookTrust(redboxWebhookTrust);
 
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
