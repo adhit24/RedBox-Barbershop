@@ -813,7 +813,16 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+// Route-scoped 7MB parser for Stockist discrepancy evidence photo uploads (accommodates 5MB binary image Base64 + JSON overhead)
+app.use('/api/stockist/transfers/:id/items/:itemId/photo', express.json({ limit: '7mb' }));
+
+// Global JSON parser (100KB limit) for all other endpoints
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path.match(/^\/api\/stockist\/transfers\/[^/]+\/items\/[^/]+\/photo$/)) {
+    return next();
+  }
+  express.json({ limit: '100kb' })(req, res, next);
+});
 
 const { createAiOrchestratorRoutes, orchestratorJsonErrorHandler } = require('./routes/aiOrchestrator');
 app.use(orchestratorJsonErrorHandler);

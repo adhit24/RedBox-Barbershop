@@ -4,13 +4,20 @@ const STOCKIST_BRANCHES = new Set(['bypass', 'sumber', 'samadikun', 'csb', 'tega
 
 function getVerifiedStockistAccess(req) {
   const auth = req.adminAuth;
-  if (!auth?.sessionVerified || !['owner', 'branch_admin'].includes(auth.role)) return null;
+  if (!auth?.sessionVerified || !['owner', 'manager', 'branch_admin'].includes(auth.role)) return null;
   if (auth.role === 'owner') {
     return { role: 'owner', branch: null, staffId: auth.staffId };
   }
-  const branch = typeof auth.branch === 'string' ? auth.branch.trim().toLowerCase() : '';
-  if (!STOCKIST_BRANCHES.has(branch)) return null;
-  return { role: 'branch_admin', branch, staffId: auth.staffId };
+  const rawBranch = typeof auth.branch === 'string' ? auth.branch.trim().toLowerCase() : '';
+  const branch = STOCKIST_BRANCHES.has(rawBranch) ? rawBranch : null;
+  if (auth.role === 'manager') {
+    return { role: 'manager', branch, staffId: auth.staffId };
+  }
+  if (auth.role === 'branch_admin') {
+    if (!branch) return null;
+    return { role: 'branch_admin', branch, staffId: auth.staffId };
+  }
+  return null;
 }
 
 function resolveStockistLocationScope(access, requestedLocationType, requestedBranchSlug) {

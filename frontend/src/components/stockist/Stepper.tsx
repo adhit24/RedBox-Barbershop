@@ -5,13 +5,13 @@ interface StepperProps {
   onChange: (next: number) => void;
   min?: number;
   max?: number;
-  size?: 'sm' | 'lg';
+  size?: 'xs' | 'sm' | 'lg';
   disabled?: boolean;
 }
 
 export function Stepper({ value, onChange, min = 0, max = Infinity, size = 'lg', disabled = false }: StepperProps) {
-  const buttonSize = size === 'lg' ? 'h-[46px] w-[46px]' : 'h-10 w-10';
-  const numberSize = size === 'lg' ? 'text-[26px]' : 'text-[19px]';
+  const buttonSize = size === 'lg' ? 'h-[46px] w-[46px]' : size === 'sm' ? 'h-10 w-10' : 'h-[34px] w-[34px]';
+  const numberSize = size === 'lg' ? 'text-[26px]' : size === 'sm' ? 'text-[19px]' : 'text-[16px]';
 
   function decrement() {
     if (disabled) return;

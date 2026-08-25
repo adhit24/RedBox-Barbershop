@@ -7,7 +7,7 @@ export interface AppUser {
   id: string;
   email: string;
   name: string;
-  role: 'owner' | 'branch_admin' | 'barber';
+  role: 'owner' | 'branch_admin' | 'barber' | 'manager';
   branch: string | null;
   barber_id: string | null;
 }

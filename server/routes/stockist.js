@@ -1,7 +1,8 @@
 'use strict';
 
 const express = require('express');
-const { randomUUID } = require('crypto');
+const crypto = require('crypto');
+const { randomUUID } = crypto;
 const { getVerifiedStockistAccess, resolveStockistLocationScope, STOCKIST_BRANCHES } = require('../services/stockistAccess');
 const {
   applyInventoryMovement,
@@ -510,8 +511,8 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
   router.post('/transfers', adminAuth, async (req, res) => {
     const access = requireAccess(req, res);
     if (!access) return;
-    if (access.role !== 'owner') {
-      return res.status(403).json({ error: 'only owner can create transfers' });
+    if (access.role !== 'owner' && access.role !== 'manager') {
+      return res.status(403).json({ error: 'only owner or manager can create transfers' });
     }
 
     const { destination_branch, items } = req.body || {};
@@ -653,6 +654,8 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     const access = requireAccess(req, res);
     if (!access) return;
 
+    const idempotencyKey = req.headers['idempotency-key'] || req.headers['x-idempotency-key'] || req.body?.idempotency_key || null;
+
     const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
     if (transferError) return res.status(500).json({ error: transferError.message });
     const transfer = (transfers || [])[0];
@@ -665,8 +668,8 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       }
     }
 
-    if (transfer.status !== 'SENT') {
-      return res.status(409).json({ error: 'transfer already received' });
+    if (access.role === 'owner') {
+      return res.status(403).json({ error: 'owner cannot confirm receipt' });
     }
 
     const { items } = req.body || {};
@@ -674,50 +677,192 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
       return res.status(400).json({ error: 'items must be a non-empty list of { item_id, quantity_received >= 0 }' });
     }
 
-    const { data: transferItems, error: itemsError } = await supabase.from('stock_transfer_items').select('*').eq('stock_transfer_id', transfer.id);
-    if (itemsError) return res.status(500).json({ error: itemsError.message });
+    const rpcItems = items.map((i) => ({
+      id: i.item_id,
+      quantity_received: i.quantity_received,
+      discrepancy_reason: i.reason || i.discrepancy_reason || null,
+      discrepancy_photo_url: i.photo_url || i.discrepancy_photo_url || null,
+    }));
 
-    const allItemIds = new Set((transferItems || []).map((i) => i.id));
-    const submittedIds = new Set(items.map((i) => i.item_id));
-    if (allItemIds.size !== submittedIds.size || [...allItemIds].some((id) => !submittedIds.has(id))) {
-      return res.status(400).json({ error: 'all transfer items must be included in the receive request' });
+    // Calculate SHA-256 request hash for Idempotency binding
+    const requestHash = crypto.createHash('sha256').update(JSON.stringify({ transfer_id: transfer.id, items: rpcItems })).digest('hex');
+
+    // Atomic Database RPC Invocation (Single Source of Truth)
+    if (typeof supabase.rpc !== 'function') {
+      return res.status(503).json({
+        error: 'Layanan konfirmasi penerimaan stok belum tersedia saat ini. Silakan coba beberapa saat lagi.',
+        code: 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE',
+      });
     }
 
-    const byId = new Map((transferItems || []).map((i) => [i.id, i]));
-    for (const submitted of items) {
-      const existing = byId.get(submitted.item_id);
-      if (!existing) return res.status(400).json({ error: `unknown transfer item ${submitted.item_id}` });
-      if (existing.quantity_received != null) {
-        // Already processed in a prior attempt (e.g. after a partial failure on a
-        // previous request) — do not re-apply the movement.
-        continue;
-      }
-      try {
-        await applyInventoryMovement(supabase, {
-          productId: existing.product_id, locationId: transfer.destination_location_id, quantityDelta: submitted.quantity_received,
-          movementType: 'TRANSFER_IN', performedBy: access.staffId,
-          referenceType: 'stock_transfer', referenceId: transfer.id,
+    const { data: rpcData, error: rpcError } = await supabase.rpc('confirm_stock_transfer_receive', {
+      p_transfer_id: transfer.id,
+      p_items: rpcItems,
+      p_received_by: access.staffId,
+      p_idempotency_key: idempotencyKey,
+      p_request_hash: requestHash,
+    });
+
+    if (rpcError) {
+      // Fail-closed: If RPC is missing / not installed on database, return HTTP 503
+      if (rpcError.message.includes('function') && rpcError.message.includes('does not exist')) {
+        return res.status(503).json({
+          error: 'Layanan konfirmasi penerimaan stok belum tersedia saat ini. Silakan coba beberapa saat lagi.',
+          code: 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE',
         });
-      } catch (err) {
-        return res.status(400).json({ error: err.message });
       }
-      const { error: itemUpdateError } = await supabase.from('stock_transfer_items').update({ quantity_received: submitted.quantity_received }).eq('id', submitted.item_id);
-      if (itemUpdateError) return res.status(500).json({ error: itemUpdateError.message });
-      existing.quantity_received = submitted.quantity_received;
+      if (rpcError.message.includes('IDEMPOTENCY_KEY_REUSED')) {
+        return res.status(409).json({ error: 'idempotency key reused with different request payload or transfer id', code: 'IDEMPOTENCY_KEY_REUSED' });
+      }
+      if (rpcError.message.includes('TRANSFER_ALREADY_RECEIVED')) {
+        return res.status(409).json({ error: 'transfer already received' });
+      }
+      if (rpcError.message.includes('DISCREPANCY_REASON_REQUIRED')) {
+        return res.status(400).json({ error: 'item has a discrepancy and requires a reason' });
+      }
+      if (rpcError.message.includes('INCOMPLETE_ITEM_SET')) {
+        return res.status(400).json({ error: 'all transfer items must be included in the receive request' });
+      }
+      if (rpcError.message.includes('INVALID_QUANTITY')) {
+        return res.status(400).json({ error: 'quantity_received cannot be negative' });
+      }
+      return res.status(400).json({ error: rpcError.message });
     }
 
-    const { data: updatedTransfers, error: transferUpdateError } = await supabase.from('stock_transfers').update({
-      status: 'RECEIVED', received_by: access.staffId, received_at: new Date().toISOString(),
-    }).eq('id', transfer.id);
-    if (transferUpdateError) return res.status(500).json({ error: transferUpdateError.message });
-    const updatedTransfer = (updatedTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
+    if (!rpcData || !rpcData.success) {
+      return res.status(503).json({
+        error: 'Layanan konfirmasi penerimaan stok belum tersedia saat ini. Silakan coba beberapa saat lagi.',
+        code: 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE',
+      });
+    }
 
-    const hasDiscrepancy = calculateTransferDiscrepancy([...byId.values()]);
-    if (hasDiscrepancy) {
+    const { data: freshTransfers } = await supabase.from('stock_transfers').select('*').eq('id', transfer.id);
+    const updatedTransfer = (freshTransfers || [])[0] || { ...transfer, status: 'RECEIVED' };
+    if (rpcData.has_discrepancy) {
       await notifyBestEffort(() => notifications.notifyTransferDiscrepancy(supabase, { transfer: updatedTransfer }));
     }
 
-    return res.json({ transfer: updatedTransfer, has_discrepancy: hasDiscrepancy });
+    return res.json({ transfer: updatedTransfer, has_discrepancy: rpcData.has_discrepancy });
+  });
+
+  const jsonBodyParser7mb = express.json({ limit: '7mb' });
+
+  router.post('/transfers/:id/items/:itemId/photo', adminAuth, jsonBodyParser7mb, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
+    if (transferError) return res.status(500).json({ error: transferError.message });
+    const transfer = (transfers || [])[0];
+    if (!transfer) return res.status(404).json({ error: 'transfer not found' });
+
+    if (access.role === 'owner') {
+      return res.status(403).json({ error: 'owner cannot confirm receipt' });
+    }
+    if (access.role === 'branch_admin') {
+      const ownBranchLocation = await findLocation('branch', access.branch);
+      if (!ownBranchLocation || ownBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+    if (transfer.status !== 'SENT') {
+      return res.status(409).json({ error: 'transfer already received' });
+    }
+
+    // Verify item belongs to this specific transfer
+    const { data: items, error: itemsError } = await supabase.from('stock_transfer_items')
+      .select('*')
+      .eq('id', req.params.itemId)
+      .eq('stock_transfer_id', transfer.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+    if (!items || items.length === 0) {
+      return res.status(404).json({ error: 'item not found for this transfer' });
+    }
+
+    const { data_url } = req.body || {};
+    const match = typeof data_url === 'string' ? data_url.match(/^data:image\/(jpeg|png|webp);base64,(.+)$/) : null;
+    if (!match) {
+      return res.status(400).json({ error: 'data_url must be a base64 image/jpeg, image/png, or image/webp data URL' });
+    }
+    const [, ext, base64Data] = match;
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Raw file size limit verification (5MB)
+    if (buffer.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ error: 'file size exceeds maximum limit of 5MB' });
+    }
+
+    // Magic bytes verification
+    let validMagicBytes = false;
+    if (ext === 'jpeg') {
+      validMagicBytes = buffer.length >= 3 && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+    } else if (ext === 'png') {
+      validMagicBytes = buffer.length >= 4 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+    } else if (ext === 'webp') {
+      validMagicBytes = buffer.length >= 12 && buffer.slice(0, 4).toString('ascii') === 'RIFF' && buffer.slice(8, 12).toString('ascii') === 'WEBP';
+    }
+
+    if (!validMagicBytes) {
+      return res.status(400).json({ error: 'file magic bytes do not match declared image type' });
+    }
+
+    // Deterministic object path prevents extension-based orphan files
+    const path = `${transfer.id}/${req.params.itemId}/evidence`;
+
+    const { error: uploadError } = await supabase.storage.from('stockist-evidence').upload(path, buffer, {
+      contentType: `image/${ext}`,
+      upsert: true,
+    });
+    if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+    return res.json({ object_path: path, photo_url: path });
+  });
+
+  router.get('/transfers/:id/items/:itemId/photo', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
+    if (transferError) return res.status(500).json({ error: transferError.message });
+    const transfer = (transfers || [])[0];
+    if (!transfer) return res.status(404).json({ error: 'transfer not found' });
+
+    if (access.role === 'branch_admin') {
+      const ownBranchLocation = await findLocation('branch', access.branch);
+      if (!ownBranchLocation || ownBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    } else if (access.role === 'manager' && access.branch) {
+      const managerBranchLocation = await findLocation('branch', access.branch);
+      if (!managerBranchLocation || managerBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'manager branch access denied' });
+      }
+    }
+
+    // Verify item belongs to this specific transfer
+    const { data: items, error: itemsError } = await supabase.from('stock_transfer_items')
+      .select('*')
+      .eq('id', req.params.itemId)
+      .eq('stock_transfer_id', transfer.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+    const item = (items || [])[0];
+    if (!item) {
+      return res.status(404).json({ error: 'item not found for this transfer' });
+    }
+
+    if (!item.discrepancy_photo_url) {
+      return res.status(404).json({ error: 'no evidence photo recorded for this item' });
+    }
+
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from('stockist-evidence')
+      .createSignedUrl(item.discrepancy_photo_url, 60);
+
+    if (signedError) {
+      return res.status(500).json({ error: signedError.message });
+    }
+
+    return res.json({ signed_url: signedData.signedUrl, expires_in: 60 });
   });
 
   // ─── MANUAL ADJUSTMENT ───────────────────────────────────────

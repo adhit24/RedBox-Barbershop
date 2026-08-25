@@ -31,7 +31,7 @@ export default function TransfersPage() {
     refresh();
   }, []);
 
-  const isOwner = user?.role === 'owner';
+  const canCreateTransfer = user?.role === 'owner' || user?.role === 'manager';
 
   // Filter transfers
   const filteredTransfers = transfers.filter((t) => {
@@ -67,7 +67,7 @@ export default function TransfersPage() {
           <h2 className="text-[24px] font-bold text-text-primary font-display leading-tight">Transfer Stok</h2>
           <p className="text-[12px] text-text-muted mt-1">Status pengiriman barang antar cabang.</p>
         </div>
-        {isOwner && (
+        {canCreateTransfer && (
           <Link
             href="/admin/stockist/transfers/new"
             className="flex items-center gap-1.5 px-3 py-2 bg-primary-container text-white text-[12px] font-semibold rounded-lg hover:bg-inverse-primary transition-all active:scale-95"
