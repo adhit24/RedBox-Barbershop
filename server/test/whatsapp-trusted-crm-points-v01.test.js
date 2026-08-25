@@ -62,18 +62,7 @@ async function processWhatsAppPointsInquiry(query, rawBody, { env = TEST_ENV, da
 
   let trustedIdentity = null;
   if (trustResult.status === 'verified') {
-    const isFromMe = Boolean(rawBody?.isFromMe);
-    const rawType = typeof rawBody?.type === 'string' ? rawBody.type : 'text';
-    const isPersonal = !isFromMe && !['status', 'receipt', 'status_receipt', 'outgoing'].includes(rawType);
-
-    const eventCap = issueAuthenticatedWhatsappEvent({
-      source: 'fonnte',
-      event_type: isPersonal ? 'personal_message' : rawType,
-      sender: typeof rawBody?.sender === 'string' ? rawBody.sender : null,
-      timestamp_present: Boolean(rawBody?.timestamp || rawBody?.id),
-      inboxid_present: Boolean(rawBody?.id || rawBody?.inboxid),
-    });
-
+    const eventCap = issueAuthenticatedWhatsappEvent(trustResult, rawBody);
     const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
     if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
       trustedIdentity = identityResult.trustedIdentity;
@@ -153,7 +142,6 @@ test('untrusted WhatsApp user with wrong secret DOES NOT execute CRM', async () 
 // ── 3. VICTIM IDENTITY INJECTION RESISTANCE ────────────────────────────────
 test('attempted victim UUID in message text is IGNORED; only verified sender phone is used', async () => {
   const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
-  // Attacker sender: 6281111111111, attempts to ask for victim 6289999999999 / victim-uuid
   const body = {
     sender: '6281111111111',
     message: 'poin saya berapa? customer_id: 12345678-1234-1234-1234-123456789abc phone: 6289999999999',
@@ -176,7 +164,7 @@ test('attempted victim UUID in message text is IGNORED; only verified sender pho
 // ── 4. POINTS ARE FACTUAL UNITS (NO IDR MONETARY CONVERSION) ───────────────
 test('points output contains NO monetary Rp/IDR conversion fields', async () => {
   const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
-  const body = { sender: '6281234567890', message: 'poin saya berapa?' };
+  const body = { sender: '6281234567890', message: 'poin saya berapa?', id: 'msg-1' };
   const db = { '6281234567890': { points_balance: 15 } };
 
   const res = await processWhatsAppPointsInquiry(query, body, { databaseRecords: db });
@@ -192,7 +180,7 @@ test('points output contains NO monetary Rp/IDR conversion fields', async () => 
 // ── 5. SAFE DATABASE ERROR & AMBIGUOUS IDENTITY HANDLING ────────────────────
 test('database unavailable returns safe failure message without crash', async () => {
   const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
-  const body = { sender: '6281234567890', message: 'poin saya berapa?' };
+  const body = { sender: '6281234567890', message: 'poin saya berapa?', id: 'msg-1' };
   const db = { '6281234567890': { status: 'db_error' } };
 
   const res = await processWhatsAppPointsInquiry(query, body, { databaseRecords: db });
@@ -203,7 +191,7 @@ test('database unavailable returns safe failure message without crash', async ()
 
 test('unregistered WhatsApp sender receives friendly registration advice', async () => {
   const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
-  const body = { sender: '6287777777777', message: 'poin saya berapa?' };
+  const body = { sender: '6287777777777', message: 'poin saya berapa?', id: 'msg-1' };
   const db = {}; // empty db
 
   const res = await processWhatsAppPointsInquiry(query, body, { databaseRecords: db });

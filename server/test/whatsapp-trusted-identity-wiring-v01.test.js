@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   verifyRedboxWebhookTrustQuery,
+  isVerifiedRedboxWebhookTrust,
 } = require('../services/fonnteWebhookTrustGate');
 const {
   issueAuthenticatedWhatsappEvent,
@@ -21,25 +22,7 @@ const TEST_ENV = Object.freeze({
 function processFonnteWebhookTrustAndIdentity(query, rawBody, env = TEST_ENV) {
   const trustResult = verifyRedboxWebhookTrustQuery(query, env);
 
-  if (trustResult.status !== 'verified') {
-    return {
-      trustResult,
-      trustedIdentity: null,
-    };
-  }
-
-  const isFromMe = Boolean(rawBody?.isFromMe);
-  const type = typeof rawBody?.type === 'string' ? rawBody.type : 'text';
-  const isPersonal = !isFromMe && !['status', 'receipt', 'status_receipt', 'outgoing'].includes(type);
-
-  const eventCap = issueAuthenticatedWhatsappEvent({
-    source: 'fonnte',
-    event_type: isPersonal ? 'personal_message' : type,
-    sender: typeof rawBody?.sender === 'string' ? rawBody.sender : null,
-    timestamp_present: Boolean(rawBody?.timestamp || rawBody?.id),
-    inboxid_present: Boolean(rawBody?.id || rawBody?.inboxid),
-  });
-
+  const eventCap = issueAuthenticatedWhatsappEvent(trustResult, rawBody);
   const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
   const trustedIdentity = (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity))
     ? identityResult.trustedIdentity
@@ -105,7 +88,6 @@ test('invalid secret MUST NOT mint TrustedIdentity', () => {
 });
 
 test('cross-branch secret MUST NOT mint TrustedIdentity', () => {
-  // Bypass branch using CSB secret
   const query = { rb_branch: 'bypass', rb_key: 'b'.repeat(32) };
   const body = { sender: '6281234567890', message: 'halo' };
 
@@ -135,57 +117,63 @@ test('malformed query MUST NOT mint TrustedIdentity', () => {
   assert.equal(trustedIdentity, null);
 });
 
-// ── 3. INVALID / NON-PERSONAL SENDER REJECTION UNDER VERIFIED TRUST ──────────
-test('verified trust + invalid or malformed sender MUST NOT mint TrustedIdentity', () => {
-  const invalidSenders = [
-    '+1 415 555 2671', // foreign phone
-    '0812abc345678',   // letters
-    '08123',          // too short
-    '',               // empty
-    null, undefined, 12345, {}, [],
+// ── 3. OPAQUE TRUST GATE CAPABILITY FORGERY DEFENSE (FINDING 1) ───────────────
+test('forged, spread, Object.assign, or JSON cloned trust objects CANNOT issue event capability', () => {
+  const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
+  const genuineTrust = verifyRedboxWebhookTrustQuery(query, TEST_ENV);
+  const body = { sender: '6281234567890', message: 'halo', id: 'msg-1' };
+
+  assert.equal(isVerifiedRedboxWebhookTrust(genuineTrust), true);
+
+  const forgedCandidates = [
+    { status: 'verified', branch: 'bypass' },
+    { verified: true, branch: 'bypass' },
+    { authenticated: true, branch: 'bypass' },
+    { ...genuineTrust },
+    Object.assign({}, genuineTrust),
+    JSON.parse(JSON.stringify(genuineTrust)),
+    null,
+    undefined,
+    12345,
+    'verified',
+    [],
   ];
 
-  for (const sender of invalidSenders) {
-    const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
-    const body = { sender, message: 'halo', isFromMe: false };
+  for (const forged of forgedCandidates) {
+    assert.equal(isVerifiedRedboxWebhookTrust(forged), false);
+    const eventCap = issueAuthenticatedWhatsappEvent(forged, body);
+    assert.equal(eventCap, null);
+  }
+});
 
+// ── 4. STRICT POSITIVE EVENT CLASSIFICATION (FINDING 2) ─────────────────────
+test('verified secret + group message MUST NOT issue identity even with valid sender phone', () => {
+  const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
+  const groupBodies = [
+    { sender: '6281234567890', message: 'halo group', isGroup: true },
+    { sender: '6281234567890', message: 'halo group', groupId: 'group-123' },
+    { sender: '6281234567890@g.us', message: 'halo group' },
+  ];
+
+  for (const body of groupBodies) {
     const { trustResult, trustedIdentity } = processFonnteWebhookTrustAndIdentity(query, body);
-
     assert.equal(trustResult.status, 'verified');
     assert.equal(trustedIdentity, null);
   }
 });
 
-test('verified trust + JID / group / broadcast sender MUST NOT mint TrustedIdentity', () => {
-  const unsupportedSenders = [
-    '6281234567890@s.whatsapp.net',
-    '120363012345678@g.us',
-    'status@broadcast',
-    '6281234567890@broadcast',
-  ];
-
-  for (const sender of unsupportedSenders) {
-    const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
-    const body = { sender, message: 'halo', isFromMe: false };
-
-    const { trustResult, trustedIdentity } = processFonnteWebhookTrustAndIdentity(query, body);
-
-    assert.equal(trustResult.status, 'verified');
-    assert.equal(trustedIdentity, null);
-  }
-});
-
-test('verified trust + status / receipt / outgoing message MUST NOT mint TrustedIdentity', () => {
+test('verified secret + status / receipt / outgoing / media / unsupported MUST NOT issue identity', () => {
   const nonPersonalBodies = [
-    { sender: '6281234567890', isFromMe: true }, // outgoing
-    { sender: '6281234567890', type: 'status' },
-    { sender: '6281234567890', type: 'receipt' },
+    { sender: '6281234567890', message: 'halo', isFromMe: true }, // outgoing
+    { sender: '6281234567890', status: 'delivered', id: 'msg-1' }, // status receipt
+    { sender: '6281234567890', type: 'image', id: 'msg-1' }, // media
+    { sender: '6281234567890', message: '' }, // empty text
+    { sender: '6281234567890', type: 'unknown_type' }, // unknown
   ];
 
   for (const body of nonPersonalBodies) {
     const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
     const { trustResult, trustedIdentity } = processFonnteWebhookTrustAndIdentity(query, body);
-
     assert.equal(trustResult.status, 'verified');
     assert.equal(trustedIdentity, null);
   }

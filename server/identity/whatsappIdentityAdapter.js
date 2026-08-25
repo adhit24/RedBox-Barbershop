@@ -1,16 +1,9 @@
 'use strict';
 
-const {
-  issueTrustedIdentity,
-} = require('./trustedIdentity');
+const { issueTrustedIdentity } = require('./trustedIdentity');
+const { isVerifiedRedboxWebhookTrust } = require('../services/fonnteWebhookTrustGate');
+const { classifyFonnteEvent, EVENT_TYPE } = require('../services/fonnteWebhookVerifier');
 
-const AUTHENTICATED_EVENT_FIELDS = Object.freeze([
-  'source',
-  'event_type',
-  'sender',
-  'timestamp_present',
-  'inboxid_present',
-]);
 const authenticatedEvents = new WeakSet();
 
 const UNAUTHORIZED_EVENT = Object.freeze({
@@ -30,44 +23,29 @@ const UNSUPPORTED_SENDER = Object.freeze({
   trustedIdentity: null,
 });
 
-function readPlainOwnClaims(input) {
-  try {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
-    if (Object.getPrototypeOf(input) !== Object.prototype) return null;
-
-    const ownKeys = Reflect.ownKeys(input);
-    if (ownKeys.length !== AUTHENTICATED_EVENT_FIELDS.length) return null;
-    if (ownKeys.some(key => typeof key !== 'string' || !AUTHENTICATED_EVENT_FIELDS.includes(key))) return null;
-
-    const descriptors = Object.getOwnPropertyDescriptors(input);
-    for (const field of AUTHENTICATED_EVENT_FIELDS) {
-      const descriptor = descriptors[field];
-      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.get || descriptor.set) return null;
-    }
-
-    return Object.fromEntries(AUTHENTICATED_EVENT_FIELDS.map(field => [field, descriptors[field].value]));
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Capability issuer for authenticated WhatsApp channel events.
- * Wraps verified webhook event claims in an opaque, frozen capability tracked via WeakSet.
+ * Requires a genuine, un-cloned verified trust capability from verifyRedboxWebhookTrustQuery.
  */
-function issueAuthenticatedWhatsappEvent(input) {
-  const claims = readPlainOwnClaims(input);
-  if (!claims) return null;
-  if (claims.source !== 'fonnte') return null;
-  if (typeof claims.event_type !== 'string' || !claims.event_type) return null;
-  if (typeof claims.timestamp_present !== 'boolean' || typeof claims.inboxid_present !== 'boolean') return null;
+function issueAuthenticatedWhatsappEvent(trustCapability, payload) {
+  if (!isVerifiedRedboxWebhookTrust(trustCapability)) return null;
+
+  const eventType = classifyFonnteEvent(payload || {});
+  if (eventType !== EVENT_TYPE.PERSONAL_MESSAGE) return null;
+
+  const sender = typeof payload?.sender === 'string'
+    ? payload.sender
+    : (typeof payload?.from === 'string' ? payload.from : null);
+
+  const timestampPresent = Object.hasOwn(payload || {}, 'timestamp') || Object.hasOwn(payload || {}, 'id');
+  const inboxidPresent = Object.hasOwn(payload || {}, 'inboxid') || Object.hasOwn(payload || {}, 'id');
 
   const event = Object.freeze({
-    source: claims.source,
-    event_type: claims.event_type,
-    sender: claims.sender,
-    timestamp_present: claims.timestamp_present,
-    inboxid_present: claims.inboxid_present,
+    source: 'fonnte',
+    event_type: 'personal_message',
+    sender,
+    timestamp_present: Boolean(timestampPresent),
+    inboxid_present: Boolean(inboxidPresent),
   });
   authenticatedEvents.add(event);
   return event;
@@ -112,9 +90,5 @@ const productionApi = {
   isAuthenticatedWhatsappEvent,
   issueAuthenticatedWhatsappEvent,
 };
-
-if (process.env.NODE_TEST_CONTEXT === 'child-v8') {
-  productionApi.__issueAuthenticatedWhatsappEventForTest = issueAuthenticatedWhatsappEvent;
-}
 
 module.exports = Object.freeze(productionApi);

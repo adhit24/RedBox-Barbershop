@@ -1743,18 +1743,7 @@ module.exports = async function handler(req, res) {
     let trustedIdentity = null;
     if (redboxWebhookTrust && redboxWebhookTrust.status === 'verified') {
       try {
-        const isFromMe = Boolean(rawBody && rawBody.isFromMe);
-        const rawType = typeof rawBody?.type === 'string' ? rawBody.type : 'text';
-        const isPersonal = !isFromMe && !['status', 'receipt', 'status_receipt', 'outgoing'].includes(rawType);
-
-        const eventCap = issueAuthenticatedWhatsappEvent({
-          source: 'fonnte',
-          event_type: isPersonal ? 'personal_message' : rawType,
-          sender: typeof rawBody?.sender === 'string' ? rawBody.sender : null,
-          timestamp_present: Boolean(rawBody?.timestamp || rawBody?.id),
-          inboxid_present: Boolean(rawBody?.id || rawBody?.inboxid),
-        });
-
+        const eventCap = issueAuthenticatedWhatsappEvent(redboxWebhookTrust, rawBody);
         const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
         if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
           trustedIdentity = identityResult.trustedIdentity;

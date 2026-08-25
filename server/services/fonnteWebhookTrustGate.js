@@ -13,6 +13,8 @@ const TRUST_STATUSES = new Set([
   'malformed',
 ]);
 
+const verifiedTrustCapabilities = new WeakSet();
+
 // This is Redbox-managed URL shared-secret verification, not a Fonnte
 // signature, HMAC, or mTLS proof. Query secrets may be visible to hosting or
 // provider access infrastructure, so this module never reads/logs a raw URL.
@@ -87,7 +89,21 @@ function verifyRedboxWebhookTrustQuery(query, env = process.env) {
   const provided = Buffer.from(providedSecret, 'utf8');
   if (expected.length !== provided.length) return result('invalid_secret', branch);
 
-  return result(timingSafeEqual(expected, provided) ? 'verified' : 'invalid_secret', branch);
+  const isVerified = timingSafeEqual(expected, provided);
+  const trustResult = result(isVerified ? 'verified' : 'invalid_secret', branch);
+  if (isVerified) {
+    verifiedTrustCapabilities.add(trustResult);
+  }
+  return trustResult;
+}
+
+function isVerifiedRedboxWebhookTrust(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && Object.isFrozen(value)
+    && verifiedTrustCapabilities.has(value)
+  );
 }
 
 function emitRedboxWebhookTrust(trustResult, logger = console) {
@@ -127,4 +143,5 @@ module.exports = {
   BRANCH_SECRET_ENV,
   emitRedboxWebhookTrust,
   verifyRedboxWebhookTrustQuery,
+  isVerifiedRedboxWebhookTrust,
 };

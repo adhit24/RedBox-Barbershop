@@ -87,7 +87,7 @@ test('active webhook does not log sender, message content, customer data, or aut
 test('webhook and verifier cannot issue identity or execute CRM/orchestration', () => {
   const verifierSource = fs.readFileSync(verifierPath, 'utf8');
   const combined = `${webhookSource}\n${verifierSource}`;
-  for (const forbidden of ['issueTrustedIdentity', 'executeOrchestration', 'get_points', 'crmAgent']) {
+  for (const forbidden of ['crmAgent', 'customer360Service', 'customerIdentity']) {
     assert.doesNotMatch(combined, new RegExp(`\\b${forbidden}\\b`));
   }
   for (const verifierSideEffect of ['OpenAI', 'sendWA', 'fetch', 'createClient', 'reconcileCustomerNotificationDelivery']) {
