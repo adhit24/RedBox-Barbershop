@@ -54,6 +54,11 @@ test('invalid personal senders fail closed without identifier fallback', () => {
     '0812abc345678',
     '0812\u00e9345678',
     '\uff10\uff18\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19\uff10',
+    '0812\ud83d\ude00345678',
+    '6.28123456789e12',
+    '',
+    '123',
+    '081234567890123456789',
     6281234567890,
     {},
     [],
@@ -85,12 +90,15 @@ test('JID, group, broadcast, and status-like sender identifiers are unsupported'
 test('non-personal authenticated event types never issue identity', () => {
   for (const event_type of [
     'group_message',
+    'broadcast',
     'broadcast_message',
     'status',
+    'status_receipt',
     'receipt',
     'outgoing',
     'media_only',
     'unsupported',
+    'unknown',
   ]) {
     const result = adaptAuthenticatedWhatsappEvent(issueEvent({ event_type }));
     assert.deepEqual(result, { status: 'non_personal_event', trustedIdentity: null });
@@ -103,6 +111,8 @@ test('forged, spread, assigned, and serialized envelopes remain unauthorized', (
 
   for (const candidate of [
     forged,
+    Object.freeze({ authenticated: true, ...event }),
+    Object.freeze({ verified: true, ...event }),
     { ...event },
     Object.assign({}, event),
     JSON.parse(JSON.stringify(event)),
@@ -115,6 +125,27 @@ test('forged, spread, assigned, and serialized envelopes remain unauthorized', (
       trustedIdentity: null,
     });
   }
+});
+
+test('timestamp and inboxid metadata never become identity or rescue an invalid sender', () => {
+  for (const metadata of [
+    { timestamp_present: true, inboxid_present: false },
+    { timestamp_present: false, inboxid_present: true },
+    { timestamp_present: true, inboxid_present: true },
+  ]) {
+    const result = adaptAuthenticatedWhatsappEvent(issueEvent({ sender: null, ...metadata }));
+    assert.deepEqual(result, { status: 'invalid_sender', trustedIdentity: null });
+  }
+
+  const success = adaptAuthenticatedWhatsappEvent(issueEvent({
+    sender: '6281234567890',
+    timestamp_present: true,
+    inboxid_present: true,
+  }));
+  assert.deepEqual(Object.keys(success.trustedIdentity).sort(), ['phone', 'source']);
+  assert.equal(Object.hasOwn(success.trustedIdentity, 'timestamp'), false);
+  assert.equal(Object.hasOwn(success.trustedIdentity, 'inboxid'), false);
+  assert.equal(Object.hasOwn(success.trustedIdentity, 'customer_id'), false);
 });
 
 test('authenticated envelopes are frozen and mutation cannot alter sender claims', () => {
