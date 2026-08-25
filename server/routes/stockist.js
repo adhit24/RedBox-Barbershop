@@ -799,8 +799,47 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     });
     if (uploadError) return res.status(500).json({ error: uploadError.message });
 
-    const { data: publicUrlData } = supabase.storage.from('stockist-evidence').getPublicUrl(path);
-    return res.json({ photo_url: publicUrlData.publicUrl });
+    return res.json({ object_path: path, photo_url: path });
+  });
+
+  router.get('/transfers/:id/items/:itemId/photo', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
+    if (transferError) return res.status(500).json({ error: transferError.message });
+    const transfer = (transfers || [])[0];
+    if (!transfer) return res.status(404).json({ error: 'transfer not found' });
+
+    if (access.role === 'branch_admin') {
+      const ownBranchLocation = await findLocation('branch', access.branch);
+      if (!ownBranchLocation || ownBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+
+    // Verify item belongs to this specific transfer
+    const { data: items, error: itemsError } = await supabase.from('stock_transfer_items')
+      .select('*')
+      .eq('id', req.params.itemId)
+      .eq('stock_transfer_id', transfer.id);
+    if (itemsError) return res.status(500).json({ error: itemsError.message });
+    const item = (items || [])[0];
+    if (!item) {
+      return res.status(404).json({ error: 'item not found for this transfer' });
+    }
+
+    const objectPath = item.discrepancy_photo_url || `${transfer.id}/${req.params.itemId}.jpg`;
+
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from('stockist-evidence')
+      .createSignedUrl(objectPath, 60);
+
+    if (signedError) {
+      return res.status(500).json({ error: signedError.message });
+    }
+
+    return res.json({ signed_url: signedData.signedUrl, expires_in: 60 });
   });
 
   // ─── MANUAL ADJUSTMENT ───────────────────────────────────────

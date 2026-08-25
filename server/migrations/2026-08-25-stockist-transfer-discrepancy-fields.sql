@@ -23,7 +23,7 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values (
   'stockist-evidence',
   'stockist-evidence',
-  false, -- Private bucket: access restricted via RLS policies
+  false, -- Private bucket: no direct public access, all uploads/reads routed through secure backend
   5242880, -- 5MB file size limit
   array['image/jpeg', 'image/png', 'image/webp']
 )
@@ -36,30 +36,8 @@ on conflict (id) do update set
 -- Enable RLS on storage.objects if not enabled
 alter table storage.objects enable row level security;
 
--- Policy: Allow authenticated users to read evidence photos
+-- Remove broad direct access policies if present
 drop policy if exists "Allow authenticated read stockist evidence" on storage.objects;
-create policy "Allow authenticated read stockist evidence"
-  on storage.objects for select
-  to authenticated
-  using (bucket_id = 'stockist-evidence');
-
--- Policy: Allow authenticated users to upload evidence photos
 drop policy if exists "Allow authenticated upload stockist evidence" on storage.objects;
-create policy "Allow authenticated upload stockist evidence"
-  on storage.objects for insert
-  to authenticated
-  with check (bucket_id = 'stockist-evidence');
-
--- Policy: Allow authenticated users to update evidence photos
 drop policy if exists "Allow authenticated update stockist evidence" on storage.objects;
-create policy "Allow authenticated update stockist evidence"
-  on storage.objects for update
-  to authenticated
-  using (bucket_id = 'stockist-evidence');
-
--- Policy: Allow authenticated users to delete evidence photos
 drop policy if exists "Allow authenticated delete stockist evidence" on storage.objects;
-create policy "Allow authenticated delete stockist evidence"
-  on storage.objects for delete
-  to authenticated
-  using (bucket_id = 'stockist-evidence');
