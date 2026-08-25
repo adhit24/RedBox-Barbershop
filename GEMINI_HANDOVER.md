@@ -13,7 +13,7 @@
 | **Plan B Task 1 (Storage & Private Bucket)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (45/45) | ✅ Verified (Private Bucket, RLS Clean, Signed URL 60s) | ⏳ `SQL reviewed, execution unverified` |
 | **Plan B Task 2 (Middleware & Evidence Upload)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (5/5 Integration) | ✅ Verified (Route 7MB JSON, Magic Bytes, Deterministic Path) | ✅ Code & Integration Verified |
 | **Plan B Task 3 (Atomic Receive & Idempotency)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (49/49) | ✅ Verified (Postgres RPC `FOR UPDATE`, Fail-Closed 503, Request Hash Idempotency) | ⏳ `SQL authored, SQL inspected, SQL execution unverified, Atomicity database-unverified` |
-| **Plan B Task 4 (UI Detail Split & Receive Form)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | N/A | N/A | ⚠️ `Offline-aware draft` |
+| **Plan B Task 4 (UI Detail Split & Offline-Aware Receive)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (49/49) | ✅ Verified (Offline-Aware Draft, Online-Only Final Submission, Idempotency Key Preserved) | ✅ Code & Browser UI Verified |
 
 ---
 
