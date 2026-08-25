@@ -284,44 +284,36 @@ Running `node --test server/test/*.test.js` from repo root produces **407 passin
 - **Plan A/B's `?product=` query param on the new Terima Barang route is intentionally unused for now** — accepted but not consumed meaningfully beyond pre-selecting a carousel tile if the id matches a loaded product. This is deliberate forward-compatibility for Detail Produk's future "Terima Barang" action button (not yet built), not a bug or incomplete feature.
 - **Two still-open, unresolved product decisions exist in the broader backlog** (not blocking Plan A/B, but will need the user's input when reached): (1) whether `reorder_point` should be derived as `minimum_stock + 4` everywhere vs. staying independently settable; (2) whether dark-mode `--color-danger`/`--color-status-habis` should align to the light-theme red `#E33A32` or stay distinct at `#E0504B`. Both are documented in the gap-audit doc's "Still open" section — do not guess an answer, ask when/if either becomes relevant.
 
-## 17. Verification Results
+## 17. Granular Status Matrix & Verification Results
 
-All commands below were actually run this session, output actually observed:
+All commands and browser checks below were run directly and observed:
 
-| Command | Result | Notes |
+| Verification Scope | Status | Notes / Output |
 |---|---|---|
-| `npx tsc --noEmit` (frontend) | **Exit code 0, 0 errors** | Clean TypeScript type-check across full codebase after all Plan A changes |
-| `npm run build` (frontend) | **Exit code 0, 0 errors** | Full Next.js production build compiled and prerendered 113 static/dynamic routes cleanly |
-| `node --test server/test/stockist-routes-warehouse.test.js server/test/stockist-routes-transfers.test.js server/test/stockist-access.test.js` | **Exit code 0, 20 pass, 0 fail** | 100% pass on all Stockist warehouse receive, stock transfer, and role authorization tests |
-| `useDraftPersistence` ESLint / React 19 check | **Fixed** | Refactored hook to use React 18/19 `useSyncExternalStore` pattern (commit `8270839`) to eliminate React hydration/render warning |
-| Supabase Auth & Client Initialization | **Fixed** | Added fallback publishable/anon keys in `client.ts` & `server.ts` (commit `e418b89`) to prevent runtime 500 errors when env vars are missing |
+| **Implemented** | ✅ Complete | Tasks 1, 2, 3, 4 fully implemented according to spec |
+| **Type-checked** | ✅ Passed | `npx tsc --noEmit` exited with code 0 (0 errors) |
+| **Build Verified** | ✅ Passed | `npm run build` exited with code 0 (113 routes compiled & static pages generated) |
+| **Unit / Integration Tested** | ✅ Passed | `node --test server/test/stockist-routes-warehouse.test.js server/test/stockist-routes-transfers.test.js server/test/stockist-access.test.js` passed 20/20 tests |
+| **Hardcoded Credentials Audit** | ✅ Security Fixed | Commit `f479ace` reverted hardcoded Supabase production credentials fallback and replaced with explicit env assertion |
+| **Browser Verified** | ⚠️ Partial (UI/Layout) | `/admin/stockist/warehouse/receive` and `/admin/stockist/transfers/new` rendered cleanly across 375px, 768px, and 1440px viewports |
+| **End-to-End Verified** | ⏳ Pending Staging DB | Real live database mutation intentionally omitted to protect production data |
 
-## 18. Plan A Execution Summary & Plan B Recommended Next Steps
+## 18. Audit & Current Plan A Status
 
-### Plan A Status: FULLY IMPLEMENTED & VERIFIED
+### Plan A Status: IMPLEMENTED & CODE-VERIFIED (Awaiting Final User Approval)
+
 - **Task 1 (`useDraftPersistence` hook)**: Implemented & refactored to `useSyncExternalStore` (`frontend/src/hooks/useDraftPersistence.ts`).
 - **Task 2 (`Stepper` 'xs' size & `SuccessScreen`)**: Added size 'xs' (34px) to `Stepper.tsx` and built shared `SuccessScreen.tsx` (spec §23).
 - **Task 3 (Terima Barang Rebuild)**: Built `frontend/src/app/admin/stockist/warehouse/receive/page.tsx` with product carousel, 46px Stepper, before/after preview panel, invoice note input, and `SuccessScreen`. Updated entry point gate in `warehouse/page.tsx`.
 - **Task 4 (Buat Transfer Rebuild)**: Rebuilt `frontend/src/app/admin/stockist/transfers/new/page.tsx` with 3-step indicator, 5 branch destination pills, cart line items capped by actual warehouse balance, Rupiah total calculation, draft saving, and `SuccessScreen`. Updated entry point gate in `transfers/page.tsx` and backend `POST /transfers` check.
 
-### Continuation Point: Ready for Plan B Execution
+### Security Remediation Commit
+- `f479ace`: `revert(stockist): remove hardcoded production Supabase fallback credentials` — Completely removed hardcoded fallback keys from `client.ts` and `server.ts`.
 
-1. **Keep working tree clean**: Do NOT push or open PRs without explicit user instructions. Do NOT touch untracked files from other workstreams.
-2. **Begin Plan B (`docs/superpowers/plans/2026-08-25-stockist-transfer-plan-b-confirm-offline.md`)**:
-   - **Task 1: Migration & Storage Bucket**: Apply DB migration `quantity_received` on `stock_transfer_items` and verify photo storage bucket `stockist-transfers`.
-   - **Task 2: Photo Upload Service**: Create `frontend/src/lib/stockist/photoStorage.ts` for camera capture / upload handling.
-   - **Task 3: Offline Queue & Sync Service**: Create `frontend/src/lib/stockist/offlineSync.ts` and `useOnlineStatus.ts` for offline fallback.
-   - **Task 4: Detail Transfer Screen Split**: Refactor `frontend/src/app/admin/stockist/transfers/[id]/page.tsx` to display transfer status tracking without inline receive form.
-   - **Task 5: Konfirmasi Penerimaan Screen**: Create `frontend/src/app/admin/stockist/transfers/[id]/confirm/page.tsx` for branch_admin & manager receipt confirmation with discrepancy flagging, optional photo upload, and offline fallback.
+## 19. Next Steps (Pending User Approval)
 
-## 19. Definition of Done
-
-For this handover's scope specifically (gap-audit item #6):
-- Plan A fully built and verified; Plan B ready to start
-- `cd frontend && npx tsc --noEmit` clean
-- `npm run build` in frontend clean
-- Backend `node --test server/test/stockist-routes-*.test.js` passing 100%
-- No fabricated data anywhere, exact design-handoff copy/tokens strictly enforced
+1. **Await explicit user confirmation**: Do NOT start Plan B, do NOT push branch, do NOT create PR until the user explicitly approves Plan A.
+2. **Once Plan A is approved**: Proceed to Plan B (`docs/superpowers/plans/2026-08-25-stockist-transfer-plan-b-confirm-offline.md`).
 
 ## 20. Instructions for the Next AI Agent
 
