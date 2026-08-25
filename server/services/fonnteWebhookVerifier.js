@@ -135,9 +135,33 @@ function inspectFonnteWebhookShadow(body, configuredSecret) {
   });
 }
 
+function emitFonnteWebhookShadow(metadata, logger = console) {
+  const normalizedField = normalizeFieldName(metadata?.auth_candidate_field);
+  const safeMetadata = Object.freeze({
+    status: Object.values(SHADOW_STATUS).includes(metadata?.status)
+      ? metadata.status
+      : SHADOW_STATUS.MALFORMED,
+    auth_candidate_present: metadata?.auth_candidate_present === true,
+    auth_candidate_field: normalizedField && AUTH_CANDIDATE_PATTERN.test(normalizedField)
+      ? normalizedField
+      : null,
+    event_type: Object.values(EVENT_TYPE).includes(metadata?.event_type)
+      ? metadata.event_type
+      : EVENT_TYPE.UNSUPPORTED,
+    has_timestamp: metadata?.has_timestamp === true,
+    has_inboxid: metadata?.has_inboxid === true,
+  });
+
+  if (logger && typeof logger.info === 'function') {
+    logger.info('[WAWebhookAuthShadow]', safeMetadata);
+  }
+  return safeMetadata;
+}
+
 module.exports = {
   SHADOW_STATUS,
   EVENT_TYPE,
   classifyFonnteEvent,
   inspectFonnteWebhookShadow,
+  emitFonnteWebhookShadow,
 };

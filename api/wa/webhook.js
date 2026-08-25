@@ -5,7 +5,10 @@
  */
 
 const { sendWA, detectBranchFromNumber } = require('../../server/services/fonnte');
-const { inspectFonnteWebhookShadow } = require('../../server/services/fonnteWebhookVerifier');
+const {
+  inspectFonnteWebhookShadow,
+  emitFonnteWebhookShadow,
+} = require('../../server/services/fonnteWebhookVerifier');
 const { reconcileCustomerNotificationDelivery } = require('../../server/services/bookingNotificationOutbox');
 const { STATUS: BOOKING_STATUS, getCustomerBookingStatus } = require('../../server/whatsapp-ai/services/bookingStatusService');
 const OpenAI = require('openai');
@@ -1690,7 +1693,7 @@ module.exports = async function handler(req, res) {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const rawBody = await coerceBody(req.body, req);
     const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
-    console.info('[WA Security] Fonnte webhook shadow:', shadowMetadata);
+    emitFonnteWebhookShadow(shadowMetadata);
     let body = rawBody;
     if (rawBody && rawBody.data) {
       if (typeof rawBody.data === 'object') {

@@ -33,9 +33,46 @@ test('GET exposes only a minimal health response', () => {
 
 test('POST keeps the existing Reddy path while observing shadow metadata', () => {
   assert.match(webhookSource, /inspectFonnteWebhookShadow\(rawBody/);
+  assert.match(webhookSource, /emitFonnteWebhookShadow\(shadowMetadata\)/);
   assert.match(webhookSource, /handleMessage\(\{\s*from:\s*sender,\s*name:/);
   assert.match(webhookSource, /isHumanTakeover\(sender\)/);
   assert.match(webhookSource, /sendWA\(sender,/);
+});
+
+test('structured shadow log emits only the six approved non-PII fields', () => {
+  const { emitFonnteWebhookShadow } = require(verifierPath);
+  const calls = [];
+  const logger = { info: (...args) => calls.push(args) };
+  const emitted = emitFonnteWebhookShadow({
+    status: 'contract_unknown',
+    auth_candidate_present: true,
+    auth_candidate_field: 'secretKey',
+    event_type: 'personal_message',
+    has_timestamp: true,
+    has_inboxid: true,
+    sender: '628111111111',
+    device: '628222222222',
+    message: 'private message',
+    secret: 'never-log-this',
+    inboxid: 'provider-id-value',
+    timestamp: 1720000000,
+  }, logger);
+
+  assert.deepEqual(calls, [['[WAWebhookAuthShadow]', {
+    status: 'contract_unknown',
+    auth_candidate_present: true,
+    auth_candidate_field: 'secret_key',
+    event_type: 'personal_message',
+    has_timestamp: true,
+    has_inboxid: true,
+  }]]);
+  assert.deepEqual(emitted, calls[0][1]);
+  for (const prohibited of [
+    '628111111111', '628222222222', 'private message', 'never-log-this',
+    'provider-id-value', '1720000000',
+  ]) {
+    assert.equal(JSON.stringify(calls).includes(prohibited), false);
+  }
 });
 
 test('active webhook does not log sender, message content, customer data, or auth values', () => {
