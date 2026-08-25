@@ -21,6 +21,13 @@ interface ConfirmDraft {
   reasons: Record<string, string>;
 }
 
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `idemp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = usePromise(params);
   const router = useRouter();
@@ -39,7 +46,7 @@ export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: s
 
   const [draft, setDraft, clearDraft] = useDraftPersistence<ConfirmDraft>(`stockist-confirm-draft-${id}`, { received: {}, reasons: {} });
 
-  const idempotencyKey = draft.idempotencyKey || `idemp-${id}-${Date.now()}`;
+  const idempotencyKey = draft.idempotencyKey || generateIdempotencyKey();
 
   useEffect(() => {
     if (!draft.idempotencyKey) {
@@ -62,11 +69,19 @@ export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: s
   const productMap = new Map(products.map((p) => [p.id, p]));
 
   function setReceivedQty(itemId: string, qty: number) {
-    setDraft({ ...draft, received: { ...draft.received, [itemId]: qty } });
+    setDraft({
+      ...draft,
+      idempotencyKey: generateIdempotencyKey(),
+      received: { ...draft.received, [itemId]: qty },
+    });
   }
 
   function setReason(itemId: string, reason: string) {
-    setDraft({ ...draft, reasons: { ...draft.reasons, [itemId]: reason } });
+    setDraft({
+      ...draft,
+      idempotencyKey: generateIdempotencyKey(),
+      reasons: { ...draft.reasons, [itemId]: reason },
+    });
   }
 
   async function handlePhotoChange(itemId: string, file: File) {
@@ -131,7 +146,7 @@ export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: s
         }
         if (err.status === 409 && err.code === 'IDEMPOTENCY_KEY_REUSED') {
           setSubmitError('Terjadi bentrokan idempotency key. Memuat ulang draf dengan key baru...');
-          const freshKey = `idemp-${id}-${Date.now()}`;
+          const freshKey = generateIdempotencyKey();
           setDraft({ ...draft, idempotencyKey: freshKey });
           return;
         }
