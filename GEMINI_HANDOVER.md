@@ -5,15 +5,20 @@
 
 ---
 
-## Plan A & Plan B Status Matrix
+## Plan A & Plan B Final Status Matrix
 
-| Workstream | Code Implemented | Type Check | Next Build | Backend Tests | Storage & RPC Security | Local DB Execution Status | Browser Verification Status |
+| Workstream | Code Implementation | Type Check | Next Build | Backend Tests | Storage & RPC Security | Local DB Execution Status | Browser Verification Status |
 |---|---|---|---|---|---|---|---|
-| **Plan A (Terima Barang & Buat Transfer)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (20/20) | N/A | ⏳ `Live DB Mutation Unverified` | ⚠️ Partial (Layout & Navigation) |
-| **Plan B Task 1 (Storage & Private Bucket)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (45/45) | ✅ Verified (Private Bucket, RLS Clean, Signed URL 60s) | ⏳ `SQL reviewed, execution unverified` | N/A |
-| **Plan B Task 2 (Middleware & Evidence Upload)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (5/5 Integration) | ✅ Verified (Route 7MB JSON, Magic Bytes, Deterministic Path) | ✅ Code & Integration Verified | N/A |
-| **Plan B Task 3 & 3.1 (Atomic Receive & Security)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (49/49) | ✅ Verified (Postgres RPC `FOR UPDATE`, `SET search_path = ''`, RLS, Service Role) | ⏳ `SQL authored, SQL inspected, SQL execution unverified, Atomicity database-unverified` | N/A |
-| **Plan B Task 4 (UI Detail Split & Offline-Aware Receive)** | ✅ Implemented | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (49/49) | ✅ Verified (Offline-Aware Draft, Online-Only Final Submission, `crypto.randomUUID()`) | N/A | ✅ Pass (375px, 768px, 1440px viewports, 0 console errors) |
+| **Plan A (Terima Barang & Buat Transfer)** | ✅ Complete | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (20/20) | N/A | ⏳ `Live DB Mutation Unverified` | ⚠️ Partial (Layout & Navigation) |
+| **Plan B Task 1 (Storage & Private Bucket)** | ✅ Complete | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (45/45) | ✅ Verified (Private Bucket, RLS Clean, Signed URL 60s) | ⏳ `Pending Staging` | N/A |
+| **Plan B Task 2 (Middleware & Evidence Upload)** | ✅ Complete | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (5/5 Integration) | ✅ Verified (Route 7MB JSON, Magic Bytes, Deterministic Path) | ✅ Code & Integration Verified | N/A |
+| **Plan B Task 3 & 3.1 (Atomic Receive & Security)** | ✅ Complete | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (49/49) | ✅ Verified (Postgres RPC `FOR UPDATE`, `SET search_path = ''`, RLS, Service Role) | ⏳ `SQL Authored & Schema-Aligned (Pending Staging Execution & Concurrency Test)` | N/A |
+| **Plan B Task 4 (UI Detail Split & Offline-Aware Receive)** | ✅ Complete | ✅ Pass (0 errors) | ✅ Pass (113 routes) | ✅ Pass (49/49) | ✅ Verified (Offline-Aware Draft, Online-Only Final Submission, `crypto.randomUUID()`) | N/A | ✅ Pass (375px, 768px, 1440px viewports, 0 console errors) |
+
+### Key Operational Constants (Completion Mode)
+- **Staging Migration Runner:** `server/run-migration.js`
+- **Production Environment Status:** 🔒 Untouched (0 production migrations applied, 0 live DB mutations executed)
+- **Pending External Staging Verification:** (1) Migration Execution, (2) Real Concurrency/Atomicity Test, (3) Live Stock Mutation Verification
 
 ---
 
