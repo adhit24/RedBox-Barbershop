@@ -146,6 +146,11 @@ export const receiveTransfer = (id: string, items: { item_id: string; quantity_r
     method: 'PATCH', body: JSON.stringify({ items }),
   });
 
+export const uploadDiscrepancyPhoto = (transferId: string, itemId: string, dataUrl: string) =>
+  req<{ photo_url: string }>(`/api/stockist/transfers/${transferId}/items/${itemId}/photo`, {
+    method: 'POST', body: JSON.stringify({ data_url: dataUrl }),
+  });
+
 export const createStockRequest = (input: { items: { product_id: string; quantity_requested: number }[]; reason?: string }) =>
   req<{ request: StockRequest }>('/api/stockist/requests', { method: 'POST', body: JSON.stringify(input) });
 
