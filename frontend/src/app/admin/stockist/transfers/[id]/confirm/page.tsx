@@ -3,7 +3,7 @@
 import { useEffect, useState, use as usePromise } from 'react';
 import { useRouter } from 'next/navigation';
 import { Package } from 'lucide-react';
-import { getTransfer, listProducts, receiveTransfer, uploadDiscrepancyPhoto, type StockTransfer, type StockTransferItem, type StockistProduct } from '@/lib/stockistApi';
+import { getTransfer, listProducts, receiveTransfer, uploadDiscrepancyPhoto, ApiError, type StockTransfer, type StockTransferItem, type StockistProduct } from '@/lib/stockistApi';
 import { getKnownProductImage } from '@/lib/stockist/productImage';
 import { Stepper } from '@/components/stockist/Stepper';
 import { SuccessScreen } from '@/components/stockist/SuccessScreen';
@@ -16,6 +16,7 @@ import { BackButton } from '@/components/stockist/BackButton';
 const REASONS = ['Kurang kirim', 'Rusak di jalan', 'Salah hitung'] as const;
 
 interface ConfirmDraft {
+  idempotencyKey?: string;
   received: Record<string, number>;
   reasons: Record<string, string>;
 }
@@ -36,13 +37,15 @@ export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: s
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [result, setResult] = useState<{ transferNumber: string; sent: number; received: number; discrepancy: number } | null>(null);
 
-  // `draft.received` intentionally stays sparse — every read of it below falls
-  // back to `?? item.quantity_sent`, so there's no need to eagerly pre-fill
-  // defaults into the draft itself. Pre-filling in a useEffect would race
-  // useDraftPersistence's own hydration effect (both are registered on the
-  // same mount; the pre-fill effect's closure would see the pre-hydration
-  // draft and could overwrite a just-restored one with defaults).
   const [draft, setDraft, clearDraft] = useDraftPersistence<ConfirmDraft>(`stockist-confirm-draft-${id}`, { received: {}, reasons: {} });
+
+  const idempotencyKey = draft.idempotencyKey || `idemp-${id}-${Date.now()}`;
+
+  useEffect(() => {
+    if (!draft.idempotencyKey) {
+      setDraft({ ...draft, idempotencyKey });
+    }
+  }, [id, draft, setDraft, idempotencyKey]);
 
   useEffect(() => {
     Promise.all([getTransfer(id), listProducts()])
@@ -85,7 +88,7 @@ export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: s
   }
 
   function saveDraft() {
-    showToast('Draft tersimpan');
+    showToast('Draft tersimpan secara lokal');
   }
 
   const totalSent = items.reduce((sum, i) => sum + i.quantity_sent, 0);
@@ -97,6 +100,10 @@ export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: s
 
   async function handleSubmit() {
     setSubmitError(null);
+    if (!online) {
+      setSubmitError('Koneksi internet terputus. Draf disimpan secara lokal dan konfirmasi final hanya dapat dikirim saat online.');
+      return;
+    }
     if (missingReasons.length > 0) {
       setSubmitError('Semua produk dengan selisih wajib diberi alasan.');
       return;
@@ -109,11 +116,35 @@ export default function ConfirmReceiptPage({ params }: { params: Promise<{ id: s
         reason: draft.reasons[item.id] || undefined,
         photo_url: photoUrls[item.id] || undefined,
       }));
-      await receiveTransfer(id, payload);
+      await receiveTransfer(id, payload, idempotencyKey);
       setResult({ transferNumber: transfer?.transfer_number ?? '', sent: totalSent, received: totalReceived, discrepancy: aggregateDiscrepancy });
       clearDraft();
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Gagal mengonfirmasi penerimaan');
+      if (err instanceof ApiError) {
+        if (err.status === 409 && err.message.includes('already received')) {
+          setSubmitError('Transfer ini sudah dikonfirmasi sebelumnya. Mengalihkan...');
+          setTimeout(() => {
+            clearDraft();
+            router.push(`/admin/stockist/transfers/${id}`);
+          }, 2000);
+          return;
+        }
+        if (err.status === 409 && err.code === 'IDEMPOTENCY_KEY_REUSED') {
+          setSubmitError('Terjadi bentrokan idempotency key. Memuat ulang draf dengan key baru...');
+          const freshKey = `idemp-${id}-${Date.now()}`;
+          setDraft({ ...draft, idempotencyKey: freshKey });
+          return;
+        }
+        if (err.status === 503 || err.code === 'STOCKIST_ATOMIC_RECEIVE_UNAVAILABLE') {
+          setSubmitError('Layanan konfirmasi penerimaan stok belum tersedia saat ini. Silakan coba beberapa saat lagi. Draf Anda tetap aman.');
+          return;
+        }
+        setSubmitError(err.message);
+      } else if (err instanceof TypeError || (err instanceof Error && err.message.includes('fetch'))) {
+        setSubmitError('Koneksi terputus saat mengirim. Draf dan Idempotency Key disimpan secara lokal. Silakan coba lagi saat koneksi pulih.');
+      } else {
+        setSubmitError(err instanceof Error ? err.message : 'Gagal mengonfirmasi penerimaan');
+      }
     } finally {
       setSubmitting(false);
     }

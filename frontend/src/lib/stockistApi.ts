@@ -94,10 +94,23 @@ export interface StockRequest {
   branch_name?: string;
 }
 
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) } });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body?.error || `request failed: ${res.status}`);
+  let body: any = null;
+  try { body = await res.json(); } catch (_) {}
+  if (!res.ok) {
+    throw new ApiError(body?.error || `request failed: ${res.status}`, res.status, body?.code);
+  }
   return body as T;
 }
 
@@ -141,9 +154,15 @@ export const listTransfers = () => req<{ transfers: StockTransfer[] }>('/api/sto
 export const getTransfer = (id: string) =>
   req<{ transfer: StockTransfer; items: StockTransferItem[] }>(`/api/stockist/transfers/${id}`);
 
-export const receiveTransfer = (id: string, items: { item_id: string; quantity_received: number; reason?: string; photo_url?: string }[]) =>
+export const receiveTransfer = (
+  id: string,
+  items: { item_id: string; quantity_received: number; reason?: string; photo_url?: string }[],
+  idempotencyKey?: string
+) =>
   req<{ transfer: StockTransfer; has_discrepancy: boolean }>(`/api/stockist/transfers/${id}/receive`, {
-    method: 'PATCH', body: JSON.stringify({ items }),
+    method: 'PATCH',
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+    body: JSON.stringify({ items }),
   });
 
 export const uploadDiscrepancyPhoto = (transferId: string, itemId: string, dataUrl: string) =>
