@@ -720,6 +720,47 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     return res.json({ transfer: updatedTransfer, has_discrepancy: hasDiscrepancy });
   });
 
+  router.post('/transfers/:id/items/:itemId/photo', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const { data: transfers, error: transferError } = await supabase.from('stock_transfers').select('*').eq('id', req.params.id);
+    if (transferError) return res.status(500).json({ error: transferError.message });
+    const transfer = (transfers || [])[0];
+    if (!transfer) return res.status(404).json({ error: 'transfer not found' });
+
+    if (access.role === 'owner') {
+      return res.status(403).json({ error: 'owner cannot confirm receipt' });
+    }
+    if (access.role === 'branch_admin') {
+      const ownBranchLocation = await findLocation('branch', access.branch);
+      if (!ownBranchLocation || ownBranchLocation.id !== transfer.destination_location_id) {
+        return res.status(403).json({ error: 'branch access denied' });
+      }
+    }
+    if (transfer.status !== 'SENT') {
+      return res.status(409).json({ error: 'transfer already received' });
+    }
+
+    const { data_url } = req.body || {};
+    const match = typeof data_url === 'string' ? data_url.match(/^data:image\/(jpeg|png|webp);base64,(.+)$/) : null;
+    if (!match) {
+      return res.status(400).json({ error: 'data_url must be a base64 image/jpeg, image/png, or image/webp data URL' });
+    }
+    const [, ext, base64Data] = match;
+    const buffer = Buffer.from(base64Data, 'base64');
+    const path = `${transfer.id}/${req.params.itemId}.${ext === 'jpeg' ? 'jpg' : ext}`;
+
+    const { error: uploadError } = await supabase.storage.from('stockist-evidence').upload(path, buffer, {
+      contentType: `image/${ext}`,
+      upsert: true,
+    });
+    if (uploadError) return res.status(500).json({ error: uploadError.message });
+
+    const { data: publicUrlData } = supabase.storage.from('stockist-evidence').getPublicUrl(path);
+    return res.json({ photo_url: publicUrlData.publicUrl });
+  });
+
   // ─── MANUAL ADJUSTMENT ───────────────────────────────────────
   router.post('/inventory/adjustment', adminAuth, async (req, res) => {
     const access = requireAccess(req, res);

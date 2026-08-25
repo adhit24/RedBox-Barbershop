@@ -118,6 +118,20 @@ function fakeSupabase({ locations = [WAREHOUSE, CSB], outlets = [{ id: 'outlet-c
       state.rpcCalls.push({ name, args });
       return { data: { id: `ledger-${state.rpcCalls.length}`, quantity_after: 0 }, error: null };
     },
+    storage: {
+      from(bucket) {
+        return {
+          async upload(path, _buffer, _opts) {
+            state.uploadedPaths = state.uploadedPaths || [];
+            state.uploadedPaths.push(`${bucket}/${path}`);
+            return { data: { path }, error: null };
+          },
+          getPublicUrl(path) {
+            return { data: { publicUrl: `https://fake-storage.test/${bucket}/${path}` } };
+          },
+        };
+      },
+    },
   };
 }
 
@@ -246,4 +260,49 @@ test('PATCH /transfers/:id/receive rejects a branch_admin from a different branc
     });
     assert.equal(res.status, 403);
   }, { role: 'branch_admin', branch: 'tegal' });
+});
+
+test('POST /transfers/:id/items/:itemId/photo uploads and returns a public URL', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  const tinyPngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data_url: `data:image/png;base64,${tinyPngBase64}` }),
+    });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.match(body.photo_url, /^https:\/\/fake-storage\.test\/stockist-evidence\/transfer-1\/item-1\.png$/);
+  }, { role: 'branch_admin', branch: 'csb' });
+});
+
+test('POST /transfers/:id/items/:itemId/photo is rejected for owner', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data_url: 'data:image/png;base64,aGVsbG8=' }),
+    });
+    assert.equal(res.status, 403);
+  }, { role: 'owner' });
+});
+
+test('POST /transfers/:id/items/:itemId/photo rejects a non-image data URL', async () => {
+  const supabase = fakeSupabase({
+    transfers: [{ id: 'transfer-1', status: 'SENT', destination_location_id: 'loc-csb', source_location_id: 'loc-warehouse' }],
+    items: [{ id: 'item-1', stock_transfer_id: 'transfer-1', product_id: 'p1', quantity_sent: 10, quantity_received: null }],
+  });
+  await withServer(supabase, async (base) => {
+    const res = await fetch(`${base}/api/stockist/transfers/transfer-1/items/item-1/photo`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data_url: 'not-a-data-url' }),
+    });
+    assert.equal(res.status, 400);
+  }, { role: 'branch_admin', branch: 'csb' });
 });
