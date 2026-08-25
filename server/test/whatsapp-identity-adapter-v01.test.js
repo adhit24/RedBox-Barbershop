@@ -22,9 +22,31 @@ const { isTrustedIdentity } = require('../identity/trustedIdentity');
 const TEST_ENV = Object.freeze({
   WA_WEBHOOK_SECRET_BYPASS: 'a'.repeat(32),
 });
-const GENUINE_TRUST = verifyRedboxWebhookTrustQuery({ rb_branch: 'bypass', rb_key: 'a'.repeat(32) }, TEST_ENV);
+
+function withTestEnv(envSecrets, fn) {
+  const previousEnv = {};
+  for (const [key, value] of Object.entries(envSecrets)) {
+    previousEnv[key] = process.env[key];
+    process.env[key] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(envSecrets)) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  }
+}
+
+function getGenuineTrust() {
+  return withTestEnv(TEST_ENV, () => {
+    return verifyRedboxWebhookTrustQuery({ rb_branch: 'bypass', rb_key: 'a'.repeat(32) });
+  });
+}
 
 function issueEvent(overrides = {}) {
+  const trust = getGenuineTrust();
   const payload = {
     sender: '6281234567890',
     message: 'halo',
@@ -35,12 +57,13 @@ function issueEvent(overrides = {}) {
   if (Object.hasOwn(overrides, 'status')) {
     delete payload.message;
   }
-  return issueAuthenticatedWhatsappEvent(GENUINE_TRUST, payload);
+  return issueAuthenticatedWhatsappEvent(trust, payload);
 }
 
 test('test runner receives a private authenticated-event issuer requiring genuine verified trust', () => {
+  const genuineTrust = getGenuineTrust();
   assert.equal(typeof issueAuthenticatedWhatsappEvent, 'function');
-  assert.equal(isVerifiedRedboxWebhookTrust(GENUINE_TRUST), true);
+  assert.equal(isVerifiedRedboxWebhookTrust(genuineTrust), true);
 });
 
 test('authenticated personal Indonesian senders issue genuine trusted identities', () => {

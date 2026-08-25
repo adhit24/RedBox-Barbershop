@@ -54,7 +54,7 @@ function readQuery(query) {
   }
 }
 
-function verifyRedboxWebhookTrustQuery(query, env = process.env) {
+function verifyRedboxWebhookTrustQueryInternal(query, env = process.env) {
   const parsed = readQuery(query);
   if (!parsed) return result('malformed');
 
@@ -95,6 +95,15 @@ function verifyRedboxWebhookTrustQuery(query, env = process.env) {
     verifiedTrustCapabilities.add(trustResult);
   }
   return trustResult;
+}
+
+/**
+ * Production Webhook Trust Gate Verifier.
+ * Strictly reads secret configuration from process.env ONLY.
+ * Arity is 1 (accepts query parameter object ONLY).
+ */
+function verifyRedboxWebhookTrustQuery(query) {
+  return verifyRedboxWebhookTrustQueryInternal(query, process.env);
 }
 
 function isVerifiedRedboxWebhookTrust(value) {
@@ -139,9 +148,15 @@ function emitRedboxWebhookTrust(trustResult, logger = console) {
   return metadata;
 }
 
-module.exports = {
+const productionApi = {
   BRANCH_SECRET_ENV,
   emitRedboxWebhookTrust,
   verifyRedboxWebhookTrustQuery,
   isVerifiedRedboxWebhookTrust,
 };
+
+if (process.env.NODE_TEST_CONTEXT === 'child-v8') {
+  productionApi.__verifyRedboxWebhookTrustQueryForTest = verifyRedboxWebhookTrustQueryInternal;
+}
+
+module.exports = Object.freeze(productionApi);

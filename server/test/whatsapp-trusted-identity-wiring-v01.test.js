@@ -19,19 +19,37 @@ const TEST_ENV = Object.freeze({
   WA_WEBHOOK_SECRET_CSB: 'b'.repeat(32),
 });
 
+function withTestEnv(envSecrets, fn) {
+  const previousEnv = {};
+  for (const [key, value] of Object.entries(envSecrets)) {
+    previousEnv[key] = process.env[key];
+    process.env[key] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(envSecrets)) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  }
+}
+
 function processFonnteWebhookTrustAndIdentity(query, rawBody, env = TEST_ENV) {
-  const trustResult = verifyRedboxWebhookTrustQuery(query, env);
+  return withTestEnv(env, () => {
+    const trustResult = verifyRedboxWebhookTrustQuery(query);
 
-  const eventCap = issueAuthenticatedWhatsappEvent(trustResult, rawBody);
-  const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
-  const trustedIdentity = (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity))
-    ? identityResult.trustedIdentity
-    : null;
+    const eventCap = issueAuthenticatedWhatsappEvent(trustResult, rawBody);
+    const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
+    const trustedIdentity = (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity))
+      ? identityResult.trustedIdentity
+      : null;
 
-  return {
-    trustResult,
-    trustedIdentity,
-  };
+    return {
+      trustResult,
+      trustedIdentity,
+    };
+  });
 }
 
 // ── 1. VERIFIED TRUST GATE + VALID PERSONAL SENDER MINTING ─────────────────
@@ -119,31 +137,33 @@ test('malformed query MUST NOT mint TrustedIdentity', () => {
 
 // ── 3. OPAQUE TRUST GATE CAPABILITY FORGERY DEFENSE (FINDING 1) ───────────────
 test('forged, spread, Object.assign, or JSON cloned trust objects CANNOT issue event capability', () => {
-  const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
-  const genuineTrust = verifyRedboxWebhookTrustQuery(query, TEST_ENV);
-  const body = { sender: '6281234567890', message: 'halo', id: 'msg-1' };
+  withTestEnv(TEST_ENV, () => {
+    const query = { rb_branch: 'bypass', rb_key: 'a'.repeat(32) };
+    const genuineTrust = verifyRedboxWebhookTrustQuery(query);
+    const body = { sender: '6281234567890', message: 'halo', id: 'msg-1' };
 
-  assert.equal(isVerifiedRedboxWebhookTrust(genuineTrust), true);
+    assert.equal(isVerifiedRedboxWebhookTrust(genuineTrust), true);
 
-  const forgedCandidates = [
-    { status: 'verified', branch: 'bypass' },
-    { verified: true, branch: 'bypass' },
-    { authenticated: true, branch: 'bypass' },
-    { ...genuineTrust },
-    Object.assign({}, genuineTrust),
-    JSON.parse(JSON.stringify(genuineTrust)),
-    null,
-    undefined,
-    12345,
-    'verified',
-    [],
-  ];
+    const forgedCandidates = [
+      { status: 'verified', branch: 'bypass' },
+      { verified: true, branch: 'bypass' },
+      { authenticated: true, branch: 'bypass' },
+      { ...genuineTrust },
+      Object.assign({}, genuineTrust),
+      JSON.parse(JSON.stringify(genuineTrust)),
+      null,
+      undefined,
+      12345,
+      'verified',
+      [],
+    ];
 
-  for (const forged of forgedCandidates) {
-    assert.equal(isVerifiedRedboxWebhookTrust(forged), false);
-    const eventCap = issueAuthenticatedWhatsappEvent(forged, body);
-    assert.equal(eventCap, null);
-  }
+    for (const forged of forgedCandidates) {
+      assert.equal(isVerifiedRedboxWebhookTrust(forged), false);
+      const eventCap = issueAuthenticatedWhatsappEvent(forged, body);
+      assert.equal(eventCap, null);
+    }
+  });
 });
 
 // ── 4. STRICT POSITIVE EVENT CLASSIFICATION (FINDING 2) ─────────────────────
