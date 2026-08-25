@@ -52,9 +52,8 @@ function readPlainOwnClaims(input) {
 }
 
 /**
- * Capability mint kept private until an exact provider-authentication contract
- * exists. The test runner receives a conditional issuer to exercise the
- * adapter without exposing a production minting surface.
+ * Capability issuer for authenticated WhatsApp channel events.
+ * Wraps verified webhook event claims in an opaque, frozen capability tracked via WeakSet.
  */
 function issueAuthenticatedWhatsappEvent(input) {
   const claims = readPlainOwnClaims(input);
@@ -111,6 +110,7 @@ function adaptAuthenticatedWhatsappEvent(event) {
 const productionApi = {
   adaptAuthenticatedWhatsappEvent,
   isAuthenticatedWhatsappEvent,
+  issueAuthenticatedWhatsappEvent,
 };
 
 if (process.env.NODE_TEST_CONTEXT === 'child-v8') {

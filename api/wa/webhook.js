@@ -13,6 +13,11 @@ const {
   verifyRedboxWebhookTrustQuery,
   emitRedboxWebhookTrust,
 } = require('../../server/services/fonnteWebhookTrustGate');
+const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
+const {
+  issueAuthenticatedWhatsappEvent,
+  adaptAuthenticatedWhatsappEvent,
+} = require('../../server/identity/whatsappIdentityAdapter');
 const { reconcileCustomerNotificationDelivery } = require('../../server/services/bookingNotificationOutbox');
 const { STATUS: BOOKING_STATUS, getCustomerBookingStatus } = require('../../server/whatsapp-ai/services/bookingStatusService');
 const OpenAI = require('openai');
@@ -1705,6 +1710,27 @@ module.exports = async function handler(req, res) {
     const rawBody = await coerceBody(req.body, req);
     const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
     emitFonnteWebhookShadow(shadowMetadata);
+    let trustedIdentity = null;
+    if (redboxWebhookTrust && redboxWebhookTrust.status === 'verified') {
+      try {
+        const isFromMe = Boolean(rawBody && rawBody.isFromMe);
+        const rawType = typeof rawBody?.type === 'string' ? rawBody.type : 'text';
+        const isPersonal = !isFromMe && !['status', 'receipt', 'status_receipt', 'outgoing'].includes(rawType);
+
+        const eventCap = issueAuthenticatedWhatsappEvent({
+          source: 'fonnte',
+          event_type: isPersonal ? 'personal_message' : rawType,
+          sender: typeof rawBody?.sender === 'string' ? rawBody.sender : null,
+          timestamp_present: Boolean(rawBody?.timestamp || rawBody?.id),
+          inboxid_present: Boolean(rawBody?.id || rawBody?.inboxid),
+        });
+
+        const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
+        if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
+          trustedIdentity = identityResult.trustedIdentity;
+        }
+      } catch {}
+    }
     let body = rawBody;
     if (rawBody && rawBody.data) {
       if (typeof rawBody.data === 'object') {
