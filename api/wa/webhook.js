@@ -14,6 +14,8 @@ const {
   emitRedboxWebhookTrust,
 } = require('../../server/services/fonnteWebhookTrustGate');
 const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
+const { classifyDeterministically } = require('../../server/orchestrator/routingPolicy');
+const { executeOrchestration } = require('../../server/orchestrator/executionService');
 const {
   issueAuthenticatedWhatsappEvent,
   adaptAuthenticatedWhatsappEvent,
@@ -1356,7 +1358,35 @@ function extractForeignKapster(text, branch = 'bypass') {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branchFromPayload }) {
+async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null }) {
+  const classification = classifyDeterministically(text);
+  if (classification && classification.intent === 'points_inquiry') {
+    const branch = branchFromPayload || detectBranchFromNumber(receiver || device || from);
+    const orchResult = await executeOrchestration(
+      {
+        intent: 'points_inquiry',
+        route: 'crm_agent',
+        agent: 'crm_agent',
+        action: 'get_points',
+        confidence: 1.0,
+        model_tier: 'economy',
+      },
+      { trustedIdentity, supabase: getSupabase() }
+    );
+    let pointsReply;
+    if (orchResult.execution_status === 'unauthorized') {
+      pointsReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+    } else if (orchResult.execution_status === 'success') {
+      const points = orchResult.result?.data?.points_balance ?? 0;
+      pointsReply = 'Halo kak! Saldo poin member RedBox kamu saat ini: ' + points + ' poin ✨';
+    } else if (orchResult.execution_status === 'customer_not_found') {
+      pointsReply = 'Halo kak! Nomor WhatsApp kamu belum terdaftar sebagai member RedBox. Dapatkan poin loyalty di setiap kunjungan cukur kamu!';
+    } else {
+      pointsReply = 'Halo kak! Saat ini sistem poin sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi ya!';
+    }
+    const sendResult = await sendWA(from, pointsReply, { branch });
+    return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
+  }
   let reply;
   let used = 'openai';
   let error = null;
@@ -1916,7 +1946,7 @@ module.exports = async function handler(req, res) {
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
     const t0 = Date.now();
     try {
-      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload });
+      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity });
       const ms = Date.now() - t0;
       console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
     } catch (err) {

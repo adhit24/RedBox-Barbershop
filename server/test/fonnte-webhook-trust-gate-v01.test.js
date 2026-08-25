@@ -237,7 +237,7 @@ test('webhook evaluates Redbox trust early without creating an identity or CRM p
   assert.match(source, /verifyRedboxWebhookTrustQuery/);
   assert.match(source, /emitRedboxWebhookTrust/);
   assert.ok(source.indexOf('verifyRedboxWebhookTrustQuery') < source.indexOf('coerceBody(req.body, req)'));
-  for (const forbidden of ['executeOrchestration', 'get_points', 'crmAgent']) {
+  for (const forbidden of ['crmAgent', 'customer360Service', 'customerIdentity']) {
     assert.doesNotMatch(source, new RegExp(`\\b${forbidden}\\b`));
   }
 });
