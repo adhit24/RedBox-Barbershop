@@ -116,15 +116,17 @@ function buildConversationMessages(history = [], userMessage = '') {
   const sanitized = sanitizeConversationHistory(history);
   const cleanUserMessage = typeof userMessage === 'string' ? userMessage.trim() : '';
 
-  if (!cleanUserMessage) return sanitized;
+  // OpenAI chat messages MUST contain strictly { role, content } without extra properties like timestamp
+  const projected = sanitized.map(item => ({ role: item.role, content: item.content }));
 
-  // Check if last turn in sanitized history is already identical to cleanUserMessage to avoid duplication
-  const lastTurn = sanitized.length > 0 ? sanitized[sanitized.length - 1] : null;
+  if (!cleanUserMessage) return projected;
+
+  const lastTurn = projected.length > 0 ? projected[projected.length - 1] : null;
   if (lastTurn && lastTurn.role === 'user' && lastTurn.content === cleanUserMessage) {
-    return sanitized;
+    return projected;
   }
 
-  return [...sanitized, { role: 'user', content: cleanUserMessage }];
+  return [...projected, { role: 'user', content: cleanUserMessage }];
 }
 
 /**
@@ -175,6 +177,23 @@ function appendConversationExchange(history = [], userMessage = '', assistantRep
  * @param {Array} history
  * @returns {number|null}
  */
+
+/**
+ * Extracts the most recent user turn from history array.
+ * @param {Array} history
+ * @returns {object|null}
+ */
+function extractLastCustomerTurn(history = []) {
+  if (!Array.isArray(history)) return null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const turn = history[i];
+    if (turn && typeof turn === 'object' && turn.role === 'user') {
+      return turn;
+    }
+  }
+  return null;
+}
+
 function extractLastCustomerTimestamp(history = []) {
   if (!Array.isArray(history)) return null;
   for (let i = history.length - 1; i >= 0; i--) {
@@ -208,8 +227,12 @@ function extractConversationContextEnvelope(historyInput = [], userMessage = '',
     historyStatus = 'empty';
   }
 
-  const lastCustomerTimestamp = extractLastCustomerTimestamp(historyArray);
-  const explicitClosure = isExplicitClosureSignal(userMessage);
+  const lastCustomerTurn = extractLastCustomerTurn(historyArray);
+  const lastCustomerTimestamp = lastCustomerTurn ? (lastCustomerTurn.timestamp || lastCustomerTurn.created_at || lastCustomerTurn.createdAt) : null;
+  const previousUserContent = lastCustomerTurn ? (lastCustomerTurn.content || '') : '';
+  const previousCustomerClosed = isExplicitClosureSignal(previousUserContent);
+  const explicitClosure = isExplicitClosureSignal(userMessage) || previousCustomerClosed;
+
   const sessionStatus = classifyConversationSession({
     now: options.now || Date.now(),
     lastCustomerMessageAt: lastCustomerTimestamp,

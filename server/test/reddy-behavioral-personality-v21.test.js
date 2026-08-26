@@ -334,3 +334,101 @@ test('R05. Direct Intent After Expiry: Direct queries on expired sessions answer
   assert.equal(res.reply.includes('Halo'), false);
   assert.equal(res.reply.includes('Selamat datang'), false);
 });
+
+// ── 6. Aira Round 3 Required Hardening Tests (T01 - T07) ─────────────────
+test('T01. OPENAI MESSAGE SHAPE: Prepared OpenAI messages strictly contain {role, content} with zero timestamp leak', () => {
+  const { buildConversationMessages } = require('../agents/reddy/conversationContext');
+
+  const historyWithTimestamps = [
+    { role: 'user', content: 'halo', timestamp: 1700000000000 },
+    { role: 'assistant', content: 'Halo Kak! Ada yang bisa dibantu?', timestamp: 1700000001000 },
+  ];
+
+  const messages = buildConversationMessages(historyWithTimestamps, 'harga haircut berapa?');
+
+  for (const msg of messages) {
+    assert.ok(Object.hasOwn(msg, 'role'));
+    assert.ok(Object.hasOwn(msg, 'content'));
+    assert.equal(Object.hasOwn(msg, 'timestamp'), false, 'OpenAI messages must NOT contain timestamp property');
+    assert.equal(Object.hasOwn(msg, 'created_at'), false, 'OpenAI messages must NOT contain created_at property');
+    assert.equal(Object.hasOwn(msg, 'createdAt'), false, 'OpenAI messages must NOT contain createdAt property');
+  }
+});
+
+test('T02. PREVIOUS CLOSURE: History with prior closure signal sets sessionStatus to expired without erasing history', () => {
+  const { extractConversationContextEnvelope } = require('../agents/reddy/conversationContext');
+
+  const now = Date.now();
+  const historyWithClosure = [
+    { role: 'user', content: 'mau booking Bypass', timestamp: now - 60000 },
+    { role: 'assistant', content: 'Boleh, cabang Bypass.', timestamp: now - 50000 },
+    { role: 'user', content: 'makasih', timestamp: now - 30000 },
+    { role: 'assistant', content: 'Sama-sama, Kak!', timestamp: now - 20000 },
+  ];
+
+  const envelope = extractConversationContextEnvelope(historyWithClosure, 'harga Hair Spa berapa?', { now });
+
+  assert.equal(envelope.sessionStatus, 'expired', 'Previous closure signal must force sessionStatus to expired');
+  assert.equal(envelope.turns.length, 4, 'Historical turns must remain available in context');
+});
+
+test('T03. SERVICE CATALOG: Deterministic handleMessage path returns clean catalog without forced booking URL or emoji spam', async () => {
+  const { handleMessage } = require('../../api/wa/webhook');
+
+  const res = await handleMessage({ from: '6281234567890', text: 'layanan apa aja?' });
+
+  assert.equal(res.used, 'keyword');
+  assert.match(res.reply, /Berikut layanan di RedBox/);
+  assert.equal(res.reply.includes('redboxbarbershop.com/booking.html'), false, 'Service catalog must NOT contain forced booking URL');
+  assert.equal(FORBIDDEN_ADDRESS_TERMS_REGEX.some(r => r.test(res.reply)), false);
+});
+
+test('T04. PRICE: Deterministic handleMessage path returns direct price response without automatic booking CTA', async () => {
+  const { handleMessage } = require('../../api/wa/webhook');
+
+  const res = await handleMessage({ from: '6281234567890', text: 'harga haircut berapa?' });
+
+  assert.equal(res.used, 'keyword');
+  assert.match(res.reply, /Berikut daftar harga layanan RedBox/);
+  assert.equal(res.reply.includes('redboxbarbershop.com/booking.html'), false, 'Price response must NOT contain automatic booking CTA');
+  assert.equal(res.reply.includes('lock slot'), false);
+});
+
+test('T05. WAIT COMPLAINT: Deterministic wait complaint handler returns zero emoji and zero booking URL', async () => {
+  const { handleMessage } = require('../../api/wa/webhook');
+
+  const res = await handleMessage({ from: '6281234567890', text: 'kemarin antri 30 menit males banget' });
+
+  assert.equal(res.used, 'keyword');
+  assert.equal(res.reply, 'Maaf ya Kak, nunggu lama memang bikin tidak nyaman. Terima kasih sudah memberi tahu kami.');
+  assert.equal(res.reply.includes('http'), false, 'Wait complaint must NOT contain booking URL');
+  assert.equal(/[\u{1F300}-\u{1F9FF}]/u.test(res.reply), false, 'Wait complaint must contain ZERO emojis');
+});
+
+test('T06. HUMAN COMPLAINT HANDOFF: Handoff response contains zero emoji and no unsupported "segera"', async () => {
+  const { handleMessage } = require('../../api/wa/webhook');
+
+  const res = await handleMessage({ from: '6281234567890', text: 'mau ngomong sama admin' });
+
+  assert.match(res.reply, /Pesan Kakak sudah aku teruskan ke admin Redbox/);
+  assert.equal(res.reply.includes('segera'), false, 'Handoff must not make unsupported "segera" claims');
+  assert.equal(/[\u{1F300}-\u{1F9FF}]/u.test(res.reply), false, 'Handoff must contain ZERO emojis');
+});
+
+test('T07. POINTS: Fast-path points response is concise micro budget with zero emoji', async () => {
+  const { handleMessage } = require('../../api/wa/webhook');
+
+  const mockExecuteOrchestration = async () => ({
+    execution_status: 'success',
+    result: { data: { points_balance: 150 } },
+  });
+
+  const res = await handleMessage(
+    { from: '6281234567890', text: 'poin saya berapa?', trustedIdentity: { phone: '6281234567890', trust_status: 'verified' } },
+    { executeOrchestration: mockExecuteOrchestration }
+  );
+
+  assert.equal(res.used, 'crm_points');
+  assert.equal(res.reply, 'Saldo poin member Redbox kamu saat ini: 150 poin.');
+  assert.equal(/[\u{1F300}-\u{1F9FF}]/u.test(res.reply), false, 'Points reply must contain ZERO emojis');
+});

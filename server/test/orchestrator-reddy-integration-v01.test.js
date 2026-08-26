@@ -246,7 +246,7 @@ test('10. Real production path (5): human route triggers handoff with setHumanTa
   assert.equal(persistHandoffCalls, 1);
   assert.equal(sendCalls, 1);
   assert.equal(result.used, 'human_handoff');
-  assert.equal(result.reply.includes('admin cabang RedBox'), true);
+  assert.equal(result.reply.includes('admin Redbox'), true);
 });
 
 test('11. Real production path (6): untrusted private CRM route (customer_history) returns crm_privacy_guard with Reddy = 0', async () => {
