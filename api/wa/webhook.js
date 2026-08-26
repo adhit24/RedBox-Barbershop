@@ -16,6 +16,9 @@ const {
 const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
 const { classifyDeterministically } = require('../../server/orchestrator/routingPolicy');
 const executionService = require('../../server/orchestrator/executionService');
+const { orchestrateMessage } = require('../../server/orchestrator/orchestratorService');
+const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
+const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
 const {
   issueAuthenticatedWhatsappEvent,
   adaptAuthenticatedWhatsappEvent,
@@ -1359,9 +1362,14 @@ function extractForeignKapster(text, branch = 'bypass') {
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
 async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null }) {
+  let branch = branchFromPayload;
+  if (!branch) {
+    branch = detectBranchFromNumber(receiver || device || from);
+  }
+  console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
+
   const classification = classifyDeterministically(text);
   if (classification && classification.intent === 'points_inquiry') {
-    const branch = branchFromPayload || detectBranchFromNumber(receiver || device || from);
     const orchResult = await executionService.executeOrchestration(
       {
         intent: 'points_inquiry',
@@ -1384,19 +1392,23 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     } else {
       pointsReply = 'Halo kak! Saat ini sistem poin sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi ya!';
     }
+    logOrchestratedEvent({
+      route: 'crm_agent',
+      agent: 'crm_agent',
+      intent: 'points_inquiry',
+      action: 'get_points',
+      confidence: 1.0,
+      model_tier: 'none',
+      fallback_used: false,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
     const sendResult = await sendWA(from, pointsReply, { branch });
     return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
   }
   let reply;
   let used = 'openai';
   let error = null;
-
-  // Detect branch from branchFromPayload (deep scan) first, then receiver, then device, then from
-  let branch = branchFromPayload;
-  if (!branch) {
-    branch = detectBranchFromNumber(receiver || device || from);
-  }
-  console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
 
   // ── Foreign customer check — intercept before OpenAI ──
   // If active foreign session exists, continue it
@@ -1499,6 +1511,89 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     const sendResult = await sendWA(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
+
+  // ── Central AI Orchestrator Execution (Task 10) ──
+  const orchStart = Date.now();
+  let orchDecision = null;
+  try {
+    orchDecision = await orchestrateMessage({
+      message: text,
+      channel: 'whatsapp',
+      branch,
+      trustedIdentity,
+    });
+  } catch (err) {
+    console.warn('[WA Bot] Orchestrator exception:', err.message);
+  }
+  const latencyMs = Date.now() - orchStart;
+
+  // Handle Human Handoff Route
+  if (orchDecision && (orchDecision.route === 'human' || orchDecision.agent === 'human' || orchDecision.intent === 'human_request' || orchDecision.intent === 'complaint')) {
+    setHumanTakeoverLocal(from);
+    persistHumanTakeover(from, 'orchestrator_human_handoff').catch(() => {});
+    logOrchestratedEvent({
+      ...orchDecision,
+      fallback_used: false,
+      latency_ms: latencyMs,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+    const handoffReply = 'Pesan Kakak sudah kami teruskan ke admin cabang RedBox. Mohon tunggu sebentar ya, admin akan segera membalas 🙏';
+    const sendResult = await sendWA(from, handoffReply, { branch });
+    return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+  }
+
+  // Handle Private CRM Agent Route without valid TrustedIdentity
+  if (orchDecision && (orchDecision.route === 'crm_agent' || orchDecision.agent === 'crm_agent')) {
+    if (!trustedIdentity) {
+      logOrchestratedEvent({
+        ...orchDecision,
+        fallback_used: false,
+        latency_ms: latencyMs,
+        branch,
+        trust_status: 'unverified',
+      });
+      const privacyReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+      const sendResult = await sendWA(from, privacyReply, { branch });
+      return { used: 'crm_privacy_guard', reply: privacyReply, sendResult, error: null };
+    }
+  }
+
+  // Handle Orchestrated Reddy Agent Route
+  if (orchDecision && (orchDecision.route === 'reddy_agent' || orchDecision.agent === 'reddy_agent')) {
+    try {
+      const reddyExec = await executeReddyAgent({
+        from, name, text, device, branch, trustedIdentity,
+      }, {
+        callOpenAI, sendWA,
+      });
+      logOrchestratedEvent({
+        ...orchDecision,
+        fallback_used: false,
+        latency_ms: latencyMs,
+        branch,
+        trust_status: trustedIdentity ? 'verified' : 'unverified',
+      });
+      return { used: 'reddy_agent', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
+    } catch (err) {
+      console.warn('[WA Bot] Reddy execution error, falling back to legacy path:', err.message);
+    }
+  }
+
+  // Legacy Reddy Fallback
+  logOrchestratedEvent({
+    route: orchDecision?.route || 'reddy_agent',
+    agent: orchDecision?.agent || 'reddy_agent',
+    intent: orchDecision?.intent || 'unknown',
+    action: orchDecision?.action || 'fallback_unknown',
+    confidence: orchDecision?.confidence || 0,
+    model_tier: orchDecision?.model_tier || 'none',
+    fallback_used: true,
+    fallback_reason: 'orchestrator_or_reddy_fallback',
+    latency_ms: latencyMs,
+    branch,
+    trust_status: trustedIdentity ? 'verified' : 'unverified',
+  });
 
   try {
     reply = await callOpenAI(from, text, name, branch);

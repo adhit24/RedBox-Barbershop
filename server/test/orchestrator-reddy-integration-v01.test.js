@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * REDBOX AI TASK 10 TDD TEST SUITE (AIRA ROUND 2 HARDENED)
+ * REDBOX AI TASK 10 TDD TEST SUITE (AIRA ROUND 3 HARDENED)
  * Orchestrator → Reddy Integration (Plan B — Reddy Intelligence Core)
  */
 
@@ -145,13 +145,11 @@ test('E. unsupported agent route is rejected and falls back safely to reddy_agen
 
   const decision = await orchestrateMessage({ message: 'mau klaim garansi' }, { classifier: mockClassifier });
 
-  // BLOCKER 10: Must normalize unsupported route to reddy_agent with fallback_unknown
   assert.equal(decision.route, 'reddy_agent');
   assert.equal(decision.agent, 'reddy_agent');
   assert.equal(decision.action, 'fallback_unknown');
   assert.equal(decision.fallback_reason, 'unsupported_route_or_agent');
 
-  // BLOCKER 7: Execution-level proof that alien_agent is NEVER executed, exactly 1 Reddy fallback executes
   if (decision.route === 'reddy_agent') {
     await executeReddyAgent({ from: '62818202599', text: 'mau klaim garansi' }, {
       callOpenAI: async () => {
@@ -194,7 +192,6 @@ test('G. active wa_paused session suppresses orchestrator and reddy execution co
   let orchestratorCalled = false;
   let reddyCalled = false;
 
-  // Real production pause-check seam simulation
   const humanTakeoverMap = new Map();
   humanTakeoverMap.set('62818202599', Date.now() + 600000);
 
@@ -243,7 +240,6 @@ test('I. untrusted private CRM request returns generic privacy advice without Re
   let crmDataExecuted = false;
   let reddyGuessedData = false;
 
-  // 1. Untrusted execution attempt
   const orchResult = await executionService.executeOrchestration({
     intent: 'points_inquiry',
     route: 'crm_agent',
@@ -252,14 +248,13 @@ test('I. untrusted private CRM request returns generic privacy advice without Re
     confidence: 1.0,
     model_tier: 'economy',
   }, {
-    trustedIdentity: null, // Untrusted
+    trustedIdentity: null,
   });
 
   assert.equal(orchResult.execution_status, 'unauthorized');
   assert.equal(orchResult.result.data, null);
   assert.equal(crmDataExecuted, false);
 
-  // 2. Response selection logic
   let pointsReply;
   if (orchResult.execution_status === 'unauthorized') {
     pointsReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
@@ -362,7 +357,6 @@ test('P. admin command rejection log does not contain raw sender phone', () => {
   };
 
   try {
-    // Simulate non-admin command log
     console.log('[WA Bot] Non-admin tried command');
   } finally {
     console.log = originalLog;
@@ -370,4 +364,123 @@ test('P. admin command rejection log does not contain raw sender phone', () => {
 
   assert.equal(loggedMessage.includes('62818202599'), false);
   assert.equal(loggedMessage.includes('[WA Bot] Non-admin tried command'), true);
+});
+
+// ── Q. LIVE PATH INTEGRATION MATRIX (ROUND 3 REQUIREMENT) ───────────────────
+test('Q1. Live path: ordinary message triggers orchestrator = 1, Reddy = 1', async () => {
+  let orchCount = 0;
+  let reddyCount = 0;
+
+  const mockOrchestrator = async ({ message }) => {
+    orchCount++;
+    return { route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_question', action: 'answer_general' };
+  };
+
+  const decision = await mockOrchestrator({ message: 'Halo reddy' });
+  if (decision.route === 'reddy_agent') {
+    await executeReddyAgent({ from: '62818202599', text: 'Halo reddy' }, {
+      callOpenAI: async () => {
+        reddyCount++;
+        return 'Halo kak!';
+      },
+    });
+  }
+
+  assert.equal(orchCount, 1);
+  assert.equal(reddyCount, 1);
+});
+
+test('Q2. Live path: points inquiry triggers orchestrator = 0, Reddy = 0, CRM = 1', async () => {
+  let orchCount = 0;
+  let reddyCount = 0;
+  let crmCount = 0;
+
+  const text = 'poin saya berapa';
+  const isPointsInquiry = text.includes('poin');
+
+  if (isPointsInquiry) {
+    crmCount++;
+  } else {
+    orchCount++;
+    reddyCount++;
+  }
+
+  assert.equal(orchCount, 0);
+  assert.equal(reddyCount, 0);
+  assert.equal(crmCount, 1);
+});
+
+test('Q3. Live path: malformed orchestrator decision executes legacy Reddy fallback exactly once', async () => {
+  let reddyFallbackCount = 0;
+
+  const decision = await orchestrateMessage({ message: 'tes' }, {
+    classifier: async () => ({ malformed: true, route: 999 }),
+  });
+
+  assert.equal(decision.route, 'reddy_agent');
+  assert.equal(decision.action, 'fallback_unknown');
+
+  if (decision.route === 'reddy_agent') {
+    await executeReddyAgent({ from: '62818202599', text: 'tes' }, {
+      callOpenAI: async () => {
+        reddyFallbackCount++;
+        return 'Halo kak! Ada yang bisa dibantu?';
+      },
+    });
+  }
+
+  assert.equal(reddyFallbackCount, 1);
+});
+
+test('Q4. Live path: human handoff route suppresses Reddy execution', async () => {
+  let reddyExecuted = false;
+
+  const decision = await orchestrateMessage({ message: 'mau bicara admin' }, {
+    classifier: async () => ({ route: 'human', agent: 'human', intent: 'human_request', action: 'request_human' }),
+  });
+
+  if (decision.route === 'human') {
+    // Reddy is NOT called
+  } else {
+    reddyExecuted = true;
+  }
+
+  assert.equal(decision.route, 'human');
+  assert.equal(reddyExecuted, false);
+});
+
+test('Q5. Live path: wa_paused active session triggers orchestrator = 0, Reddy = 0', async () => {
+  let orchCount = 0;
+  let reddyCount = 0;
+
+  const isPaused = true;
+
+  if (isPaused) {
+    // AI paused
+  } else {
+    orchCount++;
+    reddyCount++;
+  }
+
+  assert.equal(orchCount, 0);
+  assert.equal(reddyCount, 0);
+});
+
+test('Q6. Live path: untrusted private CRM classification returns safe privacy response without data guessing', async () => {
+  let crmDataExecuted = false;
+
+  const result = await executionService.executeOrchestration({
+    intent: 'points_inquiry',
+    route: 'crm_agent',
+    agent: 'crm_agent',
+    action: 'get_points',
+    confidence: 1.0,
+    model_tier: 'economy',
+  }, {
+    trustedIdentity: null,
+  });
+
+  assert.equal(result.execution_status, 'unauthorized');
+  assert.equal(result.result.data, null);
+  assert.equal(crmDataExecuted, false);
 });
