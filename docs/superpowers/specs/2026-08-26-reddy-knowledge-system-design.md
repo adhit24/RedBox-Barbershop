@@ -204,3 +204,7 @@ No Task 14 booking tools, human-handoff redesign, evaluation platform, n8n autom
 ## 18. Production canary plan (prepare only)
 
 After separate approval and merge, start with Sumber and exercise the ten handoff prompts. Confirm verified prices/branches, no expired promotion, no private tier guess, no live-slot fabrication, points at zero LLM, one reply, at most one Reddy generation, and no full knowledge dump. Task 13 itself does not deploy.
+
+### Task 4 verification record
+
+On 2026-08-26, the Task 13 suite passed 46/46; the policy regression passed; and the required cross-boundary set was 209/211. The two failures were the existing Sumber live-runtime Fonnte tests after its 20:30 WIB AI off-hours began, with the same pair reproduced by an independent detached-base `e736f5a` control. Full TAP was 730 total, 712 pass, 17 fail, 1 skipped, which is the recorded `origin/main` baseline (684 total, 668 pass, 15 fail, 1 skipped) plus 46 Task 13 tests and only those two time-dependent failures. No deployment or canary was performed.

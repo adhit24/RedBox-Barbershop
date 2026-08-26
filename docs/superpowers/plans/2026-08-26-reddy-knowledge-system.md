@@ -182,3 +182,13 @@ git commit -m "docs(ai): finalize Task 13 verification record"
 - [ ] **Step 5: Prepare delivery**
 
 Push `integration/redbox-task13-reddy-knowledge-system`, open one PR to `main`, do not merge, and include the prepared Sumber-first canary plan from the spec.
+
+#### Task 4 verification record — 2026-08-26
+
+- [x] Fresh Task 13 suite: `node --test server/test/reddy-knowledge-system-v01.test.js` — 46 pass, 0 fail.
+- [x] Required Task 10–13 / CRM / identity / trust / security boundary suite — 211 tests, 209 pass, 2 fail. Both failures are `fonnte-webhook-trust-gate-v01` live-runtime tests after Sumber AI off-hours; the run logged `AI off-hours: { branch: 'sumber' }`, and an independent detached-base `e736f5a` control reproduced the same pair. This is a pre-existing time-dependent condition, not a Task 13 regression.
+- [x] Legacy WhatsApp policy test passed with an in-process test-only `OPENAI_API_KEY`; no configuration or network state changed.
+- [x] Full TAP suite — 730 tests, 712 pass, 17 fail, 1 skipped. Versus `origin/main` baseline `5fd203056e6a932f70763539f07e6cf549e44b3c` (684/668/15/1), the delta is +46 tests, +44 passes, and only the same two after-hours Fonnte failures. All 15 baseline failure names remain unchanged.
+- [x] Syntax, whitespace, privacy/prohibited-scope, agent-topology, and zero-I/O knowledge retrieval audits passed. The unrelated Shopify reference-file deletion remains unstaged and untouched.
+
+No deployment, merge, push, or canary execution is authorized by this plan. The Sumber-first canary is prepared only for separate approval after review.
