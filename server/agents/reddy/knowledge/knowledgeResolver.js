@@ -81,15 +81,25 @@ function cloneFact(category, item) {
 function topicSignals(intent, text, service, branch) {
   const normalizedIntent = normalize(intent);
   const has = (...values) => values.includes(normalizedIntent);
+
+  const isGeneralOrUnknown = has(
+    'general_question', 'unknown', 'small_talk', 'greeting', 'complaint', 'human_request'
+  );
+
+  const hasSpecificKeyword = /\b(harga|biaya|layanan|service|cabang|jam|alamat|dimana|di\s*mana|buka|tutup|booking|reservasi|promo|member|membership|poin|slot|tersedia|home\s*service|wedding)\b/.test(text);
+
+  const isServiceListPhrase = /\b(daftar|semua)\s+(layanan|service)\b/.test(text) ||
+    /\b(apa\s+(aja|saja)\s+(layanan|service)|(layanan|service)\s+apa\s+(aja|saja)|ada\s+(layanan|service)\s+apa)\b/.test(text);
+
   const signals = {
-    general: has('general_chat', 'general', 'small_talk', 'greeting'),
-    services: Boolean(service) || has('service', 'services', 'service_price', 'price', 'service_list') || /\b(harga|biaya|layanan|service)\b/.test(text),
-    serviceList: has('service_list', 'services') || /\b(daftar|semua)\s+(layanan|service)\b/.test(text),
-    branches: Boolean(branch) || has('branch', 'branches', 'branch_info', 'operating_hours', 'hours') || /\b(cabang|jam\s*(buka|tutup)|alamat)\b/.test(text),
-    operational: has('operational_policy', 'operational_policies', 'policy') || /\b(kebijakan|operasional)\b/.test(text),
-    booking: has('booking', 'booking_policy', 'booking_policies', 'booking_availability') || /\b(booking|reservasi|walk[ -]?in)\b/.test(text),
-    live: has('booking_availability', 'availability', 'live_slot') || /\b(slot|kapster|tersedia|availability)\b/.test(text),
-    membership: has('membership', 'membership_public') || /\b(member|membership|gold|silver|platinum|poin)\b/.test(text),
+    general: isGeneralOrUnknown && !service && !hasSpecificKeyword,
+    services: Boolean(service) || has('price_inquiry', 'service_inquiry', 'barber_inquiry', 'service', 'services', 'service_price', 'price', 'service_list') || /\b(harga|biaya|layanan|service)\b/.test(text),
+    serviceList: has('service_inquiry', 'service_list', 'services') || isServiceListPhrase,
+    branches: Boolean(branch) || has('location_inquiry', 'operating_hours_inquiry', 'branch', 'branches', 'branch_info', 'hours') || /\b(cabang|jam\s*(buka|tutup)|alamat|dimana|di\s*mana)\b/.test(text),
+    operational: has('operating_hours_inquiry', 'operational_policy', 'operational_policies', 'policy') || /\b(kebijakan|operasional|jam\s*(buka|tutup))\b/.test(text),
+    booking: has('booking_request', 'booking_status', 'reschedule_request', 'cancel_request', 'booking', 'booking_policy', 'booking_policies') || /\b(booking|reservasi|walk[ -]?in)\b/.test(text),
+    live: has('booking_availability_inquiry', 'booking_availability', 'availability', 'live_slot') || /\b(slot|availability)\b/.test(text),
+    membership: has('membership_inquiry', 'membership', 'membership_public') || /\b(member|membership|gold|silver|platinum)\b/.test(text),
     promotion: has('promotion', 'promotions', 'promo') || /\bpromo\b/.test(text),
     faq: has('faq', 'faqs') || /\bpertanyaan umum\b/.test(text),
     contact: has('contact', 'contacts') || /\b(whatsapp|wa|kontak|hubungi)\b/.test(text),
@@ -216,7 +226,10 @@ function resolveKnowledgeContext({
       const jakartaDate = dateInJakarta(now);
       knowledge.promotions.forEach(item => {
         if (!selectedBranch || item.branches.includes(selectedBranch.id)) {
-          addFact({ category: 'promotion', ...structuredClone(item), status: promotionStatus(item, jakartaDate) });
+          const status = promotionStatus(item, jakartaDate);
+          if (status === 'active') {
+            addFact({ category: 'promotion', ...structuredClone(item), status: 'active' });
+          }
         }
       });
     }

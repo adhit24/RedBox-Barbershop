@@ -68,7 +68,7 @@ function bookingUrl(branch) {
 }
 
 const FACTUAL_KNOWLEDGE_INTENTS = new Set([
-  'service', 'services', 'service_price', 'price', 'service_list',
+  'price_inquiry', 'location_inquiry', 'operating_hours_inquiry', 'service_inquiry', 'barber_inquiry', 'booking_request', 'booking_availability_inquiry', 'booking_status', 'reschedule_request', 'cancel_request', 'membership_inquiry', 'service', 'services', 'service_price', 'price', 'service_list',
   'branch', 'branches', 'branch_info', 'operating_hours', 'hours',
   'operational_policy', 'operational_policies', 'booking', 'booking_policy',
   'booking_policies', 'booking_availability', 'availability', 'live_slot',
