@@ -835,18 +835,50 @@ function getForeignSession(phone) {
   return s;
 }
 
-const SERVICES_EN = `• Redbox Gentleman Grooming — IDR 95k (45 min)\n• Hair Spa — IDR 110k (30 min)\n• Hair Color — IDR 160k (45 min)\n• Shaving — IDR 40k (20 min)\n• Men Massage — IDR 145k (45 min)\n• Royal Grooming — IDR 305k (90 min)`;
-const SERVICES_ZH = `• Redbox Gentleman Grooming — 95k印尼盾 (45分钟)\n• Hair Spa — 110k印尼盾 (30分钟)\n• Hair Color — 160k印尼盾 (45分钟)\n• Shaving — 40k印尼盾 (20分钟)\n• Men Massage — 145k印尼盾 (45分钟)\n• Royal Grooming — 305k印尼盾 (90分钟)`;
-const SERVICES_JA = `• Redbox Gentleman Grooming — 95kルピア (45分)\n• Hair Spa — 110kルピア (30分)\n• Hair Color — 160kルピア (45分)\n• Shaving — 40kルピア (20分)\n• Men Massage — 145kルピア (45分)\n• Royal Grooming — 305kルピア (90分)`;
-const SERVICES_KO = `• Redbox Gentleman Grooming — 95k루피아 (45분)\n• Hair Spa — 110k루피아 (30분)\n• Hair Color — 160k루피아 (45분)\n• Shaving — 40k루피아 (20분)\n• Men Massage — 145k루피아 (45분)\n• Royal Grooming — 305k루피아 (90분)`;
-const SERVICES_TR = `• Redbox Gentleman Grooming — 95k IDR (45 dk)\n• Hair Spa — 110k IDR (30 dk)\n• Hair Color — 160k IDR (45 dk)\n• Shaving — 40k IDR (20 dk)\n• Men Massage — 145k IDR (45 dk)\n• Royal Grooming — 305k IDR (90 dk)`;
+function getServicesForLang(lang, branch = 'bypass') {
+  const isCSB = branch === 'csb';
+  const targetIds = [
+    'gentleman-grooming',
+    'hair-spa',
+    'hair-color',
+    'shaving',
+    'men-massage',
+    'package-royal',
+  ];
+  
+  const serviceList = targetIds
+    .map(id => REDBOX_SERVICES.find(s => s.id === id))
+    .filter(Boolean);
 
-function getServicesForLang(lang) {
-  if (lang === 'chinese') return SERVICES_ZH;
-  if (lang === 'japanese') return SERVICES_JA;
-  if (lang === 'korean') return SERVICES_KO;
-  if (lang === 'turkish') return SERVICES_TR;
-  return SERVICES_EN;
+  const durationUnit = {
+    english: 'min',
+    turkish: 'dk',
+    chinese: '分钟',
+    japanese: '分',
+    korean: '분',
+  }[lang] || 'min';
+
+  const currencyUnit = {
+    english: 'IDR ',
+    turkish: 'IDR ',
+    chinese: '',
+    japanese: '',
+    korean: '',
+  }[lang] || 'IDR ';
+
+  const currencySuffix = {
+    chinese: '印尼盾',
+    japanese: 'ルピア',
+    korean: '루피아',
+  }[lang] || '';
+
+  return serviceList.map(s => {
+    const price = isCSB ? (s.csbPrice || s.price) : s.price;
+    const priceK = Math.round(price / 1000) + 'k';
+    const durNum = parseInt(s.duration, 10) || 30;
+    
+    return `• ${s.name} — ${currencyUnit}${priceK}${currencySuffix} (${durNum} ${durationUnit})`;
+  }).join('\n');
 }
 
 function foreignMsg(lang, msgs) {
@@ -854,366 +886,35 @@ function foreignMsg(lang, msgs) {
 }
 
 async function handleForeignBooking(from, name, text, device, branch = 'bypass') {
-  let session = getForeignSession(from);
+  const lang = detectForeignLanguage(text);
   const lower = text.toLowerCase().trim();
-  const KAPSTER_LIST = getKapsterListForBranch(branch);
+  const url = bookingUrl(branch);
 
-  // Cancel commands
-  if (['cancel', 'stop', 'nevermind', '取消', 'キャンセル', 'iptal', '취소'].some(k => lower.includes(k))) {
-    foreignSessions.delete(from);
-    const lang = session?.language || detectForeignLanguage(text);
-    const msg = foreignMsg(lang, {
-      chinese: '已取消。如需帮助，随时联系我们！😊',
-      japanese: 'キャンセルしました。またいつでもお気軽にどうぞ！😊',
-      korean: '취소되었습니다. 다시 도움이 필요하시면 연락주세요! 😊',
-      turkish: 'İptal edildi. Yardıma ihtiyacınız olursa bize ulaşmaktan çekinmeyin! 😊',
-      english: 'Cancelled. Feel free to reach out anytime you need help! 😊'
-    });
-    return { reply: msg, used: 'foreign_booking' };
-  }
-
-  // ── General question handler — works in ANY state ──
-  const generalAnswer = handleForeignGeneralQuestion(text, session?.language || detectForeignLanguage(text), session, branch);
+  // 1. General questions (prices, hours, location, kapster recommendations)
+  const generalAnswer = handleForeignGeneralQuestion(text, lang, null, branch);
   if (generalAnswer) {
-    if (session) { session.lastActivity = Date.now(); foreignSessions.set(from, session); }
-    return { reply: generalAnswer, used: 'foreign_booking' };
+    return { reply: generalAnswer, used: 'foreign_info' };
   }
 
-  if (!session) {
-    const language = detectForeignLanguage(text);
-    session = { state: 'greeting', language, data: {}, lastActivity: Date.now() };
-    foreignSessions.set(from, session);
+  // 2. Foreign booking intent -> direct to website booking authority
+  const isBookingReq = /\b(book|booking|appointment|reserve|reservation|schedule|want|cukur|cuttin|potong|tomorrow|today|pm|am)\b/i.test(lower);
+  if (isBookingReq) {
+    const rawName = (name || '').trim();
+    const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : '';
+    const nameLabel = fn ? `, ${fn}` : '';
 
-    // Smart extraction: try to detect service + date/time from initial message
-    const service = extractForeignService(text);
-    const dateTime = extractForeignDateTime(text);
-
-    if (service && dateTime.date && dateTime.time) {
-      // Customer gave everything in one message (e.g. "내일 13시에 머리 자르고 싶은데")
-      session.data.service = service;
-      session.data.date = dateTime.date;
-      session.data.time = dateTime.time;
-      session.state = 'awaiting_kapster';
-      foreignSessions.set(from, session);
-      const kapsters = KAPSTER_LIST.join(', ');
-      const msg = foreignMsg(language, {
-        chinese: `好的！${service}，${dateTime.date} ${dateTime.time}。\n\n您有喜欢的理发师吗？\n可选理发师：${kapsters}\n\n没有偏好就回复"任意" 😊`,
-        japanese: `承知しました！${service}、${dateTime.date} ${dateTime.time}ですね。\n\nご希望のバーバーはいますか？\nバーバー一覧：${kapsters}\n\nご希望がなければ「誰でも」と 😊`,
-        korean: `알겠습니다! ${service}, ${dateTime.date} ${dateTime.time}이요.\n\n선호하는 바버가 있으신가요?\n바버 목록: ${kapsters}\n\n선호 없으시면 "아무나"라고 답해주세요 😊`,
-        turkish: `Harika! ${service}, ${dateTime.date} ${dateTime.time}.\n\nTercih ettiğiniz berber var mı?\nBerberlerimiz: ${kapsters}\n\nTercihiniz yoksa "herhangi biri" 😊`,
-        english: `Got it! ${service} on ${dateTime.date} at ${dateTime.time}.\n\nDo you have a preferred barber?\nOur barbers: ${kapsters}\n\nNo preference? Just say "any" 😊`
-      });
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    if (service && dateTime.date) {
-      // Service + date but no time
-      session.data.service = service;
-      session.data.date = dateTime.date;
-      session.state = 'awaiting_time';
-      foreignSessions.set(from, session);
-      const msg = foreignMsg(language, {
-        chinese: `好的！${service}，${dateTime.date}。几点比较方便？\n\n营业时间：10:00-21:00`,
-        japanese: `承知しました！${service}、${dateTime.date}ですね。何時がよろしいですか？\n\n営業時間：10:00-21:00`,
-        korean: `알겠습니다! ${service}, ${dateTime.date}이요. 몇 시가 좋으시겠습니까?\n\n영업시간: 10:00-21:00`,
-        turkish: `Harika! ${service}, ${dateTime.date}. Saat kaçta?\n\nÇalışma saatleri: 10:00-21:00`,
-        english: `Got it! ${service} on ${dateTime.date}. What time works for you?\n\nWe're open 10:00-21:00`
-      });
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    if (service) {
-      // Only service detected
-      session.data.service = service;
-      session.state = 'awaiting_kapster';
-      foreignSessions.set(from, session);
-      const kapsters = KAPSTER_LIST.join(', ');
-      const msg = foreignMsg(language, {
-        chinese: `好的！${service} ✂️\n\n您有喜欢的理发师吗？\n可选：${kapsters}\n\n没有偏好就回复"任意" 😊`,
-        japanese: `${service}ですね！✂️\n\nご希望のバーバーはいますか？\n一覧：${kapsters}\n\nご希望がなければ「誰でも」と 😊`,
-        korean: `${service} 선택하셨습니다! ✂️\n\n선호하는 바버가 있으신가요?\n목록: ${kapsters}\n\n선호 없으시면 "아무나" 😊`,
-        turkish: `${service} seçildi! ✂️\n\nTercih ettiğiniz berber var mı?\nListe: ${kapsters}\n\nTercihiniz yoksa "herhangi biri" 😊`,
-        english: `${service} — great choice! ✂️\n\nDo you have a preferred barber?\nAvailable: ${kapsters}\n\nNo preference? Just say "any" 😊`
-      });
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    // No service detected — show full greeting
-    const services = getServicesForLang(language);
-    const kapsters = KAPSTER_LIST.join(', ');
-    const msg = foreignMsg(language, {
-      chinese: `你好 ${name}！欢迎来到 RedBox Barbershop ✂️\n\n我们的服务：\n${services}\n\n我们的理发师：${kapsters}\n\n您想预约什么服务呢？直接告诉我就行！`,
-      japanese: `こんにちは ${name}さん！RedBox Barbershopへようこそ ✂️\n\nサービス一覧：\n${services}\n\nバーバー：${kapsters}\n\nどのサービスをご希望ですか？お気軽にどうぞ！`,
-      korean: `안녕하세요 ${name}님! RedBox Barbershop에 오신 것을 환영합니다 ✂️\n\n서비스 목록:\n${services}\n\n바버: ${kapsters}\n\n어떤 서비스를 원하시나요? 편하게 말씀해주세요!`,
-      turkish: `Merhaba ${name}! RedBox Barbershop'a hoş geldiniz ✂️\n\nHizmetlerimiz:\n${services}\n\nBerberlerimiz: ${kapsters}\n\nHangi hizmeti istersiniz? Rahatça söyleyin!`,
-      english: `Hello ${name}! Welcome to RedBox Barbershop ✂️\n\nOur Services:\n${services}\n\nOur barbers: ${kapsters}\n\nWhat would you like? Just let me know!`
+    const msg = foreignMsg(lang, {
+      english: `Thank you${nameLabel}! To book an appointment or check real-time slot availability, please visit Redbox's official booking website:\n${url}`,
+      chinese: `谢谢您${nameLabel}！如需预约或查看实时空位，请访问Redbox官方预约网站：\n${url}`,
+      japanese: `ご案内いたします${nameLabel}。ご予約やリアルタイムの空き状況の確認は、Redbox公式予約ウェブサイトをご利用ください：\n${url}`,
+      korean: `감사합니다${nameLabel}. 실시간 예약 및 잔여 슬롯 확인은 Redbox 공식 예약 웹사이트를 이용해 주세요:\n${url}`,
+      turkish: `Teşekkür ederiz${nameLabel}! Randevu almak veya canlı saat uygunluğunu kontrol etmek için lütfen Redbox resmi web sitesini ziyaret edin:\n${url}`,
     });
-    return { reply: msg, used: 'foreign_booking' };
+
+    return { reply: msg, used: 'foreign_booking_direct' };
   }
 
-  session.lastActivity = Date.now();
-
-  // State machine
-  switch (session.state) {
-    case 'greeting': {
-      // Smart extraction: service + optional date/time from one message
-      const service = extractForeignService(text);
-      const dateTime = extractForeignDateTime(text);
-
-      if (service && dateTime.date && dateTime.time) {
-        session.data.service = service;
-        session.data.date = dateTime.date;
-        session.data.time = dateTime.time;
-        session.state = 'awaiting_kapster';
-        foreignSessions.set(from, session);
-        const kapsters = KAPSTER_LIST.join(', ');
-        const msg = foreignMsg(session.language, {
-          chinese: `好的！${service}，${dateTime.date} ${dateTime.time}。\n\n选理发师吧：${kapsters}\n没偏好就说"任意" 😊`,
-          japanese: `${service}、${dateTime.date} ${dateTime.time}ですね！\n\nバーバー：${kapsters}\nご希望がなければ「誰でも」と 😊`,
-          korean: `${service}, ${dateTime.date} ${dateTime.time} 확인! \n\n바버 선택해주세요: ${kapsters}\n선호 없으시면 "아무나" 😊`,
-          turkish: `${service}, ${dateTime.date} ${dateTime.time} tamam!\n\nBerber: ${kapsters}\nTercihiniz yoksa "herhangi biri" 😊`,
-          english: `${service} on ${dateTime.date} at ${dateTime.time} — noted!\n\nPick a barber: ${kapsters}\nNo preference? Say "any" 😊`
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      }
-
-      if (service && dateTime.date) {
-        session.data.service = service;
-        session.data.date = dateTime.date;
-        session.state = 'awaiting_time';
-        foreignSessions.set(from, session);
-        const msg = foreignMsg(session.language, {
-          chinese: `好的！${service}，${dateTime.date}。几点？（10:00-21:00）`,
-          japanese: `${service}、${dateTime.date}ですね！何時がよろしいですか？（10:00-21:00）`,
-          korean: `${service}, ${dateTime.date} 확인! 몇 시가 좋으시겠습니까? (10:00-21:00)`,
-          turkish: `${service}, ${dateTime.date} tamam! Saat kaçta? (10:00-21:00)`,
-          english: `${service} on ${dateTime.date} — got it! What time? (10:00-21:00)`
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      }
-
-      if (service) {
-        session.data.service = service;
-        session.state = 'awaiting_kapster';
-        foreignSessions.set(from, session);
-        const kapsters = KAPSTER_LIST.join(', ');
-        const msg = foreignMsg(session.language, {
-          chinese: `好的！${service} ✂️ 选理发师吧：${kapsters}\n没偏好就说"任意" 😊`,
-          japanese: `${service}ですね！✂️ バーバー：${kapsters}\nご希望がなければ「誰でも」と 😊`,
-          korean: `${service} 선택! ✂️ 바버: ${kapsters}\n선호 없으시면 "아무나" 😊`,
-          turkish: `${service} seçildi! ✂️ Berber: ${kapsters}\nTercihiniz yoksa "herhangi biri" 😊`,
-          english: `${service} — great! ✂️ Pick a barber: ${kapsters}\nNo preference? Say "any" 😊`
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      }
-
-      // Not recognized — ask again gently with examples
-      const services = getServicesForLang(session.language);
-      const msg = foreignMsg(session.language, {
-        chinese: `不好意思，我没有理解您的选择 😅\n\n我们提供这些服务：\n${services}\n\n请告诉我您想要哪个服务，或者有什么问题都可以问我！`,
-        japanese: `すみません、ちょっと分かりませんでした 😅\n\nサービス一覧：\n${services}\n\nどのサービスがよろしいですか？何かご質問があればお気軽にどうぞ！`,
-        korean: `죄송합니다, 잘 이해하지 못했어요 😅\n\n서비스 목록:\n${services}\n\n어떤 서비스를 원하시나요? 궁금한 점이 있으시면 편하게 물어보세요!`,
-        turkish: `Özür dilerim, tam anlayamadım 😅\n\nHizmetlerimiz:\n${services}\n\nHangi hizmeti istersiniz? Sorularınız varsa çekinmeden sorun!`,
-        english: `Sorry, I didn't quite get that 😅\n\nHere are our services:\n${services}\n\nWhich one would you like? Feel free to ask any questions!`
-      });
-      foreignSessions.set(from, session);
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    case 'awaiting_kapster': {
-      const kapster = extractForeignKapster(text, branch);
-      session.data.kapster = kapster;
-      // If we already have date+time from smart extraction, skip to name
-      if (session.data.date && session.data.time) {
-        session.state = 'awaiting_name';
-        foreignSessions.set(from, session);
-        const msg = foreignMsg(session.language, {
-          chinese: `好的！最后，请确认您的名字。\n\n是 "${name}" 吗？是的话回复"是"`,
-          japanese: `了解！最後に、お名前を確認させてください。\n\n「${name}」でよろしいですか？「はい」とどうぞ`,
-          korean: `알겠습니다! 마지막으로 성함을 확인할게요.\n\n"${name}"이 맞으시면 "네"라고 답해주세요`,
-          turkish: `Tamam! Son olarak adınızı onaylayalım.\n\n"${name}" doğru mu? "evet" yazın`,
-          english: `Got it! Lastly, let me confirm your name.\n\nIs it "${name}"? Just say "yes"`
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      }
-      session.state = 'awaiting_date';
-      foreignSessions.set(from, session);
-      const msg = foreignMsg(session.language, {
-        chinese: `好的！您想哪天来？\n\n我们每天营业 10:00-21:00\n（例如：明天、周六、6月5日）\n\n也可以直接告诉我日期和时间，比如"明天下午2点"`,
-        japanese: `承知しました！いつがよろしいですか？\n\n毎日 10:00-21:00 営業\n（例：明日、土曜日、6月5日）\n\n日時一緒に言っていただいてもOKです 例：「明日14時」`,
-        korean: `알겠습니다! 언제 방문하시겠습니까?\n\n매일 10:00-21:00 영업\n(예: 내일, 토요일, 6월 5일)\n\n날짜와 시간을 함께 말씀해주셔도 됩니다 예: "내일 오후 2시"`,
-        turkish: `Anlaşıldı! Ne zaman gelmek istersiniz?\n\nHer gün 10:00-21:00 açık\n(örn: yarın, Cumartesi, 5 Haziran)\n\nTarih ve saat birlikte söyleyebilirsiniz: "yarın 14:00"`,
-        english: `Got it! When would you like to come?\n\nWe're open daily 10:00-21:00\n(e.g., tomorrow, Saturday, June 5th)\n\nYou can say date and time together like "tomorrow at 2pm"`
-      });
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    case 'awaiting_date': {
-      // Try to extract both date and time from one message
-      const dateTime = extractForeignDateTime(text);
-      if (dateTime.date && dateTime.time) {
-        session.data.date = dateTime.date;
-        session.data.time = dateTime.time;
-        session.state = 'awaiting_name';
-        foreignSessions.set(from, session);
-        const msg = foreignMsg(session.language, {
-          chinese: `${dateTime.date} ${dateTime.time}，好的！\n\n最后确认一下名字："${name}" 对吗？对的话回复"是"`,
-          japanese: `${dateTime.date} ${dateTime.time}ですね！\n\nお名前「${name}」でよろしいですか？「はい」とどうぞ`,
-          korean: `${dateTime.date} ${dateTime.time} 확인!\n\n성함 "${name}"이 맞으시면 "네"라고 답해주세요`,
-          turkish: `${dateTime.date} ${dateTime.time} tamam!\n\nAdınız "${name}" doğru mu? "evet" yazın`,
-          english: `${dateTime.date} at ${dateTime.time} — perfect!\n\nIs your name "${name}"? Say "yes" to confirm`
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      }
-      if (dateTime.date) {
-        session.data.date = dateTime.date;
-      } else {
-        session.data.date = text.trim();
-      }
-      if (dateTime.time) {
-        session.data.time = dateTime.time;
-        session.state = 'awaiting_name';
-        foreignSessions.set(from, session);
-        const msg = foreignMsg(session.language, {
-          chinese: `好的！${session.data.date} ${dateTime.time}。\n\n名字确认："${name}" 对吗？对就回复"是"`,
-          japanese: `${session.data.date} ${dateTime.time}ですね！\n\nお名前「${name}」でOK？「はい」とどうぞ`,
-          korean: `${session.data.date} ${dateTime.time} 확인!\n\n"${name}"이 맞으시면 "네"`,
-          turkish: `${session.data.date} ${dateTime.time} tamam!\n\n"${name}" doğru mu? "evet"`,
-          english: `${session.data.date} at ${dateTime.time} — noted!\n\nIs "${name}" correct? Say "yes"`
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      }
-      session.state = 'awaiting_time';
-      foreignSessions.set(from, session);
-      const msg = foreignMsg(session.language, {
-        chinese: `好的，${session.data.date}！几点来？（10:00-21:00）\n例如：14:00、下午2点`,
-        japanese: `${session.data.date}ですね！何時がよろしいですか？（10:00-21:00）\n例：14:00、午後2時`,
-        korean: `${session.data.date} 확인! 몇 시가 좋으시겠습니까? (10:00-21:00)\n예: 14:00, 오후 2시`,
-        turkish: `${session.data.date} tamam! Saat kaçta? (10:00-21:00)\nörn: 14:00`,
-        english: `${session.data.date} — got it! What time? (10:00-21:00)\ne.g., 2pm, 14:00`
-      });
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    case 'awaiting_time': {
-      const dateTime = extractForeignDateTime(text);
-      session.data.time = dateTime.time || text.trim();
-      session.state = 'awaiting_name';
-      foreignSessions.set(from, session);
-      const msg = foreignMsg(session.language, {
-        chinese: `好的！最后确认一下名字："${name}" 对吗？\n\n对的话回复"是"，或者告诉我您的名字`,
-        japanese: `了解！お名前「${name}」でよろしいですか？\n\nよければ「はい」、別名なら教えてください`,
-        korean: `알겠습니다! 성함 "${name}"이 맞으시면 "네", 아니면 성함을 알려주세요`,
-        turkish: `Tamam! Adınız "${name}" doğru mu?\n\nDoğruysa "evet", değilse adınızı yazın`,
-        english: `Got it! Is your name "${name}"?\n\nSay "yes" or tell me your name`
-      });
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    case 'awaiting_name': {
-      const isYes = ['yes', 'ya', 'iya', 'ok', '是', '对', 'はい', '네', '예', 'evet', 'tamam', 'doğru', '맞'].some(k => lower.includes(k));
-      session.data.customerName = isYes ? name : text.trim();
-      session.state = 'confirming';
-      foreignSessions.set(from, session);
-      const d = session.data;
-      const summary = `✂️ ${d.service}\n👤 ${d.customerName}\n💇 ${d.kapster}\n📅 ${d.date}\n🕐 ${d.time}`;
-      const msg = foreignMsg(session.language, {
-        chinese: `请确认预约信息：\n\n${summary}\n\n确认回复"是"，修改回复"取消"重来`,
-        japanese: `ご予約内容：\n\n${summary}\n\n確認→「はい」、やり直し→「キャンセル」`,
-        korean: `예약 내용을 확인해주세요:\n\n${summary}\n\n확인: "네" | 취소: "취소"`,
-        turkish: `Rezervasyon bilgileri:\n\n${summary}\n\nOnay: "evet" | İptal: "iptal"`,
-        english: `Please confirm your booking:\n\n${summary}\n\nSay "yes" to confirm or "cancel" to start over`
-      });
-      return { reply: msg, used: 'foreign_booking' };
-    }
-
-    case 'confirming': {
-      const isConfirm = ['yes', 'ya', 'iya', 'ok', 'confirm', 'sure', 'yep', 'yeah',
-        '是', '好', '确认', '对', 'はい', '네', '예', '맞습니다', '맞', 'evet', 'onay', 'tamam', 'doğru'].some(k => lower.includes(k));
-      if (isConfirm) {
-        const d = session.data;
-        const langLabel = { chinese: 'Chinese', japanese: 'Japanese', korean: 'Korean', turkish: 'Turkish', english: 'English', arabic: 'Arabic', thai: 'Thai' };
-        const adminMsg = [
-          `🌍 *BOOKING REQUEST — FOREIGN CUSTOMER*`,
-          `─────────────────────────────`,
-          `👤 Name     : *${d.customerName}*`,
-          `📱 WhatsApp : wa.me/${from}`,
-          `🗣️ Language : *${langLabel[session.language] || session.language}*`,
-          `✂️ Service  : *${d.service}*`,
-          `💇 Barber   : *${d.kapster}*`,
-          `📅 Date     : *${d.date}*`,
-          `🕐 Time     : *${d.time}*`,
-          `─────────────────────────────`,
-          `📝 *Action needed:* Please create this booking manually in Moka POS.`,
-        ].join('\n');
-        sendWA(ADMIN_WA, adminMsg).catch(e => console.error('[WA Bot] Failed to notify admin:', e.message));
-
-        // Notify kapster — sama seperti notif booking lokal
-        if (d.kapster && d.kapster !== 'Any available') {
-          const supabase = getSupabase();
-          if (supabase) {
-            const bareName = d.kapster.replace(/^mas\s+/i, '').trim();
-            const branchLabelMap = {
-              'Bypass': 'RedBox Bypass', 'CSB Mall': 'RedBox CSB Mall',
-              'Samadikun': 'RedBox Samadikun', 'Sumber': 'RedBox Sumber', 'Tegal': 'RedBox Tegal',
-            };
-            const locationLabel = branchLabelMap[d.branch] || d.branch || 'RedBox Barbershop';
-            const kapsterLang = langLabel[session.language] || session.language;
-            supabase.from('barbers').select('name, phone').ilike('name', `%${bareName}%`).maybeSingle()
-              .then(({ data: barber }) => {
-                if (!barber?.phone) return;
-                const barberMsg = [
-                  `🔔 *[BOOKING BARU] Pelanggan Asing!*`,
-                  ``,
-                  `Halo kak ${barber.name}! 👋`,
-                  ``,
-                  `Kamu punya pesanan baru dari pelanggan asing di ${locationLabel}! 🌍`,
-                  ``,
-                  `📋 *Detail Pesanan:*`,
-                  `👤 Pelanggan : ${d.customerName}`,
-                  `📱 WhatsApp  : wa.me/${from}`,
-                  `🗣️ Bahasa    : ${kapsterLang}`,
-                  `✂️ Layanan   : ${d.service}`,
-                  `📅 Tanggal   : ${d.date}`,
-                  `🕐 Jam       : ${d.time}`,
-                  ``,
-                  `Booking ini perlu di-input manual ke Moka ya kak! ✂️`,
-                ].join('\n');
-                return sendWA(barber.phone, barberMsg);
-              })
-              .catch(e => console.error('[WA Bot] Failed to notify barber (foreign booking):', e.message));
-          }
-        }
-
-        foreignSessions.delete(from);
-        const msg = foreignMsg(session.language, {
-          chinese: '预约请求已提交！✅\n\n我们的工作人员会尽快确认。如有问题请随时联系！\n\n到时见！✂️😊',
-          japanese: '予約リクエスト受付完了！✅\n\nスタッフが確認いたします。ご質問があればお気軽にどうぞ！\n\nお会いできるのを楽しみにしております！✂️😊',
-          korean: '예약 요청이 접수되었습니다! ✅\n\n직원이 확인 후 연락드리겠습니다. 궁금한 점 있으시면 언제든 물어보세요!\n\n곧 뵙겠습니다! ✂️😊',
-          turkish: 'Rezervasyon talebiniz alındı! ✅\n\nEkibimiz onaylayacak. Sorularınız varsa çekinmeyin!\n\nGörüşmek üzere! ✂️😊',
-          english: 'Your booking request has been submitted! ✅\n\nOur staff will confirm shortly. Feel free to ask if you have any questions!\n\nSee you soon! ✂️😊'
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      } else {
-        session.state = 'greeting';
-        session.data = {};
-        foreignSessions.set(from, session);
-        const services = getServicesForLang(session.language);
-        const msg = foreignMsg(session.language, {
-          chinese: `没问题，重新开始吧！\n\n我们的服务：\n${services}\n\n您想要哪个服务？`,
-          japanese: `了解、最初からやり直しましょう！\n\nサービス：\n${services}\n\nどれがよろしいですか？`,
-          korean: `괜찮습니다, 다시 시작할게요!\n\n서비스:\n${services}\n\n어떤 서비스를 원하시나요?`,
-          turkish: `Sorun değil, baştan başlayalım!\n\nHizmetler:\n${services}\n\nHangisini istersiniz?`,
-          english: `No problem, let's start fresh!\n\nOur services:\n${services}\n\nWhich one would you like?`
-        });
-        return { reply: msg, used: 'foreign_booking' };
-      }
-    }
-
-    default:
-      foreignSessions.delete(from);
-      return null;
-  }
+  return null;
 }
 
 // ── General question handler for foreign customers ──
@@ -1271,7 +972,7 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
     /ne kadar|fiyat|ücret/i,
   ];
   if (pricePatterns.some(p => p.test(text))) {
-    const services = getServicesForLang(lang);
+    const services = getServicesForLang(lang, branch);
     return foreignMsg(lang, {
       chinese: `我们的服务价格：\n\n${services}\n\n想预约哪个呢？`,
       japanese: `料金一覧：\n\n${services}\n\nどれがよろしいですか？`,
@@ -2298,3 +1999,6 @@ module.exports.buildSystemPrompt = buildSystemPrompt;
 module.exports.fallbackReply = fallbackReply;
 
 module.exports.buildServicesText = buildServicesText;
+
+module.exports.getServicesForLang = getServicesForLang;
+module.exports.detectForeignLanguage = detectForeignLanguage;

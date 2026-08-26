@@ -1,3 +1,4 @@
+const fs = require('fs');
 'use strict';
 
 const test = require('node:test');
@@ -19,7 +20,7 @@ const {
   serializeKnowledgeForPrompt,
   createUnavailableKnowledgeContext,
 } = require('../agents/reddy/knowledge/knowledgeContext');
-const { handleMessage, callOpenAI, fallbackReply, buildServicesText } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, fallbackReply, buildServicesText, getServicesForLang, detectForeignLanguage } = require('../../api/wa/webhook');
 
 function cloneKnowledge() {
   return structuredClone(REDBOX_KNOWLEDGE);
@@ -1126,4 +1127,109 @@ test('S6. Fallback name normalization prevents "Kak Kak" for missing or default 
   assert.equal(replyKak.includes('Kak Kak'), false, 'No duplicate Kak Kak');
 
   assert.ok(replyName.startsWith('Halo Kak Adhit,'), 'Full name formats to "Halo Kak Adhit,"');
+});
+
+test('T1. No parallel numeric foreign price catalog exists in webhook.js', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes('const SERVICES_EN ='), false, 'SERVICES_EN must be removed');
+  assert.equal(webhookCode.includes('const SERVICES_ZH ='), false, 'SERVICES_ZH must be removed');
+  assert.equal(webhookCode.includes('const SERVICES_JA ='), false, 'SERVICES_JA must be removed');
+  assert.equal(webhookCode.includes('const SERVICES_KO ='), false, 'SERVICES_KO must be removed');
+  assert.equal(webhookCode.includes('const SERVICES_TR ='), false, 'SERVICES_TR must be removed');
+});
+
+test('T2. English canonical price query derives Hair Spa price from REDBOX_SERVICES', async () => {
+  const textEn = getServicesForLang('english', 'bypass');
+  const hs = REDBOX_SERVICES.find(s => s.id === 'hair-spa');
+  assert.ok(hs, 'Hair Spa must exist in REDBOX_SERVICES');
+  assert.ok(textEn.includes('Hair Spa — IDR 110k (30 min)'), 'Must render canonical IDR 110k price');
+});
+
+test('T3. CSB English canonical price query derives CSB price from REDBOX_SERVICES', async () => {
+  const textCsb = getServicesForLang('english', 'csb');
+  assert.ok(textCsb.includes('Hair Spa — IDR 120k (30 min)'), 'Must render canonical CSB IDR 120k price');
+});
+
+test('T4. Multilingual same numeric source across EN/ZH/JA/KO/TR', async () => {
+  const languages = ['english', 'chinese', 'japanese', 'korean', 'turkish'];
+  for (const lang of languages) {
+    const rendered = getServicesForLang(lang, 'bypass');
+    assert.ok(rendered.includes('110k'), `${lang} must include 110k for Hair Spa`);
+    assert.ok(rendered.includes('95k'), `${lang} must include 95k for Gentleman Grooming`);
+  }
+});
+
+test('T5. Canonical update propagation: modifying REDBOX_SERVICES item price propagates to all languages', async () => {
+  const originalPrice = REDBOX_SERVICES[0].price;
+  try {
+    REDBOX_SERVICES[0].price = 99000;
+    const textEn = getServicesForLang('english', 'bypass');
+    assert.ok(textEn.includes('99k'), 'Modifying catalog price must dynamically update English output to 99k');
+  } finally {
+    REDBOX_SERVICES[0].price = originalPrice;
+  }
+});
+
+test('T6. Foreign booking intent directs to website without WhatsApp booking acceptance', async () => {
+  const res = await handleMessage(
+    { from: '62899991111', text: 'I want a haircut tomorrow at 2pm.', branchFromPayload: 'bypass' },
+    {
+      loadConversationHistory: async () => [],
+      orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'booking_request', action: 'direct_booking' }),
+      resolveKnowledge: () => ({ facts: [] }),
+      generateReddy: async () => { throw new Error('Not used'); },
+      send: async (from, replyText) => ({ status: 'sent' }),
+      logTelemetry: () => {},
+    }
+  );
+
+  assert.ok(res.reply.includes('booking.html?branch=bypass'), 'Must direct to website booking URL');
+  assert.equal(res.reply.includes('noted!'), false, 'Must NOT issue conversational acceptance');
+  assert.equal(res.reply.includes('confirmed'), false, 'Must NOT claim confirmed');
+});
+
+test('T7. Foreign detailed booking intent directs to website without booking state mutation', async () => {
+  const res = await handleMessage(
+    { from: '62899992222', text: 'I want Onoy tomorrow at 2 PM.', branchFromPayload: 'bypass' },
+    {
+      loadConversationHistory: async () => [],
+      orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'booking_request', action: 'direct_booking' }),
+      resolveKnowledge: () => ({ facts: [] }),
+      generateReddy: async () => { throw new Error('Not used'); },
+      send: async (from, replyText) => ({ status: 'sent' }),
+      logTelemetry: () => {},
+    }
+  );
+
+  assert.ok(res.reply.includes('booking.html?branch=bypass'), 'Must direct to website booking URL');
+  assert.equal(res.used, 'foreign_booking_direct');
+});
+
+test('T8. forwardBookingToBranch reachability: customer chat cannot invoke forwardBookingToBranch', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes('//   forwardBookingToBranch(forwardBooking, from)'), true, 'forwardBookingToBranch must be commented out/disabled in customer chat path');
+});
+
+test('T9. Loyalty percentage audit: points fallback retains 5% text for un-registered member', async () => {
+  const res = await handleMessage(
+    { from: '62811998877', text: 'cek poin', branchFromPayload: 'bypass' },
+    {
+      executeOrchestration: async () => ({
+        execution_status: 'customer_not_found',
+        result: null,
+      }),
+      send: async (from, replyText) => ({ status: 'sent' }),
+      logTelemetry: () => {},
+    }
+  );
+
+  assert.ok(res.reply.includes('Dapatkan poin loyalty 5% di setiap kunjungan cukur kamu!'));
+});
+
+test('T10. Indonesian deterministic price path preserves canonical REDBOX_SERVICES only (S1 rule)', async () => {
+  const textBypass = buildServicesText('bypass');
+  assert.ok(textBypass.includes('Gentleman Grooming — Rp95.000'));
+  assert.ok(textBypass.includes('Hair Color — Rp160.000'));
+  assert.ok(textBypass.includes('Down Perm / Root Lift — Rp175.000'));
+  assert.ok(textBypass.includes('Ear Candle — Rp40.000'));
 });
