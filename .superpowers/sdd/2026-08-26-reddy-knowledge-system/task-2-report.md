@@ -67,3 +67,30 @@ Result: exit 0 — 37 passed, 0 failed, 0 skipped.
 - A branch named directly after `cabang` or `branch` is now resolved as the authoritative explicit reference. If that reference is unknown, it blocks all handler/incidental-alias branch selection and prevents a scoped price.
 - `general_chat` is an explicit irrelevant intent and now always returns no verified facts, even when text contains a known branch alias.
 - `knowledgeContext.js` owns exported hard limits (`12` facts, `4,000` prompt characters) and actual serialized-payload measurement. The resolver imports those values without a circular dependency, clamps caller input, and drops whole facts against the escaped JSON plus delimiter length.
+
+## Fix round 2/5
+
+### RED
+
+Command:
+
+```powershell
+node --test server/test/reddy-knowledge-system-v01.test.js
+```
+
+Result: exit 1 — 37 passed, 1 failed. The new reproduction `cabang Bandung lalu cabang Bypass` incorrectly selected the later Bypass alias and exposed a scoped price.
+
+### GREEN
+
+Command:
+
+```powershell
+node --test server/test/reddy-knowledge-system-v01.test.js
+```
+
+Result: exit 0 — 39 passed, 0 failed, 0 skipped.
+
+### Fix notes
+
+- Resolver now finds the first explicit `cabang`/`branch` reference and resolves only the immediate reference token. A first unknown branch therefore stays unknown even if later text contains a known explicit or ambient alias.
+- Added a preservation test proving a first known explicit branch remains correctly scoped when an unknown explicit branch follows.

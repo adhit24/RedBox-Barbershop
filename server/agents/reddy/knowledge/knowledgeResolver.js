@@ -32,11 +32,19 @@ function resolveByAliases(items, text) {
   return items.find(item => [item.id, ...item.aliases].some(alias => includesAlias(text, alias)));
 }
 
+function explicitBranchReferenceStart(text) {
+  const match = new RegExp(`(^|[^${WORD}])(?:cabang|branch)\\s+`).exec(text);
+  return match ? match.index + match[0].length : -1;
+}
+
 function resolveExplicitBranch(branches, text) {
+  const start = explicitBranchReferenceStart(text);
+  if (start < 0) return undefined;
+  const reference = text.slice(start);
   return branches.find(branch => [branch.id, ...branch.aliases].some(alias => {
     const normalizedAlias = normalize(alias);
     const pattern = escapeRegex(normalizedAlias).replace(/\ /g, '\\s+');
-    return new RegExp(`(^|[^${WORD}])(?:cabang|branch)\\s+(?:di\\s+)?${pattern}(?=$|[^${WORD}])`).test(text);
+    return new RegExp(`^(?:di\\s+)?${pattern}(?=$|[^${WORD}])`).test(reference);
   }));
 }
 
@@ -46,7 +54,7 @@ function trustedBranch(branches, branch) {
 }
 
 function hasExplicitBranchReference(text) {
-  return new RegExp(`(^|[^${WORD}])(?:cabang|branch)\\s+`).test(text);
+  return explicitBranchReferenceStart(text) >= 0;
 }
 
 function dateInJakarta(now) {

@@ -182,6 +182,32 @@ test('an explicit unknown branch wins over a known alias mentioned elsewhere', (
   assert.equal(service.price_idr, undefined);
 });
 
+test('the first explicit branch reference controls later explicit known references', () => {
+  const context = resolveKnowledgeContext({
+    intent: 'service_price',
+    text: 'Berapa harga Gentleman Grooming di cabang Bandung lalu cabang Bypass?',
+    branch: 'bypass',
+  });
+  const service = factById(context, 'gentleman-grooming');
+
+  assert.deepEqual(context.unknown_fields, ['branch']);
+  assert.equal(service.price_scope, undefined);
+  assert.equal(service.price_idr, undefined);
+});
+
+test('a first known explicit branch remains scoped when an unknown branch follows', () => {
+  const context = resolveKnowledgeContext({
+    intent: 'service_price',
+    text: 'Berapa harga Gentleman Grooming di cabang Bypass lalu cabang Bandung?',
+    branch: 'csb',
+  });
+  const service = factById(context, 'gentleman-grooming');
+
+  assert.deepEqual(context.unknown_fields, []);
+  assert.equal(service.price_scope, 'standard');
+  assert.equal(service.price_idr, 95000);
+});
+
 test('resolves audited service aliases but not fuzzy service fragments', () => {
   const resolved = resolveKnowledgeContext({ intent: 'service_price', text: 'Harga potong rambut di bypass?' });
   const fuzzy = resolveKnowledgeContext({ intent: 'service_price', text: 'Harga potongan rambut di bypass?' });
