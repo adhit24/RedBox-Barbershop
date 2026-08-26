@@ -25,12 +25,9 @@ const POINTS_CLASSIFICATION_KEY_SET = new Set(POINTS_CLASSIFICATION_KEYS);
 
 // Executable CRM tool allowlist for Task 11 Customer Intelligence
 const TASK11_CRM_ALLOWLIST = Object.freeze({
-  points_inquiry: 'get_points',
   customer_history: 'get_customer_history',
   customer_profile: 'get_customer_profile',
   customer_preferences: 'get_customer_preferences',
-  membership: 'get_membership',
-  customer_membership: 'get_membership',
 });
 
 function readPointsClassification(value) {
