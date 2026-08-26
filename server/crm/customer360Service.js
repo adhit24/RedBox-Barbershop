@@ -1,5 +1,15 @@
 'use strict';
 
+async function safeSupabaseQuery(query) {
+  if (!query) return { data: [], error: null };
+  try {
+    const res = await query;
+    return res && typeof res === 'object' && Array.isArray(res.data) ? res : { data: (Array.isArray(res) ? res : []), error: null };
+  } catch (err) {
+    return { data: [], error: err?.message || null };
+  }
+}
+
 /**
  * Redbox Customer 360 Read Service
  * 0-LLM, pure deterministic read layer querying Supabase database tables.
@@ -301,8 +311,8 @@ async function getCustomer360(supabase, identityInput = {}) {
     : Promise.resolve({ data: [] });
 
   const [outletsRes, schedulesRes] = await Promise.all([
-    outletsQuery.catch(() => ({ data: [] })),
-    schedulesQuery.catch(() => ({ data: [] })),
+    safeSupabaseQuery(outletsQuery),
+    safeSupabaseQuery(schedulesQuery),
   ]);
   const outletMap = new Map((outletsRes.data || []).map(o => [o.id, o.name || o.slug]));
 
@@ -312,9 +322,10 @@ async function getCustomer360(supabase, identityInput = {}) {
 
   const allBarberIdsToFetch = Array.from(new Set([...directBookingBarberIds, ...scheduleBarberIds]));
   const barbSel = supabase.from('barbers').select('id, name');
-  const barbersRes = (allBarberIdsToFetch.length > 0 && typeof barbSel.in === 'function')
-    ? await barbSel.in('id', allBarberIdsToFetch).catch(() => ({ data: [] }))
-    : { data: [] };
+  const barbersQuery = (allBarberIdsToFetch.length > 0 && typeof barbSel.in === 'function')
+    ? barbSel.in('id', allBarberIdsToFetch)
+    : Promise.resolve({ data: [] });
+  const barbersRes = await safeSupabaseQuery(barbersQuery);
   const barberMap = new Map((barbersRes.data || []).map(b => [b.id, b.name]));
 
   if (profRes.error || custRes.error || txRes.error || bookingsRes.error) {

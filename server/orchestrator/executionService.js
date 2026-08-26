@@ -194,7 +194,12 @@ async function executeCustomerIntelligence(params = {}, dependencies = {}) {
   let crmResult;
   try {
     crmResult = await crmExecutor(toolName, {}, context);
-  } catch (_) {
+  } catch (err) {
+    console.error('[CRMCustomerIntelligenceError]', {
+      intent,
+      error_name: err?.name || 'Error',
+      error_message: err?.message || String(err),
+    });
     return {
       execution_status: 'database_unavailable',
       intelligence: null,
