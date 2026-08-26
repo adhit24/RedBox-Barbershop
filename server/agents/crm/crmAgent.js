@@ -47,8 +47,9 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
   let targetCustomerId = null;
 
   if (projection === PROJECTION_TYPES.CUSTOMER_SELF) {
-    const contextPhone = context.phone || context.user?.phone || context.trustedIdentity?.phone;
-    const contextCustId = context.customer_id || context.user?.customer_id || context.user?.id || context.trustedIdentity?.customer_id;
+    // Trusted server context ONLY — unverified trustedIdentity objects MUST NOT authorize CRM
+    const contextPhone = context.phone || context.user?.phone;
+    const contextCustId = context.customer_id || context.user?.customer_id || context.user?.id;
 
     if (!contextPhone && !contextCustId) {
       return {
@@ -128,7 +129,7 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
     if (params.customer_id && contextPhone && !contextCustId) {
       const paramIdentity = await resolveCustomerIdentity(supabase, { customer_id: params.customer_id });
       const contextIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
-      if (paramIdentity.found && contextIdentity.found && paramIdentity.customer_id !== contextIdentity.customer_id) {
+      if (!paramIdentity.found || !contextIdentity.found || paramIdentity.customer_id !== contextIdentity.customer_id) {
         return {
           status: 'forbidden',
           tool: toolName,
@@ -141,7 +142,7 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
 
     if (params.phone && contextCustId && !contextPhone) {
       const paramIdentity = await resolveCustomerIdentity(supabase, { phone: params.phone });
-      if (paramIdentity.found && paramIdentity.customer_id !== String(contextCustId).trim()) {
+      if (!paramIdentity.found || paramIdentity.customer_id !== String(contextCustId).trim()) {
         return {
           status: 'forbidden',
           tool: toolName,

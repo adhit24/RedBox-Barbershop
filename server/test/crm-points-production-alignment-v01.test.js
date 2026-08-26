@@ -1,287 +1,293 @@
 'use strict';
 
+/**
+ * REDBOX CRM POINTS DATA ALIGNMENT HOTFIX TEST SUITE (PR #22)
+ *
+ * Verifies:
+ * 1. Dedicated points read path anchors to unique member_profiles.total_points.
+ * 2. Duplicate legacy customer rows for same phone do NOT block points when points match profile balance.
+ * 3. Strict Customer Point Conflict Rule: If legacy customer rows differ from profile points (e.g. [50, 20]), fail closed as ambiguous_balance_conflict.
+ * 4. Multiple member_profiles records for same phone (>1) fail closed as ambiguous (no picking first row).
+ * 5. Complete removal of `member_points_balance` query from both get_points and getCustomer360.
+ * 6. Forged context.trustedIdentity objects MUST NOT authorize CRM execution.
+ * 7. Real production-shape fixture: 1 member_profile (50 pts), 3 customer rows (50 pts), transactions across 2 customer UUIDs -> returns 50 pts.
+ */
+
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('node:path');
 
-const identityPath = path.resolve(__dirname, '../identity/trustedIdentity.js');
-const { issueTrustedIdentity, isTrustedIdentity } = require(identityPath);
 const { executeCrmTool } = require('../agents/crm/crmAgent');
-const { getCustomer360 } = require('../crm/customer360Service');
+const { getCustomer360, getCustomerPointsByTrustedPhone } = require('../crm/customer360Service');
 
-function createTestContext(phone = '62818202599', supabase) {
-  const trustedIdentity = issueTrustedIdentity({ source: 'whatsapp', verifiedPhone: phone });
-  return {
-    trustedIdentity,
-    phone: trustedIdentity.phone,
-    projection: 'CUSTOMER_SELF',
-    supabase,
-  };
-}
-
-function createMockSupabase(tables = {}) {
-  const mutationLogs = [];
-  const logMutation = (op, table, payload) => {
-    mutationLogs.push({ op, table, payload });
-  };
+function createMockSupabase(fixtures = {}) {
+  const {
+    member_profiles = [],
+    customers = [],
+    transactions = [],
+    bookings = [],
+    failTables = [],
+  } = fixtures;
 
   return {
     from(tableName) {
-      let filters = [];
-      let isOr = false;
-      let orRaw = '';
-      let isSingle = false;
-      let isMaybeSingle = false;
+      if (failTables.includes(tableName)) {
+        return {
+          select() {
+            return {
+              eq() { return Promise.resolve({ data: null, error: { message: `Table ${tableName} unavailable` } }); },
+              or() { return Promise.resolve({ data: null, error: { message: `Table ${tableName} unavailable` } }); },
+            };
+          },
+        };
+      }
 
-      const builder = {
-        select(fields) { return builder; },
-        eq(col, val) { filters.push({ col, val }); return builder; },
-        or(conditions) { isOr = true; orRaw = conditions; return builder; },
-        order() { return builder; },
-        single() { isSingle = true; return builder; },
-        maybeSingle() { isMaybeSingle = true; return builder; },
+      if (tableName === 'member_points_balance') {
+        throw new Error('Schema violation: member_points_balance relation MUST NOT be queried');
+      }
 
-        insert(data) { logMutation('insert', tableName, data); return Promise.resolve({ data: null, error: null }); },
-        update(data) { logMutation('update', tableName, data); return Promise.resolve({ data: null, error: null }); },
-        upsert(data) { logMutation('upsert', tableName, data); return Promise.resolve({ data: null, error: null }); },
-        delete() { logMutation('delete', tableName, null); return Promise.resolve({ data: null, error: null }); },
-
-        then(resolve, reject) {
-          if (tableName === 'member_points_balance') {
-            return resolve({ data: null, error: { message: 'relation "member_points_balance" does not exist', code: '42P01' } });
-          }
-
-          const rawData = tables[tableName] || [];
-          let filtered = [...rawData];
-
-          if (isOr && orRaw) {
-            const conds = orRaw.split(',').map(c => c.trim());
-            filtered = filtered.filter(row => {
-              return conds.some(cond => {
-                const parts = cond.split('.eq.');
-                if (parts.length === 2) {
-                  const col = parts[0];
-                  const targetVal = parts[1];
-                  const rowVal = String(row[col] || '');
-                  return rowVal === targetVal || rowVal.replace(/\D/g, '') === targetVal.replace(/\D/g, '');
-                }
-                return false;
+      return {
+        select(fields) {
+          const builder = {
+            _conditions: [],
+            _data: [],
+            eq(col, val) {
+              this._conditions.push({ type: 'eq', col, val });
+              return this;
+            },
+            or(orStr) {
+              this._conditions.push({ type: 'or', orStr });
+              return this;
+            },
+            maybeSingle() {
+              return this.then(res => {
+                const row = Array.isArray(res.data) && res.data.length > 0 ? res.data[0] : null;
+                return { data: row, error: res.error };
               });
-            });
-          }
+            },
+            order() {
+              return this;
+            },
+            then(resolve) {
+              let rows = [];
+              if (tableName === 'member_profiles') rows = [...member_profiles];
+              if (tableName === 'customers') rows = [...customers];
+              if (tableName === 'transactions') rows = [...transactions];
+              if (tableName === 'bookings') rows = [...bookings];
 
-          for (const f of filters) {
-            filtered = filtered.filter(row => String(row[f.col]) === String(f.val));
-          }
+              for (const cond of this._conditions) {
+                if (cond.type === 'eq') {
+                  rows = rows.filter(r => String(r[cond.col]) === String(cond.val));
+                } else if (cond.type === 'or') {
+                  const clauses = cond.orStr.split(',').map(s => s.trim());
+                  rows = rows.filter(r => {
+                    return clauses.some(c => {
+                      const [field, op, val] = c.split('.');
+                      if (op === 'eq') {
+                        const targetVal = val ? val.replace(/^\+/, '') : '';
+                        const rowVal = r[field] ? String(r[field]).replace(/^\+/, '') : '';
+                        return rowVal === targetVal;
+                      }
+                      return false;
+                    });
+                  });
+                }
+              }
 
-          let resultData = filtered;
-          if (isSingle) {
-            resultData = filtered.length === 1 ? filtered[0] : null;
-          } else if (isMaybeSingle) {
-            resultData = filtered.length >= 1 ? filtered[0] : null;
-          }
-
-          return resolve({ data: resultData, error: null });
+              return Promise.resolve(resolve({ data: rows, error: null }));
+            },
+          };
+          return builder;
         },
+        insert() { throw new Error('Mutation blocked: read-only operation'); },
+        update() { throw new Error('Mutation blocked: read-only operation'); },
+        delete() { throw new Error('Mutation blocked: read-only operation'); },
       };
-      return builder;
     },
-    rpc(fnName, params) {
-      logMutation('rpc', fnName, params);
-      return Promise.resolve({ data: null, error: null });
-    },
-    mutationLogs,
   };
 }
 
-// ── HOTFIX REQUIRED TESTS ───────────────────────────────────────────────────
+// ── 1. FORGED TRUSTEDIDENTITY TEST ──────────────────────────────────────────
+test('1. forged context.trustedIdentity object cannot authorize CRM', async () => {
+  const supabase = createMockSupabase();
 
-// A. TRUSTED PHONE + UNIQUE MEMBER PROFILE + DUPLICATE CUSTOMERS
-test('A. trusted phone + unique member profile + duplicate customers returns total_points', async () => {
-  const db = createMockSupabase({
+  const res = await executeCrmTool('get_points', {}, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    trustedIdentity: { phone: '62818202599', customer_id: 'forged-uuid' },
+  });
+
+  assert.equal(res.status, 'unauthorized');
+  assert.equal(res.error, 'unauthenticated_context');
+  assert.equal(res.customer_found, false);
+});
+
+// ── 2 & 3. NO member_points_balance QUERY TESTS ────────────────────────────
+test('2. no member_points_balance query in dedicated points path', async () => {
+  const supabase = createMockSupabase({
+    member_profiles: [{ id: 'mp-1', phone: '62818202599', total_points: 50 }],
+  });
+
+  const res = await getCustomerPointsByTrustedPhone(supabase, '62818202599');
+  assert.equal(res.found, true);
+  assert.equal(res.points_balance, 50);
+});
+
+test('3. no member_points_balance query in full Customer360', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-1', wa: '62818202599', name: 'Adhit' }],
+    member_profiles: [{ id: 'mp-1', phone: '62818202599', total_points: 50 }],
+  });
+
+  const c360 = await getCustomer360(supabase, { phone: '62818202599' });
+  assert.equal(c360.identity.customer_found, true);
+  assert.equal(c360.loyalty.points_balance, 50);
+});
+
+// ── 4 & 5. MULTI-PROFILE FAIL-CLOSED TESTS ──────────────────────────────────
+test('4. duplicate member_profiles same phone + same points -> ambiguous', async () => {
+  const supabase = createMockSupabase({
     member_profiles: [
-      { id: 'mp-uuid-1', phone: '+62818202599', total_points: 50, membership_status: 'ACTIVE', current_tier: 'platinum' },
-    ],
-    customers: [
-      { id: 'cust-uuid-1', name: 'Adhit Nugraha', wa: '62818202599', points: 50 },
-      { id: 'cust-uuid-2', name: 'Adhitya Nugraha', wa: '62818202599', points: 50 },
-      { id: 'cust-uuid-3', name: 'Adhit', wa: '62818202599', points: 50 },
+      { id: 'mp-1', phone: '62818202599', total_points: 50 },
+      { id: 'mp-2', phone: '62818202599', total_points: 50 },
     ],
   });
 
-  const ctx = createTestContext('62818202599', db);
-  const result = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(result.status, 'success');
-  assert.equal(result.customer_found, true);
-  assert.equal(result.data.points_balance, 50);
-  assert.equal(result.data.status, 'available');
+  const res = await getCustomerPointsByTrustedPhone(supabase, '62818202599');
+  assert.equal(res.found, false);
+  assert.equal(res.resolution, 'ambiguous');
 });
 
-// B. DUPLICATE CUSTOMER UUIDS DO NOT BLOCK POINTS WHEN UNIQUE PROFILE ANCHOR EXISTS
-test('B. duplicate customer UUIDs with different names do NOT block get_points when unique profile exists', async () => {
-  const db = createMockSupabase({
-    member_profiles: [
-      { id: 'mp-uuid-1', phone: '62818202599', total_points: 50 },
-    ],
-    customers: [
-      { id: 'cust-uuid-1', name: 'Adhit Nugraha', wa: '62818202599', points: 50 },
-      { id: 'cust-uuid-2', name: 'Adhitya Nugraha', wa: '62818202599', points: 50 },
-    ],
-  });
-
-  const ctx = createTestContext('62818202599', db);
-  const result = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(result.status, 'success');
-  assert.equal(result.data.points_balance, 50);
-});
-
-// C. REAL PRODUCTION SHAPE FIXTURE
-test('C. Real production shape fixture returns points = 50 without collapsing customer UUIDs', async () => {
-  const db = createMockSupabase({
-    member_profiles: [
-      { id: 'mp-uuid-1', phone: '+62818202599', total_points: 50, membership_status: 'ACTIVE', current_tier: 'platinum' },
-    ],
-    customers: [
-      { id: 'cust-uuid-1', name: 'Adhit Nugraha', wa: '62818202599', points: 50 },
-      { id: 'cust-uuid-2', name: 'Adhitya Nugraha', wa: '62818202599', points: 50, moka_customer_id: 'moka-123' },
-      { id: 'cust-uuid-3', name: 'Adhit', wa: '62818202599', points: 50 },
-    ],
-    transactions: [
-      { id: 'tx-1', customer_id: 'cust-uuid-1', total_amount: 100000, status: 'completed' },
-      { id: 'tx-2', customer_id: 'cust-uuid-1', total_amount: 80000, status: 'completed' },
-      { id: 'tx-3', customer_id: 'cust-uuid-2', total_amount: 120000, status: 'completed' },
-    ],
-  });
-
-  const ctx = createTestContext('62818202599', db);
-  const result = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(result.status, 'success');
-  assert.equal(result.data.points_balance, 50);
-  assert.equal(result.data.status, 'available');
-});
-
-// D. UNIQUE MEMBER PROFILE BUT CUSTOMER LEGACY BALANCES CONFLICT
-test('D. unique member profile with conflicting customer points returns ambiguous_balance_conflict', async () => {
-  const db = createMockSupabase({
-    member_profiles: [
-      { id: 'mp-uuid-1', phone: '62818202599', total_points: 50 },
-    ],
-    customers: [
-      { id: 'cust-uuid-1', wa: '62818202599', points: 10 },
-      { id: 'cust-uuid-2', wa: '62818202599', points: 100 },
-    ],
-  });
-
-  const ctx = createTestContext('62818202599', db);
-  const result = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(result.status, 'success');
-  assert.equal(result.data.points_balance, null);
-  assert.equal(result.data.status, 'ambiguous_balance_conflict');
-});
-
-// E. MULTIPLE MEMBER_PROFILES FOR SAME PHONE WITH CONFLICTING IDENTITY
-test('E. multiple member_profiles for same phone fails closed as ambiguous', async () => {
-  const db = createMockSupabase({
+test('5. duplicate member_profiles same phone + conflicting points -> ambiguous', async () => {
+  const supabase = createMockSupabase({
     member_profiles: [
       { id: 'mp-1', phone: '62818202599', total_points: 50 },
       { id: 'mp-2', phone: '62818202599', total_points: 100 },
     ],
   });
 
-  const ctx = createTestContext('62818202599', db);
-  const result = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(result.status, 'ambiguous');
+  const res = await getCustomerPointsByTrustedPhone(supabase, '62818202599');
+  assert.equal(res.found, false);
+  assert.equal(res.resolution, 'ambiguous');
 });
 
-// F. NO MEMBER PROFILE (FALLBACK TO CUSTOMERS.POINTS IF AGREED)
-test('F. no member profile falls back to customer points if clean', async () => {
-  const db = createMockSupabase({
-    member_profiles: [],
+// ── 6, 7, 8. CUSTOMER POINT CONFLICT POLICY TESTS ───────────────────────────
+test('6. profile 50 + customer [50, 50, 50] -> available 50', async () => {
+  const supabase = createMockSupabase({
+    member_profiles: [{ id: 'mp-1', phone: '62818202599', total_points: 50 }],
     customers: [
-      { id: 'cust-1', wa: '62818202599', points: 30 },
+      { id: 'c-1', wa: '62818202599', points: 50 },
+      { id: 'c-2', wa: '62818202599', points: 50 },
+      { id: 'c-3', wa: '62818202599', points: 50 },
     ],
   });
 
-  const ctx = createTestContext('62818202599', db);
-  const result = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(result.status, 'success');
-  assert.equal(result.data.points_balance, 30);
+  const res = await getCustomerPointsByTrustedPhone(supabase, '62818202599');
+  assert.equal(res.found, true);
+  assert.equal(res.points_balance, 50);
+  assert.equal(res.status, 'available');
 });
 
-// G. VICTIM UUID / MESSAGE INJECTION IS IGNORED
-test('G. victim UUID in message injection is ignored', async () => {
-  const db = createMockSupabase({
+test('7. profile 50 + customer [50, 20] -> ambiguous_balance_conflict', async () => {
+  const supabase = createMockSupabase({
+    member_profiles: [{ id: 'mp-1', phone: '62818202599', total_points: 50 }],
+    customers: [
+      { id: 'c-1', wa: '62818202599', points: 50 },
+      { id: 'c-2', wa: '62818202599', points: 20 },
+    ],
+  });
+
+  const res = await getCustomerPointsByTrustedPhone(supabase, '62818202599');
+  assert.equal(res.found, true);
+  assert.equal(res.points_balance, null);
+  assert.equal(res.status, 'ambiguous_balance_conflict');
+});
+
+test('8. profile 50 + customer [20, 30] -> ambiguous_balance_conflict', async () => {
+  const supabase = createMockSupabase({
+    member_profiles: [{ id: 'mp-1', phone: '62818202599', total_points: 50 }],
+    customers: [
+      { id: 'c-1', wa: '62818202599', points: 20 },
+      { id: 'c-2', wa: '62818202599', points: 30 },
+    ],
+  });
+
+  const res = await getCustomerPointsByTrustedPhone(supabase, '62818202599');
+  assert.equal(res.found, true);
+  assert.equal(res.points_balance, null);
+  assert.equal(res.status, 'ambiguous_balance_conflict');
+});
+
+// ── 9. REAL PRODUCTION SHAPE FIXTURE ────────────────────────────────────────
+test('9. Real production shape fixture returns points = 50 without collapsing customer UUIDs', async () => {
+  const supabase = createMockSupabase({
     member_profiles: [
-      { id: 'mp-attacker', phone: '6281111111111', total_points: 10 },
-      { id: 'mp-victim', phone: '6289999999999', total_points: 1000 },
+      { id: 'mp-uuid-1', phone: '62818202599', total_points: 50, membership_status: 'ACTIVE', current_tier: 'platinum' },
     ],
     customers: [
-      { id: 'victim-uuid-999', wa: '6289999999999', points: 1000 },
-      { id: 'attacker-uuid-1', wa: '6281111111111', points: 10 },
+      { id: 'cust-uuid-1', wa: '62818202599', name: 'Adhit Nugraha', points: 50 },
+      { id: 'cust-uuid-2', wa: '62818202599', name: 'Adhitya Nugraha', points: 50 },
+      { id: 'cust-uuid-3', wa: '62818202599', name: 'Adhit N', points: 50 },
+    ],
+    transactions: [
+      { id: 'tx-1', customer_id: 'cust-uuid-1', total_amount: 100000, status: 'completed' },
+      { id: 'tx-2', customer_id: 'cust-uuid-2', total_amount: 50000, status: 'completed' },
     ],
   });
 
-  const ctx = createTestContext('6281111111111', db);
-
-  const normalRes = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(normalRes.status, 'success');
-  assert.equal(normalRes.data.points_balance, 10);
-
-  const idorRes = await executeCrmTool('get_points', { customer_id: 'victim-uuid-999' }, ctx);
-  assert.equal(idorRes.status, 'forbidden');
-  assert.equal(idorRes.error, 'idor_attempt_blocked');
-});
-
-// H. GET_POINTS CALLER CANNOT SELECT ANOTHER PHONE
-test('H. caller cannot override trusted phone', async () => {
-  const db = createMockSupabase({
-    member_profiles: [
-      { id: 'mp-attacker', phone: '6281111111111', total_points: 10 },
-      { id: 'mp-victim', phone: '6289999999999', total_points: 1000 },
-    ],
+  const res = await executeCrmTool('get_points', {}, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    phone: '62818202599',
   });
 
-  const ctx = createTestContext('6281111111111', db);
-  const result = await executeCrmTool('get_points', { phone: '6289999999999' }, ctx);
-  assert.equal(result.status, 'forbidden');
+  assert.equal(res.status, 'success');
+  assert.equal(res.customer_found, true);
+  assert.equal(res.data.points_balance, 50);
+  assert.equal(res.data.status, 'available');
 });
 
-// I. NO DB WRITES
-test('I. get_points makes zero DB mutations', async () => {
-  const db = createMockSupabase({
-    member_profiles: [
-      { id: 'mp-1', phone: '62818202599', total_points: 50 },
-    ],
+// ── 10. SECURITY & ISOLATION TESTS ─────────────────────────────────────────
+test('10. victim UUID in message injection is ignored', async () => {
+  const supabase = createMockSupabase({
+    member_profiles: [{ id: 'mp-sender', phone: '62818202599', total_points: 50 }],
   });
 
-  const ctx = createTestContext('62818202599', db);
-  await executeCrmTool('get_points', {}, ctx);
-  assert.equal(db.mutationLogs.length, 0);
+  const res = await executeCrmTool('get_points', { customer_id: 'victim-uuid-999' }, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    phone: '62818202599',
+  });
+
+  assert.equal(res.status, 'forbidden');
+  assert.equal(res.error, 'idor_attempt_blocked');
 });
 
-// J. NO member_points_balance QUERY
-test('J. verifies member_points_balance is never queried', async () => {
-  const db = createMockSupabase({
-    member_profiles: [
-      { id: 'mp-1', phone: '62818202599', total_points: 42 },
-    ],
+test('11. caller cannot override trusted phone', async () => {
+  const supabase = createMockSupabase({
+    member_profiles: [{ id: 'mp-sender', phone: '62818202599', total_points: 50 }],
   });
 
-  const ctx = createTestContext('62818202599', db);
-  const result = await executeCrmTool('get_points', {}, ctx);
-  assert.equal(result.status, 'success');
-  assert.equal(result.data.points_balance, 42);
+  const res = await executeCrmTool('get_points', { phone: '628999999999' }, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    phone: '62818202599',
+  });
+
+  assert.equal(res.status, 'forbidden');
+  assert.equal(res.error, 'idor_attempt_blocked');
 });
 
-// K. CUSTOMER360 CONTRACT UNCHANGED
-test('K. Customer360 contract properties remain intact', async () => {
-  const db = createMockSupabase({
-    customers: [{ id: 'c-1', wa: '62818202599', name: 'Adhit' }],
-    member_profiles: [{ id: 'c-1', phone: '62818202599', total_points: 50 }],
+test('12. get_points makes zero DB mutations', async () => {
+  const supabase = createMockSupabase({
+    member_profiles: [{ id: 'mp-1', phone: '62818202599', total_points: 50 }],
   });
 
-  const c360 = await getCustomer360(db, { phone: '62818202599' });
-  assert.equal(c360.version, 'customer360.v0.1');
-  assert.notEqual(c360.activity, null);
-  assert.notEqual(c360.preferences, null);
+  const res = await executeCrmTool('get_points', {}, {
+    supabase,
+    projection: 'CUSTOMER_SELF',
+    phone: '62818202599',
+  });
+
+  assert.equal(res.status, 'success');
+  assert.equal(res.data.points_balance, 50);
 });

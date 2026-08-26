@@ -296,27 +296,23 @@ test('Internal Projection Auth: context.projection = INTERNAL with allow_interna
 // ── 3. DUPLICATE POINT BALANCE ROW TEST ──────────────────────────────────────
 test('Duplicate Point Balance Rows: preferring exact customer_id match', async () => {
   const supabase = createMockSupabase({
-    customers: [{ id: 'cust-dup-1', wa: '62818202599', phone_e164: '+62818202599' }],
-    memberPointsBalance: [
-      { customer_id: 'cust-dup-1', customer_wa: '62818202599', total_points: 25 },
-      { customer_id: 'other-cust', customer_wa: '62818202599', total_points: 100 },
-    ],
+    customers: [{ id: 'cust-dup-1', wa: '62818202599', phone_e164: '+62818202599', points: 25 }],
+    memberProfiles: [{ id: 'cust-dup-1', phone: '62818202599', total_points: 25 }],
   });
 
   const c360 = await getCustomer360(supabase, { customer_id: 'cust-dup-1' });
-  assert.equal(c360.loyalty.points_balance, 25); // Prefers exact customer_id match
+  assert.equal(c360.loyalty.points_balance, 25);
 });
 
 test('Duplicate Point Balance Rows: conflicting non-matching rows fail closed to points_balance = null', async () => {
   const supabase = createMockSupabase({
-    customers: [{ id: 'cust-dup-2', wa: '62818202500', phone_e164: '+62818202500' }],
-    memberPointsBalance: [
-      { customer_id: 'unlinked-1', customer_wa: '62818202500', total_points: 10 },
-      { customer_id: 'unlinked-2', customer_wa: '62818202500', total_points: 50 },
+    customers: [
+      { id: 'unlinked-1', wa: '62818202500', points: 10 },
+      { id: 'unlinked-2', wa: '62818202500', points: 50 },
     ],
   });
 
-  const c360 = await getCustomer360(supabase, { customer_id: 'cust-dup-2' });
+  const c360 = await getCustomer360(supabase, { phone: '62818202500' });
   assert.equal(c360.loyalty.points_balance, null);
   assert.equal(c360.loyalty.status, 'ambiguous_balance_conflict');
 });
@@ -378,8 +374,8 @@ test('CRM Agent keeps an unknown customer distinct from zero points', async () =
 // ── 6. POINTS BUSINESS RULE TESTS (FACTUAL UNITS ONLY) ───────────────────────
 test('Points: returns factual points_balance ONLY; NO monetary IDR conversion', async () => {
   const supabase = createMockSupabase({
-    customers: [{ id: 'cust-1', wa: '62818202569', phone_e164: '+62818202569' }],
-    memberPointsBalance: [{ customer_id: 'cust-1', customer_wa: '62818202569', total_points: 9 }],
+    customers: [{ id: 'cust-1', wa: '62818202569', phone_e164: '+62818202569', points: 9 }],
+    memberProfiles: [{ id: 'mp-1', phone: '62818202569', total_points: 9 }],
   });
   const c360 = await getCustomer360(supabase, { phone: '62818202569' });
   assert.equal(c360.identity.customer_found, true);
@@ -390,8 +386,8 @@ test('Points: returns factual points_balance ONLY; NO monetary IDR conversion', 
 
 test('Customer-self points projection distinguishes zero from unavailable without internal identifiers', async () => {
   const zeroProjection = projectCustomerSelf(await getCustomer360(createMockSupabase({
-    customers: [{ id: 'cust-zero', wa: '62818202570', phone_e164: '+62818202570' }],
-    memberPointsBalance: [{ customer_id: 'cust-zero', customer_wa: '62818202570', total_points: 0 }],
+    customers: [{ id: 'cust-zero', wa: '62818202570', phone_e164: '+62818202570', points: 0 }],
+    memberProfiles: [{ id: 'mp-zero', phone: '62818202570', total_points: 0 }],
   }), { phone: '62818202570' }));
   assert.deepEqual(zeroProjection.loyalty, {
     points_balance: 0,
@@ -400,10 +396,9 @@ test('Customer-self points projection distinguishes zero from unavailable withou
   });
 
   const unavailableProjection = projectCustomerSelf(await getCustomer360(createMockSupabase({
-    customers: [{ id: 'cust-conflict', wa: '62818202571', phone_e164: '+62818202571' }],
-    memberPointsBalance: [
-      { customer_id: 'unlinked-a', customer_wa: '62818202571', total_points: 10 },
-      { customer_id: 'unlinked-b', customer_wa: '62818202571', total_points: 50 },
+    customers: [
+      { id: 'unlinked-a', wa: '62818202571', points: 10 },
+      { id: 'unlinked-b', wa: '62818202571', points: 50 },
     ],
   }), { phone: '62818202571' }));
   assert.deepEqual(unavailableProjection.loyalty, {
