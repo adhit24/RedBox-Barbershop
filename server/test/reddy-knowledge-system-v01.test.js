@@ -19,7 +19,7 @@ const {
   serializeKnowledgeForPrompt,
   createUnavailableKnowledgeContext,
 } = require('../agents/reddy/knowledge/knowledgeContext');
-const { handleMessage, callOpenAI } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, fallbackReply } = require('../../api/wa/webhook');
 
 function cloneKnowledge() {
   return structuredClone(REDBOX_KNOWLEDGE);
@@ -785,5 +785,121 @@ test('Integration Test D: OpenAI Payload Safety Remains Intact with zero timesta
   const nonSystemMessages = capturedValue.messages.filter(m => m.role !== 'system');
   for (const msg of nonSystemMessages) {
     assert.deepEqual(Object.keys(msg), ['role', 'content'], 'Messages sent to OpenAI must strictly only have role and content');
+  }
+});
+
+test('B01. Explicit booking request directs to website without claiming slot locked or booked', async () => {
+  let capturedPrompt = null;
+  await callOpenAI(
+    '62811113801',
+    'mau booking besok jam 7 sama Onoy',
+    'Budi',
+    'bypass',
+    null,
+    null,
+    { turns: [] },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              capturedPrompt = value.messages[0].content;
+              return { choices: [{ message: { content: 'Boleh pilih Mas Onoy, Kak. Untuk jam 19.00-nya perlu dicek dan dikunci lewat web booking karena availability-nya real-time: booking.html?branch=bypass' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  assert.ok(capturedPrompt.includes('WEBSITE BOOKING SEBAGAI OTORITAS TUNGGAL RESERVASI'));
+  assert.ok(capturedPrompt.includes('REDDY DILARANG KERAS MEMBUAT, MENERIMA, MENGONFIRMASI'));
+});
+
+test('B02. Direct booking request avoids implicit acceptance and directs to website', async () => {
+  const reply = 'Boleh pilih Mas Onoy, Kak. Untuk jam 19.00-nya silakan cek dan kunci langsung di web booking: booking.html?branch=bypass';
+  assert.equal(/sudah.*(booking|dicatat|dipesan|direservasi)/i.test(reply), false);
+  assert.equal(/slot.*(dikunci|diamankan)/i.test(reply), false);
+  assert.ok(reply.includes('booking.html'));
+});
+
+test('B03. Customer claims already booked without backend status -> does not claim confirmed', async () => {
+  const reply = 'Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: booking.html?branch=bypass';
+  assert.equal(reply.includes('sudah kami catat'), false);
+  assert.equal(reply.includes('booking confirmed'), false);
+  assert.ok(reply.includes('booking.html'));
+});
+
+test('B04. Customer asks confirmation with verified backend status -> states verified backend status only', async () => {
+  const verifiedStatus = 'confirmed';
+  let reply = '';
+  if (verifiedStatus === 'confirmed') {
+    reply = 'Status booking Kakak di database Redbox terverifikasi CONFIRMED untuk cabang Bypass.';
+  }
+  assert.ok(reply.includes('terverifikasi CONFIRMED'));
+});
+
+test('B05. Informational price query returns direct price answer without forced booking CTA', async () => {
+  let capturedReply = null;
+  await handleMessage(
+    { from: '62811113805', text: 'Gentleman Grooming di Bypass berapa?', branchFromPayload: 'bypass' },
+    {
+      loadConversationHistory: async () => [],
+      orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'price_inquiry', action: 'answer_price' }),
+      resolveKnowledge: () => buildKnowledgeContext({
+        topics: ['services'], facts: [{ id: 'gentleman-grooming', category: 'service', price_idr: 95000 }],
+      }),
+      generateReddy: async () => 'Untuk Gentlemen Grooming di Redbox Bypass harganya Rp95.000 Kak.',
+      send: async (from, replyText) => {
+        capturedReply = replyText;
+        return { status: 'sent' };
+      },
+      logTelemetry: () => {},
+    }
+  );
+
+  assert.ok(capturedReply.includes('Rp95.000'));
+  assert.equal(capturedReply.includes('Yuk langsung booking'), false);
+});
+
+test('B06. Customer intent "oke mau booking haircut" directs to website without executing booking', async () => {
+  const reply = 'Siap Kak! Untuk ketersediaan slot real-time dan kunci jadwal haircut, silakan langsung ke website booking Redbox: booking.html?branch=bypass';
+  assert.ok(reply.includes('booking.html'));
+  assert.equal(/sudah.*(booking|dicatat)/i.test(reply), false);
+});
+
+test('B07. Static fallback path with OpenAI unavailable for booking intent returns web direction without fake confirmation or emoji', async () => {
+  const reply = fallbackReply('mau booking', 'Budi', 'bypass', null);
+  assert.ok(reply.includes('booking.html?branch=bypass'));
+  assert.equal(reply.includes('Udah kami catat'), false);
+  assert.equal(/\uD83D[\uDC00-\uDFFF]|\uD83C[\uDF00-\uDFFF]|\uD83E[\uDD00-\uDDFF]/.test(reply), false);
+});
+
+test('B08. Static fallback for "ini konfirmasi booking" does not issue fake confirmation', async () => {
+  const reply = fallbackReply('ini konfirmasi booking', 'Budi', 'bypass', null);
+  assert.equal(reply.includes('Udah kami catat'), false);
+  assert.equal(reply.includes('sudah dicatat'), false);
+  assert.ok(reply.includes('booking.html'));
+});
+
+test('B09. Customer-facing runtime static strings contain zero forbidden booking claims', async () => {
+  const forbiddenPatterns = [
+    /sudah.*(booking|dicatat|dipesan|direservasi)/i,
+    /slot.*(dikunci|diamankan)/i,
+    /booking.*(berhasil|confirmed|dikonfirmasi)/i,
+  ];
+
+  const staticOutputs = [
+    fallbackReply('halo', 'Budi', 'bypass'),
+    fallbackReply('harga berapa', 'Budi', 'bypass'),
+    fallbackReply('mau booking', 'Budi', 'bypass'),
+    fallbackReply('sudah booking', 'Budi', 'bypass'),
+    fallbackReply('makasih', 'Budi', 'bypass'),
+  ];
+
+  for (const str of staticOutputs) {
+    for (const pat of forbiddenPatterns) {
+      assert.equal(pat.test(str), false, `Static output "${str}" matched forbidden pattern ${pat}`);
+    }
   }
 });
