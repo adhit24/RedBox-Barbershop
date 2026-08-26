@@ -7,7 +7,7 @@ const { resolveCustomerIdentity } = require('../crm/customerIdentity');
 const { getCustomer360 } = require('../crm/customer360Service');
 const { executeCrmTool } = require('../agents/crm/crmAgent');
 const { executeCustomerIntelligence } = require('../orchestrator/executionService');
-const { issueTrustedIdentity, TRUSTED_SOURCES } = require('../identity/trustedIdentity');
+const { issueTrustedIdentity } = require('../identity/trustedIdentity');
 const { handleMessage } = require('../../api/wa/webhook');
 
 // Mock Supabase client for production-shaped alias resolution testing
@@ -151,13 +151,8 @@ test('Task 11.1 REGRESSION FIXTURE: resolves customer_history across legacy cust
   const historyData = res.intelligence.facts;
   assert.ok(historyData, 'History facts should exist');
 
-  // Aggregated transaction count: 6 (from cust-id-A) + 3 (from cust-id-B) = 9
   assert.equal(historyData.completed_transaction_count, 9);
-
-  // Aggregated booking count: 2 (from bk-1 and bk-2)
   assert.equal(historyData.completed_booking_count, 2);
-
-  // Last visit is latest event across all aliases: booking on 2026-08-25 vs tx on 2026-08-20 -> 2026-08-25
   assert.equal(historyData.last_visit, '2026-08-25');
 
   // Security: No alias customer IDs exposed in payload
@@ -167,7 +162,144 @@ test('Task 11.1 REGRESSION FIXTURE: resolves customer_history across legacy cust
   assert.equal(jsonStr.includes('cust-id-C'), false, 'cust-id-C must not leak');
 });
 
-test('Task 11.1 SECURITY NEGATIVE A: does NOT merge customers with same name but DIFFERENT phone numbers', async () => {
+test('Task 11.1 BLOCKER 1: customer_id namespace invariant (member_profiles.id NEVER in customer_id or alias_customer_ids)', async () => {
+  const supabase = createMockSupabaseFixture();
+  const identity = await resolveCustomerIdentity(supabase, { phone: '6281311112222' });
+
+  assert.equal(identity.found, true);
+  assert.equal(identity.customer_id, 'cust-id-A');
+  assert.deepEqual(identity.alias_customer_ids, ['cust-id-A', 'cust-id-B', 'cust-id-C']);
+  assert.equal(identity.alias_customer_ids.includes('prof-id-1'), false, 'member_profiles.id prof-id-1 must NEVER be in alias_customer_ids');
+  assert.notEqual(identity.customer_id, 'prof-id-1', 'customer_id must NEVER be member_profiles.id prof-id-1');
+});
+
+test('Task 11.1 BLOCKER 1: member-profile-only behavior (0 customers rows -> customer_id: null, alias_customer_ids: [])', async () => {
+  const supabase = {
+    from(table) {
+      return {
+        select() {
+          return {
+            or: async () => {
+              if (table === 'member_profiles') {
+                return {
+                  data: [{ id: 'prof-only-123', user_key: 'ukey-only', phone: '+6281311112222', total_points: 200 }],
+                  error: null,
+                };
+              }
+              if (table === 'customers') {
+                return { data: [], error: null };
+              }
+              return { data: [], error: null };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const identity = await resolveCustomerIdentity(supabase, { phone: '6281311112222' });
+  assert.equal(identity.found, true);
+  assert.equal(identity.customer_id, null, 'member-profile-only path must have customer_id = null');
+  assert.deepEqual(identity.alias_customer_ids, [], 'member-profile-only path must have alias_customer_ids = []');
+  assert.equal(identity.resolution, 'member_profile_match');
+  assert.equal(identity.member_profile_row.id, 'prof-only-123');
+});
+
+test('Task 11.1 DUAL CLAIM: valid dual claim for customer_id in cluster succeeds', async () => {
+  const supabase = createMockSupabaseFixture();
+
+  const identity = await resolveCustomerIdentity(supabase, {
+    phone: '6281311112222',
+    customer_id: 'cust-id-B', // Belongs strictly to valid alias cluster for 6281311112222
+  });
+
+  assert.equal(identity.found, true);
+  assert.equal(identity.customer_id, 'cust-id-A');
+  assert.deepEqual(identity.alias_customer_ids, ['cust-id-A', 'cust-id-B', 'cust-id-C']);
+});
+
+test('Task 11.1 DUAL CLAIM: invalid dual claim (member_profiles.id or un-clustered ID) fails closed', async () => {
+  const supabase = createMockSupabaseFixture();
+
+  // Attempt 1: Using member_profiles.id prof-id-1 as customer_id -> FAIL CLOSED
+  const identity1 = await resolveCustomerIdentity(supabase, {
+    phone: '6281311112222',
+    customer_id: 'prof-id-1',
+  });
+  assert.equal(identity1.found, false);
+  assert.equal(identity1.resolution, 'ambiguous');
+  assert.equal(identity1.reason, 'dual_claim_conflict');
+
+  // Attempt 2: Using un-clustered customer ID -> FAIL CLOSED
+  const identity2 = await resolveCustomerIdentity(supabase, {
+    phone: '6281311112222',
+    customer_id: 'a0000000-0000-4000-8000-000000000099',
+  });
+  assert.equal(identity2.found, false);
+  assert.equal(identity2.resolution, 'ambiguous');
+  assert.equal(identity2.reason, 'dual_claim_conflict');
+});
+
+test('Task 11.1 BLOCKER 2: conflicting wa / phone_e164 in single customer row fails closed', async () => {
+  const supabase = {
+    from(table) {
+      return {
+        select() {
+          return {
+            or: async () => {
+              if (table === 'customers') {
+                return {
+                  data: [
+                    { id: 'c-conflict', name: 'Conflicting Row', wa: '6281311112222', phone_e164: '+6289999999999' },
+                  ],
+                  error: null,
+                };
+              }
+              return { data: [], error: null };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const identity = await resolveCustomerIdentity(supabase, { phone: '6281311112222' });
+  assert.equal(identity.found, false);
+  assert.equal(identity.resolution, 'ambiguous');
+  assert.equal(identity.reason, 'conflicting_customer_phones');
+});
+
+test('Task 11.1 BLOCKER 2: equivalent phone formats in wa and phone_e164 resolve safely', async () => {
+  const supabase = {
+    from(table) {
+      return {
+        select() {
+          return {
+            or: async () => {
+              if (table === 'customers') {
+                return {
+                  data: [
+                    { id: 'c-eq', name: 'Equivalent Formats', wa: '081311112222', phone_e164: '+6281311112222' },
+                  ],
+                  error: null,
+                };
+              }
+              return { data: [], error: null };
+            },
+          };
+        },
+      };
+    },
+  };
+
+  const identity = await resolveCustomerIdentity(supabase, { phone: '6281311112222' });
+  assert.equal(identity.found, true);
+  assert.equal(identity.customer_id, 'c-eq');
+  assert.deepEqual(identity.alias_customer_ids, ['c-eq']);
+  assert.equal(identity.resolution, 'phone_match');
+});
+
+test('Task 11.1 SECURITY NEGATIVE A: candidate customer row with conflicting phone fails closed', async () => {
   const supabase = {
     from(table) {
       return {
@@ -192,10 +324,10 @@ test('Task 11.1 SECURITY NEGATIVE A: does NOT merge customers with same name but
   };
 
   const identity = await resolveCustomerIdentity(supabase, { phone: '6281311112222' });
-  // Candidate c2 normalizes to a DIFFERENT phone (6289999999999), so it MUST NOT be merged into 6281311112222 cluster
-  assert.equal(identity.found, true);
-  assert.equal(identity.customer_id, 'c1');
-  assert.deepEqual(identity.alias_customer_ids, ['c1']);
+  // c2 normalizes to 6289999999999 !== 6281311112222, so returned candidate set has conflicting phone -> fails closed
+  assert.equal(identity.found, false);
+  assert.equal(identity.resolution, 'ambiguous');
+  assert.equal(identity.reason, 'conflicting_customer_phones');
 });
 
 test('Task 11.1 SECURITY NEGATIVE B: fails closed as ambiguous when same phone has TWO member_profiles', async () => {

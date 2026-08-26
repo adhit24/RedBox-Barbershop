@@ -154,19 +154,58 @@ async function resolveCustomerIdentity(supabase, input = {}) {
 
   const rawCandidateRows = Array.isArray(customerRows) ? customerRows : [];
 
-  // Filter candidates to ensure EVERY customer row independently normalizes to the SAME canonical phone
-  const candidateRows = rawCandidateRows.filter(r => {
-    const norm = normalizeMemberPhone(r.wa || r.phone_e164);
-    return norm === canonical;
-  });
+  // Filter & validate candidates: BOTH wa and phone_e164 (if populated) must independently normalize to canonical phone
+  const candidateRows = [];
+  for (const r of rawCandidateRows) {
+    const hasWa = typeof r.wa === 'string' && r.wa.trim().length > 0;
+    const hasE164 = typeof r.phone_e164 === 'string' && r.phone_e164.trim().length > 0;
 
+    if (!hasWa && !hasE164) {
+      continue;
+    }
+
+    const normWa = hasWa ? normalizeMemberPhone(r.wa) : null;
+    const normE164 = hasE164 ? normalizeMemberPhone(r.phone_e164) : null;
+
+    if (hasWa && hasE164) {
+      if (normWa !== normE164 || normWa !== canonical || normE164 !== canonical) {
+        return {
+          found: false,
+          customer_id: null,
+          resolution: 'ambiguous',
+          reason: 'conflicting_customer_phones',
+        };
+      }
+    } else if (hasWa) {
+      if (normWa !== canonical) {
+        return {
+          found: false,
+          customer_id: null,
+          resolution: 'ambiguous',
+          reason: 'conflicting_customer_phones',
+        };
+      }
+    } else if (hasE164) {
+      if (normE164 !== canonical) {
+        return {
+          found: false,
+          customer_id: null,
+          resolution: 'ambiguous',
+          reason: 'conflicting_customer_phones',
+        };
+      }
+    }
+
+    candidateRows.push(r);
+  }
+
+  // Collect candidate customer IDs ONLY from `customers` table
   const aliasCustomerIds = Array.from(new Set(candidateRows.map(r => r.id).filter(Boolean)));
 
-  // If dual claim provided (both phone AND customer_id), verify customer_id belongs to this phone cluster!
+  // If dual claim provided (both phone AND customer_id), verify customer_id belongs strictly to customers.id[] in this cluster!
   if (cleanId) {
-    const matchesProfileId = memberProfileRow && String(memberProfileRow.id).trim() === cleanId;
     const matchesAliasId = aliasCustomerIds.includes(cleanId);
-    if (!matchesProfileId && !matchesAliasId) {
+    if (!matchesAliasId) {
       return {
         found: false,
         customer_id: null,
@@ -176,12 +215,13 @@ async function resolveCustomerIdentity(supabase, input = {}) {
     }
   }
 
+  // Member-profile-only path: NO customers table rows found
   if (candidateRows.length === 0) {
     if (memberProfileRow) {
       return {
         found: true,
-        customer_id: memberProfileRow.id || null,
-        alias_customer_ids: memberProfileRow.id ? [memberProfileRow.id] : [],
+        customer_id: null, // member_profiles.id MUST NEVER be customer_id!
+        alias_customer_ids: [], // member_profiles.id MUST NEVER be in alias_customer_ids!
         user_key: memberProfileRow.user_key || null,
         canonical_phone: canonical,
         phone_e164: `+${canonical}`,
@@ -208,8 +248,8 @@ async function resolveCustomerIdentity(supabase, input = {}) {
 
   return {
     found: true,
-    customer_id: memberProfileRow?.id || merged.id || null,
-    alias_customer_ids: aliasCustomerIds,
+    customer_id: merged.id || null, // customer_id comes STRICTLY from customers.id ONLY
+    alias_customer_ids: aliasCustomerIds, // alias_customer_ids comes STRICTLY from customers.id[] ONLY
     canonical_phone: canonical,
     phone_e164: merged.phone_e164 || `+${canonical}`,
     resolution: 'phone_match',
