@@ -8,13 +8,6 @@ const { serializeKnowledgeForPrompt } = require('./knowledge/knowledgeContext');
  * Adapts AI Orchestrator route decision ("reddy_agent") to existing Reddy conversation execution.
  */
 
-/**
- * Executes Reddy conversational generation for an orchestrated message with optional CRM runtime facts injection
- * and conversation context continuity.
- * @param {object} params - Input parameters { from, name, text, device, branch, trustedIdentity, knowledgeContext, customerIntelligence, conversationContext }
- * @param {object} dependencies - Dependencies { callOpenAI, sendWA }
- * @returns {Promise<object>} Execution result { used: 'reddy_agent', reply, sendResult, error }
- */
 async function executeReddyAgent(params = {}, dependencies = {}) {
   const {
     from,
@@ -35,7 +28,15 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   if (customerIntelligence) {
     factsContext = buildCustomerFactsContext(customerIntelligence);
   }
-  const knowledgeFactsContext = knowledgeContext ? serializeKnowledgeForPrompt(knowledgeContext) : null;
+
+  let knowledgeFactsContext = knowledgeContext?.knowledgeFactsContext || null;
+  if (!knowledgeFactsContext && knowledgeContext) {
+    if (typeof knowledgeContext === 'string') {
+      knowledgeFactsContext = knowledgeContext;
+    } else {
+      knowledgeFactsContext = serializeKnowledgeForPrompt(knowledgeContext);
+    }
+  }
 
   let reply;
   let used = 'reddy_agent';
@@ -45,7 +46,11 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || null;
 
   try {
-    reply = await callOpenAI(from, text, verifiedCrmName, branch, knowledgeFactsContext, factsContext, conversationContext);
+    if (knowledgeFactsContext) {
+      reply = await callOpenAI(from, text, verifiedCrmName, branch, knowledgeFactsContext, factsContext, conversationContext);
+    } else {
+      reply = await callOpenAI(from, text, verifiedCrmName, branch, factsContext, conversationContext);
+    }
   } catch (err) {
     throw err;
   }

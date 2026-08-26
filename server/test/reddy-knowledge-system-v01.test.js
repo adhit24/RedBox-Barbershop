@@ -671,3 +671,119 @@ test('runtime telemetry emits only bounded knowledge metadata, never fact values
   assert.equal(JSON.stringify(events[0]).includes('110000'), false);
   assert.equal(JSON.stringify(events[0]).includes('internal_note'), false);
 });
+
+test('Integration Test A: Knowledge + Personality Coexistence in system prompt', async () => {
+  let capturedValue = null;
+  const knowledgeFactsContext = serializeKnowledgeForPrompt(buildKnowledgeContext({
+    topics: ['services'], facts: [{ id: 'gentleman-grooming', price_idr: 95000 }],
+  }));
+
+  await callOpenAI(
+    '62811113099',
+    'Berapa harga Gentleman Grooming?',
+    'Adhit',
+    'bypass',
+    knowledgeFactsContext,
+    null,
+    { turns: [{ role: 'user', content: 'Halo' }, { role: 'assistant', content: 'Halo Kak Adhit!' }] },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              capturedValue = value;
+              return { choices: [{ message: { content: 'Rp95.000 kak.' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  const sysPrompt = capturedValue.messages[0].content;
+  assert.ok(sysPrompt.includes('PEDOMAN BEHAVIORAL'), 'Must contain Task 13.5 personality section');
+  assert.ok(sysPrompt.includes('# ZONA B1'), 'Must contain Task 13 verified knowledge section');
+  assert.ok(sysPrompt.includes('<redbox_knowledge_json>'), 'Must contain redbox_knowledge_json tag');
+});
+
+test('Integration Test B: Complaint / Wait + Knowledge Coexistence', async () => {
+  const result = await handleMessage({
+    from: '62811113098', name: 'Budi', text: 'kemarin antri lama banget di bypass', branchFromPayload: 'bypass'
+  });
+
+  assert.equal(result.used, 'keyword');
+  assert.ok(result.reply.includes('Maaf ya Kak'), 'Must express empathy');
+  assert.equal(/\uD83D[\uDC00-\uDFFF]|\uD83C[\uDF00-\uDFFF]|\uD83E[\uDD00-\uDDFF]/.test(result.reply), false, 'Must contain 0 emojis');
+});
+
+test('Integration Test C: CRM + Knowledge Coexistence without overriding each other', async () => {
+  let capturedValue = null;
+  const knowledgeFactsContext = serializeKnowledgeForPrompt(buildKnowledgeContext({
+    topics: ['services'], facts: [{ id: 'hair-spa', price_idr: 110000 }],
+  }));
+  const customerFactsContext = '<customer_facts_json>{"name":"Adhit","favorite_barber":"Budi"}</customer_facts_json>';
+
+  await callOpenAI(
+    '62811113097',
+    'Hair Spa berapa?',
+    'Adhit',
+    'bypass',
+    knowledgeFactsContext,
+    customerFactsContext,
+    { turns: [] },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              capturedValue = value;
+              return { choices: [{ message: { content: 'Hair Spa Rp110.000 Kak.' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  const sysPrompt = capturedValue.messages[0].content;
+  assert.ok(sysPrompt.includes('# ZONA B1'), 'Must include Zone B1 Knowledge');
+  assert.ok(sysPrompt.includes('# ZONA B2'), 'Must include Zone B2 CRM Facts');
+  assert.ok(sysPrompt.includes('<redbox_knowledge_json>'), 'Must include knowledge JSON');
+  assert.ok(sysPrompt.includes('<customer_facts_json>'), 'Must include CRM JSON');
+});
+
+test('Integration Test D: OpenAI Payload Safety Remains Intact with zero timestamp leak', async () => {
+  let capturedValue = null;
+
+  await callOpenAI(
+    '62811113096',
+    'Mau cukur lagi',
+    'Adhit',
+    'bypass',
+    null,
+    null,
+    {
+      turns: [
+        { role: 'user', content: 'Halo', timestamp: '2026-08-27T01:00:00Z' },
+        { role: 'assistant', content: 'Halo Kak!', timestamp: '2026-08-27T01:00:05Z' }
+      ]
+    },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              capturedValue = value;
+              return { choices: [{ message: { content: 'Siap Kak!' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  const nonSystemMessages = capturedValue.messages.filter(m => m.role !== 'system');
+  for (const msg of nonSystemMessages) {
+    assert.deepEqual(Object.keys(msg), ['role', 'content'], 'Messages sent to OpenAI must strictly only have role and content');
+  }
+});

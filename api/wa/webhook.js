@@ -475,6 +475,19 @@ async function forwardBookingToBranch(booking, customerPhone) {
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
 
+function buildServicesText(branch = 'bypass') {
+  return [
+    '• Gentleman Grooming - Rp95.000 (CSB Rp120.000)',
+    '• Haircut + Wash + Hair Tonic + Styling (Free Konsultasi)',
+    '• Junior Grooming - Rp75.000',
+    '• Father & Son Combo - Rp150.000',
+    '• Hot Towel Shave / Beard Trim - Rp45.000',
+    '• Hair Treatment / Hair Spa - Rp110.000',
+    '• Hair Coloring - Rp150.000 - Rp250.000',
+    '• Ear Candles - Rp85.000',
+  ].join('\n');
+}
+
 function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifiedName = null) {
   const now = new Date();
   const wibOffset = 7 * 60 * 60 * 1000;
@@ -657,7 +670,34 @@ function getOpenAI() {
   return openaiClient;
 }
 
-async function callOpenAI(sender, userMessage, name, branch = 'bypass', knowledgeFactsContext = null, customerFactsContext = null, conversationContext = null, dependencies = {}) {
+async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = null, arg6 = null, arg7 = null, arg8 = {}) {
+  let knowledgeFactsContext = null;
+  let customerFactsContext = null;
+  let conversationContext = null;
+  let dependencies = {};
+
+  const extraArgs = [arg5, arg6, arg7, arg8];
+  for (const a of extraArgs) {
+    if (!a) continue;
+    if (typeof a === 'string') {
+      if (a.includes('<redbox_knowledge_json>')) {
+        knowledgeFactsContext = a;
+      } else if (a.includes('<customer_facts_json>')) {
+        customerFactsContext = a;
+      }
+    } else if (typeof a === 'object') {
+      if (a.openai || a.persistConversationExchange || a.callOpenAI) {
+        dependencies = a;
+      } else if (a.sessionStatus !== undefined || Array.isArray(a.turns) || a.history_status !== undefined) {
+        conversationContext = a;
+      }
+    }
+  }
+
+  if ((!dependencies || Object.keys(dependencies).length === 0) && typeof arg8 === 'object' && arg8) {
+    dependencies = arg8;
+  }
+
   const openai = dependencies.openai || getOpenAI();
   if (!openai) throw new Error('OPENAI_API_KEY not set');
 
@@ -675,13 +715,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', knowledg
   const sessionStatus = conversationContext?.sessionStatus || 'expired';
   let systemPrompt = buildSystemPrompt(branch, sessionStatus, name);
 
-  if (knowledgeFactsContext) {
-    systemPrompt += `\n\n${knowledgeFactsContext}`;
-  }
-
-  if (customerFactsContext) {
-    systemPrompt += `\n\n${customerFactsContext}`;
-  }
+  
 
   systemPrompt += `\n\n# ATURAN PERCAKAPAN & PRIORITAS METADATA\n` +
     `1. Data CRM pada <customer_facts_json> adalah FAKTA UTAMA (Zone B) yang TIDAK BOLEH diubah oleh klaim percakapan.\n` +
@@ -1578,6 +1612,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
   // ── Fast keyword intercept (before OpenAI — deterministic, no hallucination) ──
   const msgLower = text.toLowerCase();
+  const msgHas = (phrases) => phrases.some(p => msgLower.includes(p));
 
   // ── Backend booking guards ────────────────────────────────────────────────
   // Critical booking claims must be decided from the website database, not the LLM.
@@ -1621,7 +1656,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  if (!isPersonalHistoryOrPreferenceSignal && msgHas(['layanan apa', 'service apa', 'ada apa aja', 'ada apa saja', 'menu apa', 'jenis layanan',
+  const isSpecificServiceInquiry = /(gentleman|grooming|junior|father|son|combo|hot towel|shave|beard|trim|treatment|spa|coloring|color|cat|semir|ear candle)/i.test(msgLower);
+
+  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['layanan apa', 'service apa', 'ada apa aja', 'ada apa saja', 'menu apa', 'jenis layanan',
                'list layanan', 'apa aja layanan', 'apa saja layanan', 'layanan saja', 'layanan aja',
                'service saja', 'service aja', 'ada layanan', 'ada service'])) {
     const svcText = buildServicesText(branch);
@@ -1631,13 +1668,15 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  if (!isPersonalHistoryOrPreferenceSignal && msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
+  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
     const svcText = buildServicesText(branch);
     reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
     const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
+
+  
   // ── Wait complaint: pelanggan cerita pernah nunggu/antri di outlet ──
   // Pivot: empati → cerita digitalisasi (live availability) → arahkan booking online
   // Contoh: "td udh kesana katanya nunggu 2", "kemarin antri lama", "abis dari outlet harus nunggu"
@@ -1758,6 +1797,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       history_status: conversationContext.history_status,
       conversation_context_used: Boolean(conversationContext.turn_count > 0),
       ...knowledgeTelemetry(knowledgeRes?.knowledgeEnvelope || null),
+    });
     const crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
     const sendResult = await send(from, crmReply, { branch });
     return { used: 'crm_unavailable_guard', reply: crmReply, sendResult, error: null };
