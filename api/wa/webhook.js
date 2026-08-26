@@ -16,6 +16,9 @@ const {
 const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
 const { classifyDeterministically } = require('../../server/orchestrator/routingPolicy');
 const executionService = require('../../server/orchestrator/executionService');
+const { orchestrateMessage } = require('../../server/orchestrator/orchestratorService');
+const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
+const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
 const {
   issueAuthenticatedWhatsappEvent,
   adaptAuthenticatedWhatsappEvent,
@@ -1358,11 +1361,27 @@ function extractForeignKapster(text, branch = 'bypass') {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null }) {
+async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null }, deps = {}) {
+  const {
+    orchestrate = orchestrateMessage,
+    executeReddy = executeReddyAgent,
+    executeOrchestration = executionService.executeOrchestration,
+    send = sendWA,
+    generateReddy = callOpenAI,
+    logTelemetry = logOrchestratedEvent,
+    setHumanTakeover = setHumanTakeoverLocal,
+    persistHumanHandoff = persistHumanTakeover,
+  } = deps;
+
+  let branch = branchFromPayload;
+  if (!branch) {
+    branch = detectBranchFromNumber(receiver || device || from);
+  }
+  console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
+
   const classification = classifyDeterministically(text);
   if (classification && classification.intent === 'points_inquiry') {
-    const branch = branchFromPayload || detectBranchFromNumber(receiver || device || from);
-    const orchResult = await executionService.executeOrchestration(
+    const orchResult = await executeOrchestration(
       {
         intent: 'points_inquiry',
         route: 'crm_agent',
@@ -1384,19 +1403,23 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     } else {
       pointsReply = 'Halo kak! Saat ini sistem poin sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi ya!';
     }
-    const sendResult = await sendWA(from, pointsReply, { branch });
+    logTelemetry({
+      route: 'crm_agent',
+      agent: 'crm_agent',
+      intent: 'points_inquiry',
+      action: 'get_points',
+      confidence: 1.0,
+      model_tier: 'none',
+      fallback_used: false,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+    const sendResult = await send(from, pointsReply, { branch });
     return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
   }
   let reply;
   let used = 'openai';
   let error = null;
-
-  // Detect branch from branchFromPayload (deep scan) first, then receiver, then device, then from
-  let branch = branchFromPayload;
-  if (!branch) {
-    branch = detectBranchFromNumber(receiver || device || from);
-  }
-  console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
 
   // ── Foreign customer check — intercept before OpenAI ──
   // If active foreign session exists, continue it
@@ -1405,7 +1428,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     console.log('[WA Bot] Foreign session active:', { language: existingForeignSession.language });
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
-      const sendResult = await sendWA(from, result.reply, { branch });
+      const sendResult = await send(from, result.reply, { branch });
       return { used: result.used, reply: result.reply, sendResult, error: null };
     }
   }
@@ -1415,7 +1438,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     console.log('[WA Bot] Foreign language detected; starting foreign booking flow');
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
-      const sendResult = await sendWA(from, result.reply, { branch });
+      const sendResult = await send(from, result.reply, { branch });
       return { used: result.used, reply: result.reply, sendResult, error: null };
     }
   }
@@ -1434,14 +1457,14 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   if (isHomeService) {
     reply = 'Untuk home service, booking-nya lewat halaman khusus ya kak 😊 redboxbarbershop.com/home-service.html';
     used = 'policy';
-    const sendResult = await sendWA(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
 
   if (isWedding && /\b(h-?2|2\s*hari|besok|lusa|tomorrow|day after tomorrow)\b/.test(msgLower)) {
     reply = 'Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.';
     used = 'policy';
-    const sendResult = await sendWA(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
 
@@ -1453,14 +1476,14 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       reply = `Siap kak. Biar slot dan jamnya aman, cek atau buat booking dulu di ${bookingUrl(branch)} ya ✂️`;
     }
     used = 'policy';
-    const sendResult = await sendWA(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
 
   if (isWalkIn) {
     reply = `Boleh coba datang langsung kak, tapi slot walk-in belum tentu tersedia ya 😊 Biar lebih aman, cek dan booking lewat ${bookingUrl(branch)}`;
     used = 'policy';
-    const sendResult = await sendWA(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
 
@@ -1471,7 +1494,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     const svcText = buildServicesText(branch);
     reply = `Ini layanan lengkap RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nAda yang mau dicoba, ${firstName}? Langsung book di: ${bookingUrl(branch)} ✂️`;
     used = 'keyword';
-    const sendResult = await sendWA(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
 
@@ -1479,7 +1502,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     const svcText = buildServicesText(branch);
     reply = `Ini harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nMau langsung lock slot? → ${bookingUrl(branch)} ✂️`;
     used = 'keyword';
-    const sendResult = await sendWA(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
 
@@ -1496,12 +1519,113 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       `Jadi kakak tinggal pilih jam yang available, slot terjamin tercatat di sistem tanpa perlu menebak-nebak antrian.\n\n` +
       `Lock jadwalnya di sini ya kak → ${bookingUrl(branch)} ✂️`;
     used = 'keyword';
-    const sendResult = await sendWA(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
 
+  // ── Central AI Orchestrator Execution (Task 10) ──
+  const orchStart = Date.now();
+  let orchDecision = null;
   try {
-    reply = await callOpenAI(from, text, name, branch);
+    orchDecision = await orchestrate({
+      message: text,
+      channel: 'whatsapp',
+      branch,
+      trustedIdentity,
+    });
+  } catch (err) {
+    console.warn('[WA Bot] Orchestrator exception:', err.message);
+  }
+  const latencyMs = Date.now() - orchStart;
+
+  // Handle Human Handoff Route
+  if (orchDecision && (orchDecision.route === 'human' || orchDecision.agent === 'human' || orchDecision.intent === 'human_request' || orchDecision.intent === 'complaint')) {
+    setHumanTakeover(from);
+    persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
+    logTelemetry({
+      ...orchDecision,
+      fallback_used: Boolean(orchDecision.fallback_used),
+      fallback_reason: orchDecision.fallback_reason || null,
+      latency_ms: latencyMs,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+    const handoffReply = 'Pesan Kakak sudah kami teruskan ke admin cabang RedBox. Mohon tunggu sebentar ya, admin akan segera membalas 🙏';
+    const sendResult = await send(from, handoffReply, { branch });
+    return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+  }
+
+  // Handle Private CRM Agent Routes
+  if (orchDecision && (orchDecision.route === 'crm_agent' || orchDecision.agent === 'crm_agent')) {
+    logTelemetry({
+      ...orchDecision,
+      fallback_used: Boolean(orchDecision.fallback_used),
+      fallback_reason: orchDecision.fallback_reason || null,
+      latency_ms: latencyMs,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+
+    let crmReply;
+    if (!trustedIdentity) {
+      crmReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+    } else {
+      crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
+    }
+    const sendResult = await send(from, crmReply, { branch });
+    return { used: trustedIdentity ? 'crm_unavailable_guard' : 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
+  }
+
+  // Handle Orchestrated Reddy Agent Route
+  if (orchDecision && (orchDecision.route === 'reddy_agent' || orchDecision.agent === 'reddy_agent')) {
+    try {
+      const reddyExec = await executeReddy({
+        from, name, text, device, branch, trustedIdentity,
+      }, {
+        callOpenAI: generateReddy, sendWA: send,
+      });
+      logTelemetry({
+        ...orchDecision,
+        fallback_used: Boolean(orchDecision.fallback_used),
+        fallback_reason: orchDecision.fallback_reason || null,
+        latency_ms: latencyMs,
+        branch,
+        trust_status: trustedIdentity ? 'verified' : 'unverified',
+      });
+      return { used: 'reddy_agent', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
+    } catch (err) {
+      console.warn('[WA Bot] Reddy execution error, using non-LLM static fallback:', err.message);
+      logTelemetry({
+        ...orchDecision,
+        fallback_used: true,
+        fallback_reason: 'reddy_execution_error',
+        latency_ms: latencyMs,
+        branch,
+        trust_status: trustedIdentity ? 'verified' : 'unverified',
+      });
+      const staticReply = fallbackReply(text, name, branch);
+      const sendResult = await send(from, staticReply, { branch });
+      return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
+    }
+  }
+
+  // Legacy Reddy Fallback
+  logTelemetry({
+    route: orchDecision?.route || 'reddy_agent',
+    agent: orchDecision?.agent || 'reddy_agent',
+    intent: orchDecision?.intent || 'unknown',
+    action: orchDecision?.action || 'fallback_unknown',
+    confidence: orchDecision?.confidence || 0,
+    model_tier: orchDecision?.model_tier || 'none',
+    fallback_used: true,
+    fallback_reason: orchDecision?.fallback_reason || 'orchestrator_or_reddy_fallback',
+    latency_ms: latencyMs,
+    branch,
+    trust_status: trustedIdentity ? 'verified' : 'unverified',
+  });
+
+  try {
+    reply = await generateReddy(from, text, name, branch);
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
     reply = fallbackReply(text, name, branch);
@@ -1518,7 +1642,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   }
 
   // Gunakan branch-specific token untuk kirim balasan
-  const sendResult = await sendWA(from, reply, { branch });
+  const sendResult = await send(from, reply, { branch });
   // Persist message status fire-and-forget — jangan block sync path
   if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
     for (let i = 0; i < sendResult.id.length; i++) {
@@ -1959,3 +2083,5 @@ module.exports = async function handler(req, res) {
     if (!res.headersSent) res.status(200).json({ status: 'error' });
   }
 };
+
+module.exports.handleMessage = handleMessage;
