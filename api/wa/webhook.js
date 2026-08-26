@@ -1543,20 +1543,24 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
   }
 
-  // Handle Private CRM Agent Route without valid TrustedIdentity
+  // Handle Private CRM Agent Routes
   if (orchDecision && (orchDecision.route === 'crm_agent' || orchDecision.agent === 'crm_agent')) {
+    logOrchestratedEvent({
+      ...orchDecision,
+      fallback_used: false,
+      latency_ms: latencyMs,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+
+    let crmReply;
     if (!trustedIdentity) {
-      logOrchestratedEvent({
-        ...orchDecision,
-        fallback_used: false,
-        latency_ms: latencyMs,
-        branch,
-        trust_status: 'unverified',
-      });
-      const privacyReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
-      const sendResult = await sendWA(from, privacyReply, { branch });
-      return { used: 'crm_privacy_guard', reply: privacyReply, sendResult, error: null };
+      crmReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+    } else {
+      crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
     }
+    const sendResult = await sendWA(from, crmReply, { branch });
+    return { used: trustedIdentity ? 'crm_unavailable_guard' : 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
   }
 
   // Handle Orchestrated Reddy Agent Route
@@ -1576,7 +1580,18 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       });
       return { used: 'reddy_agent', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
     } catch (err) {
-      console.warn('[WA Bot] Reddy execution error, falling back to legacy path:', err.message);
+      console.warn('[WA Bot] Reddy execution error, using non-LLM static fallback:', err.message);
+      logOrchestratedEvent({
+        ...orchDecision,
+        fallback_used: true,
+        fallback_reason: 'reddy_execution_error',
+        latency_ms: latencyMs,
+        branch,
+        trust_status: trustedIdentity ? 'verified' : 'unverified',
+      });
+      const staticReply = fallbackReply(text, name, branch);
+      const sendResult = await sendWA(from, staticReply, { branch });
+      return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
     }
   }
 
@@ -2054,3 +2069,5 @@ module.exports = async function handler(req, res) {
     if (!res.headersSent) res.status(200).json({ status: 'error' });
   }
 };
+
+module.exports.handleMessage = handleMessage;

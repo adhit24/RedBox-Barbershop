@@ -7,7 +7,9 @@
 
 const { classifyMessage } = require('./classifier');
 
-const ALLOWED_AGENTS = Object.freeze(['reddy_agent', 'crm_agent', 'human']);
+// Phase 1 AI AGENTS topology consists strictly of orchestrator, crm_agent, and reddy_agent.
+// Human handoff is a ROUTING OUTCOME / STATE, not an AI agent.
+const ALLOWED_AGENTS = Object.freeze(['reddy_agent', 'crm_agent']);
 const ALLOWED_ROUTES = Object.freeze(['reddy_agent', 'crm_agent', 'human']);
 
 /**
@@ -30,6 +32,8 @@ async function orchestrateMessage(params = {}, dependencies = {}) {
       model_tier: 'none',
       channel,
       branch: branch || 'unknown',
+      fallback_used: true,
+      fallback_reason: 'empty_message',
     };
   }
 
@@ -37,16 +41,15 @@ async function orchestrateMessage(params = {}, dependencies = {}) {
     const decision = await classifier(message);
 
     let rawRoute = typeof decision?.route === 'string' ? decision.route : 'reddy_agent';
-    let rawAgent = typeof decision?.agent === 'string' ? decision.agent : (rawRoute === 'human' ? 'human' : 'reddy_agent');
+    let rawIntent = typeof decision?.intent === 'string' ? decision.intent : 'unknown';
+    let rawAction = typeof decision?.action === 'string' ? decision.action : 'fallback_unknown';
 
-    // BLOCKER 10: Strict allowlist validation against existing taxonomy.
-    // Unknown or unsupported routes MUST fall back to reddy_agent fallback_unknown.
+    // BLOCKER 1 & 10: Strict taxonomy allowlist validation.
     const isRouteAllowed = ALLOWED_ROUTES.includes(rawRoute);
-    const isAgentAllowed = ALLOWED_AGENTS.includes(rawAgent);
 
-    if (!isRouteAllowed || !isAgentAllowed) {
+    if (!isRouteAllowed) {
       return {
-        intent: typeof decision?.intent === 'string' ? decision.intent : 'unknown',
+        intent: rawIntent,
         route: 'reddy_agent',
         agent: 'reddy_agent',
         action: 'fallback_unknown',
@@ -54,19 +57,30 @@ async function orchestrateMessage(params = {}, dependencies = {}) {
         model_tier: typeof decision?.model_tier === 'string' ? decision.model_tier : 'none',
         channel,
         branch: branch || 'unknown',
+        fallback_used: true,
         fallback_reason: 'unsupported_route_or_agent',
       };
     }
 
+    // Human route is a routing outcome/state, NOT an AI agent
+    let targetAgent;
+    if (rawRoute === 'human') {
+      targetAgent = undefined;
+    } else {
+      targetAgent = rawRoute;
+    }
+
     return {
-      intent: typeof decision?.intent === 'string' ? decision.intent : 'unknown',
+      intent: rawIntent,
       route: rawRoute,
-      agent: rawAgent,
-      action: typeof decision?.action === 'string' ? decision.action : 'fallback_unknown',
+      agent: targetAgent,
+      action: rawAction,
       confidence: typeof decision?.confidence === 'number' && Number.isFinite(decision.confidence) ? decision.confidence : 0,
       model_tier: typeof decision?.model_tier === 'string' ? decision.model_tier : 'none',
       channel,
       branch: branch || 'unknown',
+      fallback_used: false,
+      fallback_reason: null,
     };
   } catch (err) {
     return {
@@ -78,7 +92,8 @@ async function orchestrateMessage(params = {}, dependencies = {}) {
       model_tier: 'none',
       channel,
       branch: branch || 'unknown',
-      error: err?.message || String(err),
+      fallback_used: true,
+      fallback_reason: 'orchestrator_error',
     };
   }
 }
