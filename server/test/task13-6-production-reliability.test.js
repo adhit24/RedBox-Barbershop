@@ -250,15 +250,82 @@ test('R8b: historical booking facts survive Customer360 CUSTOMER_SELF projection
   const projection = projectCustomerSelf({
     identity: { customer_found: true, resolution: 'resolved' },
     activity: {
-      last_booking_date: '2026-08-20', last_booking_time: '19:30',
-      last_booking_branch: 'csb', last_booking_barber: 'Onoy',
-      last_booking_service: 'Hair Spa', last_booking_status: 'done',
+      latest_booking_date: '2026-08-20', latest_booking_time: '19:30',
+      latest_booking_branch: 'csb', latest_booking_barber: 'Onoy',
+      latest_booking_service: 'Hair Spa', latest_booking_status: 'cancelled',
     },
   });
 
-  assert.equal(projection.activity.last_booking_date, '2026-08-20');
-  assert.equal(projection.activity.last_booking_time, '19:30');
-  assert.equal(projection.activity.last_booking_status, 'done');
+  assert.equal(projection.activity.latest_booking_date, '2026-08-20');
+  assert.equal(projection.activity.latest_booking_time, '19:30');
+  assert.equal(projection.activity.latest_booking_status, 'cancelled');
+  assert.equal(Object.keys(projection.activity).some(key => key.startsWith('last_booking_')), false);
+});
+
+test('B4 booking cutoff remains public Knowledge and never executes customer history', async () => {
+  const classifier = createClassifier({
+    modelClassifier: async () => { throw new Error('public cutoff must be deterministic'); },
+  });
+  const decision = await classifier('slot booking terakhir CSB jam berapa?');
+  let intelligenceCalls = 0;
+  const sent = [];
+  const result = await handleMessage({
+    from: '6281111110136', text: 'slot booking terakhir CSB jam berapa?', branchFromPayload: 'csb',
+  }, {
+    loadConversationHistory: async () => [],
+    orchestrate: async () => decision,
+    executeIntelligence: async () => { intelligenceCalls += 1; },
+    executeReddy: async (_params, dependencies) => {
+      const reply = 'Slot booking terakhir CSB adalah 21:00 WIB.';
+      return { reply, sendResult: await dependencies.sendWA('6281111110136', reply, { branch: 'csb' }) };
+    },
+    send: async (_to, reply) => { sent.push(reply); return { ok: true }; },
+    logTelemetry: () => {},
+  });
+
+  assert.equal(decision.intent, 'booking_availability_inquiry');
+  assert.equal(result.used, 'reddy_agent');
+  assert.equal(intelligenceCalls, 0);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], /21:00/);
+});
+
+test('B5 visit query remains completed-visit fact, not latest booking record', async () => {
+  let passedFacts = null;
+  const result = await handleMessage({
+    from: '6281111110136', text: 'terakhir aku potong kapan?', branchFromPayload: 'csb',
+    trustedIdentity: TRUSTED_IDENTITY,
+  }, {
+    loadConversationHistory: async () => [],
+    orchestrate: async () => ({
+      intent: 'customer_history', route: 'crm_agent', agent: 'crm_agent',
+      action: 'get_customer_history', confidence: 0.9, model_tier: 'economy',
+    }),
+    executeIntelligence: async () => ({
+      execution_status: 'success', crm_tool: 'get_customer_history', customer_found: true,
+      intelligence: {
+        intent: 'customer_history', status: 'success', customer_found: true,
+        facts: {
+          last_visit: '2026-08-25',
+          latest_booking_date: '2026-08-27', latest_booking_status: 'confirmed',
+        },
+        unknown_fields: [],
+      },
+    }),
+    executeReddy: async ({ customerIntelligence }, dependencies) => {
+      passedFacts = customerIntelligence.facts;
+      const reply = `Kunjungan selesai terakhir kamu ${passedFacts.last_visit}.`;
+      return { reply, sendResult: await dependencies.sendWA('6281111110136', reply, { branch: 'csb' }) };
+    },
+    send: async () => ({ ok: true }),
+    logTelemetry: () => {},
+  });
+
+  assert.equal(result.used, 'crm_reddy_intelligence');
+  assert.equal(passedFacts.last_visit, '2026-08-25');
+  assert.equal(passedFacts.latest_booking_date, '2026-08-27');
+  assert.match(result.reply, /2026-08-25/);
+  assert.doesNotMatch(result.reply, /2026-08-27/);
 });
 
 test('R9: ordinary Reddy path initializes and reuses one module-scoped OpenAI client', () => {

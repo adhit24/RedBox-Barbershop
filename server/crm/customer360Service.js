@@ -140,6 +140,91 @@ function formatDateStr(val) {
   return d.toISOString().split('T')[0];
 }
 
+function extractBookingCalendarDate(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/);
+  if (!match) return null;
+  const candidate = `${match[1]}-${match[2]}-${match[3]}`;
+  const parsed = new Date(`${candidate}T00:00:00.000Z`);
+  return !isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === candidate
+    ? candidate
+    : null;
+}
+
+function normalizeBookingClock(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] || 0);
+  if (hours > 23 || minutes > 59 || seconds > 59) return null;
+  return {
+    value: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}${match[3] ? `:${String(seconds).padStart(2, '0')}` : ''}`,
+    seconds: (hours * 60 * 60) + (minutes * 60) + seconds,
+  };
+}
+
+function parseAbsoluteRecordTimestamp(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) return value.getTime();
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  // A timezone-less database timestamp is deliberately not interpreted as local time.
+  if (!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)) return null;
+  const timestamp = Date.parse(trimmed);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function bookingChronology(record = {}) {
+  const scheduledDate = extractBookingCalendarDate(record.date);
+  const clock = normalizeBookingClock(record.start_time || record.time || record.booking_time);
+  const fallbackTimestamp = parseAbsoluteRecordTimestamp(record.updated_at)
+    ?? parseAbsoluteRecordTimestamp(record.created_at);
+  const fallbackDate = fallbackTimestamp === null
+    ? null
+    : new Date(fallbackTimestamp).toISOString().slice(0, 10);
+  const date = scheduledDate || fallbackDate;
+  const precision = scheduledDate
+    ? (clock ? 'scheduled_datetime' : 'scheduled_date')
+    : (fallbackTimestamp === null ? 'unknown' : 'record_timestamp');
+  const tieBreaker = String(record.id || [
+    record.status,
+    record.location || record.branch_slug || record.branch,
+    record.service,
+    record.barber_id || record.barber_name,
+  ].map(value => value || '').join('|'));
+
+  return {
+    record,
+    date,
+    time: scheduledDate && clock ? clock.value : null,
+    precision,
+    sortKey: [
+      date || '',
+      scheduledDate && clock ? 1 : 0,
+      scheduledDate && clock ? clock.seconds : -1,
+      fallbackTimestamp ?? -1,
+      tieBreaker,
+    ],
+  };
+}
+
+function resolveLatestBooking(bookings = []) {
+  return bookings
+    .map(bookingChronology)
+    .reduce((latest, candidate) => {
+      if (!latest) return candidate;
+      for (let index = 0; index < candidate.sortKey.length; index += 1) {
+        if (candidate.sortKey[index] === latest.sortKey[index]) continue;
+        return candidate.sortKey[index] > latest.sortKey[index] ? candidate : latest;
+      }
+      return latest;
+    }, null);
+}
+
 /**
  * Calculates frequency mode from an array of strings with deterministic tie-breaking.
  */
@@ -446,10 +531,11 @@ async function getCustomer360(supabase, identityInput = {}) {
   const doneBookings = bookings.filter(b => b.status === 'done');
   const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
   const pendingBookings = bookings.filter(b => ['pending', 'confirmed'].includes(b.status));
-  const lastCompletedBooking = doneBookings[0] || null;
-  let lastBookingBarber = lastCompletedBooking?.barber_name || null;
-  if (!lastBookingBarber && lastCompletedBooking?.barber_id && barberMap.has(lastCompletedBooking.barber_id)) {
-    lastBookingBarber = barberMap.get(lastCompletedBooking.barber_id);
+  const latestBookingResolution = resolveLatestBooking(bookings);
+  const latestBooking = latestBookingResolution?.record || null;
+  let latestBookingBarber = latestBooking?.barber_name || null;
+  if (!latestBookingBarber && latestBooking?.barber_id && barberMap.has(latestBooking.barber_id)) {
+    latestBookingBarber = barberMap.get(latestBooking.barber_id);
   }
 
   function parseEventTimestamp(rawDateVal, rawTimeVal) {
@@ -669,12 +755,12 @@ async function getCustomer360(supabase, identityInput = {}) {
     last_visit_source: lastVisitSource,
     last_visit_confidence: lastVisitConfidence,
     last_visit_event: lastVisitEventObj,
-    last_booking_date: formatDateStr(lastCompletedBooking?.date || lastCompletedBooking?.created_at),
-    last_booking_time: lastCompletedBooking?.start_time || lastCompletedBooking?.time || lastCompletedBooking?.booking_time || null,
-    last_booking_branch: lastCompletedBooking?.location || lastCompletedBooking?.branch_slug || lastCompletedBooking?.branch || null,
-    last_booking_barber: lastBookingBarber,
-    last_booking_service: lastCompletedBooking?.service || null,
-    last_booking_status: lastCompletedBooking?.status || null,
+    latest_booking_date: latestBookingResolution?.date || null,
+    latest_booking_time: latestBookingResolution?.time || null,
+    latest_booking_branch: latestBooking?.location || latestBooking?.branch_slug || latestBooking?.branch || null,
+    latest_booking_barber: latestBookingBarber,
+    latest_booking_service: latestBooking?.service || null,
+    latest_booking_status: latestBooking?.status || null,
     days_since_last_visit: daysSinceLastVisit,
     completed_booking_count: doneBookings.length,
     cancelled_booking_count: cancelledBookings.length,
