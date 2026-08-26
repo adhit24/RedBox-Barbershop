@@ -184,7 +184,7 @@ test('Dual Identity Leak Regression: unknown phone plus valid customer UUID cann
   assert.notEqual(res.data?.points_balance, 77);
 });
 
-test('Dual Identity: ambiguous phone plus customer UUID fails closed', async () => {
+test('Dual Identity: trusted phone alias cluster plus matching customer UUID succeeds', async () => {
   const customerId = '11111111-2222-3333-4444-555555555555';
   const supabase = createMockSupabase({
     customers: [
@@ -200,8 +200,8 @@ test('Dual Identity: ambiguous phone plus customer UUID fails closed', async () 
     customer_id: customerId,
   });
 
-  assert.equal(res.status, 'forbidden');
-  assert.equal(res.error, 'identity_unverified');
+  assert.equal(res.status, 'success');
+  assert.equal(res.customer_found, true);
 });
 
 test('Dual Identity: phone database error plus customer UUID returns db_error', async () => {
@@ -327,7 +327,7 @@ test('Database Error Semantics: DB failure returns status db_error, NOT customer
 });
 
 // ── 5. AMBIGUOUS IDENTITY TEST ───────────────────────────────────────────────
-test('Ambiguous Identity: candidate customer rows with conflicting names MUST return resolution: ambiguous', async () => {
+test('Task 11.1 Trusted Phone Alias Resolution: candidate customer rows with name variants for same verified phone cluster safely', async () => {
   const supabase = createMockSupabase({
     customers: [
       { id: 'uuid-A', wa: '628123456789', name: 'Budi Santoso' },
@@ -336,9 +336,10 @@ test('Ambiguous Identity: candidate customer rows with conflicting names MUST re
   });
 
   const res = await resolveCustomerIdentity(supabase, { phone: '628123456789' });
-  assert.equal(res.found, false);
-  assert.equal(res.customer_id, null);
-  assert.equal(res.resolution, 'ambiguous');
+  assert.equal(res.found, true);
+  assert.equal(res.customer_id, 'uuid-A');
+  assert.deepEqual(res.alias_customer_ids, ['uuid-A', 'uuid-B']);
+  assert.equal(res.resolution, 'phone_match');
 });
 
 test('CRM Agent preserves ambiguous identity instead of collapsing it to not_found', async () => {

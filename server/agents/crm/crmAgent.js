@@ -61,8 +61,7 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
       };
     }
 
-    // Dual trusted claims must each resolve independently to the same customer.
-    // Never fall back to one claim when the other is unknown or ambiguous.
+    // Dual trusted claims: phone is cluster authority. customer_id claim is authorized if included in phone's alias cluster.
     if (contextPhone && contextCustId) {
       const phoneIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
       if (phoneIdentity.resolution === 'db_error') {
@@ -104,7 +103,11 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
         };
       }
 
-      if (String(phoneIdentity.customer_id).trim() !== String(customerIdIdentity.customer_id).trim()) {
+      const phoneAliases = Array.isArray(phoneIdentity.alias_customer_ids) && phoneIdentity.alias_customer_ids.length > 0
+        ? phoneIdentity.alias_customer_ids
+        : (phoneIdentity.customer_id ? [phoneIdentity.customer_id] : []);
+
+      if (!phoneAliases.includes(customerIdIdentity.customer_id)) {
         return {
           status: 'forbidden',
           tool: toolName,
@@ -129,7 +132,10 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
     if (params.customer_id && contextPhone && !contextCustId) {
       const paramIdentity = await resolveCustomerIdentity(supabase, { customer_id: params.customer_id });
       const contextIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
-      if (!paramIdentity.found || !contextIdentity.found || paramIdentity.customer_id !== contextIdentity.customer_id) {
+      const contextAliases = Array.isArray(contextIdentity.alias_customer_ids) && contextIdentity.alias_customer_ids.length > 0
+        ? contextIdentity.alias_customer_ids
+        : (contextIdentity.customer_id ? [contextIdentity.customer_id] : []);
+      if (!paramIdentity.found || !contextIdentity.found || !contextAliases.includes(paramIdentity.customer_id)) {
         return {
           status: 'forbidden',
           tool: toolName,
@@ -142,7 +148,10 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
 
     if (params.phone && contextCustId && !contextPhone) {
       const paramIdentity = await resolveCustomerIdentity(supabase, { phone: params.phone });
-      if (!paramIdentity.found || paramIdentity.customer_id !== String(contextCustId).trim()) {
+      const paramAliases = Array.isArray(paramIdentity.alias_customer_ids) && paramIdentity.alias_customer_ids.length > 0
+        ? paramIdentity.alias_customer_ids
+        : (paramIdentity.customer_id ? [paramIdentity.customer_id] : []);
+      if (!paramIdentity.found || !paramAliases.includes(String(contextCustId).trim())) {
         return {
           status: 'forbidden',
           tool: toolName,

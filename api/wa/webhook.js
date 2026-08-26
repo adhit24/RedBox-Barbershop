@@ -1672,6 +1672,16 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       }
     }
 
+    logTelemetry({
+      ...orchDecision,
+      fallback_used: true,
+      fallback_reason: intelRes?.execution_status || 'crm_intelligence_unavailable',
+      crm_intelligence_status: intelRes?.execution_status || 'crm_error',
+      latency_ms: latencyMs,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+
     const crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
     const sendResult = await send(from, crmReply, { branch });
     return { used: 'crm_unavailable_guard', reply: crmReply, sendResult, error: null };
