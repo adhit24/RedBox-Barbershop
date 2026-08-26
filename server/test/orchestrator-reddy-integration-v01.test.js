@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * REDBOX AI TASK 10 TDD TEST SUITE (AIRA ROUND 5 HARDENED)
+ * REDBOX AI TASK 10 TDD TEST SUITE (AIRA ROUND 6 HARDENED)
  * Orchestrator → Reddy Integration (Plan B — Reddy Intelligence Core)
  * 100% Isolated Dependency Injection Tests — ZERO External Network / LLM / DB Side Effects
  */
@@ -51,7 +51,7 @@ test('3. complaint route outcome contains NO human AI agent', async () => {
   assert.notEqual(decision.agent, 'human');
 });
 
-// ── 2. FALLBACK TELEMETRY METADATA PRESERVATION (BLOCKER 1) ─────────────────
+// ── 2. FALLBACK TELEMETRY METADATA PRESERVATION ──────────────────────────────
 test('4. telemetry preserves orchestrator_error fallback_used=true and fallback_reason', async () => {
   const decision = await orchestrateMessage({ message: 'halo' }, {
     classifier: async () => { throw new Error('Classifier failed'); },
@@ -70,10 +70,10 @@ test('5. telemetry preserves unsupported_route_or_agent fallback metadata', asyn
   assert.equal(decision.fallback_reason, 'unsupported_route_or_agent');
 });
 
-// ── 3. REAL PRODUCTION-PATH INTEGRATION TESTS WITH DEPENDENCY INJECTION (BLOCKER 2) ──
-test('6. Real production path (1): ordinary message triggers orchestrator = 1, Reddy = 1, sendWA = 1', async () => {
+// ── 3. REAL PRODUCTION-PATH INTEGRATION TESTS WITH DEPENDENCY INJECTION ──────
+test('6. Real production path (1): ordinary message uses real executeReddyAgent adapter proving orchestrator = 1, generateReddy = 1, sendWA = 1', async () => {
   let orchestratorCalls = 0;
-  let reddyCalls = 0;
+  let reddyGenerationCalls = 0;
   let sendCalls = 0;
 
   const mocks = {
@@ -81,9 +81,9 @@ test('6. Real production path (1): ordinary message triggers orchestrator = 1, R
       orchestratorCalls++;
       return { route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_question', action: 'answer_general', fallback_used: false };
     },
-    executeReddy: async () => {
-      reddyCalls++;
-      return { used: 'reddy_agent', reply: 'Halo kak! Ada yang bisa dibantu?', sendResult: { status: 'sent' } };
+    generateReddy: async () => {
+      reddyGenerationCalls++;
+      return 'Halo kak! Ada yang bisa dibantu?';
     },
     send: async () => {
       sendCalls++;
@@ -100,7 +100,8 @@ test('6. Real production path (1): ordinary message triggers orchestrator = 1, R
   }, mocks);
 
   assert.equal(orchestratorCalls, 1);
-  assert.equal(reddyCalls, 1);
+  assert.equal(reddyGenerationCalls, 1);
+  assert.equal(sendCalls, 1);
   assert.equal(result.used, 'reddy_agent');
   assert.equal(result.reply, 'Halo kak! Ada yang bisa dibantu?');
 });
@@ -213,18 +214,26 @@ test('9. Real production path (4): Reddy generation error triggers static fallba
   assert.equal(result.used, 'static_fallback');
 });
 
-test('10. Real production path (5): human route triggers handoff with Reddy = 0', async () => {
+test('10. Real production path (5): human route triggers handoff with setHumanTakeover = 1, persistHumanHandoff = 1, send = 1, Reddy = 0', async () => {
+  let orchestratorCalls = 0;
   let reddyCalls = 0;
+  let setTakeoverCalls = 0;
+  let persistHandoffCalls = 0;
   let sendCalls = 0;
 
   const mocks = {
-    orchestrate: async () => ({
-      route: 'human',
-      intent: 'human_request',
-      action: 'request_human',
-      fallback_used: false,
-    }),
+    orchestrate: async () => {
+      orchestratorCalls++;
+      return {
+        route: 'human',
+        intent: 'human_request',
+        action: 'request_human',
+        fallback_used: false,
+      };
+    },
     executeReddy: async () => { reddyCalls++; },
+    setHumanTakeover: () => { setTakeoverCalls++; },
+    persistHumanHandoff: async () => { persistHandoffCalls++; },
     send: async () => {
       sendCalls++;
       return { status: 'sent' };
@@ -237,7 +246,10 @@ test('10. Real production path (5): human route triggers handoff with Reddy = 0'
     text: 'mau bicara dengan admin',
   }, mocks);
 
+  assert.equal(orchestratorCalls, 1);
   assert.equal(reddyCalls, 0);
+  assert.equal(setTakeoverCalls, 1);
+  assert.equal(persistHandoffCalls, 1);
   assert.equal(sendCalls, 1);
   assert.equal(result.used, 'human_handoff');
   assert.equal(result.reply.includes('admin cabang RedBox'), true);

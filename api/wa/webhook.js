@@ -1369,6 +1369,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     send = sendWA,
     generateReddy = callOpenAI,
     logTelemetry = logOrchestratedEvent,
+    setHumanTakeover = setHumanTakeoverLocal,
+    persistHumanHandoff = persistHumanTakeover,
   } = deps;
 
   let branch = branchFromPayload;
@@ -1538,8 +1540,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
   // Handle Human Handoff Route
   if (orchDecision && (orchDecision.route === 'human' || orchDecision.agent === 'human' || orchDecision.intent === 'human_request' || orchDecision.intent === 'complaint')) {
-    setHumanTakeoverLocal(from);
-    persistHumanTakeover(from, 'orchestrator_human_handoff').catch(() => {});
+    setHumanTakeover(from);
+    persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
     logTelemetry({
       ...orchDecision,
       fallback_used: Boolean(orchDecision.fallback_used),
