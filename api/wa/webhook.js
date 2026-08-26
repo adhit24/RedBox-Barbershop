@@ -22,6 +22,7 @@ const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
 const {
   sanitizeConversationHistory,
   buildConversationMessages,
+  appendConversationExchange,
   extractConversationContextEnvelope,
 } = require('../../server/agents/reddy/conversationContext');
 const {
@@ -330,8 +331,8 @@ async function safeLoadConversationHistory(loader, sender) {
       history,
       status: history.length > 0 ? 'available' : 'empty',
     };
-  } catch (err) {
-    console.warn('[WA Bot] loadConversationHistory error:', err?.message || err);
+  } catch (_) {
+    console.warn('[WA Bot] conversation history unavailable');
     return {
       history: [],
       status: 'unavailable',
@@ -664,11 +665,10 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
   const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf, ada gangguan teknis. Coba lagi ya kak 🙏';
 
   // Simpan ke cache sekarang, Supabase fire-and-forget (jangan block sync path)
-  const updated = [...sanitizedHistory, { role: 'user', content: String(userMessage || '').trim() }, { role: 'assistant', content: reply }];
-  const trimmed = updated.length > MAX_HISTORY ? updated.slice(updated.length - MAX_HISTORY) : updated;
-  conversationCache.set(sender, trimmed);
+  const updated = appendConversationExchange(activeHistoryTurns, userMessage, reply);
+  conversationCache.set(sender, updated);
   cacheTimestamps.set(sender, Date.now());
-  saveHistoryToSupabase(sender, trimmed).catch(e => console.error('[WA Bot] saveHistory error:', e?.message));
+  saveHistoryToSupabase(sender, updated).catch(e => console.error('[WA Bot] saveHistory error:', e?.message));
 
   return reply;
 }
@@ -1434,10 +1434,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   }
   console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
 
-  // Single history load architecture: Load history ONCE using injectable loadConversationHistory
-  const loadedHistoryResult = await safeLoadConversationHistory(loadConversationHistory, from);
-  const conversationContext = extractConversationContextEnvelope(loadedHistoryResult, text);
-
+  // Fast-path: points inquiry bypasses conversation history loading and Reddy generation
   const classification = classifyDeterministically(text);
   if (classification && classification.intent === 'points_inquiry') {
     const orchResult = await executeOrchestration(
@@ -1476,6 +1473,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     const sendResult = await send(from, pointsReply, { branch });
     return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
   }
+
+  // Load conversation history ONLY AFTER points shortcut is ruled out
+  const loadedHistoryResult = await safeLoadConversationHistory(loadConversationHistory, from);
+  const conversationContext = extractConversationContextEnvelope(loadedHistoryResult, text);
   let reply;
   let used = 'openai';
   let error = null;

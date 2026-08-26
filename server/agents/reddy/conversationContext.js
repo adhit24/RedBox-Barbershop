@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Redbox Conversation Context Helper v0.1 (Hardened Round 2)
+ * Redbox Conversation Context Helper v0.1 (Hardened Round 3)
  * Sanitizes and bounds conversation history turns for Reddy AI prompt context.
  * Enforces strict role integrity (only 'user' and 'assistant') and customer isolation.
  */
@@ -121,6 +121,41 @@ function buildConversationMessages(history = [], userMessage = '') {
 }
 
 /**
+ * Appends completed exchange (user turn + assistant reply) to history without duplicating user turn.
+ * @param {Array} history - Prior history turns
+ * @param {string} userMessage - Current user message
+ * @param {string} assistantReply - Generated assistant reply
+ * @param {object} options - Bounding options { maxItems }
+ * @returns {Array<{role: string, content: string}>} Updated history array bounded to maxItems
+ */
+function appendConversationExchange(history = [], userMessage = '', assistantReply = '', options = {}) {
+  const maxItems = typeof options.maxItems === 'number' && options.maxItems > 0
+    ? options.maxItems
+    : MAX_HISTORY_DEFAULT;
+  const sanitized = sanitizeConversationHistory(history, options);
+  const cleanUserMessage = typeof userMessage === 'string' ? userMessage.trim() : '';
+  const cleanReply = typeof assistantReply === 'string' ? assistantReply.trim() : '';
+
+  if (!cleanReply) return sanitized;
+
+  const result = [...sanitized];
+  const lastTurn = result.length > 0 ? result[result.length - 1] : null;
+
+  // Append user message if not already present at the end of history
+  if (cleanUserMessage) {
+    if (!lastTurn || lastTurn.role !== 'user' || lastTurn.content !== cleanUserMessage) {
+      result.push({ role: 'user', content: cleanUserMessage });
+    }
+  }
+
+  // Append assistant reply exactly once
+  result.push({ role: 'assistant', content: cleanReply });
+
+  // Enforce MAX_HISTORY limit after append
+  return result.length > maxItems ? result.slice(result.length - maxItems) : result;
+}
+
+/**
  * Extracts a structured Conversation Context Envelope with explicit history_status.
  * @param {Array|object} historyInput - Raw history array OR { history, status } object from loader
  * @param {string} userMessage - Current user turn text
@@ -167,5 +202,6 @@ module.exports = {
   sanitizeConversationHistory,
   selectRecentConversationTurns,
   buildConversationMessages,
+  appendConversationExchange,
   extractConversationContextEnvelope,
 };

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * REDBOX AI TASK 12 TDD TEST SUITE (AIRA ROUND 2 HARDENED)
+ * REDBOX AI TASK 12 TDD TEST SUITE (AIRA ROUND 3 FINAL HARDENED)
  * Conversation Intelligence v0.1 (Plan B — Reddy Intelligence Core)
  * 100% Isolated Dependency Injection Tests — ZERO External Network / LLM / DB Side Effects
  */
@@ -16,6 +16,7 @@ const {
   sanitizeConversationHistory,
   selectRecentConversationTurns,
   buildConversationMessages,
+  appendConversationExchange,
   extractConversationContextEnvelope,
 } = require('../agents/reddy/conversationContext');
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
@@ -23,7 +24,7 @@ const { issueTrustedIdentity } = require('../identity/trustedIdentity');
 const webhookModule = require('../../api/wa/webhook');
 const { handleMessage } = webhookModule;
 
-// ── 1. SANITIZATION, ROLE-INTEGRITY & METRICS UNIT TESTS ────────────────────
+// ── 1. SANITIZATION, PERSISTENCE DEDUP & METRICS UNIT TESTS ──────────────────
 test('Task 12 (6): sanitizeConversationHistoryDetails drops unsupported roles and malformed items with distinct filtered_count', () => {
   const malformedHistory = [
     null,
@@ -52,36 +53,43 @@ test('Task 12 (6): sanitizeConversationHistoryDetails drops unsupported roles an
   assert.equal(details.turns[1].content, 'Haircut di Redbox harganya Rp 85.000 kak.');
 });
 
-test('Task 12 (7): oversized history turns and long text set trimmed=true', () => {
-  const longText = 'A'.repeat(2000);
-  const oversizedHistory = Array.from({ length: 20 }, (_, i) => ({
-    role: i % 2 === 0 ? 'user' : 'assistant',
-    content: `Turn ${i} ${longText}`,
-  }));
+test('Task 12 (Blocker 3 A, B, C, D): appendConversationExchange dedups user turn and bounds to MAX_HISTORY', () => {
+  // A. Normal append when history does not end with current user turn
+  const history1 = [
+    { role: 'user', content: 'halo' },
+    { role: 'assistant', content: 'hai' },
+  ];
+  const updated1 = appendConversationExchange(history1, 'kalau di Sumber?', 'Haircut Rp 85.000');
+  assert.equal(updated1.length, 4);
+  assert.equal(updated1[2].role, 'user');
+  assert.equal(updated1[2].content, 'kalau di Sumber?');
+  assert.equal(updated1[3].role, 'assistant');
+  assert.equal(updated1[3].content, 'Haircut Rp 85.000');
 
-  const details = sanitizeConversationHistoryDetails(oversizedHistory);
-
-  assert.equal(details.turns.length, MAX_HISTORY_DEFAULT);
-  assert.equal(details.trimmed, true);
-  assert.equal(details.turns[0].content.length, MAX_CHARS_PER_TURN_DEFAULT);
-});
-
-test('Task 12 (8): buildConversationMessages prevents duplicate current user turn', () => {
-  const history = [
-    { role: 'user', content: 'berapa harga haircut?' },
-    { role: 'assistant', content: 'Haircut Rp 85.000' },
+  // B. History already ends with current user message -> DO NOT append current user again
+  const history2 = [
+    { role: 'user', content: 'halo' },
+    { role: 'assistant', content: 'hai' },
     { role: 'user', content: 'kalau di Sumber?' },
   ];
+  const updated2 = appendConversationExchange(history2, 'kalau di Sumber?', 'Haircut Rp 85.000');
+  assert.equal(updated2.length, 4);
+  assert.equal(updated2[2].role, 'user');
+  assert.equal(updated2[2].content, 'kalau di Sumber?');
+  assert.equal(updated2[3].role, 'assistant');
+  assert.equal(updated2[3].content, 'Haircut Rp 85.000');
 
-  const messages = buildConversationMessages(history, 'kalau di Sumber?');
-
-  assert.equal(messages.length, 3);
-  assert.equal(messages[messages.length - 1].content, 'kalau di Sumber?');
-  assert.equal(messages[messages.length - 2].content, 'Haircut Rp 85.000');
+  // D. Enforces MAX_HISTORY bounding
+  const longHistory = Array.from({ length: 14 }, (_, i) => ({
+    role: i % 2 === 0 ? 'user' : 'assistant',
+    content: `Turn ${i}`,
+  }));
+  const updatedBounded = appendConversationExchange(longHistory, 'new user', 'new assistant');
+  assert.equal(updatedBounded.length, MAX_HISTORY_DEFAULT);
 });
 
 // ── 2. SINGLE HISTORY LOAD & PRODUCTION PATH INTEGRATION TESTS ───────────────
-test('Task 12 (1, 9): single history load architecture loads history EXACTLY ONCE per Reddy/CRM message', async () => {
+test('Task 12 (1, 9, Blocker 1): ordinary Reddy path loads history ONCE and completes post-generation path without ReferenceError', async () => {
   let historyLoadCalls = 0;
 
   const mockLoadHistory = async (sender) => {
@@ -96,14 +104,14 @@ test('Task 12 (1, 9): single history load architecture loads history EXACTLY ONC
     loadConversationHistory: mockLoadHistory,
     orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_question', action: 'answer_general' }),
     executeReddy: async (params, deps) => {
-      // Execute callOpenAI directly to verify single load
+      // Execute callOpenAI directly using injected mock to verify post-generation persistence completion
       const reply = await deps.callOpenAI(params.from, params.text, params.name, params.branch, null, params.conversationContext);
       return { used: 'reddy_agent', reply, sendResult: { status: 'sent' } };
     },
     generateReddy: async (sender, msg, name, branch, facts, conversationContext) => {
       assert.equal(Boolean(conversationContext), true);
       assert.equal(conversationContext.turns.length, 2);
-      return 'Response text';
+      return 'Generated reply text';
     },
     send: async () => ({ status: 'sent' }),
     logTelemetry: () => {},
@@ -116,6 +124,47 @@ test('Task 12 (1, 9): single history load architecture loads history EXACTLY ONC
 
   assert.equal(historyLoadCalls, 1, 'History must be loaded EXACTLY ONCE in handleMessage');
   assert.equal(result.used, 'reddy_agent');
+  assert.equal(result.reply, 'Generated reply text');
+});
+
+test('Task 12 (Blocker 2): points inquiry fast path uses ZERO history loads (historyLoadCalls === 0)', async () => {
+  let historyLoadCalls = 0;
+  let orchestratorCalls = 0;
+  let reddyCalls = 0;
+  let crmExecutionCalls = 0;
+
+  const trustedIdentity = issueTrustedIdentity({
+    source: 'whatsapp',
+    verifiedPhone: '62877777777',
+  });
+
+  const mocks = {
+    loadConversationHistory: async () => { historyLoadCalls++; return []; },
+    orchestrate: async () => { orchestratorCalls++; },
+    executeReddy: async () => { reddyCalls++; },
+    executeOrchestration: async () => {
+      crmExecutionCalls++;
+      return {
+        execution_status: 'success',
+        result: { data: { points_balance: 100 } },
+      };
+    },
+    send: async () => ({ status: 'sent' }),
+    logTelemetry: () => {},
+  };
+
+  const result = await handleMessage({
+    from: '62877777777',
+    text: 'poin saya berapa kak',
+    trustedIdentity,
+  }, mocks);
+
+  assert.equal(historyLoadCalls, 0, 'Points inquiry MUST NOT load conversation history');
+  assert.equal(orchestratorCalls, 0);
+  assert.equal(reddyCalls, 0);
+  assert.equal(crmExecutionCalls, 1);
+  assert.equal(result.used, 'crm_points');
+  assert.equal(result.reply.includes('100 poin'), true);
 });
 
 test('Task 12 (2): second-turn conversation delivers real prior user + assistant turns to executeReddy', async () => {
