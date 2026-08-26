@@ -5,7 +5,7 @@
  * Pure deterministic tool execution over Customer 360 Read Service.
  */
 
-const { getCustomer360 } = require('../../crm/customer360Service');
+const { getCustomer360, getCustomerPointsByTrustedPhone } = require('../../crm/customer360Service');
 const { resolveCustomerIdentity } = require('../../crm/customerIdentity');
 const { projectInternal, projectCustomerSelf } = require('../../crm/customerPrivacy');
 const { CONTRACT_VERSION, CRM_TOOLS, PROJECTION_TYPES } = require('./contract');
@@ -47,8 +47,8 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
   let targetCustomerId = null;
 
   if (projection === PROJECTION_TYPES.CUSTOMER_SELF) {
-    const contextPhone = context.phone || context.user?.phone;
-    const contextCustId = context.customer_id || context.user?.customer_id || context.user?.id;
+    const contextPhone = context.phone || context.user?.phone || context.trustedIdentity?.phone;
+    const contextCustId = context.customer_id || context.user?.customer_id || context.user?.id || context.trustedIdentity?.customer_id;
 
     if (!contextPhone && !contextCustId) {
       return {
@@ -172,6 +172,56 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
     // INTERNAL mode (Admin / System): params take priority
     targetPhone = params.phone || context.phone;
     targetCustomerId = params.customer_id || context.customer_id;
+  }
+
+  // Dedicated points read path under CUSTOMER_SELF using trusted phone anchor
+  if (toolName === 'get_points' && projection === PROJECTION_TYPES.CUSTOMER_SELF && targetPhone && !targetCustomerId) {
+    const pointsRes = await getCustomerPointsByTrustedPhone(supabase, targetPhone);
+
+    if (pointsRes.resolution === 'db_error') {
+      return {
+        status: 'db_error',
+        tool: toolName,
+        error: pointsRes.error || 'database_unavailable',
+        customer_found: false,
+        data: null,
+      };
+    }
+
+    if (!pointsRes.found) {
+      return {
+        status: pointsRes.resolution === 'ambiguous' ? 'ambiguous' : 'not_found',
+        tool: toolName,
+        contract_version: CONTRACT_VERSION,
+        error: pointsRes.resolution === 'ambiguous' ? 'ambiguous_identity' : undefined,
+        customer_found: false,
+        data: null,
+        message: pointsRes.resolution === 'ambiguous' ? 'Identity resolution is ambiguous' : 'Customer identity could not be resolved',
+      };
+    }
+
+    if (pointsRes.status === 'ambiguous_balance_conflict') {
+      return {
+        status: 'success',
+        tool: toolName,
+        contract_version: CONTRACT_VERSION,
+        customer_found: true,
+        projection: PROJECTION_TYPES.CUSTOMER_SELF,
+        data: { points_balance: null, status: 'ambiguous_balance_conflict' },
+      };
+    }
+
+    return {
+      status: 'success',
+      tool: toolName,
+      contract_version: CONTRACT_VERSION,
+      customer_found: true,
+      projection: PROJECTION_TYPES.CUSTOMER_SELF,
+      data: {
+        points_balance: pointsRes.points_balance,
+        status: pointsRes.status || 'available',
+      },
+    };
   }
 
   const identityInput = {

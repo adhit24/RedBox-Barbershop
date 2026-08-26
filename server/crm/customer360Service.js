@@ -7,6 +7,128 @@
 
 const { resolveCustomerIdentity } = require('./customerIdentity');
 const { resolveMembershipTier, isActiveMembership } = require('../membership-policy');
+const { normalizeMemberPhone, getMemberPhoneVariants } = require('../member-identity');
+
+/**
+ * Dedicated CRM points read helper for trusted phone identity (CUSTOMER_SELF).
+ * Solves duplicate legacy customer rows by anchoring points to unique member_profiles row.
+ * @param {object} supabase - Supabase client
+ * @param {string} targetPhone - Raw or canonical phone number
+ * @returns {Promise<object>} Points resolution result
+ */
+async function getCustomerPointsByTrustedPhone(supabase, targetPhone) {
+  if (!targetPhone || typeof targetPhone !== 'string' || !targetPhone.trim()) {
+    return { found: false, resolution: 'missing_input' };
+  }
+
+  const canonical = normalizeMemberPhone(targetPhone);
+  if (!canonical || canonical.length < 9) {
+    return { found: false, resolution: 'invalid_phone_format' };
+  }
+
+  const variants = getMemberPhoneVariants(canonical);
+  const profileConditions = variants.map(v => {
+    const digits = String(v).replace(/\D/g, '');
+    return `phone.eq.${digits},phone.eq.+${digits}`;
+  }).join(',');
+
+  const customerConditions = variants.map(v => {
+    const digits = String(v).replace(/\D/g, '');
+    return `wa.eq.${digits},phone_e164.eq.${digits},phone_e164.eq.+${digits}`;
+  }).join(',');
+
+  const [profRes, custRes] = await Promise.all([
+    supabase.from('member_profiles').select('*').or(profileConditions),
+    supabase.from('customers').select('*').or(customerConditions),
+  ]);
+
+  if (profRes.error || custRes.error) {
+    return {
+      found: false,
+      resolution: 'db_error',
+      error: profRes.error?.message || custRes.error?.message || 'database_error',
+    };
+  }
+
+  const profileRows = Array.isArray(profRes.data) ? profRes.data : [];
+  const customerRows = Array.isArray(custRes.data) ? custRes.data : [];
+
+  if (profileRows.length > 1) {
+    const distinctPhones = new Set(profileRows.map(p => normalizeMemberPhone(p.phone)).filter(Boolean));
+    const distinctProfilePoints = new Set(profileRows.map(p => p.total_points));
+    if (distinctPhones.size > 1 || distinctProfilePoints.size > 1) {
+      return { found: false, resolution: 'ambiguous', reason: 'conflicting_profile_rows' };
+    }
+  }
+
+  const uniqueProfile = profileRows[0] || null;
+
+  if (!uniqueProfile && customerRows.length > 1) {
+    const distinctCustIds = new Set(customerRows.map(c => c.id).filter(Boolean));
+    if (distinctCustIds.size > 1) {
+      const distinctNames = new Set(customerRows.map(c => (c.name || '').trim().toLowerCase()).filter(Boolean));
+      if (distinctNames.size > 1) {
+        return { found: false, resolution: 'ambiguous', reason: 'conflicting_customer_names' };
+      }
+    }
+  }
+
+  let profilePoints = null;
+  if (uniqueProfile && typeof uniqueProfile.total_points === 'number' && uniqueProfile.total_points >= 0) {
+    profilePoints = uniqueProfile.total_points;
+  }
+
+  const customerPointsList = customerRows
+    .map(c => c.points)
+    .filter(pts => typeof pts === 'number' && pts >= 0);
+
+  let finalPoints = null;
+  let status = 'available';
+
+  if (profilePoints !== null) {
+    if (customerPointsList.length > 0) {
+      const distinctCustPoints = new Set(customerPointsList);
+      if (distinctCustPoints.size > 1) {
+        const matchesProfile = customerPointsList.includes(profilePoints);
+        if (!matchesProfile) {
+          status = 'ambiguous_balance_conflict';
+          finalPoints = null;
+        } else {
+          finalPoints = profilePoints;
+        }
+      } else {
+        const custPoints = customerPointsList[0];
+        if (custPoints !== profilePoints) {
+          status = 'ambiguous_balance_conflict';
+          finalPoints = null;
+        } else {
+          finalPoints = profilePoints;
+        }
+      }
+    } else {
+      finalPoints = profilePoints;
+    }
+  } else if (customerPointsList.length > 0) {
+    const distinctCustPoints = new Set(customerPointsList);
+    if (distinctCustPoints.size > 1) {
+      status = 'ambiguous_balance_conflict';
+      finalPoints = null;
+    } else {
+      finalPoints = customerPointsList[0];
+    }
+  } else if (uniqueProfile || customerRows.length > 0) {
+    finalPoints = 0;
+  } else {
+    return { found: false, resolution: 'not_found' };
+  }
+
+  return {
+    found: true,
+    resolution: uniqueProfile ? 'member_profile_match' : 'customer_phone_match',
+    points_balance: finalPoints,
+    status: status,
+  };
+}
 
 /**
  * Formats a Date object or string to YYYY-MM-DD
@@ -43,14 +165,12 @@ function calculateMode(items = [], recentOrder = []) {
 
   if (candidates.length === 1) return candidates[0];
 
-  // Tie breaker: pick the candidate that appears earliest in recentOrder (most recent)
   for (const recentItem of recentOrder) {
     if (candidates.includes(recentItem)) {
       return recentItem;
     }
   }
 
-  // Fallback: alphabetical sort
   return candidates.sort()[0];
 }
 
@@ -122,7 +242,8 @@ async function getCustomer360(supabase, identityInput = {}) {
     supabase
       .from('member_points_balance')
       .select('*')
-      .or(pointsOr),
+      .or(pointsOr)
+      .then(r => r, () => ({ data: null, error: null })),
 
     supabase
       .from('transactions')
@@ -138,14 +259,14 @@ async function getCustomer360(supabase, identityInput = {}) {
       .order('date', { ascending: false }),
   ]);
 
-  if (pointsRes.error || txRes.error || bookingsRes.error) {
+  if (txRes.error || bookingsRes.error) {
     return {
       version: 'customer360.v0.1',
       identity: {
         customer_found: false,
         customer_id: customerId,
         resolution: 'db_error',
-        error: pointsRes.error?.message || txRes.error?.message || bookingsRes.error?.message || 'database_query_error',
+        error: txRes.error?.message || bookingsRes.error?.message || 'database_query_error',
       },
       customer: null,
       membership: null,
@@ -168,7 +289,6 @@ async function getCustomer360(supabase, identityInput = {}) {
   let loyaltyStatus = 'available';
 
   if (pointsRows.length > 0) {
-    // Prefer authoritative row matching canonical customer_id
     const exactMatch = pointsRows.find(r => r.customer_id === customerId);
     if (exactMatch) {
       totalPoints = typeof exactMatch.total_points === 'number' ? exactMatch.total_points : 0;
@@ -177,10 +297,8 @@ async function getCustomer360(supabase, identityInput = {}) {
       totalPoints = typeof pointsRows[0].total_points === 'number' ? pointsRows[0].total_points : 0;
       lastActivity = pointsRows[0].last_activity || null;
     } else {
-      // Multiple balance rows without an exact customer_id match
       const distinctBalances = new Set(pointsRows.map(r => r.total_points));
       if (distinctBalances.size > 1) {
-        // Conflicting point balances -> mark loyalty unavailable (fail closed, do NOT sum or guess)
         loyaltyStatus = 'ambiguous_balance_conflict';
         totalPoints = null;
         lastActivity = null;
@@ -189,6 +307,12 @@ async function getCustomer360(supabase, identityInput = {}) {
         lastActivity = pointsRows[0].last_activity || null;
       }
     }
+  } else if (typeof profileRow.total_points === 'number' && profileRow.total_points >= 0) {
+    totalPoints = profileRow.total_points;
+    lastActivity = profileRow.updated_at || null;
+  } else if (typeof custRow.points === 'number' && custRow.points >= 0) {
+    totalPoints = custRow.points;
+    lastActivity = custRow.updated_at || null;
   }
 
   const loyaltyObj = loyaltyStatus === 'ambiguous_balance_conflict'
@@ -246,7 +370,6 @@ async function getCustomer360(supabase, identityInput = {}) {
   const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
   const pendingBookings = bookings.filter(b => ['pending', 'confirmed'].includes(b.status));
 
-  // Determine first & last visit dates across completed bookings and transactions
   const visitDates = [
     ...doneBookings.map(b => b.date),
     ...transactions.map(t => formatDateStr(t.created_at)),
@@ -321,6 +444,7 @@ async function getCustomer360(supabase, identityInput = {}) {
 
 module.exports = {
   getCustomer360,
+  getCustomerPointsByTrustedPhone,
   formatDateStr,
   calculateMode,
 };
