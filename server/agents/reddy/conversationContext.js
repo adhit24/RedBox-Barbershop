@@ -1,5 +1,11 @@
 'use strict';
 
+const {
+  classifyConversationSession,
+  isExplicitClosureSignal,
+} = require('./personalityPolicy');
+
+
 /**
  * Redbox Conversation Context Helper v0.1 (Hardened Round 3)
  * Sanitizes and bounds conversation history turns for Reddy AI prompt context.
@@ -65,7 +71,8 @@ function sanitizeConversationHistoryDetails(history, options = {}) {
       perTurnTrimmed = true;
     }
 
-    clean.push({ role, content });
+    const ts = item.timestamp || item.created_at || item.createdAt;
+    clean.push({ role, content, ...(ts ? { timestamp: ts } : {}) });
   }
 
   const totalValid = clean.length;
@@ -109,15 +116,17 @@ function buildConversationMessages(history = [], userMessage = '') {
   const sanitized = sanitizeConversationHistory(history);
   const cleanUserMessage = typeof userMessage === 'string' ? userMessage.trim() : '';
 
-  if (!cleanUserMessage) return sanitized;
+  // OpenAI chat messages MUST contain strictly { role, content } without extra properties like timestamp
+  const projected = sanitized.map(item => ({ role: item.role, content: item.content }));
 
-  // Check if last turn in sanitized history is already identical to cleanUserMessage to avoid duplication
-  const lastTurn = sanitized.length > 0 ? sanitized[sanitized.length - 1] : null;
+  if (!cleanUserMessage) return projected;
+
+  const lastTurn = projected.length > 0 ? projected[projected.length - 1] : null;
   if (lastTurn && lastTurn.role === 'user' && lastTurn.content === cleanUserMessage) {
-    return sanitized;
+    return projected;
   }
 
-  return [...sanitized, { role: 'user', content: cleanUserMessage }];
+  return [...projected, { role: 'user', content: cleanUserMessage }];
 }
 
 /**
@@ -144,12 +153,12 @@ function appendConversationExchange(history = [], userMessage = '', assistantRep
   // Append user message if not already present at the end of history
   if (cleanUserMessage) {
     if (!lastTurn || lastTurn.role !== 'user' || lastTurn.content !== cleanUserMessage) {
-      result.push({ role: 'user', content: cleanUserMessage });
+      result.push({ role: 'user', content: cleanUserMessage, timestamp: options.now || Date.now() });
     }
   }
 
   // Append assistant reply exactly once
-  result.push({ role: 'assistant', content: cleanReply });
+  result.push({ role: 'assistant', content: cleanReply, timestamp: options.now || Date.now() });
 
   // Enforce MAX_HISTORY limit after append
   return result.length > maxItems ? result.slice(result.length - maxItems) : result;
@@ -162,6 +171,41 @@ function appendConversationExchange(history = [], userMessage = '', assistantRep
  * @param {object} options - Bounding options
  * @returns {object} Structured Envelope
  */
+
+/**
+ * Extracts timestamp of the most recent user turn from history array.
+ * @param {Array} history
+ * @returns {number|null}
+ */
+
+/**
+ * Extracts the most recent user turn from history array.
+ * @param {Array} history
+ * @returns {object|null}
+ */
+function extractLastCustomerTurn(history = []) {
+  if (!Array.isArray(history)) return null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const turn = history[i];
+    if (turn && typeof turn === 'object' && turn.role === 'user') {
+      return turn;
+    }
+  }
+  return null;
+}
+
+function extractLastCustomerTimestamp(history = []) {
+  if (!Array.isArray(history)) return null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    const turn = history[i];
+    if (turn && typeof turn === 'object' && turn.role === 'user') {
+      const ts = turn.timestamp || turn.created_at || turn.createdAt;
+      if (ts) return Number(ts);
+    }
+  }
+  return null;
+}
+
 function extractConversationContextEnvelope(historyInput = [], userMessage = '', options = {}) {
   let historyArray = [];
   let historyStatus = 'empty';
@@ -183,6 +227,18 @@ function extractConversationContextEnvelope(historyInput = [], userMessage = '',
     historyStatus = 'empty';
   }
 
+  const lastCustomerTurn = extractLastCustomerTurn(historyArray);
+  const lastCustomerTimestamp = lastCustomerTurn ? (lastCustomerTurn.timestamp || lastCustomerTurn.created_at || lastCustomerTurn.createdAt) : null;
+  const previousUserContent = lastCustomerTurn ? (lastCustomerTurn.content || '') : '';
+  const previousCustomerClosed = isExplicitClosureSignal(previousUserContent);
+  const explicitClosure = isExplicitClosureSignal(userMessage) || previousCustomerClosed;
+
+  const sessionStatus = classifyConversationSession({
+    now: options.now || Date.now(),
+    lastCustomerMessageAt: lastCustomerTimestamp,
+    explicitClosure,
+  });
+
   return {
     version: 'conversation_context.v0.1',
     source: 'recent_conversation',
@@ -190,6 +246,8 @@ function extractConversationContextEnvelope(historyInput = [], userMessage = '',
     turns,
     turn_count: turns.length,
     history_status: historyStatus, // 'available' | 'empty' | 'unavailable'
+    sessionStatus,
+    lastCustomerTimestamp,
     trimmed,
     filtered_count,
   };

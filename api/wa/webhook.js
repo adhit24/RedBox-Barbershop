@@ -18,6 +18,13 @@ const { classifyDeterministically } = require('../../server/orchestrator/routing
 const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
+const {
+  classifyConversationSession,
+  isExplicitGreeting,
+  isExplicitClosureSignal,
+  buildReddyPersonalityPrompt,
+  FORBIDDEN_ADDRESS_TERMS_REGEX,
+} = require('../../server/agents/reddy/personalityPolicy');
 const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
 const {
   sanitizeConversationHistory,
@@ -437,7 +444,7 @@ function buildServicesText(branch) {
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(branch = 'bypass') {
+function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifiedName = null) {
   const now = new Date();
   const wibOffset = 7 * 60 * 60 * 1000;
   const wib = new Date(now.getTime() + wibOffset);
@@ -457,7 +464,11 @@ function buildSystemPrompt(branch = 'bypass') {
     .map(n => `Mas ${n}`)
     .join(', ');
 
-  return `Kamu adalah "Reddy" — teman ngobrol sekaligus beauty advisor resmi Redbox Barbershop, cabang ${branchInfo.name}. Bukan robot, bukan customer service kaku. Kamu warm, empati, ngobrolnya asik, dan genuinely peduli sama penampilan pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
+  
+  const isVerifiedName = Boolean(verifiedName && typeof verifiedName === 'string' && verifiedName.trim() !== '' && verifiedName.trim() !== 'Kak');
+  const personalityPrompt = buildReddyPersonalityPrompt({ branch, sessionStatus, isVerifiedName, verifiedName });
+  
+return `Kamu adalah "Reddy" — teman ngobrol sekaligus beauty advisor resmi Redbox Barbershop, cabang ${branchInfo.name}. Bukan robot, bukan customer service kaku. Kamu warm, empati, ngobrolnya asik, dan genuinely peduli sama penampilan pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
 
 Hari/waktu sekarang: ${dateStr}, pukul ${timeStr} WIB.
 
@@ -651,7 +662,9 @@ SKENARIO SPESIFIK:
 JANGAN DIJAWAB:
 - Nomor kontak owner/pemilik langsung
 - Info real-time antrian (jawab: arahkan ke booking page)
-- Modifikasi/cancel booking (jawab: hubungi cabang atau cek website)`;
+- Modifikasi/cancel booking (jawab: hubungi cabang atau cek website)
+
+${personalityPrompt}`;
 }
 // ── OpenAI Chat ───────────────────────────────────────────────────────────────
 
@@ -679,7 +692,8 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
   }
 
   // Build branch-aware system prompt
-  let systemPrompt = buildSystemPrompt(branch);
+  const sessionStatus = conversationContext?.sessionStatus || 'expired';
+  let systemPrompt = buildSystemPrompt(branch, sessionStatus, name);
 
   if (customerFactsContext) {
     systemPrompt += `\n\n${customerFactsContext}`;
@@ -1520,14 +1534,14 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     );
     let pointsReply;
     if (orchResult.execution_status === 'unauthorized') {
-      pointsReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+      pointsReply = 'Untuk mengecek saldo poin member Redbox, pastikan kamu menghubungi kami via nomor terverifikasi ya Kak.';
     } else if (orchResult.execution_status === 'success') {
       const points = orchResult.result?.data?.points_balance ?? 0;
-      pointsReply = 'Halo kak! Saldo poin member RedBox kamu saat ini: ' + points + ' poin ✨';
+      pointsReply = 'Saldo poin member Redbox kamu saat ini: ' + points + ' poin.';
     } else if (orchResult.execution_status === 'customer_not_found') {
-      pointsReply = 'Halo kak! Nomor WhatsApp kamu belum terdaftar sebagai member RedBox. Dapatkan poin loyalty di setiap kunjungan cukur kamu!';
+      pointsReply = 'Nomor WhatsApp ini belum terdaftar sebagai member Redbox. Dapatkan poin loyalty 5% di setiap kunjungan cukur kamu!';
     } else {
-      pointsReply = 'Halo kak! Saat ini sistem poin sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi ya!';
+      pointsReply = 'Layanan cek poin sedang tidak dapat diakses sementara. Coba beberapa saat lagi ya Kak.';
     }
     logTelemetry({
       route: 'crm_agent',
@@ -1613,7 +1627,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const isPersonalHistoryOrPreferenceSignal = /\b(saya|aku|ku|terakhir|riwayat|histori|history|biasanya|favorit|sering|pernah|kapan|sama siapa)\b/.test(msgLower);
 
   if (isWalkIn) {
-    reply = `Boleh coba datang langsung kak, tapi slot walk-in belum tentu tersedia ya 😊 Biar lebih aman, cek dan booking lewat ${bookingUrl(branch)}`;
+    reply = `Boleh datang langsung Kak, tapi slot walk-in tergantung antrian outlet. Biar jamnya terjamin, mendingan dikunci lewat web booking: ${bookingUrl(branch)}`;
     used = 'policy';
     const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1622,9 +1636,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   if (!isPersonalHistoryOrPreferenceSignal && msgHas(['layanan apa', 'service apa', 'ada apa aja', 'ada apa saja', 'menu apa', 'jenis layanan',
                'list layanan', 'apa aja layanan', 'apa saja layanan', 'layanan saja', 'layanan aja',
                'service saja', 'service aja', 'ada layanan', 'ada service'])) {
-    const firstName = (name || 'Kak').split(' ')[0];
     const svcText = buildServicesText(branch);
-    reply = `Ini layanan lengkap RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nAda yang mau dicoba, ${firstName}? Langsung book di: ${bookingUrl(branch)} ✂️`;
+    reply = `Berikut layanan di RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
     const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1632,7 +1645,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
   if (!isPersonalHistoryOrPreferenceSignal && msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
     const svcText = buildServicesText(branch);
-    reply = `Ini harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nMau langsung lock slot? → ${bookingUrl(branch)} ✂️`;
+    reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
     const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1645,11 +1658,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const _pastIndicator = /\b(td|tadi|barusan|barusaja|kemarin|kemaren|kmrn|sebelumnya|abis|habis|udh|udah|sudah)\b/.test(msgLower);
   const _beenThere = /(ke\s*sana|kesana|ke\s*sini|kesini|outlet|cabang|tempatnya|tokonya|store)/.test(msgLower);
   if (_waitWord && (_pastIndicator || _beenThere)) {
-    reply =
-      `Aduh, maaf banget kak udah sempet nunggu kayak gitu 🙏\n\n` +
-      `Biar kejadian itu gak keulang, sekarang Redbox udah pakai sistem booking online — ketersediaan kapster live update di web. ` +
-      `Jadi kakak tinggal pilih jam yang available, slot terjamin tercatat di sistem tanpa perlu menebak-nebak antrian.\n\n` +
-      `Lock jadwalnya di sini ya kak → ${bookingUrl(branch)} ✂️`;
+    reply = 'Maaf ya Kak, nunggu lama memang bikin tidak nyaman. Terima kasih sudah memberi tahu kami.';
     used = 'keyword';
     const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
@@ -1682,7 +1691,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
-    const handoffReply = 'Pesan Kakak sudah kami teruskan ke admin cabang RedBox. Mohon tunggu sebentar ya, admin akan segera membalas 🙏';
+    const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
     const sendResult = await send(from, handoffReply, { branch });
     return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
   }
@@ -1703,7 +1712,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     });
 
     if (!trustedIdentity) {
-      const crmReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+      const crmReply = 'Untuk mengakses data member Redbox, pastikan menghubungi via nomor terverifikasi ya Kak.';
       const sendResult = await send(from, crmReply, { branch });
       return { used: 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
     }
@@ -2257,3 +2266,5 @@ module.exports = async function handler(req, res) {
 module.exports.handleMessage = handleMessage;
 module.exports.persistConversationExchange = persistConversationExchange;
 module.exports.callOpenAI = callOpenAI;
+
+module.exports.buildSystemPrompt = buildSystemPrompt;
