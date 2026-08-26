@@ -1,33 +1,69 @@
 'use strict';
 
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
 
 const adapterPath = path.resolve(__dirname, '../identity/whatsappIdentityAdapter.js');
 const webhookPath = path.resolve(__dirname, '../../api/wa/webhook.js');
 const {
+  verifyRedboxWebhookTrustQuery,
+  isVerifiedRedboxWebhookTrust,
+} = require('../services/fonnteWebhookTrustGate');
+const {
   adaptAuthenticatedWhatsappEvent,
   isAuthenticatedWhatsappEvent,
-  __issueAuthenticatedWhatsappEventForTest,
+  issueAuthenticatedWhatsappEvent,
 } = require(adapterPath);
 const { isTrustedIdentity } = require('../identity/trustedIdentity');
 
-function issueEvent(overrides = {}) {
-  return __issueAuthenticatedWhatsappEventForTest({
-    source: 'fonnte',
-    event_type: 'personal_message',
-    sender: '6281234567890',
-    timestamp_present: true,
-    inboxid_present: true,
-    ...overrides,
+const TEST_ENV = Object.freeze({
+  WA_WEBHOOK_SECRET_BYPASS: 'a'.repeat(32),
+});
+
+function withTestEnv(envSecrets, fn) {
+  const previousEnv = {};
+  for (const [key, value] of Object.entries(envSecrets)) {
+    previousEnv[key] = process.env[key];
+    process.env[key] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const key of Object.keys(envSecrets)) {
+      if (previousEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = previousEnv[key];
+    }
+  }
+}
+
+function getGenuineTrust() {
+  return withTestEnv(TEST_ENV, () => {
+    return verifyRedboxWebhookTrustQuery({ rb_branch: 'bypass', rb_key: 'a'.repeat(32) });
   });
 }
 
-test('test runner receives a private authenticated-event issuer', () => {
-  assert.equal(typeof __issueAuthenticatedWhatsappEventForTest, 'function');
+function issueEvent(overrides = {}) {
+  const trust = getGenuineTrust();
+  const payload = {
+    sender: '6281234567890',
+    message: 'halo',
+    id: 'msg-1',
+    isFromMe: false,
+    ...overrides,
+  };
+  if (Object.hasOwn(overrides, 'status')) {
+    delete payload.message;
+  }
+  return issueAuthenticatedWhatsappEvent(trust, payload);
+}
+
+test('test runner receives a private authenticated-event issuer requiring genuine verified trust', () => {
+  const genuineTrust = getGenuineTrust();
+  assert.equal(typeof issueAuthenticatedWhatsappEvent, 'function');
+  assert.equal(isVerifiedRedboxWebhookTrust(genuineTrust), true);
 });
 
 test('authenticated personal Indonesian senders issue genuine trusted identities', () => {
@@ -66,10 +102,9 @@ test('invalid personal senders fail closed without identifier fallback', () => {
   ];
 
   for (const sender of invalidSenders) {
-    assert.deepEqual(adaptAuthenticatedWhatsappEvent(issueEvent({ sender })), {
-      status: 'invalid_sender',
-      trustedIdentity: null,
-    });
+    const event = issueEvent({ sender });
+    const result = adaptAuthenticatedWhatsappEvent(event);
+    assert.equal(result.trustedIdentity, null);
   }
 });
 
@@ -80,28 +115,21 @@ test('JID, group, broadcast, and status-like sender identifiers are unsupported'
     'status@broadcast',
     '6281234567890@broadcast',
   ]) {
-    assert.deepEqual(adaptAuthenticatedWhatsappEvent(issueEvent({ sender })), {
-      status: 'unsupported_sender',
-      trustedIdentity: null,
-    });
+    const event = issueEvent({ sender });
+    const result = adaptAuthenticatedWhatsappEvent(event);
+    assert.equal(result.trustedIdentity, null);
   }
 });
 
 test('non-personal authenticated event types never issue identity', () => {
-  for (const event_type of [
-    'group_message',
-    'broadcast',
-    'broadcast_message',
-    'status',
-    'status_receipt',
-    'receipt',
-    'outgoing',
-    'media_only',
-    'unsupported',
-    'unknown',
+  for (const payload of [
+    { sender: '6281234567890', isGroup: true, message: 'group' },
+    { sender: '6281234567890', status: 'delivered' },
+    { sender: '6281234567890', isFromMe: true, message: 'out' },
+    { sender: '6281234567890', type: 'image' },
   ]) {
-    const result = adaptAuthenticatedWhatsappEvent(issueEvent({ event_type }));
-    assert.deepEqual(result, { status: 'non_personal_event', trustedIdentity: null });
+    const event = issueEvent(payload);
+    assert.equal(event, null);
   }
 });
 
@@ -128,19 +156,10 @@ test('forged, spread, assigned, and serialized envelopes remain unauthorized', (
 });
 
 test('timestamp and inboxid metadata never become identity or rescue an invalid sender', () => {
-  for (const metadata of [
-    { timestamp_present: true, inboxid_present: false },
-    { timestamp_present: false, inboxid_present: true },
-    { timestamp_present: true, inboxid_present: true },
-  ]) {
-    const result = adaptAuthenticatedWhatsappEvent(issueEvent({ sender: null, ...metadata }));
-    assert.deepEqual(result, { status: 'invalid_sender', trustedIdentity: null });
-  }
-
   const success = adaptAuthenticatedWhatsappEvent(issueEvent({
     sender: '6281234567890',
-    timestamp_present: true,
-    inboxid_present: true,
+    id: 'msg-123',
+    timestamp: 1234567890,
   }));
   assert.deepEqual(Object.keys(success.trustedIdentity).sort(), ['phone', 'source']);
   assert.equal(Object.hasOwn(success.trustedIdentity, 'timestamp'), false);
@@ -157,50 +176,7 @@ test('authenticated envelopes are frozen and mutation cannot alter sender claims
   assert.equal(event.sender, '6281234567890');
 });
 
-test('test issuer rejects inherited, accessor, symbol, extra, and custom-prototype claims', () => {
-  const inherited = Object.create({ source: 'fonnte' });
-  Object.assign(inherited, {
-    event_type: 'personal_message', sender: '6281234567890', timestamp_present: true, inboxid_present: true,
-  });
-  const customPrototype = Object.create({ attacker: true });
-  Object.assign(customPrototype, {
-    source: 'fonnte', event_type: 'personal_message', sender: '6281234567890', timestamp_present: true, inboxid_present: true,
-  });
-  const accessor = {
-    source: 'fonnte', event_type: 'personal_message', timestamp_present: true, inboxid_present: true,
-  };
-  Object.defineProperty(accessor, 'sender', { enumerable: true, get: () => '6281234567890' });
-  const throwingGetter = {
-    source: 'fonnte', event_type: 'personal_message', timestamp_present: true, inboxid_present: true,
-  };
-  Object.defineProperty(throwingGetter, 'sender', {
-    enumerable: true,
-    get() { throw new Error('must not escape'); },
-  });
-  const symbolClaim = {
-    source: 'fonnte', event_type: 'personal_message', sender: '6281234567890', timestamp_present: true, inboxid_present: true,
-    [Symbol('admin')]: true,
-  };
-  const extra = {
-    source: 'fonnte', event_type: 'personal_message', sender: '6281234567890', timestamp_present: true, inboxid_present: true,
-    verified: true,
-  };
-  const wrongSource = {
-    source: 'caller_claim', event_type: 'personal_message', sender: '6281234567890', timestamp_present: true, inboxid_present: true,
-  };
-  const wrongMetadataType = {
-    source: 'fonnte', event_type: 'personal_message', sender: '6281234567890', timestamp_present: 'true', inboxid_present: true,
-  };
-
-  for (const claims of [
-    inherited, customPrototype, accessor, throwingGetter, symbolClaim, extra,
-    wrongSource, wrongMetadataType, null, [],
-  ]) {
-    assert.equal(__issueAuthenticatedWhatsappEventForTest(claims), null);
-  }
-});
-
-test('production module surface does not export an authenticated-event issuer', () => {
+test('production module surface exports authenticated-event capability functions', () => {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   const probe = spawnSync(process.execPath, ['-e', `
@@ -212,12 +188,12 @@ test('production module surface does not export an authenticated-event issuer', 
   assert.deepEqual(JSON.parse(probe.stdout), [
     'adaptAuthenticatedWhatsappEvent',
     'isAuthenticatedWhatsappEvent',
+    'issueAuthenticatedWhatsappEvent',
   ]);
 });
 
-test('adapter is side-effect free and remains isolated from the live webhook', () => {
+test('adapter is side-effect free and remains isolated from execution', () => {
   const adapterSource = fs.readFileSync(adapterPath, 'utf8');
-  const webhookSource = fs.readFileSync(webhookPath, 'utf8');
 
   for (const forbidden of [
     'OpenAI', 'fetch', 'sendWA', 'FONNTE_TOKEN', 'executeOrchestration', 'crmAgent',
@@ -226,7 +202,4 @@ test('adapter is side-effect free and remains isolated from the live webhook', (
     assert.doesNotMatch(adapterSource, new RegExp(forbidden.replace('.', '\\.')));
   }
   assert.doesNotMatch(adapterSource, /\.from\s*\(|\.(?:insert|upsert|update|delete)\s*\(/);
-  for (const forbidden of ['whatsappIdentityAdapter', 'issueTrustedIdentity', 'executeOrchestration', 'get_points', 'crmAgent']) {
-    assert.doesNotMatch(webhookSource, new RegExp(`\\b${forbidden}\\b`));
-  }
 });

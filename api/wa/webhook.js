@@ -9,6 +9,17 @@ const {
   inspectFonnteWebhookShadow,
   emitFonnteWebhookShadow,
 } = require('../../server/services/fonnteWebhookVerifier');
+const {
+  verifyRedboxWebhookTrustQuery,
+  emitRedboxWebhookTrust,
+} = require('../../server/services/fonnteWebhookTrustGate');
+const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
+const { classifyDeterministically } = require('../../server/orchestrator/routingPolicy');
+const { executeOrchestration } = require('../../server/orchestrator/executionService');
+const {
+  issueAuthenticatedWhatsappEvent,
+  adaptAuthenticatedWhatsappEvent,
+} = require('../../server/identity/whatsappIdentityAdapter');
 const { reconcileCustomerNotificationDelivery } = require('../../server/services/bookingNotificationOutbox');
 const { STATUS: BOOKING_STATUS, getCustomerBookingStatus } = require('../../server/whatsapp-ai/services/bookingStatusService');
 const OpenAI = require('openai');
@@ -1347,7 +1358,35 @@ function extractForeignKapster(text, branch = 'bypass') {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branchFromPayload }) {
+async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null }) {
+  const classification = classifyDeterministically(text);
+  if (classification && classification.intent === 'points_inquiry') {
+    const branch = branchFromPayload || detectBranchFromNumber(receiver || device || from);
+    const orchResult = await executeOrchestration(
+      {
+        intent: 'points_inquiry',
+        route: 'crm_agent',
+        agent: 'crm_agent',
+        action: 'get_points',
+        confidence: 1.0,
+        model_tier: 'economy',
+      },
+      { trustedIdentity, supabase: getSupabase() }
+    );
+    let pointsReply;
+    if (orchResult.execution_status === 'unauthorized') {
+      pointsReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+    } else if (orchResult.execution_status === 'success') {
+      const points = orchResult.result?.data?.points_balance ?? 0;
+      pointsReply = 'Halo kak! Saldo poin member RedBox kamu saat ini: ' + points + ' poin ✨';
+    } else if (orchResult.execution_status === 'customer_not_found') {
+      pointsReply = 'Halo kak! Nomor WhatsApp kamu belum terdaftar sebagai member RedBox. Dapatkan poin loyalty di setiap kunjungan cukur kamu!';
+    } else {
+      pointsReply = 'Halo kak! Saat ini sistem poin sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi ya!';
+    }
+    const sendResult = await sendWA(from, pointsReply, { branch });
+    return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
+  }
   let reply;
   let used = 'openai';
   let error = null;
@@ -1689,11 +1728,28 @@ module.exports = async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).end();
 
+  // Redbox-managed shared-secret verification is a dormant CRM eligibility
+  // signal only. It is not a Fonnte signature and never gates the Reddy flow.
+  let parsedTrustQuery;
+  try { parsedTrustQuery = req.query; } catch { parsedTrustQuery = null; }
+  const redboxWebhookTrust = verifyRedboxWebhookTrustQuery(parsedTrustQuery);
+  emitRedboxWebhookTrust(redboxWebhookTrust);
+
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const rawBody = await coerceBody(req.body, req);
     const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
     emitFonnteWebhookShadow(shadowMetadata);
+    let trustedIdentity = null;
+    if (redboxWebhookTrust && redboxWebhookTrust.status === 'verified') {
+      try {
+        const eventCap = issueAuthenticatedWhatsappEvent(redboxWebhookTrust, rawBody);
+        const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
+        if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
+          trustedIdentity = identityResult.trustedIdentity;
+        }
+      } catch {}
+    }
     let body = rawBody;
     if (rawBody && rawBody.data) {
       if (typeof rawBody.data === 'object') {
@@ -1879,7 +1935,7 @@ module.exports = async function handler(req, res) {
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
     const t0 = Date.now();
     try {
-      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload });
+      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity });
       const ms = Date.now() - t0;
       console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
     } catch (err) {
