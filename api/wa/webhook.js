@@ -2173,14 +2173,7 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({ status: 'ignored', reason: 'human_takeover' });
     }
 
-    // Per-branch AI off-hours — bot diam total di luar jam aktif cabang
-    {
-      const branchForHours = branchFromPayload || detectBranchFromNumber(receiver || device || sender);
-      if (isBranchAiOff(branchForHours)) {
-        console.log('[WA Bot] AI off-hours:', { branch: branchForHours });
-        return res.status(200).json({ status: 'ignored', reason: 'branch_ai_off_hours', branch: branchForHours });
-      }
-    }
+    // 24/7 AI Availability Policy: Branch off-hours gate removed. AI processes 24/7 while branch hours remain informational.
 
     // Proses AI + kirim WA DULU (sebelum res.json) — Lambda dalam state sinkron = network lebih cepat.
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
