@@ -4,7 +4,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
-const { spawnSync } = require('node:child_process');
 
 const gatePath = path.resolve(__dirname, '../services/fonnteWebhookTrustGate.js');
 const webhookPath = path.resolve(__dirname, '../../api/wa/webhook.js');
@@ -47,10 +46,6 @@ function createResponseHarness() {
   return { response, output };
 }
 
-function loadWebhookWithRuntimeMocks() {
-  return require(webhookPath);
-}
-
 // ── MANDATORY SECURITY REGRESSION TEST (FINDING 3) ──────────────────────────
 test('production verifier accepts query ONLY (arity 1) when body is absent and ignores caller-supplied fake env objects', () => {
   const fakeEnv = { WA_WEBHOOK_SECRET_CSB: CSB_SECRET };
@@ -81,7 +76,116 @@ test('all five exact lowercase branch domains use only their dedicated environme
   }
 });
 
-// ── FONNTE NATIVE BODY SECRET TESTS (PLAN A.1) ──────────────────────────────
+test('safe null-prototype query dictionaries remain compatible with serverless parsers', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
+    const query = Object.create(null);
+    query.rb_branch = 'csb';
+    query.rb_key = CSB_SECRET;
+    const trustResult = verifyRedboxWebhookTrustQuery(query);
+    assert.equal(trustResult.status, 'verified');
+    assert.equal(trustResult.branch, 'csb');
+    assert.equal(isVerifiedRedboxWebhookTrust(trustResult), true);
+  });
+});
+
+test('missing, empty, whitespace, and weak environment configuration fail closed', () => {
+  for (const secretValue of [undefined, '', '   ', 'too-short-secret']) {
+    const envSecrets = secretValue !== undefined ? { WA_WEBHOOK_SECRET_CSB: secretValue } : {};
+    withTestEnv(envSecrets, () => {
+      assert.deepEqual(
+        verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: CSB_SECRET }),
+        { status: 'not_configured', branch: 'csb', trust_method: 'query_secret_fallback' },
+      );
+    });
+  }
+});
+
+test('missing and malformed provided secrets are distinguished without coercion', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
+    assert.deepEqual(
+      verifyRedboxWebhookTrustQuery({ rb_branch: 'csb' }),
+      { status: 'missing_secret', branch: 'csb', trust_method: 'query_secret_fallback' },
+    );
+    assert.deepEqual(
+      verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: '' }),
+      { status: 'missing_secret', branch: 'csb', trust_method: 'query_secret_fallback' },
+    );
+    for (const rb_key of [null, [], {}, 123, true, false]) {
+      assert.deepEqual(
+        verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key }),
+        { status: 'malformed', branch: 'csb', trust_method: 'query_secret_fallback' },
+      );
+    }
+  });
+});
+
+test('prefix, suffix, length, spaces, and Unicode lookalikes never verify', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
+    for (const rb_key of [
+      CSB_SECRET.slice(0, -6),
+      CSB_SECRET.slice(6),
+      `${CSB_SECRET}x`,
+      ` ${CSB_SECRET}`,
+      `${CSB_SECRET} `,
+      CSB_SECRET.replace('c', '\u0441'),
+      'wrong-test-secret-000000000000000000000000001',
+    ]) {
+      assert.deepEqual(
+        verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key }),
+        { status: 'invalid_secret', branch: 'csb', trust_method: 'query_secret_fallback' },
+      );
+    }
+  });
+});
+
+test('branch secrets are bound to their exact domain with no Bypass fallback', () => {
+  withTestEnv({
+    WA_WEBHOOK_SECRET_BYPASS: 'bypass-test-secret-000000000000000000000001',
+    WA_WEBHOOK_SECRET_CSB: CSB_SECRET,
+    WA_WEBHOOK_SECRET_TEGAL: TEGAL_SECRET,
+  }, () => {
+    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: CSB_SECRET }).status, 'verified');
+    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'tegal', rb_key: TEGAL_SECRET }).status, 'verified');
+    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'tegal', rb_key: CSB_SECRET }).status, 'invalid_secret');
+    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: TEGAL_SECRET }).status, 'invalid_secret');
+  });
+});
+
+test('unknown, missing, case-variant, and Unicode-manipulated branch values fail closed', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
+    assert.equal(verifyRedboxWebhookTrustQuery({ rb_key: CSB_SECRET }).status, 'unknown_branch');
+    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'unknown', rb_key: CSB_SECRET }).status, 'unknown_branch');
+    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'CSB', rb_key: CSB_SECRET }).status, 'unknown_branch');
+    for (const rb_branch of ['__proto__', 'constructor', 'toString']) {
+      assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch, rb_key: CSB_SECRET }).status, 'unknown_branch');
+    }
+    for (const rb_branch of ['', '   ', null, [], {}, 123, true]) {
+      assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch, rb_key: CSB_SECRET }).status, 'malformed');
+    }
+  });
+});
+
+test('query input rejects inherited, custom-prototype, accessors, symbols, extras, and duplicate arrays', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
+    const inherited = Object.create({ rb_branch: 'csb', rb_key: CSB_SECRET });
+    const customPrototype = Object.create({ attacker: true });
+    customPrototype.rb_branch = 'csb';
+    customPrototype.rb_key = CSB_SECRET;
+
+    for (const query of [
+      inherited, customPrototype,
+      { rb_branch: ['csb', 'tegal'], rb_key: CSB_SECRET },
+      null, [], 'rb_branch=csb',
+    ]) {
+      assert.deepEqual(
+        verifyRedboxWebhookTrustQuery(query),
+        { status: 'malformed', branch: null, trust_method: 'query_secret_fallback' },
+      );
+    }
+  });
+});
+
+// ── FONNTE NATIVE BODY SECRET UNIT TESTS (PLAN A.1) ─────────────────────────
 test('A. verified Fonnte body secret + valid SUMBER device MUST verify trust', () => {
   withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
     const body = {
@@ -220,4 +324,118 @@ test('K. LOG SAFETY: safe logging never includes webhook-secret-key, sender, mes
   for (const prohibited of [SUMBER_SECRET, '6281234567890', 'secret chat', '12345', 'webhook-secret-key']) {
     assert.equal(serialized.includes(prohibited), false);
   }
+});
+
+test('HARDENED DEVICE NORMALIZATION: reject mixed-letter and malicious device strings', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
+    for (const invalidDevice of [
+      'abc0818202599xyz',
+      '0818abc202599',
+      '0818202599<script>',
+      '0818202599 OR 1=1',
+      '12345',
+      'SELECT * FROM users',
+    ]) {
+      const body = {
+        device: invalidDevice,
+        'webhook-secret-key': SUMBER_SECRET,
+      };
+      const trustResult = verifyRedboxWebhookTrustQuery(null, body);
+      assert.equal(trustResult.status, 'unknown_branch');
+      assert.equal(isVerifiedRedboxWebhookTrust(trustResult), false);
+    }
+  });
+});
+
+// ── LIVE WEBHOOK RUNTIME LEVEL INTEGRATION TESTS ────────────────────────────
+test('LIVE WEBHOOK RUNTIME: realistic Fonnte Flow payload verifies body secret and executes CRM points', async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+    const webhook = require(webhookPath);
+    const { response, output } = createResponseHarness();
+
+    const req = {
+      method: 'POST',
+      query: {},
+      body: {
+        device: '0818202599',
+        inboxid: 0,
+        isgroup: false,
+        message: 'poin saya berapa?',
+        sender: '6281234567890',
+        timestamp: 1787727718,
+        type: 'text',
+        username: '62818202569',
+        'webhook-secret-key': SUMBER_SECRET,
+      },
+    };
+
+    await webhook(req, response);
+    assert.equal(output.statusCode, 200);
+    assert.equal(output.body.status, 'ok');
+  });
+});
+
+test('LIVE WEBHOOK RUNTIME: correct body secret + wrong device fails closed', async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+    const webhook = require(webhookPath);
+    const { response, output } = createResponseHarness();
+
+    const req = {
+      method: 'POST',
+      query: {},
+      body: {
+        device: '0818202889', // CSB device instead of SUMBER device
+        'webhook-secret-key': SUMBER_SECRET,
+        sender: '6281234567890',
+        message: 'poin saya berapa?',
+        type: 'text',
+      },
+    };
+
+    await webhook(req, response);
+    assert.equal(output.statusCode, 200);
+  });
+});
+
+test('LIVE WEBHOOK RUNTIME: wrong body secret + valid query fallback fails closed (no downgrade)', async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+    const webhook = require(webhookPath);
+    const { response, output } = createResponseHarness();
+
+    const req = {
+      method: 'POST',
+      query: { rb_branch: 'sumber', rb_key: SUMBER_SECRET },
+      body: {
+        device: '0818202599',
+        'webhook-secret-key': 'attacker-wrong-body-secret-000001',
+        sender: '6281234567890',
+        message: 'poin saya berapa?',
+        type: 'text',
+      },
+    };
+
+    await webhook(req, response);
+    assert.equal(output.statusCode, 200);
+  });
+});
+
+test('LIVE WEBHOOK RUNTIME: absent body secret + valid query fallback verifies legacy path', async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, async () => {
+    const webhook = require(webhookPath);
+    const { response, output } = createResponseHarness();
+
+    const req = {
+      method: 'POST',
+      query: { rb_branch: 'csb', rb_key: CSB_SECRET },
+      body: {
+        device: '0818202889',
+        sender: '6281234567890',
+        message: 'poin saya berapa?',
+        type: 'text',
+      },
+    };
+
+    await webhook(req, response);
+    assert.equal(output.statusCode, 200);
+  });
 });

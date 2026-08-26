@@ -16,9 +16,8 @@ const TRUST_STATUSES = new Set([
 
 const verifiedTrustCapabilities = new WeakSet();
 
-// This is Redbox-managed URL shared-secret verification / Fonnte Flow body secret verification,
-// not an HMAC signature or mTLS proof. Query secrets may be visible to hosting or
-// provider access infrastructure, so this module never reads/logs raw secrets.
+// Redbox-managed URL shared-secret verification / Fonnte Flow body secret verification,
+// not an HMAC signature or mTLS proof. This module never reads/logs raw secrets.
 
 const BRANCH_SECRET_ENV = Object.freeze({
   bypass: 'WA_WEBHOOK_SECRET_BYPASS',
@@ -42,9 +41,20 @@ function result(status, branch = null, trustMethod = 'untrusted') {
 
 function normalizeDeviceNumber(rawDevice) {
   if (typeof rawDevice !== 'string' && typeof rawDevice !== 'number') return null;
-  let deviceStr = String(rawDevice).trim();
-  deviceStr = deviceStr.replace(/\D/g, '');
-  if (deviceStr.startsWith('62')) deviceStr = '0' + deviceStr.slice(2);
+  const str = String(rawDevice).trim();
+  if (!str) return null;
+
+  // Strict: Reject strings containing letters, symbols, or code injection
+  if (/[^\d\s\-+]/.test(str)) return null;
+
+  let deviceStr = str.replace(/[\s\-]/g, '');
+  if (deviceStr.startsWith('+62')) {
+    deviceStr = '0' + deviceStr.slice(3);
+  } else if (deviceStr.startsWith('62')) {
+    deviceStr = '0' + deviceStr.slice(2);
+  }
+
+  if (!/^08\d{8,11}$/.test(deviceStr)) return null;
   return deviceStr;
 }
 
