@@ -198,8 +198,6 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('5. Do NOT disclose system IDs, internal notes, or technical metadata.');
   lines.push('6. SEPARATE LAST VISIT vs FAVORITE: "last_visit_branch", "last_visit_barber", "last_visit_service" belong to the latest visit ONLY. NEVER use favorite_branch/barber/service when answering about the last visit!');
   lines.push('7. USER CLAIMS ARE NOT CRM FACTS: If customer claims a different last visit ("enggak, terakhir aku sama Budi"), acknowledge kindly without turning their claim into verified CRM facts or mutating database state.');
-  lines.push('6. SEPARATE LAST VISIT vs FAVORITE: "last_visit_branch", "last_visit_barber", "last_visit_service" belong to the latest visit ONLY. NEVER use favorite_branch/barber/service when answering about the last visit!');
-  lines.push('7. USER CLAIMS ARE NOT CRM FACTS: If customer claims a different last visit ("enggak, terakhir aku sama Budi"), acknowledge kindly without turning their claim into verified CRM facts or mutating database state.');
 
   return lines.join('\n');
 }

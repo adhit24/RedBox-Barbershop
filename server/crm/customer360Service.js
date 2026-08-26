@@ -396,22 +396,51 @@ async function getCustomer360(supabase, identityInput = {}) {
     average_transaction_value_idr: avgTxValue,
   };
 
-    // --- Activity / Visit Section ---
+      // --- Activity / Visit Section ---
   const doneBookings = bookings.filter(b => b.status === 'done');
   const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
   const pendingBookings = bookings.filter(b => ['pending', 'confirmed'].includes(b.status));
+
+  function parseEventTimestamp(rawDateVal, rawTimeVal) {
+    if (!rawDateVal) return { date: null, timestamp: null, precision: 'unknown' };
+    const datePart = formatDateStr(rawDateVal);
+    if (!datePart) return { date: null, timestamp: null, precision: 'unknown' };
+
+    const isIsoOrTime = typeof rawDateVal === 'string' && (rawDateVal.includes('T') || /\d{2}:\d{2}/.test(rawDateVal));
+    if (isIsoOrTime) {
+      const d = new Date(rawDateVal);
+      if (!isNaN(d.getTime())) {
+        return { date: datePart, timestamp: d.getTime(), precision: 'datetime' };
+      }
+    }
+
+    if (rawTimeVal && typeof rawTimeVal === 'string' && /\d{1,2}:\d{2}/.test(rawTimeVal)) {
+      const timePart = rawTimeVal.includes(':') ? rawTimeVal : `${rawTimeVal}:00`;
+      const combinedIso = `${datePart}T${timePart}:00Z`;
+      const d = new Date(combinedIso);
+      if (!isNaN(d.getTime())) {
+        return { date: datePart, timestamp: d.getTime(), precision: 'datetime' };
+      }
+    }
+
+    return { date: datePart, timestamp: null, precision: 'date_only' };
+  }
 
   // Build unified completed visit events list for deterministic event attribution
   const completedEvents = [];
 
   for (const b of doneBookings) {
-    const dateStr = formatDateStr(b.date) || b.date || null;
-    if (dateStr) {
+    const rawTime = b.start_time || b.time || b.booking_time || null;
+    const rawDate = b.date || b.created_at || null;
+    const parsed = parseEventTimestamp(rawDate, rawTime);
+
+    if (parsed.date) {
       completedEvents.push({
         type: 'booking',
-        date: dateStr,
-        timestamp: b.date ? new Date(b.date).getTime() : 0,
-        branch: b.location || b.branch_slug || null,
+        date: parsed.date,
+        timestamp: parsed.timestamp,
+        precision: parsed.precision,
+        branch: b.location || b.branch_slug || b.branch || null,
         barber: b.barber_name || b.barber_id || null,
         service: b.service || null,
       });
@@ -419,17 +448,18 @@ async function getCustomer360(supabase, identityInput = {}) {
   }
 
   for (const t of transactions) {
-    const dateStr = formatDateStr(t.created_at);
-    if (dateStr) {
+    const parsed = parseEventTimestamp(t.created_at, null);
+    if (parsed.date) {
       const items = Array.isArray(t.transaction_items) ? t.transaction_items : [];
       const serviceNames = items.map(i => i.service_name).filter(Boolean).join(', ');
       completedEvents.push({
         type: 'transaction',
-        date: dateStr,
-        timestamp: t.created_at ? new Date(t.created_at).getTime() : 0,
+        date: parsed.date,
+        timestamp: parsed.timestamp,
+        precision: parsed.precision,
         branch: t.outlet_slug || t.location || t.outlet_name || null,
         barber: t.barber_name || t.employee_name || t.barber_id || null,
-        service: serviceNames || null,
+        service: serviceNames || t.service || null,
       });
     }
   }
@@ -446,10 +476,6 @@ async function getCustomer360(supabase, identityInput = {}) {
   let lastVisitEventObj = null;
 
   if (completedEvents.length > 0 && lastVisit) {
-    // Sort descending by timestamp / date
-    completedEvents.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    
-    // Gather all events tied for the latest visit date
     const latestEvents = completedEvents.filter(e => e.date === lastVisit);
 
     if (latestEvents.length === 1) {
@@ -458,38 +484,115 @@ async function getCustomer360(supabase, identityInput = {}) {
       lastVisitBarber = single.barber;
       lastVisitService = single.service;
       lastVisitSource = single.type;
-      lastVisitConfidence = 'verified';
+
+      const isPartial = !single.branch || !single.barber || !single.service;
+      lastVisitConfidence = isPartial ? 'partial' : 'verified';
+
       lastVisitEventObj = {
         date: lastVisit,
+        timestamp: single.timestamp,
+        precision: single.precision,
         branch: single.branch,
         barber: single.barber,
         service: single.service,
         source: single.type,
-        confidence: 'verified',
-      };
-    } else {
-      // Tiers on same latest date — evaluate attribute agreement
-      const branches = new Set(latestEvents.map(e => e.branch).filter(Boolean));
-      const barbers = new Set(latestEvents.map(e => e.barber).filter(Boolean));
-      const services = new Set(latestEvents.map(e => e.service).filter(Boolean));
-
-      lastVisitBranch = branches.size === 1 ? Array.from(branches)[0] : null;
-      lastVisitBarber = barbers.size === 1 ? Array.from(barbers)[0] : null;
-      lastVisitService = services.size === 1 ? Array.from(services)[0] : null;
-
-      const hasConflict = branches.size > 1 || barbers.size > 1 || services.size > 1;
-      const sources = Array.from(new Set(latestEvents.map(e => e.type)));
-      lastVisitSource = sources.length === 1 ? sources[0] : 'hybrid';
-      lastVisitConfidence = hasConflict ? 'conflicting' : 'verified';
-
-      lastVisitEventObj = {
-        date: lastVisit,
-        branch: lastVisitBranch,
-        barber: lastVisitBarber,
-        service: lastVisitService,
-        source: lastVisitSource,
         confidence: lastVisitConfidence,
       };
+    } else {
+      // Multiple events share the latest calendar date
+      const datetimeEvents = latestEvents.filter(e => e.precision === 'datetime' && typeof e.timestamp === 'number');
+      const hasDateOnlyEvents = latestEvents.some(e => e.precision === 'date_only');
+
+      if (datetimeEvents.length > 0 && !hasDateOnlyEvents) {
+        // Case A: All events on latest date have real datetime timestamps
+        datetimeEvents.sort((a, b) => b.timestamp - a.timestamp);
+        const topMs = datetimeEvents[0].timestamp;
+        const topEvents = datetimeEvents.filter(e => e.timestamp === topMs);
+
+        if (topEvents.length === 1) {
+          const winner = topEvents[0];
+          lastVisitBranch = winner.branch;
+          lastVisitBarber = winner.barber;
+          lastVisitService = winner.service;
+          lastVisitSource = winner.type;
+
+          const isPartial = !winner.branch || !winner.barber || !winner.service;
+          lastVisitConfidence = isPartial ? 'partial' : 'verified';
+
+          lastVisitEventObj = {
+            date: lastVisit,
+            timestamp: winner.timestamp,
+            precision: winner.precision,
+            branch: winner.branch,
+            barber: winner.barber,
+            service: winner.service,
+            source: winner.type,
+            confidence: lastVisitConfidence,
+          };
+        } else {
+          // Case D: Multiple events share the exact same top timestamp
+          const branches = new Set(topEvents.map(e => e.branch).filter(Boolean));
+          const barbers = new Set(topEvents.map(e => e.barber).filter(Boolean));
+          const services = new Set(topEvents.map(e => e.service).filter(Boolean));
+
+          lastVisitBranch = branches.size === 1 ? Array.from(branches)[0] : null;
+          lastVisitBarber = barbers.size === 1 ? Array.from(barbers)[0] : null;
+          lastVisitService = services.size === 1 ? Array.from(services)[0] : null;
+
+          const hasConflict = branches.size > 1 || barbers.size > 1 || services.size > 1;
+          const sources = Array.from(new Set(topEvents.map(e => e.type)));
+          lastVisitSource = sources.length === 1 ? sources[0] : 'hybrid';
+
+          if (hasConflict) {
+            lastVisitConfidence = 'conflicting';
+          } else {
+            const isPartial = !lastVisitBranch || !lastVisitBarber || !lastVisitService;
+            lastVisitConfidence = isPartial ? 'partial' : 'verified';
+          }
+
+          lastVisitEventObj = {
+            date: lastVisit,
+            timestamp: topMs,
+            precision: 'datetime',
+            branch: lastVisitBranch,
+            barber: lastVisitBarber,
+            service: lastVisitService,
+            source: lastVisitSource,
+            confidence: lastVisitConfidence,
+          };
+        }
+      } else {
+        // Case B & C: Mixed precision (datetime + date_only) OR all date_only on same day
+        const branches = new Set(latestEvents.map(e => e.branch).filter(Boolean));
+        const barbers = new Set(latestEvents.map(e => e.barber).filter(Boolean));
+        const services = new Set(latestEvents.map(e => e.service).filter(Boolean));
+
+        lastVisitBranch = branches.size === 1 ? Array.from(branches)[0] : null;
+        lastVisitBarber = barbers.size === 1 ? Array.from(barbers)[0] : null;
+        lastVisitService = services.size === 1 ? Array.from(services)[0] : null;
+
+        const hasConflict = branches.size > 1 || barbers.size > 1 || services.size > 1;
+        const sources = Array.from(new Set(latestEvents.map(e => e.type)));
+        lastVisitSource = sources.length === 1 ? sources[0] : 'hybrid';
+
+        if (hasConflict) {
+          lastVisitConfidence = 'conflicting';
+        } else {
+          const isPartial = !lastVisitBranch || !lastVisitBarber || !lastVisitService;
+          lastVisitConfidence = isPartial ? 'partial' : 'verified';
+        }
+
+        lastVisitEventObj = {
+          date: lastVisit,
+          timestamp: null,
+          precision: hasDateOnlyEvents ? 'date_only' : 'datetime',
+          branch: lastVisitBranch,
+          barber: lastVisitBarber,
+          service: lastVisitService,
+          source: lastVisitSource,
+          confidence: lastVisitConfidence,
+        };
+      }
     }
   }
 
