@@ -43,14 +43,12 @@ function calculateMode(items = [], recentOrder = []) {
 
   if (candidates.length === 1) return candidates[0];
 
-  // Tie breaker: pick the candidate that appears earliest in recentOrder (most recent)
   for (const recentItem of recentOrder) {
     if (candidates.includes(recentItem)) {
       return recentItem;
     }
   }
 
-  // Fallback: alphabetical sort
   return candidates.sort()[0];
 }
 
@@ -111,19 +109,13 @@ async function getCustomer360(supabase, identityInput = {}) {
 
   const customerId = identity.customer_id;
   const canonicalPhone = identity.canonical_phone;
-  const custRow = identity.customer_row || {};
-  const profileRow = identity.member_profile_row || {};
 
-  // Step 2: Fetch related database entities in parallel
-  const pointsOr = `customer_id.eq.${customerId}${canonicalPhone ? `,customer_wa.eq.${canonicalPhone}` : ''}`;
+  // Step 2: Query production tables in parallel (member_profiles, customers, transactions, bookings)
   const bookingsOr = `customer_id.eq.${customerId}${canonicalPhone ? `,wa.eq.${canonicalPhone}` : ''}`;
+  const profileOr = `id.eq.${customerId}${canonicalPhone ? `,phone.eq.${canonicalPhone},phone.eq.+${canonicalPhone}` : ''}`;
+  const customerOr = `id.eq.${customerId}${canonicalPhone ? `,wa.eq.${canonicalPhone},phone_e164.eq.${canonicalPhone},phone_e164.eq.+${canonicalPhone}` : ''}`;
 
-  const [pointsRes, txRes, bookingsRes] = await Promise.all([
-    supabase
-      .from('member_points_balance')
-      .select('*')
-      .or(pointsOr),
-
+  const [txRes, bookingsRes, profRes, custRes] = await Promise.all([
     supabase
       .from('transactions')
       .select('*, transaction_items(*)')
@@ -136,16 +128,26 @@ async function getCustomer360(supabase, identityInput = {}) {
       .select('*')
       .or(bookingsOr)
       .order('date', { ascending: false }),
+
+    supabase
+      .from('member_profiles')
+      .select('*')
+      .or(profileOr),
+
+    supabase
+      .from('customers')
+      .select('*')
+      .or(customerOr),
   ]);
 
-  if (pointsRes.error || txRes.error || bookingsRes.error) {
+  if (txRes.error || bookingsRes.error || profRes.error || custRes.error) {
     return {
       version: 'customer360.v0.1',
       identity: {
         customer_found: false,
         customer_id: customerId,
         resolution: 'db_error',
-        error: pointsRes.error?.message || txRes.error?.message || bookingsRes.error?.message || 'database_query_error',
+        error: txRes.error?.message || bookingsRes.error?.message || profRes.error?.message || custRes.error?.message || 'database_query_error',
       },
       customer: null,
       membership: null,
@@ -161,39 +163,61 @@ async function getCustomer360(supabase, identityInput = {}) {
     };
   }
 
-  // --- Loyalty Section & Duplicate Point Balance Safeguard ---
-  const pointsRows = Array.isArray(pointsRes.data) ? pointsRes.data : [];
-  let totalPoints = 0;
-  let lastActivity = null;
-  let loyaltyStatus = 'available';
+  const profileRows = Array.isArray(profRes.data) ? profRes.data : [];
+  const customerRows = Array.isArray(custRes.data) ? custRes.data : [];
 
-  if (pointsRows.length > 0) {
-    // Prefer authoritative row matching canonical customer_id
-    const exactMatch = pointsRows.find(r => r.customer_id === customerId);
-    if (exactMatch) {
-      totalPoints = typeof exactMatch.total_points === 'number' ? exactMatch.total_points : 0;
-      lastActivity = exactMatch.last_activity || null;
-    } else if (pointsRows.length === 1) {
-      totalPoints = typeof pointsRows[0].total_points === 'number' ? pointsRows[0].total_points : 0;
-      lastActivity = pointsRows[0].last_activity || null;
+  const profileRow = identity.member_profile_row || profileRows[0] || {};
+  const custRow = identity.customer_row || customerRows[0] || {};
+
+  // Step 3: Loyalty Section & Production Points Alignment
+  let totalPoints = null;
+  let loyaltyStatus = 'available';
+  let lastActivity = profileRow.updated_at || custRow.updated_at || null;
+
+  // Primary Points Source: member_profiles.total_points
+  const profilePointsList = profileRows
+    .map(p => p.total_points)
+    .filter(pts => typeof pts === 'number' && pts >= 0);
+
+  // Secondary Points Source: customers.points
+  const customerPointsList = customerRows
+    .map(c => c.points)
+    .filter(pts => typeof pts === 'number' && pts >= 0);
+
+  if (profilePointsList.length > 0) {
+    const distinctProfilePoints = new Set(profilePointsList);
+    if (distinctProfilePoints.size > 1) {
+      loyaltyStatus = 'ambiguous_balance_conflict';
+      totalPoints = null;
     } else {
-      // Multiple balance rows without an exact customer_id match
-      const distinctBalances = new Set(pointsRows.map(r => r.total_points));
-      if (distinctBalances.size > 1) {
-        // Conflicting point balances -> mark loyalty unavailable (fail closed, do NOT sum or guess)
-        loyaltyStatus = 'ambiguous_balance_conflict';
-        totalPoints = null;
-        lastActivity = null;
-      } else {
-        totalPoints = typeof pointsRows[0].total_points === 'number' ? pointsRows[0].total_points : 0;
-        lastActivity = pointsRows[0].last_activity || null;
-      }
+      totalPoints = profilePointsList[0];
+    }
+  } else if (customerPointsList.length > 0) {
+    const distinctCustPoints = new Set(customerPointsList);
+    if (distinctCustPoints.size > 1) {
+      loyaltyStatus = 'ambiguous_balance_conflict';
+      totalPoints = null;
+    } else {
+      totalPoints = customerPointsList[0];
+    }
+  } else {
+    // If no points row contains a points number, default to 0 for found customers
+    totalPoints = 0;
+  }
+
+  // Cross-source conflict check: if both profile and customer rows specify different non-empty points balances
+  if (profilePointsList.length > 0 && customerPointsList.length > 0) {
+    const pPoints = profilePointsList[0];
+    const cPoints = customerPointsList[0];
+    if (pPoints !== cPoints) {
+      loyaltyStatus = 'ambiguous_balance_conflict';
+      totalPoints = null;
     }
   }
 
   const loyaltyObj = loyaltyStatus === 'ambiguous_balance_conflict'
     ? { points_balance: null, last_activity: null, status: 'ambiguous_balance_conflict' }
-    : { points_balance: totalPoints, last_activity: lastActivity };
+    : { points_balance: totalPoints, last_activity: lastActivity, status: loyaltyStatus };
 
   const transactions = Array.isArray(txRes.data) ? txRes.data : [];
   const bookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
@@ -246,56 +270,51 @@ async function getCustomer360(supabase, identityInput = {}) {
   const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
   const pendingBookings = bookings.filter(b => ['pending', 'confirmed'].includes(b.status));
 
-  // Determine first & last visit dates across completed bookings and transactions
   const visitDates = [
-    ...doneBookings.map(b => b.date),
-    ...transactions.map(t => formatDateStr(t.created_at)),
-  ].filter(Boolean).sort();
+    ...transactions.map(t => t.created_at),
+    ...doneBookings.map(b => b.date || b.created_at),
+  ].filter(Boolean).map(d => new Date(d)).filter(d => !isNaN(d.getTime())).sort((a, b) => a - b);
 
-  const firstVisit = visitDates[0] || null;
-  const lastVisit = visitDates.at(-1) || null;
-
-  let daysSinceLastVisit = null;
-  if (lastVisit) {
-    const diffMs = Date.now() - new Date(lastVisit).getTime();
-    daysSinceLastVisit = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
-  }
+  const firstVisitDate = visitDates.length > 0 ? formatDateStr(visitDates[0]) : null;
+  const lastVisitDate = visitDates.length > 0 ? formatDateStr(visitDates[visitDates.length - 1]) : null;
 
   const activityObj = {
-    first_visit: firstVisit,
-    last_visit: lastVisit,
-    days_since_last_visit: daysSinceLastVisit,
-    completed_booking_count: doneBookings.length,
-    cancelled_booking_count: cancelledBookings.length,
-    pending_booking_count: pendingBookings.length,
-    completed_transaction_count: completedTxCount,
-    visit_metric_status: 'caveated',
-    repeat_customer: (doneBookings.length + completedTxCount) > 1,
+    completed_visits_count: doneBookings.length,
+    cancelled_visits_count: cancelledBookings.length,
+    upcoming_visits_count: pendingBookings.length,
+    first_visit_date: firstVisitDate,
+    last_visit_date: lastVisitDate,
   };
 
   // --- Preferences Section ---
-  const completedBranches = [
-    ...doneBookings.map(b => b.location),
-    ...transactions.map(t => t.outlet_slug || t.location),
-  ];
-  const recentBranchesOrder = completedBranches.slice().reverse();
-  const favBranch = calculateMode(completedBranches, recentBranchesOrder);
+  const kapsters = [];
+  const services = [];
+  const outlets = [];
+  const recentOrder = [];
 
-  const completedBarbers = doneBookings.map(b => b.barber_id || b.barber_name);
-  const recentBarbersOrder = completedBarbers.slice().reverse();
-  const favBarber = calculateMode(completedBarbers, recentBarbersOrder);
+  for (const b of bookings) {
+    if (b.barber_name) { kapsters.push(b.barber_name); recentOrder.push(b.barber_name); }
+    if (b.service_name) { services.push(b.service_name); recentOrder.push(b.service_name); }
+    if (b.outlet_name || b.branch) {
+      const oName = b.outlet_name || b.branch;
+      outlets.push(oName);
+      recentOrder.push(oName);
+    }
+  }
 
-  const completedServices = [
-    ...doneBookings.map(b => b.service),
-    ...transactions.flatMap(t => Array.isArray(t.transaction_items) ? t.transaction_items.map(i => i.service_name) : []),
-  ];
-  const recentServicesOrder = completedServices.slice().reverse();
-  const favService = calculateMode(completedServices, recentServicesOrder);
+  for (const tx of transactions) {
+    if (tx.outlet_name) { outlets.push(tx.outlet_name); recentOrder.push(tx.outlet_name); }
+    if (Array.isArray(tx.transaction_items)) {
+      for (const item of tx.transaction_items) {
+        if (item.item_name) { services.push(item.item_name); recentOrder.push(item.item_name); }
+      }
+    }
+  }
 
   const preferencesObj = {
-    favorite_branch: favBranch ? { value: favBranch, basis: 'event_frequency' } : null,
-    favorite_barber: favBarber ? { value: favBarber, basis: 'event_frequency' } : null,
-    favorite_service: favService ? { value: favService, basis: 'event_frequency' } : null,
+    favorite_kapster: calculateMode(kapsters, recentOrder),
+    favorite_service: calculateMode(services, recentOrder),
+    favorite_outlet: calculateMode(outlets, recentOrder),
   };
 
   return {
@@ -312,15 +331,13 @@ async function getCustomer360(supabase, identityInput = {}) {
     spending: spendingObj,
     preferences: preferencesObj,
     data_quality: {
-      customer_resolution: 'resolved',
-      transaction_data: 'available',
-      visit_metric: 'caveated',
+      customer_resolution: identity.resolution,
+      transaction_data: completedTxCount > 0 ? 'available' : 'no_transactions',
+      visit_metric: doneBookings.length > 0 ? 'available' : 'no_visits',
     },
   };
 }
 
 module.exports = {
   getCustomer360,
-  formatDateStr,
-  calculateMode,
 };

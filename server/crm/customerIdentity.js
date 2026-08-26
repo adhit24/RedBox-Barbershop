@@ -2,7 +2,7 @@
 
 /**
  * Redbox CRM Customer Identity Resolver
- * Resolves raw input (phone / customer_id / user_key) to canonical customer_id (UUID)
+ * Resolves raw input (phone / customer_id / user_key) to canonical customer_id
  * strictly using verified identity logic and conservative security rules.
  */
 
@@ -11,6 +11,42 @@ const {
   getMemberPhoneVariants,
   mergeCustomerRows,
 } = require('../member-identity');
+
+/**
+ * Determines whether a set of non-empty name strings are small/compatible variants of the same logical person.
+ */
+function areNamesCompatibleVariants(nameList) {
+  const normalized = nameList.map(n => String(n || '').trim().toLowerCase()).filter(Boolean);
+  if (normalized.length <= 1) return true;
+
+  for (let i = 0; i < normalized.length; i++) {
+    for (let j = i + 1; j < normalized.length; j++) {
+      const a = normalized[i];
+      const b = normalized[j];
+      if (a === b) continue;
+
+      // Substring / prefix match (e.g. "Adhit" vs "Adhit Nugraha")
+      if (a.startsWith(b) || b.startsWith(a) || a.includes(b) || b.includes(a)) continue;
+
+      // Token comparison (e.g. "Adhit Nugraha" vs "Adhitya Nugraha")
+      const tokensA = a.split(/\s+/);
+      const tokensB = b.split(/\s+/);
+      const commonTokens = tokensA.filter(t => tokensB.includes(t));
+      const significantCommon = commonTokens.filter(t => t.length >= 3);
+      if (significantCommon.length > 0) continue;
+
+      // Prefix similarity on first name (e.g. "Adhit" vs "Adhitya")
+      const firstA = tokensA[0] || '';
+      const firstB = tokensB[0] || '';
+      if (firstA.length >= 3 && firstB.length >= 3) {
+        if (firstA.startsWith(firstB.slice(0, 3)) || firstB.startsWith(firstA.slice(0, 3))) continue;
+      }
+
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Resolves customer identity against database.
@@ -93,7 +129,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
     };
   }
 
-  // Fetch candidate from `member_profiles` if customer row is missing
+  // Fetch candidate from `member_profiles` if customer row is missing or to establish canonical anchor
   const profileConditions = variants.map(v => {
     const digits = String(v).replace(/\D/g, '');
     return `phone.eq.${digits},phone.eq.+${digits}`;
@@ -129,14 +165,29 @@ async function resolveCustomerIdentity(supabase, input = {}) {
 
   const candidateRows = Array.isArray(customerRows) ? customerRows : [];
 
+  // Check for ambiguous identity:
+  // If candidate rows contain multiple distinct customer UUIDs with materially conflicting names AND no memberProfileRow anchor
+  const distinctCustomerIds = new Set(candidateRows.map(r => r.id).filter(Boolean));
+  if (distinctCustomerIds.size > 1) {
+    const names = candidateRows.map(r => (r.name || '').trim()).filter(Boolean);
+    if (!memberProfileRow && !areNamesCompatibleVariants(names)) {
+      return {
+        found: false,
+        customer_id: null,
+        resolution: 'ambiguous',
+        reason: 'conflicting_customer_names',
+      };
+    }
+  }
+
   if (candidateRows.length === 0) {
     if (memberProfileRow) {
       return {
         found: true,
-        customer_id: memberProfileRow.id || null,
+        customer_id: memberProfileRow.id || memberProfileRow.user_key || null,
         user_key: memberProfileRow.user_key || null,
         canonical_phone: canonical,
-        phone_e164: `+${canonical}`,
+        phone_e164: memberProfileRow.phone ? `+${normalizeMemberPhone(memberProfileRow.phone)}` : `+${canonical}`,
         resolution: 'member_profile_match',
         member_profile_row: memberProfileRow,
       };
@@ -148,48 +199,21 @@ async function resolveCustomerIdentity(supabase, input = {}) {
     };
   }
 
-  // Check for ambiguous identity:
-  // If candidate rows contain multiple distinct customer UUIDs with materially conflicting identity details (e.g. names)
-  const distinctCustomerIds = new Set(candidateRows.map(r => r.id).filter(Boolean));
-
-  if (distinctCustomerIds.size > 1) {
-    const names = new Set(
-      candidateRows
-        .map(r => (r.name || '').trim().toLowerCase())
-        .filter(Boolean)
-    );
-    // If different candidate rows have different non-empty names, it is ambiguous
-    if (names.size > 1) {
-      return {
-        found: false,
-        customer_id: null,
-        resolution: 'ambiguous',
-        reason: 'conflicting_customer_names',
-      };
-    }
-  }
-
-  // Safe merge if candidates have compatible/non-conflicting identities
   const merged = mergeCustomerRows(candidateRows, canonical);
-  if (!merged) {
-    return {
-      found: false,
-      customer_id: null,
-      resolution: 'not_found',
-    };
-  }
+  const canonicalId = memberProfileRow?.id || (merged ? merged.id : candidateRows[0].id);
 
   return {
     found: true,
-    customer_id: merged.id || null,
+    customer_id: canonicalId || null,
     canonical_phone: canonical,
-    phone_e164: merged.phone_e164 || `+${canonical}`,
-    resolution: 'phone_match',
-    customer_row: merged,
+    phone_e164: (merged && merged.phone_e164) || `+${canonical}`,
+    resolution: memberProfileRow ? 'member_profile_match' : 'phone_match',
+    customer_row: merged || candidateRows[0],
     member_profile_row: memberProfileRow,
   };
 }
 
 module.exports = {
   resolveCustomerIdentity,
+  areNamesCompatibleVariants,
 };
