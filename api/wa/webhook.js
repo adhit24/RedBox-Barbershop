@@ -18,6 +18,13 @@ const { classifyDeterministically } = require('../../server/orchestrator/routing
 const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
+const {
+  classifyConversationSession,
+  isExplicitGreeting,
+  isExplicitClosureSignal,
+  buildReddyPersonalityPrompt,
+  FORBIDDEN_ADDRESS_TERMS_REGEX,
+} = require('../../server/agents/reddy/personalityPolicy');
 const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
 const {
   sanitizeConversationHistory,
@@ -437,7 +444,7 @@ function buildServicesText(branch) {
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(branch = 'bypass') {
+function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifiedName = null) {
   const now = new Date();
   const wibOffset = 7 * 60 * 60 * 1000;
   const wib = new Date(now.getTime() + wibOffset);
@@ -457,7 +464,11 @@ function buildSystemPrompt(branch = 'bypass') {
     .map(n => `Mas ${n}`)
     .join(', ');
 
-  return `Kamu adalah "Reddy" — teman ngobrol sekaligus beauty advisor resmi Redbox Barbershop, cabang ${branchInfo.name}. Bukan robot, bukan customer service kaku. Kamu warm, empati, ngobrolnya asik, dan genuinely peduli sama penampilan pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
+  
+  const isVerifiedName = Boolean(verifiedName && typeof verifiedName === 'string' && verifiedName.trim() !== '' && verifiedName.trim() !== 'Kak');
+  const personalityPrompt = buildReddyPersonalityPrompt({ branch, sessionStatus, isVerifiedName, verifiedName });
+  
+return `Kamu adalah "Reddy" — teman ngobrol sekaligus beauty advisor resmi Redbox Barbershop, cabang ${branchInfo.name}. Bukan robot, bukan customer service kaku. Kamu warm, empati, ngobrolnya asik, dan genuinely peduli sama penampilan pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
 
 Hari/waktu sekarang: ${dateStr}, pukul ${timeStr} WIB.
 
@@ -651,7 +662,9 @@ SKENARIO SPESIFIK:
 JANGAN DIJAWAB:
 - Nomor kontak owner/pemilik langsung
 - Info real-time antrian (jawab: arahkan ke booking page)
-- Modifikasi/cancel booking (jawab: hubungi cabang atau cek website)`;
+- Modifikasi/cancel booking (jawab: hubungi cabang atau cek website)
+
+${personalityPrompt}`;
 }
 // ── OpenAI Chat ───────────────────────────────────────────────────────────────
 
@@ -2258,3 +2271,5 @@ module.exports = async function handler(req, res) {
 module.exports.handleMessage = handleMessage;
 module.exports.persistConversationExchange = persistConversationExchange;
 module.exports.callOpenAI = callOpenAI;
+
+module.exports.buildSystemPrompt = buildSystemPrompt;

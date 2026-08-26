@@ -269,3 +269,68 @@ test('P07. Slang Safety: Customer saying "gan terakhir aku potong kapan?" does N
   assert.equal(isForbidden, false);
   assert.equal(res.reply.includes('Gan'), false);
 });
+
+// ── 5. Aira Round 2 Required Integration & Wiring Tests ─────────────────
+test('R01. Real Webhook Session Derivation: extractConversationContextEnvelope derives sessionStatus from history timestamps', () => {
+  const { extractConversationContextEnvelope } = require('../agents/reddy/conversationContext');
+
+  const now = Date.now();
+  const threeMinAgo = now - 3 * 60 * 1000;
+  const historyInput = [
+    { role: 'user', content: 'mau tanya cabang', timestamp: threeMinAgo },
+    { role: 'assistant', content: 'Boleh, mau Bypass atau Sumber?', timestamp: threeMinAgo + 1000 },
+  ];
+
+  const envelope = extractConversationContextEnvelope(historyInput, 'Bypass aja', { now });
+  assert.equal(envelope.sessionStatus, 'active_conversation');
+  assert.equal(envelope.lastCustomerTimestamp, threeMinAgo);
+  assert.equal(envelope.turns.length, 2);
+});
+
+test('R02. Personality Prompt Wiring: System prompt generation explicitly includes PEDOMAN BEHAVIORAL & SUPRESI SALAM', () => {
+  const { buildSystemPrompt } = require('../../api/wa/webhook');
+
+  const systemPrompt = buildSystemPrompt('bypass', 'active_conversation', 'Adhit Nugraha');
+  assert.match(systemPrompt, /PEDOMAN BEHAVIORAL & PERSONALITAS REDDY/);
+  assert.match(systemPrompt, /ATURAN SUPRESI SALAM/);
+  assert.match(systemPrompt, /Adhit/);
+});
+
+test('R03. Expired Session Prompt: Re-greeting suppression rule is absent when sessionStatus is expired', () => {
+  const { buildSystemPrompt } = require('../../api/wa/webhook');
+
+  const systemPrompt = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
+  assert.match(systemPrompt, /PEDOMAN BEHAVIORAL & PERSONALITAS REDDY/);
+  assert.equal(systemPrompt.includes('ATURAN SUPRESI SALAM'), false);
+});
+
+test('R04. Verified Name Source vs WhatsApp Display Name: Only verified CRM name reaches prompt', () => {
+  const { buildSystemPrompt } = require('../../api/wa/webhook');
+
+  // Case A: Verified CRM name "Adhit Nugraha"
+  const promptA = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
+  assert.match(promptA, /Adhit/);
+
+  // Case B: WhatsApp display name "Boss Besar" (passed as unverified / null for CRM name)
+  const promptB = buildSystemPrompt('bypass', 'expired', null);
+  assert.match(promptB, /Kak/);
+  assert.equal(promptB.includes('Boss Besar'), false);
+});
+
+test('R05. Direct Intent After Expiry: Direct queries on expired sessions answer directly without greeting', async () => {
+  const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
+
+  const mockCallOpenAI = async (from, text, name, branch, factsContext, convContext) => {
+    assert.equal(convContext?.sessionStatus, 'expired');
+    return 'Hair Cut Rp85.000.';
+  };
+
+  const res = await executeReddyAgent(
+    { from: '6281234567890', text: 'harga haircut berapa?', conversationContext: { sessionStatus: 'expired' } },
+    { callOpenAI: mockCallOpenAI }
+  );
+
+  assert.equal(res.reply, 'Hair Cut Rp85.000.');
+  assert.equal(res.reply.includes('Halo'), false);
+  assert.equal(res.reply.includes('Selamat datang'), false);
+});
