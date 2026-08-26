@@ -679,7 +679,8 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
   }
 
   // Build branch-aware system prompt
-  let systemPrompt = buildSystemPrompt(branch);
+  const sessionStatus = conversationContext?.sessionStatus || 'expired';
+  let systemPrompt = buildSystemPrompt(branch, sessionStatus, name);
 
   if (customerFactsContext) {
     systemPrompt += `\n\n${customerFactsContext}`;
@@ -1520,14 +1521,14 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     );
     let pointsReply;
     if (orchResult.execution_status === 'unauthorized') {
-      pointsReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+      pointsReply = 'Untuk mengecek saldo poin member Redbox, pastikan kamu menghubungi kami via nomor terverifikasi ya Kak.';
     } else if (orchResult.execution_status === 'success') {
       const points = orchResult.result?.data?.points_balance ?? 0;
-      pointsReply = 'Halo kak! Saldo poin member RedBox kamu saat ini: ' + points + ' poin ✨';
+      pointsReply = 'Saldo poin member Redbox kamu saat ini: ' + points + ' poin.';
     } else if (orchResult.execution_status === 'customer_not_found') {
-      pointsReply = 'Halo kak! Nomor WhatsApp kamu belum terdaftar sebagai member RedBox. Dapatkan poin loyalty di setiap kunjungan cukur kamu!';
+      pointsReply = 'Nomor WhatsApp ini belum terdaftar sebagai member Redbox. Dapatkan poin loyalty 5% di setiap kunjungan cukur kamu!';
     } else {
-      pointsReply = 'Halo kak! Saat ini sistem poin sedang tidak dapat diakses. Silakan coba lagi beberapa saat lagi ya!';
+      pointsReply = 'Layanan cek poin sedang tidak dapat diakses sementara. Coba beberapa saat lagi ya Kak.';
     }
     logTelemetry({
       route: 'crm_agent',
