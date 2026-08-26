@@ -20,7 +20,7 @@ const {
   serializeKnowledgeForPrompt,
   createUnavailableKnowledgeContext,
 } = require('../agents/reddy/knowledge/knowledgeContext');
-const { handleMessage, callOpenAI, fallbackReply, buildServicesText, getServicesForLang, detectForeignLanguage, getBranchConfig, handleForeignGeneralQuestion, handleForeignBooking } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, fallbackReply, buildServicesText, getServicesForLang, detectForeignLanguage, getBranchConfig, handleForeignGeneralQuestion, handleForeignBooking, buildBranchLocationText, buildBranchHoursText } = require('../../api/wa/webhook');
 
 function cloneKnowledge() {
   return structuredClone(REDBOX_KNOWLEDGE);
@@ -1323,4 +1323,82 @@ test('H15. Source scan: no obsolete customer-facing CSB close values remain in k
   const csbEntry = knowledgeCode.split("id: 'csb'")[1].split('}')[0];
   assert.ok(csbEntry.includes("closes: '22:00'"), 'CSB knowledge entry must have closes: 22:00');
   assert.equal(csbEntry.includes("closes: '21:30'"), false, 'No legacy closes: 21:30');
+});
+
+test('J1. English foreign location response derives all branch hours from REDBOX_KNOWLEDGE.branches', async () => {
+  const textEn = buildBranchLocationText('english');
+  assert.ok(textEn.includes('CSB Mall — CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26, Kota Cirebon, Jawa Barat | 10:00–22:00'));
+  assert.ok(textEn.includes('Bypass — Jl. Ahmad Yani No.88, Kecapi, Harjamukti, Cirebon, Jawa Barat | 10:00–21:00'));
+});
+
+test('J2. Multilingual foreign location and hours use identical canonical numeric hours across EN/ZH/JA/KO/TR', async () => {
+  const languages = ['english', 'chinese', 'japanese', 'korean', 'turkish'];
+  for (const lang of languages) {
+    const locText = buildBranchLocationText(lang);
+    const hrsText = buildBranchHoursText(lang);
+    assert.ok(locText.includes('10:00–22:00') || locText.includes('10:00-22:00'), `${lang} location must state 22:00 CSB close`);
+    assert.ok(hrsText.includes('10:00–22:00') || hrsText.includes('10:00-22:00'), `${lang} hours must state 22:00 CSB close`);
+    assert.ok(hrsText.includes('21:00'), `${lang} hours must state 21:00 CSB last booking slot`);
+  }
+});
+
+test('J3. No literal obsolete branch-hour table remains inside handleForeignGeneralQuestion', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes('Bypass (main) — Jl. Bypass Kedawung | 10:00-22:00'), false);
+  assert.equal(webhookCode.includes('CSB Mall — 1st Floor | 10:00-21:00'), false);
+});
+
+test('J4. Source scan verifies no customer-facing CSB 21:30 or CSB closing at 21:00 remain in webhook', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes("closes: '21:30'"), false);
+  assert.equal(webhookCode.includes("CSB tutup jam 21"), false);
+});
+
+test('J5. buildSystemPrompt contains no manually written branch-specific clock values', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes('CSB buka sampai jam 22.00 WIB'), false);
+});
+
+test('J6. BRANCH_AI_HOURS and isBranchAiOff are removed from webhook.js', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes('const BRANCH_AI_HOURS ='), false);
+  assert.equal(webhookCode.includes('function isBranchAiOff('), false);
+});
+
+test('J7. English "What time does CSB close?" returns 22:00 operating hour without forced booking CTA', async () => {
+  const reply = handleForeignGeneralQuestion('What time does CSB close?', 'english', null, 'csb');
+  assert.ok(reply.includes('22:00'), 'Must contain 22:00 for CSB');
+  assert.equal(reply.includes('booking.html'), false, 'Pure info question must not force booking link');
+});
+
+test('J8. English "What is the last booking time at CSB?" returns 21:00 policy boundary with website booking guidance', async () => {
+  const reply = handleForeignGeneralQuestion('What is the last booking time at CSB?', 'english', null, 'csb');
+  assert.ok(reply.includes('21:00'), 'Must state 21:00 last booking slot');
+  assert.equal(reply.includes('confirmed'), false);
+});
+
+test('J9. Mixed intent "What time does CSB close? I want to book tonight." returns 22:00 operating hour AND booking website URL', async () => {
+  const res = await handleForeignBooking('62811114444', 'John', 'What time does CSB close? I want to book tonight.', 'device', 'csb');
+  assert.equal(res.used, 'foreign_mixed_intent');
+  assert.ok(res.reply.includes('22:00'), 'Must contain canonical 22:00 operating hour');
+  assert.ok(res.reply.includes('booking.html?branch=csb'), 'Must contain website booking link');
+  assert.equal(res.reply.includes('confirmed'), false);
+});
+
+test('J10. English "Bypass closing time?" returns 21:00 public closing hour', async () => {
+  const reply = handleForeignGeneralQuestion('Bypass closing time?', 'english', null, 'bypass');
+  assert.ok(reply.includes('21:00'));
+  assert.equal(reply.includes('20:00'), false);
+});
+
+test('J11. English "Can I book Bypass at 8pm?" returns 20:00 last booking slot boundary with website booking URL', async () => {
+  const res = await handleForeignBooking('62811115555', 'John', 'Can I book Bypass at 8pm?', 'device', 'bypass');
+  assert.ok(res.reply.includes('booking.html?branch=bypass'));
+  assert.equal(res.reply.includes('confirmed'), false);
+});
+
+test('J12. Legacy foreign booking state machine maps (foreignSessions, FOREIGN_SESSION_TTL) are removed', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes('const foreignSessions = new Map()'), false);
+  assert.equal(webhookCode.includes('const FOREIGN_SESSION_TTL ='), false);
 });

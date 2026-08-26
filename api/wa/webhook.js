@@ -1,3 +1,56 @@
+
+function buildBranchLocationText(lang) {
+  const branches = REDBOX_KNOWLEDGE.branches;
+  const labels = {
+    english: 'RedBox Barbershop Locations 📍:\n\n',
+    chinese: 'RedBox Barbershop 分店位置 📍:\n\n',
+    japanese: 'RedBox Barbershop 店舗一覧 📍:\n\n',
+    korean: 'RedBox Barbershop 매장 위치 📍:\n\n',
+    turkish: 'RedBox Barbershop Şubeler 📍:\n\n',
+  };
+  const suffix = {
+    english: '\n\nLocated in Cirebon, Indonesia',
+    chinese: '\n\n位于 印度尼西亚 Cirebon 🇮🇩',
+    japanese: '\n\nインドネシア, Cirebon',
+    korean: '\n\n인도네시아, Cirebon',
+    turkish: '\n\nEndonezya, Cirebon',
+  };
+
+  const body = branches.map(b => `• ${b.name} — ${b.address} | ${b.hours.opens}–${b.hours.closes}`).join('\n');
+  return (labels[lang] || labels.english) + body + (suffix[lang] || suffix.english);
+}
+
+function buildBranchHoursText(lang) {
+  const csb = getBranchConfig('csb');
+  const bypass = getBranchConfig('bypass');
+
+  const headers = {
+    english: 'Opening hours ⏰:\n\n',
+    chinese: '营业时间 ⏰:\n\n',
+    japanese: '営業時間 ⏰:\n\n',
+    korean: '영업시간 ⏰:\n\n',
+    turkish: 'Çalışma saatleri ⏰:\n\n',
+  };
+
+  const csbLine = {
+    english: `• CSB Mall: ${csb.hours.opens}–${csb.hours.closes} (last booking slot ${csb.last_booking_slot})\n`,
+    chinese: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (最晚预约 ${csb.last_booking_slot})\n`,
+    japanese: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (最終予約 ${csb.last_booking_slot})\n`,
+    korean: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (마지막 예약 ${csb.last_booking_slot})\n`,
+    turkish: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (son randevu saati ${csb.last_booking_slot})\n`,
+  };
+
+  const otherLine = {
+    english: `• Other branches: ${bypass.hours.opens}–${bypass.hours.closes} (last booking slot ${bypass.last_booking_slot})\n\nWe're open every day!`,
+    chinese: `• 其他分店: ${bypass.hours.opens}-${bypass.hours.closes} (最晚预约 ${bypass.last_booking_slot})\n\n每天营业！`,
+    japanese: `• その他の店舗: ${bypass.hours.opens}-${bypass.hours.closes} (最終予約 ${bypass.last_booking_slot})\n\n毎日営業中！`,
+    korean: `• 기타 매장: ${bypass.hours.opens}-${bypass.hours.closes} (마지막 예약 ${bypass.last_booking_slot})\n\n매일 영업합니다!`,
+    turkish: `• Diğer şubeler: ${bypass.hours.opens}-${bypass.hours.closes} (son randevu saati ${bypass.last_booking_slot})\n\nHer gün açığız!`,
+  };
+
+  return (headers[lang] || headers.english) + (csbLine[lang] || csbLine.english) + (otherLine[lang] || otherLine.english);
+}
+
 function getBranchConfig(branchKey = 'bypass') {
   const bKey = (branchKey || 'bypass').toLowerCase().trim();
   const found = REDBOX_KNOWLEDGE.branches.find(x => x.id === bKey || (x.aliases && x.aliases.includes(bKey)));
@@ -134,27 +187,7 @@ function getSupabase() {
 // ── Per-branch AI off-hours schedule ──────────────────────────────────────────
 // Bot diam total di luar jam ini. Jam dalam WIB, format "HH:MM".
 // AI_ON_FROM ≤ AI_OFF_AT → bot aktif di interval [AI_ON_FROM, AI_OFF_AT).
-const BRANCH_AI_HOURS = {
-  bypass:    { on_from: '10:00', off_at: '20:30' },
-  samadikun: { on_from: '10:00', off_at: '20:30' },
-  sumber:    { on_from: '10:00', off_at: '20:30' },
-  tegal:     { on_from: '10:00', off_at: '20:30' },
-  csb:       { on_from: '10:00', off_at: '21:30' },
-};
-
-function isBranchAiOff(branch) {
-  const cfg = BRANCH_AI_HOURS[branch];
-  if (!cfg) return false;
-  const wib = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  const nowMin = wib.getUTCHours() * 60 + wib.getUTCMinutes();
-  const toMin = (s) => {
-    const [h, m] = s.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const onMin = toMin(cfg.on_from);
-  const offMin = toMin(cfg.off_at);
-  return nowMin < onMin || nowMin >= offMin;
-}
+// BRANCH_AI_HOURS and isBranchAiOff deleted (Reddy operates 24/7)
 
 // ── Conversation Memory ───────────────────────────────────────────────────────
 // In-memory cache + Supabase persistence untuk continuity lintas serverless instance.
@@ -526,7 +559,7 @@ Jam Operasional Publik: ${bConfig.hours.opens} - ${bConfig.hours.closes} WIB
 Slot Booking Terakhir: ${bConfig.last_booking_slot} WIB
 
 ATURAN JAM OPERASIONAL vs SLOT BOOKING:
-- Jika pelanggan bertanya jam operasional/buka/tutup ("buka jam berapa?", "tutup jam berapa?"): JAWAB MENGGUNAKAN JAM OPERASIONAL PUBLIK (${bConfig.hours.opens} - ${bConfig.hours.closes} WIB). DILARANG menyatakan CSB tutup jam 21:00! CSB buka sampai jam 22.00 WIB.
+- Jika pelanggan bertanya jam operasional/buka/tutup ("buka jam berapa?", "tutup jam berapa?"): JAWAB MENGGUNAKAN JAM OPERASIONAL PUBLIK (${bConfig.hours.opens} - ${bConfig.hours.closes} WIB). DILARANG menggunakan slot booking terakhir (${bConfig.last_booking_slot} WIB) sebagai jam tutup toko!
 - Jika pelanggan bertanya waktu booking/slot terakhir ("bisa booking jam 9 malam?", "slot terakhir jam berapa?"): JAWAB MENGGUNAKAN SLOT BOOKING TERAKHIR (${bConfig.last_booking_slot} WIB) sebagai batas kebijakan.
 - DILARANG mengonfirmasi ketersediaan slot di WhatsApp ("Jam 21.00 masih tersedia" = DILARANG). Arahkan pelanggan untuk cek real-time dan booking langsung di website booking Redbox.
 
@@ -723,8 +756,7 @@ function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
 // ── Foreign Customer Booking Flow ─────────────────────────────────────────────
 // Deteksi bahasa asing → booking conversational → kirim summary ke admin
 
-const foreignSessions = new Map(); // phone → { state, language, data, lastActivity }
-const FOREIGN_SESSION_TTL = 30 * 60 * 1000; // 30 menit
+// Foreign session map deleted (foreign queries process directly without multi-turn booking wizard state) // 30 menit
 
 // Per-branch kapster (barber) names.
 // TODO: keep in sync with FALLBACK_BARBERS @ js/main.js (and barbers table in Supabase).
@@ -795,12 +827,7 @@ function detectForeignLanguage(text) {
   return 'english';
 }
 
-function getForeignSession(phone) {
-  const s = foreignSessions.get(phone);
-  if (!s) return null;
-  if (Date.now() - s.lastActivity > FOREIGN_SESSION_TTL) { foreignSessions.delete(phone); return null; }
-  return s;
-}
+
 
 function getServicesForLang(lang, branch = 'bypass') {
   const isCSB = branch === 'csb';
@@ -857,14 +884,32 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
   const lower = text.toLowerCase().trim();
   const url = bookingUrl(branch);
 
-  // 1. General questions (prices, hours, location, kapster recommendations)
+  const isBookingReq = /\b(book|booking|appointment|reserve|reservation|schedule|want|cukur|cuttin|potong|tomorrow|today|pm|am)\b/i.test(lower);
   const generalAnswer = handleForeignGeneralQuestion(text, lang, null, branch);
+
+  // Mixed Intent: both general question (e.g. hours/price/location) AND booking intent exist
+  if (generalAnswer && isBookingReq) {
+    const rawName = (name || '').trim();
+    const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : '';
+    const nameLabel = fn ? `, ${fn}` : '';
+
+    const bookingNote = foreignMsg(lang, {
+      english: `\n\nTo check real-time slot availability and complete your booking, please visit Redbox's official booking website:\n${url}`,
+      chinese: `\n\n如需查看实时空位并完成预约，请访问Redbox官方预约网站：\n${url}`,
+      japanese: `\n\nリアルタイムの空き状況の確認とご予約は、Redbox公式予約ウェブサイトをご利用ください：\n${url}`,
+      korean: `\n\n실시간 잔여 슬롯 확인 및 예약 완료는 Redbox 공식 예약 웹사이트를 이용해 주세요:\n${url}`,
+      turkish: `\n\nCanlı saat uygunluğunu kontrol etmek ve randevunuzu tamamlamak için lütfen Redbox resmi web sitesini ziyaret edin:\n${url}`,
+    });
+
+    return { reply: generalAnswer + bookingNote, used: 'foreign_mixed_intent' };
+  }
+
+  // Pure Info Intent: general question only
   if (generalAnswer) {
     return { reply: generalAnswer, used: 'foreign_info' };
   }
 
-  // 2. Foreign booking intent -> direct to website booking authority
-  const isBookingReq = /\b(book|booking|appointment|reserve|reservation|schedule|want|cukur|cuttin|potong|tomorrow|today|pm|am)\b/i.test(lower);
+  // Pure Booking Intent: booking request only
   if (isBookingReq) {
     const rawName = (name || '').trim();
     const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : '';
@@ -958,18 +1003,12 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
     /nerede|adres|konum|nasıl gid/i,
   ];
   if (locationPatterns.some(p => p.test(text))) {
-    return foreignMsg(lang, {
-      chinese: `RedBox Barbershop 分店位置 📍\n\n• Bypass (旗舰店) — Jl. Bypass Kedawung | 10:00-22:00\n• Samadikun — Jl. Samadikun | 10:00-21:00\n• CSB Mall — 1楼 | 10:00-21:00\n• Sumber — Jl. Raya Sumber | 10:00-21:00\n• Tegal — Jl. Raya Tegal | 10:00-21:00\n\n位于印尼 Cirebon 市`,
-      japanese: `RedBox Barbershop 店舗一覧 📍\n\n• Bypass (本店) — Jl. Bypass Kedawung | 10:00-22:00\n• Samadikun — Jl. Samadikun | 10:00-21:00\n• CSB Mall — 1F | 10:00-21:00\n• Sumber — Jl. Raya Sumber | 10:00-21:00\n• Tegal — Jl. Raya Tegal | 10:00-21:00\n\nインドネシア チレボン市`,
-      korean: `RedBox Barbershop 지점 안내 📍\n\n• Bypass (본점) — Jl. Bypass Kedawung | 10:00-22:00\n• Samadikun — Jl. Samadikun | 10:00-21:00\n• CSB Mall — 1층 | 10:00-21:00\n• Sumber — Jl. Raya Sumber | 10:00-21:00\n• Tegal — Jl. Raya Tegal | 10:00-21:00\n\n인도네시아 찌르본시에 위치`,
-      turkish: `RedBox Barbershop Şubeler 📍\n\n• Bypass (ana) — Jl. Bypass Kedawung | 10:00-22:00\n• Samadikun — Jl. Samadikun | 10:00-21:00\n• CSB Mall — Kat 1 | 10:00-21:00\n• Sumber — Jl. Raya Sumber | 10:00-21:00\n• Tegal — Jl. Raya Tegal | 10:00-21:00\n\nEndonezya, Cirebon`,
-      english: `RedBox Barbershop Locations 📍\n\n• Bypass (main) — Jl. Bypass Kedawung | 10:00-22:00\n• Samadikun — Jl. Samadikun | 10:00-21:00\n• CSB Mall — 1st Floor | 10:00-21:00\n• Sumber — Jl. Raya Sumber | 10:00-21:00\n• Tegal — Jl. Raya Tegal | 10:00-21:00\n\nLocated in Cirebon, Indonesia`
-    });
+    return buildBranchLocationText(lang);
   }
 
   // Hours/time questions
   const hoursPatterns = [
-    /what time|open|close|hour|when.*open/i,
+    /what time|open|close|closing|hour|hours|last booking|when.*open|slot/i,
     /몇\s*시/i, /영업/i, /운영/i, /언제.*열/i,
     /几点/i, /营业/i, /开门/i, /关门/i,
     /何時/i, /営業/i, /開店/i, /閉店/i,
@@ -1007,82 +1046,7 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
 }
 
 // ── Date/Time extraction for smart multi-info parsing ──
-function extractForeignDateTime(text) {
-  const lower = text.toLowerCase();
-  let date = null;
-  let time = null;
 
-  // Date patterns
-  const datePatterns = [
-    { regex: /tomorrow|besok|明天|明日|내일|yarın/i, value: 'tomorrow' },
-    { regex: /today|hari ini|今天|今日|오늘|bugün/i, value: 'today' },
-    { regex: /next week|minggu depan|下周|来週|다음\s*주|gelecek hafta/i, value: 'next week' },
-    { regex: /monday|senin|周一|星期一|月曜|월요일|pazartesi/i, value: 'Monday' },
-    { regex: /tuesday|selasa|周二|星期二|火曜|화요일|salı/i, value: 'Tuesday' },
-    { regex: /wednesday|rabu|周三|星期三|水曜|수요일|çarşamba/i, value: 'Wednesday' },
-    { regex: /thursday|kamis|周四|星期四|木曜|목요일|perşembe/i, value: 'Thursday' },
-    { regex: /friday|jumat|周五|星期五|金曜|금요일|cuma/i, value: 'Friday' },
-    { regex: /saturday|sabtu|周六|星期六|土曜|토요일|cumartesi/i, value: 'Saturday' },
-    { regex: /sunday|minggu|周日|星期日|日曜|일요일|pazar/i, value: 'Sunday' },
-    { regex: /(\d{1,2})[\/\-.](\d{1,2})/, value: null }, // will extract below
-  ];
-  for (const p of datePatterns) {
-    if (p.regex.test(lower)) {
-      if (p.value) { date = p.value; break; }
-      const m = lower.match(p.regex);
-      if (m) { date = m[0]; break; }
-    }
-  }
-
-  // Time patterns — various formats
-  const timePatterns = [
-    // "13시", "오후 1시", "오후 2시"
-    /오후\s*(\d{1,2})\s*시/i,
-    /오전\s*(\d{1,2})\s*시/i,
-    /(\d{1,2})\s*시/i,
-    // "下午2点", "14点"
-    /下午\s*(\d{1,2})\s*[点點]/i,
-    /上午\s*(\d{1,2})\s*[点點]/i,
-    /(\d{1,2})\s*[点點]/i,
-    // "午後2時", "14時"
-    /午後\s*(\d{1,2})\s*時/i,
-    /午前\s*(\d{1,2})\s*時/i,
-    /(\d{1,2})\s*時/i,
-    // "2pm", "14:00", "2:30pm"
-    /(\d{1,2}):(\d{2})\s*(am|pm)?/i,
-    /(\d{1,2})\s*(am|pm)/i,
-    // "öğleden sonra 2", "saat 14"
-    /saat\s*(\d{1,2})/i,
-    /(\d{1,2}):(\d{2})/,
-  ];
-
-  for (const p of timePatterns) {
-    const m = text.match(p);
-    if (m) {
-      const src = p.source || p.toString();
-      if (src.includes('오후') || src.includes('下午') || src.includes('午後') || src.includes('pm')) {
-        const h = parseInt(m[1]);
-        time = `${h < 12 ? h + 12 : h}:00`;
-      } else if (src.includes('오전') || src.includes('上午') || src.includes('午前') || src.includes('am')) {
-        time = `${m[1]}:00`;
-      } else if (m[2] && /^\d{2}$/.test(m[2]) && !m[3]) {
-        // HH:MM format
-        time = `${m[1]}:${m[2]}`;
-      } else if (m[2] && (m[2].toLowerCase() === 'pm' || m[3]?.toLowerCase() === 'pm')) {
-        const h = parseInt(m[1]);
-        time = `${h < 12 ? h + 12 : h}:${m[2] && /^\d{2}$/.test(m[2]) ? m[2] : '00'}`;
-      } else if (m[2] && (m[2].toLowerCase() === 'am' || m[3]?.toLowerCase() === 'am')) {
-        time = `${m[1]}:${m[2] && /^\d{2}$/.test(m[2]) ? m[2] : '00'}`;
-      } else {
-        const h = parseInt(m[1]);
-        time = `${h}:00`;
-      }
-      break;
-    }
-  }
-
-  return { date, time };
-}
 
 function extractForeignService(text) {
   const lower = text.toLowerCase();
@@ -1116,20 +1080,7 @@ function extractForeignService(text) {
   return null;
 }
 
-function extractForeignKapster(text, branch = 'bypass') {
-  const lower = text.toLowerCase();
-  if (['any', 'anyone', 'no preference', '任意', '誰でも', '아무나', 'herhangi biri', 'fark etmez',
-    "doesn't matter", "don't mind", 'doesnt matter'].some(k => lower.includes(k))) {
-    return 'Any available';
-  }
-  // Prefer match within current branch, then fall back to any branch
-  const branchList = getKapsterListForBranch(branch);
-  const branchMatch = branchList.find(k => lower.includes(k.toLowerCase().replace('mas ', '')));
-  if (branchMatch) return branchMatch;
-  const anyMatch = ALL_KAPSTER_NAMES.find(n => lower.includes(n.toLowerCase()));
-  if (anyMatch) return `Mas ${anyMatch}`;
-  return text.trim();
-}
+
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
@@ -1208,15 +1159,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
   // ── Foreign customer check — intercept before OpenAI ──
   // If active foreign session exists, continue it
-  const existingForeignSession = getForeignSession(from);
-  if (existingForeignSession) {
-    console.log('[WA Bot] Foreign session active:', { language: existingForeignSession.language });
-    const result = await handleForeignBooking(from, name, text, device, branch);
-    if (result) {
-      const sendResult = await send(from, result.reply, { branch });
-      return { used: result.used, reply: result.reply, sendResult, error: null };
-    }
-  }
+  
 
   // New foreign language detected → start foreign booking flow
   if (isForeignLanguage(text)) {
@@ -1974,3 +1917,6 @@ module.exports.getBranchConfig = getBranchConfig;
 
 module.exports.handleForeignGeneralQuestion = handleForeignGeneralQuestion;
 module.exports.handleForeignBooking = handleForeignBooking;
+
+module.exports.buildBranchLocationText = buildBranchLocationText;
+module.exports.buildBranchHoursText = buildBranchHoursText;
