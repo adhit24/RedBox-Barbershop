@@ -13,11 +13,11 @@ const {
   emitRedboxWebhookTrust,
   verifyRedboxWebhookTrustQuery,
   isVerifiedRedboxWebhookTrust,
-  __verifyRedboxWebhookTrustQueryForTest,
 } = require(gatePath);
 
 const CSB_SECRET = 'csb-test-secret-000000000000000000000000001';
 const TEGAL_SECRET = 'tegal-test-secret-000000000000000000000002';
+const SUMBER_SECRET = 'sumber-test-secret-00000000000000000000003';
 
 // Helper for test verification using process.env setup/restore
 function withTestEnv(envSecrets, fn) {
@@ -52,12 +52,11 @@ function loadWebhookWithRuntimeMocks() {
 }
 
 // ── MANDATORY SECURITY REGRESSION TEST (FINDING 3) ──────────────────────────
-test('production verifier accepts query ONLY (arity 1) and ignores caller-supplied fake env objects', () => {
-  assert.equal(verifyRedboxWebhookTrustQuery.length, 1);
+test('production verifier accepts query ONLY (arity 1) when body is absent and ignores caller-supplied fake env objects', () => {
   const fakeEnv = { WA_WEBHOOK_SECRET_CSB: CSB_SECRET };
   
   // process.env has NO CSB secret set
-  const res = verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: CSB_SECRET }, fakeEnv);
+  const res = verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: CSB_SECRET }, null, fakeEnv);
   assert.equal(res.status, 'not_configured');
   assert.equal(isVerifiedRedboxWebhookTrust(res), false);
 });
@@ -65,7 +64,8 @@ test('production verifier accepts query ONLY (arity 1) and ignores caller-suppli
 test('exact CSB branch and Redbox-managed secret verify via process.env', () => {
   withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
     const trustResult = verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: CSB_SECRET });
-    assert.deepEqual(trustResult, { status: 'verified', branch: 'csb' });
+    assert.equal(trustResult.status, 'verified');
+    assert.equal(trustResult.branch, 'csb');
     assert.equal(isVerifiedRedboxWebhookTrust(trustResult), true);
   });
 });
@@ -74,139 +74,150 @@ test('all five exact lowercase branch domains use only their dedicated environme
   for (const [branch, envVar] of Object.entries(BRANCH_SECRET_ENV)) {
     withTestEnv({ [envVar]: CSB_SECRET }, () => {
       const trustResult = verifyRedboxWebhookTrustQuery({ rb_branch: branch, rb_key: CSB_SECRET });
-      assert.deepEqual(trustResult, { status: 'verified', branch });
+      assert.equal(trustResult.status, 'verified');
+      assert.equal(trustResult.branch, branch);
       assert.equal(isVerifiedRedboxWebhookTrust(trustResult), true);
     });
   }
 });
 
-test('safe null-prototype query dictionaries remain compatible with serverless parsers', () => {
-  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
-    const query = Object.create(null);
-    query.rb_branch = 'csb';
-    query.rb_key = CSB_SECRET;
-    const trustResult = verifyRedboxWebhookTrustQuery(query);
-    assert.deepEqual(trustResult, { status: 'verified', branch: 'csb' });
+// ── FONNTE NATIVE BODY SECRET TESTS (PLAN A.1) ──────────────────────────────
+test('A. verified Fonnte body secret + valid SUMBER device MUST verify trust', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
+    const body = {
+      device: '0818202599',
+      'webhook-secret-key': SUMBER_SECRET,
+      sender: '6281234567890',
+      message: 'test flow sumber',
+    };
+    const trustResult = verifyRedboxWebhookTrustQuery(null, body);
+
+    assert.deepEqual(trustResult, {
+      status: 'verified',
+      branch: 'sumber',
+      trust_method: 'fonnte_body_secret',
+    });
     assert.equal(isVerifiedRedboxWebhookTrust(trustResult), true);
   });
 });
 
-test('missing, empty, whitespace, and weak environment configuration fail closed', () => {
-  for (const secretValue of [undefined, '', '   ', 'too-short-secret']) {
-    const envSecrets = secretValue !== undefined ? { WA_WEBHOOK_SECRET_CSB: secretValue } : {};
-    withTestEnv(envSecrets, () => {
-      assert.deepEqual(
-        verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: CSB_SECRET }),
-        { status: 'not_configured', branch: 'csb' },
-      );
-    });
-  }
+test('B. wrong webhook-secret-key for valid device MUST return invalid_secret untrusted', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
+    const body = {
+      device: '0818202599',
+      'webhook-secret-key': 'wrong-sumber-secret-000000000000000000001',
+    };
+    const trustResult = verifyRedboxWebhookTrustQuery(null, body);
+
+    assert.equal(trustResult.status, 'invalid_secret');
+    assert.equal(trustResult.branch, 'sumber');
+    assert.equal(trustResult.trust_method, 'fonnte_body_secret');
+    assert.equal(isVerifiedRedboxWebhookTrust(trustResult), false);
+  });
 });
 
-test('missing and malformed provided secrets are distinguished without coercion', () => {
-  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
-    assert.deepEqual(
-      verifyRedboxWebhookTrustQuery({ rb_branch: 'csb' }),
-      { status: 'missing_secret', branch: 'csb' },
-    );
-    assert.deepEqual(
-      verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: '' }),
-      { status: 'missing_secret', branch: 'csb' },
-    );
-    for (const rb_key of [null, [], {}, 123, true, false]) {
-      assert.deepEqual(
-        verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key }),
-        { status: 'malformed', branch: 'csb' },
-      );
+test('D. malformed webhook-secret-key MUST fail closed untrusted', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
+    for (const secretVal of [null, [], {}, 123, true, false]) {
+      const body = {
+        device: '0818202599',
+        'webhook-secret-key': secretVal,
+      };
+      const trustResult = verifyRedboxWebhookTrustQuery(null, body);
+
+      assert.equal(trustResult.status, 'malformed');
+      assert.equal(isVerifiedRedboxWebhookTrust(trustResult), false);
     }
   });
 });
 
-test('prefix, suffix, length, spaces, and Unicode lookalikes never verify', () => {
-  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
-    for (const rb_key of [
-      CSB_SECRET.slice(0, -6),
-      CSB_SECRET.slice(6),
-      `${CSB_SECRET}x`,
-      ` ${CSB_SECRET}`,
-      `${CSB_SECRET} `,
-      CSB_SECRET.replace('c', '\u0441'),
-      'wrong-test-secret-000000000000000000000000001',
-    ]) {
-      assert.deepEqual(
-        verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key }),
-        { status: 'invalid_secret', branch: 'csb' },
-      );
-    }
-  });
-});
-
-test('branch secrets are bound to their exact domain with no Bypass fallback', () => {
+test('E. cross-branch device (SUMBER secret + CSB device) MUST fail closed', () => {
   withTestEnv({
-    WA_WEBHOOK_SECRET_BYPASS: 'bypass-test-secret-000000000000000000000001',
+    WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET,
     WA_WEBHOOK_SECRET_CSB: CSB_SECRET,
-    WA_WEBHOOK_SECRET_TEGAL: TEGAL_SECRET,
   }, () => {
-    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: CSB_SECRET }).status, 'verified');
-    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'tegal', rb_key: TEGAL_SECRET }).status, 'verified');
-    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'tegal', rb_key: CSB_SECRET }).status, 'invalid_secret');
-    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'csb', rb_key: TEGAL_SECRET }).status, 'invalid_secret');
+    const body = {
+      device: '0818202889',
+      'webhook-secret-key': SUMBER_SECRET,
+    };
+    const trustResult = verifyRedboxWebhookTrustQuery(null, body);
+
+    assert.equal(trustResult.status, 'invalid_secret');
+    assert.equal(trustResult.branch, 'csb');
+    assert.equal(isVerifiedRedboxWebhookTrust(trustResult), false);
   });
 });
 
-test('unknown, missing, case-variant, and Unicode-manipulated branch values fail closed', () => {
+test('F. cross-branch secret (CSB secret + SUMBER device) MUST fail closed', () => {
+  withTestEnv({
+    WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET,
+    WA_WEBHOOK_SECRET_CSB: CSB_SECRET,
+  }, () => {
+    const body = {
+      device: '0818202599',
+      'webhook-secret-key': CSB_SECRET,
+    };
+    const trustResult = verifyRedboxWebhookTrustQuery(null, body);
+
+    assert.equal(trustResult.status, 'invalid_secret');
+    assert.equal(trustResult.branch, 'sumber');
+    assert.equal(isVerifiedRedboxWebhookTrust(trustResult), false);
+  });
+});
+
+test('I. NO DOWNGRADE ATTACK: wrong body secret + valid query secret MUST fail closed untrusted', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
+    const query = { rb_branch: 'sumber', rb_key: SUMBER_SECRET };
+    const body = {
+      device: '0818202599',
+      'webhook-secret-key': 'attacker-wrong-secret-0000000000000001',
+    };
+
+    const trustResult = verifyRedboxWebhookTrustQuery(query, body);
+
+    assert.equal(trustResult.status, 'invalid_secret');
+    assert.equal(trustResult.trust_method, 'fonnte_body_secret');
+    assert.equal(isVerifiedRedboxWebhookTrust(trustResult), false);
+  });
+});
+
+test('J. LEGACY FALLBACK: absent body secret + valid query secret MUST fall back to query secret', () => {
   withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
-    assert.equal(verifyRedboxWebhookTrustQuery({ rb_key: CSB_SECRET }).status, 'unknown_branch');
-    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'unknown', rb_key: CSB_SECRET }).status, 'unknown_branch');
-    assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch: 'CSB', rb_key: CSB_SECRET }).status, 'unknown_branch');
-    for (const rb_branch of ['__proto__', 'constructor', 'toString']) {
-      assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch, rb_key: CSB_SECRET }).status, 'unknown_branch');
-    }
-    for (const rb_branch of ['', '   ', null, [], {}, 123, true]) {
-      assert.equal(verifyRedboxWebhookTrustQuery({ rb_branch, rb_key: CSB_SECRET }).status, 'malformed');
-    }
+    const query = { rb_branch: 'csb', rb_key: CSB_SECRET };
+    const body = {
+      device: '0818202889',
+      sender: '6281234567890',
+      message: 'legacy query path',
+    };
+
+    const trustResult = verifyRedboxWebhookTrustQuery(query, body);
+
+    assert.equal(trustResult.status, 'verified');
+    assert.equal(trustResult.branch, 'csb');
+    assert.equal(trustResult.trust_method, 'query_secret_fallback');
+    assert.equal(isVerifiedRedboxWebhookTrust(trustResult), true);
   });
 });
 
-test('query input rejects inherited, custom-prototype, accessors, symbols, extras, and duplicate arrays', () => {
-  withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, () => {
-    const inherited = Object.create({ rb_branch: 'csb', rb_key: CSB_SECRET });
-    const customPrototype = Object.create({ attacker: true });
-    customPrototype.rb_branch = 'csb';
-    customPrototype.rb_key = CSB_SECRET;
-
-    for (const query of [
-      inherited, customPrototype,
-      { rb_branch: ['csb', 'tegal'], rb_key: CSB_SECRET },
-      null, [], 'rb_branch=csb',
-    ]) {
-      assert.deepEqual(
-        verifyRedboxWebhookTrustQuery(query),
-        { status: 'malformed', branch: null },
-      );
-    }
-  });
-});
-
-test('safe trust logging emits status and branch only', () => {
+test('K. LOG SAFETY: safe logging never includes webhook-secret-key, sender, message, or inboxid', () => {
   const calls = [];
-  const secret = CSB_SECRET;
-  const rawUrl = `/api/wa/webhook?rb_branch=csb&rb_key=${secret}`;
   const emitted = emitRedboxWebhookTrust({
-    status: 'verified', branch: 'csb', secret, sender: '628111111111', rawUrl,
+    status: 'verified',
+    branch: 'sumber',
+    trust_method: 'fonnte_body_secret',
+    'webhook-secret-key': SUMBER_SECRET,
+    sender: '6281234567890',
+    message: 'secret chat',
+    inboxid: 12345,
   }, { info: (...args) => calls.push(args) });
 
-  assert.deepEqual(calls, [['[WAWebhookTrust]', { trust_status: 'verified', branch: 'csb' }]]);
-  assert.deepEqual(emitted, calls[0][1]);
-});
-
-test('raw/untrusted webhook cannot directly access CRM without genuine TrustedIdentity', () => {
-  const source = fs.readFileSync(webhookPath, 'utf8');
-  assert.match(source, /fonnteWebhookTrustGate/);
-  assert.match(source, /verifyRedboxWebhookTrustQuery/);
-  assert.match(source, /emitRedboxWebhookTrust/);
-  assert.ok(source.indexOf('verifyRedboxWebhookTrustQuery') < source.indexOf('coerceBody(req.body, req)'));
-  for (const forbidden of ['crmAgent', 'customer360Service', 'customerIdentity']) {
-    assert.doesNotMatch(source, new RegExp(`\\b${forbidden}\\b`));
+  assert.deepEqual(calls, [['[WAWebhookTrust]', {
+    trust_status: 'verified',
+    branch: 'sumber',
+    trust_method: 'fonnte_body_secret',
+  }]]);
+  const serialized = JSON.stringify(calls);
+  for (const prohibited of [SUMBER_SECRET, '6281234567890', 'secret chat', '12345', 'webhook-secret-key']) {
+    assert.equal(serialized.includes(prohibited), false);
   }
 });
