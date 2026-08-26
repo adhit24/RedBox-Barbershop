@@ -282,6 +282,41 @@ async function getCustomer360(supabase, identityInput = {}) {
     bookingQuery,
   ]);
 
+  const txData = txRes.data || [];
+  const bkData = bookingsRes.data || [];
+
+  // Bounded Metadata Lookups for Outlets, Schedules, and Barbers
+  const outletIdsToFetch = Array.from(new Set(txData.map(t => t.outlet_id).filter(Boolean)));
+  const scheduleIdsToFetch = Array.from(new Set(txData.map(t => t.schedule_id).filter(Boolean)));
+  const directBookingBarberIds = bkData.map(b => b.barber_id).filter(Boolean);
+
+  const outSel = supabase.from('outlets').select('id, name, slug');
+  const outletsQuery = (outletIdsToFetch.length > 0 && typeof outSel.in === 'function')
+    ? outSel.in('id', outletIdsToFetch)
+    : Promise.resolve({ data: [] });
+
+  const schedSel = supabase.from('schedules').select('id, barber_id');
+  const schedulesQuery = (scheduleIdsToFetch.length > 0 && typeof schedSel.in === 'function')
+    ? schedSel.in('id', scheduleIdsToFetch)
+    : Promise.resolve({ data: [] });
+
+  const [outletsRes, schedulesRes] = await Promise.all([
+    outletsQuery.catch(() => ({ data: [] })),
+    schedulesQuery.catch(() => ({ data: [] })),
+  ]);
+  const outletMap = new Map((outletsRes.data || []).map(o => [o.id, o.name || o.slug]));
+
+  const fetchedSchedules = schedulesRes.data || [];
+  const scheduleBarberIds = fetchedSchedules.map(s => s.barber_id).filter(Boolean);
+  const scheduleMap = new Map(fetchedSchedules.map(s => [s.id, s.barber_id]));
+
+  const allBarberIdsToFetch = Array.from(new Set([...directBookingBarberIds, ...scheduleBarberIds]));
+  const barbSel = supabase.from('barbers').select('id, name');
+  const barbersRes = (allBarberIdsToFetch.length > 0 && typeof barbSel.in === 'function')
+    ? await barbSel.in('id', allBarberIdsToFetch).catch(() => ({ data: [] }))
+    : { data: [] };
+  const barberMap = new Map((barbersRes.data || []).map(b => [b.id, b.name]));
+
   if (profRes.error || custRes.error || txRes.error || bookingsRes.error) {
     return {
       version: 'customer360.v0.1',
@@ -396,18 +431,212 @@ async function getCustomer360(supabase, identityInput = {}) {
     average_transaction_value_idr: avgTxValue,
   };
 
-  // --- Activity / Visit Section ---
+      // --- Activity / Visit Section ---
   const doneBookings = bookings.filter(b => b.status === 'done');
   const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
   const pendingBookings = bookings.filter(b => ['pending', 'confirmed'].includes(b.status));
 
-  const visitDates = [
-    ...doneBookings.map(b => b.date),
-    ...transactions.map(t => formatDateStr(t.created_at)),
-  ].filter(Boolean).sort();
+  function parseEventTimestamp(rawDateVal, rawTimeVal) {
+    if (!rawDateVal) return { date: null, timestamp: null, precision: 'unknown' };
+    const datePart = formatDateStr(rawDateVal);
+    if (!datePart) return { date: null, timestamp: null, precision: 'unknown' };
 
+    const isIsoOrTime = typeof rawDateVal === 'string' && (rawDateVal.includes('T') || /\d{2}:\d{2}/.test(rawDateVal));
+    if (isIsoOrTime) {
+      const d = new Date(rawDateVal);
+      if (!isNaN(d.getTime())) {
+        return { date: datePart, timestamp: d.getTime(), precision: 'datetime' };
+      }
+    }
+
+    if (rawTimeVal && typeof rawTimeVal === 'string' && /\d{1,2}:\d{2}/.test(rawTimeVal)) {
+      const timePart = rawTimeVal.includes(':') ? rawTimeVal : `${rawTimeVal}:00`;
+      const combinedIso = `${datePart}T${timePart}:00Z`;
+      const d = new Date(combinedIso);
+      if (!isNaN(d.getTime())) {
+        return { date: datePart, timestamp: d.getTime(), precision: 'datetime' };
+      }
+    }
+
+    return { date: datePart, timestamp: null, precision: 'date_only' };
+  }
+
+  // Build unified completed visit events list for deterministic event attribution
+  const completedEvents = [];
+
+  for (const b of doneBookings) {
+    const rawTime = b.start_time || b.time || b.booking_time || null;
+    const rawDate = b.date || b.created_at || null;
+    const parsed = parseEventTimestamp(rawDate, rawTime);
+
+    let resolvedBarber = b.barber_name || null;
+    if (!resolvedBarber && b.barber_id && barberMap.has(b.barber_id)) {
+      resolvedBarber = barberMap.get(b.barber_id);
+    }
+
+    if (parsed.date) {
+      completedEvents.push({
+        type: 'booking',
+        date: parsed.date,
+        timestamp: parsed.timestamp,
+        precision: parsed.precision,
+        branch: b.location || b.branch_slug || b.branch || null,
+        barber: resolvedBarber,
+        service: b.service || null,
+      });
+    }
+  }
+
+  for (const t of transactions) {
+    const parsed = parseEventTimestamp(t.created_at, null);
+    if (parsed.date) {
+      const items = Array.isArray(t.transaction_items) ? t.transaction_items : [];
+      const serviceNames = items.map(i => i.service_name).filter(Boolean).join(', ');
+
+      const resolvedBranch = t.outlet_id ? (outletMap.get(t.outlet_id) || null) : null;
+      let resolvedBarber = null;
+      if (t.schedule_id && scheduleMap.has(t.schedule_id)) {
+        const bId = scheduleMap.get(t.schedule_id);
+        if (bId && barberMap.has(bId)) {
+          resolvedBarber = barberMap.get(bId);
+        }
+      }
+
+      completedEvents.push({
+        type: 'transaction',
+        date: parsed.date,
+        timestamp: parsed.timestamp,
+        precision: parsed.precision,
+        branch: resolvedBranch,
+        barber: resolvedBarber,
+        service: serviceNames || null,
+      });
+    }
+  }
+
+  const visitDates = Array.from(new Set(completedEvents.map(e => e.date))).sort();
   const firstVisit = visitDates[0] || null;
   const lastVisit = visitDates.at(-1) || null;
+
+  let lastVisitBranch = null;
+  let lastVisitBarber = null;
+  let lastVisitService = null;
+  let lastVisitSource = null;
+  let lastVisitConfidence = null;
+  let lastVisitEventObj = null;
+
+  if (completedEvents.length > 0 && lastVisit) {
+    const latestEvents = completedEvents.filter(e => e.date === lastVisit);
+
+    if (latestEvents.length === 1) {
+      const single = latestEvents[0];
+      lastVisitBranch = single.branch;
+      lastVisitBarber = single.barber;
+      lastVisitService = single.service;
+      lastVisitSource = single.type;
+
+      const isPartial = !single.branch || !single.barber || !single.service;
+      lastVisitConfidence = isPartial ? 'partial' : 'verified';
+
+      lastVisitEventObj = {
+        date: lastVisit,
+        branch: single.branch,
+        barber: single.barber,
+        service: single.service,
+        source: single.type,
+        confidence: lastVisitConfidence,
+      };
+    } else {
+      // Multiple events share the latest calendar date
+      const datetimeEvents = latestEvents.filter(e => e.precision === 'datetime' && typeof e.timestamp === 'number');
+      const hasDateOnlyEvents = latestEvents.some(e => e.precision === 'date_only');
+
+      if (datetimeEvents.length > 0 && !hasDateOnlyEvents) {
+        // Case A: All events on latest date have real datetime timestamps
+        datetimeEvents.sort((a, b) => b.timestamp - a.timestamp);
+        const topMs = datetimeEvents[0].timestamp;
+        const topEvents = datetimeEvents.filter(e => e.timestamp === topMs);
+
+        if (topEvents.length === 1) {
+          const winner = topEvents[0];
+          lastVisitBranch = winner.branch;
+          lastVisitBarber = winner.barber;
+          lastVisitService = winner.service;
+          lastVisitSource = winner.type;
+
+          const isPartial = !winner.branch || !winner.barber || !winner.service;
+          lastVisitConfidence = isPartial ? 'partial' : 'verified';
+
+          lastVisitEventObj = {
+            date: lastVisit,
+            branch: winner.branch,
+            barber: winner.barber,
+            service: winner.service,
+            source: winner.type,
+            confidence: lastVisitConfidence,
+          };
+        } else {
+          // Case D: Multiple events share the exact same top timestamp
+          const branches = new Set(topEvents.map(e => e.branch).filter(Boolean));
+          const barbers = new Set(topEvents.map(e => e.barber).filter(Boolean));
+          const services = new Set(topEvents.map(e => e.service).filter(Boolean));
+
+          lastVisitBranch = branches.size === 1 ? Array.from(branches)[0] : null;
+          lastVisitBarber = barbers.size === 1 ? Array.from(barbers)[0] : null;
+          lastVisitService = services.size === 1 ? Array.from(services)[0] : null;
+
+          const hasConflict = branches.size > 1 || barbers.size > 1 || services.size > 1;
+          const sources = Array.from(new Set(topEvents.map(e => e.type)));
+          lastVisitSource = sources.length === 1 ? sources[0] : 'hybrid';
+
+          if (hasConflict) {
+            lastVisitConfidence = 'conflicting';
+          } else {
+            const isPartial = !lastVisitBranch || !lastVisitBarber || !lastVisitService;
+            lastVisitConfidence = isPartial ? 'partial' : 'verified';
+          }
+
+          lastVisitEventObj = {
+            date: lastVisit,
+            branch: lastVisitBranch,
+            barber: lastVisitBarber,
+            service: lastVisitService,
+            source: lastVisitSource,
+            confidence: lastVisitConfidence,
+          };
+        }
+      } else {
+        // Case B & C: Mixed precision (datetime + date_only) OR all date_only on same day
+        const branches = new Set(latestEvents.map(e => e.branch).filter(Boolean));
+        const barbers = new Set(latestEvents.map(e => e.barber).filter(Boolean));
+        const services = new Set(latestEvents.map(e => e.service).filter(Boolean));
+
+        lastVisitBranch = branches.size === 1 ? Array.from(branches)[0] : null;
+        lastVisitBarber = barbers.size === 1 ? Array.from(barbers)[0] : null;
+        lastVisitService = services.size === 1 ? Array.from(services)[0] : null;
+
+        const hasConflict = branches.size > 1 || barbers.size > 1 || services.size > 1;
+        const sources = Array.from(new Set(latestEvents.map(e => e.type)));
+        lastVisitSource = sources.length === 1 ? sources[0] : 'hybrid';
+
+        if (hasConflict) {
+          lastVisitConfidence = 'conflicting';
+        } else {
+          const isPartial = !lastVisitBranch || !lastVisitBarber || !lastVisitService;
+          lastVisitConfidence = isPartial ? 'partial' : 'verified';
+        }
+
+        lastVisitEventObj = {
+          date: lastVisit,
+          branch: lastVisitBranch,
+          barber: lastVisitBarber,
+          service: lastVisitService,
+          source: lastVisitSource,
+          confidence: lastVisitConfidence,
+        };
+      }
+    }
+  }
 
   let daysSinceLastVisit = null;
   if (lastVisit) {
@@ -418,6 +647,12 @@ async function getCustomer360(supabase, identityInput = {}) {
   const activityObj = {
     first_visit: firstVisit,
     last_visit: lastVisit,
+    last_visit_branch: lastVisitBranch,
+    last_visit_barber: lastVisitBarber,
+    last_visit_service: lastVisitService,
+    last_visit_source: lastVisitSource,
+    last_visit_confidence: lastVisitConfidence,
+    last_visit_event: lastVisitEventObj,
     days_since_last_visit: daysSinceLastVisit,
     completed_booking_count: doneBookings.length,
     cancelled_booking_count: cancelledBookings.length,
