@@ -19,7 +19,7 @@ const {
   serializeKnowledgeForPrompt,
   createUnavailableKnowledgeContext,
 } = require('../agents/reddy/knowledge/knowledgeContext');
-const { handleMessage, callOpenAI, fallbackReply } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, fallbackReply, buildServicesText } = require('../../api/wa/webhook');
 
 function cloneKnowledge() {
   return structuredClone(REDBOX_KNOWLEDGE);
@@ -1049,4 +1049,81 @@ test('R9. Verified booking status from backend states confirmed from database on
     reply = 'Status booking Kakak di database Redbox terverifikasi CONFIRMED untuk cabang Bypass.';
   }
   assert.ok(reply.includes('database Redbox terverifikasi CONFIRMED'));
+});
+
+test('S1. Every price/name emitted by buildServicesText originates from canonical REDBOX_SERVICES', async () => {
+  const textBypass = buildServicesText('bypass');
+  const textCSB = buildServicesText('csb');
+
+  // Gentleman Grooming
+  const ggStandard = REDBOX_SERVICES.find(s => s.name === 'Gentleman Grooming' || s.id === 'gentleman-grooming');
+  assert.ok(ggStandard, 'Gentleman Grooming must exist in REDBOX_SERVICES');
+  assert.ok(textBypass.includes('Gentleman Grooming — Rp95.000'), 'Standard price must be Rp95.000');
+  assert.ok(textCSB.includes('Gentleman Grooming — Rp120.000'), 'CSB price must be Rp120.000');
+
+  // Hair Color
+  assert.ok(textBypass.includes('Hair Color — Rp160.000'));
+
+  // Down Perm / Root Lift
+  assert.ok(textBypass.includes('Down Perm / Root Lift — Rp175.000'));
+
+  // Ear Candle
+  assert.ok(textBypass.includes('Ear Candle — Rp40.000'));
+});
+
+test('S2. Forbidden stale/non-canonical fast-path labels do not appear in buildServicesText', async () => {
+  const text = buildServicesText('bypass');
+  assert.equal(text.includes('Junior Grooming'), false, 'Stale Junior Grooming must not appear');
+  assert.equal(text.includes('Father & Son Combo'), false, 'Stale Father & Son Combo must not appear');
+});
+
+test('S3. Knowledge unavailable + booking intent fallback directs to website without fake confirmation or emoji', async () => {
+  const reply = fallbackReply('mau booking besok', 'Budi', 'bypass', 'unavailable');
+  assert.ok(reply.includes('booking.html?branch=bypass'), 'Must direct to branch booking URL');
+  assert.equal(reply.includes('Udah kami catat'), false, 'No fake confirmation');
+  assert.equal(reply.includes('slot aman'), false, 'No claimed availability');
+  assert.equal(/\uD83D[\uDC00-\uDFFF]|\uD83C[\uDF00-\uDFFF]|\uD83E[\uDD00-\uDDFF]/.test(reply), false, 'Zero emoji');
+});
+
+test('S4. Knowledge resolver throws + OpenAI throws in handleMessage booking flow -> returns website URL', async () => {
+  let capturedReply = null;
+  const result = await handleMessage(
+    { from: '62811113994', text: 'mau booking besok jam 7', branchFromPayload: 'bypass' },
+    {
+      loadConversationHistory: async () => [],
+      orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'booking_request', action: 'direct_booking' }),
+      resolveKnowledge: () => { throw new Error('Knowledge DB Connection Failure'); },
+      generateReddy: async () => { throw new Error('OpenAI Provider Failure'); },
+      send: async (from, replyText) => {
+        capturedReply = replyText;
+        return { status: 'sent' };
+      },
+      logTelemetry: () => {},
+    }
+  );
+
+  assert.ok(capturedReply.includes('booking.html?branch=bypass'), 'Must contain official booking website');
+  assert.equal(capturedReply.includes('Udah kami catat'), false, 'No fake confirmation');
+  assert.equal(capturedReply.includes('slot aman'), false, 'No claimed slot availability');
+});
+
+test('S5. Knowledge unavailable + factual price query does not invent price or force booking CTA', async () => {
+  const reply = fallbackReply('harga Hair Spa berapa?', 'Budi', 'bypass', 'unavailable');
+  assert.equal(reply.includes('Rp110.000'), false, 'Must NOT invent prices when knowledge is unavailable');
+  assert.ok(reply.includes('redboxbarbershop.com'), 'Points to general official information source');
+  assert.equal(reply.includes('booking.html'), false, 'Must NOT force booking CTA for factual price query fallback');
+});
+
+test('S6. Fallback name normalization prevents "Kak Kak" for missing or default name values', async () => {
+  const replyNull = fallbackReply('halo', null, 'bypass');
+  const replyKak = fallbackReply('halo', 'Kak', 'bypass');
+  const replyName = fallbackReply('halo', 'Adhit Nugraha', 'bypass');
+
+  assert.ok(replyNull.startsWith('Halo Kak,'), 'Null name formats to "Halo Kak,"');
+  assert.equal(replyNull.includes('Kak Kak'), false, 'No duplicate Kak Kak');
+
+  assert.ok(replyKak.startsWith('Halo Kak,'), '"Kak" name formats to "Halo Kak,"');
+  assert.equal(replyKak.includes('Kak Kak'), false, 'No duplicate Kak Kak');
+
+  assert.ok(replyName.startsWith('Halo Kak Adhit,'), 'Full name formats to "Halo Kak Adhit,"');
 });

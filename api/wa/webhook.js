@@ -1,3 +1,4 @@
+const { REDBOX_SERVICES } = require('../../public/js/services-data');
 /**
  * Vercel Serverless — POST /api/wa/webhook
  * Fonnte WhatsApp webhook — RedBox Barbershop AI Assistant
@@ -475,17 +476,16 @@ async function forwardBookingToBranch(booking, customerPhone) {
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
 
+function formatIDR(amount) {
+  return 'Rp' + amount.toLocaleString('id-ID');
+}
+
 function buildServicesText(branch = 'bypass') {
-  return [
-    '• Gentleman Grooming - Rp95.000 (CSB Rp120.000)',
-    '• Haircut + Wash + Hair Tonic + Styling (Free Konsultasi)',
-    '• Junior Grooming - Rp75.000',
-    '• Father & Son Combo - Rp150.000',
-    '• Hot Towel Shave / Beard Trim - Rp45.000',
-    '• Hair Treatment / Hair Spa - Rp110.000',
-    '• Hair Coloring - Rp150.000 - Rp250.000',
-    '• Ear Candles - Rp85.000',
-  ].join('\n');
+  const isCSB = branch === 'csb';
+  return REDBOX_SERVICES.map(service => {
+    const price = isCSB ? (service.csbPrice || service.price) : service.price;
+    return `  ${service.name} — ${formatIDR(price)}`;
+  }).join('\n');
 }
 
 function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifiedName = null) {
@@ -715,28 +715,42 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 
 function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
   const t = text.toLowerCase();
-  const fn = (name || 'Kak').split(' ')[0];
+  const rawName = (name || '').trim();
+  const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : 'Kak';
+  const nameLabel = fn === 'Kak' ? 'Kak' : `Kak ${fn}`;
   const has = (kws) => kws.some(k => t.includes(k));
 
+  // 1. Booking Intent / Booking Status Safe Fallback (HIGH PRIORITY - Independent of dynamic knowledge status!)
+  if (has(['konfirmasi booking', 'konfirmasi bkng', 'sudah booking', 'mau konfirmasi', 'ini konfirmasi'])) {
+    return `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
+  }
+
+  if (has(['booking', 'reservasi', 'jadwal', 'pesan', 'mau potong', 'mau cukur', 'slot', 'book'])) {
+    return `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
+  }
+
+  // 2. Factual Knowledge Unavailable Guard (For factual inquiries when knowledge is unavailable)
   if ((knowledgeStatus === 'unavailable' || knowledgeStatus === 'no_verified_fact')
     && isFactualKnowledgeRequest('', text)) {
     return `Maaf Kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com atau hubungi admin cabang ya.`;
   }
 
-  if (has(['halo','hai','hi ','hello','hei','hey','pagi','siang','sore','malam','selamat']))
-    return `Halo Kak ${fn}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
-  if (has(['harga','berapa','layanan','menu','paket','price']))
+  // 3. Ordinary Deterministic Fallback
+  if (has(['halo', 'hai', 'hi ', 'hello', 'hei', 'hey', 'pagi', 'siang', 'sore', 'malam', 'selamat'])) {
+    return `Halo ${nameLabel}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
+  }
+  if (has(['harga', 'berapa', 'layanan', 'menu', 'paket', 'price', 'tarif', 'biaya'])) {
     return `Maaf Kak, aku belum bisa memastikan info layanan atau harga saat ini. Informasi lengkap Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
-  if (has(['booking','reservasi','jadwal','pesan','mau potong','mau cukur','slot']))
-    return `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
-  if (has(['lokasi','alamat','dimana','maps','cabang']))
+  }
+  if (has(['lokasi', 'alamat', 'dimana', 'maps', 'cabang'])) {
     return `Maaf Kak, aku belum bisa memastikan detail cabang saat ini. Cek informasi terverifikasi di redboxbarbershop.com ya.`;
-  if (has(['konfirmasi booking','konfirmasi bkng','sudah booking','mau konfirmasi','ini konfirmasi']))
-    return `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
-  if (has(['makasih','terima kasih','thanks','thx']))
-    return `Sama-sama Kak ${fn}! Kalau ada hal lain seputar Redbox, silakan beri tahu aku ya Kak.`;
+  }
+  if (has(['makasih', 'terima kasih', 'thanks', 'thx'])) {
+    return `Sama-sama ${nameLabel}! Kalau ada hal lain seputar Redbox, silakan beri tahu aku ya.`;
+  }
 
-  return `Mohon maaf Kak ${fn}, saat ini sistem sedang memproses ulang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
+  // 4. Generic Fallback
+  return `Mohon maaf ${nameLabel}, saat ini sistem sedang memproses ulang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
 }
 
 // ── Foreign Customer Booking Flow ─────────────────────────────────────────────
@@ -2282,3 +2296,5 @@ module.exports.callOpenAI = callOpenAI;
 module.exports.buildSystemPrompt = buildSystemPrompt;
 
 module.exports.fallbackReply = fallbackReply;
+
+module.exports.buildServicesText = buildServicesText;
