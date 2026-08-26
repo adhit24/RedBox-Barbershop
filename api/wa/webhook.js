@@ -1371,8 +1371,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         confidence: 1.0,
         model_tier: 'economy',
       },
-      text,
-      { trustedIdentity, projection: 'CUSTOMER_SELF', supabase: getSupabase() }
+      { trustedIdentity, supabase: getSupabase() }
     );
     let pointsReply;
     if (orchResult.execution_status === 'unauthorized') {

@@ -404,8 +404,48 @@ test('HARDENED DEVICE NORMALIZATION: reject mixed-letter and malicious device st
   });
 });
 
+// ── PRODUCTION API CONTRACT REGRESSION TEST ─────────────────────────────────
+test('REAL EXECUTION CONTRACT: executeOrchestration MUST be called with exactly 2 arguments (classification, dependencies)', async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+    Object.keys(require.cache).forEach(k => delete require.cache[k]);
+
+    const executionService = require(executionPath);
+    const originalExecute = executionService.executeOrchestration;
+    let argumentCountPassed = null;
+
+    executionService.executeOrchestration = async function (classificationResult, dependencies) {
+      argumentCountPassed = arguments.length;
+      assert.equal(arguments.length, 2, 'executeOrchestration MUST be called with exactly 2 arguments (classificationResult, dependencies)');
+      assert.equal(typeof classificationResult, 'object');
+      assert.equal(classificationResult.intent, 'points_inquiry');
+      assert.equal(typeof dependencies, 'object');
+      return { execution_status: 'success', intent: 'points_inquiry', result: { data: { points_balance: 150 } } };
+    };
+
+    try {
+      const webhook = require(webhookPath);
+      const { response } = createResponseHarness();
+      await webhook({
+        method: 'POST',
+        query: {},
+        body: {
+          device: '0818202599',
+          message: 'poin saya berapa?',
+          sender: '6281234567890',
+          type: 'text',
+          'webhook-secret-key': SUMBER_SECRET,
+        },
+      }, response);
+
+      assert.equal(argumentCountPassed, 2, 'Webhook MUST pass exactly 2 arguments to executeOrchestration');
+    } finally {
+      executionService.executeOrchestration = originalExecute;
+    }
+  });
+});
+
 // ── LIVE WEBHOOK RUNTIME LEVEL INTEGRATION TESTS WITH CRM SPY ───────────────
-test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points, whereas invalid/untrusted paths DO NOT', async () => {
+test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points via 2-arg executeOrchestration API', async () => {
   await withTestEnv({
     WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET,
     WA_WEBHOOK_SECRET_CSB: CSB_SECRET,
@@ -418,11 +458,12 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points, 
     const crmAgentCalls = [];
     const originalExecute = executionService.executeOrchestration;
 
-    executionService.executeOrchestration = async (userIntent, rawInput, context) => {
-      if (!isTrustedIdentity(context?.trustedIdentity)) {
+    executionService.executeOrchestration = async function (classificationResult, dependencies) {
+      assert.equal(arguments.length, 2, 'Production contract takes exactly 2 arguments');
+      if (!dependencies || !isTrustedIdentity(dependencies.trustedIdentity)) {
         return { execution_status: 'unauthorized', result: null };
       }
-      crmAgentCalls.push({ userIntent, rawInput, context });
+      crmAgentCalls.push({ classificationResult, dependencies });
       return {
         execution_status: 'success',
         intent: 'points_inquiry',
@@ -455,10 +496,9 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points, 
 
       assert.equal(out1.statusCode, 200);
       assert.equal(crmAgentCalls.length, 1, 'CRM points must be executed exactly once for valid trusted request');
-      assert.equal(crmAgentCalls[0].userIntent.intent, 'points_inquiry');
-      assert.equal(crmAgentCalls[0].context.projection, 'CUSTOMER_SELF');
-      assert.equal(isTrustedIdentity(crmAgentCalls[0].context.trustedIdentity), true);
-      assert.equal(crmAgentCalls[0].context.trustedIdentity.phone, '6281234567890');
+      assert.equal(crmAgentCalls[0].classificationResult.intent, 'points_inquiry');
+      assert.equal(isTrustedIdentity(crmAgentCalls[0].dependencies.trustedIdentity), true);
+      assert.equal(crmAgentCalls[0].dependencies.trustedIdentity.phone, '6281234567890');
 
       crmAgentCalls.length = 0;
 
@@ -508,10 +548,78 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points, 
       };
       await webhook(legacyQueryReq, res4);
       assert.equal(crmAgentCalls.length, 1, 'Legacy query fallback MUST execute CRM points when body secret is absent');
-      assert.equal(crmAgentCalls[0].context.trustedIdentity.phone, '6281234567890');
+      assert.equal(crmAgentCalls[0].dependencies.trustedIdentity.phone, '6281234567890');
 
     } finally {
       executionService.executeOrchestration = originalExecute;
     }
   });
+});
+
+// ── REAL EXECUTION SERVICE INTEGRATION TEST WITH CRM EXECUTOR SEAM ─────────
+test('REAL EXECUTION SERVICE: TrustedIdentity passes through actual executeOrchestration to crmExecutor seam', async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+    Object.keys(require.cache).forEach(k => delete require.cache[k]);
+
+    const { verifyRedboxWebhookTrustQuery } = require('../services/fonnteWebhookTrustGate');
+    const { issueAuthenticatedWhatsappEvent, adaptAuthenticatedWhatsappEvent } = require('../identity/whatsappIdentityAdapter');
+    const { executeOrchestration } = require('../orchestrator/executionService');
+
+    const body = {
+      device: '0818202599',
+      'webhook-secret-key': SUMBER_SECRET,
+      sender: '6281234567890',
+      message: 'poin saya berapa?',
+    };
+    const trustResult = verifyRedboxWebhookTrustQuery(null, body);
+    const eventCap = issueAuthenticatedWhatsappEvent(trustResult, body);
+    const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
+    const trustedIdentity = identityResult.trustedIdentity;
+
+    const crmExecutorCalls = [];
+    const mockCrmExecutor = async (tool, params, context) => {
+      crmExecutorCalls.push({ tool, params, context });
+      return {
+        status: 'success',
+        data: { customer_id: 'cust-123', points_balance: 250, status: 'available' },
+      };
+    };
+
+    const orchResult = await executeOrchestration(
+      {
+        intent: 'points_inquiry',
+        route: 'crm_agent',
+        agent: 'crm_agent',
+        action: 'get_points',
+        confidence: 1.0,
+        model_tier: 'economy',
+      },
+      {
+        trustedIdentity,
+        crmExecutor: mockCrmExecutor,
+      }
+    );
+
+    assert.equal(orchResult.execution_status, 'success');
+    assert.equal(crmExecutorCalls.length, 1);
+    assert.equal(crmExecutorCalls[0].tool, 'get_points');
+    assert.equal(crmExecutorCalls[0].context.projection, 'CUSTOMER_SELF');
+    assert.equal(crmExecutorCalls[0].context.phone, '6281234567890');
+    assert.equal(orchResult.result.data.points_balance, 250);
+  });
+});
+
+// ── ROUTING POLICY SCOPE TESTS ──────────────────────────────────────────────
+test('ROUTING POLICY: classifyDeterministically correctly classifies points_inquiry phrases required for Task 9 architecture', () => {
+  const { classifyDeterministically } = require('../orchestrator/routingPolicy');
+
+  for (const phrase of ['poin saya berapa?', 'cek poin', 'poinku', 'poin saya']) {
+    const res = classifyDeterministically(phrase);
+    assert.deepEqual(res, { intent: 'points_inquiry', confidence: 1 });
+  }
+
+  for (const nonPointsPhrase of ['halo mau cukur', 'harga brp', 'buka jam berapa']) {
+    const res = classifyDeterministically(nonPointsPhrase);
+    assert.equal(res, null);
+  }
 });
