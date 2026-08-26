@@ -324,3 +324,9 @@ const REDBOX_ADDONS = {
  }
  ]
 };
+
+// The booking UI continues to use these browser globals. Node consumers get
+// the same catalog only when this file is loaded through CommonJS.
+if (typeof module !== 'undefined' && module.exports) {
+ module.exports = { REDBOX_SERVICES, REDBOX_ADDONS };
+}
