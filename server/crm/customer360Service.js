@@ -300,7 +300,10 @@ async function getCustomer360(supabase, identityInput = {}) {
     ? schedSel.in('id', scheduleIdsToFetch)
     : Promise.resolve({ data: [] });
 
-  const [outletsRes, schedulesRes] = await Promise.all([outletsQuery, schedulesQuery]);
+  const [outletsRes, schedulesRes] = await Promise.all([
+    outletsQuery.catch(() => ({ data: [] })),
+    schedulesQuery.catch(() => ({ data: [] })),
+  ]);
   const outletMap = new Map((outletsRes.data || []).map(o => [o.id, o.name || o.slug]));
 
   const fetchedSchedules = schedulesRes.data || [];
@@ -310,7 +313,7 @@ async function getCustomer360(supabase, identityInput = {}) {
   const allBarberIdsToFetch = Array.from(new Set([...directBookingBarberIds, ...scheduleBarberIds]));
   const barbSel = supabase.from('barbers').select('id, name');
   const barbersRes = (allBarberIdsToFetch.length > 0 && typeof barbSel.in === 'function')
-    ? await barbSel.in('id', allBarberIdsToFetch)
+    ? await barbSel.in('id', allBarberIdsToFetch).catch(() => ({ data: [] }))
     : { data: [] };
   const barberMap = new Map((barbersRes.data || []).map(b => [b.id, b.name]));
 
@@ -537,8 +540,6 @@ async function getCustomer360(supabase, identityInput = {}) {
 
       lastVisitEventObj = {
         date: lastVisit,
-        timestamp: single.timestamp,
-        precision: single.precision,
         branch: single.branch,
         barber: single.barber,
         service: single.service,
@@ -568,8 +569,6 @@ async function getCustomer360(supabase, identityInput = {}) {
 
           lastVisitEventObj = {
             date: lastVisit,
-            timestamp: winner.timestamp,
-            precision: winner.precision,
             branch: winner.branch,
             barber: winner.barber,
             service: winner.service,
@@ -599,8 +598,6 @@ async function getCustomer360(supabase, identityInput = {}) {
 
           lastVisitEventObj = {
             date: lastVisit,
-            timestamp: topMs,
-            precision: 'datetime',
             branch: lastVisitBranch,
             barber: lastVisitBarber,
             service: lastVisitService,
@@ -631,8 +628,6 @@ async function getCustomer360(supabase, identityInput = {}) {
 
         lastVisitEventObj = {
           date: lastVisit,
-          timestamp: null,
-          precision: hasDateOnlyEvents ? 'date_only' : 'datetime',
           branch: lastVisitBranch,
           barber: lastVisitBarber,
           service: lastVisitService,

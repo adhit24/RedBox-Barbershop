@@ -118,7 +118,13 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
   extracted.last_visit_service = act.last_visit_service || rawData.last_visit_service || (act.last_visit_event ? act.last_visit_event.service : null);
   extracted.last_visit_source = act.last_visit_source || rawData.last_visit_source || (act.last_visit_event ? act.last_visit_event.source : null);
   extracted.last_visit_confidence = act.last_visit_confidence || rawData.last_visit_confidence || (act.last_visit_event ? act.last_visit_event.confidence : null);
-  extracted.last_visit_event = act.last_visit_event || rawData.last_visit_event || null;
+  if (act.last_visit_event || rawData.last_visit_event) {
+    const rawEvt = act.last_visit_event || rawData.last_visit_event;
+    const { timestamp, precision, ...safeEvt } = rawEvt;
+    extracted.last_visit_event = safeEvt;
+  } else {
+    extracted.last_visit_event = null;
+  }
   extracted.days_since_last_visit = typeof act.days_since_last_visit === 'number' ? act.days_since_last_visit : (typeof rawData.days_since_last_visit === 'number' ? rawData.days_since_last_visit : null);
   extracted.completed_booking_count = typeof act.completed_booking_count === 'number' ? act.completed_booking_count : null;
   extracted.completed_transaction_count = typeof act.completed_transaction_count === 'number' ? act.completed_transaction_count : null;

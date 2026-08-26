@@ -200,8 +200,8 @@ test('5. Transaction service attributes from transaction_items.service_name, and
   assert.equal(resNoItems.activity.last_visit_service, null);
 });
 
-// ── 6. CUSTOMER_SELF Facts Sanitization (No Internal IDs) ───────────────
-test('6. CUSTOMER_SELF facts envelope strips all internal IDs (outlet_id, schedule_id, barber_id, transaction_id)', () => {
+// ── 6. CUSTOMER_SELF Facts Sanitization (No Internal IDs, No Timestamps, No Precision Enums) ────────
+test('6. CUSTOMER_SELF facts envelope strips internal IDs, epoch timestamps, and precision enums', () => {
   const crmResult = {
     status: 'success',
     customer_found: true,
@@ -209,11 +209,21 @@ test('6. CUSTOMER_SELF facts envelope strips all internal IDs (outlet_id, schedu
       customer: { name: 'Budi' },
       activity: {
         last_visit: '2026-08-11',
-        last_visit_branch: 'Bypass',
+        last_visit_branch: 'RedBox Bypass',
         last_visit_barber: 'Onoy',
         last_visit_service: 'Gentleman Grooming',
         last_visit_source: 'transaction',
         last_visit_confidence: 'verified',
+        last_visit_event: {
+          date: '2026-08-11',
+          timestamp: 1786462200000,
+          precision: 'datetime',
+          branch: 'RedBox Bypass',
+          barber: 'Onoy',
+          service: 'Gentleman Grooming',
+          source: 'transaction',
+          confidence: 'verified',
+        },
       },
     },
   };
@@ -221,6 +231,21 @@ test('6. CUSTOMER_SELF facts envelope strips all internal IDs (outlet_id, schedu
   const env = extractCustomerIntelligenceEnvelope(crmResult, 'customer_history');
   const contextStr = buildCustomerFactsContext(env);
 
+  // Assert CONTAINS safe display values
+  assert.equal(contextStr.includes('2026-08-11'), true, 'Context must contain date');
+  assert.equal(contextStr.includes('RedBox Bypass'), true, 'Context must contain branch display value');
+  assert.equal(contextStr.includes('Onoy'), true, 'Context must contain barber name');
+  assert.equal(contextStr.includes('Gentleman Grooming'), true, 'Context must contain service name');
+  assert.equal(contextStr.includes('transaction'), true, 'Context must contain source category');
+  assert.equal(contextStr.includes('verified'), true, 'Context must contain confidence category');
+
+  // Assert DOES NOT CONTAIN internal metadata or epoch timestamps / precision enums
+  assert.equal(contextStr.includes('"timestamp"'), false, 'Context must not include "timestamp" key');
+  assert.equal(contextStr.includes('1786462200000'), false, 'Context must not include epoch ms value');
+  assert.equal(contextStr.includes('"precision"'), false, 'Context must not include "precision" key');
+  assert.equal(contextStr.includes('"datetime"'), false, 'Context must not include "datetime" enum');
+
+  // Assert DOES NOT CONTAIN internal database IDs
   assert.equal(contextStr.includes('outlet_id'), false, 'Context must not include outlet_id');
   assert.equal(contextStr.includes('schedule_id'), false, 'Context must not include schedule_id');
   assert.equal(contextStr.includes('barber_id'), false, 'Context must not include barber_id');
