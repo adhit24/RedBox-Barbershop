@@ -310,7 +310,9 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
       break;
 
     case 'get_transaction_summary':
-      toolData = projected360.spending;
+      toolData = projection === PROJECTION_TYPES.CUSTOMER_SELF
+        ? { activity: { completed_transaction_count: projected360.activity?.completed_transaction_count ?? null } }
+        : projected360.spending;
       break;
 
     case 'get_customer_history':

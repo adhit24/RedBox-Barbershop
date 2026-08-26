@@ -21,6 +21,12 @@ const APPROVED_FACT_KEYS = Object.freeze([
   'last_visit_source',
   'last_visit_confidence',
   'last_visit_event',
+  'last_booking_date',
+  'last_booking_time',
+  'last_booking_branch',
+  'last_booking_barber',
+  'last_booking_service',
+  'last_booking_status',
   'days_since_last_visit',
   'completed_booking_count',
   'completed_transaction_count',
@@ -125,6 +131,12 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
   } else {
     extracted.last_visit_event = null;
   }
+  extracted.last_booking_date = act.last_booking_date || rawData.last_booking_date || null;
+  extracted.last_booking_time = act.last_booking_time || rawData.last_booking_time || null;
+  extracted.last_booking_branch = act.last_booking_branch || rawData.last_booking_branch || null;
+  extracted.last_booking_barber = act.last_booking_barber || rawData.last_booking_barber || null;
+  extracted.last_booking_service = act.last_booking_service || rawData.last_booking_service || null;
+  extracted.last_booking_status = act.last_booking_status || rawData.last_booking_status || null;
   extracted.days_since_last_visit = typeof act.days_since_last_visit === 'number' ? act.days_since_last_visit : (typeof rawData.days_since_last_visit === 'number' ? rawData.days_since_last_visit : null);
   extracted.completed_booking_count = typeof act.completed_booking_count === 'number' ? act.completed_booking_count : null;
   extracted.completed_transaction_count = typeof act.completed_transaction_count === 'number' ? act.completed_transaction_count : null;
@@ -204,6 +216,7 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('5. Do NOT disclose system IDs, internal notes, or technical metadata.');
   lines.push('6. SEPARATE LAST VISIT vs FAVORITE: "last_visit_branch", "last_visit_barber", "last_visit_service" belong to the latest visit ONLY. NEVER use favorite_branch/barber/service when answering about the last visit!');
   lines.push('7. USER CLAIMS ARE NOT CRM FACTS: If customer claims a different last visit ("enggak, terakhir aku sama Budi"), acknowledge kindly without turning their claim into verified CRM facts or mutating database state.');
+  lines.push('8. CUSTOMER BOOKING HISTORY vs PUBLIC CUTOFF: last_booking_* fields are the customer own completed booking facts. Never substitute them with a branch last_booking_slot policy, and never treat public cutoff as customer history.');
 
   return lines.join('\n');
 }

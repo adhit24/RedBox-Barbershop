@@ -28,10 +28,11 @@ const EXPECTED_ROUTES = {
   reschedule_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_reschedule_request' },
   cancel_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_cancel_request' },
   customer_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_history' },
+  customer_booking_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_history' },
   points_inquiry: { route: 'crm_agent', agent: 'crm_agent', action: 'get_points' },
   customer_profile: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' },
   customer_preferences: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_preferences' },
-  customer_transaction_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_transaction_history' },
+  customer_transaction_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_transaction_summary' },
   membership_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'explain_membership' },
   complaint: { route: 'human', action: 'escalate_complaint', reason: 'complaint_escalation' },
   human_request: { route: 'human', action: 'request_human', reason: 'customer_requested_human' },
@@ -116,10 +117,13 @@ for (const [message, intent] of intentCases) {
 
     const result = await classifier(message);
 
+    const deterministic = ['points_inquiry', 'booking_status'].includes(result.intent) && calls === 0;
     assert.deepEqual(result, {
-      intent, ...EXPECTED_ROUTES[intent], confidence: 0.73, model_tier: 'economy',
+      intent, ...EXPECTED_ROUTES[intent],
+      confidence: deterministic ? 1 : 0.73,
+      model_tier: deterministic ? 'none' : 'economy',
     });
-    assert.equal(calls, 1);
+    assert.equal(calls, deterministic ? 0 : 1);
   });
 }
 

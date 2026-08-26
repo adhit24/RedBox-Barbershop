@@ -446,6 +446,11 @@ async function getCustomer360(supabase, identityInput = {}) {
   const doneBookings = bookings.filter(b => b.status === 'done');
   const cancelledBookings = bookings.filter(b => b.status === 'cancelled');
   const pendingBookings = bookings.filter(b => ['pending', 'confirmed'].includes(b.status));
+  const lastCompletedBooking = doneBookings[0] || null;
+  let lastBookingBarber = lastCompletedBooking?.barber_name || null;
+  if (!lastBookingBarber && lastCompletedBooking?.barber_id && barberMap.has(lastCompletedBooking.barber_id)) {
+    lastBookingBarber = barberMap.get(lastCompletedBooking.barber_id);
+  }
 
   function parseEventTimestamp(rawDateVal, rawTimeVal) {
     if (!rawDateVal) return { date: null, timestamp: null, precision: 'unknown' };
@@ -664,6 +669,12 @@ async function getCustomer360(supabase, identityInput = {}) {
     last_visit_source: lastVisitSource,
     last_visit_confidence: lastVisitConfidence,
     last_visit_event: lastVisitEventObj,
+    last_booking_date: formatDateStr(lastCompletedBooking?.date || lastCompletedBooking?.created_at),
+    last_booking_time: lastCompletedBooking?.start_time || lastCompletedBooking?.time || lastCompletedBooking?.booking_time || null,
+    last_booking_branch: lastCompletedBooking?.location || lastCompletedBooking?.branch_slug || lastCompletedBooking?.branch || null,
+    last_booking_barber: lastBookingBarber,
+    last_booking_service: lastCompletedBooking?.service || null,
+    last_booking_status: lastCompletedBooking?.status || null,
     days_since_last_visit: daysSinceLastVisit,
     completed_booking_count: doneBookings.length,
     cancelled_booking_count: cancelledBookings.length,
