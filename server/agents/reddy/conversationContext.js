@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Redbox Conversation Context Helper v0.1
+ * Redbox Conversation Context Helper v0.1 (Hardened Round 2)
  * Sanitizes and bounds conversation history turns for Reddy AI prompt context.
  * Enforces strict role integrity (only 'user' and 'assistant') and customer isolation.
  */
@@ -11,12 +11,13 @@ const MAX_CHARS_PER_TURN_DEFAULT = 1000;
 const ALLOWED_ROLES = new Set(['user', 'assistant']);
 
 /**
- * Sanitizes historical conversation array, dropping invalid roles, non-string payloads, and bounding item lengths.
+ * Sanitizes historical conversation array, dropping invalid roles and non-string payloads,
+ * bounding item text lengths, and returning clean turns with separate trimmed and filtered metrics.
  * @param {Array} history - Raw history items array
  * @param {object} options - Bounding options { maxItems, maxCharsPerTurn }
- * @returns {Array<{role: string, content: string}>} Clean, bounded history turns
+ * @returns {object} { turns, filtered_count, trimmed }
  */
-function sanitizeConversationHistory(history, options = {}) {
+function sanitizeConversationHistoryDetails(history, options = {}) {
   const maxItems = typeof options.maxItems === 'number' && options.maxItems > 0
     ? options.maxItems
     : MAX_HISTORY_DEFAULT;
@@ -24,39 +25,75 @@ function sanitizeConversationHistory(history, options = {}) {
     ? options.maxCharsPerTurn
     : MAX_CHARS_PER_TURN_DEFAULT;
 
-  if (!Array.isArray(history)) return [];
+  if (!Array.isArray(history)) {
+    return { turns: [], filtered_count: 0, trimmed: false };
+  }
 
   const clean = [];
+  let filteredCount = 0;
+  let perTurnTrimmed = false;
+
   for (const item of history) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object') {
+      filteredCount++;
+      continue;
+    }
 
     // Strict role validation — allow ONLY 'user' or 'assistant'
     const role = String(item.role || '').trim().toLowerCase();
-    if (!ALLOWED_ROLES.has(role)) continue;
+    if (!ALLOWED_ROLES.has(role)) {
+      filteredCount++;
+      continue;
+    }
 
     // Strict content validation — must be string
-    if (typeof item.content !== 'string') continue;
+    if (typeof item.content !== 'string') {
+      filteredCount++;
+      continue;
+    }
 
     const contentStr = item.content.trim();
-    if (!contentStr) continue;
+    if (!contentStr) {
+      filteredCount++;
+      continue;
+    }
 
     // Bounded turn text length
-    const content = contentStr.length > maxCharsPerTurn
-      ? contentStr.slice(0, maxCharsPerTurn)
-      : contentStr;
+    let content = contentStr;
+    if (contentStr.length > maxCharsPerTurn) {
+      content = contentStr.slice(0, maxCharsPerTurn);
+      perTurnTrimmed = true;
+    }
 
     clean.push({ role, content });
   }
 
-  // Bounded recent turns
-  return clean.length > maxItems ? clean.slice(clean.length - maxItems) : clean;
+  const totalValid = clean.length;
+  const turns = totalValid > maxItems ? clean.slice(totalValid - maxItems) : clean;
+  const trimmed = totalValid > maxItems || perTurnTrimmed;
+
+  return {
+    turns,
+    filtered_count: filteredCount,
+    trimmed,
+  };
 }
 
 /**
- * Selects recent conversation turns (wrapper around sanitizeConversationHistory).
+ * Convenience wrapper returning clean array of turns.
  * @param {Array} history - Raw history items array
  * @param {object} options - Bounding options
- * @returns {Array<{role: string, content: string}>} Bounded turns
+ * @returns {Array<{role: string, content: string}>} Clean turns array
+ */
+function sanitizeConversationHistory(history, options = {}) {
+  return sanitizeConversationHistoryDetails(history, options).turns;
+}
+
+/**
+ * Selects recent conversation turns.
+ * @param {Array} history - Raw history items array
+ * @param {object} options - Bounding options
+ * @returns {Array<{role: string, content: string}>} Clean turns array
  */
 function selectRecentConversationTurns(history, options = {}) {
   return sanitizeConversationHistory(history, options);
@@ -84,27 +121,49 @@ function buildConversationMessages(history = [], userMessage = '') {
 }
 
 /**
- * Extracts a structured Conversation Context Envelope.
- * @param {Array} history - Raw history array
+ * Extracts a structured Conversation Context Envelope with explicit history_status.
+ * @param {Array|object} historyInput - Raw history array OR { history, status } object from loader
  * @param {string} userMessage - Current user turn text
+ * @param {object} options - Bounding options
  * @returns {object} Structured Envelope
  */
-function extractConversationContextEnvelope(history = [], userMessage = '') {
-  const turns = sanitizeConversationHistory(history);
-  const rawLength = Array.isArray(history) ? history.length : 0;
+function extractConversationContextEnvelope(historyInput = [], userMessage = '', options = {}) {
+  let historyArray = [];
+  let historyStatus = 'empty';
+
+  if (Array.isArray(historyInput)) {
+    historyArray = historyInput;
+    historyStatus = historyArray.length > 0 ? 'available' : 'empty';
+  } else if (historyInput && typeof historyInput === 'object') {
+    historyArray = Array.isArray(historyInput.history) ? historyInput.history : [];
+    historyStatus = typeof historyInput.status === 'string'
+      ? historyInput.status
+      : (historyArray.length > 0 ? 'available' : 'empty');
+  }
+
+  const { turns, filtered_count, trimmed } = sanitizeConversationHistoryDetails(historyArray, options);
+
+  // If status was available but all items were filtered out, reflect status as empty
+  if (historyStatus === 'available' && turns.length === 0) {
+    historyStatus = 'empty';
+  }
+
   return {
     version: 'conversation_context.v0.1',
     source: 'recent_conversation',
     trust: 'untrusted_conversation',
     turns,
     turn_count: turns.length,
-    trimmed: rawLength > turns.length,
+    history_status: historyStatus, // 'available' | 'empty' | 'unavailable'
+    trimmed,
+    filtered_count,
   };
 }
 
 module.exports = {
   MAX_HISTORY_DEFAULT,
   MAX_CHARS_PER_TURN_DEFAULT,
+  sanitizeConversationHistoryDetails,
   sanitizeConversationHistory,
   selectRecentConversationTurns,
   buildConversationMessages,

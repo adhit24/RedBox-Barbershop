@@ -319,6 +319,26 @@ async function getHistory(sender) {
   return [];
 }
 
+async function safeLoadConversationHistory(loader, sender) {
+  if (!loader || typeof loader !== 'function' || !sender || String(sender).startsWith('__')) {
+    return { history: [], status: 'empty' };
+  }
+  try {
+    const res = await loader(sender);
+    const history = Array.isArray(res) ? res : (res && Array.isArray(res.history) ? res.history : []);
+    return {
+      history,
+      status: history.length > 0 ? 'available' : 'empty',
+    };
+  } catch (err) {
+    console.warn('[WA Bot] loadConversationHistory error:', err?.message || err);
+    return {
+      history: [],
+      status: 'unavailable',
+    };
+  }
+}
+
 async function saveHistoryToSupabase(sender, history) {
   const sb = getSupabase();
   if (!sb || sender.startsWith('__')) return;
@@ -582,8 +602,18 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
   const openai = getOpenAI();
   if (!openai) throw new Error('OPENAI_API_KEY not set');
 
-  const rawHistory = await getHistory(sender);
-  const sanitizedHistory = sanitizeConversationHistory(rawHistory);
+  // Single history load architecture:
+  // When conversationContext is supplied with valid turns, use it directly without calling getHistory again!
+  let activeHistoryTurns = [];
+  let currentRawHistory = [];
+  if (conversationContext && Array.isArray(conversationContext.turns)) {
+    activeHistoryTurns = sanitizeConversationHistory(conversationContext.turns);
+    currentRawHistory = conversationContext.turns;
+  } else {
+    const loaded = await safeLoadConversationHistory(getHistory, sender);
+    activeHistoryTurns = sanitizeConversationHistory(loaded.history);
+    currentRawHistory = loaded.history;
+  }
 
   // Build branch-aware system prompt
   let systemPrompt = buildSystemPrompt(branch);
@@ -611,11 +641,6 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
   } else if (branch === 'bypass') {
     systemPrompt += `\n\n# KONTEKS CABANG INI\nKamu melayani customer dari cabang RedBox Bypass (Pusat). Jam operasional: 10:00-22:00 WIB.`;
   }
-
-  // Active history turns selection
-  const activeHistoryTurns = (conversationContext && Array.isArray(conversationContext.turns))
-    ? sanitizeConversationHistory(conversationContext.turns)
-    : sanitizedHistory;
 
   const preparedHistory = buildConversationMessages(activeHistoryTurns, userMessage);
 
@@ -1384,9 +1409,10 @@ function extractForeignKapster(text, branch = 'bypass') {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null }, deps = {}) {
+async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null, aiPaused = false }, deps = {}) {
   const {
-    checkHumanTakeover = isHumanTakeover,
+    loadConversationHistory = getHistory,
+    checkHumanTakeover = null,
     orchestrate = orchestrateMessage,
     executeReddy = executeReddyAgent,
     executeOrchestration = executionService.executeOrchestration,
@@ -1398,7 +1424,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     persistHumanHandoff = persistHumanTakeover,
   } = deps;
 
-  if (await checkHumanTakeover(from)) {
+  if (aiPaused || (checkHumanTakeover && await checkHumanTakeover(from))) {
     return { used: 'paused', reply: null, sendResult: null, error: null };
   }
 
@@ -1407,6 +1433,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     branch = detectBranchFromNumber(receiver || device || from);
   }
   console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
+
+  // Single history load architecture: Load history ONCE using injectable loadConversationHistory
+  const loadedHistoryResult = await safeLoadConversationHistory(loadConversationHistory, from);
+  const conversationContext = extractConversationContextEnvelope(loadedHistoryResult, text);
 
   const classification = classifyDeterministically(text);
   if (classification && classification.intent === 'points_inquiry') {
@@ -1593,6 +1623,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       latency_ms: latencyMs,
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
+      history_turn_count: conversationContext.turn_count,
+      history_trimmed: conversationContext.trimmed,
+      history_status: conversationContext.history_status,
+      conversation_context_used: Boolean(conversationContext.turn_count > 0),
     });
 
     if (!trustedIdentity) {
@@ -1606,9 +1640,6 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       action: orchDecision.action,
       trustedIdentity,
     }, { supabase: getSupabase() });
-
-    const rawHistory = await getHistory(from);
-    const conversationContext = extractConversationContextEnvelope(rawHistory, text);
 
     if (intelRes && intelRes.execution_status === 'success' && intelRes.intelligence) {
       try {
@@ -1634,8 +1665,6 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // Handle Orchestrated Reddy Agent Route
   if (orchDecision && (orchDecision.route === 'reddy_agent' || orchDecision.agent === 'reddy_agent')) {
     try {
-      const rawHistory = await getHistory(from);
-      const conversationContext = extractConversationContextEnvelope(rawHistory, text);
       const reddyExec = await executeReddy({
         from, name, text, device, branch, trustedIdentity, conversationContext,
       }, {
@@ -1648,6 +1677,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         latency_ms: latencyMs,
         branch,
         trust_status: trustedIdentity ? 'verified' : 'unverified',
+        history_turn_count: conversationContext.turn_count,
+        history_trimmed: conversationContext.trimmed,
+        history_status: conversationContext.history_status,
+        conversation_context_used: Boolean(conversationContext.turn_count > 0),
       });
       return { used: 'reddy_agent', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
     } catch (err) {
@@ -1659,6 +1692,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         latency_ms: latencyMs,
         branch,
         trust_status: trustedIdentity ? 'verified' : 'unverified',
+        history_turn_count: conversationContext.turn_count,
+        history_trimmed: conversationContext.trimmed,
+        history_status: conversationContext.history_status,
+        conversation_context_used: Boolean(conversationContext.turn_count > 0),
       });
       const staticReply = fallbackReply(text, name, branch);
       const sendResult = await send(from, staticReply, { branch });
