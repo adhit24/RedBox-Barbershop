@@ -88,8 +88,6 @@ async function getCustomerPointsByTrustedPhone(supabase, targetPhone) {
 
   if (profilePoints !== null) {
     if (customerPointsList.length > 0) {
-      // CUSTOMER POINT CONFLICT RULE:
-      // Every legacy customer point entry must match profilePoints exactly.
       const allMatch = customerPointsList.every(pts => pts === profilePoints);
       if (!allMatch) {
         status = 'ambiguous_balance_conflict';
@@ -183,7 +181,7 @@ async function getCustomer360(supabase, identityInput = {}) {
         customer_found: false,
         customer_id: null,
         resolution: 'db_error',
-        error: identity.error || 'database_unavailable',
+        error: identity.error || 'database_query_error',
       },
       customer: null,
       membership: null,
@@ -199,13 +197,14 @@ async function getCustomer360(supabase, identityInput = {}) {
     };
   }
 
-  if (!identity.found || !identity.customer_id) {
+  if (identity.resolution === 'ambiguous' || !identity.found) {
     return {
       version: 'customer360.v0.1',
       identity: {
         customer_found: false,
         customer_id: null,
         resolution: identity.resolution || 'not_found',
+        reason: identity.reason || null,
       },
       customer: null,
       membership: null,
@@ -222,38 +221,65 @@ async function getCustomer360(supabase, identityInput = {}) {
   }
 
   const customerId = identity.customer_id;
+  const aliasCustomerIds = Array.isArray(identity.alias_customer_ids) && identity.alias_customer_ids.length > 0
+    ? identity.alias_customer_ids
+    : (customerId ? [customerId] : []);
   const canonicalPhone = identity.canonical_phone;
-  const custRow = identity.customer_row || {};
-  const profileRow = identity.member_profile_row || {};
+  const phoneVariants = canonicalPhone ? getMemberPhoneVariants(canonicalPhone) : [];
 
-  // Step 2: Fetch related database entities in parallel (member_profiles, transactions, bookings, customers)
-  const profileOr = `id.eq.${customerId}${canonicalPhone ? `,phone.eq.${canonicalPhone},phone.eq.+${canonicalPhone}` : ''}`;
-  const customerOr = `id.eq.${customerId}${canonicalPhone ? `,wa.eq.${canonicalPhone},phone_e164.eq.${canonicalPhone},phone_e164.eq.+${canonicalPhone}` : ''}`;
-  const bookingsOr = `customer_id.eq.${customerId}${canonicalPhone ? `,wa.eq.${canonicalPhone}` : ''}`;
+  const profileOrConditions = phoneVariants.length > 0
+    ? phoneVariants.map(v => {
+        const digits = String(v).replace(/\D/g, '');
+        return `phone.eq.${digits},phone.eq.+${digits}`;
+      }).join(',')
+    : (customerId ? `id.eq.${customerId}` : '');
+
+  const customerOrConditions = [];
+  if (aliasCustomerIds.length > 0) {
+    customerOrConditions.push(...aliasCustomerIds.map(id => `id.eq.${id}`));
+  }
+  if (phoneVariants.length > 0) {
+    customerOrConditions.push(...phoneVariants.map(v => {
+      const digits = String(v).replace(/\D/g, '');
+      return `wa.eq.${digits},phone_e164.eq.${digits},phone_e164.eq.+${digits}`;
+    }));
+  }
+
+  const bookingOrConditions = [];
+  if (aliasCustomerIds.length > 0) {
+    bookingOrConditions.push(...aliasCustomerIds.map(id => `customer_id.eq.${id}`));
+  }
+  if (phoneVariants.length > 0) {
+    bookingOrConditions.push(...phoneVariants.map(v => {
+      const digits = String(v).replace(/\D/g, '');
+      return `wa.eq.${digits},wa.eq.+${digits}`;
+    }));
+  }
+
+  const profileQuery = profileOrConditions
+    ? supabase.from('member_profiles').select('*').or(profileOrConditions)
+    : Promise.resolve({ data: [] });
+
+  const customerQuery = customerOrConditions.length > 0
+    ? supabase.from('customers').select('*').or(customerOrConditions.join(','))
+    : Promise.resolve({ data: [] });
+
+  const txSelect = supabase.from('transactions').select('*, transaction_items(*)');
+  const txQuery = aliasCustomerIds.length > 0
+    ? (typeof txSelect.in === 'function'
+        ? txSelect.in('customer_id', aliasCustomerIds).eq('status', 'completed').order('created_at', { ascending: false })
+        : txSelect.eq('customer_id', customerId).eq('status', 'completed').order('created_at', { ascending: false }))
+    : Promise.resolve({ data: [] });
+
+  const bookingQuery = bookingOrConditions.length > 0
+    ? supabase.from('bookings').select('*').or(bookingOrConditions.join(',')).order('date', { ascending: false })
+    : Promise.resolve({ data: [] });
 
   const [profRes, custRes, txRes, bookingsRes] = await Promise.all([
-    supabase
-      .from('member_profiles')
-      .select('*')
-      .or(profileOr),
-
-    supabase
-      .from('customers')
-      .select('*')
-      .or(customerOr),
-
-    supabase
-      .from('transactions')
-      .select('*, transaction_items(*)')
-      .eq('customer_id', customerId)
-      .eq('status', 'completed')
-      .order('created_at', { ascending: false }),
-
-    supabase
-      .from('bookings')
-      .select('*')
-      .or(bookingsOr)
-      .order('date', { ascending: false }),
+    profileQuery,
+    customerQuery,
+    txQuery,
+    bookingQuery,
   ]);
 
   if (profRes.error || custRes.error || txRes.error || bookingsRes.error) {
@@ -282,13 +308,14 @@ async function getCustomer360(supabase, identityInput = {}) {
   // --- Loyalty Section & Points Anchor ---
   const profileRows = Array.isArray(profRes.data) ? profRes.data : [];
   const customerRows = Array.isArray(custRes.data) ? custRes.data : [];
-  const fetchedProfile = profileRows[0] || profileRow;
+  const fetchedProfile = profileRows[0] || identity.member_profile_row || null;
+  const custRow = customerRows[0] || identity.customer_row || {};
 
   let totalPoints = 0;
-  let lastActivity = fetchedProfile.updated_at || custRow.updated_at || null;
+  let lastActivity = fetchedProfile?.updated_at || custRow.updated_at || null;
   let loyaltyStatus = 'available';
 
-  if (typeof fetchedProfile.total_points === 'number' && fetchedProfile.total_points >= 0) {
+  if (fetchedProfile && typeof fetchedProfile.total_points === 'number' && fetchedProfile.total_points >= 0) {
     totalPoints = fetchedProfile.total_points;
     const custPointsList = customerRows.map(c => c.points).filter(p => typeof p === 'number' && p >= 0);
     if (custPointsList.length > 0 && !custPointsList.every(p => p === fetchedProfile.total_points)) {
@@ -310,39 +337,52 @@ async function getCustomer360(supabase, identityInput = {}) {
     ? { points_balance: null, last_activity: null, status: 'ambiguous_balance_conflict' }
     : { points_balance: totalPoints, last_activity: lastActivity };
 
-  const transactions = Array.isArray(txRes.data) ? txRes.data : [];
-  const bookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
+  // --- Deduplicate Transactions & Bookings by Primary Key ---
+  const rawTx = Array.isArray(txRes.data) ? txRes.data : [];
+  const rawBookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
+
+  const transactionsMap = new Map();
+  for (const t of rawTx) {
+    if (t && t.id && !transactionsMap.has(t.id)) transactionsMap.set(t.id, t);
+  }
+  const transactions = Array.from(transactionsMap.values());
+
+  const bookingsMap = new Map();
+  for (const b of rawBookings) {
+    if (b && b.id && !bookingsMap.has(b.id)) bookingsMap.set(b.id, b);
+  }
+  const bookings = Array.from(bookingsMap.values());
 
   // --- Profile Section ---
-  const customerName = fetchedProfile.full_name || custRow.name || null;
+  const customerName = fetchedProfile?.full_name || custRow.name || null;
   const customerObj = {
     customer_id: customerId,
     name: customerName,
     wa_number: canonicalPhone || null,
     phone_e164: identity.phone_e164 || (canonicalPhone ? `+${canonicalPhone}` : null),
-    birthday: formatDateStr(fetchedProfile.birthday || custRow.birthday || custRow.birth_date),
-    registration_status: fetchedProfile.id ? 'registered_member' : 'guest_customer',
-    created_at: custRow.created_at || fetchedProfile.created_at || null,
+    birthday: formatDateStr(fetchedProfile?.birthday || custRow.birthday || custRow.birth_date),
+    registration_status: fetchedProfile?.id ? 'registered_member' : 'guest_customer',
+    created_at: custRow.created_at || fetchedProfile?.created_at || null,
   };
 
   // --- Membership Section ---
-  const rawTier = fetchedProfile.tier || fetchedProfile.current_tier || custRow.membership_tier;
+  const rawTier = fetchedProfile?.tier || fetchedProfile?.current_tier || custRow.membership_tier;
   const tier = resolveMembershipTier(rawTier);
   const tierOrigin = (rawTier && String(rawTier).trim()) ? 'configured' : 'default_baseline';
 
-  const rawStatus = fetchedProfile.membership_status || custRow.membership_status || 'INACTIVE';
+  const rawStatus = fetchedProfile?.membership_status || custRow.membership_status || 'INACTIVE';
   const isActive = isActiveMembership({
     status: rawStatus,
-    startsAt: fetchedProfile.membership_activated_at || custRow.membership_activated_at,
-    expiresAt: fetchedProfile.membership_expires_at,
+    startsAt: fetchedProfile?.membership_activated_at || custRow.membership_activated_at,
+    expiresAt: fetchedProfile?.membership_expires_at,
   });
 
   const membershipObj = {
     status: isActive ? 'ACTIVE' : 'INACTIVE',
     tier: tier,
     tier_origin: tierOrigin,
-    activated_at: fetchedProfile.membership_activated_at || custRow.membership_activated_at || null,
-    expires_at: fetchedProfile.membership_expires_at || null,
+    activated_at: fetchedProfile?.membership_activated_at || custRow.membership_activated_at || null,
+    expires_at: fetchedProfile?.membership_expires_at || null,
   };
 
   // --- Transactions / Financial Section ---
