@@ -20,7 +20,7 @@ const {
   serializeKnowledgeForPrompt,
   createUnavailableKnowledgeContext,
 } = require('../agents/reddy/knowledge/knowledgeContext');
-const { handleMessage, callOpenAI, fallbackReply, buildServicesText, getServicesForLang, detectForeignLanguage, getBranchConfig, handleForeignGeneralQuestion, handleForeignBooking, buildBranchLocationText, buildBranchHoursText } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, fallbackReply, buildServicesText, getServicesForLang, detectForeignLanguage, getBranchConfig, handleForeignGeneralQuestion, handleForeignBooking, buildBranchLocationText, buildBranchOperatingHoursText, buildBranchLastBookingSlotText, isForeignBookingIntent } = require('../../api/wa/webhook');
 
 function cloneKnowledge() {
   return structuredClone(REDBOX_KNOWLEDGE);
@@ -1335,7 +1335,7 @@ test('J2. Multilingual foreign location and hours use identical canonical numeri
   const languages = ['english', 'chinese', 'japanese', 'korean', 'turkish'];
   for (const lang of languages) {
     const locText = buildBranchLocationText(lang);
-    const hrsText = buildBranchHoursText(lang);
+    const hrsText = buildBranchOperatingHoursText(lang);
     assert.ok(locText.includes('10:00–22:00') || locText.includes('10:00-22:00'), `${lang} location must state 22:00 CSB close`);
     assert.ok(hrsText.includes('10:00–22:00') || hrsText.includes('10:00-22:00'), `${lang} hours must state 22:00 CSB close`);
     assert.ok(hrsText.includes('21:00'), `${lang} hours must state 21:00 CSB last booking slot`);
@@ -1400,4 +1400,69 @@ test('J12. Legacy foreign booking state machine maps (foreignSessions, FOREIGN_S
   const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
   assert.equal(webhookCode.includes('const foreignSessions = new Map()'), false);
   assert.equal(webhookCode.includes('const FOREIGN_SESSION_TTL ='), false);
+});
+
+test('K1. "What time does CSB close?" returns 22:00 operating hour without 21:00 booking cutoff or booking URL', async () => {
+  const reply = handleForeignGeneralQuestion('What time does CSB close?', 'english', null, 'csb');
+  assert.ok(reply.includes('22:00'), 'Must contain 22:00 for CSB');
+  assert.equal(reply.includes('last booking'), false, 'Pure hours question must not include last booking cutoff');
+  assert.equal(reply.includes('booking.html'), false, 'Pure hours question must not include booking URL');
+});
+
+test('K2. "What time does CSB close today?" returns 22:00 operating hour without booking CTA', async () => {
+  const res = await handleForeignBooking('62811116666', 'John', 'What time does CSB close today?', 'device', 'csb');
+  assert.equal(res.used, 'foreign_info');
+  assert.ok(res.reply.includes('22:00'));
+  assert.equal(res.reply.includes('booking.html'), false);
+});
+
+test('K3. "I want to know what time CSB closes." returns 22:00 operating hour without booking CTA', async () => {
+  const res = await handleForeignBooking('62811117777', 'John', 'I want to know what time CSB closes.', 'device', 'csb');
+  assert.equal(res.used, 'foreign_info');
+  assert.ok(res.reply.includes('22:00'));
+  assert.equal(res.reply.includes('booking.html'), false);
+});
+
+test('K4. "I want the price of Hair Spa." returns canonical price response without forced booking URL', async () => {
+  const res = await handleForeignBooking('62811118888', 'John', 'I want the price of Hair Spa.', 'device', 'bypass');
+  assert.equal(res.used, 'foreign_info');
+  assert.ok(res.reply.includes('Hair Spa'));
+  assert.equal(res.reply.includes('booking.html'), false);
+});
+
+test('K5. "Are you open at 8pm?" returns operating-hours response without booking CTA', async () => {
+  const res = await handleForeignBooking('62811119999', 'John', 'Are you open at 8pm?', 'device', 'bypass');
+  assert.equal(res.used, 'foreign_info');
+  assert.equal(res.reply.includes('booking.html'), false);
+});
+
+test('K6. "I want to book at CSB tonight." returns website booking guidance without slot confirmation', async () => {
+  const res = await handleForeignBooking('62811120000', 'John', 'I want to book at CSB tonight.', 'device', 'csb');
+  assert.equal(res.used, 'foreign_booking_direct');
+  assert.ok(res.reply.includes('booking.html?branch=csb'));
+  assert.equal(res.reply.includes('confirmed'), false);
+});
+
+test('K7. "Can I book CSB at 9pm?" returns last_booking_slot 21:00 with website booking guidance', async () => {
+  const res = await handleForeignBooking('62811121111', 'John', 'Can I book CSB at 9pm?', 'device', 'csb');
+  assert.ok(res.reply.includes('booking.html?branch=csb'));
+  assert.equal(res.reply.includes('confirmed'), false);
+});
+
+test('K8. "What time does CSB close and what is the last booking slot?" returns both 22:00 operating close and 21:00 booking cutoff clearly distinguished', async () => {
+  const reply = handleForeignGeneralQuestion('What time does CSB close and what is the last booking slot?', 'english', null, 'csb');
+  assert.ok(reply.includes('22:00'), 'Must contain 22:00 operating close');
+  assert.ok(reply.includes('21:00'), 'Must contain 21:00 last booking slot');
+});
+
+test('K9. "I\'d like a haircut tomorrow." triggers booking intent and returns website guidance', async () => {
+  const res = await handleForeignBooking('62811122222', 'John', "I\'d like a haircut tomorrow.", 'device', 'bypass');
+  assert.equal(res.used, 'foreign_booking_direct');
+  assert.ok(res.reply.includes('booking.html?branch=bypass'));
+});
+
+test('K10. Pure hours response buildBranchOperatingHoursText never automatically includes last_booking_slot', async () => {
+  const opHours = buildBranchOperatingHoursText('english');
+  assert.ok(opHours.includes('10:00–22:00'));
+  assert.equal(opHours.includes('last booking slot'), false);
 });

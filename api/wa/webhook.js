@@ -1,4 +1,61 @@
 
+function buildBranchOperatingHoursText(lang) {
+  const csb = getBranchConfig('csb');
+  const bypass = getBranchConfig('bypass');
+
+  const headers = {
+    english: 'Opening hours ⏰:\n\n',
+    chinese: '营业时间 ⏰:\n\n',
+    japanese: '営業時間 ⏰:\n\n',
+    korean: '영업시간 ⏰:\n\n',
+    turkish: 'Çalışma saatleri ⏰:\n\n',
+  };
+
+  const csbLine = {
+    english: `• CSB Mall: ${csb.hours.opens}–${csb.hours.closes}\n`,
+    chinese: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes}\n`,
+    japanese: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes}\n`,
+    korean: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes}\n`,
+    turkish: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes}\n`,
+  };
+
+  const otherLine = {
+    english: `• Other branches: ${bypass.hours.opens}–${bypass.hours.closes}\n\nWe're open every day!`,
+    chinese: `• 其他分店: ${bypass.hours.opens}-${bypass.hours.closes}\n\n每天营业！`,
+    japanese: `• その他の店舗: ${bypass.hours.opens}-${bypass.hours.closes}\n\n毎日営業中！`,
+    korean: `• 기타 매장: ${bypass.hours.opens}-${bypass.hours.closes}\n\n매일 영업합니다!`,
+    turkish: `• Diğer şubeler: ${bypass.hours.opens}-${bypass.hours.closes}\n\nHer gün açığız!`,
+  };
+
+  return (headers[lang] || headers.english) + (csbLine[lang] || csbLine.english) + (otherLine[lang] || otherLine.english);
+}
+
+function buildBranchLastBookingSlotText(lang, branch = 'bypass') {
+  const b = getBranchConfig(branch);
+  const url = bookingUrl(branch);
+
+  return foreignMsg(lang, {
+    english: `The last booking slot at Redbox ${b.name} is ${b.last_booking_slot} WIB. To check real-time availability and reserve your slot, please visit our official booking website:\n${url}`,
+    chinese: `Redbox ${b.name} 最晚预约时间为 ${b.last_booking_slot} WIB。如需查看实时空位并预约，请访问官方预约网站：\n${url}`,
+    japanese: `Redbox ${b.name} の最終予約枠は ${b.last_booking_slot} WIB です。リアルタイムの空き状況の確認とご予約は、公式予約ウェブサイトをご利用ください：\n${url}`,
+    korean: `Redbox ${b.name} 의 마지막 예약 슬롯은 ${b.last_booking_slot} WIB 입니다. 실시간 잔여 슬롯 확인 및 예약은 공식 웹사이트를 이용해 주세요:\n${url}`,
+    turkish: `Redbox ${b.name} şubesinde son randevu saati ${b.last_booking_slot} WIB'dir. Canlı saat uygunluğunu kontrol etmek ve randevunuzu almak için lütfen resmi web sitemizi ziyaret edin:\n${url}`,
+  });
+}
+
+function isForeignBookingIntent(text) {
+  const t = text.toLowerCase().trim();
+  const strongPhrases = [
+    /\b(book|booking|appointment|reserve|reservation|schedule)\b/i,
+    /\b(want|like|can i|need|would like)\b.*\b(book|appointment|reservation|schedule|haircut|cut|cukur|potong)\b/i,
+    /\b(want|like|need|can i|would like)\b.*\b(tomorrow|today|\d+\s*(am|pm))\b/i,
+    /\b(want|like)\s+(a\s+)?(haircut|cut)\b/i,
+    /\b(potong|cukur)\b/i
+  ];
+  return strongPhrases.some(p => p.test(t));
+}
+
+
 function buildBranchLocationText(lang) {
   const branches = REDBOX_KNOWLEDGE.branches;
   const labels = {
@@ -20,36 +77,7 @@ function buildBranchLocationText(lang) {
   return (labels[lang] || labels.english) + body + (suffix[lang] || suffix.english);
 }
 
-function buildBranchHoursText(lang) {
-  const csb = getBranchConfig('csb');
-  const bypass = getBranchConfig('bypass');
 
-  const headers = {
-    english: 'Opening hours ⏰:\n\n',
-    chinese: '营业时间 ⏰:\n\n',
-    japanese: '営業時間 ⏰:\n\n',
-    korean: '영업시간 ⏰:\n\n',
-    turkish: 'Çalışma saatleri ⏰:\n\n',
-  };
-
-  const csbLine = {
-    english: `• CSB Mall: ${csb.hours.opens}–${csb.hours.closes} (last booking slot ${csb.last_booking_slot})\n`,
-    chinese: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (最晚预约 ${csb.last_booking_slot})\n`,
-    japanese: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (最終予約 ${csb.last_booking_slot})\n`,
-    korean: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (마지막 예약 ${csb.last_booking_slot})\n`,
-    turkish: `• CSB Mall: ${csb.hours.opens}-${csb.hours.closes} (son randevu saati ${csb.last_booking_slot})\n`,
-  };
-
-  const otherLine = {
-    english: `• Other branches: ${bypass.hours.opens}–${bypass.hours.closes} (last booking slot ${bypass.last_booking_slot})\n\nWe're open every day!`,
-    chinese: `• 其他分店: ${bypass.hours.opens}-${bypass.hours.closes} (最晚预约 ${bypass.last_booking_slot})\n\n每天营业！`,
-    japanese: `• その他の店舗: ${bypass.hours.opens}-${bypass.hours.closes} (最終予約 ${bypass.last_booking_slot})\n\n毎日営業中！`,
-    korean: `• 기타 매장: ${bypass.hours.opens}-${bypass.hours.closes} (마지막 예약 ${bypass.last_booking_slot})\n\n매일 영업합니다!`,
-    turkish: `• Diğer şubeler: ${bypass.hours.opens}-${bypass.hours.closes} (son randevu saati ${bypass.last_booking_slot})\n\nHer gün açığız!`,
-  };
-
-  return (headers[lang] || headers.english) + (csbLine[lang] || csbLine.english) + (otherLine[lang] || otherLine.english);
-}
 
 function getBranchConfig(branchKey = 'bypass') {
   const bKey = (branchKey || 'bypass').toLowerCase().trim();
@@ -884,7 +912,7 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
   const lower = text.toLowerCase().trim();
   const url = bookingUrl(branch);
 
-  const isBookingReq = /\b(book|booking|appointment|reserve|reservation|schedule|want|cukur|cuttin|potong|tomorrow|today|pm|am)\b/i.test(lower);
+  const isBookingReq = isForeignBookingIntent(text);
   const generalAnswer = handleForeignGeneralQuestion(text, lang, null, branch);
 
   // Mixed Intent: both general question (e.g. hours/price/location) AND booking intent exist
@@ -1007,15 +1035,21 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
   }
 
   // Hours/time questions
-  const hoursPatterns = [
-    /what time|open|close|closing|hour|hours|last booking|when.*open|slot/i,
-    /몇\s*시/i, /영업/i, /운영/i, /언제.*열/i,
-    /几点/i, /营业/i, /开门/i, /关门/i,
-    /何時/i, /営業/i, /開店/i, /閉店/i,
-    /saat kaç|açık|kapalı|çalışma saat/i,
-  ];
-  if (hoursPatterns.some(p => p.test(text))) {
-    return buildBranchHoursText(lang);
+  const isLastSlotReq = /last booking|slot|latest booking|last slot/i.test(text);
+  const isHoursReq = /what time|open|close|closing|hour|hours|when.*open|buka|tutup|operasional|jam/i.test(text);
+
+  if (isLastSlotReq && isHoursReq) {
+    const opHours = buildBranchOperatingHoursText(lang);
+    const slotText = buildBranchLastBookingSlotText(lang, branch);
+    return `${opHours}\n\n${slotText}`;
+  }
+
+  if (isLastSlotReq) {
+    return buildBranchLastBookingSlotText(lang, branch);
+  }
+
+  if (isHoursReq) {
+    return buildBranchOperatingHoursText(lang);
   }
 
   // Payment questions
@@ -1913,4 +1947,7 @@ module.exports.handleForeignGeneralQuestion = handleForeignGeneralQuestion;
 module.exports.handleForeignBooking = handleForeignBooking;
 
 module.exports.buildBranchLocationText = buildBranchLocationText;
-module.exports.buildBranchHoursText = buildBranchHoursText;
+
+module.exports.buildBranchOperatingHoursText = buildBranchOperatingHoursText;
+module.exports.buildBranchLastBookingSlotText = buildBranchLastBookingSlotText;
+module.exports.isForeignBookingIntent = isForeignBookingIntent;
