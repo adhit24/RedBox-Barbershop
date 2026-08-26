@@ -81,6 +81,14 @@ test('rejects duplicate normalized service aliases', () => {
   validationError(knowledge => { knowledge.services[1].aliases.push('  GENTLEMAN\tGROOMING '); }, /service alias/i);
 });
 
+test('rejects a normalized alias shared by a branch and a service', () => {
+  validationError(knowledge => { knowledge.services[0].aliases.push('  REDBOX\tBYPASS '); }, /alias/i);
+});
+
+test('rejects a service ID set that differs from the booking catalog', () => {
+  validationError(knowledge => { knowledge.services[0].id = 'invented-service'; }, /service id/i);
+});
+
 for (const invalidPrice of [-1, NaN, Infinity, '95000']) {
   test(`rejects invalid service price: ${String(invalidPrice)}`, () => {
     validationError(knowledge => { knowledge.services[0].prices.standard = invalidPrice; }, /price/i);
@@ -111,12 +119,22 @@ test('rejects a promotion with a reversed date range', () => {
   }, /promotion date/i);
 });
 
-test('rejects a promotion that references unknown branches or services', () => {
+test('rejects a promotion that references an unknown branch', () => {
   validationError(knowledge => {
     knowledge.promotions.push({
-      id: 'promo-unknown-references', title: 'Invalid', status: 'active',
+      id: 'promo-unknown-branch', title: 'Invalid', status: 'active',
       valid_from: '2026-08-01', valid_until: '2026-08-31',
-      branches: ['unknown-branch'], services: ['unknown-service'], eligibility: 'Semua pelanggan', terms_summary: 'Valid.',
+      branches: ['unknown-branch'], services: ['gentleman-grooming'], eligibility: 'Semua pelanggan', terms_summary: 'Valid.',
     });
-  }, /promotion (branch|service)/i);
+  }, /promotion branch/i);
+});
+
+test('rejects a promotion that references an unknown service', () => {
+  validationError(knowledge => {
+    knowledge.promotions.push({
+      id: 'promo-unknown-service', title: 'Invalid', status: 'active',
+      valid_from: '2026-08-01', valid_until: '2026-08-31',
+      branches: ['bypass'], services: ['unknown-service'], eligibility: 'Semua pelanggan', terms_summary: 'Valid.',
+    });
+  }, /promotion service/i);
 });

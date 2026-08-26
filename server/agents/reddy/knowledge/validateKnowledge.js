@@ -1,7 +1,10 @@
 'use strict';
 
+const { REDBOX_SERVICES } = require('../../../../public/js/services-data');
+
 const KNOWLEDGE_VERSION = 'reddy_knowledge.v0.1';
 const EXPECTED_BRANCH_IDS = new Set(['bypass', 'samadikun', 'csb', 'sumber', 'tegal']);
+const EXPECTED_SERVICE_IDS = new Set(REDBOX_SERVICES.map(service => service.id));
 const PROMOTION_STATUSES = new Set(['active', 'inactive']);
 const FORBIDDEN_FIELD_NAMES = new Set([
   'secret', 'credential', 'apikey', 'token', 'databaseurl', 'customerid',
@@ -40,8 +43,7 @@ function assertNoForbiddenFields(value) {
   }
 }
 
-function assertAliases(items, type) {
-  const aliases = new Set();
+function assertAliases(items, type, aliases) {
   for (const item of items) {
     assertArray(item.aliases, `${type} aliases`);
     for (const alias of item.aliases) {
@@ -75,13 +77,15 @@ function validateKnowledge(knowledge) {
     branchIds.add(branch.id);
   }
   if (branchIds.size !== EXPECTED_BRANCH_IDS.size) fail('missing branch id');
-  assertAliases(knowledge.branches, 'branch');
+  const aliases = new Set();
+  assertAliases(knowledge.branches, 'branch', aliases);
 
   assertArray(knowledge.services, 'services');
   const serviceIds = new Set();
   for (const service of knowledge.services) {
     if (!service || typeof service !== 'object') fail('service must be an object');
     assertNonEmptyString(service.id, 'service id');
+    if (!EXPECTED_SERVICE_IDS.has(service.id)) fail('unknown service id');
     if (serviceIds.has(service.id)) fail('duplicate service id');
     serviceIds.add(service.id);
     if (!Number.isInteger(service.duration_minutes) || service.duration_minutes <= 0) fail('service duration');
@@ -91,7 +95,8 @@ function validateKnowledge(knowledge) {
       if (!Number.isInteger(price) || price < 0) fail('invalid service price');
     }
   }
-  assertAliases(knowledge.services, 'service');
+  if (serviceIds.size !== EXPECTED_SERVICE_IDS.size) fail('missing service id');
+  assertAliases(knowledge.services, 'service', aliases);
 
   assertArray(knowledge.promotions, 'promotions');
   for (const promotion of knowledge.promotions) {
