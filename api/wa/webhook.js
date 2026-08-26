@@ -967,6 +967,7 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
     /who.*(available|recommend|good|best|barber)/i,
     /which.*(barber|kapster|stylist|recommend)/i,
     /barber.*(available|who|recommend)/i,
+    /pick.*barber|any barber|choose.*barber|barber/i,
     /누구.*추천/i, /추천.*누구/i, /이발사.*누구/i, /미용사.*누구/i, /누구인가/i, /이용.*가능.*이발/i,
     /가능한.*이발/i, /추천할.*만한/i, /어떤.*바버/i,
     /谁.*推荐/i, /推荐.*谁/i, /哪个.*理发师/i, /理发师.*谁/i, /哪位/i,
@@ -974,32 +975,16 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
     /kim.*tavsiye/i, /berber.*kim/i, /hangisi.*iyi/i,
   ];
   if (kapsterPatterns.some(p => p.test(text))) {
-    const kapsters = KAPSTER_LIST.join(', ');
-    const currentState = session?.state || 'greeting';
-    let suffix = '';
-    if (currentState === 'greeting') {
-      suffix = foreignMsg(lang, {
-        chinese: '\n\n您想预约什么服务呢？',
-        japanese: '\n\nどのサービスをご希望ですか？',
-        korean: '\n\n어떤 서비스를 예약하시겠습니까?',
-        turkish: '\n\nHangi hizmeti istersiniz?',
-        english: '\n\nWhat service would you like to book?'
-      });
-    } else if (currentState === 'awaiting_kapster') {
-      suffix = foreignMsg(lang, {
-        chinese: '\n\n请选择一位，或说"任意"让我们安排',
-        japanese: '\n\nお一人お選びいただくか「誰でも」と',
-        korean: '\n\n한 분을 선택하시거나 "아무나"라고 답해주세요',
-        turkish: '\n\nBirini seçin veya "herhangi biri" yazın',
-        english: '\n\nPick one or say "any" for the best available'
-      });
-    }
+    const list = BARBERS_BY_BRANCH[branch] || BARBERS_BY_BRANCH.bypass;
+    const kapsters = list.map(n => `Mas ${n}`).join(', ');
+    const url = bookingUrl(branch);
+
     return foreignMsg(lang, {
-      chinese: `我们有以下理发师：${kapsters}\n\n他们都是经验丰富的专业人员，每位都能提供优质服务！如果没有特别偏好，我们会安排当天最空闲的理发师为您服务。${suffix}`,
-      japanese: `当店のバーバー一覧：${kapsters}\n\n全員経験豊富なプロです！特にご希望がなければ、当日最も空いているバーバーをご案内します。${suffix}`,
-      korean: `저희 바버 목록: ${kapsters}\n\n모두 경험이 풍부한 전문가입니다! 특별한 선호가 없으시면, 당일 가장 여유 있는 바버를 배정해 드립니다.${suffix}`,
-      turkish: `Berberlerimiz: ${kapsters}\n\nHepsi deneyimli profesyonellerdir! Tercihiniz yoksa, o gün müsait olan en iyi berberi atayacağız.${suffix}`,
-      english: `Our barbers: ${kapsters}\n\nThey're all experienced professionals! If you have no preference, we'll assign the best available barber for your visit.${suffix}`
+      chinese: `Redbox ${branch.toUpperCase()} 推荐理发师团队 💈:\n${kapsters}\n\n如需查看实时理发师空位并预约指定理发师，请访问官方预约网站：\n${url}`,
+      japanese: `Redbox ${branch.toUpperCase()} のスタイリスト一覧 💈:\n${kapsters}\n\nリアルタイムの指名・空き状況の確認は、公式予約ウェブサイトをご利用ください：\n${url}`,
+      korean: `Redbox ${branch.toUpperCase()} 바버목록 💈:\n${kapsters}\n\n실시간 바버 잔여 슬롯 확인 및 지명 예약은 공식 웹사이트를 이용해 주세요:\n${url}`,
+      turkish: `Redbox ${branch.toUpperCase()} Şubesi Berber Listesi 💈:\n${kapsters}\n\nCanlı berber saat uygunluğunu kontrol etmek ve randevunuzu seçmek için lütfen resmi web sitemizi ziyaret edin:\n${url}`,
+      english: `Barbers listed for Redbox ${branch.toUpperCase()} 💈:\n${kapsters}\n\nTo check real-time barber availability and select your preferred barber, please visit our official booking website:\n${url}`
     });
   }
 

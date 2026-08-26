@@ -1466,3 +1466,35 @@ test('K10. Pure hours response buildBranchOperatingHoursText never automatically
   assert.ok(opHours.includes('10:00–22:00'));
   assert.equal(opHours.includes('last booking slot'), false);
 });
+
+test('L1. "Who is available today at CSB?" lists CSB barber roster with website guidance link, without claiming live availability', async () => {
+  const reply = handleForeignGeneralQuestion('Who is available today at CSB?', 'english', null, 'csb');
+  assert.ok(reply.includes('Mas Sarif') || reply.includes('Mas Ubay') || reply.includes('Mas Ragil'), 'Must list CSB barbers');
+  assert.ok(reply.includes('booking.html?branch=csb'), 'Must include website booking URL');
+  assert.equal(reply.includes('best available'), false, 'Must NOT claim best available');
+  assert.equal(reply.includes('currently available'), false, 'Must NOT claim currently available');
+});
+
+test('L2. "Pick any barber for me." directs customer to booking website without assignment claims or "best available"', async () => {
+  const reply = handleForeignGeneralQuestion('Pick any barber for me.', 'english', null, 'bypass');
+  assert.ok(reply.includes('booking.html?branch=bypass'));
+  assert.equal(reply.includes('best available'), false);
+  assert.equal(reply.includes("we'll assign"), false);
+});
+
+test('L3. Multilingual foreign barber responses (ZH/JA/KO/TR) contain zero live-availability claims from static roster', async () => {
+  const languages = ['chinese', 'japanese', 'korean', 'turkish', 'english'];
+  for (const lang of languages) {
+    const reply = handleForeignGeneralQuestion('Who is your best barber?', lang, null, 'csb');
+    assert.ok(reply.includes('booking.html?branch=csb'));
+    assert.equal(reply.includes('best available'), false);
+    assert.equal(reply.includes('currently available'), false);
+  }
+});
+
+test('L4. Source scan verifies no customer-facing "best available", "most available", "currently available" in webhook.js', async () => {
+  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  assert.equal(webhookCode.includes('best available'), false);
+  assert.equal(webhookCode.includes('most available'), false);
+  assert.equal(webhookCode.includes('currently available'), false);
+});
