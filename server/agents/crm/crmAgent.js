@@ -61,8 +61,7 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
       };
     }
 
-    // Dual trusted claims must each resolve independently to the same customer.
-    // Never fall back to one claim when the other is unknown or ambiguous.
+    // Dual trusted claims: phone is cluster authority. customer_id is authorized if it is included in phone's alias cluster.
     if (contextPhone && contextCustId) {
       const phoneIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
       if (phoneIdentity.resolution === 'db_error') {
@@ -74,7 +73,7 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
           data: null,
         };
       }
-      if (!phoneIdentity.found || !phoneIdentity.customer_id) {
+      if (!phoneIdentity.found) {
         return {
           status: 'forbidden',
           tool: toolName,
@@ -104,7 +103,11 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
         };
       }
 
-      if (String(phoneIdentity.customer_id).trim() !== String(customerIdIdentity.customer_id).trim()) {
+      const phoneAliases = Array.isArray(phoneIdentity.alias_customer_ids) && phoneIdentity.alias_customer_ids.length > 0
+        ? phoneIdentity.alias_customer_ids
+        : (phoneIdentity.customer_id ? [phoneIdentity.customer_id] : []);
+
+      if (!phoneAliases.includes(customerIdIdentity.customer_id)) {
         return {
           status: 'forbidden',
           tool: toolName,
@@ -129,7 +132,10 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
     if (params.customer_id && contextPhone && !contextCustId) {
       const paramIdentity = await resolveCustomerIdentity(supabase, { customer_id: params.customer_id });
       const contextIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
-      if (!paramIdentity.found || !contextIdentity.found || paramIdentity.customer_id !== contextIdentity.customer_id) {
+      const contextAliases = Array.isArray(contextIdentity.alias_customer_ids) && contextIdentity.alias_customer_ids.length > 0
+        ? contextIdentity.alias_customer_ids
+        : (contextIdentity.customer_id ? [contextIdentity.customer_id] : []);
+      if (!paramIdentity.found || !contextIdentity.found || !contextAliases.includes(paramIdentity.customer_id)) {
         return {
           status: 'forbidden',
           tool: toolName,
@@ -142,7 +148,10 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
 
     if (params.phone && contextCustId && !contextPhone) {
       const paramIdentity = await resolveCustomerIdentity(supabase, { phone: params.phone });
-      if (!paramIdentity.found || paramIdentity.customer_id !== String(contextCustId).trim()) {
+      const paramAliases = Array.isArray(paramIdentity.alias_customer_ids) && paramIdentity.alias_customer_ids.length > 0
+        ? paramIdentity.alias_customer_ids
+        : (paramIdentity.customer_id ? [paramIdentity.customer_id] : []);
+      if (!paramIdentity.found || !paramAliases.includes(String(contextCustId).trim())) {
         return {
           status: 'forbidden',
           tool: toolName,
@@ -260,74 +269,57 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
     ? projectInternal(raw360)
     : projectCustomerSelf(raw360);
 
-  const customerFound = Boolean(projected360?.identity?.customer_found);
-
-  if (!customerFound) {
-    return {
-      status: 'not_found',
-      tool: toolName,
-      contract_version: CONTRACT_VERSION,
-      customer_found: false,
-      data: null,
-      message: 'Customer identity could not be resolved',
-    };
-  }
-
-  // Step 3: Extract slice for specific tool request
+  // Step 3: Tool-specific slicing
   let toolData = null;
-
   switch (toolName) {
     case 'get_customer_profile':
-      toolData = {
-        customer: projected360.customer,
-        membership: projected360.membership,
-      };
-      break;
-
-    case 'get_points':
-      toolData = projected360.loyalty;
+      toolData = projected360.customer;
       break;
 
     case 'get_membership':
       toolData = projected360.membership;
       break;
 
-    case 'get_customer_preferences':
-      toolData = projected360.preferences;
-      break;
-
-    case 'get_visit_summary':
-      toolData = projected360.activity;
-      break;
-
-    case 'get_transaction_summary':
-      toolData = projected360.spending;
+    case 'get_points':
+      toolData = projected360.loyalty;
       break;
 
     case 'get_customer_history':
       toolData = {
         activity: projected360.activity,
         spending: projected360.spending,
-        preferences: projected360.preferences,
       };
+      break;
+
+    case 'get_customer_preferences':
+      toolData = projected360.preferences;
+      break;
+
+    case 'get_customer_transaction_history':
+      toolData = {
+        spending: projected360.spending,
+        last_visit: projected360.activity?.last_visit || null,
+      };
+      break;
+
+    case 'get_customer_360':
+      toolData = projected360;
       break;
 
     default:
       toolData = projected360;
-      break;
   }
 
   return {
     status: 'success',
     tool: toolName,
     contract_version: CONTRACT_VERSION,
-    customer_found: true,
-    projection: projection,
+    customer_found: Boolean(projected360.identity?.customer_found),
+    projection,
     data: toolData,
   };
 }
 
 module.exports = {
   executeCrmTool,
-  CRM_TOOLS,
 };
