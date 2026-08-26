@@ -1,3 +1,10 @@
+function getBranchConfig(branchKey = 'bypass') {
+  const bKey = (branchKey || 'bypass').toLowerCase().trim();
+  const found = REDBOX_KNOWLEDGE.branches.find(x => x.id === bKey || (x.aliases && x.aliases.includes(bKey)));
+  return found || REDBOX_KNOWLEDGE.branches[0];
+}
+
+const { REDBOX_KNOWLEDGE } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
 const { REDBOX_SERVICES } = require('../../public/js/services-data');
 /**
  * Vercel Serverless — POST /api/wa/webhook
@@ -495,15 +502,7 @@ function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifie
   const dateStr = wib.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const timeStr = wib.toTimeString().slice(0, 5);
   
-  const BRANCH_DATA = {
-    bypass: { name: 'Redbox Bypass (Pusat)' },
-    samadikun: { name: 'Redbox Samadikun' },
-    csb: { name: 'Redbox CSB Mall' },
-    sumber: { name: 'Redbox Sumber' },
-    tegal: { name: 'Redbox Tegal' }
-  };
-  
-  const branchInfo = BRANCH_DATA[branch] || BRANCH_DATA.bypass;
+  const bConfig = getBranchConfig(branch);
   const branchKapsters = (BARBERS_BY_BRANCH[branch] || BARBERS_BY_BRANCH.bypass)
     .map(n => `Mas ${n}`)
     .join(', ');
@@ -511,15 +510,25 @@ function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifie
   const isVerifiedName = Boolean(verifiedName && typeof verifiedName === 'string' && verifiedName.trim() !== '' && verifiedName.trim() !== 'Kak');
   const personalityPrompt = buildReddyPersonalityPrompt({ branch, sessionStatus, isVerifiedName, verifiedName });
   
-return `Kamu adalah "Reddy" - digital host resmi Redbox Barbershop, cabang ${branchInfo.name}. Kamu warm, empati, komunikatif, dan genuinely membantu pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
+  return `${personalityPrompt}
+
+# IDENTITAS SIKAP & METADATA
+Kamu adalah "Reddy" - digital host resmi Redbox Barbershop, cabang ${bConfig.name}. Kamu warm, empati, komunikatif, dan genuinely membantu pelanggan. Sejak 2014 Redbox jadi barbershop premium terpercaya di Cirebon & Tegal.
 
 Hari/waktu sekarang: ${dateStr}, pukul ${timeStr} WIB.
 
 ==================================================
-CABANG & KAPSTER
+CABANG, JAM OPERASIONAL & SLOT BOOKING
 ==================================================
-Cabang sesi ini: ${branchInfo.name}
-Alamat dan jam operasional harus berasal dari Zone B1 bila pelanggan menanyakannya.
+Cabang sesi ini: ${bConfig.name}
+Alamat: ${bConfig.address}
+Jam Operasional Publik: ${bConfig.hours.opens} - ${bConfig.hours.closes} WIB
+Slot Booking Terakhir: ${bConfig.last_booking_slot} WIB
+
+ATURAN JAM OPERASIONAL vs SLOT BOOKING:
+- Jika pelanggan bertanya jam operasional/buka/tutup ("buka jam berapa?", "tutup jam berapa?"): JAWAB MENGGUNAKAN JAM OPERASIONAL PUBLIK (${bConfig.hours.opens} - ${bConfig.hours.closes} WIB). DILARANG menyatakan CSB tutup jam 21:00! CSB buka sampai jam 22.00 WIB.
+- Jika pelanggan bertanya waktu booking/slot terakhir ("bisa booking jam 9 malam?", "slot terakhir jam berapa?"): JAWAB MENGGUNAKAN SLOT BOOKING TERAKHIR (${bConfig.last_booking_slot} WIB) sebagai batas kebijakan.
+- DILARANG mengonfirmasi ketersediaan slot di WhatsApp ("Jam 21.00 masih tersedia" = DILARANG). Arahkan pelanggan untuk cek real-time dan booking langsung di website booking Redbox.
 
 Kapster cabang ini (HANYA sebut ini, jangan sebut kapster cabang lain):
 ${branchKapsters}
@@ -542,62 +551,12 @@ IDENTITAS & GAYA KOMUNIKASI
 ATURAN SALAM BERBASIS NIAT (INTENT-AWARE GREETING POLICY)
 ==================================================
 - Jika pelanggan membuka percakapan dengan salam eksplisit ("halo", "pagi", "hai"):
-  Salam pembuka diperbolehkan: "Halo Kak! Selamat datang di ${branchInfo.name}. Ada yang bisa aku bantu?"
+  Salam pembuka diperbolehkan: "Halo Kak! Selamat datang di ${bConfig.name}. Ada yang bisa aku bantu?"
 - Jika pelanggan langsung bertanya atau menyampaikan niat (misal: "harga haircut berapa?", "Bypass buka jam berapa?"):
   JAWAB LANGSUNG pertanyaan pelanggan. DILARANG menggunakan ceremonial greeting ("Selamat datang di Redbox...") dan DILARANG menyisipkan sapaan generik ("Ada yang bisa aku bantu?").
 - Jika sesi percakapan sedang aktif (active_turn / active_conversation / soft_continuity):
-  DILARANG MENGULANG SALAM PEMBUKA.
-
-==================================================
-FAKTA BISNIS PUBLIK TERVERIFIKASI
-==================================================
-Untuk harga, daftar layanan, cabang, jam, promo, kontak, membership publik, home service, atau wedding, gunakan hanya Zone B1 yang diinjeksikan. Jika Zone B1 tidak tersedia atau tidak memiliki fakta yang diminta, katakan informasinya belum tersedia; jangan menebak, melengkapi, atau memakai angka dari percakapan.
-
-==================================================
-DIGITAL HABIT & ASSIST POLICY (UNDERSTAND -> ANSWER -> ASSIST -> GUIDE TO DIGITAL CHANNEL)
-==================================================
-Kamu adalah digital host resmi Redbox Barbershop. WhatsApp adalah saluran BANTUAN, EDUKASI, dan PANDUAN (ASSIST & GUIDE).
-Sistem booking website (${bookingUrl(branch)}) adalah OTORITAS TUNGGAL RESERVASI untuk seluruh aksi booking pelanggan.
-
-PRINSIP ALUR INTERAKSI:
-1. UNDERSTAND: Pahami kebutuhan dan niat utama pelanggan.
-2. ANSWER: Jawab pertanyaan utama secara langsung, jujur, dan akurat berdasarkan fakta Zone B1 (untuk harga, layanan, lokasi, jam operasional).
-3. ASSIST: Jernihkan pertanyaan lanjutan atau bantu klarifikasi pilihan pelanggan secara hangat dan empati.
-4. GUIDE TO DIGITAL CHANNEL: Bimbing pelanggan menggunakan ekosistem digital Redbox (website booking, catalog layanan, promo) secara mandiri.
-
-OTORITAS RESERVASI WEBSITES & DILARANG MEMBUAT BOOKING VIA WHATSAPP:
-- REDDY DILARANG KERAS MEMBUAT, MENERIMA, MENGONFIRMASI, MERESERVASI, MENGUNCI, MENGUBAH, ATAU MEMBATALKAN BOOKING MELALUI WHATSAPP.
-- REDDY DILARANG MENYATAKAN ATAU MENGIMPLIKASIKAN:
-  * "sudah saya booking" / "sudah kami booking"
-  * "sudah dicatat" / "udah kami catat"
-  * "booking sudah masuk" / "booking sudah dikonfirmasi"
-  * "jam tersebut sudah saya amankan" / "slot sudah dikunci"
-  * "saya reservasi" / "siap, besok jam 7 sama Onoy"
-- Jika pelanggan menyatakan niat booking (misal: "mau booking", "besok jam 7 sama Onoy ya"):
-  * Akui keinginan/pilihan pelanggan dengan ramah ("Boleh pilih Mas Onoy, Kak.")
-  * Jelaskan bahwa ketersediaan slot bersifat real-time dan harus dicek serta dikunci langsung di website booking Redbox.
-  * Berikan URL website booking resmi: ${bookingUrl(branch)}
-  * DILARANG mengklaim ketersediaan slot atau keberhasilan reservasi di WhatsApp!
-- Jika pelanggan menanyakan harga/layanan/informasi biasa ("haircut berapa?"):
-  * Jawab harga/layanan secara langsung dari fakta Zone B1.
-  * DILARANG menyisipkan atau memaksakan link booking setelah jawaban informasi biasa!
-
-STATUS BOOKING - SUMBER KEBENARAN DATABASE:
-- Database website adalah satu-satunya sumber status booking terverifikasi.
-- Klaim pelanggan ("saya sudah booking", "ini konfirmasi booking"), riwayat WhatsApp, atau inferensi LLM BUKAN bukti terverifikasi.
-- Jika status booking terverifikasi CONFIRMED dari database (Zone B2) -> sebutkan status terverifikasi dari database.
-- Jika status booking TIDAK ADA / TIDAK TERVERIFIKASI -> jelaskan bahwa status resmi booking Redbox selalu mengikuti sistem booking website, dan berikan link website booking: ${bookingUrl(branch)}. JANGAN mengonfirmasi atau mencatatnya di WhatsApp!
-
-ATURAN HARGA & LAYANAN - KRITIS:
-1. HANYA sebut layanan dan harga dari Zone B1. DILARANG mengarang layanan, harga, atau paket.
-2. Jika Zone B1 tidak memuat faktanya, jawab bahwa informasi belum tersedia; jangan memakai klaim pelanggan sebagai sumber harga.
-3. Untuk harga yang terverifikasi, jawab langsung tanpa redirect ke website hanya untuk harga.
-4. Pertanyaan antrian/slot real-time -> arahkan ke booking page (${bookingUrl(branch)}).
-
-${personalityPrompt}`;
+  DILARANG MENGULANG SALAM PEMBUKA.`;
 }
-
-let openaiClient = null;
 
 function getOpenAI() {
   if (!openaiClient && process.env.OPENAI_API_KEY) {
@@ -719,23 +678,31 @@ function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
   const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : 'Kak';
   const nameLabel = fn === 'Kak' ? 'Kak' : `Kak ${fn}`;
   const has = (kws) => kws.some(k => t.includes(k));
+  const bConfig = getBranchConfig(branch);
 
-  // 1. Booking Intent / Booking Status Safe Fallback (HIGH PRIORITY - Independent of dynamic knowledge status!)
+  // 1. High Authority Booking Intent / Status Fallback
   if (has(['konfirmasi booking', 'konfirmasi bkng', 'sudah booking', 'mau konfirmasi', 'ini konfirmasi'])) {
     return `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
+  }
+
+  if (has(['slot terakhir', 'booking terakhir', 'slot malam', 'paling malam booking', 'bisa booking jam'])) {
+    return `Slot booking terakhir di Redbox ${bConfig.name} adalah pukul ${bConfig.last_booking_slot} WIB Kak. Untuk memastikan slotnya masih tersedia real-time, silakan cek dan pesan langsung via website booking ya:\n${bookingUrl(branch)}`;
   }
 
   if (has(['booking', 'reservasi', 'jadwal', 'pesan', 'mau potong', 'mau cukur', 'slot', 'book'])) {
     return `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
   }
 
-  // 2. Factual Knowledge Unavailable Guard (For factual inquiries when knowledge is unavailable)
+  // 2. Factual Knowledge Unavailable Guard
   if ((knowledgeStatus === 'unavailable' || knowledgeStatus === 'no_verified_fact')
     && isFactualKnowledgeRequest('', text)) {
     return `Maaf Kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com atau hubungi admin cabang ya.`;
   }
 
   // 3. Ordinary Deterministic Fallback
+  if (has(['jam buka', 'jam tutup', 'buka jam', 'tutup jam', 'operasional', 'buka sampai', 'tutup jam berapa'])) {
+    return `Redbox ${bConfig.name} buka setiap hari pukul ${bConfig.hours.opens} – ${bConfig.hours.closes} WIB, Kak.`;
+  }
   if (has(['halo', 'hai', 'hi ', 'hello', 'hei', 'hey', 'pagi', 'siang', 'sore', 'malam', 'selamat'])) {
     return `Halo ${nameLabel}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
   }
@@ -2002,3 +1969,8 @@ module.exports.buildServicesText = buildServicesText;
 
 module.exports.getServicesForLang = getServicesForLang;
 module.exports.detectForeignLanguage = detectForeignLanguage;
+
+module.exports.getBranchConfig = getBranchConfig;
+
+module.exports.handleForeignGeneralQuestion = handleForeignGeneralQuestion;
+module.exports.handleForeignBooking = handleForeignBooking;

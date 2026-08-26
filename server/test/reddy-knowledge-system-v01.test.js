@@ -20,7 +20,7 @@ const {
   serializeKnowledgeForPrompt,
   createUnavailableKnowledgeContext,
 } = require('../agents/reddy/knowledge/knowledgeContext');
-const { handleMessage, callOpenAI, fallbackReply, buildServicesText, getServicesForLang, detectForeignLanguage } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, fallbackReply, buildServicesText, getServicesForLang, detectForeignLanguage, getBranchConfig, handleForeignGeneralQuestion, handleForeignBooking } = require('../../api/wa/webhook');
 
 function cloneKnowledge() {
   return structuredClone(REDBOX_KNOWLEDGE);
@@ -1232,4 +1232,95 @@ test('T10. Indonesian deterministic price path preserves canonical REDBOX_SERVIC
   assert.ok(textBypass.includes('Hair Color — Rp160.000'));
   assert.ok(textBypass.includes('Down Perm / Root Lift — Rp175.000'));
   assert.ok(textBypass.includes('Ear Candle — Rp40.000'));
+});
+
+test('H1. Bypass public hours opens at 10:00 and closes at 21:00', async () => {
+  const cfg = getBranchConfig('bypass');
+  assert.equal(cfg.hours.opens, '10:00');
+  assert.equal(cfg.hours.closes, '21:00');
+});
+
+test('H2. Samadikun public hours opens at 10:00 and closes at 21:00', async () => {
+  const cfg = getBranchConfig('samadikun');
+  assert.equal(cfg.hours.opens, '10:00');
+  assert.equal(cfg.hours.closes, '21:00');
+});
+
+test('H3. Sumber public hours opens at 10:00 and closes at 21:00', async () => {
+  const cfg = getBranchConfig('sumber');
+  assert.equal(cfg.hours.opens, '10:00');
+  assert.equal(cfg.hours.closes, '21:00');
+});
+
+test('H4. Tegal public hours opens at 10:00 and closes at 21:00', async () => {
+  const cfg = getBranchConfig('tegal');
+  assert.equal(cfg.hours.opens, '10:00');
+  assert.equal(cfg.hours.closes, '21:00');
+});
+
+test('H5. CSB public hours opens at 10:00 and closes at 22:00', async () => {
+  const cfg = getBranchConfig('csb');
+  assert.equal(cfg.hours.opens, '10:00');
+  assert.equal(cfg.hours.closes, '22:00');
+});
+
+test('H6. Bypass, Samadikun, Sumber, Tegal last booking slot is 20:00', async () => {
+  ['bypass', 'samadikun', 'sumber', 'tegal'].forEach(b => {
+    const cfg = getBranchConfig(b);
+    assert.equal(cfg.last_booking_slot, '20:00', `${b} last booking slot must be 20:00`);
+  });
+});
+
+test('H7. CSB last booking slot is 21:00', async () => {
+  const cfg = getBranchConfig('csb');
+  assert.equal(cfg.last_booking_slot, '21:00');
+});
+
+test('H8. Customer asking "CSB tutup jam berapa?" receives 22:00 public closing hour', async () => {
+  const reply = fallbackReply('CSB tutup jam berapa?', 'Budi', 'csb');
+  assert.ok(reply.includes('22.00') || reply.includes('22:00'), 'Must contain 22:00 as closing hour');
+  assert.equal(reply.includes('21.00') || reply.includes('21:00'), false, 'Must NOT state CSB closes at 21:00');
+});
+
+test('H9. Customer asking "slot terakhir CSB jam berapa?" receives 21:00 policy boundary with booking URL', async () => {
+  const reply = fallbackReply('slot terakhir CSB jam berapa?', 'Budi', 'csb');
+  assert.ok(reply.includes('21.00') || reply.includes('21:00'), 'Must state 21:00 last booking slot');
+  assert.ok(reply.includes('booking.html?branch=csb'), 'Must include website booking URL');
+});
+
+test('H10. Customer asking "CSB bisa booking jam 9 malam?" receives policy boundary 21:00 without slot confirmation', async () => {
+  const reply = fallbackReply('CSB bisa booking jam 9 malam?', 'Budi', 'csb');
+  assert.ok(reply.includes('21.00') || reply.includes('21:00'));
+  assert.equal(reply.includes('Jam 21.00 masih tersedia'), false, 'No slot availability claim');
+  assert.ok(reply.includes('booking.html?branch=csb'));
+});
+
+test('H11. Customer asking "Bypass tutup jam berapa?" receives 21:00 public closing hour', async () => {
+  const reply = fallbackReply('Bypass tutup jam berapa?', 'Budi', 'bypass');
+  assert.ok(reply.includes('21.00') || reply.includes('21:00'), 'Bypass closes at 21:00');
+  assert.equal(reply.includes('20.00') || reply.includes('20:00'), false, 'Must NOT state Bypass closes at 20:00');
+});
+
+test('H12. Customer asking "slot terakhir Bypass?" receives 20:00 last booking slot', async () => {
+  const reply = fallbackReply('slot terakhir Bypass?', 'Budi', 'bypass');
+  assert.ok(reply.includes('20.00') || reply.includes('20:00'));
+  assert.ok(reply.includes('booking.html?branch=bypass'));
+});
+
+test('H13. Foreign English "What time does CSB close?" receives 22:00 public closing hour', async () => {
+  const reply = handleForeignGeneralQuestion('What time does CSB close?', 'english', null, 'csb');
+  assert.ok(reply.includes('22:00'), 'English response must state 22:00 for CSB');
+});
+
+test('H14. Foreign English "Can I book CSB at 9pm?" directs to website booking without availability claim', async () => {
+  const res = await handleForeignBooking('62811113333', 'John', 'Can I book CSB at 9pm?', 'device', 'csb');
+  assert.ok(res.reply.includes('booking.html?branch=csb'), 'Must include website booking URL');
+  assert.equal(res.reply.includes('confirmed'), false);
+});
+
+test('H15. Source scan: no obsolete customer-facing CSB close values remain in knowledge or webhook', async () => {
+  const knowledgeCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/server/agents/reddy/knowledge/redboxKnowledge.js', 'utf8');
+  const csbEntry = knowledgeCode.split("id: 'csb'")[1].split('}')[0];
+  assert.ok(csbEntry.includes("closes: '22:00'"), 'CSB knowledge entry must have closes: 22:00');
+  assert.equal(csbEntry.includes("closes: '21:30'"), false, 'No legacy closes: 21:30');
 });
