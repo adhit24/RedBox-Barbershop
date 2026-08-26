@@ -573,7 +573,7 @@ function getOpenAI() {
   return openaiClient;
 }
 
-async function callOpenAI(sender, userMessage, name, branch = 'bypass') {
+async function callOpenAI(sender, userMessage, name, branch = 'bypass', customerFactsContext = null) {
   const openai = getOpenAI();
   if (!openai) throw new Error('OPENAI_API_KEY not set');
 
@@ -581,6 +581,10 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass') {
 
   // Build branch-aware system prompt
   let systemPrompt = buildSystemPrompt(branch);
+
+  if (customerFactsContext) {
+    systemPrompt += `\n\n${customerFactsContext}`;
+  }
   
   // Add branch context for all branches
   if (branch === 'sumber') {
@@ -1366,6 +1370,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     orchestrate = orchestrateMessage,
     executeReddy = executeReddyAgent,
     executeOrchestration = executionService.executeOrchestration,
+    executeIntelligence = executionService.executeCustomerIntelligence,
     send = sendWA,
     generateReddy = callOpenAI,
     logTelemetry = logOrchestratedEvent,
@@ -1566,14 +1571,37 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
 
-    let crmReply;
     if (!trustedIdentity) {
-      crmReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
-    } else {
-      crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
+      const crmReply = 'Halo kak! Untuk mengecek saldo poin member RedBox, pastikan kamu menghubungi kami via nomor terverifikasi ya!';
+      const sendResult = await send(from, crmReply, { branch });
+      return { used: 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
     }
+
+    const intelRes = await executeIntelligence({
+      intent: orchDecision.intent,
+      action: orchDecision.action,
+      trustedIdentity,
+    }, { supabase: getSupabase() });
+
+    if (intelRes && intelRes.execution_status === 'success' && intelRes.intelligence) {
+      try {
+        const reddyExec = await executeReddy({
+          from, name, text, device, branch, trustedIdentity, customerIntelligence: intelRes.intelligence,
+        }, {
+          callOpenAI: generateReddy, sendWA: send,
+        });
+        return { used: 'crm_reddy_intelligence', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
+      } catch (err) {
+        console.warn('[WA Bot] Reddy execution error for CRM facts, using static fallback:', err.message);
+        const staticReply = fallbackReply(text, name, branch);
+        const sendResult = await send(from, staticReply, { branch });
+        return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
+      }
+    }
+
+    const crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
     const sendResult = await send(from, crmReply, { branch });
-    return { used: trustedIdentity ? 'crm_unavailable_guard' : 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
+    return { used: 'crm_unavailable_guard', reply: crmReply, sendResult, error: null };
   }
 
   // Handle Orchestrated Reddy Agent Route
