@@ -15,7 +15,7 @@ const {
 } = require('../../server/services/fonnteWebhookTrustGate');
 const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
 const { classifyDeterministically } = require('../../server/orchestrator/routingPolicy');
-const { executeOrchestration } = require('../../server/orchestrator/executionService');
+const executionService = require('../../server/orchestrator/executionService');
 const {
   issueAuthenticatedWhatsappEvent,
   adaptAuthenticatedWhatsappEvent,
@@ -1362,7 +1362,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const classification = classifyDeterministically(text);
   if (classification && classification.intent === 'points_inquiry') {
     const branch = branchFromPayload || detectBranchFromNumber(receiver || device || from);
-    const orchResult = await executeOrchestration(
+    const orchResult = await executionService.executeOrchestration(
       {
         intent: 'points_inquiry',
         route: 'crm_agent',
@@ -1738,18 +1738,7 @@ module.exports = async function handler(req, res) {
   try {
     // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
     const rawBody = await coerceBody(req.body, req);
-    const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
-    emitFonnteWebhookShadow(shadowMetadata);
-    let trustedIdentity = null;
-    if (redboxWebhookTrust && redboxWebhookTrust.status === 'verified') {
-      try {
-        const eventCap = issueAuthenticatedWhatsappEvent(redboxWebhookTrust, rawBody);
-        const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
-        if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
-          trustedIdentity = identityResult.trustedIdentity;
-        }
-      } catch {}
-    }
+
     let body = rawBody;
     if (rawBody && rawBody.data) {
       if (typeof rawBody.data === 'object') {
@@ -1765,6 +1754,25 @@ module.exports = async function handler(req, res) {
       try {
         const parsed = JSON.parse(rawBody.payload);
         if (parsed && typeof parsed === 'object') body = parsed;
+      } catch {}
+    }
+
+    const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
+    emitFonnteWebhookShadow(shadowMetadata);
+
+    let parsedTrustQuery;
+    try { parsedTrustQuery = req.query; } catch { parsedTrustQuery = null; }
+    const redboxWebhookTrust = verifyRedboxWebhookTrustQuery(parsedTrustQuery, body);
+    emitRedboxWebhookTrust(redboxWebhookTrust);
+
+    let trustedIdentity = null;
+    if (redboxWebhookTrust && redboxWebhookTrust.status === 'verified') {
+      try {
+        const eventCap = issueAuthenticatedWhatsappEvent(redboxWebhookTrust, body);
+        const identityResult = adaptAuthenticatedWhatsappEvent(eventCap);
+        if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
+          trustedIdentity = identityResult.trustedIdentity;
+        }
       } catch {}
     }
 
