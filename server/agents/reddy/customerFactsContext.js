@@ -15,6 +15,12 @@ const APPROVED_FACT_KEYS = Object.freeze([
   'points_balance',
   'first_visit',
   'last_visit',
+  'last_visit_branch',
+  'last_visit_barber',
+  'last_visit_service',
+  'last_visit_source',
+  'last_visit_confidence',
+  'last_visit_event',
   'days_since_last_visit',
   'completed_booking_count',
   'completed_transaction_count',
@@ -107,6 +113,12 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
   extracted.points_balance = typeof loy.points_balance === 'number' ? loy.points_balance : (typeof rawData.points_balance === 'number' ? rawData.points_balance : null);
   extracted.first_visit = act.first_visit || rawData.first_visit || null;
   extracted.last_visit = act.last_visit || rawData.last_visit || null;
+  extracted.last_visit_branch = act.last_visit_branch || rawData.last_visit_branch || (act.last_visit_event ? act.last_visit_event.branch : null);
+  extracted.last_visit_barber = act.last_visit_barber || rawData.last_visit_barber || (act.last_visit_event ? act.last_visit_event.barber : null);
+  extracted.last_visit_service = act.last_visit_service || rawData.last_visit_service || (act.last_visit_event ? act.last_visit_event.service : null);
+  extracted.last_visit_source = act.last_visit_source || rawData.last_visit_source || (act.last_visit_event ? act.last_visit_event.source : null);
+  extracted.last_visit_confidence = act.last_visit_confidence || rawData.last_visit_confidence || (act.last_visit_event ? act.last_visit_event.confidence : null);
+  extracted.last_visit_event = act.last_visit_event || rawData.last_visit_event || null;
   extracted.days_since_last_visit = typeof act.days_since_last_visit === 'number' ? act.days_since_last_visit : (typeof rawData.days_since_last_visit === 'number' ? rawData.days_since_last_visit : null);
   extracted.completed_booking_count = typeof act.completed_booking_count === 'number' ? act.completed_booking_count : null;
   extracted.completed_transaction_count = typeof act.completed_transaction_count === 'number' ? act.completed_transaction_count : null;
@@ -184,6 +196,10 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('3. Use values ONLY as factual customer attributes to answer customer questions.');
   lines.push('4. Unknown or missing fields remain unknown. Do NOT infer or fabricate missing customer data.');
   lines.push('5. Do NOT disclose system IDs, internal notes, or technical metadata.');
+  lines.push('6. SEPARATE LAST VISIT vs FAVORITE: "last_visit_branch", "last_visit_barber", "last_visit_service" belong to the latest visit ONLY. NEVER use favorite_branch/barber/service when answering about the last visit!');
+  lines.push('7. USER CLAIMS ARE NOT CRM FACTS: If customer claims a different last visit ("enggak, terakhir aku sama Budi"), acknowledge kindly without turning their claim into verified CRM facts or mutating database state.');
+  lines.push('6. SEPARATE LAST VISIT vs FAVORITE: "last_visit_branch", "last_visit_barber", "last_visit_service" belong to the latest visit ONLY. NEVER use favorite_branch/barber/service when answering about the last visit!');
+  lines.push('7. USER CLAIMS ARE NOT CRM FACTS: If customer claims a different last visit ("enggak, terakhir aku sama Budi"), acknowledge kindly without turning their claim into verified CRM facts or mutating database state.');
 
   return lines.join('\n');
 }
