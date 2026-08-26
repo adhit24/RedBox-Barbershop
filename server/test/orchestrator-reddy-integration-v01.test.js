@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * REDBOX AI TASK 10 TDD TEST SUITE (AIRA ROUND 6 HARDENED)
+ * REDBOX AI TASK 10 TDD TEST SUITE (AIRA ROUND 6 FINAL HARDENED)
  * Orchestrator → Reddy Integration (Plan B — Reddy Intelligence Core)
  * 100% Isolated Dependency Injection Tests — ZERO External Network / LLM / DB Side Effects
  */
@@ -175,9 +175,8 @@ test('8. Real production path (3): orchestrator error preserves fallback_used=tr
   assert.equal(telemetryEvent.fallback_reason, 'orchestrator_error');
 });
 
-test('9. Real production path (4): Reddy generation error triggers static fallback without 2nd OpenAI call', async () => {
-  let executeReddyCalls = 0;
-  let secondOpenAiCalls = 0;
+test('9. Real production path (4): real executeReddyAgent error triggers static fallback without 2nd OpenAI call', async () => {
+  let generateReddyCalls = 0;
   let sendCalls = 0;
 
   const mocks = {
@@ -188,13 +187,9 @@ test('9. Real production path (4): Reddy generation error triggers static fallba
       action: 'answer',
       fallback_used: false,
     }),
-    executeReddy: async () => {
-      executeReddyCalls++;
-      throw new Error('OpenAI timeout');
-    },
     generateReddy: async () => {
-      secondOpenAiCalls++;
-      return 'Should not be called';
+      generateReddyCalls++;
+      throw new Error('OpenAI timeout inside executeReddyAgent');
     },
     send: async () => {
       sendCalls++;
@@ -208,8 +203,7 @@ test('9. Real production path (4): Reddy generation error triggers static fallba
     text: 'halo',
   }, mocks);
 
-  assert.equal(executeReddyCalls, 1);
-  assert.equal(secondOpenAiCalls, 0); // ZERO 2nd OpenAI call
+  assert.equal(generateReddyCalls, 1); // Exactly 1 attempt inside real executeReddyAgent
   assert.equal(sendCalls, 1);
   assert.equal(result.used, 'static_fallback');
 });
@@ -361,8 +355,42 @@ test('13. Real production path (8): points inquiry uses deterministic shortcut a
   assert.equal(result.reply.includes('100 poin'), true);
 });
 
+test('14. Real production path: orchestrator exception falls through to legacy generateReddy and uses injected send (send = 1)', async () => {
+  let orchestratorCalls = 0;
+  let generateReddyCalls = 0;
+  let sendCalls = 0;
+
+  const mocks = {
+    orchestrate: async () => {
+      orchestratorCalls++;
+      throw new Error('catastrophic orchestrator failure');
+    },
+    generateReddy: async () => {
+      generateReddyCalls++;
+      return 'Generated fallback Reddy response';
+    },
+    send: async () => {
+      sendCalls++;
+      return { status: 'sent', id: ['msg-123'] };
+    },
+    logTelemetry: () => {},
+  };
+
+  const result = await handleMessage({
+    from: '62818202599',
+    name: 'Test Customer',
+    text: 'halo reddy',
+    device: '0818202599',
+  }, mocks);
+
+  assert.equal(orchestratorCalls, 1);
+  assert.equal(generateReddyCalls, 1);
+  assert.equal(sendCalls, 1);
+  assert.equal(result.reply, 'Generated fallback Reddy response');
+});
+
 // ── 4. TELEMETRY & BOUNDED ENUMS ─────────────────────────────────────────────
-test('14. Telemetry sanitization strips all PII and logs bounded fallback_reason', () => {
+test('15. Telemetry sanitization strips all PII and logs bounded fallback_reason', () => {
   const safe = sanitizeTelemetry({
     route: 'reddy_agent',
     agent: 'reddy_agent',

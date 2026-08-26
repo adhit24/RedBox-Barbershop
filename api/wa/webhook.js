@@ -1642,7 +1642,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   }
 
   // Gunakan branch-specific token untuk kirim balasan
-  const sendResult = await sendWA(from, reply, { branch });
+  const sendResult = await send(from, reply, { branch });
   // Persist message status fire-and-forget — jangan block sync path
   if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
     for (let i = 0; i < sendResult.id.length; i++) {
