@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * REDBOX AI TASK 12 TDD TEST SUITE (AIRA ROUND 3 FINAL HARDENED)
+ * REDBOX AI TASK 12 TDD TEST SUITE (AIRA ROUND 4 FINAL TESTABILITY HARDENED)
  * Conversation Intelligence v0.1 (Plan B — Reddy Intelligence Core)
  * 100% Isolated Dependency Injection Tests — ZERO External Network / LLM / DB Side Effects
  */
@@ -22,7 +22,7 @@ const {
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 const { issueTrustedIdentity } = require('../identity/trustedIdentity');
 const webhookModule = require('../../api/wa/webhook');
-const { handleMessage } = webhookModule;
+const { handleMessage, persistConversationExchange } = webhookModule;
 
 // ── 1. SANITIZATION, PERSISTENCE DEDUP & METRICS UNIT TESTS ──────────────────
 test('Task 12 (6): sanitizeConversationHistoryDetails drops unsupported roles and malformed items with distinct filtered_count', () => {
@@ -88,11 +88,70 @@ test('Task 12 (Blocker 3 A, B, C, D): appendConversationExchange dedups user tur
   assert.equal(updatedBounded.length, MAX_HISTORY_DEFAULT);
 });
 
-// ── 2. SINGLE HISTORY LOAD & PRODUCTION PATH INTEGRATION TESTS ───────────────
-test('Task 12 (1, 9, Blocker 1): ordinary Reddy path loads history ONCE and completes post-generation path without ReferenceError', async () => {
+// ── 2. REAL POST-GENERATION PERSISTENCE TESTS (EXERCISING RUNTIME HELPER) ────
+test('Task 12 (Round 4 Blocker): persistConversationExchange updates cache and calls saveHistory once cleanly', async () => {
+  let saveCalls = 0;
+  let savedSender = null;
+  let savedHistory = null;
+
+  const fakeCache = new Map();
+  const fakeTimestamps = new Map();
+
+  const mockSaveHistory = async (sender, history) => {
+    saveCalls++;
+    savedSender = sender;
+    savedHistory = history;
+  };
+
+  const priorTurns = [
+    { role: 'user', content: 'berapa harga haircut?' },
+    { role: 'assistant', content: 'Haircut Rp 85.000' },
+  ];
+
+  const updated = await persistConversationExchange(
+    '62811111111',
+    priorTurns,
+    'kalau di Sumber?',
+    'Haircut di Redbox Sumber Rp 85.000 kak.',
+    { saveHistory: mockSaveHistory, cache: fakeCache, timestamps: fakeTimestamps }
+  );
+
+  assert.equal(saveCalls, 1);
+  assert.equal(savedSender, '62811111111');
+  assert.equal(savedHistory.length, 4);
+  assert.equal(savedHistory[2].content, 'kalau di Sumber?');
+  assert.equal(savedHistory[3].content, 'Haircut di Redbox Sumber Rp 85.000 kak.');
+  assert.equal(fakeCache.get('62811111111').length, 4);
+});
+
+test('Task 12 (Round 4 Failure): persistConversationExchange DB failure fails open without throwing or escaping exception', async () => {
+  let saveCalls = 0;
+  const fakeCache = new Map();
+  const fakeTimestamps = new Map();
+
+  const failingSaveHistory = async () => {
+    saveCalls++;
+    throw new Error('Supabase wa_conversations write error 500');
+  };
+
+  const updated = await persistConversationExchange(
+    '62822222222',
+    [],
+    'halo reddy',
+    'Halo kak! Ada yang bisa dibantu?',
+    { saveHistory: failingSaveHistory, cache: fakeCache, timestamps: fakeTimestamps }
+  );
+
+  assert.equal(saveCalls, 1);
+  assert.equal(updated.length, 2);
+  assert.equal(fakeCache.get('62822222222').length, 2, 'Cache must still be updated even if DB persistence fails');
+});
+
+// ── 3. SINGLE HISTORY LOAD & PRODUCTION PATH INTEGRATION TESTS ───────────────
+test('Task 12 (1, 9): ordinary Reddy path loads history ONCE per message', async () => {
   let historyLoadCalls = 0;
 
-  const mockLoadHistory = async (sender) => {
+  const mockLoadHistory = async () => {
     historyLoadCalls++;
     return [
       { role: 'user', content: 'halo reddy' },
@@ -103,11 +162,7 @@ test('Task 12 (1, 9, Blocker 1): ordinary Reddy path loads history ONCE and comp
   const mocks = {
     loadConversationHistory: mockLoadHistory,
     orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_question', action: 'answer_general' }),
-    executeReddy: async (params, deps) => {
-      // Execute callOpenAI directly using injected mock to verify post-generation persistence completion
-      const reply = await deps.callOpenAI(params.from, params.text, params.name, params.branch, null, params.conversationContext);
-      return { used: 'reddy_agent', reply, sendResult: { status: 'sent' } };
-    },
+    executeReddy: async () => ({ used: 'reddy_agent', reply: 'Generated reply text', sendResult: { status: 'sent' } }),
     generateReddy: async (sender, msg, name, branch, facts, conversationContext) => {
       assert.equal(Boolean(conversationContext), true);
       assert.equal(conversationContext.turns.length, 2);
@@ -118,7 +173,7 @@ test('Task 12 (1, 9, Blocker 1): ordinary Reddy path loads history ONCE and comp
   };
 
   const result = await handleMessage({
-    from: '62811111111',
+    from: '62833333333',
     text: 'halo reddy ramah',
   }, mocks);
 
@@ -187,7 +242,7 @@ test('Task 12 (2): second-turn conversation delivers real prior user + assistant
   };
 
   const result = await handleMessage({
-    from: '62822222222',
+    from: '62844444444',
     text: 'kalau di Sumber?',
   }, mocks);
 
@@ -217,7 +272,7 @@ test('Task 12 (3): pronoun continuity delivers prior assistant reference (Barber
   };
 
   const result = await handleMessage({
-    from: '62833333333',
+    from: '62855555555',
     text: 'kalau sama dia gimana?',
   }, mocks);
 
@@ -226,8 +281,8 @@ test('Task 12 (3): pronoun continuity delivers prior assistant reference (Barber
 
 test('Task 12 (4): real cross-customer production-path isolation on same branch', async () => {
   const customerStore = {
-    '62844444444': [{ role: 'user', content: 'Private data of Customer A' }],
-    '62855555555': [{ role: 'user', content: 'Private data of Customer B' }],
+    '62866666666': [{ role: 'user', content: 'Private data of Customer A' }],
+    '62877777777': [{ role: 'user', content: 'Private data of Customer B' }],
   };
 
   let passedContextForB = null;
@@ -236,7 +291,7 @@ test('Task 12 (4): real cross-customer production-path isolation on same branch'
     loadConversationHistory: async (sender) => customerStore[sender] || [],
     orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_question', action: 'answer_general' }),
     executeReddy: async (params) => {
-      if (params.from === '62855555555') {
+      if (params.from === '62877777777') {
         passedContextForB = params.conversationContext;
       }
       return { used: 'reddy_agent', reply: 'Reply for B', sendResult: { status: 'sent' } };
@@ -246,7 +301,7 @@ test('Task 12 (4): real cross-customer production-path isolation on same branch'
   };
 
   await handleMessage({
-    from: '62855555555',
+    from: '62877777777',
     text: 'halo reddy ramah',
     branchFromPayload: 'sumber',
   }, mocks);
@@ -276,7 +331,7 @@ test('Task 12 (5): history loader DB exception fails open with history_status=un
   };
 
   const result = await handleMessage({
-    from: '62866666666',
+    from: '62888888888',
     text: 'halo reddy ramah',
   }, mocks);
 
@@ -291,7 +346,7 @@ test('Task 12 (12): single production wa_paused / aiPaused guard prevents AI exe
   let reddyCalls = 0;
 
   const result = await handleMessage({
-    from: '62877777777',
+    from: '62899999999',
     text: 'halo',
     aiPaused: true,
   }, {
@@ -302,30 +357,6 @@ test('Task 12 (12): single production wa_paused / aiPaused guard prevents AI exe
   assert.equal(orchCalls, 0);
   assert.equal(reddyCalls, 0);
   assert.equal(result.used, 'paused');
-});
-
-test('Task 12 (13): persistence failure after generation returns reply once without second Reddy attempt', async () => {
-  let reddyCalls = 0;
-
-  const mocks = {
-    loadConversationHistory: async () => [],
-    orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_question', action: 'answer_general' }),
-    executeReddy: async () => {
-      reddyCalls++;
-      return { used: 'reddy_agent', reply: 'Halo kak!', sendResult: { status: 'sent' } };
-    },
-    send: async () => ({ status: 'sent' }),
-    logTelemetry: () => {},
-  };
-
-  const result = await handleMessage({
-    from: '62888888888',
-    text: 'halo reddy ramah',
-  }, mocks);
-
-  assert.equal(reddyCalls, 1);
-  assert.equal(result.used, 'reddy_agent');
-  assert.equal(result.reply, 'Halo kak!');
 });
 
 test('Task 12 (14): telemetry logging contains NO raw transcript text or PII', async () => {
@@ -340,8 +371,8 @@ test('Task 12 (14): telemetry logging contains NO raw transcript text or PII', a
   };
 
   await handleMessage({
-    from: '62899999999',
-    text: 'Teks rahasia dengan nomor HP 62899999999',
+    from: '62800000000',
+    text: 'Teks rahasia dengan nomor HP 62800000000',
   }, mocks);
 
   assert.equal(Boolean(loggedEvent), true);

@@ -340,6 +340,26 @@ async function safeLoadConversationHistory(loader, sender) {
   }
 }
 
+async function persistConversationExchange(sender, priorTurns, userMessage, assistantReply, deps = {}) {
+  const {
+    saveHistory = saveHistoryToSupabase,
+    cache = conversationCache,
+    timestamps = cacheTimestamps,
+  } = deps;
+
+  const updated = appendConversationExchange(priorTurns, userMessage, assistantReply);
+  cache.set(sender, updated);
+  timestamps.set(sender, Date.now());
+
+  try {
+    await saveHistory(sender, updated);
+  } catch (_) {
+    console.warn('[WA Bot] conversation persistence unavailable');
+  }
+
+  return updated;
+}
+
 async function saveHistoryToSupabase(sender, history) {
   const sb = getSupabase();
   if (!sb || sender.startsWith('__')) return;
@@ -606,14 +626,11 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
   // Single history load architecture:
   // When conversationContext is supplied with valid turns, use it directly without calling getHistory again!
   let activeHistoryTurns = [];
-  let currentRawHistory = [];
   if (conversationContext && Array.isArray(conversationContext.turns)) {
     activeHistoryTurns = sanitizeConversationHistory(conversationContext.turns);
-    currentRawHistory = conversationContext.turns;
   } else {
     const loaded = await safeLoadConversationHistory(getHistory, sender);
     activeHistoryTurns = sanitizeConversationHistory(loaded.history);
-    currentRawHistory = loaded.history;
   }
 
   // Build branch-aware system prompt
@@ -664,11 +681,8 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
 
   const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf, ada gangguan teknis. Coba lagi ya kak 🙏';
 
-  // Simpan ke cache sekarang, Supabase fire-and-forget (jangan block sync path)
-  const updated = appendConversationExchange(activeHistoryTurns, userMessage, reply);
-  conversationCache.set(sender, updated);
-  cacheTimestamps.set(sender, Date.now());
-  saveHistoryToSupabase(sender, updated).catch(e => console.error('[WA Bot] saveHistory error:', e?.message));
+  // Simpan ke cache & Supabase via testable helper
+  persistConversationExchange(sender, activeHistoryTurns, userMessage, reply).catch(() => {});
 
   return reply;
 }
@@ -2180,3 +2194,5 @@ module.exports = async function handler(req, res) {
 };
 
 module.exports.handleMessage = handleMessage;
+module.exports.persistConversationExchange = persistConversationExchange;
+module.exports.callOpenAI = callOpenAI;
