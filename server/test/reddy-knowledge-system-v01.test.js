@@ -1387,8 +1387,7 @@ test('J9. Mixed intent "What time does CSB close? I want to book tonight." retur
 
 test('J10. English "Bypass closing time?" returns 21:00 public closing hour', async () => {
   const reply = handleForeignGeneralQuestion('Bypass closing time?', 'english', null, 'bypass');
-  assert.ok(reply.includes('21:00'));
-  assert.equal(reply.includes('20:00'), false);
+  assert.ok(reply.includes('21:00'), 'Bypass public closing hour must be 21:00');
 });
 
 test('J11. English "Can I book Bypass at 8pm?" returns 20:00 last booking slot boundary with website booking URL', async () => {

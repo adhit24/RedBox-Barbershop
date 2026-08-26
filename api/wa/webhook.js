@@ -1015,13 +1015,7 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
     /saat kaç|açık|kapalı|çalışma saat/i,
   ];
   if (hoursPatterns.some(p => p.test(text))) {
-    return foreignMsg(lang, {
-      chinese: `营业时间 🕐\n\n• Bypass 旗舰店：10:00-22:00（每天）\n• 其他分店：10:00-21:00（每天）\n\n全年无休！`,
-      japanese: `営業時間 🕐\n\n• Bypass 本店：10:00-22:00（毎日）\n• 他店舗：10:00-21:00（毎日）\n\n年中無休です！`,
-      korean: `영업시간 🕐\n\n• Bypass 본점: 10:00-22:00 (매일)\n• 기타 지점: 10:00-21:00 (매일)\n\n연중무휴!`,
-      turkish: `Çalışma saatleri 🕐\n\n• Bypass (ana): 10:00-22:00 (her gün)\n• Diğer şubeler: 10:00-21:00 (her gün)\n\nHer gün açığız!`,
-      english: `Opening hours 🕐\n\n• Bypass (main): 10:00-22:00 (daily)\n• Other branches: 10:00-21:00 (daily)\n\nWe're open every day!`
-    });
+    return buildBranchHoursText(lang);
   }
 
   // Payment questions
