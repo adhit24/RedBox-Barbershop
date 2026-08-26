@@ -282,6 +282,38 @@ async function getCustomer360(supabase, identityInput = {}) {
     bookingQuery,
   ]);
 
+  const txData = txRes.data || [];
+  const bkData = bookingsRes.data || [];
+
+  // Bounded Metadata Lookups for Outlets, Schedules, and Barbers
+  const outletIdsToFetch = Array.from(new Set(txData.map(t => t.outlet_id).filter(Boolean)));
+  const scheduleIdsToFetch = Array.from(new Set(txData.map(t => t.schedule_id).filter(Boolean)));
+  const directBookingBarberIds = bkData.map(b => b.barber_id).filter(Boolean);
+
+  const outSel = supabase.from('outlets').select('id, name, slug');
+  const outletsQuery = (outletIdsToFetch.length > 0 && typeof outSel.in === 'function')
+    ? outSel.in('id', outletIdsToFetch)
+    : Promise.resolve({ data: [] });
+
+  const schedSel = supabase.from('schedules').select('id, barber_id');
+  const schedulesQuery = (scheduleIdsToFetch.length > 0 && typeof schedSel.in === 'function')
+    ? schedSel.in('id', scheduleIdsToFetch)
+    : Promise.resolve({ data: [] });
+
+  const [outletsRes, schedulesRes] = await Promise.all([outletsQuery, schedulesQuery]);
+  const outletMap = new Map((outletsRes.data || []).map(o => [o.id, o.name || o.slug]));
+
+  const fetchedSchedules = schedulesRes.data || [];
+  const scheduleBarberIds = fetchedSchedules.map(s => s.barber_id).filter(Boolean);
+  const scheduleMap = new Map(fetchedSchedules.map(s => [s.id, s.barber_id]));
+
+  const allBarberIdsToFetch = Array.from(new Set([...directBookingBarberIds, ...scheduleBarberIds]));
+  const barbSel = supabase.from('barbers').select('id, name');
+  const barbersRes = (allBarberIdsToFetch.length > 0 && typeof barbSel.in === 'function')
+    ? await barbSel.in('id', allBarberIdsToFetch)
+    : { data: [] };
+  const barberMap = new Map((barbersRes.data || []).map(b => [b.id, b.name]));
+
   if (profRes.error || custRes.error || txRes.error || bookingsRes.error) {
     return {
       version: 'customer360.v0.1',
@@ -434,6 +466,11 @@ async function getCustomer360(supabase, identityInput = {}) {
     const rawDate = b.date || b.created_at || null;
     const parsed = parseEventTimestamp(rawDate, rawTime);
 
+    let resolvedBarber = b.barber_name || null;
+    if (!resolvedBarber && b.barber_id && barberMap.has(b.barber_id)) {
+      resolvedBarber = barberMap.get(b.barber_id);
+    }
+
     if (parsed.date) {
       completedEvents.push({
         type: 'booking',
@@ -441,7 +478,7 @@ async function getCustomer360(supabase, identityInput = {}) {
         timestamp: parsed.timestamp,
         precision: parsed.precision,
         branch: b.location || b.branch_slug || b.branch || null,
-        barber: b.barber_name || b.barber_id || null,
+        barber: resolvedBarber,
         service: b.service || null,
       });
     }
@@ -452,14 +489,24 @@ async function getCustomer360(supabase, identityInput = {}) {
     if (parsed.date) {
       const items = Array.isArray(t.transaction_items) ? t.transaction_items : [];
       const serviceNames = items.map(i => i.service_name).filter(Boolean).join(', ');
+
+      const resolvedBranch = t.outlet_id ? (outletMap.get(t.outlet_id) || null) : null;
+      let resolvedBarber = null;
+      if (t.schedule_id && scheduleMap.has(t.schedule_id)) {
+        const bId = scheduleMap.get(t.schedule_id);
+        if (bId && barberMap.has(bId)) {
+          resolvedBarber = barberMap.get(bId);
+        }
+      }
+
       completedEvents.push({
         type: 'transaction',
         date: parsed.date,
         timestamp: parsed.timestamp,
         precision: parsed.precision,
-        branch: t.outlet_slug || t.location || t.outlet_name || null,
-        barber: t.barber_name || t.employee_name || t.barber_id || null,
-        service: serviceNames || t.service || null,
+        branch: resolvedBranch,
+        barber: resolvedBarber,
+        service: serviceNames || null,
       });
     }
   }
