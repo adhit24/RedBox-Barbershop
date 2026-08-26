@@ -3,6 +3,7 @@
 const { executeCrmTool } = require('../agents/crm/crmAgent');
 const { PROJECTION_TYPES } = require('../agents/crm/contract');
 const { isTrustedIdentity } = require('../identity/trustedIdentity');
+const { extractCustomerIntelligenceEnvelope } = require('../agents/reddy/customerFactsContext');
 
 const POINTS_EXECUTION = Object.freeze({
   intent: 'points_inquiry',
@@ -21,6 +22,13 @@ const POINTS_CLASSIFICATION_KEYS = Object.freeze([
   'model_tier',
 ]);
 const POINTS_CLASSIFICATION_KEY_SET = new Set(POINTS_CLASSIFICATION_KEYS);
+
+// Executable CRM tool allowlist for Task 11 Customer Intelligence
+const TASK11_CRM_ALLOWLIST = Object.freeze({
+  customer_history: 'get_customer_history',
+  customer_profile: 'get_customer_profile',
+  customer_preferences: 'get_customer_preferences',
+});
 
 function readPointsClassification(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -151,8 +159,59 @@ async function executeOrchestration(classificationResult, dependencies = {}) {
   });
 }
 
+/**
+ * Executes safe Customer Intelligence extraction for personalized CRM intents in Task 11.
+ * @param {object} params - Input params { intent, action, trustedIdentity }
+ * @param {object} dependencies - Execution dependencies { supabase, crmExecutor }
+ * @returns {Promise<object>} Structured intelligence execution result
+ */
+async function executeCustomerIntelligence(params = {}, dependencies = {}) {
+  const { intent = 'unknown', trustedIdentity } = params;
+  const { supabase, crmExecutor = executeCrmTool } = dependencies;
+
+  if (!isTrustedIdentity(trustedIdentity)) {
+    return {
+      execution_status: 'unauthorized',
+      intelligence: null,
+    };
+  }
+
+  const toolName = TASK11_CRM_ALLOWLIST[intent];
+  if (!toolName) {
+    return {
+      execution_status: 'unsupported_intent',
+      intelligence: null,
+    };
+  }
+
+  const context = {
+    supabase,
+    projection: PROJECTION_TYPES.CUSTOMER_SELF,
+    ...(trustedIdentity.phone ? { phone: trustedIdentity.phone } : {}),
+    ...(trustedIdentity.customer_id ? { customer_id: trustedIdentity.customer_id } : {}),
+  };
+
+  let crmResult;
+  try {
+    crmResult = await crmExecutor(toolName, {}, context);
+  } catch (_) {
+    return {
+      execution_status: 'database_unavailable',
+      intelligence: null,
+    };
+  }
+
+  const envelope = extractCustomerIntelligenceEnvelope(crmResult, intent);
+  return {
+    execution_status: envelope.status === 'success' ? 'success' : (crmResult?.status || 'crm_error'),
+    intelligence: envelope,
+  };
+}
+
 module.exports = {
   POINTS_EXECUTION,
+  TASK11_CRM_ALLOWLIST,
   executeOrchestration,
+  executeCustomerIntelligence,
   matchesPointsAllowlist,
 };
