@@ -715,10 +715,13 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
 
   const preparedHistory = buildConversationMessages(activeHistoryTurns, userMessage);
 
+  const isVerifiedName = Boolean(name && typeof name === 'string' && name.trim() !== '' && name.trim() !== 'Kak');
+  const firstName = isVerifiedName ? name.trim().split(' ')[0] : null;
+
   const messages = [
     { role: 'system', content: systemPrompt },
-    ...(preparedHistory.length === 1 && name && name !== 'Kak'
-      ? [{ role: 'system', content: `Nama customer ini: ${name}. Sapa dengan nama panggilannya.` }]
+    ...(preparedHistory.length === 1 && isVerifiedName
+      ? [{ role: 'system', content: `Nama terverifikasi customer CRM ini: ${name}. Sapa dengan hangat menggunakan nama depannya (${firstName}).` }]
       : []),
     ...preparedHistory,
   ];

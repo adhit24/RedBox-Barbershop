@@ -253,3 +253,104 @@ test('7. Webhook system prompt enforces Welcome Message Personalization & Name U
   assert.match(webhookSource, /DILARANG OVERUSE NAMA/);
   assert.match(webhookSource, /MAKSIMAL 1 CTA/);
 });
+
+// ── 4. Welcome Message Personalization Behavioral Tests (Round 1) ──────────
+test('8. Welcome Test A — Verified CRM Name: executeReddyAgent passes customerIntelligence.facts.name to callOpenAI', async () => {
+  const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
+
+  let passedName = undefined;
+  const mockCallOpenAI = async (from, text, name) => {
+    passedName = name;
+    return 'Halo Mas Adhit 👋 Ada yang bisa aku bantu?';
+  };
+
+  const intel = {
+    facts: { name: 'Adhit Nugraha', membership_tier: 'Gold' },
+  };
+
+  const res = await executeReddyAgent(
+    { from: '6281234567890', name: 'Boss Besar', text: 'halo', customerIntelligence: intel },
+    { callOpenAI: mockCallOpenAI }
+  );
+
+  assert.equal(passedName, 'Adhit Nugraha', 'callOpenAI must receive verified CRM name, NOT WhatsApp display name');
+  assert.match(res.reply, /Adhit/);
+});
+
+test('9. Welcome Test B — Channel Name Safety: WhatsApp display name "Boss Besar" is NOT treated as verified CRM name', async () => {
+  const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
+
+  let passedName = undefined;
+  const mockCallOpenAI = async (from, text, name) => {
+    passedName = name;
+    return 'Halo Kak 👋 Selamat datang di RedBox Barbershop! Ada yang bisa aku bantu?';
+  };
+
+  // No CRM name in intelligence
+  const intel = {
+    facts: { last_visit: '2026-08-20' },
+  };
+
+  const res = await executeReddyAgent(
+    { from: '6281234567890', name: 'Boss Besar', text: 'halo', customerIntelligence: intel },
+    { callOpenAI: mockCallOpenAI }
+  );
+
+  assert.equal(passedName, null, 'Unverified WhatsApp display name must resolve to null for verifiedName');
+  assert.equal(res.reply.includes('Boss Besar'), false, 'Greeting must not fabricate verified name from channel display name');
+  assert.match(res.reply, /Halo Kak/);
+});
+
+test('10. Welcome Test C — Known Returning Customer: CRM history facts present allow warm returning greeting', async () => {
+  const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
+  const { extractCustomerIntelligenceEnvelope } = require('../agents/reddy/customerFactsContext');
+
+  let passedFactsContext = null;
+  const mockCallOpenAI = async (from, text, name, branch, factsContext) => {
+    passedFactsContext = factsContext;
+    return 'Halo Mas Adhit 👋 Senang ketemu lagi di RedBox Bypass!';
+  };
+
+  const crmResult = {
+    status: 'success',
+    customer_found: true,
+    data: {
+      customer: { name: 'Adhit Nugraha' },
+      activity: { last_visit: '2026-08-20', last_visit_branch: 'RedBox Bypass' },
+    },
+  };
+  const intel = extractCustomerIntelligenceEnvelope(crmResult, 'customer_history');
+
+  const res = await executeReddyAgent(
+    { from: '6281234567890', text: 'halo', customerIntelligence: intel },
+    { callOpenAI: mockCallOpenAI }
+  );
+
+  assert.ok(passedFactsContext);
+  assert.match(passedFactsContext, /2026-08-20/);
+  assert.match(res.reply, /Senang ketemu lagi/);
+});
+
+test('11. Welcome Test D — Unknown Customer: No CRM name or history results in warm generic greeting without fabricated name or history', async () => {
+  const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
+
+  let passedName = undefined;
+  let passedFactsContext = undefined;
+
+  const mockCallOpenAI = async (from, text, name, branch, factsContext) => {
+    passedName = name;
+    passedFactsContext = factsContext;
+    return 'Halo Kak 👋 Selamat datang di Redbox Bypass. Ada yang mau dibantu?';
+  };
+
+  const res = await executeReddyAgent(
+    { from: '6289999999999', name: 'Random User', text: 'halo', customerIntelligence: null },
+    { callOpenAI: mockCallOpenAI }
+  );
+
+  assert.equal(passedName, null);
+  assert.equal(passedFactsContext, null);
+  assert.equal(res.reply.includes('Random User'), false);
+  assert.equal(res.reply.includes('ketemu lagi'), false);
+  assert.match(res.reply, /Halo Kak/);
+});

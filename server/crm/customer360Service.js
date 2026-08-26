@@ -1,3 +1,5 @@
+'use strict';
+
 async function safeSupabaseQuery(query) {
   if (!query) return { data: [], error: null };
   try {
@@ -7,8 +9,6 @@ async function safeSupabaseQuery(query) {
     return { data: [], error: err?.message || null };
   }
 }
-
-'use strict';
 
 /**
  * Redbox Customer 360 Read Service

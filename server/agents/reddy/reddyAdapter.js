@@ -38,8 +38,11 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   let used = 'reddy_agent';
   let error = null;
 
+  // Verified CRM name source: derive ONLY from customerIntelligence facts or customer entity
+  const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || null;
+
   try {
-    reply = await callOpenAI(from, text, name, branch, factsContext, conversationContext);
+    reply = await callOpenAI(from, text, verifiedCrmName, branch, factsContext, conversationContext);
   } catch (err) {
     throw err;
   }
