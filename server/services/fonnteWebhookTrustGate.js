@@ -82,17 +82,46 @@ function readQuery(query) {
   }
 }
 
+function readBodyProperties(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const prototype = Object.getPrototypeOf(body);
+  if (prototype !== Object.prototype && prototype !== null) return null;
+
+  const descriptors = Object.getOwnPropertyDescriptors(body);
+  const resultProps = {};
+  for (const key of ['webhook-secret-key', 'device']) {
+    if (Object.hasOwn(body, key)) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !Object.hasOwn(descriptor, 'value') || descriptor.get || descriptor.set) {
+        return null;
+      }
+      resultProps[key] = descriptor.value;
+    }
+  }
+  return resultProps;
+}
+
 function verifyBodySecretInternal(body, env) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
 
-  const rawSecret = body['webhook-secret-key'];
+  const hasSecretKeyProp = Object.hasOwn(body, 'webhook-secret-key');
+  if (!hasSecretKeyProp && body['webhook-secret-key'] === undefined) {
+    return null; // Absent body secret key
+  }
+
+  const props = readBodyProperties(body);
+  if (!props) {
+    return result('malformed', null, 'fonnte_body_secret');
+  }
+
+  const rawSecret = props['webhook-secret-key'];
   if (rawSecret === undefined) return null;
 
   if (typeof rawSecret !== 'string' || rawSecret === '') {
     return result('malformed', null, 'fonnte_body_secret');
   }
 
-  const deviceNorm = normalizeDeviceNumber(body.device);
+  const deviceNorm = normalizeDeviceNumber(props.device);
   if (!deviceNorm || !Object.hasOwn(BRANCH_DEVICE_MAP, deviceNorm)) {
     return result('unknown_branch', null, 'fonnte_body_secret');
   }

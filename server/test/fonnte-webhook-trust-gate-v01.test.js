@@ -7,6 +7,7 @@ const fs = require('node:fs');
 
 const gatePath = path.resolve(__dirname, '../services/fonnteWebhookTrustGate.js');
 const webhookPath = path.resolve(__dirname, '../../api/wa/webhook.js');
+const executionPath = path.resolve(__dirname, '../orchestrator/executionService.js');
 const {
   BRANCH_SECRET_ENV,
   emitRedboxWebhookTrust,
@@ -18,20 +19,29 @@ const CSB_SECRET = 'csb-test-secret-000000000000000000000000001';
 const TEGAL_SECRET = 'tegal-test-secret-000000000000000000000002';
 const SUMBER_SECRET = 'sumber-test-secret-00000000000000000000003';
 
-// Helper for test verification using process.env setup/restore
+// ── ASYNC-SAFE TEST ENV HELPER ──────────────────────────────────────────────
 function withTestEnv(envSecrets, fn) {
   const previousEnv = {};
   for (const [key, value] of Object.entries(envSecrets)) {
     previousEnv[key] = process.env[key];
     process.env[key] = value;
   }
-  try {
-    return fn();
-  } finally {
+  const restore = () => {
     for (const key of Object.keys(envSecrets)) {
       if (previousEnv[key] === undefined) delete process.env[key];
       else process.env[key] = previousEnv[key];
     }
+  };
+  try {
+    const result = fn();
+    if (result && typeof result.then === 'function') {
+      return result.finally(restore);
+    }
+    restore();
+    return result;
+  } catch (err) {
+    restore();
+    throw err;
   }
 }
 
@@ -326,6 +336,53 @@ test('K. LOG SAFETY: safe logging never includes webhook-secret-key, sender, mes
   }
 });
 
+// ── ASYNC TEST ENV HELPER REGRESSION TEST ───────────────────────────────────
+test('ASYNC ENV HELPER: process.env remains set across an awaited async boundary and is restored afterward', async () => {
+  assert.equal(process.env.WA_WEBHOOK_SECRET_SUMBER, undefined);
+  let checkedInsideAsync = false;
+
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(process.env.WA_WEBHOOK_SECRET_SUMBER, SUMBER_SECRET);
+    checkedInsideAsync = true;
+  });
+
+  assert.equal(checkedInsideAsync, true);
+  assert.equal(process.env.WA_WEBHOOK_SECRET_SUMBER, undefined);
+});
+
+// ── BODY OWN-PROPERTY & ACCESSOR HARDENING TESTS ───────────────────────────
+test('BODY HARDENING: inherited properties, getter accessors, and custom prototypes fail closed untrusted', () => {
+  withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
+    // 1. Inherited properties via Object.create
+    const inheritedBody = Object.create({
+      device: '0818202599',
+      'webhook-secret-key': SUMBER_SECRET,
+    });
+    assert.equal(verifyRedboxWebhookTrustQuery(null, inheritedBody).status, 'malformed');
+
+    // 2. Getter accessors
+    const getterBody = {
+      device: '0818202599',
+      get 'webhook-secret-key'() { return SUMBER_SECRET; },
+    };
+    assert.equal(verifyRedboxWebhookTrustQuery(null, getterBody).status, 'malformed');
+
+    // 3. Custom prototype
+    const customProto = Object.create({ custom: true });
+    customProto.device = '0818202599';
+    customProto['webhook-secret-key'] = SUMBER_SECRET;
+    assert.equal(verifyRedboxWebhookTrustQuery(null, customProto).status, 'malformed');
+
+    // 4. Throwing getter
+    const throwingBody = {
+      device: '0818202599',
+      get 'webhook-secret-key'() { throw new Error('getter exception'); },
+    };
+    assert.equal(verifyRedboxWebhookTrustQuery(null, throwingBody).status, 'malformed');
+  });
+});
+
 test('HARDENED DEVICE NORMALIZATION: reject mixed-letter and malicious device strings', () => {
   withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, () => {
     for (const invalidDevice of [
@@ -347,95 +404,114 @@ test('HARDENED DEVICE NORMALIZATION: reject mixed-letter and malicious device st
   });
 });
 
-// ── LIVE WEBHOOK RUNTIME LEVEL INTEGRATION TESTS ────────────────────────────
-test('LIVE WEBHOOK RUNTIME: realistic Fonnte Flow payload verifies body secret and executes CRM points', async () => {
-  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
-    const webhook = require(webhookPath);
-    const { response, output } = createResponseHarness();
+// ── LIVE WEBHOOK RUNTIME LEVEL INTEGRATION TESTS WITH CRM SPY ───────────────
+test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points, whereas invalid/untrusted paths DO NOT', async () => {
+  await withTestEnv({
+    WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET,
+    WA_WEBHOOK_SECRET_CSB: CSB_SECRET,
+  }, async () => {
+    Object.keys(require.cache).forEach(k => delete require.cache[k]);
 
-    const req = {
-      method: 'POST',
-      query: {},
-      body: {
-        device: '0818202599',
-        inboxid: 0,
-        isgroup: false,
-        message: 'poin saya berapa?',
-        sender: '6281234567890',
-        timestamp: 1787727718,
-        type: 'text',
-        username: '62818202569',
-        'webhook-secret-key': SUMBER_SECRET,
-      },
+    const { isTrustedIdentity } = require('../identity/trustedIdentity');
+    const executionService = require(executionPath);
+
+    const crmAgentCalls = [];
+    const originalExecute = executionService.executeOrchestration;
+
+    executionService.executeOrchestration = async (userIntent, rawInput, context) => {
+      if (!isTrustedIdentity(context?.trustedIdentity)) {
+        return { execution_status: 'unauthorized', result: null };
+      }
+      crmAgentCalls.push({ userIntent, rawInput, context });
+      return {
+        execution_status: 'success',
+        intent: 'points_inquiry',
+        result: { data: { points_balance: 150 } },
+      };
     };
 
-    await webhook(req, response);
-    assert.equal(output.statusCode, 200);
-    assert.equal(output.body.status, 'ok');
-  });
-});
+    try {
+      const webhook = require(webhookPath);
 
-test('LIVE WEBHOOK RUNTIME: correct body secret + wrong device fails closed', async () => {
-  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
-    const webhook = require(webhookPath);
-    const { response, output } = createResponseHarness();
+      // 1. Positive Case: Valid Body Secret + Valid SUMBER Device
+      const { response: res1, output: out1 } = createResponseHarness();
+      const validReq = {
+        method: 'POST',
+        query: {},
+        body: {
+          device: '0818202599',
+          inboxid: 0,
+          isgroup: false,
+          message: 'poin saya berapa?',
+          sender: '6281234567890',
+          timestamp: 1787727718,
+          type: 'text',
+          username: '62818202569',
+          'webhook-secret-key': SUMBER_SECRET,
+        },
+      };
 
-    const req = {
-      method: 'POST',
-      query: {},
-      body: {
-        device: '0818202889', // CSB device instead of SUMBER device
-        'webhook-secret-key': SUMBER_SECRET,
-        sender: '6281234567890',
-        message: 'poin saya berapa?',
-        type: 'text',
-      },
-    };
+      await webhook(validReq, res1);
 
-    await webhook(req, response);
-    assert.equal(output.statusCode, 200);
-  });
-});
+      assert.equal(out1.statusCode, 200);
+      assert.equal(crmAgentCalls.length, 1, 'CRM points must be executed exactly once for valid trusted request');
+      assert.equal(crmAgentCalls[0].userIntent.intent, 'points_inquiry');
+      assert.equal(crmAgentCalls[0].context.projection, 'CUSTOMER_SELF');
+      assert.equal(isTrustedIdentity(crmAgentCalls[0].context.trustedIdentity), true);
+      assert.equal(crmAgentCalls[0].context.trustedIdentity.phone, '6281234567890');
 
-test('LIVE WEBHOOK RUNTIME: wrong body secret + valid query fallback fails closed (no downgrade)', async () => {
-  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
-    const webhook = require(webhookPath);
-    const { response, output } = createResponseHarness();
+      crmAgentCalls.length = 0;
 
-    const req = {
-      method: 'POST',
-      query: { rb_branch: 'sumber', rb_key: SUMBER_SECRET },
-      body: {
-        device: '0818202599',
-        'webhook-secret-key': 'attacker-wrong-body-secret-000001',
-        sender: '6281234567890',
-        message: 'poin saya berapa?',
-        type: 'text',
-      },
-    };
+      // 2. Negative Case A: Wrong Body Secret + Valid Query Fallback (NO DOWNGRADE)
+      const { response: res2 } = createResponseHarness();
+      const wrongBodyReq = {
+        method: 'POST',
+        query: { rb_branch: 'sumber', rb_key: SUMBER_SECRET },
+        body: {
+          device: '0818202599',
+          'webhook-secret-key': 'attacker-wrong-secret-0000000000000001',
+          sender: '6281234567890',
+          message: 'poin saya berapa?',
+          type: 'text',
+        },
+      };
+      await webhook(wrongBodyReq, res2);
+      assert.equal(crmAgentCalls.length, 0, 'Wrong body secret MUST NOT execute CRM points even if valid query secret is present');
 
-    await webhook(req, response);
-    assert.equal(output.statusCode, 200);
-  });
-});
+      // 3. Negative Case B: Wrong Device (Cross-branch device)
+      const { response: res3 } = createResponseHarness();
+      const wrongDeviceReq = {
+        method: 'POST',
+        query: {},
+        body: {
+          device: '0818202889', // CSB device instead of SUMBER device
+          'webhook-secret-key': SUMBER_SECRET,
+          sender: '6281234567890',
+          message: 'poin saya berapa?',
+          type: 'text',
+        },
+      };
+      await webhook(wrongDeviceReq, res3);
+      assert.equal(crmAgentCalls.length, 0, 'Cross-branch device MUST NOT execute CRM points');
 
-test('LIVE WEBHOOK RUNTIME: absent body secret + valid query fallback verifies legacy path', async () => {
-  await withTestEnv({ WA_WEBHOOK_SECRET_CSB: CSB_SECRET }, async () => {
-    const webhook = require(webhookPath);
-    const { response, output } = createResponseHarness();
+      // 4. Fallback Case: Missing Body Secret + Valid Query Fallback
+      const { response: res4 } = createResponseHarness();
+      const legacyQueryReq = {
+        method: 'POST',
+        query: { rb_branch: 'csb', rb_key: CSB_SECRET },
+        body: {
+          device: '0818202889',
+          sender: '6281234567890',
+          message: 'poin saya berapa?',
+          type: 'text',
+        },
+      };
+      await webhook(legacyQueryReq, res4);
+      assert.equal(crmAgentCalls.length, 1, 'Legacy query fallback MUST execute CRM points when body secret is absent');
+      assert.equal(crmAgentCalls[0].context.trustedIdentity.phone, '6281234567890');
 
-    const req = {
-      method: 'POST',
-      query: { rb_branch: 'csb', rb_key: CSB_SECRET },
-      body: {
-        device: '0818202889',
-        sender: '6281234567890',
-        message: 'poin saya berapa?',
-        type: 'text',
-      },
-    };
-
-    await webhook(req, response);
-    assert.equal(output.statusCode, 200);
+    } finally {
+      executionService.executeOrchestration = originalExecute;
+    }
   });
 });

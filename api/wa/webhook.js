@@ -15,7 +15,7 @@ const {
 } = require('../../server/services/fonnteWebhookTrustGate');
 const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
 const { classifyDeterministically } = require('../../server/orchestrator/routingPolicy');
-const { executeOrchestration } = require('../../server/orchestrator/executionService');
+const executionService = require('../../server/orchestrator/executionService');
 const {
   issueAuthenticatedWhatsappEvent,
   adaptAuthenticatedWhatsappEvent,
@@ -1362,7 +1362,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const classification = classifyDeterministically(text);
   if (classification && classification.intent === 'points_inquiry') {
     const branch = branchFromPayload || detectBranchFromNumber(receiver || device || from);
-    const orchResult = await executeOrchestration(
+    const orchResult = await executionService.executeOrchestration(
       {
         intent: 'points_inquiry',
         route: 'crm_agent',
@@ -1371,7 +1371,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         confidence: 1.0,
         model_tier: 'economy',
       },
-      { trustedIdentity, supabase: getSupabase() }
+      text,
+      { trustedIdentity, projection: 'CUSTOMER_SELF', supabase: getSupabase() }
     );
     let pointsReply;
     if (orchResult.execution_status === 'unauthorized') {
