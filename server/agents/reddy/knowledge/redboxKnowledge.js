@@ -56,6 +56,7 @@ const REDBOX_KNOWLEDGE = freeze({
   booking_policies: [
     { id: 'website-database-authority', summary: 'Website dan database booking adalah sumber status booking yang berwenang.', booking_url_template: 'booking.html?branch={branch_id}' },
     { id: 'walk-in-not-guaranteed', summary: 'Walk-in diperbolehkan, tetapi ketersediaan tidak dijamin.', booking_url_template: 'booking.html?branch={branch_id}' },
+    { id: 'whatsapp-assist-authority-policy', summary: 'WhatsApp Redbox berfungsi untuk bantuan, edukasi, dan panduan. Pembuatan, konfirmasi, perubahan, reschedule, pembatalan, dan penguncian slot booking pelanggan harus dilakukan melalui sistem booking website Redbox.', booking_url_template: 'booking.html?branch={branch_id}' },
   ],
   membership_public: {
     registration_url: 'membership.html',

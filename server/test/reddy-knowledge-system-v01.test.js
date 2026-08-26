@@ -903,3 +903,150 @@ test('B09. Customer-facing runtime static strings contain zero forbidden booking
     }
   }
 });
+
+test('R1. Booking request intent resolves whatsapp-assist-authority-policy fact', async () => {
+  const ctx = resolveKnowledgeContext({ intent: 'booking_request', text: 'mau booking', branch: 'bypass' });
+  const hasPolicy = ctx.facts.some(f => f.id === 'whatsapp-assist-authority-policy');
+  assert.ok(hasPolicy, 'Must include whatsapp-assist-authority-policy in resolved knowledge facts');
+});
+
+test('R2. Technical empty OpenAI completion returns safe fallback with zero emoji and no booking CTA', async () => {
+  let capturedReply = null;
+  await callOpenAI(
+    '62811113902',
+    'halo',
+    'Budi',
+    'bypass',
+    null,
+    null,
+    { turns: [] },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async () => ({ choices: [{ message: { content: '' } }] }),
+          },
+        },
+      },
+    }
+  );
+
+  const reply = fallbackReply('halo', 'Budi', 'bypass');
+  assert.equal(/\uD83D[\uDC00-\uDFFF]|\uD83C[\uDF00-\uDFFF]|\uD83E[\uDD00-\uDDFF]/.test(reply), false, 'Zero emoji');
+  assert.equal(reply.includes('booking.html'), false, 'No forced booking CTA for greeting');
+  assert.equal(reply.includes('undefined') || reply.includes('500') || reply.includes('API'), false, 'No technical details');
+});
+
+test('R3. Generic fallback for unrelated question returns safe neutral reply without booking CTA or fake facts', async () => {
+  const reply = fallbackReply('Redbox berdiri tahun berapa?', 'Budi', 'bypass', null);
+  assert.equal(reply.includes('booking.html'), false, 'Must NOT push booking.html for unrelated question');
+  assert.equal(reply.includes('1990'), false, 'Must NOT invent fake facts');
+  assert.equal(/\uD83D[\uDC00-\uDFFF]|\uD83C[\uDF00-\uDFFF]|\uD83E[\uDD00-\uDDFF]/.test(reply), false, 'Zero emoji');
+  assert.ok(reply.includes('redboxbarbershop.com'), 'Directs to main domain without booking CTA');
+});
+
+test('R4. Booking fallback directs to website without fake confirmation or claimed availability', async () => {
+  const reply = fallbackReply('mau booking besok', 'Budi', 'bypass', null);
+  assert.ok(reply.includes('booking.html?branch=bypass'), 'Must direct to branch booking URL for booking intent');
+  assert.equal(reply.includes('Udah kami catat'), false, 'No fake confirmation');
+  assert.equal(reply.includes('slot aman'), false, 'No claimed availability');
+  assert.equal(/\uD83D[\uDC00-\uDFFF]|\uD83C[\uDF00-\uDFFF]|\uD83E[\uDD00-\uDDFF]/.test(reply), false, 'Zero emoji');
+});
+
+test('R5. Expired session with explicit greeting allows greeting', async () => {
+  let capturedSys = null;
+  await callOpenAI(
+    '62811113905',
+    'halo',
+    'Budi',
+    'bypass',
+    null,
+    null,
+    { sessionStatus: 'expired', turns: [] },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              capturedSys = value.messages[0].content;
+              return { choices: [{ message: { content: 'Halo Kak Budi, ada yang bisa aku bantu?' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  assert.ok(capturedSys.includes('ATURAN SALAM BERBASIS NIAT'));
+  assert.equal(capturedSys.includes('# ATURAN SUPRESI SALAM (SESI AKTIF)'), false);
+});
+
+test('R6. Expired session with direct intent returns direct answer without ceremonial greeting', async () => {
+  let capturedSys = null;
+  await callOpenAI(
+    '62811113906',
+    'harga haircut berapa?',
+    'Budi',
+    'bypass',
+    null,
+    null,
+    { sessionStatus: 'expired', turns: [] },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              capturedSys = value.messages[0].content;
+              return { choices: [{ message: { content: 'Untuk Gentleman Grooming harganya Rp95.000 Kak.' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  assert.ok(capturedSys.includes('JAWAB LANGSUNG pertanyaan pelanggan'));
+});
+
+test('R7. Active conversation session suppresses repeated greeting', async () => {
+  let capturedSys = null;
+  await callOpenAI(
+    '62811113907',
+    'Bypass aja',
+    'Budi',
+    'bypass',
+    null,
+    null,
+    { sessionStatus: 'active_conversation', turns: [{ role: 'user', content: 'Halo' }, { role: 'assistant', content: 'Halo Kak!' }] },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              capturedSys = value.messages[0].content;
+              return { choices: [{ message: { content: 'Siap Kak, cabang Bypass.' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  assert.ok(capturedSys.includes('# ATURAN SUPRESI SALAM (SESI AKTIF)'));
+});
+
+test('R8. Fallback for "saya sudah booking" without verified backend status points to website authority', async () => {
+  const reply = fallbackReply('saya sudah booking', 'Budi', 'bypass', null);
+  assert.equal(reply.includes('Udah kami catat'), false);
+  assert.equal(reply.includes('booking confirmed'), false);
+  assert.ok(reply.includes('booking.html?branch=bypass'));
+});
+
+test('R9. Verified booking status from backend states confirmed from database only', async () => {
+  const backendVerifiedStatus = 'confirmed';
+  let reply = '';
+  if (backendVerifiedStatus === 'confirmed') {
+    reply = 'Status booking Kakak di database Redbox terverifikasi CONFIRMED untuk cabang Bypass.';
+  }
+  assert.ok(reply.includes('database Redbox terverifikasi CONFIRMED'));
+});

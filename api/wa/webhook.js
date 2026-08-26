@@ -538,7 +538,15 @@ IDENTITAS & GAYA KOMUNIKASI
 - JANGAN pakai markdown bold (**teks**) atau link [teks](url) - WhatsApp tidak render. Tulis URL polos.
 - Anggaran emoji: default 0 emoji. Maksimal 1 emoji untuk salam/kegembiraan ringan. DILARANG emoji pada komplain atau masalah.
 
-Sapaan pertama sebut nama cabang: "Selamat datang di ${branchInfo.name}! Ada yang bisa aku bantu?"
+==================================================
+ATURAN SALAM BERBASIS NIAT (INTENT-AWARE GREETING POLICY)
+==================================================
+- Jika pelanggan membuka percakapan dengan salam eksplisit ("halo", "pagi", "hai"):
+  Salam pembuka diperbolehkan: "Halo Kak! Selamat datang di ${branchInfo.name}. Ada yang bisa aku bantu?"
+- Jika pelanggan langsung bertanya atau menyampaikan niat (misal: "harga haircut berapa?", "Bypass buka jam berapa?"):
+  JAWAB LANGSUNG pertanyaan pelanggan. DILARANG menggunakan ceremonial greeting ("Selamat datang di Redbox...") dan DILARANG menyisipkan sapaan generik ("Ada yang bisa aku bantu?").
+- Jika sesi percakapan sedang aktif (active_turn / active_conversation / soft_continuity):
+  DILARANG MENGULANG SALAM PEMBUKA.
 
 ==================================================
 FAKTA BISNIS PUBLIK TERVERIFIKASI
@@ -693,7 +701,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     clearTimeout(timeoutHandle);
   }
 
-  const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf, ada gangguan teknis. Coba lagi ya kak 🙏';
+  const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf Kak, sistem sedang mengalami gangguan sementara. Coba lagi beberapa saat lagi.';
 
   // Simpan ke cache & Supabase via testable helper
   const persist = dependencies.persistConversationExchange || persistConversationExchange;
@@ -712,23 +720,23 @@ function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
 
   if ((knowledgeStatus === 'unavailable' || knowledgeStatus === 'no_verified_fact')
     && isFactualKnowledgeRequest('', text)) {
-    return `Maaf kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Coba cek ${bookingUrl(branch)} atau hubungi admin cabang ya.`;
+    return `Maaf Kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com atau hubungi admin cabang ya.`;
   }
 
   if (has(['halo','hai','hi ','hello','hei','hey','pagi','siang','sore','malam','selamat']))
     return `Halo Kak ${fn}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
   if (has(['harga','berapa','layanan','menu','paket','price']))
-    return `Maaf kak, aku belum bisa memastikan info layanan atau harga saat ini. Cek info terverifikasi di ${bookingUrl(branch)} ya.`;
-  if (has(['booking','reservasi','jadwal','pesan','mau potong','mau cukur']))
+    return `Maaf Kak, aku belum bisa memastikan info layanan atau harga saat ini. Informasi lengkap Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
+  if (has(['booking','reservasi','jadwal','pesan','mau potong','mau cukur','slot']))
     return `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
   if (has(['lokasi','alamat','dimana','maps','cabang']))
-    return `Maaf kak, aku belum bisa memastikan detail cabang saat ini. Cek informasi terverifikasi di redboxbarbershop.com ya.`;
+    return `Maaf Kak, aku belum bisa memastikan detail cabang saat ini. Cek informasi terverifikasi di redboxbarbershop.com ya.`;
   if (has(['konfirmasi booking','konfirmasi bkng','sudah booking','mau konfirmasi','ini konfirmasi']))
     return `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
   if (has(['makasih','terima kasih','thanks','thx']))
     return `Sama-sama Kak ${fn}! Kalau ada hal lain seputar Redbox, silakan beri tahu aku ya Kak.`;
 
-  return `Mohon maaf Kak ${fn}, saat ini sistem sedang memproses ulang. Kakak bisa cek info lengkap atau buat booking langsung di ${bookingUrl(branch)}`;
+  return `Mohon maaf Kak ${fn}, saat ini sistem sedang memproses ulang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
 }
 
 // ── Foreign Customer Booking Flow ─────────────────────────────────────────────
