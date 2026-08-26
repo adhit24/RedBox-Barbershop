@@ -163,7 +163,8 @@ test('Task 12 (1, 9): ordinary Reddy path loads history ONCE per message', async
     loadConversationHistory: mockLoadHistory,
     orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_question', action: 'answer_general' }),
     executeReddy: async () => ({ used: 'reddy_agent', reply: 'Generated reply text', sendResult: { status: 'sent' } }),
-    generateReddy: async (sender, msg, name, branch, facts, conversationContext) => {
+    generateReddy: async (sender, msg, name, branch, knowledgeFacts, facts, conversationContext) => {
+      assert.equal(knowledgeFacts, null);
       assert.equal(Boolean(conversationContext), true);
       assert.equal(conversationContext.turns.length, 2);
       return 'Generated reply text';

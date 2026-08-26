@@ -304,7 +304,8 @@ test('Task 11 (1): customer_history triggers CRM once, safe envelope, Reddy once
         },
       };
     },
-    generateReddy: async (sender, msg, name, branch, factsContext) => {
+    generateReddy: async (sender, msg, name, branch, knowledgeFactsContext, factsContext) => {
+      assert.equal(knowledgeFactsContext, null);
       reddyCalls++;
       assert.equal(factsContext.includes('<customer_facts_json>'), true);
       assert.equal(factsContext.includes('"name": "Adhit"'), true);
@@ -489,7 +490,8 @@ test('Task 11 (10): malicious WhatsApp text cannot alter TrustedIdentity or CRM 
         unknown_fields: [],
       },
     }),
-    generateReddy: async (sender, msg, name, branch, factsContext) => {
+    generateReddy: async (sender, msg, name, branch, knowledgeFactsContext, factsContext) => {
+      assert.equal(knowledgeFactsContext, null);
       passedFactsContext = factsContext;
       return 'Barber favorit kamu adalah Budi';
     },

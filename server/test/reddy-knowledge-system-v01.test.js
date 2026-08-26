@@ -19,6 +19,7 @@ const {
   serializeKnowledgeForPrompt,
   createUnavailableKnowledgeContext,
 } = require('../agents/reddy/knowledge/knowledgeContext');
+const { handleMessage, callOpenAI } = require('../../api/wa/webhook');
 
 function cloneKnowledge() {
   return structuredClone(REDBOX_KNOWLEDGE);
@@ -358,4 +359,205 @@ test('creates an explicit unavailable context without facts', () => {
   assert.deepEqual(context.topics, ['services']);
   assert.deepEqual(context.facts, []);
   assert.equal(context.fact_count, 0);
+});
+
+test('runtime resolves a factual Reddy request once, generates once, and sends once', async () => {
+  let resolverCalls = 0;
+  let historyCalls = 0;
+  let orchestratorCalls = 0;
+  let generationCalls = 0;
+  let sendCalls = 0;
+  let receivedKnowledge = null;
+
+  const result = await handleMessage({
+    from: '62811113001', name: 'Kak Test', text: 'Harga Gentleman Grooming di Bypass berapa?', branchFromPayload: 'bypass',
+  }, {
+    loadConversationHistory: async () => { historyCalls++; return []; },
+    orchestrate: async () => {
+      orchestratorCalls++;
+      return { route: 'reddy_agent', agent: 'reddy_agent', intent: 'service_price', action: 'answer_price' };
+    },
+    resolveKnowledge: ({ intent, text, branch }) => {
+      resolverCalls++;
+      assert.deepEqual({ intent, text, branch }, {
+        intent: 'service_price', text: 'Harga Gentleman Grooming di Bypass berapa?', branch: 'bypass',
+      });
+      return resolveKnowledgeContext({ intent, text, branch });
+    },
+    generateReddy: async (_from, _text, _name, _branch, knowledgeFactsContext) => {
+      generationCalls++;
+      receivedKnowledge = knowledgeFactsContext;
+      return 'Gentleman Grooming di Bypass Rp95.000 kak.';
+    },
+    send: async () => { sendCalls++; return { status: 'sent' }; },
+    logTelemetry: () => {},
+  });
+
+  assert.equal(historyCalls, 1);
+  assert.equal(orchestratorCalls, 1);
+  assert.equal(resolverCalls, 1);
+  assert.equal(generationCalls, 1);
+  assert.equal(sendCalls, 1);
+  assert.match(receivedKnowledge, /reddy_knowledge_context\.v0\.1/);
+  assert.equal(result.used, 'reddy_agent');
+});
+
+test('runtime leaves general chat outside the verified-knowledge zone', async () => {
+  let resolverCalls = 0;
+  let receivedKnowledge = 'not-run';
+
+  await handleMessage({ from: '62811113002', text: 'Halo Reddy, apa kabar?', branchFromPayload: 'bypass' }, {
+    loadConversationHistory: async () => [],
+    orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'general_chat', action: 'chat' }),
+    resolveKnowledge: () => { resolverCalls++; return createUnavailableKnowledgeContext(); },
+    generateReddy: async (_from, _text, _name, _branch, knowledgeFactsContext) => {
+      receivedKnowledge = knowledgeFactsContext;
+      return 'Baik kak!';
+    },
+    send: async () => ({ status: 'sent' }),
+    logTelemetry: () => {},
+  });
+
+  assert.equal(resolverCalls, 0);
+  assert.equal(receivedKnowledge, null);
+});
+
+test('runtime gives a factual route an explicit unavailable knowledge envelope when resolution fails', async () => {
+  let receivedKnowledge = null;
+  let sendCalls = 0;
+
+  const result = await handleMessage({ from: '62811113003', text: 'Harga Hair Spa berapa?', branchFromPayload: 'bypass' }, {
+    loadConversationHistory: async () => [],
+    orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'service_price', action: 'answer_price' }),
+    resolveKnowledge: () => { throw new Error('knowledge unavailable'); },
+    generateReddy: async (_from, _text, _name, _branch, knowledgeFactsContext) => {
+      receivedKnowledge = knowledgeFactsContext;
+      throw new Error('Reddy unavailable');
+    },
+    send: async () => { sendCalls++; return { status: 'sent' }; },
+    logTelemetry: () => {},
+  });
+
+  assert.match(receivedKnowledge, /"status":"unavailable"/);
+  assert.match(receivedKnowledge, /reddy_knowledge_context\.v0\.1/);
+  assert.equal(result.used, 'static_fallback');
+  assert.match(result.reply, /info terverifikasi/i);
+  assert.equal(result.reply.includes('Rp'), false);
+  assert.equal(sendCalls, 1);
+});
+
+test('runtime preserves the points shortcut with zero knowledge, history, orchestrator, and Reddy calls', async () => {
+  let resolverCalls = 0;
+  let historyCalls = 0;
+  let orchestratorCalls = 0;
+  let reddyCalls = 0;
+
+  const result = await handleMessage({ from: '62811113004', text: 'Poin saya berapa?', branchFromPayload: 'bypass' }, {
+    resolveKnowledge: () => { resolverCalls++; },
+    loadConversationHistory: async () => { historyCalls++; return []; },
+    orchestrate: async () => { orchestratorCalls++; },
+    generateReddy: async () => { reddyCalls++; return 'unused'; },
+    executeOrchestration: async () => ({ execution_status: 'unauthorized' }),
+    send: async () => ({ status: 'sent' }),
+    logTelemetry: () => {},
+  });
+
+  assert.equal(resolverCalls, 0);
+  assert.equal(historyCalls, 0);
+  assert.equal(orchestratorCalls, 0);
+  assert.equal(reddyCalls, 0);
+  assert.equal(result.used, 'crm_points');
+});
+
+test('knowledge, CRM facts, and conversation context remain distinct adapter inputs', async () => {
+  let received = null;
+  const customerIntelligence = {
+    intent: 'customer_history', status: 'success', customer_found: true,
+    facts: { favorite_barber: 'Budi' }, unknown_fields: [],
+  };
+  const knowledge = buildKnowledgeContext({ topics: ['services'], facts: [{ id: 'hair-spa', category: 'service' }] });
+
+  await handleMessage({ from: '62811113005', text: 'Harga Hair Spa?', branchFromPayload: 'bypass', trustedIdentity: {} }, {
+    loadConversationHistory: async () => [{ role: 'user', content: 'Riwayat lama.' }],
+    orchestrate: async () => ({ route: 'crm_agent', agent: 'crm_agent', intent: 'customer_history', action: 'get_history' }),
+    executeIntelligence: async () => ({ execution_status: 'success', intelligence: customerIntelligence }),
+    resolveKnowledge: () => knowledge,
+    generateReddy: async (...args) => { received = args.slice(4); return 'Jawaban aman.'; },
+    send: async () => ({ status: 'sent' }),
+    logTelemetry: () => {},
+  });
+
+  assert.equal(received.length, 3);
+  assert.match(received[0], /redbox_knowledge_json/);
+  assert.match(received[1], /customer_facts_json/);
+  assert.equal(received[2].trust, 'untrusted_conversation');
+});
+
+test('callOpenAI orders system policy, knowledge, CRM, history, and current user message', async () => {
+  let request = null;
+  const knowledgeFactsContext = serializeKnowledgeForPrompt(buildKnowledgeContext({
+    topics: ['services'], facts: [{ id: 'hair-spa', category: 'service', price_idr: 110000 }],
+  }));
+  const customerFactsContext = '<customer_facts_json>{"favorite_barber":"Budi"}</customer_facts_json>';
+
+  await callOpenAI(
+    '62811113006',
+    'Harga Hair Spa sekarang?',
+    'Kak Test',
+    'bypass',
+    knowledgeFactsContext,
+    customerFactsContext,
+    {
+      turns: [
+        { role: 'user', content: 'Saya pernah datang kemarin.' },
+        { role: 'assistant', content: 'Baik kak.' },
+      ],
+    },
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async value => {
+              request = value;
+              return { choices: [{ message: { content: 'Rp110.000 kak.' } }] };
+            },
+          },
+        },
+      },
+      persistConversationExchange: async () => {},
+    },
+  );
+
+  const system = request.messages[0].content;
+  assert.ok(system.indexOf('# ATURAN PERCAKAPAN') < system.indexOf('# ZONA B1'));
+  assert.ok(system.indexOf('# ZONA B1') < system.indexOf('# ZONA B2'));
+  assert.equal((system.match(/<redbox_knowledge_json>/g) || []).length, 1);
+  assert.ok((system.match(/<customer_facts_json>/g) || []).length >= 1);
+  assert.deepEqual(request.messages.slice(1).map(message => message.role), ['user', 'assistant', 'user']);
+  assert.equal(request.messages.at(-1).content, 'Harga Hair Spa sekarang?');
+});
+
+test('runtime telemetry emits only bounded knowledge metadata, never fact values or customer input', async () => {
+  const events = [];
+  const sensitiveMessage = 'Harga Hair Spa untuk 62811113007 dan nama Rahasia?';
+
+  await handleMessage({ from: '62811113007', text: sensitiveMessage, branchFromPayload: 'bypass' }, {
+    loadConversationHistory: async () => [],
+    orchestrate: async () => ({ route: 'reddy_agent', agent: 'reddy_agent', intent: 'service_price', action: 'answer_price' }),
+    resolveKnowledge: () => buildKnowledgeContext({
+      topics: ['services'], facts: [{ id: 'hair-spa', price_idr: 110000, internal_note: 'not emitted' }],
+    }),
+    generateReddy: async () => 'Harga sudah tersedia.',
+    send: async () => ({ status: 'sent' }),
+    logTelemetry: event => events.push(event),
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].knowledge_used, true);
+  assert.equal(events[0].knowledge_status, 'available');
+  assert.deepEqual(events[0].knowledge_topics, ['services']);
+  assert.equal(events[0].knowledge_fact_count, 1);
+  assert.equal(JSON.stringify(events[0]).includes(sensitiveMessage), false);
+  assert.equal(JSON.stringify(events[0]).includes('110000'), false);
+  assert.equal(JSON.stringify(events[0]).includes('internal_note'), false);
 });

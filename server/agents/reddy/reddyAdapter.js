@@ -1,6 +1,7 @@
 'use strict';
 
 const { buildCustomerFactsContext } = require('./customerFactsContext');
+const { serializeKnowledgeForPrompt } = require('./knowledge/knowledgeContext');
 
 /**
  * Redbox Reddy Execution Adapter v0.1
@@ -10,7 +11,7 @@ const { buildCustomerFactsContext } = require('./customerFactsContext');
 /**
  * Executes Reddy conversational generation for an orchestrated message with optional CRM runtime facts injection
  * and conversation context continuity.
- * @param {object} params - Input parameters { from, name, text, device, branch, trustedIdentity, customerIntelligence, conversationContext }
+ * @param {object} params - Input parameters { from, name, text, device, branch, trustedIdentity, knowledgeContext, customerIntelligence, conversationContext }
  * @param {object} dependencies - Dependencies { callOpenAI, sendWA }
  * @returns {Promise<object>} Execution result { used: 'reddy_agent', reply, sendResult, error }
  */
@@ -20,6 +21,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     name,
     text,
     branch = 'bypass',
+    knowledgeContext = null,
     customerIntelligence = null,
     conversationContext = null,
   } = params;
@@ -33,6 +35,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   if (customerIntelligence) {
     factsContext = buildCustomerFactsContext(customerIntelligence);
   }
+  const knowledgeFactsContext = knowledgeContext ? serializeKnowledgeForPrompt(knowledgeContext) : null;
 
   let reply;
   let used = 'reddy_agent';
@@ -42,7 +45,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || null;
 
   try {
-    reply = await callOpenAI(from, text, verifiedCrmName, branch, factsContext, conversationContext);
+    reply = await callOpenAI(from, text, verifiedCrmName, branch, knowledgeFactsContext, factsContext, conversationContext);
   } catch (err) {
     throw err;
   }
