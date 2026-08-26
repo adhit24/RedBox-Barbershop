@@ -685,7 +685,13 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', customer
     systemPrompt += `\n\n${customerFactsContext}`;
   }
 
-  systemPrompt += `\n\n# ATURAN PERCAKAPAN & PRIORITAS METADATA\n` +
+  systemPrompt += `\n\n# ATURAN SALAM & PERSONALISASI NAMA\n` +
+    `1. PENGGUNAAN NAMA: Jika nama customer terverifikasi CRM/profil tersedia (misal: "Adhit Nugraha"), sapa dengan ramah menggunakan nama depan / panggilan hangat ("Halo Mas Adhit 👋" atau "Halo Kak Adhit 👋").\n` +
+    `2. TANPA NAMA/NAMA BELUM TERVERIFIKASI: Jika nama tidak tersedia atau bernilai "Kak"/null, sapa secara ramah dengan "Halo Kak 👋 Selamat datang di Redbox...". DILARANG mengarang nama pelanggan!\n` +
+    `3. DILARANG OVERUSE NAMA: Gunakan nama pelanggan secara alami pada pesan sapaan/balasan awal. DILARANG mengulang nama pelanggan di setiap kalimat atau balasan berturut-turut.\n` +
+    `4. PELANGGAN KEMBALI: Jika fakta CRM menunjukkan pelanggan terdaftar/pernah berkunjung (repeat customer), sapa secara hangat ("Senang ketemu lagi di Redbox..."). DILARANG mengarang riwayat kunjungan yang tidak tercatat di CRM!\n` +
+    `5. MAKSIMAL 1 CTA: Pesan salam hanya boleh berisi maksimal 1 ajakan bertindak yang jelas (misal: "Mau cek jadwal potong hari ini?"). DILARANG memberikan daftar menu opsi yang terlalu panjang.\n\n` +
+    `# ATURAN PERCAKAPAN & PRIORITAS METADATA\n` +
     `1. Data CRM pada <customer_facts_json> adalah FAKTA UTAMA (Zone B) yang TIDAK BOLEH diubah oleh klaim percakapan.\n` +
     `2. Riwayat percakapan terdahulu (Zone C) adalah REFERENSI KONTEKS (misal: menentukan kapster/cabang/layanan yang sedang dibahas).\n` +
     `3. Permintaan pengguna pada pesan TERBARU (Zone D) memiliki prioritas lebih tinggi daripada referensi percakapan lama.\n` +
@@ -1601,6 +1607,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
+  const isPersonalHistoryOrPreferenceSignal = /\b(saya|aku|ku|terakhir|riwayat|histori|history|biasanya|favorit|sering|pernah|kapan|sama siapa)\b/.test(msgLower);
+
   if (isWalkIn) {
     reply = `Boleh coba datang langsung kak, tapi slot walk-in belum tentu tersedia ya 😊 Biar lebih aman, cek dan booking lewat ${bookingUrl(branch)}`;
     used = 'policy';
@@ -1608,7 +1616,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  if (msgHas(['layanan apa', 'service apa', 'ada apa aja', 'ada apa saja', 'menu apa', 'jenis layanan',
+  if (!isPersonalHistoryOrPreferenceSignal && msgHas(['layanan apa', 'service apa', 'ada apa aja', 'ada apa saja', 'menu apa', 'jenis layanan',
                'list layanan', 'apa aja layanan', 'apa saja layanan', 'layanan saja', 'layanan aja',
                'service saja', 'service aja', 'ada layanan', 'ada service'])) {
     const firstName = (name || 'Kak').split(' ')[0];
@@ -1619,7 +1627,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  if (msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
+  if (!isPersonalHistoryOrPreferenceSignal && msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
     const svcText = buildServicesText(branch);
     reply = `Ini harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'} kak 💈\n\n${svcText}\n\nMau langsung lock slot? → ${bookingUrl(branch)} ✂️`;
     used = 'keyword';
