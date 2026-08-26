@@ -169,6 +169,19 @@ test('does not turn an unknown branch into a known branch', () => {
   assert.equal(context.facts.length, 0);
 });
 
+test('an explicit unknown branch wins over a known alias mentioned elsewhere', () => {
+  const context = resolveKnowledgeContext({
+    intent: 'service_price',
+    text: 'Saya dari Tegal, berapa harga Gentleman Grooming di cabang Bandung?',
+    branch: 'bypass',
+  });
+  const service = factById(context, 'gentleman-grooming');
+
+  assert.deepEqual(context.unknown_fields, ['branch']);
+  assert.equal(service.price_scope, undefined);
+  assert.equal(service.price_idr, undefined);
+});
+
 test('resolves audited service aliases but not fuzzy service fragments', () => {
   const resolved = resolveKnowledgeContext({ intent: 'service_price', text: 'Harga potong rambut di bypass?' });
   const fuzzy = resolveKnowledgeContext({ intent: 'service_price', text: 'Harga potongan rambut di bypass?' });
@@ -254,6 +267,14 @@ test('returns no facts for irrelevant general chat', () => {
   assert.deepEqual(context.topics, []);
 });
 
+test('explicit general chat ignores incidental known branch mentions', () => {
+  const context = resolveKnowledgeContext({ intent: 'general_chat', text: 'Halo, saya dari Bypass. Apa kabar?' });
+
+  assert.equal(context.status, 'no_verified_fact');
+  assert.deepEqual(context.facts, []);
+  assert.deepEqual(context.topics, []);
+});
+
 test('supports explicit public category intents without depending on message wording', () => {
   const branches = resolveKnowledgeContext({ intent: 'branches', text: '' });
   const policy = resolveKnowledgeContext({ intent: 'operational_policy', text: '' });
@@ -271,6 +292,21 @@ test('bounds resolver output by whole facts and serialized character count', () 
   assert.ok(JSON.stringify(context).length <= 1800);
   assert.equal(context.fact_count, context.facts.length);
   assert.equal(context.bounded, true);
+});
+
+test('enforces hard prompt caps using escaped serialized payload length', () => {
+  const knowledge = cloneKnowledge();
+  knowledge.services[0].description = '<'.repeat(3400);
+  const context = resolveKnowledgeContext({
+    intent: 'service_price', text: 'Harga Gentleman Grooming?', knowledge, maxFacts: 999, maxChars: 99999,
+  });
+  const serialized = serializeKnowledgeForPrompt(context);
+  const payload = serialized.slice('<redbox_knowledge_json>'.length, -'</redbox_knowledge_json>'.length);
+
+  assert.ok(context.fact_count <= 12);
+  assert.ok(serialized.length <= 4000);
+  assert.equal(context.bounded, true);
+  assert.doesNotThrow(() => JSON.parse(payload));
 });
 
 test('serializes one injection-safe knowledge delimiter pair with JSON round-trip recovery', () => {

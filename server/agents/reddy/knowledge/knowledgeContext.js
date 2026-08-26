@@ -3,6 +3,8 @@
 const CONTEXT_VERSION = 'reddy_knowledge_context.v0.1';
 const DELIMITER_OPEN = '<redbox_knowledge_json>';
 const DELIMITER_CLOSE = '</redbox_knowledge_json>';
+const MAX_KNOWLEDGE_FACTS = 12;
+const MAX_KNOWLEDGE_PROMPT_CHARS = 4000;
 const VALID_STATUSES = new Set(['available', 'no_verified_fact', 'unavailable']);
 
 function strings(values) {
@@ -43,9 +45,16 @@ function serializeKnowledgeForPrompt(value) {
   return `${DELIMITER_OPEN}${json}${DELIMITER_CLOSE}`;
 }
 
+function serializedKnowledgeLength(value) {
+  return serializeKnowledgeForPrompt(value).length;
+}
+
 module.exports = {
   CONTEXT_VERSION,
+  MAX_KNOWLEDGE_FACTS,
+  MAX_KNOWLEDGE_PROMPT_CHARS,
   buildKnowledgeContext,
   serializeKnowledgeForPrompt,
+  serializedKnowledgeLength,
   createUnavailableKnowledgeContext,
 };

@@ -2,10 +2,15 @@
 
 const { REDBOX_KNOWLEDGE } = require('./redboxKnowledge');
 const { validateKnowledge } = require('./validateKnowledge');
-const { buildKnowledgeContext } = require('./knowledgeContext');
+const {
+  MAX_KNOWLEDGE_FACTS,
+  MAX_KNOWLEDGE_PROMPT_CHARS,
+  buildKnowledgeContext,
+  serializedKnowledgeLength,
+} = require('./knowledgeContext');
 
-const DEFAULT_MAX_FACTS = 12;
-const DEFAULT_MAX_CHARS = 4000;
+const DEFAULT_MAX_FACTS = MAX_KNOWLEDGE_FACTS;
+const DEFAULT_MAX_CHARS = MAX_KNOWLEDGE_PROMPT_CHARS;
 const WORD = 'a-z0-9';
 
 function normalize(value) {
@@ -27,14 +32,21 @@ function resolveByAliases(items, text) {
   return items.find(item => [item.id, ...item.aliases].some(alias => includesAlias(text, alias)));
 }
 
+function resolveExplicitBranch(branches, text) {
+  return branches.find(branch => [branch.id, ...branch.aliases].some(alias => {
+    const normalizedAlias = normalize(alias);
+    const pattern = escapeRegex(normalizedAlias).replace(/\ /g, '\\s+');
+    return new RegExp(`(^|[^${WORD}])(?:cabang|branch)\\s+(?:di\\s+)?${pattern}(?=$|[^${WORD}])`).test(text);
+  }));
+}
+
 function trustedBranch(branches, branch) {
   const id = normalize(branch);
   return branches.find(item => item.id === id);
 }
 
-function hasUnknownExplicitBranch(text, knownBranch) {
-  if (knownBranch) return false;
-  return /(?:^|\s)(?:cabang|branch)\s+[^\s?.!,]+/.test(text);
+function hasExplicitBranchReference(text) {
+  return new RegExp(`(^|[^${WORD}])(?:cabang|branch)\\s+`).test(text);
 }
 
 function dateInJakarta(now) {
@@ -96,6 +108,10 @@ function maxNumber(value, fallback) {
   return Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
+function hardLimit(value, fallback, ceiling) {
+  return Math.min(maxNumber(value, fallback), ceiling);
+}
+
 function boundContext({ topics, unknownFields, facts, maxFacts, maxChars }) {
   const candidates = facts.slice(0, maxFacts);
   let chosen = [];
@@ -104,7 +120,7 @@ function boundContext({ topics, unknownFields, facts, maxFacts, maxChars }) {
   for (const fact of candidates) {
     const tentative = [...chosen, fact];
     const context = buildKnowledgeContext({ topics, unknown_fields: unknownFields, facts: tentative, bounded: dropped });
-    if (JSON.stringify(context).length > maxChars) {
+    if (serializedKnowledgeLength(context) > maxChars) {
       dropped = true;
       continue;
     }
@@ -112,7 +128,7 @@ function boundContext({ topics, unknownFields, facts, maxFacts, maxChars }) {
   }
 
   let context = buildKnowledgeContext({ topics, unknown_fields: unknownFields, facts: chosen, bounded: dropped });
-  while (chosen.length && JSON.stringify(context).length > maxChars) {
+  while (chosen.length && serializedKnowledgeLength(context) > maxChars) {
     chosen = chosen.slice(0, -1);
     dropped = true;
     context = buildKnowledgeContext({ topics, unknown_fields: unknownFields, facts: chosen, bounded: dropped });
@@ -126,16 +142,18 @@ function resolveKnowledgeContext({
 } = {}) {
   validateKnowledge(knowledge);
   const normalizedText = normalize(text);
-  const selectedTextBranch = resolveByAliases(knowledge.branches, normalizedText);
+  const hasExplicitBranch = hasExplicitBranchReference(normalizedText);
+  const explicitTextBranch = hasExplicitBranch ? resolveExplicitBranch(knowledge.branches, normalizedText) : undefined;
+  const selectedTextBranch = hasExplicitBranch ? explicitTextBranch : resolveByAliases(knowledge.branches, normalizedText);
   const selectedHandlerBranch = trustedBranch(knowledge.branches, branch);
   const unknownFields = [];
-  const explicitUnknownBranch = hasUnknownExplicitBranch(normalizedText, selectedTextBranch);
+  const explicitUnknownBranch = hasExplicitBranch && !explicitTextBranch;
   const selectedBranch = explicitUnknownBranch ? undefined : (selectedTextBranch || selectedHandlerBranch);
   if (explicitUnknownBranch || (branch && !selectedHandlerBranch && !selectedTextBranch)) unknownFields.push('branch');
 
   const service = resolveByAliases(knowledge.services, normalizedText);
   const signals = topicSignals(intent, normalizedText, service, selectedBranch);
-  if (signals.general && !Object.entries(signals).some(([key, value]) => key !== 'general' && value)) {
+  if (signals.general) {
     return buildKnowledgeContext({ status: 'no_verified_fact', topics: [], facts: [], unknown_fields: [] });
   }
 
@@ -212,8 +230,8 @@ function resolveKnowledgeContext({
     topics,
     unknownFields: [...new Set(unknownFields)],
     facts,
-    maxFacts: maxNumber(maxFacts, DEFAULT_MAX_FACTS),
-    maxChars: maxNumber(maxChars, DEFAULT_MAX_CHARS),
+    maxFacts: hardLimit(maxFacts, DEFAULT_MAX_FACTS, MAX_KNOWLEDGE_FACTS),
+    maxChars: hardLimit(maxChars, DEFAULT_MAX_CHARS, MAX_KNOWLEDGE_PROMPT_CHARS),
   });
 }
 
