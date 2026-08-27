@@ -141,6 +141,19 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
   const priorServiceChoice = /\b(pilih|layanan|service|treatment|grooming)\b/.test(contextText);
   const priorBranchChoice = /\b(pilih|cabang|outlet|bypass|samadikun|csb|sumber|tegal)\b/.test(contextText);
   const currentBranchChoice = /^(?:redbox\s+)?(?:bypass|samadikun|csb(?: mall)?|sumber|tegal)[.!\s]*$/.test(normalized);
+  const membershipTimeSemantic = /\b(kapan|sejak|mulai|pertama)\b/.test(normalized);
+  const membershipActivationSemantic = /\b(aktif|active|aktivasi|diaktifkan)\b/.test(normalized);
+  const currentPaidPlanScope = /\b(paket(?:nya)?|benefit|berbayar|paid|langganan)\b/.test(normalized);
+  const currentAccountScope = /\b(akun(?:nya)?|terdaftar|registrasi)\b/.test(normalized);
+  const currentPaidPlanSelection = /^(?:yang\s+)?(?:paket(?:nya)?|membership\s+berbayar|paid\s+membership)[?!.\s]*$/.test(normalized);
+  const currentAccountSelection = /^(?:yang\s+)?(?:akun(?:nya)?|terdaftar|registrasi)[?!.\s]*$/.test(normalized);
+  const priorAccountScope = /\b(akun|terdaftar|registrasi|daftar)\b/i.test(contextText);
+  const priorPaidPlanScope = /\b(paket|benefit|berbayar|paid|langganan)\b/i.test(contextText);
+  const publicMembershipEnrollment = (
+    /\b(cara|gimana|bagaimana|syarat)\b.*\b(jadi|daftar|mendaftar)\b.*\b(member|membership)\b/.test(normalized)
+    || /\b(cara|gimana|bagaimana|syarat)\b.*\b(member|membership)\b.*\b(jadi|daftar|mendaftar)\b/.test(normalized)
+    || /\b(kalau|jika)\b.*\b(mau|ingin)\b.*\b(jadi|daftar|mendaftar)\b.*\b(member|membership)\b/.test(normalized)
+  );
 
   // Contextual ellipsis wins over an independently classified business intent.
   if (hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
@@ -219,26 +232,44 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     sessionBehavior = 'close';
     resolved = { ...resolved, intent: 'general_question', route: 'reddy_agent', agent: 'reddy_agent', action: 'close_conversation' };
     policy = { required_sources: [], response_strategy: 'close_conversation' };
-  } else if (hasActiveContext && /\b(aktif|active)\b.*\b(kapan|sejak|mulai)\b|\b(kapan|sejak|mulai)\b.*\b(aktif|active)\b/.test(normalized)
-    && /\b(akun|terdaftar|registrasi|daftar)\b/i.test(contextText)) {
+  } else if (currentPaidPlanScope
+    && ((membershipActivationSemantic && membershipTimeSemantic) || (hasActiveContext && currentPaidPlanSelection))) {
+    conversationalAct = 'customer_fact_question';
+    contextReference = 'explicit_paid_plan_activation_scope';
+    resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
+    policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
+  } else if (currentAccountScope
+    && ((membershipActivationSemantic || membershipTimeSemantic) || (hasActiveContext && currentAccountSelection))) {
+    conversationalAct = 'customer_fact_question';
+    contextReference = 'explicit_member_account_scope';
+    resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
+    policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
+  } else if (hasActiveContext && membershipActivationSemantic && membershipTimeSemantic
+    && priorAccountScope && !priorPaidPlanScope) {
     conversationalAct = 'customer_fact_question';
     continuationType = 'contextual';
     contextReference = 'prior_account_registration_discussion';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
-  } else if (hasActiveContext && /\b(aktif|active)\b.*\b(kapan|sejak|mulai)\b|\b(kapan|sejak|mulai)\b.*\b(aktif|active)\b/.test(normalized)
-    && /\b(paket|benefit|berbayar|paid|langganan)\b/i.test(contextText)) {
+  } else if (hasActiveContext && membershipActivationSemantic && membershipTimeSemantic
+    && priorPaidPlanScope && !priorAccountScope) {
     conversationalAct = 'customer_fact_question';
     continuationType = 'contextual';
     contextReference = 'prior_paid_membership_discussion';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
+  } else if (publicMembershipEnrollment) {
+    conversationalAct = 'business_fact_question';
+    resolved = { ...resolved, intent: 'membership_inquiry', route: 'reddy_agent', agent: 'reddy_agent', action: 'explain_membership' };
+    policy = sourcePolicyFor(resolved);
   } else if (/\b(paket|benefit|berbayar|paid)\b.*\b(membership|member)\b|\b(membership|member)\b.*\b(paket|benefit|berbayar|paid)\b/.test(normalized)) {
     conversationalAct = 'customer_fact_question';
+    contextReference = 'explicit_paid_plan_scope';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
-  } else if (/\b(aku|saya|terdaftar|pertama|akun)\b.*\bmember\b.*\b(sejak|mulai|kapan)\b|\b(sejak|mulai|kapan)\b.*\bmember\b.*\b(aku|saya|terdaftar|pertama|akun)\b|\b(terdaftar member|jadi member|pertama jadi member)\b/.test(normalized)) {
+  } else if (membershipTimeSemantic && /\b(member|membership)\b/.test(normalized) && !membershipActivationSemantic) {
     conversationalAct = 'customer_fact_question';
+    contextReference = 'explicit_member_since_scope';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
   } else if ((/\b(membership|member)\b.*\b(aktif|active)\b|\b(aktif|active)\b.*\b(membership|member)\b/.test(normalized)

@@ -523,3 +523,109 @@ test('P8. activation timestamp without source metadata is unavailable quality', 
   assert.equal(envelope.facts.membership_plan_activated_at, '2026-07-01T00:00:00Z');
   assert.equal(envelope.fact_quality.paid_plan_activation, 'unavailable');
 });
+
+// --- PR REVIEW ROUTING CORRECTIONS (R1 - R8) ---
+
+const mixedMembershipClarificationContext = {
+  history_status: 'available',
+  sessionStatus: 'active_conversation',
+  turns: [{
+    role: 'assistant',
+    content: 'Maksud Kak, sejak kapan terdaftar sebagai member Redbox, atau sejak kapan paket membership-nya aktif?',
+  }],
+};
+
+test('R1. mixed clarification history + explicit paid-plan reply uses paid-plan activation scope', () => {
+  for (const message of ['yang paket, aktif kapan?', 'paketnya', 'yang membership berbayar']) {
+    const decision = buildDecisionEnvelope({
+      message,
+      conversationContext: mixedMembershipClarificationContext,
+      decision: baseDecision,
+    });
+
+    assert.equal(decision.route, 'crm_agent', message);
+    assert.equal(decision.action, 'get_customer_profile', message);
+    assert.equal(decision.context_reference, 'explicit_paid_plan_activation_scope', message);
+    assert.equal(decision.clarification_required, false, message);
+  }
+});
+
+test('R2. mixed clarification history + explicit account reply uses member account scope', () => {
+  for (const message of ['yang akun', 'yang terdaftar']) {
+    const decision = buildDecisionEnvelope({
+      message,
+      conversationContext: mixedMembershipClarificationContext,
+      decision: baseDecision,
+    });
+
+    assert.equal(decision.route, 'crm_agent', message);
+    assert.equal(decision.action, 'get_customer_profile', message);
+    assert.equal(decision.context_reference, 'explicit_member_account_scope', message);
+    assert.equal(decision.clarification_required, false, message);
+  }
+});
+
+test('R3. current explicit paid-plan wording beats prior account context', () => {
+  const decision = buildDecisionEnvelope({
+    message: 'paket membership aktif sejak kapan?',
+    conversationContext: {
+      history_status: 'available', sessionStatus: 'active_conversation',
+      turns: [{ role: 'user', content: 'Akun member aku masih terdaftar?' }],
+    },
+    decision: baseDecision,
+  });
+
+  assert.equal(decision.context_reference, 'explicit_paid_plan_activation_scope');
+  assert.equal(decision.route, 'crm_agent');
+});
+
+test('R4. current explicit account wording beats prior paid-plan context', () => {
+  const decision = buildDecisionEnvelope({
+    message: 'akun member aku terdaftar sejak kapan?',
+    conversationContext: {
+      history_status: 'available', sessionStatus: 'active_conversation',
+      turns: [{ role: 'user', content: 'Paket membership aku aktif?' }],
+    },
+    decision: baseDecision,
+  });
+
+  assert.equal(decision.context_reference, 'explicit_member_account_scope');
+  assert.equal(decision.route, 'crm_agent');
+});
+
+test('R5. "gimana cara jadi member?" remains public membership information', () => {
+  const decision = buildDecisionEnvelope({ message: 'gimana cara jadi member?', decision: baseDecision });
+
+  assert.equal(decision.intent, 'membership_inquiry');
+  assert.equal(decision.route, 'reddy_agent');
+  assert.equal(decision.action, 'explain_membership');
+  assert.deepEqual(decision.required_sources, ['knowledge:verified_business_fact']);
+  assert.equal(decision.response_strategy, 'answer_with_knowledge_fact');
+});
+
+test('R6. "cara daftar member Redbox?" remains public membership information', () => {
+  const decision = buildDecisionEnvelope({ message: 'cara daftar member Redbox?', decision: baseDecision });
+
+  assert.equal(decision.intent, 'membership_inquiry');
+  assert.equal(decision.route, 'reddy_agent');
+  assert.equal(decision.action, 'explain_membership');
+  assert.equal(decision.response_strategy, 'answer_with_knowledge_fact');
+});
+
+test('R7. "aku jadi member sejak kapan?" remains a CRM member_since read', () => {
+  const decision = buildDecisionEnvelope({ message: 'aku jadi member sejak kapan?', decision: baseDecision });
+
+  assert.equal(decision.intent, 'customer_profile');
+  assert.equal(decision.route, 'crm_agent');
+  assert.equal(decision.context_reference, 'explicit_member_since_scope');
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
+
+test('R8. "kapan pertama jadi member?" remains a CRM member_since read', () => {
+  const decision = buildDecisionEnvelope({ message: 'kapan pertama jadi member?', decision: baseDecision });
+
+  assert.equal(decision.intent, 'customer_profile');
+  assert.equal(decision.route, 'crm_agent');
+  assert.equal(decision.context_reference, 'explicit_member_since_scope');
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
