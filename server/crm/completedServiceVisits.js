@@ -2,6 +2,14 @@
 
 const FALLBACK_DEDUP_WINDOW_MS = 15 * 60 * 1000;
 const COMPLETED_BOOKING_STATUSES = new Set(['done', 'completed']);
+const CANONICAL_BRANCH_IDS = new Set(['bypass', 'samadikun', 'csb', 'sumber', 'tegal']);
+const CANONICAL_BRANCH_DEFAULTS = new Map([
+  ['bypass', 'RedBox Bypass'],
+  ['samadikun', 'RedBox Samadikun'],
+  ['csb', 'RedBox CSB'],
+  ['sumber', 'RedBox Sumber'],
+  ['tegal', 'RedBox Tegal'],
+]);
 
 function normalizeText(value) {
   return String(value || '').trim().toLocaleLowerCase('id-ID').replace(/\s+/g, ' ');
@@ -125,6 +133,41 @@ function buildBarberResolver(barbers = []) {
   };
 }
 
+function buildBranchResolver(outlets = []) {
+  const byOutletId = new Map();
+  const byToken = new Map();
+
+  for (const [id, label] of CANONICAL_BRANCH_DEFAULTS.entries()) {
+    const branch = { id, label };
+    byToken.set(id, branch);
+    byToken.set(normalizeText(label), branch);
+  }
+
+  for (const outlet of outlets) {
+    const branchId = normalizeText(outlet?.slug);
+    if (!outlet?.id || !CANONICAL_BRANCH_IDS.has(branchId)) continue;
+    const label = cleanDisplay(outlet.name || outlet.slug) || CANONICAL_BRANCH_DEFAULTS.get(branchId) || branchId;
+    const branch = { id: branchId, label };
+    byOutletId.set(String(outlet.id), branch);
+    byToken.set(branchId, branch);
+    const normalizedLabel = normalizeText(outlet.name);
+    if (normalizedLabel) byToken.set(normalizedLabel, branch);
+  }
+
+  return function resolveBranch(outletId, rawValue) {
+    if (outletId != null && byOutletId.has(String(outletId))) {
+      return byOutletId.get(String(outletId));
+    }
+    const display = cleanDisplay(rawValue);
+    const normalized = normalizeText(display);
+    if (normalized && byToken.has(normalized)) return byToken.get(normalized);
+    return {
+      id: CANONICAL_BRANCH_IDS.has(normalized) ? normalized : null,
+      label: CANONICAL_BRANCH_DEFAULTS.get(normalized) || display,
+    };
+  };
+}
+
 function sourceRank(source) {
   if (source === 'schedule') return 3;
   if (source === 'booking') return 2;
@@ -134,7 +177,8 @@ function sourceRank(source) {
 function sameBoundedFallbackVisit(left, right) {
   if (!Number.isFinite(left.timestamp) || !Number.isFinite(right.timestamp)) return false;
   if (Math.abs(left.timestamp - right.timestamp) > FALLBACK_DEDUP_WINDOW_MS) return false;
-  for (const field of ['branch', 'barber', 'service']) {
+  if (!left.branch_id || !right.branch_id || left.branch_id !== right.branch_id) return false;
+  for (const field of ['barber', 'service']) {
     if (!left[field] || !right[field]) return false;
     if (normalizeText(left[field]) !== normalizeText(right[field])) return false;
   }
@@ -150,7 +194,7 @@ function mergeCandidate(target, candidate) {
     target.rank = candidate.rank;
     target.source = candidate.source;
   }
-  for (const field of ['branch', 'barber', 'barber_id', 'service']) {
+  for (const field of ['branch_id', 'branch', 'barber', 'barber_id', 'service']) {
     if (!target[field] && candidate[field]) target[field] = candidate[field];
   }
   return target;
@@ -161,7 +205,7 @@ function buildCompletedServiceVisits({
 } = {}) {
   const catalog = buildCatalog(services);
   const resolveBarber = buildBarberResolver(barbers);
-  const outletMap = new Map(outlets.filter(Boolean).map(outlet => [String(outlet.id), cleanDisplay(outlet.name || outlet.slug)]));
+  const resolveBranch = buildBranchResolver(outlets);
   const scheduleById = new Map(schedules.filter(row => row?.id).map(row => [String(row.id), row]));
   const candidates = [];
   let excludedNonServiceCount = 0;
@@ -179,11 +223,13 @@ function buildCompletedServiceVisits({
     if (normalizeText(row?.status) !== 'completed') continue;
     const chronology = eventChronology(row.start_time || row.created_at, null);
     const barber = resolveBarber(row.barber_id, row.barber_name);
+    const branch = resolveBranch(row.outlet_id, row.outlet_slug || row.location);
     addCandidate({
       source: 'schedule', rank: sourceRank('schedule'), source_id: row.id || null,
       schedule_key: row.id ? `schedule:${row.id}` : null,
       ...chronology,
-      branch: row.outlet_id ? (outletMap.get(String(row.outlet_id)) || cleanDisplay(row.outlet_slug || row.location)) : cleanDisplay(row.outlet_slug || row.location),
+      branch_id: branch.id,
+      branch: branch.label,
       barber: barber?.name || null,
       barber_id: barber?.id || null,
       service: resolveGenuineService({ serviceId: row.service_id, names: [row.service_name, row.service], catalog }),
@@ -194,11 +240,13 @@ function buildCompletedServiceVisits({
     if (!COMPLETED_BOOKING_STATUSES.has(normalizeText(row?.status))) continue;
     const chronology = eventChronology(row.date || row.created_at, row.start_time || row.time || row.booking_time);
     const barber = resolveBarber(row.barber_id, row.barber_name);
+    const branch = resolveBranch(null, row.location || row.branch_slug || row.branch);
     addCandidate({
       source: 'booking', rank: sourceRank('booking'), source_id: row.id || null,
       schedule_key: row.schedule_id ? `schedule:${row.schedule_id}` : null,
       ...chronology,
-      branch: cleanDisplay(row.location || row.branch_slug || row.branch),
+      branch_id: branch.id,
+      branch: branch.label,
       barber: barber?.name || null,
       barber_id: barber?.id || null,
       service: resolveGenuineService({ serviceId: row.service_id, names: [row.service, row.service_name], catalog }),
@@ -212,11 +260,13 @@ function buildCompletedServiceVisits({
     const linkedSchedule = row.schedule_id ? scheduleById.get(String(row.schedule_id)) : null;
     const barber = linkedSchedule ? resolveBarber(linkedSchedule.barber_id, linkedSchedule.barber_name) : null;
     const linkedOutletId = row.outlet_id || linkedSchedule?.outlet_id || null;
+    const branch = resolveBranch(linkedOutletId, row.outlet_slug || row.location || linkedSchedule?.location);
     addCandidate({
       source: 'transaction', rank: sourceRank('transaction'), source_id: row.id || null,
       schedule_key: row.schedule_id ? `schedule:${row.schedule_id}` : null,
       ...chronology,
-      branch: linkedOutletId ? (outletMap.get(String(linkedOutletId)) || cleanDisplay(row.outlet_slug || row.location || linkedSchedule?.location)) : cleanDisplay(row.outlet_slug || row.location),
+      branch_id: branch.id,
+      branch: branch.label,
       barber: barber?.name || null,
       barber_id: barber?.id || null,
       service: resolveGenuineService({
@@ -247,6 +297,7 @@ function buildCompletedServiceVisits({
     date: visit.date,
     timestamp: visit.timestamp,
     precision: visit.precision,
+    branch_id: visit.branch_id || null,
     branch: visit.branch || null,
     barber: visit.barber || null,
     barber_id: visit.barber_id || null,
@@ -275,11 +326,16 @@ function summarizePreference(visits = [], field, storedFallback = null) {
   for (const visit of visits) {
     const value = cleanDisplay(visit[field]);
     if (!value) continue;
-    const key = normalizeText(value);
+    const identity = field === 'branch' ? cleanDisplay(visit.branch_id) : null;
+    const key = normalizeText(identity || value);
     const existing = groups.get(key) || {
-      value, id: field === 'barber' ? visit.barber_id || null : null,
+      value,
+      id: field === 'barber' ? visit.barber_id || null : (field === 'branch' ? identity : null),
       visit_count: 0, last_seen: null, last_seen_value: -1,
     };
+    if (field === 'branch' && normalizeText(existing.value) === key && normalizeText(value) !== key) {
+      existing.value = value;
+    }
     existing.visit_count += 1;
     const recent = chronologyValue(visit);
     if (recent > existing.last_seen_value) {

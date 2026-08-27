@@ -46,7 +46,7 @@ test('1. getCustomer360 executes cleanly when metadata queries return PostgREST 
                 };
               }
               // Return PostgREST thenables WITHOUT .catch() for outlets, schedules, barbers
-              if (table === 'outlets') return createPostgrestThenableMock([{ id: 'out-1', name: 'RedBox Bypass' }]);
+              if (table === 'outlets') return createPostgrestThenableMock([{ id: 'out-1', slug: 'bypass', name: 'RedBox Bypass' }]);
               if (table === 'schedules') return createPostgrestThenableMock([]);
               if (table === 'barbers') return createPostgrestThenableMock([]);
               return Promise.resolve({ data: [], error: null });

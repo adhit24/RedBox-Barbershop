@@ -129,7 +129,7 @@ test('1. Live production-shaped event attribution resolves branch & barber via c
 test('2. Transaction outlet_id lookup resolves branch name, and unmapped outlet_id resolves to null with partial confidence', async () => {
   const supabaseMapped = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
-    outlets: [{ id: 'out-1', name: 'RedBox CSB' }],
+    outlets: [{ id: 'out-1', slug: 'csb', name: 'RedBox CSB' }],
     transactions: [{ id: 't-1', customer_id: 'c-1', outlet_id: 'out-1', created_at: '2026-08-11T10:00:00Z', status: 'completed', transaction_items: [{ service_name: 'Haircut' }] }],
   });
   const resMapped = await getCustomer360(supabaseMapped, { phone: '6281234567890' });
@@ -257,7 +257,7 @@ test('6. CUSTOMER_SELF facts envelope strips internal IDs, epoch timestamps, and
 test('7. Real timestamp tie-break (10:00 vs 15:30) and mixed precision conflict tests remain green', async () => {
   const supabaseTs = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
-    outlets: [{ id: 'o-bypass', name: 'Bypass' }, { id: 'o-csb', name: 'CSB' }],
+    outlets: [{ id: 'o-bypass', slug: 'bypass', name: 'Bypass' }, { id: 'o-csb', slug: 'csb', name: 'CSB' }],
     barbers: [{ id: 'b-onoy', name: 'Onoy' }, { id: 'b-ubay', name: 'Ubay' }],
     schedules: [{ id: 's-1', barber_id: 'b-ubay' }],
     bookings: [{ id: 'b-1', customer_id: 'c-1', date: '2026-08-11T10:00:00Z', location: 'Bypass', barber_id: 'b-onoy', service: 'Gentleman Grooming', status: 'done' }],

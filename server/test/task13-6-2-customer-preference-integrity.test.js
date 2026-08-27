@@ -312,3 +312,60 @@ test('C18 favorite branch is not double-counted by duplicate booking and transac
   });
   assert.equal(result.preferences.favorite_branch.value, 'RedBox CSB');
 });
+
+function legacyBranchFallbackFixture(bookingOverrides = {}) {
+  return customer360({
+    schedules: [schedule('schedule-legacy', 'barber-onoy', '2026-08-11T10:00:00Z')],
+    bookings: [booking('booking-legacy', 'barber-onoy', '2026-08-11', '10:10', {
+      location: 'bypass',
+      ...bookingOverrides,
+    })],
+  });
+}
+
+test('B1 legacy booking slug and schedule outlet label deduplicate through canonical branch identity', async () => {
+  const result = await legacyBranchFallbackFixture();
+  assert.equal(result.data_quality.visit_event_count, 2);
+  assert.equal(result.data_quality.deduplicated_event_count, 1);
+});
+
+test('B2 favorite branch groups slug and display label as one canonical branch', async () => {
+  const result = await legacyBranchFallbackFixture();
+  assert.deepEqual(result.preferences.favorite_branch, {
+    value: 'RedBox Bypass',
+    basis: 'completed_service_visit_frequency',
+    visit_count: 1,
+    last_seen: '2026-08-11',
+    confidence: 'verified',
+  });
+});
+
+test('B3 last_visit_branch remains customer-readable after canonical branch dedup', async () => {
+  const result = await legacyBranchFallbackFixture();
+  assert.equal(result.activity.last_visit_branch, 'RedBox Bypass');
+  assert.equal(result.activity.last_visit_event.branch, 'RedBox Bypass');
+});
+
+test('B4 different canonical branches never fallback-deduplicate', async () => {
+  const result = await legacyBranchFallbackFixture({ location: 'csb' });
+  assert.equal(result.data_quality.visit_event_count, 2);
+  assert.equal(result.data_quality.deduplicated_event_count, 2);
+});
+
+test('B5 explicit schedule_id dedup remains authoritative', async () => {
+  const result = await legacyBranchFallbackFixture({
+    location: 'csb',
+    schedule_id: 'schedule-legacy',
+  });
+  assert.equal(result.data_quality.visit_event_count, 2);
+  assert.equal(result.data_quality.deduplicated_event_count, 1);
+  assert.equal(result.activity.last_visit_branch, 'RedBox Bypass');
+});
+
+test('B6 production-style booking location slug resolves to canonical display branch', async () => {
+  const result = await customer360({
+    bookings: [booking('booking-production-shape', 'barber-onoy', '2026-08-11', '10:00', { location: 'bypass' })],
+  });
+  assert.equal(result.activity.last_visit_branch, 'RedBox Bypass');
+  assert.equal(result.preferences.favorite_branch.value, 'RedBox Bypass');
+});

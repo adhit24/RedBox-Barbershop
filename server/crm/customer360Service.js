@@ -397,6 +397,7 @@ async function getCustomer360(supabase, identityInput = {}) {
   const outletsQuery = (outletIdsToFetch.length > 0 && typeof outSel.in === 'function')
     ? outSel.in('id', outletIdsToFetch)
     : Promise.resolve({ data: [] });
+  const allOutletsQuery = supabase.from('outlets').select('id, name, slug');
 
   const relatedSchedulesSelect = supabase.from('schedules')
     .select('id, customer_id, outlet_id, barber_id, service_id, service_name, start_time, status, source, created_at');
@@ -410,12 +411,17 @@ async function getCustomer360(supabase, identityInput = {}) {
     ? customerSchedulesSelect.in('customer_id', aliasCustomerIds)
     : Promise.resolve({ data: [] });
 
-  const [outletsRes, relatedSchedulesRes, customerSchedulesRes] = await Promise.all([
+  const [outletsRes, allOutletsRes, relatedSchedulesRes, customerSchedulesRes] = await Promise.all([
     safeSupabaseQuery(outletsQuery),
+    safeSupabaseQuery(allOutletsQuery),
     safeSupabaseQuery(relatedSchedulesQuery),
     safeSupabaseQuery(customerSchedulesQuery),
   ]);
-  let fetchedOutlets = outletsRes.data || [];
+  const fetchedOutletsMap = new Map();
+  for (const outlet of [...(outletsRes.data || []), ...(allOutletsRes.data || [])]) {
+    if (outlet?.id && !fetchedOutletsMap.has(outlet.id)) fetchedOutletsMap.set(outlet.id, outlet);
+  }
+  let fetchedOutlets = [...fetchedOutletsMap.values()];
   const fetchedSchedulesMap = new Map();
   for (const schedule of [...(relatedSchedulesRes.data || []), ...(customerSchedulesRes.data || [])]) {
     if (schedule?.id && !fetchedSchedulesMap.has(schedule.id)) fetchedSchedulesMap.set(schedule.id, schedule);
