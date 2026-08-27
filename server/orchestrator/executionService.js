@@ -31,6 +31,13 @@ const TASK11_CRM_ALLOWLIST = Object.freeze({
   customer_preferences: 'get_customer_preferences',
   customer_transaction_history: 'get_transaction_summary',
 });
+const CRM_TOOLS_BY_INTENT = Object.freeze({
+  customer_history: Object.freeze(['get_customer_history', 'get_visit_summary']),
+  customer_booking_history: Object.freeze(['get_customer_history']),
+  customer_profile: Object.freeze(['get_customer_profile']),
+  customer_preferences: Object.freeze(['get_customer_preferences']),
+  customer_transaction_history: Object.freeze(['get_transaction_summary']),
+});
 
 function readPointsClassification(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -168,7 +175,7 @@ async function executeOrchestration(classificationResult, dependencies = {}) {
  * @returns {Promise<object>} Structured intelligence execution result
  */
 async function executeCustomerIntelligence(params = {}, dependencies = {}) {
-  const { intent = 'unknown', trustedIdentity } = params;
+  const { intent = 'unknown', action = null, trustedIdentity } = params;
   const { supabase, crmExecutor = executeCrmTool } = dependencies;
 
   if (!isTrustedIdentity(trustedIdentity)) {
@@ -180,7 +187,8 @@ async function executeCustomerIntelligence(params = {}, dependencies = {}) {
     };
   }
 
-  const toolName = TASK11_CRM_ALLOWLIST[intent];
+  const allowedTools = CRM_TOOLS_BY_INTENT[intent] || [];
+  const toolName = allowedTools.includes(action) ? action : TASK11_CRM_ALLOWLIST[intent];
   if (!toolName) {
     return {
       execution_status: 'unsupported_intent',

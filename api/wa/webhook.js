@@ -105,7 +105,7 @@ const {
 const { isTrustedIdentity } = require('../../server/identity/trustedIdentity');
 const { classifyDeterministically } = require('../../server/orchestrator/routingPolicy');
 const executionService = require('../../server/orchestrator/executionService');
-const { orchestrateMessage } = require('../../server/orchestrator/orchestratorService');
+const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
 const {
   extractFirstName,
@@ -207,6 +207,25 @@ function knowledgeTelemetry(knowledgeContext) {
     knowledge_topics: topics,
     knowledge_fact_count: factCount,
   };
+}
+
+function crmFactQualityStatus(intelligence, requiredSources = []) {
+  const quality = intelligence?.fact_quality;
+  if (!quality || typeof quality !== 'object') return null;
+  const requested = Array.isArray(requiredSources) ? requiredSources[0] : null;
+  const keyBySource = {
+    'crm:get_customer_profile': 'member_since',
+    'crm:get_visit_summary': 'last_visit',
+    'crm:get_customer_preferences': 'favorite_barber',
+    'crm:get_customer_history': 'latest_booking',
+    'crm:get_points': 'points',
+  };
+  const requestedQuality = quality[keyBySource[requested]];
+  if (requestedQuality) return requestedQuality;
+  if (Object.values(quality).includes('ambiguous')) return 'ambiguous';
+  if (Object.values(quality).includes('verified')) return 'verified';
+  if (Object.values(quality).includes('derived_verified')) return 'derived_verified';
+  return 'unavailable';
 }
 const messageStatusCache = new Map();
 const STATUS_TTL_MS = 2 * 60 * 60 * 1000;
@@ -696,7 +715,15 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     `5. Jika pengguna menanyakan ketersediaan slot atau reservasi, informasikan bahwa ketersediaan slot harus dicek melalui sistem booking ${bookingUrl(branch)}. Jangan mengarang ketersediaan jam atau slot!\n` +
     `6. ATURAN KUNJUNGAN TERAKHIR VS FAVORIT: "last_visit_branch", "last_visit_barber", "last_visit_service" adalah detail KUNJUNGAN SELESAI TERAKHIR. DILARANG MENAMPILKAN favorite_branch/favorite_barber/favorite_service ketika ditanya mengenai KUNJUNGAN TERAKHIR! Jika last_visit_barber bernilai null, katakan kapster kunjungan terakhir tidak tercatat (JANGAN gunakan favorite_barber sebagai pengganti).\n` +
     `7. KLAIM PELANGGAN BUKAN FAKTA CRM: Jika pelanggan mengoreksi data ("enggak, terakhir aku sama Budi"), tanggapi dengan ramah dan akui klaim tersebut ("Noted kak..."), tetapi DILARANG mengubah fakta CRM atau menganggap klaim tersebut sebagai data terverifikasi. CRM tetap bersifat READ-ONLY.\n` +
-    `8. SEMANTIK WAKTU & GAYA BAHASA ALAMI: "terakhir ke Redbox/potong/treatment" memakai last_visit* ("Terakhir kamu ke Redbox itu 11 Agustus di Bypass, sama Onoy"). "booking/reservasi terakhir" memakai latest_booking_* ("Booking terakhir kamu 19 Mei jam 14.00, tapi booking itu dibatalin ya"). Jika status latest booking cancelled, katakan dibatalin/dibatalkan dan JANGAN menyebutnya kunjungan terakhir. Jika pelanggan menganggap booking yang dibatalkan sebagai kunjungan terakhir, koreksi secara alami ("Bukan Kak, yang 19 Mei itu booking yang dibatalin..."). Hindari kata-kata birokratis/sistem seperti "tercatat", "berdasarkan data", "berdasarkan riwayat".`;
+`8. SEMANTIK WAKTU & GAYA BAHASA ALAMI: "terakhir ke Redbox/potong/treatment" memakai last_visit* ("Terakhir kamu ke Redbox itu 11 Agustus di Bypass, sama Onoy"). "booking/reservasi terakhir" memakai latest_booking_* ("Booking terakhir kamu 19 Mei jam 14.00, tapi booking itu dibatalin ya"). Jika status latest booking cancelled, katakan dibatalin/dibatalkan dan JANGAN menyebutnya kunjungan terakhir. Jika pelanggan menganggap booking yang dibatalkan sebagai kunjungan terakhir, koreksi secara alami ("Bukan Kak, yang 19 Mei itu booking yang dibatalin..."). Hindari kata-kata birokratis/sistem seperti "tercatat", "berdasarkan data", "berdasarkan riwayat".\n` +
+    `9. PRIORITAS SUMBER FAKTA: security/trusted identity > booking backend > CRM Agent > Knowledge terverifikasi > conversation context > pesan terbaru. Pesan terbaru berotoritas untuk INTENT, bukan untuk fakta backend.`;
+
+  const orchestratorDecision = conversationContext?.orchestrator_decision;
+  if (orchestratorDecision) {
+    systemPrompt += `\n\n# KEPUTUSAN ORCHESTRATOR — WAJIB DIPATUHI\n` +
+      `Decision berikut adalah policy metadata, bukan fakta customer:\n${JSON.stringify(orchestratorDecision)}\n` +
+      `Reddy hanya boleh mengatur bahasa dan presentasi. Jangan mengubah source authority, jangan membuat claim yang dilarang, jangan menjawab fakta CRM tanpa CRM fact pack, dan ikuti response_strategy tanpa menambahkan CTA yang tidak diminta.`;
+  }
 
   systemPrompt += `\n\n# KONTEKS CABANG SESI\nKamu melayani customer dari ${BRANCH_LABEL[branch] || BRANCH_LABEL.bypass}. Gunakan Zone B1 untuk fakta publik cabang.`;
 
@@ -1149,6 +1176,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // Fast-path: points inquiry bypasses conversation history loading and Reddy generation
   const classification = classifyDeterministically(text);
   if (classification && classification.intent === 'points_inquiry') {
+    const pointsDecision = buildDecisionEnvelope({
+      message: text,
+      decision: {
+        intent: 'points_inquiry', route: 'crm_agent', agent: 'crm_agent', action: 'get_points',
+        confidence: 1.0, model_tier: 'none',
+      },
+    });
     const orchResult = await executeOrchestration(
       {
         intent: 'points_inquiry',
@@ -1172,6 +1206,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       pointsReply = 'Layanan cek poin sedang tidak dapat diakses sementara. Coba beberapa saat lagi ya Kak.';
     }
     logTelemetry({
+      ...pointsDecision,
       route: 'crm_agent',
       agent: 'crm_agent',
       intent: 'points_inquiry',
@@ -1300,11 +1335,39 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       channel: 'whatsapp',
       branch,
       trustedIdentity,
+      conversationContext,
     });
   } catch (err) {
     console.warn('[WA Bot] Orchestrator exception:', err.message);
   }
   const latencyMs = Date.now() - orchStart;
+
+  // Strict low-risk conversational strategies are deterministic: no CRM call,
+  // no unsupported factual claim, and no default CTA appended by Reddy.
+  if (orchDecision?.response_strategy === 'acknowledge_only'
+    || orchDecision?.response_strategy === 'acknowledge_context'
+    || orchDecision?.response_strategy === 'close_conversation') {
+    const temporalPeriod = /\b(pagi|siang|sore|malam)\b/i.exec(text)?.[1]?.toLowerCase() || null;
+    const boundedReply = orchDecision.response_strategy === 'acknowledge_only'
+      ? 'Siap Kak.'
+      : (orchDecision.response_strategy === 'close_conversation'
+        ? 'Siap Kak, terima kasih.'
+        : (orchDecision.conversational_act === 'temporal_followup' && temporalPeriod
+          ? `Oke Kak, ${temporalPeriod} aja ya.`
+          : 'Oke Kak, pilihan itu aku pakai untuk melanjutkan konteks percakapan ini ya.'));
+    logTelemetry({
+      ...orchDecision,
+      execution_status: 'deterministic_response',
+      crm_tool: null,
+      customer_found: null,
+      reddy_execution_status: 'deterministic_format',
+      latency_ms: latencyMs,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+    const sendResult = await send(from, boundedReply, { branch });
+    return { used: 'orchestrator_bounded_response', reply: boundedReply, sendResult, error: null };
+  }
 
   // Handle Human Handoff Route
   if (orchDecision && (orchDecision.route === 'human' || orchDecision.agent === 'human' || orchDecision.intent === 'human_request' || orchDecision.intent === 'complaint')) {
@@ -1466,7 +1529,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       });
       try {
         const reddyExec = await executeReddy({
-          from, name, text, device, branch, trustedIdentity, knowledgeContext, customerIntelligence: intelRes.intelligence, conversationContext,
+          from, name, text, device, branch, trustedIdentity, knowledgeContext, customerIntelligence: intelRes.intelligence, conversationContext, orchestrationDecision: orchDecision,
         }, {
           callOpenAI: generateReddy, sendWA: send,
         });
@@ -1478,6 +1541,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
             ? intelRes.customer_found
             : Boolean(intelRes.intelligence?.customer_found),
           reddy_execution_status: 'success',
+          crm_fact_status: crmFactQualityStatus(intelRes.intelligence, orchDecision.required_sources),
           fallback_used: Boolean(orchDecision.fallback_used),
           fallback_reason: orchDecision.fallback_reason || null,
           latency_ms: latencyMs,
@@ -1500,6 +1564,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
             ? intelRes.customer_found
             : Boolean(intelRes.intelligence?.customer_found),
           reddy_execution_status: 'error',
+          crm_fact_status: crmFactQualityStatus(intelRes.intelligence, orchDecision.required_sources),
           fallback_used: true,
           fallback_reason: 'reddy_execution_error',
           latency_ms: latencyMs,
@@ -1531,7 +1596,11 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       conversation_context_used: Boolean(conversationContext.turn_count > 0),
       ...knowledgeTelemetry(null),
     });
-    const crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
+    const crmReply = intelRes?.execution_status === 'ambiguous'
+      ? 'Data customer kamu belum dapat dipastikan dengan aman. Boleh konfirmasi singkat data member melalui admin ya Kak.'
+      : (intelRes?.execution_status === 'not_found'
+        ? 'Data member untuk nomor terverifikasi ini belum ditemukan ya Kak.'
+        : 'Data pribadi kamu sedang tidak dapat dibaca dengan aman; fitur ini masih sedang kami siapkan agar tetap aman ya Kak.');
     const sendResult = await send(from, crmReply, { branch });
     return { used: 'crm_unavailable_guard', reply: crmReply, sendResult, error: null };
   }
@@ -1546,7 +1615,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     });
     try {
       const reddyExec = await executeReddy({
-        from, name, text, device, branch, trustedIdentity, knowledgeContext, conversationContext,
+        from, name, text, device, branch, trustedIdentity, knowledgeContext, conversationContext, orchestrationDecision: orchDecision,
       }, {
         callOpenAI: generateReddy, sendWA: send,
       });
