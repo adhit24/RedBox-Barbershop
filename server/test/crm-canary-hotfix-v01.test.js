@@ -39,7 +39,7 @@ test('1. getCustomer360 executes cleanly when metadata queries return PostgREST 
                   eq() {
                     return {
                       order() {
-                        return Promise.resolve({ data: [{ id: 't-1', customer_id: 'cust-1', outlet_id: 'out-1', created_at: '2026-08-25T14:00:00Z', status: 'completed' }], error: null });
+                        return Promise.resolve({ data: [{ id: 't-1', customer_id: 'cust-1', outlet_id: 'out-1', created_at: '2026-08-25T14:00:00Z', status: 'completed', transaction_items: [{ service_name: 'Haircut' }] }], error: null });
                       },
                     };
                   },
