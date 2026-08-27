@@ -18,6 +18,7 @@ const APPROVED_FACT_KEYS = Object.freeze([
   'membership_plan_tier',
   'membership_plan_status',
   'membership_plan_activated_at',
+  'membership_plan_activated_at_source',
   'points_balance',
   'first_visit',
   'last_visit',
@@ -144,6 +145,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
   extracted.membership_plan_tier = memb.plan_tier || rawData.membership_plan_tier || null;
   extracted.membership_plan_status = memb.plan_status || rawData.membership_plan_status || null;
   extracted.membership_plan_activated_at = memb.activated_at || memb.membership_activated_at || rawData.membership_plan_activated_at || rawData.membership_activated_at || null;
+  extracted.membership_plan_activated_at_source = memb.activated_at_source || memb.membership_activated_at_source || rawData.membership_plan_activated_at_source || rawData.membership_activated_at_source || null;
   extracted.points_balance = typeof loy.points_balance === 'number' ? loy.points_balance : (typeof rawData.points_balance === 'number' ? rawData.points_balance : null);
   extracted.first_visit = act.first_visit || rawData.first_visit || null;
   extracted.last_visit = act.last_visit || rawData.last_visit || null;
@@ -193,22 +195,27 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
   const registrationSource = cust.registration_status_source || rawData.registration_status_source || null;
   const memberSinceSource = cust.member_since_source || rawData.member_since_source || null;
   const paidPlanSource = memb.status_source || rawData.membership_status_source || null;
+
   const registrationVerified = registrationSource === 'member_profiles_presence'
-    || registrationSource === 'member_profiles_absence'
-    || Boolean(extracted.registration_status || extracted.is_registered_member !== null);
+    || registrationSource === 'member_profiles_absence';
+  const memberSinceVerified = Boolean(extracted.member_since && memberSinceSource === 'member_profiles.created_at');
   const paidPlanVerified = extracted.membership_status_scope === 'paid_membership_plan'
     && paidPlanSource === 'membership_policy'
     && Boolean(extracted.membership_plan_status || extracted.membership_status);
-  const tierOrigin = memb.tier_origin || rawData.tier_origin || 'default_baseline';
+
   const planActivatedAt = extracted.membership_plan_activated_at;
+  const planActivatedAtSource = extracted.membership_plan_activated_at_source;
+  const paidPlanActivationVerified = Boolean(planActivatedAt && planActivatedAtSource === 'member_profiles.membership_activated_at');
+
+  const tierOrigin = memb.tier_origin || rawData.tier_origin || 'default_baseline';
 
   const fact_quality = {
     identity: registrationVerified ? 'verified' : 'unavailable',
     registration_status: registrationVerified ? 'verified' : 'unavailable',
-    member_since: (extracted.member_since && (memberSinceSource === 'member_profiles.created_at' || memberSinceSource === 'customers.created_at')) ? 'verified' : 'unavailable',
+    member_since: memberSinceVerified ? 'verified' : 'unavailable',
     membership: paidPlanVerified ? 'verified' : 'unavailable',
     paid_plan_status: paidPlanVerified ? 'verified' : 'unavailable',
-    paid_plan_activation: planActivatedAt ? 'verified' : 'unavailable',
+    paid_plan_activation: paidPlanActivationVerified ? 'verified' : 'unavailable',
     paid_plan_tier: tierOrigin === 'configured' ? 'verified' : 'unavailable',
     points: pointsAmbiguous ? 'ambiguous' : (typeof extracted.points_balance === 'number' ? 'verified' : 'unavailable'),
     last_visit: extracted.last_visit ? 'verified' : 'unavailable',

@@ -427,3 +427,99 @@ test('Hengky-like anonymized regression: member account, paid plan active, dates
   // Points independent
   assert.equal(envelope.facts.points_balance, 150);
 });
+
+// --- PROVENANCE HARDENING TESTS (P1 - P8) ---
+
+test('P1. member_since value with source customers.created_at is unavailable quality', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { member_since: '2024-01-01', member_since_source: 'customers.created_at' } },
+  });
+
+  assert.equal(envelope.facts.member_since, '2024-01-01');
+  assert.equal(envelope.fact_quality.member_since, 'unavailable');
+});
+
+test('P2. member_since value with source member_profiles.created_at is verified quality', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { member_since: '2025-03-14', member_since_source: 'member_profiles.created_at' } },
+  });
+
+  assert.equal(envelope.facts.member_since, '2025-03-14');
+  assert.equal(envelope.fact_quality.member_since, 'verified');
+});
+
+test('P3. registration_status without canonical source is unavailable quality', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { registration_status: 'registered_member', is_registered_member: true } },
+  });
+
+  assert.equal(envelope.fact_quality.registration_status, 'unavailable');
+  assert.equal(envelope.fact_quality.identity, 'unavailable');
+});
+
+test('P4. registration_status with source member_profiles_presence is verified quality', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { registration_status: 'registered_member', registration_status_source: 'member_profiles_presence' } },
+  });
+
+  assert.equal(envelope.fact_quality.registration_status, 'verified');
+  assert.equal(envelope.fact_quality.identity, 'verified');
+});
+
+test('P5. guest_customer with source member_profiles_absence is verified quality', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { registration_status: 'guest_customer', registration_status_source: 'member_profiles_absence' } },
+  });
+
+  assert.equal(envelope.fact_quality.registration_status, 'verified');
+  assert.equal(envelope.fact_quality.identity, 'verified');
+});
+
+test('P6. member_profiles.membership_activated_at source makes paid_plan_activation verified', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: {
+      membership: {
+        activated_at: '2026-07-01T00:00:00Z',
+        activated_at_source: 'member_profiles.membership_activated_at',
+      },
+    },
+  });
+
+  assert.equal(envelope.facts.membership_plan_activated_at, '2026-07-01T00:00:00Z');
+  assert.equal(envelope.fact_quality.paid_plan_activation, 'verified');
+});
+
+test('P7. customer-row membership_activated_at source makes paid_plan_activation unavailable', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: {
+      membership: {
+        activated_at: '2026-07-01T00:00:00Z',
+        activated_at_source: 'customers.membership_activated_at',
+      },
+    },
+  });
+
+  assert.equal(envelope.facts.membership_plan_activated_at, '2026-07-01T00:00:00Z');
+  assert.equal(envelope.fact_quality.paid_plan_activation, 'unavailable');
+});
+
+test('P8. activation timestamp without source metadata is unavailable quality', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: {
+      membership: {
+        activated_at: '2026-07-01T00:00:00Z',
+      },
+    },
+  });
+
+  assert.equal(envelope.facts.membership_plan_activated_at, '2026-07-01T00:00:00Z');
+  assert.equal(envelope.fact_quality.paid_plan_activation, 'unavailable');
+});

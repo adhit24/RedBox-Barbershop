@@ -574,6 +574,11 @@ async function getCustomer360(supabase, identityInput = {}) {
     statusSource = 'membership_policy';
   }
 
+  const activatedAt = fetchedProfile?.membership_activated_at || custRow.membership_activated_at || null;
+  const activatedAtSource = fetchedProfile?.membership_activated_at
+    ? 'member_profiles.membership_activated_at'
+    : (custRow.membership_activated_at ? 'customers.membership_activated_at' : null);
+
   const membershipObj = {
     status: planStatus,
     status_scope: 'paid_membership_plan',
@@ -582,7 +587,8 @@ async function getCustomer360(supabase, identityInput = {}) {
     tier: tier,
     plan_tier: tier,
     tier_origin: tierOrigin,
-    activated_at: fetchedProfile?.membership_activated_at || custRow.membership_activated_at || null,
+    activated_at: activatedAt,
+    activated_at_source: activatedAtSource,
     expires_at: fetchedProfile?.membership_expires_at || null,
   };
 

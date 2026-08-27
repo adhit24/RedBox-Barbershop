@@ -47,6 +47,7 @@ function projectCustomerSelf(customer360) {
     plan_tier: internal.membership.plan_tier || internal.membership.tier || 'bronze',
     tier_origin: internal.membership.tier_origin || 'default_baseline',
     activated_at: internal.membership.activated_at || null,
+    activated_at_source: internal.membership.activated_at_source || null,
     expires_at: internal.membership.expires_at || null,
   } : null;
 
