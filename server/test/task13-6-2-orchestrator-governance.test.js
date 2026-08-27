@@ -12,7 +12,7 @@ const {
 const { sanitizeTelemetry } = require('../orchestrator/telemetry');
 const { executeCustomerIntelligence } = require('../orchestrator/executionService');
 const { issueTrustedIdentity } = require('../identity/trustedIdentity');
-const { handleMessage, callOpenAI, bookingUrl } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, buildBranchLastBookingSlotText } = require('../../api/wa/webhook');
 
 const classifier = (intent, route = 'reddy_agent', action = 'answer_general_question') => async () => ({
   intent,
@@ -383,6 +383,56 @@ test('G7 Reddy consumes response strategy and prohibited booking mutation claims
 });
 
 test('G8 booking URL authority remains unchanged', () => {
-  const url = bookingUrl('bypass');
-  assert.match(url, /redboxbarbershop.com/);
+  const authorityGuidance = buildBranchLastBookingSlotText('english', 'bypass');
+  assert.match(authorityGuidance, /redboxbarbershop.com\/booking\.html\?branch=bypass/);
+});
+
+test('G9 direct booking_request carries explicit no-commit mutation guards', async () => {
+  const decision = await orchestrateMessage({
+    message: 'Aku mau booking Onoy besok jam 3.',
+  }, { classifier: classifier('booking_request', 'reddy_agent', 'route_booking_request') });
+
+  assert.equal(decision.intent, 'booking_request');
+  assert.equal(decision.response_strategy, 'guide_to_booking');
+  assert.ok(decision.prohibited_claims.includes('selection_saved'));
+  assert.ok(decision.prohibited_claims.includes('slot_reserved'));
+  assert.ok(decision.prohibited_claims.includes('barber_selected_in_system'));
+  assert.ok(decision.prohibited_claims.includes('time_selected_in_system'));
+  assert.ok(decision.prohibited_claims.includes('reservation_confirmed'));
+});
+
+test('G10 reschedule_request prohibits booking and time mutation claims', async () => {
+  const decision = await orchestrateMessage({
+    message: 'Pindahin booking aku ke jam 4.',
+  }, { classifier: classifier('reschedule_request', 'reddy_agent', 'route_reschedule_request') });
+
+  assert.equal(decision.intent, 'reschedule_request');
+  assert.equal(decision.response_strategy, 'guide_to_booking');
+  assert.ok(decision.prohibited_claims.includes('booking_updated'));
+  assert.ok(decision.prohibited_claims.includes('time_selected_in_system'));
+  assert.ok(decision.prohibited_claims.includes('reservation_confirmed'));
+});
+
+test('G11 cancel_request prohibits success-style booking mutation claims', async () => {
+  const decision = await orchestrateMessage({
+    message: 'Cancel booking aku.',
+  }, { classifier: classifier('cancel_request', 'reddy_agent', 'route_cancel_request') });
+
+  assert.equal(decision.intent, 'cancel_request');
+  assert.equal(decision.response_strategy, 'guide_to_booking');
+  assert.ok(decision.prohibited_claims.includes('booking_updated'));
+  assert.ok(decision.prohibited_claims.includes('reservation_confirmed'));
+  assert.ok(decision.prohibited_claims.includes('selection_saved'));
+});
+
+test('G12 direct booking remains website-authority guidance, never execution', async () => {
+  const decision = await orchestrateMessage({
+    message: 'Aku mau booking Onoy besok jam 3.',
+  }, { classifier: classifier('booking_request', 'reddy_agent', 'route_booking_request') });
+
+  assert.equal(decision.route, 'reddy_agent');
+  assert.equal(decision.response_strategy, 'guide_to_booking');
+  assert.deepEqual(decision.required_sources, ['booking_backend:reservation_flow']);
+  assert.ok(decision.allowed_claims.includes('website_is_reservation_authority'));
+  assert.ok(decision.allowed_claims.includes('final_selection_must_be_made_on_website'));
 });

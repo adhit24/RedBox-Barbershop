@@ -2181,5 +2181,3 @@ module.exports.buildBranchLocationText = buildBranchLocationText;
 module.exports.buildBranchOperatingHoursText = buildBranchOperatingHoursText;
 module.exports.buildBranchLastBookingSlotText = buildBranchLastBookingSlotText;
 module.exports.isForeignBookingIntent = isForeignBookingIntent;
-
-module.exports.bookingUrl = bookingUrl;

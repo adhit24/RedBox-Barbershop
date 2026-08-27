@@ -100,6 +100,8 @@ function sourcePolicyFor(base) {
     return {
       required_sources: ['booking_backend:reservation_flow'],
       response_strategy: 'guide_to_booking',
+      allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
+      prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
   }
   if (KNOWLEDGE_INTENTS.has(base.intent)) {
