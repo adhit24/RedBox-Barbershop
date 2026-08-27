@@ -1,10 +1,11 @@
 'use strict';
 
+const fs = require('fs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { extractFirstName, buildReddyPersonalityPrompt, FORBIDDEN_ADDRESS_TERMS_REGEX } = require('../agents/reddy/personalityPolicy');
 const { buildCustomerFactsContext } = require('../agents/reddy/customerFactsContext');
-const { buildSystemPrompt, handleMessage, fallbackReply } = require('../../api/wa/webhook');
+const { buildSystemPrompt, handleMessage, fallbackReply, callOpenAI } = require('../../api/wa/webhook');
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 
 test('N1. New session + trusted CRM name "Adhit Nugraha" greets with "Kak Adhit"', () => {
@@ -207,4 +208,145 @@ test('R7. Trusted CRM name source rule remains enforced; unverified names strict
   const promptUnverified = buildSystemPrompt('bypass', 'expired', null);
   assert.equal(promptUnverified.includes('Kak Boss Besar'), false);
   assert.match(promptUnverified, /Hai Kak/);
+});
+
+// --- RUNTIME callOpenAI TESTS (RUNTIME1 - RUNTIME6) ---
+
+test('RUNTIME1. callOpenAI injects Kak Adhit greeting for sessionStatus="expired" even when historical turns exist', async () => {
+  let capturedMessages = [];
+  const mockOpenAI = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          capturedMessages = params.messages;
+          return { choices: [{ message: { content: 'Hai Kak Adhit, Haircut di Redbox Rp40.000 ya.' } }] };
+        },
+      },
+    },
+  };
+
+  const historyTurns = [
+    { role: 'user', content: 'kemarin potong jam berapa' },
+    { role: 'assistant', content: 'kemarin buka jam 10' },
+    { role: 'user', content: 'makasih' },
+  ];
+
+  await callOpenAI(
+    '6281234567890',
+    'Haircut berapa?',
+    'Adhit Nugraha',
+    'bypass',
+    { sessionStatus: 'expired', turns: historyTurns },
+    null,
+    null,
+    { openai: mockOpenAI }
+  );
+
+  const systemMsg = capturedMessages.find(m => m.role === 'system' && m.content.includes('Nama terverifikasi customer CRM ini'));
+  assert.ok(systemMsg, 'System message instruction for new session must be injected');
+  assert.match(systemMsg.content, /Kak Adhit/);
+  assert.match(systemMsg.content, /Ini awal sesi baru/);
+});
+
+test('RUNTIME2. callOpenAI suppresses new-session greeting when sessionStatus="active_conversation"', async () => {
+  let capturedMessages = [];
+  const mockOpenAI = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          capturedMessages = params.messages;
+          return { choices: [{ message: { content: 'Haircut di Redbox Rp40.000 ya.' } }] };
+        },
+      },
+    },
+  };
+
+  const historyTurns = [
+    { role: 'user', content: 'halo' },
+    { role: 'assistant', content: 'Hai Kak Adhit!' },
+  ];
+
+  await callOpenAI(
+    '6281234567890',
+    'Haircut berapa?',
+    'Adhit Nugraha',
+    'bypass',
+    { sessionStatus: 'active_conversation', turns: historyTurns },
+    null,
+    null,
+    { openai: mockOpenAI }
+  );
+
+  const systemMsg = capturedMessages.find(m => m.role === 'system' && m.content.includes('Sesi percakapan ini sedang AKTIF'));
+  assert.ok(systemMsg, 'System message instruction for active session must be injected');
+  assert.match(systemMsg.content, /DILARANG mengulang salam pembuka/);
+});
+
+test('RUNTIME3. callOpenAI ignores email-shaped name and does not inject Kak adhit@gmail.com', async () => {
+  let capturedMessages = [];
+  const mockOpenAI = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          capturedMessages = params.messages;
+          return { choices: [{ message: { content: 'Haircut di Redbox Rp40.000 ya Kak.' } }] };
+        },
+      },
+    },
+  };
+
+  await callOpenAI(
+    '6281234567890',
+    'Haircut berapa?',
+    'adhit@gmail.com',
+    'bypass',
+    { sessionStatus: 'expired' },
+    null,
+    null,
+    { openai: mockOpenAI }
+  );
+
+  const namedInstruction = capturedMessages.find(m => m.role === 'system' && m.content.includes('adhit@gmail.com'));
+  assert.equal(namedInstruction, undefined, 'Invalid email name must not trigger named greeting instruction');
+});
+
+test('RUNTIME4. callOpenAI ignores phone-number-shaped name and falls back to generic Kak', async () => {
+  let capturedMessages = [];
+  const mockOpenAI = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          capturedMessages = params.messages;
+          return { choices: [{ message: { content: 'Haircut di Redbox Rp40.000 ya Kak.' } }] };
+        },
+      },
+    },
+  };
+
+  await callOpenAI(
+    '6281234567890',
+    'Haircut berapa?',
+    '+6281234567890',
+    'bypass',
+    { sessionStatus: 'expired' },
+    null,
+    null,
+    { openai: mockOpenAI }
+  );
+
+  const namedInstruction = capturedMessages.find(m => m.role === 'system' && m.content.includes('+6281234567890'));
+  assert.equal(namedInstruction, undefined, 'Phone number name must not trigger named greeting instruction');
+});
+
+test('RUNTIME5. Source scan confirms NO raw name.trim().split(" ")[0] remains in api/wa/webhook.js', () => {
+  const path = require('path');
+  const webhookContent = fs.readFileSync(path.join(__dirname, '../../api/wa/webhook.js'), 'utf8');
+  assert.equal(webhookContent.includes(".trim().split(' ')[0]"), false, 'No raw .trim().split(" ")[0] allowed in webhook.js');
+});
+
+test('RUNTIME6. buildSystemPrompt direct-question rules explicitly permit short personalized greeting for expired/new session', () => {
+  const promptExpired = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
+  assert.match(promptExpired, /leburkan salam dan jawaban secara alami/);
+  assert.match(promptExpired, /Hai Kak Adhit, Haircut di Redbox/);
+  assert.match(promptExpired, /DILARANG menggunakan ceremonial greeting/);
 });

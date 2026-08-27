@@ -108,6 +108,7 @@ const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
 const {
+  extractFirstName,
   classifyConversationSession,
   isExplicitGreeting,
   isExplicitClosureSignal,
@@ -576,7 +577,8 @@ function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifie
     .map(n => `Mas ${n}`)
     .join(', ');
 
-  const isVerifiedName = Boolean(verifiedName && typeof verifiedName === 'string' && verifiedName.trim() !== '' && verifiedName.trim() !== 'Kak');
+  const firstName = extractFirstName(verifiedName);
+  const isVerifiedName = Boolean(firstName);
   const personalityPrompt = buildReddyPersonalityPrompt({ branch, sessionStatus, isVerifiedName, verifiedName });
   
   return `${personalityPrompt}
@@ -709,14 +711,18 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 
   const preparedHistory = buildConversationMessages(activeHistoryTurns, userMessage);
 
-  const isVerifiedName = Boolean(name && typeof name === 'string' && name.trim() !== '' && name.trim() !== 'Kak');
-  const firstName = isVerifiedName ? name.trim().split(' ')[0] : null;
+  const firstName = extractFirstName(name);
+  const isVerifiedName = Boolean(firstName);
+  const isNewSession = sessionStatus === 'expired' || preparedHistory.length <= 1;
+
+  if (isNewSession && isVerifiedName) {
+    systemPrompt += `\n\n# INSTRUKSI SALAM SESI BARU\nNama terverifikasi customer CRM ini: ${name}. Ini awal sesi baru. Sapa dengan hangat di awal jawaban menggunakan nama depannya (Kak ${firstName}). Jika pelanggan langsung bertanya (misal: "Haircut berapa?"), leburkan sapaan nama dan jawaban secara alami ("Hai Kak ${firstName}, Haircut di Redbox..."), tanpa ceremonial greeting ("Selamat datang di Redbox...") dan tanpa sapaan generik terpisah ("Ada yang bisa aku bantu?").`;
+  } else if (!isNewSession) {
+    systemPrompt += `\n\n# INSTRUKSI SUPRESI SALAM (SESI AKTIF)\nSesi percakapan ini sedang AKTIF (percakapan berlanjut). DILARANG mengulang salam pembuka ("Hai Kak ${firstName || ''}") dan DILARANG mengulang sapaan nama. Langsung jawab pertanyaan pelanggan.`;
+  }
 
   const messages = [
     { role: 'system', content: systemPrompt },
-    ...(preparedHistory.length === 1 && isVerifiedName
-      ? [{ role: 'system', content: `Nama terverifikasi customer CRM ini: ${name}. Sapa dengan hangat menggunakan nama depannya (${firstName}).` }]
-      : []),
     ...preparedHistory,
   ];
 
@@ -749,7 +755,6 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 
 function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
   const t = text.toLowerCase();
-  const { extractFirstName } = require('../../server/agents/reddy/personalityPolicy');
   const fn = extractFirstName(name);
   const nameLabel = fn ? 'Kak ' + fn : 'Kak';
 
@@ -933,7 +938,6 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
 
   // Mixed Intent: both general question (e.g. hours/price/location) AND booking intent exist
   if (generalAnswer && isBookingReq) {
-    const { extractFirstName } = require('../../server/agents/reddy/personalityPolicy');
     const fn = extractFirstName(name) || '';
 
     const nameLabel = fn ? `, ${fn}` : '';
@@ -956,7 +960,6 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
 
   // Pure Booking Intent: booking request only
   if (isBookingReq) {
-    const { extractFirstName } = require('../../server/agents/reddy/personalityPolicy');
     const fn = extractFirstName(name) || '';
 
     const nameLabel = fn ? `, ${fn}` : '';
