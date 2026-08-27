@@ -350,3 +350,63 @@ test('RUNTIME6. buildSystemPrompt direct-question rules explicitly permit short 
   assert.match(promptExpired, /Hai Kak Adhit, Haircut di Redbox/);
   assert.match(promptExpired, /DILARANG menggunakan ceremonial greeting/);
 });
+
+test('RUNTIME7. Active conversation with empty history turns does NOT trigger new-session greeting (suppression rule applies)', async () => {
+  let capturedMessages = [];
+  const mockOpenAI = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          capturedMessages = params.messages;
+          return { choices: [{ message: { content: 'Haircut di Redbox Rp40.000 ya.' } }] };
+        },
+      },
+    },
+  };
+
+  await callOpenAI(
+    '6281234567890',
+    'Haircut berapa?',
+    'Adhit Nugraha',
+    'bypass',
+    { sessionStatus: 'active_conversation', turns: [] },
+    null,
+    null,
+    { openai: mockOpenAI }
+  );
+
+  const systemMsg = capturedMessages.find(m => m.role === 'system');
+  assert.ok(systemMsg, 'System message must exist');
+  assert.match(systemMsg.content, /INSTRUKSI SUPRESI SALAM \(SESI AKTIF\)/);
+  assert.equal(systemMsg.content.includes('INSTRUKSI SALAM SESI BARU'), false);
+});
+
+test('RUNTIME8. Expired session status with empty history turns triggers new-session greeting instruction', async () => {
+  let capturedMessages = [];
+  const mockOpenAI = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          capturedMessages = params.messages;
+          return { choices: [{ message: { content: 'Hai Kak Adhit, Haircut di Redbox Rp40.000 ya.' } }] };
+        },
+      },
+    },
+  };
+
+  await callOpenAI(
+    '6281234567890',
+    'Haircut berapa?',
+    'Adhit Nugraha',
+    'bypass',
+    { sessionStatus: 'expired', turns: [] },
+    null,
+    null,
+    { openai: mockOpenAI }
+  );
+
+  const systemMsg = capturedMessages.find(m => m.role === 'system');
+  assert.ok(systemMsg, 'System message must exist');
+  assert.match(systemMsg.content, /INSTRUKSI SALAM SESI BARU/);
+  assert.match(systemMsg.content, /Kak Adhit/);
+});

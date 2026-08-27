@@ -713,7 +713,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 
   const firstName = extractFirstName(name);
   const isVerifiedName = Boolean(firstName);
-  const isNewSession = sessionStatus === 'expired' || preparedHistory.length <= 1;
+  const isNewSession = sessionStatus === 'expired';
 
   if (isNewSession && isVerifiedName) {
     systemPrompt += `\n\n# INSTRUKSI SALAM SESI BARU\nNama terverifikasi customer CRM ini: ${name}. Ini awal sesi baru. Sapa dengan hangat di awal jawaban menggunakan nama depannya (Kak ${firstName}). Jika pelanggan langsung bertanya (misal: "Haircut berapa?"), leburkan sapaan nama dan jawaban secara alami ("Hai Kak ${firstName}, Haircut di Redbox..."), tanpa ceremonial greeting ("Selamat datang di Redbox...") dan tanpa sapaan generik terpisah ("Ada yang bisa aku bantu?").`;
