@@ -17,6 +17,7 @@ const INTENT_GUIDE = [
   'reschedule_request: change existing schedule',
   'cancel_request: cancel existing booking',
   'customer_history: past visits/events/services; not habits/favorites',
+  'customer_booking_history: customer-owned previous booking date/time/details; never public booking cutoff or availability',
   'points_inquiry: loyalty points balance',
   'customer_profile: customer profile data',
   'customer_preferences: habits/favorites (biasanya, favorit)',

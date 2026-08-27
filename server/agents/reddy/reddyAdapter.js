@@ -49,7 +49,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     if (knowledgeFactsContext) {
       reply = await callOpenAI(from, text, verifiedCrmName, branch, knowledgeFactsContext, factsContext, conversationContext);
     } else {
-      reply = await callOpenAI(from, text, verifiedCrmName, branch, factsContext, conversationContext);
+      reply = await callOpenAI(from, text, verifiedCrmName, branch, null, factsContext, conversationContext);
     }
   } catch (err) {
     throw err;

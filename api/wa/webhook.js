@@ -135,6 +135,9 @@ const { STATUS: BOOKING_STATUS, getCustomerBookingStatus } = require('../../serv
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 
+// Reused across warm serverless invocations. Tests can still inject a client via callOpenAI dependencies.
+let openaiClient = null;
+
 // ── Branch Routing ─────────────────────────────────────────────────────────────
 const BRANCH_WA = {
   bypass:    '0818202569',
@@ -616,7 +619,12 @@ ATURAN SALAM BERBASIS NIAT (INTENT-AWARE GREETING POLICY)
 - Jika pelanggan langsung bertanya atau menyampaikan niat (misal: "harga haircut berapa?", "Bypass buka jam berapa?"):
   JAWAB LANGSUNG pertanyaan pelanggan. DILARANG menggunakan ceremonial greeting ("Selamat datang di Redbox...") dan DILARANG menyisipkan sapaan generik ("Ada yang bisa aku bantu?").
 - Jika sesi percakapan sedang aktif (active_turn / active_conversation / soft_continuity):
-  DILARANG MENGULANG SALAM PEMBUKA.`;
+  DILARANG MENGULANG SALAM PEMBUKA.
+
+ATURAN SALAM & PERSONALISASI NAMA:
+- PENGGUNAAN NAMA hanya jika berasal dari fakta CRM terverifikasi; nama display WhatsApp bukan bukti identitas.
+- DILARANG OVERUSE NAMA: gunakan maksimal sekali bila memang membuat respons lebih alami.
+- MAKSIMAL 1 CTA yang paling relevan dalam satu respons.`;
 }
 
 function getOpenAI() {
@@ -1111,6 +1119,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     logTelemetry = logOrchestratedEvent,
     setHumanTakeover = setHumanTakeoverLocal,
     persistHumanHandoff = persistHumanTakeover,
+    getBookingStatus = getCustomerBookingStatus,
   } = deps;
 
   if (aiPaused || (checkHumanTakeover && await checkHumanTakeover(from))) {
@@ -1153,6 +1162,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       agent: 'crm_agent',
       intent: 'points_inquiry',
       action: 'get_points',
+      execution_status: orchResult.execution_status,
+      crm_tool: 'get_points',
+      customer_found: Boolean(orchResult.result?.customer_found),
+      reddy_execution_status: 'not_used',
       confidence: 1.0,
       model_tier: 'none',
       fallback_used: false,
@@ -1210,7 +1223,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   }
 
   if (isOtw) {
-    const booking = await getCustomerBookingStatus(from, branch, { statuses: ['confirmed'], limit: 5 });
+    const booking = await getBookingStatus(from, branch, { statuses: ['confirmed'], limit: 5 });
     if (booking.status === BOOKING_STATUS.CONFIRMED) {
       reply = 'Hati-hati di jalan ya kak 😊 Kalau keterlambatan lebih dari 10–15 menit, kabari admin/cabang karena slot bisa perlu disesuaikan.';
     } else {
@@ -1285,6 +1298,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
     logTelemetry({
       ...orchDecision,
+      execution_status: 'human_handoff',
+      crm_tool: null,
+      customer_found: null,
+      reddy_execution_status: 'not_used',
       fallback_used: Boolean(orchDecision.fallback_used),
       fallback_reason: orchDecision.fallback_reason || null,
       latency_ms: latencyMs,
@@ -1296,11 +1313,53 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
   }
 
+  // Existing booking status is backend authority, never an LLM or customer claim.
+  if (orchDecision?.intent === 'booking_status') {
+    let booking;
+    try {
+      booking = await getBookingStatus(from, branch, { limit: 10 });
+    } catch {
+      booking = { status: BOOKING_STATUS.AMBIGUOUS, bookings: [], reason: 'database_error' };
+    }
+    let bookingReply;
+    if (booking.status === BOOKING_STATUS.CONFIRMED) {
+      bookingReply = 'Booking kamu sudah confirmed dan tercatat di sistem Redbox ya Kak.';
+    } else if (booking.status === BOOKING_STATUS.PENDING) {
+      bookingReply = 'Booking kamu sudah masuk dan masih menunggu konfirmasi ya Kak.';
+    } else if (booking.status === BOOKING_STATUS.CANCELLED) {
+      bookingReply = 'Booking terakhir kamu tercatat dibatalkan ya Kak.';
+    } else if (booking.status === BOOKING_STATUS.DONE) {
+      bookingReply = 'Booking terakhir kamu sudah selesai ya Kak.';
+    } else if (booking.status === BOOKING_STATUS.NOT_FOUND) {
+      bookingReply = 'Aku belum menemukan booking untuk nomor ini di cabang tersebut ya Kak.';
+    } else {
+      bookingReply = 'Status booking sedang tidak dapat diperiksa. Coba beberapa saat lagi ya Kak.';
+    }
+    logTelemetry({
+      ...orchDecision,
+      execution_status: booking.status === BOOKING_STATUS.AMBIGUOUS ? 'database_unavailable' : 'success',
+      crm_tool: null,
+      customer_found: booking.status !== BOOKING_STATUS.NOT_FOUND && booking.status !== BOOKING_STATUS.AMBIGUOUS,
+      reddy_execution_status: 'not_used',
+      fallback_used: booking.status === BOOKING_STATUS.AMBIGUOUS,
+      fallback_reason: booking.status === BOOKING_STATUS.AMBIGUOUS ? (booking.reason || 'booking_status_unavailable') : null,
+      latency_ms: latencyMs,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+    const sendResult = await send(from, bookingReply, { branch });
+    return { used: 'booking_status_backend', reply: bookingReply, sendResult, error: null };
+  }
+
   // Handle Private CRM Agent Routes
   if (orchDecision && (orchDecision.route === 'crm_agent' || orchDecision.agent === 'crm_agent')) {
     if (!trustedIdentity) {
       logTelemetry({
         ...orchDecision,
+        execution_status: 'unauthorized',
+        crm_tool: executionService.TASK11_CRM_ALLOWLIST[orchDecision.intent] || null,
+        customer_found: false,
+        reddy_execution_status: 'not_started',
         fallback_used: Boolean(orchDecision.fallback_used),
         fallback_reason: orchDecision.fallback_reason || null,
         latency_ms: latencyMs,
@@ -1338,6 +1397,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         });
         logTelemetry({
           ...orchDecision,
+          execution_status: 'success',
+          crm_tool: intelRes.crm_tool || executionService.TASK11_CRM_ALLOWLIST[orchDecision.intent] || null,
+          customer_found: typeof intelRes.customer_found === 'boolean'
+            ? intelRes.customer_found
+            : Boolean(intelRes.intelligence?.customer_found),
+          reddy_execution_status: 'success',
           fallback_used: Boolean(orchDecision.fallback_used),
           fallback_reason: orchDecision.fallback_reason || null,
           latency_ms: latencyMs,
@@ -1352,6 +1417,21 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         return { used: 'crm_reddy_intelligence', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
       } catch (err) {
         console.warn('[WA Bot] Reddy execution error for CRM facts, using static fallback:', err.message);
+        logTelemetry({
+          ...orchDecision,
+          execution_status: 'degraded',
+          crm_tool: intelRes.crm_tool || executionService.TASK11_CRM_ALLOWLIST[orchDecision.intent] || null,
+          customer_found: typeof intelRes.customer_found === 'boolean'
+            ? intelRes.customer_found
+            : Boolean(intelRes.intelligence?.customer_found),
+          reddy_execution_status: 'error',
+          fallback_used: true,
+          fallback_reason: 'reddy_execution_error',
+          latency_ms: latencyMs,
+          branch,
+          trust_status: 'verified',
+          ...knowledgeTelemetry(knowledgeContext),
+        });
         const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status);
         const sendResult = await send(from, staticReply, { branch });
         return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
@@ -1360,6 +1440,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
     logTelemetry({
       ...orchDecision,
+      execution_status: intelRes?.execution_status || 'crm_error',
+      crm_tool: intelRes?.crm_tool || executionService.TASK11_CRM_ALLOWLIST[orchDecision.intent] || null,
+      customer_found: Boolean(intelRes?.customer_found),
+      reddy_execution_status: 'not_started',
       fallback_used: true,
       fallback_reason: intelRes?.execution_status || 'crm_intelligence_unavailable',
       crm_intelligence_status: intelRes?.execution_status || 'crm_error',
@@ -1370,7 +1454,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       history_trimmed: conversationContext.trimmed,
       history_status: conversationContext.history_status,
       conversation_context_used: Boolean(conversationContext.turn_count > 0),
-      ...knowledgeTelemetry(knowledgeRes?.knowledgeEnvelope || null),
+      ...knowledgeTelemetry(null),
     });
     const crmReply = 'Untuk data pribadi selain poin, fitur ini masih sedang kami siapkan ya kak.';
     const sendResult = await send(from, crmReply, { branch });
@@ -1393,6 +1477,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       });
       logTelemetry({
         ...orchDecision,
+        execution_status: 'success',
+        crm_tool: null,
+        customer_found: null,
+        reddy_execution_status: 'success',
         fallback_used: Boolean(orchDecision.fallback_used),
         fallback_reason: orchDecision.fallback_reason || null,
         latency_ms: latencyMs,
@@ -1409,6 +1497,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       console.warn('[WA Bot] Reddy execution error, using non-LLM static fallback:', err.message);
       logTelemetry({
         ...orchDecision,
+        execution_status: 'degraded',
+        crm_tool: null,
+        customer_found: null,
+        reddy_execution_status: 'error',
         fallback_used: true,
         fallback_reason: 'reddy_execution_error',
         latency_ms: latencyMs,
@@ -1433,7 +1525,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     branch,
     resolveKnowledge,
   });
-  logTelemetry({
+  const fallbackTelemetry = {
     route: orchDecision?.route || 'reddy_agent',
     agent: orchDecision?.agent || 'reddy_agent',
     intent: orchDecision?.intent || 'unknown',
@@ -1450,7 +1542,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     history_status: conversationContext.history_status,
     conversation_context_used: Boolean(conversationContext.turn_count > 0),
     ...knowledgeTelemetry(fallbackKnowledgeContext),
-  });
+  };
 
   try {
     reply = await generateReddy(
@@ -1468,6 +1560,15 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     used = 'fallback';
     error = err?.message || String(err);
   }
+  logTelemetry({
+    ...fallbackTelemetry,
+    execution_status: used === 'fallback' ? 'degraded' : 'success',
+    crm_tool: null,
+    customer_found: null,
+    reddy_execution_status: used === 'fallback' ? 'error' : 'success',
+    fallback_used: used === 'fallback' || fallbackTelemetry.fallback_used,
+    fallback_reason: used === 'fallback' ? 'reddy_execution_error' : fallbackTelemetry.fallback_reason,
+  });
 
   // Parse FORWARD_BOOKING tag — strip dari reply customer, proses di background
   let forwardBooking = null;

@@ -26,8 +26,10 @@ const POINTS_CLASSIFICATION_KEY_SET = new Set(POINTS_CLASSIFICATION_KEYS);
 // Executable CRM tool allowlist for Task 11 Customer Intelligence
 const TASK11_CRM_ALLOWLIST = Object.freeze({
   customer_history: 'get_customer_history',
+  customer_booking_history: 'get_customer_history',
   customer_profile: 'get_customer_profile',
   customer_preferences: 'get_customer_preferences',
+  customer_transaction_history: 'get_transaction_summary',
 });
 
 function readPointsClassification(value) {
@@ -173,6 +175,8 @@ async function executeCustomerIntelligence(params = {}, dependencies = {}) {
     return {
       execution_status: 'unauthorized',
       intelligence: null,
+      crm_tool: TASK11_CRM_ALLOWLIST[intent] || null,
+      customer_found: false,
     };
   }
 
@@ -181,6 +185,8 @@ async function executeCustomerIntelligence(params = {}, dependencies = {}) {
     return {
       execution_status: 'unsupported_intent',
       intelligence: null,
+      crm_tool: null,
+      customer_found: false,
     };
   }
 
@@ -203,6 +209,8 @@ async function executeCustomerIntelligence(params = {}, dependencies = {}) {
     return {
       execution_status: 'database_unavailable',
       intelligence: null,
+      crm_tool: toolName,
+      customer_found: false,
     };
   }
 
@@ -210,6 +218,8 @@ async function executeCustomerIntelligence(params = {}, dependencies = {}) {
   return {
     execution_status: envelope.status === 'success' ? 'success' : (crmResult?.status || 'crm_error'),
     intelligence: envelope,
+    crm_tool: toolName,
+    customer_found: Boolean(envelope.customer_found),
   };
 }
 

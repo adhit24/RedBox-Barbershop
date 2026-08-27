@@ -48,9 +48,30 @@ function projectCustomerSelf(customer360) {
       : 'available',
   } : null;
 
+  const safeLastVisitEvent = internal.activity?.last_visit_event ? {
+    date: internal.activity.last_visit_event.date || null,
+    branch: internal.activity.last_visit_event.branch || null,
+    barber: internal.activity.last_visit_event.barber || null,
+    service: internal.activity.last_visit_event.service || null,
+    source: internal.activity.last_visit_event.source || null,
+    confidence: internal.activity.last_visit_event.confidence || null,
+  } : null;
+
   const safeActivity = internal.activity ? {
     first_visit: internal.activity.first_visit || null,
     last_visit: internal.activity.last_visit || null,
+    last_visit_branch: internal.activity.last_visit_branch || null,
+    last_visit_barber: internal.activity.last_visit_barber || null,
+    last_visit_service: internal.activity.last_visit_service || null,
+    last_visit_source: internal.activity.last_visit_source || null,
+    last_visit_confidence: internal.activity.last_visit_confidence || null,
+    last_visit_event: safeLastVisitEvent,
+    latest_booking_date: internal.activity.latest_booking_date || null,
+    latest_booking_time: internal.activity.latest_booking_time || null,
+    latest_booking_branch: internal.activity.latest_booking_branch || null,
+    latest_booking_barber: internal.activity.latest_booking_barber || null,
+    latest_booking_service: internal.activity.latest_booking_service || null,
+    latest_booking_status: internal.activity.latest_booking_status || null,
     days_since_last_visit: typeof internal.activity.days_since_last_visit === 'number' ? internal.activity.days_since_last_visit : null,
     completed_booking_count: typeof internal.activity.completed_booking_count === 'number' ? internal.activity.completed_booking_count : null,
     completed_transaction_count: typeof internal.activity.completed_transaction_count === 'number' ? internal.activity.completed_transaction_count : null,
@@ -58,10 +79,14 @@ function projectCustomerSelf(customer360) {
     repeat_customer: Boolean(internal.activity.repeat_customer),
   } : null;
 
+  const preferenceValue = (value) => {
+    if (value && typeof value === 'object') return value.value || null;
+    return value || null;
+  };
   const safePreferences = internal.preferences ? {
-    favorite_branch: internal.preferences.favorite_branch || null,
-    favorite_barber: internal.preferences.favorite_barber || null,
-    favorite_service: internal.preferences.favorite_service || null,
+    favorite_branch: preferenceValue(internal.preferences.favorite_branch),
+    favorite_barber: preferenceValue(internal.preferences.favorite_barber),
+    favorite_service: preferenceValue(internal.preferences.favorite_service),
   } : null;
 
   return {

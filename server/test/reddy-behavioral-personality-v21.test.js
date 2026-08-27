@@ -164,7 +164,8 @@ test('C01. Session Continuity: 3 min pause on "Bypass aja" retains context witho
   const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 
   let passedSystemPrompt = null;
-  const mockCallOpenAI = async (from, text, name, branch, factsContext, convContext) => {
+  const mockCallOpenAI = async (from, text, name, branch, knowledgeFactsContext, factsContext, convContext) => {
+    assert.equal(knowledgeFactsContext, null);
     passedSystemPrompt = convContext?.sessionStatus;
     return 'Oke, cabang Bypass.';
   };
@@ -320,7 +321,8 @@ test('R04. Verified Name Source vs WhatsApp Display Name: Only verified CRM name
 test('R05. Direct Intent After Expiry: Direct queries on expired sessions answer directly without greeting', async () => {
   const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 
-  const mockCallOpenAI = async (from, text, name, branch, factsContext, convContext) => {
+  const mockCallOpenAI = async (from, text, name, branch, knowledgeFactsContext, factsContext, convContext) => {
+    assert.equal(knowledgeFactsContext, null);
     assert.equal(convContext?.sessionStatus, 'expired');
     return 'Hair Cut Rp85.000.';
   };

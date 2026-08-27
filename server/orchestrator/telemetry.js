@@ -34,6 +34,10 @@ function sanitizeTelemetry(event = {}) {
     latency_ms: typeof event.latency_ms === 'number' ? Math.max(0, event.latency_ms) : null,
     branch: typeof event.branch === 'string' ? event.branch : 'unknown',
     trust_status: typeof event.trust_status === 'string' ? event.trust_status : 'unverified',
+    execution_status: typeof event.execution_status === 'string' ? event.execution_status : 'unknown',
+    crm_tool: typeof event.crm_tool === 'string' ? event.crm_tool : null,
+    customer_found: typeof event.customer_found === 'boolean' ? event.customer_found : null,
+    reddy_execution_status: typeof event.reddy_execution_status === 'string' ? event.reddy_execution_status : 'unknown',
   };
 }
 

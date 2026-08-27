@@ -489,6 +489,55 @@ test('Visit Semantics Scenario 5: Insufficient linkage returns visit_metric_stat
   assert.equal(c360.activity.visit_metric_status, 'caveated');
 });
 
+test('B1 booking chronology: same-day records resolve latest clock time independent of row order', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-b1', wa: '62818202601', phone_e164: '+62818202601' }],
+    bookings: [
+      { id: 'b-morning', customer_id: 'cust-b1', status: 'done', date: '2026-08-27', time: '10:00' },
+      { id: 'b-evening', customer_id: 'cust-b1', status: 'done', date: '2026-08-27', time: '18:00' },
+    ],
+  });
+
+  const c360 = await getCustomer360(supabase, { phone: '62818202601' });
+  assert.equal(c360.activity.latest_booking_date, '2026-08-27');
+  assert.equal(c360.activity.latest_booking_time, '18:00');
+  assert.equal(c360.activity.latest_booking_status, 'done');
+});
+
+test('B2 booking chronology: latest mixed-status record remains distinct from completed visit', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-b2', wa: '62818202602', phone_e164: '+62818202602' }],
+    bookings: [
+      { id: 'b-done', customer_id: 'cust-b2', status: 'done', date: '2026-08-25', time: '10:00' },
+      { id: 'b-cancelled', customer_id: 'cust-b2', status: 'cancelled', date: '2026-08-26', time: '15:00' },
+      { id: 'b-confirmed', customer_id: 'cust-b2', status: 'confirmed', date: '2026-08-27', time: '18:00' },
+    ],
+  });
+
+  const c360 = await getCustomer360(supabase, { phone: '62818202602' });
+  assert.equal(c360.activity.latest_booking_date, '2026-08-27');
+  assert.equal(c360.activity.latest_booking_time, '18:00');
+  assert.equal(c360.activity.latest_booking_status, 'confirmed');
+  assert.equal(c360.activity.last_visit, '2026-08-25');
+  assert.equal(c360.activity.completed_booking_count, 1);
+});
+
+test('B3 booking chronology: latest cancelled record is not replaced by an older done booking', async () => {
+  const supabase = createMockSupabase({
+    customers: [{ id: 'cust-b3', wa: '62818202603', phone_e164: '+62818202603' }],
+    bookings: [
+      { id: 'b-done', customer_id: 'cust-b3', status: 'done', date: '2026-08-25', time: '10:00' },
+      { id: 'b-cancelled', customer_id: 'cust-b3', status: 'cancelled', date: '2026-08-27', time: '16:30' },
+    ],
+  });
+
+  const c360 = await getCustomer360(supabase, { phone: '62818202603' });
+  assert.equal(c360.activity.latest_booking_date, '2026-08-27');
+  assert.equal(c360.activity.latest_booking_time, '16:30');
+  assert.equal(c360.activity.latest_booking_status, 'cancelled');
+  assert.equal(c360.activity.last_visit, '2026-08-25');
+});
+
 // ── 9. DIRECT COVERAGE FOR ALL 7 CRM TOOLS ──────────────────────────────────
 test('CRM Agent Capabilities: direct test for all 7 declared tools', async () => {
   const supabase = createMockSupabase({

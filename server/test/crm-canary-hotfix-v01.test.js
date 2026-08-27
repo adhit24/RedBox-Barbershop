@@ -306,7 +306,8 @@ test('10. Welcome Test C — Known Returning Customer: CRM history facts present
   const { extractCustomerIntelligenceEnvelope } = require('../agents/reddy/customerFactsContext');
 
   let passedFactsContext = null;
-  const mockCallOpenAI = async (from, text, name, branch, factsContext) => {
+  const mockCallOpenAI = async (from, text, name, branch, knowledgeFactsContext, factsContext) => {
+    assert.equal(knowledgeFactsContext, null);
     passedFactsContext = factsContext;
     return 'Halo Mas Adhit 👋 Senang ketemu lagi di RedBox Bypass!';
   };
@@ -337,7 +338,8 @@ test('11. Welcome Test D — Unknown Customer: No CRM name or history results in
   let passedName = undefined;
   let passedFactsContext = undefined;
 
-  const mockCallOpenAI = async (from, text, name, branch, factsContext) => {
+  const mockCallOpenAI = async (from, text, name, branch, knowledgeFactsContext, factsContext) => {
+    assert.equal(knowledgeFactsContext, null);
     passedName = name;
     passedFactsContext = factsContext;
     return 'Halo Kak 👋 Selamat datang di Redbox Bypass. Ada yang mau dibantu?';
