@@ -749,9 +749,11 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 
 function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
   const t = text.toLowerCase();
-  const rawName = (name || '').trim();
-  const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : 'Kak';
-  const nameLabel = fn === 'Kak' ? 'Kak' : `Kak ${fn}`;
+  const { extractFirstName } = require('../../server/agents/reddy/personalityPolicy');
+  const fn = extractFirstName(name);
+  const nameLabel = fn ? 'Kak ' + fn : 'Kak';
+
+
   const has = (kws) => kws.some(k => t.includes(k));
   const bConfig = getBranchConfig(branch);
 
@@ -931,8 +933,9 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
 
   // Mixed Intent: both general question (e.g. hours/price/location) AND booking intent exist
   if (generalAnswer && isBookingReq) {
-    const rawName = (name || '').trim();
-    const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : '';
+    const { extractFirstName } = require('../../server/agents/reddy/personalityPolicy');
+    const fn = extractFirstName(name) || '';
+
     const nameLabel = fn ? `, ${fn}` : '';
 
     const bookingNote = foreignMsg(lang, {
@@ -953,8 +956,9 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
 
   // Pure Booking Intent: booking request only
   if (isBookingReq) {
-    const rawName = (name || '').trim();
-    const fn = (rawName && rawName !== 'Kak') ? rawName.split(' ')[0] : '';
+    const { extractFirstName } = require('../../server/agents/reddy/personalityPolicy');
+    const fn = extractFirstName(name) || '';
+
     const nameLabel = fn ? `, ${fn}` : '';
 
     const msg = foreignMsg(lang, {

@@ -153,3 +153,58 @@ test('N15. Existing Personality v2.1 name-overuse guard remains intact', () => {
   assert.match(promptActive, /DILARANG MENGULANG SAPAAN NAMA/);
   assert.match(promptActive, /Gunakan sapaan nama maksimal SATU KALI di awal sesi baru/);
 });
+
+// --- AIRA CORRECTION #1 TESTS (R1 - R7) ---
+
+test('R1. extractFirstName() is used in runtime path, safely handling invalid inputs', () => {
+  const invalidName1 = 'adhit@gmail.com';
+  const invalidName2 = '+6281234567890';
+  const invalidName3 = 'c-12345';
+
+  assert.equal(extractFirstName(invalidName1), null);
+  assert.equal(extractFirstName(invalidName2), null);
+  assert.equal(extractFirstName(invalidName3), null);
+
+  const prompt1 = buildSystemPrompt('bypass', 'expired', invalidName1);
+  assert.equal(prompt1.includes('Hai Kak adhit@gmail.com'), false);
+  assert.match(prompt1, /Hai Kak/);
+});
+
+test('R2. sessionStatus === "expired" is canonical new-session authority even with old history turns', () => {
+  const promptExpired = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
+  assert.match(promptExpired, /Kak Adhit/);
+  assert.match(promptExpired, /AWAL SESI BARU/);
+});
+
+test('R3. sessionStatus active suppresses re-greeting and name overuse', () => {
+  const promptActive = buildSystemPrompt('bypass', 'active_conversation', 'Adhit Nugraha');
+  assert.match(promptActive, /ATURAN SUPRESI SALAM/);
+  assert.match(promptActive, /DILARANG MENGULANG SAPAAN NAMA/);
+});
+
+test('R4. Direct question on new session allows "Hai Kak Adhit, <answer>" blended greeting', () => {
+  const promptExpired = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
+  assert.match(promptExpired, /leburkan salam dan jawaban secara alami/);
+  assert.match(promptExpired, /Hai Kak Adhit, Haircut di Redbox/);
+});
+
+test('R5. Direct question on new session strictly forbids ceremonial greeting and generic greeting', () => {
+  const promptExpired = buildSystemPrompt('bypass', 'expired', 'Adhit Nugraha');
+  assert.match(promptExpired, /DILARANG menggunakan ceremonial greeting/);
+  assert.match(promptExpired, /DILARANG menggunakan sapaan generik terpisah/);
+});
+
+test('R6. fallbackReply uses extractFirstName() safely', () => {
+  const replyValid = fallbackReply('halo', 'Adhit Nugraha', 'bypass');
+  assert.match(replyValid, /Kak Adhit/);
+
+  const replyInvalid = fallbackReply('halo', 'c-12345', 'bypass');
+  assert.equal(replyInvalid.includes('c-12345'), false);
+  assert.match(replyInvalid, /Kak/);
+});
+
+test('R7. Trusted CRM name source rule remains enforced; unverified names strictly fall back to generic Kak', () => {
+  const promptUnverified = buildSystemPrompt('bypass', 'expired', null);
+  assert.equal(promptUnverified.includes('Kak Boss Besar'), false);
+  assert.match(promptUnverified, /Hai Kak/);
+});
