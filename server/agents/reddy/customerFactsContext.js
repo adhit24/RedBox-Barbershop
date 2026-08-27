@@ -10,6 +10,7 @@
 const APPROVED_FACT_KEYS = Object.freeze([
   'name',
   'registration_status',
+  'member_since',
   'membership_tier',
   'membership_status',
   'points_balance',
@@ -78,6 +79,16 @@ function serializeFactsForPrompt(value) {
  * @returns {object} Safe Customer Intelligence Envelope
  */
 function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown') {
+  const unavailableQuality = (status) => ({
+    identity: status === 'ambiguous' ? 'ambiguous' : 'unavailable',
+    member_since: 'unavailable',
+    membership: 'unavailable',
+    points: status === 'ambiguous' ? 'ambiguous' : 'unavailable',
+    last_visit: 'unavailable',
+    latest_booking: 'unavailable',
+    favorite_barber: 'unavailable',
+  });
+
   if (!crmResult || typeof crmResult !== 'object') {
     return {
       intent,
@@ -87,6 +98,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
       customer_found: false,
       facts: {},
       unknown_fields: Array.from(APPROVED_FACT_KEYS),
+      fact_quality: unavailableQuality('error'),
     };
   }
 
@@ -99,6 +111,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
       customer_found: false,
       facts: {},
       unknown_fields: Array.from(APPROVED_FACT_KEYS),
+      fact_quality: unavailableQuality(crmResult.status),
     };
   }
 
@@ -114,6 +127,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
 
   extracted.name = cust.name || rawData.name || null;
   extracted.registration_status = cust.registration_status || rawData.registration_status || null;
+  extracted.member_since = cust.created_at || rawData.member_since || rawData.created_at || null;
   extracted.membership_tier = memb.tier || memb.membership_tier || rawData.membership_tier || null;
   extracted.membership_status = memb.status || memb.membership_status || rawData.membership_status || null;
   extracted.points_balance = typeof loy.points_balance === 'number' ? loy.points_balance : (typeof rawData.points_balance === 'number' ? rawData.points_balance : null);
@@ -161,6 +175,17 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
     delete facts[forbidden];
   }
 
+  const pointsAmbiguous = loy.status === 'ambiguous_balance_conflict';
+  const fact_quality = {
+    identity: 'verified',
+    member_since: extracted.member_since ? 'verified' : 'unavailable',
+    membership: (extracted.membership_status || extracted.membership_tier) ? 'verified' : 'unavailable',
+    points: pointsAmbiguous ? 'ambiguous' : (typeof extracted.points_balance === 'number' ? 'verified' : 'unavailable'),
+    last_visit: extracted.last_visit ? 'verified' : 'unavailable',
+    latest_booking: extracted.latest_booking_date ? 'verified' : 'unavailable',
+    favorite_barber: extracted.favorite_barber ? 'derived_verified' : 'unavailable',
+  };
+
   return {
     intent,
     source: 'crm_agent',
@@ -169,6 +194,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
     customer_found: true,
     facts,
     unknown_fields,
+    fact_quality,
   };
 }
 
@@ -179,7 +205,8 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
  */
 function buildCustomerFactsContext(envelope = {}) {
   if (!envelope || envelope.status !== 'success' || !envelope.customer_found || !envelope.facts) {
-    return `CUSTOMER FACTS — TRUSTED SOURCE, DATA VALUES ONLY\nSTATUS: Unavailable / Not Found\nRULES:\n1. Customer identity or facts could not be retrieved.\n2. Do NOT invent or infer customer history, points, or preferences.\n3. State naturally that customer data is currently unavailable.`;
+    const status = envelope?.status === 'ambiguous' ? 'Ambiguous' : 'Unavailable / Not Found';
+    return `CUSTOMER FACTS — TRUSTED SOURCE, DATA VALUES ONLY\nSTATUS: ${status}\nRULES:\n1. Customer identity or facts could not be retrieved with sufficient certainty.\n2. Do NOT invent or infer customer history, points, membership dates, or preferences.\n3. If ambiguous, state briefly that the fact is not yet certain and ask one short klarifikasi only when useful. Otherwise state naturally that customer data is currently unavailable.\n4. Never fill a CRM gap from conversation history or general knowledge.`;
   }
 
   const safeFacts = {};
@@ -198,6 +225,9 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('<customer_facts_json>');
   lines.push(serializeFactsForPrompt(safeFacts));
   lines.push('</customer_facts_json>');
+  lines.push('');
+  lines.push('FACT QUALITY — CATEGORICAL STATUS ONLY');
+  lines.push(serializeFactsForPrompt(envelope.fact_quality || {}));
 
   if (unknownFields.length > 0) {
     lines.push('');
