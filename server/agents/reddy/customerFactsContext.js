@@ -10,9 +10,11 @@
 const APPROVED_FACT_KEYS = Object.freeze([
   'name',
   'registration_status',
+  'is_registered_member',
   'member_since',
   'membership_tier',
   'membership_status',
+  'membership_status_scope',
   'points_balance',
   'first_visit',
   'last_visit',
@@ -127,9 +129,11 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
 
   extracted.name = cust.name || rawData.name || null;
   extracted.registration_status = cust.registration_status || rawData.registration_status || null;
+  extracted.is_registered_member = typeof cust.is_registered_member === 'boolean' ? cust.is_registered_member : (typeof rawData.is_registered_member === 'boolean' ? rawData.is_registered_member : null);
   extracted.member_since = cust.member_since || rawData.member_since || null;
   extracted.membership_tier = memb.tier || memb.membership_tier || rawData.membership_tier || null;
   extracted.membership_status = memb.status || memb.membership_status || rawData.membership_status || null;
+  extracted.membership_status_scope = memb.status_scope || rawData.status_scope || rawData.membership_status_scope || null;
   extracted.points_balance = typeof loy.points_balance === 'number' ? loy.points_balance : (typeof rawData.points_balance === 'number' ? rawData.points_balance : null);
   extracted.first_visit = act.first_visit || rawData.first_visit || null;
   extracted.last_visit = act.last_visit || rawData.last_visit || null;
@@ -252,6 +256,7 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('11. CANCELLED BOOKING: If latest_booking_status is cancelled, state clearly that its status was dibatalkan / dibatalin. DO NOT call that booking "kunjungan terakhir"; a cancelled booking NEVER replaces last_visit*. If customer asks if their cancelled booking was their last visit, correct naturally and accurately: "Bukan Kak, yang 19 Mei itu booking yang dibatalin. Terakhir kamu datang ke Redbox itu 11 Agustus."');
   lines.push('13. FAVORITE LANGUAGE: Prefer natural phrasing like "Kapster yang paling sering kamu pilih sejauh ini Onoy" and "Kamu paling sering ke Redbox Bypass." Avoid "berdasarkan frekuensi kunjungan terverifikasi" or "berdasarkan riwayat kunjungan".');
   lines.push('12. AMBIGUITY: Treat "appointment terakhir" from trusted nearby context; ask one short clarification only when context cannot distinguish a completed visit from a booking record. Explain both dates only when the distinction is useful.');
+  lines.push('14. MEMBER ACCOUNT vs PAID PLAN DISTINCTION: registration_status ("registered_member" / "guest_customer"), is_registered_member, and member_since describe the customer REGISTERED REDBOX MEMBER ACCOUNT. membership_status (ACTIVE / INACTIVE) and membership_status_scope (paid_membership_plan) describe paid membership benefit/plan status ONLY. When customer asks "member sejak kapan?" or "kapan aku member?", answer using registration_status + member_since (NOT membership_status). If member_since is known, say: "Kak [Nama] sudah jadi member Redbox sejak [member_since]." If member_since is null but registered_member, say: "Kak [Nama] sudah terdaftar sebagai member Redbox. Cuma tanggal pertama kali gabungnya belum kebaca di dataku." NEVER say membership/account is inactive when answering "member sejak kapan". If customer asks "membership aku aktif?", clarify: "Akun member Redbox kamu terdaftar, Kak. Kalau yang dimaksud paket/benefit membership, status paketnya saat ini belum aktif." (when paid plan is INACTIVE). Points balance is independent and NEVER determines member registration status or paid plan status.');
 
   return lines.join('\n');
 }
