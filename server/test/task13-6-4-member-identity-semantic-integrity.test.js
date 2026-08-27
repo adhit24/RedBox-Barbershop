@@ -2,28 +2,18 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { getCustomer360 } = require('../crm/customer360Service');
+const { projectCustomerSelf } = require('../crm/customerPrivacy');
 const { buildCustomerFactsContext, extractCustomerIntelligenceEnvelope } = require('../agents/reddy/customerFactsContext');
 const { buildReddyPersonalityPrompt } = require('../agents/reddy/personalityPolicy');
-const { buildSystemPrompt } = require('../../api/wa/webhook');
+const { buildDecisionEnvelope } = require('../orchestrator/orchestratorService');
 
-// Mock Supabase helper
 function createMockSupabase(fixtures = {}) {
-  const {
-    member_profiles = [],
-    customers = [],
-    transactions = [],
-    bookings = [],
-  } = fixtures;
-
   return {
     from: (table) => {
-      let data = [];
-      if (table === 'member_profiles') data = [...member_profiles];
-      if (table === 'customers') data = [...customers];
-      if (table === 'transactions') data = [...transactions];
-      if (table === 'bookings') data = [...bookings];
-
+      const data = [...(fixtures[table] || [])];
       const chain = {
         select: () => chain,
         or: () => chain,
@@ -37,174 +27,179 @@ function createMockSupabase(fixtures = {}) {
   };
 }
 
-test('M1. member_profiles exists but membership_status is null/inactive -> registration_status remains registered_member', async () => {
-  const supabase = createMockSupabase({
+const baseDecision = {
+  intent: 'unknown',
+  route: 'reddy_agent',
+  action: 'fallback_unknown',
+  confidence: 0.5,
+  model_tier: 'none',
+};
+
+test('M1. canonical member profile presence establishes registered member identity', async () => {
+  const result = await getCustomer360(createMockSupabase({
     member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Henky', membership_status: 'INACTIVE' }],
-  });
+  }), { phone: '6281234567890' });
 
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'registered_member');
-  assert.equal(res.customer.is_registered_member, true);
-  assert.equal(res.membership.status, 'INACTIVE');
-  assert.equal(res.membership.status_scope, 'paid_membership_plan');
+  assert.equal(result.customer.registration_status, 'registered_member');
+  assert.equal(result.customer.is_registered_member, true);
+  assert.equal(result.customer.registration_status_source, 'member_profiles_presence');
 });
 
-test('M2. registered_member + member_profiles.created_at -> member_since derives from member profile timestamp', async () => {
-  const supabase = createMockSupabase({
-    member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Henky', created_at: '2025-03-14T10:00:00Z' }],
-  });
-
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'registered_member');
-  assert.equal(res.customer.member_since, '2025-03-14');
-});
-
-test('M3. registered_member + member_since missing -> member_since is null without changing registration_status', async () => {
-  const supabase = createMockSupabase({
-    member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Henky', created_at: null }],
-  });
-
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'registered_member');
-  assert.equal(res.customer.is_registered_member, true);
-  assert.equal(res.customer.member_since, null);
-});
-
-test('M4. registered_member + points > 0 + paid membership inactive -> no semantic contradiction', async () => {
-  const supabase = createMockSupabase({
-    member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Henky', total_points: 961, membership_status: 'INACTIVE' }],
-  });
-
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'registered_member');
-  assert.equal(res.loyalty.points_balance, 961);
-  assert.equal(res.membership.status, 'INACTIVE');
-  assert.equal(res.membership.status_scope, 'paid_membership_plan');
-});
-
-test('M5. Question "member sejak kapan?" facts context points to member_since NOT membership.status', () => {
+test('M2. member_profiles.created_at is the verified member_since authority', async () => {
+  const internal = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', created_at: '2025-03-14T10:00:00Z' }],
+  }), { phone: '6281234567890' });
   const envelope = extractCustomerIntelligenceEnvelope({
-    status: 'success',
-    customer_found: true,
-    data: {
-      customer: { name: 'Henky', registration_status: 'registered_member', is_registered_member: true, member_since: '2025-03-14' },
-      membership: { status: 'INACTIVE', status_scope: 'paid_membership_plan' },
-      loyalty: { points_balance: 961 },
-    },
+    status: 'success', customer_found: true, data: projectCustomerSelf(internal),
   });
 
-  assert.equal(envelope.facts.registration_status, 'registered_member');
   assert.equal(envelope.facts.member_since, '2025-03-14');
-  assert.equal(envelope.facts.membership_status_scope, 'paid_membership_plan');
-
-  const context = buildCustomerFactsContext(envelope);
-  assert.match(context, /registered_member/);
-  assert.match(context, /member_since/);
-  assert.match(context, /MEMBER ACCOUNT vs PAID PLAN DISTINCTION/);
-  assert.match(context, /Kak \[Nama\] sudah jadi member Redbox sejak/);
+  assert.equal(envelope.fact_quality.member_since, 'verified');
 });
 
-test('M6. Question "member sejak kapan?" with member_since null instructs registered member date-unavailable semantics', () => {
-  const envelope = extractCustomerIntelligenceEnvelope({
+test('M3. customers.created_at alone never becomes member_since', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', created_at: null }],
+    customers: [{ id: 'cust-1', wa: '6281234567890', created_at: '2024-01-01T00:00:00Z' }],
+  }), { phone: '6281234567890' });
+
+  assert.equal(result.customer.member_since, null);
+  assert.equal(result.customer.member_since_source, null);
+  assert.equal(result.customer.created_at, '2024-01-01T00:00:00Z');
+});
+
+test('M4. inactive paid plan does not negate registered member identity', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', membership_status: 'INACTIVE' }],
+  }), { phone: '6281234567890' });
+
+  assert.equal(result.customer.registration_status, 'registered_member');
+  assert.equal(result.membership.plan_status, 'INACTIVE');
+  assert.equal(result.membership.status_scope, 'paid_membership_plan');
+});
+
+test('M5. member-since guidance uses registration facts and forbids volunteering paid-plan inactivity', () => {
+  const context = buildCustomerFactsContext(extractCustomerIntelligenceEnvelope({
     status: 'success',
     customer_found: true,
     data: {
-      customer: { name: 'Henky', registration_status: 'registered_member', is_registered_member: true, member_since: null },
-      membership: { status: 'INACTIVE', status_scope: 'paid_membership_plan' },
+      customer: {
+        name: 'Henky', registration_status: 'registered_member', is_registered_member: true,
+        registration_status_source: 'member_profiles_presence', member_since: '2025-03-14',
+        member_since_source: 'member_profiles.created_at',
+      },
+      membership: { plan_status: 'INACTIVE', status_scope: 'paid_membership_plan', status_source: 'membership_policy' },
     },
-  });
+  }));
 
-  const context = buildCustomerFactsContext(envelope);
-  assert.match(context, /registered_member/);
-  assert.match(context, /Cuma tanggal pertama kali gabungnya belum kebaca di dataku/);
+  assert.match(context, /answer using registration_status \+ member_since/);
   assert.match(context, /NEVER say membership\/account is inactive when answering "member sejak kapan"/);
 });
 
-test('M7. Question "membership aku aktif?" instructs distinguishing member account from paid plan status', () => {
+test('M6. "Aku member Redbox gak?" routes to trusted CRM registration facts', () => {
+  const decision = buildDecisionEnvelope({ message: 'Aku member Redbox gak?', decision: baseDecision });
+
+  assert.equal(decision.intent, 'customer_profile');
+  assert.equal(decision.route, 'crm_agent');
+  assert.equal(decision.action, 'get_customer_profile');
+  assert.deepEqual(decision.required_sources, ['crm:get_customer_profile']);
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
+
+test('M7. ambiguous "Membership aku aktif?" requires one short scope clarification', () => {
+  const decision = buildDecisionEnvelope({ message: 'Membership aku aktif?', decision: baseDecision });
   const prompt = buildReddyPersonalityPrompt({ isVerifiedName: true, verifiedName: 'Henky' });
-  assert.match(prompt, /ATURAN INTEGRITAS STATUS MEMBERSHIP & MEMBER SINCE/);
-  assert.match(prompt, /Akun member Redbox kamu terdaftar, Kak\. Kalau yang dimaksud paket\/benefit membership/);
+
+  assert.equal(decision.clarification_required, true);
+  assert.equal(decision.response_strategy, 'clarify_short');
+  assert.equal(decision.action, 'clarify_membership_scope');
+  assert.match(prompt, /Maksud Kak, akun member Redbox-nya atau paket membership berbayarnya/);
 });
 
-test('M8. Guest customer with no member profile does NOT claim registered member', async () => {
-  const supabase = createMockSupabase({
-    customers: [{ id: 'cust-1', wa: '6281234567890', name: 'Guest User' }],
+test('M8. points balance never infers an active paid plan', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', total_points: 961, membership_status: 'INACTIVE' }],
+  }), { phone: '6281234567890' });
+
+  assert.equal(result.loyalty.points_balance, 961);
+  assert.equal(result.membership.plan_status, 'INACTIVE');
+});
+
+test('M9. successful OTP verification creates authentication state but never activates paid membership', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+  const verifyStart = source.indexOf("app.post('/api/auth/otp/verify'");
+  const verifyEnd = source.indexOf("app.get('/api/auth/me'", verifyStart);
+  const verifyRoute = source.slice(verifyStart, verifyEnd);
+
+  assert.ok(verifyStart >= 0 && verifyEnd > verifyStart);
+  assert.match(verifyRoute, /from\('otp_codes'\)[\s\S]*verified_at/);
+  assert.match(verifyRoute, /from\('member_sessions'\)\.insert/);
+  assert.doesNotMatch(verifyRoute, /membership_status\s*:\s*['"]ACTIVE['"]/);
+  assert.doesNotMatch(verifyRoute, /from\(['"]member_profiles['"]\)[\s\S]*\.update\(/);
+});
+
+test('M10. unavailable CRM never infers member_since from visits or transactions', () => {
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'error',
+    customer_found: false,
+    data: { activity: { first_visit: '2024-01-01' }, transactions: [{ created_at: '2023-01-01' }] },
   });
 
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'guest_customer');
-  assert.equal(res.customer.is_registered_member, false);
-  assert.equal(res.customer.member_since, null);
+  assert.equal(envelope.facts.member_since, undefined);
+  assert.equal(envelope.fact_quality.member_since, 'unavailable');
 });
 
-test('M9. Points exist in guest customer row but no trusted member profile does NOT claim registered member', async () => {
-  const supabase = createMockSupabase({
-    customers: [{ id: 'cust-1', wa: '6281234567890', name: 'Guest User', points: 100 }],
+test('M11. member_since quality is verified only with canonical source metadata', () => {
+  const untrusted = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { member_since: '2020-01-01' } },
+  });
+  const trusted = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { member_since: '2025-03-14', member_since_source: 'member_profiles.created_at' } },
   });
 
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'guest_customer');
-  assert.equal(res.customer.is_registered_member, false);
-  assert.equal(res.loyalty.points_balance, 100);
+  assert.equal(untrusted.fact_quality.member_since, 'unavailable');
+  assert.equal(trusted.fact_quality.member_since, 'verified');
 });
 
-test('M10. membership_status ACTIVE in customer row without trusted member profile remains guest_customer', async () => {
-  const supabase = createMockSupabase({
-    customers: [{ id: 'cust-1', wa: '6281234567890', name: 'Guest User', membership_status: 'ACTIVE' }],
+test('M12. legacy customer membership_status cannot override registration identity', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    customers: [{ id: 'cust-1', wa: '6281234567890', membership_status: 'ACTIVE' }],
+  }), { phone: '6281234567890' });
+
+  assert.equal(result.customer.registration_status, 'guest_customer');
+  assert.equal(result.customer.is_registered_member, false);
+  assert.equal(result.customer.registration_status_source, 'member_profiles_absence');
+});
+
+test('M13. customer fact prompt explicitly scopes account, paid plan, points, and ambiguity', () => {
+  const context = buildCustomerFactsContext({
+    status: 'success', customer_found: true, facts: {}, unknown_fields: [], fact_quality: {},
   });
 
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'guest_customer');
-  assert.equal(res.customer.is_registered_member, false);
+  assert.match(context, /REGISTERED REDBOX MEMBER ACCOUNT/);
+  assert.match(context, /paid membership benefit\/plan status ONLY/);
+  assert.match(context, /Points balance is independent/);
+  assert.match(context, /Never guess either status/);
 });
 
-test('M11. member profile creation date (2025-03-14) differs from customers.created_at (2024-01-01) -> member_since uses profile date', async () => {
-  const supabase = createMockSupabase({
-    member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Henky', created_at: '2025-03-14T10:00:00Z' }],
-    customers: [{ id: 'cust-1', wa: '6281234567890', name: 'Henky', created_at: '2024-01-01T08:00:00Z' }],
+test('M14. member_since question remains an Orchestrator CRM read', () => {
+  const decision = buildDecisionEnvelope({ message: 'Aku member sejak kapan?', decision: baseDecision });
+
+  assert.equal(decision.route, 'crm_agent');
+  assert.equal(decision.action, 'get_customer_profile');
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
+
+test('M15. Task 13.6.3.1 direct-booking no-commit governance remains intact', () => {
+  const decision = buildDecisionEnvelope({
+    message: 'Aku mau booking Onoy besok jam 3.',
+    decision: { ...baseDecision, intent: 'booking_request', action: 'guide_booking' },
   });
 
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'registered_member');
-  assert.equal(res.customer.member_since, '2025-03-14');
-  assert.equal(res.customer.created_at, '2024-01-01T08:00:00Z');
-});
-
-test('M12. Multiple alias customer rows do NOT cause arbitrary earliest-date member_since inference', async () => {
-  const supabase = createMockSupabase({
-    member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Henky', created_at: null }],
-    customers: [
-      { id: 'cust-1', wa: '6281234567890', name: 'Henky A', created_at: '2023-05-01T00:00:00Z' },
-      { id: 'cust-2', wa: '6281234567890', name: 'Henky B', created_at: '2022-01-01T00:00:00Z' },
-    ],
-  });
-
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.equal(res.customer.registration_status, 'registered_member');
-  assert.equal(res.customer.member_since, null);
-});
-
-test('M13. System prompt strictly forbids stating "membership tidak aktif" when customer asks "member sejak kapan"', () => {
-  const systemPrompt = buildSystemPrompt('bypass', 'expired', 'Henky');
-  assert.match(systemPrompt, /DILARANG MENYATAKAN membership\/akun tidak aktif saat menjawab pertanyaan "member sejak kapan"/);
-});
-
-test('M14. Natural language rules remain Task 13.6.3 compliant (no bureaucratic jargon)', () => {
-  const prompt = buildReddyPersonalityPrompt({ isVerifiedName: true, verifiedName: 'Henky' });
-  assert.match(prompt, /GAYA BAHASA PERCAKAPAN ALAMI/);
-  assert.match(prompt, /Kak Henky sudah jadi member Redbox sejak/);
-  assert.equal(prompt.includes('status membership Anda tidak aktif'), false);
-});
-
-test('M15. Existing Customer360, identity, and points output structure remains intact', async () => {
-  const supabase = createMockSupabase({
-    member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Henky', total_points: 500, created_at: '2025-03-14T10:00:00Z' }],
-  });
-
-  const res = await getCustomer360(supabase, { phone: '6281234567890' });
-  assert.ok(res.customer);
-  assert.ok(res.membership);
-  assert.ok(res.loyalty);
-  assert.equal(res.customer.name, 'Henky');
-  assert.equal(res.loyalty.points_balance, 500);
+  assert.equal(decision.response_strategy, 'guide_to_booking');
+  assert.ok(decision.allowed_claims.includes('website_is_reservation_authority'));
+  assert.ok(decision.prohibited_claims.includes('booking_updated'));
+  assert.ok(decision.prohibited_claims.includes('reservation_confirmed'));
 });

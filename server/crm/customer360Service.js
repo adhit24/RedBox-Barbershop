@@ -547,7 +547,9 @@ async function getCustomer360(supabase, identityInput = {}) {
     birthday: formatDateStr(fetchedProfile?.birthday || custRow.birthday || custRow.birth_date),
     registration_status: fetchedProfile?.id ? 'registered_member' : 'guest_customer',
     is_registered_member: Boolean(fetchedProfile?.id),
-    member_since: fetchedProfile?.id ? formatDateStr(fetchedProfile?.created_at || fetchedProfile?.registered_at) : null,
+    registration_status_source: fetchedProfile?.id ? 'member_profiles_presence' : 'member_profiles_absence',
+    member_since: fetchedProfile?.id && fetchedProfile?.created_at ? formatDateStr(fetchedProfile.created_at) : null,
+    member_since_source: fetchedProfile?.id && fetchedProfile?.created_at ? 'member_profiles.created_at' : null,
     created_at: custRow.created_at || fetchedProfile?.created_at || null,
   };
 
@@ -566,7 +568,10 @@ async function getCustomer360(supabase, identityInput = {}) {
   const membershipObj = {
     status: isActive ? 'ACTIVE' : 'INACTIVE',
     status_scope: 'paid_membership_plan',
+    plan_status: isActive ? 'ACTIVE' : 'INACTIVE',
+    status_source: 'membership_policy',
     tier: tier,
+    plan_tier: tier,
     tier_origin: tierOrigin,
     activated_at: fetchedProfile?.membership_activated_at || custRow.membership_activated_at || null,
     expires_at: fetchedProfile?.membership_expires_at || null,
