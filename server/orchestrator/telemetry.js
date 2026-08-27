@@ -20,6 +20,29 @@ function sanitizeTelemetry(event = {}) {
     else confidenceBucket = '<0.5';
   }
 
+  const allowedActs = new Set([
+    'greeting', 'social_acknowledgement', 'explicit_closure', 'contextual_followup',
+    'temporal_followup', 'barber_choice_followup', 'service_choice_followup',
+    'branch_choice_followup', 'booking_request', 'booking_status_question',
+    'customer_fact_question', 'business_fact_question', 'complaint', 'unknown',
+  ]);
+  const allowedStrategies = new Set([
+    'answer_directly', 'acknowledge_only', 'acknowledge_context', 'clarify_short',
+    'answer_with_crm_fact', 'answer_with_knowledge_fact', 'guide_to_booking',
+    'correct_semantic_confusion', 'close_conversation', 'human_handoff',
+  ]);
+  const allowedSources = new Set([
+    'crm:get_points', 'crm:get_customer_profile', 'crm:get_customer_history',
+    'crm:get_visit_summary', 'crm:get_customer_preferences', 'crm:get_transaction_summary',
+    'booking_backend:booking_status', 'booking_backend:live_availability',
+    'booking_backend:reservation_flow', 'booking_backend:barber_popularity_trusted_read',
+    'knowledge:verified_business_fact',
+  ]);
+  const requiredSources = Array.isArray(event.required_sources)
+    ? event.required_sources.filter(source => allowedSources.has(source))
+    : [];
+  const qualityStates = new Set(['verified', 'derived_verified', 'unavailable', 'ambiguous', 'stale', 'legacy']);
+
   return {
     timestamp: new Date().toISOString(),
     event_type: 'orchestrator_routing',
@@ -44,6 +67,10 @@ function sanitizeTelemetry(event = {}) {
     data_quality_exclusion_count: Number.isInteger(event.data_quality_exclusion_count)
       && event.data_quality_exclusion_count >= 0 ? event.data_quality_exclusion_count : null,
     branch_source: typeof event.branch_source === 'string' ? event.branch_source : null,
+    conversational_act: allowedActs.has(event.conversational_act) ? event.conversational_act : 'unknown',
+    required_sources: requiredSources,
+    response_strategy: allowedStrategies.has(event.response_strategy) ? event.response_strategy : 'answer_directly',
+    crm_fact_status: qualityStates.has(event.crm_fact_status) ? event.crm_fact_status : null,
   };
 }
 

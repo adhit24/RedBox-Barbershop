@@ -10,6 +10,7 @@
 const APPROVED_FACT_KEYS = Object.freeze([
   'name',
   'registration_status',
+  'member_since',
   'membership_tier',
   'membership_status',
   'points_balance',
@@ -78,6 +79,16 @@ function serializeFactsForPrompt(value) {
  * @returns {object} Safe Customer Intelligence Envelope
  */
 function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown') {
+  const unavailableQuality = (status) => ({
+    identity: status === 'ambiguous' ? 'ambiguous' : 'unavailable',
+    member_since: 'unavailable',
+    membership: 'unavailable',
+    points: status === 'ambiguous' ? 'ambiguous' : 'unavailable',
+    last_visit: 'unavailable',
+    latest_booking: 'unavailable',
+    favorite_barber: 'unavailable',
+  });
+
   if (!crmResult || typeof crmResult !== 'object') {
     return {
       intent,
@@ -87,6 +98,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
       customer_found: false,
       facts: {},
       unknown_fields: Array.from(APPROVED_FACT_KEYS),
+      fact_quality: unavailableQuality('error'),
     };
   }
 
@@ -99,6 +111,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
       customer_found: false,
       facts: {},
       unknown_fields: Array.from(APPROVED_FACT_KEYS),
+      fact_quality: unavailableQuality(crmResult.status),
     };
   }
 
@@ -114,6 +127,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
 
   extracted.name = cust.name || rawData.name || null;
   extracted.registration_status = cust.registration_status || rawData.registration_status || null;
+  extracted.member_since = cust.member_since || rawData.member_since || null;
   extracted.membership_tier = memb.tier || memb.membership_tier || rawData.membership_tier || null;
   extracted.membership_status = memb.status || memb.membership_status || rawData.membership_status || null;
   extracted.points_balance = typeof loy.points_balance === 'number' ? loy.points_balance : (typeof rawData.points_balance === 'number' ? rawData.points_balance : null);
@@ -161,6 +175,17 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
     delete facts[forbidden];
   }
 
+  const pointsAmbiguous = loy.status === 'ambiguous_balance_conflict';
+  const fact_quality = {
+    identity: 'verified',
+    member_since: extracted.member_since ? 'verified' : 'unavailable',
+    membership: (extracted.membership_status || extracted.membership_tier) ? 'verified' : 'unavailable',
+    points: pointsAmbiguous ? 'ambiguous' : (typeof extracted.points_balance === 'number' ? 'verified' : 'unavailable'),
+    last_visit: extracted.last_visit ? 'verified' : 'unavailable',
+    latest_booking: extracted.latest_booking_date ? 'verified' : 'unavailable',
+    favorite_barber: extracted.favorite_barber ? 'derived_verified' : 'unavailable',
+  };
+
   return {
     intent,
     source: 'crm_agent',
@@ -169,6 +194,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
     customer_found: true,
     facts,
     unknown_fields,
+    fact_quality,
   };
 }
 
@@ -179,7 +205,8 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
  */
 function buildCustomerFactsContext(envelope = {}) {
   if (!envelope || envelope.status !== 'success' || !envelope.customer_found || !envelope.facts) {
-    return `CUSTOMER FACTS — TRUSTED SOURCE, DATA VALUES ONLY\nSTATUS: Unavailable / Not Found\nRULES:\n1. Customer identity or facts could not be retrieved.\n2. Do NOT invent or infer customer history, points, or preferences.\n3. State naturally that customer data is currently unavailable.`;
+    const status = envelope?.status === 'ambiguous' ? 'Ambiguous' : 'Unavailable / Not Found';
+    return `CUSTOMER FACTS — TRUSTED SOURCE, DATA VALUES ONLY\nSTATUS: ${status}\nRULES:\n1. Customer identity or facts could not be retrieved with sufficient certainty.\n2. Do NOT invent or infer customer history, points, membership dates, or preferences.\n3. If ambiguous, state briefly that the fact is not yet certain and ask one short klarifikasi only when useful. Otherwise state naturally that customer data is currently unavailable.\n4. Never fill a CRM gap from conversation history or general knowledge.`;
   }
 
   const safeFacts = {};
@@ -198,6 +225,9 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('<customer_facts_json>');
   lines.push(serializeFactsForPrompt(safeFacts));
   lines.push('</customer_facts_json>');
+  lines.push('');
+  lines.push('FACT QUALITY — CATEGORICAL STATUS ONLY');
+  lines.push(serializeFactsForPrompt(envelope.fact_quality || {}));
 
   if (unknownFields.length > 0) {
     lines.push('');
@@ -217,9 +247,10 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('6. SEPARATE LAST VISIT vs FAVORITE: "last_visit_branch", "last_visit_barber", "last_visit_service" belong to the latest visit ONLY. NEVER use favorite_branch/barber/service when answering about the last visit!');
   lines.push('7. USER CLAIMS ARE NOT CRM FACTS: If customer claims a different last visit ("enggak, terakhir aku sama Budi"), acknowledge kindly without turning their claim into verified CRM facts or mutating database state.');
   lines.push('8. CUSTOMER BOOKING HISTORY vs VISITS vs PUBLIC CUTOFF: latest_booking_* fields describe the customer own latest booking record at any status. Completed visits use last_visit*. Never substitute either with a branch last_booking_slot policy, and never treat public cutoff as customer history.');
-  lines.push('9. VISIT LANGUAGE: "terakhir ke Redbox", "terakhir aku potong", and "terakhir treatment" use last_visit*. Prefer natural wording: "Kunjungan selesai terakhir kamu tercatat ..."');
-  lines.push('10. BOOKING LANGUAGE: "booking terakhir", "reservasi terakhir", and a booking-time question use latest_booking_*. Prefer: "Kalau yang dimaksud booking/reservasi yang tercatat di sistem booking Redbox, yang terakhir adalah ..."');
-  lines.push('11. CANCELLED BOOKING: If latest_booking_status is cancelled, say its status was dibatalkan. DO NOT call that booking "kunjungan terakhir"; a cancelled booking never replaces last_visit*.');
+  lines.push('9. VISIT LANGUAGE: "terakhir ke Redbox", "terakhir aku potong", and "terakhir treatment" use last_visit*. Prefer natural, warm phrasing: "Terakhir kamu ke Redbox itu 11 Agustus di Bypass, sama Onoy." (Gantikan frasa kaku "Kunjungan selesai terakhir kamu tercatat...").');
+  lines.push('10. BOOKING LANGUAGE: "booking terakhir", "reservasi terakhir", and a booking-time question use latest_booking_*. Prefer natural phrasing: "Booking terakhir kamu 19 Mei jam 14.00, tapi booking itu dibatalin ya." (Gantikan frasa kaku "Kalau yang dimaksud booking/reservasi yang tercatat di sistem booking Redbox, yang terakhir adalah...").');
+  lines.push('11. CANCELLED BOOKING: If latest_booking_status is cancelled, state clearly that its status was dibatalkan / dibatalin. DO NOT call that booking "kunjungan terakhir"; a cancelled booking NEVER replaces last_visit*. If customer asks if their cancelled booking was their last visit, correct naturally and accurately: "Bukan Kak, yang 19 Mei itu booking yang dibatalin. Terakhir kamu datang ke Redbox itu 11 Agustus."');
+  lines.push('13. FAVORITE LANGUAGE: Prefer natural phrasing like "Kapster yang paling sering kamu pilih sejauh ini Onoy" and "Kamu paling sering ke Redbox Bypass." Avoid "berdasarkan frekuensi kunjungan terverifikasi" or "berdasarkan riwayat kunjungan".');
   lines.push('12. AMBIGUITY: Treat "appointment terakhir" from trusted nearby context; ask one short clarification only when context cannot distinguish a completed visit from a booking record. Explain both dates only when the distinction is useful.');
 
   return lines.join('\n');
