@@ -12,7 +12,7 @@ const {
 const { sanitizeTelemetry } = require('../orchestrator/telemetry');
 const { executeCustomerIntelligence } = require('../orchestrator/executionService');
 const { issueTrustedIdentity } = require('../identity/trustedIdentity');
-const { handleMessage } = require('../../api/wa/webhook');
+const { handleMessage, callOpenAI, bookingUrl } = require('../../api/wa/webhook');
 
 const classifier = (intent, route = 'reddy_agent', action = 'answer_general_question') => async () => ({
   intent,
@@ -42,7 +42,7 @@ test('O1 "Siang aja" with time context is temporal follow-up, not greeting', asy
 
   assert.equal(decision.conversational_act, 'temporal_followup');
   assert.equal(decision.continuation_type, 'contextual');
-  assert.equal(decision.response_strategy, 'acknowledge_context');
+  assert.equal(decision.response_strategy, 'acknowledge_booking_context_without_commit');
   assert.notEqual(decision.conversational_act, 'greeting');
 
   let agentCalls = 0;
@@ -55,13 +55,13 @@ test('O1 "Siang aja" with time context is temporal follow-up, not greeting', asy
       history: [{ role: 'user', content: 'Kayaknya masih lama.', timestamp: Date.now() }],
     }),
     orchestrate: params => orchestrateMessage(params, { classifier: classifier('general_question') }),
-    executeReddy: async () => { agentCalls++; },
+    executeReddy: async () => { agentCalls++; return { status: 'success', reply: 'Oke Kak, siang aja ya.' }; },
     executeIntelligence: async () => { crmCalls++; },
     send: async () => ({ status: 'sent' }),
     logTelemetry: () => {},
   });
   assert.equal(runtime.reply, 'Oke Kak, siang aja ya.');
-  assert.equal(agentCalls, 0);
+  assert.equal(agentCalls, 1);
   assert.equal(crmCalls, 0);
 });
 
@@ -103,7 +103,7 @@ test('O3 member_since question requests bounded CRM profile source', async () =>
   assert.equal(decision.response_strategy, 'answer_with_crm_fact');
   const profileFacts = extractCustomerIntelligenceEnvelope({
     status: 'success', customer_found: true,
-    data: { customer: { created_at: '2024-03-01T00:00:00.000Z' }, membership: {} },
+    data: { customer: { member_since: '2024-03-01T00:00:00.000Z' }, membership: {} },
   }, 'customer_profile');
   assert.equal(profileFacts.facts.member_since, '2024-03-01T00:00:00.000Z');
   assert.equal(profileFacts.fact_quality.member_since, 'verified');
@@ -267,4 +267,122 @@ test('O15 telemetry keeps source/strategy/quality metadata and strips PII', () =
   assert.equal(safe.crm_fact_status, 'verified');
   assert.equal(JSON.stringify(safe).includes('628123456789'), false);
   assert.equal(JSON.stringify(safe).includes('Private Person'), false);
+});
+
+// --- ARCHITECTURE GOVERNANCE TESTS (G1 - G8) ---
+
+test('G1 "Siang aja" after booking/time discussion has no-commit semantics and prohibited claims', async () => {
+  const decision = await orchestrateMessage({
+    message: 'Siang aja',
+    conversationContext: context({ role: 'user', content: 'Kayaknya masih lama.' }),
+  }, { classifier: classifier('general_question') });
+
+  assert.equal(decision.conversational_act, 'temporal_followup');
+  assert.equal(decision.context_reference, 'prior_arrival_or_booking_time');
+  assert.equal(decision.response_strategy, 'acknowledge_booking_context_without_commit');
+  assert.ok(decision.prohibited_claims.includes('selection_saved'));
+  assert.ok(decision.prohibited_claims.includes('slot_reserved'));
+  assert.ok(decision.prohibited_claims.includes('time_selected_in_system'));
+  assert.ok(decision.prohibited_claims.includes('reservation_confirmed'));
+});
+
+test('G2 barber candidate follow-up is understood but prohibited from claiming barber selected in system', async () => {
+  const decision = await orchestrateMessage({
+    message: 'Onoy aja',
+    conversationContext: context({ role: 'assistant', content: 'Mau potong sama kapster siapa Kak?' }),
+  }, { classifier: classifier('general_question') });
+
+  assert.equal(decision.conversational_act, 'barber_choice_followup');
+  assert.equal(decision.response_strategy, 'acknowledge_booking_context_without_commit');
+  assert.ok(decision.prohibited_claims.includes('barber_selected_in_system'));
+  assert.ok(decision.prohibited_claims.includes('selection_saved'));
+  assert.ok(decision.prohibited_claims.includes('booking_updated'));
+});
+
+test('G3 branch and service follow-up carry no-commit semantics and prohibited claims', async () => {
+  const decisionBranch = await orchestrateMessage({
+    message: 'Redbox Bypass',
+    conversationContext: context({ role: 'assistant', content: 'Mau ke cabang mana Kak?' }),
+  }, { classifier: classifier('general_question') });
+
+  assert.equal(decisionBranch.conversational_act, 'branch_choice_followup');
+  assert.equal(decisionBranch.response_strategy, 'acknowledge_booking_context_without_commit');
+  assert.ok(decisionBranch.prohibited_claims.includes('selection_saved'));
+
+  const decisionService = await orchestrateMessage({
+    message: 'Gentleman Grooming',
+    conversationContext: context({ role: 'assistant', content: 'Mau ambil paket layanan apa Kak?' }),
+  }, { classifier: classifier('general_question') });
+
+  assert.equal(decisionService.conversational_act, 'service_choice_followup');
+  assert.equal(decisionService.response_strategy, 'acknowledge_booking_context_without_commit');
+  assert.ok(decisionService.prohibited_claims.includes('selection_saved'));
+});
+
+test('G4 member_since absent in raw customer profile keeps member_since unavailable despite customer.created_at', () => {
+  const profileFacts = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { created_at: '2024-03-01T00:00:00.000Z' }, membership: {} },
+  }, 'customer_profile');
+
+  assert.equal(profileFacts.facts.member_since, undefined);
+  assert.equal(profileFacts.fact_quality.member_since, 'unavailable');
+});
+
+test('G5 canonical member_since present passes through canonical field', () => {
+  const profileFacts = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { member_since: '2024-03-01T00:00:00.000Z' }, membership: {} },
+  }, 'customer_profile');
+
+  assert.equal(profileFacts.facts.member_since, '2024-03-01T00:00:00.000Z');
+  assert.equal(profileFacts.fact_quality.member_since, 'verified');
+});
+
+test('G6 fact_quality.member_since must be unavailable if canonical fact absent', () => {
+  const profileFacts = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true,
+    data: { customer: { name: 'Adhit' }, membership: {} },
+  }, 'customer_profile');
+
+  assert.equal(profileFacts.fact_quality.member_since, 'unavailable');
+});
+
+test('G7 Reddy consumes response strategy and prohibited booking mutation claims', async () => {
+  const decision = await orchestrateMessage({
+    message: 'Siang aja',
+    conversationContext: context({ role: 'user', content: 'Kayaknya masih lama.' }),
+  }, { classifier: classifier('general_question') });
+
+  let capturedPrompt = '';
+  await callOpenAI(
+    '6281234567890',
+    'Siang aja',
+    'Adhit Nugraha',
+    'bypass',
+    { sessionStatus: 'active_conversation', orchestrator_decision: decision },
+    null,
+    null,
+    {
+      openai: {
+        chat: {
+          completions: {
+            create: async (params) => {
+              capturedPrompt = params.messages[0].content;
+              return { choices: [{ message: { content: 'Oh, maksudnya datang siang aja ya Kak. Kalau mau reservasi, jam finalnya tetap pilih di website booking ya.' } }] };
+            },
+          },
+        },
+      },
+    }
+  );
+
+  assert.match(capturedPrompt, /KEPUTUSAN ORCHESTRATOR/);
+  assert.match(capturedPrompt, /acknowledge_booking_context_without_commit/);
+  assert.match(capturedPrompt, /selection_saved/);
+});
+
+test('G8 booking URL authority remains unchanged', () => {
+  const url = bookingUrl('bypass');
+  assert.match(url, /redboxbarbershop.com/);
 });

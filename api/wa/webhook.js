@@ -678,7 +678,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     } else if (typeof a === 'object') {
       if (a.openai || a.persistConversationExchange || a.callOpenAI) {
         dependencies = a;
-      } else if (a.sessionStatus !== undefined || Array.isArray(a.turns) || a.history_status !== undefined) {
+      } else if (a.sessionStatus !== undefined || Array.isArray(a.turns) || a.history_status !== undefined || a.orchestrator_decision !== undefined) {
         conversationContext = a;
       }
     }
@@ -2181,3 +2181,5 @@ module.exports.buildBranchLocationText = buildBranchLocationText;
 module.exports.buildBranchOperatingHoursText = buildBranchOperatingHoursText;
 module.exports.buildBranchLastBookingSlotText = buildBranchLastBookingSlotText;
 module.exports.isForeignBookingIntent = isForeignBookingIntent;
+
+module.exports.bookingUrl = bookingUrl;

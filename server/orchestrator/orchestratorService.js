@@ -20,6 +20,21 @@ const CRM_INTENTS = new Set([
   'customer_transaction_history',
 ]);
 
+const BOOKING_MUTATION_PROHIBITED_CLAIMS = Object.freeze([
+  'selection_saved',
+  'booking_updated',
+  'slot_reserved',
+  'barber_selected_in_system',
+  'time_selected_in_system',
+  'reservation_confirmed',
+]);
+
+const BOOKING_CONTEXT_ALLOWED_CLAIMS = Object.freeze([
+  'acknowledge_context_preference',
+  'website_is_reservation_authority',
+  'final_selection_must_be_made_on_website',
+]);
+
 const KNOWLEDGE_INTENTS = new Set([
   'price_inquiry',
   'location_inquiry',
@@ -129,33 +144,69 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
   if (hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
     conversationalAct = 'temporal_followup';
     continuationType = 'contextual';
-    contextReference = 'prior_booking_or_time_discussion';
+    contextReference = 'prior_arrival_or_booking_time';
     resolved = { ...resolved, intent: 'booking_request', route: 'reddy_agent', agent: 'reddy_agent', action: 'continue_time_selection' };
-    policy = { required_sources: [], response_strategy: 'acknowledge_context' };
+    policy = {
+      required_sources: [],
+      response_strategy: 'acknowledge_booking_context_without_commit',
+      allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
+      prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
+    };
   } else if (hasActiveContext && currentBranchChoice && priorBranchChoice && !socialAck && !explicitClosure) {
     conversationalAct = 'branch_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_branch_choice';
     resolved = { ...resolved, intent: 'booking_request', route: 'reddy_agent', agent: 'reddy_agent', action: 'continue_branch_selection' };
-    policy = { required_sources: [], response_strategy: 'acknowledge_context' };
+    policy = {
+      required_sources: [],
+      response_strategy: 'acknowledge_booking_context_without_commit',
+      allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
+      prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
+    };
+  } else if (hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure && /\b(layanan|service|treatment|grooming|paket|cukur|haircut)\b/.test(normalized)) {
+    conversationalAct = 'service_choice_followup';
+    continuationType = 'contextual';
+    contextReference = 'prior_service_choice';
+    resolved = { ...resolved, intent: 'booking_request', route: 'reddy_agent', agent: 'reddy_agent', action: 'continue_service_selection' };
+    policy = {
+      required_sources: [],
+      response_strategy: 'acknowledge_booking_context_without_commit',
+      allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
+      prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
+    };
   } else if (hasActiveContext && shortChoice && priorBarberChoice && !socialAck && !explicitClosure && /^[\p{L} .'-]+$/u.test(normalized)) {
     conversationalAct = 'barber_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_barber_choice';
     resolved = { ...resolved, intent: 'booking_request', route: 'reddy_agent', agent: 'reddy_agent', action: 'continue_barber_selection' };
-    policy = { required_sources: [], response_strategy: 'acknowledge_context' };
+    policy = {
+      required_sources: [],
+      response_strategy: 'acknowledge_booking_context_without_commit',
+      allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
+      prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
+    };
   } else if (hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure) {
     conversationalAct = 'service_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_service_choice';
     resolved = { ...resolved, intent: 'booking_request', route: 'reddy_agent', agent: 'reddy_agent', action: 'continue_service_selection' };
-    policy = { required_sources: [], response_strategy: 'acknowledge_context' };
+    policy = {
+      required_sources: [],
+      response_strategy: 'acknowledge_booking_context_without_commit',
+      allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
+      prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
+    };
   } else if (hasActiveContext && shortChoice && priorBranchChoice && !socialAck && !explicitClosure) {
     conversationalAct = 'branch_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_branch_choice';
     resolved = { ...resolved, intent: 'booking_request', route: 'reddy_agent', agent: 'reddy_agent', action: 'continue_branch_selection' };
-    policy = { required_sources: [], response_strategy: 'acknowledge_context' };
+    policy = {
+      required_sources: [],
+      response_strategy: 'acknowledge_booking_context_without_commit',
+      allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
+      prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
+    };
   } else if (socialAck) {
     conversationalAct = 'social_acknowledgement';
     sessionBehavior = 'keep_current_state';

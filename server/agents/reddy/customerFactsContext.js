@@ -127,7 +127,7 @@ function extractCustomerIntelligenceEnvelope(crmResult = {}, intent = 'unknown')
 
   extracted.name = cust.name || rawData.name || null;
   extracted.registration_status = cust.registration_status || rawData.registration_status || null;
-  extracted.member_since = cust.created_at || rawData.member_since || rawData.created_at || null;
+  extracted.member_since = cust.member_since || rawData.member_since || null;
   extracted.membership_tier = memb.tier || memb.membership_tier || rawData.membership_tier || null;
   extracted.membership_status = memb.status || memb.membership_status || rawData.membership_status || null;
   extracted.points_balance = typeof loy.points_balance === 'number' ? loy.points_balance : (typeof rawData.points_balance === 'number' ? rawData.points_balance : null);
