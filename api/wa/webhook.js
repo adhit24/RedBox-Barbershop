@@ -1347,15 +1347,20 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // no unsupported factual claim, and no default CTA appended by Reddy.
   if (orchDecision?.response_strategy === 'acknowledge_only'
     || orchDecision?.response_strategy === 'acknowledge_context'
-    || orchDecision?.response_strategy === 'close_conversation') {
+    || orchDecision?.response_strategy === 'close_conversation'
+    || orchDecision?.response_strategy === 'clarify_short') {
     const temporalPeriod = /\b(pagi|siang|sore|malam)\b/i.exec(text)?.[1]?.toLowerCase() || null;
-    const boundedReply = orchDecision.response_strategy === 'acknowledge_only'
-      ? 'Siap Kak.'
-      : (orchDecision.response_strategy === 'close_conversation'
-        ? 'Siap Kak, terima kasih.'
-        : (orchDecision.conversational_act === 'temporal_followup' && temporalPeriod
-          ? `Oke Kak, ${temporalPeriod} aja ya.`
-          : 'Oke Kak, pilihan itu aku pakai untuk melanjutkan konteks percakapan ini ya.'));
+    const boundedReply = orchDecision.response_strategy === 'clarify_short'
+      ? (orchDecision.action === 'clarify_membership_time_scope'
+        ? 'Maksud Kak, sejak kapan terdaftar sebagai member Redbox, atau sejak kapan paket membership-nya aktif?'
+        : 'Maksud Kak, status akun member Redbox atau status paket membership berbayar?')
+      : (orchDecision.response_strategy === 'acknowledge_only'
+        ? 'Siap Kak.'
+        : (orchDecision.response_strategy === 'close_conversation'
+          ? 'Siap Kak, terima kasih.'
+          : (orchDecision.conversational_act === 'temporal_followup' && temporalPeriod
+            ? `Oke Kak, ${temporalPeriod} aja ya.`
+            : 'Oke Kak, pilihan itu aku pakai untuk melanjutkan konteks percakapan ini ya.')));
     logTelemetry({
       ...orchDecision,
       execution_status: 'deterministic_response',

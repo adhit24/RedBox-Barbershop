@@ -39,8 +39,8 @@ function projectCustomerSelf(customer360) {
   } : null;
 
   const safeMembership = internal.membership ? {
-    status: internal.membership.status || 'INACTIVE',
-    plan_status: internal.membership.plan_status || internal.membership.status || 'INACTIVE',
+    status: internal.membership.status ?? null,
+    plan_status: internal.membership.plan_status ?? internal.membership.status ?? null,
     status_scope: internal.membership.status_scope || 'paid_membership_plan',
     status_source: internal.membership.status_source || null,
     tier: internal.membership.tier || 'bronze',

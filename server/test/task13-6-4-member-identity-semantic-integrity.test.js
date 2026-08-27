@@ -203,3 +203,227 @@ test('M15. Task 13.6.3.1 direct-booking no-commit governance remains intact', ()
   assert.ok(decision.prohibited_claims.includes('booking_updated'));
   assert.ok(decision.prohibited_claims.includes('reservation_confirmed'));
 });
+
+test('M16. registered member with no membership_status is paid_plan_status unavailable, not verified INACTIVE', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', membership_status: null }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(result),
+  });
+
+  assert.equal(result.membership.plan_status, null);
+  assert.equal(result.membership.status_source, 'absent');
+  assert.equal(envelope.facts.membership_plan_status, undefined);
+  assert.equal(envelope.fact_quality.paid_plan_status, 'unavailable');
+  assert.notEqual(envelope.fact_quality.paid_plan_status, 'verified');
+});
+
+test('M17. guest customer with no paid plan fields is paid_plan_status unavailable', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    customers: [{ id: 'cust-1', wa: '6281234567890' }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(result),
+  });
+
+  assert.equal(result.membership.plan_status, null);
+  assert.equal(envelope.fact_quality.paid_plan_status, 'unavailable');
+});
+
+test('M18. explicit INACTIVE status is paid_plan_status INACTIVE verified', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', membership_status: 'INACTIVE' }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(result),
+  });
+
+  assert.equal(result.membership.plan_status, 'INACTIVE');
+  assert.equal(envelope.facts.membership_plan_status, 'INACTIVE');
+  assert.equal(envelope.fact_quality.paid_plan_status, 'verified');
+});
+
+test('M19. explicit ACTIVE status with valid policy timing is paid_plan_status ACTIVE verified', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', membership_status: 'ACTIVE', membership_activated_at: '2026-01-01T00:00:00Z', membership_expires_at: '2099-01-01T00:00:00Z' }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(result),
+  });
+
+  assert.equal(result.membership.plan_status, 'ACTIVE');
+  assert.equal(envelope.facts.membership_plan_status, 'ACTIVE');
+  assert.equal(envelope.fact_quality.paid_plan_status, 'verified');
+});
+
+test('M20. no configured tier makes paid_plan_tier unavailable', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', tier: null }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(result),
+  });
+
+  assert.equal(result.membership.tier_origin, 'default_baseline');
+  assert.equal(envelope.fact_quality.paid_plan_tier, 'unavailable');
+});
+
+test('M21. configured tier makes paid_plan_tier verified', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', tier: 'silver' }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(result),
+  });
+
+  assert.equal(result.membership.tier_origin, 'configured');
+  assert.equal(envelope.fact_quality.paid_plan_tier, 'verified');
+});
+
+test('M22. fact pack does not expose verified INACTIVE when source status is absent', async () => {
+  const result = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890' }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(result),
+  });
+  const prompt = buildCustomerFactsContext(envelope);
+
+  assert.equal(envelope.fact_quality.paid_plan_status, 'unavailable');
+  assert.doesNotMatch(prompt, /paid_plan_status:\s*verified/);
+});
+
+test('M23. "member aktif kapan?" triggers clarify_membership_time_scope', () => {
+  const decision = buildDecisionEnvelope({ message: 'member aktif kapan?', decision: baseDecision });
+
+  assert.equal(decision.clarification_required, true);
+  assert.equal(decision.response_strategy, 'clarify_short');
+  assert.equal(decision.action, 'clarify_membership_time_scope');
+});
+
+test('M24. "membership aktif sejak kapan?" triggers clarify_membership_time_scope', () => {
+  const decision = buildDecisionEnvelope({ message: 'membership aktif sejak kapan?', decision: baseDecision });
+
+  assert.equal(decision.clarification_required, true);
+  assert.equal(decision.response_strategy, 'clarify_short');
+  assert.equal(decision.action, 'clarify_membership_time_scope');
+});
+
+test('M25. "aku jadi member sejak kapan?" routes directly to CRM member_since', () => {
+  const decision = buildDecisionEnvelope({ message: 'aku jadi member sejak kapan?', decision: baseDecision });
+
+  assert.equal(decision.clarification_required, false);
+  assert.equal(decision.intent, 'customer_profile');
+  assert.equal(decision.action, 'get_customer_profile');
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
+
+test('M26. "terdaftar member sejak kapan?" routes directly to CRM member_since', () => {
+  const decision = buildDecisionEnvelope({ message: 'terdaftar member sejak kapan?', decision: baseDecision });
+
+  assert.equal(decision.clarification_required, false);
+  assert.equal(decision.intent, 'customer_profile');
+  assert.equal(decision.action, 'get_customer_profile');
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
+
+test('M27. "paket membership aktif sejak kapan?" routes directly to CRM paid plan fact', () => {
+  const decision = buildDecisionEnvelope({ message: 'paket membership aktif sejak kapan?', decision: baseDecision });
+
+  assert.equal(decision.clarification_required, false);
+  assert.equal(decision.intent, 'customer_profile');
+  assert.equal(decision.action, 'get_customer_profile');
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
+
+test('M28. "membership berbayar aktif kapan?" routes directly to CRM paid plan fact', () => {
+  const decision = buildDecisionEnvelope({ message: 'membership berbayar aktif kapan?', decision: baseDecision });
+
+  assert.equal(decision.clarification_required, false);
+  assert.equal(decision.intent, 'customer_profile');
+  assert.equal(decision.action, 'get_customer_profile');
+  assert.equal(decision.response_strategy, 'answer_with_crm_fact');
+});
+
+test('M29. account context + "aktif kapan?" resolves account registration scope without clarification', () => {
+  const decision = buildDecisionEnvelope({
+    message: 'aktif kapan?',
+    conversationContext: {
+      history_status: 'available',
+      sessionStatus: 'active_conversation',
+      turns: [{ role: 'user', content: 'Akun member aku masih terdaftar?' }],
+    },
+    decision: baseDecision,
+  });
+
+  assert.equal(decision.clarification_required, false);
+  assert.equal(decision.continuation_type, 'contextual');
+  assert.equal(decision.context_reference, 'prior_account_registration_discussion');
+  assert.equal(decision.action, 'get_customer_profile');
+});
+
+test('M30. paid plan context + "aktif sejak kapan?" resolves paid plan activation scope without clarification', () => {
+  const decision = buildDecisionEnvelope({
+    message: 'aktif sejak kapan?',
+    conversationContext: {
+      history_status: 'available',
+      sessionStatus: 'active_conversation',
+      turns: [{ role: 'user', content: 'Paket membership aku aktif nggak?' }],
+    },
+    decision: baseDecision,
+  });
+
+  assert.equal(decision.clarification_required, false);
+  assert.equal(decision.continuation_type, 'contextual');
+  assert.equal(decision.context_reference, 'prior_paid_membership_discussion');
+  assert.equal(decision.action, 'get_customer_profile');
+});
+
+test('M31. conversation context resolves scope only; backend date comes strictly from CRM', async () => {
+  const internal = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', created_at: '2026-05-28T00:00:00Z', membership_status: 'ACTIVE', membership_activated_at: '2026-07-01T00:00:00Z' }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(internal),
+  });
+
+  assert.equal(envelope.facts.member_since, '2026-05-28');
+  assert.equal(envelope.facts.membership_plan_activated_at, '2026-07-01T00:00:00Z');
+});
+
+test('M32. member_since and paid_plan_activated_at sources are strictly separate and never swapped', async () => {
+  const internal = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', created_at: '2026-05-28T00:00:00Z', membership_status: 'ACTIVE', membership_activated_at: '2026-07-01T00:00:00Z' }],
+  }), { phone: '6281234567890' });
+
+  assert.equal(internal.customer.member_since, '2026-05-28');
+  assert.equal(internal.membership.activated_at, '2026-07-01T00:00:00Z');
+  assert.notEqual(internal.customer.member_since, internal.membership.activated_at);
+});
+
+test('Hengky-like anonymized regression: member account, paid plan active, dates separate, ambiguity clarified', async () => {
+  const internal = await getCustomer360(createMockSupabase({
+    member_profiles: [{ id: 'prof-1', phone: '6281234567890', full_name: 'Anonymized Member', created_at: '2026-05-28T00:00:00Z', membership_status: 'ACTIVE', membership_activated_at: '2026-07-01T00:00:00Z', tier: 'silver', total_points: 150 }],
+  }), { phone: '6281234567890' });
+  const envelope = extractCustomerIntelligenceEnvelope({
+    status: 'success', customer_found: true, data: projectCustomerSelf(internal),
+  });
+
+  // 1. "member sejak kapan?" -> Date A (2026-05-28)
+  assert.equal(envelope.facts.member_since, '2026-05-28');
+  assert.equal(envelope.fact_quality.member_since, 'verified');
+
+  // 2. "paket membership aktif sejak kapan?" -> Date B (2026-07-01)
+  assert.equal(envelope.facts.membership_plan_activated_at, '2026-07-01T00:00:00Z');
+  assert.equal(envelope.fact_quality.paid_plan_activation, 'verified');
+
+  // 3. "member aktif kapan?" -> clarification first
+  const decision = buildDecisionEnvelope({ message: 'member aktif kapan?', decision: baseDecision });
+  assert.equal(decision.clarification_required, true);
+  assert.equal(decision.action, 'clarify_membership_time_scope');
+  assert.equal(decision.response_strategy, 'clarify_short');
+
+  // Points independent
+  assert.equal(envelope.facts.points_balance, 150);
+});

@@ -555,21 +555,30 @@ async function getCustomer360(supabase, identityInput = {}) {
 
   // --- Membership Section ---
   const rawTier = fetchedProfile?.tier || fetchedProfile?.current_tier || custRow.membership_tier;
+  const hasRawTier = Boolean(rawTier && String(rawTier).trim());
   const tier = resolveMembershipTier(rawTier);
-  const tierOrigin = (rawTier && String(rawTier).trim()) ? 'configured' : 'default_baseline';
+  const tierOrigin = hasRawTier ? 'configured' : 'default_baseline';
 
-  const rawStatus = fetchedProfile?.membership_status || custRow.membership_status || 'INACTIVE';
-  const isActive = isActiveMembership({
-    status: rawStatus,
-    startsAt: fetchedProfile?.membership_activated_at || custRow.membership_activated_at,
-    expiresAt: fetchedProfile?.membership_expires_at,
-  });
+  const rawStatus = fetchedProfile?.membership_status || custRow.membership_status;
+  const hasRawStatus = Boolean(rawStatus && String(rawStatus).trim());
+
+  let planStatus = null;
+  let statusSource = 'absent';
+  if (hasRawStatus) {
+    const isActive = isActiveMembership({
+      status: rawStatus,
+      startsAt: fetchedProfile?.membership_activated_at || custRow.membership_activated_at,
+      expiresAt: fetchedProfile?.membership_expires_at,
+    });
+    planStatus = isActive ? 'ACTIVE' : 'INACTIVE';
+    statusSource = 'membership_policy';
+  }
 
   const membershipObj = {
-    status: isActive ? 'ACTIVE' : 'INACTIVE',
+    status: planStatus,
     status_scope: 'paid_membership_plan',
-    plan_status: isActive ? 'ACTIVE' : 'INACTIVE',
-    status_source: 'membership_policy',
+    plan_status: planStatus,
+    status_source: statusSource,
     tier: tier,
     plan_tier: tier,
     tier_origin: tierOrigin,

@@ -219,17 +219,42 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     sessionBehavior = 'close';
     resolved = { ...resolved, intent: 'general_question', route: 'reddy_agent', agent: 'reddy_agent', action: 'close_conversation' };
     policy = { required_sources: [], response_strategy: 'close_conversation' };
-  } else if (/\b(member)\b.*\b(sejak|mulai|kapan)\b|\b(sejak|mulai)\b.*\bmember\b/.test(normalized)) {
+  } else if (hasActiveContext && /\b(aktif|active)\b.*\b(kapan|sejak|mulai)\b|\b(kapan|sejak|mulai)\b.*\b(aktif|active)\b/.test(normalized)
+    && /\b(akun|terdaftar|registrasi|daftar)\b/i.test(contextText)) {
+    conversationalAct = 'customer_fact_question';
+    continuationType = 'contextual';
+    contextReference = 'prior_account_registration_discussion';
+    resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
+    policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
+  } else if (hasActiveContext && /\b(aktif|active)\b.*\b(kapan|sejak|mulai)\b|\b(kapan|sejak|mulai)\b.*\b(aktif|active)\b/.test(normalized)
+    && /\b(paket|benefit|berbayar|paid|langganan)\b/i.test(contextText)) {
+    conversationalAct = 'customer_fact_question';
+    continuationType = 'contextual';
+    contextReference = 'prior_paid_membership_discussion';
+    resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
+    policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
+  } else if (/\b(paket|benefit|berbayar|paid)\b.*\b(membership|member)\b|\b(membership|member)\b.*\b(paket|benefit|berbayar|paid)\b/.test(normalized)) {
     conversationalAct = 'customer_fact_question';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
+  } else if (/\b(aku|saya|terdaftar|pertama|akun)\b.*\bmember\b.*\b(sejak|mulai|kapan)\b|\b(sejak|mulai|kapan)\b.*\bmember\b.*\b(aku|saya|terdaftar|pertama|akun)\b|\b(terdaftar member|jadi member|pertama jadi member)\b/.test(normalized)) {
+    conversationalAct = 'customer_fact_question';
+    resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
+    policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
+  } else if ((/\b(membership|member)\b.*\b(aktif|active)\b|\b(aktif|active)\b.*\b(membership|member)\b/.test(normalized)
+    && /\b(kapan|sejak|mulai)\b/.test(normalized))
+    || /\b(member|membership)\b.*\b(aktif|active)\b.*\b(kapan|sejak|mulai)\b|\b(kapan|sejak|mulai)\b.*\b(member|membership)\b.*\b(aktif|active)\b|\b(member|membership)\b.*\b(kapan|sejak|mulai)\b.*\b(aktif|active)\b/.test(normalized)) {
+    conversationalAct = 'customer_fact_question';
+    clarificationRequired = true;
+    resolved = { ...resolved, intent: 'customer_profile', route: 'reddy_agent', agent: 'reddy_agent', action: 'clarify_membership_time_scope' };
+    policy = { required_sources: [], response_strategy: 'clarify_short' };
   } else if (/\b(membership|member)\b.*\b(aktif|active)\b|\b(aktif|active)\b.*\b(membership|member)\b/.test(normalized)
     && !/\b(paket|benefit|berbayar|paid)\b/.test(normalized)) {
     conversationalAct = 'customer_fact_question';
     clarificationRequired = true;
     resolved = { ...resolved, intent: 'customer_profile', route: 'reddy_agent', agent: 'reddy_agent', action: 'clarify_membership_scope' };
     policy = { required_sources: [], response_strategy: 'clarify_short' };
-  } else if (/\b(paket|benefit|berbayar|paid)\b.*\b(membership|member)\b|\b(membership|member)\b.*\b(paket|benefit|berbayar|paid)\b/.test(normalized)) {
+  } else if (/\b(member)\b.*\b(sejak|mulai|kapan)\b|\b(sejak|mulai)\b.*\bmember\b/.test(normalized)) {
     conversationalAct = 'customer_fact_question';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
