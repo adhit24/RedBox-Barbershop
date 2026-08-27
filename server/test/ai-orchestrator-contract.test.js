@@ -22,6 +22,7 @@ const EXPECTED_ROUTES = {
   operating_hours_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_operating_hours' },
   service_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_service' },
   barber_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_inquiry' },
+  barber_popularity_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'read_barber_popularity' },
   booking_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_booking_request' },
   booking_availability_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_booking_availability' },
   booking_status: { route: 'reddy_agent', agent: 'reddy_agent', action: 'get_booking_status' },

@@ -11,6 +11,7 @@ const INTENT_GUIDE = [
   'operating_hours_inquiry: opening/closing hours',
   'service_inquiry: service details/comparison/difference/suitability',
   'barber_inquiry: barber identity/list/branch; no date/time/slot',
+  'barber_popularity_inquiry: aggregate public barber booking-selection ranking (most booked/most selected/popular); not booking_request. Requests about most customers served/melayani are unsupported served-volume semantics and must not be treated as booking popularity facts',
   'booking_request: explicitly asks to book; not availability',
   'booking_availability_inquiry: whether barber/slot/date/time is available; classify only',
   'booking_status: existing booking status',

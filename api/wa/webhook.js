@@ -121,6 +121,11 @@ const {
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
 const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
 const {
+  getBarberPopularity,
+  resolvePopularityBranch,
+} = require('../../server/services/barberPopularityService');
+const { formatBarberPopularityReply } = require('../../server/agents/reddy/barberPopularityReply');
+const {
   sanitizeConversationHistory,
   buildConversationMessages,
   appendConversationExchange,
@@ -1120,6 +1125,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     setHumanTakeover = setHumanTakeoverLocal,
     persistHumanHandoff = persistHumanTakeover,
     getBookingStatus = getCustomerBookingStatus,
+    readBarberPopularity = getBarberPopularity,
   } = deps;
 
   if (aiPaused || (checkHumanTakeover && await checkHumanTakeover(from))) {
@@ -1188,7 +1194,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   
 
   // New foreign language detected → start foreign booking flow
-  if (isForeignLanguage(text)) {
+  if (isForeignLanguage(text) && classification?.intent !== 'barber_popularity_inquiry') {
     console.log('[WA Bot] Foreign language detected; starting foreign booking flow');
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
@@ -1349,6 +1355,67 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     });
     const sendResult = await send(from, bookingReply, { branch });
     return { used: 'booking_status_backend', reply: bookingReply, sendResult, error: null };
+  }
+
+  // Public aggregate booking-selection facts use a deterministic trusted read.
+  // This is intentionally separate from private CRM/Customer360 data and booking execution.
+  if (orchDecision?.intent === 'barber_popularity_inquiry') {
+    const popularityBranch = resolvePopularityBranch(text, branch);
+    let popularity;
+    if (popularityBranch.status !== 'resolved') {
+      popularity = {
+        status: popularityBranch.status === 'ambiguous' ? 'ambiguous_branch' : 'unknown_branch',
+        metric: 'booking_selection_count',
+        branch: 'unknown',
+        period: { type: 'rolling_30_days' },
+        leaders: [],
+        eligible_booking_count: 0,
+        data_quality: {},
+        fallback_used: true,
+        fallback_reason: popularityBranch.status === 'ambiguous' ? 'ambiguous_requested_branch' : 'unknown_requested_branch',
+      };
+    } else try {
+      popularity = await readBarberPopularity({
+        supabase: getSupabase(),
+        branch: popularityBranch.branch,
+        message: text,
+      });
+    } catch (_) {
+      popularity = {
+        status: 'unavailable',
+        metric: 'booking_selection_count',
+        branch: popularityBranch.branch || 'unknown',
+        period: { type: 'rolling_30_days' },
+        leaders: [],
+        eligible_booking_count: 0,
+        data_quality: {},
+        fallback_used: true,
+        fallback_reason: 'trusted_read_failed',
+      };
+    }
+
+    const popularityReply = formatBarberPopularityReply(popularity);
+    const dataQualityExclusionCount = Object.values(popularity?.data_quality || {})
+      .reduce((total, value) => total + (Number.isInteger(value) && value > 0 ? value : 0), 0);
+    logTelemetry({
+      ...orchDecision,
+      execution_status: popularity?.status || 'unavailable',
+      crm_tool: null,
+      customer_found: null,
+      reddy_execution_status: 'deterministic_format',
+      fallback_used: Boolean(popularity?.fallback_used || popularity?.status !== 'success'),
+      fallback_reason: popularity?.fallback_reason || null,
+      latency_ms: latencyMs,
+      branch: popularity?.branch || popularityBranch.branch || 'unknown',
+      branch_source: popularityBranch.source,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+      metric: popularity?.metric || 'booking_selection_count',
+      period_type: popularity?.period?.type || 'rolling_30_days',
+      result_count: Array.isArray(popularity?.leaders) ? popularity.leaders.length : 0,
+      data_quality_exclusion_count: dataQualityExclusionCount,
+    });
+    const sendResult = await send(from, popularityReply, { branch });
+    return { used: 'barber_popularity_trusted_read', reply: popularityReply, sendResult, error: null };
   }
 
   // Handle Private CRM Agent Routes

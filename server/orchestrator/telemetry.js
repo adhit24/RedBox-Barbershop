@@ -38,6 +38,12 @@ function sanitizeTelemetry(event = {}) {
     crm_tool: typeof event.crm_tool === 'string' ? event.crm_tool : null,
     customer_found: typeof event.customer_found === 'boolean' ? event.customer_found : null,
     reddy_execution_status: typeof event.reddy_execution_status === 'string' ? event.reddy_execution_status : 'unknown',
+    metric: typeof event.metric === 'string' ? event.metric : null,
+    period_type: typeof event.period_type === 'string' ? event.period_type : null,
+    result_count: Number.isInteger(event.result_count) && event.result_count >= 0 ? event.result_count : null,
+    data_quality_exclusion_count: Number.isInteger(event.data_quality_exclusion_count)
+      && event.data_quality_exclusion_count >= 0 ? event.data_quality_exclusion_count : null,
+    branch_source: typeof event.branch_source === 'string' ? event.branch_source : null,
   };
 }
 
