@@ -18,6 +18,7 @@ const ROUTES = Object.freeze({
   operating_hours_inquiry: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_operating_hours' }),
   service_inquiry: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_service' }),
   barber_inquiry: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_inquiry' }),
+  barber_popularity_inquiry: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'read_barber_popularity' }),
   booking_request: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'route_booking_request' }),
   booking_availability_inquiry: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_booking_availability' }),
   booking_status: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'get_booking_status' }),
