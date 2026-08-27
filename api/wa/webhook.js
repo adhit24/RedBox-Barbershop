@@ -120,7 +120,10 @@ const {
   serializeKnowledgeForPrompt,
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
 const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
-const { getBarberPopularity } = require('../../server/services/barberPopularityService');
+const {
+  getBarberPopularity,
+  resolvePopularityBranch,
+} = require('../../server/services/barberPopularityService');
 const { formatBarberPopularityReply } = require('../../server/agents/reddy/barberPopularityReply');
 const {
   sanitizeConversationHistory,
@@ -1357,18 +1360,31 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // Public aggregate booking-selection facts use a deterministic trusted read.
   // This is intentionally separate from private CRM/Customer360 data and booking execution.
   if (orchDecision?.intent === 'barber_popularity_inquiry') {
+    const popularityBranch = resolvePopularityBranch(text, branch);
     let popularity;
-    try {
+    if (popularityBranch.status !== 'resolved') {
+      popularity = {
+        status: popularityBranch.status === 'ambiguous' ? 'ambiguous_branch' : 'unknown_branch',
+        metric: 'booking_selection_count',
+        branch: 'unknown',
+        period: { type: 'rolling_30_days' },
+        leaders: [],
+        eligible_booking_count: 0,
+        data_quality: {},
+        fallback_used: true,
+        fallback_reason: popularityBranch.status === 'ambiguous' ? 'ambiguous_requested_branch' : 'unknown_requested_branch',
+      };
+    } else try {
       popularity = await readBarberPopularity({
         supabase: getSupabase(),
-        branch,
+        branch: popularityBranch.branch,
         message: text,
       });
     } catch (_) {
       popularity = {
         status: 'unavailable',
         metric: 'booking_selection_count',
-        branch,
+        branch: popularityBranch.branch || 'unknown',
         period: { type: 'rolling_30_days' },
         leaders: [],
         eligible_booking_count: 0,
@@ -1390,7 +1406,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       fallback_used: Boolean(popularity?.fallback_used || popularity?.status !== 'success'),
       fallback_reason: popularity?.fallback_reason || null,
       latency_ms: latencyMs,
-      branch,
+      branch: popularity?.branch || popularityBranch.branch || 'unknown',
+      branch_source: popularityBranch.source,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
       metric: popularity?.metric || 'booking_selection_count',
       period_type: popularity?.period?.type || 'rolling_30_days',

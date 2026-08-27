@@ -21,6 +21,9 @@ function joinNames(names) {
 }
 
 function formatBarberPopularityReply(result = {}) {
+  if (result.status === 'ambiguous_branch' || result.status === 'unknown_branch') {
+    return 'Cabang Redbox yang ingin dibandingkan yang mana, Kak?';
+  }
   if (result.status === 'unsupported_metric') {
     return 'Untuk saat ini aku baru bisa membandingkan kapster dari jumlah booking yang dipilih, bukan jumlah customer yang dilayani, Kak.';
   }

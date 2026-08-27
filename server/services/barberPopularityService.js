@@ -1,9 +1,74 @@
 'use strict';
 
+const { REDBOX_KNOWLEDGE } = require('../agents/reddy/knowledge/redboxKnowledge');
+
 const METRIC = 'booking_selection_count';
 const SERVED_VOLUME_METRIC = 'served_customer_count';
 const DEFAULT_PERIOD_TYPE = 'rolling_30_days';
 const BUSINESS_TIME_ZONE = 'Asia/Jakarta';
+const WORD = 'a-z0-9';
+
+function normalizeText(value) {
+  return String(value || '').trim().toLocaleLowerCase('id-ID').replace(/\s+/g, ' ');
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function includesAlias(text, alias) {
+  const normalizedAlias = normalizeText(alias);
+  if (!normalizedAlias) return false;
+  const pattern = escapeRegex(normalizedAlias).replace(/\ /g, '\\s+');
+  return new RegExp(`(^|[^${WORD}])${pattern}(?=$|[^${WORD}])`).test(text);
+}
+
+function resolvePopularityBranch(message, transportBranch, branches = REDBOX_KNOWLEDGE.branches) {
+  const normalizedMessage = normalizeText(message);
+  const normalizedTransport = normalizeText(transportBranch);
+  const transport = branches.find(branch => branch.id === normalizedTransport);
+  const requested = branches.filter(branch => [branch.id, ...(branch.aliases || [])]
+    .some(alias => includesAlias(normalizedMessage, alias)));
+
+  if (requested.length === 1) {
+    return {
+      status: 'resolved',
+      branch: requested[0].id,
+      source: 'customer_request',
+      transport_branch: transport?.id || 'unknown',
+    };
+  }
+  if (requested.length > 1) {
+    return {
+      status: 'ambiguous',
+      branch: null,
+      source: 'customer_request',
+      transport_branch: transport?.id || 'unknown',
+    };
+  }
+  if (/\b(cabang|branch)\b/.test(normalizedMessage)) {
+    return {
+      status: 'unknown',
+      branch: null,
+      source: 'customer_request',
+      transport_branch: transport?.id || 'unknown',
+    };
+  }
+  if (transport) {
+    return {
+      status: 'resolved',
+      branch: transport.id,
+      source: 'transport_fallback',
+      transport_branch: transport.id,
+    };
+  }
+  return {
+    status: 'unknown',
+    branch: null,
+    source: 'unresolved',
+    transport_branch: 'unknown',
+  };
+}
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
@@ -241,5 +306,6 @@ module.exports = {
   SERVED_VOLUME_METRIC,
   getBarberPopularity,
   requestedMetric,
+  resolvePopularityBranch,
   resolvePopularityPeriod,
 };

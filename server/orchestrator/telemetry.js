@@ -43,6 +43,7 @@ function sanitizeTelemetry(event = {}) {
     result_count: Number.isInteger(event.result_count) && event.result_count >= 0 ? event.result_count : null,
     data_quality_exclusion_count: Number.isInteger(event.data_quality_exclusion_count)
       && event.data_quality_exclusion_count >= 0 ? event.data_quality_exclusion_count : null,
+    branch_source: typeof event.branch_source === 'string' ? event.branch_source : null,
   };
 }
 

@@ -12,6 +12,7 @@ const { ROUTES } = require('../orchestrator/contract');
 const { sanitizeTelemetry } = require('../orchestrator/telemetry');
 const {
   getBarberPopularity,
+  resolvePopularityBranch,
   resolvePopularityPeriod,
 } = require('../services/barberPopularityService');
 const { formatBarberPopularityReply } = require('../agents/reddy/barberPopularityReply');
@@ -277,6 +278,82 @@ test('P11: actual webhook sends trusted popularity answer once with no booking C
   assert.equal(telemetry[0].data_quality_exclusion_count, 1);
 });
 
+test('finalization blocker: requested CSB data branch overrides Bypass transport branch', async () => {
+  const reads = [];
+  const deliveries = [];
+  const telemetry = [];
+  const result = await handleMessage({
+    from: '6281111110000', name: 'Kak',
+    text: 'klo di csb kapster yang paling sering di book siapa ya?',
+    branchFromPayload: 'bypass',
+  }, {
+    loadConversationHistory: async () => [],
+    orchestrate: async () => ({
+      intent: 'barber_popularity_inquiry', route: 'reddy_agent', agent: 'reddy_agent',
+      action: 'read_barber_popularity', confidence: 1, model_tier: 'none',
+    }),
+    readBarberPopularity: async params => {
+      reads.push(params);
+      return {
+        status: 'success', metric: 'booking_selection_count', branch: params.branch,
+        period: { type: 'rolling_30_days', start_date: '2026-07-28', end_date: '2026-08-27' },
+        leaders: [{ barber_name: 'Ubay', booking_count: 9, rank: 1 }],
+        eligible_booking_count: 9, data_quality: {},
+      };
+    },
+    send: async (_to, reply, options) => {
+      deliveries.push({ reply, branch: options.branch });
+      return { ok: true };
+    },
+    logTelemetry: event => { telemetry.push(event); return event; },
+  });
+
+  assert.equal(result.used, 'barber_popularity_trusted_read');
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0].branch, 'csb');
+  assert.match(deliveries[0].reply, /booking CSB/i);
+  assert.equal(deliveries[0].branch, 'bypass', 'reply must still use the inbound transport');
+  assert.equal(telemetry[0].branch, 'csb');
+  assert.equal(telemetry[0].branch_source, 'customer_request');
+});
+
+test('requested branch resolver is alias-aware, transport-safe, and fail-closed on ambiguity', () => {
+  assert.deepEqual(resolvePopularityBranch('barber populer di cirebon super block?', 'bypass'), {
+    status: 'resolved', branch: 'csb', source: 'customer_request', transport_branch: 'bypass',
+  });
+  assert.deepEqual(resolvePopularityBranch('barber paling populer siapa?', 'sumber'), {
+    status: 'resolved', branch: 'sumber', source: 'transport_fallback', transport_branch: 'sumber',
+  });
+  assert.deepEqual(resolvePopularityBranch('bandingkan barber CSB dan Sumber', 'bypass'), {
+    status: 'ambiguous', branch: null, source: 'customer_request', transport_branch: 'bypass',
+  });
+});
+
+test('ambiguous requested branches perform no data read and ask one short clarification', async () => {
+  const sent = [];
+  const telemetry = [];
+  const result = await handleMessage({
+    from: '6281111110000', name: 'Kak',
+    text: 'barber paling populer CSB atau Sumber siapa?',
+    branchFromPayload: 'bypass',
+  }, {
+    loadConversationHistory: async () => [],
+    orchestrate: async () => ({
+      intent: 'barber_popularity_inquiry', route: 'reddy_agent', agent: 'reddy_agent',
+      action: 'read_barber_popularity', confidence: 1, model_tier: 'none',
+    }),
+    readBarberPopularity: async () => assert.fail('ambiguous branch must not query trusted data'),
+    send: async (_to, reply, options) => { sent.push({ reply, branch: options.branch }); return { ok: true }; },
+    logTelemetry: event => { telemetry.push(event); return event; },
+  });
+
+  assert.equal(result.used, 'barber_popularity_trusted_read');
+  assert.deepEqual(sent, [{ reply: 'Cabang Redbox yang ingin dibandingkan yang mana, Kak?', branch: 'bypass' }]);
+  assert.equal(telemetry[0].branch, 'unknown');
+  assert.equal(telemetry[0].branch_source, 'customer_request');
+  assert.equal(telemetry[0].fallback_reason, 'ambiguous_requested_branch');
+});
+
 test('P12: served-volume wording is not silently converted into booking popularity', async () => {
   const decision = classifyDeterministically('yang paling sering melayani customer siapa?');
   assert.equal(decision.intent, 'barber_popularity_inquiry');
@@ -296,13 +373,14 @@ test('telemetry allows only non-PII popularity reliability fields', () => {
   const safe = sanitizeTelemetry({
     intent: 'barber_popularity_inquiry', route: 'reddy_agent', action: 'read_barber_popularity',
     branch: 'csb', metric: 'booking_selection_count', period_type: 'rolling_30_days',
-    result_count: 2, data_quality_exclusion_count: 3, fallback_used: false,
+    branch_source: 'customer_request', result_count: 2, data_quality_exclusion_count: 3, fallback_used: false,
     phone: '6281111110000', message: 'raw customer message', booking_rows: [{ phone: 'secret' }],
   });
   assert.equal(safe.metric, 'booking_selection_count');
   assert.equal(safe.period_type, 'rolling_30_days');
   assert.equal(safe.result_count, 2);
   assert.equal(safe.data_quality_exclusion_count, 3);
+  assert.equal(safe.branch_source, 'customer_request');
   assert.equal(Object.hasOwn(safe, 'phone'), false);
   assert.equal(Object.hasOwn(safe, 'message'), false);
   assert.equal(Object.hasOwn(safe, 'booking_rows'), false);
