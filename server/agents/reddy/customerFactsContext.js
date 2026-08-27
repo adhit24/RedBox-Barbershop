@@ -217,6 +217,10 @@ function buildCustomerFactsContext(envelope = {}) {
   lines.push('6. SEPARATE LAST VISIT vs FAVORITE: "last_visit_branch", "last_visit_barber", "last_visit_service" belong to the latest visit ONLY. NEVER use favorite_branch/barber/service when answering about the last visit!');
   lines.push('7. USER CLAIMS ARE NOT CRM FACTS: If customer claims a different last visit ("enggak, terakhir aku sama Budi"), acknowledge kindly without turning their claim into verified CRM facts or mutating database state.');
   lines.push('8. CUSTOMER BOOKING HISTORY vs VISITS vs PUBLIC CUTOFF: latest_booking_* fields describe the customer own latest booking record at any status. Completed visits use last_visit*. Never substitute either with a branch last_booking_slot policy, and never treat public cutoff as customer history.');
+  lines.push('9. VISIT LANGUAGE: "terakhir ke Redbox", "terakhir aku potong", and "terakhir treatment" use last_visit*. Prefer natural wording: "Kunjungan selesai terakhir kamu tercatat ..."');
+  lines.push('10. BOOKING LANGUAGE: "booking terakhir", "reservasi terakhir", and a booking-time question use latest_booking_*. Prefer: "Kalau yang dimaksud booking/reservasi yang tercatat di sistem booking Redbox, yang terakhir adalah ..."');
+  lines.push('11. CANCELLED BOOKING: If latest_booking_status is cancelled, say its status was dibatalkan. DO NOT call that booking "kunjungan terakhir"; a cancelled booking never replaces last_visit*.');
+  lines.push('12. AMBIGUITY: Treat "appointment terakhir" from trusted nearby context; ask one short clarification only when context cannot distinguish a completed visit from a booking record. Explain both dates only when the distinction is useful.');
 
   return lines.join('\n');
 }

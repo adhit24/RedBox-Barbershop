@@ -508,7 +508,7 @@ test('B2 booking chronology: latest mixed-status record remains distinct from co
   const supabase = createMockSupabase({
     customers: [{ id: 'cust-b2', wa: '62818202602', phone_e164: '+62818202602' }],
     bookings: [
-      { id: 'b-done', customer_id: 'cust-b2', status: 'done', date: '2026-08-25', time: '10:00' },
+      { id: 'b-done', customer_id: 'cust-b2', status: 'done', date: '2026-08-25', time: '10:00', service: 'Haircut' },
       { id: 'b-cancelled', customer_id: 'cust-b2', status: 'cancelled', date: '2026-08-26', time: '15:00' },
       { id: 'b-confirmed', customer_id: 'cust-b2', status: 'confirmed', date: '2026-08-27', time: '18:00' },
     ],
@@ -526,7 +526,7 @@ test('B3 booking chronology: latest cancelled record is not replaced by an older
   const supabase = createMockSupabase({
     customers: [{ id: 'cust-b3', wa: '62818202603', phone_e164: '+62818202603' }],
     bookings: [
-      { id: 'b-done', customer_id: 'cust-b3', status: 'done', date: '2026-08-25', time: '10:00' },
+      { id: 'b-done', customer_id: 'cust-b3', status: 'done', date: '2026-08-25', time: '10:00', service: 'Haircut' },
       { id: 'b-cancelled', customer_id: 'cust-b3', status: 'cancelled', date: '2026-08-27', time: '16:30' },
     ],
   });

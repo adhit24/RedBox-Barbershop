@@ -18,6 +18,11 @@ async function safeSupabaseQuery(query) {
 const { resolveCustomerIdentity } = require('./customerIdentity');
 const { resolveMembershipTier, isActiveMembership } = require('../membership-policy');
 const { normalizeMemberPhone, getMemberPhoneVariants } = require('../member-identity');
+const {
+  buildCompletedServiceVisits,
+  resolveLastVisit,
+  summarizePreference,
+} = require('./completedServiceVisits');
 
 /**
  * Dedicated CRM points read helper for trusted phone identity (CUSTOMER_SELF).
@@ -380,38 +385,86 @@ async function getCustomer360(supabase, identityInput = {}) {
   const txData = txRes.data || [];
   const bkData = bookingsRes.data || [];
 
-  // Bounded Metadata Lookups for Outlets, Schedules, and Barbers
+  // Bounded metadata lookups for canonical completed-service visits.
   const outletIdsToFetch = Array.from(new Set(txData.map(t => t.outlet_id).filter(Boolean)));
-  const scheduleIdsToFetch = Array.from(new Set(txData.map(t => t.schedule_id).filter(Boolean)));
+  const scheduleIdsToFetch = Array.from(new Set([
+    ...txData.map(t => t.schedule_id),
+    ...bkData.map(b => b.schedule_id),
+  ].filter(Boolean)));
   const directBookingBarberIds = bkData.map(b => b.barber_id).filter(Boolean);
 
   const outSel = supabase.from('outlets').select('id, name, slug');
   const outletsQuery = (outletIdsToFetch.length > 0 && typeof outSel.in === 'function')
     ? outSel.in('id', outletIdsToFetch)
     : Promise.resolve({ data: [] });
+  const allOutletsQuery = supabase.from('outlets').select('id, name, slug');
 
-  const schedSel = supabase.from('schedules').select('id, barber_id');
-  const schedulesQuery = (scheduleIdsToFetch.length > 0 && typeof schedSel.in === 'function')
-    ? schedSel.in('id', scheduleIdsToFetch)
+  const relatedSchedulesSelect = supabase.from('schedules')
+    .select('id, customer_id, outlet_id, barber_id, service_id, service_name, start_time, status, source, created_at');
+  const relatedSchedulesQuery = (scheduleIdsToFetch.length > 0 && typeof relatedSchedulesSelect.in === 'function')
+    ? relatedSchedulesSelect.in('id', scheduleIdsToFetch)
     : Promise.resolve({ data: [] });
 
-  const [outletsRes, schedulesRes] = await Promise.all([
+  const customerSchedulesSelect = supabase.from('schedules')
+    .select('id, customer_id, outlet_id, barber_id, service_id, service_name, start_time, status, source, created_at');
+  const customerSchedulesQuery = (aliasCustomerIds.length > 0 && typeof customerSchedulesSelect.in === 'function')
+    ? customerSchedulesSelect.in('customer_id', aliasCustomerIds)
+    : Promise.resolve({ data: [] });
+
+  const [outletsRes, allOutletsRes, relatedSchedulesRes, customerSchedulesRes] = await Promise.all([
     safeSupabaseQuery(outletsQuery),
-    safeSupabaseQuery(schedulesQuery),
+    safeSupabaseQuery(allOutletsQuery),
+    safeSupabaseQuery(relatedSchedulesQuery),
+    safeSupabaseQuery(customerSchedulesQuery),
   ]);
-  const outletMap = new Map((outletsRes.data || []).map(o => [o.id, o.name || o.slug]));
-
-  const fetchedSchedules = schedulesRes.data || [];
+  const fetchedOutletsMap = new Map();
+  for (const outlet of [...(outletsRes.data || []), ...(allOutletsRes.data || [])]) {
+    if (outlet?.id && !fetchedOutletsMap.has(outlet.id)) fetchedOutletsMap.set(outlet.id, outlet);
+  }
+  let fetchedOutlets = [...fetchedOutletsMap.values()];
+  const fetchedSchedulesMap = new Map();
+  for (const schedule of [...(relatedSchedulesRes.data || []), ...(customerSchedulesRes.data || [])]) {
+    if (schedule?.id && !fetchedSchedulesMap.has(schedule.id)) fetchedSchedulesMap.set(schedule.id, schedule);
+  }
+  const fetchedSchedules = [...fetchedSchedulesMap.values()];
+  const missingOutletIds = Array.from(new Set(fetchedSchedules
+    .map(schedule => schedule.outlet_id)
+    .filter(id => id && !fetchedOutlets.some(outlet => outlet.id === id))));
+  if (missingOutletIds.length > 0) {
+    const missingOutletsSelect = supabase.from('outlets').select('id, name, slug');
+    const missingOutletsQuery = typeof missingOutletsSelect.in === 'function'
+      ? missingOutletsSelect.in('id', missingOutletIds)
+      : Promise.resolve({ data: [] });
+    const missingOutletsRes = await safeSupabaseQuery(missingOutletsQuery);
+    fetchedOutlets = [...fetchedOutlets, ...(missingOutletsRes.data || [])];
+  }
   const scheduleBarberIds = fetchedSchedules.map(s => s.barber_id).filter(Boolean);
-  const scheduleMap = new Map(fetchedSchedules.map(s => [s.id, s.barber_id]));
 
-  const allBarberIdsToFetch = Array.from(new Set([...directBookingBarberIds, ...scheduleBarberIds]));
-  const barbSel = supabase.from('barbers').select('id, name');
+  const storedFavoriteCandidates = [
+    ...(Array.isArray(profRes.data) ? profRes.data : []),
+    ...(Array.isArray(custRes.data) ? custRes.data : []),
+  ].map(row => row?.fav_barber).filter(Boolean);
+  const allBarberIdsToFetch = Array.from(new Set([
+    ...directBookingBarberIds,
+    ...scheduleBarberIds,
+    ...storedFavoriteCandidates,
+  ]));
+  const barbSel = supabase.from('barbers').select('id, name, is_active');
   const barbersQuery = (allBarberIdsToFetch.length > 0 && typeof barbSel.in === 'function')
     ? barbSel.in('id', allBarberIdsToFetch)
     : Promise.resolve({ data: [] });
-  const barbersRes = await safeSupabaseQuery(barbersQuery);
-  const barberMap = new Map((barbersRes.data || []).map(b => [b.id, b.name]));
+
+  // The service catalog is intentionally read as a small canonical allowlist.
+  // Unmapped historical snapshots use the explicit financial-only exclusion fallback.
+  const servicesSelect = supabase.from('services').select('id, name, moka_variant_name, is_active');
+  const servicesQuery = servicesSelect;
+  const [barbersRes, servicesRes] = await Promise.all([
+    safeSupabaseQuery(barbersQuery),
+    safeSupabaseQuery(servicesQuery),
+  ]);
+  const fetchedBarbers = barbersRes.data || [];
+  const fetchedServices = servicesRes.data || [];
+  const barberMap = new Map(fetchedBarbers.map(b => [b.id, b.name]));
 
   if (profRes.error || custRes.error || txRes.error || bookingsRes.error) {
     return {
@@ -537,208 +590,35 @@ async function getCustomer360(supabase, identityInput = {}) {
   if (!latestBookingBarber && latestBooking?.barber_id && barberMap.has(latestBooking.barber_id)) {
     latestBookingBarber = barberMap.get(latestBooking.barber_id);
   }
-
-  function parseEventTimestamp(rawDateVal, rawTimeVal) {
-    if (!rawDateVal) return { date: null, timestamp: null, precision: 'unknown' };
-    const datePart = formatDateStr(rawDateVal);
-    if (!datePart) return { date: null, timestamp: null, precision: 'unknown' };
-
-    const isIsoOrTime = typeof rawDateVal === 'string' && (rawDateVal.includes('T') || /\d{2}:\d{2}/.test(rawDateVal));
-    if (isIsoOrTime) {
-      const d = new Date(rawDateVal);
-      if (!isNaN(d.getTime())) {
-        return { date: datePart, timestamp: d.getTime(), precision: 'datetime' };
-      }
-    }
-
-    if (rawTimeVal && typeof rawTimeVal === 'string' && /\d{1,2}:\d{2}/.test(rawTimeVal)) {
-      const timePart = rawTimeVal.includes(':') ? rawTimeVal : `${rawTimeVal}:00`;
-      const combinedIso = `${datePart}T${timePart}:00Z`;
-      const d = new Date(combinedIso);
-      if (!isNaN(d.getTime())) {
-        return { date: datePart, timestamp: d.getTime(), precision: 'datetime' };
-      }
-    }
-
-    return { date: datePart, timestamp: null, precision: 'date_only' };
-  }
-
-  // Build unified completed visit events list for deterministic event attribution
-  const completedEvents = [];
-
-  for (const b of doneBookings) {
-    const rawTime = b.start_time || b.time || b.booking_time || null;
-    const rawDate = b.date || b.created_at || null;
-    const parsed = parseEventTimestamp(rawDate, rawTime);
-
-    let resolvedBarber = b.barber_name || null;
-    if (!resolvedBarber && b.barber_id && barberMap.has(b.barber_id)) {
-      resolvedBarber = barberMap.get(b.barber_id);
-    }
-
-    if (parsed.date) {
-      completedEvents.push({
-        type: 'booking',
-        date: parsed.date,
-        timestamp: parsed.timestamp,
-        precision: parsed.precision,
-        branch: b.location || b.branch_slug || b.branch || null,
-        barber: resolvedBarber,
-        service: b.service || null,
-      });
-    }
-  }
-
-  for (const t of transactions) {
-    const parsed = parseEventTimestamp(t.created_at, null);
-    if (parsed.date) {
-      const items = Array.isArray(t.transaction_items) ? t.transaction_items : [];
-      const serviceNames = items.map(i => i.service_name).filter(Boolean).join(', ');
-
-      const resolvedBranch = t.outlet_id ? (outletMap.get(t.outlet_id) || null) : null;
-      let resolvedBarber = null;
-      if (t.schedule_id && scheduleMap.has(t.schedule_id)) {
-        const bId = scheduleMap.get(t.schedule_id);
-        if (bId && barberMap.has(bId)) {
-          resolvedBarber = barberMap.get(bId);
-        }
-      }
-
-      completedEvents.push({
-        type: 'transaction',
-        date: parsed.date,
-        timestamp: parsed.timestamp,
-        precision: parsed.precision,
-        branch: resolvedBranch,
-        barber: resolvedBarber,
-        service: serviceNames || null,
-      });
-    }
-  }
-
-  const visitDates = Array.from(new Set(completedEvents.map(e => e.date))).sort();
+  // One canonical event set powers completed-visit chronology and behavioral preferences.
+  // Precedence is schedule -> booking -> transaction; explicit schedule_id linkage deduplicates
+  // first, with a bounded 15-minute exact-attribute fallback only for unlinked records.
+  const completedVisitModel = buildCompletedServiceVisits({
+    bookings,
+    schedules: fetchedSchedules,
+    transactions,
+    barbers: fetchedBarbers,
+    outlets: fetchedOutlets,
+    services: fetchedServices,
+  });
+  const completedServiceVisits = completedVisitModel.visits;
+  const visitDates = Array.from(new Set(completedServiceVisits.map(event => event.date))).sort();
   const firstVisit = visitDates[0] || null;
-  const lastVisit = visitDates.at(-1) || null;
-
-  let lastVisitBranch = null;
-  let lastVisitBarber = null;
-  let lastVisitService = null;
-  let lastVisitSource = null;
-  let lastVisitConfidence = null;
-  let lastVisitEventObj = null;
-
-  if (completedEvents.length > 0 && lastVisit) {
-    const latestEvents = completedEvents.filter(e => e.date === lastVisit);
-
-    if (latestEvents.length === 1) {
-      const single = latestEvents[0];
-      lastVisitBranch = single.branch;
-      lastVisitBarber = single.barber;
-      lastVisitService = single.service;
-      lastVisitSource = single.type;
-
-      const isPartial = !single.branch || !single.barber || !single.service;
-      lastVisitConfidence = isPartial ? 'partial' : 'verified';
-
-      lastVisitEventObj = {
-        date: lastVisit,
-        branch: single.branch,
-        barber: single.barber,
-        service: single.service,
-        source: single.type,
-        confidence: lastVisitConfidence,
-      };
-    } else {
-      // Multiple events share the latest calendar date
-      const datetimeEvents = latestEvents.filter(e => e.precision === 'datetime' && typeof e.timestamp === 'number');
-      const hasDateOnlyEvents = latestEvents.some(e => e.precision === 'date_only');
-
-      if (datetimeEvents.length > 0 && !hasDateOnlyEvents) {
-        // Case A: All events on latest date have real datetime timestamps
-        datetimeEvents.sort((a, b) => b.timestamp - a.timestamp);
-        const topMs = datetimeEvents[0].timestamp;
-        const topEvents = datetimeEvents.filter(e => e.timestamp === topMs);
-
-        if (topEvents.length === 1) {
-          const winner = topEvents[0];
-          lastVisitBranch = winner.branch;
-          lastVisitBarber = winner.barber;
-          lastVisitService = winner.service;
-          lastVisitSource = winner.type;
-
-          const isPartial = !winner.branch || !winner.barber || !winner.service;
-          lastVisitConfidence = isPartial ? 'partial' : 'verified';
-
-          lastVisitEventObj = {
-            date: lastVisit,
-            branch: winner.branch,
-            barber: winner.barber,
-            service: winner.service,
-            source: winner.type,
-            confidence: lastVisitConfidence,
-          };
-        } else {
-          // Case D: Multiple events share the exact same top timestamp
-          const branches = new Set(topEvents.map(e => e.branch).filter(Boolean));
-          const barbers = new Set(topEvents.map(e => e.barber).filter(Boolean));
-          const services = new Set(topEvents.map(e => e.service).filter(Boolean));
-
-          lastVisitBranch = branches.size === 1 ? Array.from(branches)[0] : null;
-          lastVisitBarber = barbers.size === 1 ? Array.from(barbers)[0] : null;
-          lastVisitService = services.size === 1 ? Array.from(services)[0] : null;
-
-          const hasConflict = branches.size > 1 || barbers.size > 1 || services.size > 1;
-          const sources = Array.from(new Set(topEvents.map(e => e.type)));
-          lastVisitSource = sources.length === 1 ? sources[0] : 'hybrid';
-
-          if (hasConflict) {
-            lastVisitConfidence = 'conflicting';
-          } else {
-            const isPartial = !lastVisitBranch || !lastVisitBarber || !lastVisitService;
-            lastVisitConfidence = isPartial ? 'partial' : 'verified';
-          }
-
-          lastVisitEventObj = {
-            date: lastVisit,
-            branch: lastVisitBranch,
-            barber: lastVisitBarber,
-            service: lastVisitService,
-            source: lastVisitSource,
-            confidence: lastVisitConfidence,
-          };
-        }
-      } else {
-        // Case B & C: Mixed precision (datetime + date_only) OR all date_only on same day
-        const branches = new Set(latestEvents.map(e => e.branch).filter(Boolean));
-        const barbers = new Set(latestEvents.map(e => e.barber).filter(Boolean));
-        const services = new Set(latestEvents.map(e => e.service).filter(Boolean));
-
-        lastVisitBranch = branches.size === 1 ? Array.from(branches)[0] : null;
-        lastVisitBarber = barbers.size === 1 ? Array.from(barbers)[0] : null;
-        lastVisitService = services.size === 1 ? Array.from(services)[0] : null;
-
-        const hasConflict = branches.size > 1 || barbers.size > 1 || services.size > 1;
-        const sources = Array.from(new Set(latestEvents.map(e => e.type)));
-        lastVisitSource = sources.length === 1 ? sources[0] : 'hybrid';
-
-        if (hasConflict) {
-          lastVisitConfidence = 'conflicting';
-        } else {
-          const isPartial = !lastVisitBranch || !lastVisitBarber || !lastVisitService;
-          lastVisitConfidence = isPartial ? 'partial' : 'verified';
-        }
-
-        lastVisitEventObj = {
-          date: lastVisit,
-          branch: lastVisitBranch,
-          barber: lastVisitBarber,
-          service: lastVisitService,
-          source: lastVisitSource,
-          confidence: lastVisitConfidence,
-        };
-      }
-    }
-  }
+  const lastVisitEvent = resolveLastVisit(completedServiceVisits);
+  const lastVisit = lastVisitEvent?.date || null;
+  const lastVisitBranch = lastVisitEvent?.branch || null;
+  const lastVisitBarber = lastVisitEvent?.barber || null;
+  const lastVisitService = lastVisitEvent?.service || null;
+  const lastVisitSource = lastVisitEvent?.source || null;
+  const lastVisitConfidence = lastVisitEvent?.confidence || null;
+  const lastVisitEventObj = lastVisitEvent ? {
+    date: lastVisit,
+    branch: lastVisitBranch,
+    barber: lastVisitBarber,
+    service: lastVisitService,
+    source: lastVisitSource,
+    confidence: lastVisitConfidence,
+  } : null;
 
   let daysSinceLastVisit = null;
   if (lastVisit) {
@@ -767,32 +647,17 @@ async function getCustomer360(supabase, identityInput = {}) {
     pending_booking_count: pendingBookings.length,
     completed_transaction_count: completedTxCount,
     visit_metric_status: 'caveated',
-    repeat_customer: (doneBookings.length + completedTxCount) > 1,
+    repeat_customer: completedServiceVisits.length > 1,
   };
 
-  // --- Preferences Section ---
-  const completedBranches = [
-    ...doneBookings.map(b => b.location),
-    ...transactions.map(t => t.outlet_slug || t.location),
-  ];
-  const recentBranchesOrder = completedBranches.slice().reverse();
-  const favBranch = calculateMode(completedBranches, recentBranchesOrder);
-
-  const completedBarbers = doneBookings.map(b => b.barber_id || b.barber_name);
-  const recentBarbersOrder = completedBarbers.slice().reverse();
-  const favBarber = calculateMode(completedBarbers, recentBarbersOrder);
-
-  const completedServices = [
-    ...doneBookings.map(b => b.service),
-    ...transactions.flatMap(t => Array.isArray(t.transaction_items) ? t.transaction_items.map(i => i.service_name) : []),
-  ];
-  const recentServicesOrder = completedServices.slice().reverse();
-  const favService = calculateMode(completedServices, recentServicesOrder);
-
+  // Behavioral evidence always beats stored profile fields. Stored favorites are
+  // deliberately unverified fallbacks only when no valid completed visit exists.
+  const storedFavoriteRaw = fetchedProfile?.fav_barber || custRow.fav_barber || null;
+  const storedFavoriteBarber = barberMap.get(storedFavoriteRaw) || storedFavoriteRaw;
   const preferencesObj = {
-    favorite_branch: favBranch ? { value: favBranch, basis: 'event_frequency' } : null,
-    favorite_barber: favBarber ? { value: favBarber, basis: 'event_frequency' } : null,
-    favorite_service: favService ? { value: favService, basis: 'event_frequency' } : null,
+    favorite_branch: summarizePreference(completedServiceVisits, 'branch'),
+    favorite_barber: summarizePreference(completedServiceVisits, 'barber', storedFavoriteBarber),
+    favorite_service: summarizePreference(completedServiceVisits, 'service'),
   };
 
   return {
@@ -811,7 +676,10 @@ async function getCustomer360(supabase, identityInput = {}) {
     data_quality: {
       customer_resolution: 'resolved',
       transaction_data: 'available',
-      visit_metric: 'caveated',
+      visit_metric: completedServiceVisits.length > 0 ? 'verified_completed_service_visits' : 'no_valid_completed_service_visits',
+      ...completedVisitModel.metadata,
+      favorite_barber_basis: preferencesObj.favorite_barber?.basis || null,
+      favorite_barber_confidence: preferencesObj.favorite_barber?.confidence || null,
     },
   };
 }

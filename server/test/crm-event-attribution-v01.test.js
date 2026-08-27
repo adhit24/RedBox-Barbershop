@@ -120,16 +120,17 @@ test('1. Live production-shaped event attribution resolves branch & barber via c
   assert.equal(res.activity.last_visit_service, 'Gentleman Grooming');
   assert.equal(res.activity.last_visit_confidence, 'verified');
 
-  // Favorites remain separate!
-  assert.equal(res.preferences.favorite_branch.value, 'CSB');
+  // Preferences use the same canonical completed-service visits; the newer
+  // Bypass visit wins the 1-1 frequency tie over the older CSB booking.
+  assert.equal(res.preferences.favorite_branch.value, 'RedBox Bypass');
 });
 
 // ── 2. Transaction Outlet Lookup Resolution ─────────────────────────────
 test('2. Transaction outlet_id lookup resolves branch name, and unmapped outlet_id resolves to null with partial confidence', async () => {
   const supabaseMapped = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
-    outlets: [{ id: 'out-1', name: 'RedBox CSB' }],
-    transactions: [{ id: 't-1', customer_id: 'c-1', outlet_id: 'out-1', created_at: '2026-08-11T10:00:00Z', status: 'completed' }],
+    outlets: [{ id: 'out-1', slug: 'csb', name: 'RedBox CSB' }],
+    transactions: [{ id: 't-1', customer_id: 'c-1', outlet_id: 'out-1', created_at: '2026-08-11T10:00:00Z', status: 'completed', transaction_items: [{ service_name: 'Haircut' }] }],
   });
   const resMapped = await getCustomer360(supabaseMapped, { phone: '6281234567890' });
   assert.equal(resMapped.activity.last_visit_branch, 'RedBox CSB');
@@ -137,7 +138,7 @@ test('2. Transaction outlet_id lookup resolves branch name, and unmapped outlet_
   const supabaseUnmapped = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
     outlets: [], // empty outlets mapping
-    transactions: [{ id: 't-1', customer_id: 'c-1', outlet_id: 'out-missing', created_at: '2026-08-11T10:00:00Z', status: 'completed' }],
+    transactions: [{ id: 't-1', customer_id: 'c-1', outlet_id: 'out-missing', created_at: '2026-08-11T10:00:00Z', status: 'completed', transaction_items: [{ service_name: 'Haircut' }] }],
   });
   const resUnmapped = await getCustomer360(supabaseUnmapped, { phone: '6281234567890' });
   assert.equal(resUnmapped.activity.last_visit_branch, null);
@@ -150,14 +151,14 @@ test('3. Transaction schedule_id resolves barber name, while missing/null schedu
     customers: [{ id: 'c-1', wa: '6281234567890' }],
     schedules: [{ id: 'sched-5', barber_id: 'barber-7' }],
     barbers: [{ id: 'barber-7', name: 'Ubay' }],
-    transactions: [{ id: 't-1', customer_id: 'c-1', schedule_id: 'sched-5', created_at: '2026-08-11T10:00:00Z', status: 'completed' }],
+    transactions: [{ id: 't-1', customer_id: 'c-1', schedule_id: 'sched-5', created_at: '2026-08-11T10:00:00Z', status: 'completed', transaction_items: [{ service_name: 'Haircut' }] }],
   });
   const resSched = await getCustomer360(supabaseSched, { phone: '6281234567890' });
   assert.equal(resSched.activity.last_visit_barber, 'Ubay');
 
   const supabaseNoSched = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
-    transactions: [{ id: 't-1', customer_id: 'c-1', schedule_id: null, created_at: '2026-08-11T10:00:00Z', status: 'completed' }],
+    transactions: [{ id: 't-1', customer_id: 'c-1', schedule_id: null, created_at: '2026-08-11T10:00:00Z', status: 'completed', transaction_items: [{ service_name: 'Haircut' }] }],
   });
   const resNoSched = await getCustomer360(supabaseNoSched, { phone: '6281234567890' });
   assert.equal(resNoSched.activity.last_visit_barber, null);
@@ -168,7 +169,7 @@ test('4. Booking with barber_id resolves to barber name and NEVER exposes raw UU
   const supabaseBarber = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
     barbers: [{ id: 'uuid-barber-99', name: 'Budi Barber' }],
-    bookings: [{ id: 'b-1', customer_id: 'c-1', date: '2026-08-11', barber_id: 'uuid-barber-99', status: 'done' }],
+    bookings: [{ id: 'b-1', customer_id: 'c-1', date: '2026-08-11', barber_id: 'uuid-barber-99', service: 'Haircut', status: 'done' }],
   });
   const resBarber = await getCustomer360(supabaseBarber, { phone: '6281234567890' });
   assert.equal(resBarber.activity.last_visit_barber, 'Budi Barber');
@@ -176,7 +177,7 @@ test('4. Booking with barber_id resolves to barber name and NEVER exposes raw UU
   const supabaseMissingBarber = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
     barbers: [], // missing barber entry
-    bookings: [{ id: 'b-1', customer_id: 'c-1', date: '2026-08-11', barber_id: 'uuid-barber-unmapped', status: 'done' }],
+    bookings: [{ id: 'b-1', customer_id: 'c-1', date: '2026-08-11', barber_id: 'uuid-barber-unmapped', service: 'Haircut', status: 'done' }],
   });
   const resMissing = await getCustomer360(supabaseMissingBarber, { phone: '6281234567890' });
   assert.equal(resMissing.activity.last_visit_barber, null);
@@ -256,7 +257,7 @@ test('6. CUSTOMER_SELF facts envelope strips internal IDs, epoch timestamps, and
 test('7. Real timestamp tie-break (10:00 vs 15:30) and mixed precision conflict tests remain green', async () => {
   const supabaseTs = createMockSupabase({
     customers: [{ id: 'c-1', wa: '6281234567890' }],
-    outlets: [{ id: 'o-bypass', name: 'Bypass' }, { id: 'o-csb', name: 'CSB' }],
+    outlets: [{ id: 'o-bypass', slug: 'bypass', name: 'Bypass' }, { id: 'o-csb', slug: 'csb', name: 'CSB' }],
     barbers: [{ id: 'b-onoy', name: 'Onoy' }, { id: 'b-ubay', name: 'Ubay' }],
     schedules: [{ id: 's-1', barber_id: 'b-ubay' }],
     bookings: [{ id: 'b-1', customer_id: 'c-1', date: '2026-08-11T10:00:00Z', location: 'Bypass', barber_id: 'b-onoy', service: 'Gentleman Grooming', status: 'done' }],
