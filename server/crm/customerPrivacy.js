@@ -29,14 +29,25 @@ function projectCustomerSelf(customer360) {
   const safeCustomer = internal.customer ? {
     name: internal.customer.name || null,
     registration_status: internal.customer.registration_status || null,
+    is_registered_member: typeof internal.customer.is_registered_member === 'boolean'
+      ? internal.customer.is_registered_member
+      : null,
+    registration_status_source: internal.customer.registration_status_source || null,
+    member_since: internal.customer.member_since || null,
+    member_since_source: internal.customer.member_since_source || null,
     created_at: internal.customer.created_at || null,
   } : null;
 
   const safeMembership = internal.membership ? {
-    status: internal.membership.status || 'INACTIVE',
+    status: internal.membership.status ?? null,
+    plan_status: internal.membership.plan_status ?? internal.membership.status ?? null,
+    status_scope: internal.membership.status_scope || 'paid_membership_plan',
+    status_source: internal.membership.status_source || null,
     tier: internal.membership.tier || 'bronze',
+    plan_tier: internal.membership.plan_tier || internal.membership.tier || 'bronze',
     tier_origin: internal.membership.tier_origin || 'default_baseline',
     activated_at: internal.membership.activated_at || null,
+    activated_at_source: internal.membership.activated_at_source || null,
     expires_at: internal.membership.expires_at || null,
   } : null;
 

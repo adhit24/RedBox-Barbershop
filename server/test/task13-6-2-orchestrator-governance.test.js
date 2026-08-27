@@ -103,7 +103,7 @@ test('O3 member_since question requests bounded CRM profile source', async () =>
   assert.equal(decision.response_strategy, 'answer_with_crm_fact');
   const profileFacts = extractCustomerIntelligenceEnvelope({
     status: 'success', customer_found: true,
-    data: { customer: { member_since: '2024-03-01T00:00:00.000Z' }, membership: {} },
+    data: { customer: { member_since: '2024-03-01T00:00:00.000Z', member_since_source: 'member_profiles.created_at' }, membership: {} },
   }, 'customer_profile');
   assert.equal(profileFacts.facts.member_since, '2024-03-01T00:00:00.000Z');
   assert.equal(profileFacts.fact_quality.member_since, 'verified');
@@ -332,7 +332,7 @@ test('G4 member_since absent in raw customer profile keeps member_since unavaila
 test('G5 canonical member_since present passes through canonical field', () => {
   const profileFacts = extractCustomerIntelligenceEnvelope({
     status: 'success', customer_found: true,
-    data: { customer: { member_since: '2024-03-01T00:00:00.000Z' }, membership: {} },
+    data: { customer: { member_since: '2024-03-01T00:00:00.000Z', member_since_source: 'member_profiles.created_at' }, membership: {} },
   }, 'customer_profile');
 
   assert.equal(profileFacts.facts.member_since, '2024-03-01T00:00:00.000Z');

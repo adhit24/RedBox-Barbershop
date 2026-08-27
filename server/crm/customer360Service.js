@@ -546,26 +546,49 @@ async function getCustomer360(supabase, identityInput = {}) {
     phone_e164: identity.phone_e164 || (canonicalPhone ? `+${canonicalPhone}` : null),
     birthday: formatDateStr(fetchedProfile?.birthday || custRow.birthday || custRow.birth_date),
     registration_status: fetchedProfile?.id ? 'registered_member' : 'guest_customer',
+    is_registered_member: Boolean(fetchedProfile?.id),
+    registration_status_source: fetchedProfile?.id ? 'member_profiles_presence' : 'member_profiles_absence',
+    member_since: fetchedProfile?.id && fetchedProfile?.created_at ? formatDateStr(fetchedProfile.created_at) : null,
+    member_since_source: fetchedProfile?.id && fetchedProfile?.created_at ? 'member_profiles.created_at' : null,
     created_at: custRow.created_at || fetchedProfile?.created_at || null,
   };
 
   // --- Membership Section ---
   const rawTier = fetchedProfile?.tier || fetchedProfile?.current_tier || custRow.membership_tier;
+  const hasRawTier = Boolean(rawTier && String(rawTier).trim());
   const tier = resolveMembershipTier(rawTier);
-  const tierOrigin = (rawTier && String(rawTier).trim()) ? 'configured' : 'default_baseline';
+  const tierOrigin = hasRawTier ? 'configured' : 'default_baseline';
 
-  const rawStatus = fetchedProfile?.membership_status || custRow.membership_status || 'INACTIVE';
-  const isActive = isActiveMembership({
-    status: rawStatus,
-    startsAt: fetchedProfile?.membership_activated_at || custRow.membership_activated_at,
-    expiresAt: fetchedProfile?.membership_expires_at,
-  });
+  const rawStatus = fetchedProfile?.membership_status || custRow.membership_status;
+  const hasRawStatus = Boolean(rawStatus && String(rawStatus).trim());
+
+  let planStatus = null;
+  let statusSource = 'absent';
+  if (hasRawStatus) {
+    const isActive = isActiveMembership({
+      status: rawStatus,
+      startsAt: fetchedProfile?.membership_activated_at || custRow.membership_activated_at,
+      expiresAt: fetchedProfile?.membership_expires_at,
+    });
+    planStatus = isActive ? 'ACTIVE' : 'INACTIVE';
+    statusSource = 'membership_policy';
+  }
+
+  const activatedAt = fetchedProfile?.membership_activated_at || custRow.membership_activated_at || null;
+  const activatedAtSource = fetchedProfile?.membership_activated_at
+    ? 'member_profiles.membership_activated_at'
+    : (custRow.membership_activated_at ? 'customers.membership_activated_at' : null);
 
   const membershipObj = {
-    status: isActive ? 'ACTIVE' : 'INACTIVE',
+    status: planStatus,
+    status_scope: 'paid_membership_plan',
+    plan_status: planStatus,
+    status_source: statusSource,
     tier: tier,
+    plan_tier: tier,
     tier_origin: tierOrigin,
-    activated_at: fetchedProfile?.membership_activated_at || custRow.membership_activated_at || null,
+    activated_at: activatedAt,
+    activated_at_source: activatedAtSource,
     expires_at: fetchedProfile?.membership_expires_at || null,
   };
 
