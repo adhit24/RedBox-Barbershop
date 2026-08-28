@@ -82,4 +82,43 @@ function logOrchestratedEvent(event = {}) {
   return safe;
 }
 
-module.exports = { sanitizeTelemetry, logOrchestratedEvent };
+const ALLOWED_HANDOFF_EVENTS = new Set([
+  'handoff_requested', 'handoff_case_created', 'handoff_case_creation_failed',
+  'handoff_waiting_human', 'handoff_human_claimed', 'handoff_bot_suppressed',
+  'handoff_customer_message_appended', 'handoff_resolved', 'handoff_ai_reactivated',
+  'handoff_duplicate_prevented',
+]);
+const ALLOWED_HANDOFF_TRIGGER_TYPES = new Set(['explicit_customer_request', 'policy_escalation', null]);
+const ALLOWED_HANDOFF_PRIORITIES = new Set(['normal', 'high', 'urgent', null]);
+const ALLOWED_HANDOFF_STATUS_TRANSITIONS = new Set([
+  'none_to_waiting_human', 'waiting_human_to_human_active', 'human_active_to_resolved',
+  'waiting_human_to_resolved', null,
+]);
+
+/**
+ * Sanitizes Task 15 handoff events. Deliberately excludes any conversation
+ * content (customer message text, summary body) — only safe routing/state
+ * dimensions are logged, matching the no-PII contract sanitizeTelemetry
+ * already enforces for orchestrator_routing events (spec §20).
+ */
+function sanitizeHandoffTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_HANDOFF_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    trigger_type: ALLOWED_HANDOFF_TRIGGER_TYPES.has(event.trigger_type) ? event.trigger_type : null,
+    reason: typeof event.reason === 'string' ? event.reason.slice(0, 64) : null,
+    priority: ALLOWED_HANDOFF_PRIORITIES.has(event.priority) ? event.priority : null,
+    branch: typeof event.branch === 'string' ? event.branch : 'unknown',
+    status_transition: ALLOWED_HANDOFF_STATUS_TRANSITIONS.has(event.status_transition) ? event.status_transition : null,
+  };
+}
+
+function logHandoffEvent(event = {}) {
+  const safe = sanitizeHandoffTelemetry(event);
+  console.log('[HandoffTelemetry]', JSON.stringify(safe));
+  return safe;
+}
+
+module.exports = {
+  sanitizeTelemetry, logOrchestratedEvent, sanitizeHandoffTelemetry, logHandoffEvent,
+};

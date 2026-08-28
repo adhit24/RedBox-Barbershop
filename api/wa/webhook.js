@@ -120,7 +120,16 @@ const {
   createUnavailableKnowledgeContext,
   serializeKnowledgeForPrompt,
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
-const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
+const { logOrchestratedEvent, logHandoffEvent } = require('../../server/orchestrator/telemetry');
+const {
+  detectHandoffTrigger,
+  computeHandoffPriority,
+  buildConversationSummary,
+  createOrGetActiveCase,
+  getActiveHandoffState,
+  appendCustomerMessage: appendHandoffCustomerMessage,
+} = require('../../server/services/humanHandoff');
+const { reconstructBookingContextFromTurns } = require('../../server/agents/reddy/bookingContext');
 const {
   getBarberPopularity,
   resolvePopularityBranch,
@@ -1175,6 +1184,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     persistHumanHandoff = persistHumanTakeover,
     getBookingStatus = getCustomerBookingStatus,
     readBarberPopularity = getBarberPopularity,
+    getHandoffState = (phone) => getActiveHandoffState(phone, { supabase: getSupabase() }),
+    createHandoffCase = (params) => createOrGetActiveCase(params, { supabase: getSupabase() }),
+    appendHandoffMessage = (caseId, message) => appendHandoffCustomerMessage(caseId, message, { supabase: getSupabase() }),
+    logHandoffTelemetry = logHandoffEvent,
   } = deps;
 
   if (aiPaused || (checkHumanTakeover && await checkHumanTakeover(from))) {
@@ -1186,6 +1199,28 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     branch = detectBranchFromNumber(receiver || device || from);
   }
   console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
+
+  // ── Task 15: Human Takeover Runtime Gate ──────────────────────────────────
+  // Must run before the orchestrator/Reddy/OpenAI are reached (spec §9). Fails
+  // SAFE: getActiveHandoffState only reports a genuine lookup error, never
+  // "not configured", as 'lookup_failed' — see humanHandoff.js for why that
+  // split matters. Either way, Reddy is suppressed and the customer message is
+  // still attached to the case (or simply not lost) for the human agent.
+  const handoffState = await getHandoffState(from);
+  if (handoffState.status === 'waiting_human' || handoffState.status === 'human_active' || handoffState.status === 'lookup_failed') {
+    if (handoffState.case?.id) {
+      await appendHandoffMessage(handoffState.case.id, text);
+    }
+    logHandoffTelemetry({
+      event_type: 'handoff_bot_suppressed',
+      trigger_type: null,
+      reason: handoffState.status === 'lookup_failed' ? 'handoff_state_lookup_failed' : null,
+      priority: handoffState.case?.priority || null,
+      branch: handoffState.case?.branch || branch || 'unknown',
+      status_transition: null,
+    });
+    return { used: 'human_active_suppressed', reply: null, sendResult: null, error: null };
+  }
 
   // Fast-path: points inquiry bypasses conversation history loading and Reddy generation
   const classification = classifyDeterministically(text);
@@ -1388,10 +1423,40 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used: 'orchestrator_bounded_response', reply: boundedReply, sendResult, error: null };
   }
 
-  // Handle Human Handoff Route
+  // Handle Human Handoff Route (Task 15) — the orchestrator only RECOMMENDS a
+  // handoff (route:'human'); this block is what actually opens/finds the case
+  // and decides what, if anything, gets sent. Legacy setHumanTakeover /
+  // persistHumanHandoff (Task 10, 30-minute pause) still run alongside the new
+  // case system as a secondary safety net — this is additive, not a replacement.
   if (orchDecision && (orchDecision.route === 'human' || orchDecision.agent === 'human' || orchDecision.intent === 'human_request' || orchDecision.intent === 'complaint')) {
-    setHumanTakeover(from);
-    persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
+    const trigger = detectHandoffTrigger({ orchestrationDecision: orchDecision }) || {
+      triggerType: 'policy_escalation', reason: 'orchestrator_human_route', intent: orchDecision.intent || 'unknown',
+    };
+    const priority = computeHandoffPriority({ triggerType: trigger.triggerType, intent: trigger.intent, text });
+    // Reuses Task 14's stateless reconstruction (no canonical barber list loaded
+    // here — branch/service/date/time still resolve without it) purely to give
+    // the human agent real accumulated conversational context, never a booking fact.
+    let reconstructedBookingContext = null;
+    try {
+      reconstructedBookingContext = reconstructBookingContextFromTurns(conversationContext?.turns || [], {
+        sessionStatus: conversationContext?.sessionStatus,
+      });
+    } catch (_) { reconstructedBookingContext = null; }
+    const conversationSummary = buildConversationSummary({ text, bookingContext: reconstructedBookingContext });
+
+    const creation = await createHandoffCase({
+      customerPhone: from,
+      customerId: trustedIdentity?.customer_id || null,
+      channel: 'whatsapp',
+      branch,
+      reason: trigger.reason,
+      triggerType: trigger.triggerType,
+      intent: trigger.intent,
+      priority,
+      conversationSummary,
+      latestCustomerMessage: text,
+    });
+
     logTelemetry({
       ...orchDecision,
       execution_status: 'human_handoff',
@@ -1404,9 +1469,56 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
-    const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
-    const sendResult = await send(from, handoffReply, { branch });
-    return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+
+    // 'unavailable' (Task 15 case storage not provisioned in this environment)
+    // degrades to exactly the pre-Task-15 behavior: pause + fixed acknowledgement.
+    if (creation.status === 'created' || creation.status === 'unavailable') {
+      setHumanTakeover(from);
+      persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
+      logHandoffTelemetry({
+        event_type: creation.status === 'created' ? 'handoff_case_created' : 'handoff_requested',
+        trigger_type: trigger.triggerType,
+        reason: trigger.reason,
+        priority,
+        branch,
+        status_transition: creation.status === 'created' ? 'none_to_waiting_human' : null,
+      });
+      const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
+      const sendResult = await send(from, handoffReply, { branch });
+      return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+    }
+
+    // A case is already open for this customer (race between near-simultaneous
+    // messages — the top-of-function gate already blocks subsequent messages
+    // once a case is persisted). No repeated acknowledgement (spec §10, §15).
+    if (creation.status === 'existing') {
+      setHumanTakeover(from);
+      persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
+      logHandoffTelemetry({
+        event_type: 'handoff_duplicate_prevented',
+        trigger_type: trigger.triggerType,
+        reason: trigger.reason,
+        priority: creation.case?.priority || priority,
+        branch,
+        status_transition: null,
+      });
+      return { used: 'human_handoff', reply: null, sendResult: null, error: null };
+    }
+
+    // Genuine storage error — never claim the request reached admin (spec §19).
+    setHumanTakeover(from);
+    persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
+    logHandoffTelemetry({
+      event_type: 'handoff_case_creation_failed',
+      trigger_type: trigger.triggerType,
+      reason: trigger.reason,
+      priority,
+      branch,
+      status_transition: null,
+    });
+    const fallbackReply = 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
+    const sendResult = await send(from, fallbackReply, { branch });
+    return { used: 'human_handoff_creation_failed', reply: fallbackReply, sendResult, error: null };
   }
 
   // Existing booking status is backend authority, never an LLM or customer claim.
