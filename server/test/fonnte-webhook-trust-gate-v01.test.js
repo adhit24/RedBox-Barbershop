@@ -56,6 +56,35 @@ function createResponseHarness() {
   return { response, output };
 }
 
+function createGuardTestDeps() {
+  let next = 1;
+  return {
+    realSend: async () => ({ status: true }),
+    supabase: {
+      from(table) {
+        assert.equal(table, 'wa_inbound_events');
+        const query = { row: null };
+        const builder = {
+          insert(row) { query.row = { id: `guard-in-${next++}`, outbound_attempted: false, ...row }; return builder; },
+          update() { return builder; },
+          select() { return builder; },
+          eq() { return builder; },
+          async single() { return { data: query.row, error: null }; },
+          async maybeSingle() { return { data: query.row, error: null }; },
+        };
+        return builder;
+      },
+      async rpc(name) {
+        if (name === 'reserve_wa_automated_send') {
+          return { data: [{ decision: 'allowed', claim_id: `guard-out-${next++}` }], error: null };
+        }
+        if (name === 'complete_wa_automated_send') return { data: true, error: null };
+        return { data: null, error: { code: 'UNKNOWN_RPC' } };
+      },
+    },
+  };
+}
+
 // ── MANDATORY SECURITY REGRESSION TEST (FINDING 3) ──────────────────────────
 test('production verifier accepts query ONLY (arity 1) when body is absent and ignores caller-supplied fake env objects', () => {
   const fakeEnv = { WA_WEBHOOK_SECRET_CSB: CSB_SECRET };
@@ -406,7 +435,7 @@ test('HARDENED DEVICE NORMALIZATION: reject mixed-letter and malicious device st
 
 // ── PRODUCTION API CONTRACT REGRESSION TEST ─────────────────────────────────
 test('REAL EXECUTION CONTRACT: executeOrchestration MUST be called with exactly 2 arguments (classification, dependencies)', async () => {
-  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET, REDDY_ENABLED: 'true' }, async () => {
     Object.keys(require.cache).forEach(k => delete require.cache[k]);
 
     const executionService = require(executionPath);
@@ -430,12 +459,13 @@ test('REAL EXECUTION CONTRACT: executeOrchestration MUST be called with exactly 
         query: {},
         body: {
           device: '0818202599',
+          inboxid: 'contract-1',
           message: 'poin saya berapa?',
           sender: '6281234567890',
           type: 'text',
           'webhook-secret-key': SUMBER_SECRET,
         },
-      }, response);
+      }, response, createGuardTestDeps());
 
       assert.equal(argumentCountPassed, 2, 'Webhook MUST pass exactly 2 arguments to executeOrchestration');
     } finally {
@@ -449,6 +479,7 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points v
   await withTestEnv({
     WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET,
     WA_WEBHOOK_SECRET_CSB: CSB_SECRET,
+    REDDY_ENABLED: 'true',
   }, async () => {
     Object.keys(require.cache).forEach(k => delete require.cache[k]);
 
@@ -481,7 +512,7 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points v
         query: {},
         body: {
           device: '0818202599',
-          inboxid: 0,
+          inboxid: 'trusted-positive-1',
           isgroup: false,
           message: 'poin saya berapa?',
           sender: '6281234567890',
@@ -492,7 +523,7 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points v
         },
       };
 
-      await webhook(validReq, res1);
+      await webhook(validReq, res1, createGuardTestDeps());
 
       assert.equal(out1.statusCode, 200);
       assert.equal(crmAgentCalls.length, 1, 'CRM points must be executed exactly once for valid trusted request');
@@ -509,13 +540,14 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points v
         query: { rb_branch: 'sumber', rb_key: SUMBER_SECRET },
         body: {
           device: '0818202599',
+          inboxid: 'wrong-secret-1',
           'webhook-secret-key': 'attacker-wrong-secret-0000000000000001',
           sender: '6281234567890',
           message: 'poin saya berapa?',
           type: 'text',
         },
       };
-      await webhook(wrongBodyReq, res2);
+      await webhook(wrongBodyReq, res2, createGuardTestDeps());
       assert.equal(crmAgentCalls.length, 0, 'Wrong body secret MUST NOT execute CRM points even if valid query secret is present');
 
       // 3. Negative Case B: Wrong Device (Cross-branch device)
@@ -525,13 +557,14 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points v
         query: {},
         body: {
           device: '0818202889', // CSB device instead of SUMBER device
+          inboxid: 'wrong-device-1',
           'webhook-secret-key': SUMBER_SECRET,
           sender: '6281234567890',
           message: 'poin saya berapa?',
           type: 'text',
         },
       };
-      await webhook(wrongDeviceReq, res3);
+      await webhook(wrongDeviceReq, res3, createGuardTestDeps());
       assert.equal(crmAgentCalls.length, 0, 'Cross-branch device MUST NOT execute CRM points');
 
       // 4. Fallback Case: Missing Body Secret + Valid Query Fallback
@@ -541,12 +574,13 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points v
         query: { rb_branch: 'csb', rb_key: CSB_SECRET },
         body: {
           device: '0818202889',
+          inboxid: 'legacy-query-1',
           sender: '6281234567890',
           message: 'poin saya berapa?',
           type: 'text',
         },
       };
-      await webhook(legacyQueryReq, res4);
+      await webhook(legacyQueryReq, res4, createGuardTestDeps());
       assert.equal(crmAgentCalls.length, 1, 'Legacy query fallback MUST execute CRM points when body secret is absent');
       assert.equal(crmAgentCalls[0].dependencies.trustedIdentity.phone, '6281234567890');
 

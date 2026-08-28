@@ -16,22 +16,29 @@ test('1. System prompt strictly prohibits repeated generic endings ("Ada yang in
   assert.match(webhookSource, /Ada yang bisa saya bantu lagi?/);
 });
 
-// ── 2. Service Inquiry Guidance ───────────────────────────────────────────────
-test('2. Service inquiry naturally leads toward booking next step', () => {
+// ── 2. Service Inquiry Guidance (Task 14.1 correction: answer then STOP —────
+//      conversion must never be automatic, only when the same turn also
+//      expresses actual visit/booking intent) ────────────────────────────────
+test('2. Service inquiry answers fully then stops; booking is not manufactured from the topic alone', () => {
   assert.match(webhookSource, /Tanya layanan/);
-  assert.match(webhookSource, /aku bisa bantu pilih cabang dan jadwal/);
+  assert.match(webhookSource, /jawab lengkap dari fakta, lalu BERHENTI/);
+  assert.match(webhookSource, /JANGAN otomatis menawarkan pilih cabang\/jadwal hanya karena layanan disebut/);
 });
 
 // ── 3. Barber Inquiry Guidance ────────────────────────────────────────────────
-test('3. Barber inquiry naturally leads toward booking with that barber', () => {
+test('3. Barber inquiry answers the fact then stops; no automatic booking redirect', () => {
   assert.match(webhookSource, /Tanya kapster/);
-  assert.match(webhookSource, /aku bisa bantu lanjut cari jadwal/);
+  assert.match(webhookSource, /jawab faktanya, lalu BERHENTI/);
 });
 
-// ── 4. Branch Inquiry Guidance ────────────────────────────────────────────────
-test('4. Branch inquiry naturally leads toward booking when relevant', () => {
-  assert.match(webhookSource, /Tanya cabang/);
-  assert.match(webhookSource, /aku bisa bantu lanjut ke booking/);
+// ── 4. Branch/hours Inquiry Guidance ──────────────────────────────────────────
+test('4. Branch/hours inquiry answers the fact then stops; no automatic booking redirect', () => {
+  assert.match(webhookSource, /Tanya cabang\/jam/);
+  assert.match(webhookSource, /jawab jamnya, lalu BERHENTI/);
+});
+
+test('2b. Conversion guidance is explicitly conditional on the SAME turn expressing booking intent, not the topic alone', () => {
+  assert.match(webhookSource, /Tawarkan langkah lanjutan booking HANYA jika pesan pelanggan JUGA secara eksplisit menunjukkan niat kunjungan\/booking/);
 });
 
 // ── 5. Complaint Protection (No Overselling) ──────────────────────────────────

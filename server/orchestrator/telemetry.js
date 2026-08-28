@@ -42,6 +42,10 @@ function sanitizeTelemetry(event = {}) {
     ? event.required_sources.filter(source => allowedSources.has(source))
     : [];
   const qualityStates = new Set(['verified', 'derived_verified', 'unavailable', 'ambiguous', 'stale', 'legacy']);
+  const allowedEligibilityReasons = new Set([
+    'explicit_booking_request', 'explicit_booking_link_request', 'contextual_booking_continuation',
+    'availability_booking_intent', 'informational_only', 'crm_topic', 'non_booking',
+  ]);
 
   return {
     timestamp: new Date().toISOString(),
@@ -73,6 +77,13 @@ function sanitizeTelemetry(event = {}) {
     crm_fact_status: qualityStates.has(event.crm_fact_status) ? event.crm_fact_status : null,
     guard_blocked_prohibited_claim: Boolean(event.guard_blocked_prohibited_claim),
     guard_blocked_unverified_availability: Boolean(event.guard_blocked_unverified_availability),
+    booking_memory_relevant: typeof event.booking_memory_relevant === 'boolean' ? event.booking_memory_relevant : null,
+    booking_response_eligible: typeof event.booking_response_eligible === 'boolean' ? event.booking_response_eligible : null,
+    booking_cta_eligible: typeof event.booking_cta_eligible === 'boolean' ? event.booking_cta_eligible : null,
+    booking_eligibility_reason: allowedEligibilityReasons.has(event.booking_eligibility_reason)
+      ? event.booking_eligibility_reason : null,
+    realtime_fact_guard_triggered: typeof event.realtime_fact_guard_triggered === 'boolean'
+      ? event.realtime_fact_guard_triggered : null,
   };
 }
 
@@ -119,6 +130,47 @@ function logHandoffEvent(event = {}) {
   return safe;
 }
 
+// P0 incident hotfix — anti-spam/idempotency telemetry. Deliberately its own
+// small allowlist schema (not folded into sanitizeTelemetry's
+// orchestrator_routing shape): these events fire from the webhook entry
+// point and outbound guard, before/around orchestrator routing, and carry
+// their own bounded dimension set. No raw message content, no full phone
+// numbers — branch/event_type/provider/status/reason only.
+const ALLOWED_ANTISPAM_EVENTS = new Set([
+  'inbound_event_received', 'inbound_event_claimed', 'inbound_duplicate_suppressed',
+  'non_customer_event_suppressed', 'self_message_suppressed', 'ai_kill_switch_suppressed',
+  'outbound_duplicate_suppressed', 'rate_limit_suppressed', 'outbound_send_attempt',
+  'outbound_sent', 'processing_failed',
+]);
+const ALLOWED_ANTISPAM_EVENT_TYPES = new Set(['customer_message', 'status_callback', 'self_message', 'unsupported', null]);
+const ALLOWED_ANTISPAM_PROVIDERS = new Set(['fonnte', null]);
+const ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS = new Set([
+  'claimed', 'duplicate', 'unavailable', 'error',
+  'missing_provider_message_id', 'missing_provider_device_id', null,
+]);
+const ALLOWED_ANTISPAM_EXECUTION_STATUS = new Set(['ok', 'suppressed', 'failed', null]);
+
+function sanitizeAntiSpamTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_ANTISPAM_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch : 'unknown',
+    provider: ALLOWED_ANTISPAM_PROVIDERS.has(event.provider) ? (event.provider || 'unknown') : 'unknown',
+    inbound_event_type: ALLOWED_ANTISPAM_EVENT_TYPES.has(event.inbound_event_type) ? event.inbound_event_type : null,
+    idempotency_status: ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS.has(event.idempotency_status) ? event.idempotency_status : null,
+    execution_status: ALLOWED_ANTISPAM_EXECUTION_STATUS.has(event.execution_status) ? event.execution_status : null,
+    guard_reason: typeof event.guard_reason === 'string' ? event.guard_reason.slice(0, 64) : null,
+  };
+}
+
+function logAntiSpamEvent(event = {}) {
+  const safe = sanitizeAntiSpamTelemetry(event);
+  console.log('[AntiSpamTelemetry]', JSON.stringify(safe));
+  return safe;
+}
+
 module.exports = {
-  sanitizeTelemetry, logOrchestratedEvent, sanitizeHandoffTelemetry, logHandoffEvent,
+  sanitizeTelemetry, logOrchestratedEvent,
+  sanitizeHandoffTelemetry, logHandoffEvent,
+  sanitizeAntiSpamTelemetry, logAntiSpamEvent,
 };
