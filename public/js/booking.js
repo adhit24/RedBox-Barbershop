@@ -106,11 +106,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
  // ── URL PARAMS ──────────────────────────────
  const params = new URLSearchParams(window.location.search);
+ const handoff = window.RedboxBookingHandoff
+ ? window.RedboxBookingHandoff.parseBookingHandoff(window.location.search)
+ : { branch: null, service_id: null, barber_id: null, date: null, time: null, time_preference: null };
  // Creambath tidak tersedia, redirect ke Hair Spa
- const rawService = params.get('service');
+ const rawService = handoff.service_id || params.get('service');
  const preService = rawService === 'creambath' ? 'hair-spa' : rawService;
- const preBarber = params.get('barber');
+ const preBarber = handoff.barber_id || params.get('barber');
+ // Keep the established branch-link contract; generated Task 14 handoffs use
+ // the same canonical slug validated by booking-handoff.js.
  const requestedBranch = (params.get('branch') || '').trim().toLowerCase();
+ const preDate = handoff.date;
+ const preTime = handoff.time;
+ const preTimePreference = handoff.time_preference;
  const isHomeService = params.get('type') === 'homeservice' || params.get('mode') === 'home-service';
  const rawPackage = (params.get('pkg') || '').toLowerCase().replace(/^weeding-/, 'wedding-');
  const WEDDING_PACKAGES = {
@@ -785,7 +793,18 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (n === 3) {
  // Step 3: Date & Time - build calendar with barber-specific availability
  if (!state.date) {
- state.date = todayStr();
+ const today = todayStr();
+ state.date = preDate && preDate >= today ? preDate : today;
+ if (preDate && preDate >= today) {
+ const [preYear, preMonth] = preDate.split('-').map(Number);
+ state.calYear = preYear;
+ state.calMonth = preMonth - 1;
+ }
+ }
+ // Time params are context only. Exact slot selection still waits for the
+ // availability response below; parsing a handoff never reserves a slot.
+ if (preTime || preTimePreference) {
+ state.handoffTime = { exact: preTime, preference: preTimePreference, verified: false };
  }
  // Clear old data to prevent stale displays
  fallbackBusyRanges = [];
