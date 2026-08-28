@@ -384,6 +384,32 @@ test('G. case creation storage failure never claims the request reached admin', 
   assert.equal(result.used, 'human_handoff_creation_failed');
 });
 
+test('G2. case storage genuinely unavailable never claims the request reached admin (Correction Round 1, Correction 4)', async () => {
+  let sendCalls = 0;
+  let sentReply = null;
+  let setTakeoverCalls = 0;
+  const mocks = {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    orchestrate: async () => ({ route: 'human', intent: 'human_request', action: 'request_human', fallback_used: false }),
+    createHandoffCase: async () => ({ status: 'unavailable', case: null, created: false }),
+    setHumanTakeover: () => { setTakeoverCalls++; },
+    persistHumanHandoff: async () => {},
+    send: async (_to, reply) => { sendCalls++; sentReply = reply; return { status: 'sent' }; },
+    logTelemetry: () => {},
+    logHandoffTelemetry: () => {},
+  };
+
+  const result = await handleMessage({ from: '628111111009', text: 'saya mau bicara admin', branchFromPayload: 'bypass' }, mocks);
+
+  assert.equal(sendCalls, 1);
+  assert.doesNotMatch(sentReply, /sudah aku teruskan/i, 'unavailable storage must never claim the message reached admin');
+  assert.match(sentReply, /belum berhasil meneruskan/i);
+  assert.equal(result.used, 'human_handoff_unavailable');
+  // Still pauses AI via the legacy mechanism as a safety net, even though it
+  // cannot honestly promise admin was notified.
+  assert.equal(setTakeoverCalls, 1);
+});
+
 test('H. handoff state lookup failure fails safe — bot never speaks over a possibly-active human conversation', async () => {
   let reddyCalls = 0;
   let sendCalls = 0;

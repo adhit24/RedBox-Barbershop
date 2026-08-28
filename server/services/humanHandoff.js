@@ -212,17 +212,27 @@ async function appendCustomerMessage(caseId, message, deps = {}) {
   }
 }
 
+/**
+ * branchScope enforces Correction Round 1 / Blocker 2's branch authority
+ * model at the query itself (fail closed), never by fetching globally and
+ * filtering afterward: undefined/null means unrestricted (owner, or a
+ * manager with no branch assigned); a branch string restricts the update to
+ * exactly that branch (branch_admin, or a branch-assigned manager), so a
+ * case belonging to a different branch simply does not match and the update
+ * returns zero rows — same observable outcome as "not claimable"/"not
+ * resolvable", never a 500 or a leak of another branch's case.
+ */
 async function claimCase(caseId, assignedTo, deps = {}) {
-  const { supabase = null } = deps;
+  const { supabase = null, branchScope = null } = deps;
   if (!supabase) return { status: 'unavailable', case: null };
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('human_handoff_cases')
       .update({ status: 'human_active', assigned_to: assignedTo, updated_at: new Date().toISOString() })
       .eq('id', caseId)
-      .eq('status', 'waiting_human')
-      .select('*')
-      .maybeSingle();
+      .eq('status', 'waiting_human');
+    if (branchScope) query = query.eq('branch', branchScope);
+    const { data, error } = await query.select('*').maybeSingle();
     if (error) throw error;
     if (!data) return { status: 'not_claimable', case: null };
     return { status: 'claimed', case: data };
@@ -232,17 +242,17 @@ async function claimCase(caseId, assignedTo, deps = {}) {
 }
 
 async function resolveCase(caseId, deps = {}) {
-  const { supabase = null } = deps;
+  const { supabase = null, branchScope = null } = deps;
   if (!supabase) return { status: 'unavailable', case: null };
   try {
     const nowIso = new Date().toISOString();
-    const { data, error } = await supabase
+    let query = supabase
       .from('human_handoff_cases')
       .update({ status: 'resolved', resolved_at: nowIso, updated_at: nowIso })
       .eq('id', caseId)
-      .in('status', SUPPRESSED_STATUSES)
-      .select('*')
-      .maybeSingle();
+      .in('status', SUPPRESSED_STATUSES);
+    if (branchScope) query = query.eq('branch', branchScope);
+    const { data, error } = await query.select('*').maybeSingle();
     if (error) throw error;
     if (!data) return { status: 'not_resolvable', case: null };
     return { status: 'resolved', case: data };
@@ -251,15 +261,25 @@ async function resolveCase(caseId, deps = {}) {
   }
 }
 
+/**
+ * Deterministic business priority order (Correction Round 1, Correction 3):
+ * urgent, then high, then normal, each oldest-first. `priority` is a TEXT
+ * enum, so ordering by it directly is lexical ('high' < 'normal' < 'urgent')
+ * and does NOT produce the required order — priority_rank is a generated
+ * column (see the Task 15 migration) that maps urgent=0, high=1, normal=2
+ * specifically so this can be a plain, index-backed ORDER BY.
+ */
 async function listWaitingCases(deps = {}) {
-  const { supabase = null, limit = 50 } = deps;
+  const { supabase = null, limit = 50, branchScope = null } = deps;
   if (!supabase) return [];
   try {
-    const { data } = await supabase
+    let query = supabase
       .from('human_handoff_cases')
       .select('*')
-      .eq('status', 'waiting_human')
-      .order('priority', { ascending: true })
+      .eq('status', 'waiting_human');
+    if (branchScope) query = query.eq('branch', branchScope);
+    const { data } = await query
+      .order('priority_rank', { ascending: true })
       .order('created_at', { ascending: true })
       .limit(limit);
     return data || [];

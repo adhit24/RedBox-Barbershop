@@ -245,8 +245,13 @@ test('10. Real production path (5): human route triggers handoff with setHumanTa
   assert.equal(setTakeoverCalls, 1);
   assert.equal(persistHandoffCalls, 1);
   assert.equal(sendCalls, 1);
-  assert.equal(result.used, 'human_handoff');
-  assert.equal(result.reply.includes('admin Redbox'), true);
+  // No Task 15 case storage configured in this test (no createHandoffCase
+  // mock) -> 'unavailable' -> the legacy Task 10 pause/persist/send path
+  // still runs exactly once (the actual "production path" invariant this
+  // test protects), but the reply must NOT claim admin was reached without a
+  // persisted case (Correction Round 1, Correction 4).
+  assert.equal(result.used, 'human_handoff_unavailable');
+  assert.equal(result.reply.includes('admin Redbox'), false);
 });
 
 test('11. Real production path (6): untrusted private CRM route (customer_history) returns crm_privacy_guard with Reddy = 0', async () => {

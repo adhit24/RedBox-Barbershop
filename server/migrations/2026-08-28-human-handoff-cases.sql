@@ -28,14 +28,35 @@ CREATE TABLE IF NOT EXISTS human_handoff_cases (
   resolved_at              TIMESTAMPTZ
 );
 
+-- Correction Round 1, Correction 3: `priority` is a TEXT enum, so ordering a
+-- case queue by it directly is lexical ('high' < 'normal' < 'urgent') and
+-- does not produce the required urgent-first business order. This generated
+-- column stays in sync with `priority` automatically (no application code
+-- can let it drift) and is what listWaitingCases() actually orders by.
+ALTER TABLE human_handoff_cases
+  ADD COLUMN IF NOT EXISTS priority_rank SMALLINT
+    GENERATED ALWAYS AS (
+      CASE priority
+        WHEN 'urgent' THEN 0
+        WHEN 'high' THEN 1
+        ELSE 2
+      END
+    ) STORED;
+
 -- At most one open case per customer phone at a time (duplicate-case protection
 -- enforced at the database level, not just in application logic).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_human_handoff_cases_active_customer
   ON human_handoff_cases (customer_phone)
   WHERE status IN ('requested', 'waiting_human', 'human_active');
 
-CREATE INDEX IF NOT EXISTS idx_human_handoff_cases_status_created
-  ON human_handoff_cases (status, created_at DESC);
+-- Serves listWaitingCases()'s status + priority_rank + created_at ordering,
+-- with or without a branch filter applied on top (Correction Round 1,
+-- Blocker 2 — branch-scoped queue for branch_admin / branch-assigned manager).
+CREATE INDEX IF NOT EXISTS idx_human_handoff_cases_status_priority_created
+  ON human_handoff_cases (status, priority_rank, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_human_handoff_cases_branch_status
+  ON human_handoff_cases (branch, status);
 
 ALTER TABLE human_handoff_cases ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE human_handoff_cases FROM anon, authenticated;
