@@ -58,12 +58,42 @@ const REDBOX_KNOWLEDGE = freeze({
     { id: 'walk-in-not-guaranteed', summary: 'Walk-in diperbolehkan, tetapi ketersediaan tidak dijamin.', booking_url_template: 'booking.html?branch={branch_id}' },
     { id: 'whatsapp-assist-authority-policy', summary: 'WhatsApp Redbox berfungsi untuk bantuan, edukasi, dan panduan. Pembuatan, konfirmasi, perubahan, reschedule, pembatalan, dan penguncian slot booking pelanggan harus dilakukan melalui sistem booking website Redbox.', booking_url_template: 'booking.html?branch={branch_id}' },
   ],
+  // Mirrors public/membership.html tier cards + comparison table verbatim
+  // (audited 2026-08-28). Silver's discount explicitly excludes CSB Mall;
+  // Gold and Platinum are explicitly "*Berlaku di semua Cabang Redbox".
+  // Do not add a benefit here unless it is actually shown on that page —
+  // this is the ONLY canonical membership benefit source Reddy may use.
   membership_public: {
     registration_url: 'membership.html',
     tiers: [
-      { id: 'silver', price_idr: 100000, duration: '1 year after activation', benefits: ['Diskon ulang tahun 50%.'] },
-      { id: 'gold', price_idr: 250000, duration: '1 year after activation', benefits: ['Diskon Gold 10% di luar CSB.', 'Diskon ulang tahun 50%.'] },
-      { id: 'platinum', price_idr: 1500000, duration: '1 year after activation', benefits: ['Gratis Gentleman Grooming hingga harga layanan sebenarnya.', 'Diskon ulang tahun 50%.'] },
+      {
+        id: 'silver', price_idr: 100000, points_threshold: 500, uses_points: true,
+        duration: '1 year after activation',
+        branch_applicability: 'all_branches_except_csb',
+        benefits: [
+          'Diskon 5% haircut (tidak berlaku di cabang CSB Mall).',
+          'Diskon ulang tahun 50% (-7 hari s/d +7 hari dari tanggal lahir).',
+        ],
+      },
+      {
+        id: 'gold', price_idr: 250000, points_threshold: 501, uses_points: true,
+        duration: '1 year after activation',
+        branch_applicability: 'all_branches',
+        benefits: [
+          'Diskon 10% haircut, berlaku di semua cabang Redbox.',
+          'Diskon ulang tahun 50% (-7 hari s/d +7 hari dari tanggal lahir).',
+        ],
+      },
+      {
+        id: 'platinum', price_idr: 1500000, points_threshold: null, uses_points: false,
+        duration: '1 year after activation',
+        branch_applicability: 'all_branches',
+        benefits: [
+          'Gratis Haircut/Gentleman Grooming, berlaku di semua cabang Redbox.',
+          'Gratis ulang tahun (-7 hari s/d +7 hari dari tanggal lahir).',
+          'Gratis Americano.',
+        ],
+      },
     ],
   },
   promotions: [],

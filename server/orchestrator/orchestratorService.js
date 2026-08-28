@@ -155,6 +155,19 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     || /\b(kalau|jika)\b.*\b(mau|ingin)\b.*\b(jadi|daftar|mendaftar)\b.*\b(member|membership)\b/.test(normalized)
   );
 
+  // Latest explicit user intent controls the response (Task 14.1 §1): the two
+  // fallback continuation branches below have NO textual shape requirement of
+  // their own (unlike the exact-branch-name, keyword-bearing, or name-only
+  // branches above/below them) — they fire on "short message + a branch/
+  // service word appeared ANYWHERE in recent history", which previously
+  // hijacked unrelated new questions (e.g. "saya tercatat sebagai member
+  // gak?" after an earlier branch mention) into a false booking continuation.
+  // Only let them fire when the classifier's OWN independent read of the
+  // current message (computed from the message alone, no history) is itself
+  // weak/generic or already booking-shaped — never when it already found a
+  // specific, unrelated business intent.
+  const classifierIntentIsWeak = ['unknown', 'general_question', 'booking_request'].includes(base.intent);
+
   // Contextual ellipsis wins over an independently classified business intent.
   if (hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
     conversationalAct = 'temporal_followup';
@@ -200,7 +213,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
       prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
-  } else if (hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure) {
+  } else if (hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure && classifierIntentIsWeak) {
     conversationalAct = 'service_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_service_choice';
@@ -211,7 +224,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
       prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
-  } else if (hasActiveContext && shortChoice && priorBranchChoice && !socialAck && !explicitClosure) {
+  } else if (hasActiveContext && shortChoice && priorBranchChoice && !socialAck && !explicitClosure && classifierIntentIsWeak) {
     conversationalAct = 'branch_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_branch_choice';
