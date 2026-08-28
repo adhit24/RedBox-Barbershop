@@ -2,6 +2,10 @@
 
 const { buildCustomerFactsContext } = require('./customerFactsContext');
 const { serializeKnowledgeForPrompt } = require('./knowledge/knowledgeContext');
+const { loadCanonicalBarbers } = require('../../services/canonicalBarberResolver');
+const { extractBookingContext, buildPrefilledBookingUrl } = require('./bookingContext');
+const { guardReddyReply, REDDY_BOOKING_EXECUTION } = require('./bookingGuards');
+const { logOrchestratedEvent } = require('../../orchestrator/telemetry');
 
 /**
  * Redbox Reddy Execution Adapter v0.1
@@ -19,7 +23,14 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     conversationContext = null,
     orchestrationDecision = null,
   } = params;
-  const { callOpenAI, sendWA } = dependencies;
+  const {
+    callOpenAI,
+    sendWA,
+    supabase = null,
+    loadBarbers = loadCanonicalBarbers,
+    logBookingTelemetry = logOrchestratedEvent,
+    persistConversation = null,
+  } = dependencies;
 
   if (!callOpenAI || typeof callOpenAI !== 'function') {
     throw new Error('callOpenAI dependency function required for Reddy execution');
@@ -45,6 +56,23 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
   // Verified CRM name source: derive ONLY from customerIntelligence facts or customer entity
   const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || null;
+  const bookingSignal = /\b(booking|reservasi|slot|jadwal|reschedule|cancel|batal|kapster|barber|potong|pangkas|cukur|treatment|besok|lusa|jam\s*\d)\b/i.test(String(text || ''));
+  const bookingMetadata = orchestrationDecision && (
+    /booking|availability|reschedule|cancel|barber|service_choice|branch_choice|temporal_followup/.test(
+      `${orchestrationDecision.intent || ''} ${orchestrationDecision.conversational_act || ''} ${orchestrationDecision.response_strategy || ''}`,
+    )
+  );
+  const bookingRelevant = Boolean(bookingSignal || bookingMetadata || conversationContext?.booking_context);
+  const canonicalBarberSource = bookingRelevant
+    ? await loadBarbers(supabase)
+    : { status: 'not_requested', barbers: [], reason: null };
+  const bookingContext = bookingRelevant
+    ? extractBookingContext(text, conversationContext?.booking_context || null, {
+      canonicalBarbers: canonicalBarberSource?.barbers || [],
+    })
+    : null;
+  const handoffUrl = buildPrefilledBookingUrl(bookingContext);
+
   const boundedConversationContext = {
     ...(conversationContext && typeof conversationContext === 'object' ? conversationContext : {
       turns: [],
@@ -67,6 +95,15 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
         response_strategy: orchestrationDecision.response_strategy || 'answer_directly',
       },
     } : {}),
+    ...(bookingContext ? { booking_context: bookingContext } : {}),
+    booking_authority: {
+      whatsapp_mode: 'assist_and_guide_only',
+      execution: REDDY_BOOKING_EXECUTION,
+      reservation_authority: 'website_booking_system',
+      handoff_url: handoffUrl,
+      canonical_barber_source_status: canonicalBarberSource?.status || 'unavailable',
+    },
+    reply_persistence_deferred: true,
   };
 
   try {
@@ -77,6 +114,30 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     }
   } catch (err) {
     throw err;
+  }
+
+  const guarded = guardReddyReply(reply, {
+    isBackendVerified: false,
+    bookingUrl: handoffUrl,
+  });
+  reply = guarded.sanitizedReply;
+
+  if (guarded.blockedProhibitedClaim || guarded.blockedUnverifiedAvailability) {
+    logBookingTelemetry({
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      intent: orchestrationDecision?.intent || 'unknown',
+      action: 'booking_reply_guard',
+      branch,
+      trust_status: 'unverified',
+      execution_status: 'guarded',
+      guard_blocked_prohibited_claim: guarded.blockedProhibitedClaim,
+      guard_blocked_unverified_availability: guarded.blockedUnverifiedAvailability,
+    });
+  }
+
+  if (persistConversation && typeof persistConversation === 'function') {
+    await persistConversation(from, boundedConversationContext.turns || [], text, reply);
   }
 
   let sendResult = null;

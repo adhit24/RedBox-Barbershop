@@ -71,6 +71,8 @@ function sanitizeTelemetry(event = {}) {
     required_sources: requiredSources,
     response_strategy: allowedStrategies.has(event.response_strategy) ? event.response_strategy : 'answer_directly',
     crm_fact_status: qualityStates.has(event.crm_fact_status) ? event.crm_fact_status : null,
+    guard_blocked_prohibited_claim: Boolean(event.guard_blocked_prohibited_claim),
+    guard_blocked_unverified_availability: Boolean(event.guard_blocked_unverified_availability),
   };
 }
 

@@ -726,6 +726,17 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
       `Reddy hanya boleh mengatur bahasa dan presentasi. Jangan mengubah source authority, jangan membuat claim yang dilarang, jangan menjawab fakta CRM tanpa CRM fact pack, dan ikuti response_strategy tanpa menambahkan CTA yang tidak diminta.`;
   }
 
+  const bookingContext = conversationContext?.booking_context;
+  const bookingAuthority = conversationContext?.booking_authority;
+  if (bookingContext && bookingAuthority) {
+    systemPrompt += `\n\n# BOOKING INTELLIGENCE — ASSIST & GUIDE ONLY\n` +
+      `Booking context berikut hanya membantu memahami preferensi customer; ini bukan bukti availability atau reservasi:\n${JSON.stringify(bookingContext)}\n` +
+      `Execution: ${bookingAuthority.execution}. Reservation authority: ${bookingAuthority.reservation_authority}.\n` +
+      `Cabang nomor WhatsApp/transport bukan otomatis cabang pilihan customer; gunakan hanya branch di booking context jika statusnya terverifikasi.\n` +
+      `Gunakan handoff URL ini bila relevan: ${bookingAuthority.handoff_url}\n` +
+      `DILARANG menyatakan booking dibuat, slot diamankan, barber dikunci, atau perubahan/cancel berhasil lewat WhatsApp.`;
+  }
+
   systemPrompt += `\n\n# KONTEKS CABANG SESI\nKamu melayani customer dari ${BRANCH_LABEL[branch] || BRANCH_LABEL.bypass}. Gunakan Zone B1 untuk fakta publik cabang.`;
 
   if (knowledgeFactsContext) {
@@ -772,8 +783,10 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf Kak, sistem sedang mengalami gangguan sementara. Coba lagi beberapa saat lagi.';
 
   // Simpan ke cache & Supabase via testable helper
-  const persist = dependencies.persistConversationExchange || persistConversationExchange;
-  persist(sender, activeHistoryTurns, userMessage, reply).catch(() => {});
+  if (!conversationContext?.reply_persistence_deferred) {
+    const persist = dependencies.persistConversationExchange || persistConversationExchange;
+    persist(sender, activeHistoryTurns, userMessage, reply).catch(() => {});
+  }
 
   return reply;
 }
@@ -1537,7 +1550,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         const reddyExec = await executeReddy({
           from, name, text, device, branch, trustedIdentity, knowledgeContext, customerIntelligence: intelRes.intelligence, conversationContext, orchestrationDecision: orchDecision,
         }, {
-          callOpenAI: generateReddy, sendWA: send,
+          callOpenAI: generateReddy, sendWA: send, supabase: getSupabase(), logBookingTelemetry: logTelemetry,
+          persistConversation: persistConversationExchange,
         });
         logTelemetry({
           ...orchDecision,
@@ -1623,7 +1637,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       const reddyExec = await executeReddy({
         from, name, text, device, branch, trustedIdentity, knowledgeContext, conversationContext, orchestrationDecision: orchDecision,
       }, {
-        callOpenAI: generateReddy, sendWA: send,
+        callOpenAI: generateReddy, sendWA: send, supabase: getSupabase(), logBookingTelemetry: logTelemetry,
+        persistConversation: persistConversationExchange,
       });
       logTelemetry({
         ...orchDecision,
