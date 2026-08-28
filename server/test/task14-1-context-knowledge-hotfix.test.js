@@ -25,6 +25,7 @@ const path = require('node:path');
 const { orchestrateMessage } = require('../orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 const { suppressUnsolicitedBookingCta } = require('../agents/reddy/bookingGuards');
+const { deriveBookingEligibility } = require('../agents/reddy/bookingEligibility');
 const { REDBOX_KNOWLEDGE } = require('../agents/reddy/knowledge/redboxKnowledge');
 const { resolveKnowledgeContext } = require('../agents/reddy/knowledge/knowledgeResolver');
 
@@ -53,12 +54,15 @@ function context(...turns) {
 
 const canonicalBarbers = [
   { id: 'barber-onoy-id', name: 'Onoy', branch: 'bypass', is_active: true },
+  { id: 'barber-opan-id', name: 'Opan', branch: 'samadikun', is_active: true },
 ];
 function trustedBarberLoader() {
   return Promise.resolve({ status: 'verified', barbers: canonicalBarbers, reason: null });
 }
 
-async function runReddy({ from = '628100000001', text, orchestrationDecision, conversationContext = null, callOpenAI }) {
+async function runReddy({
+  from = '628100000001', text, orchestrationDecision, conversationContext = null, callOpenAI, getSchedule,
+}) {
   let capturedConversationContext = null;
   let sentReply = null;
   const result = await executeReddyAgent({
@@ -71,6 +75,8 @@ async function runReddy({ from = '628100000001', text, orchestrationDecision, co
     sendWA: async (_to, reply) => { sentReply = reply; return { status: 'sent' }; },
     loadBarbers: trustedBarberLoader,
     logBookingTelemetry: () => {},
+    supabase: typeof getSchedule === 'function' ? {} : null,
+    getSchedule,
   });
   return { result, capturedConversationContext, sentReply };
 }
@@ -165,23 +171,64 @@ test('F. booking memory survives a points detour and resumes on "Oke balik booki
   assert.doesNotMatch(capturedConversationContext.booking_authority.handoff_url, /reserved=|confirmed=|available=/);
 });
 
-// ── G. unsupported attendance claim (prompt-level — no schedule source exists) ──
-test('G. the prompt unconditionally forbids stating a barber is present/working today without verified schedule/attendance evidence', () => {
-  assert.match(webhookSource, /BATAS FAKTA REAL-TIME/);
-  assert.match(webhookSource, /TANPA sumber jadwal\/kehadiran hari ini yang terverifikasi: DILARANG menyatakan/);
-  assert.match(webhookSource, /"\[nama\] ada di cabang hari ini", "\[nama\] masuk", "\[nama\] sedang bertugas", atau "\[nama\] tersedia hari ini"/);
+// ── G. unsupported attendance claim — deterministic guard, real execution path ──
+test('G. "Mas Opan masuk hari ini gak?" — a hallucinated presence claim never reaches sendWA when no schedule source is available', async () => {
+  const { sentReply } = await runReddy({
+    text: 'Mas Opan masuk hari ini gak?',
+    orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Iya Kak, Mas Opan ada hari ini.',
+  });
+  assert.doesNotMatch(sentReply, /Opan ada hari ini/i);
+  assert.match(sentReply, /belum bisa memastikan/i);
 });
 
 // ── H. trusted schedule source — allowed wording is still bounded ────────────
-test('H. IF a verified schedule fact is ever supplied, the prompt still forbids upgrading "scheduled" to "already present" without separate attendance evidence', () => {
-  assert.match(webhookSource, /boleh menyatakan "\[nama\] dijadwalkan masuk hari ini"/);
-  assert.match(webhookSource, /TAPI tetap DILARANG meng-upgrade klaim itu menjadi "\[nama\] sudah hadir\/ada sekarang"/);
+test('H. a verified "scheduled" fact allows "dijadwalkan masuk hari ini" but still forbids upgrading to an attendance claim', async () => {
+  const scheduledFixture = async () => ({ status: 'scheduled', source: 'barber_working_hours', date: '2026-08-29' });
+  const { sentReply: scheduledReply } = await runReddy({
+    text: 'Mas Opan masuk hari ini gak?',
+    orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Opan dijadwalkan masuk hari ini di Samadikun, Kak.',
+    getSchedule: scheduledFixture,
+  });
+  assert.match(scheduledReply, /dijadwalkan masuk hari ini/i);
+
+  const { sentReply: upgradedReply } = await runReddy({
+    text: 'Mas Opan masuk hari ini gak?',
+    orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Opan sudah hadir sekarang di Samadikun, Kak.',
+    getSchedule: scheduledFixture,
+  });
+  assert.doesNotMatch(upgradedReply, /sudah hadir/i);
+  assert.match(upgradedReply, /belum bisa memastikan/i);
+});
+
+test('H2. a verified "not_scheduled" fact corrects a hallucinated positive presence claim', async () => {
+  const { sentReply } = await runReddy({
+    text: 'Mas Opan masuk hari ini gak?',
+    orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Iya Kak, Opan ada hari ini kok.',
+    getSchedule: async () => ({ status: 'not_scheduled', source: 'barber_working_hours', date: '2026-08-29' }),
+  });
+  assert.doesNotMatch(sentReply, /ada hari ini/i);
+  assert.match(sentReply, /tidak tercatat dijadwalkan/i);
 });
 
 // ── I. roster wording ─────────────────────────────────────────────────────
-test('I. canonical barber roster answers must not use "tersedia"/"masuk hari ini" wording — roster is not a daily status', () => {
-  assert.match(webhookSource, /DAFTAR KAPSTER CABANG bersifat ROSTER, BUKAN status hari ini/);
-  assert.match(webhookSource, /DILARANG memakai kata "tersedia", "available", "masuk hari ini", "ada hari ini", atau "sedang bertugas" untuk daftar roster biasa/);
+test('I. a roster fact ("adalah barber Redbox ...") survives untouched, but "tersedia hari ini" on the same roster-only turn is rewritten', async () => {
+  const { sentReply: rosterOnly } = await runReddy({
+    text: 'Mas Onoy barber Bypass ya?',
+    orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Betul Kak, Onoy adalah barber Redbox Bypass.',
+  });
+  assert.equal(rosterOnly, 'Betul Kak, Onoy adalah barber Redbox Bypass.');
+
+  const { sentReply: falseAvailability } = await runReddy({
+    text: 'Mas Onoy barber Bypass ya?',
+    orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Betul Kak, Onoy adalah barber Redbox Bypass. Onoy tersedia hari ini.',
+  });
+  assert.doesNotMatch(falseAvailability, /tersedia hari ini/i);
 });
 
 // ── J. slot UI inference boundary ─────────────────────────────────────────
@@ -222,6 +269,125 @@ test('K3. suppression never sends an empty message even if the whole reply was t
   );
   assert.equal(ctaSuppressed, true);
   assert.ok(sanitizedReply.trim().length > 0);
+});
+
+// ── REQUIRED TEST — GUARD REINTRODUCTION (Blocker 2) ──────────────────────
+// Must fail on the pre-correction HEAD and pass after: guardReddyReply's own
+// availability-guard correction used to always embed the booking URL, even
+// on an already-ineligible turn — reintroducing exactly what the upstream
+// sanitizer had just removed.
+test('REQUIRED: an availability-guard trigger on a non-booking turn never reintroduces a booking URL', async () => {
+  const { sentReply } = await runReddy({
+    text: 'Poin saya berapa?',
+    orchestrationDecision: { intent: 'points_inquiry', route: 'crm_agent', conversational_act: 'customer_fact_question', response_strategy: 'answer_with_crm_fact' },
+    callOpenAI: async () => 'Jam 4 masih tersedia Kak.',
+  });
+  assert.doesNotMatch(sentReply, /redboxbarbershop\.com/i);
+  assert.doesNotMatch(sentReply, /dicek real-time di website resmi/i); // the ELIGIBLE-turn phrasing, which embeds the URL
+  assert.match(sentReply, /belum bisa memastikan ketersediaan/i);
+});
+
+// ── Blocker 1: deriveBookingEligibility — direct unit-test matrix ─────────
+test('eligibility 1: "Down perm itu apa?" — responseEligible/ctaEligible false', () => {
+  const r = deriveBookingEligibility({
+    text: 'Down perm itu apa?',
+    orchestrationDecision: { intent: 'service_inquiry', conversational_act: 'business_fact_question' },
+  });
+  assert.equal(r.responseEligible, false);
+  assert.equal(r.ctaEligible, false);
+  assert.equal(r.reason, 'informational_only');
+});
+
+test('eligibility 2: "Mas Onoy barber Bypass ya?" — the literal word "barber" does not grant CTA eligibility', () => {
+  const r = deriveBookingEligibility({
+    text: 'Mas Onoy barber Bypass ya?',
+    orchestrationDecision: { intent: 'barber_inquiry', conversational_act: 'business_fact_question' },
+  });
+  assert.equal(r.responseEligible, false);
+  assert.equal(r.ctaEligible, false);
+});
+
+test('eligibility 3: "Bypass buka jam berapa?" — ctaEligible false', () => {
+  const r = deriveBookingEligibility({
+    text: 'Bypass buka jam berapa?',
+    orchestrationDecision: { intent: 'operating_hours_inquiry', conversational_act: 'business_fact_question' },
+  });
+  assert.equal(r.ctaEligible, false);
+});
+
+test('eligibility 4: "Mas Opan masuk hari ini?" — ctaEligible false (a real-time fact question, not a booking one)', () => {
+  const r = deriveBookingEligibility({
+    text: 'Mas Opan masuk hari ini?',
+    orchestrationDecision: { intent: 'barber_inquiry', conversational_act: 'business_fact_question' },
+  });
+  assert.equal(r.ctaEligible, false);
+});
+
+test('eligibility 5: "Besok mau potong sama Onoy" — responseEligible and ctaEligible true', () => {
+  const r = deriveBookingEligibility({
+    text: 'Besok mau potong sama Onoy',
+    orchestrationDecision: { intent: 'booking_request', conversational_act: 'booking_request' },
+  });
+  assert.equal(r.responseEligible, true);
+  assert.equal(r.ctaEligible, true);
+  assert.equal(r.reason, 'explicit_booking_request');
+});
+
+test('eligibility 6: "Bisa kirim link booking?" — ctaEligible true', () => {
+  const r = deriveBookingEligibility({ text: 'Bisa kirim link booking?', orchestrationDecision: null });
+  assert.equal(r.ctaEligible, true);
+  assert.equal(r.reason, 'explicit_booking_link_request');
+});
+
+test('eligibility 7/8/9: points/member/profile questions are crm_topic, never eligible', () => {
+  for (const [text, intent] of [
+    ['Poin saya berapa?', 'points_inquiry'],
+    ['Saya tercatat sebagai member gak?', 'customer_profile'],
+    ['Data diri aku yang terdaftar, coba kasih tau aku.', 'customer_profile'],
+  ]) {
+    const r = deriveBookingEligibility({ text, orchestrationDecision: { intent, conversational_act: 'customer_fact_question' } });
+    assert.equal(r.responseEligible, false, text);
+    assert.equal(r.ctaEligible, false, text);
+    assert.equal(r.reason, 'crm_topic', text);
+  }
+});
+
+test('eligibility 10: booking -> points -> "Onoy aja" — memoryRelevant stays true across the detour, contextual continuation resumes eligibility', () => {
+  const detour = deriveBookingEligibility({
+    text: 'Poin aku berapa?',
+    orchestrationDecision: { intent: 'points_inquiry', conversational_act: 'customer_fact_question' },
+  });
+  assert.equal(detour.responseEligible, false);
+
+  const resume = deriveBookingEligibility({
+    text: 'Onoy aja.',
+    orchestrationDecision: { intent: 'unknown', conversational_act: 'barber_choice_followup' },
+  });
+  assert.equal(resume.memoryRelevant, true);
+  assert.equal(resume.responseEligible, true);
+  assert.equal(resume.reason, 'contextual_booking_continuation');
+});
+
+test('eligibility 11: guardReddyReply availability correction — see REQUIRED test above (executeReddyAgent-level)', () => {
+  // Covered end-to-end above; this entry keeps the numbering explicit.
+  assert.ok(true);
+});
+
+test('eligibility 12: informational barber question containing the literal word "barber" must not become CTA eligible (helper + memory layer both checked)', () => {
+  const r = deriveBookingEligibility({
+    text: 'Mas Onoy barber Bypass ya?',
+    orchestrationDecision: { intent: 'barber_inquiry', conversational_act: 'business_fact_question' },
+  });
+  assert.equal(r.ctaEligible, false);
+  // Memory MAY be true (the word "barber" is allowed to feed the broad
+  // memory layer) — that is fine and expected, per Blocker 1's own rule.
+  assert.equal(r.memoryRelevant, true);
+});
+
+test('memoryRelevant stays broad on plain booking vocabulary while response/CTA stay narrow', () => {
+  const r = deriveBookingEligibility({ text: 'Kapster di Bypass siapa aja ya?', orchestrationDecision: { intent: 'barber_inquiry' } });
+  assert.equal(r.memoryRelevant, true);
+  assert.equal(r.responseEligible, false);
 });
 
 // ── Blocker 1: memory / response / CTA eligibility are structurally separate ──

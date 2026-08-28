@@ -747,16 +747,22 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   // Task 14.1 correction (Blocker 3): production showed Reddy answering
   // "Mas Opan ada di cabang hari ini" from nothing but canonical branch
   // roster data. Registered-at-branch, scheduled-today, present-now, and
-  // available-for-a-slot are four DIFFERENT facts and no integrated,
-  // Reddy-accessible trusted source for the latter three currently exists
-  // (audited: barber_working_hours/schedules power the WEBSITE booking slot
-  // engine only, not Reddy's knowledge/CRM context) — so today Reddy must
-  // always express uncertainty on presence/attendance claims, never infer
-  // them from roster membership alone.
+  // available-for-a-slot are four DIFFERENT facts. Round 2 added a small
+  // read-only PLANNED SCHEDULE lookup (server/services/barberScheduleAuthority.js,
+  // reusing the website booking engine's own getBarberDateAvailability —
+  // barber_working_hours + barber_date_overrides) surfaced below as
+  // conversationContext.barber_schedule_status when the current message asks
+  // about a specific barber's schedule and that barber/date resolve. No
+  // attendance/check-in source exists anywhere in this codebase — presence
+  // claims stay forbidden regardless. A deterministic guard
+  // (realtimeFactGuard.js) enforces this on the OUTBOUND reply too, so this
+  // instruction is a second layer, not the only one.
+  const barberScheduleStatus = conversationContext?.barber_schedule_status;
   systemPrompt += `\n\n# BATAS FAKTA REAL-TIME — JADWAL, KEHADIRAN, DAN SLOT\n` +
     `PEMISAHAN WAJIB (empat fakta berbeda, jangan disamakan): barber TERDAFTAR di cabang (roster) != barber DIJADWALKAN hari ini != barber SEDANG HADIR sekarang != barber TERSEDIA untuk slot tertentu.\n` +
-    `TANPA sumber jadwal/kehadiran hari ini yang terverifikasi: DILARANG menyatakan "[nama] ada di cabang hari ini", "[nama] masuk", "[nama] sedang bertugas", atau "[nama] tersedia hari ini". Jawab dengan ketidakpastian jujur, contoh: "Aku belum bisa memastikan Mas [nama] masuk hari ini, Kak. Jadwal/kehadiran hari ini belum tersedia dari sistem yang bisa aku verifikasi." lalu arahkan ke ${bookingUrl(branch)} atau kontak cabang untuk kepastian langsung.\n` +
-    `JIKA (dan hanya jika) fakta jadwal terverifikasi benar-benar disediakan lewat konteks di bawah: boleh menyatakan "[nama] dijadwalkan masuk hari ini", TAPI tetap DILARANG meng-upgrade klaim itu menjadi "[nama] sudah hadir/ada sekarang" tanpa bukti kehadiran terpisah yang juga disediakan lewat konteks.\n` +
+    (barberScheduleStatus
+      ? `JADWAL TERVERIFIKASI HARI INI TERSEDIA: ${JSON.stringify(barberScheduleStatus)}. Jika status "scheduled", boleh menyatakan "${barberScheduleStatus.barberName} dijadwalkan masuk hari ini". Jika status "not_scheduled", nyatakan "${barberScheduleStatus.barberName} tidak tercatat dijadwalkan masuk hari ini". TETAP DILARANG meng-upgrade ini menjadi klaim kehadiran ("sudah hadir", "ada sekarang") — ini fakta JADWAL, bukan bukti kehadiran fisik.\n`
+      : `TANPA sumber jadwal/kehadiran hari ini yang terverifikasi: DILARANG menyatakan "[nama] ada di cabang hari ini", "[nama] masuk", "[nama] sedang bertugas", atau "[nama] tersedia hari ini". Jawab dengan ketidakpastian jujur, contoh: "Aku belum bisa memastikan Mas [nama] masuk hari ini, Kak. Jadwal/kehadiran hari ini belum tersedia dari sistem yang bisa aku verifikasi." lalu arahkan ke ${bookingUrl(branch)} atau kontak cabang untuk kepastian langsung.\n`) +
     `DAFTAR KAPSTER CABANG bersifat ROSTER, BUKAN status hari ini — gunakan kata seperti "kapster Redbox Bypass antara lain..." atau "termasuk...". DILARANG memakai kata "tersedia", "available", "masuk hari ini", "ada hari ini", atau "sedang bertugas" untuk daftar roster biasa.\n` +
     `INFERENSI SLOT WEBSITE: Jika website hanya menampilkan sebagian jam booking (misal cuma jam 20:00), DILARANG menyimpulkan alasannya (misal "kemungkinan slot lain sudah penuh") tanpa data availability terverifikasi dari backend. Jawab: "Kalau yang tampil cuma jam segitu, berarti itu opsi yang sedang ditawarkan website saat ini. Aku belum bisa memastikan alasan slot lain nggak muncul tanpa data availability dari backend — coba cek langsung di web atau hubungi cabang untuk kepastian."`;
 
