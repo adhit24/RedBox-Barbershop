@@ -200,8 +200,15 @@ test('H. a verified "scheduled" fact allows "dijadwalkan masuk hari ini" but sti
     callOpenAI: async () => 'Opan sudah hadir sekarang di Samadikun, Kak.',
     getSchedule: scheduledFixture,
   });
-  assert.doesNotMatch(upgradedReply, /sudah hadir/i);
-  assert.match(upgradedReply, /belum bisa memastikan/i);
+  // The false attendance claim itself must not survive verbatim, but the
+  // wording fix means the correction now accurately reports the schedule
+  // fact we DO have while hedging only the attendance part — "sudah hadir"
+  // legitimately appears inside that hedge ("...untuk memastikan beliau
+  // sudah hadir sekarang"), so assert the actual claim shape, not the bare
+  // substring.
+  assert.doesNotMatch(upgradedReply, /^Opan sudah hadir sekarang/i);
+  assert.match(upgradedReply, /dijadwalkan masuk hari ini/i);
+  assert.match(upgradedReply, /belum punya data kehadiran\/check-in/i);
 });
 
 test('H2. a verified "not_scheduled" fact corrects a hallucinated positive presence claim', async () => {
@@ -266,8 +273,12 @@ test('round3-D2 (entity binding, full executeReddyAgent path): a schedule fact a
     callOpenAI: async () => 'Bob dijadwalkan masuk hari ini kok, Kak.',
     getSchedule: async () => ({ status: 'scheduled', source: 'planned_schedule_lookup', date: '2026-08-29' }),
   });
+  // Bob's unbound claim must not survive; the correction substitutes the
+  // one thing we actually have verified — the real fact about Opan (the
+  // barber the customer's own question named and the fact is actually
+  // about), per the claim-local binding fix.
   assert.doesNotMatch(sentReply, /Bob dijadwalkan/i);
-  assert.match(sentReply, /belum bisa memastikan/i);
+  assert.match(sentReply, /Opan memang dijadwalkan masuk hari ini/i);
 });
 
 test('round3-E: verifiedSchedule scheduled for Opan still forbids an attendance-upgrade claim', () => {
@@ -276,7 +287,13 @@ test('round3-E: verifiedSchedule scheduled for Opan still forbids an attendance-
     { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
   );
   assert.equal(triggered, true);
-  assert.doesNotMatch(sanitizedReply, /sudah hadir/i);
+  // The false, unhedged claim ("Mas Opan sudah hadir sekarang.") must not
+  // survive as-is; "sudah hadir" legitimately reappears inside the accurate
+  // hedge the correction now gives ("...untuk memastikan beliau sudah hadir
+  // sekarang") — assert the claim shape, not the bare substring.
+  assert.notEqual(sanitizedReply, 'Mas Opan sudah hadir sekarang.');
+  assert.match(sanitizedReply, /Opan memang dijadwalkan masuk hari ini/i);
+  assert.match(sanitizedReply, /belum punya data kehadiran\/check-in/i);
 });
 
 test('round3: SCHEDULE_CLAIM_PATTERNS catches "ada jadwal hari ini" phrasing that PRESENCE_TODAY_PATTERNS alone would miss', () => {
@@ -285,6 +302,67 @@ test('round3: SCHEDULE_CLAIM_PATTERNS catches "ada jadwal hari ini" phrasing tha
     { verifiedSchedule: null },
   );
   assert.equal(triggered, true);
+});
+
+// ── FINAL MICRO-CORRECTION — CLAIM-LOCAL BINDING (not reply-global) ──────
+test('final-A: wrong barber in a separate sentence — Bob\'s schedule claim must not survive even though Opan is validly mentioned elsewhere', () => {
+  const reply = 'Mas Opan barber Samadikun.\nMas Bob dijadwalkan masuk hari ini.';
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    reply,
+    { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, true);
+  assert.doesNotMatch(sanitizedReply, /Bob dijadwalkan/i);
+  // The legitimate, non-claim roster sentence about Opan is untouched.
+  assert.match(sanitizedReply, /Mas Opan barber Samadikun\./);
+});
+
+test('final-B: a single compound sentence naming two barbers — Opan being valid must not authorize Bob in the same breath', () => {
+  const reply = 'Mas Opan dijadwalkan masuk hari ini, dan Mas Bob juga dijadwalkan masuk.';
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    reply,
+    { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, true);
+  assert.doesNotMatch(sanitizedReply, /Bob/i);
+  assert.match(sanitizedReply, /Opan memang dijadwalkan masuk hari ini/i);
+});
+
+test('final-C: correct barber, single claim — allowed unchanged', () => {
+  const reply = 'Mas Opan dijadwalkan masuk hari ini.';
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    reply,
+    { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, false);
+  assert.equal(sanitizedReply, reply);
+});
+
+test('final-D: no barber named at all ("Barbernya") — binding cannot be proven, so it is blocked even though a verified fact exists', () => {
+  const reply = 'Barbernya dijadwalkan masuk hari ini.';
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    reply,
+    { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, true);
+  assert.doesNotMatch(sanitizedReply, /^Barbernya dijadwalkan/i);
+});
+
+test('final: unknown schedule wording only says jadwal is unavailable, never conflates it with kehadiran', () => {
+  const { sanitizedReply } = guardRealtimeBarberFacts(
+    'Mas Opan dijadwalkan masuk hari ini.',
+    { verifiedSchedule: { barberName: 'Opan', status: 'unknown', date: '2026-08-29' } },
+  );
+  assert.match(sanitizedReply, /belum bisa memastikan jadwal Opan hari ini/i);
+  assert.doesNotMatch(sanitizedReply, /kehadiran/i);
+});
+
+test('final: not_scheduled wording is unchanged from round 3', () => {
+  const { sanitizedReply } = guardRealtimeBarberFacts(
+    'Mas Opan dijadwalkan masuk hari ini.',
+    { verifiedSchedule: { barberName: 'Opan', status: 'not_scheduled', date: '2026-08-29' } },
+  );
+  assert.match(sanitizedReply, /Opan tidak tercatat dijadwalkan masuk hari ini/i);
 });
 
 // ── I. roster wording ─────────────────────────────────────────────────────

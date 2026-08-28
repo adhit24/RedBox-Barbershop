@@ -12,13 +12,17 @@
  *   planned schedule  (barber_working_hours + overrides)     != physically present now
  *   attendance/check-in (does not exist anywhere in this codebase)
  *
- * Round 3 correction: a SCHEDULE claim ("dijadwalkan", "terjadwal", "ada
- * jadwal hari ini"...) now requires BOTH a verified 'scheduled' fact for
- * THIS turn AND that the fact's barberName is the one actually named in the
- * claim — round 2 checked only the former, so a verified fact about barber A
- * could silently authorize a claim about barber B. No NLP: binding is a
- * bounded, honorific-stripped substring check; if it cannot be established,
- * the guard blocks rather than guesses.
+ * Final round correction: binding is now CLAIM-LOCAL, not reply-global. A
+ * verified fact about barber A no longer authorizes a schedule sentence
+ * merely because A's name appears SOMEWHERE in the reply — it must appear
+ * inside the specific sentence/clause making the claim. No NLP: sentences
+ * are split on . ! ?, then further on commas/"dan"/"serta" so a single
+ * compound sentence naming two barbers ("Opan dijadwalkan..., dan Bob juga
+ * dijadwalkan...") is evaluated per name-bearing clause, not as one blob.
+ * Any sentence containing an unbound or attendance-tier claim is replaced
+ * wholesale with one accurate, verified statement about the actual barber
+ * the fact is about — legitimate non-claim sentences (roster facts, etc.)
+ * are left untouched.
  */
 
 const ATTENDANCE_PATTERNS = [
@@ -34,12 +38,9 @@ const PRESENCE_TODAY_PATTERNS = [
   /\b[\p{L}][\p{L} '.-]{1,40}\s+sedang\s+bertugas\b/iu,
 ];
 
-// Explicit PLANNED SCHEDULE claim vocabulary — deliberately its own category
-// (not folded into PRESENCE_TODAY_PATTERNS) since "dijadwalkan"/"terjadwal"/
-// "ada jadwal" etc. can appear without the verb-directly-before-"hari ini"
-// shape PRESENCE_TODAY_PATTERNS requires (e.g. "Opan ada jadwal hari ini"
-// has "jadwal" between "ada" and "hari ini", which does not match the bare
-// presence pattern but is unambiguously a schedule claim).
+// Explicit PLANNED SCHEDULE claim vocabulary — its own category since
+// "dijadwalkan"/"terjadwal"/"ada jadwal" etc. can appear without the
+// verb-directly-before-"hari ini" shape PRESENCE_TODAY_PATTERNS requires.
 const SCHEDULE_CLAIM_PATTERNS = [
   /\bdijadwalkan\b/i,
   /\bterjadwal\b/i,
@@ -49,6 +50,7 @@ const SCHEDULE_CLAIM_PATTERNS = [
 ];
 
 const HONORIFIC_PATTERN = /\b(mas|mbak|kak|pak|bu|bang|bapak|ibu)\b/g;
+const CLAUSE_SPLIT_PATTERN = /,|\bdan\b|\bserta\b/i;
 
 function normalizeName(value) {
   return String(value || '')
@@ -60,25 +62,72 @@ function normalizeName(value) {
 
 /**
  * Bounded, deterministic entity binding: no NLP, just "does the verified
- * fact's barber name appear (honorific-stripped, case-insensitive) in the
- * reply". If the name is missing/empty, binding cannot be established and
- * this returns false — the caller blocks rather than guesses.
+ * fact's barber name appear (honorific-stripped, case-insensitive) in this
+ * specific text". If the name is missing/empty, binding cannot be
+ * established and this returns false — the caller blocks rather than
+ * guesses. Called per-clause, never on the whole reply, so a barber
+ * mentioned elsewhere in the reply cannot authorize an unrelated claim.
  */
-function nameIsBoundInReply(reply, barberName) {
+function nameIsBoundInText(text, barberName) {
   const normalizedName = normalizeName(barberName);
   if (!normalizedName) return false;
-  const normalizedReply = normalizeName(reply);
-  return normalizedReply.includes(normalizedName);
+  const normalizedText = normalizeName(text);
+  return normalizedText.includes(normalizedName);
 }
 
-function safeUncertainty(verifiedSchedule) {
+function splitIntoSentences(text) {
+  return text.match(/[^.!?]+[.!?]*/g) || [text];
+}
+
+function splitIntoClauses(sentence) {
+  return sentence.split(CLAUSE_SPLIT_PATTERN).map((clause) => clause.trim()).filter(Boolean);
+}
+
+function isClaimClause(clause) {
+  return SCHEDULE_CLAIM_PATTERNS.some((pattern) => pattern.test(clause))
+    || PRESENCE_TODAY_PATTERNS.some((pattern) => pattern.test(clause));
+}
+
+/**
+ * A sentence is a violation if it makes an attendance-tier claim (never
+ * allowed, verified or not), or if ANY of its claim-bearing clauses is not
+ * bound to the verified, currently-scheduled barber.
+ */
+function sentenceHasViolation(sentence, verifiedSchedule) {
+  if (ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence))) return true;
+
+  const claimClauses = splitIntoClauses(sentence).filter(isClaimClause);
+  if (claimClauses.length === 0) return false;
+
+  const authorized = verifiedSchedule?.status === 'scheduled';
+  return claimClauses.some((clause) => !authorized || !nameIsBoundInText(clause, verifiedSchedule.barberName));
+}
+
+/**
+ * Builds the one accurate, verified statement to substitute for any removed
+ * violation. Schedule-known and attendance-known are reported separately —
+ * saying "jadwal/kehadiran belum tersedia" when the schedule IS actually
+ * known would itself be inaccurate.
+ */
+function buildSafeStatement(verifiedSchedule, { attendanceAttempted = false } = {}) {
   const name = verifiedSchedule?.barberName;
+
+  if (verifiedSchedule?.status === 'scheduled' && name) {
+    const scheduleFact = `${name} memang dijadwalkan masuk hari ini, Kak`;
+    if (attendanceAttempted) {
+      return `${scheduleFact}, tapi aku belum punya data kehadiran/check-in untuk memastikan beliau sudah hadir sekarang.`;
+    }
+    return `${scheduleFact}.`;
+  }
+
   if (verifiedSchedule?.status === 'not_scheduled' && name) {
     return `${name} tidak tercatat dijadwalkan masuk hari ini, Kak.`;
   }
+
   if (name) {
-    return `Aku belum bisa memastikan ${name} masuk hari ini, Kak. Jadwal/kehadiran hari ini belum tersedia dari sistem yang bisa aku verifikasi.`;
+    return `Aku belum bisa memastikan jadwal ${name} hari ini dari sistem.`;
   }
+
   return 'Aku belum bisa memastikan itu dari data yang terverifikasi, Kak. Untuk kepastian jadwal kapster, boleh hubungi cabang langsung ya.';
 }
 
@@ -95,26 +144,22 @@ function guardRealtimeBarberFacts(reply, options = {}) {
     return { sanitizedReply: reply, triggered: false };
   }
 
-  // Attendance-tier claims are NEVER allowed — no attendance/check-in source
-  // exists, verified schedule or not.
-  const attendanceViolation = ATTENDANCE_PATTERNS.some((pattern) => pattern.test(reply));
-  if (attendanceViolation) {
-    return { sanitizedReply: safeUncertainty(verifiedSchedule), triggered: true };
-  }
+  const sentences = splitIntoSentences(reply);
+  const violatingSentences = sentences.filter((sentence) => sentenceHasViolation(sentence, verifiedSchedule));
 
-  const makesScheduleClaim = SCHEDULE_CLAIM_PATTERNS.some((pattern) => pattern.test(reply))
-    || PRESENCE_TODAY_PATTERNS.some((pattern) => pattern.test(reply));
-  if (!makesScheduleClaim) {
+  if (violatingSentences.length === 0) {
     return { sanitizedReply: reply, triggered: false };
   }
 
-  const authorized = verifiedSchedule?.status === 'scheduled'
-    && nameIsBoundInReply(reply, verifiedSchedule.barberName);
-  if (authorized) {
-    return { sanitizedReply: reply, triggered: false };
-  }
+  const attendanceAttempted = sentences.some((sentence) => ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence)));
+  const keptSentences = sentences
+    .filter((sentence) => !violatingSentences.includes(sentence))
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+  const safeStatement = buildSafeStatement(verifiedSchedule, { attendanceAttempted });
 
-  return { sanitizedReply: safeUncertainty(verifiedSchedule), triggered: true };
+  const sanitizedReply = [...keptSentences, safeStatement].join('\n').trim();
+  return { sanitizedReply, triggered: true };
 }
 
 module.exports = {
@@ -122,5 +167,5 @@ module.exports = {
   ATTENDANCE_PATTERNS,
   PRESENCE_TODAY_PATTERNS,
   SCHEDULE_CLAIM_PATTERNS,
-  nameIsBoundInReply,
+  nameIsBoundInText,
 };
