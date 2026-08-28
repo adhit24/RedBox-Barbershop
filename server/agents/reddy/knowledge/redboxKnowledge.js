@@ -58,40 +58,60 @@ const REDBOX_KNOWLEDGE = freeze({
     { id: 'walk-in-not-guaranteed', summary: 'Walk-in diperbolehkan, tetapi ketersediaan tidak dijamin.', booking_url_template: 'booking.html?branch={branch_id}' },
     { id: 'whatsapp-assist-authority-policy', summary: 'WhatsApp Redbox berfungsi untuk bantuan, edukasi, dan panduan. Pembuatan, konfirmasi, perubahan, reschedule, pembatalan, dan penguncian slot booking pelanggan harus dilakukan melalui sistem booking website Redbox.', booking_url_template: 'booking.html?branch={branch_id}' },
   ],
-  // Mirrors public/membership.html tier cards + comparison table verbatim
-  // (audited 2026-08-28). Silver's discount explicitly excludes CSB Mall;
-  // Gold and Platinum are explicitly "*Berlaku di semua Cabang Redbox".
-  // Do not add a benefit here unless it is actually shown on that page —
-  // this is the ONLY canonical membership benefit source Reddy may use.
+  // Task 14.1 correction — membership reconciliation. Three real sources were
+  // audited (not just public/membership.html as in the previous pass):
+  //   public/membership.html      (marketing page)
+  //   server/membership-benefits.js (checkout discount calculator, tested)
+  //   public/js/dashboard.js      (member dashboard benefit list, BENEFITS[])
+  // The checkout calculator and the member dashboard independently AGREE with
+  // each other, and both DISAGREE with the marketing page, on three points:
+  //   - Silver: dashboard/calculator show NO general % discount (birthday
+  //     only); the marketing page claims a 5% haircut discount.
+  //   - Gold: dashboard/calculator EXCLUDE CSB Mall from the 10% discount;
+  //     the marketing page claims it applies at every branch including CSB.
+  //   - Platinum birthday: dashboard/calculator apply the same 50% formula
+  //     used for every tier; the marketing page shows "FREE" (100%).
+  // Per correction instructions: do not invent a canonical value for a
+  // disputed rule, do not change checkout behavior here, and never let Reddy
+  // state a disputed rule as unquestioned truth. Only the owner-confirmed
+  // "Platinum includes Free Americano" and facts consistent across every
+  // source are asserted as fact below; everything else disputed is flagged
+  // via disputed_benefits so the prompt can make Reddy defer to a human
+  // instead of guessing. See PR #38 discussion for the full matrix — flagged
+  // for Aira/owner to resolve, not resolved by this correction.
   membership_public: {
     registration_url: 'membership.html',
     tiers: [
       {
         id: 'silver', price_idr: 100000, points_threshold: 500, uses_points: true,
         duration: '1 year after activation',
-        branch_applicability: 'all_branches_except_csb',
         benefits: [
-          'Diskon 5% haircut (tidak berlaku di cabang CSB Mall).',
           'Diskon ulang tahun 50% (-7 hari s/d +7 hari dari tanggal lahir).',
+        ],
+        disputed_benefits: [
+          'Diskon haircut reguler (sumber resmi tidak sepakat — beberapa sumber menyatakan tidak ada diskon reguler untuk Silver; jangan sebutkan angka pasti, arahkan ke admin/kasir).',
         ],
       },
       {
         id: 'gold', price_idr: 250000, points_threshold: 501, uses_points: true,
         duration: '1 year after activation',
-        branch_applicability: 'all_branches',
         benefits: [
-          'Diskon 10% haircut, berlaku di semua cabang Redbox.',
+          'Diskon 10% haircut.',
           'Diskon ulang tahun 50% (-7 hari s/d +7 hari dari tanggal lahir).',
+        ],
+        disputed_benefits: [
+          'Cakupan cabang untuk diskon 10% (sumber resmi tidak sepakat apakah berlaku di CSB Mall — jangan pastikan cakupan cabang, arahkan ke admin/kasir untuk konfirmasi sebelum kunjungan ke CSB Mall).',
         ],
       },
       {
         id: 'platinum', price_idr: 1500000, points_threshold: null, uses_points: false,
         duration: '1 year after activation',
-        branch_applicability: 'all_branches',
         benefits: [
-          'Gratis Haircut/Gentleman Grooming, berlaku di semua cabang Redbox.',
-          'Gratis ulang tahun (-7 hari s/d +7 hari dari tanggal lahir).',
-          'Gratis Americano.',
+          'Gratis Haircut/Gentleman Grooming.',
+          'Gratis Americano setiap kunjungan.',
+        ],
+        disputed_benefits: [
+          'Persentase benefit ulang tahun (sumber resmi tidak sepakat — beberapa sumber menyatakan gratis penuh, sumber lain menyatakan diskon 50%; jangan sebutkan angka pasti, arahkan ke admin/kasir).',
         ],
       },
     ],
