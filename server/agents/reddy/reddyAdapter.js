@@ -3,7 +3,7 @@
 const { buildCustomerFactsContext } = require('./customerFactsContext');
 const { serializeKnowledgeForPrompt } = require('./knowledge/knowledgeContext');
 const { loadCanonicalBarbers } = require('../../services/canonicalBarberResolver');
-const { extractBookingContext, buildPrefilledBookingUrl } = require('./bookingContext');
+const { extractBookingContext, buildPrefilledBookingUrl, reconstructBookingContextFromTurns } = require('./bookingContext');
 const { guardReddyReply, REDDY_BOOKING_EXECUTION } = require('./bookingGuards');
 const { logOrchestratedEvent } = require('../../orchestrator/telemetry');
 
@@ -66,8 +66,17 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   const canonicalBarberSource = bookingRelevant
     ? await loadBarbers(supabase)
     : { status: 'not_requested', barbers: [], reason: null };
+  // booking_context is never persisted to storage (only raw {role, content} turns
+  // are) — so the prior turn's structured preferences are reconstructed statelessly
+  // from recent customer turns each request, respecting the existing session policy.
+  const priorBookingContext = bookingRelevant
+    ? reconstructBookingContextFromTurns(conversationContext?.turns || [], {
+      sessionStatus: conversationContext?.sessionStatus,
+      canonicalBarbers: canonicalBarberSource?.barbers || [],
+    })
+    : null;
   const bookingContext = bookingRelevant
-    ? extractBookingContext(text, conversationContext?.booking_context || null, {
+    ? extractBookingContext(text, priorBookingContext, {
       canonicalBarbers: canonicalBarberSource?.barbers || [],
     })
     : null;

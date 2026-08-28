@@ -10,6 +10,7 @@ const {
   resolveTimeAndPreference,
   resolveService,
   extractBookingContext,
+  reconstructBookingContextFromTurns,
   buildPrefilledBookingUrl,
 } = require('../agents/reddy/bookingContext');
 const {
@@ -127,6 +128,139 @@ test('handoff URL uses canonical IDs and booking page parser consumes them', () 
   });
   assert.equal(REDBOX_SERVICES.some((service) => service.id === parsed.service_id), true);
   assert.equal(canonicalBarbers.some((barber) => barber.id === parsed.barber_id && barber.branch === parsed.branch), true);
+});
+
+// --- Booking context continuity across turns ---------------------------------
+// booking_context is never persisted to storage; only raw {role, content} turns
+// are. These tests exercise the stateless reconstruction that rebuilds it from
+// recent customer turns each request (server/agents/reddy/bookingContext.js
+// reconstructBookingContextFromTurns).
+
+function userTurn(content, timestamp) {
+  return { role: 'user', content, timestamp };
+}
+function assistantTurn(content, timestamp) {
+  return { role: 'assistant', content, timestamp };
+}
+
+test('continuity A: barber named in a later turn resolves against the branch already established', () => {
+  const turns = [
+    userTurn('Besok mau potong di Bypass.', 1000),
+    assistantTurn('Baik Kak, mau sama siapa?', 1001),
+  ];
+  const prior = reconstructBookingContextFromTurns(turns, { sessionStatus: 'active_conversation', canonicalBarbers });
+  const final = extractBookingContext('Onoy aja.', prior, { canonicalBarbers });
+
+  assert.equal(final.service.id, 'gentleman-grooming');
+  assert.equal(final.branch.value, 'bypass');
+  assert.ok(final.date.value, 'date resolved from turn 1 must survive into turn 2');
+  assert.equal(final.barber.id, 'barber-onoy-id');
+  assert.equal(final.booking_readiness, 'ready_for_handoff');
+});
+
+test('continuity B: standalone time in a later turn resolves using the daypart set earlier', () => {
+  const turns = [userTurn('Besok sore mau potong di Bypass.', 1000)];
+  const prior = reconstructBookingContextFromTurns(turns, { sessionStatus: 'active_conversation', canonicalBarbers });
+  const final = extractBookingContext('Jam 4 aja.', prior, { canonicalBarbers });
+
+  assert.ok(final.date.value);
+  assert.equal(final.time_preference.value, 'sore');
+  assert.equal(final.time.value, '16:00');
+});
+
+test('continuity C: explicit branch override drops an incompatible canonical barber and requires clarification', () => {
+  const turns = [userTurn('Besok sama Onoy di Bypass.', 1000)];
+  const prior = reconstructBookingContextFromTurns(turns, { sessionStatus: 'active_conversation', canonicalBarbers });
+  assert.equal(prior.barber.id, 'barber-onoy-id');
+
+  const final = extractBookingContext('Eh jadi CSB.', prior, { canonicalBarbers });
+  assert.equal(final.branch.value, 'csb');
+  assert.equal(final.barber.id, null);
+  assert.equal(final.barber.status, 'branch_mismatch');
+  assert.equal(final.clarification_required, true);
+  assert.equal(final.clarification_reason, 'barber_branch_mismatch');
+});
+
+test('continuity D: an ambiguous service resolved in a later turn clears clarification_required', () => {
+  const turns = [userTurn('Mau treatment besok.', 1000)];
+  const prior = reconstructBookingContextFromTurns(turns, { sessionStatus: 'active_conversation', canonicalBarbers });
+  assert.equal(prior.clarification_required, true);
+  assert.equal(prior.clarification_reason, 'ambiguous_service');
+
+  const final = extractBookingContext('Hair Spa.', prior, { canonicalBarbers });
+  assert.equal(final.service.id, 'hair-spa');
+  assert.equal(final.clarification_required, false);
+  assert.equal(final.clarification_reason, null);
+});
+
+test('continuity E: expired session does not carry old service, date, or branch into a fresh message', () => {
+  const turns = [userTurn('Mau potong besok di Bypass.', 1000)];
+  const prior = reconstructBookingContextFromTurns(turns, { sessionStatus: 'expired', canonicalBarbers });
+  assert.equal(prior.service.value, null);
+  assert.equal(prior.branch.value, null);
+  assert.equal(prior.date.value, null);
+
+  const final = extractBookingContext('Onoy ada?', prior, { canonicalBarbers });
+  assert.equal(final.service.value, null, 'old service must not leak across an expired session boundary');
+  assert.equal(final.date.value, null, 'old date must not leak across an expired session boundary');
+});
+
+test('continuity F: an explicit closure turn boundary prevents old context reappearing in the next scope', () => {
+  const turns = [
+    userTurn('Mau booking besok di Bypass.', 1000),
+    assistantTurn('Siap Kak.', 1001),
+    userTurn('Oke makasih.', 2000),
+  ];
+  // sessionStatus 'expired' here reflects what classifyConversationSession already
+  // computes when the most recent customer turn is an explicit closure signal.
+  const prior = reconstructBookingContextFromTurns(turns, { sessionStatus: 'expired', canonicalBarbers });
+  assert.equal(prior.branch.value, null);
+  assert.equal(prior.service.value, null);
+});
+
+test('continuity: assistant turns are never interpreted as customer booking choices', () => {
+  const turns = [assistantTurn('Gimana kalau di CSB Kak sama Sarif?', 1000)];
+  const prior = reconstructBookingContextFromTurns(turns, { sessionStatus: 'active_conversation', canonicalBarbers });
+  assert.equal(prior.branch.value, null);
+  assert.equal(prior.barber.id, null);
+});
+
+test('continuity: handoff after a 3-turn journey accumulates safe preference, never a reservation claim', async () => {
+  const conversationContext = {
+    turns: [
+      userTurn('Besok mau potong di Bypass.', 1000),
+      assistantTurn('Siap Kak, mau sama siapa?', 1001),
+      userTurn('Onoy aja.', 2000),
+      assistantTurn('Baik Kak Onoy di Bypass, jam berapa?', 2001),
+    ],
+    turn_count: 4,
+    history_status: 'available',
+    sessionStatus: 'active_conversation',
+  };
+  let capturedContext = null;
+  const result = await executeReddyAgent({
+    from: '628100000099', text: 'Sore aja deh.', branch: 'bypass',
+    conversationContext,
+    orchestrationDecision: { intent: 'booking_request', route: 'reddy_agent' },
+  }, {
+    callOpenAI: async (...args) => {
+      capturedContext = args[6];
+      return 'Oke Kak, silakan lanjut pilih waktunya di link booking resmi ya.';
+    },
+    sendWA: async () => ({ status: 'sent' }),
+    loadBarbers: trustedBarberLoader,
+    logBookingTelemetry: () => {},
+  });
+
+  assert.equal(result.reply, 'Oke Kak, silakan lanjut pilih waktunya di link booking resmi ya.');
+  const url = capturedContext.booking_authority.handoff_url;
+  const parsed = parseBookingHandoff(new URL(url).search);
+  assert.equal(parsed.branch, 'bypass');
+  assert.equal(parsed.service_id, 'gentleman-grooming');
+  assert.equal(parsed.barber_id, 'barber-onoy-id');
+  assert.match(parsed.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(parsed.time_preference, 'sore');
+  assert.doesNotMatch(url, /reserved=|available=|booking_confirmed=|confirmed=/);
 });
 
 test('booking page implementation uses handoff parser and preserves backend validation', () => {

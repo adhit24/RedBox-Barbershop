@@ -123,7 +123,11 @@ function extractBookingContext(text, priorContext = null, options = {}) {
   const explicitBranch = resolveBranch(text);
   if (explicitBranch) context.branch = { slug: explicitBranch, value: explicitBranch, status: 'explicit' };
 
-  const barberResult = resolveCanonicalBarber(text, options.canonicalBarbers || [], explicitBranch || null);
+  // Scope barber name-matching to the branch known so far (this turn, or accumulated
+  // from earlier turns) so a follow-up like "Onoy aja" resolves against the branch
+  // already established in context, not just what this single message states.
+  const barberScopeBranch = explicitBranch || context.branch.value || null;
+  const barberResult = resolveCanonicalBarber(text, options.canonicalBarbers || [], barberScopeBranch);
   if (barberResult.status === 'verified') {
     const barber = barberResult.barber;
     context.barber = { id: barber.id, name: barber.name, branch: barber.branch, value: barber.name, status: 'verified' };
@@ -137,9 +141,7 @@ function extractBookingContext(text, priorContext = null, options = {}) {
   }
 
   if (explicitBranch && context.barber.id && context.barber.branch !== explicitBranch) {
-    context.barber = { id: null, name: null, branch: null, value: null, status: 'unresolved' };
-    context.clarification_required = true;
-    context.clarification_reason = 'barber_branch_mismatch';
+    context.barber = { id: null, name: null, branch: null, value: null, status: 'branch_mismatch' };
   }
 
   const service = resolveService(text);
@@ -147,8 +149,6 @@ function extractBookingContext(text, priorContext = null, options = {}) {
     context.service = { ...service, value: service.name };
   } else if (service.status === 'ambiguous') {
     context.service = { id: null, slug: null, name: null, value: null, status: 'ambiguous' };
-    context.clarification_required = true;
-    context.clarification_reason = 'ambiguous_service';
   }
 
   const date = resolveRelativeDate(text);
@@ -158,10 +158,19 @@ function extractBookingContext(text, priorContext = null, options = {}) {
   if (resolvedTime.time) context.time = { value: resolvedTime.time, status: 'explicit' };
   else if (resolvedTime.timeAmbiguous) {
     context.time = { value: null, status: 'ambiguous' };
-    context.clarification_required = true;
-    context.clarification_reason = 'ambiguous_time';
   }
   if (resolvedTime.preference) context.time_preference = { value: resolvedTime.preference, status: 'explicit' };
+
+  // Recompute clarification state from current field statuses rather than carrying
+  // forward whatever was true in an earlier turn — an ambiguity resolved this turn
+  // (e.g. "treatment" -> "Hair Spa") must not keep blocking on a stale reason.
+  const clarificationReasons = [
+    context.service.status === 'ambiguous' ? 'ambiguous_service' : null,
+    context.time.status === 'ambiguous' ? 'ambiguous_time' : null,
+    context.barber.status === 'branch_mismatch' ? 'barber_branch_mismatch' : null,
+  ].filter(Boolean);
+  context.clarification_required = clarificationReasons.length > 0;
+  context.clarification_reason = clarificationReasons[0] || null;
 
   const party = lower.match(/\b(2|dua|berdua|3|tiga|bertiga)\s*(orang)?\b/);
   if (party) context.party_size = { value: /^(2|dua|berdua)$/.test(party[1]) ? 2 : 3, status: 'explicit' };
@@ -175,6 +184,32 @@ function extractBookingContext(text, priorContext = null, options = {}) {
     : (bookingIntent || resolvedCount >= 3 ? 'ready_for_handoff'
       : (resolvedCount === 2 ? 'partially_specified' : (resolvedCount === 1 ? 'considering' : 'exploring')));
   return context;
+}
+
+/**
+ * Rebuilds a booking context by replaying only customer-originated turns
+ * chronologically through extractBookingContext. This is a stateless
+ * reconstruction — no booking_context is ever persisted to storage — so that
+ * conversational booking preferences survive across separate WhatsApp webhook
+ * requests, which only persist raw {role, content} conversation turns.
+ *
+ * Only 'user' turns may establish preferences; assistant turns are never
+ * interpreted as customer choices. When sessionStatus is 'expired' (explicit
+ * closure or stale gap, per the existing session policy), history is not
+ * replayed and a fresh empty context is returned instead.
+ */
+function reconstructBookingContextFromTurns(turns = [], options = {}) {
+  const { sessionStatus = null, canonicalBarbers = [] } = options;
+  if (sessionStatus === 'expired' || !Array.isArray(turns) || turns.length === 0) {
+    return createEmptyBookingContext();
+  }
+
+  return turns
+    .filter((turn) => turn && turn.role === 'user' && typeof turn.content === 'string')
+    .reduce(
+      (context, turn) => extractBookingContext(turn.content, context, { canonicalBarbers }),
+      createEmptyBookingContext(),
+    );
 }
 
 function buildPrefilledBookingUrl(context) {
@@ -202,5 +237,6 @@ module.exports = {
   resolveService,
   createEmptyBookingContext,
   extractBookingContext,
+  reconstructBookingContextFromTurns,
   buildPrefilledBookingUrl,
 };
