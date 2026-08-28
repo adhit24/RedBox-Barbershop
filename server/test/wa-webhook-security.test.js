@@ -34,7 +34,8 @@ test('GET exposes only a minimal health response', () => {
 test('POST keeps the existing Reddy path while observing shadow metadata', () => {
   assert.match(webhookSource, /inspectFonnteWebhookShadow\(rawBody/);
   assert.match(webhookSource, /emitFonnteWebhookShadow\(shadowMetadata\)/);
-  assert.match(webhookSource, /handleMessage\(\{\s*from:\s*sender,\s*name:/);
+  assert.match(webhookSource, /const processMessage = testDeps\.handleMessage \|\| handleMessage/);
+  assert.match(webhookSource, /processMessage\(\{\s*from:\s*sender,\s*name:/);
   assert.match(webhookSource, /isHumanTakeover\(sender\)/);
   assert.match(webhookSource, /sendWA\(sender,/);
 });
@@ -153,10 +154,12 @@ test('malformed bodies fail closed and event classification covers non-personal 
   assert.equal(inspectFonnteWebhookShadow({ event: 'unknown' }, 'x').event_type, 'unsupported');
 });
 
-test('retry preparation preserves current dedup and documents the future provider plus inboxid key', () => {
-  const verifierSource = fs.readFileSync(verifierPath, 'utf8');
-  assert.match(webhookSource, /const processedIds = new Set\(\)/);
-  assert.match(webhookSource, /DEDUP_TTL_MS = 5 \* 60 \* 1000/);
-  assert.match(verifierSource, /fonnte \+ inboxid/);
-  assert.doesNotMatch(verifierSource, /(?:insert|upsert)\s*\(/);
+test('retry protection uses durable device-scoped admission with no in-memory fallback authority', () => {
+  const inboundGuardSource = fs.readFileSync(path.resolve(__dirname, '../services/waInboundGuard.js'), 'utf8');
+  const migrationSource = fs.readFileSync(path.resolve(__dirname, '../migrations/2026-08-29-wa-antispam-idempotency.sql'), 'utf8');
+  assert.match(webhookSource, /await admitInboundEvent\(supabaseForGuard, body/);
+  assert.doesNotMatch(webhookSource, /const processedIds = new Set\(\)|DEDUP_TTL_MS/);
+  assert.match(inboundGuardSource, /\['inboxid', body\.inboxid\]/);
+  assert.match(inboundGuardSource, /missing_provider_message_id/);
+  assert.match(migrationSource, /provider_device_hash, provider_message_id/);
 });
