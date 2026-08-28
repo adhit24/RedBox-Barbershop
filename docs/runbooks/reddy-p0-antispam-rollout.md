@@ -23,9 +23,10 @@ variables, apply the migration, merge, deploy, or enable a branch.
 7. Run controlled probes per device: same device/ID repeated, cross-device same
    ID, concurrent identical replies, rolling-window boundary, and concurrent
    rate ceiling. Confirm zero raw phone/message content in guard tables/logs.
-8. Re-enable one branch/channel at a time. Observe inbound claims, outbound
-   reservations, provider delivery, error rate, and duplicate suppression
-   before advancing to the next branch. Roll back immediately by setting
+8. Only after validation, set `REDDY_ENABLED=true` and re-enable one
+   branch/channel at a time. Observe inbound claims, outbound reservations,
+   provider delivery, error rate, and duplicate suppression before advancing
+   to the next branch. Roll back immediately by explicitly setting
    `REDDY_ENABLED=false` if any duplicate automated reply appears.
 
 ## Success criteria

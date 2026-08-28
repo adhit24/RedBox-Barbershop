@@ -3,7 +3,7 @@
 const crypto = require('crypto');
 
 function isReddyEnabled(env = process.env) {
-  return env.REDDY_ENABLED !== 'false';
+  return String(env.REDDY_ENABLED || '').trim().toLowerCase() === 'true';
 }
 
 function hashValue(value) {

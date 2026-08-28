@@ -252,7 +252,12 @@ test('outbound reservation DB error fails closed before provider send', async ()
   assert.equal(sends, 0);
 });
 
-test('H: REDDY_ENABLED=false yields zero AI and zero automated send', async () => {
+test('KS1: REDDY_ENABLED unset defaults to disabled', () => {
+  assert.equal(isReddyEnabled({}), false);
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: '' }), false);
+});
+
+test('KS2 / H: REDDY_ENABLED=false yields zero AI and zero automated send', async () => {
   let aiCalls = 0; let sends = 0;
   const res = await runWebhook(fonntePayload({ inboxid: 'H-1' }), {
     supabase: fakeSupabase(), isReddyEnabled: () => false,
@@ -262,6 +267,56 @@ test('H: REDDY_ENABLED=false yields zero AI and zero automated send', async () =
   assert.equal(aiCalls, 0);
   assert.equal(sends, 0);
   assert.equal(isReddyEnabled({ REDDY_ENABLED: 'false' }), false);
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: 'FALSE' }), false);
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: '0' }), false);
+});
+
+test('KS3: REDDY_ENABLED typo remains disabled', () => {
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: 'ture' }), false);
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: 'enabled' }), false);
+});
+
+test('KS4: only explicit true enables Reddy, case-insensitively', () => {
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: 'true' }), true);
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: 'TRUE' }), true);
+  assert.equal(isReddyEnabled({ REDDY_ENABLED: ' true ' }), true);
+});
+
+test('KS5: webhook with REDDY_ENABLED unset has zero handleMessage/AI/send', async () => {
+  const previous = process.env.REDDY_ENABLED;
+  delete process.env.REDDY_ENABLED;
+  let aiCalls = 0; let sends = 0;
+  try {
+    const res = await runWebhook(fonntePayload({ inboxid: 'KS5-1' }), {
+      supabase: fakeSupabase(),
+      handleMessage: async () => { aiCalls += 1; },
+      realSend: async () => { sends += 1; },
+    });
+    assert.equal(res.body.reddy_enabled, false);
+    assert.equal(aiCalls, 0);
+    assert.equal(sends, 0);
+  } finally {
+    if (previous === undefined) delete process.env.REDDY_ENABLED;
+    else process.env.REDDY_ENABLED = previous;
+  }
+});
+
+test('KS6: guardedSend re-check suppresses when env changes from true to false', async () => {
+  const supabase = fakeSupabase();
+  const inboundEventRowId = await claimPayload(supabase, fonntePayload({ inboxid: 'KS6-1' }));
+  const env = { REDDY_ENABLED: 'true' };
+  let sends = 0;
+  const guardedSend = createGuardedSend({
+    realSend: async () => { sends += 1; return { status: true }; },
+    supabase,
+    inboundEventRowId,
+    isEnabled: () => isReddyEnabled(env),
+  });
+  env.REDDY_ENABLED = 'false';
+  const result = await guardedSend('6281003', 'must not send');
+  assert.equal(result.reason, 'ai_kill_switch');
+  assert.equal(sends, 0);
+  assert.equal(supabase.state.claims.length, 0);
 });
 
 test('I: status callback yields zero AI and zero automated send', async () => {

@@ -435,7 +435,7 @@ test('HARDENED DEVICE NORMALIZATION: reject mixed-letter and malicious device st
 
 // ── PRODUCTION API CONTRACT REGRESSION TEST ─────────────────────────────────
 test('REAL EXECUTION CONTRACT: executeOrchestration MUST be called with exactly 2 arguments (classification, dependencies)', async () => {
-  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET }, async () => {
+  await withTestEnv({ WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET, REDDY_ENABLED: 'true' }, async () => {
     Object.keys(require.cache).forEach(k => delete require.cache[k]);
 
     const executionService = require(executionPath);
@@ -479,6 +479,7 @@ test('LIVE WEBHOOK RUNTIME PROOF: valid Fonnte body secret executes CRM points v
   await withTestEnv({
     WA_WEBHOOK_SECRET_SUMBER: SUMBER_SECRET,
     WA_WEBHOOK_SECRET_CSB: CSB_SECRET,
+    REDDY_ENABLED: 'true',
   }, async () => {
     Object.keys(require.cache).forEach(k => delete require.cache[k]);
 
