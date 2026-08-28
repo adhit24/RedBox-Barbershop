@@ -120,7 +120,16 @@ const {
   createUnavailableKnowledgeContext,
   serializeKnowledgeForPrompt,
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
-const { logOrchestratedEvent } = require('../../server/orchestrator/telemetry');
+const { logOrchestratedEvent, logAntiSpamEvent } = require('../../server/orchestrator/telemetry');
+const {
+  isReddyEnabled,
+  hashValue,
+  classifyInboundEvent,
+  resolveProviderMessageId,
+  claimInboundEvent,
+  markInboundEventStatus,
+} = require('../../server/services/waInboundGuard');
+const { createGuardedSend } = require('../../server/services/waOutboundGuard');
 const {
   getBarberPopularity,
   resolvePopularityBranch,
@@ -1940,7 +1949,12 @@ async function dumpPersistedStatuses(limit = 20) {
 
 // ── Webhook Entry ─────────────────────────────────────────────────────────────
 
-module.exports = async function handler(req, res) {
+// testDeps is an optional 3rd argument ONLY used by tests (Vercel always
+// calls handler(req, res) with exactly two arguments, so it defaults to {}
+// in production and every existing caller is unaffected). Lets tests inject
+// a fake supabase / kill-switch / real-send function without touching
+// process.env or mocking the Supabase SDK.
+module.exports = async function handler(req, res, testDeps = {}) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -2027,6 +2041,16 @@ module.exports = async function handler(req, res) {
         target: statusTarget,
         raw: body,
       });
+      // P0: a delivery/status callback must never be interpreted as a
+      // customer prompt — this return already guarantees zero
+      // orchestrator/Reddy/OpenAI/sendWA calls for it; telemetry only.
+      logAntiSpamEvent({
+        event_type: 'non_customer_event_suppressed',
+        provider: 'fonnte',
+        inbound_event_type: 'status_callback',
+        execution_status: 'suppressed',
+        guard_reason: 'status_callback',
+      });
       return res.status(200).json({
         status: 'ok',
         delivery_reconciled: delivery?.matched ?? false,
@@ -2107,6 +2131,16 @@ module.exports = async function handler(req, res) {
         persistHumanTakeover(targetNum, `manual_reply_${branchName}`).catch(() => {});
         console.log('[WA Bot] Human takeover set from manual reply:', { branch: branchName });
       }
+      // P0: an outbound/self echo must never be interpreted as a customer
+      // prompt — this return already guarantees zero AI processing/automated
+      // send for it; telemetry only.
+      logAntiSpamEvent({
+        event_type: 'self_message_suppressed',
+        provider: 'fonnte',
+        inbound_event_type: 'self_message',
+        execution_status: 'suppressed',
+        guard_reason: 'from_me',
+      });
       console.log('[WA Bot] Ignored outgoing message');
       return res.status(200).json({ status: 'ignored', reason: 'outgoing' });
     }
@@ -2120,6 +2154,79 @@ module.exports = async function handler(req, res) {
       console.log('[WA Bot] Ignored message from a branch number (bot-to-bot loop prevention)');
       return res.status(200).json({ status: 'ignored', reason: 'from_branch_number' });
     }
+
+    // ── P0 incident hotfix: durable inbound idempotency + global kill switch ──
+    // isDuplicate(id) above is a fast, in-memory, same-process check only —
+    // it is scoped to one warm serverless instance and cannot survive cold
+    // starts or concurrent instances, which is how the same customer
+    // message was processed (and replied to) more than once in production.
+    // This claim is atomic (unique index on wa_inbound_events(provider,
+    // provider_message_id)) — concurrent deliveries of the same event
+    // converge on exactly one winner; everyone else gets 'duplicate' and
+    // stops here, before the orchestrator/Reddy/OpenAI/sendWA are reached.
+    const supabaseForGuard = testDeps.supabase || getSupabase();
+    const branchForGuardTelemetry = branchFromPayload || detectBranchFromNumber(receiver || device || sender) || 'unknown';
+    const { providerMessageId, isFallback: isFallbackEventId } = resolveProviderMessageId(body);
+    const senderHashForClaim = hashValue(normalizePhone(sender));
+    const inboundClaim = await claimInboundEvent(supabaseForGuard, {
+      provider: 'fonnte',
+      providerMessageId,
+      senderHash: senderHashForClaim,
+      eventType: 'customer_message',
+    });
+    logAntiSpamEvent({
+      event_type: inboundClaim.status === 'claimed' ? 'inbound_event_claimed' : 'inbound_duplicate_suppressed',
+      branch: branchForGuardTelemetry,
+      provider: 'fonnte',
+      inbound_event_type: 'customer_message',
+      idempotency_status: inboundClaim.status,
+      execution_status: inboundClaim.status === 'claimed' ? 'ok' : 'suppressed',
+      guard_reason: isFallbackEventId ? 'fallback_fingerprint' : null,
+    });
+    if (inboundClaim.status === 'duplicate') {
+      console.log('[WA Bot] Duplicate inbound event ignored (durable claim)');
+      return res.status(200).json({ status: 'ignored', reason: 'duplicate' });
+    }
+    const inboundEventRowId = inboundClaim.row?.id || null;
+
+    // Global emergency kill switch — distinct from the existing per-customer
+    // wa_paused/human-takeover mechanism above (that pauses AI for ONE
+    // customer; this stops automated replies for EVERYONE, instantly, via
+    // env var, no redeploy needed). Checked before orchestrator/CRM AI/
+    // Reddy/OpenAI/automated sendWA. The customer channel itself is not
+    // touched — a human can still reply manually via the same WhatsApp
+    // number; only the automated path is disabled.
+    const reddyEnabled = testDeps.isReddyEnabled ? testDeps.isReddyEnabled() : isReddyEnabled();
+    if (!reddyEnabled) {
+      logAntiSpamEvent({
+        event_type: 'ai_kill_switch_suppressed',
+        branch: branchForGuardTelemetry,
+        provider: 'fonnte',
+        inbound_event_type: 'customer_message',
+        idempotency_status: inboundClaim.status,
+        execution_status: 'suppressed',
+        guard_reason: 'reddy_disabled',
+      });
+      await markInboundEventStatus(supabaseForGuard, inboundEventRowId, 'failed');
+      console.log('[WA Bot] REDDY_ENABLED=false — automated reply suppressed');
+      return res.status(200).json({ status: 'ok', reddy_enabled: false });
+    }
+
+    // The ONE send-once safety boundary every automated send path below
+    // (media auto-reply, handleMessage's fast paths, CRM, Reddy/OpenAI,
+    // static fallback, human-handoff acknowledgement) is wired through —
+    // see server/services/waOutboundGuard.js. Fails closed: any guard it
+    // cannot evaluate reliably suppresses the send rather than risking a
+    // duplicate.
+    const guardedSend = createGuardedSend({
+      realSend: testDeps.realSend || sendWA,
+      supabase: supabaseForGuard,
+      inboundEventRowId,
+      isEnabled: () => (testDeps.isReddyEnabled ? testDeps.isReddyEnabled() : isReddyEnabled()),
+      logEvent: (e) => logAntiSpamEvent({
+        ...e, provider: 'fonnte', inbound_event_type: 'customer_message', idempotency_status: inboundClaim.status,
+      }),
+    });
 
     console.log('[WA Bot] Incoming event:', { event_type: shadowMetadata.event_type, hasMessage: Boolean(message) });
 
@@ -2136,7 +2243,7 @@ module.exports = async function handler(req, res) {
       if (!branch) {
         branch = detectBranchFromNumber(receiver || device || sender);
       }
-      sendWA(sender, mediaReply, { branch }).catch(() => {});
+      guardedSend(sender, mediaReply, { branch }).catch(() => {});
       return;
     }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
@@ -2162,7 +2269,7 @@ module.exports = async function handler(req, res) {
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
     const t0 = Date.now();
     try {
-      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity });
+      const result = await handleMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity }, { send: guardedSend });
       const ms = Date.now() - t0;
       console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
     } catch (err) {

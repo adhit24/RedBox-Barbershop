@@ -82,4 +82,42 @@ function logOrchestratedEvent(event = {}) {
   return safe;
 }
 
-module.exports = { sanitizeTelemetry, logOrchestratedEvent };
+// P0 incident hotfix — anti-spam/idempotency telemetry. Deliberately its own
+// small allowlist schema (not folded into sanitizeTelemetry's
+// orchestrator_routing shape): these events fire from the webhook entry
+// point and outbound guard, before/around orchestrator routing, and carry
+// their own bounded dimension set. No raw message content, no full phone
+// numbers — branch/event_type/provider/status/reason only.
+const ALLOWED_ANTISPAM_EVENTS = new Set([
+  'inbound_event_received', 'inbound_event_claimed', 'inbound_duplicate_suppressed',
+  'non_customer_event_suppressed', 'self_message_suppressed', 'ai_kill_switch_suppressed',
+  'outbound_duplicate_suppressed', 'rate_limit_suppressed', 'outbound_send_attempt',
+  'outbound_sent', 'processing_failed',
+]);
+const ALLOWED_ANTISPAM_EVENT_TYPES = new Set(['customer_message', 'status_callback', 'self_message', 'unsupported', null]);
+const ALLOWED_ANTISPAM_PROVIDERS = new Set(['fonnte', null]);
+const ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS = new Set(['claimed', 'duplicate', 'unavailable', 'error', null]);
+const ALLOWED_ANTISPAM_EXECUTION_STATUS = new Set(['ok', 'suppressed', 'failed', null]);
+
+function sanitizeAntiSpamTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_ANTISPAM_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch : 'unknown',
+    provider: ALLOWED_ANTISPAM_PROVIDERS.has(event.provider) ? (event.provider || 'unknown') : 'unknown',
+    inbound_event_type: ALLOWED_ANTISPAM_EVENT_TYPES.has(event.inbound_event_type) ? event.inbound_event_type : null,
+    idempotency_status: ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS.has(event.idempotency_status) ? event.idempotency_status : null,
+    execution_status: ALLOWED_ANTISPAM_EXECUTION_STATUS.has(event.execution_status) ? event.execution_status : null,
+    guard_reason: typeof event.guard_reason === 'string' ? event.guard_reason.slice(0, 64) : null,
+  };
+}
+
+function logAntiSpamEvent(event = {}) {
+  const safe = sanitizeAntiSpamTelemetry(event);
+  console.log('[AntiSpamTelemetry]', JSON.stringify(safe));
+  return safe;
+}
+
+module.exports = {
+  sanitizeTelemetry, logOrchestratedEvent, sanitizeAntiSpamTelemetry, logAntiSpamEvent,
+};
