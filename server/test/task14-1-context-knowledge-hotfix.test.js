@@ -26,6 +26,7 @@ const { orchestrateMessage } = require('../orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 const { suppressUnsolicitedBookingCta } = require('../agents/reddy/bookingGuards');
 const { deriveBookingEligibility } = require('../agents/reddy/bookingEligibility');
+const { guardRealtimeBarberFacts } = require('../agents/reddy/realtimeFactGuard');
 const { REDBOX_KNOWLEDGE } = require('../agents/reddy/knowledge/redboxKnowledge');
 const { resolveKnowledgeContext } = require('../agents/reddy/knowledge/knowledgeResolver');
 
@@ -214,6 +215,78 @@ test('H2. a verified "not_scheduled" fact corrects a hallucinated positive prese
   assert.match(sentReply, /tidak tercatat dijadwalkan/i);
 });
 
+// ── REQUIRED TESTS — SCHEDULE BINDING (round 3, Blocker 1) ────────────────
+// Direct unit tests against guardRealtimeBarberFacts for precision, plus one
+// full executeReddyAgent-level test (round-3-D, the entity-binding case,
+// which is the actual confirmed bug) proving it end to end.
+test('round3-A: verifiedSchedule null — a "dijadwalkan" claim is blocked with safe uncertainty', () => {
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    'Mas Opan dijadwalkan masuk hari ini.',
+    { verifiedSchedule: null },
+  );
+  assert.equal(triggered, true);
+  assert.doesNotMatch(sanitizedReply, /dijadwalkan/i);
+  assert.match(sanitizedReply, /belum bisa memastikan/i);
+});
+
+test('round3-B: verifiedSchedule not_scheduled for Opan — a "dijadwalkan" claim is blocked and corrected to the negative fact', () => {
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    'Mas Opan dijadwalkan masuk hari ini.',
+    { verifiedSchedule: { barberName: 'Opan', status: 'not_scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, true);
+  // The correction legitimately reuses "dijadwalkan masuk" inside a NEGATED
+  // sentence — assert the correct negative claim, not the absence of the
+  // substring (which would also match the negated form).
+  assert.match(sanitizedReply, /tidak tercatat dijadwalkan masuk hari ini/i);
+});
+
+test('round3-C: verifiedSchedule scheduled for Opan — "Opan dijadwalkan masuk hari ini" is allowed', () => {
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    'Opan dijadwalkan masuk hari ini di Samadikun, Kak.',
+    { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, false);
+  assert.equal(sanitizedReply, 'Opan dijadwalkan masuk hari ini di Samadikun, Kak.');
+});
+
+test('round3-D (entity binding — the confirmed bug): verifiedSchedule scheduled for Opan does NOT authorize a claim about Bob', () => {
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    'Mas Bob dijadwalkan masuk hari ini.',
+    { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, true);
+  assert.doesNotMatch(sanitizedReply, /Bob dijadwalkan/i);
+});
+
+test('round3-D2 (entity binding, full executeReddyAgent path): a schedule fact about Opan does not authorize the model claiming Bob is scheduled', async () => {
+  const { sentReply } = await runReddy({
+    text: 'Mas Opan masuk hari ini gak?',
+    orchestrationDecision: { intent: 'barber_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Bob dijadwalkan masuk hari ini kok, Kak.',
+    getSchedule: async () => ({ status: 'scheduled', source: 'planned_schedule_lookup', date: '2026-08-29' }),
+  });
+  assert.doesNotMatch(sentReply, /Bob dijadwalkan/i);
+  assert.match(sentReply, /belum bisa memastikan/i);
+});
+
+test('round3-E: verifiedSchedule scheduled for Opan still forbids an attendance-upgrade claim', () => {
+  const { sanitizedReply, triggered } = guardRealtimeBarberFacts(
+    'Mas Opan sudah hadir sekarang.',
+    { verifiedSchedule: { barberName: 'Opan', status: 'scheduled', date: '2026-08-29' } },
+  );
+  assert.equal(triggered, true);
+  assert.doesNotMatch(sanitizedReply, /sudah hadir/i);
+});
+
+test('round3: SCHEDULE_CLAIM_PATTERNS catches "ada jadwal hari ini" phrasing that PRESENCE_TODAY_PATTERNS alone would miss', () => {
+  const { triggered } = guardRealtimeBarberFacts(
+    'Mas Opan ada jadwal hari ini kok.',
+    { verifiedSchedule: null },
+  );
+  assert.equal(triggered, true);
+});
+
 // ── I. roster wording ─────────────────────────────────────────────────────
 test('I. a roster fact ("adalah barber Redbox ...") survives untouched, but "tersedia hari ini" on the same roster-only turn is rewritten', async () => {
   const { sentReply: rosterOnly } = await runReddy({
@@ -269,6 +342,48 @@ test('K3. suppression never sends an empty message even if the whole reply was t
   );
   assert.equal(ctaSuppressed, true);
   assert.ok(sanitizedReply.trim().length > 0);
+});
+
+// ── REQUIRED TESTS — CTA WITHOUT URL (round 3, Blocker 2) ──────────────────
+// A booking-action CTA needs no URL at all to be a CTA.
+test('round3-F: service info — a URL-less "langsung booking aja" CTA is stripped, the factual answer survives', () => {
+  const modelReply = 'Down Perm membantu merapikan arah rambut.\nKalau cocok, langsung booking aja ya Kak.';
+  const { sanitizedReply, ctaSuppressed } = suppressUnsolicitedBookingCta(modelReply, { bookingCtaEligible: false });
+  assert.equal(ctaSuppressed, true);
+  assert.equal(sanitizedReply, 'Down Perm membantu merapikan arah rambut.');
+});
+
+test('round3-G: barber information — a URL-less "lanjut booking" CTA is stripped, the roster fact survives', () => {
+  const modelReply = 'Iya, Mas Onoy barber Redbox Bypass.\nKalau mau, lanjut booking sama Mas Onoy ya.';
+  const { sanitizedReply, ctaSuppressed } = suppressUnsolicitedBookingCta(modelReply, { bookingCtaEligible: false });
+  assert.equal(ctaSuppressed, true);
+  assert.equal(sanitizedReply, 'Iya, Mas Onoy barber Redbox Bypass.');
+});
+
+test('round3-H: CRM — a URL-less "yuk booking" CTA is stripped, the points balance survives', () => {
+  const modelReply = 'Saldo poin Kakak 50 poin.\nYuk booking lagi di Redbox.';
+  const { sanitizedReply, ctaSuppressed } = suppressUnsolicitedBookingCta(modelReply, { bookingCtaEligible: false });
+  assert.equal(ctaSuppressed, true);
+  assert.equal(sanitizedReply, 'Saldo poin Kakak 50 poin.');
+});
+
+test('round3: a URL-less booking-action CTA is also caught end-to-end through executeReddyAgent', async () => {
+  const { sentReply } = await runReddy({
+    text: 'Down perm itu apa?',
+    orchestrationDecision: { intent: 'service_inquiry', route: 'reddy_agent', conversational_act: 'business_fact_question', response_strategy: 'answer_with_knowledge_fact' },
+    callOpenAI: async () => 'Down Perm membantu merapikan arah rambut.\nKalau cocok, langsung booking aja ya Kak.',
+  });
+  assert.equal(sentReply, 'Down Perm membantu merapikan arah rambut.');
+});
+
+test('round3: legitimate explanatory use of "booking" is preserved when the turn is eligible', () => {
+  // "Booking hanya bisa dilakukan lewat website." answering an eligible turn
+  // (e.g. "Booking via WA bisa gak?") must never be touched — the guard is a
+  // no-op whenever bookingCtaEligible is true, by construction.
+  const modelReply = 'Booking hanya bisa dilakukan lewat website resmi ya Kak.';
+  const { sanitizedReply, ctaSuppressed } = suppressUnsolicitedBookingCta(modelReply, { bookingCtaEligible: true });
+  assert.equal(ctaSuppressed, false);
+  assert.equal(sanitizedReply, modelReply);
 });
 
 // ── REQUIRED TEST — GUARD REINTRODUCTION (Blocker 2) ──────────────────────
