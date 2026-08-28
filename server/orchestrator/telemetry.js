@@ -96,7 +96,10 @@ const ALLOWED_ANTISPAM_EVENTS = new Set([
 ]);
 const ALLOWED_ANTISPAM_EVENT_TYPES = new Set(['customer_message', 'status_callback', 'self_message', 'unsupported', null]);
 const ALLOWED_ANTISPAM_PROVIDERS = new Set(['fonnte', null]);
-const ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS = new Set(['claimed', 'duplicate', 'unavailable', 'error', null]);
+const ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS = new Set([
+  'claimed', 'duplicate', 'unavailable', 'error',
+  'missing_provider_message_id', 'missing_provider_device_id', null,
+]);
 const ALLOWED_ANTISPAM_EXECUTION_STATUS = new Set(['ok', 'suppressed', 'failed', null]);
 
 function sanitizeAntiSpamTelemetry(event = {}) {

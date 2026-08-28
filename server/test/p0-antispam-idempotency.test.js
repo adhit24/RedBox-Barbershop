@@ -1,384 +1,328 @@
 'use strict';
 
-/**
- * P0 incident hotfix — Reddy anti-spam / webhook idempotency test matrix
- * (A-M) plus an incident-shaped reproduction test.
- *
- * These exercise the actual guard modules (server/services/waInboundGuard.js,
- * server/services/waOutboundGuard.js) against a fake Supabase query builder
- * that faithfully models the two invariants the real schema enforces:
- *   - a UNIQUE index on wa_inbound_events(provider, provider_message_id)
- *     (insert conflicts return error.code === '23505', mirroring Postgres)
- *   - a compare-and-swap UPDATE ... WHERE outbound_attempted = false
- * Because the fake store mutates synchronously inside each query's `_exec()`
- * (no internal await), concurrent claims issued via Promise.all still
- * resolve with exactly one winner — the same invariant the real unique
- * index/CAS guarantees under genuine concurrent serverless instances.
- */
-
-const assert = require('node:assert/strict');
 const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
-  isReddyEnabled, hashValue, normalizePhoneDigits, classifyInboundEvent,
-  resolveProviderMessageId, claimInboundEvent, markInboundEventStatus,
+  isReddyEnabled,
+  hashValue,
+  classifyInboundEvent,
+  resolveProviderMessageId,
+  resolveProviderDeviceHash,
+  claimInboundEvent,
+  admitInboundEvent,
 } = require('../services/waInboundGuard');
-const { createGuardedSend, claimOutboundSend, isDuplicateContent, isRateLimited } = require('../services/waOutboundGuard');
+const {
+  createGuardedSend,
+  reserveAutomatedSend,
+  RATE_LIMIT_MAX_SENDS,
+} = require('../services/waOutboundGuard');
+const webhook = require('../../api/wa/webhook');
 
-class FakeQueryBuilder {
-  constructor(store, table) {
-    this.store = store;
-    this.table = table;
-    this.op = null;
-    this.payload = null;
-    this.filters = [];
-    this.limitN = null;
-    this.singleFlag = false;
-    this.maybeSingleFlag = false;
-    this.countMode = null;
-  }
+function fakeSupabase({ failInboundClaim = false, failReservation = false } = {}) {
+  const state = { inbound: [], claims: [], nowMs: 0, next: 1 };
 
-  insert(obj) { this.op = 'insert'; this.payload = obj; return this; }
-  update(obj) { this.op = 'update'; this.payload = obj; return this; }
-  select(_cols, opts) {
-    if (!this.op) this.op = 'select';
-    if (opts && opts.count) this.countMode = opts.count;
-    return this;
-  }
-  eq(col, val) { this.filters.push(['eq', col, val]); return this; }
-  gte(col, val) { this.filters.push(['gte', col, val]); return this; }
-  limit(n) { this.limitN = n; return this; }
-  single() { return this._exec(true); }
-  maybeSingle() { return this._exec(true); }
-  then(resolve, reject) { return this._exec(false).then(resolve, reject); }
-
-  _matches(row) {
-    return this.filters.every(([kind, col, val]) => (kind === 'eq' ? row[col] === val : row[col] >= val));
-  }
-
-  async _exec(wantSingle) {
-    if (this.store.throwOn && this.store.throwOn(this.table, this.op)) {
-      throw new Error('simulated supabase failure');
-    }
-    const rows = this.store.tables[this.table] || (this.store.tables[this.table] = []);
-
-    if (this.op === 'insert') {
-      if (this.table === 'wa_inbound_events') {
-        const dup = rows.find(r => r.provider === this.payload.provider && r.provider_message_id === this.payload.provider_message_id);
-        if (dup) return { data: null, error: { code: '23505', message: 'duplicate key' } };
+  function inboundBuilder() {
+    const q = { action: null, value: null, filters: [] };
+    const builder = {
+      insert(value) { q.action = 'insert'; q.value = value; return builder; },
+      update(value) { q.action = 'update'; q.value = value; return builder; },
+      select() { if (!q.action) q.action = 'select'; return builder; },
+      eq(field, value) { q.filters.push([field, value]); return builder; },
+      async single() { return execute(true); },
+      async maybeSingle() { return execute(false); },
+    };
+    function matches(row) { return q.filters.every(([field, value]) => row[field] === value); }
+    function execute(requireRow) {
+      if (q.action === 'insert') {
+        if (failInboundClaim) return { data: null, error: { code: 'DB_DOWN' } };
+        const duplicate = state.inbound.find((row) => row.provider === q.value.provider
+          && row.provider_device_hash === q.value.provider_device_hash
+          && row.provider_message_id === q.value.provider_message_id);
+        if (duplicate) return { data: null, error: { code: '23505' } };
+        const row = { id: `in-${state.next++}`, outbound_attempted: false, ...q.value };
+        state.inbound.push(row);
+        return { data: row, error: null };
       }
-      const defaults = this.table === 'wa_outbound_sends'
-        ? { id: `row_${++this.store.nextId}`, sent_at: new Date().toISOString() }
-        : {
-          id: `row_${++this.store.nextId}`,
-          provider: 'fonnte',
-          processing_status: 'received',
-          outbound_attempted: false,
-          outbound_sent: false,
-          received_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-      const row = { ...defaults, ...this.payload };
-      rows.push(row);
-      return wantSingle ? { data: row, error: null } : { data: [row], error: null };
+      if (q.action === 'update') {
+        const row = state.inbound.find(matches);
+        if (!row) return { data: null, error: null };
+        Object.assign(row, q.value);
+        return { data: row, error: null };
+      }
+      const row = state.inbound.find(matches) || null;
+      return { data: row, error: requireRow && !row ? { code: 'PGRST116' } : null };
     }
-
-    if (this.op === 'update') {
-      const matched = rows.filter(r => this._matches(r));
-      matched.forEach(r => Object.assign(r, this.payload));
-      if (wantSingle) return { data: matched[0] || null, error: null };
-      return { data: matched, error: null };
-    }
-
-    // select
-    let matched = rows.filter(r => this._matches(r));
-    if (this.countMode) return { count: matched.length, error: null, data: null };
-    if (this.limitN != null) matched = matched.slice(0, this.limitN);
-    if (wantSingle) return { data: matched[0] || null, error: null };
-    return { data: matched, error: null };
+    return builder;
   }
-}
 
-function createFakeSupabase() {
-  const store = { tables: {}, nextId: 0, throwOn: null };
-  return {
-    from(table) { return new FakeQueryBuilder(store, table); },
-    _store: store,
+  const client = {
+    state,
+    from(table) {
+      if (table !== 'wa_inbound_events') throw new Error(`Unexpected table: ${table}`);
+      return inboundBuilder();
+    },
+    rpc(name, args) {
+      if (name === 'reserve_wa_automated_send') {
+        if (failReservation) return Promise.resolve({ data: null, error: { code: 'DB_DOWN' } });
+        const inbound = state.inbound.find((row) => row.id === args.p_inbound_event_id);
+        if (!inbound || inbound.outbound_attempted) {
+          return Promise.resolve({ data: [{ decision: 'already_attempted', claim_id: null }], error: null });
+        }
+        // Synchronous mutation models the database advisory-lock transaction.
+        inbound.outbound_attempted = true;
+        const now = state.nowMs;
+        const duplicate = state.claims.some((row) => row.destination_hash === args.p_destination_hash
+          && row.content_hash === args.p_content_hash
+          && row.reserved_at >= now - (args.p_duplicate_window_seconds * 1000));
+        if (duplicate) {
+          inbound.processing_status = 'failed';
+          return Promise.resolve({ data: [{ decision: 'duplicate_content', claim_id: null }], error: null });
+        }
+        const recent = state.claims.filter((row) => row.destination_hash === args.p_destination_hash
+          && row.reserved_at >= now - (args.p_rate_window_seconds * 1000)).length;
+        if (recent >= args.p_rate_limit) {
+          inbound.processing_status = 'failed';
+          return Promise.resolve({ data: [{ decision: 'rate_limited', claim_id: null }], error: null });
+        }
+        const claim = {
+          id: `out-${state.next++}`,
+          inbound_event_id: inbound.id,
+          destination_hash: args.p_destination_hash,
+          content_hash: args.p_content_hash,
+          reserved_at: now,
+          reservation_state: 'reserved',
+        };
+        state.claims.push(claim);
+        return Promise.resolve({ data: [{ decision: 'allowed', claim_id: claim.id }], error: null });
+      }
+      if (name === 'complete_wa_automated_send') {
+        const claim = state.claims.find((row) => row.id === args.p_claim_id
+          && row.inbound_event_id === args.p_inbound_event_id);
+        if (claim) claim.reservation_state = args.p_sent ? 'sent' : 'failed';
+        return Promise.resolve({ data: Boolean(claim), error: null });
+      }
+      return Promise.resolve({ data: null, error: { code: 'UNKNOWN_RPC' } });
+    },
   };
+  return client;
 }
 
 function fonntePayload(overrides = {}) {
-  return { device: '628222000000', sender: '628111000000', name: 'Budi', message: 'halo', id: 'wamid.default', type: 'text', ...overrides };
+  return { device: '62818202569', sender: '628123456789', message: 'halo', inboxid: 'inbox-1', ...overrides };
 }
 
-// ── Provenance classification (roots of Tests C/D) ──────────────────────
+function responseRecorder() {
+  return {
+    statusCode: null, body: null, headersSent: false,
+    setHeader() {},
+    status(code) { this.statusCode = code; return this; },
+    json(value) { this.body = value; this.headersSent = true; return this; },
+    end() { this.headersSent = true; return this; },
+  };
+}
 
-test('P0-C: status callback payload classifies as status_callback, never customer_message', () => {
-  const statusPayload = { id: 'wamid.1', status: 'delivered', stateid: 'ACK' };
-  assert.equal(classifyInboundEvent(statusPayload), 'status_callback');
-});
+async function runWebhook(body, deps = {}) {
+  const res = responseRecorder();
+  await webhook({ method: 'POST', body, query: {} }, res, deps);
+  return res;
+}
 
-test('P0-D: isFromMe payload and device===sender fallback both classify as self_message', () => {
-  assert.equal(classifyInboundEvent(fonntePayload({ isFromMe: true })), 'self_message');
-  assert.equal(classifyInboundEvent({ device: '6281', sender: '6281', message: 'sent by bot' }, { device: '6281' }), 'self_message');
-});
+async function claimPayload(supabase, payload) {
+  const admission = await admitInboundEvent(supabase, payload);
+  assert.equal(admission.status, 'claimed');
+  return admission.row.id;
+}
 
-test('P0-D: genuine customer payload classifies as customer_message', () => {
+test('classifier is the single provenance authority for customer/status/self/unsupported', () => {
   assert.equal(classifyInboundEvent(fonntePayload()), 'customer_message');
-});
-
-test('P0: payload with neither sender nor message classifies as unsupported', () => {
+  assert.equal(classifyInboundEvent({ id: 'x', status: 'sent', stateid: 's' }), 'status_callback');
+  assert.equal(classifyInboundEvent(fonntePayload({ isFromMe: true })), 'self_message');
   assert.equal(classifyInboundEvent({}), 'unsupported');
 });
 
-// ── Test A / G: concurrent duplicate delivery, real DB uniqueness ───────
-
-test('P0-A/G: 5x concurrent identical webhook deliveries converge on exactly one winner', async () => {
-  const supabase = createFakeSupabase();
-  const results = await Promise.all(Array.from({ length: 5 }, () => claimInboundEvent(supabase, {
-    providerMessageId: 'wamid.race-1', senderHash: hashValue('628111000000'), eventType: 'customer_message',
-  })));
-  const claimed = results.filter(r => r.status === 'claimed');
-  const duplicates = results.filter(r => r.status === 'duplicate');
-  assert.equal(claimed.length, 1);
-  assert.equal(duplicates.length, 4);
-
-  const winnerRowId = claimed[0].row.id;
-  const sends = [];
-  const realSend = async (to, message) => { sends.push({ to, message }); return { status: true }; };
-  const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: winnerRowId });
-  await Promise.all(duplicates.map(() => guardedSend('628111000000', 'balasan')));
-  await guardedSend('628111000000', 'balasan');
-  assert.equal(sends.length, 1);
+test('provider identifiers are bounded hashes; inboxid is supported and no fallback exists', () => {
+  const id = resolveProviderMessageId({ inboxid: 'provider-raw-id' });
+  assert.equal(id.source, 'inboxid');
+  assert.equal(id.providerMessageId.length, 64);
+  assert.notEqual(id.providerMessageId, 'provider-raw-id');
+  assert.deepEqual(resolveProviderMessageId({ sender: '6281', message: 'halo' }), { providerMessageId: null, source: null });
+  assert.deepEqual(resolveProviderMessageId({ inboxid: 0 }), { providerMessageId: null, source: null });
+  const deviceHash = resolveProviderDeviceHash({ device: '62818202569' });
+  assert.equal(deviceHash.length, 64);
+  assert.notEqual(deviceHash, '62818202569');
 });
 
-// ── Test B: retry after already sent → 0 further claims, 0 further sends ─
-
-test('P0-B: retry of an already-sent event is rejected at the inbound claim, before any send', async () => {
-  const supabase = createFakeSupabase();
-  const first = await claimInboundEvent(supabase, { providerMessageId: 'wamid.retry-1', eventType: 'customer_message' });
-  assert.equal(first.status, 'claimed');
-  const sends = [];
-  const realSend = async () => { sends.push(1); return { status: true }; };
-  const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: first.row.id });
-  await guardedSend('628111000000', 'balasan pertama');
-  assert.equal(sends.length, 1);
-
-  // Provider retries the SAME event (e.g. Fonnte redelivery after a slow ack).
-  const retry = await claimInboundEvent(supabase, { providerMessageId: 'wamid.retry-1', eventType: 'customer_message' });
-  assert.equal(retry.status, 'duplicate');
-  // Even if something tried to send again against the original row, the
-  // send-once CAS on that row is already flipped.
-  const claim = await claimOutboundSend(supabase, first.row.id);
-  assert.equal(claim.claimed, false);
-  assert.equal(claim.reason, 'already_attempted');
-  assert.equal(sends.length, 1);
+test('A: missing provider ID fails closed with zero orchestrator/OpenAI/send', async () => {
+  let orchestratorCalls = 0; let sends = 0;
+  const res = await runWebhook(fonntePayload({ inboxid: undefined }), {
+    supabase: fakeSupabase(),
+    handleMessage: async () => { orchestratorCalls += 1; },
+    realSend: async () => { sends += 1; },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.reason, 'missing_provider_message_id');
+  assert.equal(orchestratorCalls, 0);
+  assert.equal(sends, 0);
 });
 
-// ── Test E: global kill switch ───────────────────────────────────────────
-
-test('P0-E: kill switch OFF suppresses every automated send regardless of other guards', async () => {
-  const supabase = createFakeSupabase();
-  const claim = await claimInboundEvent(supabase, { providerMessageId: 'wamid.killswitch-1', eventType: 'customer_message' });
-  const sends = [];
-  const realSend = async () => { sends.push(1); return { status: true }; };
-  const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: claim.row.id, isEnabled: () => false });
-  const result = await guardedSend('628111000000', 'balasan');
-  assert.equal(sends.length, 0);
-  assert.equal(result.suppressed, true);
-  assert.equal(result.reason, 'ai_kill_switch');
+test('missing provider device also fails closed before AI/send', async () => {
+  let orchestratorCalls = 0; let sends = 0;
+  const res = await runWebhook(fonntePayload({ device: undefined }), {
+    supabase: fakeSupabase(),
+    handleMessage: async () => { orchestratorCalls += 1; },
+    realSend: async () => { sends += 1; },
+  });
+  assert.equal(res.body.reason, 'missing_provider_device_id');
+  assert.equal(orchestratorCalls, 0);
+  assert.equal(sends, 0);
 });
 
-test('P0: isReddyEnabled reads REDDY_ENABLED and defaults to true when unset', () => {
-  assert.equal(isReddyEnabled({}), true);
+test('B: same device + same ID x5 concurrent yields exactly one claim', async () => {
+  const supabase = fakeSupabase();
+  const results = await Promise.all(Array.from({ length: 5 }, () => admitInboundEvent(supabase, fonntePayload())));
+  assert.equal(results.filter((r) => r.status === 'claimed').length, 1);
+  assert.equal(results.filter((r) => r.status === 'duplicate').length, 4);
+});
+
+test('C: different Fonnte devices may claim the same provider message ID', async () => {
+  const supabase = fakeSupabase();
+  const a = await admitInboundEvent(supabase, fonntePayload({ device: 'device-A', inboxid: 'same-X' }));
+  const b = await admitInboundEvent(supabase, fonntePayload({ device: 'device-B', inboxid: 'same-X' }));
+  assert.equal(a.status, 'claimed');
+  assert.equal(b.status, 'claimed');
+  assert.notEqual(a.providerDeviceHash, b.providerDeviceHash);
+});
+
+test('D: inbound DB claim error yields zero orchestrator/OpenAI/send', async () => {
+  let orchestratorCalls = 0; let sends = 0;
+  const res = await runWebhook(fonntePayload({ inboxid: 'db-error' }), {
+    supabase: fakeSupabase({ failInboundClaim: true }),
+    handleMessage: async () => { orchestratorCalls += 1; },
+    realSend: async () => { sends += 1; },
+  });
+  assert.equal(res.body.reason, 'error');
+  assert.equal(orchestratorCalls, 0);
+  assert.equal(sends, 0);
+});
+
+test('E: concurrent identical replies from different inbound IDs allow max one send', async () => {
+  const supabase = fakeSupabase(); let sends = 0;
+  const ids = await Promise.all([
+    claimPayload(supabase, fonntePayload({ inboxid: 'E-1' })),
+    claimPayload(supabase, fonntePayload({ inboxid: 'E-2' })),
+  ]);
+  const realSend = async () => { sends += 1; return { status: true }; };
+  const guards = ids.map((id) => createGuardedSend({ realSend, supabase, inboundEventRowId: id }));
+  const results = await Promise.all(guards.map((send) => send('6281000', 'balasan sama')));
+  assert.equal(sends, 1);
+  assert.equal(results.filter((r) => r.suppressed).length, 1);
+});
+
+test('F: rolling duplicate window prevents a minute-bucket boundary escape', async () => {
+  const supabase = fakeSupabase(); let sends = 0;
+  const firstId = await claimPayload(supabase, fonntePayload({ inboxid: 'F-1' }));
+  supabase.state.nowMs = 59_999;
+  await createGuardedSend({ realSend: async () => { sends += 1; return { status: true }; }, supabase, inboundEventRowId: firstId })('6281001', 'same');
+  const secondId = await claimPayload(supabase, fonntePayload({ inboxid: 'F-2' }));
+  supabase.state.nowMs = 60_001;
+  const second = await createGuardedSend({ realSend: async () => { sends += 1; return { status: true }; }, supabase, inboundEventRowId: secondId })('6281001', 'same');
+  assert.equal(sends, 1);
+  assert.equal(second.reason, 'duplicate_content');
+});
+
+test('G: concurrent rate-limit race cannot exceed the hard ceiling', async () => {
+  const supabase = fakeSupabase(); let sends = 0;
+  const ids = await Promise.all(Array.from({ length: RATE_LIMIT_MAX_SENDS + 3 }, (_, i) =>
+    claimPayload(supabase, fonntePayload({ inboxid: `G-${i}` }))));
+  const results = await Promise.all(ids.map((id, i) => createGuardedSend({
+    realSend: async () => { sends += 1; return { status: true }; }, supabase, inboundEventRowId: id,
+  })('6281002', `unique-${i}`)));
+  assert.equal(sends, RATE_LIMIT_MAX_SENDS);
+  assert.equal(results.filter((r) => r.reason === 'rate_limited').length, 3);
+});
+
+test('outbound reservation DB error fails closed before provider send', async () => {
+  const supabase = fakeSupabase({ failReservation: true }); let sends = 0;
+  const id = await claimPayload(supabase, fonntePayload({ inboxid: 'rpc-error' }));
+  const result = await createGuardedSend({ realSend: async () => { sends += 1; }, supabase, inboundEventRowId: id })('6281', 'x');
+  assert.equal(result.reason, 'error');
+  assert.equal(sends, 0);
+});
+
+test('H: REDDY_ENABLED=false yields zero AI and zero automated send', async () => {
+  let aiCalls = 0; let sends = 0;
+  const res = await runWebhook(fonntePayload({ inboxid: 'H-1' }), {
+    supabase: fakeSupabase(), isReddyEnabled: () => false,
+    handleMessage: async () => { aiCalls += 1; }, realSend: async () => { sends += 1; },
+  });
+  assert.equal(res.body.reddy_enabled, false);
+  assert.equal(aiCalls, 0);
+  assert.equal(sends, 0);
   assert.equal(isReddyEnabled({ REDDY_ENABLED: 'false' }), false);
-  assert.equal(isReddyEnabled({ REDDY_ENABLED: 'true' }), true);
 });
 
-// ── Test F: distinct provider message IDs, identical text → no content dedup at claim time ──
-
-test('P0-F: two distinct provider message IDs with identical text both claim successfully', async () => {
-  const supabase = createFakeSupabase();
-  const r1 = await claimInboundEvent(supabase, { providerMessageId: 'wamid.distinct-1', eventType: 'customer_message' });
-  const r2 = await claimInboundEvent(supabase, { providerMessageId: 'wamid.distinct-2', eventType: 'customer_message' });
-  assert.equal(r1.status, 'claimed');
-  assert.equal(r2.status, 'claimed');
+test('I: status callback yields zero AI and zero automated send', async () => {
+  let aiCalls = 0; let sends = 0;
+  const res = await runWebhook({ id: 'status-1', status: 'sent', stateid: 'state-1' }, {
+    supabase: fakeSupabase(), handleMessage: async () => { aiCalls += 1; }, realSend: async () => { sends += 1; },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(aiCalls, 0);
+  assert.equal(sends, 0);
 });
 
-// ── Test H/I: send-once invariant is indifferent to reply content (fallback text, fast-path text, etc.) ──
-
-test('P0-H/I: send-once gate rejects a second attempt on the same row even with different message content', async () => {
-  const supabase = createFakeSupabase();
-  const claim = await claimInboundEvent(supabase, { providerMessageId: 'wamid.fallback-1', eventType: 'customer_message' });
-  const sends = [];
-  const realSend = async (to, message) => { sends.push(message); return { status: true }; };
-  const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: claim.row.id });
-  const first = await guardedSend('628111000000', 'jawaban Reddy asli');
-  const second = await guardedSend('628111000000', 'Layanan sedang tidak dapat diakses sementara.');
-  assert.equal(first.status, true);
-  assert.equal(second.suppressed, true);
-  assert.equal(sends.length, 1);
-  assert.deepEqual(sends, ['jawaban Reddy asli']);
+test('J: self/fromMe event yields zero AI and zero automated reply', async () => {
+  let aiCalls = 0; let sends = 0;
+  const res = await runWebhook(fonntePayload({ sender: '62818202569', isFromMe: true }), {
+    supabase: fakeSupabase(), handleMessage: async () => { aiCalls += 1; }, realSend: async () => { sends += 1; },
+  });
+  assert.equal(res.body.reason, 'outgoing');
+  assert.equal(aiCalls, 0);
+  assert.equal(sends, 0);
 });
 
-// ── Test J: outbound duplicate-content circuit breaker ──────────────────
-
-test('P0-J: identical content to the same destination within the window is suppressed even from a different inbound event', async () => {
-  const supabase = createFakeSupabase();
-  const claimA = await claimInboundEvent(supabase, { providerMessageId: 'wamid.dupcontent-1', eventType: 'customer_message' });
-  const claimB = await claimInboundEvent(supabase, { providerMessageId: 'wamid.dupcontent-2', eventType: 'customer_message' });
-  const sends = [];
-  const realSend = async (to, message) => { sends.push(message); return { status: true }; };
-  const sendA = createGuardedSend({ realSend, supabase, inboundEventRowId: claimA.row.id });
-  const sendB = createGuardedSend({ realSend, supabase, inboundEventRowId: claimB.row.id });
-
-  const resultA = await sendA('628111000000', 'Halo Kak, ada yang bisa dibantu?');
-  const resultB = await sendB('628111000000', 'Halo Kak, ada yang bisa dibantu?');
-  assert.equal(resultA.status, true);
-  assert.equal(resultB.suppressed, true);
-  assert.equal(resultB.reason, 'duplicate_content');
-  assert.equal(sends.length, 1);
+test('direct claim refuses missing device scope instead of using a global key', async () => {
+  const result = await claimInboundEvent(fakeSupabase(), {
+    providerMessageId: hashValue('x'), providerDeviceHash: null, eventType: 'customer_message',
+  });
+  assert.equal(result.status, 'unavailable');
 });
 
-test('P0: isDuplicateContent is a pure secondary check, independent of claimOutboundSend', async () => {
-  const supabase = createFakeSupabase();
-  const dh = hashValue(normalizePhoneDigits('628111000000'));
-  const ch = hashValue('halo');
-  const before = await isDuplicateContent(supabase, { destinationHash: dh, contentHash: ch });
-  assert.equal(before.duplicate, false);
+test('SQL migration is idempotent, atomic, rolling-window, least-privilege, and hash-only', () => {
+  const sql = fs.readFileSync(path.join(__dirname, '../migrations/2026-08-29-wa-antispam-idempotency.sql'), 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS wa_outbound_send_claims/i);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION reserve_wa_automated_send/i);
+  assert.match(sql, /pg_advisory_xact_lock/i);
+  assert.match(sql, /reserved_at >= v_now - make_interval/i);
+  assert.match(sql, /provider_device_hash, provider_message_id/i);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/i);
+  assert.match(sql, /REVOKE ALL .* anon, authenticated/i);
+  assert.match(sql, /GRANT EXECUTE .* service_role/i);
+  assert.doesNotMatch(sql, /raw_phone|raw_message|message_body/i);
 });
 
-// ── Test K/L: per-customer automated rate limit, manual channel unaffected ──
-
-test('P0-K/L: 6th automated send within the window is rate-limited; the manual channel (raw realSend) is unaffected', async () => {
-  const supabase = createFakeSupabase();
-  const sends = [];
-  const realSend = async (to, message) => { sends.push(message); return { status: true }; };
-
-  for (let i = 0; i < 5; i += 1) {
-    const claim = await claimInboundEvent(supabase, { providerMessageId: `wamid.ratelimit-${i}`, eventType: 'customer_message' });
-    const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: claim.row.id });
-    const result = await guardedSend('628111000000', `balasan unik ${i}`);
-    assert.equal(result.status, true, `send ${i} should succeed`);
-  }
-  assert.equal(sends.length, 5);
-
-  const sixthClaim = await claimInboundEvent(supabase, { providerMessageId: 'wamid.ratelimit-5', eventType: 'customer_message' });
-  const sixthGuardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: sixthClaim.row.id });
-  const sixth = await sixthGuardedSend('628111000000', 'balasan unik 5');
-  assert.equal(sixth.suppressed, true);
-  assert.equal(sixth.reason, 'rate_limited');
-  assert.equal(sends.length, 5);
-
-  // The manual/human WhatsApp reply channel never goes through guardedSend —
-  // it calls the provider send directly and is not subject to this ceiling.
-  const manualResult = await realSend('628111000000', 'balasan manual dari admin');
-  assert.equal(manualResult.status, true);
-  assert.equal(sends.length, 6);
+test('manual human channel is not globally wrapped by the automated guard', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../services/waOutboundGuard.js'), 'utf8');
+  assert.match(source, /Manual\/human sends never call this wrapper/);
+  assert.doesNotMatch(source, /require\(['"]\.\/fonnte['"]\)/);
 });
 
-test('P0: isRateLimited counts only sends inside the window for that destination', async () => {
-  const supabase = createFakeSupabase();
-  const dh = hashValue(normalizePhoneDigits('628111000000'));
-  const before = await isRateLimited(supabase, dh);
-  assert.equal(before.limited, false);
-  assert.equal(before.count, 0);
+test('production webhook calls admission before handleMessage and has no in-memory dedupe authority', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../../api/wa/webhook.js'), 'utf8');
+  assert.ok(source.indexOf('await admitInboundEvent(') < source.indexOf('await processMessage('));
+  assert.doesNotMatch(source, /processedIds|fallback_fingerprint/);
 });
 
-// ── Test M: fail-closed behavior on DB errors ────────────────────────────
-
-test('P0-M: a DB error on the send-once claim suppresses the send (fail closed)', async () => {
-  const supabase = createFakeSupabase();
-  const claim = await claimInboundEvent(supabase, { providerMessageId: 'wamid.failclosed-1', eventType: 'customer_message' });
-  supabase._store.throwOn = (table, op) => table === 'wa_inbound_events' && op === 'update';
-  const sends = [];
-  const realSend = async () => { sends.push(1); return { status: true }; };
-  const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: claim.row.id });
-  const result = await guardedSend('628111000000', 'balasan');
-  assert.equal(sends.length, 0);
-  assert.equal(result.suppressed, true);
-});
-
-test('P0-M: a DB error on the duplicate-content check suppresses the send (fail closed)', async () => {
-  const supabase = createFakeSupabase();
-  const claim = await claimInboundEvent(supabase, { providerMessageId: 'wamid.failclosed-2', eventType: 'customer_message' });
-  let updateCalls = 0;
-  supabase._store.throwOn = (table, op) => {
-    if (table === 'wa_inbound_events' && op === 'update') { updateCalls += 1; return false; }
-    return table === 'wa_outbound_sends' && op === 'select';
-  };
-  const sends = [];
-  const realSend = async () => { sends.push(1); return { status: true }; };
-  const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: claim.row.id });
-  const result = await guardedSend('628111000000', 'balasan');
-  assert.equal(sends.length, 0);
-  assert.equal(result.suppressed, true);
-  assert.ok(updateCalls >= 1, 'markOutboundResult(false) should still run as best-effort bookkeeping');
-});
-
-test('P0-M: a DB error on the rate-limit check suppresses the send (fail closed)', async () => {
-  const supabase = createFakeSupabase();
-  const claim = await claimInboundEvent(supabase, { providerMessageId: 'wamid.failclosed-3', eventType: 'customer_message' });
-  // isDuplicateContent's select has no count option; isRateLimited's does —
-  // intercept only the count-mode select so isDuplicateContent still passes
-  // and the rate-limit check specifically is what fails.
-  const originalFrom = supabase.from.bind(supabase);
-  supabase.from = (table) => {
-    const builder = originalFrom(table);
-    const originalSelect = builder.select.bind(builder);
-    builder.select = (cols, opts) => {
-      if (opts && opts.count) {
-        builder._exec = async () => { throw new Error('simulated rate-limit query failure'); };
-      }
-      return originalSelect(cols, opts);
-    };
-    return builder;
-  };
-  const sends = [];
-  const realSend = async () => { sends.push(1); return { status: true }; };
-  const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: claim.row.id });
-  const result = await guardedSend('628111000000', 'balasan');
-  assert.equal(sends.length, 0);
-  assert.equal(result.suppressed, true);
-});
-
-// ── resolveProviderMessageId: primary key vs bucketed fallback ──────────
-
-test('P0: resolveProviderMessageId prefers the real provider id and only falls back when genuinely absent', () => {
-  const withId = resolveProviderMessageId({ id: 'wamid.abc' });
-  assert.equal(withId.providerMessageId, 'wamid.abc');
-  assert.equal(withId.isFallback, false);
-
-  const withoutId = resolveProviderMessageId({ sender: '6281', message: 'halo' }, { now: 1000 });
-  assert.equal(withoutId.isFallback, true);
-  assert.match(withoutId.providerMessageId, /^fallback:/);
-});
-
-// ── Incident reproduction: today's real pattern ──────────────────────────
-
-test('P0-INCIDENT: same sender, same provider message id, same content, 5 webhook deliveries → exactly one outbound send', async () => {
-  const supabase = createFakeSupabase();
-  const sends = [];
-  const realSend = async (to, message) => { sends.push({ to, message }); return { status: true }; };
-
-  const payload = fonntePayload({ id: 'wamid.incident-2026-08-29', message: 'halo min, ada promo?' });
-
-  async function deliverOnce() {
-    const provenance = classifyInboundEvent(payload);
-    if (provenance !== 'customer_message') return { delivered: false };
-    const { providerMessageId } = resolveProviderMessageId(payload);
-    const claim = await claimInboundEvent(supabase, {
-      providerMessageId, senderHash: hashValue(normalizePhoneDigits(payload.sender)), eventType: 'customer_message',
-    });
-    if (claim.status !== 'claimed') return { delivered: false, reason: claim.status };
-    const guardedSend = createGuardedSend({ realSend, supabase, inboundEventRowId: claim.row.id });
-    const result = await guardedSend(payload.sender, 'Halo Kak! Ada promo potong rambut + creambath bulan ini 💈');
-    await markInboundEventStatus(supabase, claim.row.id, result.status ? 'sent' : 'failed');
-    return { delivered: true, result };
-  }
-
-  const outcomes = await Promise.all(Array.from({ length: 5 }, deliverOnce));
-  assert.equal(outcomes.filter(o => o.delivered).length, 1);
-  assert.equal(sends.length, 1);
-  assert.equal(sends[0].to, '628111000000');
+test('reserveAutomatedSend exposes only one database authority call', async () => {
+  let calls = 0;
+  const result = await reserveAutomatedSend({ rpc: async (name) => {
+    calls += 1;
+    assert.equal(name, 'reserve_wa_automated_send');
+    return { data: [{ decision: 'allowed', claim_id: 'claim-1' }], error: null };
+  } }, { inboundEventId: 'in-1', destinationHash: 'd', contentHash: 'c' });
+  assert.equal(calls, 1);
+  assert.deepEqual(result, { status: 'allowed', claimId: 'claim-1' });
 });

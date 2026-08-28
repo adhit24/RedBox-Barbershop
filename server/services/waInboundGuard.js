@@ -2,15 +2,6 @@
 
 const crypto = require('crypto');
 
-// P0 incident hotfix. Env var checked before orchestrator/CRM AI/Reddy/OpenAI/
-// automated sendWA are ever reached. Defaults to enabled (true) so merely
-// deploying this code does not silently disable Reddy for every environment —
-// per the incident runbook, an operator explicitly sets REDDY_ENABLED=false
-// in Vercel immediately after this deploys, and re-enables per the smoke-test
-// checklist. This is deliberately NOT the same thing as the existing
-// per-customer wa_paused/human-takeover mechanism (server/services or
-// api/wa/webhook.js checkHumanTakeover/aiPaused) — that is per-customer and
-// unaffected by this switch; this is a single global emergency stop.
 function isReddyEnabled(env = process.env) {
   return env.REDDY_ENABLED !== 'false';
 }
@@ -23,15 +14,7 @@ function normalizePhoneDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
 
-/**
- * Classifies a raw provider webhook body into a provenance category BEFORE
- * any AI processing is considered. Extracted from api/wa/webhook.js's
- * existing inline detection (unchanged logic, now shared/testable) — only a
- * 'customer_message' may ever reach the orchestrator/Reddy/OpenAI/automated
- * sendWA. Confirmed actual Fonnte inbound shape via repo comment/existing
- * code: { device, sender, name, message, id, type, isFromMe }; status
- * callbacks carry message_status/status + id/stateid with no message field.
- */
+/** One provenance classifier for the production webhook and its tests. */
 function classifyInboundEvent(body = {}, { device = null } = {}) {
   const messageStatus = body.message_status || body.status;
   const statusId = body.id || body.message_id || body.msgid || body.messageId;
@@ -53,44 +36,51 @@ function classifyInboundEvent(body = {}, { device = null } = {}) {
 
   const message = body.message || body.text || body.chat || body.body || body.msg;
   if (!sender || !message) return 'unsupported';
-
   return 'customer_message';
 }
 
 /**
- * Resolves the durable idempotency key for a provider event. Fonnte's own
- * `id` field is the primary key (already relied on by the pre-existing
- * in-memory dedup this replaces). Only when it is genuinely absent does this
- * fall back to a bounded fingerprint (sender + message + a short time
- * bucket) — bucketed, not permanent, so two intentionally-repeated identical
- * customer messages sent minutes apart are never conflated; only near-
- * simultaneous redeliveries of the SAME event collapse together.
+ * Fonnte's documented inbound reply identifier is `inboxid` when Inbox is
+ * enabled; older/live payload variants also use the four existing ID names.
+ * There is deliberately no content/time fallback: without a provider ID the
+ * webhook fails closed before AI. The stored value is a bounded SHA-256 hash.
  */
-function resolveProviderMessageId(body = {}, { fallbackBucketMs = 5000, now = Date.now() } = {}) {
-  const id = body.id || body.message_id || body.msgid || body.messageId;
-  if (id) return { providerMessageId: String(id), isFallback: false };
-
-  const sender = body.sender || body.from || body.number || body.phone || body.target || '';
-  const message = body.message || body.text || body.chat || body.body || body.msg || '';
-  const bucket = Math.floor(now / fallbackBucketMs);
-  const fingerprint = hashValue(`${sender}|${message}|${bucket}`);
-  return { providerMessageId: `fallback:${fingerprint}`, isFallback: true };
+function resolveProviderMessageId(body = {}) {
+  const candidates = [
+    ['inboxid', body.inboxid],
+    ['id', body.id],
+    ['message_id', body.message_id],
+    ['msgid', body.msgid],
+    ['messageId', body.messageId],
+  ];
+  const found = candidates.find(([, value]) => value !== undefined && value !== null
+    && String(value).trim() && String(value).trim() !== '0');
+  if (!found) return { providerMessageId: null, source: null };
+  const [source, value] = found;
+  return {
+    providerMessageId: hashValue(`fonnte-message:${String(value).trim()}`),
+    source,
+  };
 }
 
-/**
- * Atomically claims a provider inbound event via the wa_inbound_events
- * unique index (provider, provider_message_id). Two concurrent requests for
- * the same event race the same INSERT; exactly one gets a row back, the
- * other gets a 23505 unique violation and is told 'duplicate'. Never reads
- * status. Never sends anything.
- */
-async function claimInboundEvent(supabase, { provider = 'fonnte', providerMessageId, senderHash = null, eventType }) {
-  if (!supabase || !providerMessageId) return { status: 'unavailable', row: null };
+/** Fonnte `device` is the provider channel scope. Never store it raw. */
+function resolveProviderDeviceHash(body = {}) {
+  const value = body.device ?? body.device_id ?? body.deviceId;
+  if (value === undefined || value === null || !String(value).trim() || String(value).trim() === '0') return null;
+  return hashValue(`fonnte-device:${String(value).trim()}`);
+}
+
+/** Atomic INSERT claim backed by (provider, device hash, message ID hash). */
+async function claimInboundEvent(supabase, {
+  provider = 'fonnte', providerDeviceHash, providerMessageId, senderHash = null, eventType,
+}) {
+  if (!supabase || !providerDeviceHash || !providerMessageId) return { status: 'unavailable', row: null };
   try {
     const { data, error } = await supabase
       .from('wa_inbound_events')
       .insert({
         provider,
+        provider_device_hash: String(providerDeviceHash),
         provider_message_id: String(providerMessageId),
         sender_hash: senderHash,
         event_type: eventType,
@@ -104,6 +94,7 @@ async function claimInboundEvent(supabase, { provider = 'fonnte', providerMessag
         .from('wa_inbound_events')
         .select('*')
         .eq('provider', provider)
+        .eq('provider_device_hash', String(providerDeviceHash))
         .eq('provider_message_id', String(providerMessageId))
         .maybeSingle();
       return { status: 'duplicate', row: existing || null };
@@ -114,11 +105,44 @@ async function claimInboundEvent(supabase, { provider = 'fonnte', providerMessag
   }
 }
 
+/**
+ * Admission authority used by the real webhook. Only `claimed` may proceed
+ * to orchestration. Missing provider identity and every DB failure fail closed.
+ */
+async function admitInboundEvent(supabase, body = {}, { provider = 'fonnte' } = {}) {
+  const device = body.device || body.device_id || body.deviceId;
+  const eventType = classifyInboundEvent(body, { device });
+  if (eventType !== 'customer_message') return { status: 'ignored', eventType, row: null };
+
+  const { providerMessageId, source } = resolveProviderMessageId(body);
+  if (!providerMessageId) {
+    return { status: 'missing_provider_message_id', eventType, row: null };
+  }
+  const providerDeviceHash = resolveProviderDeviceHash(body);
+  if (!providerDeviceHash) {
+    return { status: 'missing_provider_device_id', eventType, row: null, providerMessageIdSource: source };
+  }
+  const sender = body.sender || body.from || body.number || body.phone || body.target;
+  const claim = await claimInboundEvent(supabase, {
+    provider,
+    providerDeviceHash,
+    providerMessageId,
+    senderHash: hashValue(normalizePhoneDigits(sender)),
+    eventType,
+  });
+  return {
+    ...claim,
+    eventType,
+    providerDeviceHash,
+    providerMessageId,
+    providerMessageIdSource: source,
+  };
+}
+
 async function markInboundEventStatus(supabase, rowId, status) {
   if (!supabase || !rowId) return false;
   try {
-    await supabase
-      .from('wa_inbound_events')
+    await supabase.from('wa_inbound_events')
       .update({ processing_status: status, updated_at: new Date().toISOString() })
       .eq('id', rowId);
     return true;
@@ -133,6 +157,8 @@ module.exports = {
   normalizePhoneDigits,
   classifyInboundEvent,
   resolveProviderMessageId,
+  resolveProviderDeviceHash,
   claimInboundEvent,
+  admitInboundEvent,
   markInboundEventStatus,
 };
