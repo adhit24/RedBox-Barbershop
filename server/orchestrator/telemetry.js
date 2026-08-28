@@ -42,6 +42,10 @@ function sanitizeTelemetry(event = {}) {
     ? event.required_sources.filter(source => allowedSources.has(source))
     : [];
   const qualityStates = new Set(['verified', 'derived_verified', 'unavailable', 'ambiguous', 'stale', 'legacy']);
+  const allowedEligibilityReasons = new Set([
+    'explicit_booking_request', 'explicit_booking_link_request', 'contextual_booking_continuation',
+    'availability_booking_intent', 'informational_only', 'crm_topic', 'non_booking',
+  ]);
 
   return {
     timestamp: new Date().toISOString(),
@@ -73,6 +77,13 @@ function sanitizeTelemetry(event = {}) {
     crm_fact_status: qualityStates.has(event.crm_fact_status) ? event.crm_fact_status : null,
     guard_blocked_prohibited_claim: Boolean(event.guard_blocked_prohibited_claim),
     guard_blocked_unverified_availability: Boolean(event.guard_blocked_unverified_availability),
+    booking_memory_relevant: typeof event.booking_memory_relevant === 'boolean' ? event.booking_memory_relevant : null,
+    booking_response_eligible: typeof event.booking_response_eligible === 'boolean' ? event.booking_response_eligible : null,
+    booking_cta_eligible: typeof event.booking_cta_eligible === 'boolean' ? event.booking_cta_eligible : null,
+    booking_eligibility_reason: allowedEligibilityReasons.has(event.booking_eligibility_reason)
+      ? event.booking_eligibility_reason : null,
+    realtime_fact_guard_triggered: typeof event.realtime_fact_guard_triggered === 'boolean'
+      ? event.realtime_fact_guard_triggered : null,
   };
 }
 
