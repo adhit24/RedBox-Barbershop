@@ -107,6 +107,19 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+-- ACL hardening (Final Mini Correction, Blocker 2): CREATE OR REPLACE
+-- FUNCTION preserves the prior version's ACL when the signature matches
+-- exactly (it does here — see Aira's live-production inspection: only
+-- postgres/service_role currently have EXECUTE, anon/authenticated do not),
+-- but this migration does not rely on that implicit preservation alone —
+-- every grant is restated explicitly so the intended privilege set is
+-- self-evident from this file without cross-referencing the original P0
+-- migration.
+REVOKE ALL ON FUNCTION reserve_wa_automated_send(UUID, TEXT, TEXT, INTEGER, INTEGER, INTEGER) FROM PUBLIC;
+REVOKE ALL ON FUNCTION reserve_wa_automated_send(UUID, TEXT, TEXT, INTEGER, INTEGER, INTEGER) FROM anon;
+REVOKE ALL ON FUNCTION reserve_wa_automated_send(UUID, TEXT, TEXT, INTEGER, INTEGER, INTEGER) FROM authenticated;
+GRANT EXECUTE ON FUNCTION reserve_wa_automated_send(UUID, TEXT, TEXT, INTEGER, INTEGER, INTEGER) TO service_role;
+
 -- NULL-tolerant match: `inbound_event_id = NULL` is never true in SQL, so a
 -- system-initiated claim's completion would otherwise match zero rows.
 CREATE OR REPLACE FUNCTION complete_wa_automated_send(
@@ -140,7 +153,9 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION reserve_wa_automated_send(UUID, TEXT, TEXT, INTEGER, INTEGER, INTEGER) TO service_role;
+REVOKE ALL ON FUNCTION complete_wa_automated_send(UUID, UUID, BOOLEAN) FROM PUBLIC;
+REVOKE ALL ON FUNCTION complete_wa_automated_send(UUID, UUID, BOOLEAN) FROM anon;
+REVOKE ALL ON FUNCTION complete_wa_automated_send(UUID, UUID, BOOLEAN) FROM authenticated;
 GRANT EXECUTE ON FUNCTION complete_wa_automated_send(UUID, UUID, BOOLEAN) TO service_role;
 
 COMMIT;

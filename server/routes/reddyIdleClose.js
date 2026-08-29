@@ -1,8 +1,14 @@
 /**
- * Vercel Cron — GET /api/cron/reddy-idle-close
- * Triggered externally every 5 minutes (cron-job.org — same pattern as
- * api/cron/home-service-flag.js, see cronjoborg_homeservice.md), since the
- * Vercel Hobby plan's own cron scheduler cannot run this frequently.
+ * GET /api/cron/reddy-idle-close
+ * Mounted directly in server/index.js (not a dedicated Vercel serverless
+ * function) — see the mount site there for why: the Vercel Hobby 12-function
+ * limit is not increased by keeping this inside the existing catch-all API
+ * function, matching the established pattern already used by
+ * /api/cron/expire-membership-registrations, /api/cron/review-request, and
+ * /api/cron/booking-notifications. Triggered externally every 5 minutes
+ * (cron-job.org — same pattern as api/cron/home-service-flag.js, see
+ * cronjoborg_homeservice.md), since the Vercel Hobby plan's own cron
+ * scheduler cannot run this frequently.
  *
  * Closes any Reddy conversation that has been idle for AT LEAST 5 minutes
  * since Reddy's last reply, sending exactly one deterministic closing
@@ -48,14 +54,14 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { isReddyEnabled } = require('../../server/services/waInboundGuard');
-const { getActiveHandoffState } = require('../../server/services/humanHandoff');
-const { createGuardedSend } = require('../../server/services/waOutboundGuard');
+const { isReddyEnabled } = require('../services/waInboundGuard');
+const { getActiveHandoffState } = require('../services/humanHandoff');
+const { createGuardedSend } = require('../services/waOutboundGuard');
 const {
   IDLE_CLOSE_MESSAGE, claimIdleConversation, verifyStillClaimedForClose, finalizeIdleClose,
-} = require('../../server/services/conversationLifecycle');
-const { logIdleLifecycleEvent } = require('../../server/orchestrator/telemetry');
-const { sendWA: realSendWA } = require('../../server/services/fonnte');
+} = require('../services/conversationLifecycle');
+const { logIdleLifecycleEvent } = require('../orchestrator/telemetry');
+const { sendWA: realSendWA } = require('../services/fonnte');
 
 async function findDueSenders(supabase, { now = Date.now(), limit = 200 } = {}) {
   const { data } = await supabase
@@ -69,7 +75,7 @@ async function findDueSenders(supabase, { now = Date.now(), limit = 200 } = {}) 
   return (data || []).map((row) => row.sender);
 }
 
-module.exports = async function handler(req, res, testDeps = {}) {
+module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
   if (req.method !== 'GET') return res.status(405).end();
 
   const secret = process.env.CRON_SECRET;

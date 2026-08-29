@@ -301,8 +301,8 @@ function responseRecorder() {
 }
 
 function loadCronHandler() {
-  delete require.cache[require.resolve('../../api/cron/reddy-idle-close')];
-  return require('../../api/cron/reddy-idle-close');
+  delete require.cache[require.resolve('../routes/reddyIdleClose')];
+  return require('../routes/reddyIdleClose');
 }
 
 test('T1. exactly one idle closing is sent for an overdue conversation', async () => {
@@ -778,7 +778,7 @@ test('C3. executeReddyAgent strips a generic closing from the LLM reply end-to-e
 
 test('S1. the idle lifecycle mechanism never uses setTimeout as its closing driver', () => {
   const lifecycleSource = fs.readFileSync(path.join(__dirname, '../services/conversationLifecycle.js'), 'utf8');
-  const cronSource = fs.readFileSync(path.join(__dirname, '../../api/cron/reddy-idle-close.js'), 'utf8');
+  const cronSource = fs.readFileSync(path.join(__dirname, '../routes/reddyIdleClose.js'), 'utf8');
   assert.doesNotMatch(lifecycleSource, /setTimeout\s*\(/);
   assert.doesNotMatch(cronSource, /setTimeout\s*\(/);
 });
@@ -789,4 +789,83 @@ test('L11. logIdleLifecycleEvent is exported and produces the documented shape',
   const safe = logIdleLifecycleEvent({ event_type: 'conversation_idle_close_sent' });
   assert.equal(safe.event_type, 'conversation_idle_close_sent');
   assert.ok(safe.timestamp);
+});
+
+// ── Release Engineering Correction: served through api/index.js, not a ──
+// ── dedicated Vercel serverless function (Vercel Hobby 12-function limit) ──
+
+test('V1. no dedicated Vercel serverless function file exists for reddy-idle-close', () => {
+  const dedicatedFunctionPath = path.join(__dirname, '../../api/cron/reddy-idle-close.js');
+  assert.equal(fs.existsSync(dedicatedFunctionPath), false,
+    'the idle-close handler must live in server/routes/, not as its own api/cron/*.js Vercel function');
+});
+
+test('V2. the handler is mounted as a route inside server/index.js (the existing api/index.js catch-all)', () => {
+  const indexSource = fs.readFileSync(path.join(__dirname, '../index.js'), 'utf8');
+  assert.match(indexSource, /require\(['"]\.\/routes\/reddyIdleClose['"]\)/);
+  assert.match(indexSource, /app\.get\(['"]\/api\/cron\/reddy-idle-close['"]/);
+});
+
+test('V3. GET /api/cron/reddy-idle-close is reachable through the real server/index.js Express app end-to-end', async () => {
+  delete require.cache[require.resolve('../index.js')];
+  const app = require('../index.js');
+  const request = require('node:http').request;
+
+  await new Promise((resolve, reject) => {
+    const server = app.listen(0, async () => {
+      const { port } = server.address();
+      const previousSecret = process.env.CRON_SECRET;
+      process.env.CRON_SECRET = 'route-e2e-secret';
+      try {
+        const statusCode = await new Promise((res2, rej2) => {
+          const req = request({
+            hostname: '127.0.0.1', port, path: '/api/cron/reddy-idle-close', method: 'GET',
+            headers: { authorization: 'Bearer wrong-secret' },
+          }, (res) => { res.resume(); res.on('end', () => res2(res.statusCode)); });
+          req.on('error', rej2);
+          req.end();
+        });
+        // A wrong secret must reach the real handler (401), not fall through
+        // to the generic /api/:path* 404/unmatched-route behavior — proving
+        // this route is genuinely registered on the Express app, not just
+        // present as an unused file.
+        assert.equal(statusCode, 401);
+        resolve();
+      } catch (error) {
+        reject(error);
+      } finally {
+        if (previousSecret === undefined) delete process.env.CRON_SECRET;
+        else process.env.CRON_SECRET = previousSecret;
+        server.close();
+      }
+    });
+  });
+});
+
+test('V5. the migration explicitly hardens both RPCs\' ACL (REVOKE from PUBLIC/anon/authenticated, GRANT to service_role only)', () => {
+  const migrationSource = fs.readFileSync(
+    path.join(__dirname, '../migrations/2026-08-29-wa-conversation-idle-lifecycle.sql'), 'utf8',
+  );
+  for (const fn of ['reserve_wa_automated_send(UUID, TEXT, TEXT, INTEGER, INTEGER, INTEGER)', 'complete_wa_automated_send(UUID, UUID, BOOLEAN)']) {
+    const escaped = fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(migrationSource, new RegExp(`REVOKE ALL ON FUNCTION ${escaped} FROM PUBLIC;`));
+    assert.match(migrationSource, new RegExp(`REVOKE ALL ON FUNCTION ${escaped} FROM anon;`));
+    assert.match(migrationSource, new RegExp(`REVOKE ALL ON FUNCTION ${escaped} FROM authenticated;`));
+    assert.match(migrationSource, new RegExp(`GRANT EXECUTE ON FUNCTION ${escaped} TO service_role;`));
+  }
+  assert.doesNotMatch(migrationSource, /ALTER TABLE wa_conversations\s+ENABLE ROW LEVEL SECURITY/i,
+    'this migration must not touch wa_conversations RLS — live production already has correct policies');
+  assert.doesNotMatch(migrationSource, /(REVOKE|GRANT)[^;]*\bON TABLE wa_conversations\b/i,
+    'this migration must not touch wa_conversations grants — live production already has correct policies');
+});
+
+test('V4. vercel.json stays at or below the Vercel Hobby 12 explicit-function limit', () => {
+  const vercelConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '../../vercel.json'), 'utf8'));
+  const functionCount = Object.keys(vercelConfig.functions || {}).length;
+  assert.ok(functionCount <= 12, `vercel.json declares ${functionCount} explicit functions — Hobby plan limit is 12`);
+  assert.equal(vercelConfig.functions['api/cron/reddy-idle-close.js'], undefined,
+    'reddy-idle-close must not have its own dedicated function entry');
+  const rewriteSources = (vercelConfig.rewrites || []).map((r) => r.source);
+  assert.equal(rewriteSources.includes('/api/cron/reddy-idle-close'), false,
+    'no dedicated rewrite needed — /api/:path* already reaches it via api/index.js');
 });
