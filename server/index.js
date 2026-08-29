@@ -28,6 +28,9 @@ const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membe
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
 const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
+const { resolveCustomerIdentity } = require('./services/customerIdentityResolver');
+const { planBookingCustomerLinkage, issueCodeForStatus } = require('./services/bookingCustomerLinkage');
+const { logBookingLinkageEvent } = require('./orchestrator/telemetry');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1305,6 +1308,15 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       await supabase.from('customers').upsert({
         name, wa, visits: 0, total_spent: 0, last_visit: null
       }, { onConflict: 'wa', ignoreDuplicates: true });
+
+      // Task 17.2: best-effort booking -> customer linkage, run AFTER the
+      // customer upsert above so a brand-new customer's row already exists
+      // for the resolver to find. Never guesses an identity and never blocks
+      // or fails the reservation — any resolver/DB error here is caught
+      // internally and simply leaves customer_id NULL for a later backfill.
+      linkNewlyCreatedBooking(supabase, {
+        booking: { id: bookingId }, phone: wa, source: 'booking_create', branch: resolvedLocation,
+      }).catch(() => {});
 
       // Notif admin untuk setiap booking baru (fire-and-forget — tidak block response)
       if (data.wa) {

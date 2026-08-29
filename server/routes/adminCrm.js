@@ -14,6 +14,7 @@ const {
 const { syncScheduleForBooking } = require('../moka/slotEngine');
 const { syncCurrentMonthTx } = require('../moka/txSync');
 const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('../services/bookingGuard');
+const { linkNewlyCreatedBooking } = require('../services/bookingCustomerLinkage');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -929,6 +930,17 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+
+    // Task 17.2: best-effort booking -> customer linkage for walk-ins too.
+    // No customer row is created/upserted here (this endpoint never has —
+    // that stays out of this task's scope); if `wa` matches an EXISTING
+    // customer, link it. A missing/placeholder `wa` ('-') fails closed to
+    // invalid_identity via the resolver, never a guess, and never blocks
+    // the walk-in response either way.
+    linkNewlyCreatedBooking(supabase, {
+      booking: { id: data.id }, phone: wa, source: 'booking_walkin', branch: normalizeBranch(branch),
+    }).catch(() => {});
+
     return res.json({ ok: true, booking: data });
   });
 
