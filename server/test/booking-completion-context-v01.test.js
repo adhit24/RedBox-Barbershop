@@ -52,6 +52,40 @@ test('B2. bare "udah" (no punctuation) requires context, same as "sudah kak"', (
   assert.equal(withContext.isCompletionReport, true);
 });
 
+// ── Correction Round 1 (PR #44 blocker): assistant-only, strong-evidence context ──
+
+test('B2b. Correction R1: user turn "kapster Ubay" alone must NOT count as booking-guidance context', () => {
+  const result = detectBookingCompletionReport({
+    text: 'sudah kak',
+    conversationContext: { turns: [{ role: 'user', content: 'kapster Ubay' }] },
+  });
+  assert.equal(result.isCompletionReport, false, 'a customer turn can never supply the assistant CTA evidence');
+});
+
+test('B2c. Correction R1: assistant merely naming a barber ("Mas Ubay kapster CSB") is NOT strong booking guidance', () => {
+  const result = detectBookingCompletionReport({
+    text: 'sudah kak',
+    conversationContext: { turns: [{ role: 'assistant', content: 'Mas Ubay kapster CSB' }] },
+  });
+  assert.equal(result.isCompletionReport, false, 'generic barber/kapster mention alone is not booking-flow guidance');
+});
+
+test('B2d. Correction R1: assistant giving an explicit booking website CTA => completion report', () => {
+  const result = detectBookingCompletionReport({
+    text: 'sudah kak',
+    conversationContext: { turns: [{ role: 'assistant', content: 'Silakan lanjutkan booking di website resmi ya Kak.' }] },
+  });
+  assert.equal(result.isCompletionReport, true);
+});
+
+test('B2e. Correction R1: assistant giving a booking link => "udah" is a completion report', () => {
+  const result = detectBookingCompletionReport({
+    text: 'udah',
+    conversationContext: { turns: [{ role: 'assistant', content: 'Boleh cek dulu di sini ya Kak: https://redboxbarbershop.com/booking.html' }] },
+  });
+  assert.equal(result.isCompletionReport, true);
+});
+
 test('B3. explicit "udah booking di web" fires without any context', () => {
   const result = detectBookingCompletionReport({ text: 'udah booking di web', conversationContext: { turns: [] } });
   assert.equal(result.isCompletionReport, true);
