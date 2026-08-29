@@ -5,15 +5,29 @@
  *
  * Production symptom: customers reaching /api/wa/webhook got automated
  * replies suppressed with missing_provider_message_id, while webhook shadow
- * telemetry showed has_inboxid: true for the same requests. Root cause: the
- * pre-hotfix body normalization REPLACED the working body with a nested
- * `data`/`payload` envelope wholesale whenever one was present
- * (`body = rawBody.data`), silently dropping any envelope-level field (most
- * critically `inboxid`) the nested object did not repeat.
+ * telemetry showed has_inboxid: true for the same requests.
  *
- * server/services/fonnteEnvelopeNormalizer.js now builds one canonical,
- * bounded merge (nested value wins when present, envelope is the fallback)
- * used for classification, admission, branch detection, and message routing.
+ * Confirmed production incident factor: Fonnte Inbox/provider message
+ * identity was not usable before Inbox was activated on the affected
+ * devices — live production logs show the exact same failure mode
+ * (missing_provider_message_id) transition to inbound_event_claimed once
+ * Inbox was enabled, with no code change in between. That configuration gap
+ * was a material cause of the incident.
+ *
+ * Confirmed source-level latent bug (Correction Round 1, Correction 1 —
+ * this is fixed defensively by this PR, not claimed as the sole or
+ * conclusively observed production root cause absent a captured payload
+ * proving the exact nested shape): the pre-hotfix body normalization
+ * REPLACED the working body with a nested `data`/`payload` envelope
+ * wholesale whenever one was present (`body = rawBody.data`), silently
+ * dropping any envelope-level field (most critically `inboxid`, but also
+ * `device` and status metadata) the nested object did not repeat. This can
+ * independently produce missing_provider_message_id for any Fonnte account
+ * that ever sends a nested envelope, regardless of Inbox activation state.
+ *
+ * server/services/fonnteEnvelopeNormalizer.js builds one canonical, bounded
+ * merge (nested value wins when present, envelope is the fallback) used for
+ * classification, admission, branch detection, and message routing.
  */
 
 const test = require('node:test');
@@ -25,6 +39,7 @@ const {
   resolveProviderMessageId,
   resolveProviderDeviceHash,
 } = require('../services/waInboundGuard');
+const { inspectFonnteWebhookShadow } = require('../services/fonnteWebhookVerifier');
 const webhook = require('../../api/wa/webhook');
 
 // ── Fake wa_inbound_events + RPC ledger (mirrors p0-antispam-idempotency.test.js) ──
@@ -312,4 +327,32 @@ test('F10. self/outbound echo nested/enveloped: remains suppressed', async () =>
   assert.equal(res.body.reason, 'outgoing');
   assert.equal(handleMessageCalls, 0);
   assert.equal(sendCalls, 0);
+});
+
+// ── Correction Round 1, Correction 2: shadow telemetry must be non-mutating ─
+// inspectFonnteWebhookShadow() is telemetry-only. Provider-envelope merging
+// for actual admission is fonnteEnvelopeNormalizer's job, applied before
+// downstream processing in api/wa/webhook.js — the shadow function must only
+// OBSERVE the raw payload, never write back into it (no injected inboxid/
+// device on the nested object, no shared mutable state between telemetry and
+// the objects a caller may still hold a reference to).
+
+test('inspectFonnteWebhookShadow does not mutate the nested object it inspects', () => {
+  const nested = { sender: 'x', message: 'halo' };
+  const raw = { inboxid: 'outer-id', device: 'outer-device', data: nested };
+
+  inspectFonnteWebhookShadow(raw, 'irrelevant-secret');
+
+  assert.deepEqual(nested, { sender: 'x', message: 'halo' });
+  assert.equal(Object.hasOwn(nested, 'inboxid'), false, 'shadow inspection must never inject inboxid into the nested object');
+  assert.equal(Object.hasOwn(nested, 'device'), false, 'shadow inspection must never inject device into the nested object');
+});
+
+test('inspectFonnteWebhookShadow does not mutate the raw envelope object either', () => {
+  const raw = { inboxid: 'outer-id', device: 'outer-device', data: { sender: 'x', message: 'halo' } };
+  const snapshotBefore = JSON.parse(JSON.stringify(raw));
+
+  inspectFonnteWebhookShadow(raw, 'irrelevant-secret');
+
+  assert.deepEqual(raw, snapshotBefore);
 });
