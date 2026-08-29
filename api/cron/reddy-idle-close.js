@@ -9,17 +9,30 @@
  * message per session. "At least" because scheduler frequency is coarser
  * than the exact 5-minute mark — see conversationLifecycle.js.
  *
- * Correction Round 1 (PR #45 review) hardened this to re-verify state THREE
+ * Correction Round 1 (PR #45 review) hardened this to re-verify state FOUR
  * separate times before a customer-facing send ever happens, since none of
  * these can be assumed stable across the async gaps between them:
  *   1. Discovery-time handoff check (cheap short-circuit — skip claiming at
  *      all if a handoff is already open).
  *   2. Atomic DB claim (still active, still overdue, not already closed).
- *   3. Immediately before the actual provider send: re-verify (a) no newer
- *      inbound customer message arrived since the claim
- *      (verifyStillClaimedForClose — Blocker 2) and (b) handoff state is
- *      STILL not waiting_human/human_active (Blocker 3) — either changing
- *      between claim and send aborts the send and releases the claim.
+ *   3. A second Task15 handoff re-check (Blocker 3) — a handoff can open in
+ *      the gap between discovery and claim.
+ *   4. verifyStillClaimedForClose (Blocker 2) — deliberately the LAST async
+ *      check before guardedSend, called immediately before it: a customer
+ *      message landing in the gap while step 3's handoff lookup was in
+ *      flight would otherwise slip through undetected. Lifecycle state
+ *      (conversation_status/last_customer_message_at) is the most volatile
+ *      authority here — a Reddy reply's own arm/reset and a fresh inbound
+ *      message can invalidate a claim at any moment — so it is checked as
+ *      close to the actual send as this process can get. This does not
+ *      make the send itself transactional with a concurrent inbound DB
+ *      write — no ordering of async DB reads can fully close that gap
+ *      against an external HTTP provider call — but placing the lifecycle
+ *      check last minimizes the remaining unavoidable window to just the
+ *      provider network round-trip itself, rather than also including a
+ *      second DB round-trip (the handoff re-check) after the last
+ *      verification.
+ * Any of steps 1/3/4 failing aborts the send and releases the claim.
  * The close message itself flows through the same P0 guarded-send path
  * (kill switch, send-once, duplicate-content, rate limit) as every other
  * automated Reddy send — see server/services/waOutboundGuard.js. On any
@@ -116,8 +129,19 @@ module.exports = async function handler(req, res, testDeps = {}) {
       continue;
     }
 
-    // 3a. Blocker 2: re-verify nothing changed since the claim, immediately
-    // before the send — a customer can message again in that window.
+    // 3. Blocker 3: re-verify handoff state didn't open between discovery and claim.
+    const preSendHandoffState = await handoffLookup(sender);
+    if (preSendHandoffState.status === 'waiting_human' || preSendHandoffState.status === 'human_active') {
+      suppressed++;
+      logEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: preSendHandoffState.status });
+      await finalizeFn(supabase, sender, { sent: false });
+      continue;
+    }
+
+    // 4. Blocker 2: the FINAL check, immediately before the send — a customer
+    // can message again in the window that just elapsed (including during
+    // the handoff lookup above), and lifecycle state is the most volatile
+    // authority here. See the file-header note on why this must be last.
     const stillValid = await verifyFn(supabase, sender, {
       expectedLastCustomerMessageAt: claim.last_customer_message_at || null,
     });
@@ -128,15 +152,6 @@ module.exports = async function handler(req, res, testDeps = {}) {
         suppress_reason: 'newer_inbound_detected',
         stale_idle_close_prevented: true,
       });
-      await finalizeFn(supabase, sender, { sent: false });
-      continue;
-    }
-
-    // 3b. Blocker 3: re-verify handoff state didn't open between claim and send.
-    const preSendHandoffState = await handoffLookup(sender);
-    if (preSendHandoffState.status === 'waiting_human' || preSendHandoffState.status === 'human_active') {
-      suppressed++;
-      logEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: preSendHandoffState.status });
       await finalizeFn(supabase, sender, { sent: false });
       continue;
     }

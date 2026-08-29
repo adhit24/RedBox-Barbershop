@@ -615,6 +615,44 @@ test('T-blocker3b. Correction R1: handoff becomes human_active between claim and
   assert.equal(handoffCalls, 2);
 });
 
+test('T-blocker-order. Final Mini Correction (PR #45): a customer message landing between the handoff re-check and the final lifecycle verification is still caught, proving the verify-last ordering', async () => {
+  const handler = loadCronHandler();
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null, last_customer_message_at: new Date(now - 60000).toISOString() }]);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const events = [];
+  const res = responseRecorder();
+  let handoffCalls = 0;
+
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    // The handoff re-check itself always reports 'none' (it genuinely never
+    // opens) — but its second (pre-send) call is the moment a real customer
+    // message arrives, i.e. strictly AFTER discovery+claim and exactly in
+    // the window this correction closes. If verifyStillClaimedForClose were
+    // checked before the handoff re-check (the old, incorrect order), this
+    // race would slip through undetected.
+    getActiveHandoffState: async () => {
+      handoffCalls++;
+      if (handoffCalls === 2) {
+        await touchInboundActivity(sb, '628111', { now: now + 500 });
+      }
+      return { status: 'none', case: null };
+    },
+    sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
+    candidateSenders: ['628111'],
+    logEvent: (e) => events.push(e),
+  });
+
+  assert.equal(handoffCalls, 2, 'both handoff checks must have run and reported no handoff');
+  assert.equal(sent.length, 0, 'the final lifecycle verification must still catch a race that occurred after the handoff re-check passed');
+  assert.equal(res.body.closed, 0);
+  assert.ok(events.some((e) => e.event_type === 'conversation_idle_close_suppressed' && e.suppress_reason === 'newer_inbound_detected'));
+  assert.equal(sb.rows[0].conversation_status, 'active');
+});
+
 test('T15. the idle-close send goes through the real P0 guard RPC (duplicate-content suppresses a second concurrent attempt)', async () => {
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([]);
