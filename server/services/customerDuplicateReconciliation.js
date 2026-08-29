@@ -2,7 +2,7 @@
 
 /**
  * Task 17.1 — CRM Integrity Round 2: Customer Duplicate Reconciliation Engine
- * Correction Round 1
+ * Mini Correction Round 2
  *
  * READ-ONLY / PURE reconciliation planner.
  * Calculates deterministic canonical customer selection, field reconciliation plans,
@@ -174,8 +174,8 @@ function planDuplicateReconciliation(group = {}, options = {}) {
   // Priority 1: Row with valid unique moka_customer_id
   let canonicalRow = rows.find(r => r.moka_customer_id && mokaIds.includes(r.moka_customer_id));
 
-  // Priority 2: Rank candidate rows by transaction evidence -> spend -> stored spend -> ID tie-breaker
-  // Note: customers.membership_status is NOT used for canonical selection
+  // Priority 2: Rank candidate rows ONLY by eligible transaction/reference evidence
+  // DO NOT use stored total_spent, visits, points, membership_status, name, created_at, or updated_at.
   if (!canonicalRow) {
     const txCountByCustId = new Map();
     const txSumByCustId = new Map();
@@ -197,10 +197,7 @@ function planDuplicateReconciliation(group = {}, options = {}) {
       const sumB = txSumByCustId.get(b.id) || 0;
       if (sumA !== sumB) return sumB - sumA;
 
-      const spendA = Number(a.total_spent) || 0;
-      const spendB = Number(b.total_spent) || 0;
-      if (spendA !== spendB) return spendB - spendA;
-
+      // Priority 3: Stable deterministic ID tie-breaker ONLY
       return String(a.id).localeCompare(String(b.id));
     });
 
@@ -237,34 +234,61 @@ function planDuplicateReconciliation(group = {}, options = {}) {
     sources_in_group: sources,
   };
 
-  // Financial & Visit Aggregates using strict status eligibility helpers:
+  // Financial & Visit Aggregates:
+  // Distinguish explicit transaction evidence states:
+  // CASE A: NO_TRANSACTION_EVIDENCE (transactions.length === 0) -> legacy_snapshot_fallback
+  // CASE B: ELIGIBLE_TRANSACTION_EVIDENCE (transactions.length > 0 && eligible.length > 0) -> recomputed_from_eligible_transactions
+  // CASE C: NON_ELIGIBLE_TRANSACTION_EVIDENCE_ONLY (transactions.length > 0 && eligible.length === 0) -> unresolved_transaction_evidence (value = null)
+
   const eligibleSpendTxs = transactions.filter(isTransactionCountableForSpend);
-  const txSum = eligibleSpendTxs.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
+  const eligibleVisitTxs = transactions.filter(isTransactionCountableForVisit);
   const hasTxRecords = transactions.length > 0;
   const storedSpendMax = Math.max(0, ...rows.map(r => Number(r.total_spent) || 0));
-  const finalTotalSpent = eligibleSpendTxs.length > 0 ? txSum : storedSpendMax;
-  const spendPlan = {
-    value: finalTotalSpent,
-    strategy: eligibleSpendTxs.length > 0 ? 'recomputed_from_eligible_transactions' : 'max_stored_snapshot',
-    breakdown: {
-      eligible_transaction_sum: txSum,
-      stored_rows_max: storedSpendMax,
-    },
-  };
-
-  // Visits: recompute from eligible transactions if available, else max stored
-  const eligibleVisitTxs = transactions.filter(isTransactionCountableForVisit);
   const storedVisitsMax = Math.max(0, ...rows.map(r => Number(r.visits) || 0));
   const storedVisitsSum = rows.reduce((sum, r) => sum + (Number(r.visits) || 0), 0);
-  const visitsPlan = {
-    value: eligibleVisitTxs.length > 0 ? eligibleVisitTxs.length : storedVisitsMax,
-    strategy: eligibleVisitTxs.length > 0 ? 'recomputed_from_eligible_transactions' : 'max_stored_snapshot',
-    breakdown: {
-      eligible_transaction_count: eligibleVisitTxs.length,
-      stored_visits_max: storedVisitsMax,
-      stored_visits_sum: storedVisitsSum,
-    },
-  };
+
+  let spendPlan;
+  if (!hasTxRecords) {
+    spendPlan = {
+      value: storedSpendMax,
+      strategy: 'legacy_snapshot_fallback',
+      breakdown: { stored_rows_max: storedSpendMax },
+    };
+  } else if (eligibleSpendTxs.length > 0) {
+    const txSum = eligibleSpendTxs.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
+    spendPlan = {
+      value: txSum,
+      strategy: 'recomputed_from_eligible_transactions',
+      breakdown: { eligible_transaction_sum: txSum, stored_rows_max: storedSpendMax },
+    };
+  } else {
+    spendPlan = {
+      value: null,
+      strategy: 'unresolved_transaction_evidence',
+      breakdown: { eligible_transaction_sum: 0, stored_rows_max: storedSpendMax },
+    };
+  }
+
+  let visitsPlan;
+  if (!hasTxRecords) {
+    visitsPlan = {
+      value: storedVisitsMax,
+      strategy: 'legacy_snapshot_fallback',
+      breakdown: { stored_visits_max: storedVisitsMax, stored_visits_sum: storedVisitsSum },
+    };
+  } else if (eligibleVisitTxs.length > 0) {
+    visitsPlan = {
+      value: eligibleVisitTxs.length,
+      strategy: 'recomputed_from_eligible_transactions',
+      breakdown: { eligible_transaction_count: eligibleVisitTxs.length, stored_visits_max: storedVisitsMax },
+    };
+  } else {
+    visitsPlan = {
+      value: null,
+      strategy: 'unresolved_transaction_evidence',
+      breakdown: { eligible_transaction_count: 0, stored_visits_max: storedVisitsMax },
+    };
+  }
 
   // Points: anchor to member_profiles.total_points if present, else max stored points
   const profilePoints = activeProfiles[0] ? (Number(activeProfiles[0].total_points) || 0) : (profiles[0] ? (Number(profiles[0].total_points) || 0) : null);
@@ -272,7 +296,7 @@ function planDuplicateReconciliation(group = {}, options = {}) {
   const finalPoints = profilePoints !== null ? profilePoints : storedPointsMax;
   const pointsPlan = {
     value: finalPoints,
-    strategy: profilePoints !== null ? 'anchored_to_member_profile' : 'max_stored_points',
+    strategy: profilePoints !== null ? 'anchored_to_member_profile' : (hasTxRecords ? 'max_stored_points' : 'legacy_snapshot_fallback'),
     breakdown: {
       profile_points: profilePoints,
       stored_points_max: storedPointsMax,
@@ -313,7 +337,10 @@ function planDuplicateReconciliation(group = {}, options = {}) {
   };
 
   // Determine group status (Category A vs Category B)
+  const hasUnresolvedTxEvidence = (hasTxRecords && (eligibleSpendTxs.length === 0 || eligibleVisitTxs.length === 0));
+
   const isHistorySplit = (
+    hasUnresolvedTxEvidence ||
     (storedSpendMax > 0 && rows.filter(r => (Number(r.total_spent) || 0) > 0).length > 1) ||
     (storedVisitsMax > 0 && rows.filter(r => (Number(r.visits) || 0) > 0).length > 1) ||
     (storedPointsMax > 0 && rows.filter(r => (Number(r.points) || 0) > 0).length > 1) ||
@@ -321,9 +348,11 @@ function planDuplicateReconciliation(group = {}, options = {}) {
   );
 
   const groupStatus = isHistorySplit ? 'deterministic_reconciliation' : 'safe_auto_merge';
-  const riskLevel = isHistorySplit ? 'MEDIUM' : 'LOW';
+  const riskLevel = hasUnresolvedTxEvidence ? 'HIGH' : (isHistorySplit ? 'MEDIUM' : 'LOW');
 
-  if (isHistorySplit) {
+  if (hasUnresolvedTxEvidence) {
+    reasons.push('unresolved_transaction_evidence');
+  } else if (isHistorySplit) {
     reasons.push('customer_history_or_aggregates_split_across_duplicate_rows');
   } else {
     reasons.push('clean_duplicate_group_safe_for_auto_merge');
