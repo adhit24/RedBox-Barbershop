@@ -23,6 +23,18 @@ const MEDIA_TYPES = new Set([
 ]);
 const AUTH_CANDIDATE_PATTERN = /^(?:webhook_)?secret(?:_key)?$/;
 
+// Provider-level identity/provenance may live on the outer Fonnte envelope while
+// sender/message live inside `data`/`payload`. The production webhook selects
+// the deepest nested object before durable admission, so preserve ONLY the
+// bounded provider metadata required by the classifier/idempotency guard.
+// Nested values always win; envelope values are fallback-only.
+const PROVIDER_ENVELOPE_FIELDS = Object.freeze([
+  'inboxid', 'id', 'message_id', 'msgid', 'messageId',
+  'device', 'device_id', 'deviceId',
+  'stateid', 'stateId', 'status', 'message_status',
+  'isFromMe', 'is_from_me', 'fromMe',
+]);
+
 // Replay preparation only: if production evidence confirms inboxid is stable
 // across retries, the future persistent idempotency key candidate is
 // `fonnte + inboxid`. This shadow phase intentionally adds no persistence.
@@ -61,6 +73,24 @@ function bodyLayers(root) {
     current = nested;
   }
   return layers;
+}
+
+function preserveProviderEnvelopeFields(layers) {
+  if (!Array.isArray(layers) || layers.length < 2) return;
+  const eventBody = layers[layers.length - 1];
+  if (!isPlainRecord(eventBody)) return;
+
+  for (const field of PROVIDER_ENVELOPE_FIELDS) {
+    const existing = eventBody[field];
+    if (existing !== undefined && existing !== null && String(existing).trim()) continue;
+
+    for (let i = layers.length - 2; i >= 0; i -= 1) {
+      const candidate = layers[i]?.[field];
+      if (candidate === undefined || candidate === null || !String(candidate).trim()) continue;
+      eventBody[field] = candidate;
+      break;
+    }
+  }
 }
 
 function findAuthCandidate(layers) {
@@ -119,6 +149,7 @@ function inspectFonnteWebhookShadow(body, configuredSecret) {
   }
 
   const layers = bodyLayers(body);
+  preserveProviderEnvelopeFields(layers);
   const eventBody = selectEventBody(layers);
   const candidate = findAuthCandidate(layers);
   const secretConfigured = typeof configuredSecret === 'string' && configuredSecret.length > 0;
