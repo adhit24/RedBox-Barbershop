@@ -1355,7 +1355,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
+  // P0.2 hotfix: standalone "berapa" is NOT a price signal on its own — it
+  // also appears in "jam berapa" (hours), "kapan/jam berapa masuk" (barber
+  // schedule), etc. Every trigger below carries its own explicit price
+  // context word/phrase, so "Tegal buka jam berapa?" no longer matches here
+  // and instead reaches the orchestrator, which already classifies it
+  // correctly as operating_hours_inquiry (see routingPolicy.js).
+  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'price', 'tarif', 'biaya', 'bayar berapa', 'kena berapa'])) {
     const svcText = buildServicesText(branch);
     reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
