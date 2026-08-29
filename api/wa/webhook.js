@@ -98,6 +98,7 @@ const {
   inspectFonnteWebhookShadow,
   emitFonnteWebhookShadow,
 } = require('../../server/services/fonnteWebhookVerifier');
+const { normalizeFonnteEnvelope } = require('../../server/services/fonnteEnvelopeNormalizer');
 const {
   verifyRedboxWebhookTrustQuery,
   emitRedboxWebhookTrust,
@@ -1442,7 +1443,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
+  // P0.2 hotfix: standalone "berapa" is NOT a price signal on its own — it
+  // also appears in "jam berapa" (hours), "kapan/jam berapa masuk" (barber
+  // schedule), etc. Every trigger below carries its own explicit price
+  // context word/phrase, so "Tegal buka jam berapa?" no longer matches here
+  // and instead reaches the orchestrator, which already classifies it
+  // correctly as operating_hours_inquiry (see routingPolicy.js).
+  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'price', 'tarif', 'biaya', 'bayar berapa', 'kena berapa'])) {
     const svcText = buildServicesText(branch);
     reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
@@ -2177,26 +2184,16 @@ module.exports = async function handler(req, res, testDeps = {}) {
   emitRedboxWebhookTrust(redboxWebhookTrust);
 
   try {
-    // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
+    // Fonnte payload: { device, sender, name, message, id, type, isFromMe },
+    // possibly wrapped in a nested `data`/`payload` envelope. P0.1 incident
+    // hotfix: normalizeFonnteEnvelope() builds ONE canonical, bounded body —
+    // deepest-present-layer wins per field, envelope is the fallback — so an
+    // envelope-level field (most critically `inboxid`) is never silently
+    // dropped just because a nested object happens to be present. Every
+    // downstream decision (admission, classification, branch detection,
+    // message routing) reads from this same canonical `body`.
     const rawBody = await coerceBody(req.body, req);
-
-    let body = rawBody;
-    if (rawBody && rawBody.data) {
-      if (typeof rawBody.data === 'object') {
-        body = rawBody.data;
-      } else if (typeof rawBody.data === 'string') {
-        try {
-          const parsed = JSON.parse(rawBody.data);
-          if (parsed && typeof parsed === 'object') body = parsed;
-        } catch {}
-      }
-    }
-    if (body === rawBody && rawBody && rawBody.payload && typeof rawBody.payload === 'string') {
-      try {
-        const parsed = JSON.parse(rawBody.payload);
-        if (parsed && typeof parsed === 'object') body = parsed;
-      } catch {}
-    }
+    const { canonical: body } = normalizeFonnteEnvelope(rawBody);
 
     const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
     emitFonnteWebhookShadow(shadowMetadata);
@@ -2301,7 +2298,10 @@ module.exports = async function handler(req, res, testDeps = {}) {
       }
       return null;
     };
-    const branchFromPayload = findBranchInPayload(body);
+    // Scans the FULL raw structure (envelope + any nesting), not just the
+    // bounded canonical field list — a branch marker can legitimately appear
+    // on a field this normalizer does not track.
+    const branchFromPayload = findBranchInPayload(rawBody);
     console.log('[WA Bot] Branch deep-scan completed:', { branch: branchFromPayload || 'not_found' });
 
     // Filter pesan keluar — classifier shared di atas adalah satu-satunya
