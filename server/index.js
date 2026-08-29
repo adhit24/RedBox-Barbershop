@@ -3564,6 +3564,14 @@ app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));
 
+// GET /api/cron/reddy-idle-close
+// Called by cron-job.org every 5 minutes. Keep this inside the catch-all API
+// function so the Vercel Hobby 12-function limit is not increased by a
+// dedicated function (see server/routes/reddyIdleClose.js for the handler
+// and its race-protection/telemetry documentation).
+const reddyIdleCloseHandler = require('./routes/reddyIdleClose');
+app.get('/api/cron/reddy-idle-close', (req, res) => reddyIdleCloseHandler(req, res, {}));
+
 // GET /api/cron/expire-membership-registrations
 // Called by cron-job.org. Keep this inside the catch-all API function so the
 // Vercel Hobby 12-function limit is not increased by a dedicated function.

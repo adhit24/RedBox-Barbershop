@@ -181,8 +181,44 @@ function logAntiSpamEvent(event = {}) {
   return safe;
 }
 
+// Reddy conversation idle-timeout lifecycle telemetry (Task16 integration) —
+// its own small allowlist schema, same rationale as the P0 anti-spam block
+// above: these events fire from the inbound-message entrypoint, the P0
+// guarded-send hook, and the idle-close cron job, not from orchestrator
+// routing, and carry their own bounded dimension set. No message content,
+// no phone numbers.
+const ALLOWED_IDLE_LIFECYCLE_EVENTS = new Set([
+  'conversation_idle_timer_scheduled', 'conversation_idle_timer_reset',
+  'conversation_idle_close_sent', 'conversation_idle_close_suppressed',
+  'conversation_session_reopened',
+]);
+const ALLOWED_IDLE_SUPPRESS_REASONS = new Set([
+  'waiting_human', 'human_active', 'reddy_disabled', 'already_closed',
+  'not_yet_due', 'claim_lost_race', 'send_failed', 'newer_inbound_detected', null,
+]);
+
+function sanitizeIdleLifecycleTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_IDLE_LIFECYCLE_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch : 'unknown',
+    suppress_reason: ALLOWED_IDLE_SUPPRESS_REASONS.has(event.suppress_reason) ? event.suppress_reason : null,
+    stale_idle_close_prevented: typeof event.stale_idle_close_prevented === 'boolean'
+      ? event.stale_idle_close_prevented : null,
+    duplicate_idle_close_prevented: typeof event.duplicate_idle_close_prevented === 'boolean'
+      ? event.duplicate_idle_close_prevented : null,
+  };
+}
+
+function logIdleLifecycleEvent(event = {}) {
+  const safe = sanitizeIdleLifecycleTelemetry(event);
+  console.log('[IdleLifecycleTelemetry]', JSON.stringify(safe));
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
   sanitizeAntiSpamTelemetry, logAntiSpamEvent,
+  sanitizeIdleLifecycleTelemetry, logIdleLifecycleEvent,
 };

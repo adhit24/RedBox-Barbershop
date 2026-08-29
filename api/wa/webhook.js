@@ -121,7 +121,13 @@ const {
   createUnavailableKnowledgeContext,
   serializeKnowledgeForPrompt,
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
-const { logOrchestratedEvent, logHandoffEvent, logAntiSpamEvent } = require('../../server/orchestrator/telemetry');
+const {
+  logOrchestratedEvent, logHandoffEvent, logAntiSpamEvent, logIdleLifecycleEvent,
+} = require('../../server/orchestrator/telemetry');
+const {
+  touchInboundActivity,
+  armIdleTimerAfterReply,
+} = require('../../server/services/conversationLifecycle');
 const {
   detectHandoffTrigger,
   computeHandoffPriority,
@@ -1294,6 +1300,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     createHandoffCase = (params) => createOrGetActiveCase(params, { supabase: getSupabase() }),
     appendHandoffMessage = (caseId, message) => appendHandoffCustomerMessage(caseId, message, { supabase: getSupabase() }),
     logHandoffTelemetry = logHandoffEvent,
+    touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, {}),
     recordEvaluation = (event) => recordEvaluationEvent(event, { supabase: getSupabase() }),
   } = deps;
 
@@ -1336,6 +1343,23 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   if (aiPaused || (checkHumanTakeover && await checkHumanTakeover(from))) {
     return { used: 'paused', reply: null, sendResult: null, error: null };
   }
+
+  // Conversation idle-timeout lifecycle: every inbound customer message that
+  // reaches this point resets the 5-minute idle timer (see
+  // conversationLifecycle.js). If the conversation was previously idle-closed,
+  // this also reopens it as a fresh short-term session — `sessionReopened`
+  // then forces this turn's conversationContext to start empty below, so
+  // stale booking/CRM-adjacent context from before the close cannot hijack a
+  // new, unrelated question. Best-effort: never blocks message processing.
+  let sessionReopened = false;
+  try {
+    const lifecycle = await touchLifecycle(from);
+    sessionReopened = Boolean(lifecycle?.reopened);
+    logIdleLifecycleEvent({
+      event_type: sessionReopened ? 'conversation_session_reopened' : 'conversation_idle_timer_reset',
+      branch,
+    });
+  } catch (_error) { /* best-effort — never blocks message processing */ }
 
   // Fast-path: points inquiry bypasses conversation history loading and Reddy generation
   const classification = classifyDeterministically(text);
@@ -1393,8 +1417,19 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
   }
 
-  // Load conversation history ONLY AFTER points shortcut is ruled out
-  const loadedHistoryResult = await safeLoadConversationHistory(loadConversationHistory, from);
+  // Load conversation history ONLY AFTER points shortcut is ruled out.
+  // A reopened session (see sessionReopened above) starts with empty
+  // short-term context on purpose — the prior, idle-closed conversation's
+  // turns must not resurface (e.g. stale booking CTA hijacking an unrelated
+  // new question). Long-term CRM/customer identity is untouched: it flows
+  // through customerIntelligence, not this turn-history array.
+  if (sessionReopened) {
+    conversationCache.delete(from);
+    cacheTimestamps.delete(from);
+  }
+  const loadedHistoryResult = sessionReopened
+    ? { history: [], status: 'empty' }
+    : await safeLoadConversationHistory(loadConversationHistory, from);
   const conversationContext = extractConversationContextEnvelope(loadedHistoryResult, text);
   let reply;
   let used = 'openai';
@@ -2462,6 +2497,13 @@ module.exports = async function handler(req, res, testDeps = {}) {
         device_hash: inboundClaim.providerDeviceHash || null,
         message_id_present: Boolean(inboundClaim.providerMessageId || inboundClaim.providerMessageIdSource),
       }),
+      // Every automated Reddy send arms/re-arms the 5-minute idle-close
+      // timer (spec: "timer starts AFTER Reddy successfully replies"). This
+      // is the single choke point every automated send in this file already
+      // flows through, so it covers the LLM path and every deterministic
+      // fast-path reply alike. Best-effort — never blocks the send result.
+      onSendSuccess: (to) => (testDeps.armIdleTimer || armIdleTimerAfterReply)(supabaseForGuard, to, {})
+        .then(() => logIdleLifecycleEvent({ event_type: 'conversation_idle_timer_scheduled', branch: branchForGuardTelemetry })),
       observeMessage: (outboundMessage, evaluationContext) => observeOutboundMessage(outboundMessage, {
         ...evaluationContext,
         provider: 'fonnte',

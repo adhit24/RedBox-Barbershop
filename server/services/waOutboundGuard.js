@@ -25,11 +25,18 @@ function firstRpcRow(data) {
   return data || null;
 }
 
-/** One DB authority call serializes, checks rolling windows, and reserves. */
+/**
+ * One DB authority call serializes, checks rolling windows, and reserves.
+ * inboundEventId may be explicitly `null` for a system-initiated send (e.g.
+ * the idle-close cron job) that has no triggering inbound customer message —
+ * the RPC still enforces the same duplicate-content/rate-limit checks by
+ * destination_hash in that case. Only an accidental omission (`undefined`)
+ * is rejected.
+ */
 async function reserveAutomatedSend(supabase, {
   inboundEventId, destinationHash, contentHash,
 }) {
-  if (!supabase || !inboundEventId || !destinationHash || !contentHash) {
+  if (!supabase || inboundEventId === undefined || !destinationHash || !contentHash) {
     return { status: 'error', claimId: null };
   }
   try {
@@ -50,7 +57,7 @@ async function reserveAutomatedSend(supabase, {
 }
 
 async function markOutboundResult(supabase, { inboundEventId, claimId, sent }) {
-  if (!supabase || !inboundEventId || !claimId) return;
+  if (!supabase || inboundEventId === undefined || !claimId) return;
   try {
     await supabase.rpc('complete_wa_automated_send', {
       p_inbound_event_id: inboundEventId,
@@ -62,7 +69,8 @@ async function markOutboundResult(supabase, { inboundEventId, claimId, sent }) {
 
 /** Manual/human sends never call this wrapper and remain unaffected. */
 function createGuardedSend({
-  realSend, supabase, inboundEventRowId, isEnabled = () => true, logEvent = () => {}, observeMessage = () => {},
+  realSend, supabase, inboundEventRowId, isEnabled = () => true, logEvent = () => {},
+  observeMessage = () => {}, onSendSuccess = async () => {},
 }) {
   return async function guardedSend(to, message, options = {}) {
     const branch = options.branch || null;
@@ -109,6 +117,9 @@ function createGuardedSend({
       throw error;
     }
     const sent = Boolean(result && result.status !== false);
+    if (sent) {
+      try { await onSendSuccess(to, message, options); } catch (_error) { /* never blocks the send result */ }
+    }
     await markOutboundResult(supabase, {
       inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent,
     });

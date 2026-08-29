@@ -9,6 +9,7 @@ const {
 } = require('./bookingContext');
 const { guardReddyReply, suppressUnsolicitedBookingCta, REDDY_BOOKING_EXECUTION } = require('./bookingGuards');
 const { guardRealtimeBarberFacts } = require('./realtimeFactGuard');
+const { stripGenericClosingQuestion } = require('./closingSuppressionGuard');
 const { deriveBookingEligibility } = require('./bookingEligibility');
 const { logOrchestratedEvent } = require('../../orchestrator/telemetry');
 
@@ -299,6 +300,27 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       trust_status: 'unverified',
       execution_status: 'guarded',
       realtime_fact_guard_triggered: true,
+    });
+  }
+
+  // Conversation lifecycle: normal replies must not append a generic closing
+  // question — the idle-timeout cron, not the LLM on every turn, controls
+  // when a conversation ends (see conversationLifecycle.js). Prompt-only
+  // instructions already proved insufficient elsewhere in this codebase
+  // (guardReddyReply's own history), so this is a deterministic safety net,
+  // not the only defense. A genuine task-advancing clarification question is
+  // never matched by these patterns and survives untouched.
+  const closingGuarded = stripGenericClosingQuestion(reply);
+  reply = closingGuarded.sanitizedReply;
+  if (closingGuarded.closingStripped) {
+    logBookingTelemetry({
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      intent: orchestrationDecision?.intent || 'unknown',
+      action: 'generic_closing_suppressed',
+      branch,
+      trust_status: 'unverified',
+      execution_status: 'guarded',
     });
   }
 
