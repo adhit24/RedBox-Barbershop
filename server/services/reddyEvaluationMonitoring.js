@@ -81,6 +81,17 @@ const EVENT_DEFINITIONS = Object.freeze({
   schedule_sync_conflict_unresolved: ['HIGH', 'data_authority', 'SCHEDULE_CONFLICT_UNRESOLVED'],
   schedule_authority_degraded: ['HIGH', 'data_authority', 'SCHEDULE_AUTHORITY_DEGRADED'],
   home_service_schema_mismatch: ['HIGH', 'data_authority', 'HOME_SERVICE_SCHEMA_MISMATCH'],
+  // CRM Integrity Round 1 (customer identity authority) — observer-only,
+  // same rationale as every other family here. Fired by
+  // server/services/customerIdentityResolver.js. Ambiguous and duplicate
+  // findings are HIGH because they represent exactly the production risk
+  // this round exists to make visible (Reddy/CRM must never guess); a
+  // resolved or not-found lookup is normal traffic (INFO).
+  crm_identity_resolved: ['INFO', 'crm_identity', 'CRM_IDENTITY_RESOLVED'],
+  crm_identity_not_found: ['INFO', 'crm_identity', 'CRM_IDENTITY_NOT_FOUND'],
+  crm_identity_ambiguous: ['HIGH', 'crm_identity', 'CRM_IDENTITY_AMBIGUOUS'],
+  crm_duplicate_identity_detected: ['HIGH', 'crm_identity', 'CRM_DUPLICATE_IDENTITY_DETECTED'],
+  crm_identity_lookup_failed: ['HIGH', 'crm_identity', 'CRM_IDENTITY_LOOKUP_FAILED'],
 });
 
 let supabaseProvider = () => null;
@@ -220,6 +231,20 @@ function mapTelemetryToEvaluation(family, telemetry = {}) {
   if (family === 'data_authority') {
     return EVENT_DEFINITIONS[telemetry.event_type]
       ? [{ ...common, event_type: telemetry.event_type, metadata: { reason: telemetry.reason, source: telemetry.source } }]
+      : [];
+  }
+  if (family === 'crm_identity') {
+    return EVENT_DEFINITIONS[telemetry.event_type]
+      ? [{
+        ...common,
+        event_type: telemetry.event_type,
+        metadata: {
+          source: telemetry.source,
+          match_basis: telemetry.match_basis,
+          candidates_count: telemetry.candidates_count,
+          normalized_input_present: telemetry.normalized_input_present,
+        },
+      }]
       : [];
   }
   return [];

@@ -50,6 +50,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         phone_e164: customer.phone_e164 || (customer.wa ? `+${normPhone}` : null),
         resolution: 'direct_id_match',
         customer_row: customer,
+        candidates_count: 1,
       };
     }
   }
@@ -64,7 +65,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         .eq('id', cleanId)
         .maybeSingle();
       if (error) {
-        return { found: false, customer_id: null, resolution: 'db_error', error: error.message };
+        return { found: false, customer_id: null, resolution: 'db_error', error: error.message, candidates_count: null };
       }
       if (customer) {
         const normPhone = normalizeMemberPhone(customer.wa || customer.phone_e164);
@@ -76,6 +77,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           phone_e164: customer.phone_e164 || (customer.wa ? `+${normPhone}` : null),
           resolution: 'direct_id_match',
           customer_row: customer,
+          candidates_count: 1,
         };
       }
     }
@@ -83,6 +85,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       found: false,
       customer_id: null,
       resolution: 'missing_input',
+      candidates_count: 0,
     };
   }
 
@@ -92,6 +95,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       found: false,
       customer_id: null,
       resolution: 'invalid_phone_format',
+      candidates_count: null,
     };
   }
 
@@ -115,6 +119,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       customer_id: null,
       resolution: 'db_error',
       error: profErr.message,
+      candidates_count: null,
     };
   }
 
@@ -126,6 +131,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         customer_id: null,
         resolution: 'ambiguous',
         reason: 'multiple_member_profile_records',
+        candidates_count: profileRows.length,
       };
     }
     memberProfileRow = profileRows[0];
@@ -149,6 +155,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       customer_id: null,
       resolution: 'db_error',
       error: custErr.message,
+      candidates_count: null,
     };
   }
 
@@ -174,6 +181,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           customer_id: null,
           resolution: 'ambiguous',
           reason: 'conflicting_customer_phones',
+          candidates_count: rawCandidateRows.length,
         };
       }
     } else if (hasWa) {
@@ -183,6 +191,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           customer_id: null,
           resolution: 'ambiguous',
           reason: 'conflicting_customer_phones',
+          candidates_count: rawCandidateRows.length,
         };
       }
     } else if (hasE164) {
@@ -192,6 +201,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           customer_id: null,
           resolution: 'ambiguous',
           reason: 'conflicting_customer_phones',
+          candidates_count: rawCandidateRows.length,
         };
       }
     }
@@ -211,6 +221,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         customer_id: null,
         resolution: 'ambiguous',
         reason: 'dual_claim_conflict',
+        candidates_count: aliasCustomerIds.length,
       };
     }
   }
@@ -227,12 +238,14 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         phone_e164: `+${canonical}`,
         resolution: 'member_profile_match',
         member_profile_row: memberProfileRow,
+        candidates_count: 1,
       };
     }
     return {
       found: false,
       customer_id: null,
       resolution: 'not_found',
+      candidates_count: 0,
     };
   }
 
@@ -243,6 +256,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       found: false,
       customer_id: null,
       resolution: 'not_found',
+      candidates_count: 0,
     };
   }
 
@@ -255,6 +269,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
     resolution: 'phone_match',
     customer_row: merged,
     member_profile_row: memberProfileRow,
+    candidates_count: aliasCustomerIds.length,
   };
 }
 

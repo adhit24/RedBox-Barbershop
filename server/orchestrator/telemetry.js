@@ -257,10 +257,53 @@ function logDataAuthorityEvent(event = {}) {
   return safe;
 }
 
+// CRM Integrity Round 1 — its own small allowlist schema, same rationale as
+// every other block above: this fires from server/services/
+// customerIdentityResolver.js, not from orchestrator routing or Reddy
+// itself. OBSERVER-ONLY: nothing reads this telemetry to make a decision —
+// it exists so identity-resolution health (and duplicate-identity
+// prevalence) is visible instead of only ever reaching a console.log. No
+// phone, name, raw WhatsApp identifier, or message content — only
+// classification dimensions.
+const ALLOWED_CRM_IDENTITY_EVENTS = new Set([
+  'crm_identity_resolved',
+  'crm_identity_not_found',
+  'crm_identity_ambiguous',
+  'crm_duplicate_identity_detected',
+  'crm_identity_lookup_failed',
+]);
+const ALLOWED_CRM_IDENTITY_MATCH_BASES = new Set([
+  'normalized_phone', 'moka_customer_id', 'member_profile', 'customer_id', null,
+]);
+const ALLOWED_CRM_IDENTITY_SOURCES = new Set([
+  'crm_customer_self', 'crm_agent', 'reddy', 'moka_sync', 'admin', 'unknown',
+]);
+
+function sanitizeCrmIdentityTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_CRM_IDENTITY_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    source: ALLOWED_CRM_IDENTITY_SOURCES.has(event.source) ? event.source : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : null,
+    match_basis: ALLOWED_CRM_IDENTITY_MATCH_BASES.has(event.match_basis) ? event.match_basis : null,
+    candidates_count: Number.isInteger(event.candidates_count) && event.candidates_count >= 0 ? event.candidates_count : null,
+    normalized_input_present: typeof event.normalized_input_present === 'boolean' ? event.normalized_input_present : null,
+  };
+}
+
+function logCrmIdentityEvent(event = {}) {
+  const safe = sanitizeCrmIdentityTelemetry(event);
+  console.log('[CrmIdentityTelemetry]', JSON.stringify(safe));
+  // Fail-open, observer-only — same contract as every other logXEvent call.
+  observeTelemetry('crm_identity', safe);
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
   sanitizeAntiSpamTelemetry, logAntiSpamEvent,
   sanitizeIdleLifecycleTelemetry, logIdleLifecycleEvent,
   sanitizeDataAuthorityTelemetry, logDataAuthorityEvent,
+  sanitizeCrmIdentityTelemetry, logCrmIdentityEvent,
 };

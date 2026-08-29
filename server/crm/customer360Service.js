@@ -16,6 +16,7 @@ async function safeSupabaseQuery(query) {
  */
 
 const { resolveCustomerIdentity } = require('./customerIdentity');
+const { logCrmIdentityEvent } = require('../orchestrator/telemetry');
 const { resolveMembershipTier, isActiveMembership } = require('../membership-policy');
 const { normalizeMemberPhone, getMemberPhoneVariants } = require('../member-identity');
 const {
@@ -264,6 +265,36 @@ function calculateMode(items = [], recentOrder = []) {
   return candidates.sort()[0];
 }
 
+const CRM_IDENTITY_RESOLUTION_TO_MATCH_BASIS = {
+  direct_id_match: 'customer_id',
+  phone_match: 'normalized_phone',
+  member_profile_match: 'member_profile',
+};
+
+function emitCrmIdentityTelemetry(source, identity, identityInput = {}) {
+  const resolution = identity && identity.resolution;
+  const candidatesCount = Number.isInteger(identity && identity.candidates_count) ? identity.candidates_count : null;
+  let eventType = null;
+  if (resolution === 'db_error') eventType = 'crm_identity_lookup_failed';
+  else if (resolution === 'ambiguous') eventType = 'crm_identity_ambiguous';
+  else if (resolution === 'not_found') eventType = 'crm_identity_not_found';
+  else if (CRM_IDENTITY_RESOLUTION_TO_MATCH_BASIS[resolution]) {
+    eventType = candidatesCount > 1 ? 'crm_duplicate_identity_detected' : 'crm_identity_resolved';
+  }
+  if (!eventType) return;
+  try {
+    logCrmIdentityEvent({
+      event_type: eventType,
+      source,
+      match_basis: CRM_IDENTITY_RESOLUTION_TO_MATCH_BASIS[resolution] || null,
+      candidates_count: candidatesCount,
+      normalized_input_present: Boolean(identityInput.phone || identityInput.user_key || identityInput.customer_id),
+    });
+  } catch {
+    // Observer-only: telemetry must never affect Customer 360 resolution.
+  }
+}
+
 /**
  * Fetches Customer 360 facts.
  * @param {object} supabase - Supabase client instance
@@ -273,6 +304,12 @@ function calculateMode(items = [], recentOrder = []) {
 async function getCustomer360(supabase, identityInput = {}) {
   // Step 1: Resolve identity
   const identity = await resolveCustomerIdentity(supabase, identityInput);
+
+  // CRM Integrity Round 1: observer-only Task16 telemetry side effect.
+  // Additive only — does not alter identity, control flow, or return shape.
+  // See server/services/customerIdentityResolver.js for the canonical
+  // {status, match_basis, candidates_count} contract this mirrors.
+  emitCrmIdentityTelemetry('customer360', identity, identityInput);
 
   if (identity.resolution === 'db_error') {
     return {
