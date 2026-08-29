@@ -134,7 +134,7 @@ test('issueCodeForStatus maps every status to a bounded, PII-free code (or null)
 
 // ── 8-10: booking-creation orchestration (linkNewlyCreatedBooking) ────────
 
-function fakeBookingsSupabase(initialRows) {
+function fakeBookingsSupabase(initialRows, { updateError = null } = {}) {
   const rows = initialRows.map((r) => ({ ...r }));
   return {
     _rows: rows,
@@ -142,6 +142,7 @@ function fakeBookingsSupabase(initialRows) {
       if (table !== 'bookings') throw new Error(`unexpected table ${table}`);
       const filters = [];
       let updatePayload = null;
+      let selectFields = null;
       const api = {
         update(payload) { updatePayload = payload; return api; },
         eq(field, value) { filters.push((r) => r[field] === value); return api; },
@@ -149,10 +150,15 @@ function fakeBookingsSupabase(initialRows) {
           filters.push((r) => (value === null ? r[field] === null || r[field] === undefined : r[field] === value));
           return api;
         },
+        select(fields) { selectFields = fields; return api; },
         then(onFulfilled, onRejected) {
+          if (updateError) return Promise.resolve({ data: null, error: updateError }).then(onFulfilled, onRejected);
           const matches = rows.filter((r) => filters.every((f) => f(r)));
           matches.forEach((r) => Object.assign(r, updatePayload));
-          return Promise.resolve({ data: matches, error: null }).then(onFulfilled, onRejected);
+          const projected = selectFields
+            ? matches.map((r) => ({ id: r.id, customer_id: r.customer_id }))
+            : matches;
+          return Promise.resolve({ data: projected, error: null }).then(onFulfilled, onRejected);
         },
       };
       return api;

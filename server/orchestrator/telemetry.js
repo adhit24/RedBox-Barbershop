@@ -320,6 +320,14 @@ const ALLOWED_BOOKING_LINKAGE_ISSUE_CODES = new Set([
   'ambiguous_phone', 'no_matching_customer', 'missing_identity', 'malformed_phone',
   'conflicting_stronger_identity', 'resolver_error', null,
 ]);
+// Correction Round 1, Blocker 3: the actual persistence outcome of the
+// conditional UPDATE, kept deliberately separate from `status` (the PURE
+// pre-write plan) — so this telemetry can never be misread as claiming a
+// link was written when it was not. See bookingCustomerLinkage.js's
+// PERSISTENCE_STATUS for the authoritative definition of each value.
+const ALLOWED_BOOKING_LINKAGE_PERSISTENCE_STATUSES = new Set([
+  'not_attempted', 'persisted', 'write_failed', 'conditional_write_skipped',
+]);
 
 function sanitizeBookingLinkageTelemetry(event = {}) {
   return {
@@ -330,6 +338,8 @@ function sanitizeBookingLinkageTelemetry(event = {}) {
     branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : null,
     candidate_count: Number.isInteger(event.candidate_count) && event.candidate_count >= 0 ? event.candidate_count : null,
     safe_to_link: typeof event.safe_to_link === 'boolean' ? event.safe_to_link : null,
+    persistence_status: ALLOWED_BOOKING_LINKAGE_PERSISTENCE_STATUSES.has(event.persistence_status)
+      ? event.persistence_status : 'not_attempted',
     issue_code: ALLOWED_BOOKING_LINKAGE_ISSUE_CODES.has(event.issue_code) ? event.issue_code : null,
   };
 }

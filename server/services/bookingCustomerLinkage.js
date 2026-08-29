@@ -184,6 +184,20 @@ function issueCodeForStatus(status) {
   return Object.hasOwn(ISSUE_CODE_BY_STATUS, status) ? ISSUE_CODE_BY_STATUS[status] : null;
 }
 
+// Correction Round 1, Blocker 3: the PURE plan's `status`/`safe_to_link`
+// describe the classification BEFORE any write is attempted — they must stay
+// exactly as planBookingCustomerLinkage computed them (semantic distinction
+// the correction explicitly requires). This separate, bounded outcome
+// describes what actually happened to the conditional UPDATE itself, so a
+// caller/telemetry consumer can never mistake "classified as safe_link" for
+// "actually persisted."
+const PERSISTENCE_STATUS = Object.freeze({
+  NOT_ATTEMPTED: 'not_attempted', // status was not safe_link, so no write was ever tried
+  PERSISTED: 'persisted', // exactly one row updated, and it carries the proposed customer_id
+  WRITE_FAILED: 'write_failed', // Supabase returned an error, or an impossible/unexpected result shape
+  CONDITIONAL_WRITE_SKIPPED: 'conditional_write_skipped', // zero rows matched WHERE customer_id IS NULL — someone else linked/unlinked it first
+});
+
 /**
  * Orchestration helper for the ONLY case that needs a DB write: a booking
  * that was just created with no customer_id at all (Step 5). NOT part of the
@@ -195,7 +209,11 @@ function issueCodeForStatus(status) {
  * Never throws — any resolver or DB error is caught and reported back as a
  * lookup_failed-shaped plan so the caller's booking response is never put at
  * risk by a CRM-linkage failure (spec: "NEVER break reservation because CRM
- * linkage failed").
+ * linkage failed"). Callers are expected to `await` this (Correction Round 1,
+ * Blocker 2 — fire-and-forget is not durable enough in a serverless runtime
+ * that can kill orphaned promises once the HTTP response ends), but that
+ * await can never fail the reservation: every failure mode this function can
+ * encounter is absorbed internally and returned as data, never a rejection.
  *
  * @param {object} supabase
  * @param {object} params
@@ -207,12 +225,13 @@ function issueCodeForStatus(status) {
  * @param {string|null} [params.branch]
  * @param {object} [deps] - test-only override point (production callers omit
  *   this — real resolveCustomerIdentity/logBookingLinkageEvent are used).
- * @returns {Promise<ReturnType<typeof planBookingCustomerLinkage>>}
+ * @returns {Promise<ReturnType<typeof planBookingCustomerLinkage> & {persistence_status: string}>}
  */
 async function linkNewlyCreatedBooking(supabase, { booking, phone, source, branch = null } = {}, deps = {}) {
   const { resolveIdentity = resolveCustomerIdentity, logEvent = logBookingLinkageEvent } = deps;
   let resolverResult = null;
   let bookingPlan;
+  let persistenceStatus = PERSISTENCE_STATUS.NOT_ATTEMPTED;
   try {
     resolverResult = await resolveIdentity(supabase, { phone }, { source });
     bookingPlan = planBookingCustomerLinkage({ booking: { id: booking?.id, customer_id: null }, resolverResult });
@@ -223,10 +242,30 @@ async function linkNewlyCreatedBooking(supabase, { booking, phone, source, branc
       // plan and this write (belt-and-suspenders — this helper only ever
       // runs once, immediately after insert, but the WHERE clause is the
       // actual safety guarantee, not the caller's timing assumption).
-      await supabase.from('bookings')
+      // Correction Round 1, Blocker 3: Supabase reports write failures via
+      // `{ data, error }`, not by throwing — the result MUST be inspected,
+      // never assumed, before a link is ever reported/logged as persisted.
+      const { data: updatedRows, error: updateError } = await supabase.from('bookings')
         .update({ customer_id: bookingPlan.proposed_customer_id })
         .eq('id', booking.id)
-        .is('customer_id', null);
+        .is('customer_id', null)
+        .select('id, customer_id');
+
+      if (updateError) {
+        persistenceStatus = PERSISTENCE_STATUS.WRITE_FAILED;
+      } else if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+        // Someone else already linked (or the row otherwise no longer
+        // matched customer_id IS NULL) between our plan and this write —
+        // never claim success, and never overwrite whatever is there now.
+        persistenceStatus = PERSISTENCE_STATUS.CONDITIONAL_WRITE_SKIPPED;
+      } else if (updatedRows.length === 1 && updatedRows[0].customer_id === bookingPlan.proposed_customer_id) {
+        persistenceStatus = PERSISTENCE_STATUS.PERSISTED;
+      } else {
+        // >1 rows (impossible — id is a PK) or a returned row whose
+        // customer_id doesn't match what we asked for: an invariant we do
+        // not understand just broke. Fail closed, never trust it.
+        persistenceStatus = PERSISTENCE_STATUS.WRITE_FAILED;
+      }
     }
   } catch (_error) {
     bookingPlan = {
@@ -239,6 +278,7 @@ async function linkNewlyCreatedBooking(supabase, { booking, phone, source, branc
       safe_to_link: false,
       reason: 'linkage_helper_threw',
     };
+    persistenceStatus = PERSISTENCE_STATUS.NOT_ATTEMPTED;
   }
 
   try {
@@ -248,16 +288,20 @@ async function linkNewlyCreatedBooking(supabase, { booking, phone, source, branc
       source,
       branch,
       candidate_count: resolverResult?.candidates_count ?? null,
-      safe_to_link: bookingPlan.safe_to_link,
+      // Telemetry must not imply the link was persisted when it was not —
+      // this reflects the ACTUAL write outcome, not just the pre-write plan.
+      safe_to_link: persistenceStatus === PERSISTENCE_STATUS.PERSISTED,
+      persistence_status: persistenceStatus,
       issue_code: issueCodeForStatus(bookingPlan.status),
     });
   } catch (_telemetryError) { /* observer-only, never blocks the caller */ }
 
-  return bookingPlan;
+  return { ...bookingPlan, persistence_status: persistenceStatus };
 }
 
 module.exports = {
   STATUS,
+  PERSISTENCE_STATUS,
   planBookingCustomerLinkage,
   issueCodeForStatus,
   linkNewlyCreatedBooking,
