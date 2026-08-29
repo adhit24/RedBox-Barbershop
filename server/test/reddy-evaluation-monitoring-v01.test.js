@@ -259,10 +259,12 @@ test('actual price shortcut is recorded once even when the telemetry adapter is 
   assert.equal(events.filter((item) => item.event_type === 'keyword_shortcut_used').length, 1);
 });
 
-test('health summary paginates beyond 5000 and includes the oldest event in the window', async () => {
-  const events = Array.from({ length: 5000 }, (_, index) => event(
+test('health summary paginates beyond 5000 and oldest events affect totals and rates', async () => {
+  const events = Array.from({ length: 4999 }, (_, index) => event(
     'outbound_sent', 'tegal', new Date(Date.parse('2026-08-29T12:00:00Z') - index * 1000).toISOString(),
   ));
+  events.push(event('inbound_event_claimed', 'tegal', '2026-08-29T10:01:00Z'));
+  events.push(event('outbound_provider_error', 'tegal', '2026-08-29T10:00:30Z'));
   events.push(event('inbound_event_claimed', 'tegal', '2026-08-29T10:00:00Z'));
   const supabase = healthSupabase(events);
 
@@ -271,8 +273,9 @@ test('health summary paginates beyond 5000 and includes the oldest event in the 
   });
 
   assert.equal(result.status, 'ok');
-  assert.equal(result.summary.totals.total_automated_outbound, 5000);
-  assert.equal(result.summary.totals.total_inbound, 1);
+  assert.equal(result.summary.totals.total_automated_outbound, 4999);
+  assert.equal(result.summary.totals.total_inbound, 2);
+  assert.equal(result.summary.totals.provider_error_rate, 0.0002);
   assert.deepEqual(supabase.ranges.at(-1), [5000, 5999]);
   assert.ok(supabase.filters.some((filter) => filter[0] === 'eq' && filter[1] === 'branch' && filter[2] === 'tegal'));
 });
