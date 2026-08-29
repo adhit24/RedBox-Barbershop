@@ -316,7 +316,9 @@ async function clearHumanTakeover(phone) {
   const sb = getSupabase();
   if (!sb) return;
   const key = normalizePhone(phone);
-  try { await sb.from('wa_paused').delete().eq('sender', key); } catch {}
+  try {
+    await sb.from('wa_paused').delete().eq('sender', key);
+  } catch {}
 }
 
 async function isHumanTakeover(phone) {
@@ -1355,7 +1357,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'berapa', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
+  if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'price', 'tarif', 'biaya', 'bayar berapa'])) {
     const svcText = buildServicesText(branch);
     reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
