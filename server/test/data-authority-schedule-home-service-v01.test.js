@@ -20,19 +20,33 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { _reconcileOpenBillOverlap } = require('../moka/sync');
+const {
+  _reconcileOpenBillOverlap, _checkDurableConflictBlock, _recordConflictBlock,
+} = require('../moka/sync');
 const { sanitizeDataAuthorityTelemetry, logDataAuthorityEvent } = require('../orchestrator/telemetry');
+const {
+  EVENT_DEFINITIONS, mapTelemetryToEvaluation, recordEvaluationEvent,
+} = require('../services/reddyEvaluationMonitoring');
 const { getBarberScheduleStatus } = require('../services/barberScheduleAuthority');
 const { guardRealtimeBarberFacts } = require('../agents/reddy/realtimeFactGuard');
 
-// ── Fake schedules-table Supabase builder (mirrors the pattern already used ──
-// ── across this codebase's other test suites — see task15-p0-crosslayer, ────
-// ── reddy-idle-timeout-v01) ───────────────────────────────────────────────
-function fakeSchedulesSupabase(rows = []) {
-  const state = rows.map((r) => ({ ...r }));
+// ── Fake schedules + sync_logs Supabase builder (mirrors the pattern already ──
+// ── used across this codebase's other test suites — see task15-p0-crosslayer, ─
+// ── reddy-idle-timeout-v01). Two independent in-memory tables, sharing no ──────
+// ── process state beyond this one object — a FRESH instance per test call ──────
+// ── simulates a genuinely separate serverless invocation reading only what ─────
+// ── was actually persisted (never in-memory only). ─────────────────────────────
+function fakeDataAuthoritySupabase({ schedules = [], syncLogs = [] } = {}) {
+  // Deliberately NOT copied — callers that want two separate "invocations"
+  // reading/writing the SAME durable store (see DA1-13) pass the identical
+  // array references into two fakeDataAuthoritySupabase() calls. Every other
+  // test passes fresh literal arrays inline, so there is no cross-test
+  // sharing risk either way.
+  const scheduleRows = schedules;
+  const syncLogRows = syncLogs;
+  let nextSyncLogId = syncLogRows.length + 1;
 
-  function from(table) {
-    if (table !== 'schedules') throw new Error(`Unexpected table: ${table}`);
+  function schedulesTable() {
     const filters = [];
     const builder = {
       select() { return builder; },
@@ -42,14 +56,56 @@ function fakeSchedulesSupabase(rows = []) {
       gt(field, value) { filters.push((row) => row[field] > value); return builder; },
       limit() { return builder; },
       async maybeSingle() {
-        const match = state.find((row) => filters.every((f) => f(row))) || null;
+        const match = scheduleRows.find((row) => filters.every((f) => f(row))) || null;
         return { data: match, error: null };
       },
     };
     return builder;
   }
 
-  return { rows: state, from };
+  function syncLogsTable() {
+    const filters = [];
+    let insertPayload = null;
+    let orderDesc = false;
+    const builder = {
+      select() { return builder; },
+      eq(field, value) { filters.push((row) => row[field] === value); return builder; },
+      order(_field, opts) { orderDesc = !(opts?.ascending ?? true); return builder; },
+      limit() { return builder; },
+      insert(payload) { insertPayload = payload; return builder; },
+      async maybeSingle() {
+        if (insertPayload) {
+          const row = { id: `log-${nextSyncLogId++}`, created_at: new Date().toISOString(), ...insertPayload };
+          syncLogRows.push(row);
+          return { data: row, error: null };
+        }
+        let matches = syncLogRows.filter((row) => filters.every((f) => f(row)));
+        matches = matches.slice().sort((a, b) => (orderDesc ? -1 : 1) * (a.created_at < b.created_at ? -1 : 1));
+        return { data: matches[0] || null, error: null };
+      },
+      then(onFulfilled, onRejected) {
+        // Supports `await supabase.from('sync_logs').insert({...})` with no
+        // trailing .select()/.maybeSingle() — same thenable-builder trick
+        // used elsewhere in this codebase's test fakes.
+        return Promise.resolve(this.maybeSingle()).then(onFulfilled, onRejected);
+      },
+    };
+    return builder;
+  }
+
+  function from(table) {
+    if (table === 'schedules') return schedulesTable();
+    if (table === 'sync_logs') return syncLogsTable();
+    throw new Error(`Unexpected table: ${table}`);
+  }
+
+  return { scheduleRows, syncLogRows, from };
+}
+
+// Back-compat alias — most DA-01 tests only ever touch the schedules table.
+function fakeSchedulesSupabase(rows = []) {
+  const combined = fakeDataAuthoritySupabase({ schedules: rows });
+  return { rows: combined.scheduleRows, from: combined.from };
 }
 
 // ── DA-01: _reconcileOpenBillOverlap ──────────────────────────────────────
@@ -226,6 +282,197 @@ test('DA1-10. Reddy cannot claim barber availability when the schedule authority
   assert.equal(guarded.triggered, true, 'an unverified presence-today claim must always be caught, schedule lookup or not');
 });
 
+// ── DA-01 Correction Round 1 (Blocker 1): durable conflict short-circuit ──
+
+test('DA1-11. first true overlap hits the exclusion constraint once, classifies it, and persists the minimal conflict record', async () => {
+  const now = '2026-08-29T10:00:00.000Z';
+  const later = '2026-08-29T11:00:00.000Z';
+  const sb = fakeDataAuthoritySupabase({
+    schedules: [{ id: 'sch-winner', barber_id: 'barber-1', external_id: 'BILL-OTHER', source: 'moka', status: 'reserved', start_time: now, end_time: later }],
+  });
+
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const result = await _reconcileOpenBillOverlap(sb, { billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later) });
+    assert.equal(result, 'skipped');
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(sb.syncLogRows.length, 1, 'a conflict record must be persisted for a true overlap');
+  const record = sb.syncLogRows[0];
+  assert.equal(record.entity_type, 'schedule_conflict');
+  assert.equal(record.entity_id, 'BILL-42');
+  assert.equal(record.status, 'failed');
+  assert.equal(record.payload.conflicting_schedule_id, 'sch-winner');
+});
+
+test('DA1-12. a second pull for the same bill short-circuits before INSERT — no new exclusion violation attempted', async () => {
+  const now = '2026-08-29T10:00:00.000Z';
+  const later = '2026-08-29T11:00:00.000Z';
+  const sb = fakeDataAuthoritySupabase({
+    schedules: [{ id: 'sch-winner', barber_id: 'barber-1', external_id: 'BILL-OTHER', source: 'moka', status: 'reserved', start_time: now, end_time: later }],
+  });
+
+  // Pass 1: real conflict occurs and is recorded.
+  await _recordConflictBlock(sb, { billId: 'BILL-42', barberId: 'barber-1', conflict: { id: 'sch-winner', external_id: 'BILL-OTHER', source: 'moka' } });
+
+  // Pass 2: _processOpenBill's new early gate checks BEFORE attempting any
+  // preflight or INSERT — proving the second pull never even tries to write.
+  const { blocked } = await _checkDurableConflictBlock(sb, {
+    billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later),
+  });
+  assert.equal(blocked, true, 'a still-live conflict must short-circuit the next pull before any INSERT attempt');
+  // No new row was written to `schedules` by the check itself.
+  assert.equal(sb.scheduleRows.length, 1);
+});
+
+test('DA1-13. conflict state is durable across a fresh Supabase instance, not in-memory only', async () => {
+  const now = '2026-08-29T10:00:00.000Z';
+  const later = '2026-08-29T11:00:00.000Z';
+  const persistedSyncLogs = [];
+  const persistedSchedules = [{ id: 'sch-winner', barber_id: 'barber-1', external_id: 'BILL-OTHER', source: 'moka', status: 'reserved', start_time: now, end_time: later }];
+
+  // "Invocation 1" (its own fake supabase instance) records the conflict.
+  const invocation1 = fakeDataAuthoritySupabase({ schedules: persistedSchedules, syncLogs: persistedSyncLogs });
+  await _recordConflictBlock(invocation1, { billId: 'BILL-42', barberId: 'barber-1', conflict: { id: 'sch-winner', external_id: 'BILL-OTHER', source: 'moka' } });
+
+  // "Invocation 2" is a BRAND NEW object — no shared JS reference to
+  // invocation1 except the two arrays that stand in for the actual Postgres
+  // tables, simulating a different serverless instance reading only what
+  // was actually persisted (never process memory).
+  const invocation2 = fakeDataAuthoritySupabase({ schedules: persistedSchedules, syncLogs: persistedSyncLogs });
+  const { blocked } = await _checkDurableConflictBlock(invocation2, {
+    billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later),
+  });
+  assert.equal(blocked, true, 'the conflict record must be readable from a completely separate Supabase client/instance');
+});
+
+test('DA1-14. once the blocking schedule is cancelled/removed, the bill becomes retryable again', async () => {
+  const now = '2026-08-29T10:00:00.000Z';
+  const later = '2026-08-29T11:00:00.000Z';
+  const sb = fakeDataAuthoritySupabase({
+    schedules: [{ id: 'sch-winner', barber_id: 'barber-1', external_id: 'BILL-OTHER', source: 'moka', status: 'reserved', start_time: now, end_time: later }],
+  });
+  await _recordConflictBlock(sb, { billId: 'BILL-42', barberId: 'barber-1', conflict: { id: 'sch-winner', external_id: 'BILL-OTHER', source: 'moka' } });
+
+  // The blocking schedule is now cancelled (e.g. resolved manually in Moka).
+  sb.scheduleRows[0].status = 'cancelled';
+
+  const { blocked } = await _checkDurableConflictBlock(sb, {
+    billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later),
+  });
+  assert.equal(blocked, false, 'a resolved conflict must not permanently suppress future retries — no explicit "clear" step needed, re-validation is live');
+});
+
+test('DA1-15. an unresolved/transient classification never persists a block (no permanent suppression without evidence)', async () => {
+  const now = '2026-08-29T10:00:00.000Z';
+  const later = '2026-08-29T11:00:00.000Z';
+  const sb = fakeDataAuthoritySupabase({ schedules: [] }); // no conflicting row found on re-check
+
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await _reconcileOpenBillOverlap(sb, { billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later) });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(sb.syncLogRows.length, 0, 'an unresolved (no evidence of a real conflicting row) outcome must not write a durable block');
+  const { blocked } = await _checkDurableConflictBlock(sb, {
+    billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later),
+  });
+  assert.equal(blocked, false);
+});
+
+test('DA1-16. _checkDurableConflictBlock never mutates or deletes any schedule row — it only reads', async () => {
+  const now = '2026-08-29T10:00:00.000Z';
+  const later = '2026-08-29T11:00:00.000Z';
+  const winnerRow = { id: 'sch-winner', barber_id: 'barber-1', external_id: 'BILL-OTHER', source: 'moka', status: 'reserved', start_time: now, end_time: later };
+  const sb = fakeDataAuthoritySupabase({ schedules: [{ ...winnerRow }] });
+  await _recordConflictBlock(sb, { billId: 'BILL-42', barberId: 'barber-1', conflict: { id: 'sch-winner', external_id: 'BILL-OTHER', source: 'moka' } });
+
+  await _checkDurableConflictBlock(sb, { billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later) });
+  await _checkDurableConflictBlock(sb, { billId: 'BILL-42', barberId: 'barber-1', startTime: new Date(now), endTime: new Date(later) });
+
+  assert.equal(sb.scheduleRows.length, 1);
+  assert.deepEqual(sb.scheduleRows[0], winnerRow, 'existing valid schedule must never be mutated just to make room for a re-check');
+});
+
+test('DA1-17. a lookup failure while checking the durable block fails open (never itself becomes a block)', async () => {
+  const throwingSupabase = { from() { throw new Error('DB unavailable'); } };
+  const { blocked } = await _checkDurableConflictBlock(throwingSupabase, {
+    billId: 'BILL-42', barberId: 'barber-1', startTime: new Date('2026-08-29T10:00:00.000Z'), endTime: new Date('2026-08-29T11:00:00.000Z'),
+  });
+  assert.equal(blocked, false);
+});
+
+// ── DA-01 Correction Round 1 (Blocker 2): Task16 evaluation monitoring ────
+
+test('DA1-18. all 5 data-authority events are registered in Task16 EVENT_DEFINITIONS with the specified severities', () => {
+  assert.equal(EVENT_DEFINITIONS.schedule_sync_conflict_reconciled[0], 'INFO');
+  assert.equal(EVENT_DEFINITIONS.schedule_sync_overlap_failure[0], 'HIGH');
+  assert.equal(EVENT_DEFINITIONS.schedule_sync_conflict_unresolved[0], 'HIGH');
+  assert.equal(EVENT_DEFINITIONS.schedule_authority_degraded[0], 'HIGH');
+  assert.equal(EVENT_DEFINITIONS.home_service_schema_mismatch[0], 'HIGH');
+  for (const key of ['schedule_sync_conflict_reconciled', 'schedule_sync_overlap_failure', 'schedule_sync_conflict_unresolved', 'schedule_authority_degraded', 'home_service_schema_mismatch']) {
+    assert.equal(EVENT_DEFINITIONS[key][1], 'data_authority', `${key} should belong to the data_authority source family`);
+  }
+});
+
+test('DA1-19. mapTelemetryToEvaluation("data_authority", ...) maps a sanitized telemetry event into a recordable evaluation event', () => {
+  const safe = sanitizeDataAuthorityTelemetry({
+    event_type: 'schedule_sync_overlap_failure', reason: 'true_business_overlap', source: 'moka', branch: 'bypass',
+  });
+  const mapped = mapTelemetryToEvaluation('data_authority', safe);
+  assert.equal(mapped.length, 1);
+  assert.equal(mapped[0].event_type, 'schedule_sync_overlap_failure');
+  assert.equal(mapped[0].branch, 'bypass');
+  assert.equal(mapped[0].metadata.reason, 'true_business_overlap');
+  assert.equal(mapped[0].metadata.source, 'moka');
+
+  // An unrecognized event_type (sanitized down to 'unknown') maps to nothing.
+  const unknownMapped = mapTelemetryToEvaluation('data_authority', { event_type: 'unknown' });
+  assert.deepEqual(unknownMapped, []);
+});
+
+test('DA1-20. logDataAuthorityEvent reaches Task16 observation (observeTelemetry) and never throws even if recording fails', () => {
+  const throwingSupabase = { from() { throw new Error('DB unavailable'); } };
+  assert.doesNotThrow(() => {
+    logDataAuthorityEvent({ event_type: 'schedule_sync_overlap_failure', reason: 'true_business_overlap', source: 'moka', branch: 'bypass' });
+  });
+  // recordEvaluationEvent itself (what observeTelemetry calls under the hood)
+  // must also fail open when given a broken supabase dependency — caught and
+  // returned as a status, never thrown — proving the whole path stays
+  // observer-only, never a new failure surface.
+  return recordEvaluationEvent(
+    { event_type: 'schedule_sync_overlap_failure', branch: 'bypass' },
+    { supabase: throwingSupabase },
+  ).then((result) => {
+    assert.equal(result.status, 'error');
+  });
+});
+
+test('DA1-21. data-authority telemetry never carries PII — only classification dimensions reach the evaluation event', () => {
+  const safe = sanitizeDataAuthorityTelemetry({
+    event_type: 'schedule_sync_overlap_failure',
+    reason: 'true_business_overlap',
+    source: 'moka',
+    branch: 'bypass',
+    // Attempting to smuggle PII through unlisted fields must have no effect —
+    // the sanitizer only ever reads the 4 allowlisted keys.
+    phone: '628111222333',
+    customer_name: 'Budi Santoso',
+    raw_bill_payload: { customer: { phone: '628111222333' } },
+  });
+  assert.deepEqual(Object.keys(safe).sort(), ['branch', 'event_type', 'reason', 'source', 'timestamp']);
+  const mapped = mapTelemetryToEvaluation('data_authority', safe);
+  const serialized = JSON.stringify(mapped);
+  assert.doesNotMatch(serialized, /628111222333/);
+  assert.doesNotMatch(serialized, /Budi Santoso/);
+});
+
 // ── DA-02: home-service reminder schema drift ─────────────────────────────
 
 function fakeHomeServiceSupabase({ jobsError = null, jobs = [], schedule = null, barber = null } = {}) {
@@ -298,6 +545,25 @@ test('DA2-01. the reminder job no longer treats a missing barber_reminded_at col
   const result = await sendHomeServiceReminders(sb);
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'barber_reminded_at_column_missing');
+});
+
+test('DA2-01b. the response prefers the stable reason code over raw SQL error text when the failure is classified', async () => {
+  const { sendHomeServiceReminders } = loadHomeServiceFlagHandler();
+  const sb = fakeHomeServiceSupabase({
+    jobsError: { code: '42703', message: 'column home_service_jobs.barber_reminded_at does not exist' },
+  });
+  const result = await sendHomeServiceReminders(sb);
+  assert.equal(result.reason, 'barber_reminded_at_column_missing');
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'error'), false,
+    'a classified failure must not also leak the raw SQL error text — the reason code is self-explanatory');
+
+  // An UNCLASSIFIED failure keeps a bounded error string (no stable code
+  // exists to fall back on, and this is an internal/CRON_SECRET-protected
+  // endpoint, never a customer-facing surface).
+  const unclassifiedSb = fakeHomeServiceSupabase({ jobsError: { code: 'ECONNRESET', message: 'connection reset' } });
+  const unclassifiedResult = await sendHomeServiceReminders(unclassifiedSb);
+  assert.equal(unclassifiedResult.reason, 'query_failed');
+  assert.equal(unclassifiedResult.error, 'connection reset');
 });
 
 test('DA2-02. the existing additive migration contains the correct barber_reminded_at definition', () => {

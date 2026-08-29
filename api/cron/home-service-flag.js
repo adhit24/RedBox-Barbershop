@@ -71,7 +71,17 @@ async function sendHomeServiceReminders(supabase) {
       source: 'home_service',
     });
     console.error('[HomeServiceReminder] Error fetching jobs:', jobsError.message);
-    return { ok: false, reason: schemaMismatch ? 'barber_reminded_at_column_missing' : 'query_failed', error: jobsError.message };
+    // Prefer the bounded, stable reason code over raw SQL error text in the
+    // response body — the schema-mismatch case is fully explained by the
+    // reason code alone. The generic (unclassified) failure keeps a
+    // truncated message since that path has no stable code to fall back on
+    // and the raw text is genuinely useful there for ops debugging; this
+    // endpoint is internal/CRON_SECRET-protected, never customer-facing.
+    return {
+      ok: false,
+      reason: schemaMismatch ? 'barber_reminded_at_column_missing' : 'query_failed',
+      ...(schemaMismatch ? {} : { error: String(jobsError.message || '').slice(0, 200) }),
+    };
   }
 
   if (!jobs?.length) {

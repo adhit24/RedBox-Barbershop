@@ -239,13 +239,21 @@ function sanitizeDataAuthorityTelemetry(event = {}) {
     event_type: ALLOWED_DATA_AUTHORITY_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
     source: ALLOWED_DATA_AUTHORITY_SOURCES.has(event.source) ? event.source : null,
     reason: typeof event.reason === 'string' ? event.reason.slice(0, 96) : null,
-    outlet: typeof event.outlet === 'string' ? event.outlet.slice(0, 32) : null,
+    // Named `branch`, not `outlet`, specifically so it lines up with
+    // reddyEvaluationMonitoring.js's mapTelemetryToEvaluation `common` object
+    // (`branch: telemetry.branch`) — see the 'data_authority' family there.
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : null,
   };
 }
 
 function logDataAuthorityEvent(event = {}) {
   const safe = sanitizeDataAuthorityTelemetry(event);
   console.log('[DataAuthorityTelemetry]', JSON.stringify(safe));
+  // Task16 integration (Correction Round 1, Blocker 2): observer-only, same
+  // fail-open contract as every other logXEvent call in this file —
+  // observeTelemetry() internally catches and swallows any recording
+  // failure, never throws, never blocks the caller.
+  observeTelemetry('data_authority', safe);
   return safe;
 }
 

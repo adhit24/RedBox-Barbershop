@@ -1070,6 +1070,24 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
   const { data: existing } = await supabase
     .from('schedules').select('id, barber_id, service_name, start_time, end_time, status').eq('external_id', billId).maybeSingle();
 
+  // DA-01 Correction Round 1 (Blocker 1): if a PRIOR pull already hit
+  // no_barber_overlap for this exact bill and recorded which schedule was
+  // blocking it, re-validate that block against LIVE data before spending a
+  // full preflight+INSERT attempt that would just fail again the same way.
+  // Never trusts the historical record alone — see _checkDurableConflictBlock.
+  if (!existing && barberId) {
+    const { blocked } = await _checkDurableConflictBlock(supabase, { billId, barberId, startTime, endTime });
+    if (blocked) {
+      logDataAuthorityEvent({
+        event_type: 'schedule_sync_overlap_failure',
+        reason: 'known_conflict_short_circuited',
+        source: 'moka',
+      });
+      console.log(`[Sync] Open bill ${billId}: known conflict still blocking barber ${barberId} — short-circuited before INSERT, no new exclusion violation`);
+      return 'skipped';
+    }
+  }
+
   // ── GOSHOW QUEUE: 1 kapster untuk multiple orang ────────────
   // HANYA untuk INSERT BARU (existing == null). Skenario: kasir buat Bill A
   // jam 14:00 (Bob, 60m → end 15:10) lalu Bill B jam 14:05 (Bob, 45m).
@@ -1359,7 +1377,98 @@ async function _reconcileOpenBillOverlap(supabase, { billId, barberId, startTime
     source: 'moka',
   });
   console.warn(`[Sync] Open bill ${billId}: true overlap — barber ${barberId} slot already held by ${conflict.external_id || conflict.id} (${conflict.source}/${conflict.status}); existing schedule preserved, this bill skipped for this cycle`);
+  // Persist the minimal durable state so the NEXT pull can short-circuit
+  // before INSERT instead of hitting no_barber_overlap again for the same
+  // known, still-unresolved conflict (Correction Round 1, Blocker 1).
+  await _recordConflictBlock(supabase, { billId, barberId, conflict });
   return 'skipped';
+}
+
+const CONFLICT_LEDGER_ENTITY_TYPE = 'schedule_conflict';
+
+/**
+ * DA-01 Correction Round 1 (Blocker 1): durable conflict short-circuit,
+ * reusing the existing sync_logs table (already used elsewhere in this file
+ * for sync operational logging) rather than process memory — which cannot
+ * survive across serverless instances — or a new table/migration.
+ *
+ * Looks up the most recently recorded true-overlap conflict for this exact
+ * upstream bill, if any, and RE-VALIDATES it against live data before
+ * trusting it: a historical record is never itself sufficient authority to
+ * suppress a retry. Returns { blocked: true } only when the previously-
+ * identified conflicting schedule row still exists, is still not cancelled,
+ * and still genuinely overlaps this bill's current (barber, time range).
+ * Any other outcome — no record, the conflict has since resolved (the
+ * blocking schedule was cancelled/moved/completed), or the lookup itself
+ * fails — returns { blocked: false }, so the caller proceeds with the
+ * normal preflight+insert attempt. This is what lets a resolved conflict
+ * become retryable again without any explicit "clear" step: the truth is
+ * re-derived live on every call, never cached as a standing verdict.
+ */
+async function _checkDurableConflictBlock(supabase, { billId, barberId, startTime, endTime }) {
+  if (!billId || !barberId) return { blocked: false };
+  try {
+    const { data: lastConflict } = await supabase
+      .from('sync_logs')
+      .select('payload, created_at')
+      .eq('entity_type', CONFLICT_LEDGER_ENTITY_TYPE)
+      .eq('entity_id', billId)
+      .eq('status', 'failed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const conflictingScheduleId = lastConflict?.payload?.conflicting_schedule_id;
+    if (!conflictingScheduleId) return { blocked: false };
+
+    const { data: stillConflicting } = await supabase
+      .from('schedules')
+      .select('id')
+      .eq('id', conflictingScheduleId)
+      .eq('barber_id', barberId)
+      .neq('status', 'cancelled')
+      .lt('start_time', endTime.toISOString())
+      .gt('end_time', startTime.toISOString())
+      .maybeSingle();
+
+    return { blocked: Boolean(stillConflicting) };
+  } catch (_error) {
+    // A lookup failure must never itself become a permanent block — fail
+    // open into the normal (re-validated by the DB itself) insert attempt.
+    return { blocked: false };
+  }
+}
+
+/**
+ * Persists the minimal durable state needed to short-circuit a KNOWN,
+ * currently-true conflict on a later pull. Append-only, matching this
+ * table's existing usage elsewhere in this file: never updates or deletes a
+ * prior row. The most recent row for this billId is what
+ * _checkDurableConflictBlock reads, and it always re-validates that row's
+ * claim against live data rather than trusting it outright — so an entry
+ * here is never a permanent verdict, only a pointer to re-check.
+ */
+async function _recordConflictBlock(supabase, { billId, barberId, conflict }) {
+  try {
+    await supabase.from('sync_logs').insert({
+      direction: 'moka_to_web',
+      entity_type: CONFLICT_LEDGER_ENTITY_TYPE,
+      entity_id: billId,
+      status: 'failed',
+      error_message: 'no_barber_overlap',
+      payload: {
+        conflicting_schedule_id: conflict.id,
+        conflicting_external_id: conflict.external_id || null,
+        conflicting_source: conflict.source || null,
+        barber_id: barberId,
+      },
+    });
+  } catch (_error) {
+    // Best-effort — the DB exclusion constraint has already protected data
+    // integrity regardless; failing to persist the ledger entry only means
+    // the next pull re-attempts (and re-classifies) instead of short-
+    // circuiting, which is still correct, just less efficient.
+  }
 }
 
 // ── WEBHOOK HANDLER ────────────────────────────────────────
@@ -2252,4 +2361,6 @@ module.exports = {
   // DA-01 — exported for direct unit testing of the exclusion-constraint
   // reconciliation logic; not part of the module's public integration surface.
   _reconcileOpenBillOverlap,
+  _checkDurableConflictBlock,
+  _recordConflictBlock,
 };
