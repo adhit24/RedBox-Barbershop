@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 
 const TABLE = 'reddy_evaluation_events';
+const HEALTH_QUERY_PAGE_SIZE = 1000;
 const SEVERITIES = Object.freeze({ INFO: 'INFO', WARNING: 'WARNING', HIGH: 'HIGH', CRITICAL: 'CRITICAL' });
 const BRANCHES = new Set(['bypass', 'csb', 'sumber', 'samadikun', 'tegal', 'unknown']);
 
@@ -355,14 +356,26 @@ function aggregateHealth(events = [], filters = {}, thresholds = DEFAULT_THRESHO
   };
 }
 
-async function getHealthSummary({ supabase, from, to, branch = null, limit = 5000, thresholds = DEFAULT_THRESHOLDS }) {
+async function getHealthSummary({ supabase, from, to, branch = null, pageSize = HEALTH_QUERY_PAGE_SIZE, thresholds = DEFAULT_THRESHOLDS }) {
   if (!supabase) return { status: 'unavailable', summary: null };
   try {
-    let query = supabase.from(TABLE).select('*').gte('created_at', from).lte('created_at', to);
-    if (branch) query = query.eq('branch', normalizeBranch(branch));
-    const { data, error } = await query.order('created_at', { ascending: false }).limit(limit);
-    if (error) return { status: 'error', summary: null, error };
-    return { status: 'ok', summary: aggregateHealth(data || [], { from, to, branch }, thresholds) };
+    const effectivePageSize = Math.max(1, Math.min(HEALTH_QUERY_PAGE_SIZE, Number(pageSize) || HEALTH_QUERY_PAGE_SIZE));
+    const events = [];
+    let offset = 0;
+    while (true) {
+      let query = supabase.from(TABLE).select('*').gte('created_at', from).lte('created_at', to);
+      if (branch) query = query.eq('branch', normalizeBranch(branch));
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(offset, offset + effectivePageSize - 1);
+      if (error) return { status: 'error', summary: null, error };
+      const page = Array.isArray(data) ? data : [];
+      events.push(...page);
+      if (page.length < effectivePageSize) break;
+      offset += page.length;
+    }
+    return { status: 'ok', summary: aggregateHealth(events, { from, to, branch }, thresholds) };
   } catch (error) {
     return { status: 'error', summary: null, error };
   }
@@ -380,6 +393,7 @@ function detectStuckHandoffCases(cases = [], now = new Date(), thresholds = DEFA
 
 module.exports = {
   TABLE,
+  HEALTH_QUERY_PAGE_SIZE,
   SEVERITIES,
   BRANCHES,
   EVENT_DEFINITIONS,

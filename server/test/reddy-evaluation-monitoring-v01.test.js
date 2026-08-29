@@ -15,10 +15,12 @@ const {
   mapTelemetryToEvaluation,
   evaluateOutboundMessage,
   aggregateHealth,
+  getHealthSummary,
   detectStuckHandoffCases,
 } = require('../services/reddyEvaluationMonitoring');
 const { createReddyEvaluationRoutes, parseWindow, resolveEvaluationBranch } = require('../routes/reddyEvaluation');
 const { createGuardedSend } = require('../services/waOutboundGuard');
+const { handleMessage } = require('../../api/wa/webhook');
 
 function event(event_type, branch = 'bypass', created_at = '2026-08-29T10:00:00.000Z', extras = {}) {
   return normalizeEvaluationEvent({ event_type, branch, created_at, ...extras });
@@ -38,6 +40,45 @@ function insertSupabase({ error = null, throws = false } = {}) {
         },
       };
     },
+  };
+}
+
+function healthSupabase(events, { failAtOffset = null } = {}) {
+  const ranges = [];
+  const filters = [];
+  return {
+    ranges,
+    filters,
+    from(table) {
+      assert.equal(table, 'reddy_evaluation_events');
+      const query = {
+        select() { return query; },
+        gte(column, value) { filters.push(['gte', column, value]); return query; },
+        lte(column, value) { filters.push(['lte', column, value]); return query; },
+        eq(column, value) { filters.push(['eq', column, value]); return query; },
+        order() { return query; },
+        async range(from, to) {
+          ranges.push([from, to]);
+          if (from === failAtOffset) return { data: null, error: new Error('page unavailable') };
+          return { data: events.slice(from, to + 1), error: null };
+        },
+      };
+      return query;
+    },
+  };
+}
+
+function runtimeMonitoringDeps(events, overrides = {}) {
+  return {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    loadConversationHistory: async () => [],
+    send: async () => ({ status: 'sent' }),
+    logTelemetry: () => {},
+    recordEvaluation: (evaluationEvent) => {
+      events.push(evaluationEvent);
+      return { status: 'recorded' };
+    },
+    ...overrides,
   };
 }
 
@@ -165,6 +206,85 @@ test('17. health aggregation applies time window and branch filters', () => {
   assert.equal(summary.totals.total_inbound, 1);
   assert.equal(summary.branches.length, 1);
   assert.equal(summary.branches[0].branch, 'tegal');
+});
+
+test('deterministic non-keyword classification records routing without keyword shortcut telemetry', async () => {
+  const events = [];
+  const result = await handleMessage({
+    from: '628111160001', text: 'poin saya berapa', branchFromPayload: 'bypass', trustedIdentity: {},
+  }, runtimeMonitoringDeps(events, {
+    executeOrchestration: async () => ({ execution_status: 'success', result: { data: { points_balance: 25 } } }),
+  }));
+
+  assert.equal(result.used, 'crm_points');
+  assert.equal(events.filter((item) => item.event_type === 'routing_decision').length, 1);
+  assert.equal(events.filter((item) => item.event_type === 'keyword_shortcut_used').length, 0);
+});
+
+test('actual generic-price keyword path records keyword shortcut telemetry', async () => {
+  const events = [];
+  const result = await handleMessage({
+    from: '628111160002', text: 'harga berapa?', branchFromPayload: 'tegal',
+  }, runtimeMonitoringDeps(events));
+
+  assert.equal(result.used, 'keyword');
+  assert.equal(events.filter((item) => item.event_type === 'keyword_shortcut_used').length, 1);
+  assert.equal(events.find((item) => item.event_type === 'keyword_shortcut_used').intent, 'price_inquiry');
+});
+
+test('"Tegal buka jam berapa?" never records price keyword shortcut telemetry', async () => {
+  const events = [];
+  const result = await handleMessage({
+    from: '628111160003', text: 'Tegal buka jam berapa?', branchFromPayload: 'tegal',
+  }, runtimeMonitoringDeps(events, {
+    orchestrate: async () => ({
+      route: 'reddy_agent', agent: 'reddy_agent', intent: 'operating_hours_inquiry', action: 'answer_hours', fallback_used: false,
+    }),
+    executeReddy: async () => ({ reply: 'RedBox Tegal buka sesuai jam operasional.', sendResult: { status: 'sent' } }),
+  }));
+
+  assert.equal(result.used, 'reddy_agent');
+  assert.equal(events.some((item) => item.event_type === 'keyword_shortcut_used' && item.intent === 'price_inquiry'), false);
+});
+
+test('actual price shortcut is recorded once even when the telemetry adapter is active', async () => {
+  const events = [];
+  const result = await handleMessage({
+    from: '628111160004', text: 'berapa ya harganya?', branchFromPayload: 'csb',
+  }, runtimeMonitoringDeps(events, {
+    logTelemetry: (telemetry) => events.push(...mapTelemetryToEvaluation('orchestrator', telemetry)),
+  }));
+
+  assert.equal(result.used, 'keyword');
+  assert.equal(events.filter((item) => item.event_type === 'keyword_shortcut_used').length, 1);
+});
+
+test('health summary paginates beyond 5000 and includes the oldest event in the window', async () => {
+  const events = Array.from({ length: 5000 }, (_, index) => event(
+    'outbound_sent', 'tegal', new Date(Date.parse('2026-08-29T12:00:00Z') - index * 1000).toISOString(),
+  ));
+  events.push(event('inbound_event_claimed', 'tegal', '2026-08-29T10:00:00Z'));
+  const supabase = healthSupabase(events);
+
+  const result = await getHealthSummary({
+    supabase, from: '2026-08-29T00:00:00Z', to: '2026-08-29T23:59:59Z', branch: 'tegal', pageSize: 1000,
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.summary.totals.total_automated_outbound, 5000);
+  assert.equal(result.summary.totals.total_inbound, 1);
+  assert.deepEqual(supabase.ranges.at(-1), [5000, 5999]);
+  assert.ok(supabase.filters.some((filter) => filter[0] === 'eq' && filter[1] === 'branch' && filter[2] === 'tegal'));
+});
+
+test('health summary returns error instead of partial metrics when a later page fails', async () => {
+  const supabase = healthSupabase(Array.from({ length: 1500 }, () => event('outbound_sent')), { failAtOffset: 1000 });
+  const result = await getHealthSummary({
+    supabase, from: '2026-08-29T00:00:00Z', to: '2026-08-29T23:59:59Z', pageSize: 1000,
+  });
+
+  assert.equal(result.status, 'error');
+  assert.equal(result.summary, null);
 });
 
 test('18. monitoring failure or hang never breaks the guarded customer reply flow', async () => {

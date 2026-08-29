@@ -1294,6 +1294,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     createHandoffCase = (params) => createOrGetActiveCase(params, { supabase: getSupabase() }),
     appendHandoffMessage = (caseId, message) => appendHandoffCustomerMessage(caseId, message, { supabase: getSupabase() }),
     logHandoffTelemetry = logHandoffEvent,
+    recordEvaluation = (event) => recordEvaluationEvent(event, { supabase: getSupabase() }),
   } = deps;
 
   let branch = branchFromPayload;
@@ -1340,8 +1341,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const classification = classifyDeterministically(text);
   if (classification) {
     const monitoringContext = { branch, intent: classification.intent, route: classification.route || classification.agent };
-    Promise.resolve(recordEvaluationEvent({ event_type: 'routing_decision', ...monitoringContext }, { supabase: getSupabase() })).catch(() => {});
-    Promise.resolve(recordEvaluationEvent({ event_type: 'keyword_shortcut_used', ...monitoringContext }, { supabase: getSupabase() })).catch(() => {});
+    Promise.resolve(recordEvaluation({ event_type: 'routing_decision', ...monitoringContext })).catch(() => {});
   }
   if (classification && classification.intent === 'points_inquiry') {
     const pointsDecision = buildDecisionEnvelope({
@@ -1482,6 +1482,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     const svcText = buildServicesText(branch);
     reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
+    Promise.resolve(recordEvaluation({
+      event_type: 'keyword_shortcut_used', branch, intent: 'price_inquiry', route: 'keyword',
+    })).catch(() => {});
     const sendResult = await send(from, reply, { branch });
     return { used, reply, sendResult, error: null };
   }
