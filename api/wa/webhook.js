@@ -138,6 +138,11 @@ const {
 } = require('../../server/services/waInboundGuard');
 const { createGuardedSend } = require('../../server/services/waOutboundGuard');
 const {
+  configureEvaluationMonitoring,
+  observeOutboundMessage,
+  recordEvaluationEvent,
+} = require('../../server/services/reddyEvaluationMonitoring');
+const {
   getBarberPopularity,
   resolvePopularityBranch,
 } = require('../../server/services/barberPopularityService');
@@ -255,6 +260,7 @@ function getSupabase() {
   supabaseClient = createClient(url, key);
   return supabaseClient;
 }
+configureEvaluationMonitoring(() => getSupabase());
 
 // ── Per-branch AI off-hours schedule ──────────────────────────────────────────
 // Bot diam total di luar jam ini. Jam dalam WIB, format "HH:MM".
@@ -1332,6 +1338,11 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
 
   // Fast-path: points inquiry bypasses conversation history loading and Reddy generation
   const classification = classifyDeterministically(text);
+  if (classification) {
+    const monitoringContext = { branch, intent: classification.intent, route: classification.route || classification.agent };
+    Promise.resolve(recordEvaluationEvent({ event_type: 'routing_decision', ...monitoringContext }, { supabase: getSupabase() })).catch(() => {});
+    Promise.resolve(recordEvaluationEvent({ event_type: 'keyword_shortcut_used', ...monitoringContext }, { supabase: getSupabase() })).catch(() => {});
+  }
   if (classification && classification.intent === 'points_inquiry') {
     const pointsDecision = buildDecisionEnvelope({
       message: text,
@@ -1598,7 +1609,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         status_transition: 'none_to_waiting_human',
       });
       const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
-      const sendResult = await send(from, handoffReply, { branch });
+      const sendResult = await send(from, handoffReply, { branch, evaluationContext: { handoffPersisted: true } });
       return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
     }
 
@@ -1635,7 +1646,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       status_transition: null,
     });
     const fallbackReply = 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
-    const sendResult = await send(from, fallbackReply, { branch });
+    const sendResult = await send(from, fallbackReply, { branch, evaluationContext: { handoffPersisted: false } });
     return {
       used: creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
       reply: fallbackReply,
@@ -2391,6 +2402,8 @@ module.exports = async function handler(req, res, testDeps = {}) {
       idempotency_status: inboundClaim.status,
       execution_status: inboundClaim.status === 'claimed' ? 'ok' : 'suppressed',
       guard_reason: claimFailed ? inboundClaim.status : null,
+      device_hash: inboundClaim.providerDeviceHash || null,
+      message_id_present: Boolean(inboundClaim.providerMessageId || inboundClaim.providerMessageIdSource),
     });
     if (inboundClaim.status === 'duplicate') {
       console.log('[WA Bot] Duplicate inbound event ignored (durable claim)');
@@ -2419,6 +2432,8 @@ module.exports = async function handler(req, res, testDeps = {}) {
         idempotency_status: inboundClaim.status,
         execution_status: 'suppressed',
         guard_reason: 'reddy_disabled',
+        device_hash: inboundClaim.providerDeviceHash || null,
+        message_id_present: Boolean(inboundClaim.providerMessageId || inboundClaim.providerMessageIdSource),
       });
       await markInboundEventStatus(supabaseForGuard, inboundEventRowId, 'failed');
       console.log('[WA Bot] REDDY_ENABLED=false — automated reply suppressed');
@@ -2437,8 +2452,18 @@ module.exports = async function handler(req, res, testDeps = {}) {
       inboundEventRowId,
       isEnabled: () => (testDeps.isReddyEnabled ? testDeps.isReddyEnabled() : isReddyEnabled()),
       logEvent: (e) => logAntiSpamEvent({
-        ...e, provider: 'fonnte', inbound_event_type: 'customer_message', idempotency_status: inboundClaim.status,
+        ...e,
+        provider: 'fonnte',
+        inbound_event_type: 'customer_message',
+        idempotency_status: inboundClaim.status,
+        device_hash: inboundClaim.providerDeviceHash || null,
+        message_id_present: Boolean(inboundClaim.providerMessageId || inboundClaim.providerMessageIdSource),
       }),
+      observeMessage: (outboundMessage, evaluationContext) => observeOutboundMessage(outboundMessage, {
+        ...evaluationContext,
+        provider: 'fonnte',
+        messageId: inboundEventRowId,
+      }, { supabase: supabaseForGuard }),
     });
 
     console.log('[WA Bot] Incoming event:', { event_type: shadowMetadata.event_type, hasMessage: Boolean(message) });
