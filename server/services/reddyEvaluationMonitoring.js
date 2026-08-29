@@ -71,6 +71,16 @@ const EVENT_DEFINITIONS = Object.freeze({
   p0_identity_bypass: ['CRITICAL', 'inbound', 'P0_IDENTITY_BYPASS'],
   p0_guard_bypass: ['CRITICAL', 'outbound', 'P0_GUARD_BYPASS'],
   kill_switch_bypass: ['CRITICAL', 'outbound', 'KILL_SWITCH_BYPASS'],
+  // Data Authority Repair Round 1 (DA-01 schedule overlap / DA-02 home-service
+  // schema drift) — observer-only, same as every other family here: nothing
+  // reads these to make a decision, they exist so a degraded/unresolved
+  // data-authority state is visible in Task16's existing evaluation table
+  // instead of only ever reaching a console.log.
+  schedule_sync_conflict_reconciled: ['INFO', 'data_authority', 'SCHEDULE_CONFLICT_RECONCILED'],
+  schedule_sync_overlap_failure: ['HIGH', 'data_authority', 'SCHEDULE_OVERLAP_FAILURE'],
+  schedule_sync_conflict_unresolved: ['HIGH', 'data_authority', 'SCHEDULE_CONFLICT_UNRESOLVED'],
+  schedule_authority_degraded: ['HIGH', 'data_authority', 'SCHEDULE_AUTHORITY_DEGRADED'],
+  home_service_schema_mismatch: ['HIGH', 'data_authority', 'HOME_SERVICE_SCHEMA_MISMATCH'],
 });
 
 let supabaseProvider = () => null;
@@ -206,6 +216,11 @@ function mapTelemetryToEvaluation(family, telemetry = {}) {
     if (telemetry.realtime_fact_guard_triggered) events.push({ ...common, event_type: 'barber_realtime_overclaim_detected', intent: telemetry.intent, route: telemetry.route });
     if (telemetry.guard_blocked_prohibited_claim) events.push({ ...common, event_type: 'booking_confirmation_claim_detected', intent: telemetry.intent, route: telemetry.route });
     return events;
+  }
+  if (family === 'data_authority') {
+    return EVENT_DEFINITIONS[telemetry.event_type]
+      ? [{ ...common, event_type: telemetry.event_type, metadata: { reason: telemetry.reason, source: telemetry.source } }]
+      : [];
   }
   return [];
 }

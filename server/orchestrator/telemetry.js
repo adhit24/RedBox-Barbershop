@@ -216,9 +216,51 @@ function logIdleLifecycleEvent(event = {}) {
   return safe;
 }
 
+// Data Authority Repair Round 1 (DA-01 schedule overlap / DA-02 home-service
+// schema drift) — its own small allowlist schema, same rationale as every
+// other block above: this fires from server/moka/sync.js's schedule writer
+// and api/cron/home-service-flag.js's reminder job, not from orchestrator
+// routing or Reddy at all. OBSERVER-ONLY: nothing reads this telemetry to
+// make a decision — it exists so a degraded/unresolved data-authority state
+// is visible instead of silently swallowed. No customer name/phone/address,
+// no raw Moka bill payload — only classification dimensions.
+const ALLOWED_DATA_AUTHORITY_EVENTS = new Set([
+  'schedule_sync_overlap_failure',
+  'schedule_sync_conflict_reconciled',
+  'schedule_sync_conflict_unresolved',
+  'schedule_authority_degraded',
+  'home_service_schema_mismatch',
+]);
+const ALLOWED_DATA_AUTHORITY_SOURCES = new Set(['moka', 'web', 'admin', 'home_service', 'cron', null]);
+
+function sanitizeDataAuthorityTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_DATA_AUTHORITY_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    source: ALLOWED_DATA_AUTHORITY_SOURCES.has(event.source) ? event.source : null,
+    reason: typeof event.reason === 'string' ? event.reason.slice(0, 96) : null,
+    // Named `branch`, not `outlet`, specifically so it lines up with
+    // reddyEvaluationMonitoring.js's mapTelemetryToEvaluation `common` object
+    // (`branch: telemetry.branch`) — see the 'data_authority' family there.
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : null,
+  };
+}
+
+function logDataAuthorityEvent(event = {}) {
+  const safe = sanitizeDataAuthorityTelemetry(event);
+  console.log('[DataAuthorityTelemetry]', JSON.stringify(safe));
+  // Task16 integration (Correction Round 1, Blocker 2): observer-only, same
+  // fail-open contract as every other logXEvent call in this file —
+  // observeTelemetry() internally catches and swallows any recording
+  // failure, never throws, never blocks the caller.
+  observeTelemetry('data_authority', safe);
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
   sanitizeAntiSpamTelemetry, logAntiSpamEvent,
   sanitizeIdleLifecycleTelemetry, logIdleLifecycleEvent,
+  sanitizeDataAuthorityTelemetry, logDataAuthorityEvent,
 };
