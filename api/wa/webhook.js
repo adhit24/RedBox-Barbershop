@@ -283,6 +283,7 @@ const cacheTimestamps = new Map();
 //     paused_at timestamptz default now()
 //   );
 const humanTakeoverMap = new Map(); // normalized_number → expiry ms
+const humanTakeoverSourceMap = new Map(); // normalized_number → proven local source
 const HUMAN_TAKEOVER_TTL_MS = 30 * 60 * 1000; // 30 menit
 
 // Provenance tag Task 15 stamps on every legacy wa_paused row/local entry it
@@ -296,35 +297,47 @@ function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '');
 }
 
-function setHumanTakeoverLocal(phone) {
+function setHumanTakeoverLocal(phone, source = null) {
   const key = normalizePhone(phone);
-  if (key) humanTakeoverMap.set(key, Date.now() + HUMAN_TAKEOVER_TTL_MS);
+  if (key) {
+    humanTakeoverMap.set(key, Date.now() + HUMAN_TAKEOVER_TTL_MS);
+    humanTakeoverSourceMap.set(key, source || null);
+  }
 }
 
 function clearHumanTakeoverLocal(phone) {
-  humanTakeoverMap.delete(normalizePhone(phone));
+  const key = normalizePhone(phone);
+  humanTakeoverMap.delete(key);
+  humanTakeoverSourceMap.delete(key);
 }
 
 function isHumanTakeoverLocal(phone) {
   const key = normalizePhone(phone);
   const expiry = humanTakeoverMap.get(key);
   if (!expiry) return false;
-  if (Date.now() > expiry) { humanTakeoverMap.delete(key); return false; }
+  if (Date.now() > expiry) {
+    humanTakeoverMap.delete(key);
+    humanTakeoverSourceMap.delete(key);
+    return false;
+  }
   return true;
 }
 
 async function persistHumanTakeover(phone, pausedBy) {
   const sb = getSupabase();
-  if (!sb) return;
+  if (!sb) return false;
   const key = normalizePhone(phone);
-  if (!key) return;
+  if (!key) return false;
   const pausedUntil = new Date(Date.now() + HUMAN_TAKEOVER_TTL_MS).toISOString();
   try {
-    await sb.from('wa_paused').upsert(
+    const { error } = await sb.from('wa_paused').upsert(
       { sender: key, paused_until: pausedUntil, paused_at: new Date().toISOString(), paused_by: pausedBy || 'fonnte_auto' },
       { onConflict: 'sender' }
     );
-  } catch {}
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 async function clearHumanTakeover(phone) {
@@ -357,16 +370,21 @@ async function clearHumanTakeoverIfSourcedFrom(phone, expectedSource, deps = {})
     return false;
   }
   try {
-    const { data } = await sb.from('wa_paused').select('paused_by').eq('sender', key).maybeSingle();
+    const { data, error } = await sb.from('wa_paused').select('paused_by').eq('sender', key).maybeSingle();
+    if (error) return false;
     if (!data) {
-      // Nothing persisted for this phone — a local-only entry cannot have
-      // come from anywhere else in a Supabase-configured environment.
+      // No persisted row is not, by itself, provenance. Only clear a local
+      // pause when this process explicitly recorded that Task 15 created it.
+      // A manual/admin local pause with a failed/missing DB write must survive.
+      if (!isHumanTakeoverLocal(key)) return true;
+      if (humanTakeoverSourceMap.get(key) !== expectedSource) return false;
       clearHumanTakeoverLocal(key);
       return true;
     }
     if (data.paused_by !== expectedSource) return false;
+    const { error: deleteError } = await sb.from('wa_paused').delete().eq('sender', key);
+    if (deleteError) return false;
     clearHumanTakeoverLocal(key);
-    try { await sb.from('wa_paused').delete().eq('sender', key); } catch {}
     return true;
   } catch (_error) {
     return false;
@@ -1569,8 +1587,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     // Case actually persisted — this is the ONLY outcome allowed to claim the
     // request reached admin (Correction Round 1, Correction 4).
     if (creation.status === 'created') {
-      setHumanTakeover(from);
-      persistHumanHandoff(from, TASK15_PAUSE_SOURCE).catch(() => {});
+      setHumanTakeover(from, TASK15_PAUSE_SOURCE);
+      await Promise.resolve(persistHumanHandoff(from, TASK15_PAUSE_SOURCE)).catch(() => false);
       logHandoffTelemetry({
         event_type: 'handoff_case_created',
         trigger_type: trigger.triggerType,
@@ -1588,8 +1606,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     // messages — the top-of-function gate already blocks subsequent messages
     // once a case is persisted). No repeated acknowledgement (spec §10, §15).
     if (creation.status === 'existing') {
-      setHumanTakeover(from);
-      persistHumanHandoff(from, TASK15_PAUSE_SOURCE).catch(() => {});
+      setHumanTakeover(from, TASK15_PAUSE_SOURCE);
+      await Promise.resolve(persistHumanHandoff(from, TASK15_PAUSE_SOURCE)).catch(() => false);
       logHandoffTelemetry({
         event_type: 'handoff_duplicate_prevented',
         trigger_type: trigger.triggerType,
@@ -1606,8 +1624,8 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     // safety net via the legacy mechanism, but NEVER claim the request
     // reached admin — only a persisted case can honestly promise that
     // (Correction Round 1, Correction 4; spec §19).
-    setHumanTakeover(from);
-    persistHumanHandoff(from, TASK15_PAUSE_SOURCE).catch(() => {});
+    setHumanTakeover(from, TASK15_PAUSE_SOURCE);
+    await Promise.resolve(persistHumanHandoff(from, TASK15_PAUSE_SOURCE)).catch(() => false);
     logHandoffTelemetry({
       event_type: creation.status === 'unavailable' ? 'handoff_requested' : 'handoff_case_creation_failed',
       trigger_type: trigger.triggerType,

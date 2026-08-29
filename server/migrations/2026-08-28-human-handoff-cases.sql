@@ -55,8 +55,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_human_handoff_cases_active_customer
 CREATE INDEX IF NOT EXISTS idx_human_handoff_cases_status_priority_created
   ON human_handoff_cases (status, priority_rank, created_at);
 
-CREATE INDEX IF NOT EXISTS idx_human_handoff_cases_branch_status
-  ON human_handoff_cases (branch, status);
+CREATE INDEX IF NOT EXISTS idx_human_handoff_cases_branch_status_priority_created
+  ON human_handoff_cases (branch, status, priority_rank, created_at);
 
 ALTER TABLE human_handoff_cases ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE human_handoff_cases FROM anon, authenticated;

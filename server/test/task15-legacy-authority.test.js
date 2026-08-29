@@ -359,3 +359,18 @@ test('H4b. resolving a Task15 case must NOT clear an unrelated, genuinely separa
   assert.ok(combined.getWaPaused(phone), 'the unrelated manual pause must survive the resolve — source did not match');
   assert.equal(combined.getWaPaused(phone).paused_by, 'manual_reply_bypass');
 });
+
+test('H4c. a local-only manual pause is not cleared when no persisted provenance row exists', async () => {
+  const phone = '628111333006';
+  const combined = fakeCombinedSupabase();
+
+  webhook.setHumanTakeoverLocal(phone);
+  const cleared = await webhook.clearHumanTakeoverIfSourcedFrom(
+    phone,
+    webhook.TASK15_PAUSE_SOURCE,
+    { supabase: combined },
+  );
+
+  assert.equal(cleared, false, 'absence of a wa_paused row is not proof that Task 15 created the local pause');
+  assert.equal(webhook.isHumanTakeoverLocal(phone), true, 'manual local takeover must remain active');
+});

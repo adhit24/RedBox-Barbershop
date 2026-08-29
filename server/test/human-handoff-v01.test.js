@@ -31,9 +31,10 @@ const { handleMessage } = require('../../api/wa/webhook');
 // update/eq(/eq)/select/maybeSingle for mutations. Enforces the same
 // single-active-case-per-phone uniqueness the real migration's partial unique
 // index enforces, so duplicate-protection tests exercise real conflict logic.
-function createFakeHandoffSupabase(initialRows = []) {
+function createFakeHandoffSupabase(initialRows = [], options = {}) {
   const rows = initialRows.map((row) => ({ ...row }));
   let seq = rows.length;
+  const initialReadWaiters = [];
 
   function applyFilters(list, filters) {
     return list.filter((row) => filters.every((f) => (
@@ -74,6 +75,14 @@ function createFakeHandoffSupabase(initialRows = []) {
         const matches = applyFilters(rows, filters);
         matches.forEach((row) => Object.assign(row, updatePayload));
         return { data: matches[0] || null, error: null };
+      }
+      if (options.synchronizeFirstTwoEmptyReads && rows.length === 0 && initialReadWaiters.length < 2) {
+        return new Promise((resolveRead) => {
+          initialReadWaiters.push(resolveRead);
+          if (initialReadWaiters.length === 2) {
+            for (const waiter of initialReadWaiters.splice(0)) waiter({ data: null, error: null });
+          }
+        });
       }
       const matches = applyFilters(rows, filters);
       return { data: matches[0] || null, error: null };
@@ -146,6 +155,24 @@ test('createOrGetActiveCase: creates a waiting_human case, and a second attempt 
   assert.equal(second.status, 'existing');
   assert.equal(second.case.id, first.case.id);
   assert.equal(supabase._rows.filter((r) => r.customer_phone === '628111000001').length, 1);
+});
+
+test('createOrGetActiveCase: concurrent duplicate race converges through the DB unique violation to one active case', async () => {
+  const supabase = createFakeHandoffSupabase([], { synchronizeFirstTwoEmptyReads: true });
+  const params = {
+    customerPhone: '628111000009', branch: 'bypass', triggerType: TRIGGER_TYPES.EXPLICIT,
+    reason: 'customer_requested_human', intent: 'human_request', priority: PRIORITIES.NORMAL,
+    latestCustomerMessage: 'mau bicara admin',
+  };
+
+  const results = await Promise.all([
+    createOrGetActiveCase(params, { supabase }),
+    createOrGetActiveCase({ ...params, latestCustomerMessage: 'admin?' }, { supabase }),
+  ]);
+
+  assert.deepEqual(results.map((result) => result.status).sort(), ['created', 'existing']);
+  assert.equal(results[0].case.id, results[1].case.id);
+  assert.equal(supabase._rows.filter((row) => row.customer_phone === params.customerPhone).length, 1);
 });
 
 test('createOrGetActiveCase: storage unavailable and a genuine error are reported distinctly', async () => {
