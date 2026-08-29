@@ -212,20 +212,6 @@ async function resolveCustomerIdentity(supabase, input = {}) {
   // Collect candidate customer IDs ONLY from `customers` table
   const aliasCustomerIds = Array.from(new Set(candidateRows.map(r => r.id).filter(Boolean)));
 
-  // If dual claim provided (both phone AND customer_id), verify customer_id belongs strictly to customers.id[] in this cluster!
-  if (cleanId) {
-    const matchesAliasId = aliasCustomerIds.includes(cleanId);
-    if (!matchesAliasId) {
-      return {
-        found: false,
-        customer_id: null,
-        resolution: 'ambiguous',
-        reason: 'dual_claim_conflict',
-        candidates_count: aliasCustomerIds.length,
-      };
-    }
-  }
-
   // Member-profile-only path: NO customers table rows found
   if (candidateRows.length === 0) {
     if (memberProfileRow) {
@@ -249,27 +235,56 @@ async function resolveCustomerIdentity(supabase, input = {}) {
     };
   }
 
-  // Safe merge candidate rows
-  const merged = mergeCustomerRows(candidateRows, canonical);
-  if (!merged) {
+  // Strong discriminator: explicit customer_id provided
+  if (cleanId) {
+    const matchesAliasId = aliasCustomerIds.includes(cleanId);
+    if (!matchesAliasId) {
+      return {
+        found: false,
+        customer_id: null,
+        resolution: 'ambiguous',
+        reason: 'dual_claim_conflict',
+        candidates_count: aliasCustomerIds.length,
+      };
+    }
+    const targetRow = candidateRows.find(r => r.id === cleanId);
     return {
-      found: false,
-      customer_id: null,
-      resolution: 'not_found',
-      candidates_count: 0,
+      found: true,
+      customer_id: cleanId,
+      alias_customer_ids: aliasCustomerIds,
+      canonical_phone: canonical,
+      phone_e164: targetRow?.phone_e164 || `+${canonical}`,
+      resolution: 'direct_id_match',
+      customer_row: targetRow || candidateRows[0],
+      member_profile_row: memberProfileRow,
+      candidates_count: aliasCustomerIds.length,
     };
   }
 
+  // Phone alone with >1 distinct customer IDs: fail closed as ambiguous.
+  // Must NOT merge duplicate customer identities into one trusted identity.
+  if (aliasCustomerIds.length > 1) {
+    return {
+      found: false,
+      customer_id: null,
+      resolution: 'ambiguous',
+      reason: 'multiple_customer_records',
+      candidates_count: aliasCustomerIds.length,
+    };
+  }
+
+  // Exactly 1 deterministic customer candidate row
+  const singleRow = candidateRows[0];
   return {
     found: true,
-    customer_id: merged.id || null, // customer_id comes STRICTLY from customers.id ONLY
-    alias_customer_ids: aliasCustomerIds, // alias_customer_ids comes STRICTLY from customers.id[] ONLY
+    customer_id: singleRow.id,
+    alias_customer_ids: aliasCustomerIds,
     canonical_phone: canonical,
-    phone_e164: merged.phone_e164 || `+${canonical}`,
+    phone_e164: singleRow.phone_e164 || `+${canonical}`,
     resolution: 'phone_match',
-    customer_row: merged,
+    customer_row: singleRow,
     member_profile_row: memberProfileRow,
-    candidates_count: aliasCustomerIds.length,
+    candidates_count: 1,
   };
 }
 

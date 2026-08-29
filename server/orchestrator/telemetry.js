@@ -276,7 +276,7 @@ const ALLOWED_CRM_IDENTITY_MATCH_BASES = new Set([
   'normalized_phone', 'moka_customer_id', 'member_profile', 'customer_id', null,
 ]);
 const ALLOWED_CRM_IDENTITY_SOURCES = new Set([
-  'crm_customer_self', 'crm_agent', 'reddy', 'moka_sync', 'admin', 'unknown',
+  'crm_customer_self', 'crm_agent', 'reddy', 'moka_sync', 'admin', 'customer360', 'unknown',
 ]);
 
 function sanitizeCrmIdentityTelemetry(event = {}) {

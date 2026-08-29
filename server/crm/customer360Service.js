@@ -83,10 +83,7 @@ async function getCustomerPointsByTrustedPhone(supabase, targetPhone) {
   if (!uniqueProfile && customerRows.length > 1) {
     const distinctCustIds = new Set(customerRows.map(c => c.id).filter(Boolean));
     if (distinctCustIds.size > 1) {
-      const distinctNames = new Set(customerRows.map(c => (c.name || '').trim().toLowerCase()).filter(Boolean));
-      if (distinctNames.size > 1) {
-        return { found: false, resolution: 'ambiguous', reason: 'conflicting_customer_names' };
-      }
+      return { found: false, resolution: 'ambiguous', reason: 'multiple_customer_records' };
     }
   }
 

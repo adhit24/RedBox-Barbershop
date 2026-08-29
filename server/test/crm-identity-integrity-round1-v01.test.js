@@ -156,7 +156,7 @@ test('CRM1-05. phone lookup with a single clean candidate resolves with match_ba
   assert.equal(result.candidates_count, 1);
 });
 
-test('CRM1-06. phone lookup spanning two distinct customer rows on the same normalized phone stays resolved but is flagged as a duplicate identity via candidates_count and dedicated telemetry', async () => {
+test('CRM1-06. phone lookup spanning two distinct customer rows on the same normalized phone fails closed as ambiguous', async () => {
   const supabase = makeSupabase({
     customers: [
       { id: 'cust-id-A', wa: CANON, phone_e164: `+${CANON}` },
@@ -164,18 +164,25 @@ test('CRM1-06. phone lookup spanning two distinct customer rows on the same norm
     ],
   });
   const result = await resolveCustomerIdentity(supabase, { phone: '081311112222' });
-  assert.equal(result.status, 'resolved');
+  assert.equal(result.status, 'ambiguous');
+  assert.equal(result.customer_id, null);
   assert.equal(result.candidates_count, 2);
+  assert.equal(result.confidence, 'ambiguous');
+});
 
-  const lines = withCapturedConsole(() => {
-    logCrmIdentityEvent({ event_type: 'crm_identity_resolved', source: 'test', match_basis: result.match_basis, candidates_count: result.candidates_count });
+test('CRM1-06b. explicit unique moka_customer_id resolves one specific row even if another row shares its phone', async () => {
+  const supabase = makeSupabase({
+    customers: [
+      { id: 'cust-moka-1', moka_customer_id: 'moka-999', wa: CANON, phone_e164: `+${CANON}` },
+      { id: 'cust-other-2', moka_customer_id: null, wa: CANON, phone_e164: `+${CANON}` },
+    ],
   });
-  // Wrapper's own emit() logic (mirrored here) must escalate a >1-candidate
-  // resolved result to crm_duplicate_identity_detected — verified against
-  // the actual statusToEventType decision inside resolveCustomerIdentity by
-  // re-invoking the public entry point directly (not re-deriving logic).
-  assert.equal(result.candidates_count > 1, true);
-  assert.ok(lines.length >= 1);
+  const result = await resolveCustomerIdentity(supabase, { moka_customer_id: 'moka-999', phone: '081311112222' });
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.customer_id, 'cust-moka-1');
+  assert.equal(result.match_basis, 'moka_customer_id');
+  assert.equal(result.candidates_count, 1);
+  assert.equal(result.confidence, 'verified');
 });
 
 test('CRM1-07. member_profile_match resolves but customer_id stays null — member_profiles.id must never be treated as customer_id', async () => {
@@ -353,9 +360,38 @@ test('CRM1-19. getCustomer360 with an ambiguous identity returns customer_found:
   assert.doesNotMatch(serialized, new RegExp(CANON));
 });
 
+test('CRM1-19b. getCustomer360 with TWO duplicate customer rows on the same phone returns customer_found:false and no customer-specific data', async () => {
+  const supabase = makeSupabase({
+    customers: [
+      { id: 'cust-id-A', wa: CANON, phone_e164: `+${CANON}`, name: 'Customer A' },
+      { id: 'cust-id-B', wa: CANON, phone_e164: `+${CANON}`, name: 'Customer B' },
+    ],
+    memberProfiles: [],
+  });
+  const result = await getCustomer360(supabase, { phone: '081311112222' });
+  assert.equal(result.identity.customer_found, false);
+  assert.equal(result.identity.customer_id, null);
+  assert.equal(result.identity.resolution, 'ambiguous');
+  assert.equal(result.customer, null);
+  assert.equal(result.membership, null);
+  assert.equal(result.loyalty, null);
+  assert.equal(result.activity, null);
+  assert.equal(result.spending, null);
+  assert.equal(result.preferences, null);
+});
+
 test('CRM1-20. getCustomer360 additive telemetry side effect does not alter its return shape or control flow for a normal resolved lookup', async () => {
   const supabase = makeSupabase({ customers: [{ id: 'cust-id-A', wa: CANON, phone_e164: `+${CANON}`, name: 'Adhit' }] });
   const result = await getCustomer360(supabase, { phone: '081311112222' });
   assert.equal(result.identity.customer_found, true);
   assert.equal(result.identity.customer_id, 'cust-id-A');
+});
+
+test('CRM1-21. customer360 source tag remains customer360 through sanitization', () => {
+  const safe = sanitizeCrmIdentityTelemetry({
+    event_type: 'crm_identity_ambiguous',
+    source: 'customer360',
+    candidates_count: 2,
+  });
+  assert.equal(safe.source, 'customer360');
 });

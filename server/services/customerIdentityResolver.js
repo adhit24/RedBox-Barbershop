@@ -48,18 +48,6 @@ const RESOLUTION_TO_MATCH_BASIS = {
   member_profile_match: 'member_profile',
 };
 
-function statusToEventType(status, candidatesCount) {
-  if (status === 'lookup_failed') return 'crm_identity_lookup_failed';
-  if (status === 'ambiguous') return 'crm_identity_ambiguous';
-  if (status === 'not_found') return 'crm_identity_not_found';
-  if (status === 'resolved') {
-    return Number.isInteger(candidatesCount) && candidatesCount > 1
-      ? 'crm_duplicate_identity_detected'
-      : 'crm_identity_resolved';
-  }
-  return null;
-}
-
 function confidenceForStatus(status) {
   if (status === 'resolved') return 'verified';
   if (status === 'ambiguous') return 'ambiguous';
@@ -67,16 +55,19 @@ function confidenceForStatus(status) {
 }
 
 function emit(source, status, matchBasis, candidatesCount, normalizedInputPresent) {
-  const eventType = statusToEventType(status, candidatesCount);
-  if (!eventType) return;
   try {
-    logCrmIdentityEvent({
-      event_type: eventType,
-      source,
-      match_basis: matchBasis || null,
-      candidates_count: candidatesCount,
-      normalized_input_present: normalizedInputPresent,
-    });
+    if (status === 'lookup_failed') {
+      logCrmIdentityEvent({ event_type: 'crm_identity_lookup_failed', source, match_basis: matchBasis || null, candidates_count: candidatesCount, normalized_input_present: normalizedInputPresent });
+    } else if (status === 'ambiguous') {
+      logCrmIdentityEvent({ event_type: 'crm_identity_ambiguous', source, match_basis: matchBasis || null, candidates_count: candidatesCount, normalized_input_present: normalizedInputPresent });
+      if (Number.isInteger(candidatesCount) && candidatesCount > 1) {
+        logCrmIdentityEvent({ event_type: 'crm_duplicate_identity_detected', source, match_basis: matchBasis || null, candidates_count: candidatesCount, normalized_input_present: normalizedInputPresent });
+      }
+    } else if (status === 'not_found') {
+      logCrmIdentityEvent({ event_type: 'crm_identity_not_found', source, match_basis: matchBasis || null, candidates_count: candidatesCount, normalized_input_present: normalizedInputPresent });
+    } else if (status === 'resolved') {
+      logCrmIdentityEvent({ event_type: 'crm_identity_resolved', source, match_basis: matchBasis || null, candidates_count: candidatesCount, normalized_input_present: normalizedInputPresent });
+    }
   } catch {
     // Observer-only: never let telemetry failure affect identity resolution.
   }

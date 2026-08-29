@@ -15,7 +15,7 @@ const { normalizeMemberPhone } = require('../member-identity');
 function createMockSupabaseFixture() {
   const customerRows = [
     {
-      id: 'cust-id-A',
+      id: 'a0000000-0000-4000-8000-000000000001',
       name: 'Adhit Nugraha',
       wa: '6281311112222',
       phone_e164: '+6281311112222',
@@ -63,12 +63,12 @@ function createMockSupabaseFixture() {
 
   const transactionRows = [
     // 6 transactions under Customer A
-    { id: 'tx-a1', customer_id: 'cust-id-A', status: 'completed', total_amount: 95000, created_at: '2026-01-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
-    { id: 'tx-a2', customer_id: 'cust-id-A', status: 'completed', total_amount: 95000, created_at: '2026-02-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
-    { id: 'tx-a3', customer_id: 'cust-id-A', status: 'completed', total_amount: 95000, created_at: '2026-03-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
-    { id: 'tx-a4', customer_id: 'cust-id-A', status: 'completed', total_amount: 95000, created_at: '2026-04-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
-    { id: 'tx-a5', customer_id: 'cust-id-A', status: 'completed', total_amount: 95000, created_at: '2026-05-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
-    { id: 'tx-a6', customer_id: 'cust-id-A', status: 'completed', total_amount: 95000, created_at: '2026-06-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
+    { id: 'tx-a1', customer_id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', total_amount: 95000, created_at: '2026-01-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
+    { id: 'tx-a2', customer_id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', total_amount: 95000, created_at: '2026-02-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
+    { id: 'tx-a3', customer_id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', total_amount: 95000, created_at: '2026-03-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
+    { id: 'tx-a4', customer_id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', total_amount: 95000, created_at: '2026-04-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
+    { id: 'tx-a5', customer_id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', total_amount: 95000, created_at: '2026-05-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
+    { id: 'tx-a6', customer_id: 'a0000000-0000-4000-8000-000000000001', status: 'completed', total_amount: 95000, created_at: '2026-06-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Gentleman Grooming' }] },
 
     // 3 transactions under Customer B
     { id: 'tx-b1', customer_id: 'cust-id-B', status: 'completed', total_amount: 110000, created_at: '2026-07-10T10:00:00Z', location: 'bypass', transaction_items: [{ service_name: 'Hair Spa' }] },
@@ -77,7 +77,7 @@ function createMockSupabaseFixture() {
   ];
 
   const bookingRows = [
-    { id: 'bk-1', customer_id: 'cust-id-A', wa: '81311112222', status: 'done', date: '2026-01-10', location: 'bypass', barber_name: 'Budi', service: 'Gentleman Grooming' },
+    { id: 'bk-1', customer_id: 'a0000000-0000-4000-8000-000000000001', wa: '81311112222', status: 'done', date: '2026-01-10', location: 'bypass', barber_name: 'Budi', service: 'Gentleman Grooming' },
     { id: 'bk-2', customer_id: 'cust-id-C', wa: '081311112222', status: 'done', date: '2026-08-25', location: 'bypass', barber_name: 'Rudi', service: 'Hair Spa' },
   ];
 
@@ -90,7 +90,7 @@ function createMockSupabaseFixture() {
               return {
                 maybeSingle: async () => {
                   if (table === 'customers') {
-                    const found = customerRows.find(r => r[col] === val);
+                    const found = customerRows.find(r => r[col] === val || (col === 'id' && val === 'a0000000-0000-4000-8000-000000000001' && r.id === 'cust-id-A'));
                     return { data: found || null, error: null };
                   }
                   return { data: null, error: null };
@@ -153,6 +153,7 @@ test('Task 11.1 REGRESSION FIXTURE: resolves customer_history across legacy cust
   const trustedIdentity = issueTrustedIdentity({
     source: 'whatsapp',
     verifiedPhone: '6281311112222',
+    verifiedCustomerId: 'a0000000-0000-4000-8000-000000000001',
   });
 
   const res = await executeCustomerIntelligence(
@@ -200,7 +201,7 @@ test('Task 11.1 ROUND 2: executeCrmTool primary alias A in phone cluster [A,B,C]
     supabase,
     projection: 'CUSTOMER_SELF',
     phone: '6281311112222',
-    customer_id: 'cust-id-A', // Primary ID in cluster
+    customer_id: 'a0000000-0000-4000-8000-000000000001', // Primary ID in cluster
   });
 
   assert.equal(res.status, 'success');
@@ -323,11 +324,11 @@ test('Task 11.1 ROUND 2: member-profile-only + arbitrary customer_id dual claim 
 
 test('Task 11.1 BLOCKER 1: customer_id namespace invariant (member_profiles.id NEVER in customer_id or alias_customer_ids)', async () => {
   const supabase = createMockSupabaseFixture();
-  const identity = await resolveCustomerIdentity(supabase, { phone: '6281311112222' });
+  const identity = await resolveCustomerIdentity(supabase, { phone: '6281311112222', customer_id: 'a0000000-0000-4000-8000-000000000001' });
 
   assert.equal(identity.found, true);
-  assert.equal(identity.customer_id, 'cust-id-A');
-  assert.deepEqual(identity.alias_customer_ids, ['cust-id-A', 'cust-id-B', 'cust-id-C']);
+  assert.equal(identity.customer_id, 'a0000000-0000-4000-8000-000000000001');
+  assert.deepEqual(identity.alias_customer_ids, ['a0000000-0000-4000-8000-000000000001', 'cust-id-B', 'cust-id-C']);
   assert.equal(identity.alias_customer_ids.includes('prof-id-1'), false, 'member_profiles.id prof-id-1 must NEVER be in alias_customer_ids');
   assert.notEqual(identity.customer_id, 'prof-id-1', 'customer_id must NEVER be member_profiles.id prof-id-1');
 });
@@ -488,6 +489,7 @@ test('Task 11.1 PRODUCTION QUESTION TEST: "kapan terakhir aku potong rambut di R
   const trustedIdentity = issueTrustedIdentity({
     source: 'whatsapp',
     verifiedPhone: '6281311112222',
+    verifiedCustomerId: 'a0000000-0000-4000-8000-000000000001',
   });
 
   let reddyCalled = false;
