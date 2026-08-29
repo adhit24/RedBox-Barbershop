@@ -107,14 +107,6 @@ async function runAudit() {
   const totalDupRows = dupGroups.reduce((sum, g) => sum + g.rows.length, 0);
   console.log('Total customer rows involved in duplicates:', totalDupRows);
 
-  // Group size distribution
-  const sizeDist = {};
-  for (const g of dupGroups) {
-    const sz = g.rows.length;
-    sizeDist[sz] = (sizeDist[sz] || 0) + 1;
-  }
-  console.log('Group size distribution:', JSON.stringify(sizeDist));
-
   // Fetch all member profiles
   let allMemberProfiles = [];
   page = 0;
@@ -198,6 +190,7 @@ async function runAudit() {
   let totalGroupsRecomputed = 0;
   let totalBlockedMembership = 0;
   let totalBlockedName = 0;
+  let totalBlockedMoka = 0;
 
   for (const g of dupGroups) {
     const custIds = g.rows.map(r => r.id);
@@ -227,11 +220,12 @@ async function runAudit() {
       if (plan.group_status === 'deterministic_reconciliation') totalGroupsRecomputed++;
     }
 
-    if (plan.conflicts.includes('multiple_active_memberships')) totalBlockedMembership++;
+    if (plan.conflicts.includes('multiple_authoritative_memberships')) totalBlockedMembership++;
     if (plan.conflicts.includes('conflicting_customer_names')) totalBlockedName++;
+    if (plan.conflicts.includes('multiple_distinct_moka_customer_ids')) totalBlockedMoka++;
   }
 
-  console.log('\n=== DRY-RUN SIMULATION RESULTS ===');
+  console.log('\n=== RECALCULATED PRODUCTION DRY-RUN RESULTS ===');
   console.log('Category A (safe_auto_merge):', catA);
   console.log('Category B (deterministic_reconciliation):', catB);
   console.log('Category C (manual_review):', catC);
@@ -244,6 +238,7 @@ async function runAudit() {
   console.log('Total groups requiring recomputation:', totalGroupsRecomputed);
   console.log('Total groups blocked by membership conflict:', totalBlockedMembership);
   console.log('Total groups blocked by name conflict:', totalBlockedName);
+  console.log('Total groups blocked by Moka ID conflict:', totalBlockedMoka);
 }
 
 runAudit().catch(err => console.error(err));

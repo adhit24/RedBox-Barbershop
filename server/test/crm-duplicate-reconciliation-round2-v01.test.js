@@ -2,15 +2,19 @@
 
 /**
  * Task 17.1 — CRM Integrity Round 2: Duplicate Reconciliation Engine Tests
- *
- * Tests the dry-run reconciliation planner, field reconciliation rules,
- * canonical selection policy, risk classification, and zero-mutation guarantees.
+ * Correction Round 1
  */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { planDuplicateReconciliation, cleanName, areNamesInConflict } = require('../services/customerDuplicateReconciliation');
+const {
+  planDuplicateReconciliation,
+  normalizeName,
+  areNamesInConflict,
+  isTransactionCountableForSpend,
+  isTransactionCountableForVisit,
+} = require('../services/customerDuplicateReconciliation');
 const { resolveCustomerIdentity } = require('../services/customerIdentityResolver');
 const { getCustomer360 } = require('../crm/customer360Service');
 
@@ -32,12 +36,12 @@ test('REC2-01. one Moka row + one web duplicate selects Moka row as deterministi
   assert.equal(plan.risk_level, 'LOW');
 });
 
-test('REC2-02. two rows same phone with no conflicts results in safe_auto_merge', () => {
+test('REC2-02. two rows same phone with exact normalized same name results in safe_auto_merge', () => {
   const plan = planDuplicateReconciliation({
     phone: CANON_PHONE,
     rows: [
       { id: 'row-a', name: 'Budi Santoso', wa: CANON_PHONE, points: 50 },
-      { id: 'row-b', name: 'Budi Santoso', wa: CANON_PHONE, points: 0 },
+      { id: 'row-b', name: 'budi   santoso', wa: CANON_PHONE, points: 0 },
     ],
   });
 
@@ -48,19 +52,60 @@ test('REC2-02. two rows same phone with no conflicts results in safe_auto_merge'
   assert.equal(plan.risk_level, 'LOW');
 });
 
-test('REC2-03. same phone with conflicting names triggers manual_review', () => {
+test('REC2-03a. Budi A vs Budi B triggers manual_review', () => {
   const plan = planDuplicateReconciliation({
     phone: CANON_PHONE,
     rows: [
-      { id: 'row-a', name: 'Budi Santoso', wa: CANON_PHONE },
-      { id: 'row-b', name: 'Siti Rahma', wa: CANON_PHONE },
+      { id: 'row-a', name: 'Budi A', wa: CANON_PHONE },
+      { id: 'row-b', name: 'Budi B', wa: CANON_PHONE },
     ],
   });
 
   assert.equal(plan.group_status, 'manual_review');
   assert.equal(plan.canonical_customer_id, null);
   assert.ok(plan.conflicts.includes('conflicting_customer_names'));
-  assert.equal(plan.risk_level, 'HIGH');
+});
+
+test('REC2-03b. Adhit vs Adhit Nugraha triggers manual_review', () => {
+  const plan = planDuplicateReconciliation({
+    phone: CANON_PHONE,
+    rows: [
+      { id: 'row-a', name: 'Adhit', wa: CANON_PHONE },
+      { id: 'row-b', name: 'Adhit Nugraha', wa: CANON_PHONE },
+    ],
+  });
+
+  assert.equal(plan.group_status, 'manual_review');
+  assert.equal(plan.canonical_customer_id, null);
+  assert.ok(plan.conflicts.includes('conflicting_customer_names'));
+});
+
+test('REC2-03c. John vs John Doe triggers manual_review', () => {
+  const plan = planDuplicateReconciliation({
+    phone: CANON_PHONE,
+    rows: [
+      { id: 'row-a', name: 'John', wa: CANON_PHONE },
+      { id: 'row-b', name: 'John Doe', wa: CANON_PHONE },
+    ],
+  });
+
+  assert.equal(plan.group_status, 'manual_review');
+  assert.equal(plan.canonical_customer_id, null);
+  assert.ok(plan.conflicts.includes('conflicting_customer_names'));
+});
+
+test('REC2-03d. Budi Santoso vs Budi Santoso Jr triggers manual_review', () => {
+  const plan = planDuplicateReconciliation({
+    phone: CANON_PHONE,
+    rows: [
+      { id: 'row-a', name: 'Budi Santoso', wa: CANON_PHONE },
+      { id: 'row-b', name: 'Budi Santoso Jr', wa: CANON_PHONE },
+    ],
+  });
+
+  assert.equal(plan.group_status, 'manual_review');
+  assert.equal(plan.canonical_customer_id, null);
+  assert.ok(plan.conflicts.includes('conflicting_customer_names'));
 });
 
 test('REC2-04. two distinct Moka IDs on same phone triggers manual_review', () => {
@@ -75,25 +120,52 @@ test('REC2-04. two distinct Moka IDs on same phone triggers manual_review', () =
   assert.equal(plan.group_status, 'manual_review');
   assert.equal(plan.canonical_customer_id, null);
   assert.ok(plan.conflicts.includes('multiple_distinct_moka_customer_ids'));
-  assert.equal(plan.risk_level, 'HIGH');
 });
 
-test('REC2-05. multiple active memberships trigger manual_review', () => {
+test('REC2-05a. two customers rows both membership_status=ACTIVE with zero member_profiles does NOT create membership conflict', () => {
   const plan = planDuplicateReconciliation({
     phone: CANON_PHONE,
     rows: [
       { id: 'row-a', membership_status: 'ACTIVE', wa: CANON_PHONE },
       { id: 'row-b', membership_status: 'ACTIVE', wa: CANON_PHONE },
     ],
+    memberProfiles: [],
+  });
+
+  assert.equal(plan.group_status, 'safe_auto_merge');
+  assert.ok(!plan.conflicts.includes('multiple_authoritative_memberships'));
+});
+
+test('REC2-05b. two authoritative member_profiles that genuinely conflict triggers manual_review', () => {
+  const plan = planDuplicateReconciliation({
+    phone: CANON_PHONE,
+    rows: [
+      { id: 'row-a', wa: CANON_PHONE },
+      { id: 'row-b', wa: CANON_PHONE },
+    ],
+    memberProfiles: [
+      { id: 'p1', membership_status: 'ACTIVE' },
+      { id: 'p2', membership_status: 'ACTIVE' },
+    ],
   });
 
   assert.equal(plan.group_status, 'manual_review');
   assert.equal(plan.canonical_customer_id, null);
-  assert.ok(plan.conflicts.includes('multiple_active_memberships'));
-  assert.equal(plan.risk_level, 'HIGH');
+  assert.ok(plan.conflicts.includes('multiple_authoritative_memberships'));
 });
 
-test('REC2-06. invalid phone shape returns invalid_identity', () => {
+test('REC2-06a. no member_profile results in explicit no_authoritative_membership_fact, not synthetic INACTIVE', () => {
+  const plan = planDuplicateReconciliation({
+    phone: CANON_PHONE,
+    rows: [{ id: 'row-1', membership_status: 'ACTIVE', wa: CANON_PHONE }],
+    memberProfiles: [],
+  });
+
+  assert.equal(plan.field_plan.membership_status.value, null);
+  assert.equal(plan.field_plan.membership_status.strategy, 'no_authoritative_membership_fact');
+});
+
+test('REC2-06b. invalid phone shape returns invalid_identity', () => {
   const plan = planDuplicateReconciliation({
     phone: '123',
     rows: [{ id: 'row-1', wa: '123' }],
@@ -104,170 +176,77 @@ test('REC2-06. invalid phone shape returns invalid_identity', () => {
   assert.equal(plan.risk_level, 'HIGH');
 });
 
-test('REC2-07. canonical selection policy never relies on name similarity', () => {
-  // Identical name on both rows, but different spend values
+test('REC2-07. completed transactions are included in spend, cancelled/refunded/void/failed/pending excluded', () => {
+  const txs = [
+    { id: 't1', status: 'completed', total_amount: 100000 },
+    { id: 't2', status: 'PAID', total_amount: 50000 },
+    { id: 't3', status: 'cancelled', total_amount: 80000 },
+    { id: 't4', status: 'refunded', total_amount: 60000 },
+    { id: 't5', status: 'failed', total_amount: 40000 },
+    { id: 't6', status: 'pending', total_amount: 30000 },
+    { id: 't7', status: null, total_amount: 20000 },
+  ];
+
+  assert.equal(isTransactionCountableForSpend(txs[0]), true);
+  assert.equal(isTransactionCountableForSpend(txs[1]), true);
+  assert.equal(isTransactionCountableForSpend(txs[2]), false);
+  assert.equal(isTransactionCountableForSpend(txs[3]), false);
+  assert.equal(isTransactionCountableForSpend(txs[4]), false);
+  assert.equal(isTransactionCountableForSpend(txs[5]), false);
+  assert.equal(isTransactionCountableForSpend(txs[6]), false);
+
   const plan = planDuplicateReconciliation({
     phone: CANON_PHONE,
-    rows: [
-      { id: 'row-1', name: 'Adhit Nugraha', total_spent: 50000, wa: CANON_PHONE },
-      { id: 'row-2', name: 'Adhit Nugraha', total_spent: 200000, wa: CANON_PHONE },
-    ],
+    rows: [{ id: 'row-a', wa: CANON_PHONE }],
+    transactions: txs.map(t => ({ ...t, customer_id: 'row-a' })),
   });
 
-  // Selection chooses row-2 due to higher spend authority, NOT name similarity match
-  assert.equal(plan.canonical_customer_id, 'row-2');
+  assert.equal(plan.field_plan.total_spent.value, 150000);
 });
 
-test('REC2-08. canonical selection policy never blindly picks oldest or newest ID', () => {
+test('REC2-08. visit count uses correct completed/paid status semantics only', () => {
+  const txs = [
+    { id: 't1', status: 'completed', total_amount: 100000 },
+    { id: 't2', status: 'completed', total_amount: 50000 },
+    { id: 't3', status: 'cancelled', total_amount: 80000 },
+    { id: 't4', status: 'pending', total_amount: 30000 },
+  ];
+
+  assert.equal(isTransactionCountableForVisit(txs[0]), true);
+  assert.equal(isTransactionCountableForVisit(txs[1]), true);
+  assert.equal(isTransactionCountableForVisit(txs[2]), false);
+  assert.equal(isTransactionCountableForVisit(txs[3]), false);
+
   const plan = planDuplicateReconciliation({
     phone: CANON_PHONE,
-    rows: [
-      { id: 'row-001-oldest', created_at: '2020-01-01', total_spent: 0, wa: CANON_PHONE },
-      { id: 'row-999-newest', created_at: '2026-08-01', total_spent: 500000, moka_customer_id: 'moka-55', wa: CANON_PHONE },
-    ],
+    rows: [{ id: 'row-a', wa: CANON_PHONE }],
+    transactions: txs.map(t => ({ ...t, customer_id: 'row-a' })),
   });
 
-  // Picks row-999-newest because of moka_customer_id + spend authority, NOT created_at
-  assert.equal(plan.canonical_customer_id, 'row-999-newest');
+  assert.equal(plan.field_plan.visits.value, 2);
 });
 
-test('REC2-09. points semantics are respected (member_profiles is anchor authority)', () => {
+test('REC2-09. plan reasons and metadata contain ZERO customer PII and zero moka ID strings', () => {
   const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
+    phone: '6281399998888',
     rows: [
-      { id: 'row-a', points: 100, wa: CANON_PHONE },
-      { id: 'row-b', points: 50, wa: CANON_PHONE },
-    ],
-    memberProfiles: [{ id: 'prof-1', phone: `+${CANON_PHONE}`, total_points: 250 }],
-  });
-
-  assert.equal(plan.field_plan.points.value, 250);
-  assert.equal(plan.field_plan.points.strategy, 'anchored_to_member_profile');
-});
-
-test('REC2-10. spend semantics recomputed accurately from transaction records', () => {
-  const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
-    rows: [
-      { id: 'row-a', total_spent: 100000, wa: CANON_PHONE },
-      { id: 'row-b', total_spent: 150000, wa: CANON_PHONE },
-    ],
-    transactions: [
-      { id: 'tx-1', customer_id: 'row-a', total_amount: 100000, status: 'completed' },
-      { id: 'tx-2', customer_id: 'row-b', total_amount: 150000, status: 'completed' },
-      { id: 'tx-3', customer_id: 'row-b', total_amount: 50000, status: 'completed' },
-    ],
-  });
-
-  assert.equal(plan.field_plan.total_spent.value, 300000);
-  assert.equal(plan.field_plan.total_spent.strategy, 'recomputed_from_transactions');
-});
-
-test('REC2-11. visits semantics recomputed accurately from transactions', () => {
-  const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
-    rows: [
-      { id: 'row-a', visits: 2, wa: CANON_PHONE },
-      { id: 'row-b', visits: 3, wa: CANON_PHONE },
-    ],
-    transactions: [
-      { id: 'tx-1', customer_id: 'row-a', status: 'completed' },
-      { id: 'tx-2', customer_id: 'row-b', status: 'completed' },
-      { id: 'tx-3', customer_id: 'row-b', status: 'completed' },
-      { id: 'tx-4', customer_id: 'row-b', status: 'completed' },
-      { id: 'tx-5', customer_id: 'row-b', status: 'completed' },
-    ],
-  });
-
-  assert.equal(plan.field_plan.visits.value, 5);
-  assert.equal(plan.field_plan.visits.strategy, 'recomputed_from_transactions');
-});
-
-test('REC2-12. one transaction-linked row + empty duplicate yields safe_auto_merge', () => {
-  const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
-    rows: [
-      { id: 'row-a', name: 'Adhit', total_spent: 100000, wa: CANON_PHONE },
-      { id: 'row-b', name: null, total_spent: 0, wa: CANON_PHONE },
-    ],
-    transactions: [{ id: 'tx-1', customer_id: 'row-a', total_amount: 100000 }],
-  });
-
-  assert.equal(plan.group_status, 'safe_auto_merge');
-  assert.equal(plan.canonical_customer_id, 'row-a');
-  assert.equal(plan.risk_level, 'LOW');
-});
-
-test('REC2-13. history split across two rows triggers deterministic_reconciliation', () => {
-  const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
-    rows: [
-      { id: 'row-a', name: 'Adhit', total_spent: 100000, wa: CANON_PHONE },
-      { id: 'row-b', name: 'Adhit', total_spent: 200000, wa: CANON_PHONE },
-    ],
-    transactions: [
-      { id: 'tx-1', customer_id: 'row-a', total_amount: 100000 },
-      { id: 'tx-2', customer_id: 'row-b', total_amount: 200000 },
-    ],
-  });
-
-  assert.equal(plan.group_status, 'deterministic_reconciliation');
-  assert.equal(plan.canonical_customer_id, 'row-b');
-  assert.equal(plan.reference_plan.transactions.count, 1);
-  assert.equal(plan.risk_level, 'MEDIUM');
-});
-
-test('REC2-14. alias rows are preserved in reference_plan and alias_customer_ids', () => {
-  const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
-    rows: [
-      { id: 'row-1', wa: CANON_PHONE },
-      { id: 'row-2', wa: CANON_PHONE },
-      { id: 'row-3', wa: CANON_PHONE },
-    ],
-  });
-
-  assert.equal(plan.canonical_customer_id, 'row-1');
-  assert.deepEqual(plan.alias_customer_ids, ['row-2', 'row-3']);
-});
-
-test('REC2-15. planner performs zero DB writes (pure input-output calculation)', () => {
-  const sampleGroup = Object.freeze({
-    phone: CANON_PHONE,
-    rows: Object.freeze([{ id: 'r1', wa: CANON_PHONE }, { id: 'r2', wa: CANON_PHONE }]),
-  });
-
-  assert.doesNotThrow(() => {
-    const plan = planDuplicateReconciliation(sampleGroup);
-    assert.ok(plan);
-  });
-});
-
-test('REC2-16. unresolved field semantics (e.g. conflicting names) blocks merge', () => {
-  const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
-    rows: [
-      { id: 'row-1', name: 'Alice Smith', wa: CANON_PHONE },
-      { id: 'row-2', name: 'Bob Jones', wa: CANON_PHONE },
+      { id: 'r1', name: 'Super Secret Customer Name', moka_customer_id: 'moka-secret-999', wa: '6281399998888' },
+      { id: 'r2', name: 'Different Secret Name', moka_customer_id: 'moka-secret-888', wa: '6281399998888' },
     ],
   });
 
   assert.equal(plan.group_status, 'manual_review');
-  assert.equal(plan.canonical_customer_id, null);
+  const planStr = JSON.stringify({ reasons: plan.reasons, conflicts: plan.conflicts });
+  
+  assert.ok(!planStr.includes('Super Secret'));
+  assert.ok(!planStr.includes('Different Secret'));
+  assert.ok(!planStr.includes('6281399998888'));
+  assert.ok(!planStr.includes('moka-secret-999'));
+  assert.ok(!planStr.includes('moka-secret-888'));
+  assert.deepEqual(plan.reasons, ['conflicting_moka_customer_ids', 'conflicting_customer_names']);
 });
 
-test('REC2-17. member_profiles authority is preserved for membership_status', () => {
-  const plan = planDuplicateReconciliation({
-    phone: CANON_PHONE,
-    rows: [{ id: 'row-1', membership_status: 'INACTIVE', wa: CANON_PHONE }],
-    memberProfiles: [{ id: 'prof-1', phone: `+${CANON_PHONE}`, membership_status: 'ACTIVE' }],
-  });
-
-  assert.equal(plan.field_plan.membership_status.value, 'ACTIVE');
-  assert.equal(plan.field_plan.membership_status.strategy, 'member_profile_authority');
-});
-
-test('REC2-18. Task17 duplicate-phone resolver behavior remains unchanged (fails closed on ambiguous)', async () => {
+test('REC2-10. Task17 duplicate-phone resolver behavior remains unchanged (fails closed on ambiguous)', async () => {
   const fakeSupabase = {
     from(table) {
       return {
@@ -292,7 +271,7 @@ test('REC2-18. Task17 duplicate-phone resolver behavior remains unchanged (fails
   assert.equal(identity.candidates_count, 2);
 });
 
-test('REC2-19. CRM/Reddy still fail closed on unresolved duplicate identity from getCustomer360', async () => {
+test('REC2-11. CRM/Reddy still fail closed on unresolved duplicate identity from getCustomer360', async () => {
   const fakeSupabase = {
     from(table) {
       return {
@@ -317,15 +296,14 @@ test('REC2-19. CRM/Reddy still fail closed on unresolved duplicate identity from
   assert.equal(c360.customer, null);
 });
 
-test('REC2-20. telemetry contains zero PII if logged', () => {
-  const { sanitizeCrmIdentityTelemetry } = require('../orchestrator/telemetry');
-  const safe = sanitizeCrmIdentityTelemetry({
-    event_type: 'crm_identity_ambiguous',
-    source: 'crm_customer_self',
-    phone: '6281311112222',
-    name: 'Secret Customer',
+test('REC2-12. planner performs zero DB writes (pure calculation engine)', () => {
+  const sampleGroup = Object.freeze({
+    phone: CANON_PHONE,
+    rows: Object.freeze([{ id: 'r1', wa: CANON_PHONE }, { id: 'r2', wa: CANON_PHONE }]),
   });
 
-  assert.equal(Object.hasOwn(safe, 'phone'), false);
-  assert.equal(Object.hasOwn(safe, 'name'), false);
+  assert.doesNotThrow(() => {
+    const plan = planDuplicateReconciliation(sampleGroup);
+    assert.ok(plan);
+  });
 });

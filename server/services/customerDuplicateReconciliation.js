@@ -2,6 +2,7 @@
 
 /**
  * Task 17.1 — CRM Integrity Round 2: Customer Duplicate Reconciliation Engine
+ * Correction Round 1
  *
  * READ-ONLY / PURE reconciliation planner.
  * Calculates deterministic canonical customer selection, field reconciliation plans,
@@ -13,39 +14,47 @@
 const { normalizeMemberPhone } = require('../member-identity');
 
 /**
- * Normalizes name for comparison (lowercased, trimmed, extra whitespace collapsed)
+ * Deterministic formatting for name normalization:
+ * Trim, lowercase, collapse internal whitespace.
+ * NO fuzzy, Levenshtein, substring, or token-similarity matching permitted.
  */
-function cleanName(val) {
+function normalizeName(val) {
   if (typeof val !== 'string') return '';
   return val.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 /**
- * Checks if two non-empty names are in conflict (e.g. "Budi Santoso" vs "Siti Rahma")
+ * Strict conservative name conflict detector.
+ * Distinct normalized non-empty names <= 1 -> false (no conflict).
+ * Distinct normalized non-empty names > 1 -> true (conflict -> manual_review).
  */
 function areNamesInConflict(names = []) {
-  const cleaned = Array.from(new Set(names.map(cleanName).filter(Boolean)));
-  if (cleaned.length <= 1) return false;
+  const normalizedSet = new Set(names.map(normalizeName).filter(Boolean));
+  return normalizedSet.size > 1;
+}
 
-  // Compare first words / major tokens
-  const firstTokens = new Set(cleaned.map(n => n.split(' ')[0]));
-  if (firstTokens.size > 1) return true;
+/**
+ * Transaction eligibility check for revenue / spend calculation.
+ * Only completed or paid status transactions with total_amount > 0 are countable.
+ * Cancelled, refunded, void, failed, pending, reserved, or null statuses are excluded.
+ */
+function isTransactionCountableForSpend(tx) {
+  if (!tx || typeof tx !== 'object') return false;
+  const st = String(tx.status || '').trim().toLowerCase();
+  const amt = Number(tx.total_amount || tx.amount || 0);
+  if (amt <= 0) return false;
+  return st === 'completed' || st === 'paid';
+}
 
-  // If first token is identical (e.g. "Adhit Nugraha" vs "Adhitya Nugraha"), checkLevenshtein or token overlap
-  // For safety: if string representations differ significantly (>2 edit distance for short strings), flag conflict
-  for (let i = 0; i < cleaned.length; i++) {
-    for (let j = i + 1; j < cleaned.length; j++) {
-      const a = cleaned[i];
-      const b = cleaned[j];
-      if (a !== b) {
-        // If neither is substring of another and length difference > 3
-        if (!a.includes(b) && !b.includes(a) && Math.abs(a.length - b.length) > 3) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+/**
+ * Transaction eligibility check for visit count calculation.
+ * Only completed or paid status transactions are countable.
+ * Cancelled, refunded, void, failed, pending, reserved, or null statuses are excluded.
+ */
+function isTransactionCountableForVisit(tx) {
+  if (!tx || typeof tx !== 'object') return false;
+  const st = String(tx.status || '').trim().toLowerCase();
+  return st === 'completed' || st === 'paid';
 }
 
 /**
@@ -74,7 +83,7 @@ function planDuplicateReconciliation(group = {}, options = {}) {
       canonical_customer_id: null,
       alias_customer_ids: rows.map(r => r.id).filter(Boolean),
       reasons,
-      conflicts: ['malformed_or_short_phone_number'],
+      conflicts: ['invalid_phone_format'],
       field_plan: {},
       reference_plan: {
         transactions: { action: 'none', from_ids: [], to_id: null, count: 0 },
@@ -93,7 +102,7 @@ function planDuplicateReconciliation(group = {}, options = {}) {
       canonical_customer_id: null,
       alias_customer_ids: rows.map(r => r.id).filter(Boolean),
       reasons,
-      conflicts: ['shared_generic_hotline_number'],
+      conflicts: ['shared_hotline_number'],
       field_plan: {},
       reference_plan: {
         transactions: { action: 'none', from_ids: [], to_id: null, count: 0 },
@@ -122,23 +131,27 @@ function planDuplicateReconciliation(group = {}, options = {}) {
   const allCustIds = Array.from(new Set(rows.map(r => r.id).filter(Boolean)));
 
   // --- Category C checks: Manual Review Triggers ---
+
+  // 1. Multiple distinct Moka customer IDs
   const mokaIds = Array.from(new Set(rows.map(r => r.moka_customer_id).filter(Boolean)));
   if (mokaIds.length > 1) {
     conflicts.push('multiple_distinct_moka_customer_ids');
-    reasons.push(`conflicting_moka_ids: ${mokaIds.join(', ')}`);
+    reasons.push('conflicting_moka_customer_ids');
   }
 
+  // 2. Conflicting customer names (strict conservative check)
   const names = rows.map(r => r.name).filter(Boolean);
   if (areNamesInConflict(names)) {
     conflicts.push('conflicting_customer_names');
-    reasons.push(`conflicting_names: ${Array.from(new Set(names)).join(' vs ')}`);
+    reasons.push('conflicting_customer_names');
   }
 
-  const activeCustomerMemberships = rows.filter(r => String(r.membership_status).toUpperCase() === 'ACTIVE');
-  const activeProfileMemberships = profiles.filter(p => String(p.membership_status).toUpperCase() === 'ACTIVE');
-  if (activeCustomerMemberships.length > 1 || activeProfileMemberships.length > 1) {
-    conflicts.push('multiple_active_memberships');
-    reasons.push('multiple_active_memberships_detected');
+  // 3. Multiple active memberships ONLY from authoritative member_profiles (Task 14.1 authority)
+  // customers.membership_status is NOT authority and does NOT trigger membership conflict
+  const activeProfiles = profiles.filter(p => String(p.membership_status || '').toUpperCase() === 'ACTIVE');
+  if (activeProfiles.length > 1) {
+    conflicts.push('multiple_authoritative_memberships');
+    reasons.push('multiple_authoritative_memberships');
   }
 
   if (conflicts.length > 0) {
@@ -161,13 +174,16 @@ function planDuplicateReconciliation(group = {}, options = {}) {
   // Priority 1: Row with valid unique moka_customer_id
   let canonicalRow = rows.find(r => r.moka_customer_id && mokaIds.includes(r.moka_customer_id));
 
-  // Priority 2: Rank remaining candidate rows by transaction count -> tx spend sum -> stored total_spent -> ID tie-breaker
+  // Priority 2: Rank candidate rows by transaction evidence -> spend -> stored spend -> ID tie-breaker
+  // Note: customers.membership_status is NOT used for canonical selection
   if (!canonicalRow) {
     const txCountByCustId = new Map();
     const txSumByCustId = new Map();
     for (const t of transactions) {
-      if (t.customer_id) {
+      if (t.customer_id && isTransactionCountableForVisit(t)) {
         txCountByCustId.set(t.customer_id, (txCountByCustId.get(t.customer_id) || 0) + 1);
+      }
+      if (t.customer_id && isTransactionCountableForSpend(t)) {
         txSumByCustId.set(t.customer_id, (txSumByCustId.get(t.customer_id) || 0) + (Number(t.total_amount) || 0));
       }
     }
@@ -184,10 +200,6 @@ function planDuplicateReconciliation(group = {}, options = {}) {
       const spendA = Number(a.total_spent) || 0;
       const spendB = Number(b.total_spent) || 0;
       if (spendA !== spendB) return spendB - spendA;
-
-      const isMemberA = String(a.membership_status).toUpperCase() === 'ACTIVE' ? 1 : 0;
-      const isMemberB = String(b.membership_status).toUpperCase() === 'ACTIVE' ? 1 : 0;
-      if (isMemberA !== isMemberB) return isMemberB - isMemberA;
 
       return String(a.id).localeCompare(String(b.id));
     });
@@ -225,37 +237,37 @@ function planDuplicateReconciliation(group = {}, options = {}) {
     sources_in_group: sources,
   };
 
-  // Financial & Visit Aggregates:
-  // Recompute total_spent & transaction count from linked transactions if transactions exist
-  const txSum = transactions.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
+  // Financial & Visit Aggregates using strict status eligibility helpers:
+  const eligibleSpendTxs = transactions.filter(isTransactionCountableForSpend);
+  const txSum = eligibleSpendTxs.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
   const hasTxRecords = transactions.length > 0;
   const storedSpendMax = Math.max(0, ...rows.map(r => Number(r.total_spent) || 0));
-  const finalTotalSpent = hasTxRecords ? txSum : storedSpendMax;
+  const finalTotalSpent = eligibleSpendTxs.length > 0 ? txSum : storedSpendMax;
   const spendPlan = {
     value: finalTotalSpent,
-    strategy: hasTxRecords ? 'recomputed_from_transactions' : 'max_stored_snapshot',
+    strategy: eligibleSpendTxs.length > 0 ? 'recomputed_from_eligible_transactions' : 'max_stored_snapshot',
     breakdown: {
-      transaction_recomputed_sum: txSum,
+      eligible_transaction_sum: txSum,
       stored_rows_max: storedSpendMax,
     },
   };
 
-  // Visits: recompute from completed transactions / bookings if available, else sum/max
-  const txCount = transactions.filter(t => t.status === 'completed' || !t.status).length;
+  // Visits: recompute from eligible transactions if available, else max stored
+  const eligibleVisitTxs = transactions.filter(isTransactionCountableForVisit);
   const storedVisitsMax = Math.max(0, ...rows.map(r => Number(r.visits) || 0));
   const storedVisitsSum = rows.reduce((sum, r) => sum + (Number(r.visits) || 0), 0);
   const visitsPlan = {
-    value: txCount > 0 ? txCount : storedVisitsMax,
-    strategy: txCount > 0 ? 'recomputed_from_transactions' : 'max_stored_snapshot',
+    value: eligibleVisitTxs.length > 0 ? eligibleVisitTxs.length : storedVisitsMax,
+    strategy: eligibleVisitTxs.length > 0 ? 'recomputed_from_eligible_transactions' : 'max_stored_snapshot',
     breakdown: {
-      transaction_count: txCount,
+      eligible_transaction_count: eligibleVisitTxs.length,
       stored_visits_max: storedVisitsMax,
       stored_visits_sum: storedVisitsSum,
     },
   };
 
   // Points: anchor to member_profiles.total_points if present, else max stored points
-  const profilePoints = profiles[0] ? (Number(profiles[0].total_points) || 0) : null;
+  const profilePoints = activeProfiles[0] ? (Number(activeProfiles[0].total_points) || 0) : (profiles[0] ? (Number(profiles[0].total_points) || 0) : null);
   const storedPointsMax = Math.max(0, ...rows.map(r => Number(r.points) || 0));
   const finalPoints = profilePoints !== null ? profilePoints : storedPointsMax;
   const pointsPlan = {
@@ -273,13 +285,25 @@ function planDuplicateReconciliation(group = {}, options = {}) {
   const firstVisitPlan = { value: allFirstVisits[0] || null };
   const lastVisitPlan = { value: allLastVisits.at(-1) || null };
 
-  // Membership status: member_profiles authority if profile exists, else canonical status
-  const profileMembership = profiles[0]?.membership_status || null;
-  const canonicalMembership = canonicalRow.membership_status || null;
-  const membershipPlan = {
-    value: profileMembership || canonicalMembership || 'INACTIVE',
-    strategy: profileMembership ? 'member_profile_authority' : 'canonical_customer_row',
-  };
+  // Membership status: member_profiles authority ONLY (Task 14.1 authority).
+  // customers.membership_status is NOT authority and is NOT synthesized as INACTIVE if missing.
+  let membershipPlan;
+  if (activeProfiles.length > 0) {
+    membershipPlan = {
+      value: 'ACTIVE',
+      strategy: 'member_profile_authority',
+    };
+  } else if (profiles.length > 0 && profiles[0].membership_status) {
+    membershipPlan = {
+      value: String(profiles[0].membership_status).toUpperCase(),
+      strategy: 'member_profile_authority',
+    };
+  } else {
+    membershipPlan = {
+      value: null,
+      strategy: 'no_authoritative_membership_fact',
+    };
+  }
 
   // Fav barber
   const favBarbers = rows.map(r => r.fav_barber).filter(Boolean);
@@ -349,6 +373,8 @@ function planDuplicateReconciliation(group = {}, options = {}) {
 
 module.exports = {
   planDuplicateReconciliation,
-  cleanName,
+  normalizeName,
   areNamesInConflict,
+  isTransactionCountableForSpend,
+  isTransactionCountableForVisit,
 };
