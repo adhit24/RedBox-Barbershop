@@ -5,6 +5,20 @@ const { hashValue, normalizePhoneDigits } = require('./waInboundGuard');
 const DUPLICATE_CONTENT_WINDOW_MS = 90 * 1000;
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX_SENDS = 5;
+const MONITORING_MAX_WAIT_MS = 250;
+
+async function observeMessageFailOpen(observeMessage, message, context) {
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, MONITORING_MAX_WAIT_MS);
+    Promise.resolve()
+      .then(() => observeMessage(message, context))
+      .catch(() => null)
+      .finally(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+  });
+}
 
 function firstRpcRow(data) {
   if (Array.isArray(data)) return data[0] || null;
@@ -56,7 +70,7 @@ async function markOutboundResult(supabase, { inboundEventId, claimId, sent }) {
 /** Manual/human sends never call this wrapper and remain unaffected. */
 function createGuardedSend({
   realSend, supabase, inboundEventRowId, isEnabled = () => true, logEvent = () => {},
-  onSendSuccess = async () => {},
+  observeMessage = () => {}, onSendSuccess = async () => {},
 }) {
   return async function guardedSend(to, message, options = {}) {
     const branch = options.branch || null;
@@ -85,6 +99,13 @@ function createGuardedSend({
     }
 
     logEvent({ event_type: 'outbound_send_attempt', branch });
+    // Task 16 is observation-only and fail-open. Evaluation storage or rule
+    // failures must never block, replace, or mutate the customer reply.
+    await observeMessageFailOpen(observeMessage, message, {
+      branch,
+      inboundEventRowId,
+      ...(options.evaluationContext && typeof options.evaluationContext === 'object' ? options.evaluationContext : {}),
+    });
     let result;
     try {
       result = await realSend(to, message, options);
@@ -114,4 +135,5 @@ module.exports = {
   DUPLICATE_CONTENT_WINDOW_MS,
   RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_MAX_SENDS,
+  MONITORING_MAX_WAIT_MS,
 };

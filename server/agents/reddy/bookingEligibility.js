@@ -82,6 +82,16 @@ function deriveBookingEligibility({ text, orchestrationDecision = null } = {}) {
   let reason = 'non_booking';
   let responseEligible = false;
 
+  // A customer REPORTING they already completed a booking (Task
+  // orchestratorService.buildDecisionEnvelope's booking_completion_report
+  // act) must never be granted a CTA/URL — there is nothing left to guide
+  // them to, and showing the link again is exactly the "CTA bleed" this
+  // classification exists to prevent. Checked first: it must win over every
+  // other reason, including a stray memory/vocabulary signal.
+  if (act === 'booking_completion_report') {
+    return { memoryRelevant, responseEligible: false, ctaEligible: false, reason: 'booking_completion_acknowledged' };
+  }
+
   if (explicitLinkRequest) {
     reason = 'explicit_booking_link_request';
     responseEligible = true;

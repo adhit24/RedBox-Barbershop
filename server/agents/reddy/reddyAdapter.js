@@ -13,6 +13,17 @@ const { stripGenericClosingQuestion } = require('./closingSuppressionGuard');
 const { deriveBookingEligibility } = require('./bookingEligibility');
 const { logOrchestratedEvent } = require('../../orchestrator/telemetry');
 
+// Task orchestratorService.buildDecisionEnvelope already decided, upstream,
+// whether this turn is a customer-reported booking completion ("sudah kak",
+// "udah booking di web"). Reddy must acknowledge naturally but must NEVER
+// claim a backend-confirmed booking or repeat the booking CTA — the safest
+// way to guarantee both is a single deterministic reply that bypasses the
+// LLM (and therefore also bypasses guardReddyReply's prohibited-claim regex,
+// which cannot distinguish "Reddy claims it booked" from "customer says they
+// already booked" and was the actual source of the original bug).
+const BOOKING_COMPLETION_ACK_REPLY =
+  'Sip Kak, kalau sudah selesai booking di website berarti tinggal datang sesuai jadwal yang dipilih ya.';
+
 // A barber presence/schedule question ("Mas Opan masuk hari ini?") needs a
 // temporal-today/specific-day marker plus a presence/attendance verb — this
 // is intentionally independent of bookingEligibility.js's signals, since
@@ -85,6 +96,37 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     ctaEligible: bookingCtaEligible,
     reason: bookingEligibilityReason,
   } = deriveBookingEligibility({ text, orchestrationDecision });
+
+  const isBookingCompletionReport = orchestrationDecision?.conversational_act === 'booking_completion_report';
+
+  if (isBookingCompletionReport) {
+    const completionReply = BOOKING_COMPLETION_ACK_REPLY;
+
+    logBookingTelemetry({
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      intent: orchestrationDecision?.intent || 'unknown',
+      action: 'booking_completion_acknowledged',
+      branch,
+      trust_status: 'unverified',
+      execution_status: 'acknowledged',
+      booking_memory_relevant: bookingMemoryRelevant,
+      booking_response_eligible: bookingResponseEligible,
+      booking_cta_eligible: bookingCtaEligible,
+      booking_eligibility_reason: bookingEligibilityReason,
+    });
+
+    if (persistConversation && typeof persistConversation === 'function') {
+      await persistConversation(from, conversationContext?.turns || [], text, completionReply);
+    }
+
+    let completionSendResult = null;
+    if (sendWA && typeof sendWA === 'function') {
+      completionSendResult = await sendWA(from, completionReply, { branch });
+    }
+
+    return { used: 'reddy_agent', reply: completionReply, sendResult: completionSendResult, error: null };
+  }
 
   const realtimeBarberQuerySignal = REALTIME_BARBER_QUERY_VERB_PATTERN.test(String(text || ''))
     && REALTIME_BARBER_QUERY_TIME_PATTERN.test(String(text || ''));

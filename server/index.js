@@ -3556,6 +3556,10 @@ const { createStockistRoutes } = require('./routes/stockist');
 app.use('/api/stockist', createStockistRoutes(supabase, adminAuth));
 const { createHumanHandoffRoutes } = require('./routes/humanHandoff');
 app.use('/api/handoff', createHumanHandoffRoutes(supabase, adminAuth));
+const { createReddyEvaluationRoutes } = require('./routes/reddyEvaluation');
+const { configureEvaluationMonitoring } = require('./services/reddyEvaluationMonitoring');
+configureEvaluationMonitoring(() => supabase);
+app.use('/api/internal/reddy-evaluation', createReddyEvaluationRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));
