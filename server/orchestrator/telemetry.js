@@ -1,5 +1,7 @@
 'use strict';
 
+const { observeTelemetry } = require('../services/reddyEvaluationMonitoring');
+
 /**
  * Redbox AI Telemetry Logger v0.1
  * Logs safe structured routing events without PII leakage.
@@ -93,6 +95,7 @@ function sanitizeTelemetry(event = {}) {
 function logOrchestratedEvent(event = {}) {
   const safe = sanitizeTelemetry(event);
   console.log('[OrchestratorTelemetry]', JSON.stringify(safe));
+  observeTelemetry('orchestrator', safe);
   return safe;
 }
 
@@ -130,6 +133,7 @@ function sanitizeHandoffTelemetry(event = {}) {
 function logHandoffEvent(event = {}) {
   const safe = sanitizeHandoffTelemetry(event);
   console.log('[HandoffTelemetry]', JSON.stringify(safe));
+  observeTelemetry('handoff', safe);
   return safe;
 }
 
@@ -154,6 +158,8 @@ const ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS = new Set([
 const ALLOWED_ANTISPAM_EXECUTION_STATUS = new Set(['ok', 'suppressed', 'failed', null]);
 
 function sanitizeAntiSpamTelemetry(event = {}) {
+  const deviceHash = typeof event.device_hash === 'string' && /^[a-f0-9]{64}$/i.test(event.device_hash)
+    ? event.device_hash.toLowerCase() : null;
   return {
     timestamp: new Date().toISOString(),
     event_type: ALLOWED_ANTISPAM_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
@@ -163,12 +169,15 @@ function sanitizeAntiSpamTelemetry(event = {}) {
     idempotency_status: ALLOWED_ANTISPAM_IDEMPOTENCY_STATUS.has(event.idempotency_status) ? event.idempotency_status : null,
     execution_status: ALLOWED_ANTISPAM_EXECUTION_STATUS.has(event.execution_status) ? event.execution_status : null,
     guard_reason: typeof event.guard_reason === 'string' ? event.guard_reason.slice(0, 64) : null,
+    device_hash: deviceHash,
+    message_id_present: typeof event.message_id_present === 'boolean' ? event.message_id_present : null,
   };
 }
 
 function logAntiSpamEvent(event = {}) {
   const safe = sanitizeAntiSpamTelemetry(event);
   console.log('[AntiSpamTelemetry]', JSON.stringify(safe));
+  observeTelemetry('anti_spam', safe);
   return safe;
 }
 
