@@ -1,3 +1,4 @@
 {
- "framework": "nextjs"
+  "framework": "nextjs",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ':(top)frontend' ':(top)package.json' ':(top)package-lock.json'"
 }
