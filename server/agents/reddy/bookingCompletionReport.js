@@ -34,18 +34,30 @@ const STATUS_QUERY_PATTERN = /\bbelum\b/i;
 // A bare completion phrase ("sudah kak") may only be interpreted as a
 // completion report when a recent ASSISTANT turn (never a customer turn —
 // the customer cannot self-issue the CTA that supposedly caused this reply)
-// contains STRONG, unambiguous booking-flow guidance: an explicit website
-// booking instruction, a booking URL/link, or "silakan/lanjutkan booking"
-// phrasing. This intentionally excludes generic mentions of barber/kapster/
-// jadwal/slot alone.
-const STRONG_ASSISTANT_BOOKING_GUIDANCE_PATTERN =
-  /redboxbarbershop\.com|\bsilakan\s+(?:lanjutkan\s+)?booking\b|\blanjutkan\s+booking\b|\blanjut(?:kan)?\s+(?:ke\s+)?booking\b|\bbooking\s+(?:di|lewat|melalui)\s+website\b|\bbooking\s+di\s+web\b|\bwebsite\s+booking\b|\blink\s+booking\b|\blanjutkan\s+(?:pilihan\s+)?(?:booking\s+)?di\s+website\b/i;
+// contains STRONG, unambiguous booking-flow guidance.
+//
+// Final Mini Correction: a bare mention of the domain alone ("Info cabang
+// bisa dilihat di redboxbarbershop.com.") is NOT strong evidence either — a
+// customer can be told the general website for all sorts of non-booking
+// reasons (location, hours, catalog). The domain only counts when the URL
+// itself clearly targets the booking flow (a /booking path, booking.html, or
+// a booking-bearing query string), OR when the same turn also carries an
+// explicit booking-flow instruction ("silakan booking", "lanjutkan booking",
+// "booking lewat website", etc.) independent of any URL.
+const EXPLICIT_BOOKING_FLOW_PHRASE_PATTERN =
+  /\bsilakan\s+(?:lanjutkan\s+)?booking\b|\blanjutkan\s+booking\b|\blanjut(?:kan)?\s+(?:ke\s+)?booking\b|\bbooking\s+(?:di|lewat|melalui)\s+website\b|\bbooking\s+di\s+web\b|\bwebsite\s+booking\b|\blink\s+booking\b|\blanjutkan\s+(?:pilihan\s+)?(?:booking\s+)?di\s+website\b/i;
+
+const BOOKING_TARGETED_URL_PATTERN = /redboxbarbershop\.com\S*booking\S*/i;
+
+function isStrongAssistantBookingGuidance(content) {
+  return EXPLICIT_BOOKING_FLOW_PHRASE_PATTERN.test(content) || BOOKING_TARGETED_URL_PATTERN.test(content);
+}
 
 function hasRecentAssistantBookingGuidance(conversationContext) {
   const turns = Array.isArray(conversationContext?.turns) ? conversationContext.turns.slice(-6) : [];
   return turns.some(
     (turn) => turn && turn.role === 'assistant' && typeof turn.content === 'string'
-      && STRONG_ASSISTANT_BOOKING_GUIDANCE_PATTERN.test(turn.content),
+      && isStrongAssistantBookingGuidance(turn.content),
   );
 }
 

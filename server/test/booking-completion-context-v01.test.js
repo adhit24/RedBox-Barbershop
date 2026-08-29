@@ -86,6 +86,32 @@ test('B2e. Correction R1: assistant giving a booking link => "udah" is a complet
   assert.equal(result.isCompletionReport, true);
 });
 
+// ── Final Mini Correction (PR #44): domain mention alone is not booking evidence ──
+
+test('B2f. Final Mini Correction: assistant generic redboxbarbershop.com mention (no booking path) + "sudah kak" is NOT completion', () => {
+  const result = detectBookingCompletionReport({
+    text: 'sudah kak',
+    conversationContext: { turns: [{ role: 'assistant', content: 'Info cabang bisa dilihat di redboxbarbershop.com.' }] },
+  });
+  assert.equal(result.isCompletionReport, false, 'a generic homepage/site mention is not booking-flow guidance');
+});
+
+test('B2g. Final Mini Correction: assistant redboxbarbershop.com/booking... + "sudah kak" => completion', () => {
+  const result = detectBookingCompletionReport({
+    text: 'sudah kak',
+    conversationContext: { turns: [{ role: 'assistant', content: 'Cek dan pilih jadwalmu di redboxbarbershop.com/booking ya Kak.' }] },
+  });
+  assert.equal(result.isCompletionReport, true);
+});
+
+test('B2h. Final Mini Correction: assistant booking.html?... link + "udah" => completion', () => {
+  const result = detectBookingCompletionReport({
+    text: 'udah',
+    conversationContext: { turns: [{ role: 'assistant', content: 'Ini linknya ya Kak: https://redboxbarbershop.com/booking.html?branch=bypass' }] },
+  });
+  assert.equal(result.isCompletionReport, true);
+});
+
 test('B3. explicit "udah booking di web" fires without any context', () => {
   const result = detectBookingCompletionReport({ text: 'udah booking di web', conversationContext: { turns: [] } });
   assert.equal(result.isCompletionReport, true);
