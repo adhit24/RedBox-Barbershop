@@ -23,7 +23,15 @@ const GENERIC_CLOSING_PATTERNS = [
   /\bada\s+yang\s+(mau|ingin)\s+(kamu\s+)?(di)?tanyakan(\s+seputar\s+redbox)?\s*\??/i,
   /\bkalau\s+ada\s+yang\s+bisa\s+(aku|saya|kami)\s+bantu\s+lagi,?\s*(silakan\s+tanya|jangan\s+ragu)?\.?/i,
   /\bjangan\s+ragu\s+(untuk\s+)?(tanya|bertanya)\s*(ya|kak|bro)?\.?/i,
-  /\bsilakan\s+(tanya|bertanya|tanyakan)\s*(saja)?\s*(kak|bro|ya)?\.?/i,
+  // Mini Correction Round 2: end-constrained. stripGenericClosingQuestion
+  // drops the WHOLE sentence on a match, so an unanchored "silakan tanya..."
+  // pattern also matched genuine task-advancing instructions with real
+  // content after the verb ("Silakan tanyakan nomor booking ke admin
+  // cabang."). Requiring nothing but the optional "saja"/address term and
+  // trailing punctuation before the end of the sentence means real content
+  // after the verb (an object/target for the question) prevents a match,
+  // while the bare generic closing ("Silakan tanya saja, Kak!") still matches.
+  /\bsilakan\s+(tanya|bertanya|tanyakan)\s*(saja)?\s*,?\s*(kak|bro|ya)?\s*[.!?]*\s*$/i,
   /\bada\s+lagi\s+yang\s+(mau|ingin|bisa)\s+ditanyakan\s*\??/i,
 ];
 
