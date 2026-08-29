@@ -11,11 +11,20 @@
  * this is the same deterministic-safety-net pattern.
  */
 const GENERIC_CLOSING_PATTERNS = [
-  /\bada\s+yang\s+bisa\s+(aku|saya|kami)\s+bantu\s+lagi\s*\??/i,
-  /\bkalau\s+ada\s+yang\s+(mau|ingin)\s+ditanyakan,?\s+jangan\s+ragu\s+ya\.?/i,
-  /\bada\s+yang\s+ingin\s+kamu\s+tanyakan\s+seputar\s+redbox\s*\??/i,
-  /\bkalau\s+ada\s+yang\s+bisa\s+(aku|saya|kami)\s+bantu\s+lagi,?\s+silakan\s+tanya\.?/i,
-  /\bjangan\s+ragu\s+(untuk\s+)?(tanya|bertanya)\s+ya\.?/i,
+  /\bada\s+yang\s+(bisa|mau|ingin)\s+(aku|saya|kami)?\s*bantu\s*(lagi|selain\s+ini)?\s*\??/i,
+  /\b(jika|kalau)\s+ada\s+yang\s+(mau|ingin)?\s*ditanyakan,?\s*(jangan\s+ragu|silakan)?\.?/i,
+  /\b(jika|kalau)\s+ada\s+pertanyaan\s+lain,?\s*(jangan\s+ragu|silakan)?\.?/i,
+  // Covers both grammatical forms of the same generic closing intent:
+  // active ("...kamu tanyakan...") and passive ("...ditanyakan..."). The
+  // "di" prefix is optional so a single pattern safely matches either verb
+  // form without duplicating the surrounding "ada yang ... seputar redbox?"
+  // shape (Mini Correction Round 1 — the prior pattern accidentally dropped
+  // the pre-existing active-form phrasing when passive-form coverage was added).
+  /\bada\s+yang\s+(mau|ingin)\s+(kamu\s+)?(di)?tanyakan(\s+seputar\s+redbox)?\s*\??/i,
+  /\bkalau\s+ada\s+yang\s+bisa\s+(aku|saya|kami)\s+bantu\s+lagi,?\s*(silakan\s+tanya|jangan\s+ragu)?\.?/i,
+  /\bjangan\s+ragu\s+(untuk\s+)?(tanya|bertanya)\s*(ya|kak|bro)?\.?/i,
+  /\bsilakan\s+(tanya|bertanya|tanyakan)\s*(saja)?\s*(kak|bro|ya)?\.?/i,
+  /\bada\s+lagi\s+yang\s+(mau|ingin|bisa)\s+ditanyakan\s*\??/i,
 ];
 
 function stripGenericClosingQuestion(reply) {
