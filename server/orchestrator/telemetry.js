@@ -25,11 +25,13 @@ function sanitizeTelemetry(event = {}) {
     'temporal_followup', 'barber_choice_followup', 'service_choice_followup',
     'branch_choice_followup', 'booking_request', 'booking_status_question',
     'customer_fact_question', 'business_fact_question', 'complaint', 'unknown',
+    'booking_completion_report',
   ]);
   const allowedStrategies = new Set([
     'answer_directly', 'acknowledge_only', 'acknowledge_context', 'clarify_short',
     'answer_with_crm_fact', 'answer_with_knowledge_fact', 'guide_to_booking',
     'correct_semantic_confusion', 'close_conversation', 'human_handoff',
+    'acknowledge_booking_completion_report',
   ]);
   const allowedSources = new Set([
     'crm:get_points', 'crm:get_customer_profile', 'crm:get_customer_history',
@@ -45,6 +47,7 @@ function sanitizeTelemetry(event = {}) {
   const allowedEligibilityReasons = new Set([
     'explicit_booking_request', 'explicit_booking_link_request', 'contextual_booking_continuation',
     'availability_booking_intent', 'informational_only', 'crm_topic', 'non_booking',
+    'booking_completion_acknowledged',
   ]);
 
   return {

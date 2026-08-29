@@ -6,6 +6,7 @@
  */
 
 const { classifyMessage } = require('./classifier');
+const { detectBookingCompletionReport } = require('../agents/reddy/bookingCompletionReport');
 
 // Human handoff is a routing outcome/state, not an AI agent.
 const ALLOWED_AGENTS = Object.freeze(['reddy_agent', 'crm_agent']);
@@ -168,8 +169,36 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
   // specific, unrelated business intent.
   const classifierIntentIsWeak = ['unknown', 'general_question', 'booking_request'].includes(base.intent);
 
+  // Customer-reported booking completion ("sudah kak", "udah booking di
+  // web") must be recognized BEFORE the bag-of-words contextual-followup
+  // rules below — those rules fire on generic shape + generic recent-context
+  // vocabulary and would otherwise misread a completion report as a
+  // continuation of the booking flow (e.g. barber_choice_followup), which is
+  // exactly the production regression this branch fixes.
+  const completionReport = detectBookingCompletionReport({ text: message, conversationContext });
+
   // Contextual ellipsis wins over an independently classified business intent.
-  if (hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
+  if (completionReport.isCompletionReport) {
+    conversationalAct = 'booking_completion_report';
+    sessionBehavior = 'keep_current_state';
+    resolved = {
+      ...resolved,
+      intent: 'general_question',
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      action: 'acknowledge_booking_completion',
+    };
+    policy = {
+      required_sources: [],
+      response_strategy: 'acknowledge_booking_completion_report',
+      allowed_claims: ['acknowledge_customer_reported_completion'],
+      prohibited_claims: [
+        'booking_confirmed_by_whatsapp',
+        'booking_confirmed_by_backend',
+        'repeat_booking_cta',
+      ],
+    };
+  } else if (hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
     conversationalAct = 'temporal_followup';
     continuationType = 'contextual';
     contextReference = 'prior_arrival_or_booking_time';
