@@ -98,6 +98,7 @@ const {
   inspectFonnteWebhookShadow,
   emitFonnteWebhookShadow,
 } = require('../../server/services/fonnteWebhookVerifier');
+const { normalizeFonnteEnvelope } = require('../../server/services/fonnteEnvelopeNormalizer');
 const {
   verifyRedboxWebhookTrustQuery,
   emitRedboxWebhookTrust,
@@ -2003,26 +2004,16 @@ module.exports = async function handler(req, res, testDeps = {}) {
   emitRedboxWebhookTrust(redboxWebhookTrust);
 
   try {
-    // Fonnte payload: { device, sender, name, message, id, type, isFromMe }
+    // Fonnte payload: { device, sender, name, message, id, type, isFromMe },
+    // possibly wrapped in a nested `data`/`payload` envelope. P0.1 incident
+    // hotfix: normalizeFonnteEnvelope() builds ONE canonical, bounded body —
+    // deepest-present-layer wins per field, envelope is the fallback — so an
+    // envelope-level field (most critically `inboxid`) is never silently
+    // dropped just because a nested object happens to be present. Every
+    // downstream decision (admission, classification, branch detection,
+    // message routing) reads from this same canonical `body`.
     const rawBody = await coerceBody(req.body, req);
-
-    let body = rawBody;
-    if (rawBody && rawBody.data) {
-      if (typeof rawBody.data === 'object') {
-        body = rawBody.data;
-      } else if (typeof rawBody.data === 'string') {
-        try {
-          const parsed = JSON.parse(rawBody.data);
-          if (parsed && typeof parsed === 'object') body = parsed;
-        } catch {}
-      }
-    }
-    if (body === rawBody && rawBody && rawBody.payload && typeof rawBody.payload === 'string') {
-      try {
-        const parsed = JSON.parse(rawBody.payload);
-        if (parsed && typeof parsed === 'object') body = parsed;
-      } catch {}
-    }
+    const { canonical: body } = normalizeFonnteEnvelope(rawBody);
 
     const shadowMetadata = inspectFonnteWebhookShadow(rawBody, process.env.FONNTE_WEBHOOK_SECRET);
     emitFonnteWebhookShadow(shadowMetadata);
@@ -2127,7 +2118,10 @@ module.exports = async function handler(req, res, testDeps = {}) {
       }
       return null;
     };
-    const branchFromPayload = findBranchInPayload(body);
+    // Scans the FULL raw structure (envelope + any nesting), not just the
+    // bounded canonical field list — a branch marker can legitimately appear
+    // on a field this normalizer does not track.
+    const branchFromPayload = findBranchInPayload(rawBody);
     console.log('[WA Bot] Branch deep-scan completed:', { branch: branchFromPayload || 'not_found' });
 
     // Filter pesan keluar — classifier shared di atas adalah satu-satunya
