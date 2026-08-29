@@ -408,6 +408,58 @@ test('DA1-17. a lookup failure while checking the durable block fails open (neve
   assert.equal(blocked, false);
 });
 
+// ── DA-01 Final Mini Correction: conflict-ledger lookup partial index ─────
+
+test('DA1-22. the conflict-ledger partial-index migration file exists', () => {
+  const migrationPath = path.join(__dirname, '../migrations/2026-08-29-sync-logs-conflict-lookup-index.sql');
+  assert.equal(fs.existsSync(migrationPath), true);
+});
+
+test('DA1-23. the index is a genuine PARTIAL index (has a WHERE predicate), not a full-table index', () => {
+  const migrationSource = fs.readFileSync(
+    path.join(__dirname, '../migrations/2026-08-29-sync-logs-conflict-lookup-index.sql'), 'utf8',
+  );
+  const createIndexStatement = migrationSource.match(/CREATE INDEX[\s\S]*?;/)[0];
+  assert.match(createIndexStatement, /\bWHERE\b/i, 'must be a partial index, not a full-table index over 205k+ rows');
+});
+
+test('DA1-24. the index columns are (entity_id, created_at DESC) — the exact lookup key plus latest-row ordering', () => {
+  const migrationSource = fs.readFileSync(
+    path.join(__dirname, '../migrations/2026-08-29-sync-logs-conflict-lookup-index.sql'), 'utf8',
+  );
+  assert.match(migrationSource, /ON sync_logs \(entity_id, created_at DESC\)/,
+    'entity_id must lead (the lookup key) and created_at DESC must match the ORDER BY direction so LIMIT 1 needs no separate sort');
+  assert.doesNotMatch(migrationSource, /ON sync_logs \([^)]*,\s*[^)]*,\s*[^)]*\)/,
+    'no unnecessary extra columns beyond the two actually needed');
+});
+
+test('DA1-25. the partial predicate is exactly entity_type = \'schedule_conflict\' AND status = \'failed\'', () => {
+  const migrationSource = fs.readFileSync(
+    path.join(__dirname, '../migrations/2026-08-29-sync-logs-conflict-lookup-index.sql'), 'utf8',
+  );
+  assert.match(migrationSource, /WHERE entity_type = 'schedule_conflict'/);
+  assert.match(migrationSource, /AND status = 'failed'/);
+});
+
+test('DA1-26. _checkDurableConflictBlock\'s query shape matches the index exactly — same predicate, same order-by direction', () => {
+  const syncSource = fs.readFileSync(path.join(__dirname, '../moka/sync.js'), 'utf8');
+  const fnBody = syncSource.split('async function _checkDurableConflictBlock')[1].split('async function _recordConflictBlock')[0];
+  assert.match(fnBody, /\.eq\('entity_type',\s*CONFLICT_LEDGER_ENTITY_TYPE\)/);
+  assert.match(fnBody, /\.eq\('entity_id',\s*billId\)/);
+  assert.match(fnBody, /\.eq\('status',\s*'failed'\)/);
+  assert.match(fnBody, /\.order\('created_at',\s*\{\s*ascending:\s*false\s*\}\)/, 'must sort DESC to match the index column order, not rely on a separate sort step');
+  assert.match(fnBody, /\.limit\(1\)/);
+  assert.match(syncSource, /CONFLICT_LEDGER_ENTITY_TYPE\s*=\s*'schedule_conflict'/, 'the constant used in the query must equal the index predicate\'s literal value');
+});
+
+test('DA1-27. this migration does not touch existing sync_logs indexes, rows, or tables (additive only)', () => {
+  const migrationSource = fs.readFileSync(
+    path.join(__dirname, '../migrations/2026-08-29-sync-logs-conflict-lookup-index.sql'), 'utf8',
+  );
+  assert.doesNotMatch(migrationSource, /DROP INDEX|DROP TABLE|ALTER TABLE|UPDATE\s+sync_logs|DELETE FROM|TRUNCATE|CREATE TABLE/i);
+  assert.match(migrationSource, /CREATE INDEX IF NOT EXISTS/);
+});
+
 // ── DA-01 Correction Round 1 (Blocker 2): Task16 evaluation monitoring ────
 
 test('DA1-18. all 5 data-authority events are registered in Task16 EVENT_DEFINITIONS with the specified severities', () => {
