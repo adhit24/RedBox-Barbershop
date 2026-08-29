@@ -50,6 +50,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         phone_e164: customer.phone_e164 || (customer.wa ? `+${normPhone}` : null),
         resolution: 'direct_id_match',
         customer_row: customer,
+        candidates_count: 1,
       };
     }
   }
@@ -64,7 +65,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         .eq('id', cleanId)
         .maybeSingle();
       if (error) {
-        return { found: false, customer_id: null, resolution: 'db_error', error: error.message };
+        return { found: false, customer_id: null, resolution: 'db_error', error: error.message, candidates_count: null };
       }
       if (customer) {
         const normPhone = normalizeMemberPhone(customer.wa || customer.phone_e164);
@@ -76,6 +77,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           phone_e164: customer.phone_e164 || (customer.wa ? `+${normPhone}` : null),
           resolution: 'direct_id_match',
           customer_row: customer,
+          candidates_count: 1,
         };
       }
     }
@@ -83,6 +85,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       found: false,
       customer_id: null,
       resolution: 'missing_input',
+      candidates_count: 0,
     };
   }
 
@@ -92,6 +95,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       found: false,
       customer_id: null,
       resolution: 'invalid_phone_format',
+      candidates_count: null,
     };
   }
 
@@ -115,6 +119,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       customer_id: null,
       resolution: 'db_error',
       error: profErr.message,
+      candidates_count: null,
     };
   }
 
@@ -126,6 +131,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         customer_id: null,
         resolution: 'ambiguous',
         reason: 'multiple_member_profile_records',
+        candidates_count: profileRows.length,
       };
     }
     memberProfileRow = profileRows[0];
@@ -149,6 +155,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
       customer_id: null,
       resolution: 'db_error',
       error: custErr.message,
+      candidates_count: null,
     };
   }
 
@@ -174,6 +181,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           customer_id: null,
           resolution: 'ambiguous',
           reason: 'conflicting_customer_phones',
+          candidates_count: rawCandidateRows.length,
         };
       }
     } else if (hasWa) {
@@ -183,6 +191,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           customer_id: null,
           resolution: 'ambiguous',
           reason: 'conflicting_customer_phones',
+          candidates_count: rawCandidateRows.length,
         };
       }
     } else if (hasE164) {
@@ -192,6 +201,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
           customer_id: null,
           resolution: 'ambiguous',
           reason: 'conflicting_customer_phones',
+          candidates_count: rawCandidateRows.length,
         };
       }
     }
@@ -201,19 +211,6 @@ async function resolveCustomerIdentity(supabase, input = {}) {
 
   // Collect candidate customer IDs ONLY from `customers` table
   const aliasCustomerIds = Array.from(new Set(candidateRows.map(r => r.id).filter(Boolean)));
-
-  // If dual claim provided (both phone AND customer_id), verify customer_id belongs strictly to customers.id[] in this cluster!
-  if (cleanId) {
-    const matchesAliasId = aliasCustomerIds.includes(cleanId);
-    if (!matchesAliasId) {
-      return {
-        found: false,
-        customer_id: null,
-        resolution: 'ambiguous',
-        reason: 'dual_claim_conflict',
-      };
-    }
-  }
 
   // Member-profile-only path: NO customers table rows found
   if (candidateRows.length === 0) {
@@ -227,34 +224,67 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         phone_e164: `+${canonical}`,
         resolution: 'member_profile_match',
         member_profile_row: memberProfileRow,
+        candidates_count: 1,
       };
     }
     return {
       found: false,
       customer_id: null,
       resolution: 'not_found',
+      candidates_count: 0,
     };
   }
 
-  // Safe merge candidate rows
-  const merged = mergeCustomerRows(candidateRows, canonical);
-  if (!merged) {
+  // Strong discriminator: explicit customer_id provided
+  if (cleanId) {
+    const matchesAliasId = aliasCustomerIds.includes(cleanId);
+    if (!matchesAliasId) {
+      return {
+        found: false,
+        customer_id: null,
+        resolution: 'ambiguous',
+        reason: 'dual_claim_conflict',
+        candidates_count: aliasCustomerIds.length,
+      };
+    }
+    const targetRow = candidateRows.find(r => r.id === cleanId);
+    return {
+      found: true,
+      customer_id: cleanId,
+      alias_customer_ids: aliasCustomerIds,
+      canonical_phone: canonical,
+      phone_e164: targetRow?.phone_e164 || `+${canonical}`,
+      resolution: 'direct_id_match',
+      customer_row: targetRow || candidateRows[0],
+      member_profile_row: memberProfileRow,
+      candidates_count: aliasCustomerIds.length,
+    };
+  }
+
+  // Phone alone with >1 distinct customer IDs: fail closed as ambiguous.
+  // Must NOT merge duplicate customer identities into one trusted identity.
+  if (aliasCustomerIds.length > 1) {
     return {
       found: false,
       customer_id: null,
-      resolution: 'not_found',
+      resolution: 'ambiguous',
+      reason: 'multiple_customer_records',
+      candidates_count: aliasCustomerIds.length,
     };
   }
 
+  // Exactly 1 deterministic customer candidate row
+  const singleRow = candidateRows[0];
   return {
     found: true,
-    customer_id: merged.id || null, // customer_id comes STRICTLY from customers.id ONLY
-    alias_customer_ids: aliasCustomerIds, // alias_customer_ids comes STRICTLY from customers.id[] ONLY
+    customer_id: singleRow.id,
+    alias_customer_ids: aliasCustomerIds,
     canonical_phone: canonical,
-    phone_e164: merged.phone_e164 || `+${canonical}`,
+    phone_e164: singleRow.phone_e164 || `+${canonical}`,
     resolution: 'phone_match',
-    customer_row: merged,
+    customer_row: singleRow,
     member_profile_row: memberProfileRow,
+    candidates_count: 1,
   };
 }
 

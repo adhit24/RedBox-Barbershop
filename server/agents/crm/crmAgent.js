@@ -63,7 +63,7 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
 
     // Dual trusted claims: phone is cluster authority. customer_id claim is authorized if included in phone's alias cluster.
     if (contextPhone && contextCustId) {
-      const phoneIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone });
+      const phoneIdentity = await resolveCustomerIdentity(supabase, { phone: contextPhone, customer_id: contextCustId });
       if (phoneIdentity.resolution === 'db_error') {
         return {
           status: 'db_error',
@@ -77,7 +77,7 @@ async function executeCrmTool(toolName, params = {}, context = {}) {
         return {
           status: 'forbidden',
           tool: toolName,
-          error: 'identity_unverified',
+          error: phoneIdentity.reason === 'dual_claim_conflict' ? 'identity_conflict_blocked' : 'identity_unverified',
           customer_found: false,
           data: null,
         };
