@@ -2,6 +2,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { sendWA } = require('../../server/services/fonnte');
 const { notifyBarberHomeServiceReminderH1 } = require('../../server/services/waNotification');
+const { logDataAuthorityEvent } = require('../../server/orchestrator/telemetry');
 
 const ADMIN_PHONE = process.env.WA_ADMIN_NUMBER;
 
@@ -56,16 +57,30 @@ async function sendHomeServiceReminders(supabase) {
     .is('barber_reminded_at', null);
 
   if (jobsError) {
+    // DA-02: home_service_jobs.barber_reminded_at (server/migrations/2026-05-31-
+    // add-barber-reminder-column.sql) may not be applied to this environment
+    // yet. Do NOT swallow this into a bare console.error + implicit success —
+    // the H-1 reminder feature is completely non-functional while this
+    // errors, and that must be visible in both telemetry and the cron's own
+    // response body, not just a log line nobody is watching.
+    const schemaMismatch = jobsError.code === '42703'
+      || /column .*barber_reminded_at.* does not exist/i.test(jobsError.message || '');
+    logDataAuthorityEvent({
+      event_type: 'home_service_schema_mismatch',
+      reason: schemaMismatch ? 'barber_reminded_at_column_missing' : 'query_failed',
+      source: 'home_service',
+    });
     console.error('[HomeServiceReminder] Error fetching jobs:', jobsError.message);
-    return;
+    return { ok: false, reason: schemaMismatch ? 'barber_reminded_at_column_missing' : 'query_failed', error: jobsError.message };
   }
 
   if (!jobs?.length) {
     console.log('[HomeServiceReminder] No jobs to remind');
-    return;
+    return { ok: true, sent: 0 };
   }
 
   console.log(`[HomeServiceReminder] Found ${jobs.length} candidate jobs`);
+  let sent = 0;
 
   for (const job of jobs) {
     try {
@@ -133,11 +148,14 @@ async function sendHomeServiceReminders(supabase) {
         .update({ barber_reminded_at: new Date().toISOString() })
         .eq('id', job.id);
 
+      sent++;
       console.log(`[HomeServiceReminder] Reminder sent to barber ${barber.name} for job ${job.id}`);
     } catch (err) {
       console.error(`[HomeServiceReminder] Error processing job ${job.id}:`, err.message);
     }
   }
+
+  return { ok: true, sent };
 }
 
 // Flag jobs where kapster didn't reply BERANGKAT within 30 min of booking time
@@ -210,13 +228,24 @@ module.exports = async (req, res) => {
   try {
     const supabase = _db();
     console.log('[HomeServiceTasks] Starting...');
-    await sendHomeServiceReminders(supabase);
+    // DA-02: reminders' own schema-mismatch failure must not be masked by the
+    // overall {ok:true} response — it is surfaced in its own field so a human
+    // or a monitor reading this endpoint's response sees the degraded state,
+    // while the unrelated no-show/no-confirm flag checks (which don't touch
+    // barber_reminded_at) still run normally.
+    const reminders = await sendHomeServiceReminders(supabase);
     await flagNoShows(supabase);
     await flagCustomerNoConfirm(supabase);
     console.log('[HomeServiceTasks] Completed');
-    res.json({ ok: true, ts: new Date().toISOString() });
+    res.json({ ok: true, reminders, ts: new Date().toISOString() });
   } catch (err) {
     console.error('[Cron/HomeServiceFlag]', err.message);
     res.status(500).json({ error: err.message });
   }
 };
+
+// Test-only named exports — the module's public/production surface remains
+// the default handler function above.
+module.exports.sendHomeServiceReminders = sendHomeServiceReminders;
+module.exports.flagNoShows = flagNoShows;
+module.exports.flagCustomerNoConfirm = flagCustomerNoConfirm;

@@ -9,6 +9,7 @@
 
 const MokaClient = require('./client');
 const { _matchScore } = require('./schemaSync');
+const { logDataAuthorityEvent } = require('../orchestrator/telemetry');
 
 // Simple in-process lock so concurrent cron ticks don't overlap
 const _syncLock = new Set();
@@ -649,6 +650,15 @@ async function _processIncomingOrder(supabase, order, outletId) {
         });
         return 'updated';
       }
+      // DA-01: a completed order collided with the exclusion constraint but no
+      // matching open-bill reservation was found to upgrade — a true overlap
+      // this pass cannot reconcile. Existing row left untouched; flagged
+      // rather than silently treated as a routine skip.
+      logDataAuthorityEvent({
+        event_type: 'schedule_sync_overlap_failure',
+        reason: 'completed_order_no_matching_open_bill',
+        source: 'moka',
+      });
       return 'skipped';
     }
     throw new Error(`Schedule insert failed: ${schErr.message}`);
@@ -1277,12 +1287,79 @@ async function _processOpenBill(supabase, bill, outletId, client = null) {
       console.log(`[Sync] Open bill ${billId} already exists (duplicate external_id), skipping`);
       return 'skipped';
     }
-    // Handle overlapping schedule (goshow queue)
-    if (schErr.message?.includes('no_barber_overlap') || schErr.code === '23P01') return 'skipped';
+    // DA-01: the goshow-queue/advance-appointment preflight checks above catch
+    // the vast majority of collisions before they ever reach the DB, but they
+    // are SELECT-then-INSERT — a genuine race remains (a concurrent sync pass,
+    // a live website booking, or a Moka push landing in the same window). When
+    // the exclusion constraint fires anyway, DO NOT silently pretend this
+    // cycle succeeded — classify what actually happened and say so.
+    if (schErr.message?.includes('no_barber_overlap') || schErr.code === '23P01') {
+      return _reconcileOpenBillOverlap(supabase, { billId, barberId, startTime, endTime });
+    }
     throw new Error(`Open bill insert failed: ${schErr.message}`);
   }
 
   return 'processed';
+}
+
+/**
+ * DA-01: called only after the exclusion constraint has already rejected an
+ * INSERT for this exact (barber, time range) — determines WHY so the caller
+ * can emit a correct, structured signal instead of a bare 'skipped'. Never
+ * itself writes a schedule row: the constraint's rejection is respected as
+ * final for this pull cycle; a later pull retries cleanly if the conflict
+ * was transient.
+ *   - conflicting row's external_id === billId → the SAME bill: a concurrent
+ *     sync pass (or a retry racing itself) already inserted it. Reconciled,
+ *     not an error.
+ *   - conflicting row exists with a DIFFERENT external_id/source → a true
+ *     business overlap. The existing authoritative row is left untouched;
+ *     this bill is skipped for this cycle (Moka itself, not this sync, is
+ *     the place to resolve a genuine double-booking).
+ *   - no conflicting row found on re-check → the constraint fired against a
+ *     row that is already gone (resolved itself between the failed INSERT
+ *     and this re-check). Nothing to reconcile against; flagged as degraded
+ *     rather than silently assumed fine, since the underlying cause is
+ *     unknown.
+ */
+async function _reconcileOpenBillOverlap(supabase, { billId, barberId, startTime, endTime }) {
+  const { data: conflict, error: conflictLookupErr } = await supabase
+    .from('schedules')
+    .select('id, external_id, source, status')
+    .eq('barber_id', barberId)
+    .neq('status', 'cancelled')
+    .lt('start_time', endTime.toISOString())
+    .gt('end_time', startTime.toISOString())
+    .limit(1)
+    .maybeSingle();
+
+  if (conflictLookupErr || !conflict) {
+    logDataAuthorityEvent({
+      event_type: 'schedule_sync_conflict_unresolved',
+      reason: 'exclusion_violation_no_conflicting_row_on_recheck',
+      source: 'moka',
+    });
+    console.warn(`[Sync] Open bill ${billId}: exclusion constraint fired but no conflicting row found on re-check — degraded authority for this cycle, will retry next pull`);
+    return 'skipped';
+  }
+
+  if (conflict.external_id === billId) {
+    logDataAuthorityEvent({
+      event_type: 'schedule_sync_conflict_reconciled',
+      reason: 'concurrent_duplicate_insert_same_bill',
+      source: 'moka',
+    });
+    console.log(`[Sync] Open bill ${billId} reconciled: a concurrent sync pass already inserted this exact bill (schedule ${conflict.id})`);
+    return 'skipped';
+  }
+
+  logDataAuthorityEvent({
+    event_type: 'schedule_sync_overlap_failure',
+    reason: 'true_business_overlap',
+    source: 'moka',
+  });
+  console.warn(`[Sync] Open bill ${billId}: true overlap — barber ${barberId} slot already held by ${conflict.external_id || conflict.id} (${conflict.source}/${conflict.status}); existing schedule preserved, this bill skipped for this cycle`);
+  return 'skipped';
 }
 
 // ── WEBHOOK HANDLER ────────────────────────────────────────
@@ -2104,6 +2181,14 @@ async function bridgeBookingToMoka(supabase, booking) {
 
   if (schErr) {
     if (schErr.code === '23P01' || schErr.message?.includes('no_barber_overlap')) {
+      // DA-01: existing authoritative row (the Moka walk-in) preserved; this
+      // bridge booking is rejected rather than silently dropped — the caller
+      // (POST /api/bookings) surfaces mokaSync:'conflict_overlap' to the admin.
+      logDataAuthorityEvent({
+        event_type: 'schedule_sync_overlap_failure',
+        reason: 'bridge_booking_true_overlap',
+        source: 'web',
+      });
       console.warn(`[Bridge] Barber overlap for booking ${booking.id} — slot taken by Moka walk-in`);
       return { scheduleId: null, mokaSync: 'conflict_overlap' };
     }
@@ -2164,4 +2249,7 @@ module.exports = {
   maybeRefreshOutletData,
   getLastSyncAt,
   setLastSyncAt,
+  // DA-01 — exported for direct unit testing of the exclusion-constraint
+  // reconciliation logic; not part of the module's public integration surface.
+  _reconcileOpenBillOverlap,
 };
