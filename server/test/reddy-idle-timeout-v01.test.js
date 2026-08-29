@@ -15,12 +15,22 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+// Correction Round 1 (PR #45 review, security hardening): the cron endpoint
+// now fails closed without CRON_SECRET, so every test exercising its normal
+// (authenticated) flow needs a configured secret + matching Bearer header.
+// T-auth / T-auth-fail-closed manage process.env.CRON_SECRET themselves to
+// test the rejection paths; every other cron test uses this shared default.
+const TEST_CRON_SECRET = 'test-cron-secret';
+process.env.CRON_SECRET = process.env.CRON_SECRET || TEST_CRON_SECRET;
+const CRON_AUTH_HEADERS = { authorization: `Bearer ${TEST_CRON_SECRET}` };
+
 const {
   IDLE_TIMEOUT_MS,
   IDLE_CLOSE_MESSAGE,
   touchInboundActivity,
   armIdleTimerAfterReply,
   claimIdleConversation,
+  verifyStillClaimedForClose,
   finalizeIdleClose,
 } = require('../services/conversationLifecycle');
 const { createGuardedSend } = require('../services/waOutboundGuard');
@@ -117,17 +127,33 @@ function fakeGuardRpc(conversationsSupabase) {
 
 // ── Task 2: conversationLifecycle.js ──────────────────────────────────────
 
-test('L1. touchInboundActivity on a brand-new sender arms a 5-minute due time, not reopened', async () => {
+test('L1. Correction R1 (Blocker 1): touchInboundActivity CANCELS the due time, never schedules one', async () => {
   const sb = fakeConversationsSupabase([]);
   const now = 1_700_000_000_000;
   const result = await touchInboundActivity(sb, '628111', { now });
   assert.equal(result.reopened, false);
   const row = sb.rows.find((r) => r.sender === '628111');
   assert.equal(row.conversation_status, 'active');
-  assert.equal(row.idle_close_due_at, new Date(now + IDLE_TIMEOUT_MS).toISOString());
+  assert.equal(row.idle_close_due_at, null, 'inbound activity alone must never schedule an idle close');
 });
 
-test('L2. touchInboundActivity on a closed row reopens it', async () => {
+test('L1b. Correction R1 (Blocker 1): touchInboundActivity cancels a PENDING due time already scheduled by a prior reply', async () => {
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now + IDLE_TIMEOUT_MS).toISOString() }]);
+  await touchInboundActivity(sb, '628111', { now });
+  assert.equal(sb.rows[0].idle_close_due_at, null, 'a fresh customer message must cancel the pending close, not just push it out');
+});
+
+test('L1c. Correction R1 (Blocker 1): if Reddy never replies, no idle close can later fire (due_at stays null until armIdleTimerAfterReply runs)', async () => {
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([]);
+  await touchInboundActivity(sb, '628111', { now });
+  // No armIdleTimerAfterReply call — simulates Reddy failing to reply.
+  const claimed = await claimIdleConversation(sb, '628111', { now: now + IDLE_TIMEOUT_MS + 60000 });
+  assert.equal(claimed, null, 'a turn Reddy never replied to must never become claimable for closing');
+});
+
+test('L2. touchInboundActivity on a closed row reopens it (and still cancels due_at)', async () => {
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'closed', idle_closed_at: new Date(now - 1000).toISOString() }]);
   const result = await touchInboundActivity(sb, '628111', { now });
@@ -135,6 +161,7 @@ test('L2. touchInboundActivity on a closed row reopens it', async () => {
   const row = sb.rows.find((r) => r.sender === '628111');
   assert.equal(row.conversation_status, 'active');
   assert.equal(row.idle_closed_at, null);
+  assert.equal(row.idle_close_due_at, null);
   assert.equal(row.session_started_at, new Date(now).toISOString());
 });
 
@@ -182,6 +209,20 @@ test('L6. finalizeIdleClose(sent=true) marks closed; finalizeIdleClose(sent=fals
   assert.equal(failSb.rows[0].conversation_status, 'active', 'a failed send must not falsely claim closure');
   assert.equal(failSb.rows[0].idle_close_due_at, dueAt, 'due_at stays overdue so a later run retries');
   assert.notEqual(failSb.rows[0].conversation_status, 'closed');
+});
+
+test('L6b. Correction R1 (Blocker 2): verifyStillClaimedForClose returns false once a newer inbound message arrived after the claim', async () => {
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null, last_customer_message_at: new Date(now - 60000).toISOString() }]);
+  const claim = await claimIdleConversation(sb, '628111', { now });
+  const validImmediately = await verifyStillClaimedForClose(sb, '628111', { expectedLastCustomerMessageAt: claim.last_customer_message_at });
+  assert.equal(validImmediately, true, 'nothing has changed yet — still valid to close');
+
+  // A new inbound message arrives in the window between the claim and the send.
+  await touchInboundActivity(sb, '628111', { now: now + 500 });
+  const validAfterInbound = await verifyStillClaimedForClose(sb, '628111', { expectedLastCustomerMessageAt: claim.last_customer_message_at });
+  assert.equal(validAfterInbound, false, 'a newer inbound message must invalidate the claim before send');
+  assert.equal(sb.rows[0].conversation_status, 'active', 'touchInboundActivity itself already reverted the claim');
 });
 
 // ── Task 3: telemetry ──────────────────────────────────────────────────────
@@ -272,7 +313,7 @@ test('T1. exactly one idle closing is sent for an overdue conversation', async (
   const sent = [];
   const res = responseRecorder();
 
-  await handler({ method: 'GET', headers: {} }, res, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
     supabase: sb,
     isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
@@ -311,7 +352,7 @@ test('T3. race: a newer inbound message right before the claim wins — no stale
   const sent = [];
   const res = responseRecorder();
 
-  await handler({ method: 'GET', headers: {} }, res, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
     supabase: sb,
     isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
@@ -332,13 +373,13 @@ test('T4. running the job twice over the same overdue conversation sends only on
   const sendWA = async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; };
 
   const first = responseRecorder();
-  await handler({ method: 'GET', headers: {} }, first, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, first, {
     supabase: sb, isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
     sendWA, // real findDueSenders path, not candidateSenders — proves the second pass naturally excludes the closed row
   });
   const second = responseRecorder();
-  await handler({ method: 'GET', headers: {} }, second, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, second, {
     supabase: sb, isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
     sendWA,
@@ -358,7 +399,7 @@ test('T5. waiting_human handoff: no idle closing sent', async () => {
   const events = [];
   const res = responseRecorder();
 
-  await handler({ method: 'GET', headers: {} }, res, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
     supabase: sb, isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'waiting_human', case: { id: 'case-1' } }),
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
@@ -378,7 +419,7 @@ test('T6. human_active handoff: no idle closing sent', async () => {
   const sent = [];
   const res = responseRecorder();
 
-  await handler({ method: 'GET', headers: {} }, res, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
     supabase: sb, isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'human_active', case: { id: 'case-1' } }),
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
@@ -396,7 +437,7 @@ test('T7. REDDY_ENABLED=false: no automated closing send', async () => {
   const sent = [];
   const res = responseRecorder();
 
-  await handler({ method: 'GET', headers: {} }, res, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
     supabase: sb, isReddyEnabled: () => false,
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
     candidateSenders: ['628111'],
@@ -413,7 +454,7 @@ test('T8. provider/send failure leaves the conversation active, not falsely clos
   fakeGuardRpc(sb);
   const res = responseRecorder();
 
-  await handler({ method: 'GET', headers: {} }, res, {
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
     supabase: sb, isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
     sendWA: async () => { throw new Error('Fonnte timeout'); },
@@ -425,7 +466,7 @@ test('T8. provider/send failure leaves the conversation active, not falsely clos
   assert.notEqual(sb.rows[0].conversation_status, 'closed');
 });
 
-test('T-auth. unauthenticated cron request is rejected, matching the existing cron pattern', async () => {
+test('T-auth. unauthenticated cron request (wrong/missing bearer, secret configured) is rejected', async () => {
   const handler = loadCronHandler();
   const res = responseRecorder();
   const previousSecret = process.env.CRON_SECRET;
@@ -438,6 +479,140 @@ test('T-auth. unauthenticated cron request is rejected, matching the existing cr
   }
   assert.equal(res.statusCode, 401);
   assert.deepEqual(res.body, { error: 'Unauthorized' });
+});
+
+test('T-auth-fail-closed. Correction R1 (security hardening): CRON_SECRET missing => 401, zero close work executed', async () => {
+  const handler = loadCronHandler();
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }]);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const res = responseRecorder();
+  const previousSecret = process.env.CRON_SECRET;
+  delete process.env.CRON_SECRET;
+  try {
+    await handler({ method: 'GET', headers: {} }, res, {
+      supabase: sb, isReddyEnabled: () => true,
+      getActiveHandoffState: async () => ({ status: 'none', case: null }),
+      sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
+      candidateSenders: ['628111'],
+    });
+  } finally {
+    if (previousSecret !== undefined) process.env.CRON_SECRET = previousSecret;
+  }
+  assert.equal(res.statusCode, 401);
+  assert.deepEqual(res.body, { error: 'Unauthorized' });
+  assert.equal(sent.length, 0, 'an unauthenticated request must never execute close work, even with an overdue candidate present');
+  assert.equal(sb.rows[0].conversation_status, 'active', 'the candidate must not even be claimed');
+});
+
+test('T-auth-valid. correct Bearer secret is still allowed to process a due conversation', async () => {
+  const handler = loadCronHandler();
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }]);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const res = responseRecorder();
+  const previousSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = 'test-cron-secret';
+  try {
+    await handler({ method: 'GET', headers: { authorization: 'Bearer test-cron-secret' } }, res, {
+      supabase: sb, isReddyEnabled: () => true,
+      getActiveHandoffState: async () => ({ status: 'none', case: null }),
+      sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
+      candidateSenders: ['628111'],
+    });
+  } finally {
+    if (previousSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = previousSecret;
+  }
+  assert.equal(res.statusCode, 200);
+  assert.equal(sent.length, 1);
+  assert.equal(res.body.closed, 1);
+});
+
+test('T-blocker2. Correction R1: a newer inbound message arriving right after the claim aborts the send (real cron flow)', async () => {
+  const handler = loadCronHandler();
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null, last_customer_message_at: new Date(now - 60000).toISOString() }]);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const events = [];
+  const res = responseRecorder();
+
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none', case: null }),
+    sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
+    candidateSenders: ['628111'],
+    logEvent: (e) => events.push(e),
+    // Wraps the REAL claim function: after a genuine claim succeeds, simulate
+    // the customer sending a new message before the endpoint's own pre-send
+    // verify step runs.
+    claimIdleConversation: async (supabaseArg, sender, opts) => {
+      const claimed = await claimIdleConversation(supabaseArg, sender, opts);
+      if (claimed) {
+        await touchInboundActivity(supabaseArg, sender, { now: now + 500 });
+      }
+      return claimed;
+    },
+  });
+
+  assert.equal(sent.length, 0, 'zero closing sends once a newer inbound arrived after the claim');
+  assert.equal(res.body.closed, 0);
+  assert.ok(events.some((e) => e.event_type === 'conversation_idle_close_suppressed' && e.suppress_reason === 'newer_inbound_detected'));
+  assert.equal(sb.rows[0].conversation_status, 'active');
+});
+
+test('T-blocker3a. Correction R1: handoff becomes waiting_human between claim and send => zero closing sent', async () => {
+  const handler = loadCronHandler();
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null, last_customer_message_at: new Date(now - 60000).toISOString() }]);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const res = responseRecorder();
+  let handoffCalls = 0;
+
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    // Inactive at discovery time (1st call), waiting_human by the pre-send re-check (2nd call).
+    getActiveHandoffState: async () => {
+      handoffCalls++;
+      return handoffCalls === 1 ? { status: 'none', case: null } : { status: 'waiting_human', case: { id: 'case-1' } };
+    },
+    sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
+    candidateSenders: ['628111'],
+  });
+
+  assert.equal(sent.length, 0, 'a handoff opening after the claim must still prevent the send');
+  assert.equal(handoffCalls, 2, 'handoff must be checked both at discovery AND immediately before send');
+  assert.equal(sb.rows[0].conversation_status, 'active', 'the claim must be released, not left stuck in closing');
+});
+
+test('T-blocker3b. Correction R1: handoff becomes human_active between claim and send => zero closing sent', async () => {
+  const handler = loadCronHandler();
+  const now = 1_700_000_000_000;
+  const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null, last_customer_message_at: new Date(now - 60000).toISOString() }]);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const res = responseRecorder();
+  let handoffCalls = 0;
+
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => {
+      handoffCalls++;
+      return handoffCalls === 1 ? { status: 'none', case: null } : { status: 'human_active', case: { id: 'case-1' } };
+    },
+    sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
+    candidateSenders: ['628111'],
+  });
+
+  assert.equal(sent.length, 0);
+  assert.equal(handoffCalls, 2);
 });
 
 test('T15. the idle-close send goes through the real P0 guard RPC (duplicate-content suppresses a second concurrent attempt)', async () => {

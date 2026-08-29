@@ -2,15 +2,26 @@
 
 /**
  * Reddy conversation idle-timeout lifecycle (durable, DB-backed — never an
- * in-memory setTimeout, since Redbox runs serverless/multi-instance). State
- * lives in wa_conversations (see server/migrations/2026-08-29-wa-conversation-
- * idle-lifecycle.sql). Two write paths arm/reset the timer:
- *   - touchInboundActivity: every inbound customer message (resets the timer,
- *     and detects/handles reopening a previously-closed conversation).
- *   - armIdleTimerAfterReply: every successful automated Reddy send (the spec's
- *     authoritative "timer starts AFTER Reddy successfully replies" rule).
- * A third path, driven by the api/cron/reddy-idle-close.js cron job, atomically
- * claims and closes conversations whose due time has passed.
+ * in-memory setTimeout, since Redbox runs serverless/multi-instance).
+ *
+ * Correction Round 1 (PR #45 review, Blocker 1): the 5-minute timer starts
+ * ONLY after a successful Reddy reply — armIdleTimerAfterReply is the sole
+ * authority that ever sets idle_close_due_at to a real deadline.
+ * touchInboundActivity (every inbound customer message) only CANCELS any
+ * pending deadline (sets it back to null) — it never schedules one. If Reddy
+ * never successfully replies to a turn, no idle close can later fire for it.
+ *
+ * State lives in wa_conversations (see server/migrations/2026-08-29-wa-
+ * conversation-idle-lifecycle.sql). Three write paths:
+ *   - touchInboundActivity: every inbound customer message — cancels any
+ *     pending idle close, and detects/handles reopening a previously-closed
+ *     conversation.
+ *   - armIdleTimerAfterReply: every successful automated Reddy send — the
+ *     only place idle_close_due_at is ever set to a real deadline.
+ *   - claimIdleConversation / verifyStillClaimedForClose / finalizeIdleClose:
+ *     driven by the api/cron/reddy-idle-close.js cron job, which atomically
+ *     claims a conversation whose due time has passed, re-verifies nothing
+ *     changed immediately before the actual send (Blocker 2), and finalizes.
  */
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -23,7 +34,12 @@ function toIso(ms) {
 }
 
 /**
- * Called once per inbound customer message. Resets the idle timer and, if the
+ * Called once per inbound customer message. Cancels any pending idle-close
+ * deadline (idle_close_due_at: null) — inbound activity alone never
+ * schedules a new one; only armIdleTimerAfterReply does, after Reddy
+ * actually replies. Also flips a 'closing' claim (mid-cron-pass) back to
+ * 'active', which is exactly what lets a concurrent cron pass detect "a
+ * newer inbound happened" via verifyStillClaimedForClose (Blocker 2). If the
  * conversation was previously closed, reopens it as a fresh short-term
  * session (clears idle_closed_at, stamps session_started_at) — the caller is
  * responsible for also dropping any in-memory conversation-history cache and
@@ -42,7 +58,7 @@ async function touchInboundActivity(supabase, sender, { now = Date.now() } = {})
     const patch = {
       conversation_status: 'active',
       last_customer_message_at: toIso(now),
-      idle_close_due_at: toIso(now + IDLE_TIMEOUT_MS),
+      idle_close_due_at: null,
       updated_at: toIso(now),
       ...(wasClosed ? { session_started_at: toIso(now), idle_closed_at: null } : {}),
     };
@@ -94,6 +110,36 @@ async function claimIdleConversation(supabase, sender, { now = Date.now() } = {}
 }
 
 /**
+ * Correction Round 1 (PR #45 review, Blocker 2): an atomic claim alone is not
+ * enough — a customer can message again in the window between the claim and
+ * the actual provider send. Called immediately before that send: re-reads
+ * authoritative state and returns true only if the conversation is STILL in
+ * the exact claim this caller made — status is still 'closing' AND
+ * last_customer_message_at is unchanged since the claim (touchInboundActivity
+ * both flips status back to 'active' and bumps last_customer_message_at on
+ * any new inbound message, so either check alone would already catch it —
+ * both are verified for defense in depth). False means "do nothing": the
+ * caller must abort the send and release the claim via finalizeIdleClose.
+ */
+async function verifyStillClaimedForClose(supabase, sender, { expectedLastCustomerMessageAt = null } = {}) {
+  if (!supabase || !sender) return false;
+  try {
+    let query = supabase
+      .from('wa_conversations')
+      .select('sender')
+      .eq('sender', sender)
+      .eq('conversation_status', 'closing');
+    query = expectedLastCustomerMessageAt == null
+      ? query.is('last_customer_message_at', null)
+      : query.eq('last_customer_message_at', expectedLastCustomerMessageAt);
+    const { data } = await query.maybeSingle();
+    return Boolean(data);
+  } catch (_error) {
+    return false;
+  }
+}
+
+/**
  * Resolves a claim made by claimIdleConversation. On success, marks the
  * conversation durably closed (idle_closed_at set) so no later cron pass
  * re-attempts it. On failure, reverts to 'active' — the row stays overdue
@@ -125,5 +171,6 @@ module.exports = {
   touchInboundActivity,
   armIdleTimerAfterReply,
   claimIdleConversation,
+  verifyStillClaimedForClose,
   finalizeIdleClose,
 };
