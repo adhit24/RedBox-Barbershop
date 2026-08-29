@@ -636,6 +636,11 @@ test('Task 11 (14): human handoff Task 10 behavior remains unchanged', async () 
     text: 'mau bicara sama admin',
   }, mocks);
 
+  // No Task 15 case storage configured in this test (no createHandoffCase
+  // mock) -> 'unavailable' -> the legacy Task 10 pause still engages exactly
+  // once (the actual "Task 10 behavior remains unchanged" invariant), but the
+  // reply must NOT claim admin was reached without a persisted case
+  // (Correction Round 1, Correction 4).
   assert.equal(takeoverCalls, 1);
-  assert.equal(result.used, 'human_handoff');
+  assert.equal(result.used, 'human_handoff_unavailable');
 });

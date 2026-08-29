@@ -410,9 +410,13 @@ test('T05. WAIT COMPLAINT: Deterministic wait complaint handler returns zero emo
 test('T06. HUMAN COMPLAINT HANDOFF: Handoff response contains zero emoji and no unsupported "segera"', async () => {
   const { handleMessage } = require('../../api/wa/webhook');
 
+  // No Supabase configured in this test environment -> Task 15 case storage
+  // is 'unavailable' -> the honest fallback reply, never the "reached admin"
+  // claim (Correction Round 1, Correction 4: only a persisted case may
+  // promise the request reached admin).
   const res = await handleMessage({ from: '6281234567890', text: 'mau ngomong sama admin' });
 
-  assert.match(res.reply, /Pesan Kakak sudah aku teruskan ke admin Redbox/);
+  assert.match(res.reply, /Aku belum berhasil meneruskan permintaan ini ke tim RedBox/);
   assert.equal(res.reply.includes('segera'), false, 'Handoff must not make unsupported "segera" claims');
   assert.equal(/[\u{1F300}-\u{1F9FF}]/u.test(res.reply), false, 'Handoff must contain ZERO emojis');
 });

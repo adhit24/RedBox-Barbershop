@@ -121,7 +121,16 @@ const {
   createUnavailableKnowledgeContext,
   serializeKnowledgeForPrompt,
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
-const { logOrchestratedEvent, logAntiSpamEvent } = require('../../server/orchestrator/telemetry');
+const { logOrchestratedEvent, logHandoffEvent, logAntiSpamEvent } = require('../../server/orchestrator/telemetry');
+const {
+  detectHandoffTrigger,
+  computeHandoffPriority,
+  buildConversationSummary,
+  createOrGetActiveCase,
+  getActiveHandoffState,
+  appendCustomerMessage: appendHandoffCustomerMessage,
+} = require('../../server/services/humanHandoff');
+const { reconstructBookingContextFromTurns } = require('../../server/agents/reddy/bookingContext');
 const {
   isReddyEnabled,
   admitInboundEvent,
@@ -274,41 +283,61 @@ const cacheTimestamps = new Map();
 //     paused_at timestamptz default now()
 //   );
 const humanTakeoverMap = new Map(); // normalized_number → expiry ms
+const humanTakeoverSourceMap = new Map(); // normalized_number → proven local source
 const HUMAN_TAKEOVER_TTL_MS = 30 * 60 * 1000; // 30 menit
+
+// Provenance tag Task 15 stamps on every legacy wa_paused row/local entry it
+// creates as its secondary safety net (see persistHumanHandoff call sites
+// below). Lets a case resolution safely clear ONLY the pause Task 15 itself
+// set, never a genuinely separate manual-admin takeover (Correction Round 1,
+// Blocker 1b).
+const TASK15_PAUSE_SOURCE = 'orchestrator_human_handoff';
 
 function normalizePhone(phone) {
   return String(phone || '').replace(/\D/g, '');
 }
 
-function setHumanTakeoverLocal(phone) {
+function setHumanTakeoverLocal(phone, source = null) {
   const key = normalizePhone(phone);
-  if (key) humanTakeoverMap.set(key, Date.now() + HUMAN_TAKEOVER_TTL_MS);
+  if (key) {
+    humanTakeoverMap.set(key, Date.now() + HUMAN_TAKEOVER_TTL_MS);
+    humanTakeoverSourceMap.set(key, source || null);
+  }
 }
 
 function clearHumanTakeoverLocal(phone) {
-  humanTakeoverMap.delete(normalizePhone(phone));
+  const key = normalizePhone(phone);
+  humanTakeoverMap.delete(key);
+  humanTakeoverSourceMap.delete(key);
 }
 
 function isHumanTakeoverLocal(phone) {
   const key = normalizePhone(phone);
   const expiry = humanTakeoverMap.get(key);
   if (!expiry) return false;
-  if (Date.now() > expiry) { humanTakeoverMap.delete(key); return false; }
+  if (Date.now() > expiry) {
+    humanTakeoverMap.delete(key);
+    humanTakeoverSourceMap.delete(key);
+    return false;
+  }
   return true;
 }
 
 async function persistHumanTakeover(phone, pausedBy) {
   const sb = getSupabase();
-  if (!sb) return;
+  if (!sb) return false;
   const key = normalizePhone(phone);
-  if (!key) return;
+  if (!key) return false;
   const pausedUntil = new Date(Date.now() + HUMAN_TAKEOVER_TTL_MS).toISOString();
   try {
-    await sb.from('wa_paused').upsert(
+    const { error } = await sb.from('wa_paused').upsert(
       { sender: key, paused_until: pausedUntil, paused_at: new Date().toISOString(), paused_by: pausedBy || 'fonnte_auto' },
       { onConflict: 'sender' }
     );
-  } catch {}
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 async function clearHumanTakeover(phone) {
@@ -317,6 +346,49 @@ async function clearHumanTakeover(phone) {
   if (!sb) return;
   const key = normalizePhone(phone);
   try { await sb.from('wa_paused').delete().eq('sender', key); } catch {}
+}
+
+/**
+ * Clears a legacy wa_paused pause ONLY if it can be proven to have been set
+ * by the given source (e.g. TASK15_PAUSE_SOURCE) — never a genuinely separate
+ * manual-admin takeover (Correction Round 1, Blocker 1b / H4). Called when a
+ * Task 15 case resolves, so the 30-minute legacy pause it set on creation
+ * does not silently outlive the case and keep suppressing AI.
+ *
+ * Accepts an optional { supabase } override so callers outside this module
+ * (e.g. the handoff routes, which already receive their own Supabase client)
+ * do not have to depend on this module's getSupabase() singleton.
+ */
+async function clearHumanTakeoverIfSourcedFrom(phone, expectedSource, deps = {}) {
+  const key = normalizePhone(phone);
+  if (!key) return false;
+  const sb = deps.supabase !== undefined ? deps.supabase : getSupabase();
+  if (!sb) {
+    // Provenance cannot be verified without persistence — fail safe and do
+    // NOT clear rather than risk silently reactivating AI over a pause we
+    // cannot prove Task 15 itself created.
+    return false;
+  }
+  try {
+    const { data, error } = await sb.from('wa_paused').select('paused_by').eq('sender', key).maybeSingle();
+    if (error) return false;
+    if (!data) {
+      // No persisted row is not, by itself, provenance. Only clear a local
+      // pause when this process explicitly recorded that Task 15 created it.
+      // A manual/admin local pause with a failed/missing DB write must survive.
+      if (!isHumanTakeoverLocal(key)) return true;
+      if (humanTakeoverSourceMap.get(key) !== expectedSource) return false;
+      clearHumanTakeoverLocal(key);
+      return true;
+    }
+    if (data.paused_by !== expectedSource) return false;
+    const { error: deleteError } = await sb.from('wa_paused').delete().eq('sender', key);
+    if (deleteError) return false;
+    clearHumanTakeoverLocal(key);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function isHumanTakeover(phone) {
@@ -1212,17 +1284,51 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     persistHumanHandoff = persistHumanTakeover,
     getBookingStatus = getCustomerBookingStatus,
     readBarberPopularity = getBarberPopularity,
+    getHandoffState = (phone) => getActiveHandoffState(phone, { supabase: getSupabase() }),
+    createHandoffCase = (params) => createOrGetActiveCase(params, { supabase: getSupabase() }),
+    appendHandoffMessage = (caseId, message) => appendHandoffCustomerMessage(caseId, message, { supabase: getSupabase() }),
+    logHandoffTelemetry = logHandoffEvent,
   } = deps;
-
-  if (aiPaused || (checkHumanTakeover && await checkHumanTakeover(from))) {
-    return { used: 'paused', reply: null, sendResult: null, error: null };
-  }
 
   let branch = branchFromPayload;
   if (!branch) {
     branch = detectBranchFromNumber(receiver || device || from);
   }
   console.log('[WA Bot] Branch detected:', { branch, fromPayload: Boolean(branchFromPayload) });
+
+  // ── Task 15: Human Takeover Runtime Gate — single source of truth ─────────
+  // Must run before the orchestrator/Reddy/OpenAI are reached (spec §9), AND
+  // before the legacy manual-pause check below (Correction Round 1, Blocker 1):
+  // a stale or unrelated legacy `wa_paused` row must never prevent Task 15
+  // from observing this inbound message, appending it to an open case, and
+  // emitting handoff telemetry. Fails SAFE: getActiveHandoffState only reports
+  // a genuine lookup error, never "not configured", as 'lookup_failed' — see
+  // humanHandoff.js for why that split matters. Either way, Reddy is
+  // suppressed and the customer message is still attached to the case (or
+  // simply not lost) for the human agent.
+  const handoffState = await getHandoffState(from);
+  if (handoffState.status === 'waiting_human' || handoffState.status === 'human_active' || handoffState.status === 'lookup_failed') {
+    if (handoffState.case?.id) {
+      await appendHandoffMessage(handoffState.case.id, text);
+    }
+    logHandoffTelemetry({
+      event_type: 'handoff_bot_suppressed',
+      trigger_type: null,
+      reason: handoffState.status === 'lookup_failed' ? 'handoff_state_lookup_failed' : null,
+      priority: handoffState.case?.priority || null,
+      branch: handoffState.case?.branch || branch || 'unknown',
+      status_transition: null,
+    });
+    return { used: 'human_active_suppressed', reply: null, sendResult: null, error: null };
+  }
+
+  // Legacy manual-human pause (Task 10, 30-minute wa_paused) — secondary
+  // compatibility safety net, consulted only once Task 15 confirms there is
+  // no open case for this customer. Preserves a genuine manual admin takeover
+  // that never went through Task 15 at all (Correction Round 1, H4).
+  if (aiPaused || (checkHumanTakeover && await checkHumanTakeover(from))) {
+    return { used: 'paused', reply: null, sendResult: null, error: null };
+  }
 
   // Fast-path: points inquiry bypasses conversation history loading and Reddy generation
   const classification = classifyDeterministically(text);
@@ -1431,10 +1537,40 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used: 'orchestrator_bounded_response', reply: boundedReply, sendResult, error: null };
   }
 
-  // Handle Human Handoff Route
+  // Handle Human Handoff Route (Task 15) — the orchestrator only RECOMMENDS a
+  // handoff (route:'human'); this block is what actually opens/finds the case
+  // and decides what, if anything, gets sent. Legacy setHumanTakeover /
+  // persistHumanHandoff (Task 10, 30-minute pause) still run alongside the new
+  // case system as a secondary safety net — this is additive, not a replacement.
   if (orchDecision && (orchDecision.route === 'human' || orchDecision.agent === 'human' || orchDecision.intent === 'human_request' || orchDecision.intent === 'complaint')) {
-    setHumanTakeover(from);
-    persistHumanHandoff(from, 'orchestrator_human_handoff').catch(() => {});
+    const trigger = detectHandoffTrigger({ orchestrationDecision: orchDecision }) || {
+      triggerType: 'policy_escalation', reason: 'orchestrator_human_route', intent: orchDecision.intent || 'unknown',
+    };
+    const priority = computeHandoffPriority({ triggerType: trigger.triggerType, intent: trigger.intent, text });
+    // Reuses Task 14's stateless reconstruction (no canonical barber list loaded
+    // here — branch/service/date/time still resolve without it) purely to give
+    // the human agent real accumulated conversational context, never a booking fact.
+    let reconstructedBookingContext = null;
+    try {
+      reconstructedBookingContext = reconstructBookingContextFromTurns(conversationContext?.turns || [], {
+        sessionStatus: conversationContext?.sessionStatus,
+      });
+    } catch (_) { reconstructedBookingContext = null; }
+    const conversationSummary = buildConversationSummary({ text, bookingContext: reconstructedBookingContext });
+
+    const creation = await createHandoffCase({
+      customerPhone: from,
+      customerId: trustedIdentity?.customer_id || null,
+      channel: 'whatsapp',
+      branch,
+      reason: trigger.reason,
+      triggerType: trigger.triggerType,
+      intent: trigger.intent,
+      priority,
+      conversationSummary,
+      latestCustomerMessage: text,
+    });
+
     logTelemetry({
       ...orchDecision,
       execution_status: 'human_handoff',
@@ -1447,9 +1583,65 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
-    const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
-    const sendResult = await send(from, handoffReply, { branch });
-    return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+
+    // Case actually persisted — this is the ONLY outcome allowed to claim the
+    // request reached admin (Correction Round 1, Correction 4).
+    if (creation.status === 'created') {
+      setHumanTakeover(from, TASK15_PAUSE_SOURCE);
+      await Promise.resolve(persistHumanHandoff(from, TASK15_PAUSE_SOURCE)).catch(() => false);
+      logHandoffTelemetry({
+        event_type: 'handoff_case_created',
+        trigger_type: trigger.triggerType,
+        reason: trigger.reason,
+        priority,
+        branch,
+        status_transition: 'none_to_waiting_human',
+      });
+      const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
+      const sendResult = await send(from, handoffReply, { branch });
+      return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+    }
+
+    // A case is already open for this customer (race between near-simultaneous
+    // messages — the top-of-function gate already blocks subsequent messages
+    // once a case is persisted). No repeated acknowledgement (spec §10, §15).
+    if (creation.status === 'existing') {
+      setHumanTakeover(from, TASK15_PAUSE_SOURCE);
+      await Promise.resolve(persistHumanHandoff(from, TASK15_PAUSE_SOURCE)).catch(() => false);
+      logHandoffTelemetry({
+        event_type: 'handoff_duplicate_prevented',
+        trigger_type: trigger.triggerType,
+        reason: trigger.reason,
+        priority: creation.case?.priority || priority,
+        branch,
+        status_transition: null,
+      });
+      return { used: 'human_handoff', reply: null, sendResult: null, error: null };
+    }
+
+    // 'unavailable' (Task 15 case storage not provisioned in this environment)
+    // and a genuine storage 'error' both degrade the same way: pause AI as a
+    // safety net via the legacy mechanism, but NEVER claim the request
+    // reached admin — only a persisted case can honestly promise that
+    // (Correction Round 1, Correction 4; spec §19).
+    setHumanTakeover(from, TASK15_PAUSE_SOURCE);
+    await Promise.resolve(persistHumanHandoff(from, TASK15_PAUSE_SOURCE)).catch(() => false);
+    logHandoffTelemetry({
+      event_type: creation.status === 'unavailable' ? 'handoff_requested' : 'handoff_case_creation_failed',
+      trigger_type: trigger.triggerType,
+      reason: trigger.reason,
+      priority,
+      branch,
+      status_transition: null,
+    });
+    const fallbackReply = 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
+    const sendResult = await send(from, fallbackReply, { branch });
+    return {
+      used: creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
+      reply: fallbackReply,
+      sendResult,
+      error: null,
+    };
   }
 
   // Existing booking status is backend authority, never an LLM or customer claim.
@@ -2277,7 +2469,39 @@ module.exports = async function handler(req, res, testDeps = {}) {
       }
     }
 
-    // Human takeover check — skip AI jika admin sedang handle manual
+    // ── Task 15: Human Takeover Runtime Gate — single source of truth ──────
+    // Must observe every inbound customer message BEFORE the legacy pause is
+    // even consulted (Correction Round 1, Blocker 1): a stale/unrelated
+    // legacy wa_paused row must never prevent Task 15 from seeing this
+    // message, appending it to an open case, and emitting handoff telemetry.
+    // Deliberately a SEPARATE testDeps key from the P0 guard's testDeps.supabase
+    // (which only ever models wa_inbound_events): defaults to getSupabase(),
+    // same as production and every pre-existing P0/Task 14.1 test, and is
+    // testable at the full HTTP level by passing testDeps.handoffSupabase
+    // explicitly — without forcing every unrelated test's fake Supabase to
+    // also model an empty human_handoff_cases table.
+    const handoffSupabaseForGuard = testDeps.handoffSupabase !== undefined ? testDeps.handoffSupabase : getSupabase();
+    const handoffState = await getActiveHandoffState(sender, { supabase: handoffSupabaseForGuard });
+    if (handoffState.status === 'waiting_human' || handoffState.status === 'human_active' || handoffState.status === 'lookup_failed') {
+      if (handoffState.case?.id) {
+        await appendHandoffCustomerMessage(handoffState.case.id, message, { supabase: handoffSupabaseForGuard });
+      }
+      logHandoffEvent({
+        event_type: 'handoff_bot_suppressed',
+        trigger_type: null,
+        reason: handoffState.status === 'lookup_failed' ? 'handoff_state_lookup_failed' : null,
+        priority: handoffState.case?.priority || null,
+        branch: handoffState.case?.branch || branchForGuardTelemetry || 'unknown',
+        status_transition: null,
+      });
+      console.log('[WA Bot] AI suppressed — Task 15 handoff state active:', { status: handoffState.status });
+      return res.status(200).json({ status: 'ok', suppressed: true, reason: 'handoff_active' });
+    }
+
+    // Legacy manual-human pause (Task 10, 30-minute wa_paused) — secondary
+    // compatibility safety net, consulted only once Task 15 confirms there is
+    // no open case for this customer. Preserves a genuine manual admin
+    // takeover that never went through Task 15 at all (Correction Round 1, H4).
     const humanActive = await isHumanTakeover(sender);
     if (humanActive) {
       console.log('[WA Bot] AI paused — human takeover active');
@@ -2291,7 +2515,13 @@ module.exports = async function handler(req, res, testDeps = {}) {
     const t0 = Date.now();
     try {
       const processMessage = testDeps.handleMessage || handleMessage;
-      const result = await processMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity }, { send: guardedSend });
+      // handoffState is already known to be 'none' here (every other status
+      // returned above) — threading it through avoids a second, redundant
+      // Task 15 lookup inside handleMessage for the common case.
+      const result = await processMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity }, {
+        send: guardedSend,
+        getHandoffState: async () => handoffState,
+      });
       const ms = Date.now() - t0;
       console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
     } catch (err) {
@@ -2331,3 +2561,12 @@ module.exports.buildBranchLocationText = buildBranchLocationText;
 module.exports.buildBranchOperatingHoursText = buildBranchOperatingHoursText;
 module.exports.buildBranchLastBookingSlotText = buildBranchLastBookingSlotText;
 module.exports.isForeignBookingIntent = isForeignBookingIntent;
+
+// Task 15 / Correction Round 1 — legacy takeover internals exposed for
+// cross-layer testing and for server/routes/humanHandoff.js's resolve
+// endpoint to reconcile the legacy pause it may have set on case creation.
+module.exports.TASK15_PAUSE_SOURCE = TASK15_PAUSE_SOURCE;
+module.exports.isHumanTakeover = isHumanTakeover;
+module.exports.setHumanTakeoverLocal = setHumanTakeoverLocal;
+module.exports.isHumanTakeoverLocal = isHumanTakeoverLocal;
+module.exports.clearHumanTakeoverIfSourcedFrom = clearHumanTakeoverIfSourcedFrom;
