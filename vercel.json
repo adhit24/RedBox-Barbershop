@@ -11,7 +11,8 @@
  "api/cron/reengagement.js": { "maxDuration": 60, "includeFiles": "server/**" },
  "api/cron/remind-soon.js": { "maxDuration": 60, "includeFiles": "server/**" },
  "api/cron/home-service-flag.js": { "maxDuration": 60, "includeFiles": "server/**" },
- "api/cron/expire-stale-bills.js":{ "maxDuration": 30, "includeFiles": "server/**" }
+ "api/cron/expire-stale-bills.js":{ "maxDuration": 30, "includeFiles": "server/**" },
+ "api/cron/reddy-idle-close.js": { "maxDuration": 60, "includeFiles": "server/**" }
  },
  "rewrites": [
  { "source": "/api/ai/analyze", "destination": "/api/ai/analyze.js" },
@@ -24,6 +25,7 @@
  { "source": "/api/cron/remind-soon", "destination": "/api/cron/remind-soon.js" },
  { "source": "/api/cron/expire-stale-bills","destination": "/api/cron/expire-stale-bills.js" },
  { "source": "/api/cron/home-service-flag", "destination": "/api/cron/home-service-flag.js" },
+ { "source": "/api/cron/reddy-idle-close", "destination": "/api/cron/reddy-idle-close.js" },
  { "source": "/api/moka/sync-customers", "destination": "/api/moka/sync-customers.js" },
  { "source": "/api/:path*", "destination": "/api/index" }
  ],
