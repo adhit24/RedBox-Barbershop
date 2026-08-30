@@ -107,6 +107,11 @@ function detectBranchFromNumber(to) {
  * @param {object} options - Options tambahan
  * @param {string} options.branch - Cabang pengirim (bypass, sumber, etc.)
  * @param {string} options.token - Token khusus (override branch detection)
+ * @param {boolean} [options.assumeIndonesianLocalShorthand] - Only set true
+ *   for a caller that KNOWS `to` is a bare Indonesian mobile number with no
+ *   leading 0 and no country code (e.g. a legacy DB row). Without it, a bare
+ *   "8..." target is left untouched, since it's ambiguous with real foreign
+ *   country codes (81 Japan, 82 Korea, 84 Vietnam, 86 China, ...).
  */
 async function sendWA(to, message, options = {}) {
   // Detect branch from options atau dari nomor tujuan
@@ -125,22 +130,40 @@ async function sendWA(to, message, options = {}) {
   }
 
   // Normalize outbound target number:
-  //   "+628xxx" / "628xxx"        → already has a country code (Indonesian
-  //                                  or foreign) → left as-is
-  //   "08xxx"                     → Indonesian local convenience → "628xxx"
-  //   "8xxx" (bare, no 0/62/other
-  //   country code prefix)        → bare Indonesian mobile shorthand →
-  //                                  "628xxx" (pre-existing convenience,
-  //                                  unchanged)
-  // Anything that already starts with a digit other than 0 (i.e. already
-  // carries SOME country code, Indonesian or foreign) is never touched —
-  // the prior code's `else if (!number.startsWith('62'))` branch blindly
-  // prepended 62 onto foreign numbers too (e.g. a Singapore number became
-  // "62" + "6591234567"), which this fixes.
+  //   "+628xxx" / "628xxx"  → already has a country code (Indonesian or
+  //                            foreign) → left as-is
+  //   "08xxx"               → Indonesian local convenience → "628xxx"
+  //   "8xxx" (bare, no 0/62
+  //   prefix)               → AMBIGUOUS once stripped of punctuation: could
+  //                            be Indonesian mobile shorthand ("81234567890"
+  //                            meaning "081234567890") OR a legitimate
+  //                            international number whose own country code
+  //                            starts with 8 (Japan 81, Korea 82, Vietnam 84,
+  //                            China 86, Cambodia 855, Bangladesh 880, Taiwan
+  //                            886, ...). Left as-is by default — a prior
+  //                            version of this function blindly prepended 62
+  //                            onto every bare "8..." number, which silently
+  //                            corrupted any of those country codes (e.g. a
+  //                            Japanese "819012345678" became
+  //                            "62819012345678"). Also fixed, same
+  //                            correction: a prior-prior version prepended 62
+  //                            onto ANY non-Indonesian number at all (e.g. a
+  //                            Singapore number became "62" + "6591234567").
+  //
+  // If a caller genuinely holds a bare Indonesian-shorthand number (no
+  // leading 0, no country code — legacy DB rows written before this format
+  // was standardized elsewhere) it must say so explicitly:
+  //   sendWA(to, message, { branch, assumeIndonesianLocalShorthand: true })
+  // No current caller in this codebase needs this — every live caller either
+  // passes a trusted, already-normalized phone (never bare-8: see
+  // phoneNormalization.js) or a DB-sourced number that's already 62-prefixed
+  // at write time (adminCrm.js's waNorm, member-identity.js's
+  // normalizeMemberPhone). The option exists as a scoped escape hatch, not a
+  // default assumption.
   let number = String(to).replace(/\D/g, '');
   if (number.startsWith('0')) {
     number = '62' + number.slice(1);
-  } else if (number.startsWith('8') && !number.startsWith('62')) {
+  } else if (options.assumeIndonesianLocalShorthand === true && number.startsWith('8') && !number.startsWith('62')) {
     number = '62' + number;
   }
 
