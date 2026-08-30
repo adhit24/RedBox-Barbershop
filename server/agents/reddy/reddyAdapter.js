@@ -153,6 +153,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   // Verified CRM name source: derive ONLY from customerIntelligence facts or customer entity
   const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || null;
   const presenceIntent = classifyBarberPresenceQuery(text);
+  const responseLanguage = String(conversationContext?.response_language || 'indonesian').toLowerCase();
 
   // Task 14.1 correction round 2: booking MEMORY, booking RESPONSE authority,
   // and booking CTA authority are three genuinely different, separately
@@ -213,7 +214,6 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       text, supabase, loadBarbers, getSchedule,
     });
 
-    const responseLanguage = String(conversationContext?.response_language || 'indonesian').toLowerCase();
     const useIndonesianDeterministicPresentation = responseLanguage === 'indonesian';
 
     if (useIndonesianDeterministicPresentation) {
@@ -430,6 +430,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     knownBarberNames: presenceResolution?.factDecision?.barber?.name
       ? [presenceResolution.factDecision.barber.name]
       : [],
+    responseLanguage,
   });
   reply = realtimeGuarded.sanitizedReply;
   if (realtimeGuarded.triggered) {

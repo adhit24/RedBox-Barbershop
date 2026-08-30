@@ -144,6 +144,24 @@ test('existing English presentation route renders the same bounded presence fact
   }
 });
 
+test('English presence adapter sanitizes unsafe model availability in the resolved response language', async () => {
+  const { result, observations } = await runPresenceTurn({
+    text: 'Husen available?',
+    conversationContext: { ...emptyContext(), response_language: 'english' },
+    modelReply: 'Husen is available now.',
+    orchestrationDecision: { intent: 'booking_availability_inquiry', route: 'reddy_agent' },
+  });
+
+  assert.equal(observations.openAI, 1);
+  assert.equal(observations.schedule, 1);
+  assert.equal(
+    result.reply,
+    "Husen is scheduled to work today, but I can't verify that he is free or available right now.",
+  );
+  assert.doesNotMatch(result.reply, /\b(?:aku|kak|beliau|dijadwalkan|hari ini|tercatat)\b/i);
+  assert.doesNotMatch(result.reply, /booking|redboxbarbershop\.com|https?:\/\//i);
+});
+
 test('response language is context-owned and never inferred from sender country code', async () => {
   const plus62English = await runPresenceTurn({
     from: '628100000001',
@@ -237,6 +255,67 @@ test('outbound guard keeps ordinary foreign availability words and blocks only n
     assert.equal(guarded.triggered, true, barberClaim);
     assert.doesNotMatch(guarded.sanitizedReply, new RegExp(barberClaim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
   }
+});
+
+test('English guard fallback preserves language and authority for unsafe model output', () => {
+  const scheduled = { barberName: 'Husen', status: 'scheduled', date: '2026-08-30' };
+  const cases = [
+    {
+      reply: 'Husen is available now.',
+      options: { verifiedSchedule: scheduled, requestedClaim: 'availability' },
+      expected: /Husen is scheduled to work today, but I can't verify that he is free or available right now\./,
+    },
+    {
+      reply: 'Husen is here.',
+      options: { verifiedSchedule: scheduled, requestedClaim: 'presence' },
+      expected: /Husen is scheduled to work today, but I don't have verified check-in or attendance data to confirm that he is already at the branch\./,
+    },
+    {
+      // In this guard, bare "is working today" is treated as a current-presence
+      // claim, not as proof that a planned schedule lookup happened.
+      reply: 'Husen is working today.',
+      options: { verifiedSchedule: scheduled, requestedClaim: 'presence' },
+      expected: /Husen is scheduled to work today, but I don't have verified check-in or attendance data to confirm that he is already at the branch\./,
+    },
+    {
+      reply: 'Husen is here.',
+      options: { verifiedSchedule: { ...scheduled, status: 'not_scheduled' }, requestedClaim: 'presence' },
+      expected: /Husen is not listed as scheduled to work today\./,
+    },
+    {
+      reply: 'Husen is available now.',
+      options: { verifiedSchedule: null, requestedClaim: 'availability' },
+      expected: /I can't confirm Husen's current presence from verified data\./,
+    },
+  ];
+
+  for (const { reply, options, expected } of cases) {
+    const guarded = guardRealtimeBarberFacts(reply, {
+      ...options,
+      knownBarberNames: ['Husen'],
+      responseLanguage: 'english',
+    });
+    assert.equal(guarded.triggered, true, reply);
+    assert.match(guarded.sanitizedReply, expected, reply);
+    assert.doesNotMatch(guarded.sanitizedReply, /\b(?:aku|kak|beliau|dijadwalkan|hari ini|tercatat)\b/i, reply);
+    assert.doesNotMatch(guarded.sanitizedReply, /booking|redboxbarbershop\.com|https?:\/\//i, reply);
+  }
+});
+
+test('Indonesian guard fallback remains unchanged and never adds CTA or URL', () => {
+  const guarded = guardRealtimeBarberFacts('Mas Husen ada di sini.', {
+    verifiedSchedule: { barberName: 'Husen', status: 'scheduled', date: '2026-08-30' },
+    requestedClaim: 'presence',
+    knownBarberNames: ['Husen'],
+    responseLanguage: 'indonesian',
+  });
+
+  assert.equal(guarded.triggered, true);
+  assert.equal(
+    guarded.sanitizedReply,
+    'Husen memang dijadwalkan masuk hari ini, Kak, tapi aku belum punya data kehadiran/check-in untuk memastikan beliau sudah hadir sekarang.',
+  );
+  assert.doesNotMatch(guarded.sanitizedReply, /booking|redboxbarbershop\.com|https?:\/\//i);
 });
 
 test('outbound guard preserves roster and verified schedule facts but binds authorization claim-locally', () => {
@@ -393,4 +472,74 @@ test('legacy response fallback also applies the outbound presence guard before s
   assert.doesNotMatch(sent[0], /Husen ada di sini/i);
   assert.match(sent[0], /belum bisa memastikan|data yang terverifikasi/i);
   assert.equal(result.reply, sent[0]);
+});
+
+for (const unsafeLegacyReply of ['Husen is available now.', 'Husen is here.']) {
+  test(`legacy English fallback blocks canonical barber claim before send: ${unsafeLegacyReply}`, async () => {
+    const sent = [];
+    const result = await handleMessage({
+      from: '628100000001',
+      name: 'Customer',
+      text: 'Husen available?',
+      device: '0818202889',
+      receiver: '0818202889',
+      branchFromPayload: 'csb',
+      providerDeviceHash: 'device-hash',
+    }, {
+      getHandoffState: async () => ({ status: 'none', case: null }),
+      touchLifecycle: async () => ({ reopened: false }),
+      loadConversationHistory: async () => ({
+        history: [{ role: 'user', content: 'Hello, I need help.' }],
+        status: 'available',
+      }),
+      orchestrate: async () => null,
+      resolveKnowledge: () => null,
+      generateReddy: async () => unsafeLegacyReply,
+      send: async (_to, reply) => { sent.push(reply); return { status: true }; },
+      getSupabaseClient: () => ({}),
+      loadBarbers: async () => ({ status: 'verified', barbers: [HUSEN], reason: null }),
+      getSchedule: async () => assert.fail('legacy canonical identity lookup must not become schedule authority'),
+      logTelemetry: () => {},
+      recordEvaluation: async () => {},
+      persistConversation: async () => {},
+    });
+
+    assert.equal(sent.length, 1);
+    assert.equal(result.reply, sent[0]);
+    assert.doesNotMatch(sent[0], /Husen is (?:available|here)/i);
+    assert.match(sent[0], /I can't confirm Husen's current presence from verified data\./i);
+    assert.doesNotMatch(sent[0], /\b(?:aku|kak|beliau|dijadwalkan|hari ini|tercatat)\b/i);
+    assert.doesNotMatch(sent[0], /booking|redboxbarbershop\.com|https?:\/\//i);
+  });
+}
+
+test('legacy matched presence query fails closed in English when canonical identity lookup fails', async () => {
+  const sent = [];
+  const result = await handleMessage({
+    from: '628100000001',
+    name: 'Customer',
+    text: 'Husen available?',
+    device: '0818202889',
+    receiver: '0818202889',
+    branchFromPayload: 'csb',
+    providerDeviceHash: 'device-hash',
+  }, {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    touchLifecycle: async () => ({ reopened: false }),
+    loadConversationHistory: async () => ({ history: [], status: 'empty' }),
+    orchestrate: async () => null,
+    resolveKnowledge: () => null,
+    generateReddy: async () => 'Husen is available now.',
+    send: async (_to, reply) => { sent.push(reply); return { status: true }; },
+    getSupabaseClient: () => ({}),
+    loadBarbers: async () => { throw new Error('canonical lookup unavailable'); },
+    getSchedule: async () => assert.fail('failed canonical lookup must not attempt schedule authority'),
+    logTelemetry: () => {},
+    recordEvaluation: async () => {},
+    persistConversation: async () => {},
+  });
+
+  assert.equal(result.reply, sent[0]);
+  assert.equal(result.reply, "I can't confirm the barber's current presence from verified data.");
+  assert.doesNotMatch(result.reply, /booking|redboxbarbershop\.com|https?:\/\//i);
 });

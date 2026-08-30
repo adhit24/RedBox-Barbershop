@@ -47,16 +47,33 @@ function escapeRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function englishNamedBarberClaim(sentence, barberNames = []) {
-  return barberNames.filter(Boolean).some((name) => {
+function englishNamedBarberClaimType(sentence, barberNames = []) {
+  for (const name of barberNames.filter(Boolean)) {
     const canonicalName = escapeRegExp(name);
-    if (!canonicalName) return false;
-    const namedClaim = new RegExp(
-      `\\b${canonicalName}\\s+(?:is\\s+)?(?:present|here|working|on\\s+duty|ready|free|available)(?:\\s+now)?\\b`,
+    if (!canonicalName) continue;
+    const availabilityClaim = new RegExp(
+      `\\b${canonicalName}\\s+(?:is\\s+)?(?:ready|free|available)(?:\\s+now)?\\b`,
       'iu',
     );
-    return namedClaim.test(sentence);
-  });
+    if (availabilityClaim.test(sentence)) return 'availability';
+    const attendanceClaim = new RegExp(
+      `\\b${canonicalName}\\s+(?:is\\s+)?(?:present|here|working|on\\s+duty)(?:\\s+(?:now|today))?\\b`,
+      'iu',
+    );
+    if (attendanceClaim.test(sentence)) return 'attendance';
+  }
+  return null;
+}
+
+function englishNamedBarberClaim(sentence, barberNames = []) {
+  return Boolean(englishNamedBarberClaimType(sentence, barberNames));
+}
+
+function findKnownBarberName(text, barberNames = []) {
+  return barberNames.filter(Boolean).find((name) => {
+    const canonicalName = escapeRegExp(name);
+    return canonicalName && new RegExp(`\\b${canonicalName}\\b`, 'iu').test(text);
+  }) || null;
 }
 
 // Bare presence-today phrasing ("ada/masuk/tersedia hari ini", "sedang
@@ -139,8 +156,36 @@ function sentenceHasViolation(sentence, verifiedSchedule, knownBarberNames = [])
  * saying "jadwal/kehadiran belum tersedia" when the schedule IS actually
  * known would itself be inaccurate.
  */
-function buildSafeStatement(verifiedSchedule, { attendanceAttempted = false, availabilityAttempted = false } = {}) {
+function buildSafeStatement(verifiedSchedule, {
+  attendanceAttempted = false,
+  availabilityAttempted = false,
+  responseLanguage = 'indonesian',
+  barberName = null,
+} = {}) {
   const name = verifiedSchedule?.barberName;
+
+  // The current named-presence classifier reaches only the established
+  // Indonesian and English presentation paths. Keep this safety renderer
+  // bounded to those actual paths; it is not a second multilingual system.
+  if (String(responseLanguage).toLowerCase() === 'english') {
+    const englishName = name || barberName;
+    if (verifiedSchedule?.status === 'scheduled' && englishName) {
+      if (availabilityAttempted) {
+        return `${englishName} is scheduled to work today, but I can't verify that he is free or available right now.`;
+      }
+      if (attendanceAttempted) {
+        return `${englishName} is scheduled to work today, but I don't have verified check-in or attendance data to confirm that he is already at the branch.`;
+      }
+      return `${englishName} is scheduled to work today.`;
+    }
+    if (verifiedSchedule?.status === 'not_scheduled' && englishName) {
+      return `${englishName} is not listed as scheduled to work today.`;
+    }
+    if (englishName) {
+      return `I can't confirm ${englishName}'s current presence from verified data.`;
+    }
+    return `I can't confirm the barber's current presence from verified data.`;
+  }
 
   if (verifiedSchedule?.status === 'scheduled' && name) {
     const scheduleFact = `${name} memang dijadwalkan masuk hari ini, Kak`;
@@ -172,31 +217,47 @@ function buildSafeStatement(verifiedSchedule, { attendanceAttempted = false, ava
  *   turn (never assumed) — see server/services/barberScheduleAuthority.js.
  */
 function guardRealtimeBarberFacts(reply, options = {}) {
-  const { verifiedSchedule = null, requestedClaim = null, knownBarberNames = [] } = options;
+  const {
+    verifiedSchedule = null,
+    requestedClaim = null,
+    knownBarberNames = [],
+    responseLanguage = 'indonesian',
+    forceSafeResponse = false,
+  } = options;
   if (typeof reply !== 'string' || !reply.trim()) {
     return { sanitizedReply: reply, triggered: false };
   }
 
   const sentences = splitIntoSentences(reply);
   const boundBarberNames = [...knownBarberNames, verifiedSchedule?.barberName].filter(Boolean);
-  const violatingSentences = sentences.filter((sentence) => sentenceHasViolation(
-    sentence,
-    verifiedSchedule,
-    boundBarberNames,
-  ));
+  const violatingSentences = forceSafeResponse
+    ? sentences
+    : sentences.filter((sentence) => sentenceHasViolation(
+      sentence,
+      verifiedSchedule,
+      boundBarberNames,
+    ));
 
   if (violatingSentences.length === 0) {
     return { sanitizedReply: reply, triggered: false };
   }
 
-  const attendanceAttempted = sentences.some((sentence) => ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence)));
+  const englishClaimTypes = sentences.map((sentence) => englishNamedBarberClaimType(sentence, boundBarberNames));
+  const attendanceAttempted = sentences.some((sentence) => ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence)))
+    || englishClaimTypes.includes('attendance');
   const availabilityAttempted = requestedClaim === 'availability'
-    || sentences.some((sentence) => AVAILABILITY_PATTERNS.some((pattern) => pattern.test(sentence)));
+    || sentences.some((sentence) => AVAILABILITY_PATTERNS.some((pattern) => pattern.test(sentence)))
+    || englishClaimTypes.includes('availability');
   const keptSentences = sentences
     .filter((sentence) => !violatingSentences.includes(sentence))
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-  const safeStatement = buildSafeStatement(verifiedSchedule, { attendanceAttempted, availabilityAttempted });
+  const safeStatement = buildSafeStatement(verifiedSchedule, {
+    attendanceAttempted,
+    availabilityAttempted,
+    responseLanguage,
+    barberName: findKnownBarberName(violatingSentences.join(' '), boundBarberNames),
+  });
 
   const sanitizedReply = [...keptSentences, safeStatement].join('\n').trim();
   return { sanitizedReply, triggered: true };
@@ -210,4 +271,5 @@ module.exports = {
   SCHEDULE_CLAIM_PATTERNS,
   nameIsBoundInText,
   englishNamedBarberClaim,
+  englishNamedBarberClaimType,
 };

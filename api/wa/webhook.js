@@ -110,6 +110,7 @@ const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orch
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
 const { classifyBarberPresenceQuery } = require('../../server/agents/reddy/barberPresenceIntent');
 const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
+const { loadCanonicalBarbers, resolveCanonicalBarber } = require('../../server/services/canonicalBarberResolver');
 const {
   extractFirstName,
   classifyConversationSession,
@@ -1348,7 +1349,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, { providerDeviceHash, branch }),
     recordEvaluation = (event) => recordEvaluationEvent(event, { supabase: getSupabase() }),
     getSupabaseClient = getSupabase,
-    loadBarbers = undefined,
+    loadBarbers = loadCanonicalBarbers,
     getSchedule = undefined,
     persistConversation = persistConversationExchange,
   } = deps;
@@ -2111,7 +2112,32 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // The legacy orchestrator-fallback response path does not pass through
   // executeReddyAgent's semantic guard chain. Apply the same attendance and
   // operational-availability boundary here before parsing tags or sending.
-  const legacyRealtimeGuard = guardRealtimeBarberFacts(reply, { verifiedSchedule: null });
+  // Canonical rows authorize identity tokens only. They do NOT authorize
+  // schedule, attendance, or availability; verifiedSchedule deliberately
+  // remains null because this legacy path did not perform a schedule lookup.
+  const legacyEnglishClaimCandidate = /\b(?:is\s+)?(?:present|here|working|on\s+duty|ready|free|available)(?:\s+(?:now|today))?\b/i.test(reply);
+  let legacyCanonicalSource = { status: 'not_requested', barbers: [], reason: null };
+  if (presenceIntent.matched || legacyEnglishClaimCandidate) {
+    try {
+      legacyCanonicalSource = await loadBarbers(getSupabaseClient());
+    } catch (_error) {
+      legacyCanonicalSource = { status: 'unavailable', barbers: [], reason: 'canonical_source_error' };
+    }
+  }
+  const legacyCanonicalBarbers = legacyCanonicalSource?.status === 'verified'
+    ? (legacyCanonicalSource.barbers || [])
+    : [];
+  const legacyKnownBarberNames = legacyCanonicalBarbers.map((barber) => barber?.name).filter(Boolean);
+  const requestedCanonicalBarber = presenceIntent.matched
+    ? resolveCanonicalBarber(text, legacyCanonicalBarbers, null)
+    : null;
+  const legacyRealtimeGuard = guardRealtimeBarberFacts(reply, {
+    verifiedSchedule: null,
+    requestedClaim: presenceIntent.matched ? presenceIntent.claimType : null,
+    knownBarberNames: legacyKnownBarberNames,
+    responseLanguage,
+    forceSafeResponse: presenceIntent.matched && requestedCanonicalBarber?.status !== 'verified',
+  });
   reply = legacyRealtimeGuard.sanitizedReply;
   if (legacyRealtimeGuard.triggered) {
     logTelemetry({
