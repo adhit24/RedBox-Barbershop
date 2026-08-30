@@ -110,6 +110,9 @@ const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orch
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
 const { classifyBarberPresenceQuery } = require('../../server/agents/reddy/barberPresenceIntent');
 const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
+const {
+  hasIndonesianLanguageSignal, isForeignLanguage, detectForeignLanguage, resolveResponseLanguage,
+} = require('../../server/agents/reddy/languageResolution');
 const { loadCanonicalBarbers, resolveCanonicalBarber } = require('../../server/services/canonicalBarberResolver');
 const {
   extractFirstName,
@@ -1012,75 +1015,10 @@ const ALL_KAPSTER_NAMES = Object.values(BARBERS_BY_BRANCH).flat();
 
 const ADMIN_WA = process.env.ADMIN_WHATSAPP || '6285173100365';
 
-function hasIndonesianLanguageSignal(text) {
-  const lower = text.toLowerCase();
-  const indonesianWords = ['mau', 'booking', 'potong', 'rambut', 'harga', 'berapa', 'bisa', 'kapan',
-    'hari', 'jam', 'cabang', 'lokasi', 'dimana', 'ada', 'saya', 'aku', 'kak', 'mas',
-    'terima kasih', 'makasih', 'tolong', 'bantu', 'info', 'dong', 'ya', 'iya', 'gak',
-    'tidak', 'bukan', 'oke', 'siap', 'datang', 'jadi', 'batal'];
-  const words = lower.split(/\s+/);
-  const indonesianCount = words.filter(w => indonesianWords.some(iw => w.includes(iw))).length;
-  return words.length > 0 && indonesianCount / words.length > 0.3;
-}
+// hasIndonesianLanguageSignal moved to server/agents/reddy/languageResolution.js
 
-function isForeignLanguage(text) {
-  const lower = text.toLowerCase();
-  if (hasIndonesianLanguageSignal(text)) return false;
-
-  const foreignPatterns = [
-    /\b(i want|i need|i would|i'd like|can i|could you|please|thank you|thanks)\b/i,
-    /\b(hello|hey|good morning|good afternoon|good evening)\b/i,
-    /\b(haircut|hair cut|barber|appointment|schedule|book|reserve)\b/i,
-    /\b(how much|what time|when|where|which)\b/i,
-    /\b(tomorrow|today|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
-    /\b(do you|are you|is there|can you|will you)\b/i,
-    /\b(my name|i am|i'm)\b/i,
-    // Turkish
-    /\b(merhaba|selam|berber|randevu|rezervasyon|istiyorum|saç|kesim|tıraş)\b/i,
-    // Chinese
-    /[\u4e00-\u9fff]/,
-    // Japanese
-    /[\u3040-\u309f\u30a0-\u30ff]/,
-    // Korean
-    /[\uac00-\ud7af]/,
-    // Arabic
-    /[\u0600-\u06ff]/,
-    // Thai
-    /[\u0e00-\u0e7f]/,
-  ];
-  return foreignPatterns.some(p => p.test(lower));
-}
-
-function detectForeignLanguage(text) {
-  if (/[\u4e00-\u9fff]/.test(text)) return 'chinese';
-  if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'japanese';
-  if (/[\uac00-\ud7af]/.test(text)) return 'korean';
-  if (/[\u0600-\u06ff]/.test(text)) return 'arabic';
-  if (/[\u0e00-\u0e7f]/.test(text)) return 'thai';
-  const turkishWords = ['merhaba', 'selam', 'günaydın', 'saç', 'berber', 'randevu',
-    'rezervasyon', 'istiyorum', 'lütfen', 'teşekkürler', 'tıraş', 'kesim', 'sakal'];
-  const lower = text.toLowerCase();
-  if (turkishWords.some(w => lower.includes(w))) return 'turkish';
-  return 'english';
-}
-
-function resolveExistingResponseLanguage(text, conversationContext, presenceIntent = null) {
-  if (hasIndonesianLanguageSignal(text)) return 'indonesian';
-  if (isForeignLanguage(text)) return detectForeignLanguage(text);
-
-  const turns = Array.isArray(conversationContext?.turns) ? conversationContext.turns : [];
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    const turn = turns[index];
-    if (turn?.role !== 'user' || !String(turn?.content || '').trim()) continue;
-    if (hasIndonesianLanguageSignal(turn.content)) return 'indonesian';
-    if (isForeignLanguage(turn.content)) return detectForeignLanguage(turn.content);
-  }
-
-  // Bounded composition for matched named-presence turns only. This does not
-  // alter global language detection or infer language from a phone number.
-  if (presenceIntent?.matched && /\b(?:available|free)\b/i.test(text)) return 'english';
-  return 'indonesian';
-}
+// isForeignLanguage / detectForeignLanguage / resolveExistingResponseLanguage
+// moved to server/agents/reddy/languageResolution.js (resolveResponseLanguage)
 
 
 
@@ -1487,9 +1425,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // never a plain, unscoped `sender` key (Objective C).
   conversationContext.providerDeviceHash = providerDeviceHash;
   const presenceIntent = classifyBarberPresenceQuery(text);
-  const responseLanguage = presenceIntent.matched
-    ? resolveExistingResponseLanguage(text, conversationContext, presenceIntent)
-    : (isForeignLanguage(text) ? detectForeignLanguage(text) : 'indonesian');
+  const responseLanguage = resolveResponseLanguage(text, conversationContext, { presenceIntent });
   conversationContext.response_language = responseLanguage;
   let reply;
   let used = 'openai';
@@ -2832,7 +2768,7 @@ module.exports.buildServicesText = buildServicesText;
 
 module.exports.getServicesForLang = getServicesForLang;
 module.exports.detectForeignLanguage = detectForeignLanguage;
-module.exports.resolveExistingResponseLanguage = resolveExistingResponseLanguage;
+module.exports.resolveResponseLanguage = resolveResponseLanguage;
 
 module.exports.getBranchConfig = getBranchConfig;
 
