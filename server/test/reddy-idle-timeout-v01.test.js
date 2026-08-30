@@ -40,7 +40,13 @@ const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 
 // ── Fake wa_conversations Supabase builder ────────────────────────────────
 function fakeConversationsSupabase(initialRows = []) {
-  const rows = initialRows.map((r) => ({ ...r }));
+  // Objective C (P0 conversation isolation): every real wa_conversations row
+  // now carries provider_device_hash, defaulted to the legacy sentinel scope
+  // for rows/tests that never pass a real device hash — mirrors the P0
+  // migration's own backfill-to-legacy-sentinel approach for existing rows.
+  // A test that cares about cross-device isolation explicitly overrides this
+  // per-row.
+  const rows = initialRows.map((r) => ({ provider_device_hash: 'legacy-unscoped', ...r }));
 
   function applyFilters(list, filters) {
     return list.filter((row) => filters.every((f) => {

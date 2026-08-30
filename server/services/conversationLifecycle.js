@@ -24,6 +24,8 @@
  *     changed immediately before the actual send (Blocker 2), and finalizes.
  */
 
+const { resolveConversationDeviceScope } = require('./conversationScope');
+
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 const IDLE_CLOSE_MESSAGE =
@@ -45,14 +47,22 @@ function toIso(ms) {
  * responsible for also dropping any in-memory conversation-history cache and
  * treating this turn's context as empty so stale booking context can't bleed
  * into the reopened conversation.
+ *
+ * Objective C: scoped by (sender, provider_device_hash) — a customer's
+ * conversation on one branch device's idle timer is fully independent of
+ * their conversation on another device. `providerDeviceHash` is optional for
+ * backward compatibility (defaults to the legacy sentinel scope) but every
+ * real caller (api/wa/webhook.js) always passes the actual hash.
  */
-async function touchInboundActivity(supabase, sender, { now = Date.now() } = {}) {
+async function touchInboundActivity(supabase, sender, { now = Date.now(), providerDeviceHash = null } = {}) {
   if (!supabase || !sender) return null;
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
   try {
     const { data } = await supabase
       .from('wa_conversations')
       .select('conversation_status')
       .eq('sender', sender)
+      .eq('provider_device_hash', deviceScope)
       .maybeSingle();
     const wasClosed = data?.conversation_status === 'closed';
     const patch = {
@@ -62,7 +72,8 @@ async function touchInboundActivity(supabase, sender, { now = Date.now() } = {})
       updated_at: toIso(now),
       ...(wasClosed ? { session_started_at: toIso(now), idle_closed_at: null } : {}),
     };
-    await supabase.from('wa_conversations').upsert({ sender, ...patch }, { onConflict: 'sender' });
+    await supabase.from('wa_conversations')
+      .upsert({ sender, provider_device_hash: deviceScope, ...patch }, { onConflict: 'sender,provider_device_hash' });
     return { reopened: wasClosed };
   } catch (_error) {
     return null;
@@ -70,15 +81,17 @@ async function touchInboundActivity(supabase, sender, { now = Date.now() } = {})
 }
 
 /** Called after every successful automated Reddy send — arms/re-arms the 5-minute idle timer. */
-async function armIdleTimerAfterReply(supabase, sender, { now = Date.now() } = {}) {
+async function armIdleTimerAfterReply(supabase, sender, { now = Date.now(), providerDeviceHash = null } = {}) {
   if (!supabase || !sender) return;
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
   try {
     await supabase.from('wa_conversations').upsert({
       sender,
+      provider_device_hash: deviceScope,
       last_bot_message_at: toIso(now),
       idle_close_due_at: toIso(now + IDLE_TIMEOUT_MS),
       updated_at: toIso(now),
-    }, { onConflict: 'sender' });
+    }, { onConflict: 'sender,provider_device_hash' });
   } catch (_error) {
     /* best-effort — never blocks the send path */
   }
@@ -90,18 +103,21 @@ async function armIdleTimerAfterReply(supabase, sender, { now = Date.now() } = {
  * overdue (a newer inbound message would have pushed idle_close_due_at
  * forward, past `now`), and not already claimed/sent. Returns null if any
  * condition fails — including a concurrent cron run winning the race.
+ * Scoped by (sender, provider_device_hash) — see touchInboundActivity.
  */
-async function claimIdleConversation(supabase, sender, { now = Date.now() } = {}) {
+async function claimIdleConversation(supabase, sender, { now = Date.now(), providerDeviceHash = null } = {}) {
   if (!supabase || !sender) return null;
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
   try {
     const { data } = await supabase
       .from('wa_conversations')
       .update({ conversation_status: 'closing', updated_at: toIso(now) })
       .eq('sender', sender)
+      .eq('provider_device_hash', deviceScope)
       .eq('conversation_status', 'active')
       .lte('idle_close_due_at', toIso(now))
       .is('idle_closed_at', null)
-      .select('sender,last_customer_message_at,idle_close_due_at')
+      .select('sender,provider_device_hash,last_customer_message_at,idle_close_due_at')
       .maybeSingle();
     return data || null;
   } catch (_error) {
@@ -120,14 +136,17 @@ async function claimIdleConversation(supabase, sender, { now = Date.now() } = {}
  * any new inbound message, so either check alone would already catch it —
  * both are verified for defense in depth). False means "do nothing": the
  * caller must abort the send and release the claim via finalizeIdleClose.
+ * Scoped by (sender, provider_device_hash) — see touchInboundActivity.
  */
-async function verifyStillClaimedForClose(supabase, sender, { expectedLastCustomerMessageAt = null } = {}) {
+async function verifyStillClaimedForClose(supabase, sender, { expectedLastCustomerMessageAt = null, providerDeviceHash = null } = {}) {
   if (!supabase || !sender) return false;
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
   try {
     let query = supabase
       .from('wa_conversations')
       .select('sender')
       .eq('sender', sender)
+      .eq('provider_device_hash', deviceScope)
       .eq('conversation_status', 'closing');
     query = expectedLastCustomerMessageAt == null
       ? query.is('last_customer_message_at', null)
@@ -145,19 +164,23 @@ async function verifyStillClaimedForClose(supabase, sender, { expectedLastCustom
  * re-attempts it. On failure, reverts to 'active' — the row stays overdue
  * (idle_close_due_at unchanged) so a later cron pass retries the send; the
  * conversation is never falsely marked closed when the send didn't happen.
+ * Scoped by (sender, provider_device_hash) — see touchInboundActivity.
  */
-async function finalizeIdleClose(supabase, sender, { now = Date.now(), sent } = {}) {
+async function finalizeIdleClose(supabase, sender, { now = Date.now(), sent, providerDeviceHash = null } = {}) {
   if (!supabase || !sender) return;
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
   try {
     if (sent) {
       await supabase.from('wa_conversations')
         .update({ conversation_status: 'closed', idle_closed_at: toIso(now), updated_at: toIso(now) })
         .eq('sender', sender)
+        .eq('provider_device_hash', deviceScope)
         .eq('conversation_status', 'closing');
     } else {
       await supabase.from('wa_conversations')
         .update({ conversation_status: 'active', updated_at: toIso(now) })
         .eq('sender', sender)
+        .eq('provider_device_hash', deviceScope)
         .eq('conversation_status', 'closing');
     }
   } catch (_error) {

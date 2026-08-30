@@ -140,9 +140,10 @@ const { reconstructBookingContextFromTurns } = require('../../server/agents/redd
 const {
   isReddyEnabled,
   admitInboundEvent,
-  markInboundEventStatus,
 } = require('../../server/services/waInboundGuard');
 const { createGuardedSend } = require('../../server/services/waOutboundGuard');
+const { terminalizeInbound, terminalizeIfStillProcessing } = require('../../server/services/waInboundLifecycle');
+const { resolveConversationDeviceScope, conversationCacheKey } = require('../../server/services/conversationScope');
 const {
   configureEvaluationMonitoring,
   observeOutboundMessage,
@@ -512,10 +513,18 @@ async function handleAdminCommand(sender, message, device) {
   return false;
 }
 
-async function getHistory(sender) {
-  const lastActive = cacheTimestamps.get(sender) || 0;
-  if (Date.now() - lastActive <= CACHE_TTL_MS && conversationCache.has(sender)) {
-    return conversationCache.get(sender);
+// Objective C: every conversation-history function below is scoped by
+// (sender, provider_device_hash) — see server/services/conversationScope.js.
+// `providerDeviceHash` is an optional trailing parameter on each (defaults
+// to the legacy sentinel scope) so existing direct callers/tests that don't
+// pass it keep working, but every real production call site now threads the
+// actual hash through from the webhook's inboundAdmission.providerDeviceHash.
+async function getHistory(sender, providerDeviceHash = null) {
+  const cacheKey = conversationCacheKey(sender, providerDeviceHash);
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
+  const lastActive = cacheTimestamps.get(cacheKey) || 0;
+  if (Date.now() - lastActive <= CACHE_TTL_MS && conversationCache.has(cacheKey)) {
+    return conversationCache.get(cacheKey);
   }
   // Cache miss — coba load dari Supabase (lintas serverless instance)
   // Timeout 4s agar Lambda tidak hang jika Supabase lambat
@@ -526,31 +535,32 @@ async function getHistory(sender) {
         .from('wa_conversations')
         .select('history,updated_at')
         .eq('sender', sender)
+        .eq('provider_device_hash', deviceScope)
         .maybeSingle();
       const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ data: null, error: 'timeout' }), 2000));
       const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
       if (!error && data && Array.isArray(data.history)) {
         const age = Date.now() - new Date(data.updated_at).getTime();
         if (age < CACHE_TTL_MS) {
-          conversationCache.set(sender, data.history);
-          cacheTimestamps.set(sender, Date.now());
+          conversationCache.set(cacheKey, data.history);
+          cacheTimestamps.set(cacheKey, Date.now());
           return data.history;
         }
       }
       if (error === 'timeout') console.warn('[WA Bot] getHistory Supabase timeout');
     } catch {}
   }
-  conversationCache.set(sender, []);
-  cacheTimestamps.set(sender, Date.now());
+  conversationCache.set(cacheKey, []);
+  cacheTimestamps.set(cacheKey, Date.now());
   return [];
 }
 
-async function safeLoadConversationHistory(loader, sender) {
+async function safeLoadConversationHistory(loader, sender, providerDeviceHash = null) {
   if (!loader || typeof loader !== 'function' || !sender || String(sender).startsWith('__')) {
     return { history: [], status: 'empty' };
   }
   try {
-    const res = await loader(sender);
+    const res = await loader(sender, providerDeviceHash);
     const history = Array.isArray(res) ? res : (res && Array.isArray(res.history) ? res.history : []);
     return {
       history,
@@ -565,19 +575,20 @@ async function safeLoadConversationHistory(loader, sender) {
   }
 }
 
-async function persistConversationExchange(sender, priorTurns, userMessage, assistantReply, deps = {}) {
+async function persistConversationExchange(sender, priorTurns, userMessage, assistantReply, deps = {}, providerDeviceHash = null) {
   const {
     saveHistory = saveHistoryToSupabase,
     cache = conversationCache,
     timestamps = cacheTimestamps,
   } = deps;
+  const cacheKey = conversationCacheKey(sender, providerDeviceHash);
 
   const updated = appendConversationExchange(priorTurns, userMessage, assistantReply);
-  cache.set(sender, updated);
-  timestamps.set(sender, Date.now());
+  cache.set(cacheKey, updated);
+  timestamps.set(cacheKey, Date.now());
 
   try {
-    await saveHistory(sender, updated);
+    await saveHistory(sender, updated, providerDeviceHash);
   } catch (_) {
     console.warn('[WA Bot] conversation persistence unavailable');
   }
@@ -585,13 +596,14 @@ async function persistConversationExchange(sender, priorTurns, userMessage, assi
   return updated;
 }
 
-async function saveHistoryToSupabase(sender, history) {
+async function saveHistoryToSupabase(sender, history, providerDeviceHash = null) {
   const sb = getSupabase();
   if (!sb || sender.startsWith('__')) return;
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
   try {
     const { error } = await sb.from('wa_conversations').upsert(
-      { sender, history, updated_at: new Date().toISOString() },
-      { onConflict: 'sender' }
+      { sender, provider_device_hash: deviceScope, history, updated_at: new Date().toISOString() },
+      { onConflict: 'sender,provider_device_hash' }
     );
     if (error) console.error('[WA Bot] saveHistory error:', error.message);
   } catch (e) {
@@ -599,13 +611,15 @@ async function saveHistoryToSupabase(sender, history) {
   }
 }
 
-async function clearHistory(sender) {
-  conversationCache.delete(sender);
-  cacheTimestamps.delete(sender);
+async function clearHistory(sender, providerDeviceHash = null) {
+  const cacheKey = conversationCacheKey(sender, providerDeviceHash);
+  const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
+  conversationCache.delete(cacheKey);
+  cacheTimestamps.delete(cacheKey);
   const sb = getSupabase();
   if (!sb) return;
   try {
-    await sb.from('wa_conversations').delete().eq('sender', sender);
+    await sb.from('wa_conversations').delete().eq('sender', sender).eq('provider_device_hash', deviceScope);
   } catch {}
 }
 
@@ -766,10 +780,15 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   // Single history load architecture:
   // When conversationContext is supplied with valid turns, use it directly without calling getHistory again!
   let activeHistoryTurns = [];
+  // Objective C: conversationContext.providerDeviceHash, when present, was
+  // threaded in by handleMessage from the webhook's own inbound admission —
+  // reused here so this fallback load/persist path stays scoped to the same
+  // conversation the caller's own history load used, never a bare sender key.
+  const scopedDeviceHash = conversationContext?.providerDeviceHash || null;
   if (conversationContext && Array.isArray(conversationContext.turns)) {
     activeHistoryTurns = sanitizeConversationHistory(conversationContext.turns);
   } else {
-    const loaded = await safeLoadConversationHistory(getHistory, sender);
+    const loaded = await safeLoadConversationHistory(getHistory, sender, scopedDeviceHash);
     activeHistoryTurns = sanitizeConversationHistory(loaded.history);
   }
 
@@ -906,7 +925,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   // Simpan ke cache & Supabase via testable helper
   if (!conversationContext?.reply_persistence_deferred) {
     const persist = dependencies.persistConversationExchange || persistConversationExchange;
-    persist(sender, activeHistoryTurns, userMessage, reply).catch(() => {});
+    persist(sender, activeHistoryTurns, userMessage, reply, {}, scopedDeviceHash).catch(() => {});
   }
 
   return reply;
@@ -1280,7 +1299,7 @@ function extractForeignService(text) {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null, aiPaused = false }, deps = {}) {
+async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null }, deps = {}) {
   const {
     loadConversationHistory = getHistory,
     checkHumanTakeover = null,
@@ -1300,7 +1319,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     createHandoffCase = (params) => createOrGetActiveCase(params, { supabase: getSupabase() }),
     appendHandoffMessage = (caseId, message) => appendHandoffCustomerMessage(caseId, message, { supabase: getSupabase() }),
     logHandoffTelemetry = logHandoffEvent,
-    touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, {}),
+    // Objective C: scoped by (sender, provider_device_hash) — see
+    // server/services/conversationLifecycle.js and conversationScope.js.
+    touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, { providerDeviceHash }),
     recordEvaluation = (event) => recordEvaluationEvent(event, { supabase: getSupabase() }),
   } = deps;
 
@@ -1424,13 +1445,18 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // new question). Long-term CRM/customer identity is untouched: it flows
   // through customerIntelligence, not this turn-history array.
   if (sessionReopened) {
-    conversationCache.delete(from);
-    cacheTimestamps.delete(from);
+    const cacheKey = conversationCacheKey(from, providerDeviceHash);
+    conversationCache.delete(cacheKey);
+    cacheTimestamps.delete(cacheKey);
   }
   const loadedHistoryResult = sessionReopened
     ? { history: [], status: 'empty' }
-    : await safeLoadConversationHistory(loadConversationHistory, from);
+    : await safeLoadConversationHistory(loadConversationHistory, from, providerDeviceHash);
   const conversationContext = extractConversationContextEnvelope(loadedHistoryResult, text);
+  // Threaded through to callOpenAI (the legacy LLM path), which persists the
+  // exchange back to the same scoped conversation it was loaded from —
+  // never a plain, unscoped `sender` key (Objective C).
+  conversationContext.providerDeviceHash = providerDeviceHash;
   let reply;
   let used = 'openai';
   let error = null;
@@ -2285,6 +2311,32 @@ module.exports = async function handler(req, res, testDeps = {}) {
     const supabaseForGuard = testDeps.supabase || getSupabase();
     const inboundAdmission = await admitInboundEvent(supabaseForGuard, body, { provider: 'fonnte' });
     const inboundEventType = inboundAdmission.eventType;
+    // P0 live incident fix: hoisted here (not after the branch-number-
+    // suppression check further down, where it used to be computed) because
+    // that check — and several others below it — can return BEFORE the old
+    // computation site ever ran, leaving a genuinely claimed row with no
+    // reference to terminalize it. Gated on status==='claimed' (never
+    // 'duplicate'): a duplicate delivery must never let THIS request's
+    // safety net touch a row it did not itself just claim — that is
+    // Objective B's job (the atomic stale-reclaim RPC), not this one.
+    const inboundEventRowId = inboundAdmission.status === 'claimed' ? (inboundAdmission.row?.id || null) : null;
+
+    // P0 outer safety net (Objective A): every return/throw between here and
+    // the end of this handler is now covered by the `finally` below, which
+    // force-terminalizes inboundEventRowId to 'failed' if it is STILL sitting
+    // at 'received'/'processing' when this handler is about to finish —
+    // catching any suppression branch this file does not yet explicitly
+    // terminalize (or one added later without remembering to). Explicit
+    // terminalizeInbound() calls at well-known suppression points below still
+    // fire first and give a precise `reason` — this is the backstop, not the
+    // primary mechanism (see server/services/waInboundLifecycle.js).
+    // Hoisted (declared with `let`, assigned below) so the `finally` block's
+    // best-effort branch attribution can still read them even though their
+    // real values are only known partway through the inner try.
+    let sender = null;
+    let receiver = null;
+    let branchFromPayload = null;
+    try {
 
     const statusId = body.id || body.message_id || body.msgid || body.messageId;
     const statusStateId = body.stateid || body.stateId;
@@ -2322,18 +2374,17 @@ module.exports = async function handler(req, res, testDeps = {}) {
       });
     }
 
-    const sender = body.sender || body.from || body.number || body.phone || body.target;
+    sender = body.sender || body.from || body.number || body.phone || body.target;
     const name = body.name || body.pushName || body.senderName;
     const message = body.message || body.text || body.chat || body.body || body.msg;
     const type = body.type || body.msgType || body.messageType;
-    
+
     // Cari SEMUA kemungkinan field yang berisi nomor penerima (cabang)
     const possibleReceiverFields = [
-      'receiver', 'to', 'receiver_number', 'recipient', 'destination', 
+      'receiver', 'to', 'receiver_number', 'recipient', 'destination',
       'target_number', 'me', 'my_number', 'bot_number', 'business_number',
       'wa_number', 'phone_number', 'to_number', 'from_number'
     ];
-    let receiver = null;
     for (const field of possibleReceiverFields) {
       if (body[field]) {
         receiver = body[field];
@@ -2368,7 +2419,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
     // Scans the FULL raw structure (envelope + any nesting), not just the
     // bounded canonical field list — a branch marker can legitimately appear
     // on a field this normalizer does not track.
-    const branchFromPayload = findBranchInPayload(rawBody);
+    branchFromPayload = findBranchInPayload(rawBody);
     console.log('[WA Bot] Branch deep-scan completed:', { branch: branchFromPayload || 'not_found' });
 
     // Filter pesan keluar — classifier shared di atas adalah satu-satunya
@@ -2419,6 +2470,16 @@ module.exports = async function handler(req, res, testDeps = {}) {
     const senderNormalized = normalizePhone(sender).replace(/^0/, '62');
     if (BRANCH_WA_NORMALIZED.includes(senderNormalized)) {
       console.log('[WA Bot] Ignored message from a branch number (bot-to-bot loop prevention)');
+      // P0 fix: this is the exact bug the incident report identified — a
+      // customer_message-classified event from a branch number gets claimed
+      // by admitInboundEvent() above, then this return used to leave that
+      // row stuck at 'processing' forever (no guardedSend, no explicit
+      // status write). Terminalize explicitly here (not just via the outer
+      // finally) for an accurate, specific telemetry reason.
+      await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'branch_number_suppressed', {
+        source: 'branch_number_suppression',
+        branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
+      });
       return res.status(200).json({ status: 'ignored', reason: 'from_branch_number' });
     }
 
@@ -2451,7 +2512,6 @@ module.exports = async function handler(req, res, testDeps = {}) {
       console.log('[WA Bot] Inbound event fail-closed:', inboundClaim.status);
       return res.status(200).json({ status: 'ok', suppressed: true, reason: inboundClaim.status });
     }
-    const inboundEventRowId = inboundClaim.row?.id || null;
 
     // Global emergency kill switch — distinct from the existing per-customer
     // wa_paused/human-takeover mechanism above (that pauses AI for ONE
@@ -2473,7 +2533,9 @@ module.exports = async function handler(req, res, testDeps = {}) {
         device_hash: inboundClaim.providerDeviceHash || null,
         message_id_present: Boolean(inboundClaim.providerMessageId || inboundClaim.providerMessageIdSource),
       });
-      await markInboundEventStatus(supabaseForGuard, inboundEventRowId, 'failed');
+      await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'reddy_disabled', {
+        source: 'kill_switch_suppression', branch: branchForGuardTelemetry,
+      });
       console.log('[WA Bot] REDDY_ENABLED=false — automated reply suppressed');
       return res.status(200).json({ status: 'ok', reddy_enabled: false });
     }
@@ -2502,7 +2564,9 @@ module.exports = async function handler(req, res, testDeps = {}) {
       // is the single choke point every automated send in this file already
       // flows through, so it covers the LLM path and every deterministic
       // fast-path reply alike. Best-effort — never blocks the send result.
-      onSendSuccess: (to) => (testDeps.armIdleTimer || armIdleTimerAfterReply)(supabaseForGuard, to, {})
+      onSendSuccess: (to) => (testDeps.armIdleTimer || armIdleTimerAfterReply)(supabaseForGuard, to, {
+        providerDeviceHash: inboundAdmission.providerDeviceHash,
+      })
         .then(() => logIdleLifecycleEvent({ event_type: 'conversation_idle_timer_scheduled', branch: branchForGuardTelemetry })),
       observeMessage: (outboundMessage, evaluationContext) => observeOutboundMessage(outboundMessage, {
         ...evaluationContext,
@@ -2526,7 +2590,14 @@ module.exports = async function handler(req, res, testDeps = {}) {
       if (!branch) {
         branch = detectBranchFromNumber(receiver || device || sender);
       }
-      guardedSend(sender, mediaReply, { branch }).catch(() => {});
+      // P0 fix: the response was already flushed above, so awaiting here
+      // costs zero perceived latency — it only keeps this invocation alive
+      // until guardedSend's RPC calls (which is what actually terminalizes
+      // this row) complete, instead of a bare `return` that could let a
+      // frozen/recycled serverless instance abandon the promise mid-flight
+      // and leave the row stuck at 'processing' (a genuine, if narrower,
+      // instance of the same class of bug as the other suppression paths).
+      await guardedSend(sender, mediaReply, { branch }).catch(() => {});
       return;
     }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
@@ -2535,6 +2606,15 @@ module.exports = async function handler(req, res, testDeps = {}) {
     if (String(message).trim().startsWith('/ai_')) {
       const handled = await handleAdminCommand(sender, message, device);
       if (handled) {
+        // P0 fix: admin commands reply via the raw sendWA (not guardedSend —
+        // see handleAdminCommand), so nothing else in this request ever
+        // terminalizes the claimed row for this branch. Reused the 'failed'
+        // terminal (not a real error — same precedent as the kill-switch
+        // suppression above) since no automated Reddy send occurred for
+        // this inbound event.
+        await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'admin_command_handled', {
+          source: 'admin_command', branch: branchForGuardTelemetry,
+        });
         return res.status(200).json({ status: 'ok', admin_command: true });
       }
     }
@@ -2565,6 +2645,9 @@ module.exports = async function handler(req, res, testDeps = {}) {
         status_transition: null,
       });
       console.log('[WA Bot] AI suppressed — Task 15 handoff state active:', { status: handoffState.status });
+      await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'handoff_active', {
+        source: 'handoff_suppression', branch: handoffState.case?.branch || branchForGuardTelemetry || null,
+      });
       return res.status(200).json({ status: 'ok', suppressed: true, reason: 'handoff_active' });
     }
 
@@ -2575,6 +2658,9 @@ module.exports = async function handler(req, res, testDeps = {}) {
     const humanActive = await isHumanTakeover(sender);
     if (humanActive) {
       console.log('[WA Bot] AI paused — human takeover active');
+      await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'legacy_human_takeover', {
+        source: 'legacy_pause_suppression', branch: branchForGuardTelemetry,
+      });
       return res.status(200).json({ status: 'ignored', reason: 'human_takeover' });
     }
 
@@ -2588,7 +2674,15 @@ module.exports = async function handler(req, res, testDeps = {}) {
       // handoffState is already known to be 'none' here (every other status
       // returned above) — threading it through avoids a second, redundant
       // Task 15 lookup inside handleMessage for the common case.
-      const result = await processMessage({ from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity }, {
+      const result = await processMessage({
+        from: sender, name: name || 'Kak', text: message, device, receiver, branchFromPayload, trustedIdentity,
+        // Objective C: threads the P0 anti-spam module's own device hash
+        // (already computed by admitInboundEvent above) into conversation
+        // history scoping — the exact same identity boundary the guarded-
+        // send idempotency system already uses, never a separately derived
+        // value.
+        providerDeviceHash: inboundAdmission.providerDeviceHash,
+      }, {
         send: guardedSend,
         getHandoffState: async () => handoffState,
       });
@@ -2601,6 +2695,21 @@ module.exports = async function handler(req, res, testDeps = {}) {
     // Balas 200 ke Fonnte setelah proses selesai.
     // Kalau total > ~10s, Fonnte mungkin timeout duluan — tapi customer tetap terima balasan via sendWA.
     if (!res.headersSent) res.status(200).json({ status: 'ok' });
+
+    } finally {
+      // P0 outer safety net (Objective A): fires on EVERY exit from the
+      // inner try above — a normal return, an explicit terminalizeInbound()
+      // call a few lines up (already a guaranteed no-op by the time this
+      // runs), or an exception propagating out to the outer catch below.
+      // Conditional on inboundEventRowId being non-null (only ever true when
+      // THIS request itself claimed the row — never a 'duplicate' hit) and
+      // on the row still being at 'received'/'processing' — see
+      // terminalizeIfStillProcessing's own doc header for why 'sending' is
+      // deliberately excluded (that remains the guarded-send RPCs' domain).
+      await terminalizeIfStillProcessing(supabaseForGuard, inboundEventRowId, {
+        branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
+      });
+    }
 
   } catch (err) {
     console.error('[WA Bot] Fatal error:', err.message);

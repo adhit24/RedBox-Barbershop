@@ -352,6 +352,70 @@ function logBookingLinkageEvent(event = {}) {
   return safe;
 }
 
+// P0 live incident — inbound processing terminalization + conversation
+// isolation. Its own small allowlist schema, same rationale as every other
+// block above: fires from server/services/waInboundLifecycle.js,
+// server/services/waInboundGuard.js (stale reclaim), and the conversation-
+// scope resolution helpers used by api/wa/webhook.js. OBSERVER-ONLY: nothing
+// reads this telemetry to make a routing/send decision. No raw sender, raw
+// phone, message content, conversation content, or raw provider device —
+// device_hash is already a one-way SHA-256 hash (see waInboundGuard.js).
+const ALLOWED_INBOUND_LIFECYCLE_EVENTS = new Set([
+  'inbound_terminalized',
+  'inbound_stale_reclaimed',
+  'inbound_orphan_detected',
+  'conversation_scope_selected',
+  'legacy_conversation_ignored',
+]);
+const ALLOWED_INBOUND_LIFECYCLE_STATUSES = new Set(['sent', 'failed', null]);
+const ALLOWED_INBOUND_LIFECYCLE_REASONS = new Set([
+  'branch_number_suppressed', 'admin_command_handled', 'handoff_active',
+  'legacy_human_takeover', 'reddy_disabled', 'human_handoff_existing_case_race',
+  'unexpected_pre_send_exit', 'orphan_horizon_exceeded', null,
+]);
+const ALLOWED_INBOUND_LIFECYCLE_SOURCES = new Set([
+  'webhook_finally', 'branch_number_suppression', 'admin_command',
+  'handoff_suppression', 'legacy_pause_suppression', 'kill_switch_suppression',
+  'claim_inbound_event', 'watchdog', 'conversation_scope_resolver', 'unknown',
+]);
+const ALLOWED_INBOUND_LIFECYCLE_AGE_BUCKETS = new Set([
+  '<5m', '5-8h', '8-24h', '>24h', null,
+]);
+
+function ageBucketFromMs(ageMs) {
+  if (!Number.isFinite(ageMs) || ageMs < 0) return null;
+  if (ageMs < 5 * 60 * 1000) return '<5m';
+  if (ageMs < 8 * 60 * 60 * 1000) return '5-8h';
+  if (ageMs < 24 * 60 * 60 * 1000) return '8-24h';
+  return '>24h';
+}
+
+function sanitizeInboundLifecycleTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_INBOUND_LIFECYCLE_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    provider: typeof event.provider === 'string' ? event.provider.slice(0, 32) : null,
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : null,
+    device_hash: typeof event.device_hash === 'string' && /^[a-f0-9]{64}$/i.test(event.device_hash)
+      ? event.device_hash.toLowerCase() : null,
+    previous_status: ALLOWED_INBOUND_LIFECYCLE_STATUSES.has(event.previous_status) ? event.previous_status : null,
+    new_status: ALLOWED_INBOUND_LIFECYCLE_STATUSES.has(event.new_status) ? event.new_status : null,
+    reason: ALLOWED_INBOUND_LIFECYCLE_REASONS.has(event.reason) ? event.reason : null,
+    source: ALLOWED_INBOUND_LIFECYCLE_SOURCES.has(event.source) ? event.source : 'unknown',
+    age_bucket: ALLOWED_INBOUND_LIFECYCLE_AGE_BUCKETS.has(event.age_bucket) ? event.age_bucket : ageBucketFromMs(event.age_ms),
+    outbound_attempted: typeof event.outbound_attempted === 'boolean' ? event.outbound_attempted : null,
+    reclaimed: typeof event.reclaimed === 'boolean' ? event.reclaimed : null,
+  };
+}
+
+function logInboundLifecycleEvent(event = {}) {
+  const safe = sanitizeInboundLifecycleTelemetry(event);
+  console.log('[InboundLifecycleTelemetry]', JSON.stringify(safe));
+  // Fail-open, observer-only — same contract as every other logXEvent call.
+  observeTelemetry('inbound_lifecycle', safe);
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
@@ -360,4 +424,5 @@ module.exports = {
   sanitizeDataAuthorityTelemetry, logDataAuthorityEvent,
   sanitizeCrmIdentityTelemetry, logCrmIdentityEvent,
   sanitizeBookingLinkageTelemetry, logBookingLinkageEvent,
+  sanitizeInboundLifecycleTelemetry, logInboundLifecycleEvent,
 };

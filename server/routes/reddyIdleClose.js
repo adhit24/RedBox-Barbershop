@@ -63,16 +63,20 @@ const {
 const { logIdleLifecycleEvent } = require('../orchestrator/telemetry');
 const { sendWA: realSendWA } = require('../services/fonnte');
 
+// Objective C: returns { sender, providerDeviceHash } pairs, not bare
+// senders — a due row's scope MUST travel with it through claim/verify/
+// finalize, or the cron would collapse two independent, isolated per-device
+// conversations for the same customer back into one lifecycle.
 async function findDueSenders(supabase, { now = Date.now(), limit = 200 } = {}) {
   const { data } = await supabase
     .from('wa_conversations')
-    .select('sender')
+    .select('sender,provider_device_hash')
     .eq('conversation_status', 'active')
     .not('idle_close_due_at', 'is', null)
     .lte('idle_close_due_at', new Date(now).toISOString())
     .is('idle_closed_at', null)
     .limit(limit);
-  return (data || []).map((row) => row.sender);
+  return (data || []).map((row) => ({ sender: row.sender, providerDeviceHash: row.provider_device_hash }));
 }
 
 module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
@@ -113,11 +117,16 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     logEvent: (e) => logEvent({ ...e }),
   });
 
-  const senders = testDeps.candidateSenders || await findDueSenders(supabase, {});
+  const candidates = testDeps.candidateSenders || await findDueSenders(supabase, {});
   let closed = 0;
   let suppressed = 0;
 
-  for (const sender of senders) {
+  for (const candidate of candidates) {
+    // Backward-compatible: tests / callers may still pass bare sender
+    // strings via testDeps.candidateSenders; normalize either shape.
+    const sender = typeof candidate === 'string' ? candidate : candidate.sender;
+    const providerDeviceHash = typeof candidate === 'string' ? null : candidate.providerDeviceHash;
+
     // 1. Discovery-time handoff check — cheap short-circuit, no DB mutation.
     const discoveryHandoffState = await handoffLookup(sender);
     if (discoveryHandoffState.status === 'waiting_human' || discoveryHandoffState.status === 'human_active') {
@@ -127,7 +136,7 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     }
 
     // 2. Atomic claim.
-    const claim = await claimFn(supabase, sender, {});
+    const claim = await claimFn(supabase, sender, { providerDeviceHash });
     if (!claim) {
       // Already claimed by a concurrent run, reopened by a newer inbound
       // message, or not actually due — do nothing (spec: "if any condition
@@ -140,7 +149,7 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     if (preSendHandoffState.status === 'waiting_human' || preSendHandoffState.status === 'human_active') {
       suppressed++;
       logEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: preSendHandoffState.status });
-      await finalizeFn(supabase, sender, { sent: false });
+      await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
       continue;
     }
 
@@ -150,6 +159,7 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     // authority here. See the file-header note on why this must be last.
     const stillValid = await verifyFn(supabase, sender, {
       expectedLastCustomerMessageAt: claim.last_customer_message_at || null,
+      providerDeviceHash,
     });
     if (!stillValid) {
       suppressed++;
@@ -158,7 +168,7 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
         suppress_reason: 'newer_inbound_detected',
         stale_idle_close_prevented: true,
       });
-      await finalizeFn(supabase, sender, { sent: false });
+      await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
       continue;
     }
 
@@ -169,7 +179,7 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
       sendResult = { status: false };
     }
     const sent = Boolean(sendResult && sendResult.status !== false);
-    await finalizeFn(supabase, sender, { sent });
+    await finalizeFn(supabase, sender, { sent, providerDeviceHash });
     if (sent) {
       closed++;
       logEvent({ event_type: 'conversation_idle_close_sent' });
