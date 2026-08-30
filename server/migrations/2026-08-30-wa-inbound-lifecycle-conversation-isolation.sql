@@ -72,12 +72,8 @@ GRANT EXECUTE ON FUNCTION reclaim_stale_wa_inbound_event(TEXT, TEXT, TEXT, INTEG
 -- ============================================================================
 -- Objective C: conversation isolation
 -- ============================================================================
--- wa_conversations was created ad hoc via manually-run DDL (see the DDL
--- comment at api/wa/webhook.js, right above conversationCache) - no tracked
--- CREATE TABLE migration exists. Recreated here, idempotently, as the
--- self-sufficient base this migration builds on regardless of whether that
--- manual DDL has actually run in production.
-CREATE TABLE IF NOT EXISTS wa_conversations (
+-- wa_conversations base table creation (if not present)
+CREATE TABLE IF NOT EXISTS public.wa_conversations (
   sender     TEXT NOT NULL,
   history    JSONB NOT NULL DEFAULT '[]',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -91,19 +87,21 @@ CREATE TABLE IF NOT EXISTS wa_conversations (
 -- provider device identity is the actual authenticated transport channel.
 -- Never the raw device string - only ever this existing hash, or the
 -- 'legacy-unscoped' sentinel for rows written before this column existed.
-ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS provider_device_hash TEXT;
-UPDATE wa_conversations SET provider_device_hash = 'legacy-unscoped' WHERE provider_device_hash IS NULL;
-ALTER TABLE wa_conversations ALTER COLUMN provider_device_hash SET NOT NULL;
+ALTER TABLE public.wa_conversations ADD COLUMN IF NOT EXISTS provider_device_hash TEXT;
+UPDATE public.wa_conversations SET provider_device_hash = 'legacy-unscoped' WHERE provider_device_hash IS NULL;
+ALTER TABLE public.wa_conversations ALTER COLUMN provider_device_hash SET NOT NULL;
 
 -- Bounded channel routing metadata (Blocker 1 fix): nullable TEXT, allowed
 -- values only: bypass, samadikun, csb, sumber, tegal. Legacy rows remain NULL.
-ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS branch TEXT;
+ALTER TABLE public.wa_conversations ADD COLUMN IF NOT EXISTS branch TEXT;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chk_wa_conversations_branch'
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.wa_conversations'::regclass
+      AND conname = 'chk_wa_conversations_branch'
   ) THEN
-    ALTER TABLE wa_conversations
+    ALTER TABLE public.wa_conversations
       ADD CONSTRAINT chk_wa_conversations_branch
       CHECK (branch IS NULL OR branch IN ('bypass', 'samadikun', 'csb', 'sumber', 'tegal'));
   END IF;
@@ -125,47 +123,65 @@ END $$;
 -- vector, since it only ever equals what the row already contained before
 -- this migration.
 
--- Composite identity: surrogate PK (a plain TEXT PK cannot become composite
--- without recreating every reference to it) + the actual uniqueness/lookup
--- constraint on (sender, provider_device_hash). No FK anywhere in the
--- codebase references wa_conversations(sender) (verified), so dropping the
--- old sender-only PK is safe.
-ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid();
+-- Surrogate primary key (id UUID PRIMARY KEY):
+-- Production currently has wa_conversations_pkey PRIMARY KEY (sender).
+-- Checking constraint name alone (e.g. IF NOT EXISTS 'wa_conversations_pkey')
+-- fails because production already has that constraint name on column 'sender'.
+-- We inspect the actual PK column(s) via pg_attribute/pg_constraint. If a PK
+-- constraint exists and is NOT on column 'id', we dynamically drop it regardless
+-- of its constraint name, then add id UUID NOT NULL DEFAULT gen_random_uuid()
+-- and PRIMARY KEY (id).
+ALTER TABLE public.wa_conversations ADD COLUMN IF NOT EXISTS id UUID NOT NULL DEFAULT gen_random_uuid();
 
 DO $$
+DECLARE
+  v_pk_name TEXT;
+  v_pk_is_id BOOLEAN := FALSE;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'wa_conversations_pkey'
-  ) THEN
-    IF EXISTS (
+  -- Inspect existing primary key constraint on public.wa_conversations
+  SELECT c.conname,
+         (COUNT(*) = 1 AND MAX(a.attname) = 'id') INTO v_pk_name, v_pk_is_id
+  FROM pg_constraint c
+  JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+  WHERE c.conrelid = 'public.wa_conversations'::regclass AND c.contype = 'p'
+  GROUP BY c.conname;
+
+  -- If a PK constraint exists but it is NOT on column 'id' (e.g. legacy PK on sender), drop it
+  IF v_pk_name IS NOT NULL AND NOT v_pk_is_id THEN
+    EXECUTE 'ALTER TABLE public.wa_conversations DROP CONSTRAINT ' || quote_ident(v_pk_name);
+    v_pk_is_id := FALSE;
+  END IF;
+
+  -- Add PRIMARY KEY (id) if not already present
+  IF NOT v_pk_is_id THEN
+    IF NOT EXISTS (
       SELECT 1 FROM pg_constraint
-      WHERE conrelid = 'wa_conversations'::regclass AND contype = 'p'
+      WHERE conrelid = 'public.wa_conversations'::regclass
+        AND conname = 'wa_conversations_pkey'
     ) THEN
-      EXECUTE (
-        SELECT 'ALTER TABLE wa_conversations DROP CONSTRAINT ' || quote_ident(conname)
-        FROM pg_constraint
-        WHERE conrelid = 'wa_conversations'::regclass AND contype = 'p'
-        LIMIT 1
-      );
+      ALTER TABLE public.wa_conversations ADD CONSTRAINT wa_conversations_pkey PRIMARY KEY (id);
     END IF;
-    ALTER TABLE wa_conversations ADD CONSTRAINT wa_conversations_pkey PRIMARY KEY (id);
   END IF;
 END $$;
 
+-- Composite uniqueness: UNIQUE (sender, provider_device_hash).
+-- Table-scoped constraint check prevents false positives from other tables.
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'uq_wa_conversations_sender_device'
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.wa_conversations'::regclass
+      AND conname = 'uq_wa_conversations_sender_device'
   ) THEN
-    ALTER TABLE wa_conversations
+    ALTER TABLE public.wa_conversations
       ADD CONSTRAINT uq_wa_conversations_sender_device UNIQUE (sender, provider_device_hash);
   END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS idx_wa_conversations_sender ON wa_conversations (sender);
+CREATE INDEX IF NOT EXISTS idx_wa_conversations_sender ON public.wa_conversations (sender);
 
-ALTER TABLE wa_conversations ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE wa_conversations FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE wa_conversations TO service_role;
+ALTER TABLE public.wa_conversations ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.wa_conversations FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.wa_conversations TO service_role;
 
 COMMIT;
