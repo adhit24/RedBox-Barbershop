@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const { logInboundLifecycleEvent } = require('../orchestrator/telemetry');
 
 function isReddyEnabled(env = process.env) {
   return String(env.REDDY_ENABLED || '').trim().toLowerCase() === 'true';
@@ -70,6 +71,38 @@ function resolveProviderDeviceHash(body = {}) {
   return hashValue(`fonnte-device:${String(value).trim()}`);
 }
 
+// Objective B (P0 stale-claim reclamation): a redelivered provider event
+// whose original claim crashed/stalled after claim (row stuck at
+// processing_status='processing', outbound_attempted=FALSE, stale past a
+// bounded threshold) may atomically reclaim that SAME row instead of
+// bouncing off the unique-index hit as a permanent 'duplicate'. Eligibility
+// is enforced entirely inside the single-statement conditional UPDATE in
+// reclaim_stale_wa_inbound_event (see the P0 migration) — no SELECT-then-
+// UPDATE race, Postgres row locking + the updated_at refresh on a successful
+// reclaim guarantee at most one concurrent winner. Never reclaims 'sending'/
+// 'sent'/'failed', never a row that already has outbound_attempted=true, and
+// never touches outbound_attempted itself — the normal single-send guarantee
+// (reserve_wa_automated_send's own conditional UPDATE) still applies exactly
+// once when the reclaimed event proceeds through the normal pipeline.
+const STALE_RECLAIM_SECONDS = Math.max(60, parseInt(process.env.WA_INBOUND_STALE_RECLAIM_SECONDS || '180', 10) || 180);
+
+async function attemptStaleReclaim(supabase, { provider, providerDeviceHash, providerMessageId }) {
+  if (!supabase || !providerDeviceHash || !providerMessageId) return { reclaimed: false, inboundEventId: null };
+  try {
+    const { data, error } = await supabase.rpc('reclaim_stale_wa_inbound_event', {
+      p_provider: provider,
+      p_provider_device_hash: String(providerDeviceHash),
+      p_provider_message_id: String(providerMessageId),
+      p_stale_seconds: STALE_RECLAIM_SECONDS,
+    });
+    if (error) return { reclaimed: false, inboundEventId: null, error };
+    const row = Array.isArray(data) ? data[0] : data;
+    return { reclaimed: Boolean(row?.reclaimed), inboundEventId: row?.inbound_event_id || null };
+  } catch (error) {
+    return { reclaimed: false, inboundEventId: null, error };
+  }
+}
+
 /** Atomic INSERT claim backed by (provider, device hash, message ID hash). */
 async function claimInboundEvent(supabase, {
   provider = 'fonnte', providerDeviceHash, providerMessageId, senderHash = null, eventType,
@@ -90,6 +123,21 @@ async function claimInboundEvent(supabase, {
       .single();
     if (!error) return { status: 'claimed', row: data };
     if (error.code === '23505') {
+      const reclaim = await attemptStaleReclaim(supabase, { provider, providerDeviceHash, providerMessageId });
+      if (reclaim.reclaimed && reclaim.inboundEventId) {
+        const { data: reclaimedRow } = await supabase
+          .from('wa_inbound_events')
+          .select('*')
+          .eq('id', reclaim.inboundEventId)
+          .maybeSingle();
+        try {
+          logInboundLifecycleEvent({
+            event_type: 'inbound_stale_reclaimed', provider, reclaimed: true,
+            outbound_attempted: false, source: 'claim_inbound_event',
+          });
+        } catch (_telemetryError) { /* observer-only */ }
+        return { status: 'claimed', row: reclaimedRow || null, reclaimed: true };
+      }
       const { data: existing } = await supabase
         .from('wa_inbound_events')
         .select('*')
@@ -161,4 +209,6 @@ module.exports = {
   claimInboundEvent,
   admitInboundEvent,
   markInboundEventStatus,
+  attemptStaleReclaim,
+  STALE_RECLAIM_SECONDS,
 };

@@ -40,11 +40,18 @@ const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 
 // ── Fake wa_conversations Supabase builder ────────────────────────────────
 function fakeConversationsSupabase(initialRows = []) {
-  const rows = initialRows.map((r) => ({ ...r }));
+  // Objective C (P0 conversation isolation): every real wa_conversations row
+  // now carries provider_device_hash, defaulted to the legacy sentinel scope
+  // for rows/tests that never pass a real device hash — mirrors the P0
+  // migration's own backfill-to-legacy-sentinel approach for existing rows.
+  // A test that cares about cross-device isolation explicitly overrides this
+  // per-row.
+  const rows = initialRows.map((r) => ({ provider_device_hash: 'a'.repeat(64), branch: 'bypass', ...r }));
 
   function applyFilters(list, filters) {
     return list.filter((row) => filters.every((f) => {
       if (f.op === 'eq') return row[f.field] === f.value;
+      if (f.op === 'neq') return row[f.field] !== f.value;
       if (f.op === 'lte') return row[f.field] != null && row[f.field] <= f.value;
       if (f.op === 'is') return f.value === null ? (row[f.field] === null || row[f.field] === undefined) : row[f.field] === f.value;
       if (f.op === 'not_is') return f.value === null ? (row[f.field] !== null && row[f.field] !== undefined) : row[f.field] !== f.value;
@@ -80,6 +87,7 @@ function fakeConversationsSupabase(initialRows = []) {
     const builder = {
       select() { if (!action) action = 'select'; return builder; },
       eq(field, value) { filters.push({ field, op: 'eq', value }); return builder; },
+      neq(field, value) { filters.push({ field, op: 'neq', value }); return builder; },
       lte(field, value) { filters.push({ field, op: 'lte', value }); return builder; },
       is(field, value) { filters.push({ field, op: 'is', value }); return builder; },
       not(field, _op, value) { filters.push({ field, op: 'not_is', value }); return builder; },
@@ -130,7 +138,7 @@ function fakeGuardRpc(conversationsSupabase) {
 test('L1. Correction R1 (Blocker 1): touchInboundActivity CANCELS the due time, never schedules one', async () => {
   const sb = fakeConversationsSupabase([]);
   const now = 1_700_000_000_000;
-  const result = await touchInboundActivity(sb, '628111', { now });
+  const result = await touchInboundActivity(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(result.reopened, false);
   const row = sb.rows.find((r) => r.sender === '628111');
   assert.equal(row.conversation_status, 'active');
@@ -140,14 +148,14 @@ test('L1. Correction R1 (Blocker 1): touchInboundActivity CANCELS the due time, 
 test('L1b. Correction R1 (Blocker 1): touchInboundActivity cancels a PENDING due time already scheduled by a prior reply', async () => {
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now + IDLE_TIMEOUT_MS).toISOString() }]);
-  await touchInboundActivity(sb, '628111', { now });
+  await touchInboundActivity(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(sb.rows[0].idle_close_due_at, null, 'a fresh customer message must cancel the pending close, not just push it out');
 });
 
 test('L1c. Correction R1 (Blocker 1): if Reddy never replies, no idle close can later fire (due_at stays null until armIdleTimerAfterReply runs)', async () => {
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([]);
-  await touchInboundActivity(sb, '628111', { now });
+  await touchInboundActivity(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   // No armIdleTimerAfterReply call — simulates Reddy failing to reply.
   const claimed = await claimIdleConversation(sb, '628111', { now: now + IDLE_TIMEOUT_MS + 60000 });
   assert.equal(claimed, null, 'a turn Reddy never replied to must never become claimable for closing');
@@ -156,7 +164,7 @@ test('L1c. Correction R1 (Blocker 1): if Reddy never replies, no idle close can 
 test('L2. touchInboundActivity on a closed row reopens it (and still cancels due_at)', async () => {
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'closed', idle_closed_at: new Date(now - 1000).toISOString() }]);
-  const result = await touchInboundActivity(sb, '628111', { now });
+  const result = await touchInboundActivity(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(result.reopened, true);
   const row = sb.rows.find((r) => r.sender === '628111');
   assert.equal(row.conversation_status, 'active');
@@ -177,20 +185,20 @@ test('L3. armIdleTimerAfterReply bumps idle_close_due_at forward', async () => {
 test('L4. claimIdleConversation returns the row when due, not-yet-due returns null', async () => {
   const now = 1_700_000_000_000;
   const overdueSb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }]);
-  const claimed = await claimIdleConversation(overdueSb, '628111', { now });
+  const claimed = await claimIdleConversation(overdueSb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   assert.ok(claimed, 'overdue conversation should be claimable');
   assert.equal(overdueSb.rows[0].conversation_status, 'closing');
 
   const notDueSb = fakeConversationsSupabase([{ sender: '628222', conversation_status: 'active', idle_close_due_at: new Date(now + 60000).toISOString(), idle_closed_at: null }]);
-  const notDue = await claimIdleConversation(notDueSb, '628222', { now });
+  const notDue = await claimIdleConversation(notDueSb, '628222', { now, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(notDue, null);
 });
 
 test('L5. claimIdleConversation never double-claims (second call after first sees "closing")', async () => {
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }]);
-  const first = await claimIdleConversation(sb, '628111', { now });
-  const second = await claimIdleConversation(sb, '628111', { now });
+  const first = await claimIdleConversation(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
+  const second = await claimIdleConversation(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   assert.ok(first);
   assert.equal(second, null, 'a conversation already in "closing" must not be claimable again');
 });
@@ -200,12 +208,12 @@ test('L6. finalizeIdleClose(sent=true) marks closed; finalizeIdleClose(sent=fals
   const dueAt = new Date(now - 1000).toISOString();
 
   const successSb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'closing', idle_close_due_at: dueAt }]);
-  await finalizeIdleClose(successSb, '628111', { now, sent: true });
+  await finalizeIdleClose(successSb, '628111', { now, sent: true, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(successSb.rows[0].conversation_status, 'closed');
   assert.equal(successSb.rows[0].idle_closed_at, new Date(now).toISOString());
 
   const failSb = fakeConversationsSupabase([{ sender: '628222', conversation_status: 'closing', idle_close_due_at: dueAt }]);
-  await finalizeIdleClose(failSb, '628222', { now, sent: false });
+  await finalizeIdleClose(failSb, '628222', { now, sent: false, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(failSb.rows[0].conversation_status, 'active', 'a failed send must not falsely claim closure');
   assert.equal(failSb.rows[0].idle_close_due_at, dueAt, 'due_at stays overdue so a later run retries');
   assert.notEqual(failSb.rows[0].conversation_status, 'closed');
@@ -214,13 +222,13 @@ test('L6. finalizeIdleClose(sent=true) marks closed; finalizeIdleClose(sent=fals
 test('L6b. Correction R1 (Blocker 2): verifyStillClaimedForClose returns false once a newer inbound message arrived after the claim', async () => {
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null, last_customer_message_at: new Date(now - 60000).toISOString() }]);
-  const claim = await claimIdleConversation(sb, '628111', { now });
-  const validImmediately = await verifyStillClaimedForClose(sb, '628111', { expectedLastCustomerMessageAt: claim.last_customer_message_at });
+  const claim = await claimIdleConversation(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
+  const validImmediately = await verifyStillClaimedForClose(sb, '628111', { expectedLastCustomerMessageAt: claim.last_customer_message_at, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(validImmediately, true, 'nothing has changed yet — still valid to close');
 
   // A new inbound message arrives in the window between the claim and the send.
   await touchInboundActivity(sb, '628111', { now: now + 500 });
-  const validAfterInbound = await verifyStillClaimedForClose(sb, '628111', { expectedLastCustomerMessageAt: claim.last_customer_message_at });
+  const validAfterInbound = await verifyStillClaimedForClose(sb, '628111', { expectedLastCustomerMessageAt: claim.last_customer_message_at, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(validAfterInbound, false, 'a newer inbound message must invalidate the claim before send');
   assert.equal(sb.rows[0].conversation_status, 'active', 'touchInboundActivity itself already reverted the claim');
 });
@@ -318,7 +326,7 @@ test('T1. exactly one idle closing is sent for an overdue conversation', async (
     isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
   assert.equal(res.statusCode, 200);
@@ -333,7 +341,7 @@ test('T2. customer reply before the close (timer reset) leaves nothing to claim'
   // Simulates: conversation was overdue, but a fresh inbound message reset
   // idle_close_due_at into the future before the cron pass runs its claim.
   const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now + 4 * 60 * 1000).toISOString(), idle_closed_at: null }]);
-  const claimed = await claimIdleConversation(sb, '628111', { now });
+  const claimed = await claimIdleConversation(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   assert.equal(claimed, null, 'a timer reset before the claim must prevent the stale close');
 });
 
@@ -348,7 +356,7 @@ test('T3. race: a newer inbound message right before the claim wins — no stale
   fakeGuardRpc(sb);
   // A customer message arrives and resets the timer in the moment between
   // the candidate list being built and the claim being attempted.
-  await touchInboundActivity(sb, '628111', { now });
+  await touchInboundActivity(sb, '628111', { now, providerDeviceHash: 'a'.repeat(64) });
   const sent = [];
   const res = responseRecorder();
 
@@ -357,7 +365,7 @@ test('T3. race: a newer inbound message right before the claim wins — no stale
     isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
   assert.equal(sent.length, 0, 'no closing should be sent once a newer inbound message reset the timer');
@@ -423,7 +431,7 @@ test('T6. human_active handoff: no idle closing sent', async () => {
     supabase: sb, isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'human_active', case: { id: 'case-1' } }),
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
   assert.equal(sent.length, 0);
@@ -440,7 +448,7 @@ test('T7. REDDY_ENABLED=false: no automated closing send', async () => {
   await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
     supabase: sb, isReddyEnabled: () => false,
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
   assert.equal(sent.length, 0);
@@ -458,7 +466,7 @@ test('T8. provider/send failure leaves the conversation active, not falsely clos
     supabase: sb, isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
     sendWA: async () => { throw new Error('Fonnte timeout'); },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
   assert.equal(res.body.closed, 0);
@@ -495,7 +503,7 @@ test('T-auth-fail-closed. Correction R1 (security hardening): CRON_SECRET missin
       supabase: sb, isReddyEnabled: () => true,
       getActiveHandoffState: async () => ({ status: 'none', case: null }),
       sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-      candidateSenders: ['628111'],
+      candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
     });
   } finally {
     if (previousSecret !== undefined) process.env.CRON_SECRET = previousSecret;
@@ -520,7 +528,7 @@ test('T-auth-valid. correct Bearer secret is still allowed to process a due conv
       supabase: sb, isReddyEnabled: () => true,
       getActiveHandoffState: async () => ({ status: 'none', case: null }),
       sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-      candidateSenders: ['628111'],
+      candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
     });
   } finally {
     if (previousSecret === undefined) delete process.env.CRON_SECRET;
@@ -545,7 +553,7 @@ test('T-blocker2. Correction R1: a newer inbound message arriving right after th
     isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none', case: null }),
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
     logEvent: (e) => events.push(e),
     // Wraps the REAL claim function: after a genuine claim succeeds, simulate
     // the customer sending a new message before the endpoint's own pre-send
@@ -583,7 +591,7 @@ test('T-blocker3a. Correction R1: handoff becomes waiting_human between claim an
       return handoffCalls === 1 ? { status: 'none', case: null } : { status: 'waiting_human', case: { id: 'case-1' } };
     },
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
   assert.equal(sent.length, 0, 'a handoff opening after the claim must still prevent the send');
@@ -608,7 +616,7 @@ test('T-blocker3b. Correction R1: handoff becomes human_active between claim and
       return handoffCalls === 1 ? { status: 'none', case: null } : { status: 'human_active', case: { id: 'case-1' } };
     },
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
   assert.equal(sent.length, 0);
@@ -642,7 +650,7 @@ test('T-blocker-order. Final Mini Correction (PR #45): a customer message landin
       return { status: 'none', case: null };
     },
     sendWA: async (to, msg) => { sent.push({ to, msg }); return { status: 'sent' }; },
-    candidateSenders: ['628111'],
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
     logEvent: (e) => events.push(e),
   });
 
