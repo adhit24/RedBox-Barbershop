@@ -108,6 +108,8 @@ const { classifyDeterministically } = require('../../server/orchestrator/routing
 const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
+const { classifyBarberPresenceQuery } = require('../../server/agents/reddy/barberPresenceIntent');
+const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
 const {
   extractFirstName,
   classifyConversationSession,
@@ -1323,6 +1325,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     // server/services/conversationLifecycle.js and conversationScope.js.
     touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, { providerDeviceHash, branch }),
     recordEvaluation = (event) => recordEvaluationEvent(event, { supabase: getSupabase() }),
+    getSupabaseClient = getSupabase,
+    loadBarbers = undefined,
+    getSchedule = undefined,
+    persistConversation = persistConversationExchange,
   } = deps;
 
   let branch = branchFromPayload;
@@ -1460,6 +1466,40 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   let reply;
   let used = 'openai';
   let error = null;
+
+  // P0 first-turn barber-presence gate. It must run before the orchestrator
+  // classifier and before every response-generation/fallback LLM path. The
+  // adapter resolves canonical identity and today's planned schedule, then
+  // returns a deterministic authority-bounded answer without showing roster
+  // rows to the model.
+  if (classifyBarberPresenceQuery(text).matched) {
+    const reddyExec = await executeReddy({
+      from, name, text, device, branch, trustedIdentity,
+      knowledgeContext: null,
+      conversationContext,
+      orchestrationDecision: {
+        intent: 'barber_inquiry',
+        route: 'reddy_agent',
+        agent: 'reddy_agent',
+        action: 'answer_barber_presence',
+        response_strategy: 'deterministic_authority_bounded_response',
+      },
+    }, {
+      callOpenAI: generateReddy,
+      sendWA: send,
+      supabase: getSupabaseClient(),
+      loadBarbers,
+      getSchedule,
+      logBookingTelemetry: logTelemetry,
+      persistConversation,
+    });
+    return {
+      used: reddyExec.used,
+      reply: reddyExec.reply,
+      sendResult: reddyExec.sendResult,
+      error: reddyExec.error,
+    };
+  }
 
   // ── Foreign customer check — intercept before OpenAI ──
   // If active foreign session exists, continue it
@@ -2044,6 +2084,20 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     fallback_used: used === 'fallback' || fallbackTelemetry.fallback_used,
     fallback_reason: used === 'fallback' ? 'reddy_execution_error' : fallbackTelemetry.fallback_reason,
   });
+
+  // The legacy orchestrator-fallback response path does not pass through
+  // executeReddyAgent's semantic guard chain. Apply the same attendance and
+  // operational-availability boundary here before parsing tags or sending.
+  const legacyRealtimeGuard = guardRealtimeBarberFacts(reply, { verifiedSchedule: null });
+  reply = legacyRealtimeGuard.sanitizedReply;
+  if (legacyRealtimeGuard.triggered) {
+    logTelemetry({
+      ...fallbackTelemetry,
+      action: 'realtime_fact_guard',
+      execution_status: 'guarded',
+      realtime_fact_guard_triggered: true,
+    });
+  }
 
   // Parse FORWARD_BOOKING tag — strip dari reply customer, proses di background
   let forwardBooking = null;

@@ -12,6 +12,7 @@ const { guardRealtimeBarberFacts } = require('./realtimeFactGuard');
 const { stripGenericClosingQuestion } = require('./closingSuppressionGuard');
 const { deriveBookingEligibility } = require('./bookingEligibility');
 const { logOrchestratedEvent } = require('../../orchestrator/telemetry');
+const { classifyBarberPresenceQuery } = require('./barberPresenceIntent');
 
 // Task orchestratorService.buildDecisionEnvelope already decided, upstream,
 // whether this turn is a customer-reported booking completion ("sudah kak",
@@ -24,14 +25,40 @@ const { logOrchestratedEvent } = require('../../orchestrator/telemetry');
 const BOOKING_COMPLETION_ACK_REPLY =
   'Sip Kak, kalau sudah selesai booking di website berarti tinggal datang sesuai jadwal yang dipilih ya.';
 
-// A barber presence/schedule question ("Mas Opan masuk hari ini?") needs a
-// temporal-today/specific-day marker plus a presence/attendance verb — this
-// is intentionally independent of bookingEligibility.js's signals, since
-// "is this barber working today" is a real-time FACT question, not a
-// booking-journey question (it must not grant CTA eligibility, and it needs
-// canonical barbers loaded even on turns booking memory wouldn't load them for).
+// Explicit future schedule questions retain the existing time-bound lookup.
+// Bare current questions are handled earlier by classifyBarberPresenceQuery;
+// they must not depend on these explicit temporal markers.
 const REALTIME_BARBER_QUERY_VERB_PATTERN = /\b(masuk|kerja|hadir|ada|tersedia|standby|bertugas)\b/i;
 const REALTIME_BARBER_QUERY_TIME_PATTERN = /\bhari\s*ini\b|\bsekarang\b|\bbesok\b|\blusa\b/i;
+
+function jakartaDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function buildPresenceReply({ barberMatch, scheduleStatus, claimType }) {
+  if (barberMatch.status === 'ambiguous') {
+    return 'Ada lebih dari satu kapster dengan nama itu, Kak. Cabang mana yang Kak maksud?';
+  }
+  if (barberMatch.status !== 'verified') {
+    return 'Aku belum menemukan nama kapster itu di data kapster aktif, Kak. Bisa tulis nama kapsternya lagi?';
+  }
+
+  const name = `Mas ${barberMatch.barber.name}`;
+  if (scheduleStatus?.status === 'scheduled') {
+    if (claimType === 'availability') {
+      return `${name} memang dijadwalkan masuk hari ini, Kak. Tapi aku belum bisa memastikan beliau sedang free/tersedia sekarang dari data yang terverifikasi.`;
+    }
+    return `${name} memang dijadwalkan masuk hari ini, Kak. Tapi aku belum punya data check-in/kehadiran untuk memastikan beliau sudah hadir sekarang.`;
+  }
+  if (scheduleStatus?.status === 'not_scheduled') {
+    return `${name} tidak tercatat dijadwalkan masuk hari ini, Kak.`;
+  }
+  return `Aku belum bisa memastikan ${name} ada sekarang dari data yang terverifikasi, Kak.`;
+}
 
 /**
  * Redbox Reddy Execution Adapter v0.1
@@ -126,6 +153,64 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     }
 
     return { used: 'reddy_agent', reply: completionReply, sendResult: completionSendResult, error: null };
+  }
+
+  // P0 first-turn presence gate. This runs before any response-generation
+  // LLM call and never exposes roster rows to that LLM. Roster resolves only
+  // canonical identity/branch; planned schedule resolves only today's plan;
+  // there is no attendance or live operational-availability authority.
+  const presenceIntent = classifyBarberPresenceQuery(text);
+  if (presenceIntent.matched) {
+    let canonicalSource;
+    try {
+      canonicalSource = await loadBarbers(supabase);
+    } catch (_error) {
+      canonicalSource = { status: 'unavailable', barbers: [], reason: 'canonical_source_error' };
+    }
+    const barberMatch = resolveCanonicalBarber(text, canonicalSource?.barbers || [], null);
+    let scheduleStatus = null;
+    if (barberMatch.status === 'verified' && supabase) {
+      try {
+        scheduleStatus = await getSchedule(supabase, {
+          barberId: barberMatch.barber.id,
+          date: jakartaDate(),
+        });
+      } catch (_error) {
+        scheduleStatus = { status: 'unknown', source: null, date: jakartaDate() };
+      }
+    }
+
+    const presenceReply = buildPresenceReply({
+      barberMatch,
+      scheduleStatus,
+      claimType: presenceIntent.claimType,
+    });
+
+    logBookingTelemetry({
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      intent: orchestrationDecision?.intent || 'barber_inquiry',
+      action: 'barber_presence_first_turn_guard',
+      branch: barberMatch.barber?.branch || branch,
+      trust_status: scheduleStatus?.status === 'scheduled' || scheduleStatus?.status === 'not_scheduled'
+        ? 'verified' : 'unverified',
+      execution_status: 'deterministic_response',
+      booking_cta_eligible: false,
+    });
+
+    if (persistConversation && typeof persistConversation === 'function') {
+      await persistConversation(from, conversationContext?.turns || [], text, presenceReply);
+    }
+    let presenceSendResult = null;
+    if (sendWA && typeof sendWA === 'function') {
+      presenceSendResult = await sendWA(from, presenceReply, { branch });
+    }
+    return {
+      used: 'reddy_barber_presence_guard',
+      reply: presenceReply,
+      sendResult: presenceSendResult,
+      error: null,
+    };
   }
 
   const realtimeBarberQuerySignal = REALTIME_BARBER_QUERY_VERB_PATTERN.test(String(text || ''))
@@ -366,4 +451,4 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   };
 }
 
-module.exports = { executeReddyAgent };
+module.exports = { executeReddyAgent, classifyBarberPresenceQuery };

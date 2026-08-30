@@ -25,17 +25,29 @@
  * are left untouched.
  */
 
+const BARBER_NAME_TOKEN = '(?!(?:dijadwalkan|terjadwal|jadwalnya|scheduled)\\b)[\\p{L}][\\p{L}\'.-]{1,30}';
+// Honorific-bound names may occur anywhere in a sentence. A bare name must
+// start the sentence (or a comma-delimited clause), preventing ordinary text
+// such as "Harga sudah tersedia" from treating "sudah" as a barber name.
+const NAMED_BARBER = `(?:(?:mas|mbak|kak|pak|bu|bang|bapak|ibu)\\s+${BARBER_NAME_TOKEN}|(?:^|,)\\s*${BARBER_NAME_TOKEN})`;
+const PRESENCE_LOCATION = '(?:sini|sana|situ|cabang|bypass|samadikun|csb(?:\\s+mall)?|sumber|tegal)';
+
 const ATTENDANCE_PATTERNS = [
-  /\b[\p{L}][\p{L} '.-]{1,40}\s+(sudah|udah|telah)\s+(hadir|datang)\b/iu,
-  /\b[\p{L}][\p{L} '.-]{1,40}\s+(ada|hadir)\s+(sekarang|saat ini)\b/iu,
-  /\bsedang\s+(hadir|di\s*cabang(\s+sekarang)?)\b/i,
+  new RegExp(`${NAMED_BARBER}\\s+(?:sudah|udah|telah)\\s+(?:hadir|datang)\\b`, 'iu'),
+  new RegExp(`${NAMED_BARBER}\\s+(?:ada(?:\\s+(?:di\\s+${PRESENCE_LOCATION}|kok|sekarang|saat\\s+ini))?|hadir|masuk|standby)\\b`, 'iu'),
+  new RegExp(`${NAMED_BARBER}\\s+(?:lagi|sedang)\\s+(?:hadir|di\\s+${PRESENCE_LOCATION})\\b`, 'iu'),
+];
+
+const AVAILABILITY_PATTERNS = [
+  new RegExp(`${NAMED_BARBER}\\s+(?:ready|free|available|tersedia)\\b`, 'iu'),
+  new RegExp(`${NAMED_BARBER}\\s+bisa\\s+sekarang\\b`, 'iu'),
 ];
 
 // Bare presence-today phrasing ("ada/masuk/tersedia hari ini", "sedang
 // bertugas") — requires a name-shaped prefix immediately before the verb.
 const PRESENCE_TODAY_PATTERNS = [
-  /\b[\p{L}][\p{L} '.-]{1,40}\s+(ada|masuk|tersedia)\s+hari\s*ini\b/iu,
-  /\b[\p{L}][\p{L} '.-]{1,40}\s+sedang\s+bertugas\b/iu,
+  new RegExp(`${NAMED_BARBER}\\s+(?:ada|masuk)\\s+hari\\s*ini\\b`, 'iu'),
+  new RegExp(`${NAMED_BARBER}\\s+sedang\\s+bertugas\\b`, 'iu'),
 ];
 
 // Explicit PLANNED SCHEDULE claim vocabulary — its own category since
@@ -95,6 +107,7 @@ function isClaimClause(clause) {
  */
 function sentenceHasViolation(sentence, verifiedSchedule) {
   if (ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence))) return true;
+  if (AVAILABILITY_PATTERNS.some((pattern) => pattern.test(sentence))) return true;
 
   const claimClauses = splitIntoClauses(sentence).filter(isClaimClause);
   if (claimClauses.length === 0) return false;
@@ -109,11 +122,14 @@ function sentenceHasViolation(sentence, verifiedSchedule) {
  * saying "jadwal/kehadiran belum tersedia" when the schedule IS actually
  * known would itself be inaccurate.
  */
-function buildSafeStatement(verifiedSchedule, { attendanceAttempted = false } = {}) {
+function buildSafeStatement(verifiedSchedule, { attendanceAttempted = false, availabilityAttempted = false } = {}) {
   const name = verifiedSchedule?.barberName;
 
   if (verifiedSchedule?.status === 'scheduled' && name) {
     const scheduleFact = `${name} memang dijadwalkan masuk hari ini, Kak`;
+    if (availabilityAttempted) {
+      return `${scheduleFact}, tapi aku belum bisa memastikan beliau sedang free/tersedia sekarang dari data yang terverifikasi.`;
+    }
     if (attendanceAttempted) {
       return `${scheduleFact}, tapi aku belum punya data kehadiran/check-in untuk memastikan beliau sudah hadir sekarang.`;
     }
@@ -139,7 +155,7 @@ function buildSafeStatement(verifiedSchedule, { attendanceAttempted = false } = 
  *   turn (never assumed) — see server/services/barberScheduleAuthority.js.
  */
 function guardRealtimeBarberFacts(reply, options = {}) {
-  const { verifiedSchedule = null } = options;
+  const { verifiedSchedule = null, requestedClaim = null } = options;
   if (typeof reply !== 'string' || !reply.trim()) {
     return { sanitizedReply: reply, triggered: false };
   }
@@ -152,11 +168,13 @@ function guardRealtimeBarberFacts(reply, options = {}) {
   }
 
   const attendanceAttempted = sentences.some((sentence) => ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence)));
+  const availabilityAttempted = requestedClaim === 'availability'
+    || sentences.some((sentence) => AVAILABILITY_PATTERNS.some((pattern) => pattern.test(sentence)));
   const keptSentences = sentences
     .filter((sentence) => !violatingSentences.includes(sentence))
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-  const safeStatement = buildSafeStatement(verifiedSchedule, { attendanceAttempted });
+  const safeStatement = buildSafeStatement(verifiedSchedule, { attendanceAttempted, availabilityAttempted });
 
   const sanitizedReply = [...keptSentences, safeStatement].join('\n').trim();
   return { sanitizedReply, triggered: true };
@@ -165,6 +183,7 @@ function guardRealtimeBarberFacts(reply, options = {}) {
 module.exports = {
   guardRealtimeBarberFacts,
   ATTENDANCE_PATTERNS,
+  AVAILABILITY_PATTERNS,
   PRESENCE_TODAY_PATTERNS,
   SCHEDULE_CLAIM_PATTERNS,
   nameIsBoundInText,
