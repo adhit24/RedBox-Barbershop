@@ -124,14 +124,23 @@ async function sendWA(to, message, options = {}) {
     return { status: false, reason: `FONNTE_TOKEN not configured for branch: ${branch}` };
   }
 
-  // Normalize to full Indonesian international format (628xxx):
-  //   "+628xxx" → strip + → "628xxx"
-  //   "08xxx"   → remove leading 0, prepend 62 → "628xxx"
-  //   "8xxx"    → no leading 0 or 62 prefix → prepend 62 → "628xxx"
+  // Normalize outbound target number:
+  //   "+628xxx" / "628xxx"        → already has a country code (Indonesian
+  //                                  or foreign) → left as-is
+  //   "08xxx"                     → Indonesian local convenience → "628xxx"
+  //   "8xxx" (bare, no 0/62/other
+  //   country code prefix)        → bare Indonesian mobile shorthand →
+  //                                  "628xxx" (pre-existing convenience,
+  //                                  unchanged)
+  // Anything that already starts with a digit other than 0 (i.e. already
+  // carries SOME country code, Indonesian or foreign) is never touched —
+  // the prior code's `else if (!number.startsWith('62'))` branch blindly
+  // prepended 62 onto foreign numbers too (e.g. a Singapore number became
+  // "62" + "6591234567"), which this fixes.
   let number = String(to).replace(/\D/g, '');
   if (number.startsWith('0')) {
     number = '62' + number.slice(1);
-  } else if (!number.startsWith('62')) {
+  } else if (number.startsWith('8') && !number.startsWith('62')) {
     number = '62' + number;
   }
 
