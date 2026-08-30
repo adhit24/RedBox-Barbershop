@@ -6,9 +6,7 @@ const TRUSTED_SOURCES = Object.freeze([
 ]);
 const trustedCapabilities = new WeakSet();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LOCAL_PHONE_PATTERN = /^08\d{8,11}$/;
-const INTERNATIONAL_PHONE_PATTERN = /^\+?628\d{8,11}$/;
-const SAFE_PHONE_CHARACTERS = /^[0-9+\s()-]+$/;
+const { normalizePhoneNumber } = require('./phoneNormalization');
 
 function identityError(message, code) {
   const error = new TypeError(message);
@@ -17,11 +15,7 @@ function identityError(message, code) {
 }
 
 function normalizeVerifiedPhone(value) {
-  if (typeof value !== 'string' || !SAFE_PHONE_CHARACTERS.test(value)) return null;
-  const compact = value.replace(/[\s()-]/g, '');
-  if (LOCAL_PHONE_PATTERN.test(compact)) return `62${compact.slice(1)}`;
-  if (INTERNATIONAL_PHONE_PATTERN.test(compact)) return compact.replace(/^\+/, '');
-  return null;
+  return normalizePhoneNumber(value);
 }
 
 /**
