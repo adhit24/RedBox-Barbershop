@@ -60,6 +60,48 @@ function buildPresenceReply({ barberMatch, scheduleStatus, claimType }) {
   return `Aku belum bisa memastikan ${name} ada sekarang dari data yang terverifikasi, Kak.`;
 }
 
+async function resolvePresenceFactDecision({ text, supabase, loadBarbers, getSchedule }) {
+  let canonicalSource;
+  try {
+    canonicalSource = await loadBarbers(supabase);
+  } catch (_error) {
+    canonicalSource = { status: 'unavailable', barbers: [], reason: 'canonical_source_error' };
+  }
+
+  const barberMatch = resolveCanonicalBarber(text, canonicalSource?.barbers || [], null);
+  let scheduleStatus = null;
+  if (barberMatch.status === 'verified' && supabase) {
+    try {
+      scheduleStatus = await getSchedule(supabase, {
+        barberId: barberMatch.barber.id,
+        date: jakartaDate(),
+      });
+    } catch (_error) {
+      scheduleStatus = { status: 'unknown', source: null, date: jakartaDate() };
+    }
+  }
+
+  const barber = barberMatch.status === 'verified'
+    ? {
+      id: barberMatch.barber.id,
+      name: barberMatch.barber.name,
+      branch: barberMatch.barber.branch,
+    }
+    : null;
+
+  return {
+    canonicalSource,
+    barberMatch,
+    scheduleStatus,
+    factDecision: {
+      barber,
+      schedule_status: scheduleStatus?.status || 'unknown',
+      attendance_status: 'unavailable',
+      availability_status: 'unverified',
+    },
+  };
+}
+
 /**
  * Redbox Reddy Execution Adapter v0.1
  * Adapts AI Orchestrator route decision ("reddy_agent") to existing Reddy conversation execution.
@@ -110,6 +152,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
   // Verified CRM name source: derive ONLY from customerIntelligence facts or customer entity
   const verifiedCrmName = customerIntelligence?.facts?.name || customerIntelligence?.customer?.name || null;
+  const presenceIntent = classifyBarberPresenceQuery(text);
 
   // Task 14.1 correction round 2: booking MEMORY, booking RESPONSE authority,
   // and booking CTA authority are three genuinely different, separately
@@ -120,9 +163,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   const {
     memoryRelevant: bookingMemoryRelevant,
     responseEligible: bookingResponseEligible,
-    ctaEligible: bookingCtaEligible,
-    reason: bookingEligibilityReason,
+    ctaEligible: derivedBookingCtaEligible,
+    reason: derivedBookingEligibilityReason,
   } = deriveBookingEligibility({ text, orchestrationDecision });
+  const bookingCtaEligible = presenceIntent.matched ? false : derivedBookingCtaEligible;
+  const bookingEligibilityReason = presenceIntent.matched
+    ? 'barber_presence_fact_query'
+    : derivedBookingEligibilityReason;
 
   const isBookingCompletionReport = orchestrationDecision?.conversational_act === 'booking_completion_report';
 
@@ -155,70 +202,63 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     return { used: 'reddy_agent', reply: completionReply, sendResult: completionSendResult, error: null };
   }
 
-  // P0 first-turn presence gate. This runs before any response-generation
-  // LLM call and never exposes roster rows to that LLM. Roster resolves only
-  // canonical identity/branch; planned schedule resolves only today's plan;
-  // there is no attendance or live operational-availability authority.
-  const presenceIntent = classifyBarberPresenceQuery(text);
+  // P0 first-turn presence fact decision. Facts are resolved deterministically
+  // and never expose roster rows to an LLM. Presentation remains owned by the
+  // already-resolved conversation language: Indonesian keeps the zero-LLM
+  // response, while an existing foreign route receives only the bounded fact
+  // decision and renders through its existing presentation path.
+  let presenceResolution = null;
   if (presenceIntent.matched) {
-    let canonicalSource;
-    try {
-      canonicalSource = await loadBarbers(supabase);
-    } catch (_error) {
-      canonicalSource = { status: 'unavailable', barbers: [], reason: 'canonical_source_error' };
-    }
-    const barberMatch = resolveCanonicalBarber(text, canonicalSource?.barbers || [], null);
-    let scheduleStatus = null;
-    if (barberMatch.status === 'verified' && supabase) {
-      try {
-        scheduleStatus = await getSchedule(supabase, {
-          barberId: barberMatch.barber.id,
-          date: jakartaDate(),
-        });
-      } catch (_error) {
-        scheduleStatus = { status: 'unknown', source: null, date: jakartaDate() };
+    presenceResolution = await resolvePresenceFactDecision({
+      text, supabase, loadBarbers, getSchedule,
+    });
+
+    const responseLanguage = String(conversationContext?.response_language || 'indonesian').toLowerCase();
+    const useIndonesianDeterministicPresentation = responseLanguage === 'indonesian';
+
+    if (useIndonesianDeterministicPresentation) {
+      const { barberMatch, scheduleStatus } = presenceResolution;
+      const presenceReply = buildPresenceReply({
+        barberMatch,
+        scheduleStatus,
+        claimType: presenceIntent.claimType,
+      });
+
+      logBookingTelemetry({
+        route: 'reddy_agent',
+        agent: 'reddy_agent',
+        intent: orchestrationDecision?.intent || 'barber_inquiry',
+        action: 'barber_presence_first_turn_guard',
+        branch: barberMatch.barber?.branch || branch,
+        trust_status: scheduleStatus?.status === 'scheduled' || scheduleStatus?.status === 'not_scheduled'
+          ? 'verified' : 'unverified',
+        execution_status: 'deterministic_response',
+        booking_cta_eligible: false,
+      });
+
+      if (persistConversation && typeof persistConversation === 'function') {
+        await persistConversation(from, conversationContext?.turns || [], text, presenceReply);
       }
+      let presenceSendResult = null;
+      if (sendWA && typeof sendWA === 'function') {
+        presenceSendResult = await sendWA(from, presenceReply, { branch });
+      }
+      return {
+        used: 'reddy_barber_presence_guard',
+        reply: presenceReply,
+        sendResult: presenceSendResult,
+        error: null,
+      };
     }
-
-    const presenceReply = buildPresenceReply({
-      barberMatch,
-      scheduleStatus,
-      claimType: presenceIntent.claimType,
-    });
-
-    logBookingTelemetry({
-      route: 'reddy_agent',
-      agent: 'reddy_agent',
-      intent: orchestrationDecision?.intent || 'barber_inquiry',
-      action: 'barber_presence_first_turn_guard',
-      branch: barberMatch.barber?.branch || branch,
-      trust_status: scheduleStatus?.status === 'scheduled' || scheduleStatus?.status === 'not_scheduled'
-        ? 'verified' : 'unverified',
-      execution_status: 'deterministic_response',
-      booking_cta_eligible: false,
-    });
-
-    if (persistConversation && typeof persistConversation === 'function') {
-      await persistConversation(from, conversationContext?.turns || [], text, presenceReply);
-    }
-    let presenceSendResult = null;
-    if (sendWA && typeof sendWA === 'function') {
-      presenceSendResult = await sendWA(from, presenceReply, { branch });
-    }
-    return {
-      used: 'reddy_barber_presence_guard',
-      reply: presenceReply,
-      sendResult: presenceSendResult,
-      error: null,
-    };
   }
 
   const realtimeBarberQuerySignal = REALTIME_BARBER_QUERY_VERB_PATTERN.test(String(text || ''))
     && REALTIME_BARBER_QUERY_TIME_PATTERN.test(String(text || ''));
 
-  const canonicalBarberSource = (bookingMemoryRelevant || realtimeBarberQuerySignal)
-    ? await loadBarbers(supabase)
-    : { status: 'not_requested', barbers: [], reason: null };
+  const canonicalBarberSource = presenceResolution?.canonicalSource
+    || ((bookingMemoryRelevant || realtimeBarberQuerySignal)
+      ? await loadBarbers(supabase)
+      : { status: 'not_requested', barbers: [], reason: null });
 
   // Task 14.1 correction round 2 (Blocker 3): registered-at-branch (roster),
   // scheduled-today (barber_working_hours + barber_date_overrides via
@@ -227,7 +267,15 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   // two are ever fetched here; the real-time fact guard below never lets a
   // reply upgrade "scheduled" into "present"/"attending" regardless.
   let verifiedSchedule = null;
-  if (realtimeBarberQuerySignal && supabase) {
+  if (presenceResolution?.barberMatch?.status === 'verified'
+    && presenceResolution?.scheduleStatus
+    && presenceResolution.scheduleStatus.status !== 'unknown') {
+    verifiedSchedule = {
+      barberName: presenceResolution.barberMatch.barber.name,
+      status: presenceResolution.scheduleStatus.status,
+      date: presenceResolution.scheduleStatus.date,
+    };
+  } else if (realtimeBarberQuerySignal && supabase) {
     const scheduleBarberMatch = resolveCanonicalBarber(text, canonicalBarberSource?.barbers || [], null);
     const scheduleDate = resolveRelativeDate(text) || resolveRelativeDate('hari ini');
     if (scheduleBarberMatch.status === 'verified' && scheduleDate?.date) {
@@ -291,6 +339,9 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     // lanjut booking di Bypass" in passing without granting a URL/CTA.
     ...(bookingContext ? { booking_context: bookingContext } : {}),
     ...(verifiedSchedule ? { barber_schedule_status: verifiedSchedule } : {}),
+    ...(presenceResolution ? {
+      barber_presence_fact_decision: presenceResolution.factDecision,
+    } : {}),
     ...(bookingCtaEligible ? {
       booking_authority: {
         whatsapp_mode: 'assist_and_guide_only',
@@ -373,7 +424,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   // unsupported presence/attendance claim must be caught even if the model
   // produces one unprompted (e.g. the customer's phrasing didn't trigger
   // realtimeBarberQuerySignal, or the model just hallucinates one anyway).
-  const realtimeGuarded = guardRealtimeBarberFacts(reply, { verifiedSchedule });
+  const realtimeGuarded = guardRealtimeBarberFacts(reply, {
+    verifiedSchedule,
+    requestedClaim: presenceIntent.matched ? presenceIntent.claimType : null,
+    knownBarberNames: presenceResolution?.factDecision?.barber?.name
+      ? [presenceResolution.factDecision.barber.name]
+      : [],
+  });
   reply = realtimeGuarded.sanitizedReply;
   if (realtimeGuarded.triggered) {
     logBookingTelemetry({

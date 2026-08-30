@@ -21,6 +21,7 @@ function emptyContext() {
 }
 
 async function runPresenceTurn({
+  from = '628100000001',
   text = 'Mas Husen ada?',
   scheduleStatus = 'scheduled',
   barbers = [HUSEN],
@@ -31,14 +32,15 @@ async function runPresenceTurn({
 } = {}) {
   const observations = { openAI: 0, schedule: 0, sent: [] };
   const result = await executeReddyAgent({
-    from: '628100000001',
+    from,
     text,
     branch: 'csb',
     conversationContext,
     orchestrationDecision,
   }, {
-    callOpenAI: async () => {
+    callOpenAI: async (...args) => {
       observations.openAI += 1;
+      observations.modelContext = args[6];
       return modelReply;
     },
     sendWA: async (_to, reply) => {
@@ -114,6 +116,53 @@ test('free, available, and ready stay booking-availability claims and are never 
   }
 });
 
+test('existing English presentation route renders the same bounded presence facts without forced Indonesian', async () => {
+  for (const text of ['Husen available?', 'Husen free?']) {
+    const { result, observations } = await runPresenceTurn({
+      text,
+      conversationContext: {
+        ...emptyContext(),
+        response_language: 'english',
+      },
+      modelReply: 'Husen is scheduled today. Live attendance is unverified, and slot availability is unverified.',
+      orchestrationDecision: { intent: 'booking_availability_inquiry', route: 'reddy_agent' },
+    });
+
+    assert.equal(observations.openAI, 1, text);
+    assert.equal(observations.schedule, 1, text);
+    assert.match(result.reply, /scheduled today/i, text);
+    assert.match(result.reply, /attendance is unverified/i, text);
+    assert.match(result.reply, /availability is unverified/i, text);
+    assert.doesNotMatch(result.reply, /\b(?:aku|kak|beliau|dijadwalkan|hari ini)\b/i, text);
+    assert.deepEqual(observations.modelContext?.barber_presence_fact_decision, {
+      barber: { id: HUSEN.id, name: HUSEN.name, branch: HUSEN.branch },
+      schedule_status: 'scheduled',
+      attendance_status: 'unavailable',
+      availability_status: 'unverified',
+    }, text);
+    assert.equal(observations.modelContext?.booking_authority, undefined, text);
+  }
+});
+
+test('response language is context-owned and never inferred from sender country code', async () => {
+  const plus62English = await runPresenceTurn({
+    from: '628100000001',
+    text: 'Husen available?',
+    conversationContext: { ...emptyContext(), response_language: 'english' },
+    modelReply: 'Husen is scheduled today. Live attendance is unverified, and slot availability is unverified.',
+  });
+  assert.match(plus62English.result.reply, /scheduled today/i);
+  assert.doesNotMatch(plus62English.result.reply, /\b(?:aku|kak|beliau|dijadwalkan|hari ini)\b/i);
+
+  const foreignNumberIndonesian = await runPresenceTurn({
+    from: '447700900123',
+    text: 'Mas Husen ada?',
+    conversationContext: { ...emptyContext(), response_language: 'indonesian' },
+  });
+  assert.match(foreignNumberIndonesian.result.reply, /dijadwalkan masuk hari ini/i);
+  assert.equal(foreignNumberIndonesian.observations.openAI, 0);
+});
+
 test('branch assignment alone does not become attendance and unresolved names are never fabricated', async () => {
   const branchQuestion = await runPresenceTurn({ text: 'Mas Husen ada di CSB?' });
   assert.match(branchQuestion.result.reply, /dijadwalkan masuk hari ini/i);
@@ -163,6 +212,30 @@ test('outbound guard blocks natural attendance and presence claims without tempo
     assert.equal(guarded.triggered, true, claim);
     assert.doesNotMatch(guarded.sanitizedReply, new RegExp(`^${claim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'), claim);
     assert.match(guarded.sanitizedReply, /belum bisa memastikan|data yang terverifikasi/i, claim);
+  }
+});
+
+test('outbound guard keeps ordinary foreign availability words and blocks only named-barber claims', () => {
+  for (const informationalReply of [
+    'Appointments are available on the website.',
+    'Payment is available by card.',
+    'The branch is ready to serve customers.',
+  ]) {
+    const guarded = guardRealtimeBarberFacts(informationalReply, {
+      verifiedSchedule: null,
+      knownBarberNames: ['Husen'],
+    });
+    assert.equal(guarded.triggered, false, informationalReply);
+    assert.equal(guarded.sanitizedReply, informationalReply);
+  }
+
+  for (const barberClaim of ['Husen is present now.', 'Husen is available.', 'Husen is free.']) {
+    const guarded = guardRealtimeBarberFacts(barberClaim, {
+      verifiedSchedule: null,
+      knownBarberNames: ['Husen'],
+    });
+    assert.equal(guarded.triggered, true, barberClaim);
+    assert.doesNotMatch(guarded.sanitizedReply, new RegExp(barberClaim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
   }
 });
 
@@ -235,6 +308,63 @@ test('production handleMessage intercepts a first-turn presence query before orc
   assert.match(result.reply, /dijadwalkan masuk hari ini/i);
   assert.match(result.reply, /belum punya data (check-in\/kehadiran|kehadiran\/check-in)/i);
   assert.doesNotMatch(result.reply, /langsung booking|redboxbarbershop\.com/i);
+});
+
+test('production handleMessage preserves the existing English route before presence presentation', async () => {
+  const observations = { orchestrator: 0, openAI: 0, schedule: 0, sent: [], modelContext: null };
+  const result = await handleMessage({
+    from: '628100000001',
+    name: 'Customer',
+    text: 'Husen available?',
+    device: '0818202889',
+    receiver: '0818202889',
+    branchFromPayload: 'csb',
+    providerDeviceHash: 'device-hash',
+  }, {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    touchLifecycle: async () => ({ reopened: false }),
+    loadConversationHistory: async () => ({
+      history: [
+        { role: 'user', content: 'Hello, I need help.' },
+        { role: 'assistant', content: 'How can I help?' },
+      ],
+      status: 'available',
+    }),
+    orchestrate: async () => {
+      observations.orchestrator += 1;
+      return { intent: 'barber_inquiry', route: 'reddy_agent', agent: 'reddy_agent' };
+    },
+    generateReddy: async (...args) => {
+      observations.openAI += 1;
+      observations.modelContext = args[6];
+      return 'Husen is scheduled today. Live attendance is unverified, and slot availability is unverified.';
+    },
+    send: async (_to, reply) => {
+      observations.sent.push(reply);
+      return { status: true };
+    },
+    getSupabaseClient: () => ({}),
+    loadBarbers: async () => ({ status: 'verified', barbers: [HUSEN], reason: null }),
+    getSchedule: async (_supabase, { date }) => {
+      observations.schedule += 1;
+      return { status: 'scheduled', source: 'planned_schedule_lookup', date };
+    },
+    resolveKnowledge: () => null,
+    logTelemetry: () => {},
+    recordEvaluation: async () => {},
+    persistConversation: async () => {},
+  });
+
+  assert.equal(observations.orchestrator, 1);
+  assert.equal(observations.openAI, 1);
+  assert.equal(observations.schedule, 1);
+  assert.equal(observations.modelContext?.response_language, 'english');
+  assert.equal(observations.modelContext?.barber_presence_fact_decision?.schedule_status, 'scheduled');
+  assert.equal(observations.modelContext?.barber_presence_fact_decision?.attendance_status, 'unavailable');
+  assert.equal(observations.modelContext?.barber_presence_fact_decision?.availability_status, 'unverified');
+  assert.match(result.reply, /scheduled today/i);
+  assert.match(result.reply, /attendance is unverified/i);
+  assert.doesNotMatch(result.reply, /\b(?:aku|kak|beliau|dijadwalkan|hari ini)\b/i);
 });
 
 test('legacy response fallback also applies the outbound presence guard before send', async () => {

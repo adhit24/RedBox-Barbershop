@@ -1011,16 +1011,20 @@ const ALL_KAPSTER_NAMES = Object.values(BARBERS_BY_BRANCH).flat();
 
 const ADMIN_WA = process.env.ADMIN_WHATSAPP || '6285173100365';
 
-function isForeignLanguage(text) {
+function hasIndonesianLanguageSignal(text) {
   const lower = text.toLowerCase();
-  // Indonesian word check
   const indonesianWords = ['mau', 'booking', 'potong', 'rambut', 'harga', 'berapa', 'bisa', 'kapan',
     'hari', 'jam', 'cabang', 'lokasi', 'dimana', 'ada', 'saya', 'aku', 'kak', 'mas',
     'terima kasih', 'makasih', 'tolong', 'bantu', 'info', 'dong', 'ya', 'iya', 'gak',
     'tidak', 'bukan', 'oke', 'siap', 'datang', 'jadi', 'batal'];
   const words = lower.split(/\s+/);
   const indonesianCount = words.filter(w => indonesianWords.some(iw => w.includes(iw))).length;
-  if (words.length > 0 && indonesianCount / words.length > 0.3) return false;
+  return words.length > 0 && indonesianCount / words.length > 0.3;
+}
+
+function isForeignLanguage(text) {
+  const lower = text.toLowerCase();
+  if (hasIndonesianLanguageSignal(text)) return false;
 
   const foreignPatterns = [
     /\b(i want|i need|i would|i'd like|can i|could you|please|thank you|thanks)\b/i,
@@ -1057,6 +1061,24 @@ function detectForeignLanguage(text) {
   const lower = text.toLowerCase();
   if (turkishWords.some(w => lower.includes(w))) return 'turkish';
   return 'english';
+}
+
+function resolveExistingResponseLanguage(text, conversationContext, presenceIntent = null) {
+  if (hasIndonesianLanguageSignal(text)) return 'indonesian';
+  if (isForeignLanguage(text)) return detectForeignLanguage(text);
+
+  const turns = Array.isArray(conversationContext?.turns) ? conversationContext.turns : [];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn?.role !== 'user' || !String(turn?.content || '').trim()) continue;
+    if (hasIndonesianLanguageSignal(turn.content)) return 'indonesian';
+    if (isForeignLanguage(turn.content)) return detectForeignLanguage(turn.content);
+  }
+
+  // Bounded composition for matched named-presence turns only. This does not
+  // alter global language detection or infer language from a phone number.
+  if (presenceIntent?.matched && /\b(?:available|free)\b/i.test(text)) return 'english';
+  return 'indonesian';
 }
 
 
@@ -1463,16 +1485,30 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // exchange back to the same scoped conversation it was loaded from —
   // never a plain, unscoped `sender` key (Objective C).
   conversationContext.providerDeviceHash = providerDeviceHash;
+  const presenceIntent = classifyBarberPresenceQuery(text);
+  const responseLanguage = presenceIntent.matched
+    ? resolveExistingResponseLanguage(text, conversationContext, presenceIntent)
+    : (isForeignLanguage(text) ? detectForeignLanguage(text) : 'indonesian');
+  conversationContext.response_language = responseLanguage;
   let reply;
   let used = 'openai';
   let error = null;
 
-  // P0 first-turn barber-presence gate. It must run before the orchestrator
-  // classifier and before every response-generation/fallback LLM path. The
-  // adapter resolves canonical identity and today's planned schedule, then
-  // returns a deterministic authority-bounded answer without showing roster
-  // rows to the model.
-  if (classifyBarberPresenceQuery(text).matched) {
+  // Existing language routing owns presentation before the fact gate.
+  const useForeignPresentation = (isForeignLanguage(text)
+    || (presenceIntent.matched && responseLanguage !== 'indonesian'))
+    && classification?.intent !== 'barber_popularity_inquiry';
+  if (useForeignPresentation) {
+    console.log('[WA Bot] Existing foreign language route retained');
+    const result = await handleForeignBooking(from, name, text, device, branch);
+    if (result) {
+      const sendResult = await send(from, result.reply, { branch });
+      return { used: result.used, reply: result.reply, sendResult, error: null };
+    }
+  }
+
+  // Indonesian first-turn presence remains deterministic and pre-LLM.
+  if (presenceIntent.matched && responseLanguage === 'indonesian') {
     const reddyExec = await executeReddy({
       from, name, text, device, branch, trustedIdentity,
       knowledgeContext: null,
@@ -1499,20 +1535,6 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       sendResult: reddyExec.sendResult,
       error: reddyExec.error,
     };
-  }
-
-  // ── Foreign customer check — intercept before OpenAI ──
-  // If active foreign session exists, continue it
-  
-
-  // New foreign language detected → start foreign booking flow
-  if (isForeignLanguage(text) && classification?.intent !== 'barber_popularity_inquiry') {
-    console.log('[WA Bot] Foreign language detected; starting foreign booking flow');
-    const result = await handleForeignBooking(from, name, text, device, branch);
-    if (result) {
-      const sendResult = await send(from, result.reply, { branch });
-      return { used: result.used, reply: result.reply, sendResult, error: null };
-    }
   }
 
   // ── Fast keyword intercept (before OpenAI — deterministic, no hallucination) ──
@@ -1987,8 +2009,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       const reddyExec = await executeReddy({
         from, name, text, device, branch, trustedIdentity, knowledgeContext, conversationContext, orchestrationDecision: orchDecision,
       }, {
-        callOpenAI: generateReddy, sendWA: send, supabase: getSupabase(), logBookingTelemetry: logTelemetry,
-        persistConversation: persistConversationExchange,
+        callOpenAI: generateReddy, sendWA: send, supabase: getSupabaseClient(),
+        loadBarbers, getSchedule, logBookingTelemetry: logTelemetry,
+        persistConversation,
       });
       logTelemetry({
         ...orchDecision,
@@ -2783,6 +2806,7 @@ module.exports.buildServicesText = buildServicesText;
 
 module.exports.getServicesForLang = getServicesForLang;
 module.exports.detectForeignLanguage = detectForeignLanguage;
+module.exports.resolveExistingResponseLanguage = resolveExistingResponseLanguage;
 
 module.exports.getBranchConfig = getBranchConfig;
 

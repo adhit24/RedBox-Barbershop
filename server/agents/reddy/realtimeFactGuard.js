@@ -43,6 +43,22 @@ const AVAILABILITY_PATTERNS = [
   new RegExp(`${NAMED_BARBER}\\s+bisa\\s+sekarang\\b`, 'iu'),
 ];
 
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function englishNamedBarberClaim(sentence, barberNames = []) {
+  return barberNames.filter(Boolean).some((name) => {
+    const canonicalName = escapeRegExp(name);
+    if (!canonicalName) return false;
+    const namedClaim = new RegExp(
+      `\\b${canonicalName}\\s+(?:is\\s+)?(?:present|here|working|on\\s+duty|ready|free|available)(?:\\s+now)?\\b`,
+      'iu',
+    );
+    return namedClaim.test(sentence);
+  });
+}
+
 // Bare presence-today phrasing ("ada/masuk/tersedia hari ini", "sedang
 // bertugas") — requires a name-shaped prefix immediately before the verb.
 const PRESENCE_TODAY_PATTERNS = [
@@ -105,9 +121,10 @@ function isClaimClause(clause) {
  * allowed, verified or not), or if ANY of its claim-bearing clauses is not
  * bound to the verified, currently-scheduled barber.
  */
-function sentenceHasViolation(sentence, verifiedSchedule) {
+function sentenceHasViolation(sentence, verifiedSchedule, knownBarberNames = []) {
   if (ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence))) return true;
   if (AVAILABILITY_PATTERNS.some((pattern) => pattern.test(sentence))) return true;
+  if (englishNamedBarberClaim(sentence, knownBarberNames)) return true;
 
   const claimClauses = splitIntoClauses(sentence).filter(isClaimClause);
   if (claimClauses.length === 0) return false;
@@ -155,13 +172,18 @@ function buildSafeStatement(verifiedSchedule, { attendanceAttempted = false, ava
  *   turn (never assumed) — see server/services/barberScheduleAuthority.js.
  */
 function guardRealtimeBarberFacts(reply, options = {}) {
-  const { verifiedSchedule = null, requestedClaim = null } = options;
+  const { verifiedSchedule = null, requestedClaim = null, knownBarberNames = [] } = options;
   if (typeof reply !== 'string' || !reply.trim()) {
     return { sanitizedReply: reply, triggered: false };
   }
 
   const sentences = splitIntoSentences(reply);
-  const violatingSentences = sentences.filter((sentence) => sentenceHasViolation(sentence, verifiedSchedule));
+  const boundBarberNames = [...knownBarberNames, verifiedSchedule?.barberName].filter(Boolean);
+  const violatingSentences = sentences.filter((sentence) => sentenceHasViolation(
+    sentence,
+    verifiedSchedule,
+    boundBarberNames,
+  ));
 
   if (violatingSentences.length === 0) {
     return { sanitizedReply: reply, triggered: false };
@@ -187,4 +209,5 @@ module.exports = {
   PRESENCE_TODAY_PATTERNS,
   SCHEDULE_CLAIM_PATTERNS,
   nameIsBoundInText,
+  englishNamedBarberClaim,
 };
