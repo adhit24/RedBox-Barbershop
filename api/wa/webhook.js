@@ -940,53 +940,73 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 // ── Fallback (keyword-based) ──────────────────────────────────────────────────
 // Used only when OpenAI is unavailable or times out.
 
-function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
+function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null, responseLanguage = 'indonesian') {
   const t = text.toLowerCase();
   const fn = extractFirstName(name);
   const nameLabel = fn ? 'Kak ' + fn : 'Kak';
-
+  const isEnglish = String(responseLanguage || '').toLowerCase() === 'english';
 
   const has = (kws) => kws.some(k => t.includes(k));
   const bConfig = getBranchConfig(branch);
 
   // 1. High Authority Booking Intent / Status Fallback
   if (has(['konfirmasi booking', 'konfirmasi bkng', 'sudah booking', 'mau konfirmasi', 'ini konfirmasi'])) {
-    return `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
+    return isEnglish
+      ? `For the official status of your Redbox booking, please check the booking website directly: ${bookingUrl(branch)}`
+      : `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
   }
 
   if (has(['slot terakhir', 'booking terakhir', 'slot malam', 'paling malam booking', 'bisa booking jam'])) {
-    return `Slot booking terakhir di Redbox ${bConfig.name} adalah pukul ${bConfig.last_booking_slot} WIB Kak. Untuk memastikan slotnya masih tersedia real-time, silakan cek dan pesan langsung via website booking ya:\n${bookingUrl(branch)}`;
+    return isEnglish
+      ? `The last booking slot at Redbox ${bConfig.name} is ${bConfig.last_booking_slot} WIB. To confirm real-time availability, please check and book directly via the booking website:\n${bookingUrl(branch)}`
+      : `Slot booking terakhir di Redbox ${bConfig.name} adalah pukul ${bConfig.last_booking_slot} WIB Kak. Untuk memastikan slotnya masih tersedia real-time, silakan cek dan pesan langsung via website booking ya:\n${bookingUrl(branch)}`;
   }
 
   if (has(['booking', 'reservasi', 'jadwal', 'pesan', 'mau potong', 'mau cukur', 'slot', 'book'])) {
-    return `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
+    return isEnglish
+      ? `To make a booking or check real-time slot availability, please visit the Redbox booking website:\n${bookingUrl(branch)}`
+      : `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
   }
 
   // 2. Factual Knowledge Unavailable Guard
   if ((knowledgeStatus === 'unavailable' || knowledgeStatus === 'no_verified_fact')
     && isFactualKnowledgeRequest('', text)) {
-    return `Maaf Kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com atau hubungi admin cabang ya.`;
+    return isEnglish
+      ? `Sorry, verified information for this question isn't available right now. You can still find Redbox information at redboxbarbershop.com or contact the branch directly.`
+      : `Maaf Kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com atau hubungi admin cabang ya.`;
   }
 
   // 3. Ordinary Deterministic Fallback
   if (has(['jam buka', 'jam tutup', 'buka jam', 'tutup jam', 'operasional', 'buka sampai', 'tutup jam berapa'])) {
-    return `Redbox ${bConfig.name} buka setiap hari pukul ${bConfig.hours.opens} – ${bConfig.hours.closes} WIB, Kak.`;
+    return isEnglish
+      ? `Redbox ${bConfig.name} is open every day from ${bConfig.hours.opens} to ${bConfig.hours.closes} WIB.`
+      : `Redbox ${bConfig.name} buka setiap hari pukul ${bConfig.hours.opens} – ${bConfig.hours.closes} WIB, Kak.`;
   }
   if (has(['halo', 'hai', 'hi ', 'hello', 'hei', 'hey', 'pagi', 'siang', 'sore', 'malam', 'selamat'])) {
-    return `Halo ${nameLabel}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
+    return isEnglish
+      ? `Hi ${fn || 'there'}, is there anything I can help with about Redbox Barbershop's services, prices, or locations?`
+      : `Halo ${nameLabel}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
   }
   if (has(['harga', 'berapa', 'layanan', 'menu', 'paket', 'price', 'tarif', 'biaya'])) {
-    return `Maaf Kak, aku belum bisa memastikan info layanan atau harga saat ini. Informasi lengkap Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
+    return isEnglish
+      ? `Sorry, I can't confirm service or price information right now. Full Redbox information is available at redboxbarbershop.com.`
+      : `Maaf Kak, aku belum bisa memastikan info layanan atau harga saat ini. Informasi lengkap Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
   }
   if (has(['lokasi', 'alamat', 'dimana', 'maps', 'cabang'])) {
-    return `Maaf Kak, aku belum bisa memastikan detail cabang saat ini. Cek informasi terverifikasi di redboxbarbershop.com ya.`;
+    return isEnglish
+      ? `Sorry, I can't confirm branch details right now. Please check verified information at redboxbarbershop.com.`
+      : `Maaf Kak, aku belum bisa memastikan detail cabang saat ini. Cek informasi terverifikasi di redboxbarbershop.com ya.`;
   }
   if (has(['makasih', 'terima kasih', 'thanks', 'thx'])) {
-    return `Sama-sama ${nameLabel}! Kalau ada hal lain seputar Redbox, silakan beri tahu aku ya.`;
+    return isEnglish
+      ? `You're welcome${fn ? ', ' + fn : ''}! Let me know if there's anything else about Redbox I can help with.`
+      : `Sama-sama ${nameLabel}! Kalau ada hal lain seputar Redbox, silakan beri tahu aku ya.`;
   }
 
   // 4. Generic Fallback
-  return `Mohon maaf ${nameLabel}, saat ini sistem sedang memproses ulang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
+  return isEnglish
+    ? `Sorry${fn ? ', ' + fn : ''}, the system is currently reprocessing. Redbox information is still available at redboxbarbershop.com.`
+    : `Mohon maaf ${nameLabel}, saat ini sistem sedang memproses ulang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
 }
 
 // ── Foreign Customer Booking Flow ─────────────────────────────────────────────
@@ -1374,16 +1394,29 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       },
       { trustedIdentity, supabase: getSupabase() }
     );
+    // responseLanguage isn't computed yet at this point in handleMessage (it
+    // needs conversation history, loaded further below, after this points
+    // shortcut is ruled out) — a lightweight, self-contained check here
+    // avoids reordering a P0-sensitive path just for this one guard.
+    const pointsIsEnglish = isForeignLanguage(text) && detectForeignLanguage(text) === 'english';
     let pointsReply;
     if (orchResult.execution_status === 'unauthorized') {
-      pointsReply = 'Untuk mengecek saldo poin member Redbox, pastikan kamu menghubungi kami via nomor terverifikasi ya Kak.';
+      pointsReply = pointsIsEnglish
+        ? 'To check your Redbox member points balance, please make sure you contact us from your verified number.'
+        : 'Untuk mengecek saldo poin member Redbox, pastikan kamu menghubungi kami via nomor terverifikasi ya Kak.';
     } else if (orchResult.execution_status === 'success') {
       const points = orchResult.result?.data?.points_balance ?? 0;
-      pointsReply = 'Saldo poin member Redbox kamu saat ini: ' + points + ' poin.';
+      pointsReply = pointsIsEnglish
+        ? 'Your current Redbox member points balance: ' + points + ' points.'
+        : 'Saldo poin member Redbox kamu saat ini: ' + points + ' poin.';
     } else if (orchResult.execution_status === 'customer_not_found') {
-      pointsReply = 'Nomor WhatsApp ini belum terdaftar sebagai member Redbox. Dapatkan poin loyalty 5% di setiap kunjungan cukur kamu!';
+      pointsReply = pointsIsEnglish
+        ? "This WhatsApp number isn't registered as a Redbox member yet. Get 5% loyalty points on every haircut visit!"
+        : 'Nomor WhatsApp ini belum terdaftar sebagai member Redbox. Dapatkan poin loyalty 5% di setiap kunjungan cukur kamu!';
     } else {
-      pointsReply = 'Layanan cek poin sedang tidak dapat diakses sementara. Coba beberapa saat lagi ya Kak.';
+      pointsReply = pointsIsEnglish
+        ? 'The points-check service is temporarily unavailable. Please try again shortly.'
+        : 'Layanan cek poin sedang tidak dapat diakses sementara. Coba beberapa saat lagi ya Kak.';
     }
     logTelemetry({
       ...pointsDecision,
@@ -1671,7 +1704,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         branch,
         status_transition: 'none_to_waiting_human',
       });
-      const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
+      const handoffReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
+        ? 'Your message has been forwarded to the Redbox admin. The admin will reply in this chat.'
+        : 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
       const sendResult = await send(from, handoffReply, { branch, evaluationContext: { handoffPersisted: true } });
       return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
     }
@@ -1708,7 +1743,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       status_transition: null,
     });
-    const fallbackReply = 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
+    const fallbackReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
+      ? "I wasn't able to forward this request to the RedBox team. Please try again shortly or contact RedBox customer service."
+      : 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
     const sendResult = await send(from, fallbackReply, { branch, evaluationContext: { handoffPersisted: false } });
     return {
       used: creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
@@ -1901,7 +1938,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
           trust_status: 'verified',
           ...knowledgeTelemetry(knowledgeContext),
         });
-        const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status);
+        const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
         const sendResult = await send(from, staticReply, { branch });
         return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
       }
@@ -1987,7 +2024,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         conversation_context_used: Boolean(conversationContext.turn_count > 0),
         ...knowledgeTelemetry(knowledgeContext),
       });
-      const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status);
+      const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
       const sendResult = await send(from, staticReply, { branch });
       return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
     }
@@ -2031,7 +2068,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     );
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
-    reply = fallbackReply(text, name, branch, fallbackKnowledgeContext?.status);
+    reply = fallbackReply(text, name, branch, fallbackKnowledgeContext?.status, responseLanguage);
     used = 'fallback';
     error = err?.message || String(err);
   }

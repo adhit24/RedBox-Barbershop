@@ -397,6 +397,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     isBackendVerified: false,
     bookingUrl: handoffUrl,
     bookingCtaEligible,
+    responseLanguage,
   });
   reply = guarded.sanitizedReply;
 
