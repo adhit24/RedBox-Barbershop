@@ -14,6 +14,7 @@ const {
 const { syncScheduleForBooking } = require('../moka/slotEngine');
 const { syncCurrentMonthTx } = require('../moka/txSync');
 const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('../services/bookingGuard');
+const { linkNewlyCreatedBooking } = require('../services/bookingCustomerLinkage');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -929,6 +930,31 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+
+    // Task 17.2: booking -> customer linkage for walk-ins too. No customer
+    // row is created/upserted here (this endpoint never has — that stays out
+    // of this task's scope); if `wa` matches an EXISTING customer, link it.
+    // A missing/placeholder `wa` ('-') fails closed to invalid_identity via
+    // the resolver, never a guess. Correction Round 1, Blocker 2: AWAITED
+    // (not fire-and-forget) so it completes before the response is sent.
+    // linkNewlyCreatedBooking's own tested contract is to absorb every
+    // resolver/DB/business error internally and always RESOLVE (never
+    // reject) — so this try/catch is NOT there to handle a business-logic
+    // failure (those never reach here as an exception at all). It exists
+    // because, unlike POST /api/bookings, this route has no outer
+    // try/catch of its own: without one here, a genuine programming defect
+    // at this specific line (e.g. a missing import) would leave the request
+    // hanging forever instead of failing loudly. console.error (not warn)
+    // deliberately keeps it visible in logs — the walk-in booking itself
+    // already succeeded and is still reported as such.
+    try {
+      await linkNewlyCreatedBooking(supabase, {
+        booking: { id: data.id }, phone: wa, source: 'booking_walkin', branch: normalizeBranch(branch),
+      });
+    } catch (linkErr) {
+      console.error('[Walkin] customer linkage threw unexpectedly (this indicates a bug, not a business failure):', linkErr?.stack || linkErr?.message);
+    }
+
     return res.json({ ok: true, booking: data });
   });
 

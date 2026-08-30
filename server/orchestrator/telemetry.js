@@ -277,6 +277,8 @@ const ALLOWED_CRM_IDENTITY_MATCH_BASES = new Set([
 ]);
 const ALLOWED_CRM_IDENTITY_SOURCES = new Set([
   'crm_customer_self', 'crm_agent', 'reddy', 'moka_sync', 'admin', 'customer360', 'unknown',
+  // Task 17.2 (CRM Integrity Round 3) — booking -> customer linkage call sites.
+  'booking_create', 'booking_walkin', 'historical_backfill_dry_run',
 ]);
 
 function sanitizeCrmIdentityTelemetry(event = {}) {
@@ -299,6 +301,57 @@ function logCrmIdentityEvent(event = {}) {
   return safe;
 }
 
+// Task 17.2 (CRM Integrity Round 3) — its own small allowlist schema, same
+// rationale as every other block above: this fires from the booking-
+// customer-linkage planner's callers (booking creation, walk-in creation,
+// the historical backfill dry-run script), not from orchestrator routing or
+// Reddy. OBSERVER-ONLY: nothing reads this telemetry to make a routing or
+// booking decision — see server/services/bookingCustomerLinkage.js, which is
+// a pure classifier with zero DB access. No phone, name, raw booking
+// payload, or raw customer record — only classification dimensions.
+const ALLOWED_BOOKING_LINKAGE_STATUSES = new Set([
+  'already_linked', 'safe_link', 'ambiguous_identity', 'not_found',
+  'invalid_identity', 'link_conflict', 'lookup_failed',
+]);
+const ALLOWED_BOOKING_LINKAGE_SOURCES = new Set([
+  'booking_create', 'booking_walkin', 'historical_backfill_dry_run', 'unknown',
+]);
+const ALLOWED_BOOKING_LINKAGE_ISSUE_CODES = new Set([
+  'ambiguous_phone', 'no_matching_customer', 'missing_identity', 'malformed_phone',
+  'conflicting_stronger_identity', 'resolver_error', null,
+]);
+// Correction Round 1, Blocker 3: the actual persistence outcome of the
+// conditional UPDATE, kept deliberately separate from `status` (the PURE
+// pre-write plan) — so this telemetry can never be misread as claiming a
+// link was written when it was not. See bookingCustomerLinkage.js's
+// PERSISTENCE_STATUS for the authoritative definition of each value.
+const ALLOWED_BOOKING_LINKAGE_PERSISTENCE_STATUSES = new Set([
+  'not_attempted', 'persisted', 'write_failed', 'conditional_write_skipped',
+]);
+
+function sanitizeBookingLinkageTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    status: ALLOWED_BOOKING_LINKAGE_STATUSES.has(event.status) ? event.status : 'unknown',
+    match_basis: ALLOWED_CRM_IDENTITY_MATCH_BASES.has(event.match_basis) ? event.match_basis : null,
+    source: ALLOWED_BOOKING_LINKAGE_SOURCES.has(event.source) ? event.source : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : null,
+    candidate_count: Number.isInteger(event.candidate_count) && event.candidate_count >= 0 ? event.candidate_count : null,
+    safe_to_link: typeof event.safe_to_link === 'boolean' ? event.safe_to_link : null,
+    persistence_status: ALLOWED_BOOKING_LINKAGE_PERSISTENCE_STATUSES.has(event.persistence_status)
+      ? event.persistence_status : 'not_attempted',
+    issue_code: ALLOWED_BOOKING_LINKAGE_ISSUE_CODES.has(event.issue_code) ? event.issue_code : null,
+  };
+}
+
+function logBookingLinkageEvent(event = {}) {
+  const safe = sanitizeBookingLinkageTelemetry(event);
+  console.log('[BookingLinkageTelemetry]', JSON.stringify(safe));
+  // Fail-open, observer-only — same contract as every other logXEvent call.
+  observeTelemetry('booking_linkage', safe);
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
@@ -306,4 +359,5 @@ module.exports = {
   sanitizeIdleLifecycleTelemetry, logIdleLifecycleEvent,
   sanitizeDataAuthorityTelemetry, logDataAuthorityEvent,
   sanitizeCrmIdentityTelemetry, logCrmIdentityEvent,
+  sanitizeBookingLinkageTelemetry, logBookingLinkageEvent,
 };

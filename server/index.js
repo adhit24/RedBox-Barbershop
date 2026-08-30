@@ -28,6 +28,14 @@ const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membe
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
 const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
+// Task 17.2 (CRM Integrity Round 3) — Correction Round 1, Blocker 1: only
+// linkNewlyCreatedBooking is actually called from this file; the other
+// Task 17.2 primitives (resolveCustomerIdentity, planBookingCustomerLinkage,
+// issueCodeForStatus, logBookingLinkageEvent) are used INSIDE that helper
+// (server/services/bookingCustomerLinkage.js), not here — importing them
+// here too was dead weight, and the one identifier actually referenced below
+// was never imported at all.
+const { linkNewlyCreatedBooking } = require('./services/bookingCustomerLinkage');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1305,6 +1313,24 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       await supabase.from('customers').upsert({
         name, wa, visits: 0, total_spent: 0, last_visit: null
       }, { onConflict: 'wa', ignoreDuplicates: true });
+
+      // Task 17.2: booking -> customer linkage, run AFTER the customer
+      // upsert above so a brand-new customer's row already exists for the
+      // resolver to find. Correction Round 1, Blocker 2: AWAITED (not
+      // fire-and-forget) so it actually completes before this serverless
+      // invocation's response ends — a background promise is not guaranteed
+      // to survive past res.end() here. No local try/catch here: this call
+      // can never fail the reservation because linkNewlyCreatedBooking
+      // itself absorbs every resolver/DB/business error internally and
+      // always RESOLVES (never rejects) with a fail-closed outcome — that is
+      // its own tested contract, not something this call site needs to
+      // defend against redundantly. A local try/catch here would only ever
+      // catch a genuine programming defect (e.g. a missing import), and
+      // silently swallowing THAT class of bug is worse than the outer
+      // route-level catch (below) surfacing it as a loud 500.
+      await linkNewlyCreatedBooking(supabase, {
+        booking: { id: bookingId }, phone: wa, source: 'booking_create', branch: resolvedLocation,
+      });
 
       // Notif admin untuk setiap booking baru (fire-and-forget — tidak block response)
       if (data.wa) {
