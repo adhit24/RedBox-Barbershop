@@ -108,6 +108,9 @@ const { classifyDeterministically } = require('../../server/orchestrator/routing
 const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
+const { classifyBarberPresenceQuery } = require('../../server/agents/reddy/barberPresenceIntent');
+const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
+const { loadCanonicalBarbers, resolveCanonicalBarber } = require('../../server/services/canonicalBarberResolver');
 const {
   extractFirstName,
   classifyConversationSession,
@@ -1009,16 +1012,20 @@ const ALL_KAPSTER_NAMES = Object.values(BARBERS_BY_BRANCH).flat();
 
 const ADMIN_WA = process.env.ADMIN_WHATSAPP || '6285173100365';
 
-function isForeignLanguage(text) {
+function hasIndonesianLanguageSignal(text) {
   const lower = text.toLowerCase();
-  // Indonesian word check
   const indonesianWords = ['mau', 'booking', 'potong', 'rambut', 'harga', 'berapa', 'bisa', 'kapan',
     'hari', 'jam', 'cabang', 'lokasi', 'dimana', 'ada', 'saya', 'aku', 'kak', 'mas',
     'terima kasih', 'makasih', 'tolong', 'bantu', 'info', 'dong', 'ya', 'iya', 'gak',
     'tidak', 'bukan', 'oke', 'siap', 'datang', 'jadi', 'batal'];
   const words = lower.split(/\s+/);
   const indonesianCount = words.filter(w => indonesianWords.some(iw => w.includes(iw))).length;
-  if (words.length > 0 && indonesianCount / words.length > 0.3) return false;
+  return words.length > 0 && indonesianCount / words.length > 0.3;
+}
+
+function isForeignLanguage(text) {
+  const lower = text.toLowerCase();
+  if (hasIndonesianLanguageSignal(text)) return false;
 
   const foreignPatterns = [
     /\b(i want|i need|i would|i'd like|can i|could you|please|thank you|thanks)\b/i,
@@ -1055,6 +1062,24 @@ function detectForeignLanguage(text) {
   const lower = text.toLowerCase();
   if (turkishWords.some(w => lower.includes(w))) return 'turkish';
   return 'english';
+}
+
+function resolveExistingResponseLanguage(text, conversationContext, presenceIntent = null) {
+  if (hasIndonesianLanguageSignal(text)) return 'indonesian';
+  if (isForeignLanguage(text)) return detectForeignLanguage(text);
+
+  const turns = Array.isArray(conversationContext?.turns) ? conversationContext.turns : [];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index];
+    if (turn?.role !== 'user' || !String(turn?.content || '').trim()) continue;
+    if (hasIndonesianLanguageSignal(turn.content)) return 'indonesian';
+    if (isForeignLanguage(turn.content)) return detectForeignLanguage(turn.content);
+  }
+
+  // Bounded composition for matched named-presence turns only. This does not
+  // alter global language detection or infer language from a phone number.
+  if (presenceIntent?.matched && /\b(?:available|free)\b/i.test(text)) return 'english';
+  return 'indonesian';
 }
 
 
@@ -1323,6 +1348,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     // server/services/conversationLifecycle.js and conversationScope.js.
     touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, { providerDeviceHash, branch }),
     recordEvaluation = (event) => recordEvaluationEvent(event, { supabase: getSupabase() }),
+    getSupabaseClient = getSupabase,
+    loadBarbers = loadCanonicalBarbers,
+    getSchedule = undefined,
+    persistConversation = persistConversationExchange,
   } = deps;
 
   let branch = branchFromPayload;
@@ -1457,22 +1486,56 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // exchange back to the same scoped conversation it was loaded from —
   // never a plain, unscoped `sender` key (Objective C).
   conversationContext.providerDeviceHash = providerDeviceHash;
+  const presenceIntent = classifyBarberPresenceQuery(text);
+  const responseLanguage = presenceIntent.matched
+    ? resolveExistingResponseLanguage(text, conversationContext, presenceIntent)
+    : (isForeignLanguage(text) ? detectForeignLanguage(text) : 'indonesian');
+  conversationContext.response_language = responseLanguage;
   let reply;
   let used = 'openai';
   let error = null;
 
-  // ── Foreign customer check — intercept before OpenAI ──
-  // If active foreign session exists, continue it
-  
-
-  // New foreign language detected → start foreign booking flow
-  if (isForeignLanguage(text) && classification?.intent !== 'barber_popularity_inquiry') {
-    console.log('[WA Bot] Foreign language detected; starting foreign booking flow');
+  // Existing language routing owns presentation before the fact gate.
+  const useForeignPresentation = (isForeignLanguage(text)
+    || (presenceIntent.matched && responseLanguage !== 'indonesian'))
+    && classification?.intent !== 'barber_popularity_inquiry';
+  if (useForeignPresentation) {
+    console.log('[WA Bot] Existing foreign language route retained');
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
       const sendResult = await send(from, result.reply, { branch });
       return { used: result.used, reply: result.reply, sendResult, error: null };
     }
+  }
+
+  // Indonesian first-turn presence remains deterministic and pre-LLM.
+  if (presenceIntent.matched && responseLanguage === 'indonesian') {
+    const reddyExec = await executeReddy({
+      from, name, text, device, branch, trustedIdentity,
+      knowledgeContext: null,
+      conversationContext,
+      orchestrationDecision: {
+        intent: 'barber_inquiry',
+        route: 'reddy_agent',
+        agent: 'reddy_agent',
+        action: 'answer_barber_presence',
+        response_strategy: 'deterministic_authority_bounded_response',
+      },
+    }, {
+      callOpenAI: generateReddy,
+      sendWA: send,
+      supabase: getSupabaseClient(),
+      loadBarbers,
+      getSchedule,
+      logBookingTelemetry: logTelemetry,
+      persistConversation,
+    });
+    return {
+      used: reddyExec.used,
+      reply: reddyExec.reply,
+      sendResult: reddyExec.sendResult,
+      error: reddyExec.error,
+    };
   }
 
   // ── Fast keyword intercept (before OpenAI — deterministic, no hallucination) ──
@@ -1947,8 +2010,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       const reddyExec = await executeReddy({
         from, name, text, device, branch, trustedIdentity, knowledgeContext, conversationContext, orchestrationDecision: orchDecision,
       }, {
-        callOpenAI: generateReddy, sendWA: send, supabase: getSupabase(), logBookingTelemetry: logTelemetry,
-        persistConversation: persistConversationExchange,
+        callOpenAI: generateReddy, sendWA: send, supabase: getSupabaseClient(),
+        loadBarbers, getSchedule, logBookingTelemetry: logTelemetry,
+        persistConversation,
       });
       logTelemetry({
         ...orchDecision,
@@ -2044,6 +2108,45 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     fallback_used: used === 'fallback' || fallbackTelemetry.fallback_used,
     fallback_reason: used === 'fallback' ? 'reddy_execution_error' : fallbackTelemetry.fallback_reason,
   });
+
+  // The legacy orchestrator-fallback response path does not pass through
+  // executeReddyAgent's semantic guard chain. Apply the same attendance and
+  // operational-availability boundary here before parsing tags or sending.
+  // Canonical rows authorize identity tokens only. They do NOT authorize
+  // schedule, attendance, or availability; verifiedSchedule deliberately
+  // remains null because this legacy path did not perform a schedule lookup.
+  const legacyEnglishClaimCandidate = /\b(?:is\s+)?(?:present|here|working|on\s+duty|ready|free|available)(?:\s+(?:now|today))?\b/i.test(reply);
+  let legacyCanonicalSource = { status: 'not_requested', barbers: [], reason: null };
+  if (presenceIntent.matched || legacyEnglishClaimCandidate) {
+    try {
+      legacyCanonicalSource = await loadBarbers(getSupabaseClient());
+    } catch (_error) {
+      legacyCanonicalSource = { status: 'unavailable', barbers: [], reason: 'canonical_source_error' };
+    }
+  }
+  const legacyCanonicalBarbers = legacyCanonicalSource?.status === 'verified'
+    ? (legacyCanonicalSource.barbers || [])
+    : [];
+  const legacyKnownBarberNames = legacyCanonicalBarbers.map((barber) => barber?.name).filter(Boolean);
+  const requestedCanonicalBarber = presenceIntent.matched
+    ? resolveCanonicalBarber(text, legacyCanonicalBarbers, null)
+    : null;
+  const legacyRealtimeGuard = guardRealtimeBarberFacts(reply, {
+    verifiedSchedule: null,
+    requestedClaim: presenceIntent.matched ? presenceIntent.claimType : null,
+    knownBarberNames: legacyKnownBarberNames,
+    responseLanguage,
+    forceSafeResponse: presenceIntent.matched && requestedCanonicalBarber?.status !== 'verified',
+  });
+  reply = legacyRealtimeGuard.sanitizedReply;
+  if (legacyRealtimeGuard.triggered) {
+    logTelemetry({
+      ...fallbackTelemetry,
+      action: 'realtime_fact_guard',
+      execution_status: 'guarded',
+      realtime_fact_guard_triggered: true,
+    });
+  }
 
   // Parse FORWARD_BOOKING tag — strip dari reply customer, proses di background
   let forwardBooking = null;
@@ -2729,6 +2832,7 @@ module.exports.buildServicesText = buildServicesText;
 
 module.exports.getServicesForLang = getServicesForLang;
 module.exports.detectForeignLanguage = detectForeignLanguage;
+module.exports.resolveExistingResponseLanguage = resolveExistingResponseLanguage;
 
 module.exports.getBranchConfig = getBranchConfig;
 
