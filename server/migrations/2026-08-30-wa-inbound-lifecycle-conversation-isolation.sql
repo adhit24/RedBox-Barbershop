@@ -93,6 +93,20 @@ ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS provider_device_hash TEXT;
 UPDATE wa_conversations SET provider_device_hash = 'legacy-unscoped' WHERE provider_device_hash IS NULL;
 ALTER TABLE wa_conversations ALTER COLUMN provider_device_hash SET NOT NULL;
 
+-- Bounded channel routing metadata (Blocker 1 fix): nullable TEXT, allowed
+-- values only: bypass, samadikun, csb, sumber, tegal. Legacy rows remain NULL.
+ALTER TABLE wa_conversations ADD COLUMN IF NOT EXISTS branch TEXT;
+DO $
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_wa_conversations_branch'
+  ) THEN
+    ALTER TABLE wa_conversations
+      ADD CONSTRAINT chk_wa_conversations_branch
+      CHECK (branch IS NULL OR branch IN ('bypass', 'samadikun', 'csb', 'sumber', 'tegal'));
+  END IF;
+END $;
+
 -- LEGACY MIXED HISTORY: deliberately NOT copied into every new scope (that
 -- would just reproduce the exact cross-branch contamination this migration
 -- fixes). A pre-existing sender-only row keeps its original history, backfilled

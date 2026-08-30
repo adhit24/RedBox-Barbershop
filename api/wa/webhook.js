@@ -1321,7 +1321,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     logHandoffTelemetry = logHandoffEvent,
     // Objective C: scoped by (sender, provider_device_hash) — see
     // server/services/conversationLifecycle.js and conversationScope.js.
-    touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, { providerDeviceHash }),
+    touchLifecycle = (sender) => touchInboundActivity(getSupabase(), sender, { providerDeviceHash, branch }),
     recordEvaluation = (event) => recordEvaluationEvent(event, { supabase: getSupabase() }),
   } = deps;
 

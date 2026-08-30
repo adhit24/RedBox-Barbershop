@@ -1,82 +1,52 @@
+'use strict';
+
 /**
- * GET /api/cron/reddy-idle-close
- * Mounted directly in server/index.js (not a dedicated Vercel serverless
- * function) — see the mount site there for why: the Vercel Hobby 12-function
- * limit is not increased by keeping this inside the existing catch-all API
- * function, matching the established pattern already used by
- * /api/cron/expire-membership-registrations, /api/cron/review-request, and
- * /api/cron/booking-notifications. Triggered externally every 5 minutes
- * (cron-job.org — same pattern as api/cron/home-service-flag.js, see
- * cronjoborg_homeservice.md), since the Vercel Hobby plan's own cron
- * scheduler cannot run this frequently.
+ * Endpoint / Scheduled Job: Conversation Idle Timeout Close.
+ * Mounted at GET /api/cron/reddy-idle-close in server/index.js.
  *
- * Closes any Reddy conversation that has been idle for AT LEAST 5 minutes
- * since Reddy's last reply, sending exactly one deterministic closing
- * message per session. "At least" because scheduler frequency is coarser
- * than the exact 5-minute mark — see conversationLifecycle.js.
- *
- * Correction Round 1 (PR #45 review) hardened this to re-verify state FOUR
- * separate times before a customer-facing send ever happens, since none of
- * these can be assumed stable across the async gaps between them:
- *   1. Discovery-time handoff check (cheap short-circuit — skip claiming at
- *      all if a handoff is already open).
- *   2. Atomic DB claim (still active, still overdue, not already closed).
- *   3. A second Task15 handoff re-check (Blocker 3) — a handoff can open in
- *      the gap between discovery and claim.
- *   4. verifyStillClaimedForClose (Blocker 2) — deliberately the LAST async
- *      check before guardedSend, called immediately before it: a customer
- *      message landing in the gap while step 3's handoff lookup was in
- *      flight would otherwise slip through undetected. Lifecycle state
- *      (conversation_status/last_customer_message_at) is the most volatile
- *      authority here — a Reddy reply's own arm/reset and a fresh inbound
- *      message can invalidate a claim at any moment — so it is checked as
- *      close to the actual send as this process can get. This does not
- *      make the send itself transactional with a concurrent inbound DB
- *      write — no ordering of async DB reads can fully close that gap
- *      against an external HTTP provider call — but placing the lifecycle
- *      check last minimizes the remaining unavoidable window to just the
- *      provider network round-trip itself, rather than also including a
- *      second DB round-trip (the handoff re-check) after the last
- *      verification.
- * Any of steps 1/3/4 failing aborts the send and releases the claim.
- * The close message itself flows through the same P0 guarded-send path
- * (kill switch, send-once, duplicate-content, rate limit) as every other
- * automated Reddy send — see server/services/waOutboundGuard.js. On any
- * abort or send failure the claim is reverted to 'active' so a later run
- * retries (or, for a newer-inbound abort, simply does nothing further — the
- * timer stays cancelled until Reddy's next reply reschedules it); the
- * conversation is never falsely marked closed.
- *
- * Fails closed if CRON_SECRET is not configured: unlike the read-only/
- * internal cron jobs elsewhere in this codebase, this endpoint sends
- * customer-facing WhatsApp messages, so an unauthenticated request must
- * never be allowed to execute close work.
+ * Discovery & claim pattern (Task 45 + Objective C scoping):
+ *   1. findDueSenders: query `wa_conversations` for rows where
+ *      conversation_status='active', idle_close_due_at <= now, and
+ *      idle_closed_at IS NULL, excluding legacy-unscoped rows.
+ *      Returns { sender, providerDeviceHash, branch } tuples.
+ *   2. claimIdleConversation: atomic conditional UPDATE setting status='closing'.
+ *      If another process claimed or a customer message arrived, returns null.
+ *   3. discovery-time + pre-send handoff checks: if an active Task 15 handoff
+ *      case exists, abort and revert claim.
+ *   4. verifyStillClaimedForClose: re-check status and last_customer_message_at
+ *      immediately before send.
+ *   5. channel route validation: branch metadata must be valid. If missing/invalid,
+ *      fail closed (suppress send and release claim).
+ *   6. guardedSend: send IDLE_CLOSE_MESSAGE passing { branch }.
+ *   7. finalizeIdleClose: on success mark closed; on failure revert to active.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const { isReddyEnabled } = require('../services/waInboundGuard');
 const { getActiveHandoffState } = require('../services/humanHandoff');
 const { createGuardedSend } = require('../services/waOutboundGuard');
+const { LEGACY_DEVICE_SCOPE } = require('../services/conversationScope');
 const {
-  IDLE_CLOSE_MESSAGE, claimIdleConversation, verifyStillClaimedForClose, finalizeIdleClose,
+  IDLE_CLOSE_MESSAGE, claimIdleConversation, verifyStillClaimedForClose, finalizeIdleClose, normalizeBranch,
 } = require('../services/conversationLifecycle');
 const { logIdleLifecycleEvent } = require('../orchestrator/telemetry');
 const { sendWA: realSendWA } = require('../services/fonnte');
 
-// Objective C: returns { sender, providerDeviceHash } pairs, not bare
-// senders — a due row's scope MUST travel with it through claim/verify/
-// finalize, or the cron would collapse two independent, isolated per-device
-// conversations for the same customer back into one lifecycle.
 async function findDueSenders(supabase, { now = Date.now(), limit = 200 } = {}) {
   const { data } = await supabase
     .from('wa_conversations')
-    .select('sender,provider_device_hash')
+    .select('sender,provider_device_hash,branch')
     .eq('conversation_status', 'active')
     .not('idle_close_due_at', 'is', null)
     .lte('idle_close_due_at', new Date(now).toISOString())
     .is('idle_closed_at', null)
+    .neq('provider_device_hash', LEGACY_DEVICE_SCOPE)
     .limit(limit);
-  return (data || []).map((row) => ({ sender: row.sender, providerDeviceHash: row.provider_device_hash }));
+  return (data || []).map((row) => ({
+    sender: row.sender,
+    providerDeviceHash: row.provider_device_hash,
+    branch: row.branch,
+  }));
 }
 
 module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
@@ -84,8 +54,6 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
 
   const secret = process.env.CRON_SECRET;
   if (!secret) {
-    // Fail closed: never run customer-facing send work unauthenticated,
-    // even in an environment where the secret was never configured.
     return res.status(401).json({ error: 'Unauthorized' });
   }
   const authHeader = req.headers['authorization'];
@@ -122,12 +90,12 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
   let suppressed = 0;
 
   for (const candidate of candidates) {
-    // Backward-compatible: tests / callers may still pass bare sender
-    // strings via testDeps.candidateSenders; normalize either shape.
     const sender = typeof candidate === 'string' ? candidate : candidate.sender;
     const providerDeviceHash = typeof candidate === 'string' ? null : candidate.providerDeviceHash;
+    const rawBranch = typeof candidate === 'string' ? null : candidate.branch;
+    const branch = normalizeBranch(rawBranch);
 
-    // 1. Discovery-time handoff check — cheap short-circuit, no DB mutation.
+    // 1. Discovery-time handoff check
     const discoveryHandoffState = await handoffLookup(sender);
     if (discoveryHandoffState.status === 'waiting_human' || discoveryHandoffState.status === 'human_active') {
       suppressed++;
@@ -136,15 +104,25 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     }
 
     // 2. Atomic claim.
-    const claim = await claimFn(supabase, sender, { providerDeviceHash });
-    if (!claim) {
-      // Already claimed by a concurrent run, reopened by a newer inbound
-      // message, or not actually due — do nothing (spec: "if any condition
-      // fails: do nothing").
+      const claim = await claimFn(supabase, sender, { providerDeviceHash });
+      if (!claim) {
       continue;
     }
 
-    // 3. Blocker 3: re-verify handoff state didn't open between discovery and claim.
+    // Channel route validation: the closing message MUST leave through the
+    // same Redbox branch channel that owns this scoped conversation. If branch
+    // is missing/invalid, FAIL CLOSED — do NOT silently send through Bypass.
+    if (!branch) {
+      suppressed++;
+      logEvent({
+        event_type: 'conversation_idle_close_suppressed',
+        suppress_reason: 'missing_branch_route',
+      });
+      await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
+      continue;
+    }
+
+    // 3. Re-verify handoff state didn't open between discovery and claim.
     const preSendHandoffState = await handoffLookup(sender);
     if (preSendHandoffState.status === 'waiting_human' || preSendHandoffState.status === 'human_active') {
       suppressed++;
@@ -153,11 +131,8 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
       continue;
     }
 
-    // 4. Blocker 2: the FINAL check, immediately before the send — a customer
-    // can message again in the window that just elapsed (including during
-    // the handoff lookup above), and lifecycle state is the most volatile
-    // authority here. See the file-header note on why this must be last.
-    const stillValid = await verifyFn(supabase, sender, {
+    // 4. Verification check immediately before send.
+      const stillValid = await verifyFn(supabase, sender, {
       expectedLastCustomerMessageAt: claim.last_customer_message_at || null,
       providerDeviceHash,
     });
@@ -174,8 +149,8 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
 
     let sendResult;
     try {
-      sendResult = await guardedSend(sender, IDLE_CLOSE_MESSAGE, {});
-    } catch (_error) {
+        sendResult = await guardedSend(sender, IDLE_CLOSE_MESSAGE, { branch });
+      } catch (_error) {
       sendResult = { status: false };
     }
     const sent = Boolean(sendResult && sendResult.status !== false);

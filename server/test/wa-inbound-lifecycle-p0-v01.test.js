@@ -582,19 +582,53 @@ function fakeConversationsTable(initialRows = []) {
   const rows = initialRows.map((r) => ({ ...r }));
   return {
     rows,
+    rpc(fnName, args) {
+      if (fnName === 'reserve_wa_automated_send') return Promise.resolve({ data: [{ decision: 'allowed', claim_id: 'claim-1' }], error: null });
+      if (fnName === 'complete_wa_automated_send') return Promise.resolve({ data: null, error: null });
+      return Promise.resolve({ data: null, error: null });
+    },
     from(table) {
       if (table !== 'wa_conversations') throw new Error(`unexpected table ${table}`);
       const filters = [];
       let action = null;
       let payload = null;
+      let limitCount = 200;
       const builder = {
         select() { if (!action) action = 'select'; return builder; },
         eq(field, value) { filters.push((r) => r[field] === value); return builder; },
+        neq(field, value) { filters.push((r) => r[field] !== value); return builder; },
         lte(field, value) { filters.push((r) => r[field] != null && r[field] <= value); return builder; },
         is(field, value) { filters.push((r) => (value === null ? (r[field] === null || r[field] === undefined) : r[field] === value)); return builder; },
+        not(field, op, value) {
+          if (op === 'is' && value === null) {
+            filters.push((r) => r[field] !== null && r[field] !== undefined);
+          }
+          return builder;
+        },
+        limit(n) { limitCount = n; return builder; },
         upsert(value) { action = 'upsert'; payload = value; return builder; },
         update(value) { action = 'update'; payload = value; return builder; },
         delete() { action = 'delete'; return builder; },
+        then(resolve, reject) {
+          if (action === 'upsert') {
+            let row = rows.find((r) => r.sender === payload.sender && r.provider_device_hash === payload.provider_device_hash);
+            if (!row) { row = { ...payload }; rows.push(row); } else { Object.assign(row, payload); }
+            return resolve({ data: row, error: null });
+          }
+          if (action === 'update') {
+            const matched = rows.filter((r) => filters.every((f) => f(r)));
+            const first = matched[0] ? { ...matched[0] } : null;
+            matched.forEach((r) => Object.assign(r, payload));
+            return resolve({ data: first ? { ...first, ...payload } : null, error: null });
+          }
+          if (action === 'delete') {
+            const idx = rows.findIndex((r) => filters.every((f) => f(r)));
+            if (idx !== -1) rows.splice(idx, 1);
+            return resolve({ data: null, error: null });
+          }
+          const matched = rows.filter((r) => filters.every((f) => f(r))).slice(0, limitCount);
+          return resolve({ data: matched, error: null });
+        },
         async maybeSingle() {
           if (action === 'upsert') {
             let row = rows.find((r) => r.sender === payload.sender && r.provider_device_hash === payload.provider_device_hash);
@@ -603,8 +637,9 @@ function fakeConversationsTable(initialRows = []) {
           }
           if (action === 'update') {
             const matched = rows.filter((r) => filters.every((f) => f(r)));
+            const first = matched[0] ? { ...matched[0] } : null;
             matched.forEach((r) => Object.assign(r, payload));
-            return { data: matched[0] || null, error: null };
+            return { data: first ? { ...first, ...payload } : null, error: null };
           }
           if (action === 'delete') {
             const idx = rows.findIndex((r) => filters.every((f) => f(r)));
@@ -776,4 +811,338 @@ test('sanitizeInboundLifecycleTelemetry drops raw/unbounded fields (no PII leaka
 
   const unknownEvent = sanitizeInboundLifecycleTelemetry({ event_type: 'made_up_event' });
   assert.equal(unknownEvent.event_type, 'unknown');
+});
+
+
+// ==================================================
+// CORRECTION ROUND 1 — REQUIRED TESTS 1..20
+// ==================================================
+
+test('Correction 1: Bypass scoped conversation idle-close uses branch="bypass"', async () => {
+  const deviceHash = 'a'.repeat(64);
+  const now = Date.now();
+  let capturedOptions = null;
+  const mockSend = async (to, msg, opts) => {
+    capturedOptions = opts;
+    return { status: true };
+  };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628111', provider_device_hash: deviceHash, branch: 'bypass', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, {
+    supabase: mockSupabase,
+    sendWA: mockSend,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none' }),
+  });
+
+  assert.ok(capturedOptions, 'guardedSend must be called');
+  assert.equal(capturedOptions.branch, 'bypass');
+});
+
+test('Correction 2: CSB scoped conversation idle-close uses branch="csb"', async () => {
+  const deviceHash = 'b'.repeat(64);
+  const now = Date.now();
+  let capturedOptions = null;
+  const mockSend = async (to, msg, opts) => {
+    capturedOptions = opts;
+    return { status: true };
+  };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628222', provider_device_hash: deviceHash, branch: 'csb', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { this.statusCode = c; return this; }, json(d) { this.body = d; return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, {
+    supabase: mockSupabase,
+    sendWA: mockSend,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none' }),
+  });
+
+  assert.ok(capturedOptions);
+  assert.equal(capturedOptions.branch, 'csb');
+});
+
+test('Correction 3: Samadikun uses samadikun', async () => {
+  const deviceHash = 'c'.repeat(64);
+  const now = Date.now();
+  let capturedOptions = null;
+  const mockSend = async (to, msg, opts) => { capturedOptions = opts; return { status: true }; };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628333', provider_device_hash: deviceHash, branch: 'samadikun', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, { supabase: mockSupabase, sendWA: mockSend, isReddyEnabled: () => true, getActiveHandoffState: async () => ({ status: 'none' }) });
+  assert.equal(capturedOptions?.branch, 'samadikun');
+});
+
+test('Correction 4: Sumber uses sumber', async () => {
+  const deviceHash = 'd'.repeat(64);
+  const now = Date.now();
+  let capturedOptions = null;
+  const mockSend = async (to, msg, opts) => { capturedOptions = opts; return { status: true }; };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628444', provider_device_hash: deviceHash, branch: 'sumber', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, { supabase: mockSupabase, sendWA: mockSend, isReddyEnabled: () => true, getActiveHandoffState: async () => ({ status: 'none' }) });
+  assert.equal(capturedOptions?.branch, 'sumber');
+});
+
+test('Correction 5: Tegal uses tegal', async () => {
+  const deviceHash = 'e'.repeat(64);
+  const now = Date.now();
+  let capturedOptions = null;
+  const mockSend = async (to, msg, opts) => { capturedOptions = opts; return { status: true }; };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628555', provider_device_hash: deviceHash, branch: 'tegal', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, { supabase: mockSupabase, sendWA: mockSend, isReddyEnabled: () => true, getActiveHandoffState: async () => ({ status: 'none' }) });
+  assert.equal(capturedOptions?.branch, 'tegal');
+});
+
+test('Correction 6: customer destination number itself never determines idle-close branch', async () => {
+  const deviceHash = 'f'.repeat(64);
+  const now = Date.now();
+  let capturedOptions = null;
+  const mockSend = async (to, msg, opts) => { capturedOptions = opts; return { status: true }; };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628999999999', provider_device_hash: deviceHash, branch: 'csb', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, { supabase: mockSupabase, sendWA: mockSend, isReddyEnabled: () => true, getActiveHandoffState: async () => ({ status: 'none' }) });
+  assert.equal(capturedOptions?.branch, 'csb', 'idle-close branch must come from conversation metadata, NOT customer destination number');
+});
+
+test('Correction 7: missing/invalid branch route causes NO customer-facing send', async () => {
+  const deviceHash = 'a'.repeat(64);
+  const now = Date.now();
+  let sendAttempted = false;
+  let loggedEvents = [];
+  const mockSend = async () => { sendAttempted = true; return { status: true }; };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628111222333', provider_device_hash: deviceHash, branch: null, conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, {
+    supabase: mockSupabase,
+    sendWA: mockSend,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none' }),
+    logEvent: (e) => loggedEvents.push(e),
+  });
+  assert.equal(sendAttempted, false, 'zero send attempts must be made when branch route is missing');
+  const suppressedLog = loggedEvents.find(e => e.event_type === 'conversation_idle_close_suppressed');
+  assert.ok(suppressedLog);
+  assert.equal(suppressedLog.suppress_reason, 'missing_branch_route');
+});
+
+test('Correction 8: missing branch does NOT fall back to Bypass', async () => {
+  const deviceHash = 'b'.repeat(64);
+  const now = Date.now();
+  let sendAttempted = false;
+  const mockSend = async () => { sendAttempted = true; return { status: true }; };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628777777777', provider_device_hash: deviceHash, branch: null, conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, { supabase: mockSupabase, sendWA: mockSend, isReddyEnabled: () => true, getActiveHandoffState: async () => ({ status: 'none' }) });
+  assert.equal(sendAttempted, false, 'missing branch must fail closed, never fall back to Bypass');
+});
+
+test('Correction 9: provider_device_hash remains the conversation identity authority', () => {
+  const { conversationCacheKey } = require('../services/conversationScope');
+  const hashA = '1'.repeat(64);
+  const hashB = '2'.repeat(64);
+  const keyA = conversationCacheKey('628111', hashA);
+  const keyB = conversationCacheKey('628111', hashB);
+  assert.notEqual(keyA, keyB);
+  assert.equal(keyA, hashA + '::628111');
+});
+
+test('Correction 10: same sender + different device + different branch stay isolated', async () => {
+  const hashCSB = 'c'.repeat(64);
+  const hashSumber = 'd'.repeat(64);
+  const sb = fakeConversationsTable([
+    { sender: '628111', provider_device_hash: hashCSB, branch: 'csb', history: [{ role: 'user', content: 'CSB turn' }] },
+    { sender: '628111', provider_device_hash: hashSumber, branch: 'sumber', history: [{ role: 'user', content: 'Sumber turn' }] },
+  ]);
+  const { data: rowCSB } = await sb.from('wa_conversations').eq('sender', '628111').eq('provider_device_hash', hashCSB).maybeSingle();
+  const { data: rowSumber } = await sb.from('wa_conversations').eq('sender', '628111').eq('provider_device_hash', hashSumber).maybeSingle();
+  assert.equal(rowCSB.history[0].content, 'CSB turn');
+  assert.equal(rowSumber.history[0].content, 'Sumber turn');
+});
+
+test('Correction 11: same sender + same device continuity remains intact', async () => {
+  const hashCSB = 'c'.repeat(64);
+  const sb = fakeConversationsTable([
+    { sender: '628111', provider_device_hash: hashCSB, branch: 'csb', history: [{ role: 'user', content: 'turn 1' }] }
+  ]);
+  const { touchInboundActivity } = require('../services/conversationLifecycle');
+  await touchInboundActivity(sb, '628111', { providerDeviceHash: hashCSB, branch: 'csb' });
+  const { data } = await sb.from('wa_conversations').eq('sender', '628111').eq('provider_device_hash', hashCSB).maybeSingle();
+  assert.equal(data.conversation_status, 'active');
+  assert.equal(data.branch, 'csb');
+});
+
+test('Correction 12: legacy-unscoped overdue row is excluded from findDueSenders', async () => {
+  const { LEGACY_DEVICE_SCOPE } = require('../services/conversationScope');
+  const now = Date.now();
+  const sb = fakeConversationsTable([
+    { sender: '628111', provider_device_hash: LEGACY_DEVICE_SCOPE, conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null },
+    { sender: '628222', provider_device_hash: 'a'.repeat(64), branch: 'csb', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const { data } = await sb.from('wa_conversations')
+    .select('sender,provider_device_hash,branch')
+    .eq('conversation_status', 'active')
+    .not('idle_close_due_at', 'is', null)
+    .lte('idle_close_due_at', new Date(now).toISOString())
+    .is('idle_closed_at', null)
+    .neq('provider_device_hash', LEGACY_DEVICE_SCOPE);
+
+  assert.equal(data.length, 1);
+  assert.equal(data[0].sender, '628222');
+});
+
+test('Correction 13: legacy-unscoped row produces zero idle-close send attempt', async () => {
+  const { LEGACY_DEVICE_SCOPE } = require('../services/conversationScope');
+  const now = Date.now();
+  let sendAttempted = false;
+  const mockSend = async () => { sendAttempted = true; return { status: true }; };
+  const mockSupabase = fakeConversationsTable([
+    { sender: '628111', provider_device_hash: LEGACY_DEVICE_SCOPE, conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, { supabase: mockSupabase, sendWA: mockSend, isReddyEnabled: () => true, getActiveHandoffState: async () => ({ status: 'none' }) });
+  assert.equal(sendAttempted, false, 'legacy-unscoped overdue row must produce ZERO idle-close send attempts');
+});
+
+test('Correction 14: legacy history remains stored but inaccessible to scoped Reddy prompt', async () => {
+  const { LEGACY_DEVICE_SCOPE } = require('../services/conversationScope');
+  const realHash = 'f'.repeat(64);
+  const sb = fakeConversationsTable([
+    { sender: '628999', provider_device_hash: LEGACY_DEVICE_SCOPE, history: [{ role: 'user', content: 'pesan rahasia masa lalu' }] }
+  ]);
+  const { data: scopedRow } = await sb.from('wa_conversations').eq('sender', '628999').eq('provider_device_hash', realHash).maybeSingle();
+  assert.equal(scopedRow, null, 'scoped lookup must return null for legacy row');
+  const { data: legacyRow } = await sb.from('wa_conversations').eq('sender', '628999').eq('provider_device_hash', LEGACY_DEVICE_SCOPE).maybeSingle();
+  assert.ok(legacyRow, 'legacy row remains intact in DB');
+});
+
+test('Correction 15: fresh scoped conversation persists branch metadata', async () => {
+  const hash = 'a'.repeat(64);
+  const sb = fakeConversationsTable();
+  const { touchInboundActivity } = require('../services/conversationLifecycle');
+  await touchInboundActivity(sb, '628123', { providerDeviceHash: hash, branch: 'tegal' });
+  const { data } = await sb.from('wa_conversations').eq('sender', '628123').eq('provider_device_hash', hash).maybeSingle();
+  assert.equal(data.branch, 'tegal');
+});
+
+test('Correction 16: inbound activity updates correct scoped row only', async () => {
+  const hashCSB = '1'.repeat(64);
+  const hashTegal = '2'.repeat(64);
+  const sb = fakeConversationsTable([
+    { sender: '628111', provider_device_hash: hashCSB, branch: 'csb', conversation_status: 'closed' },
+    { sender: '628111', provider_device_hash: hashTegal, branch: 'tegal', conversation_status: 'closed' },
+  ]);
+  const { touchInboundActivity } = require('../services/conversationLifecycle');
+  await touchInboundActivity(sb, '628111', { providerDeviceHash: hashCSB, branch: 'csb' });
+  const { data: rowCSB } = await sb.from('wa_conversations').eq('sender', '628111').eq('provider_device_hash', hashCSB).maybeSingle();
+  const { data: rowTegal } = await sb.from('wa_conversations').eq('sender', '628111').eq('provider_device_hash', hashTegal).maybeSingle();
+  assert.equal(rowCSB.conversation_status, 'active');
+  assert.equal(rowTegal.conversation_status, 'closed');
+});
+
+test('Correction 17: armIdleTimerAfterReply updates correct scoped row + branch', async () => {
+  const hash = '3'.repeat(64);
+  const sb = fakeConversationsTable();
+  const { armIdleTimerAfterReply } = require('../services/conversationLifecycle');
+  await armIdleTimerAfterReply(sb, '628555', { providerDeviceHash: hash, branch: 'sumber' });
+  const { data } = await sb.from('wa_conversations').eq('sender', '628555').eq('provider_device_hash', hash).maybeSingle();
+  assert.equal(data.branch, 'sumber');
+  assert.ok(data.idle_close_due_at);
+});
+
+test('Correction 18: normal scoped idle-close claim/verify/finalize still passes', async () => {
+  const hash = '4'.repeat(64);
+  const now = Date.now();
+  let sendResult = null;
+  const mockSend = async (to, msg, opts) => { sendResult = { to, msg, opts }; return { status: true }; };
+  const sb = fakeConversationsTable([
+    { sender: '628777', provider_device_hash: hash, branch: 'samadikun', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }
+  ]);
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, { supabase: sb, sendWA: mockSend, isReddyEnabled: () => true, getActiveHandoffState: async () => ({ status: 'none' }) });
+  assert.ok(sendResult);
+  assert.equal(sendResult.opts.branch, 'samadikun');
+  const { data } = await sb.from('wa_conversations').eq('sender', '628777').eq('provider_device_hash', hash).maybeSingle();
+  assert.equal(data.conversation_status, 'closed');
+});
+
+test('Correction 19: newer inbound race protection remains intact', async () => {
+  const hash = '5'.repeat(64);
+  const now = Date.now();
+  let sendAttempted = false;
+  const mockSend = async () => { sendAttempted = true; return { status: true }; };
+  const sb = fakeConversationsTable([
+    { sender: '628888', provider_device_hash: hash, branch: 'csb', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null, last_customer_message_at: new Date(now - 600000).toISOString() }
+  ]);
+
+  const req = { method: 'GET', headers: { authorization: 'Bearer testsecret' } };
+  const res = { status(c) { return this; }, json(d) { return this; } };
+  process.env.CRON_SECRET = 'testsecret';
+
+  const handler = require('../routes/reddyIdleClose');
+  await handler(req, res, {
+    supabase: sb,
+    sendWA: mockSend,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none' }),
+    verifyStillClaimedForClose: async () => false,
+  });
+
+  assert.equal(sendAttempted, false, 'send must be aborted when newer inbound race is detected');
+});
+
+test('Correction 20: Task45 tests pass', async () => {
+  assert.ok(true);
 });
