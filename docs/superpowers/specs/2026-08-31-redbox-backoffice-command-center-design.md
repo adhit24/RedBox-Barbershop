@@ -103,7 +103,7 @@ LIVE instead) and never present DEMO data as real business numbers (`DemoBadge`:
 | # | Screen | Status | Backing |
 |---|---|---|---|
 | 1 | Backoffice Login | LIVE | shipped, §4 |
-| 2 | Command Center | LIVE / PARTIAL LIVE | `/api/admin/crm/command-center`, `owner-overview`, `owner-revenue`, `owner-payment-analytics`, `leaderboard`, `membership`, `/api/moka/status`+`sync-logs`, `/api/stockist/inventory/summary`+`dashboard/overview` |
+| 2 | Command Center | LIVE / PARTIAL LIVE | audited (§8a): `owner-overview` (cross-branch today), `owner-revenue?branch=all&period=` (revenue/ATV/trend/branch compare/top barbers/top services), `/api/moka/status` (health), `membership` (client-aggregated). Inventory Snapshot is **UNAVAILABLE** — see §8a. |
 | 3 | HR Employee List | DEMO | no `employees` table |
 | 4 | Employee Detail | DEMO | no `employees` table |
 | 5 | Attendance Overview | DEMO / PARTIAL | `barber_attendance` exists but has 2 rows — not a real source; `/api/admin/crm/attendance*` semantics don't match the intended company-wide HR attendance model |
@@ -113,7 +113,7 @@ LIVE instead) and never present DEMO data as real business numbers (`DemoBadge`:
 | 9 | Regular Payroll | DEMO | no salary/payroll backing |
 | 10 | Barber Payroll | DEMO | **no commission-rate source — never hardcode a %, e.g. no invented 30% rule** |
 | 11 | Payroll Employee Detail | DEMO | same as 8–10 |
-| 12 | Stockist Inventory Dashboard | LIVE (summary) | `/api/stockist/inventory/summary`, `/dashboard/overview` — read-only, `stockist.redboxbarbershop.com` remains operational source of truth |
+| 12 | Stockist Inventory Dashboard | **UNAVAILABLE** (auth gap, §8a) | `/api/stockist/*` all require `req.adminAuth.sessionVerified === true` + a role — Backoffice's shared-token auth never sets these. Not a missing-field gap; a 403 wall. Deferred, not routed around — `stockist.redboxbarbershop.com` remains operational source of truth regardless |
 | 13 | Reports Overview | LIVE / PARTIAL LIVE | directory + snapshot of 14–17 |
 | 14 | Branch Performance | LIVE / PARTIAL LIVE | `outlets` + bookings/transactions aggregation |
 | 15 | Customer Report | PARTIAL LIVE | `customers`/`bookings`; favorite barber/service need derivation |
@@ -193,7 +193,11 @@ components, route table) are established first in Workstream A.
   each workstream actually needs them, not spéculatively all at once), a thin
   per-domain `services/` layer (`crm.ts`, `moka.ts`, `stockist.ts`) so
   components never call `apiClient` directly for business data.
-- **B — Command Center + Operations** (real data, the product's daily-use core)
+- **B1 — Command Center** (real data — split from B2 after the data audit in §8a
+  showed Operations needs its own per-branch aggregation design)
+- **B2 — Operations** (needs N-branch aggregation of the branch-scoped
+  `command-center` endpoint's `booking_feed`/`home_service` fields — a separate
+  design decision from B1, sequenced right after it)
 - **C — CRM / Customer** (CRM Overview, Customer 360, Customer Report,
   Membership Report)
 - **D — Reports** (Reports Overview, Branch Performance, Barber Performance —
@@ -209,6 +213,52 @@ components, route table) are established first in Workstream A.
 Sequencing: A must land first. B–E (LIVE-first, highest business value) before
 F–H (DEMO, lower urgency, no production backing to wire up anyway). I can run
 anytime after A since it has no data dependency on the others.
+
+## 8a. Data audit findings (Workstream B1, before any code)
+
+Audited actual endpoint implementations rather than assuming shapes from names:
+
+- `GET /api/admin/crm/owner-overview` — no params, always cross-branch, today
+  only. Returns `{ today, branches: [{slug, name, revenue_moka, tx_moka,
+  revenue_web, tx_web, hadir, total_barbers, goshow, pending_bookings}],
+  totals: {revenue_moka, revenue_web, tx_total, hadir, goshow, pending} }`.
+- `GET /api/admin/crm/owner-revenue?branch=all&period=today|7d|30d|month` —
+  returns `{ summary: {revenue_moka, revenue_web, tx_total, avg_tx},
+  daily_trend: [{date, moka, web}], branch_compare: [{slug, name,
+  revenue_moka, revenue_web, tx_total}], top_barbers: [{barber_id, name,
+  branch, tx_count, revenue}], top_services: [{service_name, count,
+  revenue}] }`.
+- `GET /api/moka/status` — not gated by `adminAuth` at all (pre-existing,
+  unrelated finding, not something this project introduced or needs to fix).
+  Returns `{oauthConfigured, outlets: [{hasToken, tokenExpiry,
+  tokenExpired}], recentLogs: [{direction, status, created_at,
+  error_message}]}`.
+- `GET /api/admin/crm/membership` — flat array of all member profiles
+  (`user_key, full_name, membership_status: 'ACTIVE'|'INACTIVE',
+  current_tier, total_points, total_visits, created_at, last_visit, ...`).
+  No pre-aggregated counts — Command Center computes "active members," "new
+  this month" etc. client-side from this list.
+- `GET /api/admin/crm/command-center` and `GET /api/admin/crm/leaderboard` —
+  **both branch-scoped**, require a `branch` query param (and `leaderboard`
+  also requires `category`). Not cross-branch KPI sources; useful for
+  per-branch drill-down / Operations (§8, workstream B2) instead.
+- `GET /api/admin/crm/schedule` — a weekly work-day/off-day roster, not a
+  bookings feed. Not what Operations needs.
+
+**Confirmed blocker — Stockist is architecturally unreachable from Backoffice
+today, not just unwired:** every `/api/stockist/*` route calls
+`getVerifiedStockistAccess(req)`
+(`server/services/stockistAccess.js`), which requires
+`req.adminAuth.sessionVerified === true` and a role of
+`owner`/`manager`/`branch_admin`. Backoffice's TEMPORARY COMPATIBILITY AUTH
+(shared `x-admin-token`) sets `sessionVerified: false, role: null` in
+`adminAuth` (`server/index.js`) — every Stockist call gets a 403 regardless of
+how the frontend is built. **Decision (owner, this session): mark
+UNAVAILABLE, do not modify `getVerifiedStockistAccess` or the auth model to
+route around it.** Command Center's Inventory Snapshot and the whole Stockist
+Inventory Dashboard screen (workstream E) show an honest UNAVAILABLE state.
+Revisiting this is its own explicitly-scoped decision for later, not a silent
+workaround now.
 
 ## 9. Reusable component system
 
