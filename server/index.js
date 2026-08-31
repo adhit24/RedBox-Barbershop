@@ -45,6 +45,86 @@ const DB_TYPE = process.env.DATABASE_TYPE || 'supabase';
 // Express ignores client-supplied forwarding headers and uses the socket IP.
 app.set('trust proxy', process.env.VERCEL === '1' ? 1 : false);
 
+// ── Backoffice host dispatcher ──────────────────────────────────
+// Serves the standalone Backoffice SPA (backoffice/dist, a separate Vite/React
+// app — see docs/superpowers/specs/2026-08-31-redbox-backoffice-command-center-design.md)
+// for backoffice.redboxbarbershop.com only. Reuses this existing function
+// instead of a dedicated one to stay under the Hobby plan's 12-function cap.
+// Placed before every other middleware so it can never interact with them:
+// any other host, or any /api/* path even on this host, falls straight
+// through to `next()` and the rest of this file behaves exactly as before.
+const BACKOFFICE_HOST = 'backoffice.redboxbarbershop.com';
+const BACKOFFICE_DIST_DIR = path.join(__dirname, '..', 'backoffice', 'dist');
+const BACKOFFICE_INDEX_FILE = path.join(BACKOFFICE_DIST_DIR, 'index.html');
+const BACKOFFICE_MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
+  '.map': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
+};
+
+function resolveBackofficeFile(urlPath) {
+  const withoutQuery = urlPath.split('?')[0].split('#')[0];
+  let decoded;
+  try {
+    decoded = decodeURIComponent(withoutQuery);
+  } catch {
+    decoded = withoutQuery;
+  }
+  const normalized = path.normalize(decoded).replace(/^([/\\]?\.\.[/\\])+/, '');
+  const resolved = path.join(BACKOFFICE_DIST_DIR, normalized);
+  if (!resolved.startsWith(BACKOFFICE_DIST_DIR)) return null;
+  return resolved;
+}
+
+function sendBackofficeIndexFallback(res) {
+  fs.readFile(BACKOFFICE_INDEX_FILE, (err, data) => {
+    if (err) {
+      res.status(500).type('text/plain; charset=utf-8')
+        .send('Backoffice build not found. Run `npm --workspace=backoffice run build`.');
+      return;
+    }
+    res.status(200).set('Cache-Control', 'no-cache').type('text/html; charset=utf-8').send(data);
+  });
+}
+
+app.use((req, res, next) => {
+  if (req.hostname !== BACKOFFICE_HOST) return next();
+  if (req.path === '/api' || req.path.startsWith('/api/')) return next();
+
+  const requestedPath = req.path === '/' ? '/index.html' : req.path;
+  const filePath = resolveBackofficeFile(requestedPath);
+  if (!filePath) {
+    sendBackofficeIndexFallback(res);
+    return;
+  }
+
+  fs.readFile(filePath, (err, data) => {
+    if (err) {
+      // No matching static file → SPA client-side route (e.g. /hr, /attendance).
+      sendBackofficeIndexFallback(res);
+      return;
+    }
+    const ext = path.extname(filePath);
+    const contentType = BACKOFFICE_MIME_TYPES[ext] || 'application/octet-stream';
+    res.status(200)
+      .set('Cache-Control', ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable')
+      .type(contentType)
+      .send(data);
+  });
+});
+
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },

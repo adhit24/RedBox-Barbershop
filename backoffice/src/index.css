@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+/* Design tokens — from design_handoff_command_center/README.md (Design System). */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
+
+  --color-rb-bg: #f7f5ef;
+  --color-rb-surface: #ffffff;
+  --color-rb-border: #ebe7dc;
+  --color-rb-divider: #f2eee3;
+  --color-rb-text: #201c18;
+  --color-rb-text-secondary: #3d3934;
+  --color-rb-text-muted: #8a8479;
+  --color-rb-text-faint: #b2aa9c;
+
+  --color-rb-red: #c72820;
+  --color-rb-red-hover: #a5201a;
+  --color-rb-red-tint-bg: #fceae7;
+  --color-rb-red-tint-fg: #c0402a;
+
+  --color-rb-orange-tint-bg: #fceedf;
+  --color-rb-orange-tint-fg: #c07a24;
+  --color-rb-green-tint-bg: #e5f3ea;
+  --color-rb-green-tint-fg: #2f8f53;
+  --color-rb-blue-tint-bg: #e7eef6;
+  --color-rb-blue-tint-fg: #3e6fa6;
+  --color-rb-purple-tint-bg: #eeeaf6;
+  --color-rb-purple-tint-fg: #7159ac;
+  --color-rb-teal-tint-bg: #e2f1ec;
+  --color-rb-teal-tint-fg: #23806e;
+  --color-rb-yellow-tint-bg: #fbf1dc;
+  --color-rb-yellow-tint-fg: #ad8a22;
+
+  --radius-rb-button: 10px;
+  --radius-rb-card: 16px;
+  --radius-rb-pill: 999px;
+}
+
+body {
+  background-color: var(--color-rb-bg);
+  color: var(--color-rb-text);
+  font-family: var(--font-sans);
+}
