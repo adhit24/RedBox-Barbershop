@@ -178,7 +178,9 @@ async function runDryRunPlanner() {
     groups_multiple_booking_owner: 0,
     groups_no_booking_owner: 0,
 
-    groups_trusted_web_schedule_evidence: 0,
+    groups_single_trusted_web_schedule_owner: 0,
+    groups_multiple_trusted_web_schedule_owner: 0,
+    groups_no_trusted_web_schedule_owner: 0,
     groups_moka_schedule_evidence: 0,
 
     groups_membership_unique: 0,
@@ -231,9 +233,15 @@ async function runDryRunPlanner() {
     else if (bkOwners.size === 1) metrics.groups_single_booking_owner++;
     else metrics.groups_multiple_booking_owner++;
 
-    // Schedule evidence distribution
-    if (grpSchs.some(s => s.source === 'web')) metrics.groups_trusted_web_schedule_evidence++;
-    if (grpSchs.some(s => s.source === 'moka')) metrics.groups_moka_schedule_evidence++;
+    // Schedule evidence distribution (trusted web vs moka)
+    const webSchOwners = new Set(grpSchs.filter(s => s.source === 'web').map(s => s.customer_id));
+    if (webSchOwners.size === 0) metrics.groups_no_trusted_web_schedule_owner++;
+    else if (webSchOwners.size === 1) metrics.groups_single_trusted_web_schedule_owner++;
+    else metrics.groups_multiple_trusted_web_schedule_owner++;
+
+    if (grpSchs.some(s => s.source === 'moka')) {
+      metrics.groups_moka_schedule_evidence++;
+    }
 
     // Run canonical classification
     const plan = planMokaCustomerGroupReconciliation({
@@ -282,6 +290,12 @@ async function runDryRunPlanner() {
   console.log(`  groups_same_normalized_phone:                ${metrics.groups_same_normalized_phone}`);
   console.log(`  groups_multiple_distinct_normalized_phone:  ${metrics.groups_multiple_distinct_normalized_phone}`);
   console.log(`  groups_no_valid_phone:                       ${metrics.groups_no_valid_phone}\n`);
+
+  console.log('--- SCHEDULE EVIDENCE DISTRIBUTION ---');
+  console.log(`  groups_single_trusted_web_schedule_owner:   ${metrics.groups_single_trusted_web_schedule_owner}`);
+  console.log(`  groups_multiple_trusted_web_schedule_owner: ${metrics.groups_multiple_trusted_web_schedule_owner}`);
+  console.log(`  groups_no_trusted_web_schedule_owner:       ${metrics.groups_no_trusted_web_schedule_owner}`);
+  console.log(`  groups_moka_schedule_evidence:              ${metrics.groups_moka_schedule_evidence}\n`);
 
   console.log('--- MEMBERSHIP DISTRIBUTION ---');
   console.log(`  groups_membership_unique:       ${metrics.groups_membership_unique}`);

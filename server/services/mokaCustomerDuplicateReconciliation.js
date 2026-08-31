@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Task 17.3.1 — Moka Customer ID Duplicate Reconciliation (CRM Identity Integrity Round 5 Correction 2).
+ * Task 17.3.1 — Moka Customer ID Duplicate Reconciliation (CRM Identity Integrity Round 5 Correction 3).
  *
  * Single canonical classification and planning authority for duplicate moka_customer_id groups.
  *
@@ -10,8 +10,9 @@
  *      Transaction volume or booking ownership NEVER overrides conflicting identity.
  *   2. BOOKINGS VS SCHEDULES SEPARATION: bookings (customer intent) and schedules (operational)
  *      are distinct tables in production schema and evaluated separately.
- *   3. WEB SCHEDULE BOUNDARY: source='web' schedule is operational evidence and MUST NOT by itself
- *      promote a candidate to SAFE_AUTO_RECONCILE.
+ *   3. WEB SCHEDULE BOUNDARY & CONFLICT: source='web' schedule is operational evidence.
+ *      Multiple web schedule owners MUST be MANUAL_REVIEW (competing_trusted_web_schedule_ownership).
+ *      Single web schedule owner can ONLY support DETERMINISTIC_RECONCILIATION, NEVER SAFE_AUTO_RECONCILE by itself.
  *   4. MEMBERSHIP ACTIVATION AUTHORITY: Only `membership_activated_at != null` constitutes active membership authority.
  *      `member_profiles.phone` bridged to multiple same-phone candidates = membership_unresolved.
  *   5. FAIL-CLOSED LOOKUP ERRORS: Any evidence query failure results in LOOKUP_FAILED with NULL canonical ID.
@@ -153,12 +154,19 @@ function planMokaCustomerGroupReconciliation({
 
   // 6. Schedule Ownership Evidence (schedules table) — distinguish web vs moka
   const trustedWebScheduleMap = new Map();
+  const mokaScheduleMap = new Map();
+
   for (const s of scheduleRows || []) {
-    if (s.customer_id && candidateIds.has(s.customer_id) && s.source === 'web') {
-      trustedWebScheduleMap.set(s.customer_id, (trustedWebScheduleMap.get(s.customer_id) || 0) + 1);
+    if (s.customer_id && candidateIds.has(s.customer_id)) {
+      if (s.source === 'web') {
+        trustedWebScheduleMap.set(s.customer_id, (trustedWebScheduleMap.get(s.customer_id) || 0) + 1);
+      } else if (s.source === 'moka') {
+        mokaScheduleMap.set(s.customer_id, (mokaScheduleMap.get(s.customer_id) || 0) + 1);
+      }
     }
   }
   const candidatesWithWebSchedule = Array.from(trustedWebScheduleMap.keys());
+  const candidatesWithMokaSchedule = Array.from(mokaScheduleMap.keys());
 
   // 7. Membership Authority Bridge & Bounded Evidence Derivation
   // Activation authority strictly requires membership_activated_at IS NOT NULL
@@ -185,7 +193,7 @@ function planMokaCustomerGroupReconciliation({
   if (activatedMpCount === 0) {
     derivedMembershipStatus = 'membership_none';
   } else {
-    // Check if distinct activated member profiles map to different candidate IDs
+
     const candidateIdsWithActivatedMp = new Set();
     let hasSharedPhoneMatchingMultipleCandidates = false;
 
@@ -293,7 +301,26 @@ function planMokaCustomerGroupReconciliation({
     });
   }
 
-  // RULE 5: Unique Verified Transaction Owner (same phone or no phone conflict)
+  // RULE 5: Competing Trusted Web Schedule Ownership -> MANUAL REVIEW
+  if (candidatesWithWebSchedule.length > 1 && candidatesWithTx.length === 0 && candidatesWithBooking.length === 0) {
+    conflictFlags.push('competing_trusted_web_schedule_ownership');
+    return buildResult({
+      mokaId: cleanMokaId,
+      classification: CLASSIFICATION.MANUAL_REVIEW,
+      reasonCode: 'competing_trusted_web_schedule_ownership',
+      candidateRows,
+      canonicalId: null,
+      transactionRows,
+      bookingRows,
+      scheduleRows,
+      memberEvidenceRows,
+      otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
+      conflictFlags,
+    });
+  }
+
+  // RULE 6: Unique Verified Transaction Owner (same phone or no phone conflict)
   if (candidatesWithTx.length === 1) {
     const canonicalId = candidatesWithTx[0];
     return buildResult({
@@ -312,7 +339,7 @@ function planMokaCustomerGroupReconciliation({
     });
   }
 
-  // RULE 6: Unique Booking Owner (bookings table)
+  // RULE 7: Unique Booking Owner (bookings table)
   if (candidatesWithBooking.length === 1 && candidatesWithTx.length === 0) {
     const canonicalId = candidatesWithBooking[0];
     return buildResult({
@@ -331,11 +358,10 @@ function planMokaCustomerGroupReconciliation({
     });
   }
 
-  // RULE 7: Same Phone across all candidates + Single Active Member / Web Schedule / Zero Evidence
+  // RULE 8: Same Phone across all candidates + Single Active Member / Single Web Schedule / Zero Evidence
   if (sameNormalizedPhoneAcrossAllCandidates && candidatesWithTx.length === 0 && candidatesWithBooking.length === 0) {
     let canonicalId = null;
     if (derivedMembershipStatus === 'membership_unique_candidate') {
-      // Find the candidate ID that has the unique activated member profile
       for (const [mpId, cSet] of activatedMpMap.entries()) {
         if (cSet.size === 1) canonicalId = Array.from(cSet)[0];
       }
@@ -363,7 +389,7 @@ function planMokaCustomerGroupReconciliation({
     });
   }
 
-  // RULE 8: Default Manual Review (no valid phone, competing evidence, or unresolved)
+  // RULE 9: Default Manual Review (no valid phone, competing evidence, or unresolved)
   if (hasNoValidPhone) {
     conflictFlags.push('no_valid_phone_conflict');
   }
