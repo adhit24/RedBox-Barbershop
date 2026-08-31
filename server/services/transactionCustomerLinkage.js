@@ -345,20 +345,44 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
 
   // 2. Safe Backfill Moka ID onto an existing uniquely linked phone customer
   if (canonicalPlan.status === STATUS.LINKED_UNIQUE_PHONE && isNonEmptyString(canonicalPlan.customer_id) && mokaId) {
-    const { data: existingMokaRows } = await supabase
-      .from('customers')
-      .select('id')
-      .eq('moka_customer_id', mokaId);
+    let existingMokaRows = null;
+    let mokaErr = null;
+    try {
+      const res = await supabase
+        .from('customers')
+        .select('id')
+        .eq('moka_customer_id', mokaId);
+      existingMokaRows = res.data;
+      mokaErr = res.error;
+    } catch (err) {
+      mokaErr = err;
+    }
 
-    if (!existingMokaRows || existingMokaRows.length === 0) {
-      await supabase
+    if (mokaErr || !Array.isArray(existingMokaRows)) {
+      return { action: 'backfill_blocked_lookup_failed', customer_id: canonicalPlan.customer_id };
+    }
+
+    if (existingMokaRows.length > 0) {
+      return { action: 'backfill_skipped_duplicate_moka_id', customer_id: canonicalPlan.customer_id };
+    }
+
+    // Proven 0 matches -> execute UPDATE
+    let updateErr = null;
+    try {
+      const updateRes = await supabase
         .from('customers')
         .update({ moka_customer_id: mokaId })
         .eq('id', canonicalPlan.customer_id);
-      return { action: 'moka_id_backfilled', customer_id: canonicalPlan.customer_id };
-    } else {
-      return { action: 'backfill_skipped_duplicate_moka_id', customer_id: canonicalPlan.customer_id };
+      updateErr = updateRes.error;
+    } catch (err) {
+      updateErr = err;
     }
+
+    if (updateErr) {
+      return { action: 'backfill_failed', customer_id: canonicalPlan.customer_id };
+    }
+
+    return { action: 'moka_id_backfilled', customer_id: canonicalPlan.customer_id };
   }
 
   // 3. Safe Customer Creation: ONLY when canonical plan is NOT_FOUND
@@ -367,41 +391,75 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
       return { action: 'none', customer_id: null, reason: 'insufficient_identity_input' };
     }
 
-    // Verify no conflicting moka_customer_id exists
+    // Verify no conflicting moka_customer_id exists (FAIL CLOSED on lookup error)
     if (mokaId) {
-      const { data: mokaCheck } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('moka_customer_id', mokaId);
-      if (mokaCheck && mokaCheck.length > 0) {
+      let mokaRows = null;
+      let mokaErr = null;
+      try {
+        const res = await supabase
+          .from('customers')
+          .select('id')
+          .eq('moka_customer_id', mokaId);
+        mokaRows = res.data;
+        mokaErr = res.error;
+      } catch (err) {
+        mokaErr = err;
+      }
+
+      if (mokaErr || !Array.isArray(mokaRows)) {
+        return { action: 'creation_blocked_lookup_failed', customer_id: null };
+      }
+
+      if (mokaRows.length > 0) {
         return { action: 'creation_blocked_conflicting_moka_id', customer_id: null };
       }
     }
 
-    // Verify no conflicting phone exists
+    // Verify no conflicting phone exists (FAIL CLOSED on lookup error)
     if (phoneE164) {
-      const { data: phoneCheck } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('phone_e164', phoneE164);
-      if (phoneCheck && phoneCheck.length > 0) {
+      let phoneRows = null;
+      let phoneErr = null;
+      try {
+        const res = await supabase
+          .from('customers')
+          .select('id')
+          .eq('phone_e164', phoneE164);
+        phoneRows = res.data;
+        phoneErr = res.error;
+      } catch (err) {
+        phoneErr = err;
+      }
+
+      if (phoneErr || !Array.isArray(phoneRows)) {
+        return { action: 'creation_blocked_lookup_failed', customer_id: null };
+      }
+
+      if (phoneRows.length > 0) {
         return { action: 'creation_blocked_conflicting_phone', customer_id: null };
       }
     }
 
-    // Safely insert new customer row
-    const { data: newCust, error: insertErr } = await supabase
-      .from('customers')
-      .insert({
-        name,
-        wa: phoneE164 || '',
-        phone_e164: phoneE164 || null,
-        email,
-        source: 'moka',
-        moka_customer_id: mokaId || null,
-      })
-      .select('id')
-      .single();
+    // Both lookups proven ZERO_MATCHES with 0 errors -> execute INSERT
+    let newCust = null;
+    let insertErr = null;
+    try {
+      const res = await supabase
+        .from('customers')
+        .insert({
+          name,
+          wa: phoneE164 || '',
+          phone_e164: phoneE164 || null,
+          email,
+          source: 'moka',
+          moka_customer_id: mokaId || null,
+        })
+        .select('id')
+        .single();
+      newCust = res.data;
+      insertErr = res.error;
+    } catch (err) {
+      insertErr = err;
+    }
 
     if (insertErr || !newCust) {
       return { action: 'creation_failed', customer_id: null };
@@ -412,6 +470,7 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
 
   return { action: 'none', customer_id: canonicalPlan.customer_id || null };
 }
+
 
 module.exports = {
   STATUS,
