@@ -79,8 +79,22 @@ function createGuardedSend({
       return { status: false, suppressed: true, reason: 'ai_kill_switch' };
     }
 
+    // P0-A: Price placeholder guard pass (runs BEFORE reservation & contentHash)
+    const { guardPricePlaceholders } = require('../agents/reddy/personalityPolicy');
+    const priceGuarded = guardPricePlaceholders(message, {
+      branch,
+      serviceId: options.serviceId,
+      serviceName: options.serviceName,
+      authoritativePriceResolver: options.authoritativePriceResolver,
+    });
+    const finalOutboundText = priceGuarded.sanitizedReply;
+    if (priceGuarded.blocked) {
+      logEvent({ event_type: 'price_placeholder_blocked', branch });
+    }
+
+    // Hashes computed on final sanitized text
     const destinationHash = hashValue(normalizePhoneDigits(to));
-    const contentHash = hashValue(String(message || '').trim().toLowerCase());
+    const contentHash = hashValue(String(finalOutboundText || '').trim().toLowerCase());
     const reservation = await reserveAutomatedSend(supabase, {
       inboundEventId: inboundEventRowId,
       destinationHash,
@@ -99,28 +113,18 @@ function createGuardedSend({
     }
 
     logEvent({ event_type: 'outbound_send_attempt', branch });
-    
-    // P0-A: Price placeholder guard pass
-    const { guardPricePlaceholders } = require('../agents/reddy/personalityPolicy');
-    const priceGuarded = guardPricePlaceholders(message, { branch });
-    message = priceGuarded.sanitizedReply;
-    if (priceGuarded.blocked) {
-      logEvent({ event_type: 'price_placeholder_blocked', branch });
-    }
-
-    // P1-A: Final outbound after guards observability
-    logEvent({ event_type: 'final_outbound_after_guards', branch, metadata: { text_length: message.length } });
+    logEvent({ event_type: 'final_outbound_after_guards', branch, metadata: { text_length: finalOutboundText.length } });
 
     // Task 16 is observation-only and fail-open. Evaluation storage or rule
     // failures must never block, replace, or mutate the customer reply.
-    await observeMessageFailOpen(observeMessage, message, {
+    await observeMessageFailOpen(observeMessage, finalOutboundText, {
       branch,
       inboundEventRowId,
       ...(options.evaluationContext && typeof options.evaluationContext === 'object' ? options.evaluationContext : {}),
     });
     let result;
     try {
-      result = await realSend(to, message, options);
+      result = await realSend(to, finalOutboundText, options);
     } catch (error) {
       await markOutboundResult(supabase, {
         inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent: false,
@@ -130,7 +134,7 @@ function createGuardedSend({
     }
     const sent = Boolean(result && result.status !== false);
     if (sent) {
-      try { await onSendSuccess(to, message, options); } catch (_error) { /* never blocks the send result */ }
+      try { await onSendSuccess(to, finalOutboundText, options); } catch (_error) { /* never blocks the send result */ }
     }
     await markOutboundResult(supabase, {
       inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent,

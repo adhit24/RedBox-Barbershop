@@ -2799,6 +2799,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
 
     // Proses AI + kirim WA DULU (sebelum res.json) — Lambda dalam state sinkron = network lebih cepat.
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
+    let activeFailureReason = null;
     const t0 = Date.now();
     try {
       const processMessage = testDeps.handleMessage || handleMessage;
@@ -2818,8 +2819,12 @@ module.exports = async function handler(req, res, testDeps = {}) {
         getHandoffState: async () => handoffState,
       });
       const ms = Date.now() - t0;
+      if (result && result.error) {
+        activeFailureReason = result.failureReason || result.reason || 'internal_exception';
+      }
       console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
     } catch (err) {
+      activeFailureReason = err.failureReason || err.reason || 'internal_exception';
       console.error('[WA Bot] Process error:', err.message);
     }
 
@@ -2832,12 +2837,8 @@ module.exports = async function handler(req, res, testDeps = {}) {
       // inner try above — a normal return, an explicit terminalizeInbound()
       // call a few lines up (already a guaranteed no-op by the time this
       // runs), or an exception propagating out to the outer catch below.
-      // Conditional on inboundEventRowId being non-null (only ever true when
-      // THIS request itself claimed the row — never a 'duplicate' hit) and
-      // on the row still being at 'received'/'processing' — see
-      // terminalizeIfStillProcessing's own doc header for why 'sending' is
-      // deliberately excluded (that remains the guarded-send RPCs' domain).
       await terminalizeIfStillProcessing(supabaseForGuard, inboundEventRowId, {
+        reason: activeFailureReason || 'unexpected_pre_send_exit',
         branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
       });
     }

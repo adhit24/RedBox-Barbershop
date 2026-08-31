@@ -158,14 +158,49 @@ function buildReddyPersonalityPrompt(options = {}) {
  * Inspects outbound reply text for template placeholders or invalid price patterns
  * like RpXX.XXX, XX.XXX, RpXXX, XXX, TBD, N/A, ${price}, {price}, [price], harga belum diisi, etc.
  *
- * Resolves Gentleman Grooming pricing deterministically:
- *   - CSB = Rp120.000
- *   - Non-CSB (Bypass, Sumber, Samadikun, Tegal, etc.) = Rp95.000
+ * Replacement with numeric price is allowed ONLY when:
+ * 1. service identity is deterministic (via serviceId, serviceName, or single catalog alias in text)
+ * 2. branch identity is deterministic when branch price differs
+ * 3. authoritative catalog contains price for that exact service/branch
+ * 4. resolver result is valid numeric price
  *
- * @param {string} replyText
- * @param {object} options - { branch }
- * @returns {{ sanitizedReply: string, blocked: boolean }}
+ * Otherwise:
+ * Removes/blocks placeholder and uses honest no-number fallback:
+ * "Harga pastinya belum bisa aku pastikan dari data resmi yang tersedia."
  */
+function defaultServicePriceResolver({ serviceId, serviceName, text, branch }) {
+  const { REDBOX_KNOWLEDGE } = require('./knowledge/redboxKnowledge');
+  const services = REDBOX_KNOWLEDGE.services || [];
+  const branchLower = String(branch || '').toLowerCase();
+  const isCsb = branchLower === 'csb';
+
+  let foundService = null;
+  if (serviceId) {
+    foundService = services.find((s) => s.id === serviceId);
+  } else if (serviceName) {
+    const snLower = String(serviceName).toLowerCase();
+    foundService = services.find((s) => s.name.toLowerCase() === snLower || s.aliases.includes(snLower));
+  } else if (text) {
+    const tLower = String(text).toLowerCase();
+    const matches = services.filter((s) => s.aliases.some((alias) => tLower.includes(alias)));
+    if (matches.length === 1) {
+      foundService = matches[0];
+    }
+  }
+
+  if (!foundService || !foundService.prices) {
+    return { resolved: false, priceFormatted: null };
+  }
+
+  const numericPrice = isCsb ? foundService.prices.csb : foundService.prices.standard;
+  if (typeof numericPrice === 'number' && numericPrice > 0) {
+    const formatted = 'Rp' + numericPrice.toLocaleString('id-ID');
+    return { resolved: true, priceFormatted: formatted, serviceId: foundService.id };
+  }
+
+  return { resolved: false, priceFormatted: null };
+}
+
 function guardPricePlaceholders(replyText = '', options = {}) {
   if (typeof replyText !== 'string' || !replyText.trim()) {
     return { sanitizedReply: replyText, blocked: false };
@@ -177,16 +212,26 @@ function guardPricePlaceholders(replyText = '', options = {}) {
     return { sanitizedReply: replyText, blocked: false };
   }
 
-  const branchLower = String(options.branch || '').toLowerCase();
-  const isCsb = branchLower === 'csb';
-  const verifiedPrice = isCsb ? 'Rp120.000' : 'Rp95.000';
+  const resolver = typeof options.authoritativePriceResolver === 'function'
+    ? options.authoritativePriceResolver
+    : defaultServicePriceResolver;
 
-  let sanitizedReply = replyText.replace(placeholderRegex, (match) => {
-    if (/harga\s+belum\s+diisi|TBD|N\/A|\?\?/i.test(match) && !options.branch) {
-      return 'Harga pastinya belum bisa aku pastikan dari data yang tersedia';
-    }
-    return verifiedPrice;
+  const priceRes = resolver({
+    serviceId: options.serviceId,
+    serviceName: options.serviceName,
+    text: replyText,
+    branch: options.branch,
   });
+
+  let sanitizedReply;
+  if (priceRes && priceRes.resolved && priceRes.priceFormatted) {
+    sanitizedReply = replyText.replace(placeholderRegex, priceRes.priceFormatted);
+  } else {
+    sanitizedReply = replyText.replace(
+      placeholderRegex,
+      'Harga pastinya belum bisa aku pastikan dari data resmi yang tersedia',
+    );
+  }
 
   return { sanitizedReply, blocked: true };
 }
@@ -199,4 +244,5 @@ module.exports = {
   isExplicitClosureSignal,
   buildReddyPersonalityPrompt,
   guardPricePlaceholders,
+  defaultServicePriceResolver,
 };
