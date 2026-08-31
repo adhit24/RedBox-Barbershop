@@ -119,6 +119,9 @@ const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtime
 const {
   hasIndonesianLanguageSignal, isForeignLanguage, detectForeignLanguage, resolveResponseLanguage,
 } = require('../../server/agents/reddy/languageResolution');
+const {
+  buildResponseLanguagePromptBlock, buildGenericTemporaryError,
+} = require('../../server/agents/reddy/responseLanguagePresentation');
 const { loadCanonicalBarbers, resolveCanonicalBarber } = require('../../server/services/canonicalBarberResolver');
 const {
   extractFirstName,
@@ -727,7 +730,7 @@ IDENTITAS & GAYA KOMUNIKASI
 - Nama kamu: Reddy
 - Panggil pelanggan dengan nama mereka atau "Kak"
 - Pakai "aku" untuk diri sendiri
-- Bahasa Indonesia casual alami: "udah", "sip", "yuk", "noted", "oke banget"
+- Gaya bicara hangat, santai, ringkas, dan WhatsApp-native. Kalau balasan dalam Bahasa Indonesia, pakai gaya casual alami: "udah", "sip", "yuk", "noted", "oke banget". Kalau balasan dalam bahasa lain (lihat instruksi RESPONSE LANGUAGE di bagian akhir prompt ini), pertahankan kehangatan dan keringkasan yang sama secara alami dalam bahasa tersebut — JANGAN paksakan slang Bahasa Indonesia di atas ke bahasa lain.
 - Empati dulu sebelum jawab - kalau pelanggan ragu/bingung, validasi dulu secara ramah.
 - Pesan SINGKAT & padat - max 3-4 kalimat ringkas.
 - JANGAN: "Mohon", "Silakan", "Yang terhormat", "Berikut kami informasikan"
@@ -912,6 +915,17 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     systemPrompt += `\n\n# INSTRUKSI SUPRESI SALAM (SESI AKTIF)\nSesi percakapan ini sedang AKTIF (percakapan berlanjut). DILARANG mengulang salam pembuka ("Hai Kak ${firstName || ''}") dan DILARANG mengulang sapaan nama. Langsung jawab pertanyaan pelanggan.`;
   }
 
+  // Round 3 correction: response_language is resolved once, upstream, by
+  // resolveResponseLanguage() (the single language authority) and threaded
+  // in via conversationContext.response_language. callOpenAI never
+  // re-detects language itself — not from this function's own arguments
+  // (userMessage, sender/phone) and not from country/branch — it only
+  // renders the already-resolved value as a bounded presentation
+  // instruction, appended last so it outranks any earlier casual-Indonesian
+  // style example in this prompt.
+  const responseLanguage = conversationContext?.response_language;
+  systemPrompt += buildResponseLanguagePromptBlock(responseLanguage);
+
   const messages = [
     { role: 'system', content: systemPrompt },
     ...preparedHistory,
@@ -932,7 +946,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     clearTimeout(timeoutHandle);
   }
 
-  const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf Kak, sistem sedang mengalami gangguan sementara. Coba lagi beberapa saat lagi.';
+  const reply = completion.choices[0]?.message?.content?.trim() || buildGenericTemporaryError(responseLanguage);
 
   // Simpan ke cache & Supabase via testable helper
   if (!conversationContext?.reply_persistence_deferred) {
@@ -947,10 +961,23 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 // Used only when OpenAI is unavailable or times out.
 
 function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null, responseLanguage = 'indonesian') {
+  const normalizedLanguage = String(responseLanguage || 'indonesian').toLowerCase();
+  const isEnglish = normalizedLanguage === 'english';
+  const isIndonesian = normalizedLanguage === 'indonesian';
+
+  // Round 3 correction: this deterministic keyword tree only has EN/ID
+  // business templates. A resolved language outside that pair (french,
+  // german, spanish, malay, arabic, japanese, korean, chinese, turkish)
+  // must not silently fall through to an Indonesian business answer — use
+  // the one generic, language-aware temporary-error sentence instead of
+  // inventing dozens of business templates.
+  if (!isEnglish && !isIndonesian) {
+    return buildGenericTemporaryError(normalizedLanguage);
+  }
+
   const t = text.toLowerCase();
   const fn = extractFirstName(name);
   const nameLabel = fn ? 'Kak ' + fn : 'Kak';
-  const isEnglish = String(responseLanguage || '').toLowerCase() === 'english';
 
   const has = (kws) => kws.some(k => t.includes(k));
   const bConfig = getBranchConfig(branch);
