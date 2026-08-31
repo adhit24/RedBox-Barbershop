@@ -99,6 +99,18 @@ function createGuardedSend({
     }
 
     logEvent({ event_type: 'outbound_send_attempt', branch });
+    
+    // P0-A: Price placeholder guard pass
+    const { guardPricePlaceholders } = require('../agents/reddy/personalityPolicy');
+    const priceGuarded = guardPricePlaceholders(message, { branch });
+    message = priceGuarded.sanitizedReply;
+    if (priceGuarded.blocked) {
+      logEvent({ event_type: 'price_placeholder_blocked', branch });
+    }
+
+    // P1-A: Final outbound after guards observability
+    logEvent({ event_type: 'final_outbound_after_guards', branch, metadata: { text_length: message.length } });
+
     // Task 16 is observation-only and fail-open. Evaluation storage or rule
     // failures must never block, replace, or mutate the customer reply.
     await observeMessageFailOpen(observeMessage, message, {

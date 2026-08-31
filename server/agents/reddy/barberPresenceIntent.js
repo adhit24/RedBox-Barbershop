@@ -5,17 +5,23 @@ const BARBER_NAME = "[\\p{L}][\\p{L}'.-]{1,30}";
 const NAME_PREFIX = `${HONORIFIC}${BARBER_NAME}`;
 
 const CURRENT_PRESENCE_QUERY = new RegExp(
-  `^\\s*${NAME_PREFIX}\\s+(?:`
-    + 'ada(?:\\s+(?:kok|di\\s+[\\p{L}][\\p{L} .-]{0,30}))?'
+  `^\\s*(?:${NAME_PREFIX}|(?:si\\s+)?${BARBER_NAME}|barbernya|kapsternya)?\\s*(?:`
+    + 'ada(?:\\s+(?:kok|di\\s+[\\p{L}][\\p{L} .-]{0,30}|sekarang))?'
     + '|masuk(?:\\s+(?:gak|nggak|enggak|ga))?'
     + '|kerja|hadir|standby'
-    + '|lagi\\s+di\\s+[\\p{L}][\\p{L} .-]{0,30}'
+    + '|(?:lagi|sedang)\\s+(?:nyukur(?:\\s+(?:atau|n\\/a|gak|nggak|enggak))?|cukur(?:\\s+orang)?|kerja|sibuk|kosong|ada\\s+customer|di\\s+[\\p{L}][\\p{L} .-]{0,30})'
     + '|di\\s+(?:sana|situ|sini)'
     + '|ready|free|available|tersedia'
+    + '|bisa\\s+langsung(?:\\s+sekarang)?'
     + '|bisa\\s+sekarang'
   + ')(?:\\s+(?:hari\\s+ini|sekarang))?\\s*(?:[?!.]+)?\\s*$',
   'iu',
 );
+
+const GENERAL_PRESENCE_PATTERNS = [
+  /\b(?:lagi|sedang)\s+(?:nyukur|cukur(?:\s+orang)?|kerja|sibuk|kosong|ada\s+customer)\b/i,
+  /\b(?:bisa\s+langsung|kapsternya\s+ada|barbernya\s+ada)\b/i,
+];
 
 // International WhatsApp multilingual contract, correction round 2: the
 // contract's own required examples ("Husenさんは今いますか？",
@@ -38,7 +44,7 @@ const SPANISH_PRESENCE_QUERY = new RegExp(
   'iu',
 );
 
-const AVAILABILITY_SIGNAL = /\b(ready|free|available|tersedia)\b|\bbisa\s+sekarang\b|空いて|フリー|対応できます|disponible|libre/i;
+const AVAILABILITY_SIGNAL = /\b(ready|free|available|tersedia|kosong)\b|\bbisa\s+(?:langsung|sekarang)\b|空いて|フリー|対応できます|disponible|libre/i;
 
 /**
  * Classifies only named, current barber presence/availability questions.
@@ -49,6 +55,7 @@ function classifyBarberPresenceQuery(text) {
   const raw = String(text || '').trim();
   const matched = raw && (
     CURRENT_PRESENCE_QUERY.test(raw)
+    || GENERAL_PRESENCE_PATTERNS.some((p) => p.test(raw))
     || JAPANESE_PRESENCE_QUERY.test(raw)
     || SPANISH_PRESENCE_QUERY.test(raw)
   );

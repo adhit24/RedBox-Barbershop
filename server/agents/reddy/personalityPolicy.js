@@ -153,6 +153,44 @@ function buildReddyPersonalityPrompt(options = {}) {
   return prompt;
 }
 
+/**
+ * P0-A: Final Outbound Price Placeholder Guard.
+ * Inspects outbound reply text for template placeholders or invalid price patterns
+ * like RpXX.XXX, XX.XXX, RpXXX, XXX, TBD, N/A, ${price}, {price}, [price], harga belum diisi, etc.
+ *
+ * Resolves Gentleman Grooming pricing deterministically:
+ *   - CSB = Rp120.000
+ *   - Non-CSB (Bypass, Sumber, Samadikun, Tegal, etc.) = Rp95.000
+ *
+ * @param {string} replyText
+ * @param {object} options - { branch }
+ * @returns {{ sanitizedReply: string, blocked: boolean }}
+ */
+function guardPricePlaceholders(replyText = '', options = {}) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, blocked: false };
+  }
+
+  const placeholderRegex = /(?:\b(?:Rp\s*)?(?:XX\.XXX|XX\.XX|XXX\.XXX|XXX|XX|TBD|N\/A|\?\?|harga\s+belum\s+diisi)\b|\$\{price\}|\{price\}|\[price\])/gi;
+
+  if (!placeholderRegex.test(replyText)) {
+    return { sanitizedReply: replyText, blocked: false };
+  }
+
+  const branchLower = String(options.branch || '').toLowerCase();
+  const isCsb = branchLower === 'csb';
+  const verifiedPrice = isCsb ? 'Rp120.000' : 'Rp95.000';
+
+  let sanitizedReply = replyText.replace(placeholderRegex, (match) => {
+    if (/harga\s+belum\s+diisi|TBD|N\/A|\?\?/i.test(match) && !options.branch) {
+      return 'Harga pastinya belum bisa aku pastikan dari data yang tersedia';
+    }
+    return verifiedPrice;
+  });
+
+  return { sanitizedReply, blocked: true };
+}
+
 module.exports = {
   FORBIDDEN_ADDRESS_TERMS_REGEX,
   extractFirstName,
@@ -160,4 +198,5 @@ module.exports = {
   isExplicitGreeting,
   isExplicitClosureSignal,
   buildReddyPersonalityPrompt,
+  guardPricePlaceholders,
 };

@@ -92,6 +92,9 @@ const EVENT_DEFINITIONS = Object.freeze({
   crm_identity_ambiguous: ['HIGH', 'crm_identity', 'CRM_IDENTITY_AMBIGUOUS'],
   crm_duplicate_identity_detected: ['HIGH', 'crm_identity', 'CRM_DUPLICATE_IDENTITY_DETECTED'],
   crm_identity_lookup_failed: ['HIGH', 'crm_identity', 'CRM_IDENTITY_LOOKUP_FAILED'],
+  price_placeholder_blocked: ['HIGH', 'quality', 'PRICE_PLACEHOLDER_BLOCKED'],
+  final_outbound_after_guards: ['INFO', 'outbound', 'FINAL_OUTBOUND_AFTER_GUARDS'],
+  request_ack_without_fulfillment: ['WARNING', 'quality', 'REQUEST_ACK_WITHOUT_FULFILLMENT'],
 });
 
 let supabaseProvider = () => null;
