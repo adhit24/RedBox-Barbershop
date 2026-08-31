@@ -416,6 +416,46 @@ function logInboundLifecycleEvent(event = {}) {
   return safe;
 }
 
+// Task 17.3 — Transaction -> Customer Linkage Telemetry
+const ALLOWED_TRANSACTION_LINKAGE_STATUSES = new Set([
+  'linked_existing_authoritative',
+  'linked_unique_moka',
+  'linked_unique_phone',
+  'ambiguous_moka',
+  'ambiguous_phone',
+  'not_found',
+  'invalid',
+  'lookup_failed',
+  'unknown',
+]);
+
+const ALLOWED_TRANSACTION_AUTHORITY_SOURCES = new Set([
+  'verified_redbox_fk',
+  'explicit_moka_customer_id',
+  'normalized_phone',
+  'none',
+]);
+
+function sanitizeTransactionLinkageTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    status: ALLOWED_TRANSACTION_LINKAGE_STATUSES.has(event.status) ? event.status : 'unknown',
+    authority_source: ALLOWED_TRANSACTION_AUTHORITY_SOURCES.has(event.authority_source) ? event.authority_source : 'none',
+    source_system: typeof event.source_system === 'string' ? event.source_system.slice(0, 32) : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : 'unknown',
+    linkage_attempted: typeof event.linkage_attempted === 'boolean' ? event.linkage_attempted : true,
+    linked: typeof event.linked === 'boolean' ? event.linked : false,
+    reason_code: typeof event.reason_code === 'string' ? event.reason_code.slice(0, 96) : null,
+  };
+}
+
+function logTransactionLinkageEvent(event = {}) {
+  const safe = sanitizeTransactionLinkageTelemetry(event);
+  console.log('[TransactionLinkageTelemetry]', JSON.stringify(safe));
+  observeTelemetry('transaction_linkage', safe);
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
@@ -425,4 +465,6 @@ module.exports = {
   sanitizeCrmIdentityTelemetry, logCrmIdentityEvent,
   sanitizeBookingLinkageTelemetry, logBookingLinkageEvent,
   sanitizeInboundLifecycleTelemetry, logInboundLifecycleEvent,
+  sanitizeTransactionLinkageTelemetry, logTransactionLinkageEvent,
 };
+

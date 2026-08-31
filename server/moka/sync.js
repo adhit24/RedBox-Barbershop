@@ -10,6 +10,8 @@
 const MokaClient = require('./client');
 const { _matchScore } = require('./schemaSync');
 const { logDataAuthorityEvent } = require('../orchestrator/telemetry');
+const { resolveTransactionCustomerLinkage, PROVENANCE } = require('../services/transactionCustomerLinkage');
+
 
 // Simple in-process lock so concurrent cron ticks don't overlap
 const _syncLock = new Set();
@@ -527,7 +529,7 @@ async function _processIncomingOrder(supabase, order, outletId) {
   // 1. Check if we already have a schedule for this order
   const { data: existing } = await supabase
     .from('schedules')
-    .select('id, status')
+    .select('id, status, customer_id, source')
     .eq('external_id', mokaOrderId)
     .maybeSingle();
 
@@ -546,9 +548,20 @@ async function _processIncomingOrder(supabase, order, outletId) {
   if (existing) {
     if (existing.status === 'reserved' && scheduleStatus === 'completed') {
       await supabase.from('schedules').update({ status: 'completed' }).eq('id', existing.id);
+      
+      // Task 17.3: Canonical transaction customer linkage resolution
+      const txLinkage = await resolveTransactionCustomerLinkage(supabase, {
+        transaction: { id: existing.id, customer_id: existing.customer_id },
+        provenance: existing.source === 'web' ? PROVENANCE.VERIFIED_REDBOX_FK : PROVENANCE.NONE,
+        mokaCustomerId: order.customer_id || null,
+        phone: order.customer_phone || null,
+        sourceSystem: 'moka_sync',
+        branch: outletId,
+      });
+
       // Insert transaction now that it's completed
       await _insertTransaction(supabase, {
-        customerId: null, outletId,
+        customerId: txLinkage.customer_id, outletId,
         scheduleId: existing.id, externalId: mokaOrderId,
         totalAmount: order.total_collected || 0,
         source: 'moka', mokaPayload: order, items: [],
@@ -570,12 +583,23 @@ async function _processIncomingOrder(supabase, order, outletId) {
   const startTime = orderTime;
   const endTime   = new Date(orderTime.getTime() + totalDuration * 60 * 1000);
 
-  // 4. Resolve or create customer
+  // 4. Resolve or create customer (for schedule context)
   const customerId = await _resolveCustomer(supabase, {
     name:  order.customer_name  || null,
     phone: order.customer_phone || null,
     id:    order.customer_id    || null,
   });
+
+  // Task 17.3: Canonical transaction customer linkage resolution (for transaction ownership)
+  const txLinkage = await resolveTransactionCustomerLinkage(supabase, {
+    transaction: { external_id: mokaOrderId },
+    provenance: PROVENANCE.NONE,
+    mokaCustomerId: order.customer_id || null,
+    phone: order.customer_phone || null,
+    sourceSystem: 'moka_sync',
+    branch: outletId,
+  });
+  const transactionCustomerId = txLinkage.customer_id;
 
   // 5. Resolve barber from Moka item_id (checkouts[0].item_id = barber's moka_employee_id)
   //    This is more accurate than "find available" since we know exactly which barber served them
@@ -640,7 +664,8 @@ async function _processIncomingOrder(supabase, order, outletId) {
           external_id: mokaOrderId,
         }).eq('id', openBillSch.id);
         await _insertTransaction(supabase, {
-          customerId, outletId,
+          customerId:  transactionCustomerId,
+          outletId,
           scheduleId:  openBillSch.id,
           externalId:  mokaOrderId,
           totalAmount,
@@ -667,7 +692,8 @@ async function _processIncomingOrder(supabase, order, outletId) {
   // 7. Insert transaction (only for completed orders — HOLD transactions haven't been paid)
   if (scheduleStatus === 'completed') {
     await _insertTransaction(supabase, {
-      customerId, outletId,
+      customerId:  transactionCustomerId,
+      outletId,
       scheduleId:  schedule.id,
       externalId:  mokaOrderId,
       totalAmount,
@@ -678,6 +704,7 @@ async function _processIncomingOrder(supabase, order, outletId) {
   }
 
   return 'processed';
+
 }
 
 /**
