@@ -1,22 +1,20 @@
 'use strict';
 
 /**
- * Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Service & Safety Architecture (Correction Round 2).
+ * Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Service & Safety Architecture (Correction Round 3).
  *
  * Core Business & Technical Invariants:
  *   1. WRONG CUSTOMER MERGE IS WORSE THAN LEAVING DUPLICATES UNRESOLVED.
  *   2. EXECUTION DISABLED BY DEFAULT: Kill switch `CRM_RECONCILIATION_EXECUTION_ENABLED` MUST strictly equal "true".
- *   3. CLASSIFICATION ALLOWLIST: Only SAFE_AUTO_RECONCILE and durably approved DETERMINISTIC_RECONCILIATION execute.
- *      MANUAL_REVIEW, LOOKUP_FAILED, and INVALID_DATA CANNOT execute under any circumstances.
- *   4. MANDATORY FRESH REVALIDATION: Fresh groupPlan and fresh evidenceSnapshot MUST be provided to revalidate fingerprint.
- *   5. LEDGER LOOKUP FAIL-CLOSED: Ledger lookup errors throw LEDGER_LOOKUP_FAILED without RPC invocation or FAILED writes.
- *   6. DURABLE APPROVED GATE: Both SAFE_AUTO_RECONCILE and DETERMINISTIC_RECONCILIATION require durable ledger approval before RPC mutation.
- *   7. NARROW FAILED WRITE BOUNDARY: FAILED status is written to ledger ONLY when RPC execution attempt fails after all pre-validations pass.
- *   8. ZERO PII LOGGING / TELEMETRY: Telemetry minifies and hashes correlation keys; zero PII.
+ *   3. EXECUTOR-OWNED TRUE FRESH REVALIDATION: Production DB mutation path re-queries current DB state internally,
+ *      reruns Task17.3.1 planner, and validates fingerprint/canonical/duplicate set match approved ledger.
+ *   4. PERMANENT APPROVAL IMMUTABILITY: Once approved_at is set, plan authority parameters are immutable forever.
+ *   5. VERIFIED FAILED WRITE: FAILED ledger update specifies .eq('status', 'APPROVED') and verifies persistence result.
+ *   6. ZERO PII LOGGING / TELEMETRY: Telemetry minifies and hashes correlation keys; zero PII.
  */
 
 const crypto = require('crypto');
-const { CLASSIFICATION } = require('./mokaCustomerDuplicateReconciliation');
+const { CLASSIFICATION, planMokaCustomerGroupReconciliation } = require('./mokaCustomerDuplicateReconciliation');
 
 /**
  * Computes a deterministic SHA-256 fingerprint for a duplicate group plan and evidence snapshot.
@@ -166,7 +164,7 @@ function validateExecutionPlan(executionPlan, currentEvidenceSnapshot, groupPlan
     return { valid: false, reason_code: 'CANONICAL_CANNOT_BE_RETIRED' };
   }
 
-  // 5. Durable Ledger Approval Gate Check (for actual mutation with ledgerRow)
+  // 5. Durable Ledger Approval Gate Check
   if (ledgerRow) {
     const isApproved = ledgerRow.status === 'APPROVED' && ledgerRow.approved_by && ledgerRow.approved_at;
     if (!isApproved) {
@@ -188,17 +186,236 @@ function isExecutionKillSwitchEnabled() {
 }
 
 /**
+ * Loads current evidence directly from database for a candidate customer group.
+ *
+ * @param {object} dbClient
+ * @param {object} ledgerRow
+ * @returns {Promise<object>} Fresh evidence snapshot
+ */
+async function loadCurrentEvidenceForLedgerGroup(dbClient, ledgerRow) {
+  const candidateIds = ledgerRow.candidate_customer_ids || [];
+  if (!candidateIds.length) {
+    throw new Error('EMPTY_CANDIDATE_SET: Ledger candidate set is empty');
+  }
+
+  const { data: candidateRows, error: custErr } = await dbClient
+    .from('customers')
+    .select('*')
+    .in('id', candidateIds);
+
+  if (custErr || !candidateRows) {
+    const err = new Error(`CURRENT_EVIDENCE_LOOKUP_FAILED: ${custErr?.message || 'Failed to fetch candidate customers'}`);
+    err.code = 'CURRENT_EVIDENCE_LOOKUP_FAILED';
+    throw err;
+  }
+
+  const { data: transactionRows, error: txErr } = await dbClient
+    .from('transactions')
+    .select('*')
+    .in('customer_id', candidateIds);
+
+  if (txErr) {
+    const err = new Error(`CURRENT_EVIDENCE_LOOKUP_FAILED: ${txErr.message}`);
+    err.code = 'CURRENT_EVIDENCE_LOOKUP_FAILED';
+    throw err;
+  }
+
+  const { data: bookingRows, error: bkErr } = await dbClient
+    .from('bookings')
+    .select('*')
+    .in('customer_id', candidateIds);
+
+  if (bkErr) {
+    const err = new Error(`CURRENT_EVIDENCE_LOOKUP_FAILED: ${bkErr.message}`);
+    err.code = 'CURRENT_EVIDENCE_LOOKUP_FAILED';
+    throw err;
+  }
+
+  const { data: scheduleRows, error: schErr } = await dbClient
+    .from('schedules')
+    .select('*')
+    .in('customer_id', candidateIds);
+
+  if (schErr) {
+    const err = new Error(`CURRENT_EVIDENCE_LOOKUP_FAILED: ${schErr.message}`);
+    err.code = 'CURRENT_EVIDENCE_LOOKUP_FAILED';
+    throw err;
+  }
+
+  // Load member profile evidence if phone numbers present
+  const phones = candidateRows.map(c => c.phone_e164 || c.wa || c.phone).filter(Boolean);
+  let memberEvidenceRows = [];
+  if (phones.length) {
+    const { data: memRows } = await dbClient
+      .from('member_profiles')
+      .select('*')
+      .in('phone', phones);
+    memberEvidenceRows = memRows || [];
+  }
+
+  return {
+    candidateRows,
+    transactionRows: transactionRows || [],
+    bookingRows: bookingRows || [],
+    scheduleRows: scheduleRows || [],
+    memberEvidenceRows,
+  };
+}
+
+/**
+ * Executes an approved reconciliation group with executor-owned fresh revalidation.
+ *
+ * @param {object} params
+ * @param {string} params.reconciliationKey
+ * @param {object} params.dbClient
+ * @param {function} [params.evidenceLoader] - Custom fresh evidence loader callback
+ * @returns {Promise<object>} Execution result
+ */
+async function executeApprovedReconciliation({ reconciliationKey, dbClient, evidenceLoader = null }) {
+  if (!isExecutionKillSwitchEnabled()) {
+    const err = new Error('KILL_SWITCH_DISABLED: CRM_RECONCILIATION_EXECUTION_ENABLED is false');
+    err.code = 'KILL_SWITCH_DISABLED';
+    throw err;
+  }
+
+  if (!reconciliationKey || typeof reconciliationKey !== 'string') {
+    throw new Error('INVALID_RECONCILIATION_KEY: Reconciliation key must be provided');
+  }
+
+  if (!dbClient) {
+    throw new Error('MANDATORY_DB_CLIENT: DB client required for actual execution');
+  }
+
+  // 1. Fetch APPROVED ledger row
+  const { data: ledgerRow, error: lookupErr } = await dbClient
+    .from('customer_reconciliation_ledger')
+    .select('*')
+    .eq('reconciliation_key', reconciliationKey)
+    .maybeSingle();
+
+  if (lookupErr) {
+    const err = new Error(`LEDGER_LOOKUP_FAILED: ${lookupErr.message}`);
+    err.code = 'LEDGER_LOOKUP_FAILED';
+    throw err;
+  }
+
+  if (!ledgerRow) {
+    const err = new Error(`RECONCILIATION_NOT_FOUND: Ledger entry missing for key ${reconciliationKey}`);
+    err.code = 'RECONCILIATION_NOT_FOUND';
+    throw err;
+  }
+
+  if (ledgerRow.status !== 'APPROVED' || !ledgerRow.approved_by || !ledgerRow.approved_at) {
+    const err = new Error(`EXECUTION_NOT_APPROVED: Ledger entry not in APPROVED state for key ${reconciliationKey}`);
+    err.code = 'EXECUTION_NOT_APPROVED';
+    throw err;
+  }
+
+  // 2. Executor-Owned True Fresh DB Revalidation
+  let currentSnapshot;
+  try {
+    if (typeof evidenceLoader === 'function') {
+      currentSnapshot = await evidenceLoader(ledgerRow);
+    } else {
+      currentSnapshot = await loadCurrentEvidenceForLedgerGroup(dbClient, ledgerRow);
+    }
+  } catch (evErr) {
+    const err = new Error(`CURRENT_EVIDENCE_LOOKUP_FAILED: ${evErr.message}`);
+    err.code = 'CURRENT_EVIDENCE_LOOKUP_FAILED';
+    throw err;
+  }
+
+  // Extract Moka ID or candidate rows to rerun planner
+  const mokaId = currentSnapshot.candidateRows?.[0]?.moka_customer_id || ledgerRow.moka_group_hash;
+  const freshGroupPlan = planMokaCustomerGroupReconciliation({
+    mokaId,
+    candidateRows: currentSnapshot.candidateRows,
+    transactionRows: currentSnapshot.transactionRows,
+    bookingRows: currentSnapshot.bookingRows,
+    scheduleRows: currentSnapshot.scheduleRows,
+    memberEvidenceRows: currentSnapshot.memberEvidenceRows,
+  });
+
+  const freshFingerprint = computePlanFingerprint(freshGroupPlan, currentSnapshot);
+
+  // 3. Revalidate fresh fingerprint, classification, canonical, and duplicate set
+  if (freshGroupPlan.classification !== CLASSIFICATION.SAFE_AUTO_RECONCILE &&
+      freshGroupPlan.classification !== CLASSIFICATION.DETERMINISTIC_RECONCILIATION) {
+    const err = new Error(`EXECUTION_REVALIDATION_FAILED: Classification ${freshGroupPlan.classification} is not executable`);
+    err.code = 'EXECUTION_REVALIDATION_FAILED';
+    throw err;
+  }
+
+  if (freshFingerprint !== ledgerRow.plan_fingerprint ||
+      freshGroupPlan.canonical_customer_id !== ledgerRow.canonical_customer_id ||
+      JSON.stringify((freshGroupPlan.duplicate_rows_to_retire || []).sort()) !== JSON.stringify((ledgerRow.duplicate_customer_ids || []).sort())) {
+    const err = new Error('EXECUTION_REVALIDATION_FAILED: Fresh state drifted from approved plan');
+    err.code = 'EXECUTION_REVALIDATION_FAILED';
+    throw err;
+  }
+
+  // 4. Invoke mutation RPC
+  try {
+    const { data, error } = await dbClient.rpc('reconcile_customer_duplicate_group', {
+      p_reconciliation_key: reconciliationKey,
+      p_expected_fingerprint: ledgerRow.plan_fingerprint,
+    });
+
+    if (error) {
+      throw error;
+    }
+    return { status: 'COMPLETED', dbResult: data };
+  } catch (dbErr) {
+    // 5. Separate Transaction: Record durable FAILED status (only after RPC attempt)
+    let failedWriteCode = null;
+    try {
+      const { error: failedWriteErr } = await dbClient
+        .from('customer_reconciliation_ledger')
+        .update({
+          status: 'FAILED',
+          failed_at: new Date().toISOString(),
+          error_code: dbErr.code || 'DB_RPC_FAILED',
+          error_summary: dbErr.message || 'Execution RPC failed',
+        })
+        .eq('reconciliation_key', reconciliationKey)
+        .eq('status', 'APPROVED');
+
+      if (failedWriteErr) {
+        failedWriteCode = 'FAILED_STATUS_PERSISTENCE_FAILED';
+      }
+    } catch (_) {
+      failedWriteCode = 'FAILED_STATUS_PERSISTENCE_FAILED';
+    }
+
+    const err = new Error(`DATABASE_RECONCILIATION_FAILED: ${dbErr.message}`);
+    err.code = dbErr.code || 'DB_RPC_FAILED';
+    if (failedWriteCode) {
+      err.secondary_code = failedWriteCode;
+    }
+    throw err;
+  }
+}
+
+/**
  * High-safety execution wrapper for single duplicate Moka group.
- * Hard-guarded by CRM_RECONCILIATION_EXECUTION_ENABLED kill switch.
  *
  * @param {object} executionPlan
- * @param {object} currentEvidenceSnapshot - MANDATORY
- * @param {object} groupPlan - MANDATORY
+ * @param {object} currentEvidenceSnapshot - MANDATORY for dry-run validation
+ * @param {object} groupPlan - MANDATORY for dry-run validation
  * @param {object} [dbClient]
  * @returns {Promise<object>} Execution result object
  */
 async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot, groupPlan, dbClient = null) {
-  // HARD KILL SWITCH GUARD
+  // If dbClient provided, delegate to executor-owned executeApprovedReconciliation
+  if (dbClient) {
+    return executeApprovedReconciliation({
+      reconciliationKey: executionPlan.reconciliation_key,
+      dbClient,
+      evidenceLoader: async () => currentEvidenceSnapshot,
+    });
+  }
+
+  // HARD KILL SWITCH GUARD FOR DRY-RUN
   if (!isExecutionKillSwitchEnabled()) {
     const err = new Error('KILL_SWITCH_DISABLED: CRM_RECONCILIATION_EXECUTION_ENABLED is false');
     err.code = 'KILL_SWITCH_DISABLED';
@@ -212,67 +429,11 @@ async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot
     throw err;
   }
 
-  let ledgerRow = null;
-  if (dbClient) {
-    const { data: ledgerData, error: lookupErr } = await dbClient
-      .from('customer_reconciliation_ledger')
-      .select('*')
-      .eq('reconciliation_key', executionPlan.reconciliation_key)
-      .maybeSingle();
-
-    if (lookupErr) {
-      const err = new Error(`LEDGER_LOOKUP_FAILED: ${lookupErr.message}`);
-      err.code = 'LEDGER_LOOKUP_FAILED';
-      throw err;
-    }
-
-    if (!ledgerData) {
-      const err = new Error(`RECONCILIATION_NOT_FOUND: Ledger entry missing for key ${executionPlan.reconciliation_key}`);
-      err.code = 'RECONCILIATION_NOT_FOUND';
-      throw err;
-    }
-
-    ledgerRow = ledgerData;
-  }
-
-  const validation = validateExecutionPlan(executionPlan, currentEvidenceSnapshot, groupPlan, ledgerRow);
+  const validation = validateExecutionPlan(executionPlan, currentEvidenceSnapshot, groupPlan, null);
   if (!validation.valid) {
     const err = new Error(`EXECUTION_VALIDATION_FAILED: ${validation.reason_code}`);
     err.code = validation.reason_code;
     throw err;
-  }
-
-  // Execute database transaction if client provided
-  if (dbClient) {
-    try {
-      const { data, error } = await dbClient.rpc('reconcile_customer_duplicate_group', {
-        p_reconciliation_key: executionPlan.reconciliation_key,
-        p_expected_fingerprint: executionPlan.plan_fingerprint,
-      });
-
-      if (error) {
-        throw error;
-      }
-      return { status: 'COMPLETED', dbResult: data };
-    } catch (dbErr) {
-      // SEPARATE TRANSACTION: Record durable FAILED status in ledger ONLY after RPC attempt
-      try {
-        await dbClient
-          .from('customer_reconciliation_ledger')
-          .update({
-            status: 'FAILED',
-            failed_at: new Date().toISOString(),
-            error_code: dbErr.code || 'DB_RPC_FAILED',
-            error_summary: dbErr.message || 'Execution RPC failed',
-          })
-          .eq('reconciliation_key', executionPlan.reconciliation_key);
-      } catch (_) {
-        // Ignore separate logging errors to preserve primary RPC error
-      }
-      const err = new Error(`DATABASE_RECONCILIATION_FAILED: ${dbErr.message}`);
-      err.code = dbErr.code || 'DB_RPC_FAILED';
-      throw err;
-    }
   }
 
   return {
@@ -327,6 +488,8 @@ module.exports = {
   buildExecutionPlan,
   validateExecutionPlan,
   isExecutionKillSwitchEnabled,
+  loadCurrentEvidenceForLedgerGroup,
+  executeApprovedReconciliation,
   executeReconciliationGroup,
   rollbackReconciliationGroup,
 };

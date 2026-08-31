@@ -1,4 +1,4 @@
--- Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Schema & Ledger Migration Scaffolding (Correction Round 2 Hardened).
+-- Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Schema & Ledger Migration Scaffolding (Correction Round 3 Hardened).
 -- DO NOT APPLY TO PRODUCTION DURING TASK 17.3.2. TRACKED MIGRATION DEFINITION ONLY.
 
 -- 1. Add customer retirement columns to customers table
@@ -66,11 +66,11 @@ CREATE INDEX IF NOT EXISTS idx_ledger_moka_group_hash ON customer_reconciliation
 CREATE INDEX IF NOT EXISTS idx_ledger_canonical_customer_id ON customer_reconciliation_ledger(canonical_customer_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_status ON customer_reconciliation_ledger(status);
 
--- 3. Approved Plan Immutability Trigger
+-- 3. Permanent Approved Plan Immutability Trigger
 CREATE OR REPLACE FUNCTION prevent_approved_ledger_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF OLD.status IN ('APPROVED', 'EXECUTING', 'COMPLETED', 'ROLLED_BACK') THEN
+  IF OLD.approved_at IS NOT NULL THEN
     IF NEW.plan_fingerprint <> OLD.plan_fingerprint OR
        NEW.canonical_customer_id <> OLD.canonical_customer_id OR
        NEW.duplicate_customer_ids <> OLD.duplicate_customer_ids OR
@@ -78,11 +78,15 @@ BEGIN
        NEW.classification <> OLD.classification OR
        NEW.rollback_snapshot <> OLD.rollback_snapshot OR
        NEW.moka_group_hash <> OLD.moka_group_hash OR
+       NEW.reconciliation_key <> OLD.reconciliation_key OR
+       NEW.reason_code <> OLD.reason_code OR
+       NEW.approved_by <> OLD.approved_by OR
+       NEW.approved_at <> OLD.approved_at OR
        NEW.planned_transaction_refs <> OLD.planned_transaction_refs OR
        NEW.planned_booking_refs <> OLD.planned_booking_refs OR
        NEW.planned_schedule_refs <> OLD.planned_schedule_refs OR
        NEW.planned_other_refs <> OLD.planned_other_refs THEN
-      RAISE EXCEPTION 'IMMUTABLE_APPROVED_PLAN: Cannot mutate approved reconciliation plan parameters for key %', OLD.reconciliation_key;
+      RAISE EXCEPTION 'IMMUTABLE_APPROVED_PLAN: Approved reconciliation plan parameters are immutable forever for key %', OLD.reconciliation_key;
     END IF;
   END IF;
   RETURN NEW;
@@ -100,7 +104,41 @@ BEGIN
   END IF;
 END $$;
 
--- 4. Hardened Atomic Database Function for Single Group Reconciliation
+-- 4. Database Lifecycle Status Transition Trigger
+CREATE OR REPLACE FUNCTION enforce_ledger_status_transition()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status = NEW.status THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status = 'PLANNED' AND NEW.status IN ('APPROVED', 'CANCELLED') THEN
+    RETURN NEW;
+  ELSIF OLD.status = 'APPROVED' AND NEW.status IN ('EXECUTING', 'FAILED', 'CANCELLED') THEN
+    RETURN NEW;
+  ELSIF OLD.status = 'EXECUTING' AND NEW.status IN ('COMPLETED', 'APPROVED') THEN
+    RETURN NEW;
+  ELSIF OLD.status = 'COMPLETED' AND NEW.status = 'ROLLED_BACK' THEN
+    RETURN NEW;
+  ELSE
+    RAISE EXCEPTION 'INVALID_STATUS_TRANSITION: Cannot transition status from % to % for key %', OLD.status, NEW.status, OLD.reconciliation_key;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE trgname = 'trg_enforce_ledger_status_transition'
+  ) THEN
+    CREATE TRIGGER trg_enforce_ledger_status_transition
+      BEFORE UPDATE ON customer_reconciliation_ledger
+      FOR EACH ROW EXECUTE FUNCTION enforce_ledger_status_transition();
+  END IF;
+END $$;
+
+-- 5. Hardened Atomic Database Function for Single Group Reconciliation
 CREATE OR REPLACE FUNCTION reconcile_customer_duplicate_group(
   p_reconciliation_key TEXT,
   p_expected_fingerprint TEXT
@@ -351,7 +389,7 @@ REVOKE EXECUTE ON FUNCTION reconcile_customer_duplicate_group(TEXT, TEXT) FROM a
 REVOKE EXECUTE ON FUNCTION reconcile_customer_duplicate_group(TEXT, TEXT) FROM authenticated;
 GRANT EXECUTE ON FUNCTION reconcile_customer_duplicate_group(TEXT, TEXT) TO service_role;
 
--- 5. Hardened Atomic Rollback Function
+-- 6. Hardened Atomic Rollback Function
 CREATE OR REPLACE FUNCTION rollback_customer_reconciliation_group(
   p_reconciliation_key TEXT
 ) RETURNS JSONB AS $$
