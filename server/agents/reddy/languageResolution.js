@@ -36,8 +36,23 @@ const FRENCH_WORDS = ['bonjour', 'combien', 'coiffeur', 'réservation', 'rendez-
 const TURKISH_WORDS = ['merhaba', 'selam', 'günaydın', 'saç', 'berber', 'randevu',
   'rezervasyon', 'istiyorum', 'lütfen', 'teşekkürler', 'tıraş', 'kesim', 'sakal'];
 
+// International WhatsApp multilingual contract, correction round 2: Malay
+// and Indonesian share enormous everyday vocabulary ("saya", "harga",
+// "berapa", "boleh", "ada", ...), so hasIndonesianLanguageSignal's generic
+// >30%-word-overlap heuristic fires on genuinely Malay text too — before
+// this check, Malay was unreachable through resolveResponseLanguage even
+// when marked with an exclusively-Malay word (e.g. "awak"/"ringgit"), since
+// the Indonesian check ran first and unconditionally won. None of these
+// marker words appear in hasIndonesianLanguageSignal's own word list, so a
+// hit here is unambiguous and must outrank the generic Indonesian check.
+function hasMalayExclusiveSignal(text) {
+  const lower = String(text || '').toLowerCase();
+  return MALAY_WORDS.some((w) => lower.includes(w.trim()));
+}
+
 function isForeignLanguage(text) {
   const lower = String(text || '').toLowerCase();
+  if (hasMalayExclusiveSignal(text)) return true;
   if (hasIndonesianLanguageSignal(text)) return false;
 
   const foreignPatterns = [
@@ -77,9 +92,17 @@ function isForeignLanguage(text) {
 
 function detectForeignLanguage(text) {
   const raw = String(text || '');
-  if (/[一-鿿]/.test(raw)) return 'chinese';
-  if (/[぀-ゟ゠-ヿ]/.test(raw)) return 'japanese';
+  // International WhatsApp multilingual contract, correction round 2
+  // (blocker 2): Japanese naturally mixes Kanji (the same Han-character
+  // range Chinese uses) with Hiragana/Katakana — a message like
+  // "予約できますか？" carries both. Kana is unique to Japanese among these
+  // scripts, so it must be checked BEFORE the generic Han-character test;
+  // checking Han first (the old order) misclassified any Kanji+kana message
+  // as Chinese before ever reaching the Japanese test. Hangul is checked
+  // first of all since it never overlaps with Han or kana.
   if (/[가-힯]/.test(raw)) return 'korean';
+  if (/[぀-ゟ゠-ヿ]/.test(raw)) return 'japanese';
+  if (/[一-鿿]/.test(raw)) return 'chinese';
   if (/[؀-ۿ]/.test(raw)) return 'arabic';
   if (/[฀-๿]/.test(raw)) return 'thai';
 
@@ -104,6 +127,7 @@ function detectForeignLanguage(text) {
  */
 function resolveResponseLanguage(text, conversationContext, options = {}) {
   const { presenceIntent = null } = options;
+  if (hasMalayExclusiveSignal(text)) return 'malay';
   if (hasIndonesianLanguageSignal(text)) return 'indonesian';
   if (isForeignLanguage(text)) return detectForeignLanguage(text);
 
@@ -111,6 +135,7 @@ function resolveResponseLanguage(text, conversationContext, options = {}) {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index];
     if (turn?.role !== 'user' || !String(turn?.content || '').trim()) continue;
+    if (hasMalayExclusiveSignal(turn.content)) return 'malay';
     if (hasIndonesianLanguageSignal(turn.content)) return 'indonesian';
     if (isForeignLanguage(turn.content)) return detectForeignLanguage(turn.content);
   }
@@ -124,6 +149,7 @@ function resolveResponseLanguage(text, conversationContext, options = {}) {
 module.exports = {
   SUPPORTED_LANGUAGES,
   hasIndonesianLanguageSignal,
+  hasMalayExclusiveSignal,
   isForeignLanguage,
   detectForeignLanguage,
   resolveResponseLanguage,

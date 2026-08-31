@@ -17,7 +17,28 @@ const CURRENT_PRESENCE_QUERY = new RegExp(
   'iu',
 );
 
-const AVAILABILITY_SIGNAL = /\b(ready|free|available|tersedia)\b|\bbisa\s+sekarang\b/i;
+// International WhatsApp multilingual contract, correction round 2: the
+// contract's own required examples ("Husenさんは今いますか？",
+// "¿Está Husen ahí ahora?") are current-presence questions phrased in
+// Japanese/Spanish, not Indonesian/English vocabulary — CURRENT_PRESENCE_QUERY
+// never matched them, so a presence question in either language silently
+// skipped the whole deterministic-authority guard chain. Bounded to the
+// contract's own example shapes (name-first for Japanese, verb-first for
+// Spanish — its natural word order), not a general JA/ES question parser.
+const JAPANESE_PRESENCE_QUERY = new RegExp(
+  `^\\s*${BARBER_NAME}\\s*(?:さん)?\\s*(?:は|が)?\\s*(?:今|現在)?\\s*`
+    + '(?:います|いますか|いる|いますでしょうか|居ますか|居ますでしょうか)'
+    + '\\s*[?？!!]*\\s*$',
+  'iu',
+);
+const SPANISH_PRESENCE_QUERY = new RegExp(
+  '^\\s*¿?\\s*(?:está|esta)\\s+'
+    + `${BARBER_NAME}`
+    + '\\s*(?:ahí|ahi|aquí|aqui)?\\s*(?:ahora)?\\s*\\??\\s*$',
+  'iu',
+);
+
+const AVAILABILITY_SIGNAL = /\b(ready|free|available|tersedia)\b|\bbisa\s+sekarang\b|空いて|フリー|対応できます|disponible|libre/i;
 
 /**
  * Classifies only named, current barber presence/availability questions.
@@ -26,7 +47,12 @@ const AVAILABILITY_SIGNAL = /\b(ready|free|available|tersedia)\b|\bbisa\s+sekara
  */
 function classifyBarberPresenceQuery(text) {
   const raw = String(text || '').trim();
-  if (!raw || !CURRENT_PRESENCE_QUERY.test(raw)) {
+  const matched = raw && (
+    CURRENT_PRESENCE_QUERY.test(raw)
+    || JAPANESE_PRESENCE_QUERY.test(raw)
+    || SPANISH_PRESENCE_QUERY.test(raw)
+  );
+  if (!matched) {
     return { matched: false, claimType: null, temporalScope: null };
   }
   return {

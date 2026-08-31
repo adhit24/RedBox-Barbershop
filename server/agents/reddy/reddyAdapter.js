@@ -39,7 +39,58 @@ function jakartaDate(now = new Date()) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function buildPresenceReply({ barberMatch, scheduleStatus, claimType }) {
+// International WhatsApp multilingual contract, correction round 2: extended
+// to Japanese and Spanish (the two languages the contract's own barber
+// presence authority tests name) — mirrors the Indonesian branch's exact
+// fact structure (ambiguous / not-found / scheduled±caveat / not-scheduled /
+// unknown) so the language-switch is presentation-only, never a fact change.
+// Deliberately bounded to these two; other languages keep using the existing
+// LLM + guardRealtimeBarberFacts backstop path (see the gate below).
+function buildPresenceReply({
+  barberMatch, scheduleStatus, claimType, responseLanguage = 'indonesian',
+}) {
+  const lang = String(responseLanguage || 'indonesian').toLowerCase();
+
+  if (lang === 'japanese') {
+    if (barberMatch.status === 'ambiguous') {
+      return '同じ名前のスタイリストが複数在籍しています。どちらの店舗のスタイリストでしょうか？';
+    }
+    if (barberMatch.status !== 'verified') {
+      return '恐れ入りますが、そのお名前のスタイリストが見つかりませんでした。お名前をもう一度教えていただけますか？';
+    }
+    const name = `${barberMatch.barber.name}さん`;
+    if (scheduleStatus?.status === 'scheduled') {
+      if (claimType === 'availability') {
+        return `${name}は本日出勤予定ですが、今すぐ対応可能かどうかは確認済みのデータでは分かりかねます。`;
+      }
+      return `${name}は本日出勤予定ですが、今この瞬間の在店状況を確認できるデータはございません。`;
+    }
+    if (scheduleStatus?.status === 'not_scheduled') {
+      return `${name}は本日の出勤予定に入っておりません。`;
+    }
+    return `${name}が今いるかどうか、確認済みのデータでは分かりかねます。`;
+  }
+
+  if (lang === 'spanish') {
+    if (barberMatch.status === 'ambiguous') {
+      return 'Hay más de un barbero con ese nombre. ¿A qué sucursal te refieres?';
+    }
+    if (barberMatch.status !== 'verified') {
+      return 'No encontré a ese barbero en los datos activos. ¿Puedes escribir el nombre de nuevo?';
+    }
+    const name = barberMatch.barber.name;
+    if (scheduleStatus?.status === 'scheduled') {
+      if (claimType === 'availability') {
+        return `${name} sí está programado para trabajar hoy, pero no puedo confirmar con datos verificados si está disponible en este momento.`;
+      }
+      return `${name} sí está programado para trabajar hoy, pero no tengo datos verificados de asistencia para confirmar que esté ahí ahora mismo.`;
+    }
+    if (scheduleStatus?.status === 'not_scheduled') {
+      return `${name} no figura programado para trabajar hoy.`;
+    }
+    return `No puedo confirmar si ${name} está ahí ahora mismo con datos verificados.`;
+  }
+
   if (barberMatch.status === 'ambiguous') {
     return 'Ada lebih dari satu kapster dengan nama itu, Kak. Cabang mana yang Kak maksud?';
   }
@@ -205,23 +256,26 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
   // P0 first-turn presence fact decision. Facts are resolved deterministically
   // and never expose roster rows to an LLM. Presentation remains owned by the
-  // already-resolved conversation language: Indonesian keeps the zero-LLM
-  // response, while an existing foreign route receives only the bounded fact
-  // decision and renders through its existing presentation path.
+  // already-resolved conversation language: Indonesian/Japanese/Spanish keep
+  // the zero-LLM response (buildPresenceReply has a dedicated branch for
+  // each — round 2 correction, tests 25/26), while any other language
+  // receives only the bounded fact decision and falls through to the LLM +
+  // guardRealtimeBarberFacts backstop path below (English's existing route).
   let presenceResolution = null;
   if (presenceIntent.matched) {
     presenceResolution = await resolvePresenceFactDecision({
       text, supabase, loadBarbers, getSchedule,
     });
 
-    const useIndonesianDeterministicPresentation = responseLanguage === 'indonesian';
+    const useDeterministicPresencePresentation = ['indonesian', 'japanese', 'spanish'].includes(responseLanguage);
 
-    if (useIndonesianDeterministicPresentation) {
+    if (useDeterministicPresencePresentation) {
       const { barberMatch, scheduleStatus } = presenceResolution;
       const presenceReply = buildPresenceReply({
         barberMatch,
         scheduleStatus,
         claimType: presenceIntent.claimType,
+        responseLanguage,
       });
 
       logBookingTelemetry({

@@ -27,7 +27,10 @@ function buildBranchOperatingHoursText(lang) {
     turkish: `• Diğer şubeler: ${bypass.hours.opens}-${bypass.hours.closes}\n\nHer gün açığız!`,
   };
 
-  return (headers[lang] || headers.english) + (csbLine[lang] || csbLine.english) + (otherLine[lang] || otherLine.english);
+  // Round 2 blocker 1: no English fallback for a language this template
+  // doesn't have — undefined signals "no localized renderer" to the caller.
+  if (!headers[lang]) return undefined;
+  return headers[lang] + csbLine[lang] + otherLine[lang];
 }
 
 function buildBranchLastBookingSlotText(lang, branch = 'bypass') {
@@ -73,8 +76,11 @@ function buildBranchLocationText(lang) {
     turkish: '\n\nEndonezya, Cirebon',
   };
 
+  // Round 2 blocker 1: no English fallback for a language this template
+  // doesn't have — undefined signals "no localized renderer" to the caller.
+  if (!labels[lang]) return undefined;
   const body = branches.map(b => `• ${b.name} — ${b.address} | ${b.hours.opens}–${b.hours.closes}`).join('\n');
-  return (labels[lang] || labels.english) + body + (suffix[lang] || suffix.english);
+  return labels[lang] + body + suffix[lang];
 }
 
 
@@ -1088,8 +1094,18 @@ function getServicesForLang(lang, branch = 'bypass') {
   }).join('\n');
 }
 
+// International WhatsApp multilingual contract, correction round 2 (blocker
+// 1): this used to fall back to English whenever `lang` had no entry in
+// `msgs` — so a customer resolved to French/German/Spanish/Malay/Arabic (all
+// of which languageResolution.js recognizes, but these deterministic
+// templates were never translated into) silently got an English reply. No
+// fallback now: an unsupported language returns undefined, and every caller
+// below treats that as "no localized deterministic renderer for this
+// language" and lets the turn fall through to the normal Reddy/LLM path,
+// which already receives the correctly-resolved response_language and can
+// present the same verified facts in the customer's actual language.
 function foreignMsg(lang, msgs) {
-  return msgs[lang] || msgs['english'] || msgs['en'];
+  return msgs[lang];
 }
 
 async function handleForeignBooking(from, name, text, device, branch = 'bypass') {
@@ -1136,7 +1152,12 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
       turkish: `Teşekkür ederiz${nameLabel}! Randevu almak veya canlı saat uygunluğunu kontrol etmek için lütfen Redbox resmi web sitesini ziyaret edin:\n${url}`,
     });
 
-    return { reply: msg, used: 'foreign_booking_direct' };
+    // Round 2 blocker 1: unlike generalAnswer above, a booking-intent match
+    // (isForeignBookingIntent) is language-agnostic pattern matching, so
+    // `lang` here is NOT guaranteed to be one of this template's five
+    // localized keys — msg can be undefined (e.g. a French/Spanish booking
+    // request). Fall through to `return null` rather than send "undefined".
+    if (msg) return { reply: msg, used: 'foreign_booking_direct' };
   }
 
   return null;
@@ -1211,7 +1232,12 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
   if (isLastSlotReq && isHoursReq) {
     const opHours = buildBranchOperatingHoursText(lang);
     const slotText = buildBranchLastBookingSlotText(lang, branch);
-    return `${opHours}\n\n${slotText}`;
+    // Round 2 blocker 1: only combine the two if both have a localized
+    // renderer for `lang` — never join one real string with "undefined".
+    // If either is missing, fall through to the single-topic branches below,
+    // which return undefined too (same underlying functions) and correctly
+    // signal "no renderer" rather than a half-English/half-broken reply.
+    if (opHours && slotText) return `${opHours}\n\n${slotText}`;
   }
 
   if (isLastSlotReq) {
@@ -1477,8 +1503,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     }
   }
 
-  // Indonesian first-turn presence remains deterministic and pre-LLM.
-  if (presenceIntent.matched && responseLanguage === 'indonesian') {
+  // Indonesian/Japanese/Spanish first-turn presence remain deterministic and
+  // pre-LLM (round 2 correction, tests 25/26 — executeReddyAgent's own
+  // useDeterministicPresencePresentation gate mirrors this same list).
+  if (presenceIntent.matched && ['indonesian', 'japanese', 'spanish'].includes(responseLanguage)) {
     const reddyExec = await executeReddy({
       from, name, text, device, branch, trustedIdentity,
       knowledgeContext: null,
