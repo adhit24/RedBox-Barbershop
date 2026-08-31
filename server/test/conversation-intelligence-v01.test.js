@@ -22,6 +22,8 @@ const {
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 const { issueTrustedIdentity } = require('../identity/trustedIdentity');
 const webhookModule = require('../../api/wa/webhook');
+const { conversationCacheKey } = require('../services/conversationScope');
+
 const { handleMessage, persistConversationExchange } = webhookModule;
 
 // ── 1. SANITIZATION, PERSISTENCE DEDUP & METRICS UNIT TESTS ──────────────────
@@ -121,7 +123,7 @@ test('Task 12 (Round 4 Blocker): persistConversationExchange updates cache and c
   assert.equal(savedHistory.length, 4);
   assert.equal(savedHistory[2].content, 'kalau di Sumber?');
   assert.equal(savedHistory[3].content, 'Haircut di Redbox Sumber Rp 85.000 kak.');
-  assert.equal(fakeCache.get('62811111111').length, 4);
+  assert.equal(fakeCache.get(conversationCacheKey('62811111111', null)).length, 4);
 });
 
 test('Task 12 (Round 4 Failure): persistConversationExchange DB failure fails open without throwing or escaping exception', async () => {
@@ -144,7 +146,7 @@ test('Task 12 (Round 4 Failure): persistConversationExchange DB failure fails op
 
   assert.equal(saveCalls, 1);
   assert.equal(updated.length, 2);
-  assert.equal(fakeCache.get('62822222222').length, 2, 'Cache must still be updated even if DB persistence fails');
+  assert.equal(fakeCache.get(conversationCacheKey('62822222222', null)).length, 2, 'Cache must still be updated even if DB persistence fails');
 });
 
 // ── 3. SINGLE HISTORY LOAD & PRODUCTION PATH INTEGRATION TESTS ───────────────
