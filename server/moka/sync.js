@@ -2105,8 +2105,6 @@ async function _resolveCustomer(supabase, customerData) {
   return maint.customer_id || null;
 }
 
-}
-
 async function _insertTransaction(supabase, {
   customerId, outletId, scheduleId, externalId, totalAmount, source, mokaPayload, items,
 }) {
