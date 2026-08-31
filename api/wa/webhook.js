@@ -156,7 +156,7 @@ const {
   isReddyEnabled,
   admitInboundEvent,
 } = require('../../server/services/waInboundGuard');
-const { createGuardedSend } = require('../../server/services/waOutboundGuard');
+const { createGuardedSend, normalizeOutboundLifecycleOutcome } = require('../../server/services/waOutboundGuard');
 const { terminalizeInbound, terminalizeIfStillProcessing } = require('../../server/services/waInboundLifecycle');
 const { resolveConversationDeviceScope, conversationCacheKey } = require('../../server/services/conversationScope');
 const {
@@ -2923,10 +2923,15 @@ module.exports = async function handler(req, res, testDeps = {}) {
         getHandoffState: async () => handoffState,
       });
       const ms = Date.now() - t0;
-      if (result && result.error) {
+      const outboundOutcome = normalizeOutboundLifecycleOutcome(result?.sendResult);
+      if (result && result.error && (result.failureReason || result.reason)) {
+        activeFailureReason = result.failureReason || result.reason;
+      } else if (outboundOutcome.terminalKind === 'suppressed' || outboundOutcome.terminalKind === 'failed') {
+        activeFailureReason = outboundOutcome.reason || 'processing_failed';
+      } else if (result && result.error) {
         activeFailureReason = result.failureReason || result.reason || 'internal_exception';
       }
-      console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
+      console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error, outboundOutcome });
     } catch (err) {
       activeFailureReason = err.failureReason || err.reason || 'internal_exception';
       console.error('[WA Bot] Process error:', err.message);

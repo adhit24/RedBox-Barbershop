@@ -12,7 +12,7 @@ const { guardPricePlaceholders, defaultServicePriceResolver } = require('../agen
 const { classifyBarberPresenceQuery } = require('../agents/reddy/barberPresenceIntent');
 const { guardRealtimeBarberFacts } = require('../agents/reddy/realtimeFactGuard');
 const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
-const { createGuardedSend } = require('../services/waOutboundGuard');
+const { createGuardedSend, normalizeOutboundLifecycleOutcome } = require('../services/waOutboundGuard');
 const { EVENT_DEFINITIONS } = require('../services/reddyEvaluationMonitoring');
 const { sanitizeInboundLifecycleTelemetry, sanitizeDataAuthorityTelemetry } = require('../orchestrator/telemetry');
 const { REDBOX_KNOWLEDGE } = require('../agents/reddy/knowledge/redboxKnowledge');
@@ -280,6 +280,50 @@ test('TEST 27: observer failure remains fail-open', async () => {
   });
   const res = await send('628123456789', 'Halo kak', { branch: 'bypass' });
   assert.equal(res.status, true);
+});
+
+// ── ROUND 3 OUTBOUND OUTCOME LIFECYCLE TESTS ─────────────────────────────
+
+test('ROUND 3 TEST 1: guardedSend duplicate_content propagates duplicate_suppressed', () => {
+  const outcome = normalizeOutboundLifecycleOutcome({ status: false, suppressed: true, reason: 'duplicate_content' });
+  assert.equal(outcome.terminalKind, 'suppressed');
+  assert.equal(outcome.reason, 'duplicate_suppressed');
+});
+
+test('ROUND 3 TEST 2: guardedSend already_attempted propagates duplicate_suppressed', () => {
+  const outcome = normalizeOutboundLifecycleOutcome({ status: false, suppressed: true, reason: 'already_attempted' });
+  assert.equal(outcome.terminalKind, 'suppressed');
+  assert.equal(outcome.reason, 'duplicate_suppressed');
+});
+
+test('ROUND 3 TEST 3: guardedSend rate_limited propagates rate_limited', () => {
+  const outcome = normalizeOutboundLifecycleOutcome({ status: false, suppressed: true, reason: 'rate_limited' });
+  assert.equal(outcome.terminalKind, 'suppressed');
+  assert.equal(outcome.reason, 'rate_limited');
+});
+
+test('ROUND 3 TEST 4: kill-switch suppression propagates bounded kill-switch reason', () => {
+  const outcome = normalizeOutboundLifecycleOutcome({ status: false, suppressed: true, reason: 'ai_kill_switch' });
+  assert.equal(outcome.terminalKind, 'suppressed');
+  assert.equal(outcome.reason, 'reddy_disabled');
+});
+
+test('ROUND 3 TEST 5: realSend status=false propagates processing_failed', () => {
+  const outcome = normalizeOutboundLifecycleOutcome({ status: false, reason: 'send_failed' });
+  assert.equal(outcome.terminalKind, 'failed');
+  assert.equal(outcome.reason, 'processing_failed');
+});
+
+test('ROUND 3 TEST 6: thrown send error propagates processing_failed', () => {
+  const outcome = normalizeOutboundLifecycleOutcome({ status: false, reason: 'send_threw' });
+  assert.equal(outcome.terminalKind, 'failed');
+  assert.equal(outcome.reason, 'processing_failed');
+});
+
+test('ROUND 3 TEST 7: successful send does not terminalize as failed', () => {
+  const outcome = normalizeOutboundLifecycleOutcome({ status: true });
+  assert.equal(outcome.terminalKind, 'sent');
+  assert.equal(outcome.reason, null);
 });
 
 // ── REGRESSION TESTS (28–38) ─────────────────────────────────────────────

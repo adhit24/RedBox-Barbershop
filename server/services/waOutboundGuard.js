@@ -144,10 +144,53 @@ function createGuardedSend({
   };
 }
 
+/**
+ * Normalizes a sendResult from guardedSend / sendWA into a bounded inbound lifecycle outcome.
+ *
+ * @param {object|null|undefined} sendResult
+ * @returns {{ terminalKind: 'sent' | 'suppressed' | 'failed' | 'not_attempted', reason: string|null }}
+ */
+function normalizeOutboundLifecycleOutcome(sendResult) {
+  if (!sendResult || typeof sendResult !== 'object') {
+    return { terminalKind: 'not_attempted', reason: null };
+  }
+
+  // 1. Successful send
+  if (sendResult.status !== false && sendResult.suppressed !== true) {
+    return { terminalKind: 'sent', reason: null };
+  }
+
+  const rawReason = String(sendResult.reason || '').toLowerCase();
+
+  // 2. Suppressions with bounded known reason
+  if (rawReason === 'duplicate_content' || rawReason === 'already_attempted' || rawReason === 'duplicate_suppressed') {
+    return { terminalKind: 'suppressed', reason: 'duplicate_suppressed' };
+  }
+  if (rawReason === 'rate_limited') {
+    return { terminalKind: 'suppressed', reason: 'rate_limited' };
+  }
+  if (rawReason === 'ai_kill_switch' || rawReason === 'reddy_disabled' || rawReason === 'kill_switch_blocked') {
+    return { terminalKind: 'suppressed', reason: 'reddy_disabled' };
+  }
+
+  // 3. Send / Provider / DB Guard Failures
+  if (rawReason === 'send_failed' || rawReason === 'send_threw' || rawReason === 'error' || rawReason === 'provider_send_failed' || rawReason === 'send_failed_provider') {
+    return { terminalKind: 'failed', reason: 'processing_failed' };
+  }
+
+  // 4. Default fallbacks
+  if (sendResult.suppressed === true) {
+    return { terminalKind: 'suppressed', reason: sendResult.reason || 'processing_failed' };
+  }
+
+  return { terminalKind: 'failed', reason: sendResult.reason || 'processing_failed' };
+}
+
 module.exports = {
   createGuardedSend,
   reserveAutomatedSend,
   markOutboundResult,
+  normalizeOutboundLifecycleOutcome,
   DUPLICATE_CONTENT_WINDOW_MS,
   RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_MAX_SENDS,
