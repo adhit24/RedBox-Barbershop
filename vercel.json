@@ -25,7 +25,8 @@
  { "source": "/api/cron/expire-stale-bills","destination": "/api/cron/expire-stale-bills.js" },
  { "source": "/api/cron/home-service-flag", "destination": "/api/cron/home-service-flag.js" },
  { "source": "/api/moka/sync-customers", "destination": "/api/moka/sync-customers.js" },
- { "source": "/api/:path*", "destination": "/api/index" }
+ { "source": "/api/:path*", "destination": "/api/index" },
+ { "source": "/(.*)", "has": [{ "type": "host", "value": "backoffice.redboxbarbershop.com" }], "destination": "/backoffice/index.html" }
  ],
  "headers": [
  {
