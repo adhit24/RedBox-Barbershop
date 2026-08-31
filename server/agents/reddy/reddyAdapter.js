@@ -243,7 +243,10 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     });
 
     if (persistConversation && typeof persistConversation === 'function') {
-      await persistConversation(from, conversationContext?.turns || [], text, completionReply);
+      await persistConversation(
+        from, conversationContext?.turns || [], text, completionReply,
+        {}, conversationContext?.providerDeviceHash || null,
+      );
     }
 
     let completionSendResult = null;
@@ -291,7 +294,10 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       });
 
       if (persistConversation && typeof persistConversation === 'function') {
-        await persistConversation(from, conversationContext?.turns || [], text, presenceReply);
+        await persistConversation(
+          from, conversationContext?.turns || [], text, presenceReply,
+          {}, conversationContext?.providerDeviceHash || null,
+        );
       }
       let presenceSendResult = null;
       if (sendWA && typeof sendWA === 'function') {
@@ -548,7 +554,10 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   }
 
   if (persistConversation && typeof persistConversation === 'function') {
-    await persistConversation(from, boundedConversationContext.turns || [], text, reply);
+    await persistConversation(
+      from, boundedConversationContext.turns || [], text, reply,
+      {}, boundedConversationContext.providerDeviceHash || null,
+    );
   }
 
   let sendResult = null;
