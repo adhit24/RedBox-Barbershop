@@ -176,6 +176,7 @@ async function runDryRunPlanner() {
 
     groups_single_booking_owner: 0,
     groups_multiple_booking_owner: 0,
+    groups_no_booking_owner: 0,
 
     groups_trusted_web_schedule_evidence: 0,
     groups_moka_schedule_evidence: 0,
@@ -226,8 +227,9 @@ async function runDryRunPlanner() {
 
     // Booking distribution
     const bkOwners = new Set(grpBks.map(b => b.customer_id));
-    if (bkOwners.size === 1) metrics.groups_single_booking_owner++;
-    else if (bkOwners.size > 1) metrics.groups_multiple_booking_owner++;
+    if (bkOwners.size === 0) metrics.groups_no_booking_owner++;
+    else if (bkOwners.size === 1) metrics.groups_single_booking_owner++;
+    else metrics.groups_multiple_booking_owner++;
 
     // Schedule evidence distribution
     if (grpSchs.some(s => s.source === 'web')) metrics.groups_trusted_web_schedule_evidence++;
@@ -247,6 +249,12 @@ async function runDryRunPlanner() {
     if (cliOpts.classification && plan.classification !== cliOpts.classification) {
       continue;
     }
+
+    // Increment exactly ONE membership category per group based on plan.membership_status
+    if (plan.membership_status === 'membership_unique_candidate') metrics.groups_membership_unique++;
+    else if (plan.membership_status === 'membership_multiple_candidates') metrics.groups_membership_multiple++;
+    else if (plan.membership_status === 'membership_unresolved') metrics.groups_membership_unresolved++;
+    else metrics.groups_membership_none++;
 
     plans.push(plan);
 
@@ -274,6 +282,12 @@ async function runDryRunPlanner() {
   console.log(`  groups_same_normalized_phone:                ${metrics.groups_same_normalized_phone}`);
   console.log(`  groups_multiple_distinct_normalized_phone:  ${metrics.groups_multiple_distinct_normalized_phone}`);
   console.log(`  groups_no_valid_phone:                       ${metrics.groups_no_valid_phone}\n`);
+
+  console.log('--- MEMBERSHIP DISTRIBUTION ---');
+  console.log(`  groups_membership_unique:       ${metrics.groups_membership_unique}`);
+  console.log(`  groups_membership_multiple:     ${metrics.groups_membership_multiple}`);
+  console.log(`  groups_membership_unresolved:   ${metrics.groups_membership_unresolved}`);
+  console.log(`  groups_membership_none:         ${metrics.groups_membership_none}\n`);
 
   console.log('--- CLASSIFICATION COUNTS ---');
   console.log(`  SAFE_AUTO_RECONCILE:            ${metrics.safe_auto_reconcile}`);

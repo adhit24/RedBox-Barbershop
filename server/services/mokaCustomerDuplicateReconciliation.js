@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Task 17.3.1 — Moka Customer ID Duplicate Reconciliation (CRM Identity Integrity Round 5 Correction 1).
+ * Task 17.3.1 — Moka Customer ID Duplicate Reconciliation (CRM Identity Integrity Round 5 Correction 2).
  *
  * Single canonical classification and planning authority for duplicate moka_customer_id groups.
  *
@@ -10,10 +10,12 @@
  *      Transaction volume or booking ownership NEVER overrides conflicting identity.
  *   2. BOOKINGS VS SCHEDULES SEPARATION: bookings (customer intent) and schedules (operational)
  *      are distinct tables in production schema and evaluated separately.
- *   3. MEMBERSHIP PHONE BRIDGE: member_profiles does not have a customer_id column. It is bridged
- *      via canonical normalized phone matching (member_profiles.phone == candidate.phone_e164/wa).
- *   4. FAIL-CLOSED LOOKUP ERRORS: Any evidence query failure results in LOOKUP_FAILED with NULL canonical ID.
- *   5. ZERO PII TELEMETRY: Telemetry and summary logs contain zero PII.
+ *   3. WEB SCHEDULE BOUNDARY: source='web' schedule is operational evidence and MUST NOT by itself
+ *      promote a candidate to SAFE_AUTO_RECONCILE.
+ *   4. MEMBERSHIP ACTIVATION AUTHORITY: Only `membership_activated_at != null` constitutes active membership authority.
+ *      `member_profiles.phone` bridged to multiple same-phone candidates = membership_unresolved.
+ *   5. FAIL-CLOSED LOOKUP ERRORS: Any evidence query failure results in LOOKUP_FAILED with NULL canonical ID.
+ *   6. ZERO PII TELEMETRY: Telemetry and summary logs contain zero PII.
  */
 
 const { normalizePhoneNumber } = require('../identity/phoneNormalization');
@@ -80,6 +82,7 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows: [],
       memberEvidenceRows: [],
       otherReferenceRows: [],
+      membershipStatus: 'membership_lookup_failed',
       conflictFlags: ['lookup_failed'],
     });
   }
@@ -97,6 +100,7 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows: [],
       memberEvidenceRows: [],
       otherReferenceRows: [],
+      membershipStatus: 'membership_none',
       conflictFlags: ['invalid_data'],
     });
   }
@@ -156,30 +160,54 @@ function planMokaCustomerGroupReconciliation({
   }
   const candidatesWithWebSchedule = Array.from(trustedWebScheduleMap.keys());
 
-  // 7. Membership Authority Bridge (phone-matched member_profiles)
-  const activeMemberProfilesMatched = new Set(); // mp.id set
-  const candidateActiveMemberMap = new Map(); // candidate_id -> Set of mp.id
+  // 7. Membership Authority Bridge & Bounded Evidence Derivation
+  // Activation authority strictly requires membership_activated_at IS NOT NULL
+  const activatedMpMap = new Map(); // mp.id -> Set<candidate_id>
+  for (const mp of memberEvidenceRows || []) {
+    const isActivated = mp.membership_activated_at != null && String(mp.membership_activated_at).trim().length > 0;
+    if (!isActivated) continue;
 
-  for (const c of candidateRows) {
-    const candidateNormPhone = candidatePhoneMap.get(c.id);
-    if (!candidateNormPhone) continue;
+    const mpNormPhone = normalizePhoneSafe(mp.phone);
+    if (!mpNormPhone) continue;
 
-    for (const mp of memberEvidenceRows || []) {
-      const mpNormPhone = normalizePhoneSafe(mp.phone);
-      const mpStatus = String(mp.membership_status || mp.status || '').toLowerCase();
-      const isActive = mpStatus !== 'inactive' && mpStatus !== 'cancelled' && (mp.membership_activated_at || mpStatus === 'active');
-
-      if (mpNormPhone && mpNormPhone === candidateNormPhone && isActive) {
-        activeMemberProfilesMatched.add(mp.id);
-        if (!candidateActiveMemberMap.has(c.id)) candidateActiveMemberMap.set(c.id, new Set());
-        candidateActiveMemberMap.get(c.id).add(mp.id);
+    for (const c of candidateRows) {
+      const candidateNormPhone = candidatePhoneMap.get(c.id);
+      if (candidateNormPhone && candidateNormPhone === mpNormPhone) {
+        if (!activatedMpMap.has(mp.id)) activatedMpMap.set(mp.id, new Set());
+        activatedMpMap.get(mp.id).add(c.id);
       }
     }
   }
 
-  // Conflict ONLY if more than 1 distinct active member_profile exists
-  if (activeMemberProfilesMatched.size > 1) {
-    conflictFlags.push('multiple_active_member_profiles');
+  let derivedMembershipStatus = 'membership_none';
+  const activatedMpCount = activatedMpMap.size;
+
+  if (activatedMpCount === 0) {
+    derivedMembershipStatus = 'membership_none';
+  } else {
+    // Check if distinct activated member profiles map to different candidate IDs
+    const candidateIdsWithActivatedMp = new Set();
+    let hasSharedPhoneMatchingMultipleCandidates = false;
+
+    for (const [mpId, matchedCandidates] of activatedMpMap.entries()) {
+      if (matchedCandidates.size > 1) {
+        hasSharedPhoneMatchingMultipleCandidates = true;
+      }
+      for (const candId of matchedCandidates) {
+        candidateIdsWithActivatedMp.add(candId);
+      }
+    }
+
+    if (activatedMpCount > 1 && candidateIdsWithActivatedMp.size > 1) {
+      derivedMembershipStatus = 'membership_multiple_candidates';
+      conflictFlags.push('multiple_active_member_profiles');
+    } else if (hasSharedPhoneMatchingMultipleCandidates) {
+      derivedMembershipStatus = 'membership_unresolved';
+    } else if (candidateIdsWithActivatedMp.size === 1) {
+      derivedMembershipStatus = 'membership_unique_candidate';
+    } else {
+      derivedMembershipStatus = 'membership_unresolved';
+    }
   }
 
   // 8. Name Conflict Audit
@@ -204,12 +232,13 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows,
       memberEvidenceRows,
       otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
       conflictFlags,
     });
   }
 
   // RULE 2: Multiple Active Member Profiles -> MANUAL REVIEW
-  if (activeMemberProfilesMatched.size > 1) {
+  if (derivedMembershipStatus === 'membership_multiple_candidates') {
     return buildResult({
       mokaId: cleanMokaId,
       classification: CLASSIFICATION.MANUAL_REVIEW,
@@ -221,6 +250,7 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows,
       memberEvidenceRows,
       otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
       conflictFlags,
     });
   }
@@ -239,6 +269,7 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows,
       memberEvidenceRows,
       otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
       conflictFlags,
     });
   }
@@ -257,6 +288,7 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows,
       memberEvidenceRows,
       otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
       conflictFlags,
     });
   }
@@ -275,6 +307,7 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows,
       memberEvidenceRows,
       otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
       conflictFlags,
     });
   }
@@ -293,32 +326,26 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows,
       memberEvidenceRows,
       otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
       conflictFlags,
     });
   }
 
-  // RULE 7: Unique Trusted Web Schedule Owner
-  if (candidatesWithWebSchedule.length === 1 && candidatesWithTx.length === 0 && candidatesWithBooking.length === 0) {
-    const canonicalId = candidatesWithWebSchedule[0];
-    return buildResult({
-      mokaId: cleanMokaId,
-      classification: CLASSIFICATION.SAFE_AUTO_RECONCILE,
-      reasonCode: 'unique_trusted_web_schedule_owner',
-      candidateRows,
-      canonicalId,
-      transactionRows,
-      bookingRows,
-      scheduleRows,
-      memberEvidenceRows,
-      otherReferenceRows,
-      conflictFlags,
-    });
-  }
-
-  // RULE 8: Same Phone across all candidates + Single Active Member / Zero Evidence
+  // RULE 7: Same Phone across all candidates + Single Active Member / Web Schedule / Zero Evidence
   if (sameNormalizedPhoneAcrossAllCandidates && candidatesWithTx.length === 0 && candidatesWithBooking.length === 0) {
-    const sortedIds = candidateRows.map(c => c.id).sort();
-    const canonicalId = sortedIds[0];
+    let canonicalId = null;
+    if (derivedMembershipStatus === 'membership_unique_candidate') {
+      // Find the candidate ID that has the unique activated member profile
+      for (const [mpId, cSet] of activatedMpMap.entries()) {
+        if (cSet.size === 1) canonicalId = Array.from(cSet)[0];
+      }
+    } else if (candidatesWithWebSchedule.length === 1) {
+      canonicalId = candidatesWithWebSchedule[0];
+    } else {
+      // Stable lexicographical tie-break ONLY when same normalized phone and zero business conflict
+      const sortedIds = candidateRows.map(c => c.id).sort();
+      canonicalId = sortedIds[0];
+    }
 
     return buildResult({
       mokaId: cleanMokaId,
@@ -331,11 +358,12 @@ function planMokaCustomerGroupReconciliation({
       scheduleRows,
       memberEvidenceRows,
       otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
       conflictFlags,
     });
   }
 
-  // RULE 9: Default Manual Review (no valid phone, competing evidence, or unresolved)
+  // RULE 8: Default Manual Review (no valid phone, competing evidence, or unresolved)
   if (hasNoValidPhone) {
     conflictFlags.push('no_valid_phone_conflict');
   }
@@ -351,6 +379,7 @@ function planMokaCustomerGroupReconciliation({
     scheduleRows,
     memberEvidenceRows,
     otherReferenceRows,
+    membershipStatus: derivedMembershipStatus,
     conflictFlags,
   });
 }
@@ -366,6 +395,7 @@ function buildResult({
   scheduleRows,
   memberEvidenceRows,
   otherReferenceRows,
+  membershipStatus,
   conflictFlags,
 }) {
   const candidateIds = candidateRows.map(c => c.id);
@@ -392,6 +422,7 @@ function buildResult({
     schedule_refs_to_move: scheduleRefsToMove,
     member_profile_refs_to_move: 0, // member_profiles has no customer_id column to move
     other_fk_refs_to_move: otherFkRefsToMove,
+    membership_status: membershipStatus,
     conflict_flags: Array.from(new Set(conflictFlags)),
   });
 }
