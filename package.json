@@ -7,7 +7,8 @@
  },
  "workspaces": [
  "server",
- "frontend"
+ "frontend",
+ "backoffice"
  ],
  "scripts": {
  "start": "npm --workspace server run start",

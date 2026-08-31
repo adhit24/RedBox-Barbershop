@@ -1,6 +1,7 @@
 {
+ "buildCommand": "npm --workspace=backoffice run build",
  "functions": {
- "api/index.js": { "maxDuration": 60, "includeFiles": "server/**" },
+ "api/index.js": { "maxDuration": 60, "includeFiles": "{server/**,backoffice/dist/**}" },
  "api/ai/analyze.js": { "maxDuration": 60, "includeFiles": "server/**" },
  "api/ai/upload.js": { "maxDuration": 30, "includeFiles": "server/**" },
  "api/ai/hairstyle.js": { "maxDuration": 300, "includeFiles": "server/**" },
@@ -25,12 +26,20 @@
  { "source": "/api/cron/expire-stale-bills","destination": "/api/cron/expire-stale-bills.js" },
  { "source": "/api/cron/home-service-flag", "destination": "/api/cron/home-service-flag.js" },
  { "source": "/api/moka/sync-customers", "destination": "/api/moka/sync-customers.js" },
- { "source": "/api/:path*", "destination": "/api/index" }
+ { "source": "/api/:path*", "destination": "/api/index" },
+ { "source": "/(.*)", "has": [{ "type": "host", "value": "backoffice.redboxbarbershop.com" }], "destination": "/api/index" }
  ],
  "headers": [
  {
  "source": "/Brand_assets/(.*)",
  "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+ }
+ ],
+ "routes": [
+ {
+ "src": "^/$",
+ "has": [{ "type": "host", "value": "backoffice.redboxbarbershop.com" }],
+ "dest": "/api/index"
  }
  ]
 }
