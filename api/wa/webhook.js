@@ -91,7 +91,7 @@ function getBranchConfig(branchKey = 'bypass') {
   return found || REDBOX_KNOWLEDGE.branches[0];
 }
 
-const { REDBOX_KNOWLEDGE } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
+const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
 const { REDBOX_SERVICES } = require('../../public/js/services-data');
 /**
  * Vercel Serverless — POST /api/wa/webhook
@@ -1637,7 +1637,35 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  
+  // Round 2 correction, Blocker 3 — official branch contact resolver.
+  // Deterministic: intercepts explicit contact requests ("nomor cabang?",
+  // "nomor Redbox Sumber?", "WA cabang Tegal?", "kontak Samadikun?") before
+  // the orchestrator/LLM is reached, so the model never has a chance to
+  // invent or misquote a phone number. Source of truth is
+  // REDBOX_KNOWLEDGE.branches[*].phone only (resolveOfficialBranchContact).
+  // Requires an explicit branch/cabang reference (a bare "nomor hp"/"kontak"
+  // mention is far more often the customer giving/asking about their OWN
+  // number — see Round 2 regression: conversation-intelligence-v01.test.js
+  // Task 12 (14) sends "...nomor HP 62800000000" and must reach the normal
+  // orchestrator path, not this shortcut).
+  const mentionsBranchOrCabang = /\bcabang/.test(msgLower)
+    || REDBOX_KNOWLEDGE.branches.some((b) => msgHas([b.id, ...(b.aliases || [])]));
+  const isContactRequest = !isPersonalHistoryOrPreferenceSignal
+    && mentionsBranchOrCabang
+    && /\b(nomor|no\.?|wa|whatsapp|telp(?:on)?|kontak|hubungi)\b/.test(msgLower);
+  if (isContactRequest) {
+    const explicitContactBranch = REDBOX_KNOWLEDGE.branches.find((b) => msgHas([b.id, ...(b.aliases || [])]));
+    const contactBranchId = explicitContactBranch ? explicitContactBranch.id : branch;
+    const contactResolution = resolveOfficialBranchContact(contactBranchId);
+    reply = contactResolution.reply;
+    used = 'keyword';
+    Promise.resolve(recordEvaluation({
+      event_type: 'keyword_shortcut_used', branch, intent: 'contact_inquiry', route: 'keyword',
+    })).catch(() => {});
+    const sendResult = await send(from, reply, { branch });
+    return { used, reply, sendResult, error: null };
+  }
+
   // ── Wait complaint: pelanggan cerita pernah nunggu/antri di outlet ──
   // Pivot: empati → cerita digitalisasi (live availability) → arahkan booking online
   // Contoh: "td udh kesana katanya nunggu 2", "kemarin antri lama", "abis dari outlet harus nunggu"
@@ -1664,6 +1692,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     });
   } catch (err) {
     console.warn('[WA Bot] Orchestrator exception:', err.message);
+    // Round 2 Blocker 2: this is a SUBSYSTEM event, not a terminal inbound
+    // failure — orchDecision stays null and processing falls through to the
+    // legacy Reddy fallback path below, which may still serve the customer
+    // successfully. Telemetry only; do not set a failureReason here.
+    Promise.resolve(recordEvaluation({
+      event_type: 'orchestrator_execution_failed', branch, metadata: { reason: 'orchestrator_failed' },
+    })).catch(() => {});
   }
   const latencyMs = Date.now() - orchStart;
 
@@ -1934,11 +1969,34 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       return { used: 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
     }
 
-    const intelRes = await executeIntelligence({
-      intent: orchDecision.intent,
-      action: orchDecision.action,
-      trustedIdentity,
-    }, { supabase: getSupabase() });
+    let intelRes;
+    try {
+      intelRes = await executeIntelligence({
+        intent: orchDecision.intent,
+        action: orchDecision.action,
+        trustedIdentity,
+      }, { supabase: getSupabase() });
+    } catch (err) {
+      // Round 2 Blocker 2: the CRM/customer-intelligence subsystem itself
+      // threw (not just returned a non-success execution_status, which the
+      // block below already handles safely). Telemetry records
+      // crm_context_failed; a safe generic reply is still sent so this turn
+      // is SENT unless that delivery also fails.
+      console.warn('[WA Bot] CRM intelligence exception:', err.message);
+      Promise.resolve(recordEvaluation({
+        event_type: 'crm_context_unavailable', branch, metadata: { reason: 'crm_context_failed' },
+      })).catch(() => {});
+      const crmErrorReply = 'Data pribadi kamu sedang tidak dapat dibaca dengan aman; fitur ini masih sedang kami siapkan agar tetap aman ya Kak.';
+      const sendResult = await send(from, crmErrorReply, { branch });
+      const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
+      return {
+        used: 'crm_unavailable_guard',
+        reply: crmErrorReply,
+        sendResult,
+        error: sendSucceeded ? null : (err?.message || String(err)),
+        failureReason: sendSucceeded ? null : 'crm_context_failed',
+      };
+    }
 
     if (intelRes && intelRes.execution_status === 'success' && intelRes.intelligence) {
       const knowledgeContext = resolveReddyKnowledge({
@@ -1995,7 +2053,18 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         });
         const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
         const sendResult = await send(from, staticReply, { branch });
-        return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
+        // Round 2 Blocker 2: a delivered safe fallback means this turn was
+        // SENT, not FAILED — err.message is preserved only in a log, never
+        // surfaced as a terminal failureReason, unless the fallback itself
+        // could not be delivered.
+        const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
+        return {
+          used: 'static_fallback',
+          reply: staticReply,
+          sendResult,
+          error: sendSucceeded ? null : (err?.message || String(err)),
+          failureReason: sendSucceeded ? null : 'model_call_failed',
+        };
       }
     }
 
@@ -2081,7 +2150,16 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       });
       const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
       const sendResult = await send(from, staticReply, { branch });
-      return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
+      // Round 2 Blocker 2: same split as the CRM-branch catch above — a
+      // delivered safe fallback is SENT, not FAILED.
+      const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
+      return {
+        used: 'static_fallback',
+        reply: staticReply,
+        sendResult,
+        error: sendSucceeded ? null : (err?.message || String(err)),
+        failureReason: sendSucceeded ? null : 'model_call_failed',
+      };
     }
   }
 
@@ -2125,7 +2203,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
     reply = fallbackReply(text, name, branch, fallbackKnowledgeContext?.status, responseLanguage);
     used = 'fallback';
-    error = err?.message || String(err);
+    // Round 2 Blocker 2: err.message is logged above, not written into
+    // `error` yet — this deterministic fallbackReply still has to be sent.
+    // Whether that send actually succeeds decides SENT vs FAILED below,
+    // near the final `return`, not the mere fact that generateReddy threw.
   }
   logTelemetry({
     ...fallbackTelemetry,
@@ -2204,7 +2285,18 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   //   );
   // }
 
-  return { used, reply, sendResult, error };
+  // Round 2 Blocker 2: mirror the CRM-branch/reddy_agent-branch split — a
+  // model_call_failed degrade (used === 'fallback') only becomes a terminal
+  // failureReason if the deterministic fallbackReply itself could not be
+  // delivered. A served customer is SENT, never FAILED.
+  const legacySendSucceeded = Boolean(sendResult && sendResult.status !== false);
+  const legacyFallbackUndelivered = used === 'fallback' && !legacySendSucceeded;
+  if (legacyFallbackUndelivered) {
+    error = 'model call failed and fallback reply was not delivered';
+  }
+  const failureReason = legacyFallbackUndelivered ? 'model_call_failed' : null;
+
+  return { used, reply, sendResult, error, failureReason };
 }
 
 function parseMultipartFormData(buffer, contentType) {
@@ -2435,7 +2527,19 @@ module.exports = async function handler(req, res, testDeps = {}) {
         if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
           trustedIdentity = identityResult.trustedIdentity;
         }
-      } catch {}
+      } catch (err) {
+        // Round 2 Blocker 2: this trust-query identity upgrade is a dormant,
+        // optional CRM eligibility signal (never gates the Reddy flow — see
+        // the comment above this block) — trustedIdentity correctly stays
+        // null and processing continues normally. Telemetry only, using the
+        // existing identity-lookup-failure event so this failure is visible
+        // instead of silently swallowed; it must never become a terminal
+        // inbound failureReason on its own.
+        console.warn('[WA Bot] Trust-query identity lookup exception:', err?.message || err);
+        Promise.resolve(recordEvaluationEvent({
+          event_type: 'crm_identity_lookup_failed', branch: null, metadata: { reason: 'identity_lookup_failed' },
+        })).catch(() => {});
+      }
     }
 
     const device = body.device || body.device_id || body.deviceId;

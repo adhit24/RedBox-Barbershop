@@ -168,11 +168,37 @@ function buildReddyPersonalityPrompt(options = {}) {
  * Removes/blocks placeholder and uses honest no-number fallback:
  * "Harga pastinya belum bisa aku pastikan dari data resmi yang tersedia."
  */
+// Round 2 correction — branch-aware price authority.
+// Known branch identities (server/agents/reddy/knowledge/redboxKnowledge.js
+// BRANCH_IDS): 'csb' prices differently from the other four. An
+// unrecognized/missing branch string must NEVER be silently treated as
+// "standard" when a service's standard and csb prices actually differ —
+// that would misquote a CSB customer the wrong (lower) price. Only when a
+// service's standard and csb prices are identical is branch identity
+// unnecessary to resolve a numeric price.
+const KNOWN_STANDARD_BRANCH_IDS = new Set(['bypass', 'samadikun', 'sumber', 'tegal']);
+const KNOWN_CSB_BRANCH_ID = 'csb';
+
+function classifyBranchPriceAuthority(branch) {
+  const normalized = String(branch || '').trim().toLowerCase();
+  if (normalized === KNOWN_CSB_BRANCH_ID) return 'csb';
+  if (KNOWN_STANDARD_BRANCH_IDS.has(normalized)) return 'standard';
+  return 'unknown';
+}
+
+// Bare, generic tokens that route conversationally (see
+// knowledge/redboxKnowledge.js SERVICE_ALIAS_EXTRAS) but are too ambiguous
+// to serve as the FINAL numeric-price identity authority when no
+// serviceId/serviceName was supplied — e.g. "potong" or "fade" appearing
+// anywhere in an outbound reply is not proof the reply is quoting Gentleman
+// Grooming specifically. Longer, specific phrases (e.g. "potong rambut",
+// "gentleman grooming") remain eligible since the catalog audit shows they
+// unambiguously identify a single service.
+const GENERIC_PRICE_IDENTITY_BLOCKLIST = new Set(['haircut', 'hair cut', 'potong', 'fade']);
+
 function defaultServicePriceResolver({ serviceId, serviceName, text, branch }) {
   const { REDBOX_KNOWLEDGE } = require('./knowledge/redboxKnowledge');
   const services = REDBOX_KNOWLEDGE.services || [];
-  const branchLower = String(branch || '').toLowerCase();
-  const isCsb = branchLower === 'csb';
 
   let foundService = null;
   if (serviceId) {
@@ -182,7 +208,9 @@ function defaultServicePriceResolver({ serviceId, serviceName, text, branch }) {
     foundService = services.find((s) => s.name.toLowerCase() === snLower || s.aliases.includes(snLower));
   } else if (text) {
     const tLower = String(text).toLowerCase();
-    const matches = services.filter((s) => s.aliases.some((alias) => tLower.includes(alias)));
+    const matches = services.filter((s) => s.aliases.some(
+      (alias) => !GENERIC_PRICE_IDENTITY_BLOCKLIST.has(alias) && tLower.includes(alias),
+    ));
     if (matches.length === 1) {
       foundService = matches[0];
     }
@@ -192,7 +220,23 @@ function defaultServicePriceResolver({ serviceId, serviceName, text, branch }) {
     return { resolved: false, priceFormatted: null };
   }
 
-  const numericPrice = isCsb ? foundService.prices.csb : foundService.prices.standard;
+  const { standard, csb } = foundService.prices;
+  const hasStandard = typeof standard === 'number' && standard > 0;
+  const hasCsb = typeof csb === 'number' && csb > 0;
+  const pricesDiffer = hasStandard && hasCsb && standard !== csb;
+
+  let numericPrice = null;
+  if (!pricesDiffer) {
+    numericPrice = hasStandard ? standard : (hasCsb ? csb : null);
+  } else {
+    const authority = classifyBranchPriceAuthority(branch);
+    if (authority === 'csb') numericPrice = csb;
+    else if (authority === 'standard') numericPrice = standard;
+    // authority === 'unknown': leave numericPrice null -> unresolved below.
+    // A branch-dependent price must never fall back to "standard" just
+    // because the branch identity could not be determined.
+  }
+
   if (typeof numericPrice === 'number' && numericPrice > 0) {
     const formatted = 'Rp' + numericPrice.toLocaleString('id-ID');
     return { resolved: true, priceFormatted: formatted, serviceId: foundService.id };
@@ -245,4 +289,5 @@ module.exports = {
   buildReddyPersonalityPrompt,
   guardPricePlaceholders,
   defaultServicePriceResolver,
+  classifyBranchPriceAuthority,
 };

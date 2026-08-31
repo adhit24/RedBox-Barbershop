@@ -95,6 +95,14 @@ const EVENT_DEFINITIONS = Object.freeze({
   price_placeholder_blocked: ['HIGH', 'quality', 'PRICE_PLACEHOLDER_BLOCKED'],
   final_outbound_after_guards: ['INFO', 'outbound', 'FINAL_OUTBOUND_AFTER_GUARDS'],
   request_ack_without_fulfillment: ['WARNING', 'quality', 'REQUEST_ACK_WITHOUT_FULFILLMENT'],
+  // Correction Round 2, Blocker 2 — subsystem telemetry distinct from
+  // terminal inbound result. The orchestrator's own exception is caught in
+  // handleMessage and the turn falls through to the legacy Reddy path, so
+  // this event is observer-only: it records that the orchestrator degraded,
+  // it does NOT by itself mean the customer's turn ended in FAILED (see
+  // waInboundLifecycle.js / ALLOWED_INBOUND_LIFECYCLE_REASONS for the
+  // terminal-reason side of this split).
+  orchestrator_execution_failed: ['HIGH', 'routing', 'ORCHESTRATOR_EXECUTION_FAILED'],
 });
 
 let supabaseProvider = () => null;

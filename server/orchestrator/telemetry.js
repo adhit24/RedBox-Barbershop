@@ -470,5 +470,6 @@ module.exports = {
   sanitizeBookingLinkageTelemetry, logBookingLinkageEvent,
   sanitizeInboundLifecycleTelemetry, logInboundLifecycleEvent,
   sanitizeTransactionLinkageTelemetry, logTransactionLinkageEvent,
+  ALLOWED_INBOUND_LIFECYCLE_REASONS,
 };
 

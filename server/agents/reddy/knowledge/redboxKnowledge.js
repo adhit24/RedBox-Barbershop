@@ -140,4 +140,47 @@ const SERVICE_IDS = Object.freeze(REDBOX_KNOWLEDGE.services.map(service => servi
 
 validateKnowledge(REDBOX_KNOWLEDGE);
 
-module.exports = { REDBOX_KNOWLEDGE, KNOWLEDGE_VERSION, BRANCH_IDS, SERVICE_IDS };
+// Round 2 correction, Blocker 3 — official branch contact resolver.
+// Source authority is REDBOX_KNOWLEDGE.branches[*].phone ONLY (the publicly
+// published branch business line — see source_semantics.branches above).
+// This function must never be given, and never returns, a barber/employee
+// phone, a customer's own CRM phone, a handoff-case phone, or any number
+// extracted from conversation text — none of those fields exist on
+// REDBOX_KNOWLEDGE.branches, so there is nothing here for such a value to
+// leak through. Deterministic: the model never picks the returned number.
+const OFFICIAL_CONTACT_UNKNOWN_BRANCH_REPLY = 'Cabang mana ya Kak — Bypass, Samadikun, CSB Mall, Sumber, atau Tegal?';
+const OFFICIAL_CONTACT_NO_PHONE_REPLY = 'Nomor cabang itu belum tersedia di data resmi yang aku pegang.';
+
+function resolveOfficialBranchContact(branch) {
+  const normalized = String(branch || '').trim().toLowerCase();
+  if (!normalized) {
+    return { status: 'unknown_branch', branchId: null, phone: null, reply: OFFICIAL_CONTACT_UNKNOWN_BRANCH_REPLY };
+  }
+  const branchRecord = REDBOX_KNOWLEDGE.branches.find((item) => item.id === normalized);
+  if (!branchRecord) {
+    return { status: 'unknown_branch', branchId: null, phone: null, reply: OFFICIAL_CONTACT_UNKNOWN_BRANCH_REPLY };
+  }
+  if (!branchRecord.phone) {
+    return {
+      status: 'no_official_contact',
+      branchId: branchRecord.id,
+      phone: null,
+      reply: OFFICIAL_CONTACT_NO_PHONE_REPLY,
+    };
+  }
+  return {
+    status: 'resolved',
+    branchId: branchRecord.id,
+    branchName: branchRecord.name,
+    phone: branchRecord.phone,
+    reply: `Nomor resmi Redbox ${branchRecord.name}: ${branchRecord.phone}`,
+  };
+}
+
+module.exports = {
+  REDBOX_KNOWLEDGE,
+  KNOWLEDGE_VERSION,
+  BRANCH_IDS,
+  SERVICE_IDS,
+  resolveOfficialBranchContact,
+};
