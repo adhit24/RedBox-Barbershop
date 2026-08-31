@@ -101,3 +101,44 @@ export function getOwnerRevenue(params: { branch?: string; period?: RevenuePerio
 export function getMembership(): Promise<MemberProfile[]> {
   return apiClient.get<MemberProfile[]>('/api/admin/crm/membership');
 }
+
+export interface CommandCenterBarber {
+  id: string;
+  name: string;
+  branch: string;
+  attendance_status: string | null;
+  today_count: number;
+}
+
+export interface CommandCenterBookingFeedItem {
+  id: string;
+  status: 'pending' | 'confirmed';
+  time: string;
+  barber_id: string | null;
+  name: string;
+  wa: string | null;
+  service: string;
+  notes: string | null;
+}
+
+export interface CommandCenterBranchData {
+  today: string;
+  barbers: CommandCenterBarber[];
+  stats: {
+    hadir: number;
+    tidak_hadir: number;
+    belum_check_in: number;
+    booking_today: number;
+    pending: number;
+    home_service_active: number;
+    moka_open_bills: number;
+  };
+  home_service: unknown[];
+  booking_feed: CommandCenterBookingFeedItem[];
+  moka_open_bills: unknown[];
+  alerts: { type: string; message: string }[];
+}
+
+export function getCommandCenterForBranch(branch: string): Promise<CommandCenterBranchData> {
+  return apiClient.get<CommandCenterBranchData>(`/api/admin/crm/command-center?branch=${encodeURIComponent(branch)}`);
+}

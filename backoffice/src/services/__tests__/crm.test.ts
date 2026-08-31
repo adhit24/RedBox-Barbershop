@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getOwnerOverview, getOwnerRevenue, getMembership } from '../crm';
+import { getOwnerOverview, getOwnerRevenue, getMembership, getCommandCenterForBranch } from '../crm';
 
 describe('crm service', () => {
   beforeEach(() => {
@@ -54,5 +54,16 @@ describe('crm service', () => {
     const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe('/api/admin/crm/membership');
     expect(result).toEqual(members);
+  });
+
+  it('getCommandCenterForBranch calls GET /api/admin/crm/command-center?branch=<slug>', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ today: '2026-09-01', barbers: [], stats: {}, home_service: [], booking_feed: [], moka_open_bills: [], alerts: [] }), { status: 200 })
+    );
+
+    await getCommandCenterForBranch('csb');
+
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/admin/crm/command-center?branch=csb');
   });
 });
