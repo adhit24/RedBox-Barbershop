@@ -1,4 +1,4 @@
--- Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Schema & Ledger Migration Scaffolding (Correction Round 1 Hardened).
+-- Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Schema & Ledger Migration Scaffolding (Correction Round 2 Hardened).
 -- DO NOT APPLY TO PRODUCTION DURING TASK 17.3.2. TRACKED MIGRATION DEFINITION ONLY.
 
 -- 1. Add customer retirement columns to customers table
@@ -74,8 +74,14 @@ BEGIN
     IF NEW.plan_fingerprint <> OLD.plan_fingerprint OR
        NEW.canonical_customer_id <> OLD.canonical_customer_id OR
        NEW.duplicate_customer_ids <> OLD.duplicate_customer_ids OR
+       NEW.candidate_customer_ids <> OLD.candidate_customer_ids OR
        NEW.classification <> OLD.classification OR
-       NEW.rollback_snapshot <> OLD.rollback_snapshot THEN
+       NEW.rollback_snapshot <> OLD.rollback_snapshot OR
+       NEW.moka_group_hash <> OLD.moka_group_hash OR
+       NEW.planned_transaction_refs <> OLD.planned_transaction_refs OR
+       NEW.planned_booking_refs <> OLD.planned_booking_refs OR
+       NEW.planned_schedule_refs <> OLD.planned_schedule_refs OR
+       NEW.planned_other_refs <> OLD.planned_other_refs THEN
       RAISE EXCEPTION 'IMMUTABLE_APPROVED_PLAN: Cannot mutate approved reconciliation plan parameters for key %', OLD.reconciliation_key;
     END IF;
   END IF;
@@ -111,6 +117,14 @@ DECLARE
   v_move RECORD;
   v_row_count INT;
   v_merged_check UUID;
+  v_tx_moves_len INT;
+  v_bk_moves_len INT;
+  v_sch_moves_len INT;
+  v_seen_tx_ids UUID[] := '{}';
+  v_seen_bk_ids UUID[] := '{}';
+  v_seen_sch_ids UUID[] := '{}';
+  v_sorted_candidates UUID[];
+  v_sorted_expected UUID[];
 BEGIN
   -- Obtain transaction advisory lock on key
   PERFORM pg_advisory_xact_lock(hashtext(p_reconciliation_key));
@@ -140,6 +154,83 @@ BEGIN
   v_canonical_id := v_ledger.canonical_customer_id;
   v_duplicate_ids := v_ledger.duplicate_customer_ids;
 
+  -- Pre-mutation validation: duplicate_customer_ids non-empty and canonical not in duplicate set
+  IF v_duplicate_ids IS NULL OR array_length(v_duplicate_ids, 1) IS NULL OR array_length(v_duplicate_ids, 1) = 0 THEN
+    RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Duplicate customer IDs set cannot be empty for key %', p_reconciliation_key;
+  END IF;
+
+  IF v_canonical_id = ANY(v_duplicate_ids) THEN
+    RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Canonical customer % cannot be in duplicate set', v_canonical_id;
+  END IF;
+
+  -- Pre-mutation validation: candidate set equality invariant
+  SELECT array_agg(x ORDER BY x) INTO v_sorted_candidates FROM unnest(v_ledger.candidate_customer_ids) x;
+  SELECT array_agg(x ORDER BY x) INTO v_sorted_expected FROM unnest(array_cat(ARRAY[v_canonical_id], v_duplicate_ids)) x;
+
+  IF v_sorted_candidates <> v_sorted_expected THEN
+    RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Candidate set mismatch with canonical + duplicates for key %', p_reconciliation_key;
+  END IF;
+
+  -- Pre-mutation validation: Snapshot moves array length vs planned refs
+  v_tx_moves_len := COALESCE(jsonb_array_length(v_ledger.rollback_snapshot->'transaction_moves'), 0);
+  v_bk_moves_len := COALESCE(jsonb_array_length(v_ledger.rollback_snapshot->'booking_moves'), 0);
+  v_sch_moves_len := COALESCE(jsonb_array_length(v_ledger.rollback_snapshot->'schedule_moves'), 0);
+
+  IF v_tx_moves_len <> v_ledger.planned_transaction_refs OR
+     v_bk_moves_len <> v_ledger.planned_booking_refs OR
+     v_sch_moves_len <> v_ledger.planned_schedule_refs THEN
+    RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Snapshot array lengths do not match planned ref counts for key %', p_reconciliation_key;
+  END IF;
+
+  -- Pre-mutation validation: Move fields & duplicate move ID checks
+  FOR v_move IN SELECT * FROM jsonb_to_recordset(v_ledger.rollback_snapshot->'transaction_moves') AS x(id UUID, previous_customer_id UUID, target_customer_id UUID) LOOP
+    IF v_move.id IS NULL OR v_move.previous_customer_id IS NULL OR v_move.target_customer_id IS NULL THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Transaction move record contains null fields';
+    END IF;
+    IF NOT (v_move.previous_customer_id = ANY(v_duplicate_ids)) THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Transaction move previous_customer_id % not in duplicate set', v_move.previous_customer_id;
+    END IF;
+    IF v_move.target_customer_id <> v_canonical_id THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Transaction move target_customer_id % does not match canonical %', v_move.target_customer_id, v_canonical_id;
+    END IF;
+    IF v_move.id = ANY(v_seen_tx_ids) THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Duplicate transaction move ID % in snapshot', v_move.id;
+    END IF;
+    v_seen_tx_ids := array_append(v_seen_tx_ids, v_move.id);
+  END LOOP;
+
+  FOR v_move IN SELECT * FROM jsonb_to_recordset(v_ledger.rollback_snapshot->'booking_moves') AS x(id UUID, previous_customer_id UUID, target_customer_id UUID) LOOP
+    IF v_move.id IS NULL OR v_move.previous_customer_id IS NULL OR v_move.target_customer_id IS NULL THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Booking move record contains null fields';
+    END IF;
+    IF NOT (v_move.previous_customer_id = ANY(v_duplicate_ids)) THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Booking move previous_customer_id % not in duplicate set', v_move.previous_customer_id;
+    END IF;
+    IF v_move.target_customer_id <> v_canonical_id THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Booking move target_customer_id % does not match canonical %', v_move.target_customer_id, v_canonical_id;
+    END IF;
+    IF v_move.id = ANY(v_seen_bk_ids) THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Duplicate booking move ID % in snapshot', v_move.id;
+    END IF;
+    v_seen_bk_ids := array_append(v_seen_bk_ids, v_move.id);
+  END LOOP;
+
+  FOR v_move IN SELECT * FROM jsonb_to_recordset(v_ledger.rollback_snapshot->'schedule_moves') AS x(id UUID, previous_customer_id UUID, target_customer_id UUID) LOOP
+    IF v_move.id IS NULL OR v_move.previous_customer_id IS NULL OR v_move.target_customer_id IS NULL THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Schedule move record contains null fields';
+    END IF;
+    IF NOT (v_move.previous_customer_id = ANY(v_duplicate_ids)) THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Schedule move previous_customer_id % not in duplicate set', v_move.previous_customer_id;
+    END IF;
+    IF v_move.target_customer_id <> v_canonical_id THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Schedule move target_customer_id % does not match canonical %', v_move.target_customer_id, v_canonical_id;
+    END IF;
+    IF v_move.id = ANY(v_seen_sch_ids) THEN
+      RAISE EXCEPTION 'APPROVED_PLAN_INVALID: Duplicate schedule move ID % in snapshot', v_move.id;
+    END IF;
+    v_seen_sch_ids := array_append(v_seen_sch_ids, v_move.id);
+  END LOOP;
+
   -- Lock candidate customer rows in deterministic order
   PERFORM id FROM customers
   WHERE id = ANY(array_cat(ARRAY[v_canonical_id], v_duplicate_ids))
@@ -156,10 +247,6 @@ BEGIN
 
   IF v_merged_check IS NOT NULL THEN
     RAISE EXCEPTION 'CANONICAL_ALREADY_RETIRED: Canonical customer % is already merged into %', v_canonical_id, v_merged_check;
-  END IF;
-
-  IF v_canonical_id = ANY(v_duplicate_ids) THEN
-    RAISE EXCEPTION 'CANONICAL_CANNOT_BE_RETIRED: Canonical customer % is listed in duplicate retirement set', v_canonical_id;
   END IF;
 
   -- Revalidate duplicate customer states
@@ -277,6 +364,8 @@ DECLARE
   v_move RECORD;
   v_row_count INT;
   v_dup_id UUID;
+  v_canonical_check UUID;
+  v_merged_check UUID;
 BEGIN
   -- Obtain advisory lock
   PERFORM pg_advisory_xact_lock(hashtext(p_reconciliation_key));
@@ -291,42 +380,71 @@ BEGIN
     RAISE EXCEPTION 'RECONCILIATION_NOT_FOUND: Ledger entry missing for key %', p_reconciliation_key;
   END IF;
 
-  IF v_ledger.status NOT IN ('COMPLETED', 'FAILED') THEN
+  IF v_ledger.status <> 'COMPLETED' THEN
     RAISE EXCEPTION 'ROLLBACK_INVALID_STATUS: Cannot rollback ledger entry in status %', v_ledger.status;
   END IF;
 
-  -- Restore transactions conditionally
+  -- Lock candidate customer rows deterministically
+  PERFORM id FROM customers
+  WHERE id = ANY(array_cat(ARRAY[v_ledger.canonical_customer_id], v_ledger.duplicate_customer_ids))
+  ORDER BY id
+  FOR UPDATE;
+
+  -- Revalidate canonical customer exists
+  SELECT id INTO v_canonical_check FROM customers WHERE id = v_ledger.canonical_customer_id;
+  IF v_canonical_check IS NULL THEN
+    RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Canonical customer % missing', v_ledger.canonical_customer_id;
+  END IF;
+
+  -- Revalidate duplicate customer rows are currently merged into canonical
+  FOREACH v_dup_id IN ARRAY v_ledger.duplicate_customer_ids LOOP
+    SELECT merged_into_customer_id INTO v_merged_check FROM customers WHERE id = v_dup_id;
+    IF v_merged_check IS NULL OR v_merged_check <> v_ledger.canonical_customer_id THEN
+      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Duplicate customer % not merged into canonical %', v_dup_id, v_ledger.canonical_customer_id;
+    END IF;
+  END LOOP;
+
+  -- Restore transactions conditionally (using ledger.canonical_customer_id as target authority)
   FOR v_move IN SELECT * FROM jsonb_to_recordset(v_ledger.rollback_snapshot->'transaction_moves') AS x(id UUID, previous_customer_id UUID, target_customer_id UUID) LOOP
+    IF v_move.target_customer_id <> v_ledger.canonical_customer_id THEN
+      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Move target_customer_id does not match ledger canonical';
+    END IF;
     UPDATE transactions
     SET customer_id = v_move.previous_customer_id
-    WHERE id = v_move.id AND customer_id = v_move.target_customer_id;
+    WHERE id = v_move.id AND customer_id = v_ledger.canonical_customer_id;
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
     IF v_row_count <> 1 THEN
-      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Transaction % target customer_id % changed since reconciliation', v_move.id, v_move.target_customer_id;
+      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Transaction % target customer_id changed since reconciliation', v_move.id;
     END IF;
     v_restored_tx := v_restored_tx + 1;
   END LOOP;
 
   -- Restore bookings conditionally
   FOR v_move IN SELECT * FROM jsonb_to_recordset(v_ledger.rollback_snapshot->'booking_moves') AS x(id UUID, previous_customer_id UUID, target_customer_id UUID) LOOP
+    IF v_move.target_customer_id <> v_ledger.canonical_customer_id THEN
+      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Move target_customer_id does not match ledger canonical';
+    END IF;
     UPDATE bookings
     SET customer_id = v_move.previous_customer_id
-    WHERE id = v_move.id AND customer_id = v_move.target_customer_id;
+    WHERE id = v_move.id AND customer_id = v_ledger.canonical_customer_id;
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
     IF v_row_count <> 1 THEN
-      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Booking % target customer_id % changed since reconciliation', v_move.id, v_move.target_customer_id;
+      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Booking % target customer_id changed since reconciliation', v_move.id;
     END IF;
     v_restored_booking := v_restored_booking + 1;
   END LOOP;
 
   -- Restore schedules conditionally
   FOR v_move IN SELECT * FROM jsonb_to_recordset(v_ledger.rollback_snapshot->'schedule_moves') AS x(id UUID, previous_customer_id UUID, target_customer_id UUID) LOOP
+    IF v_move.target_customer_id <> v_ledger.canonical_customer_id THEN
+      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Move target_customer_id does not match ledger canonical';
+    END IF;
     UPDATE schedules
     SET customer_id = v_move.previous_customer_id
-    WHERE id = v_move.id AND customer_id = v_move.target_customer_id;
+    WHERE id = v_move.id AND customer_id = v_ledger.canonical_customer_id;
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
     IF v_row_count <> 1 THEN
-      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Schedule % target customer_id % changed since reconciliation', v_move.id, v_move.target_customer_id;
+      RAISE EXCEPTION 'ROLLBACK_DRIFT_DETECTED: Schedule % target customer_id changed since reconciliation', v_move.id;
     END IF;
     v_restored_schedule := v_restored_schedule + 1;
   END LOOP;
@@ -343,10 +461,11 @@ BEGIN
     v_unretired_count := v_unretired_count + 1;
   END LOOP;
 
-  -- Verify rollback counts match original moves
+  -- Verify rollback counts match original moves and duplicates
   IF v_restored_tx <> v_ledger.actual_transaction_refs_moved OR
      v_restored_booking <> v_ledger.actual_booking_refs_moved OR
-     v_restored_schedule <> v_ledger.actual_schedule_refs_moved THEN
+     v_restored_schedule <> v_ledger.actual_schedule_refs_moved OR
+     v_unretired_count <> array_length(v_ledger.duplicate_customer_ids, 1) THEN
     RAISE EXCEPTION 'ROLLBACK_COUNT_MISMATCH: Restored vs original moved count mismatch';
   END IF;
 

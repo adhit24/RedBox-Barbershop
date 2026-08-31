@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Service & Safety Architecture (Correction Round 1).
+ * Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Service & Safety Architecture (Correction Round 2).
  *
  * Core Business & Technical Invariants:
  *   1. WRONG CUSTOMER MERGE IS WORSE THAN LEAVING DUPLICATES UNRESOLVED.
@@ -9,10 +9,10 @@
  *   3. CLASSIFICATION ALLOWLIST: Only SAFE_AUTO_RECONCILE and durably approved DETERMINISTIC_RECONCILIATION execute.
  *      MANUAL_REVIEW, LOOKUP_FAILED, and INVALID_DATA CANNOT execute under any circumstances.
  *   4. MANDATORY FRESH REVALIDATION: Fresh groupPlan and fresh evidenceSnapshot MUST be provided to revalidate fingerprint.
- *   5. ATOMIC RPC & DURABLE FAILED STATUS: DB mutations execute in a single RPC transaction.
- *      Execution errors trigger RPC rollback, and caller records FAILED status in a separate transaction.
- *   6. SECURITY DEFINER HARDENING: RPC search_path = public; execution granted strictly to service_role.
- *   7. ZERO PII LOGGING / TELEMETRY: Telemetry minifies and hashes correlation keys; zero PII.
+ *   5. LEDGER LOOKUP FAIL-CLOSED: Ledger lookup errors throw LEDGER_LOOKUP_FAILED without RPC invocation or FAILED writes.
+ *   6. DURABLE APPROVED GATE: Both SAFE_AUTO_RECONCILE and DETERMINISTIC_RECONCILIATION require durable ledger approval before RPC mutation.
+ *   7. NARROW FAILED WRITE BOUNDARY: FAILED status is written to ledger ONLY when RPC execution attempt fails after all pre-validations pass.
+ *   8. ZERO PII LOGGING / TELEMETRY: Telemetry minifies and hashes correlation keys; zero PII.
  */
 
 const crypto = require('crypto');
@@ -166,11 +166,11 @@ function validateExecutionPlan(executionPlan, currentEvidenceSnapshot, groupPlan
     return { valid: false, reason_code: 'CANONICAL_CANNOT_BE_RETIRED' };
   }
 
-  // 5. Durable Ledger Approval Gate Check for DETERMINISTIC
-  if (classification === CLASSIFICATION.DETERMINISTIC_RECONCILIATION) {
-    const isLedgerApproved = ledgerRow && ledgerRow.status === 'APPROVED' && ledgerRow.approved_by && ledgerRow.approved_at;
-    if (!isLedgerApproved) {
-      return { valid: false, reason_code: 'DETERMINISTIC_REQUIRES_DURABLE_APPROVAL' };
+  // 5. Durable Ledger Approval Gate Check (for actual mutation with ledgerRow)
+  if (ledgerRow) {
+    const isApproved = ledgerRow.status === 'APPROVED' && ledgerRow.approved_by && ledgerRow.approved_at;
+    if (!isApproved) {
+      return { valid: false, reason_code: 'EXECUTION_NOT_APPROVED' };
     }
   }
 
@@ -214,11 +214,24 @@ async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot
 
   let ledgerRow = null;
   if (dbClient) {
-    const { data: ledgerData } = await dbClient
+    const { data: ledgerData, error: lookupErr } = await dbClient
       .from('customer_reconciliation_ledger')
       .select('*')
       .eq('reconciliation_key', executionPlan.reconciliation_key)
       .maybeSingle();
+
+    if (lookupErr) {
+      const err = new Error(`LEDGER_LOOKUP_FAILED: ${lookupErr.message}`);
+      err.code = 'LEDGER_LOOKUP_FAILED';
+      throw err;
+    }
+
+    if (!ledgerData) {
+      const err = new Error(`RECONCILIATION_NOT_FOUND: Ledger entry missing for key ${executionPlan.reconciliation_key}`);
+      err.code = 'RECONCILIATION_NOT_FOUND';
+      throw err;
+    }
+
     ledgerRow = ledgerData;
   }
 
@@ -242,7 +255,7 @@ async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot
       }
       return { status: 'COMPLETED', dbResult: data };
     } catch (dbErr) {
-      // SEPARATE TRANSACTION: Record durable FAILED status in ledger
+      // SEPARATE TRANSACTION: Record durable FAILED status in ledger ONLY after RPC attempt
       try {
         await dbClient
           .from('customer_reconciliation_ledger')
@@ -270,7 +283,7 @@ async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot
 }
 
 /**
- * Reversible rollback wrapper for a completed or failed reconciliation group.
+ * Reversible rollback wrapper for a completed reconciliation group.
  * Hard-guarded by CRM_RECONCILIATION_EXECUTION_ENABLED kill switch.
  *
  * @param {string} reconciliationKey - Key of reconciliation group to rollback
