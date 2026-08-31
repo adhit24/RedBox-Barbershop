@@ -187,6 +187,7 @@ async function runDryRunPlanner() {
     groups_membership_multiple: 0,
     groups_membership_unresolved: 0,
     groups_membership_none: 0,
+    groups_membership_lookup_failed: 0,
 
     safe_auto_reconcile: 0,
     deterministic_reconciliation: 0,
@@ -258,11 +259,13 @@ async function runDryRunPlanner() {
       continue;
     }
 
-    // Increment exactly ONE membership category per group based on plan.membership_status
+    // Increment exactly ONE membership category per group based on explicit plan.membership_status mapping
     if (plan.membership_status === 'membership_unique_candidate') metrics.groups_membership_unique++;
     else if (plan.membership_status === 'membership_multiple_candidates') metrics.groups_membership_multiple++;
     else if (plan.membership_status === 'membership_unresolved') metrics.groups_membership_unresolved++;
-    else metrics.groups_membership_none++;
+    else if (plan.membership_status === 'membership_none') metrics.groups_membership_none++;
+    else if (plan.membership_status === 'membership_lookup_failed') metrics.groups_membership_lookup_failed++;
+    else metrics.groups_membership_lookup_failed++;
 
     plans.push(plan);
 
@@ -298,10 +301,11 @@ async function runDryRunPlanner() {
   console.log(`  groups_moka_schedule_evidence:              ${metrics.groups_moka_schedule_evidence}\n`);
 
   console.log('--- MEMBERSHIP DISTRIBUTION ---');
-  console.log(`  groups_membership_unique:       ${metrics.groups_membership_unique}`);
-  console.log(`  groups_membership_multiple:     ${metrics.groups_membership_multiple}`);
-  console.log(`  groups_membership_unresolved:   ${metrics.groups_membership_unresolved}`);
-  console.log(`  groups_membership_none:         ${metrics.groups_membership_none}\n`);
+  console.log(`  groups_membership_unique:         ${metrics.groups_membership_unique}`);
+  console.log(`  groups_membership_multiple:       ${metrics.groups_membership_multiple}`);
+  console.log(`  groups_membership_unresolved:     ${metrics.groups_membership_unresolved}`);
+  console.log(`  groups_membership_none:           ${metrics.groups_membership_none}`);
+  console.log(`  groups_membership_lookup_failed: ${metrics.groups_membership_lookup_failed}\n`);
 
   console.log('--- CLASSIFICATION COUNTS ---');
   console.log(`  SAFE_AUTO_RECONCILE:            ${metrics.safe_auto_reconcile}`);

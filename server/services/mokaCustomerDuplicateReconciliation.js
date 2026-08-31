@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Task 17.3.1 — Moka Customer ID Duplicate Reconciliation (CRM Identity Integrity Round 5 Correction 3).
+ * Task 17.3.1 — Moka Customer ID Duplicate Reconciliation (CRM Identity Integrity Round 5 Correction 4).
  *
  * Single canonical classification and planning authority for duplicate moka_customer_id groups.
  *
@@ -10,9 +10,9 @@
  *      Transaction volume or booking ownership NEVER overrides conflicting identity.
  *   2. BOOKINGS VS SCHEDULES SEPARATION: bookings (customer intent) and schedules (operational)
  *      are distinct tables in production schema and evaluated separately.
- *   3. WEB SCHEDULE BOUNDARY & CONFLICT: source='web' schedule is operational evidence.
- *      Multiple web schedule owners MUST be MANUAL_REVIEW (competing_trusted_web_schedule_ownership).
- *      Single web schedule owner can ONLY support DETERMINISTIC_RECONCILIATION, NEVER SAFE_AUTO_RECONCILE by itself.
+ *   3. WEB SCHEDULE CONFLICT OBSERVABILITY: competing web schedule ownership (candidatesWithWebSchedule.length > 1)
+ *      is pushed to conflict_flags early. Stronger transaction/booking authority preserves SAFE_AUTO_RECONCILE
+ *      while keeping the flag visible. With no stronger authority, competing web schedules return MANUAL_REVIEW.
  *   4. MEMBERSHIP ACTIVATION AUTHORITY: Only `membership_activated_at != null` constitutes active membership authority.
  *      `member_profiles.phone` bridged to multiple same-phone candidates = membership_unresolved.
  *   5. FAIL-CLOSED LOOKUP ERRORS: Any evidence query failure results in LOOKUP_FAILED with NULL canonical ID.
@@ -168,6 +168,11 @@ function planMokaCustomerGroupReconciliation({
   const candidatesWithWebSchedule = Array.from(trustedWebScheduleMap.keys());
   const candidatesWithMokaSchedule = Array.from(mokaScheduleMap.keys());
 
+  // Observability: Early web schedule conflict flag detection
+  if (candidatesWithWebSchedule.length > 1) {
+    conflictFlags.push('competing_trusted_web_schedule_ownership');
+  }
+
   // 7. Membership Authority Bridge & Bounded Evidence Derivation
   // Activation authority strictly requires membership_activated_at IS NOT NULL
   const activatedMpMap = new Map(); // mp.id -> Set<candidate_id>
@@ -193,7 +198,6 @@ function planMokaCustomerGroupReconciliation({
   if (activatedMpCount === 0) {
     derivedMembershipStatus = 'membership_none';
   } else {
-
     const candidateIdsWithActivatedMp = new Set();
     let hasSharedPhoneMatchingMultipleCandidates = false;
 
@@ -301,26 +305,7 @@ function planMokaCustomerGroupReconciliation({
     });
   }
 
-  // RULE 5: Competing Trusted Web Schedule Ownership -> MANUAL REVIEW
-  if (candidatesWithWebSchedule.length > 1 && candidatesWithTx.length === 0 && candidatesWithBooking.length === 0) {
-    conflictFlags.push('competing_trusted_web_schedule_ownership');
-    return buildResult({
-      mokaId: cleanMokaId,
-      classification: CLASSIFICATION.MANUAL_REVIEW,
-      reasonCode: 'competing_trusted_web_schedule_ownership',
-      candidateRows,
-      canonicalId: null,
-      transactionRows,
-      bookingRows,
-      scheduleRows,
-      memberEvidenceRows,
-      otherReferenceRows,
-      membershipStatus: derivedMembershipStatus,
-      conflictFlags,
-    });
-  }
-
-  // RULE 6: Unique Verified Transaction Owner (same phone or no phone conflict)
+  // RULE 5: Unique Verified Transaction Owner (same phone or no phone conflict)
   if (candidatesWithTx.length === 1) {
     const canonicalId = candidatesWithTx[0];
     return buildResult({
@@ -339,7 +324,7 @@ function planMokaCustomerGroupReconciliation({
     });
   }
 
-  // RULE 7: Unique Booking Owner (bookings table)
+  // RULE 6: Unique Booking Owner (bookings table)
   if (candidatesWithBooking.length === 1 && candidatesWithTx.length === 0) {
     const canonicalId = candidatesWithBooking[0];
     return buildResult({
@@ -348,6 +333,24 @@ function planMokaCustomerGroupReconciliation({
       reasonCode: 'unique_booking_owner',
       candidateRows,
       canonicalId,
+      transactionRows,
+      bookingRows,
+      scheduleRows,
+      memberEvidenceRows,
+      otherReferenceRows,
+      membershipStatus: derivedMembershipStatus,
+      conflictFlags,
+    });
+  }
+
+  // RULE 7: Competing Trusted Web Schedule Ownership (without stronger tx/booking authority) -> MANUAL REVIEW
+  if (candidatesWithWebSchedule.length > 1 && candidatesWithTx.length === 0 && candidatesWithBooking.length === 0) {
+    return buildResult({
+      mokaId: cleanMokaId,
+      classification: CLASSIFICATION.MANUAL_REVIEW,
+      reasonCode: 'competing_trusted_web_schedule_ownership',
+      candidateRows,
+      canonicalId: null,
       transactionRows,
       bookingRows,
       scheduleRows,
