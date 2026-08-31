@@ -10,7 +10,8 @@
 const MokaClient = require('./client');
 const { _matchScore } = require('./schemaSync');
 const { logDataAuthorityEvent } = require('../orchestrator/telemetry');
-const { resolveTransactionCustomerLinkage, PROVENANCE } = require('../services/transactionCustomerLinkage');
+const { resolveTransactionCustomerLinkage, maintainCustomerRecordSafely, PROVENANCE, STATUS } = require('../services/transactionCustomerLinkage');
+
 
 
 // Simple in-process lock so concurrent cron ticks don't overlap
@@ -544,24 +545,48 @@ async function _processIncomingOrder(supabase, order, outletId) {
   // Map Moka status to our schedule status
   const scheduleStatus = (mokaStatus === 'COMPLETED') ? 'completed' : 'reserved';
 
+  // 1. Resolve canonical identity FIRST before any CRM record maintenance
+  const canonicalPlan = await resolveTransactionCustomerLinkage(supabase, {
+    transaction: { external_id: mokaOrderId, customer_id: existing?.customer_id || null },
+    provenance: existing?.source === 'web' ? PROVENANCE.VERIFIED_REDBOX_FK : PROVENANCE.NONE,
+    mokaCustomerId: order.customer_id || null,
+    phone: order.customer_phone || null,
+    sourceSystem: 'moka_sync',
+    branch: outletId,
+  });
+
+  // 2. Perform safe customer maintenance (creation on true NOT_FOUND only; safe backfill on unique phone only)
+  const maintResult = await maintainCustomerRecordSafely(
+    supabase,
+    {
+      name: order.customer_name || null,
+      phone: order.customer_phone || null,
+      id: order.customer_id || null,
+    },
+    canonicalPlan
+  );
+
+  // Proven customer ID (if uniquely linked or safely created on true NOT_FOUND)
+  const provenCustomerId = canonicalPlan.safe_to_link
+    ? canonicalPlan.customer_id
+    : (maintResult.action === 'customer_created' ? maintResult.customer_id : null);
+
+  // Determine schedule customer ID (preserve verified_redbox_fk if existing web booking, otherwise provenCustomerId)
+  const scheduleCustomerId = (existing && existing.source === 'web' && existing.customer_id)
+    ? existing.customer_id
+    : provenCustomerId;
+
+  // Determine transaction customer ID
+  const transactionCustomerId = provenCustomerId;
+
   // If already exists: update status if progressed (reserved → completed), otherwise skip
   if (existing) {
     if (existing.status === 'reserved' && scheduleStatus === 'completed') {
       await supabase.from('schedules').update({ status: 'completed' }).eq('id', existing.id);
-      
-      // Task 17.3: Canonical transaction customer linkage resolution
-      const txLinkage = await resolveTransactionCustomerLinkage(supabase, {
-        transaction: { id: existing.id, customer_id: existing.customer_id },
-        provenance: existing.source === 'web' ? PROVENANCE.VERIFIED_REDBOX_FK : PROVENANCE.NONE,
-        mokaCustomerId: order.customer_id || null,
-        phone: order.customer_phone || null,
-        sourceSystem: 'moka_sync',
-        branch: outletId,
-      });
 
       // Insert transaction now that it's completed
       await _insertTransaction(supabase, {
-        customerId: txLinkage.customer_id, outletId,
+        customerId: transactionCustomerId, outletId,
         scheduleId: existing.id, externalId: mokaOrderId,
         totalAmount: order.total_collected || 0,
         source: 'moka', mokaPayload: order, items: [],
@@ -571,10 +596,10 @@ async function _processIncomingOrder(supabase, order, outletId) {
     return 'skipped';
   }
 
-  // 2. Determine start time
+  // 3. Determine start time
   const orderTime = _safeDate(order.transaction_time, order.created_at, order.updated_at);
 
-  // 3. Map order items → duration + amount
+  // 4. Map order items → duration + amount
   // Moka Report API returns items in `checkouts[]`; Advanced Ordering uses `order_items`
   const items = order.checkouts || order.order_items || order.items || [];
   const { totalDuration, totalAmount, mappedItems } =
@@ -582,24 +607,6 @@ async function _processIncomingOrder(supabase, order, outletId) {
 
   const startTime = orderTime;
   const endTime   = new Date(orderTime.getTime() + totalDuration * 60 * 1000);
-
-  // 4. Resolve or create customer (for schedule context)
-  const customerId = await _resolveCustomer(supabase, {
-    name:  order.customer_name  || null,
-    phone: order.customer_phone || null,
-    id:    order.customer_id    || null,
-  });
-
-  // Task 17.3: Canonical transaction customer linkage resolution (for transaction ownership)
-  const txLinkage = await resolveTransactionCustomerLinkage(supabase, {
-    transaction: { external_id: mokaOrderId },
-    provenance: PROVENANCE.NONE,
-    mokaCustomerId: order.customer_id || null,
-    phone: order.customer_phone || null,
-    sourceSystem: 'moka_sync',
-    branch: outletId,
-  });
-  const transactionCustomerId = txLinkage.customer_id;
 
   // 5. Resolve barber from Moka item_id (checkouts[0].item_id = barber's moka_employee_id)
   //    This is more accurate than "find available" since we know exactly which barber served them
@@ -630,7 +637,7 @@ async function _processIncomingOrder(supabase, order, outletId) {
     .insert({
       outlet_id:    outletId,
       barber_id:    barberId || null,
-      customer_id:  customerId || null,
+      customer_id:  scheduleCustomerId || null,
       service_name: mappedItems.map(i => i.name).join(' + '),
       price:        totalAmount,
       start_time:   startTime.toISOString(),
@@ -704,6 +711,7 @@ async function _processIncomingOrder(supabase, order, outletId) {
   }
 
   return 'processed';
+
 
 }
 
@@ -2083,53 +2091,20 @@ async function _mapOrderItems(supabase, items, totalCollected) {
 async function _resolveCustomer(supabase, customerData) {
   if (!customerData) return null;
 
-  const phone = _normalizePhone(customerData.phone || customerData.phone_number);
-  const email = customerData.email || null;
-  const name  = customerData.name  || customerData.customer_name || 'Moka Customer';
-  const mokaId = String(customerData.id || customerData.customer_id || '');
+  const canonicalPlan = await resolveTransactionCustomerLinkage(supabase, {
+    mokaCustomerId: customerData.id || customerData.customer_id || null,
+    phone: customerData.phone || customerData.customer_phone || customerData.phone_number || null,
+    sourceSystem: 'legacy_resolve_customer',
+  });
 
-  if (!phone && !email && !mokaId) return null;
-
-  // Lookup by moka_customer_id first (fastest)
-  if (mokaId) {
-    const { data: byMoka } = await supabase
-      .from('customers').select('id').eq('moka_customer_id', mokaId).maybeSingle();
-    if (byMoka) return byMoka.id;
+  if (canonicalPlan.safe_to_link) {
+    return canonicalPlan.customer_id;
   }
 
-  // Lookup by phone (wa column)
-  if (phone) {
-    const { data: byPhone } = await supabase
-      .from('customers').select('id').eq('phone_e164', phone).maybeSingle();
-    if (byPhone) {
-      // Backfill moka_customer_id if missing
-      if (mokaId || phone) {
-        await supabase.from('customers')
-          .update({
-            moka_customer_id: mokaId || null,
-            phone_e164: phone,
-          })
-          .eq('id', byPhone.id);
-      }
-      return byPhone.id;
-    }
-  }
+  const maint = await maintainCustomerRecordSafely(supabase, customerData, canonicalPlan);
+  return maint.customer_id || null;
+}
 
-  // Create new customer
-  const { data: newCust } = await supabase
-    .from('customers')
-    .insert({
-      name,
-      wa: phone || '',
-      phone_e164: phone || null,
-      email,
-      source: 'moka',
-      moka_customer_id: mokaId || null,
-    })
-    .select('id')
-    .single();
-
-  return newCust?.id || null;
 }
 
 async function _insertTransaction(supabase, {

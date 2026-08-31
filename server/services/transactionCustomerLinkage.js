@@ -19,11 +19,13 @@
 
 const { resolveCustomerIdentity } = require('./customerIdentityResolver');
 const { logTransactionLinkageEvent } = require('../orchestrator/telemetry');
+const { normalizePhoneNumber } = require('../identity/phoneNormalization');
 
 const STATUS = Object.freeze({
   ALREADY_LINKED_AUTHORITATIVE: 'linked_existing_authoritative',
   LINKED_UNIQUE_MOKA: 'linked_unique_moka',
   LINKED_UNIQUE_PHONE: 'linked_unique_phone',
+  SAFE_CREATED_CUSTOMER: 'linked_created_customer',
   AMBIGUOUS_MOKA: 'ambiguous_moka',
   AMBIGUOUS_PHONE: 'ambiguous_phone',
   NOT_FOUND: 'not_found',
@@ -33,6 +35,7 @@ const STATUS = Object.freeze({
 
 const PROVENANCE = Object.freeze({
   VERIFIED_REDBOX_FK: 'verified_redbox_fk',
+  CREATED_AFTER_CANONICAL_NOT_FOUND: 'created_after_canonical_not_found',
   UNVERIFIED_LEGACY_RESOLUTION: 'unverified_legacy_resolution',
   NONE: 'none',
 });
@@ -45,7 +48,8 @@ function buildPlan({ status, transactionId = null, currentCustomerId = null, pro
   const safeToLink = (
     status === STATUS.ALREADY_LINKED_AUTHORITATIVE ||
     status === STATUS.LINKED_UNIQUE_MOKA ||
-    status === STATUS.LINKED_UNIQUE_PHONE
+    status === STATUS.LINKED_UNIQUE_PHONE ||
+    status === STATUS.SAFE_CREATED_CUSTOMER
   );
 
   const finalCustomerId = safeToLink
@@ -64,6 +68,7 @@ function buildPlan({ status, transactionId = null, currentCustomerId = null, pro
     reason,
   });
 }
+
 
 /**
  * Pure classification planner. Zero DB access.
@@ -304,9 +309,115 @@ function emitTelemetry(plan, sourceSystem, branch) {
   }
 }
 
+/**
+ * Safe customer maintenance helper.
+ *
+ * Gated explicitly behind canonical identity resolution plan:
+ *   1. NEVER creates or mutates customer rows on AMBIGUOUS, LOOKUP_FAILED, or INVALID plans.
+ *   2. Backfills moka_customer_id ONLY when plan is LINKED_UNIQUE_PHONE and moka_customer_id is un-duplicated.
+ *   3. Creates a new customer row ONLY when plan is NOT_FOUND and identity input is valid, with zero conflicting rows.
+ *
+ * @param {object} supabase
+ * @param {object} customerData - { phone, customer_phone, id, moka_customer_id, customer_id, name, customer_name, email }
+ * @param {object} canonicalPlan - Resolution plan returned by resolveTransactionCustomerLinkage / planTransactionCustomerLinkage
+ * @returns {Promise<{ action: string, customer_id: string|null, reason?: string }>}
+ */
+async function maintainCustomerRecordSafely(supabase, customerData = {}, canonicalPlan = {}) {
+  if (!customerData) return { action: 'none', customer_id: null };
+
+  const rawPhone = customerData.phone || customerData.customer_phone || customerData.phone_number || null;
+  const normalizedDigits = typeof rawPhone === 'string' ? normalizePhoneNumber(rawPhone) : null;
+  const phoneE164 = normalizedDigits ? `+${normalizedDigits}` : null;
+  const rawMokaId = customerData.id || customerData.moka_customer_id || customerData.customer_id || null;
+  const mokaId = isNonEmptyString(rawMokaId) ? String(rawMokaId).trim() : null;
+  const name = customerData.name || customerData.customer_name || 'Moka Customer';
+  const email = customerData.email || null;
+
+  // 1. NEVER mutate/create customer on ambiguous, lookup_failed, or invalid
+  if (
+    canonicalPlan.status === STATUS.AMBIGUOUS_MOKA ||
+    canonicalPlan.status === STATUS.AMBIGUOUS_PHONE ||
+    canonicalPlan.status === STATUS.LOOKUP_FAILED ||
+    canonicalPlan.status === STATUS.INVALID
+  ) {
+    return { action: 'none', customer_id: null, reason: 'canonical_plan_is_ambiguous_or_failed' };
+  }
+
+  // 2. Safe Backfill Moka ID onto an existing uniquely linked phone customer
+  if (canonicalPlan.status === STATUS.LINKED_UNIQUE_PHONE && isNonEmptyString(canonicalPlan.customer_id) && mokaId) {
+    const { data: existingMokaRows } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('moka_customer_id', mokaId);
+
+    if (!existingMokaRows || existingMokaRows.length === 0) {
+      await supabase
+        .from('customers')
+        .update({ moka_customer_id: mokaId })
+        .eq('id', canonicalPlan.customer_id);
+      return { action: 'moka_id_backfilled', customer_id: canonicalPlan.customer_id };
+    } else {
+      return { action: 'backfill_skipped_duplicate_moka_id', customer_id: canonicalPlan.customer_id };
+    }
+  }
+
+  // 3. Safe Customer Creation: ONLY when canonical plan is NOT_FOUND
+  if (canonicalPlan.status === STATUS.NOT_FOUND) {
+    if (!phoneE164 && !email && !mokaId) {
+      return { action: 'none', customer_id: null, reason: 'insufficient_identity_input' };
+    }
+
+    // Verify no conflicting moka_customer_id exists
+    if (mokaId) {
+      const { data: mokaCheck } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('moka_customer_id', mokaId);
+      if (mokaCheck && mokaCheck.length > 0) {
+        return { action: 'creation_blocked_conflicting_moka_id', customer_id: null };
+      }
+    }
+
+    // Verify no conflicting phone exists
+    if (phoneE164) {
+      const { data: phoneCheck } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('phone_e164', phoneE164);
+      if (phoneCheck && phoneCheck.length > 0) {
+        return { action: 'creation_blocked_conflicting_phone', customer_id: null };
+      }
+    }
+
+    // Safely insert new customer row
+    const { data: newCust, error: insertErr } = await supabase
+      .from('customers')
+      .insert({
+        name,
+        wa: phoneE164 || '',
+        phone_e164: phoneE164 || null,
+        email,
+        source: 'moka',
+        moka_customer_id: mokaId || null,
+      })
+      .select('id')
+      .single();
+
+    if (insertErr || !newCust) {
+      return { action: 'creation_failed', customer_id: null };
+    }
+
+    return { action: 'customer_created', customer_id: newCust.id };
+  }
+
+  return { action: 'none', customer_id: canonicalPlan.customer_id || null };
+}
+
 module.exports = {
   STATUS,
   PROVENANCE,
   planTransactionCustomerLinkage,
   resolveTransactionCustomerLinkage,
+  maintainCustomerRecordSafely,
 };
+
