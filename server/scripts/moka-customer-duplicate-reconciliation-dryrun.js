@@ -17,10 +17,17 @@
 const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const { normalizePhoneNumber } = require('../identity/phoneNormalization');
 const {
   CLASSIFICATION,
   planMokaCustomerGroupReconciliation,
 } = require('../services/mokaCustomerDuplicateReconciliation');
+
+function normalizePhoneSafe(raw) {
+  if (typeof raw !== 'string') return null;
+  const digits = normalizePhoneNumber(raw);
+  return digits ? `+${digits}` : null;
+}
 
 function loadEnvFile() {
   const envPaths = ['.env.local', '.env.prod.local', '.env'];
@@ -119,20 +126,35 @@ async function runDryRunPlanner() {
 
   const allCandidateIds = duplicateMokaEntries.flatMap(([_, rows]) => rows.map(r => r.id));
 
-  // 2. Fetch related records for all candidates in bulk
+  // 2. Fetch related evidence records for all candidates in bulk with explicit error inspection
+  const lookupStatus = {
+    transactions: 'ok',
+    bookings: 'ok',
+    schedules: 'ok',
+    membership: 'ok',
+  };
+
   let txRows = [];
   let bookingRows = [];
-  let memberProfileRows = [];
+  let scheduleRows = [];
+  let memberEvidenceRows = [];
 
   if (allCandidateIds.length > 0) {
-    const { data: txs } = await supabase.from('transactions').select('id, customer_id, status, total_amount').in('customer_id', allCandidateIds);
-    txRows = txs || [];
+    const { data: txs, error: txErr } = await supabase.from('transactions').select('id, customer_id, status, total_amount').in('customer_id', allCandidateIds);
+    if (txErr) lookupStatus.transactions = 'failed';
+    else txRows = txs || [];
 
-    const { data: bks } = await supabase.from('schedules').select('id, customer_id, status').in('customer_id', allCandidateIds);
-    bookingRows = bks || [];
+    const { data: bks, error: bkErr } = await supabase.from('bookings').select('id, customer_id, status').in('customer_id', allCandidateIds);
+    if (bkErr) lookupStatus.bookings = 'failed';
+    else bookingRows = bks || [];
 
-    const { data: mps } = await supabase.from('member_profiles').select('id, customer_id, status').in('customer_id', allCandidateIds);
-    memberProfileRows = mps || [];
+    const { data: schs, error: schErr } = await supabase.from('schedules').select('id, customer_id, status, source').in('customer_id', allCandidateIds);
+    if (schErr) lookupStatus.schedules = 'failed';
+    else scheduleRows = schs || [];
+
+    const { data: mps, error: mpErr } = await supabase.from('member_profiles').select('id, phone, membership_status, membership_activated_at');
+    if (mpErr) lookupStatus.membership = 'failed';
+    else memberEvidenceRows = mps || [];
   }
 
   // 3. Process each group
@@ -144,9 +166,9 @@ async function runDryRunPlanner() {
     groups_3_rows: 0,
     groups_4plus_rows: 0,
 
-    groups_same_phone: 0,
-    groups_multiple_phone: 0,
-    groups_no_phone: 0,
+    groups_same_normalized_phone: 0,
+    groups_multiple_distinct_normalized_phone: 0,
+    groups_no_valid_phone: 0,
 
     groups_single_transaction_owner: 0,
     groups_multiple_transaction_owner: 0,
@@ -155,8 +177,13 @@ async function runDryRunPlanner() {
     groups_single_booking_owner: 0,
     groups_multiple_booking_owner: 0,
 
-    groups_single_active_member: 0,
-    groups_multiple_active_member: 0,
+    groups_trusted_web_schedule_evidence: 0,
+    groups_moka_schedule_evidence: 0,
+
+    groups_membership_unique: 0,
+    groups_membership_multiple: 0,
+    groups_membership_unresolved: 0,
+    groups_membership_none: 0,
 
     safe_auto_reconcile: 0,
     deterministic_reconciliation: 0,
@@ -166,6 +193,7 @@ async function runDryRunPlanner() {
 
     potential_transaction_refs_to_move: 0,
     potential_booking_refs_to_move: 0,
+    potential_schedule_refs_to_move: 0,
     potential_membership_refs_to_move: 0,
     potential_customer_rows_to_retire: 0,
   };
@@ -178,17 +206,17 @@ async function runDryRunPlanner() {
     else if (candidateRows.length === 3) metrics.groups_3_rows++;
     else if (candidateRows.length >= 4) metrics.groups_4plus_rows++;
 
-    // Phone distribution metrics
-    const normPhones = new Set(candidateRows.map(c => c.phone_e164 || c.wa).filter(Boolean));
-    if (normPhones.size === 0) metrics.groups_no_phone++;
-    else if (normPhones.size === 1) metrics.groups_same_phone++;
-    else metrics.groups_multiple_phone++;
+    // Normalized phone distribution metrics
+    const normPhones = new Set(candidateRows.map(c => normalizePhoneSafe(c.phone_e164 || c.wa || c.phone)).filter(Boolean));
+    if (normPhones.size === 0) metrics.groups_no_valid_phone++;
+    else if (normPhones.size === 1) metrics.groups_same_normalized_phone++;
+    else metrics.groups_multiple_distinct_normalized_phone++;
 
     // Sub-queries for group
     const candidateIdSet = new Set(candidateRows.map(c => c.id));
     const grpTxs = txRows.filter(t => candidateIdSet.has(t.customer_id));
     const grpBks = bookingRows.filter(b => candidateIdSet.has(b.customer_id));
-    const grpMps = memberProfileRows.filter(m => candidateIdSet.has(m.customer_id));
+    const grpSchs = scheduleRows.filter(s => candidateIdSet.has(s.customer_id));
 
     // Tx distribution
     const txOwners = new Set(grpTxs.filter(t => (t.status === 'completed' || t.status === 'paid') && (t.total_amount > 0 || t.price > 0)).map(t => t.customer_id));
@@ -201,10 +229,9 @@ async function runDryRunPlanner() {
     if (bkOwners.size === 1) metrics.groups_single_booking_owner++;
     else if (bkOwners.size > 1) metrics.groups_multiple_booking_owner++;
 
-    // Member profile distribution
-    const mpOwners = new Set(grpMps.filter(m => m.status !== 'inactive' && m.status !== 'cancelled').map(m => m.customer_id));
-    if (mpOwners.size === 1) metrics.groups_single_active_member++;
-    else if (mpOwners.size > 1) metrics.groups_multiple_active_member++;
+    // Schedule evidence distribution
+    if (grpSchs.some(s => s.source === 'web')) metrics.groups_trusted_web_schedule_evidence++;
+    if (grpSchs.some(s => s.source === 'moka')) metrics.groups_moka_schedule_evidence++;
 
     // Run canonical classification
     const plan = planMokaCustomerGroupReconciliation({
@@ -212,7 +239,9 @@ async function runDryRunPlanner() {
       candidateRows,
       transactionRows: grpTxs,
       bookingRows: grpBks,
-      memberProfileRows: grpMps,
+      scheduleRows: grpSchs,
+      memberEvidenceRows,
+      lookupStatus,
     });
 
     if (cliOpts.classification && plan.classification !== cliOpts.classification) {
@@ -229,6 +258,7 @@ async function runDryRunPlanner() {
 
     metrics.potential_transaction_refs_to_move += plan.transaction_refs_to_move;
     metrics.potential_booking_refs_to_move += plan.booking_refs_to_move;
+    metrics.potential_schedule_refs_to_move += plan.schedule_refs_to_move;
     metrics.potential_membership_refs_to_move += plan.member_profile_refs_to_move;
     metrics.potential_customer_rows_to_retire += plan.duplicate_rows_to_retire.length;
   }
@@ -240,6 +270,11 @@ async function runDryRunPlanner() {
   console.log(`Groups of 3 rows:                                    ${metrics.groups_3_rows}`);
   console.log(`Groups of 4+ rows:                                   ${metrics.groups_4plus_rows}\n`);
 
+  console.log('--- NORMALIZED PHONE DISTRIBUTION ---');
+  console.log(`  groups_same_normalized_phone:                ${metrics.groups_same_normalized_phone}`);
+  console.log(`  groups_multiple_distinct_normalized_phone:  ${metrics.groups_multiple_distinct_normalized_phone}`);
+  console.log(`  groups_no_valid_phone:                       ${metrics.groups_no_valid_phone}\n`);
+
   console.log('--- CLASSIFICATION COUNTS ---');
   console.log(`  SAFE_AUTO_RECONCILE:            ${metrics.safe_auto_reconcile}`);
   console.log(`  DETERMINISTIC_RECONCILIATION:   ${metrics.deterministic_reconciliation}`);
@@ -250,6 +285,7 @@ async function runDryRunPlanner() {
   console.log('--- POTENTIAL REFS TO MOVE / RETIRE ---');
   console.log(`  Potential transaction refs to move:  ${metrics.potential_transaction_refs_to_move}`);
   console.log(`  Potential booking refs to move:      ${metrics.potential_booking_refs_to_move}`);
+  console.log(`  Potential schedule refs to move:     ${metrics.potential_schedule_refs_to_move}`);
   console.log(`  Potential membership refs to move:   ${metrics.potential_membership_refs_to_move}`);
   console.log(`  Potential customer rows to retire:   ${metrics.potential_customer_rows_to_retire}\n`);
 
