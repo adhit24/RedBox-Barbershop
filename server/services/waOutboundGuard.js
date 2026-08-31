@@ -130,6 +130,8 @@ function createGuardedSend({
         inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent: false,
       });
       logEvent({ event_type: 'processing_failed', branch, guard_reason: 'send_threw' });
+      error.outboundFailure = true;
+      error.failureReason = 'processing_failed';
       throw error;
     }
     const sent = Boolean(result && result.status !== false);

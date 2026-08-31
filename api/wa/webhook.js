@@ -2034,6 +2034,16 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         });
         return { used: 'crm_reddy_intelligence', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
       } catch (err) {
+        if (err && err.outboundFailure) {
+          console.warn('[WA Bot] Outbound send failed during CRM Reddy execution:', err.message);
+          return {
+            used: 'crm_reddy_intelligence',
+            reply: null,
+            sendResult: { status: false, reason: 'send_threw', error: err },
+            error: err.message,
+            failureReason: err.failureReason || 'processing_failed',
+          };
+        }
         console.warn('[WA Bot] Reddy execution error for CRM facts, using static fallback:', err.message);
         logTelemetry({
           ...orchDecision,
@@ -2052,18 +2062,20 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
           ...knowledgeTelemetry(knowledgeContext),
         });
         const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
-        const sendResult = await send(from, staticReply, { branch });
-        // Round 2 Blocker 2: a delivered safe fallback means this turn was
-        // SENT, not FAILED — err.message is preserved only in a log, never
-        // surfaced as a terminal failureReason, unless the fallback itself
-        // could not be delivered.
-        const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
+        let sendResult;
+        try {
+          sendResult = await send(from, staticReply, { branch });
+        } catch (sendErr) {
+          sendResult = { status: false, reason: 'send_threw', error: sendErr };
+        }
+        const outboundOutcome = normalizeOutboundLifecycleOutcome(sendResult);
+        const sendSucceeded = outboundOutcome.terminalKind === 'sent';
         return {
           used: 'static_fallback',
           reply: staticReply,
           sendResult,
           error: sendSucceeded ? null : (err?.message || String(err)),
-          failureReason: sendSucceeded ? null : 'model_call_failed',
+          failureReason: sendSucceeded ? null : (outboundOutcome.reason || 'processing_failed'),
         };
       }
     }
@@ -2130,6 +2142,16 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       });
       return { used: 'reddy_agent', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
     } catch (err) {
+      if (err && err.outboundFailure) {
+        console.warn('[WA Bot] Outbound send failed during Reddy execution:', err.message);
+        return {
+          used: 'reddy_agent',
+          reply: null,
+          sendResult: { status: false, reason: 'send_threw', error: err },
+          error: err.message,
+          failureReason: err.failureReason || 'processing_failed',
+        };
+      }
       console.warn('[WA Bot] Reddy execution error, using non-LLM static fallback:', err.message);
       logTelemetry({
         ...orchDecision,
@@ -2149,16 +2171,20 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         ...knowledgeTelemetry(knowledgeContext),
       });
       const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
-      const sendResult = await send(from, staticReply, { branch });
-      // Round 2 Blocker 2: same split as the CRM-branch catch above — a
-      // delivered safe fallback is SENT, not FAILED.
-      const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
+      let sendResult;
+      try {
+        sendResult = await send(from, staticReply, { branch });
+      } catch (sendErr) {
+        sendResult = { status: false, reason: 'send_threw', error: sendErr };
+      }
+      const outboundOutcome = normalizeOutboundLifecycleOutcome(sendResult);
+      const sendSucceeded = outboundOutcome.terminalKind === 'sent';
       return {
         used: 'static_fallback',
         reply: staticReply,
         sendResult,
         error: sendSucceeded ? null : (err?.message || String(err)),
-        failureReason: sendSucceeded ? null : 'model_call_failed',
+        failureReason: sendSucceeded ? null : (outboundOutcome.reason || 'processing_failed'),
       };
     }
   }
@@ -2266,7 +2292,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   }
 
   // Gunakan branch-specific token untuk kirim balasan
-  const sendResult = await send(from, reply, { branch });
+  let sendResult;
+  try {
+    sendResult = await send(from, reply, { branch });
+  } catch (sendErr) {
+    sendResult = { status: false, reason: 'send_threw', error: sendErr };
+  }
   // Persist message status fire-and-forget — jangan block sync path
   if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
     for (let i = 0; i < sendResult.id.length; i++) {
@@ -2276,27 +2307,14 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     }
   }
 
-  // Forward booking ke branch WA dinonaktifkan — tiap cabang handle customer-nya sendiri.
-  // Mengirim ke nomor WA cabang lain via forwardBookingToBranch memicu webhook bot penerima
-  // → bot penerima anggap pengirim sebagai customer → feedback loop antar cabang.
-  // if (forwardBooking) {
-  //   forwardBookingToBranch(forwardBooking, from).catch(err =>
-  //     console.error('[WA Bot] forwardBookingToBranch error:', err.message)
-  //   );
-  // }
-
-  // Round 2 Blocker 2: mirror the CRM-branch/reddy_agent-branch split — a
-  // model_call_failed degrade (used === 'fallback') only becomes a terminal
-  // failureReason if the deterministic fallbackReply itself could not be
-  // delivered. A served customer is SENT, never FAILED.
-  const legacySendSucceeded = Boolean(sendResult && sendResult.status !== false);
-  const legacyFallbackUndelivered = used === 'fallback' && !legacySendSucceeded;
-  if (legacyFallbackUndelivered) {
-    error = 'model call failed and fallback reply was not delivered';
+  const outboundOutcome = normalizeOutboundLifecycleOutcome(sendResult);
+  const legacySendSucceeded = outboundOutcome.terminalKind === 'sent';
+  let failureReason = null;
+  if (!legacySendSucceeded) {
+    failureReason = outboundOutcome.reason || 'processing_failed';
   }
-  const failureReason = legacyFallbackUndelivered ? 'model_call_failed' : null;
 
-  return { used, reply, sendResult, error, failureReason };
+  return { used, reply, sendResult, error: legacySendSucceeded ? null : (error || 'send_failed'), failureReason };
 }
 
 function parseMultipartFormData(buffer, contentType) {
@@ -2571,6 +2589,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
     let sender = null;
     let receiver = null;
     let branchFromPayload = null;
+    let activeFailureReason = null;
     try {
 
     const statusId = body.id || body.message_id || body.msgid || body.messageId;
@@ -2832,7 +2851,16 @@ module.exports = async function handler(req, res, testDeps = {}) {
       // frozen/recycled serverless instance abandon the promise mid-flight
       // and leave the row stuck at 'processing' (a genuine, if narrower,
       // instance of the same class of bug as the other suppression paths).
-      await guardedSend(sender, mediaReply, { branch }).catch(() => {});
+      let mediaSendResult;
+      try {
+        mediaSendResult = await guardedSend(sender, mediaReply, { branch });
+      } catch (err) {
+        mediaSendResult = { status: false, reason: 'send_threw', error: err };
+      }
+      const mediaOutcome = normalizeOutboundLifecycleOutcome(mediaSendResult);
+      if (mediaOutcome.terminalKind === 'suppressed' || mediaOutcome.terminalKind === 'failed') {
+        activeFailureReason = mediaOutcome.reason || 'processing_failed';
+      }
       return;
     }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
@@ -2903,7 +2931,6 @@ module.exports = async function handler(req, res, testDeps = {}) {
 
     // Proses AI + kirim WA DULU (sebelum res.json) — Lambda dalam state sinkron = network lebih cepat.
     // Post-response state menyebabkan HTTPS throttling → OpenAI & Fonnte timeout.
-    let activeFailureReason = null;
     const t0 = Date.now();
     try {
       const processMessage = testDeps.handleMessage || handleMessage;

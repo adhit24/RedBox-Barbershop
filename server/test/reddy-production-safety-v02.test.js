@@ -147,7 +147,7 @@ test('R2 TEST 12: legacy model-call failure + successful fallback send => SENT (
   assert.equal(result.failureReason ?? null, null);
 });
 
-test('R2 TEST 13: legacy model-call failure + fallback send ALSO fails => terminal model_call_failed', async () => {
+test('R2 TEST 13: legacy model-call failure + fallback send ALSO fails => terminal reflects send failure reason (rate_limited)', async () => {
   const result = await handleMessage({
     from: '628100000013', name: 'Kak', text: 'ada promo apa aja',
   }, {
@@ -160,7 +160,7 @@ test('R2 TEST 13: legacy model-call failure + fallback send ALSO fails => termin
     logTelemetry: () => {},
   });
   assert.equal(result.used, 'fallback');
-  assert.equal(result.failureReason, 'model_call_failed');
+  assert.equal(result.failureReason, 'rate_limited');
   assert.ok(result.error);
 });
 
@@ -181,7 +181,7 @@ test('R2 TEST 14: reddy_agent route model-call failure + successful fallback sen
   assert.equal(result.failureReason ?? null, null);
 });
 
-test('R2 TEST 15: reddy_agent route model-call failure + fallback send ALSO fails => terminal model_call_failed', async () => {
+test('R2 TEST 15: reddy_agent route model-call failure + fallback send ALSO fails => terminal reflects send failure reason (duplicate_suppressed)', async () => {
   const result = await handleMessage({
     from: '628100000015', name: 'Kak', text: 'boleh tanya-tanya',
   }, {
@@ -194,7 +194,7 @@ test('R2 TEST 15: reddy_agent route model-call failure + fallback send ALSO fail
     logTelemetry: () => {},
   });
   assert.equal(result.used, 'static_fallback');
-  assert.equal(result.failureReason, 'model_call_failed');
+  assert.equal(result.failureReason, 'duplicate_suppressed');
   assert.ok(result.error);
 });
 

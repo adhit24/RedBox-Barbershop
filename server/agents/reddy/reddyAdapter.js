@@ -251,7 +251,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
     let completionSendResult = null;
     if (sendWA && typeof sendWA === 'function') {
-      completionSendResult = await sendWA(from, completionReply, { branch });
+      try {
+        completionSendResult = await sendWA(from, completionReply, { branch });
+      } catch (err) {
+        err.outboundFailure = true;
+        err.failureReason = err.failureReason || 'processing_failed';
+        throw err;
+      }
     }
 
     return { used: 'reddy_agent', reply: completionReply, sendResult: completionSendResult, error: null };
@@ -301,7 +307,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       }
       let presenceSendResult = null;
       if (sendWA && typeof sendWA === 'function') {
-        presenceSendResult = await sendWA(from, presenceReply, { branch });
+        try {
+          presenceSendResult = await sendWA(from, presenceReply, { branch });
+        } catch (err) {
+          err.outboundFailure = true;
+          err.failureReason = err.failureReason || 'processing_failed';
+          throw err;
+        }
       }
       return {
         used: 'reddy_barber_presence_guard',
@@ -421,6 +433,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       reply = await callOpenAI(from, text, verifiedCrmName, branch, null, factsContext, boundedConversationContext);
     }
   } catch (err) {
+    err.generationError = true;
     throw err;
   }
 
@@ -577,7 +590,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
   let sendResult = null;
   if (sendWA && typeof sendWA === 'function') {
-    sendResult = await sendWA(from, reply, { branch });
+    try {
+      sendResult = await sendWA(from, reply, { branch });
+    } catch (err) {
+      err.outboundFailure = true;
+      err.failureReason = err.failureReason || 'processing_failed';
+      throw err;
+    }
   }
 
   return {
