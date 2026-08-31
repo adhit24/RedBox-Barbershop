@@ -29,10 +29,25 @@ const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 const { touchInboundActivity } = require('../services/conversationLifecycle');
 const { resolveConversationDeviceScope, conversationCacheKey, LEGACY_DEVICE_SCOPE } = require('../services/conversationScope');
 const { admitInboundEvent } = require('../services/waInboundGuard');
-const { persistConversationExchange } = require('../../api/wa/webhook');
+const { persistConversationExchange, callOpenAI } = require('../../api/wa/webhook');
 
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
+
+function fakeOpenAI(replyText = 'Bonjour!') {
+  const calls = [];
+  const client = {
+    chat: {
+      completions: {
+        create: async (payload) => {
+          calls.push(payload);
+          return { choices: [{ message: { content: replyText } }] };
+        },
+      },
+    },
+  };
+  return { client, calls };
+}
 
 function emptyContext(extra = {}) {
   return {
@@ -43,6 +58,7 @@ function emptyContext(extra = {}) {
     ...extra,
   };
 }
+
 
 function capturePersistConversation() {
   const calls = [];
@@ -294,3 +310,36 @@ test('TEST 8: given the same real hash, touchInboundActivity and history persist
   assert.notEqual(historyScope, LEGACY_DEVICE_SCOPE);
   assert.equal(conversationCacheKey(sender, HASH_A), `${lifecycleScope}::${sender}`);
 });
+
+// ── TEST 9 — simultaneous multilingual French authority and P0.3 hash ────────
+
+test('TEST 9: simultaneous multilingual French authority and P0.3 providerDeviceHash persistence', async () => {
+  const { calls, persistConversation } = capturePersistConversation();
+  const { calls: openAICalls, client } = fakeOpenAI('Bonjour! Nos tarifs s\'affichent sur notre site web.');
+  const conversationContext = emptyContext({
+    response_language: 'french',
+    providerDeviceHash: HASH_A,
+  });
+
+  await executeReddyAgent({
+    from: '33123456789',
+    text: 'Bonjour, quels sont vos tarifs?',
+    branch: 'bypass',
+    conversationContext,
+    orchestrationDecision: { intent: 'service_inquiry', route: 'reddy_agent' },
+  }, {
+    callOpenAI: (from, text, name, branch, k, f, ctx) =>
+      callOpenAI(from, text, name, branch, k, f, ctx, { openai: client, persistConversationExchange: async () => {} }),
+    sendWA: async () => ({ status: true }),
+    loadBarbers: async () => ({ status: 'not_requested', barbers: [], reason: null }),
+    logBookingTelemetry: () => {},
+    persistConversation,
+  });
+
+  const systemPrompt = openAICalls[0].messages[0].content;
+  assert.match(systemPrompt, /Resolved response language: French/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].providerDeviceHash, HASH_A);
+});
+
+

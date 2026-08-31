@@ -82,9 +82,6 @@ test('production issuer rejects internal_test and malformed phone identities', (
     { code: 'TRUSTED_IDENTITY_SOURCE_INVALID' },
   );
   for (const phone of [
-    '+1 415 555 2671',
-    '+44 20 7946 0958',
-    '6214155552671',
     '0812abc34567890',
     '62812x3456789',
     '0812é345678',
@@ -99,6 +96,17 @@ test('production issuer rejects internal_test and malformed phone identities', (
     [],
   ]) {
     assert.throws(() => issueTestIdentity({ phone }), { code: 'TRUSTED_IDENTITY_INVALID' });
+  }
+});
+
+test('production issuer accepts international personal phone identities (international WhatsApp multilingual contract, objective 1)', () => {
+  for (const [phone, canonical] of [
+    ['+1 415 555 2671', '14155552671'],
+    ['+44 20 7946 0958', '442079460958'],
+  ]) {
+    const identity = issueTestIdentity({ phone });
+    assert.equal(identity.phone, canonical);
+    assert.equal(isTrustedIdentity(identity), true);
   }
 });
 

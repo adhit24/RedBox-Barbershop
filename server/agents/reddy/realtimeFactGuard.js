@@ -69,6 +69,68 @@ function englishNamedBarberClaim(sentence, barberNames = []) {
   return Boolean(englishNamedBarberClaimType(sentence, barberNames));
 }
 
+// International WhatsApp multilingual contract, correction round 2 (barber
+// presence authority, tests 25/26): mirrors englishNamedBarberClaimType's
+// exact name-anchored structure, just in Japanese/Spanish claim vocabulary.
+// Bounded to these two languages — the ones the contract's own authority
+// tests name — not a general-purpose translation layer.
+function japaneseNamedBarberClaimType(sentence, barberNames = []) {
+  for (const name of barberNames.filter(Boolean)) {
+    const canonicalName = escapeRegExp(name);
+    if (!canonicalName) continue;
+    const availabilityClaim = new RegExp(
+      `${canonicalName}(?:さん)?(?:は|が)[^。！？]{0,20}(?:空いて(?:います)?|対応できます|フリーです)`,
+      'iu',
+    );
+    if (availabilityClaim.test(sentence)) return 'availability';
+    const attendanceClaim = new RegExp(
+      `${canonicalName}(?:さん)?(?:は|が)[^。！？]{0,20}(?:今[^。！？]{0,10}います|いますよ|出勤して(?:います)?|待機中です)`,
+      'iu',
+    );
+    if (attendanceClaim.test(sentence)) return 'attendance';
+  }
+  return null;
+}
+
+function spanishNamedBarberClaimType(sentence, barberNames = []) {
+  for (const name of barberNames.filter(Boolean)) {
+    const canonicalName = escapeRegExp(name);
+    if (!canonicalName) continue;
+    const availabilityClaim = new RegExp(
+      `\\b${canonicalName}\\s+est[aá]\\s+(?:disponible|libre)(?:\\s+ahora)?\\b`,
+      'iu',
+    );
+    if (availabilityClaim.test(sentence)) return 'availability';
+    const attendanceClaim = new RegExp(
+      `\\b${canonicalName}\\s+est[aá]\\s+(?:aqu[ií]|ah[ií]|presente|trabajando)(?:\\s+(?:ahora|hoy))?\\b`,
+      'iu',
+    );
+    if (attendanceClaim.test(sentence)) return 'attendance';
+  }
+  return null;
+}
+
+// Single dispatch point so sentenceHasViolation and the attendance/
+// availability roll-up below never need to enumerate languages themselves —
+// adding a language means adding one detector here, nowhere else.
+const NAMED_BARBER_CLAIM_DETECTORS = [
+  englishNamedBarberClaimType,
+  japaneseNamedBarberClaimType,
+  spanishNamedBarberClaimType,
+];
+
+function namedBarberClaimType(sentence, barberNames = []) {
+  for (const detector of NAMED_BARBER_CLAIM_DETECTORS) {
+    const claimType = detector(sentence, barberNames);
+    if (claimType) return claimType;
+  }
+  return null;
+}
+
+function namedBarberClaim(sentence, barberNames = []) {
+  return Boolean(namedBarberClaimType(sentence, barberNames));
+}
+
 function findKnownBarberName(text, barberNames = []) {
   return barberNames.filter(Boolean).find((name) => {
     const canonicalName = escapeRegExp(name);
@@ -141,7 +203,7 @@ function isClaimClause(clause) {
 function sentenceHasViolation(sentence, verifiedSchedule, knownBarberNames = []) {
   if (ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence))) return true;
   if (AVAILABILITY_PATTERNS.some((pattern) => pattern.test(sentence))) return true;
-  if (englishNamedBarberClaim(sentence, knownBarberNames)) return true;
+  if (namedBarberClaim(sentence, knownBarberNames)) return true;
 
   const claimClauses = splitIntoClauses(sentence).filter(isClaimClause);
   if (claimClauses.length === 0) return false;
@@ -163,11 +225,13 @@ function buildSafeStatement(verifiedSchedule, {
   barberName = null,
 } = {}) {
   const name = verifiedSchedule?.barberName;
+  const lang = String(responseLanguage).toLowerCase();
 
-  // The current named-presence classifier reaches only the established
-  // Indonesian and English presentation paths. Keep this safety renderer
-  // bounded to those actual paths; it is not a second multilingual system.
-  if (String(responseLanguage).toLowerCase() === 'english') {
+  // The named-presence classifier reaches Indonesian/English/Japanese/
+  // Spanish presentation paths (round 2 correction extended the latter two —
+  // tests 25/26). Kept bounded to those actual paths; it is not a second
+  // multilingual system.
+  if (lang === 'english') {
     const englishName = name || barberName;
     if (verifiedSchedule?.status === 'scheduled' && englishName) {
       if (availabilityAttempted) {
@@ -185,6 +249,46 @@ function buildSafeStatement(verifiedSchedule, {
       return `I can't confirm ${englishName}'s current presence from verified data.`;
     }
     return `I can't confirm the barber's current presence from verified data.`;
+  }
+
+  if (lang === 'japanese') {
+    const japaneseName = name || barberName;
+    if (verifiedSchedule?.status === 'scheduled' && japaneseName) {
+      if (availabilityAttempted) {
+        return `${japaneseName}さんは本日出勤予定ですが、今すぐ対応可能かどうかは確認済みのデータでは分かりかねます。`;
+      }
+      if (attendanceAttempted) {
+        return `${japaneseName}さんは本日出勤予定ですが、今この瞬間の在店状況を確認できるデータはございません。`;
+      }
+      return `${japaneseName}さんは本日出勤予定です。`;
+    }
+    if (verifiedSchedule?.status === 'not_scheduled' && japaneseName) {
+      return `${japaneseName}さんは本日の出勤予定に入っておりません。`;
+    }
+    if (japaneseName) {
+      return `${japaneseName}さんが今いるかどうか、確認済みのデータでは分かりかねます。`;
+    }
+    return 'そのスタイリストの現在の状況を、確認済みのデータでは分かりかねます。';
+  }
+
+  if (lang === 'spanish') {
+    const spanishName = name || barberName;
+    if (verifiedSchedule?.status === 'scheduled' && spanishName) {
+      if (availabilityAttempted) {
+        return `${spanishName} sí está programado para trabajar hoy, pero no puedo confirmar con datos verificados si está disponible en este momento.`;
+      }
+      if (attendanceAttempted) {
+        return `${spanishName} sí está programado para trabajar hoy, pero no tengo datos verificados de asistencia para confirmar que esté ahí ahora mismo.`;
+      }
+      return `${spanishName} sí está programado para trabajar hoy.`;
+    }
+    if (verifiedSchedule?.status === 'not_scheduled' && spanishName) {
+      return `${spanishName} no figura programado para trabajar hoy.`;
+    }
+    if (spanishName) {
+      return `No puedo confirmar si ${spanishName} está ahí ahora mismo con datos verificados.`;
+    }
+    return 'No puedo confirmar la presencia actual de ese barbero con datos verificados.';
   }
 
   if (verifiedSchedule?.status === 'scheduled' && name) {
@@ -242,12 +346,12 @@ function guardRealtimeBarberFacts(reply, options = {}) {
     return { sanitizedReply: reply, triggered: false };
   }
 
-  const englishClaimTypes = sentences.map((sentence) => englishNamedBarberClaimType(sentence, boundBarberNames));
+  const namedClaimTypes = sentences.map((sentence) => namedBarberClaimType(sentence, boundBarberNames));
   const attendanceAttempted = sentences.some((sentence) => ATTENDANCE_PATTERNS.some((pattern) => pattern.test(sentence)))
-    || englishClaimTypes.includes('attendance');
+    || namedClaimTypes.includes('attendance');
   const availabilityAttempted = requestedClaim === 'availability'
     || sentences.some((sentence) => AVAILABILITY_PATTERNS.some((pattern) => pattern.test(sentence)))
-    || englishClaimTypes.includes('availability');
+    || namedClaimTypes.includes('availability');
   const keptSentences = sentences
     .filter((sentence) => !violatingSentences.includes(sentence))
     .map((sentence) => sentence.trim())
@@ -272,4 +376,8 @@ module.exports = {
   nameIsBoundInText,
   englishNamedBarberClaim,
   englishNamedBarberClaimType,
+  japaneseNamedBarberClaimType,
+  spanishNamedBarberClaimType,
+  namedBarberClaim,
+  namedBarberClaimType,
 };

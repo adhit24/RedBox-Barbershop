@@ -27,7 +27,10 @@ function buildBranchOperatingHoursText(lang) {
     turkish: `• Diğer şubeler: ${bypass.hours.opens}-${bypass.hours.closes}\n\nHer gün açığız!`,
   };
 
-  return (headers[lang] || headers.english) + (csbLine[lang] || csbLine.english) + (otherLine[lang] || otherLine.english);
+  // Round 2 blocker 1: no English fallback for a language this template
+  // doesn't have — undefined signals "no localized renderer" to the caller.
+  if (!headers[lang]) return undefined;
+  return headers[lang] + csbLine[lang] + otherLine[lang];
 }
 
 function buildBranchLastBookingSlotText(lang, branch = 'bypass') {
@@ -73,8 +76,11 @@ function buildBranchLocationText(lang) {
     turkish: '\n\nEndonezya, Cirebon',
   };
 
+  // Round 2 blocker 1: no English fallback for a language this template
+  // doesn't have — undefined signals "no localized renderer" to the caller.
+  if (!labels[lang]) return undefined;
   const body = branches.map(b => `• ${b.name} — ${b.address} | ${b.hours.opens}–${b.hours.closes}`).join('\n');
-  return (labels[lang] || labels.english) + body + (suffix[lang] || suffix.english);
+  return labels[lang] + body + suffix[lang];
 }
 
 
@@ -110,6 +116,12 @@ const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orch
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
 const { classifyBarberPresenceQuery } = require('../../server/agents/reddy/barberPresenceIntent');
 const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
+const {
+  hasIndonesianLanguageSignal, isForeignLanguage, detectForeignLanguage, resolveResponseLanguage,
+} = require('../../server/agents/reddy/languageResolution');
+const {
+  buildResponseLanguagePromptBlock, buildGenericTemporaryError,
+} = require('../../server/agents/reddy/responseLanguagePresentation');
 const { loadCanonicalBarbers, resolveCanonicalBarber } = require('../../server/services/canonicalBarberResolver');
 const {
   extractFirstName,
@@ -718,7 +730,7 @@ IDENTITAS & GAYA KOMUNIKASI
 - Nama kamu: Reddy
 - Panggil pelanggan dengan nama mereka atau "Kak"
 - Pakai "aku" untuk diri sendiri
-- Bahasa Indonesia casual alami: "udah", "sip", "yuk", "noted", "oke banget"
+- Gaya bicara hangat, santai, ringkas, dan WhatsApp-native. Kalau balasan dalam Bahasa Indonesia, pakai gaya casual alami: "udah", "sip", "yuk", "noted", "oke banget". Kalau balasan dalam bahasa lain (lihat instruksi RESPONSE LANGUAGE di bagian akhir prompt ini), pertahankan kehangatan dan keringkasan yang sama secara alami dalam bahasa tersebut — JANGAN paksakan slang Bahasa Indonesia di atas ke bahasa lain.
 - Empati dulu sebelum jawab - kalau pelanggan ragu/bingung, validasi dulu secara ramah.
 - Pesan SINGKAT & padat - max 3-4 kalimat ringkas.
 - JANGAN: "Mohon", "Silakan", "Yang terhormat", "Berikut kami informasikan"
@@ -903,6 +915,17 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     systemPrompt += `\n\n# INSTRUKSI SUPRESI SALAM (SESI AKTIF)\nSesi percakapan ini sedang AKTIF (percakapan berlanjut). DILARANG mengulang salam pembuka ("Hai Kak ${firstName || ''}") dan DILARANG mengulang sapaan nama. Langsung jawab pertanyaan pelanggan.`;
   }
 
+  // Round 3 correction: response_language is resolved once, upstream, by
+  // resolveResponseLanguage() (the single language authority) and threaded
+  // in via conversationContext.response_language. callOpenAI never
+  // re-detects language itself — not from this function's own arguments
+  // (userMessage, sender/phone) and not from country/branch — it only
+  // renders the already-resolved value as a bounded presentation
+  // instruction, appended last so it outranks any earlier casual-Indonesian
+  // style example in this prompt.
+  const responseLanguage = conversationContext?.response_language;
+  systemPrompt += buildResponseLanguagePromptBlock(responseLanguage);
+
   const messages = [
     { role: 'system', content: systemPrompt },
     ...preparedHistory,
@@ -923,7 +946,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
     clearTimeout(timeoutHandle);
   }
 
-  const reply = completion.choices[0]?.message?.content?.trim() || 'Maaf Kak, sistem sedang mengalami gangguan sementara. Coba lagi beberapa saat lagi.';
+  const reply = completion.choices[0]?.message?.content?.trim() || buildGenericTemporaryError(responseLanguage);
 
   // Simpan ke cache & Supabase via testable helper
   if (!conversationContext?.reply_persistence_deferred) {
@@ -937,53 +960,86 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
 // ── Fallback (keyword-based) ──────────────────────────────────────────────────
 // Used only when OpenAI is unavailable or times out.
 
-function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null) {
+function fallbackReply(text, name, branch = 'bypass', knowledgeStatus = null, responseLanguage = 'indonesian') {
+  const normalizedLanguage = String(responseLanguage || 'indonesian').toLowerCase();
+  const isEnglish = normalizedLanguage === 'english';
+  const isIndonesian = normalizedLanguage === 'indonesian';
+
+  // Round 3 correction: this deterministic keyword tree only has EN/ID
+  // business templates. A resolved language outside that pair (french,
+  // german, spanish, malay, arabic, japanese, korean, chinese, turkish)
+  // must not silently fall through to an Indonesian business answer — use
+  // the one generic, language-aware temporary-error sentence instead of
+  // inventing dozens of business templates.
+  if (!isEnglish && !isIndonesian) {
+    return buildGenericTemporaryError(normalizedLanguage);
+  }
+
   const t = text.toLowerCase();
   const fn = extractFirstName(name);
   const nameLabel = fn ? 'Kak ' + fn : 'Kak';
-
 
   const has = (kws) => kws.some(k => t.includes(k));
   const bConfig = getBranchConfig(branch);
 
   // 1. High Authority Booking Intent / Status Fallback
   if (has(['konfirmasi booking', 'konfirmasi bkng', 'sudah booking', 'mau konfirmasi', 'ini konfirmasi'])) {
-    return `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
+    return isEnglish
+      ? `For the official status of your Redbox booking, please check the booking website directly: ${bookingUrl(branch)}`
+      : `Untuk status resmi booking Redbox, Kakak bisa cek langsung di sistem booking website ya Kak: ${bookingUrl(branch)}`;
   }
 
   if (has(['slot terakhir', 'booking terakhir', 'slot malam', 'paling malam booking', 'bisa booking jam'])) {
-    return `Slot booking terakhir di Redbox ${bConfig.name} adalah pukul ${bConfig.last_booking_slot} WIB Kak. Untuk memastikan slotnya masih tersedia real-time, silakan cek dan pesan langsung via website booking ya:\n${bookingUrl(branch)}`;
+    return isEnglish
+      ? `The last booking slot at Redbox ${bConfig.name} is ${bConfig.last_booking_slot} WIB. To confirm real-time availability, please check and book directly via the booking website:\n${bookingUrl(branch)}`
+      : `Slot booking terakhir di Redbox ${bConfig.name} adalah pukul ${bConfig.last_booking_slot} WIB Kak. Untuk memastikan slotnya masih tersedia real-time, silakan cek dan pesan langsung via website booking ya:\n${bookingUrl(branch)}`;
   }
 
   if (has(['booking', 'reservasi', 'jadwal', 'pesan', 'mau potong', 'mau cukur', 'slot', 'book'])) {
-    return `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
+    return isEnglish
+      ? `To make a booking or check real-time slot availability, please visit the Redbox booking website:\n${bookingUrl(branch)}`
+      : `Untuk buat booking atau cek ketersediaan slot real-time, Kakak bisa langsung akses ke website booking Redbox ya Kak:\n${bookingUrl(branch)}`;
   }
 
   // 2. Factual Knowledge Unavailable Guard
   if ((knowledgeStatus === 'unavailable' || knowledgeStatus === 'no_verified_fact')
     && isFactualKnowledgeRequest('', text)) {
-    return `Maaf Kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com atau hubungi admin cabang ya.`;
+    return isEnglish
+      ? `Sorry, verified information for this question isn't available right now. You can still find Redbox information at redboxbarbershop.com or contact the branch directly.`
+      : `Maaf Kak, info terverifikasi untuk pertanyaan ini belum tersedia sekarang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com atau hubungi admin cabang ya.`;
   }
 
   // 3. Ordinary Deterministic Fallback
   if (has(['jam buka', 'jam tutup', 'buka jam', 'tutup jam', 'operasional', 'buka sampai', 'tutup jam berapa'])) {
-    return `Redbox ${bConfig.name} buka setiap hari pukul ${bConfig.hours.opens} – ${bConfig.hours.closes} WIB, Kak.`;
+    return isEnglish
+      ? `Redbox ${bConfig.name} is open every day from ${bConfig.hours.opens} to ${bConfig.hours.closes} WIB.`
+      : `Redbox ${bConfig.name} buka setiap hari pukul ${bConfig.hours.opens} – ${bConfig.hours.closes} WIB, Kak.`;
   }
   if (has(['halo', 'hai', 'hi ', 'hello', 'hei', 'hey', 'pagi', 'siang', 'sore', 'malam', 'selamat'])) {
-    return `Halo ${nameLabel}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
+    return isEnglish
+      ? `Hi ${fn || 'there'}, is there anything I can help with about Redbox Barbershop's services, prices, or locations?`
+      : `Halo ${nameLabel}, ada yang bisa aku bantu seputar layanan, harga, atau lokasi Redbox Barbershop?`;
   }
   if (has(['harga', 'berapa', 'layanan', 'menu', 'paket', 'price', 'tarif', 'biaya'])) {
-    return `Maaf Kak, aku belum bisa memastikan info layanan atau harga saat ini. Informasi lengkap Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
+    return isEnglish
+      ? `Sorry, I can't confirm service or price information right now. Full Redbox information is available at redboxbarbershop.com.`
+      : `Maaf Kak, aku belum bisa memastikan info layanan atau harga saat ini. Informasi lengkap Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
   }
   if (has(['lokasi', 'alamat', 'dimana', 'maps', 'cabang'])) {
-    return `Maaf Kak, aku belum bisa memastikan detail cabang saat ini. Cek informasi terverifikasi di redboxbarbershop.com ya.`;
+    return isEnglish
+      ? `Sorry, I can't confirm branch details right now. Please check verified information at redboxbarbershop.com.`
+      : `Maaf Kak, aku belum bisa memastikan detail cabang saat ini. Cek informasi terverifikasi di redboxbarbershop.com ya.`;
   }
   if (has(['makasih', 'terima kasih', 'thanks', 'thx'])) {
-    return `Sama-sama ${nameLabel}! Kalau ada hal lain seputar Redbox, silakan beri tahu aku ya.`;
+    return isEnglish
+      ? `You're welcome${fn ? ', ' + fn : ''}! Let me know if there's anything else about Redbox I can help with.`
+      : `Sama-sama ${nameLabel}! Kalau ada hal lain seputar Redbox, silakan beri tahu aku ya.`;
   }
 
   // 4. Generic Fallback
-  return `Mohon maaf ${nameLabel}, saat ini sistem sedang memproses ulang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
+  return isEnglish
+    ? `Sorry${fn ? ', ' + fn : ''}, the system is currently reprocessing. Redbox information is still available at redboxbarbershop.com.`
+    : `Mohon maaf ${nameLabel}, saat ini sistem sedang memproses ulang. Informasi Redbox tetap bisa dilihat di redboxbarbershop.com ya.`;
 }
 
 // ── Foreign Customer Booking Flow ─────────────────────────────────────────────
@@ -1012,75 +1068,10 @@ const ALL_KAPSTER_NAMES = Object.values(BARBERS_BY_BRANCH).flat();
 
 const ADMIN_WA = process.env.ADMIN_WHATSAPP || '6285173100365';
 
-function hasIndonesianLanguageSignal(text) {
-  const lower = text.toLowerCase();
-  const indonesianWords = ['mau', 'booking', 'potong', 'rambut', 'harga', 'berapa', 'bisa', 'kapan',
-    'hari', 'jam', 'cabang', 'lokasi', 'dimana', 'ada', 'saya', 'aku', 'kak', 'mas',
-    'terima kasih', 'makasih', 'tolong', 'bantu', 'info', 'dong', 'ya', 'iya', 'gak',
-    'tidak', 'bukan', 'oke', 'siap', 'datang', 'jadi', 'batal'];
-  const words = lower.split(/\s+/);
-  const indonesianCount = words.filter(w => indonesianWords.some(iw => w.includes(iw))).length;
-  return words.length > 0 && indonesianCount / words.length > 0.3;
-}
+// hasIndonesianLanguageSignal moved to server/agents/reddy/languageResolution.js
 
-function isForeignLanguage(text) {
-  const lower = text.toLowerCase();
-  if (hasIndonesianLanguageSignal(text)) return false;
-
-  const foreignPatterns = [
-    /\b(i want|i need|i would|i'd like|can i|could you|please|thank you|thanks)\b/i,
-    /\b(hello|hey|good morning|good afternoon|good evening)\b/i,
-    /\b(haircut|hair cut|barber|appointment|schedule|book|reserve)\b/i,
-    /\b(how much|what time|when|where|which)\b/i,
-    /\b(tomorrow|today|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
-    /\b(do you|are you|is there|can you|will you)\b/i,
-    /\b(my name|i am|i'm)\b/i,
-    // Turkish
-    /\b(merhaba|selam|berber|randevu|rezervasyon|istiyorum|saç|kesim|tıraş)\b/i,
-    // Chinese
-    /[\u4e00-\u9fff]/,
-    // Japanese
-    /[\u3040-\u309f\u30a0-\u30ff]/,
-    // Korean
-    /[\uac00-\ud7af]/,
-    // Arabic
-    /[\u0600-\u06ff]/,
-    // Thai
-    /[\u0e00-\u0e7f]/,
-  ];
-  return foreignPatterns.some(p => p.test(lower));
-}
-
-function detectForeignLanguage(text) {
-  if (/[\u4e00-\u9fff]/.test(text)) return 'chinese';
-  if (/[\u3040-\u309f\u30a0-\u30ff]/.test(text)) return 'japanese';
-  if (/[\uac00-\ud7af]/.test(text)) return 'korean';
-  if (/[\u0600-\u06ff]/.test(text)) return 'arabic';
-  if (/[\u0e00-\u0e7f]/.test(text)) return 'thai';
-  const turkishWords = ['merhaba', 'selam', 'günaydın', 'saç', 'berber', 'randevu',
-    'rezervasyon', 'istiyorum', 'lütfen', 'teşekkürler', 'tıraş', 'kesim', 'sakal'];
-  const lower = text.toLowerCase();
-  if (turkishWords.some(w => lower.includes(w))) return 'turkish';
-  return 'english';
-}
-
-function resolveExistingResponseLanguage(text, conversationContext, presenceIntent = null) {
-  if (hasIndonesianLanguageSignal(text)) return 'indonesian';
-  if (isForeignLanguage(text)) return detectForeignLanguage(text);
-
-  const turns = Array.isArray(conversationContext?.turns) ? conversationContext.turns : [];
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    const turn = turns[index];
-    if (turn?.role !== 'user' || !String(turn?.content || '').trim()) continue;
-    if (hasIndonesianLanguageSignal(turn.content)) return 'indonesian';
-    if (isForeignLanguage(turn.content)) return detectForeignLanguage(turn.content);
-  }
-
-  // Bounded composition for matched named-presence turns only. This does not
-  // alter global language detection or infer language from a phone number.
-  if (presenceIntent?.matched && /\b(?:available|free)\b/i.test(text)) return 'english';
-  return 'indonesian';
-}
+// isForeignLanguage / detectForeignLanguage / resolveExistingResponseLanguage
+// moved to server/agents/reddy/languageResolution.js (resolveResponseLanguage)
 
 
 
@@ -1130,8 +1121,18 @@ function getServicesForLang(lang, branch = 'bypass') {
   }).join('\n');
 }
 
+// International WhatsApp multilingual contract, correction round 2 (blocker
+// 1): this used to fall back to English whenever `lang` had no entry in
+// `msgs` — so a customer resolved to French/German/Spanish/Malay/Arabic (all
+// of which languageResolution.js recognizes, but these deterministic
+// templates were never translated into) silently got an English reply. No
+// fallback now: an unsupported language returns undefined, and every caller
+// below treats that as "no localized deterministic renderer for this
+// language" and lets the turn fall through to the normal Reddy/LLM path,
+// which already receives the correctly-resolved response_language and can
+// present the same verified facts in the customer's actual language.
 function foreignMsg(lang, msgs) {
-  return msgs[lang] || msgs['english'] || msgs['en'];
+  return msgs[lang];
 }
 
 async function handleForeignBooking(from, name, text, device, branch = 'bypass') {
@@ -1178,7 +1179,12 @@ async function handleForeignBooking(from, name, text, device, branch = 'bypass')
       turkish: `Teşekkür ederiz${nameLabel}! Randevu almak veya canlı saat uygunluğunu kontrol etmek için lütfen Redbox resmi web sitesini ziyaret edin:\n${url}`,
     });
 
-    return { reply: msg, used: 'foreign_booking_direct' };
+    // Round 2 blocker 1: unlike generalAnswer above, a booking-intent match
+    // (isForeignBookingIntent) is language-agnostic pattern matching, so
+    // `lang` here is NOT guaranteed to be one of this template's five
+    // localized keys — msg can be undefined (e.g. a French/Spanish booking
+    // request). Fall through to `return null` rather than send "undefined".
+    if (msg) return { reply: msg, used: 'foreign_booking_direct' };
   }
 
   return null;
@@ -1253,7 +1259,12 @@ function handleForeignGeneralQuestion(text, lang, session, branch = 'bypass') {
   if (isLastSlotReq && isHoursReq) {
     const opHours = buildBranchOperatingHoursText(lang);
     const slotText = buildBranchLastBookingSlotText(lang, branch);
-    return `${opHours}\n\n${slotText}`;
+    // Round 2 blocker 1: only combine the two if both have a localized
+    // renderer for `lang` — never join one real string with "undefined".
+    // If either is missing, fall through to the single-topic branches below,
+    // which return undefined too (same underlying functions) and correctly
+    // signal "no renderer" rather than a half-English/half-broken reply.
+    if (opHours && slotText) return `${opHours}\n\n${slotText}`;
   }
 
   if (isLastSlotReq) {
@@ -1436,16 +1447,29 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       },
       { trustedIdentity, supabase: getSupabase() }
     );
+    // responseLanguage isn't computed yet at this point in handleMessage (it
+    // needs conversation history, loaded further below, after this points
+    // shortcut is ruled out) — a lightweight, self-contained check here
+    // avoids reordering a P0-sensitive path just for this one guard.
+    const pointsIsEnglish = isForeignLanguage(text) && detectForeignLanguage(text) === 'english';
     let pointsReply;
     if (orchResult.execution_status === 'unauthorized') {
-      pointsReply = 'Untuk mengecek saldo poin member Redbox, pastikan kamu menghubungi kami via nomor terverifikasi ya Kak.';
+      pointsReply = pointsIsEnglish
+        ? 'To check your Redbox member points balance, please make sure you contact us from your verified number.'
+        : 'Untuk mengecek saldo poin member Redbox, pastikan kamu menghubungi kami via nomor terverifikasi ya Kak.';
     } else if (orchResult.execution_status === 'success') {
       const points = orchResult.result?.data?.points_balance ?? 0;
-      pointsReply = 'Saldo poin member Redbox kamu saat ini: ' + points + ' poin.';
+      pointsReply = pointsIsEnglish
+        ? 'Your current Redbox member points balance: ' + points + ' points.'
+        : 'Saldo poin member Redbox kamu saat ini: ' + points + ' poin.';
     } else if (orchResult.execution_status === 'customer_not_found') {
-      pointsReply = 'Nomor WhatsApp ini belum terdaftar sebagai member Redbox. Dapatkan poin loyalty 5% di setiap kunjungan cukur kamu!';
+      pointsReply = pointsIsEnglish
+        ? "This WhatsApp number isn't registered as a Redbox member yet. Get 5% loyalty points on every haircut visit!"
+        : 'Nomor WhatsApp ini belum terdaftar sebagai member Redbox. Dapatkan poin loyalty 5% di setiap kunjungan cukur kamu!';
     } else {
-      pointsReply = 'Layanan cek poin sedang tidak dapat diakses sementara. Coba beberapa saat lagi ya Kak.';
+      pointsReply = pointsIsEnglish
+        ? 'The points-check service is temporarily unavailable. Please try again shortly.'
+        : 'Layanan cek poin sedang tidak dapat diakses sementara. Coba beberapa saat lagi ya Kak.';
     }
     logTelemetry({
       ...pointsDecision,
@@ -1487,9 +1511,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // never a plain, unscoped `sender` key (Objective C).
   conversationContext.providerDeviceHash = providerDeviceHash;
   const presenceIntent = classifyBarberPresenceQuery(text);
-  const responseLanguage = presenceIntent.matched
-    ? resolveExistingResponseLanguage(text, conversationContext, presenceIntent)
-    : (isForeignLanguage(text) ? detectForeignLanguage(text) : 'indonesian');
+  const responseLanguage = resolveResponseLanguage(text, conversationContext, { presenceIntent });
   conversationContext.response_language = responseLanguage;
   let reply;
   let used = 'openai';
@@ -1508,8 +1530,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     }
   }
 
-  // Indonesian first-turn presence remains deterministic and pre-LLM.
-  if (presenceIntent.matched && responseLanguage === 'indonesian') {
+  // Indonesian/Japanese/Spanish first-turn presence remain deterministic and
+  // pre-LLM (round 2 correction, tests 25/26 — executeReddyAgent's own
+  // useDeterministicPresencePresentation gate mirrors this same list).
+  if (presenceIntent.matched && ['indonesian', 'japanese', 'spanish'].includes(responseLanguage)) {
     const reddyExec = await executeReddy({
       from, name, text, device, branch, trustedIdentity,
       knowledgeContext: null,
@@ -1735,7 +1759,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         branch,
         status_transition: 'none_to_waiting_human',
       });
-      const handoffReply = 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
+      const handoffReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
+        ? 'Your message has been forwarded to the Redbox admin. The admin will reply in this chat.'
+        : 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
       const sendResult = await send(from, handoffReply, { branch, evaluationContext: { handoffPersisted: true } });
       return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
     }
@@ -1772,7 +1798,9 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       status_transition: null,
     });
-    const fallbackReply = 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
+    const fallbackReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
+      ? "I wasn't able to forward this request to the RedBox team. Please try again shortly or contact RedBox customer service."
+      : 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
     const sendResult = await send(from, fallbackReply, { branch, evaluationContext: { handoffPersisted: false } });
     return {
       used: creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
@@ -1965,7 +1993,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
           trust_status: 'verified',
           ...knowledgeTelemetry(knowledgeContext),
         });
-        const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status);
+        const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
         const sendResult = await send(from, staticReply, { branch });
         return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
       }
@@ -2051,7 +2079,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         conversation_context_used: Boolean(conversationContext.turn_count > 0),
         ...knowledgeTelemetry(knowledgeContext),
       });
-      const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status);
+      const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
       const sendResult = await send(from, staticReply, { branch });
       return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
     }
@@ -2095,7 +2123,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     );
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
-    reply = fallbackReply(text, name, branch, fallbackKnowledgeContext?.status);
+    reply = fallbackReply(text, name, branch, fallbackKnowledgeContext?.status, responseLanguage);
     used = 'fallback';
     error = err?.message || String(err);
   }
@@ -2832,7 +2860,7 @@ module.exports.buildServicesText = buildServicesText;
 
 module.exports.getServicesForLang = getServicesForLang;
 module.exports.detectForeignLanguage = detectForeignLanguage;
-module.exports.resolveExistingResponseLanguage = resolveExistingResponseLanguage;
+module.exports.resolveResponseLanguage = resolveResponseLanguage;
 
 module.exports.getBranchConfig = getBranchConfig;
 

@@ -84,9 +84,43 @@ test('authenticated personal Indonesian senders issue genuine trusted identities
   }
 });
 
+test('authenticated personal international senders issue genuine trusted identities (objective 1)', () => {
+  for (const [sender, canonical] of [
+    ['+6591234567', '6591234567'],       // Singapore
+    ['6591234567', '6591234567'],        // Singapore, no plus
+    ['+60123456789', '60123456789'],     // Malaysia
+    ['+14155552671', '14155552671'],     // USA
+    ['+447911123456', '447911123456'],   // UK
+    ['+819012345678', '819012345678'],   // Japan
+    ['+821012345678', '821012345678'],   // Korea
+  ]) {
+    const event = issueEvent({ sender });
+    const result = adaptAuthenticatedWhatsappEvent(event);
+
+    assert.equal(result.status, 'success', `sender ${sender} should be accepted`);
+    assert.equal(result.trustedIdentity.source, 'whatsapp');
+    assert.equal(result.trustedIdentity.phone, canonical);
+    assert.equal(isTrustedIdentity(result.trustedIdentity), true);
+    assert.match(result.trustedIdentity.phone, /^\d+$/, 'normalized phone must be digits-only');
+  }
+});
+
+test('more than 15 normalized digits is rejected', () => {
+  const event = issueEvent({ sender: '+123456789012345678' }); // 18 digits
+  const result = adaptAuthenticatedWhatsappEvent(event);
+  assert.equal(result.trustedIdentity, null);
+});
+
+test('response language is never inferred from an accepted international sender\'s country code', () => {
+  for (const sender of ['+6591234567', '+14155552671', '+819012345678']) {
+    const event = issueEvent({ sender });
+    const result = adaptAuthenticatedWhatsappEvent(event);
+    assert.deepEqual(Object.keys(result.trustedIdentity).sort(), ['phone', 'source']);
+  }
+});
+
 test('invalid personal senders fail closed without identifier fallback', () => {
   const invalidSenders = [
-    '+1 415 555 2671',
     '0812abc345678',
     '0812\u00e9345678',
     '\uff10\uff18\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19\uff10',
