@@ -79,8 +79,22 @@ function createGuardedSend({
       return { status: false, suppressed: true, reason: 'ai_kill_switch' };
     }
 
+    // P0-A: Price placeholder guard pass (runs BEFORE reservation & contentHash)
+    const { guardPricePlaceholders } = require('../agents/reddy/personalityPolicy');
+    const priceGuarded = guardPricePlaceholders(message, {
+      branch,
+      serviceId: options.serviceId,
+      serviceName: options.serviceName,
+      authoritativePriceResolver: options.authoritativePriceResolver,
+    });
+    const finalOutboundText = priceGuarded.sanitizedReply;
+    if (priceGuarded.blocked) {
+      logEvent({ event_type: 'price_placeholder_blocked', branch });
+    }
+
+    // Hashes computed on final sanitized text
     const destinationHash = hashValue(normalizePhoneDigits(to));
-    const contentHash = hashValue(String(message || '').trim().toLowerCase());
+    const contentHash = hashValue(String(finalOutboundText || '').trim().toLowerCase());
     const reservation = await reserveAutomatedSend(supabase, {
       inboundEventId: inboundEventRowId,
       destinationHash,
@@ -99,26 +113,30 @@ function createGuardedSend({
     }
 
     logEvent({ event_type: 'outbound_send_attempt', branch });
+    logEvent({ event_type: 'final_outbound_after_guards', branch, metadata: { text_length: finalOutboundText.length } });
+
     // Task 16 is observation-only and fail-open. Evaluation storage or rule
     // failures must never block, replace, or mutate the customer reply.
-    await observeMessageFailOpen(observeMessage, message, {
+    await observeMessageFailOpen(observeMessage, finalOutboundText, {
       branch,
       inboundEventRowId,
       ...(options.evaluationContext && typeof options.evaluationContext === 'object' ? options.evaluationContext : {}),
     });
     let result;
     try {
-      result = await realSend(to, message, options);
+      result = await realSend(to, finalOutboundText, options);
     } catch (error) {
       await markOutboundResult(supabase, {
         inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent: false,
       });
       logEvent({ event_type: 'processing_failed', branch, guard_reason: 'send_threw' });
+      error.outboundFailure = true;
+      error.failureReason = 'processing_failed';
       throw error;
     }
     const sent = Boolean(result && result.status !== false);
     if (sent) {
-      try { await onSendSuccess(to, message, options); } catch (_error) { /* never blocks the send result */ }
+      try { await onSendSuccess(to, finalOutboundText, options); } catch (_error) { /* never blocks the send result */ }
     }
     await markOutboundResult(supabase, {
       inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent,
@@ -128,10 +146,53 @@ function createGuardedSend({
   };
 }
 
+/**
+ * Normalizes a sendResult from guardedSend / sendWA into a bounded inbound lifecycle outcome.
+ *
+ * @param {object|null|undefined} sendResult
+ * @returns {{ terminalKind: 'sent' | 'suppressed' | 'failed' | 'not_attempted', reason: string|null }}
+ */
+function normalizeOutboundLifecycleOutcome(sendResult) {
+  if (!sendResult || typeof sendResult !== 'object') {
+    return { terminalKind: 'not_attempted', reason: null };
+  }
+
+  // 1. Successful send
+  if (sendResult.status !== false && sendResult.suppressed !== true) {
+    return { terminalKind: 'sent', reason: null };
+  }
+
+  const rawReason = String(sendResult.reason || '').toLowerCase();
+
+  // 2. Suppressions with bounded known reason
+  if (rawReason === 'duplicate_content' || rawReason === 'already_attempted' || rawReason === 'duplicate_suppressed') {
+    return { terminalKind: 'suppressed', reason: 'duplicate_suppressed' };
+  }
+  if (rawReason === 'rate_limited') {
+    return { terminalKind: 'suppressed', reason: 'rate_limited' };
+  }
+  if (rawReason === 'ai_kill_switch' || rawReason === 'reddy_disabled' || rawReason === 'kill_switch_blocked') {
+    return { terminalKind: 'suppressed', reason: 'reddy_disabled' };
+  }
+
+  // 3. Send / Provider / DB Guard Failures
+  if (rawReason === 'send_failed' || rawReason === 'send_threw' || rawReason === 'error' || rawReason === 'provider_send_failed' || rawReason === 'send_failed_provider') {
+    return { terminalKind: 'failed', reason: 'processing_failed' };
+  }
+
+  // 4. Default fallbacks
+  if (sendResult.suppressed === true) {
+    return { terminalKind: 'suppressed', reason: sendResult.reason || 'processing_failed' };
+  }
+
+  return { terminalKind: 'failed', reason: sendResult.reason || 'processing_failed' };
+}
+
 module.exports = {
   createGuardedSend,
   reserveAutomatedSend,
   markOutboundResult,
+  normalizeOutboundLifecycleOutcome,
   DUPLICATE_CONTENT_WINDOW_MS,
   RATE_LIMIT_WINDOW_MS,
   RATE_LIMIT_MAX_SENDS,

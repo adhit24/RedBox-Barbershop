@@ -43,11 +43,11 @@ const REDBOX_KNOWLEDGE = freeze({
     membership: 'Hanya harga dan benefit yang ditegakkan backend; status pelanggan tetap CRM-only.',
   },
   branches: [
-    { id: 'bypass', name: 'Redbox Bypass', aliases: ['bypass', 'redbox bypass', 'pusat'], address: 'Jl. Ahmad Yani No.88, Kecapi, Harjamukti, Cirebon, Jawa Barat', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-bypass', booking_url: 'booking.html?branch=bypass' },
-    { id: 'samadikun', name: 'Redbox Samadikun', aliases: ['samadikun', 'redbox samadikun'], address: 'Jl. Kapten Samadikun No.60, Kesenden, Kec. Kejaksan, Kota Cirebon, Jawa Barat 45121', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-samadikun', booking_url: 'booking.html?branch=samadikun' },
-    { id: 'csb', name: 'Redbox CSB Mall', aliases: ['csb', 'csb mall', 'cirebon super block'], address: 'CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26, Kota Cirebon, Jawa Barat', hours: { days: 'daily', opens: '10:00', closes: '22:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '21:00', contact_id: 'whatsapp-csb', booking_url: 'booking.html?branch=csb' },
-    { id: 'sumber', name: 'Redbox Sumber', aliases: ['sumber', 'redbox sumber'], address: 'Jl. Pangeran Cakrabuana No.2, Kemantren, Sumber, Kabupaten Cirebon, Jawa Barat 45611', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-sumber', booking_url: 'booking.html?branch=sumber' },
-    { id: 'tegal', name: 'Redbox Tegal', aliases: ['tegal', 'tegal kota', 'redbox tegal'], address: 'Jl. Dr. Soetomo No.29, Pekauman, Kec. Tegal Barat, Kota Tegal, Jawa Tengah 52125', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-tegal', booking_url: 'booking.html?branch=tegal' },
+    { id: 'bypass', name: 'Redbox Bypass', aliases: ['bypass', 'redbox bypass', 'pusat'], address: 'Jl. Ahmad Yani No.88, Kecapi, Harjamukti, Cirebon, Jawa Barat', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-bypass', phone: '0818202569', booking_url: 'booking.html?branch=bypass' },
+    { id: 'samadikun', name: 'Redbox Samadikun', aliases: ['samadikun', 'redbox samadikun'], address: 'Jl. Kapten Samadikun No.60, Kesenden, Kec. Kejaksan, Kota Cirebon, Jawa Barat 45121', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-samadikun', phone: '0818202589', booking_url: 'booking.html?branch=samadikun' },
+    { id: 'csb', name: 'Redbox CSB Mall', aliases: ['csb', 'csb mall', 'cirebon super block'], address: 'CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26, Kota Cirebon, Jawa Barat', hours: { days: 'daily', opens: '10:00', closes: '22:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '21:00', contact_id: 'whatsapp-csb', phone: '0818202889', booking_url: 'booking.html?branch=csb' },
+    { id: 'sumber', name: 'Redbox Sumber', aliases: ['sumber', 'redbox sumber'], address: 'Jl. Pangeran Cakrabuana No.2, Kemantren, Sumber, Kabupaten Cirebon, Jawa Barat 45611', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-sumber', phone: '0818202599', booking_url: 'booking.html?branch=sumber' },
+    { id: 'tegal', name: 'Redbox Tegal', aliases: ['tegal', 'tegal kota', 'redbox tegal'], address: 'Jl. Dr. Soetomo No.29, Pekauman, Kec. Tegal Barat, Kota Tegal, Jawa Tengah 52125', hours: { days: 'daily', opens: '10:00', closes: '21:00', timezone: 'Asia/Jakarta' }, last_booking_slot: '20:00', contact_id: 'whatsapp-tegal', phone: '0818268883', booking_url: 'booking.html?branch=tegal' },
   ],
   services,
   operational_policies: [
@@ -140,4 +140,47 @@ const SERVICE_IDS = Object.freeze(REDBOX_KNOWLEDGE.services.map(service => servi
 
 validateKnowledge(REDBOX_KNOWLEDGE);
 
-module.exports = { REDBOX_KNOWLEDGE, KNOWLEDGE_VERSION, BRANCH_IDS, SERVICE_IDS };
+// Round 2 correction, Blocker 3 — official branch contact resolver.
+// Source authority is REDBOX_KNOWLEDGE.branches[*].phone ONLY (the publicly
+// published branch business line — see source_semantics.branches above).
+// This function must never be given, and never returns, a barber/employee
+// phone, a customer's own CRM phone, a handoff-case phone, or any number
+// extracted from conversation text — none of those fields exist on
+// REDBOX_KNOWLEDGE.branches, so there is nothing here for such a value to
+// leak through. Deterministic: the model never picks the returned number.
+const OFFICIAL_CONTACT_UNKNOWN_BRANCH_REPLY = 'Cabang mana ya Kak — Bypass, Samadikun, CSB Mall, Sumber, atau Tegal?';
+const OFFICIAL_CONTACT_NO_PHONE_REPLY = 'Nomor cabang itu belum tersedia di data resmi yang aku pegang.';
+
+function resolveOfficialBranchContact(branch) {
+  const normalized = String(branch || '').trim().toLowerCase();
+  if (!normalized) {
+    return { status: 'unknown_branch', branchId: null, phone: null, reply: OFFICIAL_CONTACT_UNKNOWN_BRANCH_REPLY };
+  }
+  const branchRecord = REDBOX_KNOWLEDGE.branches.find((item) => item.id === normalized);
+  if (!branchRecord) {
+    return { status: 'unknown_branch', branchId: null, phone: null, reply: OFFICIAL_CONTACT_UNKNOWN_BRANCH_REPLY };
+  }
+  if (!branchRecord.phone) {
+    return {
+      status: 'no_official_contact',
+      branchId: branchRecord.id,
+      phone: null,
+      reply: OFFICIAL_CONTACT_NO_PHONE_REPLY,
+    };
+  }
+  return {
+    status: 'resolved',
+    branchId: branchRecord.id,
+    branchName: branchRecord.name,
+    phone: branchRecord.phone,
+    reply: `Nomor resmi Redbox ${branchRecord.name}: ${branchRecord.phone}`,
+  };
+}
+
+module.exports = {
+  REDBOX_KNOWLEDGE,
+  KNOWLEDGE_VERSION,
+  BRANCH_IDS,
+  SERVICE_IDS,
+  resolveOfficialBranchContact,
+};

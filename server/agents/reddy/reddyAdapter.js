@@ -251,7 +251,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
     let completionSendResult = null;
     if (sendWA && typeof sendWA === 'function') {
-      completionSendResult = await sendWA(from, completionReply, { branch });
+      try {
+        completionSendResult = await sendWA(from, completionReply, { branch });
+      } catch (err) {
+        err.outboundFailure = true;
+        err.failureReason = err.failureReason || 'processing_failed';
+        throw err;
+      }
     }
 
     return { used: 'reddy_agent', reply: completionReply, sendResult: completionSendResult, error: null };
@@ -301,7 +307,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       }
       let presenceSendResult = null;
       if (sendWA && typeof sendWA === 'function') {
-        presenceSendResult = await sendWA(from, presenceReply, { branch });
+        try {
+          presenceSendResult = await sendWA(from, presenceReply, { branch });
+        } catch (err) {
+          err.outboundFailure = true;
+          err.failureReason = err.failureReason || 'processing_failed';
+          throw err;
+        }
       }
       return {
         used: 'reddy_barber_presence_guard',
@@ -421,6 +433,7 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       reply = await callOpenAI(from, text, verifiedCrmName, branch, null, factsContext, boundedConversationContext);
     }
   } catch (err) {
+    err.generationError = true;
     throw err;
   }
 
@@ -528,6 +541,20 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     });
   }
 
+  const isWebsiteLinkRequested = /\b(?:web|website|link|url)\b/i.test(String(text || ''));
+  if (isWebsiteLinkRequested && !/\bhttps?:\/\/|\bredboxbarbershop\.com\b/i.test(reply)) {
+    logBookingTelemetry({
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      intent: orchestrationDecision?.intent || 'unknown',
+      action: 'request_ack_without_fulfillment',
+      branch,
+      trust_status: 'unverified',
+      execution_status: 'guarded',
+    });
+    reply = `${reply.trim()}\n\nWebsite resmi RedBox: https://redboxbarbershop.com`;
+  }
+
   // Final-send invariant (Task 14.1 correction round 2): whatever guard ran
   // above, or however many of them, the literal string that reaches sendWA
   // must never carry a booking URL on an ineligible turn. Runs a second,
@@ -535,7 +562,8 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   // upstream guards to have been exhaustive — cheap when there's nothing left
   // to strip, and closes the door on any future guard/branch that reintroduces
   // a URL the way guardReddyReply's own corrections just did.
-  const finalSanitized = suppressUnsolicitedBookingCta(reply, { bookingCtaEligible });
+  // Exception: explicit website link request (isWebsiteLinkRequested) preserves official URL.
+  const finalSanitized = suppressUnsolicitedBookingCta(reply, { bookingCtaEligible: bookingCtaEligible || isWebsiteLinkRequested });
   if (finalSanitized.ctaSuppressed) {
     reply = finalSanitized.sanitizedReply;
     logBookingTelemetry({
@@ -562,7 +590,13 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
   let sendResult = null;
   if (sendWA && typeof sendWA === 'function') {
-    sendResult = await sendWA(from, reply, { branch });
+    try {
+      sendResult = await sendWA(from, reply, { branch });
+    } catch (err) {
+      err.outboundFailure = true;
+      err.failureReason = err.failureReason || 'processing_failed';
+      throw err;
+    }
   }
 
   return {

@@ -153,6 +153,133 @@ function buildReddyPersonalityPrompt(options = {}) {
   return prompt;
 }
 
+/**
+ * P0-A: Final Outbound Price Placeholder Guard.
+ * Inspects outbound reply text for template placeholders or invalid price patterns
+ * like RpXX.XXX, XX.XXX, RpXXX, XXX, TBD, N/A, ${price}, {price}, [price], harga belum diisi, etc.
+ *
+ * Replacement with numeric price is allowed ONLY when:
+ * 1. service identity is deterministic (via serviceId, serviceName, or single catalog alias in text)
+ * 2. branch identity is deterministic when branch price differs
+ * 3. authoritative catalog contains price for that exact service/branch
+ * 4. resolver result is valid numeric price
+ *
+ * Otherwise:
+ * Removes/blocks placeholder and uses honest no-number fallback:
+ * "Harga pastinya belum bisa aku pastikan dari data resmi yang tersedia."
+ */
+// Round 2 correction — branch-aware price authority.
+// Known branch identities (server/agents/reddy/knowledge/redboxKnowledge.js
+// BRANCH_IDS): 'csb' prices differently from the other four. An
+// unrecognized/missing branch string must NEVER be silently treated as
+// "standard" when a service's standard and csb prices actually differ —
+// that would misquote a CSB customer the wrong (lower) price. Only when a
+// service's standard and csb prices are identical is branch identity
+// unnecessary to resolve a numeric price.
+const KNOWN_STANDARD_BRANCH_IDS = new Set(['bypass', 'samadikun', 'sumber', 'tegal']);
+const KNOWN_CSB_BRANCH_ID = 'csb';
+
+function classifyBranchPriceAuthority(branch) {
+  const normalized = String(branch || '').trim().toLowerCase();
+  if (normalized === KNOWN_CSB_BRANCH_ID) return 'csb';
+  if (KNOWN_STANDARD_BRANCH_IDS.has(normalized)) return 'standard';
+  return 'unknown';
+}
+
+// Bare, generic tokens that route conversationally (see
+// knowledge/redboxKnowledge.js SERVICE_ALIAS_EXTRAS) but are too ambiguous
+// to serve as the FINAL numeric-price identity authority when no
+// serviceId/serviceName was supplied — e.g. "potong" or "fade" appearing
+// anywhere in an outbound reply is not proof the reply is quoting Gentleman
+// Grooming specifically. Longer, specific phrases (e.g. "potong rambut",
+// "gentleman grooming") remain eligible since the catalog audit shows they
+// unambiguously identify a single service.
+const GENERIC_PRICE_IDENTITY_BLOCKLIST = new Set(['haircut', 'hair cut', 'potong', 'fade']);
+
+function defaultServicePriceResolver({ serviceId, serviceName, text, branch }) {
+  const { REDBOX_KNOWLEDGE } = require('./knowledge/redboxKnowledge');
+  const services = REDBOX_KNOWLEDGE.services || [];
+
+  let foundService = null;
+  if (serviceId) {
+    foundService = services.find((s) => s.id === serviceId);
+  } else if (serviceName) {
+    const snLower = String(serviceName).toLowerCase();
+    foundService = services.find((s) => s.name.toLowerCase() === snLower || s.aliases.includes(snLower));
+  } else if (text) {
+    const tLower = String(text).toLowerCase();
+    const matches = services.filter((s) => s.aliases.some(
+      (alias) => !GENERIC_PRICE_IDENTITY_BLOCKLIST.has(alias) && tLower.includes(alias),
+    ));
+    if (matches.length === 1) {
+      foundService = matches[0];
+    }
+  }
+
+  if (!foundService || !foundService.prices) {
+    return { resolved: false, priceFormatted: null };
+  }
+
+  const { standard, csb } = foundService.prices;
+  const hasStandard = typeof standard === 'number' && standard > 0;
+  const hasCsb = typeof csb === 'number' && csb > 0;
+  const pricesDiffer = hasStandard && hasCsb && standard !== csb;
+
+  let numericPrice = null;
+  if (!pricesDiffer) {
+    numericPrice = hasStandard ? standard : (hasCsb ? csb : null);
+  } else {
+    const authority = classifyBranchPriceAuthority(branch);
+    if (authority === 'csb') numericPrice = csb;
+    else if (authority === 'standard') numericPrice = standard;
+    // authority === 'unknown': leave numericPrice null -> unresolved below.
+    // A branch-dependent price must never fall back to "standard" just
+    // because the branch identity could not be determined.
+  }
+
+  if (typeof numericPrice === 'number' && numericPrice > 0) {
+    const formatted = 'Rp' + numericPrice.toLocaleString('id-ID');
+    return { resolved: true, priceFormatted: formatted, serviceId: foundService.id };
+  }
+
+  return { resolved: false, priceFormatted: null };
+}
+
+function guardPricePlaceholders(replyText = '', options = {}) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, blocked: false };
+  }
+
+  const placeholderRegex = /(?:\b(?:Rp\s*)?(?:XX\.XXX|XX\.XX|XXX\.XXX|XXX|XX|TBD|N\/A|\?\?|harga\s+belum\s+diisi)\b|\$\{price\}|\{price\}|\[price\])/gi;
+
+  if (!placeholderRegex.test(replyText)) {
+    return { sanitizedReply: replyText, blocked: false };
+  }
+
+  const resolver = typeof options.authoritativePriceResolver === 'function'
+    ? options.authoritativePriceResolver
+    : defaultServicePriceResolver;
+
+  const priceRes = resolver({
+    serviceId: options.serviceId,
+    serviceName: options.serviceName,
+    text: replyText,
+    branch: options.branch,
+  });
+
+  let sanitizedReply;
+  if (priceRes && priceRes.resolved && priceRes.priceFormatted) {
+    sanitizedReply = replyText.replace(placeholderRegex, priceRes.priceFormatted);
+  } else {
+    sanitizedReply = replyText.replace(
+      placeholderRegex,
+      'Harga pastinya belum bisa aku pastikan dari data resmi yang tersedia',
+    );
+  }
+
+  return { sanitizedReply, blocked: true };
+}
+
 module.exports = {
   FORBIDDEN_ADDRESS_TERMS_REGEX,
   extractFirstName,
@@ -160,4 +287,7 @@ module.exports = {
   isExplicitGreeting,
   isExplicitClosureSignal,
   buildReddyPersonalityPrompt,
+  guardPricePlaceholders,
+  defaultServicePriceResolver,
+  classifyBranchPriceAuthority,
 };

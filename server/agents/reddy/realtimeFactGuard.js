@@ -25,7 +25,7 @@
  * are left untouched.
  */
 
-const BARBER_NAME_TOKEN = '(?!(?:dijadwalkan|terjadwal|jadwalnya|scheduled)\\b)[\\p{L}][\\p{L}\'.-]{1,30}';
+const BARBER_NAME_TOKEN = '(?!(?:kalau|ada|yang|bisa|mau|kita|kami|kamu|aku|dan|atau|bukan|lagi|akan|harus|bila|jika|sudah|udah|telah|belum|dijadwalkan|terjadwal|jadwalnya|scheduled)\\b)[\\p{L}][\\p{L}\'.-]{1,30}';
 // Honorific-bound names may occur anywhere in a sentence. A bare name must
 // start the sentence (or a comma-delimited clause), preventing ordinary text
 // such as "Harga sudah tersedia" from treating "sudah" as a barber name.

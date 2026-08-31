@@ -91,7 +91,7 @@ function getBranchConfig(branchKey = 'bypass') {
   return found || REDBOX_KNOWLEDGE.branches[0];
 }
 
-const { REDBOX_KNOWLEDGE } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
+const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
 const { REDBOX_SERVICES } = require('../../public/js/services-data');
 /**
  * Vercel Serverless — POST /api/wa/webhook
@@ -156,7 +156,7 @@ const {
   isReddyEnabled,
   admitInboundEvent,
 } = require('../../server/services/waInboundGuard');
-const { createGuardedSend } = require('../../server/services/waOutboundGuard');
+const { createGuardedSend, normalizeOutboundLifecycleOutcome } = require('../../server/services/waOutboundGuard');
 const { terminalizeInbound, terminalizeIfStillProcessing } = require('../../server/services/waInboundLifecycle');
 const { resolveConversationDeviceScope, conversationCacheKey } = require('../../server/services/conversationScope');
 const {
@@ -1637,7 +1637,35 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  
+  // Round 2 correction, Blocker 3 — official branch contact resolver.
+  // Deterministic: intercepts explicit contact requests ("nomor cabang?",
+  // "nomor Redbox Sumber?", "WA cabang Tegal?", "kontak Samadikun?") before
+  // the orchestrator/LLM is reached, so the model never has a chance to
+  // invent or misquote a phone number. Source of truth is
+  // REDBOX_KNOWLEDGE.branches[*].phone only (resolveOfficialBranchContact).
+  // Requires an explicit branch/cabang reference (a bare "nomor hp"/"kontak"
+  // mention is far more often the customer giving/asking about their OWN
+  // number — see Round 2 regression: conversation-intelligence-v01.test.js
+  // Task 12 (14) sends "...nomor HP 62800000000" and must reach the normal
+  // orchestrator path, not this shortcut).
+  const mentionsBranchOrCabang = /\bcabang/.test(msgLower)
+    || REDBOX_KNOWLEDGE.branches.some((b) => msgHas([b.id, ...(b.aliases || [])]));
+  const isContactRequest = !isPersonalHistoryOrPreferenceSignal
+    && mentionsBranchOrCabang
+    && /\b(nomor|no\.?|wa|whatsapp|telp(?:on)?|kontak|hubungi)\b/.test(msgLower);
+  if (isContactRequest) {
+    const explicitContactBranch = REDBOX_KNOWLEDGE.branches.find((b) => msgHas([b.id, ...(b.aliases || [])]));
+    const contactBranchId = explicitContactBranch ? explicitContactBranch.id : branch;
+    const contactResolution = resolveOfficialBranchContact(contactBranchId);
+    reply = contactResolution.reply;
+    used = 'keyword';
+    Promise.resolve(recordEvaluation({
+      event_type: 'keyword_shortcut_used', branch, intent: 'contact_inquiry', route: 'keyword',
+    })).catch(() => {});
+    const sendResult = await send(from, reply, { branch });
+    return { used, reply, sendResult, error: null };
+  }
+
   // ── Wait complaint: pelanggan cerita pernah nunggu/antri di outlet ──
   // Pivot: empati → cerita digitalisasi (live availability) → arahkan booking online
   // Contoh: "td udh kesana katanya nunggu 2", "kemarin antri lama", "abis dari outlet harus nunggu"
@@ -1664,6 +1692,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     });
   } catch (err) {
     console.warn('[WA Bot] Orchestrator exception:', err.message);
+    // Round 2 Blocker 2: this is a SUBSYSTEM event, not a terminal inbound
+    // failure — orchDecision stays null and processing falls through to the
+    // legacy Reddy fallback path below, which may still serve the customer
+    // successfully. Telemetry only; do not set a failureReason here.
+    Promise.resolve(recordEvaluation({
+      event_type: 'orchestrator_execution_failed', branch, metadata: { reason: 'orchestrator_failed' },
+    })).catch(() => {});
   }
   const latencyMs = Date.now() - orchStart;
 
@@ -1934,11 +1969,34 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       return { used: 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
     }
 
-    const intelRes = await executeIntelligence({
-      intent: orchDecision.intent,
-      action: orchDecision.action,
-      trustedIdentity,
-    }, { supabase: getSupabase() });
+    let intelRes;
+    try {
+      intelRes = await executeIntelligence({
+        intent: orchDecision.intent,
+        action: orchDecision.action,
+        trustedIdentity,
+      }, { supabase: getSupabase() });
+    } catch (err) {
+      // Round 2 Blocker 2: the CRM/customer-intelligence subsystem itself
+      // threw (not just returned a non-success execution_status, which the
+      // block below already handles safely). Telemetry records
+      // crm_context_failed; a safe generic reply is still sent so this turn
+      // is SENT unless that delivery also fails.
+      console.warn('[WA Bot] CRM intelligence exception:', err.message);
+      Promise.resolve(recordEvaluation({
+        event_type: 'crm_context_unavailable', branch, metadata: { reason: 'crm_context_failed' },
+      })).catch(() => {});
+      const crmErrorReply = 'Data pribadi kamu sedang tidak dapat dibaca dengan aman; fitur ini masih sedang kami siapkan agar tetap aman ya Kak.';
+      const sendResult = await send(from, crmErrorReply, { branch });
+      const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
+      return {
+        used: 'crm_unavailable_guard',
+        reply: crmErrorReply,
+        sendResult,
+        error: sendSucceeded ? null : (err?.message || String(err)),
+        failureReason: sendSucceeded ? null : 'crm_context_failed',
+      };
+    }
 
     if (intelRes && intelRes.execution_status === 'success' && intelRes.intelligence) {
       const knowledgeContext = resolveReddyKnowledge({
@@ -1976,6 +2034,16 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         });
         return { used: 'crm_reddy_intelligence', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
       } catch (err) {
+        if (err && err.outboundFailure) {
+          console.warn('[WA Bot] Outbound send failed during CRM Reddy execution:', err.message);
+          return {
+            used: 'crm_reddy_intelligence',
+            reply: null,
+            sendResult: { status: false, reason: 'send_threw', error: err },
+            error: err.message,
+            failureReason: err.failureReason || 'processing_failed',
+          };
+        }
         console.warn('[WA Bot] Reddy execution error for CRM facts, using static fallback:', err.message);
         logTelemetry({
           ...orchDecision,
@@ -1994,8 +2062,21 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
           ...knowledgeTelemetry(knowledgeContext),
         });
         const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
-        const sendResult = await send(from, staticReply, { branch });
-        return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
+        let sendResult;
+        try {
+          sendResult = await send(from, staticReply, { branch });
+        } catch (sendErr) {
+          sendResult = { status: false, reason: 'send_threw', error: sendErr };
+        }
+        const outboundOutcome = normalizeOutboundLifecycleOutcome(sendResult);
+        const sendSucceeded = outboundOutcome.terminalKind === 'sent';
+        return {
+          used: 'static_fallback',
+          reply: staticReply,
+          sendResult,
+          error: sendSucceeded ? null : (err?.message || String(err)),
+          failureReason: sendSucceeded ? null : (outboundOutcome.reason || 'processing_failed'),
+        };
       }
     }
 
@@ -2061,6 +2142,16 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       });
       return { used: 'reddy_agent', reply: reddyExec.reply, sendResult: reddyExec.sendResult, error: null };
     } catch (err) {
+      if (err && err.outboundFailure) {
+        console.warn('[WA Bot] Outbound send failed during Reddy execution:', err.message);
+        return {
+          used: 'reddy_agent',
+          reply: null,
+          sendResult: { status: false, reason: 'send_threw', error: err },
+          error: err.message,
+          failureReason: err.failureReason || 'processing_failed',
+        };
+      }
       console.warn('[WA Bot] Reddy execution error, using non-LLM static fallback:', err.message);
       logTelemetry({
         ...orchDecision,
@@ -2080,8 +2171,21 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         ...knowledgeTelemetry(knowledgeContext),
       });
       const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
-      const sendResult = await send(from, staticReply, { branch });
-      return { used: 'static_fallback', reply: staticReply, sendResult, error: err?.message || String(err) };
+      let sendResult;
+      try {
+        sendResult = await send(from, staticReply, { branch });
+      } catch (sendErr) {
+        sendResult = { status: false, reason: 'send_threw', error: sendErr };
+      }
+      const outboundOutcome = normalizeOutboundLifecycleOutcome(sendResult);
+      const sendSucceeded = outboundOutcome.terminalKind === 'sent';
+      return {
+        used: 'static_fallback',
+        reply: staticReply,
+        sendResult,
+        error: sendSucceeded ? null : (err?.message || String(err)),
+        failureReason: sendSucceeded ? null : (outboundOutcome.reason || 'processing_failed'),
+      };
     }
   }
 
@@ -2125,7 +2229,10 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
     reply = fallbackReply(text, name, branch, fallbackKnowledgeContext?.status, responseLanguage);
     used = 'fallback';
-    error = err?.message || String(err);
+    // Round 2 Blocker 2: err.message is logged above, not written into
+    // `error` yet — this deterministic fallbackReply still has to be sent.
+    // Whether that send actually succeeds decides SENT vs FAILED below,
+    // near the final `return`, not the mere fact that generateReddy threw.
   }
   logTelemetry({
     ...fallbackTelemetry,
@@ -2185,7 +2292,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   }
 
   // Gunakan branch-specific token untuk kirim balasan
-  const sendResult = await send(from, reply, { branch });
+  let sendResult;
+  try {
+    sendResult = await send(from, reply, { branch });
+  } catch (sendErr) {
+    sendResult = { status: false, reason: 'send_threw', error: sendErr };
+  }
   // Persist message status fire-and-forget — jangan block sync path
   if (sendResult && Array.isArray(sendResult.id) && sendResult.id.length > 0) {
     for (let i = 0; i < sendResult.id.length; i++) {
@@ -2195,16 +2307,14 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     }
   }
 
-  // Forward booking ke branch WA dinonaktifkan — tiap cabang handle customer-nya sendiri.
-  // Mengirim ke nomor WA cabang lain via forwardBookingToBranch memicu webhook bot penerima
-  // → bot penerima anggap pengirim sebagai customer → feedback loop antar cabang.
-  // if (forwardBooking) {
-  //   forwardBookingToBranch(forwardBooking, from).catch(err =>
-  //     console.error('[WA Bot] forwardBookingToBranch error:', err.message)
-  //   );
-  // }
+  const outboundOutcome = normalizeOutboundLifecycleOutcome(sendResult);
+  const legacySendSucceeded = outboundOutcome.terminalKind === 'sent';
+  let failureReason = null;
+  if (!legacySendSucceeded) {
+    failureReason = outboundOutcome.reason || 'processing_failed';
+  }
 
-  return { used, reply, sendResult, error };
+  return { used, reply, sendResult, error: legacySendSucceeded ? null : (error || 'send_failed'), failureReason };
 }
 
 function parseMultipartFormData(buffer, contentType) {
@@ -2435,7 +2545,19 @@ module.exports = async function handler(req, res, testDeps = {}) {
         if (identityResult && identityResult.status === 'success' && isTrustedIdentity(identityResult.trustedIdentity)) {
           trustedIdentity = identityResult.trustedIdentity;
         }
-      } catch {}
+      } catch (err) {
+        // Round 2 Blocker 2: this trust-query identity upgrade is a dormant,
+        // optional CRM eligibility signal (never gates the Reddy flow — see
+        // the comment above this block) — trustedIdentity correctly stays
+        // null and processing continues normally. Telemetry only, using the
+        // existing identity-lookup-failure event so this failure is visible
+        // instead of silently swallowed; it must never become a terminal
+        // inbound failureReason on its own.
+        console.warn('[WA Bot] Trust-query identity lookup exception:', err?.message || err);
+        Promise.resolve(recordEvaluationEvent({
+          event_type: 'crm_identity_lookup_failed', branch: null, metadata: { reason: 'identity_lookup_failed' },
+        })).catch(() => {});
+      }
     }
 
     const device = body.device || body.device_id || body.deviceId;
@@ -2467,6 +2589,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
     let sender = null;
     let receiver = null;
     let branchFromPayload = null;
+    let activeFailureReason = null;
     try {
 
     const statusId = body.id || body.message_id || body.msgid || body.messageId;
@@ -2728,7 +2851,16 @@ module.exports = async function handler(req, res, testDeps = {}) {
       // frozen/recycled serverless instance abandon the promise mid-flight
       // and leave the row stuck at 'processing' (a genuine, if narrower,
       // instance of the same class of bug as the other suppression paths).
-      await guardedSend(sender, mediaReply, { branch }).catch(() => {});
+      let mediaSendResult;
+      try {
+        mediaSendResult = await guardedSend(sender, mediaReply, { branch });
+      } catch (err) {
+        mediaSendResult = { status: false, reason: 'send_threw', error: err };
+      }
+      const mediaOutcome = normalizeOutboundLifecycleOutcome(mediaSendResult);
+      if (mediaOutcome.terminalKind === 'suppressed' || mediaOutcome.terminalKind === 'failed') {
+        activeFailureReason = mediaOutcome.reason || 'processing_failed';
+      }
       return;
     }
     if (!sender || !message) return res.status(200).json({ status: 'ignored', reason: 'missing fields' });
@@ -2818,8 +2950,17 @@ module.exports = async function handler(req, res, testDeps = {}) {
         getHandoffState: async () => handoffState,
       });
       const ms = Date.now() - t0;
-      console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error });
+      const outboundOutcome = normalizeOutboundLifecycleOutcome(result?.sendResult);
+      if (result && result.error && (result.failureReason || result.reason)) {
+        activeFailureReason = result.failureReason || result.reason;
+      } else if (outboundOutcome.terminalKind === 'suppressed' || outboundOutcome.terminalKind === 'failed') {
+        activeFailureReason = outboundOutcome.reason || 'processing_failed';
+      } else if (result && result.error) {
+        activeFailureReason = result.failureReason || result.reason || 'internal_exception';
+      }
+      console.log('[WA Bot] Processing completed:', { ms, used: result?.used || null, success: !result?.error, outboundOutcome });
     } catch (err) {
+      activeFailureReason = err.failureReason || err.reason || 'internal_exception';
       console.error('[WA Bot] Process error:', err.message);
     }
 
@@ -2832,12 +2973,8 @@ module.exports = async function handler(req, res, testDeps = {}) {
       // inner try above — a normal return, an explicit terminalizeInbound()
       // call a few lines up (already a guaranteed no-op by the time this
       // runs), or an exception propagating out to the outer catch below.
-      // Conditional on inboundEventRowId being non-null (only ever true when
-      // THIS request itself claimed the row — never a 'duplicate' hit) and
-      // on the row still being at 'received'/'processing' — see
-      // terminalizeIfStillProcessing's own doc header for why 'sending' is
-      // deliberately excluded (that remains the guarded-send RPCs' domain).
       await terminalizeIfStillProcessing(supabaseForGuard, inboundEventRowId, {
+        reason: activeFailureReason || 'unexpected_pre_send_exit',
         branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
       });
     }

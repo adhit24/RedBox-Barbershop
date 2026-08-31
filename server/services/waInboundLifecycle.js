@@ -82,8 +82,8 @@ async function terminalizeInbound(supabase, inboundEventRowId, status, reason, {
  * then emits telemetry, from terminalizeInbound above) when something this
  * module's author did not anticipate left the row stuck.
  */
-async function terminalizeIfStillProcessing(supabase, inboundEventRowId, { source = 'webhook_finally', branch = null } = {}) {
-  return terminalizeInbound(supabase, inboundEventRowId, 'failed', 'unexpected_pre_send_exit', { source, branch });
+async function terminalizeIfStillProcessing(supabase, inboundEventRowId, { source = 'webhook_finally', branch = null, reason = 'unexpected_pre_send_exit' } = {}) {
+  return terminalizeInbound(supabase, inboundEventRowId, 'failed', reason, { source, branch });
 }
 
 module.exports = {

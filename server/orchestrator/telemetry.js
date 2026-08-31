@@ -371,7 +371,11 @@ const ALLOWED_INBOUND_LIFECYCLE_STATUSES = new Set(['sent', 'failed', null]);
 const ALLOWED_INBOUND_LIFECYCLE_REASONS = new Set([
   'branch_number_suppressed', 'admin_command_handled', 'handoff_active',
   'legacy_human_takeover', 'reddy_disabled', 'human_handoff_existing_case_race',
-  'unexpected_pre_send_exit', 'orphan_horizon_exceeded', null,
+  'unexpected_pre_send_exit', 'orphan_horizon_exceeded', 'identity_lookup_failed',
+  'crm_context_failed', 'orchestrator_failed', 'model_call_failed',
+  'response_validation_failed', 'rate_limited', 'kill_switch_blocked',
+  'internal_exception', 'provider_context_invalid', 'processing_failed',
+  'duplicate_suppressed', null,
 ]);
 const ALLOWED_INBOUND_LIFECYCLE_SOURCES = new Set([
   'webhook_finally', 'branch_number_suppression', 'admin_command',
@@ -466,5 +470,6 @@ module.exports = {
   sanitizeBookingLinkageTelemetry, logBookingLinkageEvent,
   sanitizeInboundLifecycleTelemetry, logInboundLifecycleEvent,
   sanitizeTransactionLinkageTelemetry, logTransactionLinkageEvent,
+  ALLOWED_INBOUND_LIFECYCLE_REASONS,
 };
 
