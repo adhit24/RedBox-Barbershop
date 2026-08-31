@@ -27,8 +27,13 @@ describe('Backoffice route table', () => {
     expect(paths).not.toContain('/payroll/employee/:id');
   });
 
-  it('defines exactly the 22 non-Command-Center, non-Login screens', () => {
-    expect(PLACEHOLDER_ROUTES).toHaveLength(22);
+  it('defines exactly the 21 remaining non-Command-Center, non-Login, non-Operations screens', () => {
+    expect(PLACEHOLDER_ROUTES).toHaveLength(21);
+  });
+
+  it('no longer defines /operations as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/operations');
   });
 
   it('has no duplicate paths', () => {

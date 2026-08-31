@@ -22,7 +22,6 @@ export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
   { path: '/payroll/regular', title: 'Regular Payroll' },
   { path: '/payroll/barber', title: 'Barber Payroll' },
   { path: '/payroll/employees/:id', title: 'Payroll Employee Detail' },
-  { path: '/operations', title: 'Operations' },
   { path: '/crm', title: 'CRM Overview' },
   { path: '/crm/customers/:id', title: 'Customer 360' },
   { path: '/reports/membership', title: 'Membership Report' },
