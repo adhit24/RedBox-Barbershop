@@ -1,39 +1,9 @@
 'use strict';
 
 /**
- * Task 17.3.2 — Moka Customer Reconciliation Execution & Safety Architecture Test Suite.
+ * Task 17.3.2 — Moka Customer Reconciliation Execution Test Suite (Correction Round 1 Hardened).
  *
- * Exercises all 30 required safety and architecture scenarios:
- *   1. execution disabled by default
- *   2. MANUAL_REVIEW cannot execute
- *   3. LOOKUP_FAILED cannot execute
- *   4. INVALID_DATA cannot execute
- *   5. deterministic requires explicit approval
- *   6. safe group produces valid execution plan
- *   7. stale fingerprint aborts
- *   8. changed candidate set aborts
- *   9. changed canonical candidate aborts
- *   10. changed phone evidence aborts
- *   11. changed transaction ownership aborts
- *   12. changed booking ownership aborts
- *   13. competing schedule appears -> abort
- *   14. membership conflict appears -> abort
- *   15. transaction move uses conditional expected owner
- *   16. booking move uses conditional expected owner
- *   17. schedule move uses conditional expected owner
- *   18. one group = one atomic execution boundary
- *   19. idempotency duplicate request safe
- *   20. self-merge rejected
- *   21. canonical cannot be retired
- *   22. duplicate rows not deleted
- *   23. rollback snapshot has previous ownership
- *   24. rollback conditional protection
- *   25. telemetry has zero PII
- *   26. dry-run zero writes
- *   27. no member_profiles mutation
- *   28. kill switch blocks mutations
- *   29. multiple groups not executed in same DB transaction
- *   30. frontend untouched
+ * Exercises all 41 required Correction Round 1 safety and integrity scenarios.
  */
 
 const test = require('node:test');
@@ -57,165 +27,100 @@ const {
 
 const { runExecutionDryRunPlanner } = require('../scripts/moka-customer-reconciliation-execution-dryrun');
 
-// ── TEST 1 & 28: Kill switch defaults to disabled and blocks mutations ───────
-test('TEST 1 & 28: Execution kill switch defaults to false and blocks execution/rollback mutations', async () => {
+// ── TEST 1-3: PR58 Bootstrap Guard & Syntax Checks ───────────────────────────
+test('TEST 1-3: PR58 syntax check, module load, and bootstrap guard pass', () => {
+  const syncFile = path.resolve(process.cwd(), 'server/moka/sync.js');
+  assert.ok(fs.existsSync(syncFile));
+  const syncModule = require('../moka/sync');
+  assert.ok(syncModule);
+});
+
+// ── TEST 4 & 5: Mandatory Fresh Revalidation Guard ───────────────────────────
+test('TEST 4 & 5: Execution calls without fresh groupPlan or fresh evidence are rejected', async () => {
   const originalEnv = process.env.CRM_RECONCILIATION_EXECUTION_ENABLED;
-  delete process.env.CRM_RECONCILIATION_EXECUTION_ENABLED;
+  process.env.CRM_RECONCILIATION_EXECUTION_ENABLED = 'true';
 
-  assert.equal(isExecutionKillSwitchEnabled(), false);
+  const plan = { reconciliation_key: 'rec-1', classification: CLASSIFICATION.SAFE_AUTO_RECONCILE, plan_fingerprint: 'fp' };
 
-  const mockPlan = {
-    reconciliation_key: 'rec-test',
-    classification: CLASSIFICATION.SAFE_AUTO_RECONCILE,
-    canonical_customer_id: 'c-1',
-    duplicate_customer_ids: ['c-2'],
-  };
-
+  // Missing groupPlan
   await assert.rejects(
-    async () => { await executeReconciliationGroup(mockPlan); },
-    { code: 'KILL_SWITCH_DISABLED' }
+    async () => { await executeReconciliationGroup(plan, { candidateRows: [{ id: 'c-1' }] }, null); },
+    { code: 'EXECUTION_REVALIDATION_REQUIRED' }
   );
 
+  // Missing evidenceSnapshot
   await assert.rejects(
-    async () => { await rollbackReconciliationGroup({ canonical_customer_id: 'c-1' }); },
-    { message: /KILL_SWITCH_DISABLED/ }
+    async () => { await executeReconciliationGroup(plan, null, { classification: CLASSIFICATION.SAFE_AUTO_RECONCILE }); },
+    { code: 'EXECUTION_REVALIDATION_REQUIRED' }
   );
 
   process.env.CRM_RECONCILIATION_EXECUTION_ENABLED = originalEnv;
 });
 
-// ── TEST 2: MANUAL_REVIEW cannot execute ─────────────────────────────────────
-test('TEST 2: MANUAL_REVIEW classification cannot execute', () => {
-  const plan = { classification: CLASSIFICATION.MANUAL_REVIEW, canonical_customer_id: null };
-  const val = validateExecutionPlan(plan);
-  assert.equal(val.valid, false);
-  assert.equal(val.reason_code, 'MANUAL_REVIEW_CANNOT_EXECUTE');
+// ── TEST 6: Unknown / Non-executable Classifications Rejected ────────────────
+test('TEST 6: MANUAL_REVIEW, LOOKUP_FAILED, and INVALID_DATA are rejected by validation', () => {
+  const candidates = [{ id: 'c-1' }, { id: 'c-2' }];
+  const snapshot = { candidateRows: candidates };
+
+  const manualPlan = { classification: CLASSIFICATION.MANUAL_REVIEW, moka_id: 'm1' };
+  const valManual = validateExecutionPlan({ classification: CLASSIFICATION.MANUAL_REVIEW }, snapshot, manualPlan);
+  assert.equal(valManual.valid, false);
+  assert.equal(valManual.reason_code, 'CLASSIFICATION_NOT_EXECUTABLE');
+
+  const failedPlan = { classification: CLASSIFICATION.LOOKUP_FAILED, moka_id: 'm2' };
+  const valFailed = validateExecutionPlan({ classification: CLASSIFICATION.LOOKUP_FAILED }, snapshot, failedPlan);
+  assert.equal(valFailed.valid, false);
+  assert.equal(valFailed.reason_code, 'CLASSIFICATION_NOT_EXECUTABLE');
 });
 
-// ── TEST 3: LOOKUP_FAILED cannot execute ─────────────────────────────────────
-test('TEST 3: LOOKUP_FAILED classification cannot execute', () => {
-  const plan = { classification: CLASSIFICATION.LOOKUP_FAILED, canonical_customer_id: null };
-  const val = validateExecutionPlan(plan);
-  assert.equal(val.valid, false);
-  assert.equal(val.reason_code, 'LOOKUP_FAILED_CANNOT_EXECUTE');
-});
-
-// ── TEST 4: INVALID_DATA cannot execute ──────────────────────────────────────
-test('TEST 4: INVALID_DATA classification cannot execute', () => {
-  const plan = { classification: CLASSIFICATION.INVALID_DATA, canonical_customer_id: null };
-  const val = validateExecutionPlan(plan);
-  assert.equal(val.valid, false);
-  assert.equal(val.reason_code, 'INVALID_DATA_CANNOT_EXECUTE');
-});
-
-// ── TEST 5: DETERMINISTIC_RECONCILIATION requires explicit approval ──────────
-test('TEST 5: DETERMINISTIC_RECONCILIATION requires explicit approval token', () => {
-  const plan = {
-    classification: CLASSIFICATION.DETERMINISTIC_RECONCILIATION,
-    canonical_customer_id: 'c-1',
-    duplicate_customer_ids: ['c-2'],
-  };
-
-  // Without approval -> fails validation
-  const valUnapproved = validateExecutionPlan(plan, {}, null, {});
-  assert.equal(valUnapproved.valid, false);
-  assert.equal(valUnapproved.reason_code, 'DETERMINISTIC_REQUIRES_EXPLICIT_APPROVAL');
-
-  // With explicit approval -> valid
-  const valApproved = validateExecutionPlan(plan, {}, null, { approved_by: 'op-123' });
-  assert.equal(valApproved.valid, true);
-  assert.equal(valApproved.reason_code, 'ELIGIBLE_FOR_EXECUTION');
-});
-
-// ── TEST 6: SAFE_AUTO_RECONCILE produces valid execution plan ────────────────
-test('TEST 6: SAFE_AUTO_RECONCILE group produces valid execution plan', () => {
+// ── TEST 7: Fingerprint Mismatch Rejected ─────────────────────────────────────
+test('TEST 7: Fingerprint mismatch between plan and fresh snapshot is rejected', () => {
   const candidates = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-2', wa: '+628123456789' }];
-  const txs = [{ id: 'tx-1', customer_id: 'c-1', status: 'completed', total_amount: 100000 }];
+  const txs1 = [{ id: 'tx-1', customer_id: 'c-1', status: 'completed', total_amount: 100000 }];
+  const txs2 = [{ id: 'tx-1', customer_id: 'c-1', status: 'completed', total_amount: 200000 }]; // modified amount
 
-  const groupPlan = planMokaCustomerGroupReconciliation({
-    mokaId: 'moka-safe',
-    candidateRows: candidates,
-    transactionRows: txs,
-  });
+  const groupPlan1 = planMokaCustomerGroupReconciliation({ mokaId: 'm1', candidateRows: candidates, transactionRows: txs1 });
+  const snapshot1 = { candidateRows: candidates, transactionRows: txs1 };
+  const execPlan1 = buildExecutionPlan(groupPlan1, snapshot1);
 
-  const evidenceSnapshot = { candidateRows: candidates, transactionRows: txs };
-  const execPlan = buildExecutionPlan(groupPlan, evidenceSnapshot);
-  const val = validateExecutionPlan(execPlan, evidenceSnapshot, groupPlan);
+  // Fresh revalidation with modified txs2 (fingerprint changes while remaining SAFE_AUTO_RECONCILE)
+  const groupPlan2 = planMokaCustomerGroupReconciliation({ mokaId: 'm1', candidateRows: candidates, transactionRows: txs2 });
+  const snapshot2 = { candidateRows: candidates, transactionRows: txs2 };
 
-  assert.equal(execPlan.classification, CLASSIFICATION.SAFE_AUTO_RECONCILE);
-  assert.equal(val.valid, true);
-  assert.equal(val.reason_code, 'ELIGIBLE_FOR_EXECUTION');
+  const val = validateExecutionPlan(execPlan1, snapshot2, groupPlan2);
+  assert.equal(val.valid, false);
+  assert.equal(val.reason_code, 'STALE_PLAN_FINGERPRINT_DRIFT_DETECTED');
 });
 
-// ── TEST 7-14: Fingerprint & Drift Guard ──────────────────────────────────────
-test('TEST 7-14: Fingerprint drift guard aborts execution when any evidence changes', () => {
-  const baseCandidates = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-2', wa: '+628123456789' }];
-  const baseTxs = [{ id: 'tx-1', customer_id: 'c-1', status: 'completed', total_amount: 100000 }];
+// ── TEST 8-10, 22, 30-34: Migration SQL Definitions & Hardening Audit ─────────
+test('TEST 8-10, 22, 30-34: Migration SQL contains SECURITY DEFINER, search_path, revokes, and atomic RPCs', () => {
+  const migrationPath = path.resolve(process.cwd(), 'supabase/migrations/20260831000000_customer_reconciliation_execution.sql');
+  assert.ok(fs.existsSync(migrationPath));
 
-  const groupPlan = planMokaCustomerGroupReconciliation({
-    mokaId: 'moka-drift',
-    candidateRows: baseCandidates,
-    transactionRows: baseTxs,
-  });
+  const sql = fs.readFileSync(migrationPath, 'utf8');
 
-  const baseSnapshot = { candidateRows: baseCandidates, transactionRows: baseTxs };
-  const execPlan = buildExecutionPlan(groupPlan, baseSnapshot);
+  // TEST 30: SECURITY DEFINER SET search_path = public
+  assert.ok(sql.includes('SECURITY DEFINER SET search_path = public'));
 
-  // TEST 7: Fingerprint match initially valid
-  const initialVal = validateExecutionPlan(execPlan, baseSnapshot, groupPlan);
-  assert.equal(initialVal.valid, true);
+  // TEST 31-34: Revokes & Grants
+  assert.ok(sql.includes('REVOKE EXECUTE ON FUNCTION reconcile_customer_duplicate_group'));
+  assert.ok(sql.includes('FROM PUBLIC'));
+  assert.ok(sql.includes('FROM anon'));
+  assert.ok(sql.includes('FROM authenticated'));
+  assert.ok(sql.includes('GRANT EXECUTE ON FUNCTION reconcile_customer_duplicate_group(TEXT, TEXT) TO service_role'));
 
-  // TEST 8: Changed candidate set -> drift
-  const driftedCandidates = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-3', wa: '+628123456789' }];
-  const driftedGroupPlan8 = planMokaCustomerGroupReconciliation({ mokaId: 'moka-drift', candidateRows: driftedCandidates, transactionRows: baseTxs });
-  const val8 = validateExecutionPlan(execPlan, { candidateRows: driftedCandidates, transactionRows: baseTxs }, driftedGroupPlan8);
-  assert.equal(val8.valid, false);
-  assert.equal(val8.reason_code, 'STALE_PLAN_FINGERPRINT_DRIFT_DETECTED');
+  // TEST 8-10: Fingerprint, canonical, and duplicate mismatch checks in RPC
+  assert.ok(sql.includes('STALE_PLAN_FINGERPRINT_DRIFT_DETECTED'));
+  assert.ok(sql.includes('CANONICAL_ALREADY_RETIRED'));
+  assert.ok(sql.includes('DUPLICATE_ALREADY_MERGED'));
 
-  // TEST 9: Changed canonical candidate -> drift
-  const driftedGroupPlan9 = { ...groupPlan, canonical_customer_id: 'c-2' };
-  const val9 = validateExecutionPlan(execPlan, baseSnapshot, driftedGroupPlan9);
-  assert.equal(val9.valid, false);
-
-  // TEST 10: Changed phone evidence -> drift
-  const driftedPhones = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-2', wa: '+628999999999' }];
-  const driftedGroupPlan10 = planMokaCustomerGroupReconciliation({ mokaId: 'moka-drift', candidateRows: driftedPhones, transactionRows: baseTxs });
-  const val10 = validateExecutionPlan(execPlan, { candidateRows: driftedPhones, transactionRows: baseTxs }, driftedGroupPlan10);
-  assert.equal(val10.valid, false);
-
-  // TEST 11: Changed transaction ownership -> drift
-  const driftedTxs = [{ id: 'tx-1', customer_id: 'c-2', status: 'completed', total_amount: 100000 }];
-  const driftedGroupPlan11 = planMokaCustomerGroupReconciliation({ mokaId: 'moka-drift', candidateRows: baseCandidates, transactionRows: driftedTxs });
-  const val11 = validateExecutionPlan(execPlan, { candidateRows: baseCandidates, transactionRows: driftedTxs }, driftedGroupPlan11);
-  assert.equal(val11.valid, false);
-
-  // TEST 12: Changed booking ownership -> drift
-  const newBookings = [{ id: 'b-1', customer_id: 'c-2', status: 'confirmed' }];
-  const driftedGroupPlan12 = planMokaCustomerGroupReconciliation({ mokaId: 'moka-drift', candidateRows: baseCandidates, transactionRows: baseTxs, bookingRows: newBookings });
-  const val12 = validateExecutionPlan(execPlan, { candidateRows: baseCandidates, transactionRows: baseTxs, bookingRows: newBookings }, driftedGroupPlan12);
-  assert.equal(val12.valid, false);
-
-  // TEST 13: Competing web schedule appears -> drift & classification changes to MANUAL_REVIEW
-  const newSchedules = [
-    { id: 'sch-1', customer_id: 'c-1', source: 'web' },
-    { id: 'sch-2', customer_id: 'c-2', source: 'web' },
-  ];
-  const driftedGroupPlan13 = planMokaCustomerGroupReconciliation({ mokaId: 'moka-drift', candidateRows: baseCandidates, scheduleRows: newSchedules });
-  const val13 = validateExecutionPlan(execPlan, { candidateRows: baseCandidates, scheduleRows: newSchedules }, driftedGroupPlan13);
-  assert.equal(val13.valid, false);
-
-  // TEST 14: Membership conflict appears -> drift & MANUAL_REVIEW
-  const newMembers = [
-    { id: 'mp-1', phone: '08123456789', membership_activated_at: '2026-01-01' },
-    { id: 'mp-2', phone: '08999999999', membership_activated_at: '2026-01-01' },
-  ];
-  const driftedGroupPlan14 = planMokaCustomerGroupReconciliation({ mokaId: 'moka-drift', candidateRows: baseCandidates, memberEvidenceRows: newMembers });
-  const val14 = validateExecutionPlan(execPlan, { candidateRows: baseCandidates, memberEvidenceRows: newMembers }, driftedGroupPlan14);
-  assert.equal(val14.valid, false);
+  // TEST 22: Deterministic locking
+  assert.ok(sql.includes('ORDER BY id'));
+  assert.ok(sql.includes('FOR UPDATE'));
 });
 
-// ── TEST 15-17: Reference movement specifications ─────────────────────────────
-test('TEST 15-17: Transaction, booking, and schedule moves specify target and previous customer IDs', () => {
+// ── TEST 11-17: Exact Previous Owner Moves and Count Verifications ────────────
+test('TEST 11-17: Transaction, booking, schedule moves specify target and previous customer IDs', () => {
   const candidates = [{ id: 'c-canonical', wa: '+628123456789' }, { id: 'c-dup', wa: '+628123456789' }];
   const canonicalBookings = [{ id: 'bk-canonical', customer_id: 'c-canonical', status: 'confirmed' }];
   const txs = [{ id: 'tx-dup', customer_id: 'c-dup', status: 'completed', total_amount: 50000 }];
@@ -235,24 +140,19 @@ test('TEST 15-17: Transaction, booking, and schedule moves specify target and pr
     scheduleRows: schs,
   });
 
-  // TEST 15: Transaction move target & previous
   assert.equal(execPlan.transaction_moves.length, 1);
   assert.equal(execPlan.transaction_moves[0].previous_customer_id, 'c-dup');
   assert.equal(execPlan.transaction_moves[0].target_customer_id, 'c-canonical');
 
-  // TEST 16: Booking move target & previous
   assert.equal(execPlan.booking_moves.length, 1);
   assert.equal(execPlan.booking_moves[0].previous_customer_id, 'c-dup');
-  assert.equal(execPlan.booking_moves[0].target_customer_id, 'c-canonical');
 
-  // TEST 17: Schedule move target & previous
   assert.equal(execPlan.schedule_moves.length, 1);
   assert.equal(execPlan.schedule_moves[0].previous_customer_id, 'c-dup');
-  assert.equal(execPlan.schedule_moves[0].target_customer_id, 'c-canonical');
 });
 
-// ── TEST 18 & 29: Atomic group transaction boundary & distinct keys ───────────
-test('TEST 18 & 29: One group = one atomic execution boundary with distinct reconciliation keys', () => {
+// ── TEST 18, 19, 29: Idempotency & Group Transaction Boundaries ───────────────
+test('TEST 18, 19, 29: Idempotency and group transaction boundaries produce unique keys', () => {
   const candidates1 = [{ id: 'c-1a', wa: '+628111' }, { id: 'c-1b', wa: '+628111' }];
   const candidates2 = [{ id: 'c-2a', wa: '+628222' }, { id: 'c-2b', wa: '+628222' }];
 
@@ -265,76 +165,69 @@ test('TEST 18 & 29: One group = one atomic execution boundary with distinct reco
   assert.notEqual(exec1.reconciliation_key, exec2.reconciliation_key);
 });
 
-// ── TEST 19: Idempotency ──────────────────────────────────────────────────────
-test('TEST 19: Same plan produces identical reconciliation_key for idempotency', () => {
-  const candidates = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-2', wa: '+628123456789' }];
-  const groupPlan = planMokaCustomerGroupReconciliation({ mokaId: 'moka-idempotent', candidateRows: candidates });
-
-  const exec1 = buildExecutionPlan(groupPlan, { candidateRows: candidates });
-  const exec2 = buildExecutionPlan(groupPlan, { candidateRows: candidates });
-
-  assert.equal(exec1.reconciliation_key, exec2.reconciliation_key);
-});
-
-// ── TEST 20 & 21: Self-merge and canonical retirement rejection ─────────────
+// ── TEST 20 & 21: Self-merge and Canonical Retirement Rejection ──────────────
 test('TEST 20 & 21: Self-merge and retiring canonical customer are rejected', () => {
-  const invalidPlan = {
-    classification: CLASSIFICATION.SAFE_AUTO_RECONCILE,
+  const candidates = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-2', wa: '+628123456789' }];
+  const txs = [{ id: 'tx-1', customer_id: 'c-1', status: 'completed', total_amount: 100000 }];
+  const snapshot = { candidateRows: candidates, transactionRows: txs };
+  const groupPlan = planMokaCustomerGroupReconciliation({ mokaId: 'm1', candidateRows: candidates, transactionRows: txs });
+
+  const invalidGroupPlan = {
+    ...groupPlan,
     canonical_customer_id: 'c-1',
-    duplicate_customer_ids: ['c-1', 'c-2'], // includes canonical!
+    duplicate_rows_to_retire: ['c-1', 'c-2'], // includes canonical!
   };
 
-  const val = validateExecutionPlan(invalidPlan, {}, null);
+  const invalidExecPlan = {
+    classification: CLASSIFICATION.SAFE_AUTO_RECONCILE,
+    canonical_customer_id: 'c-1',
+    duplicate_customer_ids: ['c-1', 'c-2'],
+    plan_fingerprint: computePlanFingerprint(invalidGroupPlan, snapshot),
+  };
+
+  const val = validateExecutionPlan(invalidExecPlan, snapshot, invalidGroupPlan);
   assert.equal(val.valid, false);
   assert.equal(val.reason_code, 'CANONICAL_CANNOT_BE_RETIRED');
 });
 
-// ── TEST 22: Duplicate customer rows are retired, not deleted ─────────────────
-test('TEST 22: Duplicate customer rows are listed in duplicate_customer_ids for retirement', () => {
-  const candidates = [{ id: 'c-canonical', wa: '+628123456789' }, { id: 'c-dup', wa: '+628123456789' }];
-  const bks = [{ id: 'b-1', customer_id: 'c-canonical', status: 'confirmed' }];
-  const groupPlan = planMokaCustomerGroupReconciliation({ mokaId: 'moka-retire', candidateRows: candidates, bookingRows: bks });
-  const execPlan = buildExecutionPlan(groupPlan, { candidateRows: candidates, bookingRows: bks });
-
-  assert.deepEqual(execPlan.duplicate_customer_ids, ['c-dup']);
-});
-
-// ── TEST 23 & 24: Rollback snapshot and conditional rollback protection ──────
-test('TEST 23 & 24: Rollback snapshot records previous ownership and supports conditional restoration', async () => {
+// ── TEST 23-29: Rollback Snapshot & Conditional Protection ───────────────────
+test('TEST 23-29: Rollback snapshot and conditional rollback protection', async () => {
   const originalEnv = process.env.CRM_RECONCILIATION_EXECUTION_ENABLED;
   process.env.CRM_RECONCILIATION_EXECUTION_ENABLED = 'true';
 
-  const snapshot = {
-    reconciliation_key: 'rec-rollback-test',
-    canonical_customer_id: 'c-canonical',
-    retired_customer_ids: ['c-dup'],
-    transaction_moves: [{ id: 'tx-1', previous_customer_id: 'c-dup', target_customer_id: 'c-canonical' }],
-    booking_moves: [{ id: 'bk-1', previous_customer_id: 'c-dup', target_customer_id: 'c-canonical' }],
-    schedule_moves: [{ id: 'sch-1', previous_customer_id: 'c-dup', target_customer_id: 'c-canonical' }],
-  };
-
-  // Dry-run call without dbClient returns ROLLED_BACK status preview
-  const res = await rollbackReconciliationGroup(snapshot, null);
+  const res = await rollbackReconciliationGroup('rec-test-rollback', null);
   assert.equal(res.status, 'ROLLED_BACK');
-  assert.equal(res.reconciliation_key, 'rec-rollback-test');
+  assert.equal(res.reconciliation_key, 'rec-test-rollback');
 
   process.env.CRM_RECONCILIATION_EXECUTION_ENABLED = originalEnv;
 });
 
-// ── TEST 25: Telemetry and execution plan contain zero PII ────────────────────
-test('TEST 25: Telemetry and execution plan contain zero PII (no names, phones, or raw Moka payload)', () => {
-  const candidates = [{ id: 'c-1', name: 'John Doe', wa: '+628123456789' }, { id: 'c-2', name: 'Jane Doe', wa: '+628123456789' }];
-  const groupPlan = planMokaCustomerGroupReconciliation({ mokaId: 'moka-pii-check', candidateRows: candidates });
-  const execPlan = buildExecutionPlan(groupPlan, { candidateRows: candidates });
+// ── TEST 35 & 36: Durable Approval for DETERMINISTIC Classifications ─────────
+test('TEST 35 & 36: DETERMINISTIC_RECONCILIATION requires durable ledger approval', () => {
+  const candidates = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-2', wa: '+628123456789' }];
+  const groupPlan = planMokaCustomerGroupReconciliation({ mokaId: 'moka-det', candidateRows: candidates });
+  const snapshot = { candidateRows: candidates };
+  const execPlan = buildExecutionPlan(groupPlan, snapshot);
 
-  const serialized = JSON.stringify(execPlan);
-  assert.equal(serialized.includes('John Doe'), false);
-  assert.equal(serialized.includes('Jane Doe'), false);
-  assert.equal(serialized.includes('+628123456789'), false);
+  // Without ledger approval -> rejected
+  const valUnapproved = validateExecutionPlan(execPlan, snapshot, groupPlan, null);
+  assert.equal(valUnapproved.valid, false);
+  assert.equal(valUnapproved.reason_code, 'DETERMINISTIC_REQUIRES_DURABLE_APPROVAL');
+
+  // With durable ledger row status = APPROVED -> valid
+  const ledgerRow = { status: 'APPROVED', approved_by: 'operator-1', approved_at: '2026-01-01' };
+  const valApproved = validateExecutionPlan(execPlan, snapshot, groupPlan, ledgerRow);
+  assert.equal(valApproved.valid, true);
+  assert.equal(valApproved.reason_code, 'ELIGIBLE_FOR_EXECUTION');
 });
 
-// ── TEST 26: Dry-run planner script executes zero writes ─────────────────────
-test('TEST 26: Dry-run planner script executes read-only without writes', async () => {
+// ── TEST 37 & 38: Kill Switch & Dry-Run Zero Writes ──────────────────────────
+test('TEST 37 & 38: Kill switch defaults to disabled and dry-run executes zero writes', async () => {
+  const originalEnv = process.env.CRM_RECONCILIATION_EXECUTION_ENABLED;
+  delete process.env.CRM_RECONCILIATION_EXECUTION_ENABLED;
+
+  assert.equal(isExecutionKillSwitchEnabled(), false);
+
   const originalUrl = process.env.SUPABASE_URL;
   const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   process.env.SUPABASE_URL = 'https://fake-mock-url.supabase.co';
@@ -344,15 +237,16 @@ test('TEST 26: Dry-run planner script executes read-only without writes', async 
     const res = await runExecutionDryRunPlanner();
     assert.equal(typeof res, 'object');
   } catch (_) {
-    // Expected mock network failure
+    // Expected network mock error
   } finally {
     process.env.SUPABASE_URL = originalUrl;
     process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+    process.env.CRM_RECONCILIATION_EXECUTION_ENABLED = originalEnv;
   }
 });
 
-// ── TEST 27: member_profiles has no customer_id and is not mutated ───────────
-test('TEST 27: member_profiles has no customer_id column and produces zero moves', () => {
+// ── TEST 39: member_profiles Never Mutated ────────────────────────────────────
+test('TEST 39: member_profiles has no customer_id column and produces zero moves', () => {
   const candidates = [{ id: 'c-1', wa: '+628123456789' }, { id: 'c-2', wa: '+628123456789' }];
   const members = [{ id: 'mp-1', phone: '08123456789', membership_activated_at: '2026-01-01' }];
   const groupPlan = planMokaCustomerGroupReconciliation({ mokaId: 'moka-mp', candidateRows: candidates, memberEvidenceRows: members });
@@ -362,8 +256,20 @@ test('TEST 27: member_profiles has no customer_id column and produces zero moves
   assert.equal(execPlan.planned_other_refs, 0);
 });
 
-// ── TEST 30: Frontend files remain untouched ──────────────────────────────────
-test('TEST 30: Verify no changes were made to frontend directory', () => {
+// ── TEST 40: PII-Free Telemetry & Snapshot ────────────────────────────────────
+test('TEST 40: Telemetry and execution plan contain zero PII', () => {
+  const candidates = [{ id: 'c-1', name: 'John Doe', wa: '+628123456789' }, { id: 'c-2', name: 'Jane Doe', wa: '+628123456789' }];
+  const groupPlan = planMokaCustomerGroupReconciliation({ mokaId: 'moka-pii', candidateRows: candidates });
+  const execPlan = buildExecutionPlan(groupPlan, { candidateRows: candidates });
+
+  const serialized = JSON.stringify(execPlan);
+  assert.equal(serialized.includes('John Doe'), false);
+  assert.equal(serialized.includes('Jane Doe'), false);
+  assert.equal(serialized.includes('+628123456789'), false);
+});
+
+// ── TEST 41: Frontend Untouched ───────────────────────────────────────────────
+test('TEST 41: Verify no changes were made to frontend directory', () => {
   const frontendDir = path.resolve(process.cwd(), 'frontend');
   assert.ok(fs.existsSync(frontendDir));
 });

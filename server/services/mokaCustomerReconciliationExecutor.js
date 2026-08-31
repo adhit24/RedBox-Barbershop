@@ -1,16 +1,18 @@
 'use strict';
 
 /**
- * Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Service & Safety Architecture.
+ * Task 17.3.2 — Moka Customer Duplicate Reconciliation Execution Service & Safety Architecture (Correction Round 1).
  *
  * Core Business & Technical Invariants:
  *   1. WRONG CUSTOMER MERGE IS WORSE THAN LEAVING DUPLICATES UNRESOLVED.
- *   2. EXECUTION DISABLED BY DEFAULT: Kill switch `CRM_RECONCILIATION_EXECUTION_ENABLED` defaults to false.
- *   3. CLASSIFICATION GATE: Only SAFE_AUTO_RECONCILE (and explicitly approved DETERMINISTIC) can execute.
+ *   2. EXECUTION DISABLED BY DEFAULT: Kill switch `CRM_RECONCILIATION_EXECUTION_ENABLED` MUST strictly equal "true".
+ *   3. CLASSIFICATION ALLOWLIST: Only SAFE_AUTO_RECONCILE and durably approved DETERMINISTIC_RECONCILIATION execute.
  *      MANUAL_REVIEW, LOOKUP_FAILED, and INVALID_DATA CANNOT execute under any circumstances.
- *   4. FINGERPRINT DRIFT GUARD: Any state drift between plan and execution aborts execution.
- *   5. ATOMIC & REVERSIBLE: Single group per database transaction; PII-free rollback snapshot captures previous ownership.
- *   6. ZERO PII LOGGING / TELEMETRY: Telemetry minifies and hashes correlation keys; zero PII.
+ *   4. MANDATORY FRESH REVALIDATION: Fresh groupPlan and fresh evidenceSnapshot MUST be provided to revalidate fingerprint.
+ *   5. ATOMIC RPC & DURABLE FAILED STATUS: DB mutations execute in a single RPC transaction.
+ *      Execution errors trigger RPC rollback, and caller records FAILED status in a separate transaction.
+ *   6. SECURITY DEFINER HARDENING: RPC search_path = public; execution granted strictly to service_role.
+ *   7. ZERO PII LOGGING / TELEMETRY: Telemetry minifies and hashes correlation keys; zero PII.
  */
 
 const crypto = require('crypto');
@@ -31,7 +33,7 @@ function computePlanFingerprint(groupPlan, evidenceSnapshot = {}) {
     duplicate_rows_to_retire: (groupPlan?.duplicate_rows_to_retire || []).slice().sort(),
     candidate_ids: (evidenceSnapshot?.candidateRows || []).map(c => c.id).sort(),
     candidate_phones: (evidenceSnapshot?.candidateRows || []).map(c => c.phone_e164 || c.wa || c.phone || '').sort(),
-    transaction_ids: (evidenceSnapshot?.transactionRows || []).map(t => `${t.id}:${t.customer_id}:${t.status}`).sort(),
+    transaction_ids: (evidenceSnapshot?.transactionRows || []).map(t => `${t.id}:${t.customer_id}:${t.status}:${t.total_amount || t.price || 0}`).sort(),
     booking_ids: (evidenceSnapshot?.bookingRows || []).map(b => `${b.id}:${b.customer_id}:${b.status}`).sort(),
     schedule_ids: (evidenceSnapshot?.scheduleRows || []).map(s => `${s.id}:${s.customer_id}:${s.source}`).sort(),
     membership_status: groupPlan?.membership_status || 'membership_none',
@@ -109,7 +111,7 @@ function buildExecutionPlan(groupPlan, evidenceSnapshot = {}) {
     plan_fingerprint: fingerprint,
 
     planned_transaction_refs: txMoves.length,
-    planned_booking_refs: bookingMoves.length,
+    planned_booking_refs: bkMovesLength(bookingMoves),
     planned_schedule_refs: scheduleMoves.length,
     planned_other_refs: 0,
 
@@ -121,39 +123,40 @@ function buildExecutionPlan(groupPlan, evidenceSnapshot = {}) {
   });
 }
 
+function bkMovesLength(bks) {
+  return Array.isArray(bks) ? bks.length : 0;
+}
+
 /**
  * Validates an execution plan against current evidence snapshot and safety rules.
  *
  * @param {object} executionPlan - Plan from buildExecutionPlan()
- * @param {object} currentEvidenceSnapshot - Fresh evidence snapshot
- * @param {object} [groupPlan] - Fresh classification result
- * @param {object} [options] - Approval options { approved_by, force_enable }
+ * @param {object} currentEvidenceSnapshot - Fresh evidence snapshot (MANDATORY)
+ * @param {object} groupPlan - Fresh classification result (MANDATORY)
+ * @param {object} [ledgerRow] - Ledger row if fetched from DB
  * @returns {object} Validation result { valid: boolean, reason_code: string }
  */
-function validateExecutionPlan(executionPlan, currentEvidenceSnapshot = {}, groupPlan = null, options = {}) {
-  // 1. Classification Authority Check
-  const classification = executionPlan?.classification;
-
-  if (classification === CLASSIFICATION.MANUAL_REVIEW) {
-    return { valid: false, reason_code: 'MANUAL_REVIEW_CANNOT_EXECUTE' };
-  }
-  if (classification === CLASSIFICATION.LOOKUP_FAILED) {
-    return { valid: false, reason_code: 'LOOKUP_FAILED_CANNOT_EXECUTE' };
-  }
-  if (classification === CLASSIFICATION.INVALID_DATA) {
-    return { valid: false, reason_code: 'INVALID_DATA_CANNOT_EXECUTE' };
+function validateExecutionPlan(executionPlan, currentEvidenceSnapshot, groupPlan, ledgerRow = null) {
+  // 1. Mandatory Fresh Revalidation Check
+  if (!groupPlan || !currentEvidenceSnapshot || !currentEvidenceSnapshot.candidateRows) {
+    return { valid: false, reason_code: 'EXECUTION_REVALIDATION_REQUIRED' };
   }
 
-  // 2. Deterministic Approval Gate Check
-  if (classification === CLASSIFICATION.DETERMINISTIC_RECONCILIATION) {
-    if (!options.approved_by || typeof options.approved_by !== 'string' || options.approved_by.trim().length === 0) {
-      return { valid: false, reason_code: 'DETERMINISTIC_REQUIRES_EXPLICIT_APPROVAL' };
-    }
+  // 2. Classification Allowlist Check
+  const classification = groupPlan.classification;
+  if (classification !== CLASSIFICATION.SAFE_AUTO_RECONCILE && classification !== CLASSIFICATION.DETERMINISTIC_RECONCILIATION) {
+    return { valid: false, reason_code: 'CLASSIFICATION_NOT_EXECUTABLE' };
   }
 
-  // 3. Self-Merge & Canonical Integrity Check
-  const canonicalId = executionPlan.canonical_customer_id;
-  const duplicateIds = executionPlan.duplicate_customer_ids || [];
+  // 3. Fingerprint & Drift Guard Check
+  const currentFingerprint = computePlanFingerprint(groupPlan, currentEvidenceSnapshot);
+  if (currentFingerprint !== executionPlan.plan_fingerprint) {
+    return { valid: false, reason_code: 'STALE_PLAN_FINGERPRINT_DRIFT_DETECTED' };
+  }
+
+  // 4. Self-Merge & Canonical Integrity Check
+  const canonicalId = groupPlan.canonical_customer_id;
+  const duplicateIds = groupPlan.duplicate_rows_to_retire || [];
 
   if (!canonicalId) {
     return { valid: false, reason_code: 'MISSING_CANONICAL_CUSTOMER_ID' };
@@ -163,11 +166,11 @@ function validateExecutionPlan(executionPlan, currentEvidenceSnapshot = {}, grou
     return { valid: false, reason_code: 'CANONICAL_CANNOT_BE_RETIRED' };
   }
 
-  // 4. Fingerprint & Drift Guard Check
-  if (groupPlan) {
-    const currentFingerprint = computePlanFingerprint(groupPlan, currentEvidenceSnapshot);
-    if (currentFingerprint !== executionPlan.plan_fingerprint) {
-      return { valid: false, reason_code: 'STALE_PLAN_FINGERPRINT_DRIFT_DETECTED' };
+  // 5. Durable Ledger Approval Gate Check for DETERMINISTIC
+  if (classification === CLASSIFICATION.DETERMINISTIC_RECONCILIATION) {
+    const isLedgerApproved = ledgerRow && ledgerRow.status === 'APPROVED' && ledgerRow.approved_by && ledgerRow.approved_at;
+    if (!isLedgerApproved) {
+      return { valid: false, reason_code: 'DETERMINISTIC_REQUIRES_DURABLE_APPROVAL' };
     }
   }
 
@@ -176,6 +179,7 @@ function validateExecutionPlan(executionPlan, currentEvidenceSnapshot = {}, grou
 
 /**
  * Checks if reconciliation execution kill switch is enabled.
+ * MUST strictly equal string "true".
  *
  * @returns {boolean}
  */
@@ -188,13 +192,12 @@ function isExecutionKillSwitchEnabled() {
  * Hard-guarded by CRM_RECONCILIATION_EXECUTION_ENABLED kill switch.
  *
  * @param {object} executionPlan
- * @param {object} currentEvidenceSnapshot
- * @param {object} [groupPlan]
- * @param {object} [options]
+ * @param {object} currentEvidenceSnapshot - MANDATORY
+ * @param {object} groupPlan - MANDATORY
  * @param {object} [dbClient]
  * @returns {Promise<object>} Execution result object
  */
-async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot = {}, groupPlan = null, options = {}, dbClient = null) {
+async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot, groupPlan, dbClient = null) {
   // HARD KILL SWITCH GUARD
   if (!isExecutionKillSwitchEnabled()) {
     const err = new Error('KILL_SWITCH_DISABLED: CRM_RECONCILIATION_EXECUTION_ENABLED is false');
@@ -202,7 +205,24 @@ async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot
     throw err;
   }
 
-  const validation = validateExecutionPlan(executionPlan, currentEvidenceSnapshot, groupPlan, options);
+  // MANDATORY FRESH REVALIDATION CHECK
+  if (!groupPlan || !currentEvidenceSnapshot) {
+    const err = new Error('EXECUTION_REVALIDATION_REQUIRED: Fresh groupPlan and currentEvidenceSnapshot must be provided');
+    err.code = 'EXECUTION_REVALIDATION_REQUIRED';
+    throw err;
+  }
+
+  let ledgerRow = null;
+  if (dbClient) {
+    const { data: ledgerData } = await dbClient
+      .from('customer_reconciliation_ledger')
+      .select('*')
+      .eq('reconciliation_key', executionPlan.reconciliation_key)
+      .maybeSingle();
+    ledgerRow = ledgerData;
+  }
+
+  const validation = validateExecutionPlan(executionPlan, currentEvidenceSnapshot, groupPlan, ledgerRow);
   if (!validation.valid) {
     const err = new Error(`EXECUTION_VALIDATION_FAILED: ${validation.reason_code}`);
     err.code = validation.reason_code;
@@ -211,22 +231,35 @@ async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot
 
   // Execute database transaction if client provided
   if (dbClient) {
-    const { data, error } = await dbClient.rpc('reconcile_customer_duplicate_group', {
-      p_reconciliation_key: executionPlan.reconciliation_key,
-      p_expected_fingerprint: executionPlan.plan_fingerprint,
-      p_canonical_id: executionPlan.canonical_customer_id,
-      p_duplicate_ids: executionPlan.duplicate_customer_ids,
-      p_tx_ids: (executionPlan.transaction_moves || []).map(t => t.id),
-      p_booking_ids: (executionPlan.booking_moves || []).map(b => b.id),
-      p_schedule_ids: (executionPlan.schedule_moves || []).map(s => s.id),
-    });
+    try {
+      const { data, error } = await dbClient.rpc('reconcile_customer_duplicate_group', {
+        p_reconciliation_key: executionPlan.reconciliation_key,
+        p_expected_fingerprint: executionPlan.plan_fingerprint,
+      });
 
-    if (error) {
-      const err = new Error(`DATABASE_RECONCILIATION_FAILED: ${error.message}`);
-      err.code = error.code || 'DB_RPC_FAILED';
+      if (error) {
+        throw error;
+      }
+      return { status: 'COMPLETED', dbResult: data };
+    } catch (dbErr) {
+      // SEPARATE TRANSACTION: Record durable FAILED status in ledger
+      try {
+        await dbClient
+          .from('customer_reconciliation_ledger')
+          .update({
+            status: 'FAILED',
+            failed_at: new Date().toISOString(),
+            error_code: dbErr.code || 'DB_RPC_FAILED',
+            error_summary: dbErr.message || 'Execution RPC failed',
+          })
+          .eq('reconciliation_key', executionPlan.reconciliation_key);
+      } catch (_) {
+        // Ignore separate logging errors to preserve primary RPC error
+      }
+      const err = new Error(`DATABASE_RECONCILIATION_FAILED: ${dbErr.message}`);
+      err.code = dbErr.code || 'DB_RPC_FAILED';
       throw err;
     }
-    return { status: 'COMPLETED', dbResult: data };
   }
 
   return {
@@ -240,11 +273,11 @@ async function executeReconciliationGroup(executionPlan, currentEvidenceSnapshot
  * Reversible rollback wrapper for a completed or failed reconciliation group.
  * Hard-guarded by CRM_RECONCILIATION_EXECUTION_ENABLED kill switch.
  *
- * @param {object} rollbackSnapshot - PII-free snapshot from buildExecutionPlan()
+ * @param {string} reconciliationKey - Key of reconciliation group to rollback
  * @param {object} [dbClient]
  * @returns {Promise<object>} Rollback result object
  */
-async function rollbackReconciliationGroup(rollbackSnapshot, dbClient = null) {
+async function rollbackReconciliationGroup(reconciliationKey, dbClient = null) {
   // HARD KILL SWITCH GUARD
   if (!isExecutionKillSwitchEnabled()) {
     const err = new Error('KILL_SWITCH_DISABLED: CRM_RECONCILIATION_EXECUTION_ENABLED is false');
@@ -252,69 +285,26 @@ async function rollbackReconciliationGroup(rollbackSnapshot, dbClient = null) {
     throw err;
   }
 
-  if (!rollbackSnapshot || !rollbackSnapshot.canonical_customer_id) {
-    throw new Error('INVALID_ROLLBACK_SNAPSHOT: Missing snapshot or canonical_customer_id');
+  if (!reconciliationKey || typeof reconciliationKey !== 'string') {
+    throw new Error('INVALID_RECONCILIATION_KEY: Reconciliation key must be provided');
   }
 
-  const canonicalId = rollbackSnapshot.canonical_customer_id;
-  let txRestored = 0;
-  let bookingRestored = 0;
-  let scheduleRestored = 0;
-  let customerUnretired = 0;
-
   if (dbClient) {
-    // 1. Restore transactions conditionally (only if still pointing to canonicalId)
-    for (const move of rollbackSnapshot.transaction_moves || []) {
-      const { data } = await dbClient
-        .from('transactions')
-        .update({ customer_id: move.previous_customer_id })
-        .eq('id', move.id)
-        .eq('customer_id', canonicalId)
-        .select('id');
-      if (data && data.length > 0) txRestored += data.length;
-    }
+    const { data, error } = await dbClient.rpc('rollback_customer_reconciliation_group', {
+      p_reconciliation_key: reconciliationKey,
+    });
 
-    // 2. Restore bookings conditionally
-    for (const move of rollbackSnapshot.booking_moves || []) {
-      const { data } = await dbClient
-        .from('bookings')
-        .update({ customer_id: move.previous_customer_id })
-        .eq('id', move.id)
-        .eq('customer_id', canonicalId)
-        .select('id');
-      if (data && data.length > 0) bookingRestored += data.length;
+    if (error) {
+      const err = new Error(`DATABASE_ROLLBACK_FAILED: ${error.message}`);
+      err.code = error.code || 'DB_ROLLBACK_FAILED';
+      throw err;
     }
-
-    // 3. Restore schedules conditionally
-    for (const move of rollbackSnapshot.schedule_moves || []) {
-      const { data } = await dbClient
-        .from('schedules')
-        .update({ customer_id: move.previous_customer_id })
-        .eq('id', move.id)
-        .eq('customer_id', canonicalId)
-        .select('id');
-      if (data && data.length > 0) scheduleRestored += data.length;
-    }
-
-    // 4. Un-retire duplicate customer rows
-    for (const dupId of rollbackSnapshot.retired_customer_ids || []) {
-      const { data } = await dbClient
-        .from('customers')
-        .update({ merged_into_customer_id: null, merged_at: null })
-        .eq('id', dupId)
-        .eq('merged_into_customer_id', canonicalId)
-        .select('id');
-      if (data && data.length > 0) customerUnretired += data.length;
-    }
+    return { status: 'ROLLED_BACK', dbResult: data };
   }
 
   return {
     status: 'ROLLED_BACK',
-    reconciliation_key: rollbackSnapshot.reconciliation_key,
-    restored_transactions: txRestored,
-    restored_bookings: bookingRestored,
-    restored_schedules: scheduleRestored,
-    unretired_customers: customerUnretired,
+    reconciliation_key: reconciliationKey,
   };
 }
 
