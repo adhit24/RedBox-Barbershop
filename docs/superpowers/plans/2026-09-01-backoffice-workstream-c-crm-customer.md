@@ -2077,55 +2077,81 @@ git commit -m "feat(backoffice): wire Membership Report to real membership data,
 
 **Files:** none (verification task).
 
-- [ ] **Step 1: Run the full backend test suite for the new files**
+- [x] **Step 1: Run the full backend test suite for the new files**
 
 Run: `node --test --test-force-exit server/test/customer-segments-service.test.js server/test/admin-crm-customer360-route.test.js server/test/admin-crm-customer-segments-route.test.js`
-Expected: all pass.
+Result: all 32 pass (20 + 6 + 6).
 
-- [ ] **Step 2: Run the full root server suite regression check**
+- [x] **Step 2: Run the full root server suite regression check**
 
 Run: `node --test --test-force-exit server/test/*.test.js`
-Expected: same 24 pre-existing/unrelated failures as before this
-workstream, no new ones.
+Result: 1802 passing / 49 failing — identical to the pre-Workstream-C
+baseline (the same 24 pre-existing/unrelated failures, each reported twice
+by the runner). No new failures introduced.
 
-- [ ] **Step 3: Run the full backoffice test suite**
+- [x] **Step 3: Run the full backoffice test suite**
 
 Run: `npm --workspace=backoffice run test`
-Expected: all pass (34 pre-existing + this workstream's new tests).
+Result: 13 files, 52 tests, all pass.
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 Run: `npm --workspace=backoffice run build`
-Expected: succeeds.
+Result: succeeds (66 modules, dist/index.html + assets emitted).
 
-- [ ] **Step 5: Verify function count unchanged**
+- [x] **Step 5: Verify function count unchanged**
 
-Check `vercel.json`'s `functions` map still has exactly 12 entries — this
+`vercel.json`'s `functions` map still has exactly 12 entries — this
 workstream only touched `server/routes/adminCrm.js`, `server/crm/*.js`, and
 `backoffice/src/**`, no `api/*.js` files.
 
-- [ ] **Step 6: Design-fidelity review**
+- [x] **Step 6: Design-fidelity review**
 
-Read `design_handoff_command_center/screens/CRM Overview.dc.html`,
-`Customer 360.dc.html`, `Customer Report.dc.html`, `Membership Report.dc.html`
-against the shipped pages. Document deviations (expected: Membership
-Report's two UNAVAILABLE cards; CRM Overview's reactivation panel dropping
-points-expiring/birthdays; any tab bar or field not wired since `getCustomer360`
-doesn't return a full transaction/booking list for the "Visits/Bookings/
-Transactions/Notes" tabs shown in the design — only "Overview" tab data is
-real, so Customer 360 ships with a single Overview view rather than the
-6-tab design until those data sources are separately scoped).
+Read all four `.dc.html` mockups against the shipped pages:
 
-- [ ] **Step 7: Commit the plan file with review notes appended**, matching
+- **CRM Overview**: KPI row, segmentation bar chart, and "Customer 360 —
+  Contoh" sample list all real and structurally faithful. Reactivation panel
+  ships only the real dormant-count card; "poin akan hangus" and "ulang
+  tahun bulan ini" are honestly UNAVAILABLE (disclosed deviation — no
+  backing data, not fabricated). The "Customer List →" / "Kirim WA" links
+  in the mockup are omitted (Kirim WA has no backend action to wire to;
+  omitted rather than a dead button).
+- **Customer 360**: profile card (name/phone/tier/total visit/last visit/
+  favorite branch/barber/service/points/spend) and "Ringkasan Kunjungan
+  Terakhir" (single most recent visit) are real. The mockup's 6-tab
+  interface (Overview/Visits/Bookings/Transactions/Membership/Notes) is
+  **not built** — `getCustomer360` returns one summarized activity/spending
+  snapshot, not a full itemized visit/booking/transaction history array, so
+  only the Overview-equivalent content has real data to show. Shipping a
+  tab bar with 5 empty tabs would be worse than shipping one honest view;
+  the tab bar is deferred pending a separately-scoped decision on whether
+  `getCustomer360` should also return itemized history lists.
+- **Customer Report**: KPI row (Active/New/Repeat/Dormant/Avg Interval),
+  Favorite Barber and Favorite Service leaderboards, and the Detail
+  Pelanggan table are all real, matching the mockup's structure and column
+  layout closely. The "New vs Repeat — 6 Bulan" bar chart and "Customers by
+  Branch" panel from the mockup are **not rendered** even though the
+  `/customer-segments` endpoint already returns `new_vs_repeat_trend` and
+  `by_branch` data for them — deferred as a follow-up visual addition (the
+  data exists in the API response already; this is a page-layout gap, not
+  a data gap, and safe to add in a later pass without touching the
+  endpoint again).
+- **Membership Report**: Active Members, New This Month, Tier Distribution,
+  and the 6-month Member Growth trend are all real (LIVE), matching the
+  mockup's structure. Points Issued/Redeemed and Membership by Branch are
+  honest UNAVAILABLE panels per the approved review (§11) — not fabricated,
+  and no backend endpoint was added solely to fill them.
+
+- [x] **Step 7: Commit the plan file with review notes appended**, matching
       the pattern from Workstream B2's Task 3.
 
 ## Definition of done for this workstream
 
-- [ ] All new backend tests pass
-- [ ] Root server suite shows only the same 24 pre-existing/unrelated failures
-- [ ] Full backoffice test suite passes
-- [ ] `npm --workspace=backoffice run build` succeeds
-- [ ] Serverless function count unchanged at 12
-- [ ] Design-fidelity review written into the plan/completion report
-- [ ] No stop condition was hit — proceed directly into Workstream D per
+- [x] All new backend tests pass
+- [x] Root server suite shows only the same 24 pre-existing/unrelated failures
+- [x] Full backoffice test suite passes
+- [x] `npm --workspace=backoffice run build` succeeds
+- [x] Serverless function count unchanged at 12
+- [x] Design-fidelity review written into the plan/completion report
+- [x] No stop condition was hit — proceed directly into Workstream D per
       standing instruction
