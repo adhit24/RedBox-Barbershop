@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getOwnerOverview, getOwnerRevenue, getMembership, getCommandCenterForBranch } from '../crm';
+import {
+  getOwnerOverview, getOwnerRevenue, getMembership, getCommandCenterForBranch,
+  getCustomer360, getCustomerSegments,
+} from '../crm';
 
 describe('crm service', () => {
   beforeEach(() => {
@@ -65,5 +68,41 @@ describe('crm service', () => {
 
     const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe('/api/admin/crm/command-center?branch=csb');
+  });
+
+  it('getCustomer360 calls GET with the given customer_id', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ identity: { customer_found: false } }), { status: 200 })
+    );
+    await getCustomer360({ customer_id: 'c1' });
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/admin/crm/customer360?customer_id=c1');
+  });
+
+  it('getCustomer360 calls GET with the given phone', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ identity: { customer_found: false } }), { status: 200 })
+    );
+    await getCustomer360({ phone: '6281' });
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/admin/crm/customer360?phone=6281');
+  });
+
+  it('getCustomerSegments defaults to branch=all with no other params', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ customers: { items: [], total: 0, limit: 50, offset: 0 } }), { status: 200 })
+    );
+    await getCustomerSegments({});
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/admin/crm/customer-segments?branch=all');
+  });
+
+  it('getCustomerSegments passes through branch, limit, offset, and search', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ customers: { items: [], total: 0, limit: 10, offset: 5 } }), { status: 200 })
+    );
+    await getCustomerSegments({ branch: 'csb', limit: 10, offset: 5, search: 'budi' });
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/admin/crm/customer-segments?branch=csb&limit=10&offset=5&search=budi');
   });
 });
