@@ -200,9 +200,13 @@ function SnapshotCard({
   );
 }
 
+const LIST_PREVIEW_COUNT = 5;
+
 export function CommandCenter() {
   const { currentUser } = useAuth();
   const [branch, setBranch] = useState('all');
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [alertsExpanded, setAlertsExpanded] = useState(false);
 
   const [overview, setOverview] = useState<LoadState<OwnerOverview>>({ status: 'loading' });
   const [branchActivity, setBranchActivity] = useState<LoadState<{ items: BranchActivity[]; failedBranches: string[] }>>({ status: 'loading' });
@@ -306,6 +310,9 @@ export function CommandCenter() {
     : null;
 
   const errorLogs = mokaLogs.status === 'ready' ? mokaLogs.data.filter((l) => l.status !== 'ok') : [];
+
+  const visibleTimeline = timelineExpanded ? todayMokaLogs : todayMokaLogs.slice(0, LIST_PREVIEW_COUNT);
+  const visibleErrorLogs = alertsExpanded ? errorLogs : errorLogs.slice(0, LIST_PREVIEW_COUNT);
 
   // Live Branch Activity status pill — derived only from the branch's own real
   // alerts[] payload (two-tier: Normal / Perlu Perhatian). No "Ramai" busy-tier is
@@ -541,28 +548,39 @@ export function CommandCenter() {
             todayMokaLogs.length === 0 ? (
               <p className="py-6 text-center text-sm text-rb-text-muted">Belum ada aktivitas sinkronisasi hari ini.</p>
             ) : (
-              <div className="flex flex-col">
-                {todayMokaLogs.map((log, i) => {
-                  const dotColor = log.status === 'ok' ? TINT.green.fg : TINT.red.fg;
-                  const isLast = i === todayMokaLogs.length - 1;
-                  return (
-                    <div key={log.id} className="flex gap-3.5">
-                      <span className="w-10 shrink-0 text-[11.5px] font-semibold text-rb-text-muted">
-                        {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: OPERATIONAL_TIMEZONE })}
-                      </span>
-                      <div className="flex flex-col items-center">
-                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: dotColor }} />
-                        {!isLast && <span className="min-h-[22px] w-[1.5px] flex-1" style={{ background: '#EDE9DC' }} />}
-                      </div>
-                      <div className="min-w-0 flex-1 pb-4.5">
-                        <div className="text-[13.5px] font-medium text-rb-text">
-                          Sinkronisasi {log.direction} {log.entity_type} — {log.status}
+              <>
+                <div className="flex flex-col">
+                  {visibleTimeline.map((log, i) => {
+                    const dotColor = log.status === 'ok' ? TINT.green.fg : TINT.red.fg;
+                    const isLast = i === visibleTimeline.length - 1;
+                    return (
+                      <div key={log.id} className="flex gap-3.5">
+                        <span className="w-10 shrink-0 text-[11.5px] font-semibold text-rb-text-muted">
+                          {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: OPERATIONAL_TIMEZONE })}
+                        </span>
+                        <div className="flex flex-col items-center">
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: dotColor }} />
+                          {!isLast && <span className="min-h-[22px] w-[1.5px] flex-1" style={{ background: '#EDE9DC' }} />}
+                        </div>
+                        <div className="min-w-0 flex-1 pb-4.5">
+                          <div className="text-[13.5px] font-medium text-rb-text">
+                            Sinkronisasi {log.direction} {log.entity_type} — {log.status}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+                {todayMokaLogs.length > LIST_PREVIEW_COUNT && (
+                  <button
+                    type="button"
+                    onClick={() => setTimelineExpanded((v) => !v)}
+                    className="mt-1 text-xs font-semibold text-rb-red"
+                  >
+                    {timelineExpanded ? 'Tampilkan lebih sedikit' : `Tampilkan semua (${todayMokaLogs.length}) →`}
+                  </button>
+                )}
+              </>
             )
           )}
           <p className="mt-2 text-[11.5px] text-rb-text-faint">
@@ -579,25 +597,36 @@ export function CommandCenter() {
             errorLogs.length === 0 ? (
               <p className="py-6 text-center text-sm text-rb-text-muted">Tidak ada exception sinkronisasi hari ini.</p>
             ) : (
-              <div className="flex flex-col gap-2.5">
-                {errorLogs.map((log) => (
-                  <div key={log.id} className="flex items-start gap-[11px] rounded-xl p-[11px]" style={{ background: TINT.blue.bg }}>
-                    <span className="mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: TINT.blue.fg }} />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13.5px] font-semibold text-rb-text">
-                        Sinkronisasi {log.direction} {log.entity_type} gagal
+              <>
+                <div className="flex flex-col gap-2.5">
+                  {visibleErrorLogs.map((log) => (
+                    <div key={log.id} className="flex items-start gap-[11px] rounded-xl p-[11px]" style={{ background: TINT.blue.bg }}>
+                      <span className="mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: TINT.blue.fg }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] font-semibold text-rb-text">
+                          Sinkronisasi {log.direction} {log.entity_type} gagal
+                        </div>
+                        <div className="mt-0.5 text-xs text-rb-text-muted">{log.error_message ?? 'Tidak ada detail error.'}</div>
                       </div>
-                      <div className="mt-0.5 text-xs text-rb-text-muted">{log.error_message ?? 'Tidak ada detail error.'}</div>
+                      <Link
+                        to="/moka"
+                        className="shrink-0 whitespace-nowrap rounded-lg border border-rb-border bg-rb-surface px-2.5 py-[5px] text-xs font-semibold text-rb-text-secondary no-underline"
+                      >
+                        Detail
+                      </Link>
                     </div>
-                    <Link
-                      to="/moka"
-                      className="shrink-0 whitespace-nowrap rounded-lg border border-rb-border bg-rb-surface px-2.5 py-[5px] text-xs font-semibold text-rb-text-secondary no-underline"
-                    >
-                      Detail
-                    </Link>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+                {errorLogs.length > LIST_PREVIEW_COUNT && (
+                  <button
+                    type="button"
+                    onClick={() => setAlertsExpanded((v) => !v)}
+                    className="mt-3 text-xs font-semibold text-rb-red"
+                  >
+                    {alertsExpanded ? 'Tampilkan lebih sedikit' : `Tampilkan semua (${errorLogs.length}) →`}
+                  </button>
+                )}
+              </>
             )
           )}
         </div>

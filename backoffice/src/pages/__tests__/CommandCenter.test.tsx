@@ -379,4 +379,78 @@ describe('CommandCenter', () => {
     const card = cardOf(screen.getByText('Active Members'));
     expect(within(card).getByText('2')).toBeInTheDocument();
   });
+
+  it("caps Today's Operations Timeline at 5 entries with a show-more control that reveals the rest", async () => {
+    mockFetch({
+      mokaLogs: {
+        logs: Array.from({ length: 7 }, (_, i) => ({
+          id: `l${i}`,
+          direction: 'pull',
+          entity_type: `entity${i}`,
+          entity_id: `e${i}`,
+          status: 'ok' as const,
+          error_message: null,
+          retry_count: 0,
+          created_at: TODAY_ISO,
+        })),
+      },
+    });
+    renderCC();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sinkronisasi pull entity0/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Sinkronisasi pull entity4/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sinkronisasi pull entity5/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sinkronisasi pull entity6/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Tampilkan semua (7) →'));
+
+    expect(screen.getByText(/Sinkronisasi pull entity5/)).toBeInTheDocument();
+    expect(screen.getByText(/Sinkronisasi pull entity6/)).toBeInTheDocument();
+  });
+
+  it('does not show a Timeline expand control when there are 5 or fewer entries', async () => {
+    mockFetch();
+    renderCC();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sinkronisasi pull transaction/i)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/Tampilkan semua/)).not.toBeInTheDocument();
+  });
+
+  it('caps Alerts & Exceptions at 5 entries with a show-more control that reveals the rest', async () => {
+    mockFetch({
+      mokaLogs: {
+        logs: Array.from({ length: 6 }, (_, i) => ({
+          id: `e${i}`,
+          direction: 'push',
+          entity_type: `booking${i}`,
+          entity_id: `b${i}`,
+          status: 'error' as const,
+          error_message: `Error nomor ${i}`,
+          retry_count: 1,
+          created_at: TODAY_ISO,
+        })),
+      },
+    });
+    renderCC();
+
+    await waitFor(() => {
+      expect(screen.getByText('Error nomor 0')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Error nomor 4')).toBeInTheDocument();
+    expect(screen.queryByText('Error nomor 5')).not.toBeInTheDocument();
+
+    // Timeline also has 6 same-day entries (they're all today's logs), so it renders its
+    // own identical "Tampilkan semua (6) →" button — scope to the Alerts & Exceptions card.
+    const alertsCard = cardOf(screen.getByText('Alerts & Exceptions'));
+    fireEvent.click(within(alertsCard).getByText('Tampilkan semua (6) →'));
+
+    expect(screen.getByText('Error nomor 5')).toBeInTheDocument();
+  });
 });
