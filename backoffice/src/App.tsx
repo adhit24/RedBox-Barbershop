@@ -20,6 +20,7 @@ import { AttendanceOverview } from './pages/AttendanceOverview';
 import { FingerprintImport } from './pages/FingerprintImport';
 import { ExceptionReview } from './pages/ExceptionReview';
 import { PayrollOverview } from './pages/PayrollOverview';
+import { RegularPayroll } from './pages/RegularPayroll';
 import { ComingSoon } from './pages/ComingSoon';
 import { COMMAND_CENTER_PATH, LOGIN_PATH, PLACEHOLDER_ROUTES } from './routes';
 
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/attendance/import" element={<FingerprintImport />} />
           <Route path="/attendance/exceptions" element={<ExceptionReview />} />
           <Route path="/payroll" element={<PayrollOverview />} />
+          <Route path="/payroll/regular" element={<RegularPayroll />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<ComingSoon title={route.title} />} />
           ))}
