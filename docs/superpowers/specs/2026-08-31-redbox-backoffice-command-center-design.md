@@ -114,11 +114,11 @@ LIVE instead) and never present DEMO data as real business numbers (`DemoBadge`:
 | 10 | Barber Payroll | DEMO | **no commission-rate source — never hardcode a %, e.g. no invented 30% rule** |
 | 11 | Payroll Employee Detail | DEMO | same as 8–10 |
 | 12 | Stockist Inventory Dashboard | **UNAVAILABLE** (auth gap, §8a) | `/api/stockist/*` all require `req.adminAuth.sessionVerified === true` + a role — Backoffice's shared-token auth never sets these. Not a missing-field gap; a 403 wall. Deferred, not routed around — `stockist.redboxbarbershop.com` remains operational source of truth regardless |
-| 13 | Reports Overview | LIVE / PARTIAL LIVE | directory + snapshot of 14–17 |
-| 14 | Branch Performance | LIVE / PARTIAL LIVE | `outlets` + bookings/transactions aggregation |
+| 13 | Reports Overview | LIVE | static navigation directory to 14–17, no data fetching |
+| 14 | Branch Performance | LIVE / PARTIAL LIVE | `owner-revenue` + `customer-segments`' `by_branch` (§8b) — Cabang/Customer/Transaksi/Repeat real; Attendance Issue and Alert (health-status) columns omitted, no reliable/deterministic backing |
 | 15 | Customer Report | LIVE | `/api/admin/crm/customer-segments` (§8b) — KPIs, favorites, and customer table all real; 6-mo trend chart and by-branch panel from the design not yet rendered (data already in the response, layout-only gap) |
 | 16 | Membership Report | PARTIAL LIVE | `/api/admin/crm/membership` — Active/New/Tier/Growth real; Points Issued/Redeemed and Membership-by-Branch UNAVAILABLE (no `member_point_transactions` endpoint, no branch field on `member_profiles`) |
-| 17 | Barber Performance | LIVE | `/api/admin/crm/leaderboard`, `barbers`, `moka_barber_services` — performance analytics only, never conflated with payroll commission |
+| 17 | Barber Performance | LIVE / PARTIAL LIVE | `/api/admin/crm/barber-performance` (§8b) — leaderboard (customers served/repeat rate/completed services) real; single-barber profile sidebar and commission estimate not built — performance analytics only, never conflated with payroll commission |
 | 18 | Operations | LIVE / PARTIAL LIVE | `bookings`, `schedules`, `/api/admin/crm/schedule`, booking reassign/reschedule/walkin |
 | 19 | CRM Overview | LIVE / PARTIAL LIVE | `/api/admin/crm/customer-segments` (§8b) — segments/KPIs/sample list real; points-expiring and birthdays-this-month UNAVAILABLE (no data source) |
 | 20 | Customer 360 | LIVE / PARTIAL LIVE | `/api/admin/crm/customer360` (§8b) — Overview-equivalent profile/activity/spending/preferences real; design's 6-tab layout (Visits/Bookings/Transactions/Membership/Notes) deferred — endpoint returns a summary, not itemized history lists |
@@ -285,6 +285,23 @@ after explicit user sign-off (backend change review, corrected semantics):
   no schema migration, no new serverless function (12 unchanged).
   Full design rationale and 20-scenario test coverage:
   `docs/superpowers/plans/2026-09-01-backoffice-workstream-c-crm-customer.md`.
+
+## 8c. Workstream D backend additions (approved, shipped)
+
+- `by_branch` entries in `/api/admin/crm/customer-segments` gained
+  `total_customers`/`repeat_customers` fields (additive, no existing field
+  changed) — Branch Performance's Customer/Repeat columns.
+- `GET /api/admin/crm/barber-performance?branch=` — new route wrapping a new
+  pure function, `computeBarberPerformance` in
+  `server/crm/barberPerformanceService.js`, reusing the same
+  `fetchVisitRows` helper (extracted from the customer-segments route in
+  this workstream) grouped by barber instead of customer. Returns
+  `{ barbers: [{barber_id, name, branch, customers_served,
+  completed_services, repeat_rate}] }` — deliberately **no commission
+  field** (never assume a barber commission percentage) and **no
+  attendance field** (`barber_attendance` stays DEMO/PARTIAL per spec §5).
+  Full design rationale and test coverage:
+  `docs/superpowers/plans/2026-09-01-backoffice-workstream-d-reports.md`.
 
 ## 9. Reusable component system
 
