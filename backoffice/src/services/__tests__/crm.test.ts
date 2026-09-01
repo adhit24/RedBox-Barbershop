@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   getOwnerOverview, getOwnerRevenue, getMembership, getCommandCenterForBranch,
-  getCustomer360, getCustomerSegments,
+  getCustomer360, getCustomerSegments, getBarberPerformance,
 } from '../crm';
 
 describe('crm service', () => {
@@ -104,5 +104,23 @@ describe('crm service', () => {
     await getCustomerSegments({ branch: 'csb', limit: 10, offset: 5, search: 'budi' });
     const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe('/api/admin/crm/customer-segments?branch=csb&limit=10&offset=5&search=budi');
+  });
+
+  it('getBarberPerformance defaults to branch=all', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ barbers: [] }), { status: 200 })
+    );
+    await getBarberPerformance({});
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/admin/crm/barber-performance?branch=all');
+  });
+
+  it('getBarberPerformance passes through an explicit branch', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(JSON.stringify({ barbers: [] }), { status: 200 })
+    );
+    await getBarberPerformance({ branch: 'csb' });
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe('/api/admin/crm/barber-performance?branch=csb');
   });
 });

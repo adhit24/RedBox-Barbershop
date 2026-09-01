@@ -226,6 +226,8 @@ export interface CustomerSegmentTrendPoint {
 export interface CustomerSegmentBranchCount {
   branch: string;
   count: number;
+  total_customers: number;
+  repeat_customers: number;
 }
 
 export interface CustomerSegmentFavoriteBarber {
@@ -267,4 +269,22 @@ export function getCustomerSegments(params: { branch?: string; limit?: number; o
   if (params.offset !== undefined) query.set('offset', String(params.offset));
   if (params.search) query.set('search', params.search);
   return apiClient.get<CustomerSegmentsResult>(`/api/admin/crm/customer-segments?${query.toString()}`);
+}
+
+export interface BarberPerformanceEntry {
+  barber_id: string;
+  name: string;
+  branch: string | null;
+  customers_served: number;
+  completed_services: number;
+  repeat_rate: number;
+}
+
+export interface BarberPerformanceResult {
+  barbers: BarberPerformanceEntry[];
+}
+
+export function getBarberPerformance(params: { branch?: string }): Promise<BarberPerformanceResult> {
+  const query = new URLSearchParams({ branch: params.branch ?? 'all' });
+  return apiClient.get<BarberPerformanceResult>(`/api/admin/crm/barber-performance?${query.toString()}`);
 }
