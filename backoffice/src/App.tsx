@@ -8,6 +8,7 @@ import { Operations } from './pages/Operations';
 import { CRMOverview } from './pages/CRMOverview';
 import { Customer360 } from './pages/Customer360';
 import { CustomerReport } from './pages/CustomerReport';
+import { MembershipReport } from './pages/MembershipReport';
 import { ComingSoon } from './pages/ComingSoon';
 import { COMMAND_CENTER_PATH, LOGIN_PATH, PLACEHOLDER_ROUTES } from './routes';
 
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="/crm" element={<CRMOverview />} />
           <Route path="/crm/customers/:id" element={<Customer360 />} />
           <Route path="/reports/customers" element={<CustomerReport />} />
+          <Route path="/reports/membership" element={<MembershipReport />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<ComingSoon title={route.title} />} />
           ))}
