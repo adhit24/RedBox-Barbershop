@@ -13,7 +13,6 @@ export const LOGIN_PATH = '/login';
  * page for it ships.
  */
 export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
-  { path: '/attendance', title: 'Attendance Overview' },
   { path: '/attendance/import', title: 'Fingerprint Import' },
   { path: '/attendance/exceptions', title: 'Exception Review' },
   { path: '/payroll', title: 'Payroll Overview' },
