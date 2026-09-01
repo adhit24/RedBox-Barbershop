@@ -143,19 +143,16 @@ export default function StockistLayout({ children }: { children: React.ReactNode
           </button>
         ) : null}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="relative h-[28px] w-[134px] max-w-full overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-black/5">
+          <div className="relative h-[40px] w-[190px] max-w-full overflow-hidden">
             <Image
               src="/Brand_assets/wordmark_hitam.png"
               alt="RedBox Barbershop"
               fill
               priority
-              className="object-contain px-1.5"
-              sizes="134px"
+              className="object-contain"
+              sizes="190px"
             />
           </div>
-          <span className="mt-0.5 truncate text-[10px] font-semibold leading-tight text-text-muted">
-            {header.title}{header.subtitle ? ` · ${header.subtitle}` : ''}
-          </span>
         </div>
         <button
           onClick={() => router.push(searchHref)}

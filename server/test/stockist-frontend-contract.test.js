@@ -25,6 +25,9 @@ test('Stockist login, loading transition, and header use the approved RedBox bra
   assert.match(transition, /logo_hitam_trnsparan\.png/);
   assert.match(transition, /wordmark_hitam\.png/);
   assert.match(layout, /wordmark_hitam\.png/);
+  assert.match(login, /h-\[80px\] w-full max-w-\[560px\]/);
+  assert.match(layout, /h-\[40px\] w-\[190px\] max-w-full overflow-hidden/);
+  assert.doesNotMatch(layout, /\{header\.title\}\{header\.subtitle/);
 });
 
 test('BottomNavBar is a reusable, route-aware component with the expected API', () => {

@@ -81,8 +81,8 @@ export default function StockistLoginPage() {
           <div className="relative mx-auto h-[108px] w-[108px]">
             <Image src="/Brand_assets/logo_hitam_trnsparan.png" alt="Logo RedBox Barbershop" fill priority className="object-contain" sizes="108px" />
           </div>
-          <div className="relative mx-auto mt-3 h-[44px] w-full max-w-[320px]">
-            <Image src="/Brand_assets/wordmark_hitam.png" alt="RedBox Barbershop" fill priority className="object-contain" sizes="320px" />
+          <div className="relative mx-auto mt-3 h-[80px] w-full max-w-[560px]">
+            <Image src="/Brand_assets/wordmark_hitam.png" alt="RedBox Barbershop" fill priority className="object-contain" sizes="560px" />
           </div>
           <h1 className="mt-5 text-[20px] font-semibold tracking-[-0.02em] text-text-primary">Selamat datang kembali</h1>
           <p className="mt-1 text-[11px] text-text-muted">Masuk untuk melanjutkan ke Stockist RedBox.</p>
