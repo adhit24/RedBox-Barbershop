@@ -12,11 +12,6 @@ describe('Backoffice route table', () => {
     expect(route?.path).toBe('/payroll/employees/:id');
   });
 
-  it('nests Membership Report under /reports', () => {
-    const route = PLACEHOLDER_ROUTES.find((r) => r.title === 'Membership Report');
-    expect(route?.path).toBe('/reports/membership');
-  });
-
   it('no longer defines a bare /membership route', () => {
     const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
     expect(paths).not.toContain('/membership');
@@ -27,13 +22,33 @@ describe('Backoffice route table', () => {
     expect(paths).not.toContain('/payroll/employee/:id');
   });
 
-  it('defines exactly the 21 remaining non-Command-Center, non-Login, non-Operations screens', () => {
-    expect(PLACEHOLDER_ROUTES).toHaveLength(21);
+  it('defines exactly the 17 remaining placeholder-only screens', () => {
+    expect(PLACEHOLDER_ROUTES).toHaveLength(17);
   });
 
   it('no longer defines /operations as a placeholder (it has a real page)', () => {
     const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
     expect(paths).not.toContain('/operations');
+  });
+
+  it('no longer defines /crm as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/crm');
+  });
+
+  it('no longer defines /crm/customers/:id as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/crm/customers/:id');
+  });
+
+  it('no longer defines /reports/customers as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/reports/customers');
+  });
+
+  it('no longer defines /reports/membership as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/reports/membership');
   });
 
   it('has no duplicate paths', () => {
