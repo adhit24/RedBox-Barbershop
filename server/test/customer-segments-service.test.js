@@ -193,3 +193,16 @@ test('data_coverage discloses the earliest and latest observed visit date', () =
   assert.equal(result.data_coverage.from, '2026-01-15');
   assert.equal(result.data_coverage.to, '2026-08-01');
 });
+
+test('by_branch reports total and repeat customer counts per branch, not just the raw favorite-branch count', () => {
+  const rows = [
+    visit('6281', 'Budi', '2026-01-01', { branch: 'csb' }),
+    visit('6281', 'Budi', '2026-02-01', { branch: 'csb' }),
+    visit('6282', 'Sari', '2026-01-01', { branch: 'csb' }),
+  ];
+  const result = computeCustomerSegments(rows, { today: '2026-08-15' });
+  const csb = result.by_branch.find(b => b.branch === 'csb');
+  assert.equal(csb.count, 2);
+  assert.equal(csb.total_customers, 2);
+  assert.equal(csb.repeat_customers, 1);
+});

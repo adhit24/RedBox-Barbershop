@@ -16,7 +16,7 @@ const { syncCurrentMonthTx } = require('../moka/txSync');
 const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('../services/bookingGuard');
 const { linkNewlyCreatedBooking } = require('../services/bookingCustomerLinkage');
 const { getCustomer360 } = require('../crm/customer360Service');
-const { computeCustomerSegments } = require('../crm/customerSegmentsService');
+const { computeCustomerSegments, fetchVisitRows } = require('../crm/customerSegmentsService');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -718,62 +718,7 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     const offset = req.query.offset ? Number(req.query.offset) : undefined;
     const search = req.query.search || '';
 
-    const [bookingsRes, transactionsRes, barbersRes, outletsRes] = await Promise.all([
-      supabase.from('bookings').select('wa, name, customer_id, barber_id, service, location, date').eq('status', 'done'),
-      supabase.from('transactions').select('id, customer_id, outlet_id, schedule_id, created_at').eq('status', 'completed').not('customer_id', 'is', null),
-      supabase.from('barbers').select('id, name'),
-      supabase.from('outlets').select('id, slug, name'),
-    ]);
-
-    const bookings = bookingsRes.data || [];
-    const transactions = transactionsRes.data || [];
-    const barbers = barbersRes.data || [];
-    const outlets = outletsRes.data || [];
-    const barberNameById = new Map(barbers.map(b => [b.id, b.name]));
-    const outletSlugById = new Map(outlets.map(o => [o.id, o.slug]));
-
-    const customerIds = [...new Set(transactions.map(t => t.customer_id).filter(Boolean))];
-    const scheduleIds = [...new Set(transactions.map(t => t.schedule_id).filter(Boolean))];
-    const transactionIds = transactions.map(t => t.id);
-
-    const [customersRes, schedulesRes, itemsRes] = await Promise.all([
-      customerIds.length ? supabase.from('customers').select('id, wa, phone_e164, name').in('id', customerIds) : Promise.resolve({ data: [] }),
-      scheduleIds.length ? supabase.from('schedules').select('id, barber_id').in('id', scheduleIds) : Promise.resolve({ data: [] }),
-      transactionIds.length ? supabase.from('transaction_items').select('transaction_id, service_name').in('transaction_id', transactionIds) : Promise.resolve({ data: [] }),
-    ]);
-
-    const customerById = new Map((customersRes.data || []).map(c => [c.id, c]));
-    const barberIdByScheduleId = new Map((schedulesRes.data || []).map(s => [s.id, s.barber_id]));
-    const serviceByTransactionId = new Map((itemsRes.data || []).map(i => [i.transaction_id, i.service_name]));
-
-    const visitRows = [];
-    for (const b of bookings) {
-      visitRows.push({
-        phone: b.wa || null,
-        name: b.name || null,
-        date: b.date,
-        branch: b.location || null,
-        barberId: b.barber_id || null,
-        barberName: b.barber_id ? barberNameById.get(b.barber_id) || null : null,
-        service: b.service || null,
-        source: 'booking',
-      });
-    }
-    for (const t of transactions) {
-      const customer = customerById.get(t.customer_id);
-      const barberId = t.schedule_id ? barberIdByScheduleId.get(t.schedule_id) : null;
-      visitRows.push({
-        phone: customer?.wa || customer?.phone_e164 || null,
-        name: customer?.name || null,
-        date: String(t.created_at || '').slice(0, 10),
-        branch: t.outlet_id ? outletSlugById.get(t.outlet_id) || null : null,
-        barberId: barberId || null,
-        barberName: barberId ? barberNameById.get(barberId) || null : null,
-        service: serviceByTransactionId.get(t.id) || null,
-        source: 'transaction',
-      });
-    }
-
+    const visitRows = await fetchVisitRows(supabase);
     const result = computeCustomerSegments(visitRows, { branch, limit, offset, search });
     return res.json(result);
   });
