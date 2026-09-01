@@ -116,12 +116,12 @@ LIVE instead) and never present DEMO data as real business numbers (`DemoBadge`:
 | 12 | Stockist Inventory Dashboard | **UNAVAILABLE** (auth gap, §8a) | `/api/stockist/*` all require `req.adminAuth.sessionVerified === true` + a role — Backoffice's shared-token auth never sets these. Not a missing-field gap; a 403 wall. Deferred, not routed around — `stockist.redboxbarbershop.com` remains operational source of truth regardless |
 | 13 | Reports Overview | LIVE / PARTIAL LIVE | directory + snapshot of 14–17 |
 | 14 | Branch Performance | LIVE / PARTIAL LIVE | `outlets` + bookings/transactions aggregation |
-| 15 | Customer Report | PARTIAL LIVE | `customers`/`bookings`; favorite barber/service need derivation |
-| 16 | Membership Report | LIVE | `/api/admin/crm/membership`, `member_profiles`, `member_point_transactions` |
+| 15 | Customer Report | LIVE | `/api/admin/crm/customer-segments` (§8b) — KPIs, favorites, and customer table all real; 6-mo trend chart and by-branch panel from the design not yet rendered (data already in the response, layout-only gap) |
+| 16 | Membership Report | PARTIAL LIVE | `/api/admin/crm/membership` — Active/New/Tier/Growth real; Points Issued/Redeemed and Membership-by-Branch UNAVAILABLE (no `member_point_transactions` endpoint, no branch field on `member_profiles`) |
 | 17 | Barber Performance | LIVE | `/api/admin/crm/leaderboard`, `barbers`, `moka_barber_services` — performance analytics only, never conflated with payroll commission |
 | 18 | Operations | LIVE / PARTIAL LIVE | `bookings`, `schedules`, `/api/admin/crm/schedule`, booking reassign/reschedule/walkin |
-| 19 | CRM Overview | LIVE | `/api/admin/crm/customers/loyal|new|dormant` |
-| 20 | Customer 360 | LIVE / PARTIAL LIVE | `customers` + booking/visit history |
+| 19 | CRM Overview | LIVE / PARTIAL LIVE | `/api/admin/crm/customer-segments` (§8b) — segments/KPIs/sample list real; points-expiring and birthdays-this-month UNAVAILABLE (no data source) |
+| 20 | Customer 360 | LIVE / PARTIAL LIVE | `/api/admin/crm/customer360` (§8b) — Overview-equivalent profile/activity/spending/preferences real; design's 6-tab layout (Visits/Bookings/Transactions/Membership/Notes) deferred — endpoint returns a summary, not itemized history lists |
 | 21 | Moka POS Integration | LIVE | `/api/moka/status`, `/sync-logs`, `/items`, `/map-items` |
 | 22 | Roles Permissions | DEMO / PARTIAL | `users.role` has no `manager`/`admin` split yet — shows target architecture only |
 | 23 | Package Feature Access | DEMO by design | product-planning screen, "Full Feature Review Mode" is the real current state |
@@ -259,6 +259,32 @@ route around it.** Command Center's Inventory Snapshot and the whole Stockist
 Inventory Dashboard screen (workstream E) show an honest UNAVAILABLE state.
 Revisiting this is its own explicitly-scoped decision for later, not a silent
 workaround now.
+
+## 8b. Workstream C backend additions (approved, shipped)
+
+Two small, additive, read-only endpoints were added to `server/routes/adminCrm.js`
+after explicit user sign-off (backend change review, corrected semantics):
+
+- `GET /api/admin/crm/customer360?customer_id=|phone=|user_key=` — thin
+  wrapper around the pre-existing, already-tested `getCustomer360` in
+  `server/crm/customer360Service.js`. Zero new business logic.
+- `GET /api/admin/crm/customer-segments?branch=&limit=&offset=&search=` —
+  wraps a new pure function, `computeCustomerSegments` in
+  `server/crm/customerSegmentsService.js`. Aggregates completed bookings
+  (`status='done'`) and completed Moka transactions (`status='completed'`,
+  linked to a customer) grouped by canonical phone (`normalizeMemberPhone`,
+  the same primitive `resolveCustomerIdentity`/Customer 360 use — not a
+  second identity algorithm). Segments are **lifetime**, not a bounded
+  window (Loyal ≥10 visits, Repeat 3–9, Baru 1–2, Dormant = last visit ≥60
+  days ago, dormant takes precedence in the mutually-exclusive `segments`
+  display). Response includes `data_coverage` (earliest/latest observed
+  visit date, so "lifetime" is never silently mislabeled), independent
+  `kpis`, a 6-month `new_vs_repeat_trend`, `by_branch`/`favorite_barbers`/
+  `favorite_services` aggregates, and a paginated `customers` list (default
+  limit 50, hard server-side cap 200). Both routes stay behind `adminAuth`,
+  no schema migration, no new serverless function (12 unchanged).
+  Full design rationale and 20-scenario test coverage:
+  `docs/superpowers/plans/2026-09-01-backoffice-workstream-c-crm-customer.md`.
 
 ## 9. Reusable component system
 
