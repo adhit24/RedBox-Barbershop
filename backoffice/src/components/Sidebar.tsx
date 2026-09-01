@@ -54,9 +54,11 @@ export function Sidebar() {
       }`}
     >
       <div className="flex items-center gap-2.5 px-4 py-5">
-        <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-rb-red font-serif text-base font-semibold text-white">
-          R
-        </div>
+        <img
+          src="/Brand_assets/logo_hitam_trnsparan.png"
+          alt="Redbox Barbershop"
+          className="h-[34px] w-[34px] shrink-0 object-contain"
+        />
         {!collapsed && (
           <div className="leading-tight">
             <div className="text-sm font-semibold text-rb-text">Redbox</div>

@@ -19,12 +19,18 @@ export function Login() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-rb-bg px-4">
       <div className="mb-6 flex flex-col items-center text-center">
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-rb-red font-serif text-xl font-semibold text-white">
-          R
-        </div>
-        <h1 className="font-serif text-2xl font-semibold text-rb-text">Redbox Backoffice</h1>
+        <img
+          src="/Brand_assets/logo_hitam_trnsparan.png"
+          alt="Redbox Barbershop"
+          className="mb-4 h-20 w-20 object-contain"
+        />
+        <img
+          src="/Brand_assets/wordmark_hitam.png"
+          alt="Redbox Barbershop"
+          className="mb-2 h-8 object-contain"
+        />
         <p className="mt-1 max-w-[320px] text-sm text-rb-text-muted">
-          Command center untuk seluruh operasional Redbox
+          Backoffice — command center untuk seluruh operasional Redbox
         </p>
       </div>
 
