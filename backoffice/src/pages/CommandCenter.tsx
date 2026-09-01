@@ -33,10 +33,14 @@ interface BranchActivity {
   alerts: { type: string; message: string }[];
 }
 
-function isThisMonth(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() === now.getUTCMonth();
+const OPERATIONAL_TIMEZONE = 'Asia/Jakarta';
+
+function jakartaDateString(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: OPERATIONAL_TIMEZONE });
+}
+
+function jakartaYearMonth(iso: string): string {
+  return jakartaDateString(iso).slice(0, 7);
 }
 
 function UnavailableStat({ label }: { label: string }) {
@@ -179,7 +183,7 @@ export function CommandCenter() {
   }, []);
 
   useEffect(() => {
-    getMokaSyncLogs({ limit: 20 })
+    getMokaSyncLogs({ limit: 200 })
       .then((data) => setMokaLogs({ status: 'ready', data: data.logs }))
       .catch(() => setMokaLogs({ status: 'error', message: 'Terjadi kesalahan memuat log sinkronisasi Moka.' }));
   }, []);
@@ -189,8 +193,20 @@ export function CommandCenter() {
   const belumCheckInTotal = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.belumCheckIn, 0) : null;
   const branchAlerts = branchActivity.status === 'ready' ? branchActivity.data.items.flatMap((b) => b.alerts.map((a) => ({ ...a, branch: b.name }))) : [];
 
+  const todayJakarta = jakartaDateString(new Date().toISOString());
+  const thisMonthJakarta = todayJakarta.slice(0, 7);
+
   const activeMembers = membership.status === 'ready' ? membership.data.filter((m) => m.membership_status === 'ACTIVE').length : null;
-  const newMembersThisMonth = membership.status === 'ready' ? membership.data.filter((m) => isThisMonth(m.created_at)).length : null;
+  // "Bulan ini" = actually activated this month, per membership_activated_at — created_at is
+  // when the record was created (may predate activation) and is not a valid proxy.
+  const activatedThisMonth = membership.status === 'ready'
+    ? membership.data.filter(
+        (m) => m.membership_status === 'ACTIVE' && m.membership_activated_at && jakartaYearMonth(m.membership_activated_at) === thisMonthJakarta
+      ).length
+    : null;
+  const membershipIsNetworkWide = branch !== 'all';
+
+  const todayMokaLogs = mokaLogs.status === 'ready' ? mokaLogs.data.filter((l) => jakartaDateString(l.created_at) === todayJakarta) : [];
 
   const topBranch = branchActivity.status === 'ready' && branchActivity.data.items.length > 0
     ? [...branchActivity.data.items].sort((a, b) => b.bookingToday - a.bookingToday)[0]
@@ -255,7 +271,13 @@ export function CommandCenter() {
           <StatCard
             value={activeMembers}
             label="Active Members"
-            trend={newMembersThisMonth ? `+${newMembersThisMonth} bulan ini` : undefined}
+            trend={
+              membershipIsNetworkWide
+                ? 'Seluruh Cabang — data membership belum ada atribusi cabang'
+                : activatedThisMonth
+                  ? `+${activatedThisMonth} bulan ini`
+                  : undefined
+            }
             tint="teal"
           />
         )}
@@ -335,11 +357,11 @@ export function CommandCenter() {
           {mokaLogs.status === 'loading' && <LoadingState />}
           {mokaLogs.status === 'error' && <ErrorState message={mokaLogs.message} />}
           {mokaLogs.status === 'ready' && (
-            mokaLogs.data.length === 0 ? (
+            todayMokaLogs.length === 0 ? (
               <p className="py-6 text-center text-sm text-rb-text-muted">Belum ada aktivitas sinkronisasi hari ini.</p>
             ) : (
               <div className="flex flex-col divide-y divide-rb-divider">
-                {mokaLogs.data.map((log) => (
+                {todayMokaLogs.map((log) => (
                   <div key={log.id} className="flex items-center gap-3 py-2.5 text-sm">
                     <span className="w-14 shrink-0 text-xs text-rb-text-muted">
                       {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
@@ -409,8 +431,8 @@ export function CommandCenter() {
             stats={
               membership.status === 'ready'
                 ? [
-                    { value: activeMembers ?? 0, label: 'Active Members' },
-                    { value: newMembersThisMonth ?? 0, label: 'Baru Bulan Ini' },
+                    { value: activeMembers ?? 0, label: membershipIsNetworkWide ? 'Active Members (Seluruh Cabang)' : 'Active Members' },
+                    { value: activatedThisMonth ?? 0, label: membershipIsNetworkWide ? 'Baru Bulan Ini (Seluruh Cabang)' : 'Baru Bulan Ini' },
                   ]
                 : undefined
             }

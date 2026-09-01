@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import { CommandCenter } from '../CommandCenter';
+import type { MemberProfile } from '../../services/crm';
+
+const NOW = new Date();
+const TODAY_ISO = NOW.toISOString();
+// 30h back guarantees a different Asia/Jakarta calendar day regardless of current UTC offset.
+const YESTERDAY_ISO = new Date(NOW.getTime() - 30 * 60 * 60 * 1000).toISOString();
+// 45 days back guarantees a different year-month, since no month exceeds 31 days.
+const LAST_MONTH_ISO = new Date(NOW.getTime() - 45 * 24 * 60 * 60 * 1000).toISOString();
 
 const OWNER_OVERVIEW = {
   today: '2026-09-01',
@@ -54,7 +62,7 @@ const BARBER_PERFORMANCE = {
   ],
 };
 
-const MEMBERSHIP = [
+const MEMBERSHIP: MemberProfile[] = [
   { user_key: 'u1', full_name: 'Budi', email: 'budi@example.com', membership_status: 'ACTIVE', membership_activated_at: null, membership_started_at: null, membership_expires_at: null, current_tier: 'gold', total_points: 100, total_visits: 5, created_at: '2026-09-01T00:00:00Z', phone: '+6281', last_visit: '2026-08-30' },
   { user_key: 'u2', full_name: 'Sari', email: 'sari@example.com', membership_status: 'INACTIVE', membership_activated_at: null, membership_started_at: null, membership_expires_at: null, current_tier: 'bronze', total_points: 0, total_visits: 1, created_at: '2026-01-01T00:00:00Z', phone: '+6282', last_visit: '2026-07-10' },
   { user_key: 'u3', full_name: 'Wati', email: 'wati@example.com', membership_status: 'ACTIVE', membership_activated_at: null, membership_started_at: null, membership_expires_at: null, current_tier: 'silver', total_points: 20, total_visits: 2, created_at: '2026-02-01T00:00:00Z', phone: '+6283', last_visit: '2026-08-20' },
@@ -62,12 +70,12 @@ const MEMBERSHIP = [
 
 const MOKA_SYNC_LOGS = {
   logs: [
-    { id: 'l1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: '2026-09-01T09:00:00Z' },
-    { id: 'l2', direction: 'push', entity_type: 'booking', entity_id: 'b2', status: 'error', error_message: 'Outlet token expired', retry_count: 1, created_at: '2026-09-01T08:30:00Z' },
+    { id: 'l1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: TODAY_ISO },
+    { id: 'l2', direction: 'push', entity_type: 'booking', entity_id: 'b2', status: 'error', error_message: 'Outlet token expired', retry_count: 1, created_at: TODAY_ISO },
   ],
 };
 
-function mockFetch(overrides: { branchFailFor?: string[] } = {}) {
+function mockFetch(overrides: { branchFailFor?: string[]; mokaLogs?: typeof MOKA_SYNC_LOGS; membership?: typeof MEMBERSHIP } = {}) {
   const fetchMock = fetch as ReturnType<typeof vi.fn>;
   fetchMock.mockImplementation((url: string) => {
     if (url.includes('owner-overview')) {
@@ -88,10 +96,10 @@ function mockFetch(overrides: { branchFailFor?: string[] } = {}) {
       return Promise.resolve(new Response(JSON.stringify(BARBER_PERFORMANCE), { status: 200 }));
     }
     if (url.includes('membership')) {
-      return Promise.resolve(new Response(JSON.stringify(MEMBERSHIP), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(overrides.membership ?? MEMBERSHIP), { status: 200 }));
     }
     if (url.includes('sync-logs')) {
-      return Promise.resolve(new Response(JSON.stringify(MOKA_SYNC_LOGS), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(overrides.mokaLogs ?? MOKA_SYNC_LOGS), { status: 200 }));
     }
     return Promise.resolve(new Response('not found', { status: 404 }));
   });
@@ -243,5 +251,80 @@ describe('CommandCenter', () => {
 
     const customerCard = screen.getByText('Customer').closest('div')!.parentElement!;
     expect(within(customerCard).getByText('400')).toBeInTheDocument();
+  });
+
+  it('filters Today\'s Operations Timeline to the Asia/Jakarta calendar day, excluding entries from yesterday', async () => {
+    mockFetch({
+      mokaLogs: {
+        logs: [
+          { id: 'today1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: TODAY_ISO },
+          { id: 'yesterday1', direction: 'pull', entity_type: 'refund', entity_id: 'r1', status: 'ok', error_message: null, retry_count: 0, created_at: YESTERDAY_ISO },
+        ],
+      },
+    });
+    render(<CommandCenter />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sinkronisasi pull transaction/i)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/Sinkronisasi pull refund/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the empty state in Today's Operations Timeline once all fetched logs fall outside today's Jakarta calendar day", async () => {
+    mockFetch({
+      mokaLogs: {
+        logs: [
+          { id: 'yesterday1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: YESTERDAY_ISO },
+        ],
+      },
+    });
+    render(<CommandCenter />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Belum ada aktivitas sinkronisasi hari ini.')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Sinkronisasi pull transaction/i)).not.toBeInTheDocument();
+  });
+
+  it('computes the Active Members "bulan ini" trend from membership_activated_at on ACTIVE members only, not created_at', async () => {
+    mockFetch({
+      membership: [
+        // Activated this month, ACTIVE — should count.
+        { user_key: 'u1', full_name: 'Budi', email: 'budi@example.com', membership_status: 'ACTIVE', membership_activated_at: TODAY_ISO, membership_started_at: null, membership_expires_at: null, current_tier: 'gold', total_points: 100, total_visits: 5, created_at: LAST_MONTH_ISO, phone: '+6281', last_visit: '2026-08-30' },
+        // created_at this month but activated_at last month — must NOT count (created_at is not a valid proxy).
+        { user_key: 'u2', full_name: 'Sari', email: 'sari@example.com', membership_status: 'ACTIVE', membership_activated_at: LAST_MONTH_ISO, membership_started_at: null, membership_expires_at: null, current_tier: 'silver', total_points: 0, total_visits: 1, created_at: TODAY_ISO, phone: '+6282', last_visit: '2026-07-10' },
+        // Activated this month but INACTIVE — must NOT count.
+        { user_key: 'u3', full_name: 'Wati', email: 'wati@example.com', membership_status: 'INACTIVE', membership_activated_at: TODAY_ISO, membership_started_at: null, membership_expires_at: null, current_tier: 'bronze', total_points: 20, total_visits: 2, created_at: LAST_MONTH_ISO, phone: '+6283', last_visit: '2026-08-20' },
+      ],
+    });
+    render(<CommandCenter />);
+
+    await waitFor(() => {
+      expect(screen.getByText('+1 bulan ini')).toBeInTheDocument();
+    });
+  });
+
+  it('discloses that Active Members is a network-wide figure once a specific branch is selected, without fabricating a branch-scoped number', async () => {
+    mockFetch();
+    render(<CommandCenter />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Cabang')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/Seluruh Cabang/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Cabang'), { target: { value: 'csb' } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Seluruh Cabang — data membership belum ada atribusi cabang/i)).toBeInTheDocument();
+    });
+
+    const activeMembersLabels = screen.getAllByText('Active Members');
+    const cardWithCount = activeMembersLabels
+      .map((el) => el.closest('div')!.parentElement!)
+      .find((el) => within(el).queryByText('2'));
+    expect(cardWithCount).toBeTruthy();
   });
 });
