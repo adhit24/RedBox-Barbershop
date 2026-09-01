@@ -15,6 +15,9 @@ const { syncScheduleForBooking } = require('../moka/slotEngine');
 const { syncCurrentMonthTx } = require('../moka/txSync');
 const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('../services/bookingGuard');
 const { linkNewlyCreatedBooking } = require('../services/bookingCustomerLinkage');
+const { getCustomer360 } = require('../crm/customer360Service');
+const { computeCustomerSegments, fetchVisitRows } = require('../crm/customerSegmentsService');
+const { computeBarberPerformance } = require('../crm/barberPerformanceService');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -699,6 +702,33 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     }
 
     return res.json({ customers: Object.values(map).slice(0, 50) });
+  });
+
+  router.get('/customer360', adminAuth, async (req, res) => {
+    const { customer_id, phone, user_key } = req.query;
+    if (!customer_id && !phone && !user_key) {
+      return res.status(400).json({ error: 'one of customer_id, phone, or user_key is required' });
+    }
+    const result = await getCustomer360(supabase, { customer_id, phone, user_key });
+    return res.json(result);
+  });
+
+  router.get('/customer-segments', adminAuth, async (req, res) => {
+    const branch = req.query.branch || 'all';
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const offset = req.query.offset ? Number(req.query.offset) : undefined;
+    const search = req.query.search || '';
+
+    const visitRows = await fetchVisitRows(supabase);
+    const result = computeCustomerSegments(visitRows, { branch, limit, offset, search });
+    return res.json(result);
+  });
+
+  router.get('/barber-performance', adminAuth, async (req, res) => {
+    const branch = req.query.branch || 'all';
+    const visitRows = await fetchVisitRows(supabase);
+    const result = computeBarberPerformance(visitRows, { branch });
+    return res.json(result);
   });
 
   // ─── LEADERBOARD ──────────────────────────────────────────────

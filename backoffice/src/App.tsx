@@ -4,38 +4,35 @@ import { ProtectedRoute } from './auth/ProtectedRoute';
 import { BackofficeLayout } from './layouts/BackofficeLayout';
 import { Login } from './pages/Login';
 import { CommandCenter } from './pages/CommandCenter';
+import { Operations } from './pages/Operations';
+import { CRMOverview } from './pages/CRMOverview';
+import { Customer360 } from './pages/Customer360';
+import { CustomerReport } from './pages/CustomerReport';
+import { MembershipReport } from './pages/MembershipReport';
+import { ReportsOverview } from './pages/ReportsOverview';
+import { BranchPerformance } from './pages/BranchPerformance';
+import { BarberPerformance } from './pages/BarberPerformance';
+import { MokaIntegration } from './pages/MokaIntegration';
+import { StockistDashboard } from './pages/StockistDashboard';
+import { HREmployeeList } from './pages/HREmployeeList';
+import { EmployeeDetail } from './pages/EmployeeDetail';
+import { AttendanceOverview } from './pages/AttendanceOverview';
+import { FingerprintImport } from './pages/FingerprintImport';
+import { ExceptionReview } from './pages/ExceptionReview';
+import { PayrollOverview } from './pages/PayrollOverview';
+import { RegularPayroll } from './pages/RegularPayroll';
+import { BarberPayroll } from './pages/BarberPayroll';
+import { PayrollEmployeeDetail } from './pages/PayrollEmployeeDetail';
+import { RolesPermissions } from './pages/RolesPermissions';
+import { PackageFeatureAccess } from './pages/PackageFeatureAccess';
 import { ComingSoon } from './pages/ComingSoon';
-
-const COMING_SOON_ROUTES: { path: string; title: string }[] = [
-  { path: '/hr', title: 'HR & People' },
-  { path: '/hr/employees/:id', title: 'Employee Detail' },
-  { path: '/attendance', title: 'Attendance Overview' },
-  { path: '/attendance/import', title: 'Fingerprint Import' },
-  { path: '/attendance/exceptions', title: 'Exception Review' },
-  { path: '/payroll', title: 'Payroll Overview' },
-  { path: '/payroll/regular', title: 'Regular Payroll' },
-  { path: '/payroll/barber', title: 'Barber Payroll' },
-  { path: '/payroll/employee/:id', title: 'Payroll Employee Detail' },
-  { path: '/operations', title: 'Operations' },
-  { path: '/crm', title: 'CRM Overview' },
-  { path: '/crm/customers/:id', title: 'Customer 360' },
-  { path: '/membership', title: 'Membership Report' },
-  { path: '/stockist', title: 'Stockist & Inventory Dashboard' },
-  { path: '/moka', title: 'Moka POS Integration' },
-  { path: '/reports', title: 'Reports Overview' },
-  { path: '/reports/branches', title: 'Branch Performance' },
-  { path: '/reports/customers', title: 'Customer Report' },
-  { path: '/reports/barbers', title: 'Barber Performance' },
-  { path: '/system/roles', title: 'Peran & Izin' },
-  { path: '/system/packages', title: 'Akses Paket' },
-  { path: '/system/settings', title: 'Pengaturan' },
-];
+import { COMMAND_CENTER_PATH, LOGIN_PATH, PLACEHOLDER_ROUTES } from './routes';
 
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path={LOGIN_PATH} element={<Login />} />
         <Route
           element={
             <ProtectedRoute>
@@ -43,12 +40,33 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<CommandCenter />} />
-          {COMING_SOON_ROUTES.map((route) => (
+          <Route path={COMMAND_CENTER_PATH} element={<CommandCenter />} />
+          <Route path="/operations" element={<Operations />} />
+          <Route path="/crm" element={<CRMOverview />} />
+          <Route path="/crm/customers/:id" element={<Customer360 />} />
+          <Route path="/reports/customers" element={<CustomerReport />} />
+          <Route path="/reports/membership" element={<MembershipReport />} />
+          <Route path="/reports" element={<ReportsOverview />} />
+          <Route path="/reports/branches" element={<BranchPerformance />} />
+          <Route path="/reports/barbers" element={<BarberPerformance />} />
+          <Route path="/moka" element={<MokaIntegration />} />
+          <Route path="/stockist" element={<StockistDashboard />} />
+          <Route path="/hr" element={<HREmployeeList />} />
+          <Route path="/hr/employees/:id" element={<EmployeeDetail />} />
+          <Route path="/attendance" element={<AttendanceOverview />} />
+          <Route path="/attendance/import" element={<FingerprintImport />} />
+          <Route path="/attendance/exceptions" element={<ExceptionReview />} />
+          <Route path="/payroll" element={<PayrollOverview />} />
+          <Route path="/payroll/regular" element={<RegularPayroll />} />
+          <Route path="/payroll/barber" element={<BarberPayroll />} />
+          <Route path="/payroll/employees/:id" element={<PayrollEmployeeDetail />} />
+          <Route path="/system/roles" element={<RolesPermissions />} />
+          <Route path="/system/packages" element={<PackageFeatureAccess />} />
+          {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<ComingSoon title={route.title} />} />
           ))}
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to={COMMAND_CENTER_PATH} replace />} />
       </Routes>
     </AuthProvider>
   );

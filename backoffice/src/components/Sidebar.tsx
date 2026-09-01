@@ -27,7 +27,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/operations', label: 'Operations' },
       { to: '/crm', label: 'CRM & Customer' },
-      { to: '/membership', label: 'Membership' },
+      { to: '/reports/membership', label: 'Membership' },
       { to: '/stockist', label: 'Stockist & Inventory' },
       { to: '/moka', label: 'Moka POS Integration' },
       { to: '/reports', label: 'Reports' },
