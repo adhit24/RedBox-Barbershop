@@ -1,10 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
-import { StatCard } from '../components/StatCard';
 import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
 import { LiveBadge } from '../components/LiveBadge';
 import { BranchSelector } from '../components/BranchSelector';
+import { useAuth } from '../auth/AuthProvider';
+import {
+  CalendarIcon,
+  CheckIcon,
+  RepeatIcon,
+  AlertClockIcon,
+  MemberIcon,
+  WalletClockIcon,
+  BoxIcon,
+  SearchIcon,
+  BellIcon,
+} from '../components/icons';
 import {
   getOwnerOverview,
   getCommandCenterForBranch,
@@ -43,50 +55,124 @@ function jakartaYearMonth(iso: string): string {
   return jakartaDateString(iso).slice(0, 7);
 }
 
-function UnavailableStat({ label }: { label: string }) {
-  return (
-    <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
-      <div className="font-serif text-2xl font-semibold text-rb-text-faint">—</div>
-      <div className="mt-1 text-sm font-semibold text-rb-text-secondary">{label}</div>
-      <div className="mt-1 text-xs text-rb-text-faint">Belum tersedia</div>
+function initialsOf(label: string): string {
+  const parts = label.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
+}
+
+// Category tint pairs — from design_handoff_command_center/README.md §Colors.
+// Each data category keeps a consistent tint across every screen.
+const TINT = {
+  red: { bg: '#FCEAE7', fg: '#C0402A' },
+  orange: { bg: '#FCEEDF', fg: '#C07A24' },
+  green: { bg: '#E5F3EA', fg: '#2F8F53' },
+  blue: { bg: '#E7EEF6', fg: '#3E6FA6' },
+  purple: { bg: '#EEEAF6', fg: '#7159AC' },
+  teal: { bg: '#E2F1EC', fg: '#23806E' },
+  yellow: { bg: '#FBF1DC', fg: '#AD8A22' },
+} as const;
+type TintKey = keyof typeof TINT;
+
+function KpiCard({
+  icon,
+  value,
+  label,
+  trend,
+  tint,
+  href,
+  unavailable,
+}: {
+  icon: ReactNode;
+  value: ReactNode;
+  label: string;
+  trend?: string;
+  tint: TintKey;
+  href?: string;
+  unavailable?: boolean;
+}) {
+  const t = TINT[tint];
+  const body = (
+    <div
+      className="rounded-rb-card p-[18px] transition-transform duration-150 ease-out hover:-translate-y-0.5"
+      style={{ background: t.bg }}
+    >
+      <div
+        className="mb-2.5 flex h-[34px] w-[34px] items-center justify-center rounded-[10px]"
+        style={{ background: 'rgba(255,255,255,0.6)', color: t.fg }}
+      >
+        {icon}
+      </div>
+      <div className="font-serif text-[26px] leading-none font-semibold text-rb-text">{unavailable ? '—' : value}</div>
+      <div className="mt-1 text-[12.5px] font-semibold text-rb-text-secondary">{label}</div>
+      <div className="mt-1.5 text-[11.5px] font-medium" style={{ color: t.fg }}>
+        {unavailable ? 'Belum tersedia' : trend}
+      </div>
     </div>
+  );
+  return href ? (
+    <Link to={href} className="block no-underline">
+      {body}
+    </Link>
+  ) : (
+    body
   );
 }
 
-function AttentionPill({ label, count, unavailable }: { label: string; count?: number; unavailable?: boolean }) {
-  return (
-    <div className="flex items-center gap-2 rounded-rb-pill border border-rb-border bg-rb-surface px-3.5 py-2 text-sm">
-      <span
-        className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
-          unavailable
-            ? 'bg-rb-divider text-rb-text-faint'
-            : count && count > 0
-              ? 'bg-rb-red-tint-bg text-rb-red-tint-fg'
-              : 'bg-rb-green-tint-bg text-rb-green-tint-fg'
-        }`}
-      >
-        {unavailable ? '—' : count}
-      </span>
-      <span className="font-medium text-rb-text-secondary">{label}</span>
-    </div>
+function PriorityPill({
+  icon,
+  label,
+  count,
+  tint,
+  href,
+  unavailable,
+}: {
+  icon: ReactNode;
+  label: string;
+  count?: number;
+  tint: TintKey;
+  href?: string;
+  unavailable?: boolean;
+}) {
+  const t = TINT[tint];
+  const content = (
+    <>
+      <span style={{ display: 'flex', color: t.fg }}>{icon}</span>
+      {unavailable ? '— ' : `${count} `}
+      {label}
+    </>
+  );
+  const className = 'flex items-center gap-[7px] whitespace-nowrap rounded-rb-pill px-3.5 py-[7px] text-[13px] font-semibold no-underline';
+  const style = { background: t.bg, color: t.fg };
+  return href ? (
+    <Link to={href} className={className} style={style}>
+      {content}
+    </Link>
+  ) : (
+    <span className={className} style={style}>
+      {content}
+    </span>
   );
 }
 
 function SnapshotCard({
   title,
   href,
+  cta,
+  accent,
   stats,
   unavailable,
 }: {
   title: string;
   href: string;
+  cta: string;
+  accent: string;
   stats?: { value: string | number; label: string }[];
   unavailable?: boolean;
 }) {
   return (
-    <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
+    <div className="rounded-rb-card border border-rb-border bg-rb-surface p-[18px]">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-serif text-base font-semibold text-rb-text">{title}</h3>
+        <div className="text-[13px] font-semibold text-rb-text">{title}</div>
         {unavailable && (
           <span className="rounded-rb-pill bg-rb-divider px-2 py-0.5 text-[10.5px] font-semibold text-rb-text-faint">
             UNAVAILABLE
@@ -94,25 +180,28 @@ function SnapshotCard({
         )}
       </div>
       {unavailable ? (
-        <p className="text-sm text-rb-text-faint">Data belum bisa diakses dari Backoffice.</p>
+        <p className="mb-3.5 text-sm text-rb-text-faint">Data belum bisa diakses dari Backoffice.</p>
       ) : (
-        <div className="flex gap-6">
+        <div className="mb-3.5 flex gap-[18px]">
           {stats?.map((s) => (
             <div key={s.label}>
-              <div className="font-serif text-xl font-semibold text-rb-text">{s.value}</div>
-              <div className="text-xs text-rb-text-muted">{s.label}</div>
+              <div className="font-serif text-[21px] font-semibold" style={{ color: accent }}>
+                {s.value}
+              </div>
+              <div className="text-[11.5px] text-rb-text-muted">{s.label}</div>
             </div>
           ))}
         </div>
       )}
-      <a href={href} className="mt-4 inline-block text-sm font-medium text-rb-red hover:underline">
-        Lihat {title} →
-      </a>
+      <Link to={href} className="text-[12.5px] font-semibold no-underline" style={{ color: unavailable ? '#8A8479' : '#C72820' }}>
+        {cta} →
+      </Link>
     </div>
   );
 }
 
 export function CommandCenter() {
+  const { currentUser } = useAuth();
   const [branch, setBranch] = useState('all');
 
   const [overview, setOverview] = useState<LoadState<OwnerOverview>>({ status: 'loading' });
@@ -218,18 +307,54 @@ export function CommandCenter() {
 
   const errorLogs = mokaLogs.status === 'ready' ? mokaLogs.data.filter((l) => l.status !== 'ok') : [];
 
-  const actionItems: { key: string; text: string }[] = [];
-  if (pendingTotal) actionItems.push({ key: 'pending', text: `${pendingTotal} booking menunggu konfirmasi` });
-  if (belumCheckInTotal) actionItems.push({ key: 'checkin', text: `${belumCheckInTotal} barber belum check-in hari ini` });
-  branchAlerts.forEach((a, i) => actionItems.push({ key: `alert-${i}`, text: `${a.branch}: ${a.message}` }));
+  // Live Branch Activity status pill — derived only from the branch's own real
+  // alerts[] payload (two-tier: Normal / Perlu Perhatian). No "Ramai" busy-tier is
+  // shown: that would require a booking-volume threshold with no defined business
+  // rule, which would be a fabricated signal rather than a real one.
+  const actionItems: { key: string; icon: ReactNode; title: string; context: string; tint: TintKey; href: string; cta: string }[] = [];
+  if (pendingTotal) {
+    actionItems.push({
+      key: 'pending',
+      icon: <CalendarIcon size={16} />,
+      title: `${pendingTotal} booking menunggu konfirmasi`,
+      context: 'Lintas cabang · hari ini',
+      tint: 'red',
+      href: '/operations',
+      cta: 'Review',
+    });
+  }
+  if (belumCheckInTotal) {
+    actionItems.push({
+      key: 'checkin',
+      icon: <AlertClockIcon size={16} />,
+      title: `${belumCheckInTotal} barber belum check-in hari ini`,
+      context: 'Lintas cabang · hari ini',
+      tint: 'orange',
+      href: '/operations',
+      cta: 'Cek',
+    });
+  }
+  branchAlerts.forEach((a, i) => {
+    actionItems.push({
+      key: `alert-${i}`,
+      icon: <AlertClockIcon size={16} />,
+      title: a.message,
+      context: `${a.branch} · hari ini`,
+      tint: 'orange',
+      href: '/reports/branches',
+      cta: 'Cek',
+    });
+  });
+
+  const dateSubtitle = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
     <>
       <PageHeader
         title="Command Center"
-        subtitle="Ringkasan operasional hari ini"
+        subtitle={`Ringkasan operasional Redbox hari ini · ${dateSubtitle}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <BranchSelector
               value={branch}
               branches={overview.status === 'ready' ? overview.data.branches.map((b) => ({ slug: b.slug, name: b.name })) : []}
@@ -239,58 +364,88 @@ export function CommandCenter() {
               Hari Ini
             </span>
             <LiveBadge />
+            <button
+              type="button"
+              disabled
+              aria-label="Cari"
+              className="flex h-9 w-9 items-center justify-center rounded-rb-button border border-rb-border bg-rb-surface text-rb-text-secondary disabled:cursor-default"
+            >
+              <SearchIcon size={16} />
+            </button>
+            <button
+              type="button"
+              disabled
+              aria-label="Notifikasi"
+              className="flex h-9 w-9 items-center justify-center rounded-rb-button border border-rb-border bg-rb-surface text-rb-text-secondary disabled:cursor-default"
+            >
+              <BellIcon size={16} />
+            </button>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rb-purple-tint-bg text-[13px] font-semibold text-rb-purple-tint-fg">
+              {initialsOf(currentUser?.label ?? 'Owner')}
+            </div>
           </div>
         }
       />
 
       {/* Perlu Perhatian Hari Ini */}
-      <section className="mb-6 flex flex-wrap gap-2.5">
-        <AttentionPill label="Attendance Issues" unavailable />
-        <AttentionPill label="Payroll Pending" unavailable />
-        <AttentionPill label="Booking Issues" count={pendingTotal ?? 0} />
-        <AttentionPill label="Low Stock Alerts" unavailable />
+      <section className="mb-5 flex flex-wrap items-center gap-4 rounded-rb-card border border-rb-border bg-rb-surface px-5 py-4">
+        <span className="whitespace-nowrap text-[13.5px] font-semibold text-rb-text">Perlu Perhatian Hari Ini</span>
+        <div className="flex flex-1 flex-wrap gap-2.5">
+          <PriorityPill icon={<AlertClockIcon size={13} />} label="Attendance Issues" tint="orange" unavailable />
+          <PriorityPill icon={<WalletClockIcon size={13} />} label="Payroll Pending" tint="purple" unavailable />
+          <PriorityPill icon={<CalendarIcon size={13} />} label="Booking Issues" tint="red" count={pendingTotal ?? 0} href="/operations" />
+          <PriorityPill icon={<BoxIcon size={13} />} label="Low Stock Alerts" tint="yellow" unavailable />
+        </div>
       </section>
 
       {/* KPI row — operational only, no financial metrics (spec correction 2026-09-01) */}
-      <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <section className="mb-5 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {branchActivity.status === 'loading' && <LoadingState label="Memuat KPI..." />}
         {branchActivity.status === 'error' && <ErrorState message={branchActivity.message} />}
-        {branchActivity.status === 'ready' && <StatCard value={bookingToday} label="Booking Hari Ini" tint="red" />}
+        {branchActivity.status === 'ready' && (
+          <KpiCard icon={<CalendarIcon size={17} />} value={bookingToday} label="Booking Hari Ini" trend="Live lintas cabang" tint="red" href="/operations" />
+        )}
 
-        <UnavailableStat label="Completed Services" />
+        <KpiCard icon={<CheckIcon size={17} />} value={null} label="Completed Services" tint="green" unavailable />
 
         {segments.status === 'loading' && <LoadingState label="Memuat..." />}
         {segments.status === 'error' && <ErrorState message={segments.message} />}
-        {segments.status === 'ready' && <StatCard value={segments.data.kpis.repeat_customers} label="Repeat Customers" tint="blue" />}
+        {segments.status === 'ready' && (
+          <KpiCard icon={<RepeatIcon size={17} />} value={segments.data.kpis.repeat_customers} label="Repeat Customers" trend="Total tercatat" tint="blue" href="/crm" />
+        )}
 
-        <UnavailableStat label="Attendance Alerts" />
+        <KpiCard icon={<AlertClockIcon size={17} />} value={null} label="Attendance Alerts" tint="orange" href="/attendance/exceptions" unavailable />
 
         {membership.status === 'loading' && <LoadingState label="Memuat..." />}
         {membership.status === 'error' && <ErrorState message={membership.message} />}
         {membership.status === 'ready' && (
-          <StatCard
+          <KpiCard
+            icon={<MemberIcon size={17} />}
             value={activeMembers}
             label="Active Members"
             trend={
               membershipIsNetworkWide
-                ? 'Seluruh Cabang — data membership belum ada atribusi cabang'
+                ? 'Seluruh Cabang — belum ada atribusi cabang'
                 : activatedThisMonth
                   ? `+${activatedThisMonth} bulan ini`
-                  : undefined
+                  : 'Tidak ada aktivasi bulan ini'
             }
             tint="teal"
+            href="/reports/membership"
           />
         )}
 
-        <UnavailableStat label="Payroll Pending" />
+        <KpiCard icon={<WalletClockIcon size={17} />} value={null} label="Payroll Pending" tint="purple" href="/payroll" unavailable />
       </section>
 
-      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
         {/* Live Branch Activity */}
         <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-serif text-base font-semibold text-rb-text">Live Branch Activity</h2>
-            <LiveBadge partial />
+          <div className="mb-3.5 flex items-center justify-between">
+            <h2 className="font-serif text-[17px] font-semibold text-rb-text">Live Branch Activity</h2>
+            <span className="text-xs text-rb-text-muted">
+              {branchActivity.status === 'ready' ? `${branchActivity.data.items.length} cabang` : ''}
+            </span>
           </div>
           {branchActivity.status === 'loading' && <LoadingState />}
           {branchActivity.status === 'error' && <ErrorState message={branchActivity.message} />}
@@ -301,20 +456,37 @@ export function CommandCenter() {
                   Gagal memuat data untuk: {branchActivity.data.failedBranches.join(', ')}.
                 </div>
               )}
-              <div className="flex flex-col divide-y divide-rb-divider">
-                {branchActivity.data.items.map((b) => (
-                  <div key={b.slug} className="flex items-center justify-between py-2.5 text-sm">
-                    <span className="font-medium text-rb-text-secondary">{b.name}</span>
-                    <div className="flex items-center gap-3 text-xs text-rb-text-muted">
-                      <span>{b.bookingToday} booking</span>
+              <div className="flex flex-col gap-2">
+                {branchActivity.data.items.map((b) => {
+                  const attention = b.alerts.length > 0;
+                  return (
+                    <Link
+                      key={b.slug}
+                      to="/reports/branches"
+                      className="flex items-center gap-3.5 rounded-xl bg-rb-bg px-3.5 py-3 no-underline hover:bg-rb-divider"
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: attention ? TINT.red.fg : TINT.green.fg }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-rb-text">{b.name}</div>
+                        <div className="text-xs text-rb-text-muted">{b.bookingToday} booking hari ini</div>
+                      </div>
+                      <span
+                        className="whitespace-nowrap rounded-rb-pill px-2.5 py-1 text-xs font-semibold"
+                        style={attention ? { background: TINT.red.bg, color: TINT.red.fg } : { background: TINT.green.bg, color: TINT.green.fg }}
+                      >
+                        {attention ? 'Perlu Perhatian' : 'Normal'}
+                      </span>
                       {b.alerts.length > 0 && (
-                        <span className="rounded-rb-pill bg-rb-red-tint-bg px-2 py-0.5 font-semibold text-rb-red-tint-fg">
+                        <span className="whitespace-nowrap text-[11.5px] font-semibold" style={{ color: TINT.red.fg }}>
                           {b.alerts.length} alert
                         </span>
                       )}
-                    </div>
-                  </div>
-                ))}
+                    </Link>
+                  );
+                })}
               </div>
             </>
           )}
@@ -322,22 +494,34 @@ export function CommandCenter() {
 
         {/* Action Center */}
         <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-serif text-base font-semibold text-rb-text">Action Center</h2>
-            <LiveBadge partial />
-          </div>
+          <h2 className="mb-3.5 font-serif text-[17px] font-semibold text-rb-text">Action Center</h2>
           {branchActivity.status === 'loading' && <LoadingState />}
           {branchActivity.status === 'error' && <ErrorState message={branchActivity.message} />}
           {branchActivity.status === 'ready' && (
             actionItems.length === 0 ? (
               <p className="py-6 text-center text-sm text-rb-text-muted">Tidak ada tindakan mendesak saat ini.</p>
             ) : (
-              <div className="flex flex-col divide-y divide-rb-divider">
-                {actionItems.map((item) => (
-                  <div key={item.key} className="py-2.5 text-sm text-rb-text-secondary">
-                    {item.text}
-                  </div>
-                ))}
+              <div className="flex flex-col gap-2.5">
+                {actionItems.map((item) => {
+                  const t = TINT[item.tint];
+                  return (
+                    <div key={item.key} className="flex items-start gap-[11px] border-b border-rb-divider py-[11px] last:border-b-0">
+                      <div
+                        className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg"
+                        style={{ background: t.bg, color: t.fg }}
+                      >
+                        {item.icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] font-semibold text-rb-text">{item.title}</div>
+                        <div className="mt-0.5 text-xs text-rb-text-muted">{item.context}</div>
+                      </div>
+                      <Link to={item.href} className="pt-0.5 text-xs font-semibold whitespace-nowrap text-rb-red no-underline">
+                        {item.cta} →
+                      </Link>
+                    </div>
+                  );
+                })}
               </div>
             )
           )}
@@ -347,60 +531,70 @@ export function CommandCenter() {
         </div>
       </div>
 
-      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Today's Operations Timeline */}
         <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-serif text-base font-semibold text-rb-text">Today's Operations Timeline</h2>
-            <LiveBadge partial />
-          </div>
+          <h2 className="mb-4 font-serif text-[17px] font-semibold text-rb-text">Today's Operations Timeline</h2>
           {mokaLogs.status === 'loading' && <LoadingState />}
           {mokaLogs.status === 'error' && <ErrorState message={mokaLogs.message} />}
           {mokaLogs.status === 'ready' && (
             todayMokaLogs.length === 0 ? (
               <p className="py-6 text-center text-sm text-rb-text-muted">Belum ada aktivitas sinkronisasi hari ini.</p>
             ) : (
-              <div className="flex flex-col divide-y divide-rb-divider">
-                {todayMokaLogs.map((log) => (
-                  <div key={log.id} className="flex items-center gap-3 py-2.5 text-sm">
-                    <span className="w-14 shrink-0 text-xs text-rb-text-muted">
-                      {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: OPERATIONAL_TIMEZONE })}
-                    </span>
-                    <span className="flex-1 text-rb-text-secondary">
-                      Sinkronisasi {log.direction} {log.entity_type}
-                    </span>
-                    <span className={`text-xs ${log.status === 'ok' ? 'text-rb-green-tint-fg' : 'text-rb-red-tint-fg'}`}>
-                      {log.status}
-                    </span>
-                  </div>
-                ))}
+              <div className="flex flex-col">
+                {todayMokaLogs.map((log, i) => {
+                  const dotColor = log.status === 'ok' ? TINT.green.fg : TINT.red.fg;
+                  const isLast = i === todayMokaLogs.length - 1;
+                  return (
+                    <div key={log.id} className="flex gap-3.5">
+                      <span className="w-10 shrink-0 text-[11.5px] font-semibold text-rb-text-muted">
+                        {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: OPERATIONAL_TIMEZONE })}
+                      </span>
+                      <div className="flex flex-col items-center">
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: dotColor }} />
+                        {!isLast && <span className="min-h-[22px] w-[1.5px] flex-1" style={{ background: '#EDE9DC' }} />}
+                      </div>
+                      <div className="min-w-0 flex-1 pb-4.5">
+                        <div className="text-[13.5px] font-medium text-rb-text">
+                          Sinkronisasi {log.direction} {log.entity_type} — {log.status}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )
           )}
-          <p className="mt-4 text-[11.5px] text-rb-text-faint">
+          <p className="mt-2 text-[11.5px] text-rb-text-faint">
             Sumber: log sinkronisasi Moka. Belum ada log aktivitas untuk domain Attendance/Payroll/Stockist.
           </p>
         </div>
 
         {/* Alerts & Exceptions */}
         <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-serif text-base font-semibold text-rb-text">Alerts & Exceptions</h2>
-            <LiveBadge partial />
-          </div>
+          <h2 className="mb-3.5 font-serif text-[17px] font-semibold text-rb-text">Alerts &amp; Exceptions</h2>
           {mokaLogs.status === 'loading' && <LoadingState />}
           {mokaLogs.status === 'error' && <ErrorState message={mokaLogs.message} />}
           {mokaLogs.status === 'ready' && (
             errorLogs.length === 0 ? (
               <p className="py-6 text-center text-sm text-rb-text-muted">Tidak ada exception sinkronisasi hari ini.</p>
             ) : (
-              <div className="flex flex-col divide-y divide-rb-divider">
+              <div className="flex flex-col gap-2.5">
                 {errorLogs.map((log) => (
-                  <div key={log.id} className="py-2.5 text-sm">
-                    <div className="font-medium text-rb-red-tint-fg">
-                      Sinkronisasi {log.direction} {log.entity_type} gagal
+                  <div key={log.id} className="flex items-start gap-[11px] rounded-xl p-[11px]" style={{ background: TINT.blue.bg }}>
+                    <span className="mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: TINT.blue.fg }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13.5px] font-semibold text-rb-text">
+                        Sinkronisasi {log.direction} {log.entity_type} gagal
+                      </div>
+                      <div className="mt-0.5 text-xs text-rb-text-muted">{log.error_message ?? 'Tidak ada detail error.'}</div>
                     </div>
-                    <div className="text-xs text-rb-text-muted">{log.error_message ?? 'Tidak ada detail error.'}</div>
+                    <Link
+                      to="/moka"
+                      className="shrink-0 whitespace-nowrap rounded-lg border border-rb-border bg-rb-surface px-2.5 py-[5px] text-xs font-semibold text-rb-text-secondary no-underline"
+                    >
+                      Detail
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -411,58 +605,66 @@ export function CommandCenter() {
 
       {/* Business Snapshots */}
       <section className="mb-8">
-        <h2 className="mb-3 font-serif text-base font-semibold text-rb-text">Business Snapshots</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <h2 className="mt-1.5 mb-3.5 font-serif text-[17px] font-semibold text-rb-text">Business Snapshots</h2>
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
           <SnapshotCard
-            title="Customer"
+            title="Customer Snapshot"
             href="/crm"
+            cta="Lihat CRM"
+            accent={TINT.blue.fg}
             stats={
               segments.status === 'ready'
                 ? [
-                    { value: segments.data.kpis.active_customers, label: 'Active Customers' },
-                    { value: segments.data.kpis.new_customers, label: 'New Customers' },
+                    { value: segments.data.kpis.new_customers, label: 'Baru' },
+                    { value: segments.data.kpis.repeat_customers, label: 'Repeat' },
                   ]
                 : undefined
             }
           />
           <SnapshotCard
-            title="Membership"
+            title="Membership Snapshot"
             href="/reports/membership"
+            cta="Lihat Membership"
+            accent={TINT.teal.fg}
             stats={
               membership.status === 'ready'
                 ? [
-                    { value: activeMembers ?? 0, label: membershipIsNetworkWide ? 'Active Members (Seluruh Cabang)' : 'Active Members' },
-                    { value: activatedThisMonth ?? 0, label: membershipIsNetworkWide ? 'Baru Bulan Ini (Seluruh Cabang)' : 'Baru Bulan Ini' },
+                    { value: activeMembers ?? 0, label: membershipIsNetworkWide ? 'Member aktif (seluruh cabang)' : 'Member aktif' },
+                    { value: activatedThisMonth ?? 0, label: membershipIsNetworkWide ? 'Baru bulan ini (seluruh cabang)' : 'Baru bulan ini' },
                   ]
                 : undefined
             }
           />
           <SnapshotCard
             title="Branch Performance"
-            href="/operations"
+            href="/reports/branches"
+            cta="Lihat Branch Performance"
+            accent={TINT.red.fg}
             stats={
               topBranch
                 ? [
-                    { value: topBranch.bookingToday, label: `${topBranch.name} (Terbanyak)` },
-                    { value: branchActivity.status === 'ready' ? branchActivity.data.items.length : 0, label: 'Cabang Aktif' },
+                    { value: branchActivity.status === 'ready' ? branchActivity.data.items.length : 0, label: 'Cabang' },
+                    { value: branchActivity.status === 'ready' ? branchActivity.data.items.filter((b) => b.alerts.length > 0).length : 0, label: 'Perlu perhatian' },
                   ]
                 : undefined
             }
           />
           <SnapshotCard
             title="Barber Performance"
-            href="/crm"
+            href="/reports/barbers"
+            cta="Lihat Barber"
+            accent={TINT.orange.fg}
             stats={
               barberPerf.status === 'ready'
                 ? [
-                    { value: barberPerf.data.barbers.length, label: 'Barber Terpantau' },
-                    { value: topBarber ? topBarber.name : '—', label: 'Customer Terbanyak' },
+                    { value: barberPerf.data.barbers.length, label: 'Barber aktif' },
+                    { value: topBarber ? topBarber.name : '—', label: 'Customer terbanyak' },
                   ]
                 : undefined
             }
           />
-          <SnapshotCard title="Inventory" href="/stockist" unavailable />
-          <SnapshotCard title="Payroll" href="/payroll" unavailable />
+          <SnapshotCard title="Inventory Snapshot" href="/stockist" cta="Lihat Inventory" accent={TINT.yellow.fg} unavailable />
+          <SnapshotCard title="Payroll Snapshot" href="/payroll" cta="Lihat Payroll" accent={TINT.purple.fg} unavailable />
         </div>
       </section>
     </>

@@ -1,7 +1,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { CommandCenter } from '../CommandCenter';
+import { AuthProvider } from '../../auth/AuthProvider';
 import type { MemberProfile } from '../../services/crm';
+
+function renderCC() {
+  return render(
+    <MemoryRouter>
+      <AuthProvider>
+        <CommandCenter />
+      </AuthProvider>
+    </MemoryRouter>
+  );
+}
+
+/** Robust card lookup: walk up from a text node to the nearest `.rounded-rb-card` ancestor. */
+function cardOf(text: HTMLElement): HTMLElement {
+  const card = text.closest<HTMLElement>('.rounded-rb-card');
+  if (!card) throw new Error('No .rounded-rb-card ancestor found');
+  return card;
+}
 
 const NOW = new Date();
 const TODAY_ISO = NOW.toISOString();
@@ -116,7 +135,7 @@ describe('CommandCenter', () => {
 
   it('never renders revenue, currency, or financial KPI language', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText('Booking Hari Ini')).toBeInTheDocument();
@@ -129,76 +148,75 @@ describe('CommandCenter', () => {
 
   it('renders real cross-branch booking total on the Booking Hari Ini KPI card', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
-      const card = screen.getByText('Booking Hari Ini').closest('div');
-      expect(within(card!.parentElement!).getByText('50')).toBeInTheDocument();
+      const card = cardOf(screen.getByText('Booking Hari Ini'));
+      expect(within(card).getByText('50')).toBeInTheDocument();
     });
   });
 
   it('shows honest unavailable indicators on Completed Services, Attendance Alerts, and Payroll Pending KPI cards', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText('Completed Services')).toBeInTheDocument();
     });
 
-    for (const label of ['Completed Services', 'Attendance Alerts']) {
-      const card = screen.getByText(label).closest('div')!.parentElement!;
+    for (const label of ['Completed Services', 'Attendance Alerts', 'Payroll Pending']) {
+      const card = cardOf(screen.getByText(label));
       expect(within(card).getByText(/belum tersedia/i)).toBeInTheDocument();
     }
-
-    const payrollLabels = screen.getAllByText('Payroll Pending');
-    const payrollCard = payrollLabels.map((el) => el.closest('div')!.parentElement!).find((el) => within(el).queryByText(/belum tersedia/i));
-    expect(payrollCard).toBeTruthy();
   });
 
   it('renders real repeat customer and active member counts', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
-      expect(screen.getByText('731')).toBeInTheDocument();
+      expect(screen.getAllByText('731').length).toBeGreaterThan(0);
     });
-    const activeMembersLabels = screen.getAllByText('Active Members');
-    const cardWithCount = activeMembersLabels
-      .map((el) => el.closest('div')!.parentElement!)
-      .find((el) => within(el).queryByText('2'));
-    expect(cardWithCount).toBeTruthy();
+    const card = cardOf(screen.getByText('Active Members'));
+    expect(within(card).getByText('2')).toBeInTheDocument();
   });
 
   it('shows one real Booking Issues pill and three honest unavailable pills in the attention strip', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
-      expect(screen.getByText('Booking Issues')).toBeInTheDocument();
+      expect(screen.getByText(/Booking Issues/)).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Attendance Issues')).toBeInTheDocument();
-    expect(screen.getAllByText('Payroll Pending').length).toBeGreaterThan(0);
-    expect(screen.getByText('Low Stock Alerts')).toBeInTheDocument();
+    expect(screen.getByText(/Attendance Issues/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Payroll Pending/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Low Stock Alerts/)).toBeInTheDocument();
   });
 
-  it('renders real per-branch booking counts in Live Branch Activity without fabricated status labels', async () => {
+  it('renders a real alert-derived status pill in Live Branch Activity, but never a fabricated "Ramai" busy tier', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
+    // Wait for the real per-branch row content specifically (not just the branch-selector
+    // <option>, which renders earlier and would make this assertion resolve prematurely).
     await waitFor(() => {
-      expect(screen.getByText('Live Branch Activity')).toBeInTheDocument();
+      expect(screen.getByText('30 booking hari ini')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('CSB')).toBeInTheDocument();
-    expect(screen.getByText('Pondok Indah')).toBeInTheDocument();
+    expect(screen.getAllByText('CSB').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Pondok Indah').length).toBeGreaterThan(0);
+    // CSB's fixture carries a real alert → "Perlu Perhatian"; PDK has none → "Normal".
+    // Both are derived straight from the real alerts[] payload, not invented.
+    expect(screen.getByText('Perlu Perhatian')).toBeInTheDocument();
+    expect(screen.getByText('Normal')).toBeInTheDocument();
+    // No busy-volume tier: there is no defined threshold for "Ramai", so it must never appear.
     expect(screen.queryByText('Ramai')).not.toBeInTheDocument();
-    expect(screen.queryByText('Perlu Perhatian')).not.toBeInTheDocument();
   });
 
   it('does not blank the page when one branch fetch fails', async () => {
     mockFetch({ branchFailFor: ['pdk'] });
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText('CSB')).toBeInTheDocument();
@@ -208,7 +226,7 @@ describe('CommandCenter', () => {
 
   it('renders a real pending-booking action item in Action Center', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText(/booking menunggu konfirmasi/i)).toBeInTheDocument();
@@ -217,7 +235,7 @@ describe('CommandCenter', () => {
 
   it('renders a real Moka sync error in Alerts & Exceptions', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText('Alerts & Exceptions')).toBeInTheDocument();
@@ -227,7 +245,7 @@ describe('CommandCenter', () => {
 
   it('renders real Moka sync activity in Today\'s Operations Timeline', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText("Today's Operations Timeline")).toBeInTheDocument();
@@ -237,20 +255,20 @@ describe('CommandCenter', () => {
 
   it('shows UNAVAILABLE on Inventory and Payroll business snapshots, and real data on the rest', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText('Business Snapshots')).toBeInTheDocument();
     });
 
-    const inventoryCard = screen.getByText('Inventory').closest('div')!.parentElement!;
+    const inventoryCard = cardOf(screen.getByText('Inventory Snapshot'));
     expect(within(inventoryCard).getByText(/UNAVAILABLE/i)).toBeInTheDocument();
 
-    const payrollCard = screen.getByText('Payroll').closest('div')!.parentElement!;
+    const payrollCard = cardOf(screen.getByText('Payroll Snapshot'));
     expect(within(payrollCard).getByText(/UNAVAILABLE/i)).toBeInTheDocument();
 
-    const customerCard = screen.getByText('Customer').closest('div')!.parentElement!;
-    expect(within(customerCard).getByText('400')).toBeInTheDocument();
+    const customerCard = cardOf(screen.getByText('Customer Snapshot'));
+    expect(within(customerCard).getByText('731')).toBeInTheDocument();
   });
 
   it('filters Today\'s Operations Timeline to the Asia/Jakarta calendar day, excluding entries from yesterday', async () => {
@@ -262,7 +280,7 @@ describe('CommandCenter', () => {
         ],
       },
     });
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText(/Sinkronisasi pull transaction/i)).toBeInTheDocument();
@@ -297,7 +315,7 @@ describe('CommandCenter', () => {
           ],
         },
       });
-      render(<CommandCenter />);
+      renderCC();
 
       await waitFor(() => {
         expect(screen.getByText(/02[.:]15/)).toBeInTheDocument();
@@ -316,7 +334,7 @@ describe('CommandCenter', () => {
         ],
       },
     });
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText('Belum ada aktivitas sinkronisasi hari ini.')).toBeInTheDocument();
@@ -335,7 +353,7 @@ describe('CommandCenter', () => {
         { user_key: 'u3', full_name: 'Wati', email: 'wati@example.com', membership_status: 'INACTIVE', membership_activated_at: TODAY_ISO, membership_started_at: null, membership_expires_at: null, current_tier: 'bronze', total_points: 20, total_visits: 2, created_at: LAST_MONTH_ISO, phone: '+6283', last_visit: '2026-08-20' },
       ],
     });
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByText('+1 bulan ini')).toBeInTheDocument();
@@ -344,7 +362,7 @@ describe('CommandCenter', () => {
 
   it('discloses that Active Members is a network-wide figure once a specific branch is selected, without fabricating a branch-scoped number', async () => {
     mockFetch();
-    render(<CommandCenter />);
+    renderCC();
 
     await waitFor(() => {
       expect(screen.getByLabelText('Cabang')).toBeInTheDocument();
@@ -355,13 +373,10 @@ describe('CommandCenter', () => {
     fireEvent.change(screen.getByLabelText('Cabang'), { target: { value: 'csb' } });
 
     await waitFor(() => {
-      expect(screen.getByText(/Seluruh Cabang — data membership belum ada atribusi cabang/i)).toBeInTheDocument();
+      expect(screen.getByText(/Seluruh Cabang — belum ada atribusi cabang/i)).toBeInTheDocument();
     });
 
-    const activeMembersLabels = screen.getAllByText('Active Members');
-    const cardWithCount = activeMembersLabels
-      .map((el) => el.closest('div')!.parentElement!)
-      .find((el) => within(el).queryByText('2'));
-    expect(cardWithCount).toBeTruthy();
+    const card = cardOf(screen.getByText('Active Members'));
+    expect(within(card).getByText('2')).toBeInTheDocument();
   });
 });
