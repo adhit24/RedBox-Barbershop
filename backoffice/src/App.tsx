@@ -22,6 +22,7 @@ import { ExceptionReview } from './pages/ExceptionReview';
 import { PayrollOverview } from './pages/PayrollOverview';
 import { RegularPayroll } from './pages/RegularPayroll';
 import { BarberPayroll } from './pages/BarberPayroll';
+import { PayrollEmployeeDetail } from './pages/PayrollEmployeeDetail';
 import { ComingSoon } from './pages/ComingSoon';
 import { COMMAND_CENTER_PATH, LOGIN_PATH, PLACEHOLDER_ROUTES } from './routes';
 
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="/payroll" element={<PayrollOverview />} />
           <Route path="/payroll/regular" element={<RegularPayroll />} />
           <Route path="/payroll/barber" element={<BarberPayroll />} />
+          <Route path="/payroll/employees/:id" element={<PayrollEmployeeDetail />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<ComingSoon title={route.title} />} />
           ))}

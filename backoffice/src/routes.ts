@@ -13,7 +13,6 @@ export const LOGIN_PATH = '/login';
  * page for it ships.
  */
 export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
-  { path: '/payroll/employees/:id', title: 'Payroll Employee Detail' },
   { path: '/system/roles', title: 'Peran & Izin' },
   { path: '/system/packages', title: 'Akses Paket' },
   { path: '/system/settings', title: 'Pengaturan' },

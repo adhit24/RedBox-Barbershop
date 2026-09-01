@@ -7,11 +7,6 @@ describe('Backoffice route table', () => {
     expect(LOGIN_PATH).toBe('/login');
   });
 
-  it('uses the pluralized Payroll Employee Detail path', () => {
-    const route = PLACEHOLDER_ROUTES.find((r) => r.title === 'Payroll Employee Detail');
-    expect(route?.path).toBe('/payroll/employees/:id');
-  });
-
   it('no longer defines a bare /membership route', () => {
     const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
     expect(paths).not.toContain('/membership');
@@ -22,8 +17,8 @@ describe('Backoffice route table', () => {
     expect(paths).not.toContain('/payroll/employee/:id');
   });
 
-  it('defines exactly the 4 remaining placeholder-only screens', () => {
-    expect(PLACEHOLDER_ROUTES).toHaveLength(4);
+  it('defines exactly the 3 remaining placeholder-only screens', () => {
+    expect(PLACEHOLDER_ROUTES).toHaveLength(3);
   });
 
   it('no longer defines /attendance as a placeholder (it has a real page)', () => {
