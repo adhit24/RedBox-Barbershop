@@ -15,6 +15,7 @@ import { BarberPerformance } from './pages/BarberPerformance';
 import { MokaIntegration } from './pages/MokaIntegration';
 import { StockistDashboard } from './pages/StockistDashboard';
 import { HREmployeeList } from './pages/HREmployeeList';
+import { EmployeeDetail } from './pages/EmployeeDetail';
 import { ComingSoon } from './pages/ComingSoon';
 import { COMMAND_CENTER_PATH, LOGIN_PATH, PLACEHOLDER_ROUTES } from './routes';
 
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/moka" element={<MokaIntegration />} />
           <Route path="/stockist" element={<StockistDashboard />} />
           <Route path="/hr" element={<HREmployeeList />} />
+          <Route path="/hr/employees/:id" element={<EmployeeDetail />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<ComingSoon title={route.title} />} />
           ))}
