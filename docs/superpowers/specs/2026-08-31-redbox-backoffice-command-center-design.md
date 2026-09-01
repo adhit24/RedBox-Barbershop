@@ -395,16 +395,20 @@ workstream's diff independently reviewable.
 All 23 designed screens now have real routes and pages on
 `feat/backoffice-full-product`. `PLACEHOLDER_ROUTES` contains exactly 1
 entry (`/system/settings`, correctly outside the 23-screen scope — never
-designed, stays a permanent placeholder). Four new read-only backend
-endpoints were added across the build, all reviewed and approved before
-implementation (§8b, §8c): `GET /customer360`, `GET /customer-segments`,
-`GET /barber-performance` (all in `server/routes/adminCrm.js`), plus the
-pre-existing `GET /moka/sync-logs` newly consumed by Backoffice. Serverless
-function count stayed at 12 throughout — none of these required a new
-function. The root server test suite shows the same 24 pre-existing,
-unrelated failures at the end of the build as at the start (verified after
-every workstream); no regression was introduced anywhere in `server/`.
-Every screen's data status is recorded in §5; nothing claims LIVE status it
+designed, stays a permanent placeholder). **Exactly three** new read-only
+backend endpoints were added across the build, all reviewed and approved
+before implementation (§8b, §8c): `GET /customer360`, `GET /customer-segments`,
+`GET /barber-performance` (all in `server/routes/adminCrm.js`, confirmed at
+lines 707/716/727). Separately, one *pre-existing, unmodified* endpoint —
+`GET /moka/sync-logs` in `server/moka/routes.js` — was newly *consumed* by
+the Moka POS Integration screen; this required zero backend code and is not
+counted among the three new endpoints. Serverless function count stayed at
+12 throughout (confirmed via `vercel.json`'s `functions` map, parsed, not
+estimated) — none of the three required a new function. The root server
+test suite shows the same 24 pre-existing, unrelated failures at the end of
+the build as at the start (verified after every workstream); no regression
+was introduced anywhere in `server/`. Every screen's data status is
+recorded in §5; nothing claims LIVE status it
 doesn't have, and every DEMO/UNAVAILABLE screen visibly discloses that via
 `DemoBadge` or an `EmptyState` panel. Full workstream-by-workstream detail,
 audit findings, and design-fidelity reviews live in
