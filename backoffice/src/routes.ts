@@ -13,6 +13,5 @@ export const LOGIN_PATH = '/login';
  * page for it ships.
  */
 export const PLACEHOLDER_ROUTES: PlaceholderRouteDef[] = [
-  { path: '/system/packages', title: 'Akses Paket' },
   { path: '/system/settings', title: 'Pengaturan' },
 ];
