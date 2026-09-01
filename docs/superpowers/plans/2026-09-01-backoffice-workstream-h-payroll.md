@@ -452,15 +452,23 @@ git commit -m "feat(backoffice): add Payroll Employee Detail, DEMO, no real comm
 
 ### Task 5: Verification
 
-- [ ] Run full backoffice test suite; expect all pass.
-- [ ] Build; expect success.
-- [ ] Root server suite / function count unaffected (no backend touched).
-- [ ] Design-fidelity review; commit review notes.
+- [x] Full backoffice test suite: 27 files, 94 tests, all pass.
+- [x] Build succeeds (81 modules).
+- [x] Root server suite / function count unaffected — no backend files
+      touched this workstream.
+- [x] Design-fidelity review: all four pages structurally match their
+      `.dc.html` mockups (Overview: stat cards + two scheme cards; Regular
+      Payroll: stat row + roster table; Barber Payroll: roster table with
+      demo commission column, explicitly labeled illustrative; Employee
+      Detail: itemized pay breakdown + Final Pay total). DemoBadge visible
+      on all four. Every commission/revenue-sharing figure is disclosed
+      demo/illustrative content on an all-DEMO page — never asserted as
+      Redbox's actual real commission policy.
 
 ## Definition of done
 
-- [ ] Full backoffice test suite passes
-- [ ] Build succeeds
-- [ ] DemoBadge visible on all four pages
-- [ ] No real commission percentage asserted anywhere
-- [ ] No stop condition hit — proceed into Workstream I
+- [x] Full backoffice test suite passes
+- [x] Build succeeds
+- [x] DemoBadge visible on all four pages
+- [x] No real commission percentage asserted anywhere
+- [x] No stop condition hit — proceed into Workstream I
