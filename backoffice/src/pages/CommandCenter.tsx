@@ -364,7 +364,7 @@ export function CommandCenter() {
                 {todayMokaLogs.map((log) => (
                   <div key={log.id} className="flex items-center gap-3 py-2.5 text-sm">
                     <span className="w-14 shrink-0 text-xs text-rb-text-muted">
-                      {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: OPERATIONAL_TIMEZONE })}
                     </span>
                     <span className="flex-1 text-rb-text-secondary">
                       Sinkronisasi {log.direction} {log.entity_type}

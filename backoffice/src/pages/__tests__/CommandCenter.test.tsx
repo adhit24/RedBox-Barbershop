@@ -271,6 +271,43 @@ describe('CommandCenter', () => {
     expect(screen.queryByText(/Sinkronisasi pull refund/i)).not.toBeInTheDocument();
   });
 
+  it("renders the Today's Operations Timeline clock in Asia/Jakarta time, not browser/system local time, across a UTC/Jakarta date boundary", async () => {
+    // Jakarta has a fixed UTC+7 offset (no DST), so Jakarta midnight of "today" is
+    // representable directly as an ISO string with an explicit +07:00 offset.
+    const jakartaToday = NOW.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+    const jakartaMidnightUtcMs = new Date(`${jakartaToday}T00:00:00+07:00`).getTime();
+    // Jakarta 02:15 today — 7 hours earlier in UTC, which lands on the PREVIOUS UTC
+    // calendar date (19:15 UTC the day before). Passes the Timeline's Jakarta-day filter
+    // while crossing the UTC/Jakarta date boundary, so a browser/UTC-local clock would
+    // render "19.15" instead of the correct "02.15" (id-ID formats hh.mm with a dot).
+    const boundaryIso = new Date(jakartaMidnightUtcMs + (2 * 60 + 15) * 60 * 1000).toISOString();
+
+    // This machine's own system-local timezone happens to already be Asia/Jakarta, which
+    // would silently mask a missing `timeZone: OPERATIONAL_TIMEZONE` (both would render the
+    // same). Force system-local to UTC for this test so an omitted/wrong timeZone would
+    // provably render the wrong clock ("19.15") instead of coincidentally matching.
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'UTC';
+
+    try {
+      mockFetch({
+        mokaLogs: {
+          logs: [
+            { id: 'boundary1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: boundaryIso },
+          ],
+        },
+      });
+      render(<CommandCenter />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/02[.:]15/)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/19[.:]15/)).not.toBeInTheDocument();
+    } finally {
+      process.env.TZ = originalTz;
+    }
+  });
+
   it("shows the empty state in Today's Operations Timeline once all fetched logs fall outside today's Jakarta calendar day", async () => {
     mockFetch({
       mokaLogs: {
