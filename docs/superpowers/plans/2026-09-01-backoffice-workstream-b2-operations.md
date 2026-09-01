@@ -551,34 +551,60 @@ git commit -m "feat(backoffice): wire Operations to real per-branch command-cent
 **Files:** none (review task; fix trivial gaps inline if found, re-run Task 2's
 tests before any follow-up commit).
 
-- [ ] **Step 1: Read `design_handoff_command_center/screens/Operations.dc.html`**
+- [x] **Step 1: Read `design_handoff_command_center/screens/Operations.dc.html`**
       and the live-rendered page side by side.
 
-- [ ] **Step 2: Document disclosed deviations** (for the completion report):
-  - Source pill (Website/Walk-in/Moka/Admin) omitted — no real backing this
-    increment (see Global Constraints above)
-  - Status pills use the real 2-value enum (`Menunggu Konfirmasi` /
+- [x] **Step 2: Document disclosed deviations** (for the completion report):
+  - **Source pill (Website/Walk-in/Moka/Admin) omitted** — no real backing
+    this increment. `bookings` has no `source` column; `schedules.source`
+    only distinguishes 2 values (web/moka), not the design's 4; deriving it
+    would need a join through `bookings.schedule_id`, which `command-center`
+    doesn't currently select. Not worth a backend change for a cosmetic tag.
+  - **Status pills use the real 2-value enum** (`Menunggu Konfirmasi` /
     `Terkonfirmasi`), not the design's 4-value Selesai/Berjalan/Menunggu/Perlu
     Review — `command-center`'s `booking_feed` only returns pending/confirmed
-    rows in the first place
-  - Stat row uses 4 real cells (Booking Hari Ini, Menunggu/Perlu Aksi, Barber
-    Hadir, Belum Check-in) instead of the design's Booking/Selesai/Berjalan/
-    Butuh Review — same "no fabricated completion status" reasoning as
-    Command Center
+    rows in the first place; there is no real "Selesai"/"completed" signal
+    available from this endpoint.
+  - **Stat row uses 4 real cells** (Booking Hari Ini, Menunggu/Perlu Aksi,
+    Barber Hadir, Belum Check-in) instead of the design's Booking/Selesai/
+    Berjalan/Butuh Review — same "no fabricated completion status" reasoning
+    as Command Center's KPI row.
+  - **Barber On Duty status is the raw daily `attendance_status`** value
+    (hadir/terlambat/izin/sakit/cuti/none), not the design's live-occupancy
+    labels ("Sedang melayani" / "Tersedia" / "Istirahat" with a colored dot).
+    Those labels describe real-time booking occupancy — whether a barber is
+    *currently* serving a customer right now — which has no backing data
+    source; `attendance_status` only tells us whether they checked in for
+    the day. Fabricating an occupancy state was correctly avoided per the
+    "no invented queue/occupancy signals" rule.
+  - **Branch filter chip row (design's "Semua Cabang" pill) omitted** —
+    Operations is scoped as an always-all-branches merged view per this
+    plan's architecture (no per-branch filtering control), so the chip row
+    has no function to attach to. Minor structural omission, not a data
+    fidelity issue.
+  - Everything else — booking time/customer/service/branch/barber columns,
+    the barber roster's name/branch, and the reconciliation footer note — is
+    real, live data or static copy matching the design.
 
-- [ ] **Step 3: Fix anything trivially fixable inline**, re-run tests + build,
+- [x] **Step 3: Fix anything trivially fixable inline**, re-run tests + build,
       new small commit if anything changed post-Task-2-commit.
+      No fixes were needed — all gaps above are deliberate, correctly-reasoned
+      omissions rather than bugs, so no follow-up commit was made.
 
 ---
 
 ## Definition of done for this workstream
 
-- [ ] `npm --workspace=backoffice run test` passes (33 tests: A's 14 + B1's 13
-      + B2's 6)
-- [ ] `npm --workspace=backoffice run build` succeeds
-- [ ] Root server suite still shows only the same 24 pre-existing/unrelated
-      failures
-- [ ] Serverless function count unchanged at 12 (no backend files touched)
-- [ ] Design-fidelity review written into the completion report
-- [ ] No stop condition was hit — proceed directly into Workstream C per
+- [x] `npm --workspace=backoffice run test` passes (34 tests total: routes 8,
+      moka 1, apiClient 5, crm 5, Operations 5, Sidebar 2, PeriodSelector 2,
+      BranchSelector 2, CommandCenter 4)
+- [x] `npm --workspace=backoffice run build` succeeds
+- [x] Root server suite still shows only the same 24 pre-existing/unrelated
+      failures (verified via `node --test --test-force-exit server/test/*.test.js`
+      — all in stockist-notifications, membership dashboard, phone-alias
+      resolution, webhook.js scans, BottomNavBar; none touch Backoffice)
+- [x] Serverless function count unchanged at 12 (verified against
+      `vercel.json`'s `functions` map — no `server/` or `api/` files touched)
+- [x] Design-fidelity review written into the completion report (see Task 3)
+- [x] No stop condition was hit — proceed directly into Workstream C per
       standing instruction
