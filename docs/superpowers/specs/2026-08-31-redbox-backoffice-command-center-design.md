@@ -4,7 +4,9 @@ Status: Phase 1A shipped to production (`main`, PR #60, merged and live-verified
 This revision extends scope from "Command Center foundation" to the **complete
 23-screen Backoffice product**, decomposed into workstreams A–I per owner
 direction. `design_handoff_command_center/README.md` remains the visual source of
-truth (priority order in §12).
+truth (priority order in §12). **All 9 workstreams (A–I) are now implemented**
+on branch `feat/backoffice-full-product`, not yet merged to `main` — see §16
+for the completion summary and outstanding merge/production-domain steps.
 
 ## 1. What this is
 
@@ -387,3 +389,26 @@ Dedicated branch per workstream (or a shared `feat/backoffice-full-product`
 branch with one commit per workstream — decided in the implementation plan),
 never directly on `main`. No unrelated repository clutter in commits. Each
 workstream's diff independently reviewable.
+
+## 16. Completion summary (all 9 workstreams shipped)
+
+All 23 designed screens now have real routes and pages on
+`feat/backoffice-full-product`. `PLACEHOLDER_ROUTES` contains exactly 1
+entry (`/system/settings`, correctly outside the 23-screen scope — never
+designed, stays a permanent placeholder). Four new read-only backend
+endpoints were added across the build, all reviewed and approved before
+implementation (§8b, §8c): `GET /customer360`, `GET /customer-segments`,
+`GET /barber-performance` (all in `server/routes/adminCrm.js`), plus the
+pre-existing `GET /moka/sync-logs` newly consumed by Backoffice. Serverless
+function count stayed at 12 throughout — none of these required a new
+function. The root server test suite shows the same 24 pre-existing,
+unrelated failures at the end of the build as at the start (verified after
+every workstream); no regression was introduced anywhere in `server/`.
+Every screen's data status is recorded in §5; nothing claims LIVE status it
+doesn't have, and every DEMO/UNAVAILABLE screen visibly discloses that via
+`DemoBadge` or an `EmptyState` panel. Full workstream-by-workstream detail,
+audit findings, and design-fidelity reviews live in
+`docs/superpowers/plans/2026-09-0*-backoffice-workstream-*.md` (one file per
+workstream, A through I). This branch has not been merged to `main` and
+`backoffice.redboxbarbershop.com` has not been repointed to it — both are
+explicit, separate decisions for the reviewer per the completion report.
