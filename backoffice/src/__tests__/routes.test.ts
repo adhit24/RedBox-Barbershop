@@ -22,8 +22,23 @@ describe('Backoffice route table', () => {
     expect(paths).not.toContain('/payroll/employee/:id');
   });
 
-  it('defines exactly the 17 remaining placeholder-only screens', () => {
-    expect(PLACEHOLDER_ROUTES).toHaveLength(17);
+  it('defines exactly the 14 remaining placeholder-only screens', () => {
+    expect(PLACEHOLDER_ROUTES).toHaveLength(14);
+  });
+
+  it('no longer defines /reports as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/reports');
+  });
+
+  it('no longer defines /reports/branches as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/reports/branches');
+  });
+
+  it('no longer defines /reports/barbers as a placeholder (it has a real page)', () => {
+    const paths = PLACEHOLDER_ROUTES.map((r) => r.path);
+    expect(paths).not.toContain('/reports/barbers');
   });
 
   it('no longer defines /operations as a placeholder (it has a real page)', () => {
