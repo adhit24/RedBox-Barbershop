@@ -419,15 +419,22 @@ git commit -m "feat(backoffice): add Exception Review, DEMO with real local list
 
 ### Task 4: Verification
 
-- [ ] Run full backoffice test suite; expect all pass.
-- [ ] Build; expect success.
-- [ ] Root server suite / function count unaffected (no backend touched).
-- [ ] Design-fidelity review; commit review notes.
+- [x] Full backoffice test suite: 23 files, 87 tests, all pass.
+- [x] Build succeeds (77 modules).
+- [x] Root server suite / function count unaffected — no backend files
+      touched this workstream.
+- [x] Design-fidelity review: all three pages structurally match their
+      `.dc.html` mockups (Overview: header actions + 4 stat cards + roster
+      table; Fingerprint Import: filters + dropzone + last-import stat
+      grid, all inert per "UI prototype only"; Exception Review: real
+      list/detail local-state selection, action buttons rendered inert).
+      DemoBadge visible on all three. Action buttons throughout render
+      disabled/inert rather than fake-succeeding — no false confirmations.
 
 ## Definition of done
 
-- [ ] Full backoffice test suite passes
-- [ ] Build succeeds
-- [ ] DemoBadge visible on all three pages
-- [ ] No functional-looking-but-fake action confirmations anywhere
-- [ ] No stop condition hit — proceed into Workstream H
+- [x] Full backoffice test suite passes
+- [x] Build succeeds
+- [x] DemoBadge visible on all three pages
+- [x] No functional-looking-but-fake action confirmations anywhere
+- [x] No stop condition hit — proceed into Workstream H
