@@ -315,16 +315,20 @@ git commit -m "feat(backoffice): add Employee Detail, DEMO"
 
 ### Task 3: Verification
 
-- [ ] Run full backoffice test suite; expect all pass.
-- [ ] Build; expect success.
-- [ ] Root server suite / function count unaffected (no backend touched).
-- [ ] Design-fidelity review: both pages structurally match their
-      `.dc.html` mockups; every stat/field is DEMO data, `DemoBadge` visible
-      in both headers. Commit review notes.
+- [x] Full backoffice test suite: 20 files, 77 tests, all pass.
+- [x] Build succeeds (74 modules).
+- [x] Root server suite / function count unaffected — no backend files
+      touched this workstream.
+- [x] Design-fidelity review: both pages structurally match their
+      `.dc.html` mockups (List: stat cards + filterable roster table with
+      pagination footer — pagination controls omitted since only 8 demo
+      rows exist, not a real 70-row dataset; Detail: profile card + demo
+      performance summary + branch history, matching layout). Every
+      stat/field is DEMO data; `DemoBadge` visible in both headers.
 
 ## Definition of done
 
-- [ ] Full backoffice test suite passes
-- [ ] Build succeeds
-- [ ] DemoBadge visible on both pages
-- [ ] No stop condition hit — proceed into Workstream G
+- [x] Full backoffice test suite passes
+- [x] Build succeeds
+- [x] DemoBadge visible on both pages
+- [x] No stop condition hit — proceed into Workstream G
