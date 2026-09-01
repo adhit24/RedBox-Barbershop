@@ -9,6 +9,24 @@ function readFrontend(relativePath) {
   return fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'src', relativePath), 'utf8');
 }
 
+function frontendPublicAsset(relativePath) {
+  return path.join(__dirname, '..', '..', 'frontend', 'public', relativePath);
+}
+
+test('Stockist login, loading transition, and header use the approved RedBox brand assets', () => {
+  const login = readFrontend('app/admin/stockist/login/page.tsx');
+  const layout = readFrontend('app/admin/stockist/layout.tsx');
+  const transition = readFrontend('components/auth/PremiumLoginTransition.tsx');
+
+  assert.ok(fs.existsSync(frontendPublicAsset('Brand_assets/logo_hitam_trnsparan.png')));
+  assert.ok(fs.existsSync(frontendPublicAsset('Brand_assets/wordmark_hitam.png')));
+  assert.match(login, /logo_hitam_trnsparan\.png/);
+  assert.match(login, /wordmark_hitam\.png/);
+  assert.match(transition, /logo_hitam_trnsparan\.png/);
+  assert.match(transition, /wordmark_hitam\.png/);
+  assert.match(layout, /wordmark_hitam\.png/);
+});
+
 test('BottomNavBar is a reusable, route-aware component with the expected API', () => {
   const source = readFrontend('components/ui/bottom-nav-bar.tsx');
   assert.match(source, /usePathname/);

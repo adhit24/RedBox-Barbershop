@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { useUser } from '@/hooks/useUser';
 import { MotionConfig } from 'framer-motion';
 import { Home, Boxes, Truck, User, PackageCheck } from 'lucide-react';
@@ -140,12 +141,21 @@ export default function StockistLayout({ children }: { children: React.ReactNode
           >
             <span className="material-symbols-outlined text-[20px]">arrow_back</span>
           </button>
-        ) : (
-          <span className="material-symbols-outlined text-primary-container text-[22px] shrink-0">inventory_2</span>
-        )}
+        ) : null}
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-[17px] font-bold leading-tight text-text-primary">{header.title}</span>
-          {header.subtitle && <span className="truncate text-[11px] font-medium text-text-muted">{header.subtitle}</span>}
+          <div className="relative h-[28px] w-[134px] max-w-full overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-black/5">
+            <Image
+              src="/Brand_assets/wordmark_hitam.png"
+              alt="RedBox Barbershop"
+              fill
+              priority
+              className="object-contain px-1.5"
+              sizes="134px"
+            />
+          </div>
+          <span className="mt-0.5 truncate text-[10px] font-semibold leading-tight text-text-muted">
+            {header.title}{header.subtitle ? ` · ${header.subtitle}` : ''}
+          </span>
         </div>
         <button
           onClick={() => router.push(searchHref)}

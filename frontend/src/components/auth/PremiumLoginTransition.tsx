@@ -37,20 +37,20 @@ export function PremiumLoginTransition({
       <div className="pointer-events-none absolute inset-0" style={{ background: 'radial-gradient(ellipse 70% 45% at 50% 35%, rgba(199,40,32,0.11), transparent 72%)' }} />
       <div className="relative flex w-full max-w-[320px] flex-col items-center text-center">
         <motion.div
-          className="relative h-[118px] w-[118px] sm:h-[132px] sm:w-[132px]"
+          className="relative h-[132px] w-[132px] sm:h-[146px] sm:w-[146px]"
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
         >
-          <Image src="/Brand_assets/logo_transparant.png" alt="RedBox" fill priority className="object-contain" sizes="132px" />
+          <Image src="/Brand_assets/logo_hitam_trnsparan.png" alt="Logo RedBox Barbershop" fill priority className="object-contain p-3" sizes="146px" />
         </motion.div>
         <motion.div
-          className="relative mt-5 h-[34px] w-full"
+          className="relative mt-5 h-[56px] w-full"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.55, delay: 0.16 }}
         >
-          <Image src="/Brand_assets/logo_font.png" alt="RedBox Barbershop" fill priority className="object-contain" sizes="320px" />
+          <Image src="/Brand_assets/wordmark_hitam.png" alt="RedBox Barbershop" fill priority className="object-contain px-2 py-1" sizes="320px" />
         </motion.div>
         <div className="mt-7 w-full">
           <CoreSpinLoader />
