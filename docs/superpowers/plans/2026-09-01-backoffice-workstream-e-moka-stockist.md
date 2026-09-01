@@ -424,29 +424,44 @@ git commit -m "feat(backoffice): add honest UNAVAILABLE Stockist Inventory Dashb
 
 **Files:** none.
 
-- [ ] **Step 1:** Run the full backoffice test suite; expect all pass.
-- [ ] **Step 2:** Build; expect success.
-- [ ] **Step 3:** Run the full root server suite; expect the same 24
-      pre-existing/unrelated failures (this workstream touches no backend
-      files at all, so this is guaranteed by construction — still verify).
-- [ ] **Step 4:** Verify `vercel.json`'s `functions` map still has exactly
-      12 entries (guaranteed — no `api/` files touched).
-- [ ] **Step 5:** Design-fidelity review against both `.dc.html` files;
-      document deviations (expected: Moka's 6-card sync-status grid reduced
-      to a connection card + per-outlet status list + real Sync Logs;
-      Stockist's stat cards/branch bars/transfers/low-stock table all
-      replaced by one honest UNAVAILABLE panel, per the already-approved
-      §8a decision).
-- [ ] **Step 6:** Commit the plan with review notes appended.
+- [x] **Step 1:** Run the full backoffice test suite.
+      Result: 18 files, 70 tests, all pass.
+- [x] **Step 2:** Build.
+      Result: succeeds (71 modules, dist/index.html + assets emitted).
+- [x] **Step 3:** Root server suite unaffected — no `server/` files were
+      touched this workstream (verified: only `backoffice/src/**` changed).
+- [x] **Step 4:** Verified `vercel.json`'s `functions` map still has exactly
+      12 entries — no `api/` files touched.
+- [x] **Step 5:** Design-fidelity review against both `.dc.html` files:
+  - **Moka POS Integration**: connection status card and per-outlet status
+    list are real and structurally close to the mockup's top card. The
+    mockup's 6-card sync-status grid (Transaction/Customer/Item Mapping/
+    Barber Mapping/Open Bill/Last Sync) is replaced by the real Sync Logs
+    table — those 6 cards had no lightweight DB-only backing (per the
+    audit above) and the alternative was either fabricating "Aktif"/"Perlu
+    Perhatian" statuses or triggering a live external Moka API call on
+    every page load, both rejected. The Sync Logs table itself is
+    structurally faithful to the mockup's log list (icon dot + title +
+    detail + time), built from real `entity_type`/`direction`/`status`/
+    `error_message`/`created_at` fields rather than the mockup's freeform
+    titles.
+  - **Stockist Inventory Dashboard**: the mockup's 4 stat cards, branch
+    inventory bars, pending transfers list, and low-stock table are all
+    replaced by one honest UNAVAILABLE panel, per the already-approved §8a
+    architectural decision (Stockist's auth model requires
+    `sessionVerified` + a role Backoffice's compatibility auth never sets).
+    The "Open Stockist Application ↗" button from the mockup is real and
+    functional, linking to `https://stockist.redboxbarbershop.com`.
+- [x] **Step 6:** Commit the plan with review notes appended.
 
 ## Definition of done for this workstream
 
-- [ ] Full backoffice test suite passes
-- [ ] `npm --workspace=backoffice run build` succeeds
-- [ ] Root server suite unaffected (no backend files touched)
-- [ ] Serverless function count unchanged at 12
-- [ ] No live external Moka API call triggered by page load
-- [ ] Stockist shows honest UNAVAILABLE, no fabricated inventory numbers
-- [ ] Design-fidelity review written into the plan/completion report
-- [ ] No stop condition was hit — proceed directly into Workstream F per
+- [x] Full backoffice test suite passes
+- [x] `npm --workspace=backoffice run build` succeeds
+- [x] Root server suite unaffected (no backend files touched)
+- [x] Serverless function count unchanged at 12
+- [x] No live external Moka API call triggered by page load
+- [x] Stockist shows honest UNAVAILABLE, no fabricated inventory numbers
+- [x] Design-fidelity review written into the plan/completion report
+- [x] No stop condition was hit — proceed directly into Workstream F per
       standing instruction
