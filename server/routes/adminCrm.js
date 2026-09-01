@@ -17,6 +17,7 @@ const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('.
 const { linkNewlyCreatedBooking } = require('../services/bookingCustomerLinkage');
 const { getCustomer360 } = require('../crm/customer360Service');
 const { computeCustomerSegments, fetchVisitRows } = require('../crm/customerSegmentsService');
+const { computeBarberPerformance } = require('../crm/barberPerformanceService');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -720,6 +721,13 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
     const visitRows = await fetchVisitRows(supabase);
     const result = computeCustomerSegments(visitRows, { branch, limit, offset, search });
+    return res.json(result);
+  });
+
+  router.get('/barber-performance', adminAuth, async (req, res) => {
+    const branch = req.query.branch || 'all';
+    const visitRows = await fetchVisitRows(supabase);
+    const result = computeBarberPerformance(visitRows, { branch });
     return res.json(result);
   });
 
