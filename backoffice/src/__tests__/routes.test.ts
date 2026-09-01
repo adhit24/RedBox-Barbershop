@@ -17,8 +17,8 @@ describe('Backoffice route table', () => {
     expect(paths).not.toContain('/payroll/employee/:id');
   });
 
-  it('defines exactly the 3 remaining placeholder-only screens', () => {
-    expect(PLACEHOLDER_ROUTES).toHaveLength(3);
+  it('defines exactly the 2 remaining placeholder-only screens', () => {
+    expect(PLACEHOLDER_ROUTES).toHaveLength(2);
   });
 
   it('no longer defines /attendance as a placeholder (it has a real page)', () => {
