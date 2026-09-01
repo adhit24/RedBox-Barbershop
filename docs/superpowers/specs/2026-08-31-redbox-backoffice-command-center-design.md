@@ -113,7 +113,7 @@ LIVE instead) and never present DEMO data as real business numbers (`DemoBadge`:
 | 9 | Regular Payroll | DEMO | no salary/payroll backing |
 | 10 | Barber Payroll | DEMO | **no commission-rate source — never hardcode a %, e.g. no invented 30% rule** |
 | 11 | Payroll Employee Detail | DEMO | same as 8–10 |
-| 12 | Stockist Inventory Dashboard | **UNAVAILABLE** (auth gap, §8a) | `/api/stockist/*` all require `req.adminAuth.sessionVerified === true` + a role — Backoffice's shared-token auth never sets these. Not a missing-field gap; a 403 wall. Deferred, not routed around — `stockist.redboxbarbershop.com` remains operational source of truth regardless |
+| 12 | Stockist Inventory Dashboard | **UNAVAILABLE** (auth gap, §8a, shipped) | `/api/stockist/*` all require `req.adminAuth.sessionVerified === true` + a role — Backoffice's shared-token auth never sets these. Not a missing-field gap; a 403 wall. Honest UNAVAILABLE panel shipped with a real link to `stockist.redboxbarbershop.com`, which remains operational source of truth regardless |
 | 13 | Reports Overview | LIVE | static navigation directory to 14–17, no data fetching |
 | 14 | Branch Performance | LIVE / PARTIAL LIVE | `owner-revenue` + `customer-segments`' `by_branch` (§8b) — Cabang/Customer/Transaksi/Repeat real; Attendance Issue and Alert (health-status) columns omitted, no reliable/deterministic backing |
 | 15 | Customer Report | LIVE | `/api/admin/crm/customer-segments` (§8b) — KPIs, favorites, and customer table all real; 6-mo trend chart and by-branch panel from the design not yet rendered (data already in the response, layout-only gap) |
@@ -122,7 +122,7 @@ LIVE instead) and never present DEMO data as real business numbers (`DemoBadge`:
 | 18 | Operations | LIVE / PARTIAL LIVE | `bookings`, `schedules`, `/api/admin/crm/schedule`, booking reassign/reschedule/walkin |
 | 19 | CRM Overview | LIVE / PARTIAL LIVE | `/api/admin/crm/customer-segments` (§8b) — segments/KPIs/sample list real; points-expiring and birthdays-this-month UNAVAILABLE (no data source) |
 | 20 | Customer 360 | LIVE / PARTIAL LIVE | `/api/admin/crm/customer360` (§8b) — Overview-equivalent profile/activity/spending/preferences real; design's 6-tab layout (Visits/Bookings/Transactions/Membership/Notes) deferred — endpoint returns a summary, not itemized history lists |
-| 21 | Moka POS Integration | LIVE | `/api/moka/status`, `/sync-logs`, `/items`, `/map-items` |
+| 21 | Moka POS Integration | LIVE | `/api/moka/status` (B1), `/api/moka/sync-logs` (E, shipped) — connection status, per-outlet tokens, real sync logs. Design's 6-card sync-category grid omitted (no lightweight DB-only backing; `/api/moka/items` would require a live external Moka API call on every page load) |
 | 22 | Roles Permissions | DEMO / PARTIAL | `users.role` has no `manager`/`admin` split yet — shows target architecture only |
 | 23 | Package Feature Access | DEMO by design | product-planning screen, "Full Feature Review Mode" is the real current state |
 
