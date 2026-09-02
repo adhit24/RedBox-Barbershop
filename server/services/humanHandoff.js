@@ -342,13 +342,31 @@ function evaluateCaseSLA(handoffCase, nowMs = Date.now()) {
 
 const recordedSlaBreaches = new Set();
 
+async function checkDurableSlaBreachRecorded(supabase, caseId, ageBucket) {
+  if (!supabase || !caseId || !ageBucket) return false;
+  try {
+    const res = await supabase
+      .from('reddy_evaluation_events')
+      .select('id')
+      .eq('event_type', 'handoff_sla_breached')
+      .eq('handoff_case_id', caseId)
+      .contains('metadata', { age_bucket: ageBucket })
+      .limit(1);
+    const data = res?.data || res;
+    return Array.isArray(data) && data.length > 0;
+  } catch (_e) {
+    return false;
+  }
+}
+
 /**
- * Evaluates SLA for cases and records telemetry with age-bucket deduplication.
+ * Evaluates SLA for cases and records telemetry with durable age-bucket deduplication.
  */
-function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
+async function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
   const { recordEvaluationEvent } = require('./reddyEvaluationMonitoring');
   const results = [];
   const caseList = Array.isArray(cases) ? cases : [cases];
+  const supabase = deps.supabase || null;
 
   for (const item of caseList) {
     const sla = evaluateCaseSLA(item);
@@ -357,20 +375,30 @@ function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
     const dedupKey = `${sla.case_id}:${sla.age_bucket}`;
     if (recordedSlaBreaches.has(dedupKey)) continue;
 
+    if (supabase) {
+      const alreadyRecorded = await checkDurableSlaBreachRecorded(supabase, sla.case_id, sla.age_bucket);
+      if (alreadyRecorded) {
+        recordedSlaBreaches.add(dedupKey);
+        continue;
+      }
+    }
+
     recordedSlaBreaches.add(dedupKey);
     results.push(sla);
 
-    Promise.resolve(recordEvaluationEvent({
-      event_type: 'handoff_sla_breached',
-      severity: sla.severity,
-      branch: sla.branch,
-      handoff_case_id: sla.case_id,
-      metadata: {
-        priority: sla.priority,
-        age_minutes: sla.age_minutes,
-        age_bucket: sla.age_bucket,
-      },
-    }, deps)).catch(() => {});
+    try {
+      await recordEvaluationEvent({
+        event_type: 'handoff_sla_breached',
+        severity: sla.severity,
+        branch: sla.branch,
+        handoff_case_id: sla.case_id,
+        metadata: {
+          priority: sla.priority,
+          age_minutes: sla.age_minutes,
+          age_bucket: sla.age_bucket,
+        },
+      }, deps);
+    } catch (_e) {}
   }
 
   return results;

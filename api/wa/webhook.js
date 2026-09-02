@@ -1344,7 +1344,7 @@ function extractForeignService(text) {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null }, deps = {}) {
+async function handleMessage({ from, name, text, device, receiver, branch: explicitBranchParam, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null }, deps = {}) {
   const {
     loadConversationHistory = getHistory,
     checkHumanTakeover = null,
@@ -1374,7 +1374,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     persistConversation = persistConversationExchange,
   } = deps;
 
-  let branch = branchFromPayload;
+  let branch = branchFromPayload || explicitBranchParam;
   if (!branch) {
     branch = detectBranchFromNumber(receiver || device || from);
   }
@@ -1527,6 +1527,19 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   let used = 'openai';
   let error = null;
 
+  const sendAndPersistFinalReply = async (replyText, routeUsed, extraMeta = {}) => {
+    reply = replyText;
+    used = routeUsed;
+    const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, extraMeta, providerDeviceHash);
+      } catch (_e) {}
+    }
+    return { used, reply, sendResult, error: null };
+  };
+
   // Existing language routing owns presentation before the fact gate.
   const useForeignPresentation = (isForeignLanguage(text)
     || (presenceIntent.matched && responseLanguage !== 'indonesian'))
@@ -1576,7 +1589,6 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const positionIntent = classifyBarberPositionIntent(text);
   if (positionIntent.matched) {
     reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak.';
-    used = 'barber_position_identity';
 
     const requiresHumanCheck = /\b(?:admin|petugas|orang|pegawai|tanyakan|cek\s+ke)\b/i.test(text);
     if (requiresHumanCheck) {
@@ -1598,14 +1610,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       }
     }
 
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'barber_position_identity');
   }
 
   // Fast keyword intercept (before OpenAI — deterministic, no hallucination)
@@ -1620,29 +1625,11 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const isWedding = /(wedding|pernikahan|nikah|pengantin|prewedding|pre-wedding)/.test(msgLower);
 
   if (isHomeService) {
-    reply = 'Untuk home service, booking-nya lewat halaman khusus ya kak 😊 redboxbarbershop.com/home-service.html';
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply('Untuk home service, booking-nya lewat halaman khusus ya kak 😊 redboxbarbershop.com/home-service.html', 'policy');
   }
 
   if (isWedding && /\b(h-?2|2\s*hari|besok|lusa|tomorrow|day after tomorrow)\b/.test(msgLower)) {
-    reply = 'Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.';
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply('Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.', 'policy');
   }
 
   if (isOtw) {
@@ -1652,30 +1639,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     } else {
       reply = `Siap kak. Biar slot dan jamnya aman, cek atau buat booking dulu di ${bookingUrl(branch)} ya ✂️`;
     }
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'policy');
   }
 
   const isPersonalHistoryOrPreferenceSignal = /\b(saya|aku|ku|terakhir|riwayat|histori|history|biasanya|favorit|sering|pernah|kapan|sama siapa)\b/.test(msgLower);
 
   if (isWalkIn) {
-    reply = `Boleh datang langsung Kak, tapi slot walk-in tergantung antrian outlet. Biar jamnya terjamin, mendingan dikunci lewat web booking: ${bookingUrl(branch)}`;
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(`Boleh datang langsung Kak, tapi slot walk-in tergantung antrian outlet. Biar jamnya terjamin, mendingan dikunci lewat web booking: ${bookingUrl(branch)}`, 'policy');
   }
 
   const isSpecificServiceInquiry = /(gentleman|grooming|junior|father|son|combo|hot towel|shave|beard|trim|treatment|spa|coloring|color|cat|semir|ear candle)/i.test(msgLower);
@@ -1684,33 +1654,15 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
                'list layanan', 'apa aja layanan', 'apa saja layanan', 'layanan saja', 'layanan aja',
                'service saja', 'service aja', 'ada layanan', 'ada service'])) {
     const svcText = buildServicesText(branch);
-    reply = `Berikut layanan di RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
-    used = 'keyword';
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(`Berikut layanan di RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`, 'keyword');
   }
 
   if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'price', 'tarif', 'biaya', 'bayar berapa', 'kena berapa'])) {
     const svcText = buildServicesText(branch);
-    reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
-    used = 'keyword';
     Promise.resolve(recordEvaluation({
       event_type: 'keyword_shortcut_used', branch, intent: 'price_inquiry', route: 'keyword',
     })).catch(() => {});
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(`Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`, 'keyword');
   }
 
   // Same-Channel Loop Prevention & Official Contact (P0-B)
@@ -1736,7 +1688,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     const contactBranchId = explicitContactBranch ? explicitContactBranch.id : branch;
     const isSameChannelContact = contactBranchId === branch;
 
-    if (isChannelLoopQuestion || isSameChannelContact) {
+    if (isChannelLoopQuestion && isSameChannelContact) {
       const branchLabel = BRANCH_LABEL[branch] || 'Redbox Barbershop';
       const handoffCreation = await createHandoffCase({
         customerPhone: from,
@@ -1759,31 +1711,17 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         reply = `Betul Kak, ini WhatsApp ${branchLabel}. Ada yang bisa aku bantu untuk info layanan, harga, atau booking?`;
       }
 
-      used = 'same_channel_loop_prevention';
-      const sendResult = await send(from, reply, { branch });
-      const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-      if (sendSucceeded) {
-        try {
-          await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-        } catch (_e) {}
-      }
-      return { used, reply, sendResult, error: null };
+      return sendAndPersistFinalReply(reply, 'same_channel_loop_prevention');
     }
 
     const contactResolution = resolveOfficialBranchContact(contactBranchId);
-    reply = contactResolution.reply;
-    used = 'keyword';
+    reply = isSameChannelContact
+      ? `Ini memang WhatsApp ${BRANCH_LABEL[branch] || 'Redbox Barbershop'}, Kak.`
+      : contactResolution.reply;
     Promise.resolve(recordEvaluation({
       event_type: 'keyword_shortcut_used', branch, intent: 'contact_inquiry', route: 'keyword',
     })).catch(() => {});
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'keyword');
   }
 
   // Payment method authority boundary (P1-E)
