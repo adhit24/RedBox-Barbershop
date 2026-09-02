@@ -1497,6 +1497,12 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
     const sendResult = await send(from, pointsReply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, [], text, pointsReply, { intent: 'points_inquiry' }, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
   }
 
@@ -2643,12 +2649,14 @@ module.exports = async function handler(req, res, testDeps = {}) {
     const inboundEventRowId = inboundAdmission.status === 'claimed' ? (inboundAdmission.row?.id || null) : null;
 
     if (inboundEventRowId) {
-      supabaseForGuard
-        .from('wa_inbound_events')
-        .update({ correlation_id: correlationId })
-        .eq('id', inboundEventRowId)
-        .then(() => {})
-        .catch(() => {});
+      try {
+        await supabaseForGuard
+          .from('wa_inbound_events')
+          .update({ correlation_id: correlationId })
+          .eq('id', inboundEventRowId);
+      } catch (_e) {
+        // Fail-open: best-effort write, never suppresses customer reply
+      }
     }
 
     // P0 outer safety net (Objective A): every return/throw between here and
@@ -2723,35 +2731,8 @@ module.exports = async function handler(req, res, testDeps = {}) {
       }
     }
 
-    // 🔍 Cari nomor cabang di SELURUH payload!
-    const BRANCH_WA = {
-      bypass: '0818202569',
-      samadikun: '0818202589',
-      csb: '0818202889',
-      sumber: '0818202599',
-      tegal: '0818268883'
-    };
-    const findBranchInPayload = (obj) => {
-      for (const [key, value] of Object.entries(obj)) {
-        if (typeof value === 'string') {
-          for (const [branch, number] of Object.entries(BRANCH_WA)) {
-            if (value.includes(number)) {
-              console.log('[WA Bot] Branch marker found in webhook payload:', { branch });
-              return branch;
-            }
-          }
-        } else if (typeof value === 'object' && value !== null) {
-          const found = findBranchInPayload(value);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-    // Scans the FULL raw structure (envelope + any nesting), not just the
-    // bounded canonical field list — a branch marker can legitimately appear
-    // on a field this normalizer does not track.
-    branchFromPayload = findBranchInPayload(rawBody);
-    console.log('[WA Bot] Branch deep-scan completed:', { branch: branchFromPayload || 'not_found' });
+    const detectedBranchFromPayload = detectBranchFromNumber(receiver || device || sender);
+    branchFromPayload = detectedBranchFromPayload;
 
     // Filter pesan keluar — classifier shared di atas adalah satu-satunya
     // authority untuk status/self/customer/unsupported.
@@ -2797,6 +2778,13 @@ module.exports = async function handler(req, res, testDeps = {}) {
     // Guard: abaikan pesan yang masuk dari nomor WA cabang lain (cegah bot-to-bot feedback loop).
     // Terjadi ketika forwardBookingToBranch kirim notif ke nomor cabang → bot penerima
     // membalas ke pengirim → loop tak berujung lintas cabang.
+    const BRANCH_WA = {
+      bypass: '0818202569',
+      samadikun: '0818202589',
+      csb: '0818202889',
+      sumber: '0818202599',
+      tegal: '0818268883'
+    };
     const BRANCH_WA_NORMALIZED = Object.values(BRANCH_WA).map(n => n.replace(/\D/g, '').replace(/^0/, '62'));
     const senderNormalized = normalizePhone(sender).replace(/^0/, '62');
     if (BRANCH_WA_NORMALIZED.includes(senderNormalized)) {
@@ -2810,6 +2798,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'branch_number_suppressed', {
         source: 'branch_number_suppression',
         branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
+        correlationId,
       });
       return res.status(200).json({ status: 'ignored', reason: 'from_branch_number' });
     }
@@ -2953,7 +2942,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
         // suppression above) since no automated Reddy send occurred for
         // this inbound event.
         await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'admin_command_handled', {
-          source: 'admin_command', branch: branchForGuardTelemetry,
+          source: 'admin_command', branch: branchForGuardTelemetry, correlationId,
         });
         return res.status(200).json({ status: 'ok', admin_command: true });
       }
@@ -2986,7 +2975,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
       });
       console.log('[WA Bot] AI suppressed — Task 15 handoff state active:', { status: handoffState.status });
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'handoff_active', {
-        source: 'handoff_suppression', branch: handoffState.case?.branch || branchForGuardTelemetry || null,
+        source: 'handoff_suppression', branch: handoffState.case?.branch || branchForGuardTelemetry || null, correlationId,
       });
       return res.status(200).json({ status: 'ok', suppressed: true, reason: 'handoff_active' });
     }
@@ -2999,7 +2988,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
     if (humanActive) {
       console.log('[WA Bot] AI paused — human takeover active');
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'legacy_human_takeover', {
-        source: 'legacy_pause_suppression', branch: branchForGuardTelemetry,
+        source: 'legacy_pause_suppression', branch: branchForGuardTelemetry, correlationId,
       });
       return res.status(200).json({ status: 'ignored', reason: 'human_takeover' });
     }

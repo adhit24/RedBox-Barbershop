@@ -284,7 +284,7 @@ async function listWaitingCases(deps = {}) {
       .limit(limit);
 
     const cases = data || [];
-    evaluateAndRecordHandoffSLA(cases, deps);
+    await evaluateAndRecordHandoffSLA(cases, deps);
     return cases;
   } catch (_error) {
     return [];
@@ -308,35 +308,41 @@ function evaluateCaseSLA(handoffCase, nowMs = Date.now()) {
   let ageBucket = null;
 
   if (priority === PRIORITIES.URGENT) {
-    if (ageMinutes >= 10) {
+    if (ageMinutes >= 15 && ageMinutes < 60) {
+      severity = 'HIGH';
+      ageBucket = '15m-1h';
+    } else if (ageMinutes >= 60) {
       severity = 'CRITICAL';
-      ageBucket = ageMinutes >= 60 ? '>1h' : '10m-1h';
+      ageBucket = '>1h';
     }
   } else if (priority === PRIORITIES.HIGH) {
-    if (ageMinutes >= 30) {
+    if (ageMinutes >= 20 && ageMinutes < 90) {
+      severity = 'WARNING';
+      ageBucket = '20m-90m';
+    } else if (ageMinutes >= 90) {
       severity = 'HIGH';
-      ageBucket = ageMinutes >= 120 ? '>2h' : '30m-2h';
+      ageBucket = '>90m';
     }
   } else {
-    // Normal priority
-    if (ageMinutes >= 120) {
-      severity = 'HIGH';
-      ageBucket = '>2h';
-    } else if (ageMinutes >= 30) {
+    // Normal / default
+    if (ageMinutes >= 30 && ageMinutes < 120) {
       severity = 'WARNING';
       ageBucket = '30m-2h';
+    } else if (ageMinutes >= 120) {
+      severity = 'HIGH';
+      ageBucket = '>2h';
     }
   }
 
-  if (!severity) return null;
+  if (!severity || !ageBucket) return null;
 
   return {
     case_id: handoffCase.id,
-    branch: handoffCase.branch || 'unknown',
+    branch: handoffCase.branch || null,
     priority,
-    severity,
     age_minutes: ageMinutes,
     age_bucket: ageBucket,
+    severity,
   };
 }
 
@@ -363,7 +369,8 @@ async function checkDurableSlaBreachRecorded(supabase, caseId, ageBucket) {
  * Evaluates SLA for cases and records telemetry with durable age-bucket deduplication.
  */
 async function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
-  const { recordEvaluationEvent } = require('./reddyEvaluationMonitoring');
+  const { recordEvaluationEvent: defaultRecordFn } = require('./reddyEvaluationMonitoring');
+  const recordFn = deps.recordEvaluationEvent || defaultRecordFn;
   const results = [];
   const caseList = Array.isArray(cases) ? cases : [cases];
   const supabase = deps.supabase || null;
@@ -383,11 +390,8 @@ async function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
       }
     }
 
-    recordedSlaBreaches.add(dedupKey);
-    results.push(sla);
-
     try {
-      await recordEvaluationEvent({
+      const recordResult = await recordFn({
         event_type: 'handoff_sla_breached',
         severity: sla.severity,
         branch: sla.branch,
@@ -398,7 +402,15 @@ async function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
           age_bucket: sla.age_bucket,
         },
       }, deps);
-    } catch (_e) {}
+
+      const recordSuccess = !recordResult || recordResult.status === 'recorded' || recordResult.status === 'success' || recordResult.wrote !== false;
+      if (recordSuccess) {
+        recordedSlaBreaches.add(dedupKey);
+        results.push(sla);
+      }
+    } catch (_e) {
+      // Do NOT commit dedupKey if event recording failed, allowing retry on next run
+    }
   }
 
   return results;

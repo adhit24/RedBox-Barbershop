@@ -97,17 +97,20 @@ async function terminalizeInbound(supabase, inboundEventRowId, status, rawReason
       .select('id, processing_status');
 
     if (error) {
-      // Fail-safe: if failure_reason, terminal_source, or correlation_id failed
-      // due to column absence (code 42703) or check constraint failure (code 23514),
-      // update ONLY processing_status and updated_at so the row NEVER stays processing.
-      const fallbackRes = await supabase
-        .from('wa_inbound_events')
-        .update({ processing_status: status, updated_at: new Date().toISOString() })
-        .eq('id', inboundEventRowId)
-        .in('processing_status', RECLAIMABLE_BY_THIS_MODULE)
-        .select('id, processing_status');
-      data = fallbackRes.data;
-      error = fallbackRes.error;
+      const errCode = String(error.code || '');
+      const provenanceFallbackAllowed = errCode === '42703' || errCode === '23514';
+
+      if (provenanceFallbackAllowed) {
+        // Optional provenance schema fallback ONLY for proven schema constraint/missing column errors
+        const fallbackRes = await supabase
+          .from('wa_inbound_events')
+          .update({ processing_status: status, updated_at: new Date().toISOString() })
+          .eq('id', inboundEventRowId)
+          .in('processing_status', RECLAIMABLE_BY_THIS_MODULE)
+          .select('id, processing_status');
+        data = fallbackRes.data;
+        error = fallbackRes.error;
+      }
     }
 
     if (error) return { wrote: false, error };
