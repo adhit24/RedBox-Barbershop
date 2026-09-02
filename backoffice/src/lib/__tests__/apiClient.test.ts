@@ -1,25 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const getSession = vi.fn();
+
+vi.mock('../supabase', () => ({
+  supabase: {
+    auth: { getSession },
+  },
+}));
+
 import {
   apiClient,
-  storeToken,
-  clearToken,
   onUnauthorized,
   ApiError,
 } from '../apiClient';
 
 describe('apiClient', () => {
   beforeEach(() => {
-    sessionStorage.clear();
+    getSession.mockReset();
+    getSession.mockResolvedValue({ data: { session: null } });
     vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    clearToken();
   });
 
-  it('attaches the x-admin-token header when a token is stored', async () => {
-    storeToken('secret-token');
+  it('attaches the Supabase access token as a bearer authorization header', async () => {
+    getSession.mockResolvedValue({ data: { session: { access_token: 'supabase-session-token' } } });
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), { status: 200 })
     );
@@ -27,10 +34,12 @@ describe('apiClient', () => {
     await apiClient.get('/api/test');
 
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect((init.headers as Headers).get('x-admin-token')).toBe('secret-token');
+    const headers = init.headers as Headers;
+    expect(headers.get('Authorization')).toBe('Bearer supabase-session-token');
+    expect(headers.has('x-admin-token')).toBe(false);
   });
 
-  it('does not attach the x-admin-token header when no token is stored', async () => {
+  it('does not attach a legacy admin token when no Supabase session exists', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), { status: 200 })
     );
@@ -38,7 +47,9 @@ describe('apiClient', () => {
     await apiClient.get('/api/test');
 
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect((init.headers as Headers).has('x-admin-token')).toBe(false);
+    const headers = init.headers as Headers;
+    expect(headers.has('Authorization')).toBe(false);
+    expect(headers.has('x-admin-token')).toBe(false);
   });
 
   it('notifies onUnauthorized listeners and throws ApiError on a 401 response', async () => {
@@ -50,6 +61,19 @@ describe('apiClient', () => {
 
     await expect(apiClient.get('/api/test')).rejects.toBeInstanceOf(ApiError);
     expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+  });
+
+  it('does not force logout on a 403 authorization response', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response('forbidden', { status: 403 })
+    );
+    const listener = vi.fn();
+    const unsubscribe = onUnauthorized(listener);
+
+    await expect(apiClient.get('/api/test')).rejects.toMatchObject({ status: 403 });
+    expect(listener).not.toHaveBeenCalled();
 
     unsubscribe();
   });
