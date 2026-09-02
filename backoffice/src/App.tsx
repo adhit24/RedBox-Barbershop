@@ -12,6 +12,9 @@ import { MembershipReport } from './pages/MembershipReport';
 import { ReportsOverview } from './pages/ReportsOverview';
 import { BranchPerformance } from './pages/BranchPerformance';
 import { BarberPerformance } from './pages/BarberPerformance';
+import { BookingPerformance } from './pages/BookingPerformance';
+import { AttendanceReport } from './pages/AttendanceReport';
+import { InventoryReport } from './pages/InventoryReport';
 import { MokaIntegration } from './pages/MokaIntegration';
 import { StockistDashboard } from './pages/StockistDashboard';
 import { HREmployeeList } from './pages/HREmployeeList';
@@ -49,6 +52,9 @@ export default function App() {
           <Route path="/reports" element={<ReportsOverview />} />
           <Route path="/reports/branches" element={<BranchPerformance />} />
           <Route path="/reports/barbers" element={<BarberPerformance />} />
+          <Route path="/reports/bookings" element={<BookingPerformance />} />
+          <Route path="/reports/attendance" element={<AttendanceReport />} />
+          <Route path="/reports/inventory" element={<InventoryReport />} />
           <Route path="/moka" element={<MokaIntegration />} />
           <Route path="/stockist" element={<StockistDashboard />} />
           <Route path="/hr" element={<HREmployeeList />} />
