@@ -32,6 +32,30 @@ const TERMINAL_STATUSES = new Set(['sent', 'failed']);
 // states themselves (nothing to do).
 const RECLAIMABLE_BY_THIS_MODULE = ['received', 'processing'];
 
+const CANONICAL_FAILURE_REASONS = Object.freeze(new Set([
+  'unexpected_pre_send_exit',
+  'processing_failed',
+  'model_call_failed',
+  'crm_context_failed',
+  'duplicate_suppressed',
+  'rate_limited',
+  'reddy_disabled',
+  'branch_number_suppressed',
+  'admin_command_handled',
+  'handoff_active',
+  'legacy_human_takeover',
+  'internal_exception',
+  'invalid_fonnte_envelope',
+  'unsupported_webhook_event',
+  'kill_switch_suppressed',
+]));
+
+function normalizeFailureReason(reason) {
+  const r = String(reason || '').trim().toLowerCase();
+  if (CANONICAL_FAILURE_REASONS.has(r)) return r;
+  return 'internal_exception';
+}
+
 /**
  * Conditionally terminalizes a claimed inbound event. Returns
  * { wrote: boolean } — wrote=false means the row was already terminal (or
@@ -43,13 +67,15 @@ const RECLAIMABLE_BY_THIS_MODULE = ['received', 'processing'];
  * @param {'failed'|'sent'} status - 'sent' is accepted for completeness but
  *   in practice this module is only ever called with 'failed' — a real send
  *   success is reported exclusively via complete_wa_automated_send.
- * @param {string} reason - bounded, non-PII reason tag for telemetry.
+ * @param {string} rawReason - bounded, non-PII reason tag for telemetry.
  * @param {object} [options]
  * @param {string} [options.source] - which call site triggered this, for telemetry.
  * @param {string|null} [options.branch]
  */
-async function terminalizeInbound(supabase, inboundEventRowId, status, reason, { source = 'unknown', branch = null, correlationId = null } = {}) {
+async function terminalizeInbound(supabase, inboundEventRowId, status, rawReason, { source = 'unknown', branch = null, correlationId = null } = {}) {
   if (!supabase || !inboundEventRowId || !TERMINAL_STATUSES.has(status)) return { wrote: false };
+  const reason = status === 'failed' && rawReason ? normalizeFailureReason(rawReason) : null;
+
   try {
     const updatePayload = {
       processing_status: status,
@@ -70,7 +96,10 @@ async function terminalizeInbound(supabase, inboundEventRowId, status, reason, {
       .in('processing_status', RECLAIMABLE_BY_THIS_MODULE)
       .select('id, processing_status');
 
-    if (error && (error.code === '42703' || String(error.message || '').includes('column'))) {
+    if (error) {
+      // Fail-safe: if failure_reason, terminal_source, or correlation_id failed
+      // due to column absence (code 42703) or check constraint failure (code 23514),
+      // update ONLY processing_status and updated_at so the row NEVER stays processing.
       const fallbackRes = await supabase
         .from('wa_inbound_events')
         .update({ processing_status: status, updated_at: new Date().toISOString() })
@@ -84,8 +113,6 @@ async function terminalizeInbound(supabase, inboundEventRowId, status, reason, {
     if (error) return { wrote: false, error };
     const wrote = Array.isArray(data) && data.length === 1;
     if (wrote) {
-      // Observer-only, fail-open — never let telemetry failure affect the
-      // caller. Bounded, non-PII dimensions only (see telemetry.js allowlist).
       try {
         logInboundLifecycleEvent({
           event_type: 'inbound_terminalized', new_status: status, reason, source, branch, correlation_id: correlationId,
@@ -113,6 +140,8 @@ async function terminalizeIfStillProcessing(supabase, inboundEventRowId, { sourc
 module.exports = {
   TERMINAL_STATUSES,
   RECLAIMABLE_BY_THIS_MODULE,
+  CANONICAL_FAILURE_REASONS,
+  normalizeFailureReason,
   terminalizeInbound,
   terminalizeIfStillProcessing,
 };

@@ -282,7 +282,10 @@ async function listWaitingCases(deps = {}) {
       .order('priority_rank', { ascending: true })
       .order('created_at', { ascending: true })
       .limit(limit);
-    return data || [];
+
+    const cases = data || [];
+    evaluateAndRecordHandoffSLA(cases, deps);
+    return cases;
   } catch (_error) {
     return [];
   }
@@ -337,6 +340,42 @@ function evaluateCaseSLA(handoffCase, nowMs = Date.now()) {
   };
 }
 
+const recordedSlaBreaches = new Set();
+
+/**
+ * Evaluates SLA for cases and records telemetry with age-bucket deduplication.
+ */
+function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
+  const { recordEvaluationEvent } = require('./reddyEvaluationMonitoring');
+  const results = [];
+  const caseList = Array.isArray(cases) ? cases : [cases];
+
+  for (const item of caseList) {
+    const sla = evaluateCaseSLA(item);
+    if (!sla) continue;
+
+    const dedupKey = `${sla.case_id}:${sla.age_bucket}`;
+    if (recordedSlaBreaches.has(dedupKey)) continue;
+
+    recordedSlaBreaches.add(dedupKey);
+    results.push(sla);
+
+    Promise.resolve(recordEvaluationEvent({
+      event_type: 'handoff_sla_breached',
+      severity: sla.severity,
+      branch: sla.branch,
+      handoff_case_id: sla.case_id,
+      metadata: {
+        priority: sla.priority,
+        age_minutes: sla.age_minutes,
+        age_bucket: sla.age_bucket,
+      },
+    }, deps)).catch(() => {});
+  }
+
+  return results;
+}
+
 module.exports = {
   OPEN_STATUSES,
   SUPPRESSED_STATUSES,
@@ -353,4 +392,6 @@ module.exports = {
   resolveCase,
   listWaitingCases,
   evaluateCaseSLA,
+  evaluateAndRecordHandoffSLA,
+  recordedSlaBreaches,
 };

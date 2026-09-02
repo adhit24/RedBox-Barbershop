@@ -44,22 +44,37 @@ const SPANISH_PRESENCE_QUERY = new RegExp(
   'iu',
 );
 
-const POSITION_INTENT_PATTERNS = [
-  /\b(?:kursi|kursi\s*n(?:o|omor)?\s*\d+|posisi|sebelah\s*(?:kiri|kanan|depan|belakang)|di\s+kursi)\b/i,
-  /\b(?:siapa\s+yang\s+(?:duduk|berdiri|di\s+kursi))\b/i,
-  /\b(?:yang\s+lagi\s+di\s+kursi)\b/i,
+const SPATIAL_SEAT_INDICATORS = /\b(kursi\s*(?:no\.?|nomor)?\s*\d+|sebelah\s*(?:kiri|kanan|depan|belakang)|bangku\s*\d*|posisi\s*(?:kapster|barber))\b/i;
+const PERSON_IDENTITY_INDICATORS = /\b(siapa|mas\s+siapa|nama(?:nya)?|bukan)\b/i;
+
+const DIRECT_POSITION_IDENTITY_PATTERNS = [
+  /\b(?:kursi\s*(?:no\.?|nomor)?\s*\d+)\b.*\b(?:siapa|nama)\b/i,
+  /\b(?:sebelah\s*(?:kiri|kanan|depan|belakang))\b.*\b(?:siapa|nama|mas|bukan)\b/i,
+  /\bposisi\s*(?:kapster|barber)\b/i,
+  /\b(?:yang\s+(?:lagi\s+)?di\s+kursi)\b.*\b(?:siapa|nama)\b/i,
 ];
 
 /**
  * Classifies barber seat / position identity queries (P1-C).
- * Example: "yang di kursi 2 itu siapa?", "yang sebelah kiri Mas siapa?"
+ * Positive: "yang di kursi 2 itu siapa?", "kapster di kursi 3 namanya siapa?", "yang sebelah kiri Mas siapa?"
+ * Negative: "posisi cabang Tegal di mana?", "posisi booking saya bagaimana?", "kursi tunggu ada?"
  */
 function classifyBarberPositionIntent(text) {
   const raw = String(text || '').trim();
   if (!raw) return { matched: false };
-  const matched = POSITION_INTENT_PATTERNS.some((pattern) => pattern.test(raw));
-  if (!matched) return { matched: false };
-  return { matched: true, intent: 'barber_position_identity' };
+
+  // Guard against generic location, booking status, or facility false-positives
+  const isGenericLocationOrBooking = /\b(?:posisi\s*(?:cabang|outlet|lokasi|toko|booking|pesanan|antrian)|kursi\s*tunggu)\b/i.test(raw);
+  if (isGenericLocationOrBooking) return { matched: false };
+
+  const hasDirectPattern = DIRECT_POSITION_IDENTITY_PATTERNS.some((p) => p.test(raw));
+  const hasSpatial = SPATIAL_SEAT_INDICATORS.test(raw);
+  const hasIdentity = PERSON_IDENTITY_INDICATORS.test(raw);
+
+  if (hasDirectPattern || (hasSpatial && hasIdentity)) {
+    return { matched: true, intent: 'barber_position_identity' };
+  }
+  return { matched: false };
 }
 
 /**

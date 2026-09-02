@@ -315,7 +315,7 @@ function buildSafeStatement(verifiedSchedule, {
 
 /**
  * Location and Payment Method Fact Guard (P1-D, P1-E).
- * Blocks unverified floor/unit details and unverified QRIS/payment method claims.
+ * Performs sentence-level sanitization for unverified floor/unit details and unverified QRIS/payment claims.
  */
 function guardLocationAndPaymentFacts(reply) {
   if (typeof reply !== 'string' || !reply.trim()) {
@@ -340,11 +340,35 @@ function guardLocationAndPaymentFacts(reply) {
     }
   }
 
-  // Unverified payment method claim guard
-  const UNVERIFIED_PAYMENT_CLAIM = /\b(?:qris|qr\s*code|debit|kartu\s*kredit|cashless)\s+(?:tersedia|bisa|diterima)\b/i;
-  if (UNVERIFIED_PAYMENT_CLAIM.test(sanitized)) {
-    sanitized = 'Untuk metode pembayaran yang tersedia saat ini, aku belum punya data resmi per cabang. Tim cabang bisa konfirmasi langsung.';
-    triggered = true;
+  // Unverified payment method claim patterns (natural Indonesian forms)
+  const UNVERIFIED_PAYMENT_PATTERNS = [
+    /\b(?:bisa\s+bayar\s+pakai|bisa\s+pakai|bisa\s+bayar|terima|diterima)\s+(?:qris|qr|debit|kartu|cashless|gopay|ovo|dana|shopeepay)\b/i,
+    /\b(?:qris|qr\s*code|qr|debit|kartu\s*kredit|kartu\s*debit|cashless)\s+(?:tersedia|bisa|diterima|bisa\s+pakai)\b/i,
+    /\bterima\s+qris\b/i,
+    /\bpembayaran\s+debit\s+bisa\b/i,
+  ];
+
+  const sentences = splitIntoSentences(sanitized);
+  let paymentTriggered = false;
+
+  const sanitizedSentences = sentences.map((sentence) => {
+    const isViolating = UNVERIFIED_PAYMENT_PATTERNS.some((p) => p.test(sentence));
+    if (isViolating) {
+      paymentTriggered = true;
+      triggered = true;
+      return 'Untuk metode pembayaran yang tersedia saat ini, aku belum punya data resmi per cabang. Tim cabang bisa konfirmasi langsung.';
+    }
+    return sentence;
+  });
+
+  if (paymentTriggered) {
+    // Deduplicate replacement sentence if multiple sentences triggered
+    const unique = [];
+    for (const s of sanitizedSentences) {
+      if (s.includes('Untuk metode pembayaran yang tersedia saat ini') && unique.includes(s)) continue;
+      unique.push(s);
+    }
+    sanitized = unique.join('\n').trim();
   }
 
   return { sanitizedReply: sanitized, triggered };

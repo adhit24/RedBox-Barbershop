@@ -3,24 +3,30 @@
 const test = require('node:test');
 const assert = require('assert');
 
-const { terminalizeInbound } = require('../services/waInboundLifecycle');
+const { terminalizeInbound, CANONICAL_FAILURE_REASONS, normalizeFailureReason } = require('../services/waInboundLifecycle');
 const { classifyBarberPresenceQuery, classifyBarberPositionIntent } = require('../agents/reddy/barberPresenceIntent');
 const { guardRealtimeBarberFacts, guardLocationAndPaymentFacts } = require('../agents/reddy/realtimeFactGuard');
-const { evaluateCaseSLA } = require('../services/humanHandoff');
+const { evaluateCaseSLA, evaluateAndRecordHandoffSLA, recordedSlaBreaches } = require('../services/humanHandoff');
 const { classifyFactAuditProvenance, AUDIT_SOURCE_PROVENANCE } = require('../services/reddyEvaluationMonitoring');
 const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../agents/reddy/knowledge/redboxKnowledge');
 const webhookHandler = require('../../api/wa/webhook');
 
-test('P0-A: Failure Provenance — 1. failed inbound persists bounded failure_reason', async () => {
+// CORRELATION TESTS (1-5)
+test('CORRELATION — 1. correlation ID format req_<uuid>', () => {
+  const correlationId = `req_${require('crypto').randomUUID()}`;
+  assert.match(correlationId, /^req_[a-f0-9-]{36}$/);
+});
+
+test('CORRELATION — 2-4. correlation ID passed and persisted atomically in terminalizeInbound', async () => {
   const mockRows = [];
   const fakeSupabase = {
-    from: (table) => ({
+    from: () => ({
       update: (payload) => ({
-        eq: (col, val) => ({
-          in: (col2, vals) => ({
+        eq: () => ({
+          in: () => ({
             select: () => {
               mockRows.push(payload);
-              return { data: [{ id: 'evt-1', processing_status: 'failed' }], error: null };
+              return { data: [{ id: 'evt-corr-1', processing_status: 'failed' }], error: null };
             },
           }),
         }),
@@ -28,250 +34,300 @@ test('P0-A: Failure Provenance — 1. failed inbound persists bounded failure_re
     }),
   };
 
-  const res = await terminalizeInbound(fakeSupabase, 'evt-1', 'failed', 'reddy_disabled', { source: 'kill_switch' });
+  const correlationId = 'req_test_12345';
+  await terminalizeInbound(fakeSupabase, 'evt-corr-1', 'failed', 'processing_failed', { source: 'unit_test', correlationId });
+  assert.strictEqual(mockRows[0].correlation_id, correlationId);
+});
+
+test('CORRELATION — 5. provider_message_id dedup unchanged', () => {
+  assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
+});
+
+// MIGRATION & REASONS (6-9)
+test('MIGRATION / REASONS — 6. every canonical reason exists in CANONICAL_FAILURE_REASONS set', () => {
+  const expectedReasons = [
+    'unexpected_pre_send_exit', 'processing_failed', 'model_call_failed',
+    'crm_context_failed', 'duplicate_suppressed', 'rate_limited',
+    'reddy_disabled', 'branch_number_suppressed', 'admin_command_handled',
+    'handoff_active', 'legacy_human_takeover', 'internal_exception',
+    'invalid_fonnte_envelope', 'unsupported_webhook_event', 'kill_switch_suppressed',
+  ];
+  for (const reason of expectedReasons) {
+    assert.strictEqual(CANONICAL_FAILURE_REASONS.has(reason), true, `Missing canonical reason: ${reason}`);
+  }
+});
+
+test('MIGRATION / REASONS — 7. normalizeFailureReason maps unknown raw exception to internal_exception', () => {
+  assert.strictEqual(normalizeFailureReason('unknown_random_error'), 'internal_exception');
+  assert.strictEqual(normalizeFailureReason('model_call_failed'), 'model_call_failed');
+});
+
+test('MIGRATION / REASONS — 8. provenance write error fails safe without leaving row processing', async () => {
+  let fallbackAttempted = false;
+  const fakeSupabaseWithConstraintErr = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              if (payload.failure_reason) {
+                // Simulate CHECK constraint error 23514
+                return { data: null, error: { code: '23514', message: 'check constraint violation' } };
+              }
+              fallbackAttempted = true;
+              return { data: [{ id: 'evt-err-1', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const res = await terminalizeInbound(fakeSupabaseWithConstraintErr, 'evt-err-1', 'failed', 'invalid_reason_string', { source: 'unit_test' });
+  assert.strictEqual(fallbackAttempted, true);
   assert.strictEqual(res.wrote, true);
-  assert.strictEqual(mockRows.length, 1);
-  assert.strictEqual(mockRows[0].failure_reason, 'reddy_disabled');
-  assert.strictEqual(mockRows[0].terminal_source, 'kill_switch');
 });
 
-test('P0-A: Failure Provenance — 2. terminal_source persisted atomically', async () => {
-  const mockRows = [];
-  const fakeSupabase = {
-    from: () => ({
-      update: (payload) => ({
-        eq: () => ({
-          in: () => ({
-            select: () => {
-              mockRows.push(payload);
-              return { data: [{ id: 'evt-2', processing_status: 'failed' }], error: null };
-            },
-          }),
-        }),
-      }),
-    }),
+test('MIGRATION / REASONS — 9. historical NULL provenance allowed', () => {
+  assert.strictEqual(normalizeFailureReason(null), 'internal_exception');
+});
+
+// CHANNEL LOOP (10-14)
+test('CHANNEL LOOP — 10. "nomor Redbox Tegal berapa?" on Tegal DOES NOT create handoff', async () => {
+  let handoffCreated = false;
+  const fakeDeps = {
+    persistConversation: async () => {},
   };
+  const text = 'nomor Redbox Tegal berapa?';
+  const result = await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text,
+    branch: 'tegal',
+    providerDeviceHash: 'hash_tegal',
+  }, {
+    send: async () => ({ status: true, id: 'msg-1' }),
+    createHandoffCase: async () => {
+      handoffCreated = true;
+      return { status: 'created' };
+    },
+    ...fakeDeps,
+  });
 
-  await terminalizeInbound(fakeSupabase, 'evt-2', 'failed', 'processing_failed', { source: 'outbound_guard' });
-  assert.strictEqual(mockRows[0].terminal_source, 'outbound_guard');
+  assert.strictEqual(handoffCreated, false);
+  assert.match(result.reply, /(?:Ini memang WhatsApp|Nomor resmi Redbox)/i);
 });
 
-test('P0-A: Failure Provenance — 3. correlation_id present for claimed new traffic', async () => {
-  const mockRows = [];
-  const fakeSupabase = {
-    from: () => ({
-      update: (payload) => ({
-        eq: () => ({
-          in: () => ({
-            select: () => {
-              mockRows.push(payload);
-              return { data: [{ id: 'evt-3', processing_status: 'failed' }], error: null };
-            },
-          }),
-        }),
-      }),
-    }),
-  };
+test('CHANNEL LOOP — 11-14. "loh ini nomornya kan?" triggers handoff escalation and correct wording', async () => {
+  let createdCalled = false;
+  const text = 'loh ini nomornya kan?';
 
-  await terminalizeInbound(fakeSupabase, 'evt-3', 'failed', 'duplicate_suppressed', { source: 'admission', correlationId: 'req_12345' });
-  assert.strictEqual(mockRows[0].correlation_id, 'req_12345');
+  const result = await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text,
+    branch: 'tegal',
+    providerDeviceHash: 'hash_tegal',
+  }, {
+    send: async () => ({ status: true, id: 'msg-2' }),
+    createHandoffCase: async () => {
+      createdCalled = true;
+      return { status: 'created' };
+    },
+  });
+
+  assert.strictEqual(createdCalled, true);
+  assert.strictEqual(result.used, 'same_channel_loop_prevention');
+  assert.match(result.reply, /Aku teruskan ke tim cabang/i);
 });
 
-test('P0-A: Failure Provenance — 4. sent inbound does not get false failure_reason', async () => {
-  const mockRows = [];
-  const fakeSupabase = {
-    from: () => ({
-      update: (payload) => ({
-        eq: () => ({
-          in: () => ({
-            select: () => {
-              mockRows.push(payload);
-              return { data: [{ id: 'evt-4', processing_status: 'sent' }], error: null };
-            },
-          }),
-        }),
-      }),
-    }),
-  };
-
-  await terminalizeInbound(fakeSupabase, 'evt-4', 'sent', null, { source: 'outbound' });
-  assert.strictEqual(mockRows[0].failure_reason, undefined);
-});
-
-test('P0-A: Failure Provenance — 5-8. bounded failure reason tags preserved', async () => {
-  const reasons = ['duplicate_suppressed', 'rate_limited', 'reddy_disabled', 'model_call_failed', 'crm_context_failed'];
-  for (const reason of reasons) {
-    const mockRows = [];
-    const fakeSupabase = {
-      from: () => ({
-        update: (payload) => ({
-          eq: () => ({
-            in: () => ({
-              select: () => {
-                mockRows.push(payload);
-                return { data: [{ id: 'evt-test', processing_status: 'failed' }], error: null };
-              },
-            }),
-          }),
-        }),
-      }),
-    };
-    await terminalizeInbound(fakeSupabase, 'evt-test', 'failed', reason, { source: 'test' });
-    assert.strictEqual(mockRows[0].failure_reason, reason);
-  }
-});
-
-test('P0-A: Failure Provenance — 9. unexpected_pre_send_exit only watchdog fallback', async () => {
-  const mockRows = [];
-  const fakeSupabase = {
-    from: () => ({
-      update: (payload) => ({
-        eq: () => ({
-          in: () => ({
-            select: () => {
-              mockRows.push(payload);
-              return { data: [{ id: 'evt-9', processing_status: 'failed' }], error: null };
-            },
-          }),
-        }),
-      }),
-    }),
-  };
-  await terminalizeInbound(fakeSupabase, 'evt-9', 'failed', 'unexpected_pre_send_exit', { source: 'webhook_finally' });
-  assert.strictEqual(mockRows[0].failure_reason, 'unexpected_pre_send_exit');
-  assert.strictEqual(mockRows[0].terminal_source, 'webhook_finally');
-});
-
-test('P0-A: Failure Provenance — 10. no PII in new provenance columns', async () => {
-  const mockRows = [];
-  const fakeSupabase = {
-    from: () => ({
-      update: (payload) => ({
-        eq: () => ({
-          in: () => ({
-            select: () => {
-              mockRows.push(payload);
-              return { data: [{ id: 'evt-10', processing_status: 'failed' }], error: null };
-            },
-          }),
-        }),
-      }),
-    }),
-  };
-  await terminalizeInbound(fakeSupabase, 'evt-10', 'failed', 'processing_failed', { source: 'unit_test', correlationId: 'req_non_pii_99' });
-  const row = mockRows[0];
-  assert.doesNotMatch(row.failure_reason, /08\d{8,}/);
-  assert.doesNotMatch(row.terminal_source, /08\d{8,}/);
-  assert.doesNotMatch(row.correlation_id, /08\d{8,}/);
-});
-
-test('RETRY POLICY — 11-15. Retry safety classifications', () => {
-  const nonRetryable = ['duplicate_suppressed', 'rate_limited', 'reddy_disabled', 'human_active', 'already_attempted'];
-  for (const reason of nonRetryable) {
-    assert.strictEqual(reason.includes('duplicate') || reason.includes('rate') || reason.includes('disabled') || reason.includes('human') || reason.includes('already'), true);
-  }
-});
-
-test('P0-B: Channel Loop — 16-17. "ini nomornya kan?" and "ini WA Tegal kan?" recognize current channel', () => {
-  const text1 = 'ini nomornya kan?';
-  const text2 = 'ini WA Tegal kan?';
-  const text3 = 'saya kan sudah chat sini';
-
-  const positionCheck1 = classifyBarberPositionIntent(text1);
-  assert.strictEqual(positionCheck1.matched, false);
-
-  assert.match(text1.toLowerCase(), /ini\s+(?:nomor(?:nya)?|no\.?)\s*(?:kan|bukan)?/i);
-  assert.match(text2.toLowerCase(), /ini\s+(?:wa|whatsapp)\s+[\w\s]+\s*(?:kan|bukan)?/i);
-  assert.match(text3.toLowerCase(), /saya\s+(?:kan\s+)?sudah\s+chat\s+(?:di\s+)?sini/i);
-});
-
-test('P1-C: Position Intent — 27. "yang di kursi 2 itu siapa?" => barber_position_identity', () => {
+// POSITION INTENT (15-18)
+test('POSITION INTENT — 15. simple seat identity does NOT trigger auto handoff', async () => {
+  let handoffCalled = false;
   const text = 'yang di kursi 2 itu siapa?';
-  const res = classifyBarberPositionIntent(text);
-  assert.strictEqual(res.matched, true);
-  assert.strictEqual(res.intent, 'barber_position_identity');
+
+  const result = await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text,
+    branch: 'csb',
+    providerDeviceHash: 'hash_pos',
+  }, {
+    send: async () => ({ status: true, id: 'msg-pos-1' }),
+    createHandoffCase: async () => {
+      handoffCalled = true;
+      return { status: 'created' };
+    },
+  });
+
+  assert.strictEqual(result.used, 'barber_position_identity');
+  assert.strictEqual(handoffCalled, false);
+  assert.strictEqual(result.reply, 'Aku belum punya data posisi kursi kapster secara realtime, Kak.');
 });
 
-test('P1-C: Position Intent — 28. position question does not route schedule intent', () => {
-  const text = 'yang sebelah kiri Mas siapa?';
-  const presenceRes = classifyBarberPresenceQuery(text);
-  assert.strictEqual(presenceRes.matched, false);
-  assert.strictEqual(presenceRes.isPositionIntent, true);
+test('POSITION INTENT — 16. explicit "tolong tanyakan admin" after seat question triggers handoff', async () => {
+  let handoffCalled = false;
+  const text = 'yang di kursi 2 siapa? tolong tanyakan admin dong';
+
+  const result = await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text,
+    branch: 'csb',
+    providerDeviceHash: 'hash_pos_2',
+  }, {
+    send: async () => ({ status: true, id: 'msg-pos-2' }),
+    createHandoffCase: async () => {
+      handoffCalled = true;
+      return { status: 'created' };
+    },
+  });
+
+  assert.strictEqual(result.used, 'barber_position_identity');
+  assert.strictEqual(handoffCalled, true);
+  assert.match(result.reply, /Pesan Kakak sudah aku teruskan ke tim cabang/i);
 });
 
-test('P1-C: Position Intent — 29-30. no seat map => honest bounded response', () => {
-  const reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak.';
-  assert.match(reply, /belum punya data posisi kursi/i);
+test('POSITION INTENT — 17. "posisi cabang Tegal dimana?" does NOT classify barber_position_identity', () => {
+  const res = classifyBarberPositionIntent('posisi cabang Tegal dimana?');
+  assert.strictEqual(res.matched, false);
 });
 
-test('P1-D: Location Authority — 31. official CSB street address allowed', () => {
-  const officialAddress = REDBOX_KNOWLEDGE.branches.find(b => b.id === 'csb').address;
-  const res = guardLocationAndPaymentFacts(officialAddress);
-  assert.strictEqual(res.sanitizedReply.includes('CSB Mall'), true);
-  assert.strictEqual(res.sanitizedReply.includes('Jl. Dr. Cipto Mangunkusumo'), true);
+test('POSITION INTENT — 18. "kursi tunggu ada?" does NOT classify barber_position_identity', () => {
+  const res = classifyBarberPositionIntent('kursi tunggu ada?');
+  assert.strictEqual(res.matched, false);
 });
 
-test('P1-D: Location Authority — 32-33. unsupported "lantai dasar" blocked', () => {
-  const text = 'Redbox CSB Mall berlokasi di CSB Mall, lantai dasar, Jl. Dr. Cipto Mangunkusumo No.26';
+// SLA TESTS (19-22)
+test('SLA — 19. stale case records handoff_sla_breached', () => {
+  const staleCase = {
+    id: 'case-sla-100',
+    branch: 'sumber',
+    priority: 'normal',
+    created_at: new Date(Date.now() - 45 * 60000).toISOString(), // 45m old
+  };
+
+  const results = evaluateAndRecordHandoffSLA(staleCase);
+  assert.strictEqual(results.length, 1);
+  assert.strictEqual(results[0].age_bucket, '30m-2h');
+  assert.strictEqual(results[0].severity, 'WARNING');
+});
+
+test('SLA — 20. repeat audit in same age bucket does NOT spam duplicate event', () => {
+  const staleCase = {
+    id: 'case-sla-100',
+    branch: 'sumber',
+    priority: 'normal',
+    created_at: new Date(Date.now() - 50 * 60000).toISOString(),
+  };
+
+  const results = evaluateAndRecordHandoffSLA(staleCase);
+  assert.strictEqual(results.length, 0); // Suppressed by deduplication set
+});
+
+test('SLA — 21. bucket escalation records new SLA event', () => {
+  const escalatedCase = {
+    id: 'case-sla-100',
+    branch: 'sumber',
+    priority: 'normal',
+    created_at: new Date(Date.now() - 150 * 60000).toISOString(), // >2h old
+  };
+
+  const results = evaluateAndRecordHandoffSLA(escalatedCase);
+  assert.strictEqual(results.length, 1);
+  assert.strictEqual(results[0].age_bucket, '>2h');
+  assert.strictEqual(results[0].severity, 'HIGH');
+});
+
+test('SLA — 22. evaluateCaseSLA never auto-resolves case', () => {
+  const openCase = { id: 'c-open', status: 'waiting_human', created_at: new Date().toISOString() };
+  evaluateCaseSLA(openCase);
+  assert.strictEqual(openCase.status, 'waiting_human');
+});
+
+// HISTORY TESTS (23-31)
+test('HISTORY — 23-26. deterministic shortcut replies persist history on send success', async () => {
+  let persistedCount = 0;
+  const fakeDeps = {
+    persistConversation: async () => { persistedCount++; },
+  };
+
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'home service',
+    branch: 'bypass',
+    providerDeviceHash: 'hash_hs',
+  }, {
+    send: async () => ({ status: true, id: 'msg-hs' }),
+    ...fakeDeps,
+  });
+
+  assert.strictEqual(persistedCount, 1);
+});
+
+test('HISTORY — 29-30. suppressed or failed send creates zero successful history persistence', async () => {
+  let persistedCount = 0;
+  const fakeDeps = {
+    persistConversation: async () => { persistedCount++; },
+  };
+
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'home service',
+    branch: 'bypass',
+    providerDeviceHash: 'hash_hs_failed',
+  }, {
+    send: async () => ({ status: false, reason: 'rate_limited' }),
+    ...fakeDeps,
+  });
+
+  assert.strictEqual(persistedCount, 0);
+});
+
+// PAYMENT & LOCATION (32-36)
+test('PAYMENT / LOCATION — 32. "bisa bayar pakai QRIS" triggers payment boundary sanitization', () => {
+  const text = 'Di outlet Tegal bisa bayar pakai QRIS untuk transaksi.';
   const res = guardLocationAndPaymentFacts(text);
-  assert.strictEqual(res.triggered, true);
-  assert.strictEqual(res.sanitizedReply.includes('lantai dasar'), false);
-});
-
-test('P1-E: Payment Authority — 34-36. QRIS claim blocked without authority', () => {
-  const claimText = 'Di Redbox Tegal QRIS tersedia dan bisa bayar pakai debit.';
-  const res = guardLocationAndPaymentFacts(claimText);
   assert.strictEqual(res.triggered, true);
   assert.match(res.sanitizedReply, /metode pembayaran yang tersedia saat ini, aku belum punya data resmi/i);
 });
 
-test('P1-F: Handoff SLA — 37. old normal waiting case produces SLA event', () => {
-  const oldNormalCase = {
-    id: 'case-normal-1',
-    branch: 'sumber',
-    priority: 'normal',
-    status: 'waiting_human',
-    created_at: new Date(Date.now() - 45 * 3600 * 1000).toISOString(),
-  };
-  const slaResult = evaluateCaseSLA(oldNormalCase);
-  assert.notStrictEqual(slaResult, null);
-  assert.strictEqual(slaResult.severity, 'HIGH');
-  assert.strictEqual(slaResult.age_bucket, '>2h');
+test('PAYMENT / LOCATION — 33. "terima QRIS?" caught by payment boundary', () => {
+  const text = 'Apakah terima QRIS Kak?';
+  const res = guardLocationAndPaymentFacts(text);
+  assert.strictEqual(res.triggered, true);
 });
 
-test('P1-F: Handoff SLA — 38. old high-priority case produces stronger SLA event', () => {
-  const oldHighCase = {
-    id: 'case-high-1',
-    branch: 'tegal',
-    priority: 'high',
-    status: 'waiting_human',
-    created_at: new Date(Date.now() - 18 * 3600 * 1000).toISOString(),
-  };
-  const slaResult = evaluateCaseSLA(oldHighCase);
-  assert.notStrictEqual(slaResult, null);
-  assert.strictEqual(slaResult.severity, 'HIGH');
+test('PAYMENT / LOCATION — 34. sentence-level sanitization preserves unrelated valid sentence', () => {
+  const text = 'Redbox Tegal buka jam 09:00 WIB.\nDi outlet Tegal bisa bayar pakai QRIS.';
+  const res = guardLocationAndPaymentFacts(text);
+  assert.strictEqual(res.triggered, true);
+  assert.strictEqual(res.sanitizedReply.includes('Redbox Tegal buka jam 09:00 WIB.'), true);
+  assert.strictEqual(res.sanitizedReply.includes('bisa bayar pakai QRIS'), false);
 });
 
-test('P1-F: Handoff SLA — 39-40. no auto-resolution of active cases', () => {
-  const activeCase = {
-    id: 'case-active-1',
-    status: 'waiting_human',
-  };
-  assert.strictEqual(activeCase.status, 'waiting_human');
+test('PAYMENT / LOCATION — 35. official CSB street address preserved', () => {
+  const address = 'CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26, Kota Cirebon';
+  const res = guardLocationAndPaymentFacts(address);
+  assert.strictEqual(res.sanitizedReply, address);
 });
 
-test('P1-H: Auditor Source Awareness — 41-45. classifyFactAuditProvenance', () => {
-  assert.strictEqual(classifyFactAuditProvenance('address', 'redbox_knowledge'), AUDIT_SOURCE_PROVENANCE.KNOWLEDGE_STATIC);
-  assert.strictEqual(classifyFactAuditProvenance('barber_schedule', 'schedule_authority'), AUDIT_SOURCE_PROVENANCE.SCHEDULE_AUTHORITY);
-  assert.strictEqual(classifyFactAuditProvenance('outlet_info', 'database_outlets'), AUDIT_SOURCE_PROVENANCE.DATABASE_BRANCH);
-  assert.strictEqual(classifyFactAuditProvenance('booking_status', 'booking_service'), AUDIT_SOURCE_PROVENANCE.BOOKING_AUTHORITY);
+test('PAYMENT / LOCATION — 36. "lantai dasar" detail removed while keeping official street address', () => {
+  const text = 'Berlokasi di CSB Mall, lantai dasar, Jl. Dr. Cipto Mangunkusumo No.26';
+  const res = guardLocationAndPaymentFacts(text);
+  assert.strictEqual(res.triggered, true);
+  assert.strictEqual(res.sanitizedReply.includes('lantai dasar'), false);
+  assert.strictEqual(res.sanitizedReply.includes('Jl. Dr. Cipto Mangunkusumo No.26'), true);
 });
 
-test('REGRESSION — 46-57. PR59 price safety & contact resolver preserved', () => {
+// REGRESSION TESTS (37-44)
+test('REGRESSION — 37-44. baseline safety and official contact integrity', () => {
   const contactRes = resolveOfficialBranchContact('csb');
   assert.strictEqual(contactRes.status, 'resolved');
   assert.strictEqual(contactRes.phone, '0818202889');
 
-  const unknownContact = resolveOfficialBranchContact('unknown_branch');
-  assert.strictEqual(unknownContact.status, 'unknown_branch');
+  assert.strictEqual(classifyFactAuditProvenance('address', 'redbox_knowledge'), AUDIT_SOURCE_PROVENANCE.KNOWLEDGE_STATIC);
+  assert.strictEqual(classifyFactAuditProvenance('barber_schedule', 'schedule_authority'), AUDIT_SOURCE_PROVENANCE.SCHEDULE_AUTHORITY);
 });

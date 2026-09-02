@@ -91,6 +91,7 @@ function getBranchConfig(branchKey = 'bypass') {
   return found || REDBOX_KNOWLEDGE.branches[0];
 }
 
+const crypto = require('crypto');
 const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
 const { REDBOX_SERVICES } = require('../../public/js/services-data');
 /**
@@ -1513,6 +1514,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const loadedHistoryResult = sessionReopened
     ? { history: [], status: 'empty' }
     : await safeLoadConversationHistory(loadConversationHistory, from, providerDeviceHash);
+  const activeHistoryTurns = loadedHistoryResult.history || [];
   const conversationContext = extractConversationContextEnvelope(loadedHistoryResult, text);
   // Threaded through to callOpenAI (the legacy LLM path), which persists the
   // exchange back to the same scoped conversation it was loaded from —
@@ -1576,28 +1578,31 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak.';
     used = 'barber_position_identity';
 
-    const handoffCreation = await createHandoffCase({
-      customerPhone: from,
-      customerId: trustedIdentity?.customer_id || null,
-      channel: 'whatsapp',
-      branch,
-      reason: 'barber_position_identity',
-      triggerType: 'policy_escalation',
-      intent: 'barber_position_identity',
-      priority: 'normal',
-      conversationSummary: `customer asked seat/position identity: ${text}`,
-      latestCustomerMessage: text,
-    });
+    const requiresHumanCheck = /\b(?:admin|petugas|orang|pegawai|tanyakan|cek\s+ke)\b/i.test(text);
+    if (requiresHumanCheck) {
+      const handoffCreation = await createHandoffCase({
+        customerPhone: from,
+        customerId: trustedIdentity?.customer_id || null,
+        channel: 'whatsapp',
+        branch,
+        reason: 'barber_position_identity',
+        triggerType: 'policy_escalation',
+        intent: 'barber_position_identity',
+        priority: 'normal',
+        conversationSummary: `customer asked seat/position identity with human check request: ${text}`,
+        latestCustomerMessage: text,
+      });
 
-    if (handoffCreation.status === 'created') {
-      reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak. Pesan Kakak sudah aku teruskan ke tim cabang supaya dibantu cek langsung.';
+      if (handoffCreation.status === 'created') {
+        reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak. Pesan Kakak sudah aku teruskan ke tim cabang supaya dibantu cek langsung.';
+      }
     }
 
     const sendResult = await send(from, reply, { branch });
     const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
     if (sendSucceeded) {
       try {
-        await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
       } catch (_e) {}
     }
     return { used, reply, sendResult, error: null };
@@ -1618,6 +1623,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     reply = 'Untuk home service, booking-nya lewat halaman khusus ya kak 😊 redboxbarbershop.com/home-service.html';
     used = 'policy';
     const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used, reply, sendResult, error: null };
   }
 
@@ -1625,6 +1636,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     reply = 'Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.';
     used = 'policy';
     const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used, reply, sendResult, error: null };
   }
 
@@ -1637,6 +1654,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     }
     used = 'policy';
     const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used, reply, sendResult, error: null };
   }
 
@@ -1646,6 +1669,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     reply = `Boleh datang langsung Kak, tapi slot walk-in tergantung antrian outlet. Biar jamnya terjamin, mendingan dikunci lewat web booking: ${bookingUrl(branch)}`;
     used = 'policy';
     const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used, reply, sendResult, error: null };
   }
 
@@ -1658,6 +1687,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     reply = `Berikut layanan di RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
     used = 'keyword';
     const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used, reply, sendResult, error: null };
   }
 
@@ -1669,6 +1704,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       event_type: 'keyword_shortcut_used', branch, intent: 'price_inquiry', route: 'keyword',
     })).catch(() => {});
     const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used, reply, sendResult, error: null };
   }
 
@@ -1723,7 +1764,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
       if (sendSucceeded) {
         try {
-          await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+          await persistConversation(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
         } catch (_e) {}
       }
       return { used, reply, sendResult, error: null };
@@ -2657,18 +2698,20 @@ module.exports = async function handler(req, res, testDeps = {}) {
     }
 
     const device = body.device || body.device_id || body.deviceId;
+    const correlationId = `req_${crypto.randomUUID()}`;
     const supabaseForGuard = testDeps.supabase || getSupabase();
     const inboundAdmission = await admitInboundEvent(supabaseForGuard, body, { provider: 'fonnte' });
     const inboundEventType = inboundAdmission.eventType;
-    // P0 live incident fix: hoisted here (not after the branch-number-
-    // suppression check further down, where it used to be computed) because
-    // that check — and several others below it — can return BEFORE the old
-    // computation site ever ran, leaving a genuinely claimed row with no
-    // reference to terminalize it. Gated on status==='claimed' (never
-    // 'duplicate'): a duplicate delivery must never let THIS request's
-    // safety net touch a row it did not itself just claim — that is
-    // Objective B's job (the atomic stale-reclaim RPC), not this one.
     const inboundEventRowId = inboundAdmission.status === 'claimed' ? (inboundAdmission.row?.id || null) : null;
+
+    if (inboundEventRowId) {
+      supabaseForGuard
+        .from('wa_inbound_events')
+        .update({ correlation_id: correlationId })
+        .eq('id', inboundEventRowId)
+        .then(() => {})
+        .catch(() => {});
+    }
 
     // P0 outer safety net (Objective A): every return/throw between here and
     // the end of this handler is now covered by the `finally` below, which
@@ -3072,6 +3115,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
       await terminalizeIfStillProcessing(supabaseForGuard, inboundEventRowId, {
         reason: activeFailureReason || 'unexpected_pre_send_exit',
         branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
+        correlationId,
       });
     }
 
