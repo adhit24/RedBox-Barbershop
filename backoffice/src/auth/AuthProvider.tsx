@@ -1,6 +1,7 @@
 // TEMPORARY COMPATIBILITY AUTH.
-// Backed by the single shared ADMIN_PASSWORD token today — role/branchScope/
-// permissions are placeholders, not real server-enforced RBAC. See spec §3/§4.
+// Backed by the shared ADMIN_PASSWORD token today. Username is enforced by the
+// Backoffice login UI/provider, while the password itself is still validated
+// against the existing server-side admin gate. See spec §3/§4.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
@@ -13,15 +14,17 @@ import {
 
 export type BackofficeRole = 'owner' | 'manager' | 'admin' | null;
 
+const OWNER_LOGIN = 'suwandi_gunawan@yahoo.com';
+
 interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
-  currentUser: { label: string } | null;
+  currentUser: { label: string; email: string } | null;
   role: BackofficeRole;
   branchScope: string | null;
   permissions: string[];
   loginError: string | null;
-  login: (password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
 
@@ -37,12 +40,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(false);
   }, []);
 
-  const login = useCallback(async (password: string) => {
+  const login = useCallback(async (username: string, password: string) => {
     setLoginError(null);
+
+    if (username.trim().toLowerCase() !== OWNER_LOGIN) {
+      setLoginError('Username atau password salah.');
+      return false;
+    }
+
     try {
       const valid = await validateAdminToken(password);
       if (!valid) {
-        setLoginError('Password salah.');
+        setLoginError('Username atau password salah.');
         return false;
       }
       storeToken(password);
@@ -84,8 +93,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       isAuthenticated,
       isLoading,
-      currentUser: isAuthenticated ? { label: 'Backoffice Admin' } : null,
-      // Placeholders — no per-user identity exists server-side yet (spec §4).
+      currentUser: isAuthenticated
+        ? { label: 'Suwandi Gunawan', email: OWNER_LOGIN }
+        : null,
       role: isAuthenticated ? 'owner' : null,
       branchScope: null,
       permissions: [],
