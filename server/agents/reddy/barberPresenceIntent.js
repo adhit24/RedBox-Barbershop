@@ -23,6 +23,9 @@ const GENERAL_PRESENCE_PATTERNS = [
   /\b(?:bisa\s+langsung|kapsternya\s+ada|barbernya\s+ada)\b/i,
 ];
 
+const AVAILABILITY_SIGNAL =
+  /\b(ready|free|available|tersedia|kosong)\b|\bbisa\s+(?:langsung|sekarang)\b|空いて|フリー|対応できます|disponible|libre/i;
+
 // International WhatsApp multilingual contract, correction round 2: the
 // contract's own required examples ("Husenさんは今いますか？",
 // "¿Está Husen ahí ahora?") are current-presence questions phrased in
@@ -33,14 +36,14 @@ const GENERAL_PRESENCE_PATTERNS = [
 // Spanish — its natural word order), not a general JA/ES question parser.
 const JAPANESE_PRESENCE_QUERY = new RegExp(
   `^\\s*${BARBER_NAME}\\s*(?:さん)?\\s*(?:は|が)?\\s*(?:今|現在)?\\s*`
-    + '(?:います|いますか|いる|いますでしょうか|居ますか|居ますでしょうか)'
+    + '(?:います|いますか|いる|いますでしょうか|居ますか|居ますでしょうか|空いていますか|空いてる|フリー|対応できますか)'
     + '\\s*[?？!!]*\\s*$',
   'iu',
 );
 const SPANISH_PRESENCE_QUERY = new RegExp(
   '^\\s*¿?\\s*(?:está|esta)\\s+'
     + `${BARBER_NAME}`
-    + '\\s*(?:ahí|ahi|aquí|aqui)?\\s*(?:ahora)?\\s*\\??\\s*$',
+    + '\\s*(?:ahí|ahi|aquí|aqui|disponible|libre)?\\s*(?:ahora)?\\s*\\??\\s*$',
   'iu',
 );
 

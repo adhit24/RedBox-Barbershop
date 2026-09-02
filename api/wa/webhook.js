@@ -1533,10 +1533,10 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   let used = 'openai';
   let error = null;
 
-  const sendAndPersistFinalReply = async (replyText, routeUsed, extraMeta = {}) => {
+  const sendAndPersistFinalReply = async (replyText, routeUsed, extraMeta = {}, sendOptions = {}) => {
     reply = replyText;
     used = routeUsed;
-    const sendResult = await send(from, reply, { branch });
+    const sendResult = await send(from, reply, { branch, ...sendOptions });
     const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
     if (sendSucceeded) {
       try {
@@ -1735,15 +1735,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       || /\b(metode|cara)\s+(?:bayar|pembayaran)\b/i.test(msgLower));
   if (isPaymentMethodInquiry) {
     reply = 'Untuk metode pembayaran yang tersedia saat ini, aku belum punya data resmi per cabang. Tim cabang bisa konfirmasi langsung.';
-    used = 'payment_method_boundary';
-    const sendResult = await send(from, reply, { branch });
-    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
-    if (sendSucceeded) {
-      try {
-        await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
-      } catch (_e) {}
-    }
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'payment_method_boundary');
   }
 
   // ── Wait complaint: pelanggan cerita pernah nunggu/antri di outlet ──
@@ -1754,9 +1746,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   const _beenThere = /(ke\s*sana|kesana|ke\s*sini|kesini|outlet|cabang|tempatnya|tokonya|store)/.test(msgLower);
   if (_waitWord && (_pastIndicator || _beenThere)) {
     reply = 'Maaf ya Kak, nunggu lama memang bikin tidak nyaman. Terima kasih sudah memberi tahu kami.';
-    used = 'keyword';
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'keyword');
   }
 
   // ── Central AI Orchestrator Execution (Task 10) ──
@@ -1810,8 +1800,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
-    const sendResult = await send(from, boundedReply, { branch });
-    return { used: 'orchestrator_bounded_response', reply: boundedReply, sendResult, error: null };
+    return sendAndPersistFinalReply(boundedReply, 'orchestrator_bounded_response');
   }
 
   // Handle Human Handoff Route (Task 15) — the orchestrator only RECOMMENDS a
@@ -1877,8 +1866,12 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       const handoffReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
         ? 'Your message has been forwarded to the Redbox admin. The admin will reply in this chat.'
         : 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
-      const sendResult = await send(from, handoffReply, { branch, evaluationContext: { handoffPersisted: true } });
-      return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+      return sendAndPersistFinalReply(
+        handoffReply,
+        'human_handoff',
+        {},
+        { evaluationContext: { handoffPersisted: true } },
+      );
     }
 
     // A case is already open for this customer (race between near-simultaneous
@@ -1916,13 +1909,12 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     const fallbackReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
       ? "I wasn't able to forward this request to the RedBox team. Please try again shortly or contact RedBox customer service."
       : 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
-    const sendResult = await send(from, fallbackReply, { branch, evaluationContext: { handoffPersisted: false } });
-    return {
-      used: creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
-      reply: fallbackReply,
-      sendResult,
-      error: null,
-    };
+    return sendAndPersistFinalReply(
+      fallbackReply,
+      creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
+      {},
+      { evaluationContext: { handoffPersisted: false } },
+    );
   }
 
   // Existing booking status is backend authority, never an LLM or customer claim.
@@ -1959,8 +1951,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
-    const sendResult = await send(from, bookingReply, { branch });
-    return { used: 'booking_status_backend', reply: bookingReply, sendResult, error: null };
+    return sendAndPersistFinalReply(bookingReply, 'booking_status_backend');
   }
 
   // Public aggregate booking-selection facts use a deterministic trusted read.
@@ -2020,8 +2011,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       result_count: Array.isArray(popularity?.leaders) ? popularity.leaders.length : 0,
       data_quality_exclusion_count: dataQualityExclusionCount,
     });
-    const sendResult = await send(from, popularityReply, { branch });
-    return { used: 'barber_popularity_trusted_read', reply: popularityReply, sendResult, error: null };
+    return sendAndPersistFinalReply(popularityReply, 'barber_popularity_trusted_read');
   }
 
   // Handle Private CRM Agent Routes
@@ -2045,8 +2035,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
         ...knowledgeTelemetry(null),
       });
       const crmReply = 'Untuk mengakses data member Redbox, pastikan menghubungi via nomor terverifikasi ya Kak.';
-      const sendResult = await send(from, crmReply, { branch });
-      return { used: 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
+      return sendAndPersistFinalReply(crmReply, 'crm_privacy_guard');
     }
 
     let intelRes;
@@ -2067,11 +2056,11 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
         event_type: 'crm_context_unavailable', branch, metadata: { reason: 'crm_context_failed' },
       })).catch(() => {});
       const crmErrorReply = 'Data pribadi kamu sedang tidak dapat dibaca dengan aman; fitur ini masih sedang kami siapkan agar tetap aman ya Kak.';
-      const sendResult = await send(from, crmErrorReply, { branch });
+      const finalReplyResult = await sendAndPersistFinalReply(crmErrorReply, 'crm_unavailable_guard');
+      const sendResult = finalReplyResult.sendResult;
       const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
       return {
-        used: 'crm_unavailable_guard',
-        reply: crmErrorReply,
+        ...finalReplyResult,
         sendResult,
         error: sendSucceeded ? null : (err?.message || String(err)),
         failureReason: sendSucceeded ? null : 'crm_context_failed',
@@ -2144,7 +2133,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
         const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
         let sendResult;
         try {
-          sendResult = await send(from, staticReply, { branch });
+          ({ sendResult } = await sendAndPersistFinalReply(staticReply, 'static_fallback'));
         } catch (sendErr) {
           sendResult = { status: false, reason: 'send_threw', error: sendErr };
         }
@@ -2183,8 +2172,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       : (intelRes?.execution_status === 'not_found'
         ? 'Data member untuk nomor terverifikasi ini belum ditemukan ya Kak.'
         : 'Data pribadi kamu sedang tidak dapat dibaca dengan aman; fitur ini masih sedang kami siapkan agar tetap aman ya Kak.');
-    const sendResult = await send(from, crmReply, { branch });
-    return { used: 'crm_unavailable_guard', reply: crmReply, sendResult, error: null };
+    return sendAndPersistFinalReply(crmReply, 'crm_unavailable_guard');
   }
 
   // Handle Orchestrated Reddy Agent Route
@@ -2253,7 +2241,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
       let sendResult;
       try {
-        sendResult = await send(from, staticReply, { branch });
+        ({ sendResult } = await sendAndPersistFinalReply(staticReply, 'static_fallback'));
       } catch (sendErr) {
         sendResult = { status: false, reason: 'send_threw', error: sendErr };
       }
@@ -2303,7 +2291,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       branch,
       fallbackKnowledgeContext ? serializeKnowledgeForPrompt(fallbackKnowledgeContext) : null,
       null,
-      conversationContext,
+      { ...conversationContext, reply_persistence_deferred: true },
     );
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
@@ -2374,7 +2362,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   // Gunakan branch-specific token untuk kirim balasan
   let sendResult;
   try {
-    sendResult = await send(from, reply, { branch });
+    ({ sendResult } = await sendAndPersistFinalReply(reply, used));
   } catch (sendErr) {
     sendResult = { status: false, reason: 'send_threw', error: sendErr };
   }

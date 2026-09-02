@@ -22,6 +22,43 @@ function makeSlaCase(id, priority, ageMinutes, nowMs) {
   };
 }
 
+function createHistoryHarness(overrides = {}, outboundResult = { status: true, id: 'msg-history' }) {
+  const state = {
+    persisted: [],
+    sent: [],
+  };
+  const deps = {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    touchLifecycle: async () => ({ reopened: false }),
+    loadConversationHistory: async () => [],
+    send: async (_to, reply, options) => {
+      state.sent.push({ reply, options });
+      return outboundResult;
+    },
+    persistConversation: async (...args) => { state.persisted.push(args); },
+    recordEvaluation: async () => ({ status: 'recorded' }),
+    logTelemetry: () => {},
+    logHandoffTelemetry: () => {},
+    setHumanTakeover: () => {},
+    persistHumanHandoff: async () => true,
+    getSupabaseClient: () => null,
+    ...overrides,
+  };
+  return { state, deps };
+}
+
+async function runHistoryRoute(params, overrides = {}, outboundResult = { status: true, id: 'msg-history' }) {
+  const harness = createHistoryHarness(overrides, outboundResult);
+  const result = await webhookHandler.handleMessage({
+    from: '62812349000',
+    name: 'Budi',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_history_route',
+    ...params,
+  }, harness.deps);
+  return { ...harness, result };
+}
+
 // ── CORRELATION TESTS (1-7) ──────────────────────────────────────────────
 
 test('CORRELATION — 1. every claimed terminal path forwards the webhook correlationId', () => {
@@ -680,6 +717,203 @@ test('HISTORY — 29. suppressed send zero persistence', async () => {
   });
 
   assert.strictEqual(persistedCount, 0);
+});
+
+// ── CORRECTION ROUND 5: BARBER REGRESSION + COMPLETE OUTBOUND HISTORY ────
+
+test('BARBER REGRESSION — AVAILABILITY_SIGNAL classifies multilingual availability without weakening position exclusions', () => {
+  assert.deepStrictEqual(
+    { matched: classifyBarberPresenceQuery('Husen ready?').matched, claimType: classifyBarberPresenceQuery('Husen ready?').claimType },
+    { matched: true, claimType: 'availability' },
+  );
+  assert.strictEqual(classifyBarberPresenceQuery('Husen tersedia sekarang?').claimType, 'availability');
+  assert.strictEqual(classifyBarberPresenceQuery('Husen ada?').claimType, 'presence');
+  assert.strictEqual(classifyBarberPresenceQuery('Husenさんは今空いていますか？').claimType, 'availability');
+  assert.strictEqual(classifyBarberPresenceQuery('¿Está Husen disponible ahora?').claimType, 'availability');
+  assert.strictEqual(classifyBarberPresenceQuery('yang di kursi 2 itu siapa?').matched, false);
+  assert.strictEqual(classifyBarberPositionIntent('yang di kursi 2 itu siapa?').intent, 'barber_position_identity');
+  assert.strictEqual(classifyBarberPositionIntent('posisi cabang Tegal dimana?').matched, false);
+  assert.strictEqual(classifyBarberPresenceQuery('posisi cabang Tegal dimana?').matched, false);
+});
+
+for (const [label, outboundResult, expected] of [
+  ['success', { status: true, id: 'bounded-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — bounded response ${label} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'oke kak' }, {
+      orchestrate: async () => ({
+        intent: 'general_question', route: 'reddy_agent', agent: 'reddy_agent',
+        response_strategy: 'acknowledge_only', conversational_act: 'acknowledgement',
+      }),
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+for (const [route, text] of [
+  ['payment boundary', 'bisa bayar pakai qris?'],
+  ['wait complaint', 'tadi di outlet nunggu lama'],
+]) {
+  for (const [outcome, outboundResult, expected] of [
+    ['success', { status: true, id: `${route}-ok` }, 1],
+    ['failure', { status: false, reason: 'provider_error' }, 0],
+  ]) {
+    test(`HISTORY ROUND 5 — ${route} ${outcome} persistence=${expected}`, async () => {
+      const { state } = await runHistoryRoute({ text }, {}, outboundResult);
+      assert.strictEqual(state.persisted.length, expected);
+    });
+  }
+}
+
+test('HISTORY ROUND 5 — handoff created acknowledgement persists once and preserves evaluationContext', async () => {
+  const { state } = await runHistoryRoute({ text: 'saya mau bicara admin' }, {
+    orchestrate: async () => ({ intent: 'human_request', route: 'human', agent: 'human' }),
+    createHandoffCase: async () => ({ status: 'created', case: { id: 'case-created' } }),
+  });
+  assert.strictEqual(state.persisted.length, 1);
+  assert.deepStrictEqual(state.sent[0].options.evaluationContext, { handoffPersisted: true });
+});
+
+test('HISTORY ROUND 5 — existing handoff sends and persists nothing', async () => {
+  const { state, result } = await runHistoryRoute({ text: 'saya mau bicara admin' }, {
+    orchestrate: async () => ({ intent: 'human_request', route: 'human', agent: 'human' }),
+    createHandoffCase: async () => ({ status: 'existing', case: { id: 'case-existing' } }),
+  });
+  assert.strictEqual(result.reply, null);
+  assert.strictEqual(state.sent.length, 0);
+  assert.strictEqual(state.persisted.length, 0);
+});
+
+for (const [label, outboundResult, expected] of [
+  ['success', { status: true, id: 'handoff-fallback-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — handoff fallback ${label} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'saya mau bicara admin' }, {
+      orchestrate: async () => ({ intent: 'human_request', route: 'human', agent: 'human' }),
+      createHandoffCase: async () => ({ status: 'unavailable', case: null }),
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+    assert.deepStrictEqual(state.sent[0].options.evaluationContext, { handoffPersisted: false });
+  });
+}
+
+for (const [route, text, routeDeps] of [
+  ['booking status', 'cek status booking saya', {
+    orchestrate: async () => ({ intent: 'booking_status', route: 'reddy_agent', agent: 'reddy_agent' }),
+    getBookingStatus: async () => ({ status: 'confirmed' }),
+  }],
+  ['barber popularity', 'kapster paling populer di Tegal', {
+    orchestrate: async () => ({ intent: 'barber_popularity_inquiry', route: 'reddy_agent', agent: 'reddy_agent' }),
+    readBarberPopularity: async () => ({
+      status: 'success', branch: 'tegal', metric: 'booking_selection_count',
+      period: { type: 'rolling_30_days' }, leaders: [{ name: 'Faiz', booking_count: 10 }],
+      data_quality: {}, fallback_used: false,
+    }),
+  }],
+  ['CRM privacy guard', 'tampilkan profil saya', {
+    orchestrate: async () => ({ intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent' }),
+  }],
+]) {
+  for (const [outcome, outboundResult, expected] of [
+    ['success', { status: true, id: `${route}-ok` }, 1],
+    ['failure', { status: false, reason: 'provider_error' }, 0],
+  ]) {
+    test(`HISTORY ROUND 5 — ${route} ${outcome} persistence=${expected}`, async () => {
+      const { state } = await runHistoryRoute({ text }, routeDeps, outboundResult);
+      assert.strictEqual(state.persisted.length, expected);
+    });
+  }
+}
+
+test('HISTORY ROUND 5 — CRM intelligence exception safe reply persists once', async () => {
+  const { state } = await runHistoryRoute({
+    text: 'riwayat transaksi saya',
+    trustedIdentity: { customer_id: 'cust-crm-exception' },
+  }, {
+    orchestrate: async () => ({ intent: 'customer_transaction_history', route: 'crm_agent', agent: 'crm_agent' }),
+    executeIntelligence: async () => { throw new Error('crm unavailable'); },
+  });
+  assert.strictEqual(state.persisted.length, 1);
+});
+
+test('HISTORY ROUND 5 — CRM unavailable/not-found safe reply persists once', async () => {
+  const { state } = await runHistoryRoute({
+    text: 'riwayat transaksi saya',
+    trustedIdentity: { customer_id: 'cust-crm-not-found' },
+  }, {
+    orchestrate: async () => ({ intent: 'customer_transaction_history', route: 'crm_agent', agent: 'crm_agent' }),
+    executeIntelligence: async () => ({ execution_status: 'not_found', customer_found: false }),
+  });
+  assert.strictEqual(state.persisted.length, 1);
+});
+
+for (const [outcome, outboundResult, expected] of [
+  ['success', { status: true, id: 'crm-static-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — CRM static fallback ${outcome} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({
+      text: 'riwayat transaksi saya',
+      trustedIdentity: { customer_id: 'cust-crm-static' },
+    }, {
+      orchestrate: async () => ({ intent: 'customer_transaction_history', route: 'crm_agent', agent: 'crm_agent' }),
+      executeIntelligence: async () => ({ execution_status: 'success', customer_found: true, intelligence: { customer_found: true } }),
+      executeReddy: async () => { throw new Error('reddy generation failed'); },
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+for (const [outcome, outboundResult, expected] of [
+  ['success', { status: true, id: 'reddy-static-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — Reddy static fallback ${outcome} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'jelaskan layanan Redbox' }, {
+      orchestrate: async () => ({ intent: 'service_inquiry', route: 'reddy_agent', agent: 'reddy_agent' }),
+      executeReddy: async () => { throw new Error('reddy execution failed'); },
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+for (const [outcome, outboundResult, expected] of [
+  ['success', { status: true, id: 'legacy-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — legacy final fallback ${outcome} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'ceritakan tentang Redbox' }, {
+      orchestrate: async () => null,
+      generateReddy: async () => 'Redbox siap membantu Kak.',
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+test('HISTORY ROUND 5 — legacy persists the final post-guard text, never the generated pre-guard claim', async () => {
+  const generated = 'Husen is available now.';
+  let internalCallOpenAiPersistence = 0;
+  const fakeOpenAi = {
+    chat: {
+      completions: {
+        create: async () => ({ choices: [{ message: { content: generated } }] }),
+      },
+    },
+  };
+  const { state, result } = await runHistoryRoute({ text: 'tell me about the barber team' }, {
+    orchestrate: async () => null,
+    generateReddy: async (...args) => webhookHandler.callOpenAI(...args, {
+      openai: fakeOpenAi,
+      persistConversationExchange: async () => { internalCallOpenAiPersistence++; },
+    }),
+    loadBarbers: async () => ({ status: 'verified', barbers: [{ id: 'tegal-husen', name: 'Husen', branch: 'tegal' }] }),
+  });
+  assert.strictEqual(internalCallOpenAiPersistence, 0, 'legacy generation must defer callOpenAI persistence');
+  assert.strictEqual(state.persisted.length, 1);
+  assert.strictEqual(state.persisted[0][3], result.reply);
+  assert.notStrictEqual(state.persisted[0][3], generated);
 });
 
 // ── REGRESSION TESTS (30-40) ─────────────────────────────────────────────
