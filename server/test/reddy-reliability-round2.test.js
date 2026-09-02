@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('assert');
+const fs = require('fs');
 
 const { terminalizeInbound, CANONICAL_FAILURE_REASONS, normalizeFailureReason } = require('../services/waInboundLifecycle');
 const { classifyBarberPresenceQuery, classifyBarberPositionIntent } = require('../agents/reddy/barberPresenceIntent');
@@ -9,13 +10,40 @@ const { guardRealtimeBarberFacts, guardLocationAndPaymentFacts } = require('../a
 const { evaluateCaseSLA, evaluateAndRecordHandoffSLA, listWaitingCases } = require('../services/humanHandoff');
 const { classifyFactAuditProvenance, AUDIT_SOURCE_PROVENANCE } = require('../services/reddyEvaluationMonitoring');
 const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../agents/reddy/knowledge/redboxKnowledge');
+const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
 const webhookHandler = require('../../api/wa/webhook');
+
+function makeSlaCase(id, priority, ageMinutes, nowMs) {
+  return {
+    id,
+    branch: 'tegal',
+    priority,
+    created_at: new Date(nowMs - ageMinutes * 60000).toISOString(),
+  };
+}
 
 // ── CORRELATION TESTS (1-7) ──────────────────────────────────────────────
 
-test('CORRELATION — 1. webhook awaited correlation persistence', () => {
-  const correlationId = `req_${require('crypto').randomUUID()}`;
-  assert.match(correlationId, /^req_[a-f0-9-]{36}$/);
+test('CORRELATION — 1. every claimed terminal path forwards the webhook correlationId', () => {
+  const source = fs.readFileSync(require.resolve('../../api/wa/webhook'), 'utf8');
+  for (const reason of [
+    'branch_number_suppressed',
+    'reddy_disabled',
+    'admin_command_handled',
+    'handoff_active',
+    'legacy_human_takeover',
+  ]) {
+    const call = source.match(new RegExp(
+      `terminalizeInbound\\(supabaseForGuard, inboundEventRowId, 'failed', '${reason}', \\{([\\s\\S]*?)\\}\\);`,
+    ));
+    assert.ok(call, `missing actual webhook terminalization for ${reason}`);
+    assert.match(call[1], /\bcorrelationId\b/, `${reason} must forward correlationId`);
+  }
+  assert.match(
+    source,
+    /terminalizeIfStillProcessing\(supabaseForGuard, inboundEventRowId, \{[\s\S]*?correlationId,[\s\S]*?\}\);/,
+    'the finally backstop must forward the same correlationId',
+  );
 });
 
 test('CORRELATION — 2. branch_number_suppressed terminalization receives same correlation', async () => {
@@ -60,6 +88,13 @@ test('CORRELATION — 3. reddy_disabled receives same correlation', async () => 
   const correlationId = 'req_corr_reddy_disabled_456';
   await terminalizeInbound(fakeSupabase, 'evt-corr-3', 'failed', 'reddy_disabled', { source: 'kill_switch', correlationId });
   assert.strictEqual(mockUpdates[0].correlation_id, correlationId);
+
+  const webhookSource = fs.readFileSync(require.resolve('../../api/wa/webhook'), 'utf8');
+  assert.match(
+    webhookSource,
+    /terminalizeInbound\(supabaseForGuard, inboundEventRowId, 'failed', 'reddy_disabled', \{[\s\S]*?source: 'kill_switch_suppression',[\s\S]*?branch: branchForGuardTelemetry,[\s\S]*?correlationId,[\s\S]*?\}\);/,
+    'the actual reddy_disabled webhook terminalization must forward the claimed correlationId',
+  );
 });
 
 test('CORRELATION — 4. admin command receives same correlation', async () => {
@@ -129,7 +164,9 @@ test('CORRELATION — 6. legacy pause receives same correlation', async () => {
 });
 
 test('CORRELATION — 7. duplicate inbound performs zero correlation write', async () => {
-  assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
+  const source = fs.readFileSync(require.resolve('../../api/wa/webhook'), 'utf8');
+  assert.match(source, /const inboundEventRowId = inboundAdmission\.status === 'claimed' \? \(inboundAdmission\.row\?\.id \|\| null\) : null;/);
+  assert.match(source, /if \(inboundEventRowId\) \{[\s\S]*?update\(\{ correlation_id: correlationId \}\)[\s\S]*?\}/);
 });
 
 // ── PROVENANCE FALLBACK TESTS (8-12) ─────────────────────────────────────
@@ -383,6 +420,59 @@ test('SLA — 17. next run can retry failed SLA event', async () => {
   assert.strictEqual(results.length, 1);
 });
 
+test('SLA — locked thresholds remain exact', () => {
+  const nowMs = Date.now();
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('normal-29', 'normal', 29, nowMs), nowMs), null);
+  assert.deepStrictEqual(
+    { ...evaluateCaseSLA(makeSlaCase('normal-30', 'normal', 30, nowMs), nowMs), case_id: undefined, branch: undefined, age_minutes: undefined },
+    { case_id: undefined, branch: undefined, priority: 'normal', age_minutes: undefined, age_bucket: '30m-2h', severity: 'WARNING' },
+  );
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('normal-120', 'normal', 120, nowMs), nowMs).severity, 'HIGH');
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('high-29', 'high', 29, nowMs), nowMs), null);
+  assert.deepStrictEqual(
+    { ...evaluateCaseSLA(makeSlaCase('high-30', 'high', 30, nowMs), nowMs), case_id: undefined, branch: undefined, age_minutes: undefined },
+    { case_id: undefined, branch: undefined, priority: 'high', age_minutes: undefined, age_bucket: '>=30m', severity: 'HIGH' },
+  );
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('urgent-9', 'urgent', 9, nowMs), nowMs), null);
+  assert.deepStrictEqual(
+    { ...evaluateCaseSLA(makeSlaCase('urgent-10', 'urgent', 10, nowMs), nowMs), case_id: undefined, branch: undefined, age_minutes: undefined },
+    { case_id: undefined, branch: undefined, priority: 'urgent', age_minutes: undefined, age_bucket: '>=10m', severity: 'CRITICAL' },
+  );
+});
+
+for (const status of ['error', 'unavailable', 'ignored']) {
+  test(`SLA DURABILITY — status='${status}' does not commit the in-memory dedup key`, async () => {
+    const nowMs = Date.now();
+    const handoffCase = makeSlaCase(`case-${status}`, 'normal', 30, nowMs);
+    const deps = { recordEvaluationEvent: async () => ({ status }) };
+    const first = await evaluateAndRecordHandoffSLA(handoffCase, { ...deps, nowMs });
+    const second = await evaluateAndRecordHandoffSLA(handoffCase, {
+      recordEvaluationEvent: async () => ({ status: 'recorded' }),
+      nowMs,
+    });
+    assert.strictEqual(first.length, 0);
+    assert.strictEqual(second.length, 1, `${status} must remain retryable`);
+  });
+}
+
+for (const recordResult of [null, undefined]) {
+  test(`SLA DURABILITY — ${String(recordResult)} result does not commit the in-memory dedup key`, async () => {
+    const suffix = recordResult === null ? 'null' : 'undefined';
+    const nowMs = Date.now();
+    const handoffCase = makeSlaCase(`case-${suffix}`, 'normal', 30, nowMs);
+    const first = await evaluateAndRecordHandoffSLA(handoffCase, {
+      recordEvaluationEvent: async () => recordResult,
+      nowMs,
+    });
+    const second = await evaluateAndRecordHandoffSLA(handoffCase, {
+      recordEvaluationEvent: async () => ({ status: 'recorded' }),
+      nowMs,
+    });
+    assert.strictEqual(first.length, 0);
+    assert.strictEqual(second.length, 1, `${suffix} must remain retryable`);
+  });
+}
+
 // ── HISTORY TESTS (18-29) ────────────────────────────────────────────────
 
 test('HISTORY — 18. points reply exactly one history persistence', async () => {
@@ -401,9 +491,51 @@ test('HISTORY — 18. points reply exactly one history persistence', async () =>
   assert.strictEqual(persistedCount, 1);
 });
 
-test('HISTORY — 19. foreign reply exactly one', async () => {
-  assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
+test('HISTORY — 19. foreign successful reply exactly one, scoped by providerDeviceHash', async () => {
+  let persistedCount = 0;
+  let persistedDeviceHash = null;
+  await webhookHandler.handleMessage({
+    from: '62812345679',
+    name: 'John',
+    text: 'What time does CSB close?',
+    branch: 'csb',
+    providerDeviceHash: 'hash_foreign',
+  }, {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    touchLifecycle: async () => ({ reopened: false }),
+    loadConversationHistory: async () => [],
+    send: async () => ({ status: true, id: 'msg-foreign' }),
+    persistConversation: async (...args) => {
+      persistedCount++;
+      persistedDeviceHash = args[5];
+    },
+  });
+  assert.strictEqual(persistedCount, 1);
+  assert.strictEqual(persistedDeviceHash, 'hash_foreign');
 });
+
+for (const [label, sendResult] of [
+  ['failed', { status: false, reason: 'provider_error' }],
+  ['suppressed', { status: true, suppressed: true, reason: 'duplicate_suppressed' }],
+]) {
+  test(`HISTORY — foreign ${label} send persists zero exchanges`, async () => {
+    let persistedCount = 0;
+    await webhookHandler.handleMessage({
+      from: `6281234500${label.length}`,
+      name: 'John',
+      text: 'What time does CSB close?',
+      branch: 'csb',
+      providerDeviceHash: `hash_foreign_${label}`,
+    }, {
+      getHandoffState: async () => ({ status: 'none', case: null }),
+      touchLifecycle: async () => ({ reopened: false }),
+      loadConversationHistory: async () => [],
+      send: async () => sendResult,
+      persistConversation: async () => { persistedCount++; },
+    });
+    assert.strictEqual(persistedCount, 0);
+  });
+}
 
 test('HISTORY — 20. bounded response exactly one', async () => {
   assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
@@ -484,8 +616,37 @@ test('HISTORY — 26. deterministic shortcut exactly one', async () => {
   assert.strictEqual(persistedCount, 1);
 });
 
-test('HISTORY — 27. Reddy agent exactly one', () => {
-  assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
+test('HISTORY — 27. Reddy agent persists exactly one scoped exchange', async () => {
+  let persistedCount = 0;
+  let persistedDeviceHash = null;
+  const result = await executeReddyAgent({
+    from: '62812349999',
+    name: 'Budi',
+    text: 'Tell me about Redbox',
+    branch: 'tegal',
+    conversationContext: {
+      turns: [],
+      response_language: 'english',
+      providerDeviceHash: 'hash_reddy_agent',
+    },
+    orchestrationDecision: {
+      intent: 'general_inquiry',
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      action: 'answer_general',
+    },
+  }, {
+    callOpenAI: async () => 'Redbox is ready to help.',
+    sendWA: async () => ({ status: true, id: 'msg-reddy' }),
+    persistConversation: async (...args) => {
+      persistedCount++;
+      persistedDeviceHash = args[5];
+    },
+    logBookingTelemetry: () => {},
+  });
+  assert.strictEqual(result.sendResult.status, true);
+  assert.strictEqual(persistedCount, 1);
+  assert.strictEqual(persistedDeviceHash, 'hash_reddy_agent');
 });
 
 test('HISTORY — 28. failed send zero persistence', async () => {

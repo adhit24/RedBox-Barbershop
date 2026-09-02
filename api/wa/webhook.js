@@ -1554,8 +1554,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     console.log('[WA Bot] Existing foreign language route retained');
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
-      const sendResult = await send(from, result.reply, { branch });
-      return { used: result.used, reply: result.reply, sendResult, error: null };
+      return sendAndPersistFinalReply(result.reply, result.used, { intent: result.used });
     }
   }
 
@@ -2854,7 +2853,9 @@ module.exports = async function handler(req, res, testDeps = {}) {
         message_id_present: Boolean(inboundClaim.providerMessageId || inboundClaim.providerMessageIdSource),
       });
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'reddy_disabled', {
-        source: 'kill_switch_suppression', branch: branchForGuardTelemetry,
+        source: 'kill_switch_suppression',
+        branch: branchForGuardTelemetry,
+        correlationId,
       });
       console.log('[WA Bot] REDDY_ENABLED=false — automated reply suppressed');
       return res.status(200).json({ status: 'ok', reddy_enabled: false });

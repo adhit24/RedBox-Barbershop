@@ -308,20 +308,14 @@ function evaluateCaseSLA(handoffCase, nowMs = Date.now()) {
   let ageBucket = null;
 
   if (priority === PRIORITIES.URGENT) {
-    if (ageMinutes >= 15 && ageMinutes < 60) {
-      severity = 'HIGH';
-      ageBucket = '15m-1h';
-    } else if (ageMinutes >= 60) {
+    if (ageMinutes >= 10) {
       severity = 'CRITICAL';
-      ageBucket = '>1h';
+      ageBucket = '>=10m';
     }
   } else if (priority === PRIORITIES.HIGH) {
-    if (ageMinutes >= 20 && ageMinutes < 90) {
-      severity = 'WARNING';
-      ageBucket = '20m-90m';
-    } else if (ageMinutes >= 90) {
+    if (ageMinutes >= 30) {
       severity = 'HIGH';
-      ageBucket = '>90m';
+      ageBucket = '>=30m';
     }
   } else {
     // Normal / default
@@ -330,7 +324,7 @@ function evaluateCaseSLA(handoffCase, nowMs = Date.now()) {
       ageBucket = '30m-2h';
     } else if (ageMinutes >= 120) {
       severity = 'HIGH';
-      ageBucket = '>2h';
+      ageBucket = '>=2h';
     }
   }
 
@@ -403,7 +397,7 @@ async function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
         },
       }, deps);
 
-      const recordSuccess = !recordResult || recordResult.status === 'recorded' || recordResult.status === 'success' || recordResult.wrote !== false;
+      const recordSuccess = recordResult?.status === 'recorded';
       if (recordSuccess) {
         recordedSlaBreaches.add(dedupKey);
         results.push(sla);
