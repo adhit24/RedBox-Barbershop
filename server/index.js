@@ -3606,8 +3606,16 @@ const { createInMemorySupabase } = require('./moka/memoryStore');
 const memorySupabase = createInMemorySupabase();
 
 const createMokaRouter = require('./moka/routes');
+// Backoffice-aware auth (server/middleware/backofficeSupabaseAuth.js, PR #68):
+// verifies the real Supabase session Backoffice now sends and resolves
+// owner/manager + branch from the `users` table; falls through to the
+// unchanged legacy adminAuth for every non-Backoffice caller (cron,
+// stockist, curl with ADMIN_PASSWORD/CRON_SECRET). Same wrapper pattern
+// already used by createAdminCrmRoutes — see server/routes/adminCrm.js.
+const { createBackofficeSupabaseAuth } = require('./middleware/backofficeSupabaseAuth');
+const mokaBackofficeAuth = createBackofficeSupabaseAuth(supabase, adminAuth);
 // Prefer real Supabase so sync-schema and DB writes work correctly
-const mokaRouter = createMokaRouter(supabase || memorySupabase, adminAuth);
+const mokaRouter = createMokaRouter(supabase || memorySupabase, mokaBackofficeAuth);
 app.use('/api', mokaRouter);
 console.log('✅ Moka integration routes mounted');
 

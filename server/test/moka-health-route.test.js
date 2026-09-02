@@ -71,26 +71,27 @@ test('GET /api/moka/health returns per-outlet health for an owner/unrestricted s
   server.close();
 });
 
-test('GET /api/moka/health scopes a branch_admin session to only their own outlet', async () => {
+test('GET /api/moka/health scopes a manager session (current Backoffice Supabase-auth role) to only their own outlet', async () => {
   const supabase = fakeSupabase({
     outlets: [CSB_OUTLET, BYPASS_OUTLET],
     moka_tokens: [],
   });
-  const app = buildApp(supabase, { staffId: 'admin-csb', role: 'branch_admin', branch: 'csb', sessionVerified: true });
+  const app = buildApp(supabase, { staffId: 'manager-csb', role: 'manager', branch: 'csb', sessionVerified: true });
   const server = app.listen(0);
   const port = server.address().port;
 
   const res = await fetch(`http://127.0.0.1:${port}/api/moka/health`, { headers: { 'x-admin-token': 'x' } });
   const body = await res.json();
 
+  assert.equal(res.status, 200);
   assert.equal(body.outlets.length, 1);
   assert.equal(body.outlets[0].slug, 'csb');
   server.close();
 });
 
-test('GET /api/moka/health cannot be scoped by a query param — branch=bypass is ignored for a branch_admin session locked to csb', async () => {
+test('GET /api/moka/health cannot be scoped by a query param — branch=bypass is ignored for a manager session locked to csb', async () => {
   const supabase = fakeSupabase({ outlets: [CSB_OUTLET, BYPASS_OUTLET], moka_tokens: [] });
-  const app = buildApp(supabase, { staffId: 'admin-csb', role: 'branch_admin', branch: 'csb', sessionVerified: true });
+  const app = buildApp(supabase, { staffId: 'manager-csb', role: 'manager', branch: 'csb', sessionVerified: true });
   const server = app.listen(0);
   const port = server.address().port;
 
@@ -100,6 +101,38 @@ test('GET /api/moka/health cannot be scoped by a query param — branch=bypass i
   assert.equal(body.outlets.length, 1);
   assert.equal(body.outlets[0].slug, 'csb');
   server.close();
+});
+
+test('GET /api/moka/health fails closed (403) for a manager with no branch on file — never falls back to unrestricted', async () => {
+  const supabase = fakeSupabase({ outlets: [CSB_OUTLET, BYPASS_OUTLET], moka_tokens: [] });
+  const app = buildApp(supabase, { staffId: 'manager-nobranch', role: 'manager', branch: null, sessionVerified: true });
+  const server = app.listen(0);
+  const port = server.address().port;
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/moka/health`, { headers: { 'x-admin-token': 'x' } });
+
+  assert.equal(res.status, 403);
+  server.close();
+});
+
+test('GET /api/moka/sync-logs: owner sees the global log; manager gets 403, not an unattributed cross-branch stream', async () => {
+  const supabase = fakeSupabase({
+    sync_logs: [{ id: 'l1', direction: 'moka_to_web', entity_type: 'order', entity_id: 't1', status: 'success', error_message: null, retry_count: 0, created_at: new Date().toISOString() }],
+  });
+
+  const ownerApp = buildApp(supabase, { staffId: 'owner1', role: 'owner', branch: null, sessionVerified: true });
+  const ownerServer = ownerApp.listen(0);
+  const ownerRes = await fetch(`http://127.0.0.1:${ownerServer.address().port}/api/moka/sync-logs`, { headers: { 'x-admin-token': 'x' } });
+  const ownerBody = await ownerRes.json();
+  assert.equal(ownerRes.status, 200);
+  assert.equal(ownerBody.logs.length, 1);
+  ownerServer.close();
+
+  const managerApp = buildApp(supabase, { staffId: 'manager-csb', role: 'manager', branch: 'csb', sessionVerified: true });
+  const managerServer = managerApp.listen(0);
+  const managerRes = await fetch(`http://127.0.0.1:${managerServer.address().port}/api/moka/sync-logs`, { headers: { 'x-admin-token': 'x' } });
+  assert.equal(managerRes.status, 403);
+  managerServer.close();
 });
 
 test('GET /api/moka/sync-status returns real per-outlet schedule counts', async () => {

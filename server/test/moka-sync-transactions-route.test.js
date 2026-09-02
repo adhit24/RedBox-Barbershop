@@ -13,6 +13,12 @@ const test = require('node:test');
 
 const syncPath = require.resolve('../moka/sync');
 const pullCalls = [];
+// routes.js destructures pullMokaToWeb from this module ONCE at require-time,
+// so a test can't swap require.cache[syncPath].exports afterwards and expect
+// routes.js to see the new function — it already holds a direct reference to
+// this one. To make one test fail on demand, this single stub checks a
+// mutable flag instead of being replaced.
+let failNextPullWith = null;
 require.cache[syncPath] = {
   id: syncPath,
   filename: syncPath,
@@ -20,6 +26,11 @@ require.cache[syncPath] = {
   exports: {
     pullMokaToWeb: async (_supabase, outletId) => {
       pullCalls.push(outletId);
+      if (failNextPullWith) {
+        const message = failNextPullWith;
+        failNextPullWith = null;
+        throw new Error(message);
+      }
       return { processed: 2, skipped: 1, errors: 0 };
     },
     pushScheduleToMoka: async () => ({}),
@@ -108,9 +119,9 @@ test('POST /api/moka/sync-transactions with an outlet in body syncs only that on
   server.close();
 });
 
-test('POST /api/moka/sync-transactions rejects a branch_admin session targeting a different branch', async () => {
+test('POST /api/moka/sync-transactions rejects a manager session (current Backoffice Supabase-auth role) targeting a different branch', async () => {
   const supabase = fakeSupabase({ outlets: [CSB, BYPASS] });
-  const app = buildApp(supabase, { staffId: 'admin-csb', role: 'branch_admin', branch: 'csb', sessionVerified: true });
+  const app = buildApp(supabase, { staffId: 'manager-csb', role: 'manager', branch: 'csb', sessionVerified: true });
   const server = app.listen(0);
   const port = server.address().port;
 
@@ -125,9 +136,9 @@ test('POST /api/moka/sync-transactions rejects a branch_admin session targeting 
   server.close();
 });
 
-test('POST /api/moka/sync-transactions with no body for a branch_admin session only syncs their own outlet', async () => {
+test('POST /api/moka/sync-transactions with no body for a manager session only syncs their own outlet', async () => {
   const supabase = fakeSupabase({ outlets: [CSB, BYPASS] });
-  const app = buildApp(supabase, { staffId: 'admin-csb', role: 'branch_admin', branch: 'csb', sessionVerified: true });
+  const app = buildApp(supabase, { staffId: 'manager-csb', role: 'manager', branch: 'csb', sessionVerified: true });
   const server = app.listen(0);
   const port = server.address().port;
 
@@ -142,6 +153,51 @@ test('POST /api/moka/sync-transactions with no body for a branch_admin session o
   assert.deepEqual(pullCalls, ['o1']);
   assert.equal(body.results.length, 1);
   server.close();
+});
+
+test('POST /api/moka/sync-transactions fails closed (403) for a manager with no branch on file — never syncs unrestricted', async () => {
+  const supabase = fakeSupabase({ outlets: [CSB, BYPASS] });
+  const app = buildApp(supabase, { staffId: 'manager-nobranch', role: 'manager', branch: null, sessionVerified: true });
+  const server = app.listen(0);
+  const port = server.address().port;
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/moka/sync-transactions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+
+  assert.equal(res.status, 403);
+  assert.deepEqual(pullCalls, []);
+  server.close();
+});
+
+test('POST /api/moka/sync-transactions never leaks a raw technical error — logs server-side, returns a safe errorCode', async () => {
+  const RAW_ERROR = 'MokaApiError: 401 invalid_token access_token=abc.def.ghi at oauth.js:142';
+  failNextPullWith = RAW_ERROR;
+
+  const supabase = fakeSupabase({ outlets: [CSB] });
+  const app = buildApp(supabase, { staffId: 'owner1', role: 'owner', branch: null, sessionVerified: true });
+  const server = app.listen(0);
+  const port = server.address().port;
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/moka/sync-transactions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outlet: 'csb' }),
+    });
+    const bodyText = await res.text();
+
+    assert.equal(res.status, 200);
+    assert.equal(bodyText.includes(RAW_ERROR), false);
+    assert.equal(bodyText.includes('abc.def.ghi'), false);
+    const body = JSON.parse(bodyText);
+    assert.equal(body.results[0].status, 'failed');
+    assert.equal(body.results[0].errorCode, 'SYNC_FAILED');
+  } finally {
+    server.close();
+  }
 });
 
 test('POST /api/moka/sync-transactions returns 404 for an unknown outlet slug', async () => {

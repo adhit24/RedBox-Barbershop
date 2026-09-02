@@ -53,15 +53,27 @@ test('classifyOutletHealth: healthy when never synced yet but token is fresh (st
   assert.equal(classifyOutletHealth({ connected: true, hasToken: true, tokenExpired: false, staleMinutes: null }), 'healthy');
 });
 
-test('resolveMokaOutletScope: branch_admin is scoped to their own outlet only', () => {
+test('resolveMokaOutletScope: manager (current Backoffice Supabase-auth role) is scoped to their own outlet only', () => {
+  assert.deepEqual(resolveMokaOutletScope({ role: 'manager', branch: 'csb' }), { slugs: ['csb'] });
+});
+
+test('resolveMokaOutletScope: manager without a branch on file fails closed, never unrestricted', () => {
+  assert.deepEqual(resolveMokaOutletScope({ role: 'manager', branch: null }), { slugs: null, forbidden: true });
+});
+
+test('resolveMokaOutletScope: branch_admin (older HMAC-assertion role, reachable via the legacy fallthrough) is scoped like manager', () => {
   assert.deepEqual(resolveMokaOutletScope({ role: 'branch_admin', branch: 'csb' }), { slugs: ['csb'] });
+});
+
+test('resolveMokaOutletScope: branch_admin without a branch also fails closed', () => {
+  assert.deepEqual(resolveMokaOutletScope({ role: 'branch_admin', branch: null }), { slugs: null, forbidden: true });
 });
 
 test('resolveMokaOutletScope: owner sees all outlets', () => {
   assert.deepEqual(resolveMokaOutletScope({ role: 'owner', branch: null }), { slugs: null });
 });
 
-test('resolveMokaOutletScope: legacy unrestricted token (role null, sessionVerified false) sees all outlets', () => {
+test('resolveMokaOutletScope: legacy/system caller (role null, sessionVerified false — ADMIN_PASSWORD/CRON_SECRET used directly, not through a verified session) sees all outlets, unchanged', () => {
   assert.deepEqual(resolveMokaOutletScope({ role: null, branch: null, sessionVerified: false }), { slugs: null });
 });
 

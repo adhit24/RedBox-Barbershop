@@ -39,19 +39,36 @@ function wibDayBounds(now = new Date()) {
 }
 
 /**
- * Resolves which outlets a caller may see, from the adminAuth session set by
- * server/index.js's adminAuth middleware — never from a client-supplied query
- * param. `role: 'branch_admin'` is scoped to their own outlet; `role: 'owner'`
- * and the legacy unrestricted token (role: null, sessionVerified: false — every
- * request Backoffice makes today, since it has no per-user session yet) see all
- * outlets. Real per-branch-admin Backoffice access becomes a drop-in once
- * Backoffice adopts session assertions — no endpoint changes needed then.
+ * Resolves which outlets a caller may see, from req.adminAuth — never from a
+ * client-supplied query param. req.adminAuth is set by whichever auth
+ * middleware actually authenticated the request:
+ *
+ *  - Backoffice (since PR #68, server/middleware/backofficeSupabaseAuth.js):
+ *    a real Supabase session, verified against the `users` table. Only
+ *    produces role 'owner' or 'manager' (createBackofficeSupabaseAuth
+ *    rejects any other profile role with 403 before this ever runs).
+ *  - The older HMAC session-assertion path (server/services/
+ *    adminSessionAssertion.js, used by frontend/'s membership-admin proxy)
+ *    produces role 'owner' or 'branch_admin'. It can still reach Moka routes
+ *    via createMokaRouter's legacyAdminAuth fallthrough for non-Backoffice
+ *    callers, so both scoped-role spellings are handled identically here.
+ *  - Legacy/system callers using the raw ADMIN_PASSWORD/CRON_SECRET token
+ *    directly (no verified session) get role: null, sessionVerified: false —
+ *    unchanged, unrestricted, exactly as before either auth upgrade existed.
+ *
+ * 'owner' always sees every outlet. A scoped role ('manager' or
+ * 'branch_admin') with no branch on file is NOT unrestricted — it fails
+ * closed, since an unscoped "manager" would otherwise see every branch's
+ * data, which is exactly the authorization bug this resolves.
  * @param {{ role: string|null, branch: string|null }|null|undefined} adminAuth
- * @returns {{ slugs: string[]|null }} null slugs = unrestricted (all outlets)
+ * @returns {{ slugs: string[]|null, forbidden?: boolean }} null slugs = unrestricted; forbidden = no valid scope, caller must get 403
  */
 function resolveMokaOutletScope(adminAuth) {
-  if (adminAuth && adminAuth.role === 'branch_admin' && adminAuth.branch) {
-    return { slugs: [adminAuth.branch] };
+  const role = adminAuth?.role ?? null;
+  if (role === 'owner') return { slugs: null };
+  if (role === 'manager' || role === 'branch_admin') {
+    if (adminAuth.branch) return { slugs: [adminAuth.branch] };
+    return { slugs: null, forbidden: true };
   }
   return { slugs: null };
 }

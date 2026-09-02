@@ -1111,13 +1111,19 @@ function createMokaRouter(supabase, adminAuth = (req, res, next) => next()) {
   // ── GET /api/moka/sync-logs ───────────────────────────────
   // Returns recent sync audit log entries.
   // Query: direction, status, limit (default 50)
-  // sync_logs carries no outlet_id (see server/moka/health.js header comment),
-  // so this cannot be branch-scoped by outlet today — every authenticated
-  // caller sees the same cross-branch log stream. Entries never contain a
-  // token value; error_message is a business-readable string set by the sync
-  // engine, not a raw upstream/HTTP error body.
+  // sync_logs carries no outlet_id, so entries cannot be safely attributed to
+  // a branch. A branch-scoped session (manager/branch_admin) therefore gets
+  // 403 rather than the cross-branch stream — do NOT relax this without
+  // either adding real outlet attribution or an explicit product decision.
+  // Only 'owner' and legacy/system callers (unrestricted, role: null) see the
+  // global log. Entries never contain a token value; error_message is a
+  // business-readable string set by the sync engine, not a raw HTTP body.
   router.get('/moka/sync-logs', adminAuth, async (req, res) => {
     try {
+      const scope = resolveMokaOutletScope(req.adminAuth);
+      if (scope.forbidden) return res.status(403).json({ error: 'No branch assigned to this account' });
+      if (scope.slugs) return res.status(403).json({ error: 'Sync logs are not available per branch yet' });
+
       const { direction, status, limit = 50 } = req.query;
 
       let query = supabase
@@ -1147,6 +1153,7 @@ function createMokaRouter(supabase, adminAuth = (req, res, next) => next()) {
   router.get('/moka/health', adminAuth, async (req, res) => {
     try {
       const scope = resolveMokaOutletScope(req.adminAuth);
+      if (scope.forbidden) return res.status(403).json({ error: 'No branch assigned to this account' });
       const data = await getMokaHealth(supabase, { outletSlugs: scope.slugs });
       res.json(data);
     } catch (err) {
@@ -1162,6 +1169,7 @@ function createMokaRouter(supabase, adminAuth = (req, res, next) => next()) {
   router.get('/moka/sync-status', adminAuth, async (req, res) => {
     try {
       const scope = resolveMokaOutletScope(req.adminAuth);
+      if (scope.forbidden) return res.status(403).json({ error: 'No branch assigned to this account' });
       const data = await getMokaSyncStatus(supabase, { outletSlugs: scope.slugs });
       res.json(data);
     } catch (err) {
@@ -1174,12 +1182,13 @@ function createMokaRouter(supabase, adminAuth = (req, res, next) => next()) {
   // (pullMokaToWeb — the same function /api/moka/sync and the cron endpoints
   // use) for one outlet or every outlet in scope. Does not duplicate the
   // matching logic; this is a thin, session-scoped trigger over it.
-  // Body: { outlet?: string } — a slug; a branch_admin session may only pass
+  // Body: { outlet?: string } — a slug; a branch-scoped session may only pass
   // their own branch (403 otherwise). Owner/legacy sessions may omit it to
   // sync every outlet, or target one.
   router.post('/moka/sync-transactions', adminAuth, async (req, res) => {
     try {
       const scope = resolveMokaOutletScope(req.adminAuth);
+      if (scope.forbidden) return res.status(403).json({ error: 'No branch assigned to this account' });
       const { outlet: rawOutlet } = req.body || {};
 
       let targets;
@@ -1198,12 +1207,16 @@ function createMokaRouter(supabase, adminAuth = (req, res, next) => next()) {
         targets = data || [];
       }
 
+      // Never forward err.message to the client — it can carry a raw
+      // upstream/OAuth error from the Moka API. Log the real cause
+      // server-side; the client gets a safe, business-level result only.
       const results = await Promise.all(targets.map(async (t) => {
         try {
           const r = await pullMokaToWeb(supabase, t.id);
-          return { slug: t.slug, ...r };
+          return { slug: t.slug, status: 'success', ...r };
         } catch (err) {
-          return { slug: t.slug, error: err.message, processed: 0, skipped: 0, errors: 1 };
+          console.error(`[MokaSyncTransactions] outlet ${t.slug} sync failed:`, err.message);
+          return { slug: t.slug, status: 'failed', errorCode: 'SYNC_FAILED' };
         }
       }));
 
