@@ -6,15 +6,17 @@ const STATUS = {
   oauthConfigured: true,
   outlets: [
     { id: 'o1', name: 'CSB', slug: 'csb', mokaOutletId: 'm1', hasToken: true, tokenExpiry: '2027-01-01', tokenExpired: false },
-    { id: 'o2', name: 'Bypass', slug: 'bypass', mokaOutletId: 'm2', hasToken: false, tokenExpiry: null, tokenExpired: null },
+    { id: 'o2', name: 'Bypass', slug: 'bypass', mokaOutletId: 'm2', hasToken: true, tokenExpiry: '2027-01-01', tokenExpired: false },
   ],
   recentLogs: [],
 };
 
 const LOGS = {
   logs: [
-    { id: 'l1', direction: 'pull', entity_type: 'transaction', entity_id: 'tx1', status: 'ok', error_message: null, retry_count: 0, created_at: '2026-09-01T08:46:00.000Z' },
-    { id: 'l2', direction: 'push', entity_type: 'item_mapping', entity_id: null, status: 'error', error_message: 'SKU tidak ditemukan', retry_count: 1, created_at: '2026-09-01T08:30:00.000Z' },
+    { id: 'l1', direction: 'CSB', entity_type: 'transaction', entity_id: 'tx1', status: 'ok', error_message: null, retry_count: 0, created_at: '2026-09-01T08:46:00.000Z' },
+    { id: 'l2', direction: 'Samadikun', entity_type: 'item_mapping', entity_id: null, status: 'error', error_message: 'SKU tidak ditemukan', retry_count: 1, created_at: '2026-09-01T08:30:00.000Z' },
+    { id: 'l3', direction: 'Sumber', entity_type: 'open_bill', entity_id: null, status: 'error', error_message: 'Menunggu respon Moka', retry_count: 1, created_at: '2026-09-01T08:28:00.000Z' },
+    { id: 'l4', direction: 'Semua outlet', entity_type: 'customer', entity_id: null, status: 'ok', error_message: null, retry_count: 0, created_at: '2026-09-01T08:15:00.000Z' },
   ],
 };
 
@@ -36,20 +38,36 @@ describe('MokaIntegration', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders per-outlet connection status', async () => {
+  it('renders the connected summary and six operational sync cards', async () => {
     mockFetch();
     render(<MokaIntegration />);
-    await waitFor(() => {
-      expect(screen.getByText('CSB')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Bypass')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument());
+
+    expect(screen.getByText('Transaction Sync')).toBeInTheDocument();
+    expect(screen.getByText('Customer Sync')).toBeInTheDocument();
+    expect(screen.getByText('Item Mapping')).toBeInTheDocument();
+    expect(screen.getByText('Barber Mapping')).toBeInTheDocument();
+    expect(screen.getByText('Open Bill / Schedule Sync')).toBeInTheDocument();
+    expect(screen.getByText('Last Successful Sync')).toBeInTheDocument();
   });
 
-  it('renders real sync log entries', async () => {
+  it('removes the old standalone Status Outlet section', async () => {
     mockFetch();
     render(<MokaIntegration />);
-    await waitFor(() => {
-      expect(screen.getByText(/SKU tidak ditemukan/i)).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText('Connected')).toBeInTheDocument());
+    expect(screen.queryByText('Status Outlet')).not.toBeInTheDocument();
+  });
+
+  it('keeps unsupported barber mapping honest', async () => {
+    mockFetch();
+    render(<MokaIntegration />);
+    await waitFor(() => expect(screen.getByText('Barber Mapping')).toBeInTheDocument());
+    expect(screen.getByText(/data barber mapping belum tersedia/i)).toBeInTheDocument();
+  });
+
+  it('still renders real sync-log errors', async () => {
+    mockFetch();
+    render(<MokaIntegration />);
+    await waitFor(() => expect(screen.getByText(/SKU tidak ditemukan/i)).toBeInTheDocument());
   });
 });

@@ -5,37 +5,32 @@ import { BarberPerformance } from '../BarberPerformance';
 
 const RESULT = {
   barbers: [
-    { barber_id: 'b1', name: 'Ubay Santoso', branch: 'samadikun', customers_served: 612, completed_services: 584, repeat_rate: 58 },
-    { barber_id: 'b2', name: 'Dodi Iskandar', branch: 'csb', customers_served: 540, completed_services: 512, repeat_rate: 52 },
+    { barber_id: 'b1', name: 'Zaki', branch: 'tegal', customers_served: 20, completed_services: 25, repeat_rate: 18 },
+    { barber_id: 'b2', name: 'Ubay', branch: 'csb', customers_served: 79, completed_services: 100, repeat_rate: 22 },
+    { barber_id: 'b3', name: 'Aziz', branch: 'csb', customers_served: 20, completed_services: 22, repeat_rate: 10 },
+    { barber_id: 'b4', name: 'Abdul', branch: 'bypass', customers_served: 30, completed_services: 33, repeat_rate: 10 },
   ],
 };
 
 describe('BarberPerformance', () => {
-  beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
-  });
+  beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
+  afterEach(() => vi.unstubAllGlobals());
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('renders the leaderboard with real customers-served and repeat-rate figures', async () => {
+  it('renders only Barber, Cabang, Customer, and Repeat columns', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(new Response(JSON.stringify(RESULT), { status: 200 }));
     render(<BarberPerformance />, { wrapper: MemoryRouter });
-    await waitFor(() => {
-      expect(screen.getByText('Ubay Santoso')).toBeInTheDocument();
-    });
-    expect(screen.getByText('612')).toBeInTheDocument();
-    expect(screen.getByText('58%')).toBeInTheDocument();
+    await screen.findByText('Ubay');
+    expect(screen.getByText('Customer')).toBeInTheDocument();
+    expect(screen.getByText('Repeat')).toBeInTheDocument();
+    expect(screen.queryByText(/Layanan Selesai/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('100')).not.toBeInTheDocument();
   });
 
-  it('never renders a commission or attendance figure', async () => {
+  it('sorts rows by branch order, then barber name alphabetically', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(new Response(JSON.stringify(RESULT), { status: 200 }));
     render(<BarberPerformance />, { wrapper: MemoryRouter });
-    await waitFor(() => {
-      expect(screen.getByText('Ubay Santoso')).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/komisi/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/attendance/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Abdul')).toBeInTheDocument());
+    const names = screen.getAllByTestId('barber-name').map((el) => el.textContent);
+    expect(names).toEqual(['Abdul', 'Aziz', 'Ubay', 'Zaki']);
   });
 });
