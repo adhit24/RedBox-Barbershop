@@ -3,7 +3,6 @@ import { PageHeader } from '../components/PageHeader';
 import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
 import {
-  AlertClockIcon,
   BoxIcon,
   CheckIcon,
   MemberIcon,
