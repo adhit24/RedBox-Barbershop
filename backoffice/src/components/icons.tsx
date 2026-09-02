@@ -98,3 +98,43 @@ export function BellIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function BarChartIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 20V10" />
+      <path d="M12 20V4" />
+      <path d="M20 20v-6" />
+      <path d="M3 20h18" />
+    </Icon>
+  );
+}
+
+export function PersonIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" />
+    </Icon>
+  );
+}
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="9" cy="8.5" r="3.2" />
+      <path d="M2.8 21c.2-3.6 2.9-5.6 6.2-5.6s6 2 6.2 5.6" />
+      <circle cx="17.5" cy="9.5" r="2.5" />
+      <path d="M15.8 21c.2-2.8 1.9-4.7 4.4-4.7" />
+    </Icon>
+  );
+}
+
+export function ClockIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </Icon>
+  );
+}
