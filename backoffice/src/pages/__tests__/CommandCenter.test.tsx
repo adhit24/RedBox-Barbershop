@@ -89,12 +89,20 @@ const MEMBERSHIP: MemberProfile[] = [
 
 const MOKA_SYNC_LOGS = {
   logs: [
-    { id: 'l1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: TODAY_ISO },
-    { id: 'l2', direction: 'push', entity_type: 'booking', entity_id: 'b2', status: 'error', error_message: 'Outlet token expired', retry_count: 1, created_at: TODAY_ISO },
+    { id: 'l1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'success', error_message: null, retry_count: 0, created_at: TODAY_ISO },
+    { id: 'l2', direction: 'push', entity_type: 'booking', entity_id: 'b2', status: 'failed', error_message: 'Outlet token expired', retry_count: 1, created_at: TODAY_ISO },
   ],
 };
 
-function mockFetch(overrides: { branchFailFor?: string[]; mokaLogs?: typeof MOKA_SYNC_LOGS; membership?: typeof MEMBERSHIP } = {}) {
+const MOKA_HEALTH = {
+  today: '2026-09-01',
+  outlets: [
+    { outletId: 'o1', slug: 'csb', name: 'CSB', connected: true, health: 'healthy', lastSuccessfulSync: TODAY_ISO, transactionsToday: 10, unmatchedTransactionsToday: 0 },
+    { outletId: 'o2', slug: 'pdk', name: 'Pondok Indah', connected: true, health: 'expired', lastSuccessfulSync: null, transactionsToday: 0, unmatchedTransactionsToday: 2 },
+  ],
+};
+
+function mockFetch(overrides: { branchFailFor?: string[]; mokaLogs?: typeof MOKA_SYNC_LOGS; membership?: typeof MEMBERSHIP; mokaHealth?: typeof MOKA_HEALTH } = {}) {
   const fetchMock = fetch as ReturnType<typeof vi.fn>;
   fetchMock.mockImplementation((url: string) => {
     if (url.includes('owner-overview')) {
@@ -119,6 +127,9 @@ function mockFetch(overrides: { branchFailFor?: string[]; mokaLogs?: typeof MOKA
     }
     if (url.includes('sync-logs')) {
       return Promise.resolve(new Response(JSON.stringify(overrides.mokaLogs ?? MOKA_SYNC_LOGS), { status: 200 }));
+    }
+    if (url.includes('/api/moka/health')) {
+      return Promise.resolve(new Response(JSON.stringify(overrides.mokaHealth ?? MOKA_HEALTH), { status: 200 }));
     }
     return Promise.resolve(new Response('not found', { status: 404 }));
   });
@@ -218,8 +229,9 @@ describe('CommandCenter', () => {
     mockFetch({ branchFailFor: ['pdk'] });
     renderCC();
 
+    // "CSB" also appears in the branch selector and the Moka health panel.
     await waitFor(() => {
-      expect(screen.getByText('CSB')).toBeInTheDocument();
+      expect(screen.getAllByText('CSB').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('Command Center')).toBeInTheDocument();
   });
@@ -275,8 +287,8 @@ describe('CommandCenter', () => {
     mockFetch({
       mokaLogs: {
         logs: [
-          { id: 'today1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: TODAY_ISO },
-          { id: 'yesterday1', direction: 'pull', entity_type: 'refund', entity_id: 'r1', status: 'ok', error_message: null, retry_count: 0, created_at: YESTERDAY_ISO },
+          { id: 'today1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'success', error_message: null, retry_count: 0, created_at: TODAY_ISO },
+          { id: 'yesterday1', direction: 'pull', entity_type: 'refund', entity_id: 'r1', status: 'success', error_message: null, retry_count: 0, created_at: YESTERDAY_ISO },
         ],
       },
     });
@@ -311,7 +323,7 @@ describe('CommandCenter', () => {
       mockFetch({
         mokaLogs: {
           logs: [
-            { id: 'boundary1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: boundaryIso },
+            { id: 'boundary1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'success', error_message: null, retry_count: 0, created_at: boundaryIso },
           ],
         },
       });
@@ -330,7 +342,7 @@ describe('CommandCenter', () => {
     mockFetch({
       mokaLogs: {
         logs: [
-          { id: 'yesterday1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'ok', error_message: null, retry_count: 0, created_at: YESTERDAY_ISO },
+          { id: 'yesterday1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'success', error_message: null, retry_count: 0, created_at: YESTERDAY_ISO },
         ],
       },
     });
@@ -388,7 +400,7 @@ describe('CommandCenter', () => {
           direction: 'pull',
           entity_type: `entity${i}`,
           entity_id: `e${i}`,
-          status: 'ok' as const,
+          status: 'success' as const,
           error_message: null,
           retry_count: 0,
           created_at: TODAY_ISO,
@@ -430,7 +442,7 @@ describe('CommandCenter', () => {
           direction: 'push',
           entity_type: `booking${i}`,
           entity_id: `b${i}`,
-          status: 'error' as const,
+          status: 'failed' as const,
           error_message: `Error nomor ${i}`,
           retry_count: 1,
           created_at: TODAY_ISO,
@@ -452,5 +464,35 @@ describe('CommandCenter', () => {
     fireEvent.click(within(alertsCard).getByText('Tampilkan semua (6) →'));
 
     expect(screen.getByText('Error nomor 5')).toBeInTheDocument();
+  });
+
+  it('renders a real Moka health status per branch, with an honest label per outlet', async () => {
+    mockFetch();
+    renderCC();
+
+    await waitFor(() => {
+      expect(screen.getByText('Integrasi Moka')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Healthy')).toBeInTheDocument();
+    expect(screen.getByText('Expired')).toBeInTheDocument();
+    expect(screen.getByText('2 belum matched')).toBeInTheDocument();
+  });
+
+  it("colors Today's Operations Timeline dots and Alerts & Exceptions using the real sync_logs status ('success'/'failed'), not the fictional 'ok'", async () => {
+    mockFetch({
+      mokaLogs: {
+        logs: [
+          { id: 'ok1', direction: 'pull', entity_type: 'transaction', entity_id: 't1', status: 'success', error_message: null, retry_count: 0, created_at: TODAY_ISO },
+        ],
+      },
+    });
+    renderCC();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sinkronisasi pull transaction — success/i)).toBeInTheDocument();
+    });
+    // A 'success' log must not be treated as an error/exception.
+    expect(screen.getByText('Tidak ada exception sinkronisasi hari ini.')).toBeInTheDocument();
   });
 });

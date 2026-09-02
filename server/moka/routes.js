@@ -4,7 +4,7 @@
 //
 // Mount in index.js:
 //   const createMokaRouter = require('./moka/routes');
-//   app.use('/api', createMokaRouter(supabase));
+//   app.use('/api', createMokaRouter(supabase, adminAuth));
 //
 // Endpoints:
 //   GET  /api/availability          — slot engine
@@ -15,10 +15,16 @@
 //   GET  /api/moka/callback         — OAuth code exchange
 //   POST /api/moka/webhook          — Moka real-time events
 //   POST /api/moka/sync             — manual pull trigger
-//   GET  /api/moka/sync-logs        — recent sync audit
+//   GET  /api/moka/sync-logs        — recent sync audit                    [adminAuth]
+//   GET  /api/moka/health           — Command Center health dashboard      [adminAuth]
+//   GET  /api/moka/sync-status      — per-outlet debug status              [adminAuth]
+//   POST /api/moka/sync-transactions — trigger order pull + matching       [adminAuth]
 //   GET  /api/moka/items            — Moka product list + mapping status
 //   POST /api/moka/map-items        — save service↔Moka item mappings
 //   GET  /api/moka/status           — OAuth + last-sync health check
+//
+// [adminAuth] routes read branch scope from req.adminAuth (verified session),
+// never from a query param — see resolveMokaOutletScope in ./health.js.
 // ============================================================
 
 const express          = require('express');
@@ -30,6 +36,7 @@ const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEven
 const { getAvailableSlots, isSlotAvailable, getBarberDateAvailability } = require('./slotEngine');
 const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
 const { getBarberForBooking, branchMatchesBarber }                     = require('../services/bookingGuard');
+const { getMokaHealth, getMokaSyncStatus, resolveMokaOutletScope }     = require('./health');
 
 async function syncCurrentMonthTransactions(supabase, outletId = null) {
   const { syncCurrentMonthTx } = require('./txSync');
@@ -62,8 +69,15 @@ async function syncCurrentMonthTransactions(supabase, outletId = null) {
 /**
  * Factory — returns a configured Express Router.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {import('express').RequestHandler} [adminAuth] — gates the
+ *   dashboard-facing endpoints (/moka/health, /moka/sync-status,
+ *   /moka/sync-transactions, /moka/sync-logs) and sets req.adminAuth
+ *   ({role, branch}) so branch scoping comes from the verified session,
+ *   never a client-supplied query param. Falls back to a permissive no-op
+ *   if omitted, so existing callers/tests that construct the router with
+ *   one argument keep working unchanged.
  */
-function createMokaRouter(supabase) {
+function createMokaRouter(supabase, adminAuth = (req, res, next) => next()) {
   const router = express.Router();
 
   // ── GET /api/availability ────────────────────────────────
@@ -1097,7 +1111,12 @@ function createMokaRouter(supabase) {
   // ── GET /api/moka/sync-logs ───────────────────────────────
   // Returns recent sync audit log entries.
   // Query: direction, status, limit (default 50)
-  router.get('/moka/sync-logs', async (req, res) => {
+  // sync_logs carries no outlet_id (see server/moka/health.js header comment),
+  // so this cannot be branch-scoped by outlet today — every authenticated
+  // caller sees the same cross-branch log stream. Entries never contain a
+  // token value; error_message is a business-readable string set by the sync
+  // engine, not a raw upstream/HTTP error body.
+  router.get('/moka/sync-logs', adminAuth, async (req, res) => {
     try {
       const { direction, status, limit = 50 } = req.query;
 
@@ -1114,6 +1133,81 @@ function createMokaRouter(supabase) {
       if (error) throw new Error(error.message);
 
       res.json({ logs: data || [] });
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/health ──────────────────────────────────
+  // Command Center dashboard summary: per-outlet health status
+  // (healthy/expired/missing_token/sync_error), last successful sync, today's
+  // real transaction count, and today's unmatched-transaction count. Branch
+  // scope comes from req.adminAuth (verified session), never a query param —
+  // see resolveMokaOutletScope in ./health.js.
+  router.get('/moka/health', adminAuth, async (req, res) => {
+    try {
+      const scope = resolveMokaOutletScope(req.adminAuth);
+      const data = await getMokaHealth(supabase, { outletSlugs: scope.slugs });
+      res.json(data);
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/sync-status ─────────────────────────────
+  // Same debug-oriented per-outlet status as /api/admin/moka-sync-status
+  // (schedule counts, token presence, staleness) — kept at both paths so the
+  // Backoffice /api/moka/* naming convention is consistent, without
+  // duplicating the underlying logic (see getMokaSyncStatus in ./health.js).
+  router.get('/moka/sync-status', adminAuth, async (req, res) => {
+    try {
+      const scope = resolveMokaOutletScope(req.adminAuth);
+      const data = await getMokaSyncStatus(supabase, { outletSlugs: scope.slugs });
+      res.json(data);
+    } catch (err) {
+      _serverError(res, err);
+    }
+  });
+
+  // ── POST /api/moka/sync-transactions ──────────────────────
+  // Triggers the real order-pull + customer/booking-matching engine
+  // (pullMokaToWeb — the same function /api/moka/sync and the cron endpoints
+  // use) for one outlet or every outlet in scope. Does not duplicate the
+  // matching logic; this is a thin, session-scoped trigger over it.
+  // Body: { outlet?: string } — a slug; a branch_admin session may only pass
+  // their own branch (403 otherwise). Owner/legacy sessions may omit it to
+  // sync every outlet, or target one.
+  router.post('/moka/sync-transactions', adminAuth, async (req, res) => {
+    try {
+      const scope = resolveMokaOutletScope(req.adminAuth);
+      const { outlet: rawOutlet } = req.body || {};
+
+      let targets;
+      if (rawOutlet) {
+        if (scope.slugs && !scope.slugs.includes(rawOutlet)) {
+          return res.status(403).json({ error: 'Forbidden — outlet is outside your branch scope' });
+        }
+        const outletId = await _resolveOutletId(supabase, rawOutlet);
+        if (!outletId) return res.status(404).json({ error: `Outlet not found: ${rawOutlet}` });
+        targets = [{ slug: rawOutlet, id: outletId }];
+      } else {
+        let q = supabase.from('outlets').select('id, slug').eq('is_active', true).not('moka_outlet_id', 'is', null);
+        if (scope.slugs) q = q.in('slug', scope.slugs);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+        targets = data || [];
+      }
+
+      const results = await Promise.all(targets.map(async (t) => {
+        try {
+          const r = await pullMokaToWeb(supabase, t.id);
+          return { slug: t.slug, ...r };
+        } catch (err) {
+          return { slug: t.slug, error: err.message, processed: 0, skipped: 0, errors: 1 };
+        }
+      }));
+
+      res.json({ message: 'Sync transactions complete', results });
     } catch (err) {
       _serverError(res, err);
     }
