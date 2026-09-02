@@ -95,6 +95,8 @@ const EVENT_DEFINITIONS = Object.freeze({
   price_placeholder_blocked: ['HIGH', 'quality', 'PRICE_PLACEHOLDER_BLOCKED'],
   final_outbound_after_guards: ['INFO', 'outbound', 'FINAL_OUTBOUND_AFTER_GUARDS'],
   request_ack_without_fulfillment: ['WARNING', 'quality', 'REQUEST_ACK_WITHOUT_FULFILLMENT'],
+  // SLA Observability (P1-F)
+  handoff_sla_breached: ['HIGH', 'handoff', 'HANDOFF_SLA_BREACHED'],
   // Correction Round 2, Blocker 2 — subsystem telemetry distinct from
   // terminal inbound result. The orchestrator's own exception is caught in
   // handleMessage and the turn falls through to the legacy Reddy path, so
@@ -104,6 +106,25 @@ const EVENT_DEFINITIONS = Object.freeze({
   // terminal-reason side of this split).
   orchestrator_execution_failed: ['HIGH', 'routing', 'ORCHESTRATOR_EXECUTION_FAILED'],
 });
+
+const AUDIT_SOURCE_PROVENANCE = Object.freeze({
+  KNOWLEDGE_STATIC: 'knowledge_static',
+  DATABASE_BRANCH: 'database_branch',
+  SCHEDULE_AUTHORITY: 'schedule_authority',
+  ATTENDANCE_AUTHORITY: 'attendance_authority',
+  BOOKING_AUTHORITY: 'booking_authority',
+  UNKNOWN: 'unknown',
+});
+
+function classifyFactAuditProvenance(factName, sourceKey) {
+  const sKey = String(sourceKey || '').toLowerCase();
+  if (sKey.includes('knowledge') || sKey.includes('redbox_knowledge') || sKey.includes('static')) return AUDIT_SOURCE_PROVENANCE.KNOWLEDGE_STATIC;
+  if (sKey.includes('schedule')) return AUDIT_SOURCE_PROVENANCE.SCHEDULE_AUTHORITY;
+  if (sKey.includes('attendance')) return AUDIT_SOURCE_PROVENANCE.ATTENDANCE_AUTHORITY;
+  if (sKey.includes('booking')) return AUDIT_SOURCE_PROVENANCE.BOOKING_AUTHORITY;
+  if (sKey.includes('outlets') || sKey.includes('database') || sKey.includes('branch')) return AUDIT_SOURCE_PROVENANCE.DATABASE_BRANCH;
+  return AUDIT_SOURCE_PROVENANCE.UNKNOWN;
+}
 
 let supabaseProvider = () => null;
 
@@ -461,4 +482,6 @@ module.exports = {
   aggregateHealth,
   getHealthSummary,
   detectStuckHandoffCases,
+  AUDIT_SOURCE_PROVENANCE,
+  classifyFactAuditProvenance,
 };

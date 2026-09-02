@@ -288,6 +288,55 @@ async function listWaitingCases(deps = {}) {
   }
 }
 
+/**
+ * Operational SLA Observability (P1-F).
+ * Inspects waiting/active handoff cases, checks aging threshold without auto-resolving,
+ * and emits telemetry events for SLA breaches.
+ */
+function evaluateCaseSLA(handoffCase, nowMs = Date.now()) {
+  if (!handoffCase || !handoffCase.created_at) return null;
+  const createdAtMs = new Date(handoffCase.created_at).getTime();
+  if (isNaN(createdAtMs)) return null;
+
+  const ageMinutes = Math.floor((nowMs - createdAtMs) / 60000);
+  const priority = String(handoffCase.priority || 'normal').toLowerCase();
+
+  let severity = null;
+  let ageBucket = null;
+
+  if (priority === PRIORITIES.URGENT) {
+    if (ageMinutes >= 10) {
+      severity = 'CRITICAL';
+      ageBucket = ageMinutes >= 60 ? '>1h' : '10m-1h';
+    }
+  } else if (priority === PRIORITIES.HIGH) {
+    if (ageMinutes >= 30) {
+      severity = 'HIGH';
+      ageBucket = ageMinutes >= 120 ? '>2h' : '30m-2h';
+    }
+  } else {
+    // Normal priority
+    if (ageMinutes >= 120) {
+      severity = 'HIGH';
+      ageBucket = '>2h';
+    } else if (ageMinutes >= 30) {
+      severity = 'WARNING';
+      ageBucket = '30m-2h';
+    }
+  }
+
+  if (!severity) return null;
+
+  return {
+    case_id: handoffCase.id,
+    branch: handoffCase.branch || 'unknown',
+    priority,
+    severity,
+    age_minutes: ageMinutes,
+    age_bucket: ageBucket,
+  };
+}
+
 module.exports = {
   OPEN_STATUSES,
   SUPPRESSED_STATUSES,
@@ -303,4 +352,5 @@ module.exports = {
   claimCase,
   resolveCase,
   listWaitingCases,
+  evaluateCaseSLA,
 };

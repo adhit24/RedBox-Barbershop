@@ -44,7 +44,23 @@ const SPANISH_PRESENCE_QUERY = new RegExp(
   'iu',
 );
 
-const AVAILABILITY_SIGNAL = /\b(ready|free|available|tersedia|kosong)\b|\bbisa\s+(?:langsung|sekarang)\b|空いて|フリー|対応できます|disponible|libre/i;
+const POSITION_INTENT_PATTERNS = [
+  /\b(?:kursi|kursi\s*n(?:o|omor)?\s*\d+|posisi|sebelah\s*(?:kiri|kanan|depan|belakang)|di\s+kursi)\b/i,
+  /\b(?:siapa\s+yang\s+(?:duduk|berdiri|di\s+kursi))\b/i,
+  /\b(?:yang\s+lagi\s+di\s+kursi)\b/i,
+];
+
+/**
+ * Classifies barber seat / position identity queries (P1-C).
+ * Example: "yang di kursi 2 itu siapa?", "yang sebelah kiri Mas siapa?"
+ */
+function classifyBarberPositionIntent(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return { matched: false };
+  const matched = POSITION_INTENT_PATTERNS.some((pattern) => pattern.test(raw));
+  if (!matched) return { matched: false };
+  return { matched: true, intent: 'barber_position_identity' };
+}
 
 /**
  * Classifies only named, current barber presence/availability questions.
@@ -53,6 +69,10 @@ const AVAILABILITY_SIGNAL = /\b(ready|free|available|tersedia|kosong)\b|\bbisa\s
  */
 function classifyBarberPresenceQuery(text) {
   const raw = String(text || '').trim();
+  const positionCheck = classifyBarberPositionIntent(raw);
+  if (positionCheck.matched) {
+    return { matched: false, isPositionIntent: true, claimType: null, temporalScope: null };
+  }
   const matched = raw && (
     CURRENT_PRESENCE_QUERY.test(raw)
     || GENERAL_PRESENCE_PATTERNS.some((p) => p.test(raw))
@@ -69,4 +89,4 @@ function classifyBarberPresenceQuery(text) {
   };
 }
 
-module.exports = { classifyBarberPresenceQuery };
+module.exports = { classifyBarberPresenceQuery, classifyBarberPositionIntent };

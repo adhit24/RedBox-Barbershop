@@ -114,7 +114,7 @@ const { classifyDeterministically } = require('../../server/orchestrator/routing
 const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
-const { classifyBarberPresenceQuery } = require('../../server/agents/reddy/barberPresenceIntent');
+const { classifyBarberPresenceQuery, classifyBarberPositionIntent } = require('../../server/agents/reddy/barberPresenceIntent');
 const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
 const {
   hasIndonesianLanguageSignal, isForeignLanguage, detectForeignLanguage, resolveResponseLanguage,
@@ -864,7 +864,15 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   // (realtimeFactGuard.js) enforces this on the OUTBOUND reply too, so this
   // instruction is a second layer, not the only one.
   const barberScheduleStatus = conversationContext?.barber_schedule_status;
+  const barberFactAuthority = {
+    roster: 'verified',
+    planned_schedule: barberScheduleStatus ? barberScheduleStatus.status : 'unknown',
+    attendance: 'unavailable',
+    live_activity: 'unavailable',
+    booking_availability: 'verified',
+  };
   systemPrompt += `\n\n# BATAS FAKTA REAL-TIME — JADWAL, KEHADIRAN, DAN SLOT\n` +
+    `BARBER_FACT_AUTHORITY: ${JSON.stringify(barberFactAuthority)}\n` +
     `PEMISAHAN WAJIB (empat fakta berbeda, jangan disamakan): barber TERDAFTAR di cabang (roster) != barber DIJADWALKAN hari ini != barber SEDANG HADIR sekarang != barber TERSEDIA untuk slot tertentu.\n` +
     (barberScheduleStatus
       ? `JADWAL TERVERIFIKASI HARI INI TERSEDIA: ${JSON.stringify(barberScheduleStatus)}. Jika status "scheduled", boleh menyatakan "${barberScheduleStatus.barberName} dijadwalkan masuk hari ini". Jika status "not_scheduled", nyatakan "${barberScheduleStatus.barberName} tidak tercatat dijadwalkan masuk hari ini". TETAP DILARANG meng-upgrade ini menjadi klaim kehadiran ("sudah hadir", "ada sekarang") — ini fakta JADWAL, bukan bukti kehadiran fisik.\n`
@@ -1562,7 +1570,40 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     };
   }
 
-  // ── Fast keyword intercept (before OpenAI — deterministic, no hallucination) ──
+  // Barber seat / position identity intent (P1-C)
+  const positionIntent = classifyBarberPositionIntent(text);
+  if (positionIntent.matched) {
+    reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak.';
+    used = 'barber_position_identity';
+
+    const handoffCreation = await createHandoffCase({
+      customerPhone: from,
+      customerId: trustedIdentity?.customer_id || null,
+      channel: 'whatsapp',
+      branch,
+      reason: 'barber_position_identity',
+      triggerType: 'policy_escalation',
+      intent: 'barber_position_identity',
+      priority: 'normal',
+      conversationSummary: `customer asked seat/position identity: ${text}`,
+      latestCustomerMessage: text,
+    });
+
+    if (handoffCreation.status === 'created') {
+      reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak. Pesan Kakak sudah aku teruskan ke tim cabang supaya dibantu cek langsung.';
+    }
+
+    const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
+    return { used, reply, sendResult, error: null };
+  }
+
+  // Fast keyword intercept (before OpenAI — deterministic, no hallucination)
   const msgLower = text.toLowerCase();
   const msgHas = (phrases) => phrases.some(p => msgLower.includes(p));
 
@@ -1620,12 +1661,6 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  // P0.2 hotfix: standalone "berapa" is NOT a price signal on its own — it
-  // also appears in "jam berapa" (hours), "kapan/jam berapa masuk" (barber
-  // schedule), etc. Every trigger below carries its own explicit price
-  // context word/phrase, so "Tegal buka jam berapa?" no longer matches here
-  // and instead reaches the orchestrator, which already classifies it
-  // correctly as operating_hours_inquiry (see routingPolicy.js).
   if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'price', 'tarif', 'biaya', 'bayar berapa', 'kena berapa'])) {
     const svcText = buildServicesText(branch);
     reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
@@ -1637,25 +1672,63 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     return { used, reply, sendResult, error: null };
   }
 
-  // Round 2 correction, Blocker 3 — official branch contact resolver.
-  // Deterministic: intercepts explicit contact requests ("nomor cabang?",
-  // "nomor Redbox Sumber?", "WA cabang Tegal?", "kontak Samadikun?") before
-  // the orchestrator/LLM is reached, so the model never has a chance to
-  // invent or misquote a phone number. Source of truth is
-  // REDBOX_KNOWLEDGE.branches[*].phone only (resolveOfficialBranchContact).
-  // Requires an explicit branch/cabang reference (a bare "nomor hp"/"kontak"
-  // mention is far more often the customer giving/asking about their OWN
-  // number — see Round 2 regression: conversation-intelligence-v01.test.js
-  // Task 12 (14) sends "...nomor HP 62800000000" and must reach the normal
-  // orchestrator path, not this shortcut).
+  // Same-Channel Loop Prevention & Official Contact (P0-B)
+  const CHANNEL_LOOP_PATTERNS = [
+    /ini\s+(?:nomor(?:nya)?|no\.?)\s*(?:kan|bukan)?/i,
+    /ini\s+(?:wa|whatsapp)\s+[\w\s]+\s*(?:kan|bukan)?/i,
+    /saya\s+(?:kan\s+)?sudah\s+chat\s+(?:di\s+)?sini/i,
+    /kan\s+saya\s+sudah\s+hubungi\s+nomor\s+ini/i,
+    /ini\s+cabang(?:nya)?\s*(?:kan|bukan)?/i,
+    /lagi\s+chat\s+nomor\s+cabang\s+ini/i,
+    /ini\s+redbox\s+[\w\s]+\s*(?:kan|bukan)?/i,
+  ];
+  const isChannelLoopQuestion = CHANNEL_LOOP_PATTERNS.some(p => p.test(msgLower));
+
   const mentionsBranchOrCabang = /\bcabang/.test(msgLower)
     || REDBOX_KNOWLEDGE.branches.some((b) => msgHas([b.id, ...(b.aliases || [])]));
   const isContactRequest = !isPersonalHistoryOrPreferenceSignal
-    && mentionsBranchOrCabang
-    && /\b(nomor|no\.?|wa|whatsapp|telp(?:on)?|kontak|hubungi)\b/.test(msgLower);
+    && (mentionsBranchOrCabang || isChannelLoopQuestion)
+    && (isChannelLoopQuestion || /\b(nomor|no\.?|wa|whatsapp|telp(?:on)?|kontak|hubungi)\b/.test(msgLower));
+
   if (isContactRequest) {
     const explicitContactBranch = REDBOX_KNOWLEDGE.branches.find((b) => msgHas([b.id, ...(b.aliases || [])]));
     const contactBranchId = explicitContactBranch ? explicitContactBranch.id : branch;
+    const isSameChannelContact = contactBranchId === branch;
+
+    if (isChannelLoopQuestion || isSameChannelContact) {
+      const branchLabel = BRANCH_LABEL[branch] || 'Redbox Barbershop';
+      const handoffCreation = await createHandoffCase({
+        customerPhone: from,
+        customerId: trustedIdentity?.customer_id || null,
+        channel: 'whatsapp',
+        branch,
+        reason: 'same_channel_loop_escalation',
+        triggerType: 'policy_escalation',
+        intent: 'contact_loop_prevention',
+        priority: 'normal',
+        conversationSummary: `same-channel contact loop prevented on ${branch}: ${text}`,
+        latestCustomerMessage: text,
+      });
+
+      if (handoffCreation.status === 'created') {
+        reply = `Betul Kak, ini WhatsApp ${branchLabel}. Aku teruskan ke tim cabang supaya dibantu cek langsung.`;
+      } else if (handoffCreation.status === 'existing') {
+        return { used: 'same_channel_loop_suppressed', reply: null, sendResult: null, error: null };
+      } else {
+        reply = `Betul Kak, ini WhatsApp ${branchLabel}. Ada yang bisa aku bantu untuk info layanan, harga, atau booking?`;
+      }
+
+      used = 'same_channel_loop_prevention';
+      const sendResult = await send(from, reply, { branch });
+      const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+      if (sendSucceeded) {
+        try {
+          await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+        } catch (_e) {}
+      }
+      return { used, reply, sendResult, error: null };
+    }
+
     const contactResolution = resolveOfficialBranchContact(contactBranchId);
     reply = contactResolution.reply;
     used = 'keyword';
@@ -1663,6 +1736,29 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       event_type: 'keyword_shortcut_used', branch, intent: 'contact_inquiry', route: 'keyword',
     })).catch(() => {});
     const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
+    return { used, reply, sendResult, error: null };
+  }
+
+  // Payment method authority boundary (P1-E)
+  const isPaymentMethodInquiry = !isPersonalHistoryOrPreferenceSignal
+    && (/\b(qris|qr|debit|kredit|kartu|cashless|gopay|ovo|dana|shopeepay)\b/i.test(msgLower)
+      || /\b(metode|cara)\s+(?:bayar|pembayaran)\b/i.test(msgLower));
+  if (isPaymentMethodInquiry) {
+    reply = 'Untuk metode pembayaran yang tersedia saat ini, aku belum punya data resmi per cabang. Tim cabang bisa konfirmasi langsung.';
+    used = 'payment_method_boundary';
+    const sendResult = await send(from, reply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await (deps.persistConversation || persistConversationExchange)(from, activeHistoryTurns, text, reply, {}, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used, reply, sendResult, error: null };
   }
 
