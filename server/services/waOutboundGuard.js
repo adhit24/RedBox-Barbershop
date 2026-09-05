@@ -80,17 +80,52 @@ function createGuardedSend({
     }
 
     // P0-A: Price placeholder guard pass (runs BEFORE reservation & contentHash)
-    const { guardPricePlaceholders } = require('../agents/reddy/personalityPolicy');
+    const {
+      guardPricePlaceholders, guardFactualServiceNumbers, guardVisitCompletionOverclaim, guardBookingUrlIntegrity,
+    } = require('../agents/reddy/personalityPolicy');
+    const { logFactualGuardEvent } = require('../orchestrator/telemetry');
     const priceGuarded = guardPricePlaceholders(message, {
       branch,
       serviceId: options.serviceId,
       serviceName: options.serviceName,
       authoritativePriceResolver: options.authoritativePriceResolver,
     });
-    const finalOutboundText = priceGuarded.sanitizedReply;
     if (priceGuarded.blocked) {
       logEvent({ event_type: 'price_placeholder_blocked', branch });
+      logFactualGuardEvent({ event_type: 'price_placeholder_blocked', branch });
     }
+
+    // Round 2 reliability — factual guards. These catch a CONCRETE wrong
+    // number/duration/claim the placeholder guard above cannot see (it only
+    // matches placeholder-shaped tokens). Each is independently additive and
+    // fails open (never blocks) when it cannot verify the fact.
+    const factualNumbers = await guardFactualServiceNumbers(priceGuarded.sanitizedReply, {
+      supabase, serviceId: options.serviceId, serviceName: options.serviceName,
+    });
+    for (const mismatch of factualNumbers.mismatches) {
+      const eventType = mismatch.type === 'duration' ? 'factual_duration_mismatch_blocked' : 'factual_price_mismatch_blocked';
+      logFactualGuardEvent({
+        event_type: eventType,
+        branch,
+        service_id: mismatch.serviceId,
+        attempted_value: mismatch.attempted,
+        expected_value: mismatch.expected,
+      });
+    }
+
+    const visitGuarded = guardVisitCompletionOverclaim(factualNumbers.sanitizedReply, {
+      verifiedBookingStatus: options.verifiedBookingStatus,
+    });
+    if (visitGuarded.blocked) {
+      logFactualGuardEvent({ event_type: 'visit_completion_overclaim_blocked', branch });
+    }
+
+    const urlGuarded = guardBookingUrlIntegrity(visitGuarded.sanitizedReply);
+    if (urlGuarded.corrected) {
+      logFactualGuardEvent({ event_type: 'booking_url_integrity_corrected', branch });
+    }
+
+    const finalOutboundText = urlGuarded.sanitizedReply;
 
     // Hashes computed on final sanitized text
     const destinationHash = hashValue(normalizePhoneDigits(to));

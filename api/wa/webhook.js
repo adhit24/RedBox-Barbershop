@@ -91,6 +91,7 @@ function getBranchConfig(branchKey = 'bypass') {
   return found || REDBOX_KNOWLEDGE.branches[0];
 }
 
+const crypto = require('crypto');
 const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
 const { REDBOX_SERVICES } = require('../../public/js/services-data');
 /**
@@ -114,7 +115,7 @@ const { classifyDeterministically } = require('../../server/orchestrator/routing
 const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
-const { classifyBarberPresenceQuery } = require('../../server/agents/reddy/barberPresenceIntent');
+const { classifyBarberPresenceQuery, classifyBarberPositionIntent } = require('../../server/agents/reddy/barberPresenceIntent');
 const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
 const {
   hasIndonesianLanguageSignal, isForeignLanguage, detectForeignLanguage, resolveResponseLanguage,
@@ -137,7 +138,7 @@ const {
   serializeKnowledgeForPrompt,
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
 const {
-  logOrchestratedEvent, logHandoffEvent, logAntiSpamEvent, logIdleLifecycleEvent,
+  logOrchestratedEvent, logHandoffEvent, logAntiSpamEvent, logIdleLifecycleEvent, logHistoryPersistenceEvent,
 } = require('../../server/orchestrator/telemetry');
 const {
   touchInboundActivity,
@@ -595,6 +596,8 @@ async function persistConversationExchange(sender, priorTurns, userMessage, assi
     saveHistory = saveHistoryToSupabase,
     cache = conversationCache,
     timestamps = cacheTimestamps,
+    branch = null,
+    correlationId = null,
   } = deps;
   const cacheKey = conversationCacheKey(sender, providerDeviceHash);
 
@@ -606,6 +609,14 @@ async function persistConversationExchange(sender, priorTurns, userMessage, assi
     await saveHistory(sender, updated, providerDeviceHash);
   } catch (_) {
     console.warn('[WA Bot] conversation persistence unavailable');
+    // Round 2 reliability fix — a failed Supabase history write used to be
+    // visible only in live server logs (console.warn), so an outbound send
+    // could succeed while wa_conversations.history silently diverged with
+    // nothing to reconcile against. Now recorded so it is queryable per
+    // correlation_id in reddy_evaluation_events.
+    try {
+      logHistoryPersistenceEvent({ event_type: 'history_persistence_failed', branch, correlation_id: correlationId });
+    } catch (_telemetryError) { /* never blocks the caller */ }
   }
 
   return updated;
@@ -864,7 +875,15 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   // (realtimeFactGuard.js) enforces this on the OUTBOUND reply too, so this
   // instruction is a second layer, not the only one.
   const barberScheduleStatus = conversationContext?.barber_schedule_status;
+  const barberFactAuthority = {
+    roster: 'verified',
+    planned_schedule: barberScheduleStatus ? barberScheduleStatus.status : 'unknown',
+    attendance: 'unavailable',
+    live_activity: 'unavailable',
+    booking_availability: 'verified',
+  };
   systemPrompt += `\n\n# BATAS FAKTA REAL-TIME — JADWAL, KEHADIRAN, DAN SLOT\n` +
+    `BARBER_FACT_AUTHORITY: ${JSON.stringify(barberFactAuthority)}\n` +
     `PEMISAHAN WAJIB (empat fakta berbeda, jangan disamakan): barber TERDAFTAR di cabang (roster) != barber DIJADWALKAN hari ini != barber SEDANG HADIR sekarang != barber TERSEDIA untuk slot tertentu.\n` +
     (barberScheduleStatus
       ? `JADWAL TERVERIFIKASI HARI INI TERSEDIA: ${JSON.stringify(barberScheduleStatus)}. Jika status "scheduled", boleh menyatakan "${barberScheduleStatus.barberName} dijadwalkan masuk hari ini". Jika status "not_scheduled", nyatakan "${barberScheduleStatus.barberName} tidak tercatat dijadwalkan masuk hari ini". TETAP DILARANG meng-upgrade ini menjadi klaim kehadiran ("sudah hadir", "ada sekarang") — ini fakta JADWAL, bukan bukti kehadiran fisik.\n`
@@ -951,7 +970,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   // Simpan ke cache & Supabase via testable helper
   if (!conversationContext?.reply_persistence_deferred) {
     const persist = dependencies.persistConversationExchange || persistConversationExchange;
-    persist(sender, activeHistoryTurns, userMessage, reply, {}, scopedDeviceHash).catch(() => {});
+    persist(sender, activeHistoryTurns, userMessage, reply, { branch }, scopedDeviceHash).catch(() => {});
   }
 
   return reply;
@@ -1335,7 +1354,7 @@ function extractForeignService(text) {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null }, deps = {}) {
+async function handleMessage({ from, name, text, device, receiver, branch: explicitBranchParam, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null }, deps = {}) {
   const {
     loadConversationHistory = getHistory,
     checkHumanTakeover = null,
@@ -1365,7 +1384,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     persistConversation = persistConversationExchange,
   } = deps;
 
-  let branch = branchFromPayload;
+  let branch = branchFromPayload || explicitBranchParam;
   if (!branch) {
     branch = detectBranchFromNumber(receiver || device || from);
   }
@@ -1488,6 +1507,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
     const sendResult = await send(from, pointsReply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, [], text, pointsReply, { intent: 'points_inquiry' }, providerDeviceHash);
+      } catch (_e) {}
+    }
     return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
   }
 
@@ -1505,6 +1530,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const loadedHistoryResult = sessionReopened
     ? { history: [], status: 'empty' }
     : await safeLoadConversationHistory(loadConversationHistory, from, providerDeviceHash);
+  const activeHistoryTurns = loadedHistoryResult.history || [];
   const conversationContext = extractConversationContextEnvelope(loadedHistoryResult, text);
   // Threaded through to callOpenAI (the legacy LLM path), which persists the
   // exchange back to the same scoped conversation it was loaded from —
@@ -1517,6 +1543,19 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   let used = 'openai';
   let error = null;
 
+  const sendAndPersistFinalReply = async (replyText, routeUsed, extraMeta = {}, sendOptions = {}) => {
+    reply = replyText;
+    used = routeUsed;
+    const sendResult = await send(from, reply, { branch, ...sendOptions });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, activeHistoryTurns, text, reply, { ...extraMeta, branch }, providerDeviceHash);
+      } catch (_e) {}
+    }
+    return { used, reply, sendResult, error: null };
+  };
+
   // Existing language routing owns presentation before the fact gate.
   const useForeignPresentation = (isForeignLanguage(text)
     || (presenceIntent.matched && responseLanguage !== 'indonesian'))
@@ -1525,8 +1564,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     console.log('[WA Bot] Existing foreign language route retained');
     const result = await handleForeignBooking(from, name, text, device, branch);
     if (result) {
-      const sendResult = await send(from, result.reply, { branch });
-      return { used: result.used, reply: result.reply, sendResult, error: null };
+      return sendAndPersistFinalReply(result.reply, result.used, { intent: result.used });
     }
   }
 
@@ -1562,7 +1600,35 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     };
   }
 
-  // ── Fast keyword intercept (before OpenAI — deterministic, no hallucination) ──
+  // Barber seat / position identity intent (P1-C)
+  const positionIntent = classifyBarberPositionIntent(text);
+  if (positionIntent.matched) {
+    reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak.';
+
+    const requiresHumanCheck = /\b(?:admin|petugas|orang|pegawai|tanyakan|cek\s+ke)\b/i.test(text);
+    if (requiresHumanCheck) {
+      const handoffCreation = await createHandoffCase({
+        customerPhone: from,
+        customerId: trustedIdentity?.customer_id || null,
+        channel: 'whatsapp',
+        branch,
+        reason: 'barber_position_identity',
+        triggerType: 'policy_escalation',
+        intent: 'barber_position_identity',
+        priority: 'normal',
+        conversationSummary: `customer asked seat/position identity with human check request: ${text}`,
+        latestCustomerMessage: text,
+      });
+
+      if (handoffCreation.status === 'created') {
+        reply = 'Aku belum punya data posisi kursi kapster secara realtime, Kak. Pesan Kakak sudah aku teruskan ke tim cabang supaya dibantu cek langsung.';
+      }
+    }
+
+    return sendAndPersistFinalReply(reply, 'barber_position_identity');
+  }
+
+  // Fast keyword intercept (before OpenAI — deterministic, no hallucination)
   const msgLower = text.toLowerCase();
   const msgHas = (phrases) => phrases.some(p => msgLower.includes(p));
 
@@ -1574,17 +1640,11 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const isWedding = /(wedding|pernikahan|nikah|pengantin|prewedding|pre-wedding)/.test(msgLower);
 
   if (isHomeService) {
-    reply = 'Untuk home service, booking-nya lewat halaman khusus ya kak 😊 redboxbarbershop.com/home-service.html';
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply('Untuk home service, booking-nya lewat halaman khusus ya kak 😊 redboxbarbershop.com/home-service.html', 'policy');
   }
 
   if (isWedding && /\b(h-?2|2\s*hari|besok|lusa|tomorrow|day after tomorrow)\b/.test(msgLower)) {
-    reply = 'Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.';
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply('Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.', 'policy');
   }
 
   if (isOtw) {
@@ -1594,18 +1654,13 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     } else {
       reply = `Siap kak. Biar slot dan jamnya aman, cek atau buat booking dulu di ${bookingUrl(branch)} ya ✂️`;
     }
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'policy');
   }
 
   const isPersonalHistoryOrPreferenceSignal = /\b(saya|aku|ku|terakhir|riwayat|histori|history|biasanya|favorit|sering|pernah|kapan|sama siapa)\b/.test(msgLower);
 
   if (isWalkIn) {
-    reply = `Boleh datang langsung Kak, tapi slot walk-in tergantung antrian outlet. Biar jamnya terjamin, mendingan dikunci lewat web booking: ${bookingUrl(branch)}`;
-    used = 'policy';
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(`Boleh datang langsung Kak, tapi slot walk-in tergantung antrian outlet. Biar jamnya terjamin, mendingan dikunci lewat web booking: ${bookingUrl(branch)}`, 'policy');
   }
 
   const isSpecificServiceInquiry = /(gentleman|grooming|junior|father|son|combo|hot towel|shave|beard|trim|treatment|spa|coloring|color|cat|semir|ear candle)/i.test(msgLower);
@@ -1614,56 +1669,83 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
                'list layanan', 'apa aja layanan', 'apa saja layanan', 'layanan saja', 'layanan aja',
                'service saja', 'service aja', 'ada layanan', 'ada service'])) {
     const svcText = buildServicesText(branch);
-    reply = `Berikut layanan di RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
-    used = 'keyword';
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(`Berikut layanan di RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`, 'keyword');
   }
 
-  // P0.2 hotfix: standalone "berapa" is NOT a price signal on its own — it
-  // also appears in "jam berapa" (hours), "kapan/jam berapa masuk" (barber
-  // schedule), etc. Every trigger below carries its own explicit price
-  // context word/phrase, so "Tegal buka jam berapa?" no longer matches here
-  // and instead reaches the orchestrator, which already classifies it
-  // correctly as operating_hours_inquiry (see routingPolicy.js).
   if (!isPersonalHistoryOrPreferenceSignal && !isSpecificServiceInquiry && msgHas(['harga', 'price', 'tarif', 'biaya', 'bayar berapa', 'kena berapa'])) {
     const svcText = buildServicesText(branch);
-    reply = `Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`;
-    used = 'keyword';
     Promise.resolve(recordEvaluation({
       event_type: 'keyword_shortcut_used', branch, intent: 'price_inquiry', route: 'keyword',
     })).catch(() => {});
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(`Berikut daftar harga layanan RedBox ${BRANCH_LABEL[branch] || 'Barbershop'}:\n\n${svcText}`, 'keyword');
   }
 
-  // Round 2 correction, Blocker 3 — official branch contact resolver.
-  // Deterministic: intercepts explicit contact requests ("nomor cabang?",
-  // "nomor Redbox Sumber?", "WA cabang Tegal?", "kontak Samadikun?") before
-  // the orchestrator/LLM is reached, so the model never has a chance to
-  // invent or misquote a phone number. Source of truth is
-  // REDBOX_KNOWLEDGE.branches[*].phone only (resolveOfficialBranchContact).
-  // Requires an explicit branch/cabang reference (a bare "nomor hp"/"kontak"
-  // mention is far more often the customer giving/asking about their OWN
-  // number — see Round 2 regression: conversation-intelligence-v01.test.js
-  // Task 12 (14) sends "...nomor HP 62800000000" and must reach the normal
-  // orchestrator path, not this shortcut).
+  // Same-Channel Loop Prevention & Official Contact (P0-B)
+  const CHANNEL_LOOP_PATTERNS = [
+    /ini\s+(?:nomor(?:nya)?|no\.?)\s*(?:kan|bukan)?/i,
+    /ini\s+(?:wa|whatsapp)\s+[\w\s]+\s*(?:kan|bukan)?/i,
+    /saya\s+(?:kan\s+)?sudah\s+chat\s+(?:di\s+)?sini/i,
+    /kan\s+saya\s+sudah\s+hubungi\s+nomor\s+ini/i,
+    /ini\s+cabang(?:nya)?\s*(?:kan|bukan)?/i,
+    /lagi\s+chat\s+nomor\s+cabang\s+ini/i,
+    /ini\s+redbox\s+[\w\s]+\s*(?:kan|bukan)?/i,
+  ];
+  const isChannelLoopQuestion = CHANNEL_LOOP_PATTERNS.some(p => p.test(msgLower));
+
   const mentionsBranchOrCabang = /\bcabang/.test(msgLower)
     || REDBOX_KNOWLEDGE.branches.some((b) => msgHas([b.id, ...(b.aliases || [])]));
   const isContactRequest = !isPersonalHistoryOrPreferenceSignal
-    && mentionsBranchOrCabang
-    && /\b(nomor|no\.?|wa|whatsapp|telp(?:on)?|kontak|hubungi)\b/.test(msgLower);
+    && (mentionsBranchOrCabang || isChannelLoopQuestion)
+    && (isChannelLoopQuestion || /\b(nomor|no\.?|wa|whatsapp|telp(?:on)?|kontak|hubungi)\b/.test(msgLower));
+
   if (isContactRequest) {
     const explicitContactBranch = REDBOX_KNOWLEDGE.branches.find((b) => msgHas([b.id, ...(b.aliases || [])]));
     const contactBranchId = explicitContactBranch ? explicitContactBranch.id : branch;
+    const isSameChannelContact = contactBranchId === branch;
+
+    if (isChannelLoopQuestion && isSameChannelContact) {
+      const branchLabel = BRANCH_LABEL[branch] || 'Redbox Barbershop';
+      const handoffCreation = await createHandoffCase({
+        customerPhone: from,
+        customerId: trustedIdentity?.customer_id || null,
+        channel: 'whatsapp',
+        branch,
+        reason: 'same_channel_loop_escalation',
+        triggerType: 'policy_escalation',
+        intent: 'contact_loop_prevention',
+        priority: 'normal',
+        conversationSummary: `same-channel contact loop prevented on ${branch}: ${text}`,
+        latestCustomerMessage: text,
+      });
+
+      if (handoffCreation.status === 'created') {
+        reply = `Betul Kak, ini WhatsApp ${branchLabel}. Aku teruskan ke tim cabang supaya dibantu cek langsung.`;
+      } else if (handoffCreation.status === 'existing') {
+        return { used: 'same_channel_loop_suppressed', reply: null, sendResult: null, error: null };
+      } else {
+        reply = `Betul Kak, ini WhatsApp ${branchLabel}. Ada yang bisa aku bantu untuk info layanan, harga, atau booking?`;
+      }
+
+      return sendAndPersistFinalReply(reply, 'same_channel_loop_prevention');
+    }
+
     const contactResolution = resolveOfficialBranchContact(contactBranchId);
-    reply = contactResolution.reply;
-    used = 'keyword';
+    reply = isSameChannelContact
+      ? `Ini memang WhatsApp ${BRANCH_LABEL[branch] || 'Redbox Barbershop'}, Kak.`
+      : contactResolution.reply;
     Promise.resolve(recordEvaluation({
       event_type: 'keyword_shortcut_used', branch, intent: 'contact_inquiry', route: 'keyword',
     })).catch(() => {});
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'keyword');
+  }
+
+  // Payment method authority boundary (P1-E)
+  const isPaymentMethodInquiry = !isPersonalHistoryOrPreferenceSignal
+    && (/\b(qris|qr|debit|kredit|kartu|cashless|gopay|ovo|dana|shopeepay)\b/i.test(msgLower)
+      || /\b(metode|cara)\s+(?:bayar|pembayaran)\b/i.test(msgLower));
+  if (isPaymentMethodInquiry) {
+    reply = 'Untuk metode pembayaran yang tersedia saat ini, aku belum punya data resmi per cabang. Tim cabang bisa konfirmasi langsung.';
+    return sendAndPersistFinalReply(reply, 'payment_method_boundary');
   }
 
   // ── Wait complaint: pelanggan cerita pernah nunggu/antri di outlet ──
@@ -1674,9 +1756,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   const _beenThere = /(ke\s*sana|kesana|ke\s*sini|kesini|outlet|cabang|tempatnya|tokonya|store)/.test(msgLower);
   if (_waitWord && (_pastIndicator || _beenThere)) {
     reply = 'Maaf ya Kak, nunggu lama memang bikin tidak nyaman. Terima kasih sudah memberi tahu kami.';
-    used = 'keyword';
-    const sendResult = await send(from, reply, { branch });
-    return { used, reply, sendResult, error: null };
+    return sendAndPersistFinalReply(reply, 'keyword');
   }
 
   // ── Central AI Orchestrator Execution (Task 10) ──
@@ -1730,8 +1810,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
-    const sendResult = await send(from, boundedReply, { branch });
-    return { used: 'orchestrator_bounded_response', reply: boundedReply, sendResult, error: null };
+    return sendAndPersistFinalReply(boundedReply, 'orchestrator_bounded_response');
   }
 
   // Handle Human Handoff Route (Task 15) — the orchestrator only RECOMMENDS a
@@ -1797,8 +1876,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       const handoffReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
         ? 'Your message has been forwarded to the Redbox admin. The admin will reply in this chat.'
         : 'Pesan Kakak sudah aku teruskan ke admin Redbox. Admin akan membalas di chat ini.';
-      const sendResult = await send(from, handoffReply, { branch, evaluationContext: { handoffPersisted: true } });
-      return { used: 'human_handoff', reply: handoffReply, sendResult, error: null };
+      return sendAndPersistFinalReply(
+        handoffReply,
+        'human_handoff',
+        {},
+        { evaluationContext: { handoffPersisted: true } },
+      );
     }
 
     // A case is already open for this customer (race between near-simultaneous
@@ -1836,13 +1919,12 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
     const fallbackReply = String(conversationContext?.response_language || 'indonesian').toLowerCase() === 'english'
       ? "I wasn't able to forward this request to the RedBox team. Please try again shortly or contact RedBox customer service."
       : 'Aku belum berhasil meneruskan permintaan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
-    const sendResult = await send(from, fallbackReply, { branch, evaluationContext: { handoffPersisted: false } });
-    return {
-      used: creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
-      reply: fallbackReply,
-      sendResult,
-      error: null,
-    };
+    return sendAndPersistFinalReply(
+      fallbackReply,
+      creation.status === 'unavailable' ? 'human_handoff_unavailable' : 'human_handoff_creation_failed',
+      {},
+      { evaluationContext: { handoffPersisted: false } },
+    );
   }
 
   // Existing booking status is backend authority, never an LLM or customer claim.
@@ -1879,8 +1961,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       trust_status: trustedIdentity ? 'verified' : 'unverified',
     });
-    const sendResult = await send(from, bookingReply, { branch });
-    return { used: 'booking_status_backend', reply: bookingReply, sendResult, error: null };
+    return sendAndPersistFinalReply(bookingReply, 'booking_status_backend');
   }
 
   // Public aggregate booking-selection facts use a deterministic trusted read.
@@ -1940,8 +2021,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       result_count: Array.isArray(popularity?.leaders) ? popularity.leaders.length : 0,
       data_quality_exclusion_count: dataQualityExclusionCount,
     });
-    const sendResult = await send(from, popularityReply, { branch });
-    return { used: 'barber_popularity_trusted_read', reply: popularityReply, sendResult, error: null };
+    return sendAndPersistFinalReply(popularityReply, 'barber_popularity_trusted_read');
   }
 
   // Handle Private CRM Agent Routes
@@ -1965,8 +2045,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         ...knowledgeTelemetry(null),
       });
       const crmReply = 'Untuk mengakses data member Redbox, pastikan menghubungi via nomor terverifikasi ya Kak.';
-      const sendResult = await send(from, crmReply, { branch });
-      return { used: 'crm_privacy_guard', reply: crmReply, sendResult, error: null };
+      return sendAndPersistFinalReply(crmReply, 'crm_privacy_guard');
     }
 
     let intelRes;
@@ -1987,11 +2066,11 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         event_type: 'crm_context_unavailable', branch, metadata: { reason: 'crm_context_failed' },
       })).catch(() => {});
       const crmErrorReply = 'Data pribadi kamu sedang tidak dapat dibaca dengan aman; fitur ini masih sedang kami siapkan agar tetap aman ya Kak.';
-      const sendResult = await send(from, crmErrorReply, { branch });
+      const finalReplyResult = await sendAndPersistFinalReply(crmErrorReply, 'crm_unavailable_guard');
+      const sendResult = finalReplyResult.sendResult;
       const sendSucceeded = Boolean(sendResult && sendResult.status !== false);
       return {
-        used: 'crm_unavailable_guard',
-        reply: crmErrorReply,
+        ...finalReplyResult,
         sendResult,
         error: sendSucceeded ? null : (err?.message || String(err)),
         failureReason: sendSucceeded ? null : 'crm_context_failed',
@@ -2064,7 +2143,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
         const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
         let sendResult;
         try {
-          sendResult = await send(from, staticReply, { branch });
+          ({ sendResult } = await sendAndPersistFinalReply(staticReply, 'static_fallback'));
         } catch (sendErr) {
           sendResult = { status: false, reason: 'send_threw', error: sendErr };
         }
@@ -2103,8 +2182,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       : (intelRes?.execution_status === 'not_found'
         ? 'Data member untuk nomor terverifikasi ini belum ditemukan ya Kak.'
         : 'Data pribadi kamu sedang tidak dapat dibaca dengan aman; fitur ini masih sedang kami siapkan agar tetap aman ya Kak.');
-    const sendResult = await send(from, crmReply, { branch });
-    return { used: 'crm_unavailable_guard', reply: crmReply, sendResult, error: null };
+    return sendAndPersistFinalReply(crmReply, 'crm_unavailable_guard');
   }
 
   // Handle Orchestrated Reddy Agent Route
@@ -2173,7 +2251,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       const staticReply = fallbackReply(text, name, branch, knowledgeContext?.status, responseLanguage);
       let sendResult;
       try {
-        sendResult = await send(from, staticReply, { branch });
+        ({ sendResult } = await sendAndPersistFinalReply(staticReply, 'static_fallback'));
       } catch (sendErr) {
         sendResult = { status: false, reason: 'send_threw', error: sendErr };
       }
@@ -2223,7 +2301,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
       branch,
       fallbackKnowledgeContext ? serializeKnowledgeForPrompt(fallbackKnowledgeContext) : null,
       null,
-      conversationContext,
+      { ...conversationContext, reply_persistence_deferred: true },
     );
   } catch (err) {
     console.warn('[WA Bot] OpenAI error, using fallback:', err.message);
@@ -2294,7 +2372,7 @@ async function handleMessage({ from, name, text, device, receiver, branchFromPay
   // Gunakan branch-specific token untuk kirim balasan
   let sendResult;
   try {
-    sendResult = await send(from, reply, { branch });
+    ({ sendResult } = await sendAndPersistFinalReply(reply, used));
   } catch (sendErr) {
     sendResult = { status: false, reason: 'send_threw', error: sendErr };
   }
@@ -2561,18 +2639,22 @@ module.exports = async function handler(req, res, testDeps = {}) {
     }
 
     const device = body.device || body.device_id || body.deviceId;
+    const correlationId = `req_${crypto.randomUUID()}`;
     const supabaseForGuard = testDeps.supabase || getSupabase();
     const inboundAdmission = await admitInboundEvent(supabaseForGuard, body, { provider: 'fonnte' });
     const inboundEventType = inboundAdmission.eventType;
-    // P0 live incident fix: hoisted here (not after the branch-number-
-    // suppression check further down, where it used to be computed) because
-    // that check — and several others below it — can return BEFORE the old
-    // computation site ever ran, leaving a genuinely claimed row with no
-    // reference to terminalize it. Gated on status==='claimed' (never
-    // 'duplicate'): a duplicate delivery must never let THIS request's
-    // safety net touch a row it did not itself just claim — that is
-    // Objective B's job (the atomic stale-reclaim RPC), not this one.
     const inboundEventRowId = inboundAdmission.status === 'claimed' ? (inboundAdmission.row?.id || null) : null;
+
+    if (inboundEventRowId) {
+      try {
+        await supabaseForGuard
+          .from('wa_inbound_events')
+          .update({ correlation_id: correlationId })
+          .eq('id', inboundEventRowId);
+      } catch (_e) {
+        // Fail-open: best-effort write, never suppresses customer reply
+      }
+    }
 
     // P0 outer safety net (Objective A): every return/throw between here and
     // the end of this handler is now covered by the `finally` below, which
@@ -2646,35 +2728,8 @@ module.exports = async function handler(req, res, testDeps = {}) {
       }
     }
 
-    // 🔍 Cari nomor cabang di SELURUH payload!
-    const BRANCH_WA = {
-      bypass: '0818202569',
-      samadikun: '0818202589',
-      csb: '0818202889',
-      sumber: '0818202599',
-      tegal: '0818268883'
-    };
-    const findBranchInPayload = (obj) => {
-      for (const [key, value] of Object.entries(obj)) {
-        if (typeof value === 'string') {
-          for (const [branch, number] of Object.entries(BRANCH_WA)) {
-            if (value.includes(number)) {
-              console.log('[WA Bot] Branch marker found in webhook payload:', { branch });
-              return branch;
-            }
-          }
-        } else if (typeof value === 'object' && value !== null) {
-          const found = findBranchInPayload(value);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-    // Scans the FULL raw structure (envelope + any nesting), not just the
-    // bounded canonical field list — a branch marker can legitimately appear
-    // on a field this normalizer does not track.
-    branchFromPayload = findBranchInPayload(rawBody);
-    console.log('[WA Bot] Branch deep-scan completed:', { branch: branchFromPayload || 'not_found' });
+    const detectedBranchFromPayload = detectBranchFromNumber(receiver || device || sender);
+    branchFromPayload = detectedBranchFromPayload;
 
     // Filter pesan keluar — classifier shared di atas adalah satu-satunya
     // authority untuk status/self/customer/unsupported.
@@ -2720,6 +2775,13 @@ module.exports = async function handler(req, res, testDeps = {}) {
     // Guard: abaikan pesan yang masuk dari nomor WA cabang lain (cegah bot-to-bot feedback loop).
     // Terjadi ketika forwardBookingToBranch kirim notif ke nomor cabang → bot penerima
     // membalas ke pengirim → loop tak berujung lintas cabang.
+    const BRANCH_WA = {
+      bypass: '0818202569',
+      samadikun: '0818202589',
+      csb: '0818202889',
+      sumber: '0818202599',
+      tegal: '0818268883'
+    };
     const BRANCH_WA_NORMALIZED = Object.values(BRANCH_WA).map(n => n.replace(/\D/g, '').replace(/^0/, '62'));
     const senderNormalized = normalizePhone(sender).replace(/^0/, '62');
     if (BRANCH_WA_NORMALIZED.includes(senderNormalized)) {
@@ -2733,6 +2795,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'branch_number_suppressed', {
         source: 'branch_number_suppression',
         branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
+        correlationId,
       });
       return res.status(200).json({ status: 'ignored', reason: 'from_branch_number' });
     }
@@ -2788,7 +2851,9 @@ module.exports = async function handler(req, res, testDeps = {}) {
         message_id_present: Boolean(inboundClaim.providerMessageId || inboundClaim.providerMessageIdSource),
       });
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'reddy_disabled', {
-        source: 'kill_switch_suppression', branch: branchForGuardTelemetry,
+        source: 'kill_switch_suppression',
+        branch: branchForGuardTelemetry,
+        correlationId,
       });
       console.log('[WA Bot] REDDY_ENABLED=false — automated reply suppressed');
       return res.status(200).json({ status: 'ok', reddy_enabled: false });
@@ -2876,7 +2941,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
         // suppression above) since no automated Reddy send occurred for
         // this inbound event.
         await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'admin_command_handled', {
-          source: 'admin_command', branch: branchForGuardTelemetry,
+          source: 'admin_command', branch: branchForGuardTelemetry, correlationId,
         });
         return res.status(200).json({ status: 'ok', admin_command: true });
       }
@@ -2909,7 +2974,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
       });
       console.log('[WA Bot] AI suppressed — Task 15 handoff state active:', { status: handoffState.status });
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'handoff_active', {
-        source: 'handoff_suppression', branch: handoffState.case?.branch || branchForGuardTelemetry || null,
+        source: 'handoff_suppression', branch: handoffState.case?.branch || branchForGuardTelemetry || null, correlationId,
       });
       return res.status(200).json({ status: 'ok', suppressed: true, reason: 'handoff_active' });
     }
@@ -2922,7 +2987,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
     if (humanActive) {
       console.log('[WA Bot] AI paused — human takeover active');
       await terminalizeInbound(supabaseForGuard, inboundEventRowId, 'failed', 'legacy_human_takeover', {
-        source: 'legacy_pause_suppression', branch: branchForGuardTelemetry,
+        source: 'legacy_pause_suppression', branch: branchForGuardTelemetry, correlationId,
       });
       return res.status(200).json({ status: 'ignored', reason: 'human_takeover' });
     }
@@ -2976,6 +3041,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
       await terminalizeIfStillProcessing(supabaseForGuard, inboundEventRowId, {
         reason: activeFailureReason || 'unexpected_pre_send_exit',
         branch: branchFromPayload || detectBranchFromNumber(receiver || device || sender) || null,
+        correlationId,
       });
     }
 
