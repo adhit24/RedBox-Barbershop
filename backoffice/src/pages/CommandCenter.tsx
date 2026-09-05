@@ -29,7 +29,7 @@ import {
   type BarberPerformanceResult,
   type MemberProfile,
 } from '../services/crm';
-import { getMokaSyncLogs, type MokaSyncLogEntry } from '../services/moka';
+import { getMokaSyncLogs, getMokaHealth, type MokaSyncLogEntry, type MokaHealthResult, type MokaOutletHealthStatus } from '../services/moka';
 
 type LoadState<T> =
   | { status: 'loading' }
@@ -72,6 +72,20 @@ const TINT = {
   yellow: { bg: '#FBF1DC', fg: '#AD8A22' },
 } as const;
 type TintKey = keyof typeof TINT;
+
+const MOKA_HEALTH_LABEL: Record<MokaOutletHealthStatus, string> = {
+  healthy: 'Healthy',
+  expired: 'Expired',
+  missing_token: 'Missing Token',
+  sync_error: 'Sync Error',
+};
+
+const MOKA_HEALTH_TINT: Record<MokaOutletHealthStatus, TintKey> = {
+  healthy: 'green',
+  expired: 'red',
+  missing_token: 'orange',
+  sync_error: 'red',
+};
 
 function KpiCard({
   icon,
@@ -214,6 +228,7 @@ export function CommandCenter() {
   const [barberPerf, setBarberPerf] = useState<LoadState<BarberPerformanceResult>>({ status: 'loading' });
   const [membership, setMembership] = useState<LoadState<MemberProfile[]>>({ status: 'loading' });
   const [mokaLogs, setMokaLogs] = useState<LoadState<MokaSyncLogEntry[]>>({ status: 'loading' });
+  const [mokaHealth, setMokaHealth] = useState<LoadState<MokaHealthResult>>({ status: 'loading' });
 
   useEffect(() => {
     getOwnerOverview()
@@ -281,6 +296,12 @@ export function CommandCenter() {
       .catch(() => setMokaLogs({ status: 'error', message: 'Terjadi kesalahan memuat log sinkronisasi Moka.' }));
   }, []);
 
+  useEffect(() => {
+    getMokaHealth()
+      .then((data) => setMokaHealth({ status: 'ready', data }))
+      .catch(() => setMokaHealth({ status: 'error', message: 'Terjadi kesalahan memuat health status Moka.' }));
+  }, []);
+
   const bookingToday = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.bookingToday, 0) : null;
   const pendingTotal = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.pending, 0) : null;
   const belumCheckInTotal = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.belumCheckIn, 0) : null;
@@ -309,7 +330,8 @@ export function CommandCenter() {
     ? [...barberPerf.data.barbers].sort((a, b) => b.customers_served - a.customers_served)[0]
     : null;
 
-  const errorLogs = mokaLogs.status === 'ready' ? mokaLogs.data.filter((l) => l.status !== 'ok') : [];
+  // Real sync_logs.status values are 'success'|'failed'|'skipped'|'pending' — never 'ok'.
+  const errorLogs = mokaLogs.status === 'ready' ? mokaLogs.data.filter((l) => l.status !== 'success') : [];
 
   const visibleTimeline = timelineExpanded ? todayMokaLogs : todayMokaLogs.slice(0, LIST_PREVIEW_COUNT);
   const visibleErrorLogs = alertsExpanded ? errorLogs : errorLogs.slice(0, LIST_PREVIEW_COUNT);
@@ -445,6 +467,47 @@ export function CommandCenter() {
         <KpiCard icon={<WalletClockIcon size={17} />} value={null} label="Payroll Pending" tint="purple" href="/payroll" unavailable />
       </section>
 
+      {/* Integrasi Moka — health status per cabang */}
+      <div className="mb-5 rounded-rb-card border border-rb-border bg-rb-surface p-5">
+        <div className="mb-3.5 flex items-center justify-between">
+          <h2 className="font-serif text-[17px] font-semibold text-rb-text">Integrasi Moka</h2>
+          <Link to="/moka" className="text-xs font-semibold text-rb-red no-underline">
+            Lihat semua →
+          </Link>
+        </div>
+        {mokaHealth.status === 'loading' && <LoadingState />}
+        {mokaHealth.status === 'error' && <ErrorState message={mokaHealth.message} />}
+        {mokaHealth.status === 'ready' && (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            {mokaHealth.data.outlets.map((o) => {
+              const t = TINT[MOKA_HEALTH_TINT[o.health]];
+              return (
+                <div key={o.outletId} className="rounded-xl bg-rb-bg p-3.5">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-semibold text-rb-text">{o.name}</span>
+                    <span
+                      className="shrink-0 rounded-rb-pill px-2 py-0.5 text-[10.5px] font-semibold"
+                      style={{ background: t.bg, color: t.fg }}
+                    >
+                      {MOKA_HEALTH_LABEL[o.health]}
+                    </span>
+                  </div>
+                  <div className="text-xs text-rb-text-muted">{o.transactionsToday} transaksi hari ini</div>
+                  {o.unmatchedTransactionsToday > 0 && (
+                    <div className="mt-0.5 text-xs font-semibold" style={{ color: TINT.orange.fg }}>
+                      {o.unmatchedTransactionsToday} belum matched
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {mokaHealth.data.outlets.length === 0 && (
+              <p className="col-span-full py-4 text-center text-sm text-rb-text-muted">Belum ada cabang terkonfigurasi.</p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
         {/* Live Branch Activity */}
         <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
@@ -551,7 +614,7 @@ export function CommandCenter() {
               <>
                 <div className="flex flex-col">
                   {visibleTimeline.map((log, i) => {
-                    const dotColor = log.status === 'ok' ? TINT.green.fg : TINT.red.fg;
+                    const dotColor = log.status === 'success' ? TINT.green.fg : TINT.red.fg;
                     const isLast = i === visibleTimeline.length - 1;
                     return (
                       <div key={log.id} className="flex gap-3.5">

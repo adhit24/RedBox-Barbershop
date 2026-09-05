@@ -46,3 +46,41 @@ export function getMokaSyncLogs(params: { limit?: number; direction?: string; st
   const qs = query.toString();
   return apiClient.get<{ logs: MokaSyncLogEntry[] }>(`/api/moka/sync-logs${qs ? `?${qs}` : ''}`);
 }
+
+/** healthy | expired | missing_token | sync_error — see server/moka/health.js classifyOutletHealth. */
+export type MokaOutletHealthStatus = 'healthy' | 'expired' | 'missing_token' | 'sync_error';
+
+export interface MokaOutletHealth {
+  outletId: string;
+  slug: string;
+  name: string;
+  connected: boolean;
+  health: MokaOutletHealthStatus;
+  lastSuccessfulSync: string | null;
+  transactionsToday: number;
+  unmatchedTransactionsToday: number;
+}
+
+export interface MokaHealthResult {
+  today: string;
+  outlets: MokaOutletHealth[];
+}
+
+/**
+ * Command Center dashboard summary. Branch scope is resolved server-side from
+ * the caller's session (see server/moka/health.js resolveMokaOutletScope) —
+ * this call never sends a branch/outlet param.
+ */
+export function getMokaHealth(): Promise<MokaHealthResult> {
+  return apiClient.get<MokaHealthResult>('/api/moka/health');
+}
+
+export interface MokaSyncTransactionsResult {
+  message: string;
+  results: { slug: string; processed?: number; skipped?: number; errors?: number; error?: string }[];
+}
+
+/** Triggers a real order-pull + customer/booking-match sync. Omit `outlet` to sync every outlet in the caller's session scope. */
+export function postSyncTransactions(outlet?: string): Promise<MokaSyncTransactionsResult> {
+  return apiClient.post<MokaSyncTransactionsResult>('/api/moka/sync-transactions', outlet ? { outlet } : {});
+}

@@ -2428,55 +2428,33 @@ app.get('/api/admin/moka-oauth-debug', async (req, res) => {
 
 // ── GET /api/admin/moka-sync-status ────────────────────────────────────────────
 // Debug: lihat status sync per outlet — last_polled_at, jumlah schedules hari ini, token status
+// Logic lives in ./moka/health.js (getMokaSyncStatus), shared with the newer
+// /api/moka/sync-status path so this legacy path and the new one never drift.
 app.get('/api/admin/moka-sync-status', adminAuth, async (req, res) => {
-  const today = new Date();
-  const wib = new Date(today.getTime() + 7 * 3600000);
-  const todayStr = wib.toISOString().slice(0, 10);
-  const dayStartWIB = `${todayStr}T00:00:00+07:00`;
-  const dayEndWIB   = `${todayStr}T23:59:59+07:00`;
-
-  const { data: outlets } = await supabase
-    .from('outlets').select('id, slug, name, moka_outlet_id, last_polled_at').eq('is_active', true);
-
-  const { data: tokens } = await supabase
-    .from('moka_tokens').select('outlet_id, expires_at, updated_at');
-  const tokenMap = {};
-  for (const t of (tokens || [])) tokenMap[t.outlet_id] = t;
-
-  const results = await Promise.all((outlets || []).map(async (o) => {
-    const { count: completedToday } = await supabase
-      .from('schedules').select('*', { count: 'exact', head: true })
-      .eq('outlet_id', o.id).eq('source', 'moka').eq('status', 'completed')
-      .gte('start_time', dayStartWIB).lte('start_time', dayEndWIB);
-
-    const { count: reservedToday } = await supabase
-      .from('schedules').select('*', { count: 'exact', head: true })
-      .eq('outlet_id', o.id).eq('source', 'moka').eq('status', 'reserved')
-      .gte('start_time', dayStartWIB).lte('start_time', dayEndWIB);
-
-    const tok = tokenMap[o.id];
-    const lastPolledWIB = o.last_polled_at
-      ? new Date(new Date(o.last_polled_at).getTime() + 7*3600000).toISOString().slice(0,19) + ' WIB'
-      : null;
-    const staleMins = o.last_polled_at
-      ? Math.round((Date.now() - new Date(o.last_polled_at).getTime()) / 60000)
-      : null;
-
-    return {
-      slug: o.slug,
-      name: o.name,
-      moka_outlet_id: o.moka_outlet_id,
-      last_polled_wib: lastPolledWIB,
-      stale_mins: staleMins,
-      stale_warn: staleMins !== null && staleMins > 30,
-      completed_today: completedToday || 0,
-      reserved_today: reservedToday || 0,
-      token_ok: !!tok,
-      token_expires: tok?.expires_at?.slice(0, 10) || null,
-    };
-  }));
-
-  res.json({ today: todayStr, outlets: results });
+  try {
+    const { getMokaSyncStatus, resolveMokaOutletScope } = require('./moka/health');
+    const scope = resolveMokaOutletScope(req.adminAuth);
+    const { today, outlets } = await getMokaSyncStatus(supabase, { outletSlugs: scope.slugs });
+    res.json({
+      today,
+      outlets: outlets.map((o) => ({
+        slug: o.slug,
+        name: o.name,
+        moka_outlet_id: o.mokaOutletId,
+        last_polled_wib: o.lastPolledAt
+          ? new Date(new Date(o.lastPolledAt).getTime() + 7 * 3600000).toISOString().slice(0, 19) + ' WIB'
+          : null,
+        stale_mins: o.staleMinutes,
+        stale_warn: o.staleWarn,
+        completed_today: o.completedToday,
+        reserved_today: o.reservedToday,
+        token_ok: o.tokenOk,
+        token_expires: o.tokenExpiresAt ? o.tokenExpiresAt.slice(0, 10) : null,
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e?.message || 'moka-sync-status failed' });
+  }
 });
 
 // ── GET /api/moka/auth-start ───────────────────────────────────────────────────
@@ -3628,8 +3606,16 @@ const { createInMemorySupabase } = require('./moka/memoryStore');
 const memorySupabase = createInMemorySupabase();
 
 const createMokaRouter = require('./moka/routes');
+// Backoffice-aware auth (server/middleware/backofficeSupabaseAuth.js, PR #68):
+// verifies the real Supabase session Backoffice now sends and resolves
+// owner/manager + branch from the `users` table; falls through to the
+// unchanged legacy adminAuth for every non-Backoffice caller (cron,
+// stockist, curl with ADMIN_PASSWORD/CRON_SECRET). Same wrapper pattern
+// already used by createAdminCrmRoutes — see server/routes/adminCrm.js.
+const { createBackofficeSupabaseAuth } = require('./middleware/backofficeSupabaseAuth');
+const mokaBackofficeAuth = createBackofficeSupabaseAuth(supabase, adminAuth);
 // Prefer real Supabase so sync-schema and DB writes work correctly
-const mokaRouter = createMokaRouter(supabase || memorySupabase);
+const mokaRouter = createMokaRouter(supabase || memorySupabase, mokaBackofficeAuth);
 app.use('/api', mokaRouter);
 console.log('✅ Moka integration routes mounted');
 
