@@ -1,5 +1,9 @@
 -- Migration: Add durable failure provenance to wa_inbound_events
--- DESIGN FILE ONLY - DO NOT APPLY TO PRODUCTION WITHOUT OWNER APPROVAL.
+-- APPLIED to production (khcvklzxfohwkyocenaf) as part of the Reddy
+-- reliability round 2 fix: waInboundLifecycle.js / api/wa/webhook.js already
+-- wrote failure_reason/terminal_source/correlation_id defensively before
+-- these columns existed (fail-open no-op) — this migration only activates
+-- code that was already shipped.
 --
 -- Adds durable bounded lifecycle provenance:
 --   failure_reason: bounded string (e.g. duplicate_suppressed, rate_limited, reddy_disabled, processing_failed, internal_exception, etc.)

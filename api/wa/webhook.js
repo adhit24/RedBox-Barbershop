@@ -138,7 +138,7 @@ const {
   serializeKnowledgeForPrompt,
 } = require('../../server/agents/reddy/knowledge/knowledgeContext');
 const {
-  logOrchestratedEvent, logHandoffEvent, logAntiSpamEvent, logIdleLifecycleEvent,
+  logOrchestratedEvent, logHandoffEvent, logAntiSpamEvent, logIdleLifecycleEvent, logHistoryPersistenceEvent,
 } = require('../../server/orchestrator/telemetry');
 const {
   touchInboundActivity,
@@ -596,6 +596,8 @@ async function persistConversationExchange(sender, priorTurns, userMessage, assi
     saveHistory = saveHistoryToSupabase,
     cache = conversationCache,
     timestamps = cacheTimestamps,
+    branch = null,
+    correlationId = null,
   } = deps;
   const cacheKey = conversationCacheKey(sender, providerDeviceHash);
 
@@ -607,6 +609,14 @@ async function persistConversationExchange(sender, priorTurns, userMessage, assi
     await saveHistory(sender, updated, providerDeviceHash);
   } catch (_) {
     console.warn('[WA Bot] conversation persistence unavailable');
+    // Round 2 reliability fix — a failed Supabase history write used to be
+    // visible only in live server logs (console.warn), so an outbound send
+    // could succeed while wa_conversations.history silently diverged with
+    // nothing to reconcile against. Now recorded so it is queryable per
+    // correlation_id in reddy_evaluation_events.
+    try {
+      logHistoryPersistenceEvent({ event_type: 'history_persistence_failed', branch, correlation_id: correlationId });
+    } catch (_telemetryError) { /* never blocks the caller */ }
   }
 
   return updated;
@@ -960,7 +970,7 @@ async function callOpenAI(sender, userMessage, name, branch = 'bypass', arg5 = n
   // Simpan ke cache & Supabase via testable helper
   if (!conversationContext?.reply_persistence_deferred) {
     const persist = dependencies.persistConversationExchange || persistConversationExchange;
-    persist(sender, activeHistoryTurns, userMessage, reply, {}, scopedDeviceHash).catch(() => {});
+    persist(sender, activeHistoryTurns, userMessage, reply, { branch }, scopedDeviceHash).catch(() => {});
   }
 
   return reply;
@@ -1540,7 +1550,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
     if (sendSucceeded) {
       try {
-        await persistConversation(from, activeHistoryTurns, text, reply, extraMeta, providerDeviceHash);
+        await persistConversation(from, activeHistoryTurns, text, reply, { ...extraMeta, branch }, providerDeviceHash);
       } catch (_e) {}
     }
     return { used, reply, sendResult, error: null };

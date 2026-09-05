@@ -105,6 +105,18 @@ const EVENT_DEFINITIONS = Object.freeze({
   // waInboundLifecycle.js / ALLOWED_INBOUND_LIFECYCLE_REASONS for the
   // terminal-reason side of this split).
   orchestrator_execution_failed: ['HIGH', 'routing', 'ORCHESTRATOR_EXECUTION_FAILED'],
+  // Reddy reliability round 2 — factual outbound guards (server/agents/
+  // reddy/personalityPolicy.js guardFactualServiceNumbers /
+  // guardVisitCompletionOverclaim / guardBookingUrlIntegrity, wired in
+  // server/services/waOutboundGuard.js). These fire whenever a customer-
+  // facing reply would have stated a price/duration disagreeing with the
+  // live public.services row, an unverified same-day visit-completion
+  // claim, or a booking URL split across a line break.
+  factual_price_mismatch_blocked: ['HIGH', 'quality', 'FACTUAL_PRICE_MISMATCH'],
+  factual_duration_mismatch_blocked: ['HIGH', 'quality', 'FACTUAL_DURATION_MISMATCH'],
+  visit_completion_overclaim_blocked: ['HIGH', 'quality', 'VISIT_COMPLETION_OVERCLAIM'],
+  booking_url_integrity_corrected: ['WARNING', 'quality', 'BOOKING_URL_INTEGRITY_CORRECTED'],
+  history_persistence_failed: ['HIGH', 'conversation', 'HISTORY_PERSISTENCE_FAILED'],
 });
 
 const AUDIT_SOURCE_PROVENANCE = Object.freeze({
@@ -263,6 +275,24 @@ function mapTelemetryToEvaluation(family, telemetry = {}) {
   if (family === 'data_authority') {
     return EVENT_DEFINITIONS[telemetry.event_type]
       ? [{ ...common, event_type: telemetry.event_type, metadata: { reason: telemetry.reason, source: telemetry.source } }]
+      : [];
+  }
+  if (family === 'factual_guard') {
+    return EVENT_DEFINITIONS[telemetry.event_type]
+      ? [{
+        ...common,
+        event_type: telemetry.event_type,
+        metadata: {
+          service_id: telemetry.service_id,
+          attempted_value: telemetry.attempted_value,
+          expected_value: telemetry.expected_value,
+        },
+      }]
+      : [];
+  }
+  if (family === 'history_persistence') {
+    return EVENT_DEFINITIONS[telemetry.event_type]
+      ? [{ ...common, event_type: telemetry.event_type, metadata: { correlation_id: telemetry.correlation_id } }]
       : [];
   }
   if (family === 'crm_identity') {
