@@ -27,6 +27,11 @@ const ROUTES = Object.freeze({
   customer_history: Object.freeze({ route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_history' }),
   customer_booking_history: Object.freeze({ route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_history' }),
   points_inquiry: Object.freeze({ route: 'crm_agent', agent: 'crm_agent', action: 'get_points' }),
+  // Round 3, Objective A: a dispute over a points/redeem value is never
+  // resolvable by the current CRM authority (no ledger/redeem-transaction
+  // history exists — see executionService.js POINTS_EXECUTION comments), so
+  // it always routes to a human case rather than a CRM tool call.
+  points_dispute: Object.freeze({ route: 'human', action: 'escalate_points_dispute', reason: 'points_or_redeem_discrepancy' }),
   customer_profile: Object.freeze({ route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' }),
   customer_preferences: Object.freeze({ route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_preferences' }),
   customer_transaction_history: Object.freeze({ route: 'crm_agent', agent: 'crm_agent', action: 'get_transaction_summary' }),
