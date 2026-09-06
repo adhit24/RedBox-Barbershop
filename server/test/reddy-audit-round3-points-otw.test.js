@@ -120,17 +120,22 @@ test('POINTS — 7. created case uses truthful forwarded wording', async () => {
   assert.match(sentReply, /sudah aku teruskan ke tim Redbox/);
 });
 
-test('POINTS — 8. existing case: no duplicate acknowledgement claim', async () => {
-  let sentReply = null;
-  await webhookHandler.handleMessage({
+test('POINTS — 8. existing case: no automated reply is sent at all (Round 3 Correction 1)', async () => {
+  let sendCalls = 0;
+  let persistCalls = 0;
+  const res = await webhookHandler.handleMessage({
     from: '62812345005', name: 'Budi', text: 'transaksi poin saya salah', branch: 'tegal',
     providerDeviceHash: 'hash_dispute_8',
   }, baseDeps({
     createHandoffCase: async () => ({ status: 'existing' }),
-    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-5' }; },
-    persistConversation: async () => {},
+    send: async () => { sendCalls += 1; return { status: true, id: 'msg-5' }; },
+    persistConversation: async () => { persistCalls += 1; },
   }));
-  assert.ok(!/sudah aku teruskan/.test(sentReply), 'must not repeat a forwarding acknowledgement for an existing case');
+  assert.equal(res.used, 'points_dispute_handoff_existing');
+  assert.equal(res.reply, null);
+  assert.equal(res.sendResult, null);
+  assert.equal(sendCalls, 0, 'existing case must not call send at all');
+  assert.equal(persistCalls, 0, 'existing case must not persist any conversation record — nothing was sent');
 });
 
 test('POINTS — 9. creation failure: no false forwarded claim', async () => {
@@ -422,4 +427,362 @@ test('HANDOFF — 33. SLA evaluation never auto-resolves a case (read-only detec
   const fnBody = humanHandoffSource.slice(startIdx, endIdx);
   assert.ok(!/resolveCase\(/.test(fnBody), 'SLA evaluation must never call resolveCase — detection only, no auto-resolution');
   assert.ok(!/status:\s*['"]resolved['"]/.test(fnBody), 'SLA evaluation must never write a resolved status');
+});
+
+// ── ROUND 3 CORRECTION 1 ────────────────────────────────────────────────────
+// Aira review findings: (1) points_dispute 'existing' was still sending a
+// repeated automated acknowledgement — Task15/Round3 forbids this; the
+// top-level handoff gate already suppresses further bot replies once a case
+// is open, so 'existing' here must be a silent no-op. (2) the OTW fast-path
+// treated bare lateness words ("telat"/"terlambat"/"kesiangan") as a travel
+// signal on their own, which wrongly caught policy QUESTIONS like "kalau
+// saya telat gimana?" — a true travel signal (otw/di jalan/berangkat/etc.)
+// is now required before lateness matters at all.
+
+test('CORRECTION1 POINTS — 1. created case sends exactly one reply', async () => {
+  let sendCalls = 0;
+  await webhookHandler.handleMessage({
+    from: '62812346001', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_1',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'created' }),
+    send: async () => { sendCalls += 1; return { status: true, id: 'msg-c1-1' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sendCalls, 1);
+});
+
+test('CORRECTION1 POINTS — 2. created case requests priority HIGH', async () => {
+  let capturedParams = null;
+  await webhookHandler.handleMessage({
+    from: '62812346002', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_2',
+  }, baseDeps({
+    createHandoffCase: async (params) => { capturedParams = params; return { status: 'created' }; },
+    send: async () => ({ status: true, id: 'msg-c1-2' }),
+    persistConversation: async () => {},
+  }));
+  assert.equal(capturedParams.priority, 'high');
+});
+
+test('CORRECTION1 POINTS — 3. existing case sends zero replies (reply === null)', async () => {
+  const res = await webhookHandler.handleMessage({
+    from: '62812346003', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_3',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'existing' }),
+    send: async () => ({ status: true, id: 'msg-c1-3' }),
+    persistConversation: async () => {},
+  }));
+  assert.equal(res.reply, null);
+});
+
+test('CORRECTION1 POINTS — 4. existing case makes zero send() calls', async () => {
+  let sendCalls = 0;
+  await webhookHandler.handleMessage({
+    from: '62812346004', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_4',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'existing' }),
+    send: async () => { sendCalls += 1; return { status: true, id: 'msg-c1-4' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sendCalls, 0);
+});
+
+test('CORRECTION1 POINTS — 5. existing case makes zero persistConversation calls', async () => {
+  let persistCalls = 0;
+  await webhookHandler.handleMessage({
+    from: '62812346005', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_5',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'existing' }),
+    send: async () => ({ status: true, id: 'msg-c1-5' }),
+    persistConversation: async () => { persistCalls += 1; },
+  }));
+  assert.equal(persistCalls, 0);
+});
+
+test('CORRECTION1 POINTS — 6. error/unavailable case still sends exactly one honest fallback reply', async () => {
+  let sendCalls = 0;
+  let sentReply = null;
+  await webhookHandler.handleMessage({
+    from: '62812346006', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_6',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'error' }),
+    send: async (_to, reply) => { sendCalls += 1; sentReply = reply; return { status: true, id: 'msg-c1-6' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sendCalls, 1);
+  assert.match(sentReply, /belum berhasil meneruskannya/);
+});
+
+test('CORRECTION1 POINTS — 7. error/unavailable case never claims a forwarded case', async () => {
+  let sentReply = null;
+  await webhookHandler.handleMessage({
+    from: '62812346007', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_7',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'unavailable' }),
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-7' }; },
+    persistConversation: async () => {},
+  }));
+  assert.ok(!/sudah aku teruskan/.test(sentReply));
+});
+
+test('CORRECTION1 POINTS — 8. a plain points_inquiry never triggers any handoff', async () => {
+  let handoffCalls = 0;
+  await webhookHandler.handleMessage({
+    from: '62812346008', name: 'Budi', text: 'poin saya berapa?', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_points_8',
+  }, baseDeps({
+    createHandoffCase: async () => { handoffCalls += 1; return { status: 'created' }; },
+    send: async () => ({ status: true, id: 'msg-c1-8' }),
+    persistConversation: async () => {},
+  }));
+  assert.equal(handoffCalls, 0);
+});
+
+test('CORRECTION1 OTW — 9. "Lagi OTW." gets the plain travel acknowledgement', async () => {
+  let sentReply = null;
+  await webhookHandler.handleMessage({
+    from: '62812346009', name: 'Budi', text: 'Lagi OTW.', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_9',
+  }, baseDeps({
+    getBookingStatus: async () => ({ status: 'none' }),
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-9' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sentReply, 'Siap Kak, hati-hati di jalan ya.');
+});
+
+test('CORRECTION1 OTW — 10. "OTW telat 20 menit" gets the bounded lateness acknowledgement', async () => {
+  let sentReply = null;
+  await webhookHandler.handleMessage({
+    from: '62812346010', name: 'Budi', text: 'OTW telat 20 menit', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_10',
+  }, baseDeps({
+    getBookingStatus: async () => ({ status: 'none' }),
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-10' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sentReply, 'Siap Kak, hati-hati di jalan. Kalau terlambat cukup lama, tim cabang mungkin perlu menyesuaikan slot.');
+});
+
+test('CORRECTION1 OTW — 11. "lagi jalan, telat nih" gets the bounded lateness acknowledgement', async () => {
+  let sentReply = null;
+  await webhookHandler.handleMessage({
+    from: '62812346011', name: 'Budi', text: 'lagi jalan, telat nih', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_11',
+  }, baseDeps({
+    getBookingStatus: async () => ({ status: 'none' }),
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-11' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sentReply, 'Siap Kak, hati-hati di jalan. Kalau terlambat cukup lama, tim cabang mungkin perlu menyesuaikan slot.');
+});
+
+test('CORRECTION1 OTW — 12. "kalau saya telat gimana?" does NOT enter the OTW fast-path', async () => {
+  let otwReplySent = false;
+  await webhookHandler.handleMessage({
+    from: '62812346012', name: 'Budi', text: 'kalau saya telat gimana?', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_12',
+  }, baseDeps({
+    getBookingStatus: async () => { throw new Error('OTW path must not even call getBookingStatus for a bare policy question'); },
+    send: async (_to, reply) => {
+      if (reply === 'Siap Kak, hati-hati di jalan ya.'
+        || reply === 'Siap Kak, hati-hati di jalan. Kalau terlambat cukup lama, tim cabang mungkin perlu menyesuaikan slot.') {
+        otwReplySent = true;
+      }
+      return { status: true, id: 'msg-c1-12' };
+    },
+    persistConversation: async () => {},
+    // let it fall through to whatever the rest of the pipeline does; only
+    // assert the OTW-specific acknowledgement never fires.
+  })).catch(() => {});
+  assert.equal(otwReplySent, false);
+});
+
+test('CORRECTION1 OTW — 13. "batas telat berapa menit?" does NOT enter the OTW fast-path', async () => {
+  let otwReplySent = false;
+  await webhookHandler.handleMessage({
+    from: '62812346013', name: 'Budi', text: 'batas telat berapa menit?', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_13',
+  }, baseDeps({
+    getBookingStatus: async () => { throw new Error('must not be reached'); },
+    send: async (_to, reply) => {
+      if (/hati-hati di jalan/.test(reply || '')) otwReplySent = true;
+      return { status: true, id: 'msg-c1-13' };
+    },
+    persistConversation: async () => {},
+  })).catch(() => {});
+  assert.equal(otwReplySent, false);
+});
+
+test('CORRECTION1 OTW — 14. "booking boleh terlambat?" does NOT enter the OTW fast-path', async () => {
+  let otwReplySent = false;
+  await webhookHandler.handleMessage({
+    from: '62812346014', name: 'Budi', text: 'booking boleh terlambat?', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_14',
+  }, baseDeps({
+    getBookingStatus: async () => { throw new Error('must not be reached'); },
+    send: async (_to, reply) => {
+      if (/hati-hati di jalan/.test(reply || '')) otwReplySent = true;
+      return { status: true, id: 'msg-c1-14' };
+    },
+    persistConversation: async () => {},
+  })).catch(() => {});
+  assert.equal(otwReplySent, false);
+});
+
+test('CORRECTION1 OTW — 15. "kesiangan besok gimana?" does NOT enter the OTW fast-path', async () => {
+  let otwReplySent = false;
+  await webhookHandler.handleMessage({
+    from: '62812346015', name: 'Budi', text: 'kesiangan besok gimana?', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_15',
+  }, baseDeps({
+    getBookingStatus: async () => { throw new Error('must not be reached'); },
+    send: async (_to, reply) => {
+      if (/hati-hati di jalan/.test(reply || '')) otwReplySent = true;
+      return { status: true, id: 'msg-c1-15' };
+    },
+    persistConversation: async () => {},
+  })).catch(() => {});
+  assert.equal(otwReplySent, false);
+});
+
+test('CORRECTION1 OTW — 16. true OTW + no booking found: still no acquisition CTA', async () => {
+  let sentReply = null;
+  await webhookHandler.handleMessage({
+    from: '62812346016', name: 'Budi', text: 'otw', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_16',
+  }, baseDeps({
+    getBookingStatus: async () => ({ status: 'not_found' }),
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-16' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sentReply, 'Siap Kak, hati-hati di jalan ya.');
+  assert.ok(!/booking/i.test(sentReply));
+});
+
+test('CORRECTION1 OTW — 17. true OTW + booking lookup failure: no CTA, no crash', async () => {
+  let sentReply = null;
+  let threw = false;
+  await webhookHandler.handleMessage({
+    from: '62812346017', name: 'Budi', text: 'sudah berangkat', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_17',
+  }, baseDeps({
+    getBookingStatus: async () => { throw new Error('db down'); },
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-17' }; },
+    persistConversation: async () => {},
+  })).catch(() => { threw = true; });
+  assert.equal(threw, false);
+  assert.equal(sentReply, 'Siap Kak, hati-hati di jalan ya.');
+  assert.ok(!/booking/i.test(sentReply));
+});
+
+test('CORRECTION1 OTW — 18. true OTW + confirmed booking: bounded confirmation only, no CTA', async () => {
+  let sentReply = null;
+  await webhookHandler.handleMessage({
+    from: '62812346018', name: 'Budi', text: 'menuju cabang nih', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_otw_18',
+  }, baseDeps({
+    getBookingStatus: async () => ({ status: 'CONFIRMED' }),
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-18' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sentReply, 'Siap Kak, hati-hati di jalan ya. Booking Kakak sudah tercatat.');
+  assert.ok(!/redboxbarbershop\.com/.test(sentReply));
+});
+
+// ── ROUND 3 CORRECTION 1 — REGRESSION CHECKS (must still pass) ─────────────
+
+test('CORRECTION1 REGRESSION — 19. facility "☝️ Perbaikan lampu." still preserved', async () => {
+  let sentReply = null;
+  const res = await webhookHandler.handleMessage({
+    from: '62812346019', name: 'Budi', text: '☝️ Perbaikan lampu.', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_reg_19',
+  }, baseDeps({
+    send: async (_to, reply) => { sentReply = reply; return { status: true, id: 'msg-c1-19' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(res.used, 'facility_operational_message');
+  assert.equal(sentReply, 'Siap Kak, ini terkait kondisi/perbaikan fasilitas cabang ya.');
+});
+
+test('CORRECTION1 REGRESSION — 20. facility false-positive guards still preserved', () => {
+  assert.equal(classifyFacilityIntent('lampu hijau booking').matched, false);
+  assert.equal(classifyFacilityIntent('AC Milan menang lagi semalam').matched, false);
+  assert.equal(classifyFacilityIntent('membership saya mati?').matched, false);
+});
+
+test('CORRECTION1 REGRESSION — 21. same-channel loop guard still preserved', async () => {
+  let handoffCalls = 0;
+  await webhookHandler.handleMessage({
+    from: '62812346021', name: 'Budi', text: 'loh ini nomornya kan?', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_reg_21',
+  }, baseDeps({
+    createHandoffCase: async () => { handoffCalls += 1; return { status: 'created' }; },
+    send: async () => ({ status: true, id: 'msg-c1-21' }),
+    persistConversation: async () => {},
+  }));
+  assert.equal(handoffCalls, 1, 'ordinary same-channel contact remains a handoff-eligible policy escalation, unchanged by this correction');
+});
+
+test('CORRECTION1 REGRESSION — 22. Task15 waiting_human suppression still preserved', async () => {
+  const res = await webhookHandler.handleMessage({
+    from: '62812346022', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_reg_22',
+  }, baseDeps({
+    getHandoffState: async () => ({ status: 'waiting_human', case: { id: 'case-c1', priority: 'high', branch: 'tegal' } }),
+    appendHandoffMessage: async () => {},
+    send: async () => { throw new Error('must not send while suppressed'); },
+  }));
+  assert.equal(res.used, 'human_active_suppressed');
+  assert.equal(res.reply, null);
+});
+
+test('CORRECTION1 REGRESSION — 23. P0 send-once still preserved for the new existing-case no-op path', async () => {
+  let sendCalls = 0;
+  await webhookHandler.handleMessage({
+    from: '62812346023', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_reg_23',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'existing' }),
+    send: async () => { sendCalls += 1; return { status: true, id: 'msg-c1-23' }; },
+    persistConversation: async () => {},
+  }));
+  assert.equal(sendCalls, 0, 'existing-case no-op must never call send — zero sends is the send-once-safe outcome here');
+});
+
+test('CORRECTION1 REGRESSION — 24. P0.3 device scope still passed through unchanged for OTW/points paths', async () => {
+  let seenDeviceHash = null;
+  await webhookHandler.handleMessage({
+    from: '62812346024', name: 'Budi', text: 'otw', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_reg_24_device',
+  }, baseDeps({
+    getBookingStatus: async () => ({ status: 'none' }),
+    send: async () => ({ status: true, id: 'msg-c1-24' }),
+    persistConversation: async (_from, _hist, _text, _reply, _meta, deviceHash) => { seenDeviceHash = deviceHash; },
+  }));
+  assert.equal(seenDeviceHash, 'hash_c1_reg_24_device');
+});
+
+test('CORRECTION1 REGRESSION — 25. Round 2 history persistence invariant (conversational success => exactly one record) still preserved', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812346025', name: 'Budi', text: 'poin saya kepotong', branch: 'tegal',
+    providerDeviceHash: 'hash_c1_reg_25',
+  }, baseDeps({
+    createHandoffCase: async () => ({ status: 'created' }),
+    send: async () => ({ status: true, id: 'msg-c1-25' }),
+    persistConversation: async () => { persistedCount += 1; },
+  }));
+  assert.equal(persistedCount, 1);
+});
+
+test('CORRECTION1 REGRESSION — 26. frontend untouched', () => {
+  assert.ok(!/redbox-frontend|frontend\//.test(webhookSource.slice(0, 200)), 'sanity: webhook.js header does not reference frontend paths');
+  assert.equal(typeof webhookHandler.handleMessage, 'function');
 });

@@ -1541,15 +1541,34 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
       latestCustomerMessage: text,
     });
 
+    // Round 3 Correction 1: 'existing' must NOT send any automated
+    // acknowledgement. The top-level Task15 handoff gate (getHandoffState,
+    // checked at the very top of handleMessage) already suppresses further
+    // bot replies once a case is waiting_human/human_active — this branch
+    // only protects against a race on near-simultaneous case creation for
+    // the very first message that opens it, and must not itself talk to the
+    // customer a second time.
+    if (handoffCreation.status === 'existing') {
+      logTelemetry({
+        intent: 'points_dispute',
+        route: 'human',
+        action: 'escalate_points_dispute',
+        execution_status: handoffCreation.status,
+        reddy_execution_status: 'not_used',
+        confidence: 1.0,
+        model_tier: 'none',
+        fallback_used: false,
+        branch,
+        trust_status: trustedIdentity ? 'verified' : 'unverified',
+      });
+      return { used: 'points_dispute_handoff_existing', reply: null, sendResult: null, error: null };
+    }
+
     let disputeReply;
     if (handoffCreation.status === 'created') {
       disputeReply = disputeIsEnglish
         ? "I can't confirm why that points value changed from the data available, Kak. I've forwarded this to the Redbox team to check."
         : 'Aku belum bisa memastikan penyebab perubahan poin itu dari data yang tersedia, Kak. Kasusnya sudah aku teruskan ke tim Redbox untuk dicek.';
-    } else if (handoffCreation.status === 'existing') {
-      disputeReply = disputeIsEnglish
-        ? "This case is already with the Redbox team — no need to resend, they're already checking it."
-        : 'Kasus soal poin ini masih ditangani tim Redbox ya Kak, tidak perlu dikirim ulang.';
     } else {
       disputeReply = disputeIsEnglish
         ? "I can't confirm why that points value changed, and I also couldn't forward this to the team right now. Please try again shortly."
@@ -1727,7 +1746,14 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
 
   // ── Backend booking guards ────────────────────────────────────────────────
   // Critical booking claims must be decided from the website database, not the LLM.
-  const isOtw = /\b(otw|on the way|di jalan|dijalan|lagi jalan|berangkat|telat|terlambat|kesiangan)\b/.test(msgLower);
+  // Round 3 Correction 1: a true travel signal is required to even enter the
+  // OTW path — lateness words alone ("kalau saya telat gimana?", "batas
+  // telat berapa menit?", "booking boleh terlambat?") are policy QUESTIONS,
+  // not a customer currently traveling, and must fall through to whatever
+  // the orchestrator/policy would otherwise do with that text.
+  const hasOtwTravelSignal = /\b(otw|on the way|di jalan|dijalan|lagi jalan|sudah jalan|udah jalan|berangkat|sudah berangkat|udah berangkat|menuju cabang|menuju redbox)\b/.test(msgLower);
+  const hasLatenessSignal = /\b(telat|terlambat|kesiangan)\b/.test(msgLower);
+  const isOtw = hasOtwTravelSignal;
   const isWalkIn = /\b(walk\s*in|langsung datang|langsung dateng|datang langsung|dateng langsung|tanpa booking|tanpa bookingan)\b/.test(msgLower);
   const isHomeService = /(home\s*service|ke rumah|datang ke rumah|panggil barber|barber ke kantor)/.test(msgLower);
   const isWedding = /(wedding|pernikahan|nikah|pengantin|prewedding|pre-wedding)/.test(msgLower);
@@ -1748,8 +1774,7 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     // confirmed booking is actually found; a lookup failure/ambiguous/
     // not-found result must never be surfaced as "you have no booking" or
     // turned into a booking CTA.
-    const isLate = /\b(telat|terlambat|kesiangan)\b/.test(msgLower);
-    reply = isLate
+    reply = hasLatenessSignal
       ? 'Siap Kak, hati-hati di jalan. Kalau terlambat cukup lama, tim cabang mungkin perlu menyesuaikan slot.'
       : 'Siap Kak, hati-hati di jalan ya.';
     try {
