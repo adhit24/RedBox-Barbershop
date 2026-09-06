@@ -1,0 +1,82 @@
+[
+  {
+    "month": 1,
+    "month_label": "Jan",
+    "net_sales": 575788000,
+    "gross_sales": 617391900,
+    "discounts": 41528900,
+    "refunds": 75000,
+    "transaction_count": 4807,
+    "average_transaction_value": 119797
+  },
+  {
+    "month": 2,
+    "month_label": "Feb",
+    "net_sales": 489705300,
+    "gross_sales": 524623000,
+    "discounts": 34522700,
+    "refunds": 395000,
+    "transaction_count": 4044,
+    "average_transaction_value": 121180
+  },
+  {
+    "month": 3,
+    "month_label": "Mar",
+    "net_sales": 720683200,
+    "gross_sales": 755512900,
+    "discounts": 34829700,
+    "refunds": 0,
+    "transaction_count": 5701,
+    "average_transaction_value": 126413
+  },
+  {
+    "month": 4,
+    "month_label": "Apr",
+    "net_sales": 500736400,
+    "gross_sales": 534589400,
+    "discounts": 33853000,
+    "refunds": 0,
+    "transaction_count": 4158,
+    "average_transaction_value": 120427
+  },
+  {
+    "month": 5,
+    "month_label": "May",
+    "net_sales": 589457300,
+    "gross_sales": 622481500,
+    "discounts": 33024200,
+    "refunds": 0,
+    "transaction_count": 4921,
+    "average_transaction_value": 119784
+  },
+  {
+    "month": 6,
+    "month_label": "Jun",
+    "net_sales": 549905900,
+    "gross_sales": 580612500,
+    "discounts": 30706600,
+    "refunds": 0,
+    "transaction_count": 4441,
+    "average_transaction_value": 123825
+  },
+  {
+    "month": 7,
+    "month_label": "Jul",
+    "net_sales": 578949900,
+    "gross_sales": 613369400,
+    "discounts": 34419500,
+    "refunds": 0,
+    "transaction_count": 4812,
+    "average_transaction_value": 120314
+  },
+  {
+    "month": 8,
+    "month_label": "Aug",
+    "net_sales": 583483400,
+    "gross_sales": 608932900,
+    "discounts": 25449500,
+    "refunds": 0,
+    "transaction_count": 4644,
+    "average_transaction_value": 125642
+  }
+]

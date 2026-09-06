@@ -101,6 +101,11 @@ server/test_sheet.js
 # Moka customer exports — contains PII, never commit
 customer-export-*.csv
 
+# Raw Moka POS monthly transaction exports — every row has a customer phone
+# number, and this repo is public. Never commit these; the aggregated,
+# PII-free output (scripts/output/*.json) is the only derived data that ships.
+Transaksi/
+
 # Local manual trigger scripts (dev only)
 run-reengagement-now.js
 server/run-reengagement-now.js

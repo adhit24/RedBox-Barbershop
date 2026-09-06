@@ -30,6 +30,8 @@ import {
   type MemberProfile,
 } from '../services/crm';
 import { getMokaSyncLogs, type MokaSyncLogEntry } from '../services/moka';
+import { getYearlyPerformance, type MonthlyPerformancePoint } from '../services/performance';
+import { YearlyPerformanceChart } from '../components/YearlyPerformanceChart';
 
 type LoadState<T> =
   | { status: 'loading' }
@@ -214,6 +216,7 @@ export function CommandCenter() {
   const [barberPerf, setBarberPerf] = useState<LoadState<BarberPerformanceResult>>({ status: 'loading' });
   const [membership, setMembership] = useState<LoadState<MemberProfile[]>>({ status: 'loading' });
   const [mokaLogs, setMokaLogs] = useState<LoadState<MokaSyncLogEntry[]>>({ status: 'loading' });
+  const [yearlyPerformance, setYearlyPerformance] = useState<LoadState<MonthlyPerformancePoint[]>>({ status: 'loading' });
 
   useEffect(() => {
     getOwnerOverview()
@@ -280,6 +283,12 @@ export function CommandCenter() {
       .then((data) => setMokaLogs({ status: 'ready', data: data.logs }))
       .catch(() => setMokaLogs({ status: 'error', message: 'Terjadi kesalahan memuat log sinkronisasi Moka.' }));
   }, []);
+
+  useEffect(() => {
+    getYearlyPerformance(branch)
+      .then((data) => setYearlyPerformance({ status: 'ready', data }))
+      .catch(() => setYearlyPerformance({ status: 'error', message: 'Terjadi kesalahan memuat data performa tahunan.' }));
+  }, [branch]);
 
   const bookingToday = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.bookingToday, 0) : null;
   const pendingTotal = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.pending, 0) : null;
@@ -444,6 +453,13 @@ export function CommandCenter() {
 
         <KpiCard icon={<WalletClockIcon size={17} />} value={null} label="Payroll Pending" tint="purple" href="/payroll" unavailable />
       </section>
+
+      {/* Performance by Year */}
+      <div className="mb-5">
+        {yearlyPerformance.status === 'loading' && <LoadingState label="Memuat performa tahunan..." />}
+        {yearlyPerformance.status === 'error' && <ErrorState message={yearlyPerformance.message} />}
+        {yearlyPerformance.status === 'ready' && <YearlyPerformanceChart data={yearlyPerformance.data} />}
+      </div>
 
       <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
         {/* Live Branch Activity */}
