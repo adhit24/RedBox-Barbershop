@@ -871,12 +871,33 @@ function createMokaRouter(supabase) {
   });
 
   // ── GET/POST /api/moka/cron-sync ───────────────────────────
-  // Cron endpoint - no auth needed, called by Vercel Cron or cron-job.org
+  // SECURITY FIX (2026-09): this was previously unauthenticated — anyone
+  // who found the URL could trigger a real Moka pull + Stockist sales sync
+  // (which deducts real inventory) for any or all outlets on demand. Now
+  // gated with the same CRON_SECRET/ADMIN_PASSWORD bearer/x-admin-token
+  // pattern already used by /api/moka/sync (see _mokaSyncHandler above) —
+  // reusing the existing convention rather than inventing a new one.
   // Query/Body: outletId (optional, default: all authorized outlets)
+  function _requireCronAuth(req, res) {
+    const cronSecret = process.env.CRON_SECRET;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const validTokens = [cronSecret, adminPassword].filter(Boolean);
+    if (validTokens.length === 0) return true; // no secret configured — matches existing _mokaSyncHandler behavior
+    const auth = req.headers['authorization'] || '';
+    const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    const xToken = req.headers['x-admin-token'] || '';
+    if (!validTokens.includes(bearer) && !validTokens.includes(xToken)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return false;
+    }
+    return true;
+  }
+
   router.get('/moka/cron-sync', async (req, res) => {
+    if (!_requireCronAuth(req, res)) return;
     try {
       const { outletId: rawOutletId } = req.query;
-      
+
       const _runSync = async () => {
         const results = [];
         if (rawOutletId) {
@@ -908,9 +929,10 @@ function createMokaRouter(supabase) {
   
   // POST variant for cron-job.org compatibility (existing cron uses POST /api/moka/sync)
   router.post('/moka/cron-sync', async (req, res) => {
+    if (!_requireCronAuth(req, res)) return;
     try {
       const { outletId: rawOutletId } = req.query;
-      
+
       const _runSync = async () => {
         const results = [];
         if (rawOutletId) {

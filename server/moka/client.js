@@ -178,17 +178,33 @@ class MokaClient {
   }
 
   /**
-   * Fetch paid transactions with line items from Moka Reporting API.
-   * Unlike get_latest_transactions, this response includes transaction items
-   * needed to attribute services to barbers.
+   * Fetch paid transactions (with line items) for the Moka -> Stockist sales
+   * bridge and the moka_transactions analytics table.
+   *
+   * FIX (2026-09 production incident): this previously called
+   * `/integrations/mokapos/outlets/{id}/v1/reporting/transactions?page=&per_page=&order=`
+   * — a path that appears nowhere else in this codebase and was never
+   * verified against Moka's spec. It silently returned zero results on
+   * every production run for weeks (masked because the caller treated its
+   * 404 as "no more pages" instead of a failure — see txSync.js history).
+   *
+   * This now reuses the exact endpoint and cursor-pagination contract
+   * already proven correct by the order sync path (getOrders() below,
+   * which drives 260k+ successful moka_to_web syncs in production):
+   * `GET /v3/outlets/{id}/reports/get_latest_transactions?per_page=&since=`.
+   * Response envelope: `{ data: { payments: [...], completed: bool,
+   * next_url } }`, where `next_url` carries the next page's `since=<epoch>`
+   * cursor. Each payment's line items live in `payment.checkouts[]`
+   * (confirmed field name — see server/moka/sync.js's proven
+   * `order.checkouts || order.order_items || order.items` usage).
+   * Spec reference: docs/superpowers/specs/2026-06-08-owner-payment-analytics-moka-cron.md.
+   *
+   * @param {{ sinceEpoch?: number|null, limit?: number }} opts
    */
-  async getPaidTransactionsPage({ page = 1, perPage = 1000 } = {}) {
-    const qs = new URLSearchParams({
-      page: String(page),
-      per_page: String(Math.min(1000, perPage)),
-      order: 'DESC',
-    });
-    return this._req('GET', `/integrations/mokapos/outlets/${this._mokaOutletId}/v1/reporting/transactions?${qs}`);
+  async getPaidTransactionsPage({ sinceEpoch = null, limit = 1000 } = {}) {
+    const qs = new URLSearchParams({ per_page: String(limit) });
+    if (sinceEpoch !== null) qs.set('since', String(sinceEpoch));
+    return this._req('GET', `/v3/outlets/${this._mokaOutletId}/reports/get_latest_transactions?${qs}`);
   }
 
   /**
