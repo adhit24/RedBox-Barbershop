@@ -84,13 +84,37 @@ function buildMokaSalePlan(payment, outlet, { locationId, mappings = [] } = {}) 
     const key = `${mapping.moka_item_id || ''}:${mapping.moka_variant_id || ''}`;
     mappingByKey.set(key, mapping);
   }
-  const lines = extractMokaSaleLines(payment).map((line) => {
+  // NON_STOCK_SERVICE/NON_STOCK_MISC classified lines (haircuts, grooming
+  // packages, drinks, food, tips, membership tiers, custom amounts) are
+  // dropped entirely before mapping is even evaluated — they must never
+  // count as "unmapped" (no anomaly) or be attempted for deduction. Only
+  // an explicit, active STOCK_PRODUCT classification pointing at a real
+  // product counts as mapped; a real product whose mapping was disabled
+  // for unrelated reasons still falls through to the unmapped/anomaly
+  // path so it doesn't silently vanish.
+  const rawLines = extractMokaSaleLines(payment).map((line) => {
     const exact = mappingByKey.get(`${line.mokaItemId || ''}:${line.mokaVariantId || ''}`);
     const itemOnly = mappingByKey.get(`${line.mokaItemId || ''}:`);
     const mapping = exact || itemOnly || null;
-    return { ...line, productId: mapping?.product_id || null, mapped: Boolean(mapping) };
+    // classification is NOT NULL with a STOCK_PRODUCT default in the
+    // database (every real row always has a value); treat it as
+    // STOCK_PRODUCT when genuinely absent from the object too, so any
+    // caller building a mapping row without the field keeps prior
+    // behavior instead of silently losing every mapping.
+    const classification = mapping?.classification ?? 'STOCK_PRODUCT';
+    const isStockProduct = Boolean(mapping) && classification === 'STOCK_PRODUCT' && mapping.is_active !== false && mapping.product_id;
+    const isKnownNonStock = Boolean(mapping) && (classification === 'NON_STOCK_SERVICE' || classification === 'NON_STOCK_MISC');
+    return { ...line, productId: isStockProduct ? mapping.product_id : null, mapped: isStockProduct, ignored: isKnownNonStock };
   });
-  if (!lines.length) return { action: 'FAILED', errorCode: 'MOKA_LINE_ITEMS_REQUIRED', transaction, lines };
+  const lines = rawLines.filter((line) => !line.ignored);
+  if (!lines.length) {
+    // A transaction made up entirely of known non-stock lines (a plain
+    // haircut, a drink-only sale) is the common case for a barbershop —
+    // that is a clean no-op, not a data failure, and must never be
+    // reported or counted as one.
+    if (rawLines.length > 0) return { action: 'SKIP', reason: 'NO_STOCK_LINES', transaction };
+    return { action: 'FAILED', errorCode: 'MOKA_LINE_ITEMS_REQUIRED', transaction, lines: rawLines };
+  }
   if (lines.some((line) => !line.quantity || line.quantity <= 0)) {
     return { action: 'FAILED', errorCode: 'MOKA_INVALID_LINE_QUANTITY', transaction, lines };
   }
