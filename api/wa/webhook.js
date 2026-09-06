@@ -116,6 +116,7 @@ const executionService = require('../../server/orchestrator/executionService');
 const { orchestrateMessage, buildDecisionEnvelope } = require('../../server/orchestrator/orchestratorService');
 const { executeReddyAgent } = require('../../server/agents/reddy/reddyAdapter');
 const { classifyBarberPresenceQuery, classifyBarberPositionIntent } = require('../../server/agents/reddy/barberPresenceIntent');
+const { classifyFacilityIntent } = require('../../server/agents/reddy/facilityIntent');
 const { guardRealtimeBarberFacts } = require('../../server/agents/reddy/realtimeFactGuard');
 const {
   hasIndonesianLanguageSignal, isForeignLanguage, detectForeignLanguage, resolveResponseLanguage,
@@ -1516,6 +1517,87 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     return { used: 'crm_points', reply: pointsReply, sendResult, error: null };
   }
 
+  // Fast-path: points/redeem DISPUTE (Round 3, Objective A). Distinct from a
+  // plain points_inquiry above — the customer claims the value changed, was
+  // cut, or went missing. The current CRM authority (executionService.js
+  // POINTS_EXECUTION / CRM agent get_points) exposes only a live balance —
+  // there is no points ledger, no redeem-transaction record, and no
+  // redeem-policy history anywhere in this codebase. That means a dispute's
+  // exact discrepancy can never be safely verified here, so it always routes
+  // to a Task15 human case rather than the generic CRM privacy fallback, and
+  // never fabricates a specific "it changed from X to Y" claim.
+  if (classification && classification.intent === 'points_dispute') {
+    const disputeIsEnglish = isForeignLanguage(text) && detectForeignLanguage(text) === 'english';
+    const handoffCreation = await createHandoffCase({
+      customerPhone: from,
+      customerId: trustedIdentity?.customer_id || null,
+      channel: 'whatsapp',
+      branch,
+      reason: 'points_or_redeem_discrepancy',
+      triggerType: 'policy_escalation',
+      intent: 'points_dispute',
+      priority: 'high',
+      conversationSummary: `customer disputes a points/redeem value: ${text}`,
+      latestCustomerMessage: text,
+    });
+
+    // Round 3 Correction 1: 'existing' must NOT send any automated
+    // acknowledgement. The top-level Task15 handoff gate (getHandoffState,
+    // checked at the very top of handleMessage) already suppresses further
+    // bot replies once a case is waiting_human/human_active — this branch
+    // only protects against a race on near-simultaneous case creation for
+    // the very first message that opens it, and must not itself talk to the
+    // customer a second time.
+    if (handoffCreation.status === 'existing') {
+      logTelemetry({
+        intent: 'points_dispute',
+        route: 'human',
+        action: 'escalate_points_dispute',
+        execution_status: handoffCreation.status,
+        reddy_execution_status: 'not_used',
+        confidence: 1.0,
+        model_tier: 'none',
+        fallback_used: false,
+        branch,
+        trust_status: trustedIdentity ? 'verified' : 'unverified',
+      });
+      return { used: 'points_dispute_handoff_existing', reply: null, sendResult: null, error: null };
+    }
+
+    let disputeReply;
+    if (handoffCreation.status === 'created') {
+      disputeReply = disputeIsEnglish
+        ? "I can't confirm why that points value changed from the data available, Kak. I've forwarded this to the Redbox team to check."
+        : 'Aku belum bisa memastikan penyebab perubahan poin itu dari data yang tersedia, Kak. Kasusnya sudah aku teruskan ke tim Redbox untuk dicek.';
+    } else {
+      disputeReply = disputeIsEnglish
+        ? "I can't confirm why that points value changed, and I also couldn't forward this to the team right now. Please try again shortly."
+        : 'Aku belum bisa memastikan penyebab perubahan poin itu, dan saat ini aku juga belum berhasil meneruskannya ke tim. Bisa coba lagi sebentar ya Kak.';
+    }
+
+    logTelemetry({
+      intent: 'points_dispute',
+      route: 'human',
+      action: 'escalate_points_dispute',
+      execution_status: handoffCreation.status,
+      reddy_execution_status: 'not_used',
+      confidence: 1.0,
+      model_tier: 'none',
+      fallback_used: false,
+      branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+
+    const sendResult = await send(from, disputeReply, { branch });
+    const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
+    if (sendSucceeded) {
+      try {
+        await persistConversation(from, [], text, disputeReply, { intent: 'points_dispute' }, providerDeviceHash);
+      } catch (_e) {}
+    }
+    return { used: 'points_dispute_handoff', reply: disputeReply, sendResult, error: null };
+  }
+
   // Load conversation history ONLY AFTER points shortcut is ruled out.
   // A reopened session (see sessionReopened above) starts with empty
   // short-term context on purpose — the prior, idle-closed conversation's
@@ -1628,13 +1710,50 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     return sendAndPersistFinalReply(reply, 'barber_position_identity');
   }
 
+  // Facility/operational message boundary (Round 3, Objective B). A fragment
+  // about branch facility/maintenance state (lamp, AC, toilet, etc.) must
+  // never fall into membership clarification, booking intent, or a CRM
+  // private-data lookup. Deliberately checked before those other deterministic
+  // routes below can grab it.
+  const facilityIntent = classifyFacilityIntent(text);
+  if (facilityIntent.matched) {
+    let facilityReply = 'Siap Kak, ini terkait kondisi/perbaikan fasilitas cabang ya.';
+    if (facilityIntent.kind === 'complaint') {
+      const handoffCreation = await createHandoffCase({
+        customerPhone: from,
+        customerId: trustedIdentity?.customer_id || null,
+        channel: 'whatsapp',
+        branch,
+        reason: 'facility_operational_complaint',
+        triggerType: 'policy_escalation',
+        intent: 'facility_operational_message',
+        priority: 'normal',
+        conversationSummary: `customer reported a facility/maintenance issue: ${text}`,
+        latestCustomerMessage: text,
+      });
+      if (handoffCreation.status === 'created') {
+        facilityReply = 'Siap Kak, laporan soal kondisi fasilitas cabang ini sudah aku teruskan ke tim untuk dicek.';
+      } else if (handoffCreation.status === 'existing') {
+        facilityReply = 'Siap Kak, laporan ini masih dalam penanganan tim.';
+      }
+    }
+    return sendAndPersistFinalReply(facilityReply, 'facility_operational_message');
+  }
+
   // Fast keyword intercept (before OpenAI — deterministic, no hallucination)
   const msgLower = text.toLowerCase();
   const msgHas = (phrases) => phrases.some(p => msgLower.includes(p));
 
   // ── Backend booking guards ────────────────────────────────────────────────
   // Critical booking claims must be decided from the website database, not the LLM.
-  const isOtw = /\b(otw|on the way|di jalan|dijalan|lagi jalan|berangkat|telat|terlambat|kesiangan)\b/.test(msgLower);
+  // Round 3 Correction 1: a true travel signal is required to even enter the
+  // OTW path — lateness words alone ("kalau saya telat gimana?", "batas
+  // telat berapa menit?", "booking boleh terlambat?") are policy QUESTIONS,
+  // not a customer currently traveling, and must fall through to whatever
+  // the orchestrator/policy would otherwise do with that text.
+  const hasOtwTravelSignal = /\b(otw|on the way|di jalan|dijalan|lagi jalan|sudah jalan|udah jalan|berangkat|sudah berangkat|udah berangkat|menuju cabang|menuju redbox)\b/.test(msgLower);
+  const hasLatenessSignal = /\b(telat|terlambat|kesiangan)\b/.test(msgLower);
+  const isOtw = hasOtwTravelSignal;
   const isWalkIn = /\b(walk\s*in|langsung datang|langsung dateng|datang langsung|dateng langsung|tanpa booking|tanpa bookingan)\b/.test(msgLower);
   const isHomeService = /(home\s*service|ke rumah|datang ke rumah|panggil barber|barber ke kantor)/.test(msgLower);
   const isWedding = /(wedding|pernikahan|nikah|pengantin|prewedding|pre-wedding)/.test(msgLower);
@@ -1648,11 +1767,23 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   }
 
   if (isOtw) {
-    const booking = await getBookingStatus(from, branch, { statuses: ['confirmed'], limit: 5 });
-    if (booking.status === BOOKING_STATUS.CONFIRMED) {
-      reply = 'Hati-hati di jalan ya kak 😊 Kalau keterlambatan lebih dari 10–15 menit, kabari admin/cabang karena slot bisa perlu disesuaikan.';
-    } else {
-      reply = `Siap kak. Biar slot dan jamnya aman, cek atau buat booking dulu di ${bookingUrl(branch)} ya ✂️`;
+    // Round 3, Objective C: OTW-type messages describe travel state, not a
+    // booking request. Never ask the customer to create/check a booking here
+    // — a plain acknowledgement is the safe default. Booking lookup is
+    // optional and only used to *append* a bounded confirmation when a
+    // confirmed booking is actually found; a lookup failure/ambiguous/
+    // not-found result must never be surfaced as "you have no booking" or
+    // turned into a booking CTA.
+    reply = hasLatenessSignal
+      ? 'Siap Kak, hati-hati di jalan. Kalau terlambat cukup lama, tim cabang mungkin perlu menyesuaikan slot.'
+      : 'Siap Kak, hati-hati di jalan ya.';
+    try {
+      const booking = await getBookingStatus(from, branch, { statuses: ['confirmed'], limit: 5 });
+      if (booking?.status === BOOKING_STATUS.CONFIRMED) {
+        reply += ' Booking Kakak sudah tercatat.';
+      }
+    } catch (_error) {
+      // Lookup failure — fall through with the plain acknowledgement only.
     }
     return sendAndPersistFinalReply(reply, 'policy');
   }
