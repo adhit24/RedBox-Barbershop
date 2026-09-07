@@ -89,7 +89,7 @@ function baseSeed() {
   return {
     users: [{ id: 'owner-1', role: 'owner' }],
     inventory_locations: [{ id: 'loc-csb', outlet_id: OUTLET.id }],
-    moka_item_mappings: [{ moka_item_id: 'm-1', moka_variant_id: null, product_id: 'p-1', outlet_id: OUTLET.id, is_active: true }],
+    moka_item_mappings: [{ moka_item_id: 'm-1', moka_variant_id: null, product_id: 'p-1', outlet_id: OUTLET.id, is_active: true, classification: 'STOCK_PRODUCT' }],
   };
 }
 

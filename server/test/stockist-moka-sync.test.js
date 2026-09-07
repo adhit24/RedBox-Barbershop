@@ -45,7 +45,7 @@ test('a v3-report-shaped payment (no status field) with real line items is proce
   const result = buildMokaSalePlan(
     { id: 'tx-v3-1', receipt_number: 'RB-500', checkouts: [{ item_id: 'm-1', quantity: 2 }] },
     { id: 'out-1' },
-    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-1', product_id: 'p-1' }] },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-1', product_id: 'p-1', classification: 'STOCK_PRODUCT' }] },
   );
   assert.equal(result.action, 'PROCESS');
   assert.equal(result.lines[0].productId, 'p-1');
@@ -88,8 +88,8 @@ test('maps variant-specific products before item-level fallback', () => {
     {
       locationId: 'loc-1',
       mappings: [
-        { moka_item_id: 'm-1', product_id: 'p-item' },
-        { moka_item_id: 'm-1', moka_variant_id: 'v-2', product_id: 'p-variant' },
+        { moka_item_id: 'm-1', product_id: 'p-item', classification: 'STOCK_PRODUCT' },
+        { moka_item_id: 'm-1', moka_variant_id: 'v-2', product_id: 'p-variant', classification: 'STOCK_PRODUCT' },
       ],
     },
   );
@@ -167,7 +167,7 @@ function createMockSupabase({ rpc } = {}) {
 }
 
 const OUTLET = { id: 'out-csb', slug: 'csb' };
-const MAPPING = [{ moka_item_id: 'm-hairpowder', product_id: 'p-hairpowder' }];
+const MAPPING = [{ moka_item_id: 'm-hairpowder', product_id: 'p-hairpowder', classification: 'STOCK_PRODUCT' }];
 
 test('Case 1 — normal sale deducts stock and writes a SALE_MOKA ledger entry', async () => {
   let ledgerCall = null;
@@ -255,6 +255,110 @@ test('Case 5 — negative stock risk is not applied and is queued as an anomaly'
   assert.equal(anomalies[0].available_quantity, 1);
   const sale = supabase._store.moka_stockist_sales[0];
   assert.equal(sale.processing_status, 'PARTIAL');
+});
+
+// ── Product classification (2026-09-07 mapping-safety fix) ────────────────
+// A 2026-08-20 bulk import had mapped Moka's entire catalog — including
+// coffee, snacks, and haircuts — as if every item were real Stockist
+// retail stock. These tests lock in the fix: only an explicit, active
+// STOCK_PRODUCT classification may ever deduct inventory.
+
+test('a haircut-only transaction (classified NON_STOCK_SERVICE) never touches stock and is not an anomaly', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-haircut', status: 'PAID', items: [{ id: 'm-haircut', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-haircut', product_id: null, classification: 'NON_STOCK_SERVICE' }] },
+  );
+  assert.equal(result.action, 'SKIP');
+  assert.equal(result.reason, 'NO_STOCK_LINES');
+});
+
+test('a coffee-only transaction (classified NON_STOCK_MISC) never touches stock', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-coffee', status: 'PAID', items: [{ id: 'm-coffee', quantity: 2 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-coffee', product_id: 'p-coffee-legacy', classification: 'NON_STOCK_MISC' }] },
+  );
+  assert.equal(result.action, 'SKIP');
+  assert.equal(result.reason, 'NO_STOCK_LINES');
+});
+
+test('a mixed transaction only deducts the real STOCK_PRODUCT line, ignoring the haircut line', () => {
+  const result = buildMokaSalePlan(
+    {
+      id: 'tx-mixed', status: 'PAID',
+      items: [{ id: 'm-haircut', quantity: 1 }, { id: 'm-pomade', quantity: 2 }],
+    },
+    { id: 'out-1' },
+    {
+      locationId: 'loc-1',
+      mappings: [
+        { moka_item_id: 'm-haircut', product_id: null, classification: 'NON_STOCK_SERVICE' },
+        { moka_item_id: 'm-pomade', product_id: 'p-pomade', classification: 'STOCK_PRODUCT' },
+      ],
+    },
+  );
+  assert.equal(result.action, 'PROCESS');
+  assert.equal(result.lines.length, 1);
+  assert.equal(result.lines[0].productId, 'p-pomade');
+});
+
+test('a REVIEW_REQUIRED classified line never deducts stock and still raises an anomaly', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-review', status: 'PAID', items: [{ id: 'm-ambiguous', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-ambiguous', product_id: null, classification: 'REVIEW_REQUIRED' }] },
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-ambiguous');
+});
+
+// ── Fail-closed classification (PR #75 re-review, blocker 1) ──────────────
+// A missing/null/unrecognized classification must NEVER be treated as
+// STOCK_PRODUCT — it must never have silently defaulted to permissive
+// behavior, even though a mapping row with a real product_id existed.
+
+test('a mapping with product_id but a MISSING classification field never deducts stock', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-missing-class', status: 'PAID', items: [{ id: 'm-legacy', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-legacy', product_id: 'p-real' }] }, // no `classification` key at all
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-legacy');
+});
+
+test('a mapping with product_id but classification: null never deducts stock', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-null-class', status: 'PAID', items: [{ id: 'm-null-class', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-null-class', product_id: 'p-real', classification: null }] },
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-null-class');
+});
+
+test('a mapping with an unrecognized classification value never deducts stock', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-bad-class', status: 'PAID', items: [{ id: 'm-typo', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-typo', product_id: 'p-real', classification: 'stock_product' }] }, // wrong case / typo
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-typo');
+});
+
+test('a mapping row disabled for reasons other than non-stock classification still surfaces as unmapped', () => {
+  // classification stays STOCK_PRODUCT but is_active=false (e.g. manually
+  // disabled while a product mapping is corrected) — this must NOT be
+  // silently ignored like a real non-stock item; it should still raise
+  // an anomaly so someone notices the real product isn't syncing.
+  const result = buildMokaSalePlan(
+    { id: 'tx-disabled', status: 'PAID', items: [{ id: 'm-disabled', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-disabled', product_id: 'p-1', classification: 'STOCK_PRODUCT', is_active: false }] },
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
 });
 
 test('Case 6 — restart after a mid-run failure does not double-deduct', async () => {
