@@ -1974,6 +1974,49 @@ Terima kasih 🙏
     });
   });
 
+  // ── GET /api/admin/crm/employees ─────────────────────────────────────────────
+  router.get('/employees', adminAuth, async (req, res) => {
+    try {
+      const { business_unit, branch, is_active } = req.query;
+      let query = supabase
+        .from('employees')
+        .select('id, employee_code, name, nickname, business_unit, branch, branch_name, position, employment_type, payroll_type, is_active, join_date')
+        .order('business_unit', { ascending: true })
+        .order('name', { ascending: true });
+
+      if (business_unit) {
+        query = query.eq('business_unit', business_unit);
+      }
+      if (branch) {
+        query = query.eq('branch', branch);
+      }
+      if (is_active !== undefined) {
+        query = query.eq('is_active', is_active === 'true' || is_active === true);
+      } else {
+        query = query.eq('is_active', true);
+      }
+
+      const { data: employees, error } = await query;
+      if (error) {
+        return res.status(500).json({ error: error.message });
+      }
+
+      const all = employees || [];
+      const sundazeCount = all.filter(e => e.business_unit === 'Sundaze').length;
+      const redboxCount = all.filter(e => e.business_unit === 'Redbox').length;
+
+      return res.json({
+        ok: true,
+        total: all.length,
+        sundaze_count: sundazeCount,
+        redbox_count: redboxCount,
+        employees: all,
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }
 
