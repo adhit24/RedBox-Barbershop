@@ -16,6 +16,7 @@ interface SystemEventLogRow {
   entity_id: string | null;
   message: string | null;
   correlation_id: string | null;
+  request_id: string | null;
   error_code: string | null;
   error_message: string | null;
   metadata: Record<string, unknown> | null;
@@ -27,6 +28,9 @@ interface Filters {
   status: string;
   eventName: string;
   correlationId: string;
+  bookingId: string;
+  from: string;
+  to: string;
 }
 
 type LoadState<T> =
@@ -34,7 +38,16 @@ type LoadState<T> =
   | { status: 'error'; message: string }
   | { status: 'ready'; data: T };
 
-const EMPTY_FILTERS: Filters = { module: '', severity: '', status: '', eventName: '', correlationId: '' };
+const EMPTY_FILTERS: Filters = {
+  module: '',
+  severity: '',
+  status: '',
+  eventName: '',
+  correlationId: '',
+  bookingId: '',
+  from: '',
+  to: '',
+};
 
 const SEVERITY_BADGE: Record<string, string> = {
   CRITICAL: 'bg-rb-red-tint-fg text-white',
@@ -51,6 +64,9 @@ function buildQuery(filters: Filters): string {
   if (filters.status) params.set('status', filters.status);
   if (filters.eventName) params.set('eventName', filters.eventName);
   if (filters.correlationId) params.set('correlationId', filters.correlationId);
+  if (filters.bookingId) params.set('bookingId', filters.bookingId);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
@@ -92,7 +108,7 @@ export function SystemEventLog() {
         subtitle="Audit trail terpusat lintas booking, CRM, dan integrasi eksternal"
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 rounded-rb-card border border-rb-border bg-rb-surface p-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-5 grid grid-cols-2 gap-3 rounded-rb-card border border-rb-border bg-rb-surface p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         <input
           placeholder="Module"
           value={filters.module}
@@ -122,11 +138,35 @@ export function SystemEventLog() {
           className="rounded-rb-button border border-rb-border bg-rb-bg px-3 py-2 text-sm text-rb-text"
         />
         <input
-          placeholder="Correlation / Booking ID"
+          placeholder="Correlation ID"
           value={filters.correlationId}
           onChange={(e) => setFilters({ ...filters, correlationId: e.target.value })}
           className="rounded-rb-button border border-rb-border bg-rb-bg px-3 py-2 text-sm text-rb-text"
         />
+        <input
+          placeholder="Booking ID"
+          value={filters.bookingId}
+          onChange={(e) => setFilters({ ...filters, bookingId: e.target.value })}
+          className="rounded-rb-button border border-rb-border bg-rb-bg px-3 py-2 text-sm text-rb-text"
+        />
+        <label className="flex items-center gap-2 rounded-rb-button border border-rb-border bg-rb-bg px-3 py-2 text-sm text-rb-text-muted">
+          <span className="shrink-0 text-xs">From</span>
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+            className="w-full bg-transparent text-sm text-rb-text outline-none"
+          />
+        </label>
+        <label className="flex items-center gap-2 rounded-rb-button border border-rb-border bg-rb-bg px-3 py-2 text-sm text-rb-text-muted">
+          <span className="shrink-0 text-xs">To</span>
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+            className="w-full bg-transparent text-sm text-rb-text outline-none"
+          />
+        </label>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_1fr]">
@@ -183,6 +223,16 @@ export function SystemEventLog() {
                 <div className="flex justify-between gap-3">
                   <dt className="text-rb-text-muted">Correlation ID</dt>
                   <dd className="truncate text-right font-medium text-rb-text-secondary">{selected.correlation_id ?? '-'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-rb-text-muted">Request ID</dt>
+                  <dd className="truncate text-right font-medium text-rb-text-secondary">{selected.request_id ?? '-'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-rb-text-muted">Entity</dt>
+                  <dd className="truncate text-right font-medium text-rb-text-secondary">
+                    {selected.entity_type ? `${selected.entity_type}:${selected.entity_id}` : '-'}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-rb-text-muted">Error code</dt>
