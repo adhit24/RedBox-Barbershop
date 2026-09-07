@@ -288,3 +288,34 @@ export function getBarberPerformance(params: { branch?: string }): Promise<Barbe
   const query = new URLSearchParams({ branch: params.branch ?? 'all' });
   return apiClient.get<BarberPerformanceResult>(`/api/admin/crm/barber-performance?${query.toString()}`);
 }
+
+export interface RegularEmployee {
+  id: string;
+  employee_code: string | null;
+  name: string;
+  nickname: string | null;
+  business_unit: 'Redbox' | 'Sundaze';
+  branch: string | null;
+  branch_name: string | null;
+  position: string;
+  employment_type: string;
+  payroll_type: string;
+  is_active: boolean;
+}
+
+export interface EmployeesResponse {
+  ok: boolean;
+  total: number;
+  sundaze_count: number;
+  redbox_count: number;
+  employees: RegularEmployee[];
+}
+
+export function getEmployees(params?: { business_unit?: string; branch?: string }): Promise<EmployeesResponse> {
+  const query = new URLSearchParams();
+  if (params?.business_unit) query.set('business_unit', params.business_unit);
+  if (params?.branch) query.set('branch', params.branch);
+  const qStr = query.toString();
+  return apiClient.get<EmployeesResponse>(`/api/admin/crm/employees${qStr ? `?${qStr}` : ''}`);
+}
+

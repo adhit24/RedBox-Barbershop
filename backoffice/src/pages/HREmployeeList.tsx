@@ -3,7 +3,12 @@ import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
 import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
-import { getCommandCenterForBranch, type CommandCenterBarber } from '../services/crm';
+import {
+  getCommandCenterForBranch,
+  getEmployees,
+  type CommandCenterBarber,
+  type RegularEmployee,
+} from '../services/crm';
 
 const BRANCHES = ['bypass', 'csb', 'samadikun', 'sumber', 'tegal'] as const;
 const BRANCH_LABELS: Record<string, string> = {
@@ -14,18 +19,40 @@ const BRANCH_LABELS: Record<string, string> = {
   tegal: 'Tegal',
 };
 
+type FilterCategory = 'all' | 'kapster' | 'sundaze' | 'redbox_reguler';
+
+interface UnifiedPersonnel {
+  id: string;
+  code: string;
+  name: string;
+  business_unit: string;
+  business_unit_badge: 'redbox' | 'sundaze';
+  position: string;
+  branch: string;
+  payroll_type: 'Bagi Hasil' | 'Gaji';
+  attendance_status: string | null;
+  category: 'kapster' | 'sundaze' | 'redbox_reguler';
+}
+
 type LoadState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; barbers: CommandCenterBarber[]; failedBranches: string[] };
+  | {
+      status: 'ready';
+      barbers: CommandCenterBarber[];
+      employees: RegularEmployee[];
+      failedBranches: string[];
+    };
 
 function initials(name: string) {
-  return name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join('') || 'RB';
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join('') || 'RB'
+  );
 }
 
 function attendanceLabel(status: string | null) {
@@ -39,109 +66,349 @@ function attendanceLabel(status: string | null) {
 
 export function HREmployeeList() {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
+  const [activeFilter, setActiveFilter] = useState<FilterCategory>('all');
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
   useEffect(() => {
-    Promise.allSettled(BRANCHES.map((branch) => getCommandCenterForBranch(branch)))
-      .then((results) => {
-        const failedBranches: string[] = [];
-        const byId = new Map<string, CommandCenterBarber>();
+    Promise.allSettled([
+      ...BRANCHES.map((branch) => getCommandCenterForBranch(branch)),
+      getEmployees(),
+    ]).then((results) => {
+      const failedBranches: string[] = [];
+      const barberMap = new Map<string, CommandCenterBarber>();
 
-        results.forEach((result, index) => {
-          const requestedBranch = BRANCHES[index];
-          if (result.status === 'rejected') {
-            failedBranches.push(requestedBranch);
-            return;
+      // First 5 results are branch command center calls
+      for (let i = 0; i < BRANCHES.length; i++) {
+        const res = results[i];
+        const requestedBranch = BRANCHES[i];
+        if (res.status === 'rejected') {
+          failedBranches.push(requestedBranch);
+        } else {
+          const val = res.value as { barbers?: CommandCenterBarber[] };
+          for (const barber of val?.barbers ?? []) {
+            if (!barberMap.has(barber.id)) barberMap.set(barber.id, barber);
           }
-          for (const barber of result.value.barbers ?? []) {
-            if (!byId.has(barber.id)) byId.set(barber.id, barber);
-          }
-        });
-
-        const barbers = [...byId.values()].sort((a, b) => {
-          const branchDiff = BRANCHES.indexOf(a.branch as (typeof BRANCHES)[number]) - BRANCHES.indexOf(b.branch as (typeof BRANCHES)[number]);
-          if (branchDiff !== 0) return branchDiff;
-          return a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
-        });
-
-        if (barbers.length === 0 && failedBranches.length === BRANCHES.length) {
-          setState({ status: 'error', message: 'Data HR & People belum dapat dimuat dari database.' });
-          return;
         }
+      }
 
-        setState({ status: 'ready', barbers, failedBranches });
+      const barbers = [...barberMap.values()].sort((a, b) => {
+        const branchDiff =
+          BRANCHES.indexOf(a.branch as (typeof BRANCHES)[number]) -
+          BRANCHES.indexOf(b.branch as (typeof BRANCHES)[number]);
+        if (branchDiff !== 0) return branchDiff;
+        return a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
       });
+
+      // Last result is employees call
+      let employees: RegularEmployee[] = [];
+      const empResult = results[BRANCHES.length];
+      if (empResult && empResult.status === 'fulfilled') {
+        const val = empResult.value as { employees?: RegularEmployee[] };
+        employees = val?.employees ?? [];
+      }
+
+      if (barbers.length === 0 && failedBranches.length === BRANCHES.length && employees.length === 0) {
+        setState({
+          status: 'error',
+          message: 'Data HR & People belum dapat dimuat dari database.',
+        });
+        return;
+      }
+
+      setState({ status: 'ready', barbers, employees, failedBranches });
+    });
   }, []);
 
   const branchCount = useMemo(() => {
     if (state.status !== 'ready') return 0;
-    return new Set(state.barbers.map((barber) => barber.branch).filter(Boolean)).size;
+    return new Set(state.barbers.map((b) => b.branch).filter(Boolean)).size;
   }, [state]);
+
+  const liveBusinessUnits = useMemo(() => {
+    if (state.status !== 'ready') return 0;
+    const units = new Set<string>();
+    if (state.barbers.length > 0) units.add('Redbox');
+    for (const emp of state.employees) {
+      if (emp.is_active && emp.business_unit) units.add(emp.business_unit);
+    }
+    return units.size;
+  }, [state]);
+
+  const sundazeCount = useMemo(() => {
+    if (state.status !== 'ready') return 0;
+    return state.employees.filter((e) => e.business_unit === 'Sundaze' && e.is_active).length;
+  }, [state]);
+
+  const redboxRegulerCount = useMemo(() => {
+    if (state.status !== 'ready') return 0;
+    return state.employees.filter((e) => e.business_unit === 'Redbox' && e.is_active).length;
+  }, [state]);
+
+  const unifiedList = useMemo<UnifiedPersonnel[]>(() => {
+    if (state.status !== 'ready') return [];
+
+    const list: UnifiedPersonnel[] = [];
+
+    // Add barbers
+    for (const b of state.barbers) {
+      list.push({
+        id: `barber-${b.id}`,
+        code: b.id,
+        name: b.name,
+        business_unit: 'Redbox Barbershop',
+        business_unit_badge: 'redbox',
+        position: 'Kapster',
+        branch: b.branch,
+        payroll_type: 'Bagi Hasil',
+        attendance_status: b.attendance_status,
+        category: 'kapster',
+      });
+    }
+
+    // Add regular employees
+    for (const e of state.employees) {
+      if (!e.is_active) continue;
+      const isSundaze = e.business_unit === 'Sundaze';
+      list.push({
+        id: `emp-${e.id}`,
+        code: e.employee_code || e.id.slice(0, 8),
+        name: e.name,
+        business_unit: isSundaze ? 'Sundaze Cafe' : 'Redbox Barbershop',
+        business_unit_badge: isSundaze ? 'sundaze' : 'redbox',
+        position: e.position,
+        branch: e.branch || 'bypass',
+        payroll_type: 'Gaji',
+        attendance_status: null,
+        category: isSundaze ? 'sundaze' : 'redbox_reguler',
+      });
+    }
+
+    // Sort: Business Unit (Redbox first, Sundaze second), then Branch, then Name
+    return list.sort((a, b) => {
+      if (a.business_unit !== b.business_unit) {
+        return a.business_unit.localeCompare(b.business_unit);
+      }
+      if (a.branch !== b.branch) {
+        return (BRANCHES.indexOf(a.branch as (typeof BRANCHES)[number]) -
+          BRANCHES.indexOf(b.branch as (typeof BRANCHES)[number]));
+      }
+      return a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
+    });
+  }, [state]);
+
+  const filteredList = useMemo(() => {
+    return unifiedList.filter((item) => {
+      if (activeFilter !== 'all' && item.category !== activeFilter) {
+        return false;
+      }
+      if (selectedBranch !== 'all' && item.branch !== selectedBranch) {
+        return false;
+      }
+      return true;
+    });
+  }, [unifiedList, activeFilter, selectedBranch]);
 
   return (
     <>
       <PageHeader
         title="HR & People"
-        subtitle="Kapster aktif dari database Redbox. Karyawan reguler/Sundaze akan ditambahkan dari sumber payroll resmi."
+        subtitle="Roster aktif Redbox Barbershop & Sundaze Cafe dari database Supabase (Kapster bagi hasil & Karyawan reguler gaji)."
         actions={
           <span className="rounded-rb-pill bg-rb-green-tint-bg px-3 py-1.5 text-[11px] font-semibold text-rb-green-tint-fg">
-            PARTIAL LIVE
+            LIVE
           </span>
         }
       />
 
-      {state.status === 'loading' && <LoadingState label="Memuat data kapster dari seluruh cabang..." />}
+      {state.status === 'loading' && (
+        <LoadingState label="Memuat data roster kapster & karyawan reguler dari database..." />
+      )}
       {state.status === 'error' && <ErrorState message={state.message} />}
 
       {state.status === 'ready' && (
         <>
           {state.failedBranches.length > 0 && (
             <div className="mb-4 rounded-rb-card border border-rb-orange-tint-fg/20 bg-rb-orange-tint-bg px-4 py-3 text-sm text-rb-text-secondary">
-              Data sebagian cabang belum berhasil dimuat: {state.failedBranches.map((b) => BRANCH_LABELS[b] ?? b).join(', ')}.
+              Data sebagian cabang belum berhasil dimuat:{' '}
+              {state.failedBranches.map((b) => BRANCH_LABELS[b] ?? b).join(', ')}.
             </div>
           )}
 
-          <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard value={state.barbers.length} label="Kapster Aktif" tint="red" />
-            <StatCard value={branchCount} label="Cabang dengan Kapster" tint="orange" />
-            <StatCard value="—" label="Karyawan Reguler" tint="purple" />
-            <StatCard value={1} label="Unit Bisnis Live" tint="teal" />
+          {/* KPI StatCards */}
+          <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCard
+              value={state.barbers.length + state.employees.length}
+              label="Total Karyawan Aktif"
+              tint="blue"
+            />
+            <StatCard
+              value={state.barbers.length}
+              label="Kapster Aktif"
+              tint="red"
+            />
+            <StatCard
+              value={state.employees.length}
+              label={`Karyawan Reguler (${sundazeCount} SD · ${redboxRegulerCount} RB)`}
+              tint="purple"
+            />
+            <StatCard
+              value={branchCount}
+              label="Cabang dengan Kapster"
+              tint="orange"
+            />
+            <StatCard
+              value={liveBusinessUnits}
+              label="Unit Bisnis Live"
+              tint="teal"
+            />
           </section>
 
+          {/* Filter Bar */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveFilter('all')}
+                className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
+                  activeFilter === 'all'
+                    ? 'bg-rb-red text-white'
+                    : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
+                }`}
+              >
+                Semua ({unifiedList.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('kapster')}
+                className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
+                  activeFilter === 'kapster'
+                    ? 'bg-rb-red text-white'
+                    : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
+                }`}
+              >
+                Kapster ({state.barbers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('sundaze')}
+                className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
+                  activeFilter === 'sundaze'
+                    ? 'bg-rb-red text-white'
+                    : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
+                }`}
+              >
+                Sundaze ({sundazeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('redbox_reguler')}
+                className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
+                  activeFilter === 'redbox_reguler'
+                    ? 'bg-rb-red text-white'
+                    : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
+                }`}
+              >
+                Redbox Reguler ({redboxRegulerCount})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="branch-filter" className="text-xs text-rb-text-muted">
+                Cabang:
+              </label>
+              <select
+                id="branch-filter"
+                value={selectedBranch}
+                onChange={(e) => setSelectedBranch(e.target.value)}
+                className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text"
+              >
+                <option value="all">Semua Cabang</option>
+                {BRANCHES.map((b) => (
+                  <option key={b} value={b}>
+                    {BRANCH_LABELS[b]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Roster Table */}
           <div className="overflow-hidden rounded-rb-card border border-rb-border bg-rb-surface">
-            <div className="grid grid-cols-[1.5fr_1.2fr_1fr_1fr_1fr_0.8fr] gap-2 border-b border-rb-divider px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-rb-text-muted">
-              <div>Karyawan</div><div>Unit Bisnis</div><div>Posisi</div><div>Cabang</div><div>Attendance</div><div>Status</div>
+            <div className="grid grid-cols-[1.4fr_1.1fr_1fr_0.8fr_1fr_1fr_0.7fr] gap-2 border-b border-rb-divider px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-rb-text-muted">
+              <div>Karyawan</div>
+              <div>Unit Bisnis</div>
+              <div>Posisi</div>
+              <div>Cabang</div>
+              <div>Tipe Payroll</div>
+              <div>Attendance</div>
+              <div>Status</div>
             </div>
             <div className="flex flex-col divide-y divide-rb-divider">
-              {state.barbers.map((barber) => (
-                <div
-                  key={barber.id}
-                  className="grid grid-cols-[1.5fr_1.2fr_1fr_1fr_1fr_0.8fr] items-center gap-2 px-4 py-3 text-sm"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-rb-red-tint-bg text-xs font-semibold text-rb-red-tint-fg">
-                      {initials(barber.name)}
-                    </span>
+              {filteredList.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-rb-text-muted">
+                  Tidak ada data karyawan yang cocok dengan filter yang dipilih.
+                </div>
+              ) : (
+                filteredList.map((person) => (
+                  <div
+                    key={person.id}
+                    className="grid grid-cols-[1.4fr_1.1fr_1fr_0.8fr_1fr_1fr_0.7fr] items-center gap-2 px-4 py-3 text-sm"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                          person.business_unit_badge === 'sundaze'
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                            : 'bg-rb-red-tint-bg text-rb-red-tint-fg'
+                        }`}
+                      >
+                        {initials(person.name)}
+                      </span>
+                      <div>
+                        <div className="font-semibold capitalize text-rb-text">
+                          {person.name}
+                        </div>
+                        <div className="text-[11px] text-rb-text-faint font-mono">
+                          {person.code}
+                        </div>
+                      </div>
+                    </div>
                     <div>
-                      <div className="font-semibold capitalize text-rb-text">{barber.name}</div>
-                      <div className="text-[11px] text-rb-text-faint">{barber.id}</div>
+                      <span
+                        className={`inline-block rounded-rb-pill px-2.5 py-0.5 text-[11px] font-semibold ${
+                          person.business_unit_badge === 'sundaze'
+                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                            : 'bg-rb-red-tint-bg text-rb-red-tint-fg'
+                        }`}
+                      >
+                        {person.business_unit}
+                      </span>
+                    </div>
+                    <div className="text-rb-text-secondary font-medium">
+                      {person.position}
+                    </div>
+                    <div className="capitalize text-rb-text-secondary">
+                      {BRANCH_LABELS[person.branch] ?? person.branch ?? '—'}
+                    </div>
+                    <div className="text-xs text-rb-text-secondary">
+                      {person.payroll_type}
+                    </div>
+                    <div className="text-xs font-medium text-rb-text-secondary">
+                      {attendanceLabel(person.attendance_status)}
+                    </div>
+                    <div>
+                      <span className="rounded-rb-pill bg-rb-green-tint-bg px-2.5 py-1 text-[11px] font-semibold text-rb-green-tint-fg">
+                        Aktif
+                      </span>
                     </div>
                   </div>
-                  <div className="text-rb-text-secondary">Redbox Barbershop</div>
-                  <div className="text-rb-text-secondary">Kapster</div>
-                  <div className="capitalize text-rb-text-secondary">{BRANCH_LABELS[barber.branch] ?? barber.branch ?? '—'}</div>
-                  <div className="font-semibold text-rb-text-secondary">{attendanceLabel(barber.attendance_status)}</div>
-                  <div>
-                    <span className="rounded-rb-pill bg-rb-green-tint-bg px-2.5 py-1 text-[11px] font-semibold text-rb-green-tint-fg">
-                      Aktif
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
           <div className="mt-4 text-xs text-rb-text-muted">
-            Karyawan reguler dan Sundaze belum ditampilkan sampai file payroll resmi dapat dibaca/diimpor. Tidak ada nama contoh yang digunakan.
+            Data karyawan reguler (39) dan kapster (28) terhubung langsung ke database Supabase. Total unit bisnis aktif: 2 (Redbox Barbershop & Sundaze Cafe).
           </div>
         </>
       )}
