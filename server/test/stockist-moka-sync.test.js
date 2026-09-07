@@ -81,6 +81,85 @@ test('unmapped item fails closed instead of silently reducing stock', () => {
   assert.equal(result.unmapped[0].mokaItemId, 'm-unknown');
 });
 
+// ── Deterministic outlet-vs-global mapping precedence (PR #75 final fix) ──
+// txSync.js fetches outlet-scoped rows (outlet_id = this outlet) mixed
+// with global rows (outlet_id IS NULL) in one array with no guaranteed
+// DB return order. These tests lock in that precedence is resolved by
+// explicit code (separate Maps per scope+specificity), never by whichever
+// row happens to be iterated last.
+
+test('Case A: outlet-scoped NON_STOCK_MISC beats a global STOCK_PRODUCT mapping for the same item/variant', () => {
+  const mappings = [
+    { moka_item_id: 'm-a', moka_variant_id: 'v-a', product_id: 'p-global', outlet_id: null, classification: 'STOCK_PRODUCT' },
+    { moka_item_id: 'm-a', moka_variant_id: 'v-a', product_id: null, outlet_id: 'out-1', classification: 'NON_STOCK_MISC' },
+  ];
+  const result = buildMokaSalePlan(
+    { id: 'tx-a', status: 'PAID', items: [{ id: 'm-a', variant_id: 'v-a', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings },
+  );
+  assert.equal(result.action, 'SKIP');
+  assert.equal(result.reason, 'NO_STOCK_LINES');
+});
+
+test('Case B: outlet-scoped REVIEW_REQUIRED beats a global STOCK_PRODUCT mapping', () => {
+  const mappings = [
+    { moka_item_id: 'm-b', moka_variant_id: 'v-b', product_id: 'p-global', outlet_id: null, classification: 'STOCK_PRODUCT' },
+    { moka_item_id: 'm-b', moka_variant_id: 'v-b', product_id: null, outlet_id: 'out-1', classification: 'REVIEW_REQUIRED' },
+  ];
+  const result = buildMokaSalePlan(
+    { id: 'tx-b', status: 'PAID', items: [{ id: 'm-b', variant_id: 'v-b', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings },
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-b');
+});
+
+test('Case C: outlet-scoped STOCK_PRODUCT beats a global NON_STOCK_MISC mapping', () => {
+  const mappings = [
+    { moka_item_id: 'm-c', moka_variant_id: 'v-c', product_id: 'p-global-misc', outlet_id: null, classification: 'NON_STOCK_MISC' },
+    { moka_item_id: 'm-c', moka_variant_id: 'v-c', product_id: 'p-outlet-stock', outlet_id: 'out-1', classification: 'STOCK_PRODUCT' },
+  ];
+  const result = buildMokaSalePlan(
+    { id: 'tx-c', status: 'PAID', items: [{ id: 'm-c', variant_id: 'v-c', quantity: 2 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings },
+  );
+  assert.equal(result.action, 'PROCESS');
+  assert.equal(result.lines[0].productId, 'p-outlet-stock');
+});
+
+test('Case D: an exact outlet-scoped variant mapping beats a global item-only mapping', () => {
+  const mappings = [
+    { moka_item_id: 'm-d', moka_variant_id: null, product_id: 'p-global-item', outlet_id: null, classification: 'STOCK_PRODUCT' },
+    { moka_item_id: 'm-d', moka_variant_id: 'v-d', product_id: null, outlet_id: 'out-1', classification: 'NON_STOCK_MISC' },
+  ];
+  const result = buildMokaSalePlan(
+    { id: 'tx-d', status: 'PAID', items: [{ id: 'm-d', variant_id: 'v-d', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings },
+  );
+  assert.equal(result.action, 'SKIP');
+  assert.equal(result.reason, 'NO_STOCK_LINES');
+});
+
+test('Case E: result is identical regardless of mapping array order', () => {
+  const mappings = [
+    { moka_item_id: 'm-e', moka_variant_id: 'v-e', product_id: 'p-global', outlet_id: null, classification: 'STOCK_PRODUCT' },
+    { moka_item_id: 'm-e', moka_variant_id: 'v-e', product_id: 'p-outlet', outlet_id: 'out-1', classification: 'STOCK_PRODUCT' },
+  ];
+  const payment = { id: 'tx-e', status: 'PAID', items: [{ id: 'm-e', variant_id: 'v-e', quantity: 1 }] };
+  const outlet = { id: 'out-1' };
+
+  const forward = buildMokaSalePlan(payment, outlet, { locationId: 'loc-1', mappings });
+  const reversed = buildMokaSalePlan(payment, outlet, { locationId: 'loc-1', mappings: [...mappings].reverse() });
+
+  assert.equal(forward.action, 'PROCESS');
+  assert.equal(forward.lines[0].productId, 'p-outlet');
+  assert.deepEqual(forward, reversed);
+});
+
 test('maps variant-specific products before item-level fallback', () => {
   const result = buildMokaSalePlan(
     { id: 'tx-1', status: 'PAID', items: [{ id: 'm-1', variant_id: 'v-2', quantity: 2 }] },
