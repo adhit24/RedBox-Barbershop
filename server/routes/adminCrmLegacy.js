@@ -2017,6 +2017,114 @@ Terima kasih 🙏
     }
   });
 
+  // ── GET /api/admin/crm/employees/:id ──────────────────────────────────────────
+  router.get('/employees/:id', adminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!id) return res.status(400).json({ error: 'id required' });
+
+      // If id explicitly targets a barber
+      if (id.startsWith('barber-')) {
+        const barberId = id.slice('barber-'.length);
+        const { data: barber, error } = await supabase
+          .from('barbers')
+          .select('id, name, branch, is_active, created_at')
+          .eq('id', barberId)
+          .maybeSingle();
+
+        if (error) return res.status(500).json({ error: error.message });
+        if (!barber) return res.status(404).json({ error: 'Barber not found' });
+
+        return res.json({
+          ok: true,
+          type: 'barber',
+          person: {
+            id: `barber-${barber.id}`,
+            code: barber.id,
+            name: barber.name,
+            nickname: null,
+            business_unit: 'Redbox Barbershop',
+            branch: barber.branch,
+            branch_name: barber.branch ? barber.branch.toUpperCase() : '—',
+            position: 'Kapster',
+            employment_type: 'barber',
+            payroll_type: 'Bagi Hasil',
+            is_active: barber.is_active,
+            join_date: barber.created_at || null,
+          }
+        });
+      }
+
+      // Try employees table by UUID, employee_code, or stripped prefix
+      const cleanId = id.startsWith('emp-') ? id.slice('emp-'.length) : id;
+      let query = supabase
+        .from('employees')
+        .select('id, employee_code, name, nickname, business_unit, branch, branch_name, position, employment_type, payroll_type, is_active, join_date');
+
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)) {
+        query = query.eq('id', cleanId);
+      } else {
+        query = query.eq('employee_code', cleanId);
+      }
+
+      const { data: emp, error: empErr } = await query.maybeSingle();
+      if (empErr) return res.status(500).json({ error: empErr.message });
+
+      if (emp) {
+        return res.json({
+          ok: true,
+          type: 'regular',
+          person: {
+            id: `emp-${emp.id}`,
+            code: emp.employee_code || emp.id.slice(0, 8),
+            name: emp.name,
+            nickname: emp.nickname,
+            business_unit: emp.business_unit === 'Sundaze' ? 'Sundaze Cafe' : 'Redbox Barbershop',
+            branch: emp.branch,
+            branch_name: emp.branch_name,
+            position: emp.position,
+            employment_type: emp.employment_type || 'regular',
+            payroll_type: 'Gaji',
+            is_active: emp.is_active,
+            join_date: emp.join_date,
+          }
+        });
+      }
+
+      // Fallback: check if id matches a barber id directly without prefix
+      const { data: barberDirect } = await supabase
+        .from('barbers')
+        .select('id, name, branch, is_active, created_at')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (barberDirect) {
+        return res.json({
+          ok: true,
+          type: 'barber',
+          person: {
+            id: `barber-${barberDirect.id}`,
+            code: barberDirect.id,
+            name: barberDirect.name,
+            nickname: null,
+            business_unit: 'Redbox Barbershop',
+            branch: barberDirect.branch,
+            branch_name: barberDirect.branch ? barberDirect.branch.toUpperCase() : '—',
+            position: 'Kapster',
+            employment_type: 'barber',
+            payroll_type: 'Bagi Hasil',
+            is_active: barberDirect.is_active,
+            join_date: barberDirect.created_at || null,
+          }
+        });
+      }
+
+      return res.status(404).json({ error: 'Personnel not found' });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }
 

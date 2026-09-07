@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
 import { LoadingState } from '../components/LoadingState';
@@ -365,9 +366,12 @@ export function HREmployeeList() {
                         {initials(person.name)}
                       </span>
                       <div>
-                        <div className="font-semibold capitalize text-rb-text">
+                        <Link
+                          to={`/hr/employees/${person.id}`}
+                          className="font-semibold capitalize text-rb-text hover:text-rb-red hover:underline"
+                        >
                           {person.name}
-                        </div>
+                        </Link>
                         <div className="text-[11px] text-rb-text-faint font-mono">
                           {person.code}
                         </div>
@@ -408,7 +412,7 @@ export function HREmployeeList() {
           </div>
 
           <div className="mt-4 text-xs text-rb-text-muted">
-            Data karyawan reguler (39) dan kapster (28) terhubung langsung ke database Supabase. Total unit bisnis aktif: 2 (Redbox Barbershop & Sundaze Cafe).
+            Data karyawan reguler ({state.employees.length}) dan kapster ({state.barbers.length}) terhubung langsung ke database Supabase. Total unit bisnis aktif: {liveBusinessUnits} (Redbox Barbershop &amp; Sundaze Cafe).
           </div>
         </>
       )}

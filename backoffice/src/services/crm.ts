@@ -319,3 +319,29 @@ export function getEmployees(params?: { business_unit?: string; branch?: string 
   return apiClient.get<EmployeesResponse>(`/api/admin/crm/employees${qStr ? `?${qStr}` : ''}`);
 }
 
+export interface PersonnelDetail {
+  id: string;
+  code: string;
+  name: string;
+  nickname: string | null;
+  business_unit: string;
+  branch: string | null;
+  branch_name?: string | null;
+  position: string;
+  employment_type: string;
+  payroll_type: 'Bagi Hasil' | 'Gaji';
+  is_active: boolean;
+  join_date: string | null;
+}
+
+export interface EmployeeDetailResponse {
+  ok: boolean;
+  type: 'regular' | 'barber';
+  person: PersonnelDetail;
+}
+
+export function getEmployeeDetail(id: string): Promise<EmployeeDetailResponse> {
+  return apiClient.get<EmployeeDetailResponse>(`/api/admin/crm/employees/${encodeURIComponent(id)}`);
+}
+
+
