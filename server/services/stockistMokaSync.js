@@ -73,24 +73,91 @@ function extractMokaSaleLines(payment) {
   return String(raw).split(',').map((name) => normalizeMokaLine(name.trim())).filter((line) => line.name);
 }
 
+// Builds a scope-aware mapping index so lookup precedence is explicit in
+// code rather than accidental array/DB-row order. txSync.js's fetch
+// returns a mix of outlet-scoped rows (outlet_id = this outlet) and
+// global rows (outlet_id IS NULL); when the same moka_item_id/variant_id
+// exists in both scopes, a single flat Map keyed only by item:variant
+// would let whichever row is iterated last silently overwrite the other
+// — non-deterministic, since Supabase gives no ordering guarantee. Each
+// (scope, specificity) combination gets its own Map here, so an
+// outlet-scoped row and a global row for the identical item/variant can
+// never collide with each other, and resolution always walks the same
+// fixed precedence order regardless of input order.
+function buildMappingIndex(mappings, outletId) {
+  const outletExact = new Map();
+  const outletItemOnly = new Map();
+  const globalExact = new Map();
+  const globalItemOnly = new Map();
+  for (const mapping of mappings) {
+    const itemKey = mapping.moka_item_id || '';
+    const isOutletScoped = mapping.outlet_id != null && mapping.outlet_id === outletId;
+    const isGlobal = mapping.outlet_id == null;
+    if (!isOutletScoped && !isGlobal) continue; // a row for a different outlet — the fetch query shouldn't return this, but never let it participate if it somehow does
+    if (mapping.moka_variant_id) {
+      const exactKey = `${itemKey}:${mapping.moka_variant_id}`;
+      (isOutletScoped ? outletExact : globalExact).set(exactKey, mapping);
+    } else {
+      (isOutletScoped ? outletItemOnly : globalItemOnly).set(itemKey, mapping);
+    }
+  }
+  return { outletExact, outletItemOnly, globalExact, globalItemOnly };
+}
+
+function resolveMokaMapping(index, mokaItemId, mokaVariantId) {
+  const itemKey = mokaItemId || '';
+  const exactKey = `${itemKey}:${mokaVariantId || ''}`;
+  // Fixed precedence, independent of array/DB order:
+  //   1. exact outlet-scoped item+variant
+  //   2. outlet-scoped item-only
+  //   3. exact global item+variant
+  //   4. global item-only
+  return index.outletExact.get(exactKey)
+    ?? index.outletItemOnly.get(itemKey)
+    ?? index.globalExact.get(exactKey)
+    ?? index.globalItemOnly.get(itemKey)
+    ?? null;
+}
+
 function buildMokaSalePlan(payment, outlet, { locationId, mappings = [] } = {}) {
   const transaction = normalizeMokaTransaction(payment, outlet);
   if (!transaction.externalId) return { action: 'FAILED', errorCode: 'MOKA_TRANSACTION_ID_REQUIRED', transaction };
   if (!transaction.isFinal) return { action: 'SKIP', reason: 'NOT_FINAL', transaction };
   if (!locationId) return { action: 'FAILED', errorCode: 'OUTLET_LOCATION_MAPPING_REQUIRED', transaction };
 
-  const mappingByKey = new Map();
-  for (const mapping of mappings) {
-    const key = `${mapping.moka_item_id || ''}:${mapping.moka_variant_id || ''}`;
-    mappingByKey.set(key, mapping);
-  }
-  const lines = extractMokaSaleLines(payment).map((line) => {
-    const exact = mappingByKey.get(`${line.mokaItemId || ''}:${line.mokaVariantId || ''}`);
-    const itemOnly = mappingByKey.get(`${line.mokaItemId || ''}:`);
-    const mapping = exact || itemOnly || null;
-    return { ...line, productId: mapping?.product_id || null, mapped: Boolean(mapping) };
+  const mappingIndex = buildMappingIndex(mappings, outlet?.id ?? null);
+  // NON_STOCK_SERVICE/NON_STOCK_MISC classified lines (haircuts, grooming
+  // packages, drinks, food, tips, membership tiers, custom amounts) are
+  // dropped entirely before mapping is even evaluated — they must never
+  // count as "unmapped" (no anomaly) or be attempted for deduction. Only
+  // an explicit, active STOCK_PRODUCT classification pointing at a real
+  // product counts as mapped; a real product whose mapping was disabled
+  // for unrelated reasons still falls through to the unmapped/anomaly
+  // path so it doesn't silently vanish.
+  const rawLines = extractMokaSaleLines(payment).map((line) => {
+    const mapping = resolveMokaMapping(mappingIndex, line.mokaItemId, line.mokaVariantId);
+    // Fail closed: missing, null, or any unrecognized classification value
+    // must NEVER be treated as STOCK_PRODUCT. The database's own column
+    // default is REVIEW_REQUIRED specifically so a fresh/backfilled row
+    // can't silently deduct inventory before someone has actually decided
+    // it's real stock — this check must not quietly undo that by
+    // defaulting the field on the JS side. A row like this simply isn't
+    // "mapped": it falls through to the existing unmapped/anomaly path
+    // below, exactly like an item with no mapping row at all.
+    const classification = mapping?.classification ?? null;
+    const isStockProduct = Boolean(mapping) && classification === 'STOCK_PRODUCT' && mapping.is_active !== false && Boolean(mapping.product_id);
+    const isKnownNonStock = Boolean(mapping) && (classification === 'NON_STOCK_SERVICE' || classification === 'NON_STOCK_MISC');
+    return { ...line, productId: isStockProduct ? mapping.product_id : null, mapped: isStockProduct, ignored: isKnownNonStock };
   });
-  if (!lines.length) return { action: 'FAILED', errorCode: 'MOKA_LINE_ITEMS_REQUIRED', transaction, lines };
+  const lines = rawLines.filter((line) => !line.ignored);
+  if (!lines.length) {
+    // A transaction made up entirely of known non-stock lines (a plain
+    // haircut, a drink-only sale) is the common case for a barbershop —
+    // that is a clean no-op, not a data failure, and must never be
+    // reported or counted as one.
+    if (rawLines.length > 0) return { action: 'SKIP', reason: 'NO_STOCK_LINES', transaction };
+    return { action: 'FAILED', errorCode: 'MOKA_LINE_ITEMS_REQUIRED', transaction, lines: rawLines };
+  }
   if (lines.some((line) => !line.quantity || line.quantity <= 0)) {
     return { action: 'FAILED', errorCode: 'MOKA_INVALID_LINE_QUANTITY', transaction, lines };
   }

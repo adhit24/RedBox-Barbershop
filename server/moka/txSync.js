@@ -128,8 +128,14 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   if (stockistSalesSync && stockistPerformedBy) {
     const [{ data: location }, { data: mappings, error: mappingError }] = await Promise.all([
       supabase.from('inventory_locations').select('id').eq('outlet_id', outlet.id).maybeSingle(),
-      supabase.from('moka_item_mappings').select('moka_item_id, moka_variant_id, product_id')
-        .eq('is_active', true).or(`outlet_id.eq.${outlet.id},outlet_id.is.null`),
+      // Fetches classified-but-inactive rows too (NON_STOCK_SERVICE/
+      // NON_STOCK_MISC), not just is_active STOCK_PRODUCT ones — the sale
+      // plan needs to see them to silently exclude known non-stock lines
+      // (haircuts, drinks, tips, etc.) instead of raising an
+      // UNMAPPED_PRODUCT anomaly for something already reviewed and
+      // classified as intentionally irrelevant to Stockist.
+      supabase.from('moka_item_mappings').select('moka_item_id, moka_variant_id, product_id, is_active, classification')
+        .or(`outlet_id.eq.${outlet.id},outlet_id.is.null`),
     ]);
     if (mappingError) throw new Error(`Stockist Moka mapping lookup failed: ${mappingError.message}`);
     stockistLocationId = location?.id || null;
