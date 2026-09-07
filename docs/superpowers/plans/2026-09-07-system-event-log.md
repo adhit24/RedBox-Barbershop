@@ -975,6 +975,22 @@ const { createSystemEventLogRoutes } = require('../routes/systemEventLogs');
 async function withServer(supabase, legacyAdminAuth, fn) {
   const app = express();
   app.use(express.json());
+  // createBackofficeSupabaseAuth only takes the Supabase-bearer path when
+  // req.hostname === 'backoffice.redboxbarbershop.com'; a real HTTP request
+  // to 127.0.0.1 (fetch cannot set the Host header) can never produce that
+  // hostname on its own. Force it here, before the route, the same way
+  // server/test/backoffice-supabase-auth.test.js constructs a req with that
+  // exact hostname when it tests the middleware directly. This does not
+  // change what's under test — it makes req.hostname match what a request
+  // actually hitting backoffice.redboxbarbershop.com in production would
+  // see, so both the bearer-auth path and the legacy-fallback path (a
+  // request without a Bearer token still falls through to legacyAdminAuth
+  // even with this hostname forced, since createBackofficeSupabaseAuth also
+  // requires `authHeader.startsWith('Bearer ')`) are reachable in this test.
+  app.use((req, _res, next) => {
+    Object.defineProperty(req, 'hostname', { value: 'backoffice.redboxbarbershop.com', configurable: true });
+    next();
+  });
   app.use('/api/internal/system-event-logs', createSystemEventLogRoutes(supabase, legacyAdminAuth));
   const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.on('listening', resolve));
