@@ -2028,11 +2028,14 @@ Terima kasih 🙏
         const barberId = id.slice('barber-'.length);
         const { data: barber, error } = await supabase
           .from('barbers')
-          .select('id, name, branch, is_active, created_at')
+          .select('id, name, branch, is_active')
           .eq('id', barberId)
           .maybeSingle();
 
-        if (error) return res.status(500).json({ error: error.message });
+        if (error) {
+          console.error('[AdminCRM] Failed to lookup barber:', error);
+          return res.status(500).json({ error: 'Failed to load employee data' });
+        }
         if (!barber) return res.status(404).json({ error: 'Barber not found' });
 
         return res.json({
@@ -2050,7 +2053,7 @@ Terima kasih 🙏
             employment_type: 'barber',
             payroll_type: 'Bagi Hasil',
             is_active: barber.is_active,
-            join_date: barber.created_at || null,
+            join_date: null,
           }
         });
       }
@@ -2068,7 +2071,10 @@ Terima kasih 🙏
       }
 
       const { data: emp, error: empErr } = await query.maybeSingle();
-      if (empErr) return res.status(500).json({ error: empErr.message });
+      if (empErr) {
+        console.error('[AdminCRM] Failed to lookup employee:', empErr);
+        return res.status(500).json({ error: 'Failed to load employee data' });
+      }
 
       if (emp) {
         return res.json({
@@ -2092,11 +2098,16 @@ Terima kasih 🙏
       }
 
       // Fallback: check if id matches a barber id directly without prefix
-      const { data: barberDirect } = await supabase
+      const { data: barberDirect, error: barberDirectErr } = await supabase
         .from('barbers')
-        .select('id, name, branch, is_active, created_at')
+        .select('id, name, branch, is_active')
         .eq('id', id)
         .maybeSingle();
+
+      if (barberDirectErr) {
+        console.error('[AdminCRM] Failed to lookup barber direct:', barberDirectErr);
+        return res.status(500).json({ error: 'Failed to load employee data' });
+      }
 
       if (barberDirect) {
         return res.json({
@@ -2114,14 +2125,15 @@ Terima kasih 🙏
             employment_type: 'barber',
             payroll_type: 'Bagi Hasil',
             is_active: barberDirect.is_active,
-            join_date: barberDirect.created_at || null,
+            join_date: null,
           }
         });
       }
 
       return res.status(404).json({ error: 'Personnel not found' });
     } catch (err) {
-      return res.status(500).json({ error: err.message });
+      console.error('[AdminCRM] Unexpected error in employees/:id:', err);
+      return res.status(500).json({ error: 'Failed to load employee data' });
     }
   });
 

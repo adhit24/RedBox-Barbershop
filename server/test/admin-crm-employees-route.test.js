@@ -167,6 +167,35 @@ test('GET /api/admin/crm/employees/:id supports barber resolution with Bagi Hasi
   assert.equal(body.person.payroll_type, 'Bagi Hasil');
   assert.equal(body.person.position, 'Kapster');
   assert.equal(body.person.base_salary, undefined);
+  assert.equal(body.person.join_date, null); // Proves created_at is NOT mapped to join_date
 
   server.close();
 });
+
+test('GET /api/admin/crm/employees/:id returns generic sanitized error message on failure', async () => {
+  const brokenSupabase = {
+    from() {
+      return {
+        select() { return this; },
+        eq() { return this; },
+        maybeSingle() {
+          return Promise.resolve({ data: null, error: { message: 'relation employees does not exist' } });
+        },
+      };
+    },
+  };
+
+  const app = buildApp(brokenSupabase);
+  const server = app.listen(0);
+  const port = server.address().port;
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/admin/crm/employees/emp-123`);
+  const body = await res.json();
+
+  assert.equal(res.status, 500);
+  assert.equal(body.error, 'Failed to load employee data');
+  assert.equal(body.error.includes('relation employees'), false);
+
+  server.close();
+});
+

@@ -60,6 +60,8 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
     expect(screen.getByText('SD-REG-001')).toBeInTheDocument();
     expect(screen.getByText('Gaji')).toBeInTheDocument();
     expect(screen.getByText('Bypass')).toBeInTheDocument();
+    // Verify regular employee real join_date renders correctly
+    expect(screen.getByText(/1 Agu 2025/i)).toBeInTheDocument();
 
     // Verify honest unavailable states for unintegrated sections
     expect(screen.getAllByText('Belum tersedia').length).toBeGreaterThan(0);
@@ -67,7 +69,7 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
     expect(screen.getByText('Riwayat mutasi belum dicatat')).toBeInTheDocument();
   });
 
-  it('renders barber personnel correctly from route id', async () => {
+  it('renders barber personnel correctly from route id and shows Belum tersedia for join_date', async () => {
     vi.mocked(crmService.getEmployeeDetail).mockResolvedValueOnce({
       ok: true,
       type: 'barber',
@@ -102,6 +104,11 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
     expect(screen.getByText('Kapster (Barber)')).toBeInTheDocument();
     expect(screen.getByText('Bagi Hasil')).toBeInTheDocument();
     expect(screen.getByText('CSB')).toBeInTheDocument();
+
+    // Verify barber without real join date renders Belum tersedia and no created_at timestamp
+    expect(screen.getAllByText('Belum tersedia').length).toBeGreaterThanOrEqual(4);
+    expect(screen.queryByText(/2024/i)).toBeNull();
+    expect(screen.queryByText(/2026/i)).toBeNull();
   });
 
   it('handles not found state gracefully', async () => {
