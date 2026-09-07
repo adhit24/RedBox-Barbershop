@@ -16,9 +16,14 @@ function stripSensitive(value, seen) {
     seen.add(value);
     const out = {};
     for (const [key, val] of Object.entries(value)) {
+      // Skip sensitive keys and prototype-pollution keys (__proto__, constructor, prototype)
       if (SENSITIVE_KEY_PATTERN.test(key)) continue;
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
       out[key] = stripSensitive(val, seen);
     }
+    // Remove from seen after processing to track DFS path only (not global visited),
+    // so sibling references to the same object aren't incorrectly flagged as circular
+    seen.delete(value);
     return out;
   }
   return value;
