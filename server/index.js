@@ -36,6 +36,7 @@ const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('.
 // here too was dead weight, and the one identifier actually referenced below
 // was never imported at all.
 const { linkNewlyCreatedBooking } = require('./services/bookingCustomerLinkage');
+const { logSystemEvent } = require('./services/systemEventLog');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1244,17 +1245,39 @@ function normalizeBookingPrice({ service_id, service, price, type }) {
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-create' }), async (req, res) => {
+  const correlationId = randomUUID();
   const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address, group } = req.body;
+  logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_submit_started',
+    severity: 'INFO',
+    status: 'started',
+    correlationId,
+    requestId: req.headers['x-request-id'] || null,
+    httpMethod: 'POST',
+    httpPath: '/api/bookings',
+    source: 'website',
+  }, { supabase }).catch(() => {});
   const bookingPrice = normalizeBookingPrice({ service_id, service, price, type });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
   const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
 
   if (!name || !wa || !service || !date || !time) {
+    logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Missing required fields: name, wa, service, date, time',
+    }, { supabase }).catch(() => {});
     return res.status(400).json({ error: 'Missing required fields: name, wa, service, date, time' });
   }
   // Validasi format WA (hanya angka, 8-15 digit)
   if (!/^\d{8,15}$/.test(String(wa))) {
+    logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Format nomor WhatsApp tidak valid (8-15 angka tanpa kode negara)',
+    }, { supabase }).catch(() => {});
     return res.status(400).json({ error: 'Format nomor WhatsApp tidak valid (8-15 angka tanpa kode negara)' });
   }
 
@@ -1281,9 +1304,19 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
           return res.status(500).json({ error: 'Gagal memvalidasi kapster' });
         }
         if (!barberCheck) {
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, barberId: normalizedBarberId, httpStatus: 400,
+            errorMessage: 'Kapster tidak ditemukan',
+          }, { supabase }).catch(() => {});
           return res.status(400).json({ error: 'Kapster tidak ditemukan' });
         }
         if (!isAdmin && barberCheck.is_active === false) {
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, barberId: normalizedBarberId, httpStatus: 403,
+            errorMessage: 'Kapster sedang tidak aktif dan tidak bisa dipesan',
+          }, { supabase }).catch(() => {});
           return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
         }
         if (!isAdmin) {
@@ -1298,6 +1331,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         // Never silently move a booking to the barber's branch. A client that
         // submits CSB + a Bypass barber must be rejected, not corrected.
         if (!branchMatchesBarber(barberCheck, resolvedLocation)) {
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, barberId: normalizedBarberId, httpStatus: 409,
+            errorMessage: `Kapster ${barberCheck.name || normalizedBarberId} tidak tersedia di cabang ${resolvedLocation}`,
+          }, { supabase }).catch(() => {});
           return res.status(409).json({
             error: `Kapster ${barberCheck.name || normalizedBarberId} tidak tersedia di cabang ${resolvedLocation}`,
           });
@@ -1306,6 +1344,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
 
       // 2. Cek overlap terlebih dahulu
       if (await hasOverlapSupabase({ barberId: normalizedBarberId, date, time, duration })) {
+        logSystemEvent({
+          module: 'booking', eventName: 'booking_availability_failed', severity: 'WARNING', status: 'failed',
+          correlationId, barberId: normalizedBarberId, httpStatus: 409,
+          errorMessage: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.',
+        }, { supabase }).catch(() => {});
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
@@ -1386,7 +1429,19 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         location: resolvedLocation, status: desiredStatus, notes: notes || '', payment: payment || '',
         original_price: originalPrice, discount_label: discountLabel
       }]).select().single();
-      if (error) return res.status(500).json({ error: error.message });
+      if (error) {
+        logSystemEvent({
+          module: 'booking', eventName: 'booking_insert_failed', severity: 'ERROR', status: 'failed',
+          correlationId, bookingId, barberId: normalizedBarberId, httpStatus: 500,
+          errorMessage: error.message,
+        }, { supabase }).catch(() => {});
+        return res.status(500).json({ error: error.message });
+      }
+      logSystemEvent({
+        module: 'booking', eventName: 'booking_created', severity: 'INFO', status: 'success',
+        correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+        barberId: normalizedBarberId, outletId: resolvedLocation,
+      }, { supabase }).catch(() => {});
 
       // 3. Upsert customer (Supabase trigger trg_sync_customer hanya jalan saat done;
       //    kita buat/update customer saat booking dibuat agar data tersedia segera)
@@ -1408,9 +1463,17 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       // catch a genuine programming defect (e.g. a missing import), and
       // silently swallowing THAT class of bug is worse than the outer
       // route-level catch (below) surfacing it as a loud 500.
-      await linkNewlyCreatedBooking(supabase, {
+      const linkageResult = await linkNewlyCreatedBooking(supabase, {
         booking: { id: bookingId }, phone: wa, source: 'booking_create', branch: resolvedLocation,
       });
+      if (linkageResult.persistence_status !== 'persisted') {
+        logSystemEvent({
+          module: 'booking', eventName: 'booking_customer_link_failed', severity: 'WARNING', status: 'failed',
+          correlationId, bookingId, entityType: 'booking', entityId: bookingId,
+          errorCode: linkageResult.persistence_status,
+          errorMessage: `customer linkage not persisted: ${linkageResult.persistence_status}`,
+        }, { supabase }).catch(() => {});
+      }
 
       // Notif admin untuk setiap booking baru (fire-and-forget — tidak block response)
       if (data.wa) {
@@ -1428,7 +1491,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             barberName = b?.name || null;
           } catch (_) {}
         }
-        await _notifyCustomerConfirmedWithRetry(supabase, data, barberName);
+        const notifyResult = await _notifyCustomerConfirmedWithRetry(supabase, data, barberName);
+        if (!notifyResult?.sent) {
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_notification_failed', severity: 'WARNING', status: 'failed',
+            correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+            errorMessage: 'customer confirmation WA not sent',
+          }, { supabase }).catch(() => {});
+        }
         // Send notification to barber regardless of booking type
         try {
           if (type !== 'home_service' && type !== 'wedding') {
@@ -1445,6 +1515,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
           }
         } catch (err) {
           console.error('[Booking] Barber notif failed:', err.message);
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_notification_failed', severity: 'WARNING', status: 'failed',
+            correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+            errorMessage: err.message,
+          }, { supabase }).catch(() => {});
         }
       }
 
@@ -1472,6 +1547,13 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       if (supabase && desiredStatus === 'confirmed') {
         try {
           const r = await require('./moka/sync').bridgeBookingToMoka(supabase, { ...data, type, address });
+          if (r.scheduleId) {
+            logSystemEvent({
+              module: 'booking', eventName: 'schedule_created', severity: 'INFO', status: 'success',
+              correlationId, bookingId: data.id, scheduleId: r.scheduleId,
+              entityType: 'schedule', entityId: r.scheduleId,
+            }, { supabase }).catch(() => {});
+          }
 
           // If home service: create lifecycle tracking row
           let homeServiceJobId = null;
@@ -1490,13 +1572,37 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             }
           }
 
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
+            correlationId, bookingId: data.id, scheduleId: r.scheduleId || null,
+            entityType: 'booking', entityId: data.id, httpStatus: 201,
+          }, { supabase }).catch(() => {});
           return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId });
         } catch (e) {
           console.warn(`[Moka Bridge] booking ${data.id} failed:`, e.message);
+          logSystemEvent({
+            module: 'booking', eventName: 'schedule_create_failed', severity: 'ERROR', status: 'failed',
+            correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+            errorMessage: e.message,
+          }, { supabase }).catch(() => {});
+          // A booking row exists (data.id is real) but no schedule was
+          // created — this IS booking_confirmed_to_client's truthful state:
+          // the client sees the booking exists, scheduleId is explicitly
+          // null in the response so nothing downstream assumes a schedule.
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'WARNING', status: 'partial',
+            correlationId, bookingId: data.id, scheduleId: null,
+            entityType: 'booking', entityId: data.id, httpStatus: 201,
+            message: 'confirmed to client without a linked schedule (moka bridge failed)',
+          }, { supabase }).catch(() => {});
           return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: 'failed' });
         }
       }
 
+      logSystemEvent({
+        module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
+        correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id, httpStatus: 201,
+      }, { supabase }).catch(() => {});
       return res.status(201).json({ data, autoBooked: desiredStatus === 'confirmed' });
     } catch (err) {
       console.error('Supabase POST Error:', err);
