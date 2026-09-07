@@ -45,17 +45,25 @@ test('every required Phase 1 booking event name appears exactly once in the rout
   const requiredOnce = [
     'booking_submit_started',
     'booking_availability_failed',
-    'booking_insert_failed',
     'booking_created',
-    'booking_customer_link_failed',
   ];
   for (const name of requiredOnce) {
     const occurrences = routeBody.split(`eventName: '${name}'`).length - 1;
     assert.equal(occurrences, 1, `expected eventName: '${name}' exactly once, found ${occurrences}`);
   }
-  // These two appear twice: once on the confirmed-with-schedule path, once
-  // on the moka-bridge-failed / no-schedule path (see Step 10).
-  for (const name of ['schedule_create_failed', 'schedule_created', 'booking_confirmed_to_client']) {
+  // These appear more than once by design:
+  //  - schedule_create_failed / schedule_created / booking_confirmed_to_client:
+  //    once on the confirmed-with-schedule path, once on the
+  //    moka-bridge-failed / no-schedule path (see Step 10).
+  //  - booking_insert_failed: once in the insert-error branch, once more in
+  //    the route's outer catch (final-review Finding 2 — instrumenting the
+  //    previously-uninstrumented terminal 500 path).
+  //  - booking_customer_link_failed: once for the "not attempted" (healthy,
+  //    common) case logged as INFO/skipped, once for an actual write
+  //    failure logged as WARNING/failed (final-review Finding 1) — the
+  //    event NAME is reused per the plan's fixed event-name contract, only
+  //    severity/status differ.
+  for (const name of ['schedule_create_failed', 'schedule_created', 'booking_confirmed_to_client', 'booking_insert_failed', 'booking_customer_link_failed']) {
     const occurrences = routeBody.split(`eventName: '${name}'`).length - 1;
     assert.ok(occurrences >= 1, `expected at least one eventName: '${name}', found ${occurrences}`);
   }
@@ -75,6 +83,41 @@ test('booking_confirmed_to_client is never logged before the bookings insert res
 test('booking_customer_link_failed is only logged when linkage was not persisted', () => {
   const routeBody = bookingRouteMatch[0];
   assert.match(routeBody, /if \(linkageResult\.persistence_status !== 'persisted'\)/);
+});
+
+test('booking_customer_link_failed logs INFO/skipped for the not_attempted (healthy) case and WARNING/failed for actual write problems', () => {
+  const routeBody = bookingRouteMatch[0];
+  const notAttemptedBlock = routeBody.match(/if \(linkageResult\.persistence_status === 'not_attempted'\) \{[\s\S]*?\}, \{ supabase \}\)\.catch\(\(\) => \{\}\);/);
+  assert.ok(notAttemptedBlock, 'expected a not_attempted branch logging booking_customer_link_failed');
+  assert.match(notAttemptedBlock[0], /severity: 'INFO', status: 'skipped'/);
+
+  const writeFailedBlock = routeBody.match(/\} else if \(linkageResult\.persistence_status !== 'persisted'\) \{[\s\S]*?\}, \{ supabase \}\)\.catch\(\(\) => \{\}\);/);
+  assert.ok(writeFailedBlock, 'expected a write-failed branch logging booking_customer_link_failed');
+  assert.match(writeFailedBlock[0], /severity: 'WARNING', status: 'failed'/);
+});
+
+test('the route outer catch (unexpected exception) logs booking_insert_failed before returning 500', () => {
+  const routeBody = bookingRouteMatch[0];
+  const catchBlock = routeBody.match(/console\.error\('Supabase POST Error:', err\);[\s\S]*?return res\.status\(500\)\.json\(\{ error: err\.message \}\);/);
+  assert.ok(catchBlock, 'expected the outer Supabase-branch catch block');
+  assert.match(catchBlock[0], /eventName: 'booking_insert_failed'/);
+  assert.match(catchBlock[0], /severity: 'ERROR', status: 'failed'/);
+  assert.match(catchBlock[0], /\.catch\(\(\) => \{\}\);/);
+});
+
+test('membership abuse-gate rejections (MEMBER_LOGIN_REQUIRED, MEMBER_IDENTITY_MISMATCH) are logged before their return', () => {
+  const routeBody = bookingRouteMatch[0];
+  const loginRequiredBlock = routeBody.match(/if \(!sessionMatchesPhone\) \{[\s\S]*?\}\);\s*\}/);
+  assert.ok(loginRequiredBlock, 'expected the sessionMatchesPhone guard block');
+  assert.match(loginRequiredBlock[0], /eventName: 'booking_validation_failed'/);
+  assert.match(loginRequiredBlock[0], /errorCode: 'MEMBER_LOGIN_REQUIRED'/);
+  assert.match(loginRequiredBlock[0], /httpStatus: 401/);
+
+  const identityMismatchBlock = routeBody.match(/if \(!sameIdentityName\(name, memberProfile\?\.full_name\)\) \{[\s\S]*?\}\);\s*\}/);
+  assert.ok(identityMismatchBlock, 'expected the sameIdentityName guard block');
+  assert.match(identityMismatchBlock[0], /eventName: 'booking_validation_failed'/);
+  assert.match(identityMismatchBlock[0], /errorCode: 'MEMBER_IDENTITY_MISMATCH'/);
+  assert.match(identityMismatchBlock[0], /httpStatus: 403/);
 });
 
 test('booking_insert_failed and booking_created both carry the bookingId', () => {

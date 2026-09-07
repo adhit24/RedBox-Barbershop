@@ -1390,12 +1390,22 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             const memberSession = await getMemberSessionByToken(memberToken);
             const sessionMatchesPhone = sameIdentityPhone(memberSession?.customer_wa, wa);
             if (!sessionMatchesPhone) {
+              logSystemEvent({
+                module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+                correlationId, httpStatus: 401, errorCode: 'MEMBER_LOGIN_REQUIRED',
+                errorMessage: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
+              }, { supabase }).catch(() => {});
               return res.status(401).json({
                 code: 'MEMBER_LOGIN_REQUIRED',
                 error: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
               });
             }
             if (!sameIdentityName(name, memberProfile?.full_name)) {
+              logSystemEvent({
+                module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+                correlationId, httpStatus: 403, errorCode: 'MEMBER_IDENTITY_MISMATCH',
+                errorMessage: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
+              }, { supabase }).catch(() => {});
               return res.status(403).json({
                 code: 'MEMBER_IDENTITY_MISMATCH',
                 error: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
@@ -1466,7 +1476,19 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       const linkageResult = await linkNewlyCreatedBooking(supabase, {
         booking: { id: bookingId }, phone: wa, source: 'booking_create', branch: resolvedLocation,
       });
-      if (linkageResult.persistence_status !== 'persisted') {
+      if (linkageResult.persistence_status === 'not_attempted') {
+        // Common/healthy path: the resolver legitimately found no safe match
+        // (first-time or unverified customer) — this is expected for most
+        // public bookings, not an error. Log it as an informational skip so
+        // it doesn't read as a failure in the event log.
+        logSystemEvent({
+          module: 'booking', eventName: 'booking_customer_link_failed', severity: 'INFO', status: 'skipped',
+          correlationId, bookingId, entityType: 'booking', entityId: bookingId,
+          errorCode: linkageResult.persistence_status,
+          errorMessage: `customer linkage skipped: ${linkageResult.reason || linkageResult.persistence_status}`,
+        }, { supabase }).catch(() => {});
+      } else if (linkageResult.persistence_status !== 'persisted') {
+        // write_failed / conditional_write_skipped: an actual write problem.
         logSystemEvent({
           module: 'booking', eventName: 'booking_customer_link_failed', severity: 'WARNING', status: 'failed',
           correlationId, bookingId, entityType: 'booking', entityId: bookingId,
@@ -1606,6 +1628,10 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       return res.status(201).json({ data, autoBooked: desiredStatus === 'confirmed' });
     } catch (err) {
       console.error('Supabase POST Error:', err);
+      logSystemEvent({
+        module: 'booking', eventName: 'booking_insert_failed', severity: 'ERROR', status: 'failed',
+        correlationId, bookingId, httpStatus: 500, errorMessage: err.message,
+      }, { supabase }).catch(() => {});
       return res.status(500).json({ error: err.message });
     }
   } else {

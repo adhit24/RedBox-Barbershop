@@ -160,3 +160,30 @@ test('logSystemEvent: unbounded error message is truncated, not crashed on', asy
   assert.equal(result.status, 'recorded');
   assert.ok(supabase.calls[0].row.error_message.length <= 1000);
 });
+
+test('logSystemEvent: an 8-15 digit sequence in error_message (phone-shaped) is masked', async () => {
+  const supabase = makeFakeSupabase();
+  const result = await logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_insert_failed',
+    severity: 'ERROR',
+    errorMessage: 'duplicate key value violates constraint for wa=6281234567890',
+  }, { supabase });
+
+  assert.equal(result.status, 'recorded');
+  const persisted = supabase.calls[0].row.error_message;
+  assert.ok(!persisted.includes('6281234567890'), 'raw phone-like sequence must not be persisted');
+  assert.match(persisted, /62\*\*\*90/);
+});
+
+test('logSystemEvent: a short (e.g. 4-digit) number in error_message is left unmasked', async () => {
+  const supabase = makeFakeSupabase();
+  await logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_insert_failed',
+    severity: 'ERROR',
+    errorMessage: 'validation failed for code 1234',
+  }, { supabase });
+
+  assert.equal(supabase.calls[0].row.error_message, 'validation failed for code 1234');
+});
