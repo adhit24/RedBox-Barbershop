@@ -60,13 +60,13 @@ function normalizeEvent(event = {}) {
  * caller must not treat that as a reason to abort booking/payment/sync work.
  */
 async function logSystemEvent(event, deps = {}) {
-  const normalized = normalizeEvent(event);
-  if (!normalized) return { status: 'ignored', normalized: null };
-
-  const supabase = deps.supabase;
-  if (!supabase) return { status: 'unavailable', normalized };
-
   try {
+    const normalized = normalizeEvent(event);
+    if (!normalized) return { status: 'ignored', normalized: null };
+
+    const supabase = deps.supabase;
+    if (!supabase) return { status: 'unavailable', normalized };
+
     const { error } = await supabase.from(SYSTEM_EVENT_LOG_TABLE).insert(normalized);
     if (error) {
       console.error('[SystemEventLog] insert failed:', error.message || error);
@@ -75,7 +75,7 @@ async function logSystemEvent(event, deps = {}) {
     return { status: 'recorded', normalized };
   } catch (error) {
     console.error('[SystemEventLog] insert threw:', error?.message || error);
-    return { status: 'error', normalized, error };
+    return { status: 'error', normalized: null, error };
   }
 }
 

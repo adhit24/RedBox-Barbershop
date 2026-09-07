@@ -134,6 +134,19 @@ test('logSystemEvent: an invalid severity is ignored rather than persisted', asy
   assert.equal(supabase.calls.length, 0);
 });
 
+test('logSystemEvent: a field that throws on String() coercion does not propagate the throw', async () => {
+  const supabase = makeFakeSupabase();
+  const hostileValue = { toString() { throw new Error('boom'); } };
+  const result = await logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_created',
+    severity: 'INFO',
+    bookingId: hostileValue,
+  }, { supabase });
+  assert.equal(result.status, 'error');
+  assert.equal(supabase.calls.length, 0);
+});
+
 test('logSystemEvent: unbounded error message is truncated, not crashed on', async () => {
   const supabase = makeFakeSupabase();
   const hugeMessage = 'x'.repeat(50000);
