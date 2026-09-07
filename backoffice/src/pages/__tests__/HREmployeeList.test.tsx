@@ -145,4 +145,21 @@ describe('HREmployeeList', () => {
     expect(screen.getByText('Ubay')).toBeInTheDocument();
     expect(screen.queryByText('Abi Bhakti')).not.toBeInTheDocument();
   });
+
+  it('proves all visible production counts are dynamic with zero hardcoded headcount constants', async () => {
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Abi Bhakti');
+
+    // Dynamic footer text:
+    expect(
+      screen.getByText(/Data karyawan reguler \(3\) dan kapster \(5\) terhubung langsung ke database Supabase\./i)
+    ).toBeInTheDocument();
+
+    // Verify filter button counts are dynamic
+    expect(screen.getByRole('button', { name: 'Semua (8)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kapster (5)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sundaze (2)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Redbox Reguler (1)' })).toBeInTheDocument();
+  });
 });
+

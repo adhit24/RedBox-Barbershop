@@ -2137,6 +2137,44 @@ Terima kasih 🙏
     }
   });
 
+  // ── GET /api/admin/crm/role-counts ───────────────────────────────────────────
+  router.get('/role-counts', adminAuth, async (req, res) => {
+    try {
+      const auth = req.adminAuth;
+      if (!auth?.sessionVerified || auth.role !== 'owner') {
+        return res.status(403).json({ error: 'Forbidden: Owner role required' });
+      }
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('role');
+
+      if (error) {
+        console.error('[AdminCRM] Failed to query role counts:', error);
+        return res.status(500).json({ error: 'Failed to load role counts' });
+      }
+
+      const counts = {};
+      for (const row of (data || [])) {
+        const r = row.role || 'unknown';
+        counts[r] = (counts[r] || 0) + 1;
+      }
+
+      return res.json({
+        ok: true,
+        roles: {
+          owner: counts.owner || 0,
+          branch_admin: counts.branch_admin || 0,
+          manager: counts.manager || 0,
+          hr: counts.hr || 0,
+        },
+      });
+    } catch (err) {
+      console.error('[AdminCRM] Unexpected error in role-counts:', err);
+      return res.status(500).json({ error: 'Failed to load role counts' });
+    }
+  });
+
   return router;
 }
 

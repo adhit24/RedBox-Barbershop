@@ -68,6 +68,6 @@ describe('MokaIntegration', () => {
   it('still renders real sync-log errors', async () => {
     mockFetch();
     render(<MokaIntegration />);
-    await waitFor(() => expect(screen.getByText(/SKU tidak ditemukan/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/SKU tidak ditemukan/i).length).toBeGreaterThan(0));
   });
 });

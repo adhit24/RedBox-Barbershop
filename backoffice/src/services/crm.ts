@@ -344,4 +344,19 @@ export function getEmployeeDetail(id: string): Promise<EmployeeDetailResponse> {
   return apiClient.get<EmployeeDetailResponse>(`/api/admin/crm/employees/${encodeURIComponent(id)}`);
 }
 
+export interface RoleCountsResponse {
+  ok: boolean;
+  roles: {
+    owner: number;
+    branch_admin: number;
+    manager: number;
+    hr: number;
+  };
+}
+
+export function getRoleCounts(): Promise<RoleCountsResponse> {
+  return apiClient.get<RoleCountsResponse>('/api/admin/crm/role-counts');
+}
+
+
 

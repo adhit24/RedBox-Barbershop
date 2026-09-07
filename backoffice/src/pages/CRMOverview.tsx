@@ -85,7 +85,7 @@ export function CRMOverview() {
 
           <div className="rounded-rb-card border border-rb-border bg-rb-surface overflow-hidden">
             <div className="border-b border-rb-divider px-4 py-3 text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
-              Customer 360 — Contoh
+              Daftar Pelanggan
             </div>
             <div className="flex flex-col divide-y divide-rb-divider">
               {state.data.customers.items.map((c) => (
