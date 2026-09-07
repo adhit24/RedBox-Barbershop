@@ -96,13 +96,16 @@ function buildMokaSalePlan(payment, outlet, { locationId, mappings = [] } = {}) 
     const exact = mappingByKey.get(`${line.mokaItemId || ''}:${line.mokaVariantId || ''}`);
     const itemOnly = mappingByKey.get(`${line.mokaItemId || ''}:`);
     const mapping = exact || itemOnly || null;
-    // classification is NOT NULL with a STOCK_PRODUCT default in the
-    // database (every real row always has a value); treat it as
-    // STOCK_PRODUCT when genuinely absent from the object too, so any
-    // caller building a mapping row without the field keeps prior
-    // behavior instead of silently losing every mapping.
-    const classification = mapping?.classification ?? 'STOCK_PRODUCT';
-    const isStockProduct = Boolean(mapping) && classification === 'STOCK_PRODUCT' && mapping.is_active !== false && mapping.product_id;
+    // Fail closed: missing, null, or any unrecognized classification value
+    // must NEVER be treated as STOCK_PRODUCT. The database's own column
+    // default is REVIEW_REQUIRED specifically so a fresh/backfilled row
+    // can't silently deduct inventory before someone has actually decided
+    // it's real stock — this check must not quietly undo that by
+    // defaulting the field on the JS side. A row like this simply isn't
+    // "mapped": it falls through to the existing unmapped/anomaly path
+    // below, exactly like an item with no mapping row at all.
+    const classification = mapping?.classification ?? null;
+    const isStockProduct = Boolean(mapping) && classification === 'STOCK_PRODUCT' && mapping.is_active !== false && Boolean(mapping.product_id);
     const isKnownNonStock = Boolean(mapping) && (classification === 'NON_STOCK_SERVICE' || classification === 'NON_STOCK_MISC');
     return { ...line, productId: isStockProduct ? mapping.product_id : null, mapped: isStockProduct, ignored: isKnownNonStock };
   });

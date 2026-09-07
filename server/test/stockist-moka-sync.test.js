@@ -45,7 +45,7 @@ test('a v3-report-shaped payment (no status field) with real line items is proce
   const result = buildMokaSalePlan(
     { id: 'tx-v3-1', receipt_number: 'RB-500', checkouts: [{ item_id: 'm-1', quantity: 2 }] },
     { id: 'out-1' },
-    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-1', product_id: 'p-1' }] },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-1', product_id: 'p-1', classification: 'STOCK_PRODUCT' }] },
   );
   assert.equal(result.action, 'PROCESS');
   assert.equal(result.lines[0].productId, 'p-1');
@@ -88,8 +88,8 @@ test('maps variant-specific products before item-level fallback', () => {
     {
       locationId: 'loc-1',
       mappings: [
-        { moka_item_id: 'm-1', product_id: 'p-item' },
-        { moka_item_id: 'm-1', moka_variant_id: 'v-2', product_id: 'p-variant' },
+        { moka_item_id: 'm-1', product_id: 'p-item', classification: 'STOCK_PRODUCT' },
+        { moka_item_id: 'm-1', moka_variant_id: 'v-2', product_id: 'p-variant', classification: 'STOCK_PRODUCT' },
       ],
     },
   );
@@ -167,7 +167,7 @@ function createMockSupabase({ rpc } = {}) {
 }
 
 const OUTLET = { id: 'out-csb', slug: 'csb' };
-const MAPPING = [{ moka_item_id: 'm-hairpowder', product_id: 'p-hairpowder' }];
+const MAPPING = [{ moka_item_id: 'm-hairpowder', product_id: 'p-hairpowder', classification: 'STOCK_PRODUCT' }];
 
 test('Case 1 — normal sale deducts stock and writes a SALE_MOKA ledger entry', async () => {
   let ledgerCall = null;
@@ -311,6 +311,41 @@ test('a REVIEW_REQUIRED classified line never deducts stock and still raises an 
   );
   assert.equal(result.action, 'FAILED_MAPPING');
   assert.equal(result.unmapped[0].mokaItemId, 'm-ambiguous');
+});
+
+// ── Fail-closed classification (PR #75 re-review, blocker 1) ──────────────
+// A missing/null/unrecognized classification must NEVER be treated as
+// STOCK_PRODUCT — it must never have silently defaulted to permissive
+// behavior, even though a mapping row with a real product_id existed.
+
+test('a mapping with product_id but a MISSING classification field never deducts stock', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-missing-class', status: 'PAID', items: [{ id: 'm-legacy', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-legacy', product_id: 'p-real' }] }, // no `classification` key at all
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-legacy');
+});
+
+test('a mapping with product_id but classification: null never deducts stock', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-null-class', status: 'PAID', items: [{ id: 'm-null-class', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-null-class', product_id: 'p-real', classification: null }] },
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-null-class');
+});
+
+test('a mapping with an unrecognized classification value never deducts stock', () => {
+  const result = buildMokaSalePlan(
+    { id: 'tx-bad-class', status: 'PAID', items: [{ id: 'm-typo', quantity: 1 }] },
+    { id: 'out-1' },
+    { locationId: 'loc-1', mappings: [{ moka_item_id: 'm-typo', product_id: 'p-real', classification: 'stock_product' }] }, // wrong case / typo
+  );
+  assert.equal(result.action, 'FAILED_MAPPING');
+  assert.equal(result.unmapped[0].mokaItemId, 'm-typo');
 });
 
 test('a mapping row disabled for reasons other than non-stock classification still surfaces as unmapped', () => {
