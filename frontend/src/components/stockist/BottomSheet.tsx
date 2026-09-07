@@ -91,7 +91,14 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center bg-black/60"
+          // z-[60], not z-50: BottomNavBar (components/ui/bottom-nav-bar.tsx)
+          // is `fixed ... z-50` and renders after <main> in the Stockist
+          // layout DOM, so at equal z-index it paints (and captures touch)
+          // on top of this sheet — the nav visually and interactively ate
+          // the lower portion of every sheet. z-[60] matches the same
+          // above-nav convention already used by the other Stockist modal
+          // in branch-stock/page.tsx.
+          className="fixed inset-0 z-[60] flex items-end sm:items-center sm:justify-center bg-black/60"
           variants={sheetBackdrop}
           initial="hidden"
           animate="show"
@@ -101,7 +108,13 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
         >
           <motion.div
             ref={panelRef}
-            className="w-full sm:max-w-[420px] sm:rounded-2xl rounded-t-2xl bg-surface-elevated border border-border-base max-h-[80vh] overflow-y-auto"
+            // flex column with a non-scrolling header and a separately
+            // scrolling body (min-h-0 is required for a flex child to be
+            // allowed to shrink below its content size and actually scroll
+            // instead of overflowing the column). 85dvh (not vh) so the
+            // sheet is sized against the real visible mobile viewport, not
+            // the address-bar-collapsed maximum.
+            className="w-full sm:max-w-[420px] sm:rounded-2xl rounded-t-2xl bg-surface-elevated border border-border-base max-h-[85dvh] flex flex-col overflow-hidden"
             variants={sheetPanel}
             initial="hidden"
             animate="show"
@@ -112,13 +125,18 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
             aria-labelledby={TITLE_ID}
             tabIndex={-1}
           >
-            <div className="flex items-center justify-between p-4 border-b border-border-base sticky top-0 bg-surface-elevated">
+            <div className="flex items-center justify-between p-4 border-b border-border-base shrink-0">
               <h3 id={TITLE_ID} className="text-[15px] font-semibold text-text-primary">{title}</h3>
               <button type="button" onClick={onClose} className="text-text-muted hover:text-text-primary" aria-label="Tutup">
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
             </div>
-            <div className="p-4">{children}</div>
+            <div
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+              style={{ WebkitOverflowScrolling: 'touch' }}
+            >
+              {children}
+            </div>
           </motion.div>
         </motion.div>
       )}
