@@ -44,17 +44,45 @@ describe('RolesPermissions', () => {
     expect(screen.queryByText(/contoh/i)).toBeNull();
   });
 
-  it('renders real dynamic role counts from API and marks unconfigured roles as Belum aktif', async () => {
+  it('proves UI uses "akun terdaftar" and never claims "akun aktif" without authoritative active field', async () => {
     render(<RolesPermissions />);
 
     await waitFor(() => {
-      expect(screen.getByText('2 akun aktif')).toBeInTheDocument();
-      expect(screen.getByText('5 akun aktif')).toBeInTheDocument();
+      expect(screen.getByText('2 akun terdaftar')).toBeInTheDocument();
+      expect(screen.getByText('5 akun terdaftar')).toBeInTheDocument();
     });
+
+    // Verify UI NEVER says 'akun aktif'
+    expect(screen.queryByText(/akun aktif/i)).toBeNull();
+
+    // Subtitle uses semantically accurate wording
+    expect(
+      screen.getByText(/Ringkasan akun berdasarkan role yang tercatat di sistem/i)
+    ).toBeInTheDocument();
 
     // Manager and HR have 0 accounts in DB, displayed as 'Belum aktif'
     const inactiveBadges = screen.getAllByText('Belum aktif');
     expect(inactiveBadges.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('clearly identifies permission matrix as Design Spec and not live backend authorization', async () => {
+    render(<RolesPermissions />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Rancangan Matriks Akses')).toBeInTheDocument();
+    });
+
+    // Visibly contains Design Spec badge
+    expect(
+      screen.getByText('Design Spec — bukan konfigurasi authorization live')
+    ).toBeInTheDocument();
+
+    // Explicitly states matrix is not live backend authorization
+    expect(
+      screen.getByText(
+        /Matriks berikut adalah rancangan target akses modul\. Otorisasi aktual tetap ditentukan oleh middleware\/server-side policy/i
+      )
+    ).toBeInTheDocument();
   });
 
   it('handles authorization error (403) gracefully by failing closed', async () => {
