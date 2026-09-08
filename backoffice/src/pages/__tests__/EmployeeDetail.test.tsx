@@ -24,7 +24,7 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
       person: {
         id: 'emp-123',
         code: 'SD-REG-001',
-        name: 'Abi Bhakti',
+        name: 'Employee Alpha',
         nickname: 'Abi',
         business_unit: 'Sundaze Cafe',
         branch: 'bypass',
@@ -46,7 +46,7 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getAllByText(/Abi Bhakti/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Employee Alpha/i).length).toBeGreaterThan(0);
     });
 
     // Verify NO DemoBadge
@@ -76,7 +76,7 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
       person: {
         id: 'barber-csb-indra',
         code: 'csb-indra',
-        name: 'Indra Gunawan',
+        name: 'Barber Alpha',
         nickname: null,
         business_unit: 'Redbox Barbershop',
         branch: 'csb',
@@ -98,7 +98,7 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getAllByText(/Indra Gunawan/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Barber Alpha/i).length).toBeGreaterThan(0);
     });
 
     expect(screen.getByText('Kapster (Barber)')).toBeInTheDocument();

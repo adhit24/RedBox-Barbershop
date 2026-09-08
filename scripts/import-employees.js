@@ -187,7 +187,7 @@ async function importSundaze(filePath) {
 async function main() {
   const { redbox: redboxPath, sundaze: sundazePath } = parseArgs();
 
-  console.log('=== IMPORT REGULAR EMPLOYEES (DRY RUN / CLI SOURCE) ===');
+  console.log('=== IMPORT REGULAR EMPLOYEES (LIVE UPSERT TO SUPABASE) ===');
   console.log('Redbox payroll file:', redboxPath || 'NOT SPECIFIED');
   console.log('Sundaze payroll file:', sundazePath || 'NOT SPECIFIED');
 

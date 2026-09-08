@@ -17,7 +17,7 @@ const mockEmployees = [
   {
     id: 'emp-sd-001',
     employee_code: 'SD-REG-001',
-    name: 'Abi Bhakti',
+    name: 'Employee Alpha',
     nickname: 'Abi',
     business_unit: 'Sundaze',
     branch: 'bypass',
@@ -68,7 +68,7 @@ function setupFetchMock(options: { roleStatus?: number; employeeFound?: boolean 
             person: {
               id: 'emp-sd-001',
               code: 'SD-REG-001',
-              name: 'Abi Bhakti',
+              name: 'Employee Alpha',
               nickname: 'Abi',
               business_unit: 'Sundaze',
               branch: 'bypass',
@@ -255,7 +255,7 @@ describe('Backoffice Route Smoke Test', () => {
       </MemoryRouter>
     );
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 1, name: 'Abi Bhakti' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Employee Alpha' })).toBeInTheDocument();
       expect(screen.getByText('SD-REG-001')).toBeInTheDocument();
     });
   });

@@ -7,32 +7,32 @@ const mockBranchCommandCenter: Record<string, unknown> = {
   bypass: {
     stats: { hadir: 1, belum_check_in: 0, tidak_hadir: 0 },
     barbers: [
-      { id: 'b-bypass-1', name: 'Abdul Barber', branch: 'bypass', attendance_status: 'hadir', today_count: 4 },
+      { id: 'b-bypass-1', name: 'Barber Alpha', branch: 'bypass', attendance_status: 'hadir', today_count: 4 },
     ],
   },
   csb: {
     stats: { hadir: 1, belum_check_in: 1, tidak_hadir: 0 },
     barbers: [
-      { id: 'b-csb-1', name: 'Ubay Barber', branch: 'csb', attendance_status: 'hadir', today_count: 5 },
-      { id: 'b-csb-2', name: 'Dedi Barber', branch: 'csb', attendance_status: 'terlambat', today_count: 2 },
+      { id: 'b-csb-1', name: 'Barber Beta', branch: 'csb', attendance_status: 'hadir', today_count: 5 },
+      { id: 'b-csb-2', name: 'Barber Gamma', branch: 'csb', attendance_status: 'terlambat', today_count: 2 },
     ],
   },
   samadikun: {
     stats: { hadir: 0, belum_check_in: 1, tidak_hadir: 0 },
     barbers: [
-      { id: 'b-samadikun-1', name: 'Sofyan Barber', branch: 'samadikun', attendance_status: 'belum_check_in', today_count: 0 },
+      { id: 'b-samadikun-1', name: 'Barber Delta', branch: 'samadikun', attendance_status: 'belum_check_in', today_count: 0 },
     ],
   },
   sumber: {
     stats: { hadir: 1, belum_check_in: 0, tidak_hadir: 0 },
     barbers: [
-      { id: 'b-sumber-1', name: 'Bayu Barber', branch: 'sumber', attendance_status: 'hadir', today_count: 3 },
+      { id: 'b-sumber-1', name: 'Barber Epsilon', branch: 'sumber', attendance_status: 'hadir', today_count: 3 },
     ],
   },
   tegal: {
     stats: { hadir: 0, belum_check_in: 0, tidak_hadir: 1 },
     barbers: [
-      { id: 'b-tegal-1', name: 'Ahmad Barber', branch: 'tegal', attendance_status: 'tidak_hadir', today_count: 0 },
+      { id: 'b-tegal-1', name: 'Barber Foxtrot', branch: 'tegal', attendance_status: 'tidak_hadir', today_count: 0 },
     ],
   },
 };
@@ -76,9 +76,9 @@ describe('AttendanceOverview', () => {
     render(<AttendanceOverview />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
-      expect(screen.getByText('Abdul Barber')).toBeInTheDocument();
-      expect(screen.getByText('Ubay Barber')).toBeInTheDocument();
-      expect(screen.getByText('Dedi Barber')).toBeInTheDocument();
+      expect(screen.getByText('Barber Alpha')).toBeInTheDocument();
+      expect(screen.getByText('Barber Beta')).toBeInTheDocument();
+      expect(screen.getByText('Barber Gamma')).toBeInTheDocument();
     });
 
     // Check status labels and service counts

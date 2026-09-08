@@ -24,7 +24,7 @@ describe('PayrollEmployeeDetail (Real Identity & Honest Unavailable States)', ()
       person: {
         id: 'emp-101',
         code: 'RB-REG-002',
-        name: 'Aditiya Nugraha',
+        name: 'Employee Alpha',
         nickname: null,
         business_unit: 'Redbox Barbershop',
         branch: 'sumber',
@@ -46,7 +46,7 @@ describe('PayrollEmployeeDetail (Real Identity & Honest Unavailable States)', ()
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Aditiya Nugraha')).toBeInTheDocument();
+      expect(screen.getByText('Employee Alpha')).toBeInTheDocument();
     });
 
     // Verify NO DemoBadge
@@ -74,7 +74,7 @@ describe('PayrollEmployeeDetail (Real Identity & Honest Unavailable States)', ()
       person: {
         id: 'barber-csb-indra',
         code: 'csb-indra',
-        name: 'Indra Gunawan',
+        name: 'Barber Alpha',
         nickname: null,
         business_unit: 'Redbox Barbershop',
         branch: 'csb',
@@ -96,7 +96,7 @@ describe('PayrollEmployeeDetail (Real Identity & Honest Unavailable States)', ()
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Indra Gunawan')).toBeInTheDocument();
+      expect(screen.getByText('Barber Alpha')).toBeInTheDocument();
     });
 
     expect(screen.getByText('Skema: Bagi Hasil')).toBeInTheDocument();

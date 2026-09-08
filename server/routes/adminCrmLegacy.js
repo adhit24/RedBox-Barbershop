@@ -189,6 +189,22 @@ function membershipChangeErrorStatus(error) {
   return conflicts.some((known) => message.includes(known)) ? 409 : 500;
 }
 
+// HR employee/barber endpoints are owner (network-wide) or manager
+// (own-branch-only) — the branch scope MUST come from the verified session,
+// never from a client-supplied query param. Fails closed for any other role
+// or a branch-scoped manager with no branch on their profile.
+function resolveHrBranchScope(req) {
+  const auth = req.adminAuth;
+  if (!auth?.sessionVerified) return null;
+  if (auth.role === 'owner') return { role: 'owner', branch: null };
+  if (auth.role === 'manager') {
+    const branch = typeof auth.branch === 'string' ? auth.branch.trim().toLowerCase() : '';
+    if (!branch) return null;
+    return { role: 'manager', branch };
+  }
+  return null;
+}
+
 function createMembershipRegistrationRoutes(supabase, { rateLimiters = [] } = {}) {
   const router = express.Router();
 
@@ -1977,7 +1993,10 @@ Terima kasih 🙏
   // ── GET /api/admin/crm/employees ─────────────────────────────────────────────
   router.get('/employees', adminAuth, async (req, res) => {
     try {
-      const { business_unit, branch, is_active } = req.query;
+      const scope = resolveHrBranchScope(req);
+      if (!scope) return res.status(403).json({ error: 'Forbidden' });
+
+      const { business_unit, is_active } = req.query;
       let query = supabase
         .from('employees')
         .select('id, employee_code, name, nickname, business_unit, branch, branch_name, position, employment_type, payroll_type, is_active, join_date')
@@ -1987,8 +2006,13 @@ Terima kasih 🙏
       if (business_unit) {
         query = query.eq('business_unit', business_unit);
       }
-      if (branch) {
-        query = query.eq('branch', branch);
+      // Manager scope is derived from the verified session only — a
+      // client-supplied `branch` query param is never trusted for
+      // restricting or widening access to another branch's HR data.
+      if (scope.role === 'manager') {
+        query = query.eq('branch', scope.branch);
+      } else if (req.query.branch) {
+        query = query.eq('branch', req.query.branch);
       }
       if (is_active !== undefined) {
         query = query.eq('is_active', is_active === 'true' || is_active === true);
@@ -2020,6 +2044,9 @@ Terima kasih 🙏
   // ── GET /api/admin/crm/employees/:id ──────────────────────────────────────────
   router.get('/employees/:id', adminAuth, async (req, res) => {
     try {
+      const scope = resolveHrBranchScope(req);
+      if (!scope) return res.status(403).json({ error: 'Forbidden' });
+
       const { id } = req.params;
       if (!id) return res.status(400).json({ error: 'id required' });
 
@@ -2037,6 +2064,9 @@ Terima kasih 🙏
           return res.status(500).json({ error: 'Failed to load employee data' });
         }
         if (!barber) return res.status(404).json({ error: 'Barber not found' });
+        if (scope.role === 'manager' && barber.branch !== scope.branch) {
+          return res.status(403).json({ error: 'branch access denied' });
+        }
 
         return res.json({
           ok: true,
@@ -2077,6 +2107,9 @@ Terima kasih 🙏
       }
 
       if (emp) {
+        if (scope.role === 'manager' && emp.branch !== scope.branch) {
+          return res.status(403).json({ error: 'branch access denied' });
+        }
         return res.json({
           ok: true,
           type: 'regular',
@@ -2110,6 +2143,9 @@ Terima kasih 🙏
       }
 
       if (barberDirect) {
+        if (scope.role === 'manager' && barberDirect.branch !== scope.branch) {
+          return res.status(403).json({ error: 'branch access denied' });
+        }
         return res.json({
           ok: true,
           type: 'barber',

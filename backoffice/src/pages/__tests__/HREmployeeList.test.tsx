@@ -15,7 +15,7 @@ const mockEmployees = [
   {
     id: 'emp-sd-001',
     employee_code: 'SD-REG-001',
-    name: 'Abi Bhakti',
+    name: 'Employee Alpha',
     nickname: 'Abi',
     business_unit: 'Sundaze',
     branch: 'bypass',
@@ -28,7 +28,7 @@ const mockEmployees = [
   {
     id: 'emp-sd-002',
     employee_code: 'SD-REG-002',
-    name: 'Agus Habibi',
+    name: 'Employee Beta',
     nickname: 'Agus',
     business_unit: 'Sundaze',
     branch: 'bypass',
@@ -41,7 +41,7 @@ const mockEmployees = [
   {
     id: 'emp-rb-001',
     employee_code: 'RB-REG-001',
-    name: 'Adam Apriliano Fahrezy',
+    name: 'Employee Gamma',
     nickname: 'Adam',
     business_unit: 'Redbox',
     branch: 'bypass',
@@ -101,11 +101,11 @@ describe('HREmployeeList', () => {
 
   it('renders regular employees with payroll type Gaji and dynamic KPI counts', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await screen.findByText('Abi Bhakti');
+    await screen.findByText('Employee Alpha');
 
     // Check regular employees rendered
-    expect(screen.getByText('Agus Habibi')).toBeInTheDocument();
-    expect(screen.getByText('Adam Apriliano Fahrezy')).toBeInTheDocument();
+    expect(screen.getByText('Employee Beta')).toBeInTheDocument();
+    expect(screen.getByText('Employee Gamma')).toBeInTheDocument();
     expect(screen.getByText('SD-REG-001')).toBeInTheDocument();
     expect(screen.getByText('RB-REG-001')).toBeInTheDocument();
 
@@ -126,15 +126,15 @@ describe('HREmployeeList', () => {
 
   it('supports category filters for Kapster, Sundaze, and Redbox Reguler', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await screen.findByText('Abi Bhakti');
+    await screen.findByText('Employee Alpha');
 
     // Click Sundaze filter
     const sundazeBtn = screen.getByRole('button', { name: /^Sundaze/ });
     fireEvent.click(sundazeBtn);
 
-    expect(screen.getByText('Abi Bhakti')).toBeInTheDocument();
-    expect(screen.getByText('Agus Habibi')).toBeInTheDocument();
-    expect(screen.queryByText('Adam Apriliano Fahrezy')).not.toBeInTheDocument();
+    expect(screen.getByText('Employee Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Employee Beta')).toBeInTheDocument();
+    expect(screen.queryByText('Employee Gamma')).not.toBeInTheDocument();
     expect(screen.queryByText('Abdul')).not.toBeInTheDocument();
 
     // Click Kapster filter
@@ -143,12 +143,12 @@ describe('HREmployeeList', () => {
 
     expect(screen.getByText('Abdul')).toBeInTheDocument();
     expect(screen.getByText('Ubay')).toBeInTheDocument();
-    expect(screen.queryByText('Abi Bhakti')).not.toBeInTheDocument();
+    expect(screen.queryByText('Employee Alpha')).not.toBeInTheDocument();
   });
 
   it('proves all visible production counts are dynamic with zero hardcoded headcount constants', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await screen.findByText('Abi Bhakti');
+    await screen.findByText('Employee Alpha');
 
     // Dynamic footer text:
     expect(

@@ -56,7 +56,7 @@ test('RLS Security: Anonymous client cannot INSERT into employees table', async 
 
 test('RLS Security: Anonymous client cannot UPDATE employees table', async () => {
   const anonClient = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
-  const { data, error } = await anonClient.from('employees').update({ name: 'Hacked' }).eq('name', 'Adam Apriliano Fahrezy');
+  const { data, error } = await anonClient.from('employees').update({ name: 'Hacked' }).eq('name', 'Test Employee Alpha');
 
   // Under RLS / revoked permissions, update must either error or affect 0 rows
   if (error) {
@@ -68,7 +68,7 @@ test('RLS Security: Anonymous client cannot UPDATE employees table', async () =>
 
 test('RLS Security: Anonymous client cannot DELETE from employees table', async () => {
   const anonClient = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } });
-  const { data, error } = await anonClient.from('employees').delete().eq('name', 'Adam Apriliano Fahrezy');
+  const { data, error } = await anonClient.from('employees').delete().eq('name', 'Test Employee Alpha');
 
   // Under RLS / revoked permissions, delete must either error or affect 0 rows
   if (error) {

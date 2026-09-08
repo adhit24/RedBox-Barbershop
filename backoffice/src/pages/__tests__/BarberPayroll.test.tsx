@@ -20,8 +20,8 @@ describe('BarberPayroll (Real Barber Roster & Bagi Hasil)', () => {
   it('renders real barbers with Bagi Hasil and no hardcoded payouts or DemoBadge', async () => {
     vi.mocked(crmService.getCommandCenterForBranch).mockImplementation(async (branch) => {
       const branchBarbers = {
-        csb: [{ id: 'csb-indra', name: 'Indra Gunawan', branch: 'csb' }],
-        sumber: [{ id: 'sumber-asep', name: 'Asep Saepudin', branch: 'sumber' }],
+        csb: [{ id: 'csb-indra', name: 'Barber Alpha', branch: 'csb' }],
+        sumber: [{ id: 'sumber-asep', name: 'Barber Beta', branch: 'sumber' }],
       }[branch] || [];
 
       return {
@@ -36,7 +36,7 @@ describe('BarberPayroll (Real Barber Roster & Bagi Hasil)', () => {
     render(<BarberPayroll />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
-      expect(screen.getByText('Indra Gunawan')).toBeInTheDocument();
+      expect(screen.getByText('Barber Alpha')).toBeInTheDocument();
     });
 
     // Verify NO DemoBadge
@@ -47,7 +47,7 @@ describe('BarberPayroll (Real Barber Roster & Bagi Hasil)', () => {
     expect(screen.queryByText(/Rp\s*5\.640\.000/i)).toBeNull();
 
     // Verify real barbers appear
-    expect(screen.getByText('Asep Saepudin')).toBeInTheDocument();
+    expect(screen.getByText('Barber Beta')).toBeInTheDocument();
 
     // Verify payroll type is "Bagi Hasil"
     expect(screen.getAllByText('Bagi Hasil').length).toBeGreaterThan(0);

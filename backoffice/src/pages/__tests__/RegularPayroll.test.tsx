@@ -27,7 +27,7 @@ describe('RegularPayroll (Real Roster & Honest Unavailable States)', () => {
         {
           id: 'emp-1',
           employee_code: 'SD-REG-001',
-          name: 'Abi Bhakti',
+          name: 'Employee Alpha',
           nickname: 'Abi',
           business_unit: 'Sundaze',
           branch: 'bypass',
@@ -40,7 +40,7 @@ describe('RegularPayroll (Real Roster & Honest Unavailable States)', () => {
         {
           id: 'emp-2',
           employee_code: 'RB-REG-001',
-          name: 'Adam Apriliano',
+          name: 'Employee Beta',
           nickname: 'Adam',
           business_unit: 'Redbox',
           branch: 'bypass',
@@ -56,7 +56,7 @@ describe('RegularPayroll (Real Roster & Honest Unavailable States)', () => {
     render(<RegularPayroll />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
-      expect(screen.getByText('Abi Bhakti')).toBeInTheDocument();
+      expect(screen.getByText('Employee Alpha')).toBeInTheDocument();
     });
 
     // Verify NO DemoBadge
@@ -67,7 +67,7 @@ describe('RegularPayroll (Real Roster & Honest Unavailable States)', () => {
     expect(screen.queryByText(/Rp\s*6\.500\.000/i)).toBeNull();
 
     // Verify real fields
-    expect(screen.getByText('Adam Apriliano')).toBeInTheDocument();
+    expect(screen.getByText('Employee Beta')).toBeInTheDocument();
     expect(screen.getByText('Barista')).toBeInTheDocument();
     expect(screen.getByText('Cashier')).toBeInTheDocument();
 
