@@ -236,6 +236,7 @@ const CATEGORIES: SidebarCategory[] = [
         items: [
           { to: '/system/roles', label: 'Peran & Izin' },
           { to: '/system/packages', label: 'Akses Paket' },
+          { to: '/system/events', label: 'System Event Log' },
           { to: '/system/settings', label: 'Pengaturan' },
         ],
       },

@@ -367,6 +367,45 @@ export interface StockistAssetDashboard {
 export const getAssetDashboard = () =>
   req<StockistAssetDashboard>('/api/stockist/dashboard/assets');
 
+export interface MokaSyncOutletStatus {
+  outlet_id: string;
+  outlet_name: string;
+  last_status: 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED' | null;
+  last_successful_sync_at: string | null;
+  last_started_at: string | null;
+  last_error: string | null;
+  sales_fetched: number;
+  sales_applied: number;
+  sales_skipped_duplicate: number;
+  unmapped_items: number;
+  qty_deducted: number;
+  open_anomalies: number;
+}
+
+export const getMokaSyncStatus = () =>
+  req<{ outlets: MokaSyncOutletStatus[] }>('/api/stockist/dashboard/moka-sync');
+
+export interface MokaSyncAnomaly {
+  id: string;
+  outlet_id: string | null;
+  outlet_name: string;
+  sale_id: string | null;
+  sale_item_id: string | null;
+  anomaly_type: 'UNMAPPED_PRODUCT' | 'UNKNOWN_VARIANT' | 'UNKNOWN_OUTLET' | 'NEGATIVE_STOCK_RISK';
+  moka_item_id: string | null;
+  moka_variant_id: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  requested_quantity: number | null;
+  available_quantity: number | null;
+  detail: Record<string, unknown> | null;
+  status: 'OPEN' | 'RESOLVED' | 'IGNORED';
+  created_at: string;
+}
+
+export const getMokaSyncAnomalies = (status: 'OPEN' | 'RESOLVED' | 'IGNORED' = 'OPEN') =>
+  req<{ anomalies: MokaSyncAnomaly[] }>(`/api/stockist/moka-sync/anomalies?status=${status}`);
+
 export interface InventoryLedgerEntry {
   id: string;
   product_id: string;

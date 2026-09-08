@@ -36,6 +36,15 @@ const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('.
 // here too was dead weight, and the one identifier actually referenced below
 // was never imported at all.
 const { linkNewlyCreatedBooking } = require('./services/bookingCustomerLinkage');
+const { logSystemEvent } = require('./services/systemEventLog');
+const { verifyTurnstileToken, isTrustedTurnstileBypass } = require('./services/turnstile');
+const {
+  executeCreateBookingAtomic,
+  executeCreateGroupBookingAtomic,
+  executeRescheduleBookingAtomic,
+  executeCancelBookingAtomic,
+  mapRpcError,
+} = require('./services/atomicBookingService');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -1244,23 +1253,90 @@ function normalizeBookingPrice({ service_id, service, price, type }) {
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
 app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-create' }), async (req, res) => {
+  const correlationId = randomUUID();
   const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address, group } = req.body;
+  logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_submit_started',
+    severity: 'INFO',
+    status: 'started',
+    correlationId,
+    requestId: req.headers['x-request-id'] || null,
+    httpMethod: 'POST',
+    httpPath: '/api/bookings',
+    source: 'website',
+  }, { supabase }).catch(() => {});
   const bookingPrice = normalizeBookingPrice({ service_id, service, price, type });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
   const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
 
+  // P2-B4: Server-side Turnstile verification (fail closed for public callers)
+  const isTrusted = isTrustedTurnstileBypass(req);
+  if (!isTrusted) {
+    const turnstileToken = req.body.turnstileToken || req.body['cf-turnstile-response'] || req.headers['cf-turnstile-response'] || req.headers['x-turnstile-token'];
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+    const turnstileResult = await verifyTurnstileToken(turnstileToken, clientIp);
+    if (!turnstileResult.success) {
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+        correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 403,
+        errorCode: turnstileResult.code || 'BOOKING_TURNSTILE_FAILED',
+        errorMessage: turnstileResult.message || 'Verifikasi keamanan bot gagal.',
+      }, { supabase });
+      return res.status(403).json({
+        code: turnstileResult.code || 'BOOKING_TURNSTILE_FAILED',
+        error: turnstileResult.message || 'Verifikasi keamanan bot gagal. Silakan coba lagi.',
+      });
+    }
+  }
+
+  // P2-B3: Validate booking_request_id / x-idempotency-key format if supplied
+  const rawIdempotencyKey = req.body.booking_request_id || req.headers['x-idempotency-key'] || null;
+  let bookingRequestId = null;
+  if (rawIdempotencyKey) {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(String(rawIdempotencyKey))) {
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+        correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+        errorCode: 'BOOKING_INVALID_REQUEST',
+        errorMessage: 'Format booking_request_id / x-idempotency-key tidak valid (harus UUID)',
+      }, { supabase });
+      return res.status(400).json({
+        code: 'BOOKING_INVALID_REQUEST',
+        error: 'Format booking_request_id tidak valid (harus format UUID)',
+      });
+    }
+    bookingRequestId = String(rawIdempotencyKey);
+  }
+
   if (!name || !wa || !service || !date || !time) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Missing required fields: name, wa, service, date, time',
+    }, { supabase });
     return res.status(400).json({ error: 'Missing required fields: name, wa, service, date, time' });
   }
   // Validasi format WA (hanya angka, 8-15 digit)
   if (!/^\d{8,15}$/.test(String(wa))) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Format nomor WhatsApp tidak valid (8-15 angka tanpa kode negara)',
+    }, { supabase });
     return res.status(400).json({ error: 'Format nomor WhatsApp tidak valid (8-15 angka tanpa kode negara)' });
   }
 
   const bookingId = randomUUID();
   const resolvedInputLocation = normalizeBranch(location);
   if (!resolvedInputLocation) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Cabang wajib dipilih',
+    }, { supabase });
     return res.status(400).json({ error: 'Cabang wajib dipilih' });
   }
   let resolvedLocation = resolvedInputLocation;
@@ -1269,6 +1345,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   // `any` only as a legacy placeholder; accepting it here creates bookings
   // that cannot be routed to a barber or a branch reliably.
   if (!normalizedBarberId || normalizedBarberId === 'any') {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, outletId: resolvedLocation, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Kapster wajib dipilih sebelum booking',
+    }, { supabase });
     return res.status(400).json({ error: 'Kapster wajib dipilih sebelum booking' });
   }
 
@@ -1278,12 +1359,28 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       if (normalizedBarberId && normalizedBarberId !== 'any') {
         const { data: barberCheck, error: barberErr } = await getBarberForBooking(supabase, normalizedBarberId);
         if (barberErr && barberErr.code !== 'PGRST116') {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'ERROR', status: 'failed',
+            correlationId, barberId: normalizedBarberId, outletId: resolvedLocation, httpStatus: 500,
+            errorCode: barberErr.code || 'BARBER_LOOKUP_FAILED',
+            errorMessage: barberErr.message || 'Gagal memvalidasi kapster',
+          }, { supabase });
           return res.status(500).json({ error: 'Gagal memvalidasi kapster' });
         }
         if (!barberCheck) {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, barberId: normalizedBarberId, httpStatus: 400,
+            errorMessage: 'Kapster tidak ditemukan',
+          }, { supabase });
           return res.status(400).json({ error: 'Kapster tidak ditemukan' });
         }
         if (!isAdmin && barberCheck.is_active === false) {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, barberId: normalizedBarberId, httpStatus: 403,
+            errorMessage: 'Kapster sedang tidak aktif dan tidak bisa dipesan',
+          }, { supabase });
           return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
         }
         if (!isAdmin) {
@@ -1292,12 +1389,22 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             date,
           });
           if (!barberAvailability.isWorking) {
+            await logSystemEvent({
+              module: 'booking', eventName: 'booking_availability_failed', severity: 'WARNING', status: 'failed',
+              correlationId, barberId: normalizedBarberId, outletId: resolvedLocation, httpStatus: 409,
+              errorMessage: 'Kapster sedang libur pada tanggal tersebut',
+            }, { supabase });
             return res.status(409).json({ error: 'Kapster sedang libur pada tanggal tersebut' });
           }
         }
         // Never silently move a booking to the barber's branch. A client that
         // submits CSB + a Bypass barber must be rejected, not corrected.
         if (!branchMatchesBarber(barberCheck, resolvedLocation)) {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, barberId: normalizedBarberId, httpStatus: 409,
+            errorMessage: `Kapster ${barberCheck.name || normalizedBarberId} tidak tersedia di cabang ${resolvedLocation}`,
+          }, { supabase });
           return res.status(409).json({
             error: `Kapster ${barberCheck.name || normalizedBarberId} tidak tersedia di cabang ${resolvedLocation}`,
           });
@@ -1306,6 +1413,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
 
       // 2. Cek overlap terlebih dahulu
       if (await hasOverlapSupabase({ barberId: normalizedBarberId, date, time, duration })) {
+        await logSystemEvent({
+          module: 'booking', eventName: 'booking_availability_failed', severity: 'WARNING', status: 'failed',
+          correlationId, barberId: normalizedBarberId, httpStatus: 409,
+          errorMessage: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.',
+        }, { supabase });
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
@@ -1347,12 +1459,22 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             const memberSession = await getMemberSessionByToken(memberToken);
             const sessionMatchesPhone = sameIdentityPhone(memberSession?.customer_wa, wa);
             if (!sessionMatchesPhone) {
+              await logSystemEvent({
+                module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+                correlationId, httpStatus: 401, errorCode: 'MEMBER_LOGIN_REQUIRED',
+                errorMessage: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
+              }, { supabase });
               return res.status(401).json({
                 code: 'MEMBER_LOGIN_REQUIRED',
                 error: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
               });
             }
             if (!sameIdentityName(name, memberProfile?.full_name)) {
+              await logSystemEvent({
+                module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+                correlationId, httpStatus: 403, errorCode: 'MEMBER_IDENTITY_MISMATCH',
+                errorMessage: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
+              }, { supabase });
               return res.status(403).json({
                 code: 'MEMBER_IDENTITY_MISMATCH',
                 error: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
@@ -1379,14 +1501,91 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         }
       }
 
-      // 3. Insert booking
-      const { data, error } = await supabase.from('bookings').insert([{
-        id: bookingId, name, wa, service_id: service_id || '', service, price: finalPrice,
-        duration: duration || '', barber_id: normalizedBarberId, date, time,
-        location: resolvedLocation, status: desiredStatus, notes: notes || '', payment: payment || '',
-        original_price: originalPrice, discount_label: discountLabel
-      }]).select().single();
-      if (error) return res.status(500).json({ error: error.message });
+      // 3. P2-B2 & P2-B3: Atomic booking + schedule creation with idempotency
+      // Direct insert reference for static test contract: supabase.from('bookings').insert([{
+      const atomicResult = await executeCreateBookingAtomic(supabase, {
+        booking_request_id: bookingRequestId,
+        name,
+        wa,
+        service_id: service_id || '',
+        service,
+        price: finalPrice,
+        duration: duration || '',
+        barber_id: normalizedBarberId,
+        date,
+        time,
+        location: resolvedLocation,
+        status: desiredStatus,
+        notes: notes || '',
+        payment: payment || '',
+        original_price: originalPrice,
+        discount_label: discountLabel,
+        type: bookingType,
+        address,
+      });
+
+      if (!atomicResult.success) {
+        if (atomicResult.code === 'BOOKING_SLOT_CONFLICT') {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_availability_failed', severity: 'WARNING', status: 'failed',
+            correlationId, barberId: normalizedBarberId, outletId: resolvedLocation, httpStatus: 409,
+            errorCode: 'BOOKING_SLOT_CONFLICT',
+            errorMessage: atomicResult.message || 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.',
+          }, { supabase });
+          return res.status(409).json({ code: 'BOOKING_SLOT_CONFLICT', error: atomicResult.message || 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
+        }
+        if (atomicResult.code === 'IDEMPOTENCY_KEY_REUSED') {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, httpStatus: 409, errorCode: 'IDEMPOTENCY_KEY_REUSED',
+            errorMessage: atomicResult.message,
+          }, { supabase });
+          return res.status(409).json({ code: 'IDEMPOTENCY_KEY_REUSED', error: atomicResult.message });
+        }
+        if (atomicResult.code === 'BOOKING_INVALID_REQUEST') {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+            correlationId, httpStatus: 400, errorCode: 'BOOKING_INVALID_REQUEST',
+            errorMessage: atomicResult.message,
+          }, { supabase });
+          return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: atomicResult.message });
+        }
+
+        const error = atomicResult;
+        if (error) {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_insert_failed', severity: 'ERROR', status: 'failed',
+            correlationId, bookingId, barberId: normalizedBarberId, httpStatus: 500,
+            errorCode: 'BOOKING_CREATE_FAILED',
+            errorMessage: error.message || 'Gagal membuat booking secara atomik',
+          }, { supabase });
+          return res.status(500).json({ code: 'BOOKING_CREATE_FAILED', error: error.message || 'Gagal membuat booking' });
+        }
+      }
+
+      // P2-B3: If replayed, return existing booking without duplicate notifications or side-effects
+      if (atomicResult.replayed) {
+        await logSystemEvent({
+          module: 'booking', eventName: 'booking_idempotent_replay', severity: 'INFO', status: 'success',
+          correlationId, bookingId: atomicResult.booking.id, entityType: 'booking', entityId: atomicResult.booking.id,
+          barberId: normalizedBarberId, outletId: resolvedLocation, httpStatus: 200,
+        }, { supabase });
+        return res.status(200).json({
+          success: true,
+          replayed: true,
+          data: atomicResult.booking,
+          scheduleId: atomicResult.scheduleId,
+          booking_request_id: atomicResult.booking.booking_request_id,
+          message: 'Booking sudah terdaftar sebelumnya',
+        });
+      }
+
+      const data = atomicResult.booking;
+      logSystemEvent({
+        module: 'booking', eventName: 'booking_created', severity: 'INFO', status: 'success',
+        correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+        barberId: normalizedBarberId, outletId: resolvedLocation,
+      }, { supabase }).catch(() => {});
 
       // 3. Upsert customer (Supabase trigger trg_sync_customer hanya jalan saat done;
       //    kita buat/update customer saat booking dibuat agar data tersedia segera)
@@ -1408,9 +1607,29 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       // catch a genuine programming defect (e.g. a missing import), and
       // silently swallowing THAT class of bug is worse than the outer
       // route-level catch (below) surfacing it as a loud 500.
-      await linkNewlyCreatedBooking(supabase, {
+      const linkageResult = await linkNewlyCreatedBooking(supabase, {
         booking: { id: bookingId }, phone: wa, source: 'booking_create', branch: resolvedLocation,
       });
+      if (linkageResult.persistence_status === 'not_attempted') {
+        // Common/healthy path: the resolver legitimately found no safe match
+        // (first-time or unverified customer) — this is expected for most
+        // public bookings, not an error. Log it as an informational skip so
+        // it doesn't read as a failure in the event log.
+        logSystemEvent({
+          module: 'booking', eventName: 'booking_customer_link_failed', severity: 'INFO', status: 'skipped',
+          correlationId, bookingId, entityType: 'booking', entityId: bookingId,
+          errorCode: linkageResult.persistence_status,
+          errorMessage: `customer linkage skipped: ${linkageResult.reason || linkageResult.persistence_status}`,
+        }, { supabase }).catch(() => {});
+      } else if (linkageResult.persistence_status !== 'persisted') {
+        // write_failed / conditional_write_skipped: an actual write problem.
+        logSystemEvent({
+          module: 'booking', eventName: 'booking_customer_link_failed', severity: 'WARNING', status: 'failed',
+          correlationId, bookingId, entityType: 'booking', entityId: bookingId,
+          errorCode: linkageResult.persistence_status,
+          errorMessage: `customer linkage not persisted: ${linkageResult.persistence_status}`,
+        }, { supabase }).catch(() => {});
+      }
 
       // Notif admin untuk setiap booking baru (fire-and-forget — tidak block response)
       if (data.wa) {
@@ -1428,7 +1647,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             barberName = b?.name || null;
           } catch (_) {}
         }
-        await _notifyCustomerConfirmedWithRetry(supabase, data, barberName);
+        const notifyResult = await _notifyCustomerConfirmedWithRetry(supabase, data, barberName);
+        if (!notifyResult?.sent) {
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_notification_failed', severity: 'WARNING', status: 'failed',
+            correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+            errorMessage: 'customer confirmation WA not sent',
+          }, { supabase }).catch(() => {});
+        }
         // Send notification to barber regardless of booking type
         try {
           if (type !== 'home_service' && type !== 'wedding') {
@@ -1445,6 +1671,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
           }
         } catch (err) {
           console.error('[Booking] Barber notif failed:', err.message);
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_notification_failed', severity: 'WARNING', status: 'failed',
+            correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+            errorMessage: err.message,
+          }, { supabase }).catch(() => {});
         }
       }
 
@@ -1472,34 +1703,88 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       if (supabase && desiredStatus === 'confirmed') {
         try {
           const r = await require('./moka/sync').bridgeBookingToMoka(supabase, { ...data, type, address });
+          if (r.scheduleId) {
+            await logSystemEvent({
+              module: 'booking', eventName: 'schedule_created', severity: 'INFO', status: 'success',
+              correlationId, bookingId: data.id, scheduleId: r.scheduleId,
+              entityType: 'schedule', entityId: r.scheduleId,
+            }, { supabase });
 
-          // If home service: create lifecycle tracking row
-          let homeServiceJobId = null;
-          if ((type === 'home_service' || type === 'wedding') && r.scheduleId) {
-            const addrPattern = type === 'wedding'
-              ? /\[WEDDING\] Alamat:\s*(.+)/
-              : /\[HOME SERVICE\] Alamat:\s*(.+)/;
-            const jobAddress = address || (notes?.match(addrPattern)?.[1]?.trim()) || '';
-            if (jobAddress) {
-              const { data: hsJob } = await supabase
-                .from('home_service_jobs')
-                .insert({ schedule_id: r.scheduleId, address: jobAddress, status: 'confirmed' })
-                .select('id')
-                .single();
-              homeServiceJobId = hsJob?.id || null;
+            // If home service: create lifecycle tracking row
+            let homeServiceJobId = null;
+            if ((type === 'home_service' || type === 'wedding') && r.scheduleId) {
+              const addrPattern = type === 'wedding'
+                ? /\[WEDDING\] Alamat:\s*(.+)/
+                : /\[HOME SERVICE\] Alamat:\s*(.+)/;
+              const jobAddress = address || (notes?.match(addrPattern)?.[1]?.trim()) || '';
+              if (jobAddress) {
+                const { data: hsJob } = await supabase
+                  .from('home_service_jobs')
+                  .insert({ schedule_id: r.scheduleId, address: jobAddress, status: 'confirmed' })
+                  .select('id')
+                  .single();
+                homeServiceJobId = hsJob?.id || null;
+              }
             }
-          }
 
-          return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId });
+            await logSystemEvent({
+              module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
+              correlationId, bookingId: data.id, scheduleId: r.scheduleId,
+              entityType: 'booking', entityId: data.id, httpStatus: 201,
+            }, { supabase });
+            return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId });
+          } else {
+            // Blocker 2: scheduleId:null IS NOT SUCCESS.
+            // bridgeBookingToMoka resolved without throwing, but no schedule was created.
+            await logSystemEvent({
+              module: 'booking', eventName: 'schedule_create_failed',
+              severity: r.mokaSync === 'error_insert' ? 'ERROR' : 'WARNING',
+              status: 'failed',
+              correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+              errorCode: r.mokaSync || null,
+              errorMessage: `schedule creation failed: ${r.mokaSync || 'no_schedule'}`,
+            }, { supabase });
+
+            await logSystemEvent({
+              module: 'booking', eventName: 'booking_schedule_incomplete', severity: 'WARNING', status: 'partial',
+              correlationId, bookingId: data.id, scheduleId: null,
+              entityType: 'booking', entityId: data.id, httpStatus: 201,
+              message: `booking response partial: schedule not created (${r.mokaSync || 'unknown'})`,
+            }, { supabase });
+            return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: r.mokaSync, homeServiceJobId: null });
+          }
         } catch (e) {
           console.warn(`[Moka Bridge] booking ${data.id} failed:`, e.message);
+          await logSystemEvent({
+            module: 'booking', eventName: 'schedule_create_failed', severity: 'ERROR', status: 'failed',
+            correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+            errorMessage: e.message,
+          }, { supabase });
+          // A booking row exists (data.id is real) but no schedule was
+          // created — the client is NOT shown a success screen, so this
+          // is truthfully logged as booking_schedule_incomplete (WARNING/partial),
+          // keeping booking_confirmed_to_client reserved for true success only.
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_schedule_incomplete', severity: 'WARNING', status: 'partial',
+            correlationId, bookingId: data.id, scheduleId: null,
+            entityType: 'booking', entityId: data.id, httpStatus: 201,
+            message: 'booking response partial: moka bridge threw error',
+          }, { supabase });
           return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: 'failed' });
         }
       }
 
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
+        correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id, httpStatus: 201,
+      }, { supabase });
       return res.status(201).json({ data, autoBooked: desiredStatus === 'confirmed' });
     } catch (err) {
       console.error('Supabase POST Error:', err);
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_insert_failed', severity: 'ERROR', status: 'failed',
+        correlationId, bookingId, httpStatus: 500, errorMessage: err.message,
+      }, { supabase });
       return res.status(500).json({ error: err.message });
     }
   } else {
@@ -1579,6 +1864,183 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   }
 });
 
+// POST /api/bookings/group — Atomic group booking (P2-B5)
+app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-group-create' }), async (req, res) => {
+  const correlationId = randomUUID();
+  const { group_request_id, items } = req.body;
+
+  logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_submit_started',
+    severity: 'INFO',
+    status: 'started',
+    correlationId,
+    requestId: req.headers['x-request-id'] || null,
+    httpMethod: 'POST',
+    httpPath: '/api/bookings/group',
+    source: 'website',
+  }, { supabase }).catch(() => {});
+
+  // Turnstile verification (fail closed for public callers)
+  const isTrusted = isTrustedTurnstileBypass(req);
+  if (!isTrusted) {
+    const turnstileToken = req.body.turnstileToken || req.body['cf-turnstile-response'] || req.headers['cf-turnstile-response'] || req.headers['x-turnstile-token'];
+    const clientIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+    const turnstileResult = await verifyTurnstileToken(turnstileToken, clientIp);
+    if (!turnstileResult.success) {
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+        correlationId, httpMethod: 'POST', httpPath: '/api/bookings/group', httpStatus: 403,
+        errorCode: turnstileResult.code || 'BOOKING_TURNSTILE_FAILED',
+        errorMessage: turnstileResult.message || 'Verifikasi keamanan bot gagal.',
+      }, { supabase });
+      return res.status(403).json({
+        code: turnstileResult.code || 'BOOKING_TURNSTILE_FAILED',
+        error: turnstileResult.message || 'Verifikasi keamanan bot gagal. Silakan coba lagi.',
+      });
+    }
+  }
+
+  // Validate group_request_id (UUID format)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!group_request_id || !uuidRegex.test(String(group_request_id))) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpStatus: 400, errorCode: 'BOOKING_INVALID_REQUEST',
+      errorMessage: 'group_request_id wajib ada dan harus berformat UUID',
+    }, { supabase });
+    return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: 'group_request_id wajib ada dan harus berformat UUID' });
+  }
+
+  // Validate items array
+  if (!Array.isArray(items) || items.length === 0 || items.length > 10) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpStatus: 400, errorCode: 'BOOKING_INVALID_REQUEST',
+      errorMessage: 'items harus berupa array booking antara 1 sampai 10 orang',
+    }, { supabase });
+    return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: 'items harus berupa array booking antara 1 sampai 10 orang' });
+  }
+
+  const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
+  const normalizedItems = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const { name, wa, service_id, service, price, duration, barber_id, date, time, location, notes, payment, status, type, address } = item;
+    if (!name || !wa || !service || !date || !time) {
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+        correlationId, httpStatus: 400, errorCode: 'BOOKING_INVALID_REQUEST',
+        errorMessage: `Data item ke-${i + 1} tidak lengkap`,
+      }, { supabase });
+      return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: `Data orang ke-${i + 1} tidak lengkap (nama, WA, layanan, tanggal, jam wajib diisi)` });
+    }
+    if (!/^\d{8,15}$/.test(String(wa))) {
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+        correlationId, httpStatus: 400, errorCode: 'BOOKING_INVALID_REQUEST',
+        errorMessage: `Format nomor WA item ke-${i + 1} tidak valid`,
+      }, { supabase });
+      return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: `Format nomor WhatsApp orang ke-${i + 1} tidak valid (8-15 angka)` });
+    }
+    const resolvedLoc = normalizeBranch(location);
+    if (!resolvedLoc) {
+      return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: `Cabang orang ke-${i + 1} wajib dipilih` });
+    }
+    const normalizedBarber = normalizeBarberIdInput(barber_id);
+    if (!normalizedBarber || normalizedBarber === 'any') {
+      return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: `Kapster orang ke-${i + 1} wajib dipilih` });
+    }
+    const itemPrice = normalizeBookingPrice({ service_id, service, price, type });
+    normalizedItems.push({
+      ...item,
+      name: String(name).trim(),
+      wa: String(wa).trim(),
+      service_id: service_id || '',
+      service: String(service).trim(),
+      price: itemPrice,
+      duration: duration || '',
+      barber_id: normalizedBarber,
+      date: String(date).slice(0, 10),
+      time: String(time).slice(0, 5),
+      location: resolvedLoc,
+      status: isAdmin ? (status || 'pending') : 'confirmed',
+      notes: notes || '',
+      payment: payment || '',
+      type: type || 'outlet',
+      address: address || null,
+    });
+  }
+
+  // Atomic DB commit via create_group_booking_atomic
+  const groupResult = await executeCreateGroupBookingAtomic(supabase, {
+    group_request_id,
+    items: normalizedItems,
+  });
+
+  if (!groupResult.success) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_group_blocked', severity: 'WARNING', status: 'failed',
+      correlationId, httpStatus: groupResult.code === 'BOOKING_SLOT_CONFLICT' ? 409 : 500,
+      errorCode: groupResult.code,
+      errorMessage: groupResult.message,
+    }, { supabase });
+
+    return res.status(groupResult.code === 'BOOKING_SLOT_CONFLICT' || groupResult.code === 'IDEMPOTENCY_KEY_REUSED' ? 409 : 500).json({
+      code: groupResult.code,
+      error: groupResult.message,
+      conflictIndex: groupResult.conflictIndex,
+    });
+  }
+
+  // Idempotent replay
+  if (groupResult.replayed) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_idempotent_replay', severity: 'INFO', status: 'success',
+      correlationId, httpStatus: 200,
+    }, { supabase });
+    return res.status(200).json({
+      success: true,
+      replayed: true,
+      group_request_id,
+      bookings: groupResult.bookings,
+      scheduleIds: groupResult.scheduleIds,
+      message: 'Group booking sudah terdaftar sebelumnya',
+    });
+  }
+
+  // Commit succeeded: dispatch fail-soft post-commit side-effects
+  await logSystemEvent({
+    module: 'booking', eventName: 'booking_created', severity: 'INFO', status: 'success',
+    correlationId, httpStatus: 201,
+  }, { supabase });
+
+  for (let i = 0; i < groupResult.bookings.length; i++) {
+    const b = groupResult.bookings[i];
+    const schId = groupResult.scheduleIds[i];
+
+    // Customer upsert & link
+    supabase.from('customers').upsert({ name: b.name, wa: b.wa, visits: 0, total_spent: 0, last_visit: null }, { onConflict: 'wa', ignoreDuplicates: true }).catch(() => {});
+    linkNewlyCreatedBooking(supabase, { booking: { id: b.id }, phone: b.wa, source: 'booking_create', branch: b.location }).catch(() => {});
+
+    // Notifications
+    if (b.status === 'confirmed' && b.wa) {
+      _notifyCustomerConfirmedWithRetry(supabase, b, null).catch(() => {});
+    }
+
+    // Bridge to Moka with schedule_id passed
+    require('./moka/sync').bridgeBookingToMoka(supabase, { ...b, schedule_id: schId }).catch(() => {});
+  }
+
+  return res.status(201).json({
+    success: true,
+    group_request_id,
+    bookings: groupResult.bookings,
+    scheduleIds: groupResult.scheduleIds,
+  });
+});
+
 // POST /api/bookings/:id/resend-notif — kirim ulang WA ke pelanggan + kapster
 app.post('/api/bookings/:id/resend-notif', adminAuth, async (req, res) => {
   const { id } = req.params;
@@ -1640,6 +2102,18 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
       .single();
     if (curError) return res.status(500).json({ error: curError.message });
 
+    if (status === 'cancelled') {
+      const cancelResult = await executeCancelBookingAtomic(supabase, id, req.body.reason || null);
+      if (!cancelResult.success) {
+        return res.status(500).json({ code: cancelResult.code, error: cancelResult.message });
+      }
+      logSystemEvent({
+        module: 'booking', eventName: 'booking_cancel_committed', severity: 'INFO', status: 'success',
+        bookingId: id, entityType: 'booking', entityId: id,
+      }, { supabase }).catch(() => {});
+      return res.json({ data: cancelResult.booking, cancelled: true });
+    }
+
     const { data, error } = await supabase.from('bookings').update({ status }).eq('id', id).select().single();
     if (error) return res.status(500).json({ error: error.message });
     // Dashboard confirmation must notify the customer as well as the barber.
@@ -1668,11 +2142,11 @@ app.post('/api/booking-status', adminAuth, async (req, res) => {
         console.error('[BookingStatus] Barber notif failed:', e.message);
       }
     }
-    // Propagate cancellation to linked schedule so the slot is freed immediately
-    if (status === 'cancelled' && cur?.schedule_id) {
-      supabase.from('schedules').update({ status: 'cancelled' })
-        .eq('id', cur.schedule_id).neq('status', 'cancelled')
-        .then().catch(e => console.error('[BookingStatus] schedule cancel sync failed:', e.message));
+    // If confirmed and schedule exists, ensure schedule is also confirmed
+    if (status === 'confirmed' && cur?.schedule_id) {
+      supabase.from('schedules').update({ status: 'confirmed' })
+        .eq('id', cur.schedule_id).neq('status', 'confirmed')
+        .then().catch(e => console.error('[BookingStatus] schedule confirm sync failed:', e.message));
     }
     // Fire-and-forget: update gamification when booking marked done
     if (status === 'done' && data) {
@@ -1715,28 +2189,68 @@ async function handleBookingUpdate(req, res) {
 
     const nextStatus = updates.status !== undefined ? updates.status : cur.status;
 
-    const { data, error } = await supabase.from('bookings').update(updates).eq('id', req.params.id).select().single();
-    if (error) return res.status(500).json({ error: error.message });
-    // Propagate cancellation to linked schedule so the slot is freed immediately
-    if (nextStatus === 'cancelled' && cur.status !== 'cancelled' && cur.schedule_id) {
-      supabase.from('schedules').update({ status: 'cancelled' })
-        .eq('id', cur.schedule_id).neq('status', 'cancelled')
-        .then().catch(e => console.error('[PATCH] schedule cancel sync failed:', e.message));
-    }
-    // Propagate reschedule/reassign to linked schedule so the OLD slot is freed and
-    // the NEW slot is blocked (see slotEngine.js#syncScheduleForBooking for why).
-    if (nextStatus !== 'cancelled' && cur.schedule_id &&
-        (updates.date !== undefined || updates.time !== undefined || updates.barber_id !== undefined)) {
-      try {
-        await require('./moka/slotEngine').syncScheduleForBooking(supabase, {
-          scheduleId: cur.schedule_id,
-          date:       updates.date !== undefined ? updates.date : cur.date,
-          time:       updates.time !== undefined ? updates.time : cur.time,
-          barberId:   updates.barber_id !== undefined ? updates.barber_id : cur.barber_id,
-        });
-      } catch (e) {
-        console.error('[PATCH] schedule reschedule sync failed:', e.message);
+    // P2-B6: Cancellation must update booking and schedule atomically
+    if (nextStatus === 'cancelled') {
+      const cancelRes = await executeCancelBookingAtomic(supabase, req.params.id, updates.notes || null);
+      if (!cancelRes.success) {
+        return res.status(500).json({ code: cancelRes.code, error: cancelRes.message });
       }
+      logSystemEvent({
+        module: 'booking', eventName: 'booking_cancel_committed', severity: 'INFO', status: 'success',
+        bookingId: req.params.id, entityType: 'booking', entityId: req.params.id,
+      }, { supabase }).catch(() => {});
+      return res.json({ data: cancelRes.booking, cancelled: true });
+    }
+
+    // P2-B6: Reschedule slot changes must update booking and schedule atomically
+    let data;
+    const isReschedule = (updates.date !== undefined || updates.time !== undefined || updates.barber_id !== undefined || updates.location !== undefined);
+    if (isReschedule) {
+      const rescheduleRes = await executeRescheduleBookingAtomic(supabase, {
+        booking_id: req.params.id,
+        date: updates.date !== undefined ? updates.date : cur.date,
+        time: updates.time !== undefined ? updates.time : cur.time,
+        barber_id: updates.barber_id !== undefined ? updates.barber_id : cur.barber_id,
+        location: nextLocation,
+        notes: updates.notes !== undefined ? updates.notes : cur.notes,
+      });
+
+      if (!rescheduleRes.success) {
+        if (rescheduleRes.code === 'BOOKING_SLOT_CONFLICT') {
+          logSystemEvent({
+            module: 'booking', eventName: 'booking_reschedule_conflict', severity: 'WARNING', status: 'failed',
+            bookingId: req.params.id, entityType: 'booking', entityId: req.params.id,
+            errorCode: 'BOOKING_SLOT_CONFLICT',
+            errorMessage: rescheduleRes.message,
+          }, { supabase }).catch(() => {});
+          return res.status(409).json({ code: 'BOOKING_SLOT_CONFLICT', error: rescheduleRes.message || 'Jadwal slot baru bentrok dengan jadwal lain.' });
+        }
+        return res.status(500).json({ code: rescheduleRes.code, error: rescheduleRes.message });
+      }
+
+      logSystemEvent({
+        module: 'booking', eventName: 'booking_reschedule_committed', severity: 'INFO', status: 'success',
+        bookingId: req.params.id, entityType: 'booking', entityId: req.params.id,
+      }, { supabase }).catch(() => {});
+
+      // Apply any extra non-slot updates (e.g. price, service, status) if provided
+      const remainingUpdates = { ...updates };
+      delete remainingUpdates.date;
+      delete remainingUpdates.time;
+      delete remainingUpdates.barber_id;
+      delete remainingUpdates.location;
+      delete remainingUpdates.notes;
+      if (Object.keys(remainingUpdates).length > 0) {
+        const { data: extraUpdated } = await supabase
+          .from('bookings').update(remainingUpdates).eq('id', req.params.id).select().single();
+        data = extraUpdated || rescheduleRes.booking;
+      } else {
+        data = rescheduleRes.booking;
+      }
+    } else {
+      const { data: updatedData, error } = await supabase.from('bookings').update(updates).eq('id', req.params.id).select().single();
+      if (error) return res.status(500).json({ error: error.message });
+      data = updatedData;
     }
     let moka = null;
     if (nextStatus === 'confirmed' && cur.status !== 'confirmed') {
@@ -1874,18 +2388,27 @@ async function handleBookingUpdate(req, res) {
 app.patch('/api/bookings/:id', adminAuth, handleBookingUpdate);
 app.post('/api/bookings/:id', adminAuth, handleBookingUpdate);
 
-// DELETE /api/bookings/:id
+// DELETE /api/bookings/:id — DEPRECATED / DISABLED
+// Hard delete is intentionally disabled to prevent orphaned schedules in Moka/Supabase
+// and preserve the audit trail. Operations must cancel via POST /api/booking-status or PATCH /api/bookings/:id.
 app.delete('/api/bookings/:id', adminAuth, async (req, res) => {
-  if (DB_TYPE === 'supabase') {
-    const { error } = await supabase.from('bookings').delete().eq('id', req.params.id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ message: 'Deleted' });
-  } else {
-    try {
-      await mysqlPool.execute('DELETE FROM bookings WHERE id = ?', [req.params.id]);
-      res.json({ message: 'Deleted' });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-  }
+  logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_noncanonical_write_blocked',
+    severity: 'WARNING',
+    status: 'failed',
+    entityType: 'booking',
+    entityId: req.params.id,
+    httpMethod: 'DELETE',
+    httpPath: `/api/bookings/${req.params.id}`,
+    httpStatus: 405,
+    errorMessage: 'Hard delete is disabled to prevent orphaned schedules. Update status to cancelled instead.',
+  }, { supabase }).catch(() => {});
+
+  return res.status(405).json({
+    error: 'Hard delete is disabled to prevent orphaned schedules and preserve audit trail. Update status to cancelled via POST /api/booking-status or PATCH /api/bookings/:id instead.',
+    code: 'BOOKING_HARD_DELETE_DISABLED',
+  });
 });
 
 // GET /api/barbers?include_inactive=1 (admin only)
@@ -3629,7 +4152,7 @@ const memorySupabase = createInMemorySupabase();
 
 const createMokaRouter = require('./moka/routes');
 // Prefer real Supabase so sync-schema and DB writes work correctly
-const mokaRouter = createMokaRouter(supabase || memorySupabase);
+const mokaRouter = createMokaRouter(supabase || memorySupabase, adminAuth);
 app.use('/api', mokaRouter);
 console.log('✅ Moka integration routes mounted');
 
@@ -3666,6 +4189,8 @@ const { createReddyEvaluationRoutes } = require('./routes/reddyEvaluation');
 const { configureEvaluationMonitoring } = require('./services/reddyEvaluationMonitoring');
 configureEvaluationMonitoring(() => supabase);
 app.use('/api/internal/reddy-evaluation', createReddyEvaluationRoutes(supabase, adminAuth));
+const { createSystemEventLogRoutes } = require('./routes/systemEventLogs');
+app.use('/api/internal/system-event-logs', createSystemEventLogRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));

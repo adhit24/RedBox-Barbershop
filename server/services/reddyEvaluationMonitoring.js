@@ -95,6 +95,8 @@ const EVENT_DEFINITIONS = Object.freeze({
   price_placeholder_blocked: ['HIGH', 'quality', 'PRICE_PLACEHOLDER_BLOCKED'],
   final_outbound_after_guards: ['INFO', 'outbound', 'FINAL_OUTBOUND_AFTER_GUARDS'],
   request_ack_without_fulfillment: ['WARNING', 'quality', 'REQUEST_ACK_WITHOUT_FULFILLMENT'],
+  // SLA Observability (P1-F)
+  handoff_sla_breached: ['HIGH', 'handoff', 'HANDOFF_SLA_BREACHED'],
   // Correction Round 2, Blocker 2 — subsystem telemetry distinct from
   // terminal inbound result. The orchestrator's own exception is caught in
   // handleMessage and the turn falls through to the legacy Reddy path, so
@@ -103,7 +105,38 @@ const EVENT_DEFINITIONS = Object.freeze({
   // waInboundLifecycle.js / ALLOWED_INBOUND_LIFECYCLE_REASONS for the
   // terminal-reason side of this split).
   orchestrator_execution_failed: ['HIGH', 'routing', 'ORCHESTRATOR_EXECUTION_FAILED'],
+  // Reddy reliability round 2 — factual outbound guards (server/agents/
+  // reddy/personalityPolicy.js guardFactualServiceNumbers /
+  // guardVisitCompletionOverclaim / guardBookingUrlIntegrity, wired in
+  // server/services/waOutboundGuard.js). These fire whenever a customer-
+  // facing reply would have stated a price/duration disagreeing with the
+  // live public.services row, an unverified same-day visit-completion
+  // claim, or a booking URL split across a line break.
+  factual_price_mismatch_blocked: ['HIGH', 'quality', 'FACTUAL_PRICE_MISMATCH'],
+  factual_duration_mismatch_blocked: ['HIGH', 'quality', 'FACTUAL_DURATION_MISMATCH'],
+  visit_completion_overclaim_blocked: ['HIGH', 'quality', 'VISIT_COMPLETION_OVERCLAIM'],
+  booking_url_integrity_corrected: ['WARNING', 'quality', 'BOOKING_URL_INTEGRITY_CORRECTED'],
+  history_persistence_failed: ['HIGH', 'conversation', 'HISTORY_PERSISTENCE_FAILED'],
 });
+
+const AUDIT_SOURCE_PROVENANCE = Object.freeze({
+  KNOWLEDGE_STATIC: 'knowledge_static',
+  DATABASE_BRANCH: 'database_branch',
+  SCHEDULE_AUTHORITY: 'schedule_authority',
+  ATTENDANCE_AUTHORITY: 'attendance_authority',
+  BOOKING_AUTHORITY: 'booking_authority',
+  UNKNOWN: 'unknown',
+});
+
+function classifyFactAuditProvenance(factName, sourceKey) {
+  const sKey = String(sourceKey || '').toLowerCase();
+  if (sKey.includes('knowledge') || sKey.includes('redbox_knowledge') || sKey.includes('static')) return AUDIT_SOURCE_PROVENANCE.KNOWLEDGE_STATIC;
+  if (sKey.includes('schedule')) return AUDIT_SOURCE_PROVENANCE.SCHEDULE_AUTHORITY;
+  if (sKey.includes('attendance')) return AUDIT_SOURCE_PROVENANCE.ATTENDANCE_AUTHORITY;
+  if (sKey.includes('booking')) return AUDIT_SOURCE_PROVENANCE.BOOKING_AUTHORITY;
+  if (sKey.includes('outlets') || sKey.includes('database') || sKey.includes('branch')) return AUDIT_SOURCE_PROVENANCE.DATABASE_BRANCH;
+  return AUDIT_SOURCE_PROVENANCE.UNKNOWN;
+}
 
 let supabaseProvider = () => null;
 
@@ -242,6 +275,24 @@ function mapTelemetryToEvaluation(family, telemetry = {}) {
   if (family === 'data_authority') {
     return EVENT_DEFINITIONS[telemetry.event_type]
       ? [{ ...common, event_type: telemetry.event_type, metadata: { reason: telemetry.reason, source: telemetry.source } }]
+      : [];
+  }
+  if (family === 'factual_guard') {
+    return EVENT_DEFINITIONS[telemetry.event_type]
+      ? [{
+        ...common,
+        event_type: telemetry.event_type,
+        metadata: {
+          service_id: telemetry.service_id,
+          attempted_value: telemetry.attempted_value,
+          expected_value: telemetry.expected_value,
+        },
+      }]
+      : [];
+  }
+  if (family === 'history_persistence') {
+    return EVENT_DEFINITIONS[telemetry.event_type]
+      ? [{ ...common, event_type: telemetry.event_type, metadata: { correlation_id: telemetry.correlation_id } }]
       : [];
   }
   if (family === 'crm_identity') {
@@ -461,4 +512,6 @@ module.exports = {
   aggregateHealth,
   getHealthSummary,
   detectStuckHandoffCases,
+  AUDIT_SOURCE_PROVENANCE,
+  classifyFactAuditProvenance,
 };

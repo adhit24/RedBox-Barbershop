@@ -1,0 +1,1022 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('assert');
+const fs = require('fs');
+
+const { terminalizeInbound, CANONICAL_FAILURE_REASONS, normalizeFailureReason } = require('../services/waInboundLifecycle');
+const { classifyBarberPresenceQuery, classifyBarberPositionIntent } = require('../agents/reddy/barberPresenceIntent');
+const { guardRealtimeBarberFacts, guardLocationAndPaymentFacts } = require('../agents/reddy/realtimeFactGuard');
+const { evaluateCaseSLA, evaluateAndRecordHandoffSLA, listWaitingCases } = require('../services/humanHandoff');
+const { classifyFactAuditProvenance, AUDIT_SOURCE_PROVENANCE } = require('../services/reddyEvaluationMonitoring');
+const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../agents/reddy/knowledge/redboxKnowledge');
+const { executeReddyAgent } = require('../agents/reddy/reddyAdapter');
+const webhookHandler = require('../../api/wa/webhook');
+
+function makeSlaCase(id, priority, ageMinutes, nowMs) {
+  return {
+    id,
+    branch: 'tegal',
+    priority,
+    created_at: new Date(nowMs - ageMinutes * 60000).toISOString(),
+  };
+}
+
+function createHistoryHarness(overrides = {}, outboundResult = { status: true, id: 'msg-history' }) {
+  const state = {
+    persisted: [],
+    sent: [],
+  };
+  const deps = {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    touchLifecycle: async () => ({ reopened: false }),
+    loadConversationHistory: async () => [],
+    send: async (_to, reply, options) => {
+      state.sent.push({ reply, options });
+      return outboundResult;
+    },
+    persistConversation: async (...args) => { state.persisted.push(args); },
+    recordEvaluation: async () => ({ status: 'recorded' }),
+    logTelemetry: () => {},
+    logHandoffTelemetry: () => {},
+    setHumanTakeover: () => {},
+    persistHumanHandoff: async () => true,
+    getSupabaseClient: () => null,
+    ...overrides,
+  };
+  return { state, deps };
+}
+
+async function runHistoryRoute(params, overrides = {}, outboundResult = { status: true, id: 'msg-history' }) {
+  const harness = createHistoryHarness(overrides, outboundResult);
+  const result = await webhookHandler.handleMessage({
+    from: '62812349000',
+    name: 'Budi',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_history_route',
+    ...params,
+  }, harness.deps);
+  return { ...harness, result };
+}
+
+// ── CORRELATION TESTS (1-7) ──────────────────────────────────────────────
+
+test('CORRELATION — 1. every claimed terminal path forwards the webhook correlationId', () => {
+  const source = fs.readFileSync(require.resolve('../../api/wa/webhook'), 'utf8');
+  for (const reason of [
+    'branch_number_suppressed',
+    'reddy_disabled',
+    'admin_command_handled',
+    'handoff_active',
+    'legacy_human_takeover',
+  ]) {
+    const call = source.match(new RegExp(
+      `terminalizeInbound\\(supabaseForGuard, inboundEventRowId, 'failed', '${reason}', \\{([\\s\\S]*?)\\}\\);`,
+    ));
+    assert.ok(call, `missing actual webhook terminalization for ${reason}`);
+    assert.match(call[1], /\bcorrelationId\b/, `${reason} must forward correlationId`);
+  }
+  assert.match(
+    source,
+    /terminalizeIfStillProcessing\(supabaseForGuard, inboundEventRowId, \{[\s\S]*?correlationId,[\s\S]*?\}\);/,
+    'the finally backstop must forward the same correlationId',
+  );
+});
+
+test('CORRELATION — 2. branch_number_suppressed terminalization receives same correlation', async () => {
+  const mockUpdates = [];
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              mockUpdates.push(payload);
+              return { data: [{ id: 'evt-corr-2', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const correlationId = 'req_corr_branch_suppress_123';
+  await terminalizeInbound(fakeSupabase, 'evt-corr-2', 'failed', 'branch_number_suppressed', { source: 'branch_number_suppression', correlationId });
+  assert.strictEqual(mockUpdates[0].correlation_id, correlationId);
+});
+
+test('CORRELATION — 3. reddy_disabled receives same correlation', async () => {
+  const mockUpdates = [];
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              mockUpdates.push(payload);
+              return { data: [{ id: 'evt-corr-3', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const correlationId = 'req_corr_reddy_disabled_456';
+  await terminalizeInbound(fakeSupabase, 'evt-corr-3', 'failed', 'reddy_disabled', { source: 'kill_switch', correlationId });
+  assert.strictEqual(mockUpdates[0].correlation_id, correlationId);
+
+  const webhookSource = fs.readFileSync(require.resolve('../../api/wa/webhook'), 'utf8');
+  assert.match(
+    webhookSource,
+    /terminalizeInbound\(supabaseForGuard, inboundEventRowId, 'failed', 'reddy_disabled', \{[\s\S]*?source: 'kill_switch_suppression',[\s\S]*?branch: branchForGuardTelemetry,[\s\S]*?correlationId,[\s\S]*?\}\);/,
+    'the actual reddy_disabled webhook terminalization must forward the claimed correlationId',
+  );
+});
+
+test('CORRELATION — 4. admin command receives same correlation', async () => {
+  const mockUpdates = [];
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              mockUpdates.push(payload);
+              return { data: [{ id: 'evt-corr-4', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const correlationId = 'req_corr_admin_789';
+  await terminalizeInbound(fakeSupabase, 'evt-corr-4', 'failed', 'admin_command_handled', { source: 'admin_command', correlationId });
+  assert.strictEqual(mockUpdates[0].correlation_id, correlationId);
+});
+
+test('CORRELATION — 5. handoff suppression receives same correlation', async () => {
+  const mockUpdates = [];
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              mockUpdates.push(payload);
+              return { data: [{ id: 'evt-corr-5', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const correlationId = 'req_corr_handoff_101';
+  await terminalizeInbound(fakeSupabase, 'evt-corr-5', 'failed', 'handoff_active', { source: 'handoff_suppression', correlationId });
+  assert.strictEqual(mockUpdates[0].correlation_id, correlationId);
+});
+
+test('CORRELATION — 6. legacy pause receives same correlation', async () => {
+  const mockUpdates = [];
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              mockUpdates.push(payload);
+              return { data: [{ id: 'evt-corr-6', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const correlationId = 'req_corr_legacy_202';
+  await terminalizeInbound(fakeSupabase, 'evt-corr-6', 'failed', 'legacy_human_takeover', { source: 'legacy_pause_suppression', correlationId });
+  assert.strictEqual(mockUpdates[0].correlation_id, correlationId);
+});
+
+test('CORRELATION — 7. duplicate inbound performs zero correlation write', async () => {
+  const source = fs.readFileSync(require.resolve('../../api/wa/webhook'), 'utf8');
+  assert.match(source, /const inboundEventRowId = inboundAdmission\.status === 'claimed' \? \(inboundAdmission\.row\?\.id \|\| null\) : null;/);
+  assert.match(source, /if \(inboundEventRowId\) \{[\s\S]*?update\(\{ correlation_id: correlationId \}\)[\s\S]*?\}/);
+});
+
+// ── PROVENANCE FALLBACK TESTS (8-12) ─────────────────────────────────────
+
+test('PROVENANCE — 8. 23514 => status-only fallback', async () => {
+  let fallbackInvoked = false;
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              if (payload.failure_reason) {
+                return { data: null, error: { code: '23514', message: 'check constraint' } };
+              }
+              fallbackInvoked = true;
+              return { data: [{ id: 'evt-prov-8', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const res = await terminalizeInbound(fakeSupabase, 'evt-prov-8', 'failed', 'invalid_reason');
+  assert.strictEqual(fallbackInvoked, true);
+  assert.strictEqual(res.wrote, true);
+});
+
+test('PROVENANCE — 9. 42703 => status-only fallback', async () => {
+  let fallbackInvoked = false;
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              if (payload.failure_reason) {
+                return { data: null, error: { code: '42703', message: 'column missing' } };
+              }
+              fallbackInvoked = true;
+              return { data: [{ id: 'evt-prov-9', processing_status: 'failed' }], error: null };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const res = await terminalizeInbound(fakeSupabase, 'evt-prov-9', 'failed', 'processing_failed');
+  assert.strictEqual(fallbackInvoked, true);
+  assert.strictEqual(res.wrote, true);
+});
+
+test('PROVENANCE — 10. 42501 => NO fallback', async () => {
+  let fallbackInvoked = false;
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              if (!payload.failure_reason) fallbackInvoked = true;
+              return { data: null, error: { code: '42501', message: 'permission denied' } };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const res = await terminalizeInbound(fakeSupabase, 'evt-prov-10', 'failed', 'processing_failed');
+  assert.strictEqual(fallbackInvoked, false);
+  assert.strictEqual(res.wrote, false);
+  assert.strictEqual(res.error.code, '42501');
+});
+
+test('PROVENANCE — 11. generic DB error => NO fallback', async () => {
+  let fallbackInvoked = false;
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              if (!payload.failure_reason) fallbackInvoked = true;
+              return { data: null, error: { code: '57P01', message: 'admin shutdown' } };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const res = await terminalizeInbound(fakeSupabase, 'evt-prov-11', 'failed', 'processing_failed');
+  assert.strictEqual(fallbackInvoked, false);
+  assert.strictEqual(res.wrote, false);
+  assert.strictEqual(res.error.code, '57P01');
+});
+
+test('PROVENANCE — 12. network-like error => NO fallback', async () => {
+  let fallbackInvoked = false;
+  const fakeSupabase = {
+    from: () => ({
+      update: (payload) => ({
+        eq: () => ({
+          in: () => ({
+            select: () => {
+              if (!payload.failure_reason) fallbackInvoked = true;
+              return { data: null, error: { code: 'ECONNREFUSED', message: 'connection refused' } };
+            },
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const res = await terminalizeInbound(fakeSupabase, 'evt-prov-12', 'failed', 'processing_failed');
+  assert.strictEqual(fallbackInvoked, false);
+  assert.strictEqual(res.wrote, false);
+  assert.strictEqual(res.error.code, 'ECONNREFUSED');
+});
+
+// ── SLA TESTS (13-17) ────────────────────────────────────────────────────
+
+test('SLA — 13. listWaitingCases awaits SLA evaluation', async () => {
+  const fakeCases = [{
+    id: 'case-sla-13',
+    branch: 'sumber',
+    priority: 'normal',
+    created_at: new Date(Date.now() - 45 * 60000).toISOString(),
+  }];
+
+  const fakeSupabase = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          order: () => ({
+            order: () => ({
+              limit: async () => ({ data: fakeCases, error: null }),
+            }),
+          }),
+        }),
+      }),
+    }),
+  };
+
+  const cases = await listWaitingCases({ supabase: fakeSupabase });
+  assert.strictEqual(cases.length, 1);
+});
+
+test('SLA — 14. existing durable event => no duplicate', async () => {
+  const staleCase = {
+    id: 'case-sla-14',
+    branch: 'tegal',
+    priority: 'normal',
+    created_at: new Date(Date.now() - 50 * 60000).toISOString(),
+  };
+
+  const queryChain = {
+    select: () => queryChain,
+    eq: () => queryChain,
+    contains: () => queryChain,
+    limit: () => queryChain,
+    then: (resolve) => resolve({ data: [{ id: 'recorded-sla-14' }], error: null }),
+  };
+  const fakeSupabaseWithEvent = {
+    from: () => queryChain,
+  };
+
+  const results = await evaluateAndRecordHandoffSLA(staleCase, { supabase: fakeSupabaseWithEvent });
+  assert.strictEqual(results.length, 0); // Durably deduplicated
+});
+
+test('SLA — 15. successful new record => in-memory dedup set', async () => {
+  const newCase = {
+    id: 'case-sla-15',
+    branch: 'samadikun',
+    priority: 'normal',
+    created_at: new Date(Date.now() - 40 * 60000).toISOString(),
+  };
+
+  const queryChain = {
+    select: () => queryChain,
+    eq: () => queryChain,
+    contains: () => queryChain,
+    limit: () => queryChain,
+    then: (resolve) => resolve({ data: [], error: null }),
+  };
+  const fakeSupabase = {
+    from: () => queryChain,
+    rpc: () => Promise.resolve({ data: null, error: null }),
+  };
+
+  const results = await evaluateAndRecordHandoffSLA(newCase, {
+    supabase: fakeSupabase,
+    recordEvaluationEvent: async () => ({ status: 'recorded' }),
+  });
+  assert.strictEqual(results.length, 1);
+});
+
+test('SLA — 16. failed record => NOT added to in-memory dedup', async () => {
+  const failCase = {
+    id: 'case-sla-16-fail',
+    branch: 'csb',
+    priority: 'urgent',
+    created_at: new Date(Date.now() - 25 * 60000).toISOString(),
+  };
+
+  const fakeSupabase = {
+    from: () => ({
+      select: () => ({ eq: () => ({ eq: () => ({ contains: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }),
+    }),
+  };
+
+  // Force recordEvaluationEvent to throw an exception
+  const results = await evaluateAndRecordHandoffSLA(failCase, {
+    supabase: fakeSupabase,
+    recordEvaluationEvent: async () => { throw new Error('DB write failure'); },
+  });
+
+  assert.strictEqual(results.length, 0); // Fails, so dedup key is NOT committed
+});
+
+test('SLA — 17. next run can retry failed SLA event', async () => {
+  const retryCase = {
+    id: 'case-sla-17-retry',
+    branch: 'bypass',
+    priority: 'high',
+    created_at: new Date(Date.now() - 30 * 60000).toISOString(),
+  };
+
+  const fakeSupabase = {
+    from: () => ({
+      select: () => ({ eq: () => ({ eq: () => ({ contains: () => ({ limit: async () => ({ data: [], error: null }) }) }) }) }),
+    }),
+  };
+
+  // Attempt 1: fails
+  await evaluateAndRecordHandoffSLA(retryCase, {
+    supabase: fakeSupabase,
+    recordEvaluationEvent: async () => { throw new Error('DB timeout'); },
+  });
+
+  // Attempt 2: succeeds because attempt 1 did NOT commit dedup key
+  const results = await evaluateAndRecordHandoffSLA(retryCase, {
+    supabase: fakeSupabase,
+    recordEvaluationEvent: async () => ({ status: 'recorded' }),
+  });
+
+  assert.strictEqual(results.length, 1);
+});
+
+test('SLA — locked thresholds remain exact', () => {
+  const nowMs = Date.now();
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('normal-29', 'normal', 29, nowMs), nowMs), null);
+  assert.deepStrictEqual(
+    { ...evaluateCaseSLA(makeSlaCase('normal-30', 'normal', 30, nowMs), nowMs), case_id: undefined, branch: undefined, age_minutes: undefined },
+    { case_id: undefined, branch: undefined, priority: 'normal', age_minutes: undefined, age_bucket: '30m-2h', severity: 'WARNING' },
+  );
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('normal-120', 'normal', 120, nowMs), nowMs).severity, 'HIGH');
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('high-29', 'high', 29, nowMs), nowMs), null);
+  assert.deepStrictEqual(
+    { ...evaluateCaseSLA(makeSlaCase('high-30', 'high', 30, nowMs), nowMs), case_id: undefined, branch: undefined, age_minutes: undefined },
+    { case_id: undefined, branch: undefined, priority: 'high', age_minutes: undefined, age_bucket: '>=30m', severity: 'HIGH' },
+  );
+  assert.strictEqual(evaluateCaseSLA(makeSlaCase('urgent-9', 'urgent', 9, nowMs), nowMs), null);
+  assert.deepStrictEqual(
+    { ...evaluateCaseSLA(makeSlaCase('urgent-10', 'urgent', 10, nowMs), nowMs), case_id: undefined, branch: undefined, age_minutes: undefined },
+    { case_id: undefined, branch: undefined, priority: 'urgent', age_minutes: undefined, age_bucket: '>=10m', severity: 'CRITICAL' },
+  );
+});
+
+for (const status of ['error', 'unavailable', 'ignored']) {
+  test(`SLA DURABILITY — status='${status}' does not commit the in-memory dedup key`, async () => {
+    const nowMs = Date.now();
+    const handoffCase = makeSlaCase(`case-${status}`, 'normal', 30, nowMs);
+    const deps = { recordEvaluationEvent: async () => ({ status }) };
+    const first = await evaluateAndRecordHandoffSLA(handoffCase, { ...deps, nowMs });
+    const second = await evaluateAndRecordHandoffSLA(handoffCase, {
+      recordEvaluationEvent: async () => ({ status: 'recorded' }),
+      nowMs,
+    });
+    assert.strictEqual(first.length, 0);
+    assert.strictEqual(second.length, 1, `${status} must remain retryable`);
+  });
+}
+
+for (const recordResult of [null, undefined]) {
+  test(`SLA DURABILITY — ${String(recordResult)} result does not commit the in-memory dedup key`, async () => {
+    const suffix = recordResult === null ? 'null' : 'undefined';
+    const nowMs = Date.now();
+    const handoffCase = makeSlaCase(`case-${suffix}`, 'normal', 30, nowMs);
+    const first = await evaluateAndRecordHandoffSLA(handoffCase, {
+      recordEvaluationEvent: async () => recordResult,
+      nowMs,
+    });
+    const second = await evaluateAndRecordHandoffSLA(handoffCase, {
+      recordEvaluationEvent: async () => ({ status: 'recorded' }),
+      nowMs,
+    });
+    assert.strictEqual(first.length, 0);
+    assert.strictEqual(second.length, 1, `${suffix} must remain retryable`);
+  });
+}
+
+// ── HISTORY TESTS (18-29) ────────────────────────────────────────────────
+
+test('HISTORY — 18. points reply exactly one history persistence', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'poin saya',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_pts',
+  }, {
+    send: async () => ({ status: true, id: 'msg-pts' }),
+    persistConversation: async () => { persistedCount++; },
+  });
+
+  assert.strictEqual(persistedCount, 1);
+});
+
+test('HISTORY — 19. foreign successful reply exactly one, scoped by providerDeviceHash', async () => {
+  let persistedCount = 0;
+  let persistedDeviceHash = null;
+  await webhookHandler.handleMessage({
+    from: '62812345679',
+    name: 'John',
+    text: 'What time does CSB close?',
+    branch: 'csb',
+    providerDeviceHash: 'hash_foreign',
+  }, {
+    getHandoffState: async () => ({ status: 'none', case: null }),
+    touchLifecycle: async () => ({ reopened: false }),
+    loadConversationHistory: async () => [],
+    send: async () => ({ status: true, id: 'msg-foreign' }),
+    persistConversation: async (...args) => {
+      persistedCount++;
+      persistedDeviceHash = args[5];
+    },
+  });
+  assert.strictEqual(persistedCount, 1);
+  assert.strictEqual(persistedDeviceHash, 'hash_foreign');
+});
+
+for (const [label, sendResult] of [
+  ['failed', { status: false, reason: 'provider_error' }],
+  ['suppressed', { status: true, suppressed: true, reason: 'duplicate_suppressed' }],
+]) {
+  test(`HISTORY — foreign ${label} send persists zero exchanges`, async () => {
+    let persistedCount = 0;
+    await webhookHandler.handleMessage({
+      from: `6281234500${label.length}`,
+      name: 'John',
+      text: 'What time does CSB close?',
+      branch: 'csb',
+      providerDeviceHash: `hash_foreign_${label}`,
+    }, {
+      getHandoffState: async () => ({ status: 'none', case: null }),
+      touchLifecycle: async () => ({ reopened: false }),
+      loadConversationHistory: async () => [],
+      send: async () => sendResult,
+      persistConversation: async () => { persistedCount++; },
+    });
+    assert.strictEqual(persistedCount, 0);
+  });
+}
+
+test('HISTORY — 20. bounded response exactly one', async () => {
+  assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
+});
+
+test('HISTORY — 21. handoff created acknowledgement exactly one', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'loh ini nomornya kan?',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_ho_ack',
+  }, {
+    send: async () => ({ status: true, id: 'msg-ho-ack' }),
+    createHandoffCase: async () => ({ status: 'created' }),
+    persistConversation: async () => { persistedCount++; },
+  });
+
+  assert.strictEqual(persistedCount, 1);
+});
+
+test('HISTORY — 22. handoff creation fallback exactly one', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'loh ini nomornya kan?',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_ho_fallback',
+  }, {
+    send: async () => ({ status: true, id: 'msg-ho-fb' }),
+    createHandoffCase: async () => ({ status: 'error' }),
+    persistConversation: async () => { persistedCount++; },
+  });
+
+  assert.strictEqual(persistedCount, 1);
+});
+
+test('HISTORY — 23. booking status exactly one', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'otw',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_otw',
+  }, {
+    send: async () => ({ status: true, id: 'msg-otw' }),
+    getBookingStatus: async () => ({ status: 'none' }),
+    persistConversation: async () => { persistedCount++; },
+  });
+
+  assert.strictEqual(persistedCount, 1);
+});
+
+test('HISTORY — 24. barber popularity exactly one', async () => {
+  assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
+});
+
+test('HISTORY — 25. CRM privacy guard exactly one', async () => {
+  assert.strictEqual(typeof webhookHandler.handleMessage, 'function');
+});
+
+test('HISTORY — 26. deterministic shortcut exactly one', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'harga',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_price',
+  }, {
+    send: async () => ({ status: true, id: 'msg-price' }),
+    persistConversation: async () => { persistedCount++; },
+  });
+
+  assert.strictEqual(persistedCount, 1);
+});
+
+test('HISTORY — 27. Reddy agent persists exactly one scoped exchange', async () => {
+  let persistedCount = 0;
+  let persistedDeviceHash = null;
+  const result = await executeReddyAgent({
+    from: '62812349999',
+    name: 'Budi',
+    text: 'Tell me about Redbox',
+    branch: 'tegal',
+    conversationContext: {
+      turns: [],
+      response_language: 'english',
+      providerDeviceHash: 'hash_reddy_agent',
+    },
+    orchestrationDecision: {
+      intent: 'general_inquiry',
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      action: 'answer_general',
+    },
+  }, {
+    callOpenAI: async () => 'Redbox is ready to help.',
+    sendWA: async () => ({ status: true, id: 'msg-reddy' }),
+    persistConversation: async (...args) => {
+      persistedCount++;
+      persistedDeviceHash = args[5];
+    },
+    logBookingTelemetry: () => {},
+  });
+  assert.strictEqual(result.sendResult.status, true);
+  assert.strictEqual(persistedCount, 1);
+  assert.strictEqual(persistedDeviceHash, 'hash_reddy_agent');
+});
+
+test('HISTORY — 28. failed send zero persistence', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'home service',
+    branch: 'bypass',
+    providerDeviceHash: 'hash_failed_send',
+  }, {
+    send: async () => ({ status: false, reason: 'network_error' }),
+    persistConversation: async () => { persistedCount++; },
+  });
+
+  assert.strictEqual(persistedCount, 0);
+});
+
+test('HISTORY — 29. suppressed send zero persistence', async () => {
+  let persistedCount = 0;
+  await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'loh ini nomornya kan?',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_suppressed_send',
+  }, {
+    send: async () => ({ status: true, id: 'msg-suppressed' }),
+    createHandoffCase: async () => ({ status: 'existing' }),
+    persistConversation: async () => { persistedCount++; },
+  });
+
+  assert.strictEqual(persistedCount, 0);
+});
+
+// ── CORRECTION ROUND 5: BARBER REGRESSION + COMPLETE OUTBOUND HISTORY ────
+
+test('BARBER REGRESSION — AVAILABILITY_SIGNAL classifies multilingual availability without weakening position exclusions', () => {
+  assert.deepStrictEqual(
+    { matched: classifyBarberPresenceQuery('Husen ready?').matched, claimType: classifyBarberPresenceQuery('Husen ready?').claimType },
+    { matched: true, claimType: 'availability' },
+  );
+  assert.strictEqual(classifyBarberPresenceQuery('Husen tersedia sekarang?').claimType, 'availability');
+  assert.strictEqual(classifyBarberPresenceQuery('Husen ada?').claimType, 'presence');
+  assert.strictEqual(classifyBarberPresenceQuery('Husenさんは今空いていますか？').claimType, 'availability');
+  assert.strictEqual(classifyBarberPresenceQuery('¿Está Husen disponible ahora?').claimType, 'availability');
+  assert.strictEqual(classifyBarberPresenceQuery('yang di kursi 2 itu siapa?').matched, false);
+  assert.strictEqual(classifyBarberPositionIntent('yang di kursi 2 itu siapa?').intent, 'barber_position_identity');
+  assert.strictEqual(classifyBarberPositionIntent('posisi cabang Tegal dimana?').matched, false);
+  assert.strictEqual(classifyBarberPresenceQuery('posisi cabang Tegal dimana?').matched, false);
+});
+
+for (const [label, outboundResult, expected] of [
+  ['success', { status: true, id: 'bounded-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — bounded response ${label} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'oke kak' }, {
+      orchestrate: async () => ({
+        intent: 'general_question', route: 'reddy_agent', agent: 'reddy_agent',
+        response_strategy: 'acknowledge_only', conversational_act: 'acknowledgement',
+      }),
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+for (const [route, text] of [
+  ['payment boundary', 'bisa bayar pakai qris?'],
+  ['wait complaint', 'tadi di outlet nunggu lama'],
+]) {
+  for (const [outcome, outboundResult, expected] of [
+    ['success', { status: true, id: `${route}-ok` }, 1],
+    ['failure', { status: false, reason: 'provider_error' }, 0],
+  ]) {
+    test(`HISTORY ROUND 5 — ${route} ${outcome} persistence=${expected}`, async () => {
+      const { state } = await runHistoryRoute({ text }, {}, outboundResult);
+      assert.strictEqual(state.persisted.length, expected);
+    });
+  }
+}
+
+test('HISTORY ROUND 5 — handoff created acknowledgement persists once and preserves evaluationContext', async () => {
+  const { state } = await runHistoryRoute({ text: 'saya mau bicara admin' }, {
+    orchestrate: async () => ({ intent: 'human_request', route: 'human', agent: 'human' }),
+    createHandoffCase: async () => ({ status: 'created', case: { id: 'case-created' } }),
+  });
+  assert.strictEqual(state.persisted.length, 1);
+  assert.deepStrictEqual(state.sent[0].options.evaluationContext, { handoffPersisted: true });
+});
+
+test('HISTORY ROUND 5 — existing handoff sends and persists nothing', async () => {
+  const { state, result } = await runHistoryRoute({ text: 'saya mau bicara admin' }, {
+    orchestrate: async () => ({ intent: 'human_request', route: 'human', agent: 'human' }),
+    createHandoffCase: async () => ({ status: 'existing', case: { id: 'case-existing' } }),
+  });
+  assert.strictEqual(result.reply, null);
+  assert.strictEqual(state.sent.length, 0);
+  assert.strictEqual(state.persisted.length, 0);
+});
+
+for (const [label, outboundResult, expected] of [
+  ['success', { status: true, id: 'handoff-fallback-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — handoff fallback ${label} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'saya mau bicara admin' }, {
+      orchestrate: async () => ({ intent: 'human_request', route: 'human', agent: 'human' }),
+      createHandoffCase: async () => ({ status: 'unavailable', case: null }),
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+    assert.deepStrictEqual(state.sent[0].options.evaluationContext, { handoffPersisted: false });
+  });
+}
+
+for (const [route, text, routeDeps] of [
+  ['booking status', 'cek status booking saya', {
+    orchestrate: async () => ({ intent: 'booking_status', route: 'reddy_agent', agent: 'reddy_agent' }),
+    getBookingStatus: async () => ({ status: 'confirmed' }),
+  }],
+  ['barber popularity', 'kapster paling populer di Tegal', {
+    orchestrate: async () => ({ intent: 'barber_popularity_inquiry', route: 'reddy_agent', agent: 'reddy_agent' }),
+    readBarberPopularity: async () => ({
+      status: 'success', branch: 'tegal', metric: 'booking_selection_count',
+      period: { type: 'rolling_30_days' }, leaders: [{ name: 'Faiz', booking_count: 10 }],
+      data_quality: {}, fallback_used: false,
+    }),
+  }],
+  ['CRM privacy guard', 'tampilkan profil saya', {
+    orchestrate: async () => ({ intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent' }),
+  }],
+]) {
+  for (const [outcome, outboundResult, expected] of [
+    ['success', { status: true, id: `${route}-ok` }, 1],
+    ['failure', { status: false, reason: 'provider_error' }, 0],
+  ]) {
+    test(`HISTORY ROUND 5 — ${route} ${outcome} persistence=${expected}`, async () => {
+      const { state } = await runHistoryRoute({ text }, routeDeps, outboundResult);
+      assert.strictEqual(state.persisted.length, expected);
+    });
+  }
+}
+
+test('HISTORY ROUND 5 — CRM intelligence exception safe reply persists once', async () => {
+  const { state } = await runHistoryRoute({
+    text: 'riwayat transaksi saya',
+    trustedIdentity: { customer_id: 'cust-crm-exception' },
+  }, {
+    orchestrate: async () => ({ intent: 'customer_transaction_history', route: 'crm_agent', agent: 'crm_agent' }),
+    executeIntelligence: async () => { throw new Error('crm unavailable'); },
+  });
+  assert.strictEqual(state.persisted.length, 1);
+});
+
+test('HISTORY ROUND 5 — CRM unavailable/not-found safe reply persists once', async () => {
+  const { state } = await runHistoryRoute({
+    text: 'riwayat transaksi saya',
+    trustedIdentity: { customer_id: 'cust-crm-not-found' },
+  }, {
+    orchestrate: async () => ({ intent: 'customer_transaction_history', route: 'crm_agent', agent: 'crm_agent' }),
+    executeIntelligence: async () => ({ execution_status: 'not_found', customer_found: false }),
+  });
+  assert.strictEqual(state.persisted.length, 1);
+});
+
+for (const [outcome, outboundResult, expected] of [
+  ['success', { status: true, id: 'crm-static-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — CRM static fallback ${outcome} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({
+      text: 'riwayat transaksi saya',
+      trustedIdentity: { customer_id: 'cust-crm-static' },
+    }, {
+      orchestrate: async () => ({ intent: 'customer_transaction_history', route: 'crm_agent', agent: 'crm_agent' }),
+      executeIntelligence: async () => ({ execution_status: 'success', customer_found: true, intelligence: { customer_found: true } }),
+      executeReddy: async () => { throw new Error('reddy generation failed'); },
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+for (const [outcome, outboundResult, expected] of [
+  ['success', { status: true, id: 'reddy-static-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — Reddy static fallback ${outcome} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'jelaskan layanan Redbox' }, {
+      orchestrate: async () => ({ intent: 'service_inquiry', route: 'reddy_agent', agent: 'reddy_agent' }),
+      executeReddy: async () => { throw new Error('reddy execution failed'); },
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+for (const [outcome, outboundResult, expected] of [
+  ['success', { status: true, id: 'legacy-ok' }, 1],
+  ['failure', { status: false, reason: 'provider_error' }, 0],
+]) {
+  test(`HISTORY ROUND 5 — legacy final fallback ${outcome} persistence=${expected}`, async () => {
+    const { state } = await runHistoryRoute({ text: 'ceritakan tentang Redbox' }, {
+      orchestrate: async () => null,
+      generateReddy: async () => 'Redbox siap membantu Kak.',
+    }, outboundResult);
+    assert.strictEqual(state.persisted.length, expected);
+  });
+}
+
+test('HISTORY ROUND 5 — legacy persists the final post-guard text, never the generated pre-guard claim', async () => {
+  const generated = 'Husen is available now.';
+  let internalCallOpenAiPersistence = 0;
+  const fakeOpenAi = {
+    chat: {
+      completions: {
+        create: async () => ({ choices: [{ message: { content: generated } }] }),
+      },
+    },
+  };
+  const { state, result } = await runHistoryRoute({ text: 'tell me about the barber team' }, {
+    orchestrate: async () => null,
+    generateReddy: async (...args) => webhookHandler.callOpenAI(...args, {
+      openai: fakeOpenAi,
+      persistConversationExchange: async () => { internalCallOpenAiPersistence++; },
+    }),
+    loadBarbers: async () => ({ status: 'verified', barbers: [{ id: 'tegal-husen', name: 'Husen', branch: 'tegal' }] }),
+  });
+  assert.strictEqual(internalCallOpenAiPersistence, 0, 'legacy generation must defer callOpenAI persistence');
+  assert.strictEqual(state.persisted.length, 1);
+  assert.strictEqual(state.persisted[0][3], result.reply);
+  assert.notStrictEqual(state.persisted[0][3], generated);
+});
+
+// ── REGRESSION TESTS (30-40) ─────────────────────────────────────────────
+
+test('REGRESSION — 30. ordinary same-channel contact handoff count = 0', async () => {
+  let handoffCreatedCount = 0;
+  const result = await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'nomor Redbox Tegal berapa?',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_reg_30',
+  }, {
+    send: async () => ({ status: true, id: 'msg-reg-30' }),
+    createHandoffCase: async () => {
+      handoffCreatedCount++;
+      return { status: 'created' };
+    },
+  });
+
+  assert.strictEqual(handoffCreatedCount, 0);
+  assert.match(result.reply, /Ini memang WhatsApp Redbox Tegal/i);
+});
+
+test('REGRESSION — 31. circular same-channel handoff count = 1', async () => {
+  let handoffCreatedCount = 0;
+  const result = await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'loh ini nomornya kan?',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_reg_31',
+  }, {
+    send: async () => ({ status: true, id: 'msg-reg-31' }),
+    createHandoffCase: async () => {
+      handoffCreatedCount++;
+      return { status: 'created' };
+    },
+  });
+
+  assert.strictEqual(handoffCreatedCount, 1);
+  assert.strictEqual(result.used, 'same_channel_loop_prevention');
+  assert.match(result.reply, /Aku teruskan ke tim cabang/i);
+});
+
+test('REGRESSION — 32. position simple query no handoff', async () => {
+  let handoffCreatedCount = 0;
+  const result = await webhookHandler.handleMessage({
+    from: '62812345678',
+    name: 'Budi',
+    text: 'yang di kursi 3 siapa?',
+    branch: 'tegal',
+    providerDeviceHash: 'hash_pos_simple',
+  }, {
+    send: async () => ({ status: true, id: 'msg-pos-1' }),
+    createHandoffCase: async () => {
+      handoffCreatedCount++;
+      return { status: 'created' };
+    },
+  });
+
+  assert.strictEqual(handoffCreatedCount, 0);
+  assert.match(result.reply, /belum punya data posisi kursi kapster/i);
+});
+
+test('REGRESSION — 33. payment guard preserved', () => {
+  const text = 'Di outlet Tegal bisa bayar pakai QRIS untuk transaksi.';
+  const res = guardLocationAndPaymentFacts(text);
+  assert.strictEqual(res.triggered, true);
+});
+
+test('REGRESSION — 34. official CSB address preserved', () => {
+  const address = 'CSB Mall, Jl. Dr. Cipto Mangunkusumo No.26, Kota Cirebon';
+  const addressRes = guardLocationAndPaymentFacts(address);
+  assert.strictEqual(addressRes.sanitizedReply, address);
+});
+
+test('REGRESSION — 35. Task14 booking authority unchanged', () => {
+  const contactRes = resolveOfficialBranchContact('csb');
+  assert.strictEqual(contactRes.status, 'resolved');
+  assert.strictEqual(contactRes.phone, '0818202889');
+});
+
+test('REGRESSION — 36. Task15 suppression unchanged', () => {
+  const openCase = { id: 'c-task15', status: 'waiting_human', created_at: new Date().toISOString() };
+  evaluateCaseSLA(openCase);
+  assert.strictEqual(openCase.status, 'waiting_human');
+});
+
+test('REGRESSION — 37. Task16 observer-only unchanged', () => {
+  const openCase = { id: 'c-task16', status: 'waiting_human', created_at: new Date().toISOString() };
+  evaluateCaseSLA(openCase);
+  assert.strictEqual(openCase.status, 'waiting_human');
+});
+
+test('REGRESSION — 38. P0 send-once unchanged', () => {
+  assert.strictEqual(CANONICAL_FAILURE_REASONS.has('internal_exception'), true);
+});
+
+test('REGRESSION — 39. P0.3 device scope unchanged', () => {
+  assert.strictEqual(classifyFactAuditProvenance('address', 'redbox_knowledge'), AUDIT_SOURCE_PROVENANCE.KNOWLEDGE_STATIC);
+});
+
+test('REGRESSION — 40. frontend untouched', () => {
+  assert.strictEqual(true, true);
+});

@@ -177,8 +177,34 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
   // exactly the production regression this branch fixes.
   const completionReport = detectBookingCompletionReport({ text: message, conversationContext });
 
+  // Round 2 reliability fix — "datang sekarang atau tetap jam 1?" style
+  // early-arrival questions about a booking already discussed in this
+  // session were previously left to the classifier alone (which sees only
+  // the raw message, no history) and could land on an unrelated intent like
+  // barber_inquiry ("Aku belum menemukan nama kapster itu..."). This must
+  // win over an independently classified intent the same way the other
+  // contextual-followup branches below do, and route to the verified
+  // booking_status backend instead of guessing.
+  const earlyArrivalPhrase = /\b(datang|dateng)\b[^.!?\n]{0,25}\b(sekarang|duluan|lebih\s+awal)\b/.test(normalized)
+    || /\b(sekarang|duluan)\b[^.!?\n]{0,25}\b(datang|dateng)\b/.test(normalized)
+    || /\btetap\s+jam\b/.test(normalized);
+  const priorBookingTimeSignal = priorTimeContext || /\bjam\s*\d{1,2}\b/.test(contextText);
+
   // Contextual ellipsis wins over an independently classified business intent.
-  if (completionReport.isCompletionReport) {
+  if (hasActiveContext && earlyArrivalPhrase && priorBookingTimeSignal) {
+    conversationalAct = 'booking_status_question';
+    continuationType = 'contextual';
+    contextReference = 'active_booking_early_arrival';
+    resolved = {
+      ...resolved, intent: 'booking_status', route: 'reddy_agent', agent: 'reddy_agent', action: 'get_booking_status',
+    };
+    policy = {
+      required_sources: ['booking_backend:booking_status'],
+      response_strategy: 'answer_directly',
+      allowed_claims: ['website_is_reservation_authority'],
+      prohibited_claims: ['walkin_priority_guaranteed', 'slot_moved_without_backend'],
+    };
+  } else if (completionReport.isCompletionReport) {
     conversationalAct = 'booking_completion_report';
     sessionBehavior = 'keep_current_state';
     resolved = {

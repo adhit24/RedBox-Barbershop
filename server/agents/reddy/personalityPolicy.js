@@ -280,6 +280,218 @@ function guardPricePlaceholders(replyText = '', options = {}) {
   return { sanitizedReply, blocked: true };
 }
 
+/**
+ * Round 2 (Reliability) — Factual outbound guards.
+ *
+ * These are ADDITIVE to guardPricePlaceholders above (which only fires on
+ * placeholder-shaped tokens like RpXX.XXX). The production incident this
+ * fixes is different: the model wrote a CONCRETE, well-formed number that
+ * simply disagrees with public.services (e.g. "Rp95.000" for Gentleman
+ * Grooming when the live, active row is Rp120.000/75min) — a placeholder
+ * regex never fires on that. guardFactualServiceNumbers below is the guard
+ * that catches it, sourced live from public.services (see
+ * server/services/servicesCatalog.js), not the static REDBOX_KNOWLEDGE
+ * catalog (which is what drifted in the first place).
+ *
+ * Deliberately async (DB-backed) — kept separate from the synchronous
+ * guardPricePlaceholders so its 38 existing unit tests (which call it
+ * synchronously with no `await`) keep passing unchanged.
+ */
+
+function resolveServiceIdentity({ serviceId, serviceName, text }) {
+  const { REDBOX_KNOWLEDGE } = require('./knowledge/redboxKnowledge');
+  const services = REDBOX_KNOWLEDGE.services || [];
+  if (serviceId) {
+    const found = services.find((s) => s.id === serviceId);
+    if (found) return found;
+  }
+  if (serviceName) {
+    const snLower = String(serviceName).toLowerCase();
+    const found = services.find((s) => s.name.toLowerCase() === snLower || s.aliases.includes(snLower));
+    if (found) return found;
+  }
+  if (text) {
+    const tLower = String(text).toLowerCase();
+    const matches = services.filter((s) => s.aliases.some(
+      (alias) => !GENERIC_PRICE_IDENTITY_BLOCKLIST.has(alias) && tLower.includes(alias),
+    ));
+    if (matches.length === 1) return matches[0];
+  }
+  return null;
+}
+
+// Only matches a CONCRETE number ("Rp95.000", "Rp120000") — never a
+// placeholder shape (those are all-letters like XX/TBD/N/A and are handled,
+// separately, by guardPricePlaceholders above).
+function extractConcreteRupiahMentions(text) {
+  const regex = /Rp\s?([0-9][0-9.,]{2,})\b/gi;
+  const mentions = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const numeric = Number.parseInt(match[1].replace(/[.,]/g, ''), 10);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      mentions.push({ raw: match[0], numeric, index: match.index });
+    }
+  }
+  return mentions;
+}
+
+function extractDurationMentions(text) {
+  const regex = /\b(\d{2,3})\s*menit\b/gi;
+  const mentions = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const numeric = Number.parseInt(match[1], 10);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      mentions.push({ raw: match[0], numeric, index: match.index });
+    }
+  }
+  return mentions;
+}
+
+/**
+ * Blocks/corrects an outbound reply that states a concrete price or
+ * duration disagreeing with the live public.services row (is_active=true).
+ * Fails OPEN (does not block) whenever the service or the live catalog
+ * cannot be resolved unambiguously — this guard corrects known-wrong
+ * numbers, it does not invent numbers for identities it cannot verify.
+ *
+ * @param {string} replyText
+ * @param {{ supabase?: object, serviceId?: string, serviceName?: string }} options
+ */
+async function guardFactualServiceNumbers(replyText, options = {}) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+  }
+
+  const hasPriceMention = extractConcreteRupiahMentions(replyText).length === 1;
+  const hasDurationMention = extractDurationMentions(replyText).length === 1;
+  if (!hasPriceMention && !hasDurationMention) {
+    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+  }
+
+  const knowledgeService = resolveServiceIdentity({
+    serviceId: options.serviceId,
+    serviceName: options.serviceName,
+    text: replyText,
+  });
+  if (!knowledgeService) {
+    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+  }
+
+  let rows = null;
+  try {
+    const { getActiveServicesCatalog } = require('../../services/servicesCatalog');
+    rows = await getActiveServicesCatalog(options.supabase || null);
+  } catch (_error) {
+    rows = null;
+  }
+  if (!rows) {
+    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+  }
+
+  const { findServiceRow } = require('../../services/servicesCatalog');
+  const dbRow = findServiceRow(rows, { name: knowledgeService.name, aliases: knowledgeService.aliases });
+  if (!dbRow) {
+    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+  }
+
+  let sanitizedReply = replyText;
+  const mismatches = [];
+
+  const priceMentions = extractConcreteRupiahMentions(sanitizedReply);
+  if (priceMentions.length === 1 && typeof dbRow.price === 'number' && dbRow.price > 0
+    && priceMentions[0].numeric !== dbRow.price) {
+    const mention = priceMentions[0];
+    const correct = 'Rp' + dbRow.price.toLocaleString('id-ID');
+    sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
+      + sanitizedReply.slice(mention.index + mention.raw.length);
+    mismatches.push({
+      type: 'price', attempted: mention.numeric, expected: dbRow.price, serviceId: knowledgeService.id,
+    });
+  }
+
+  const durationMentions = extractDurationMentions(sanitizedReply);
+  if (durationMentions.length === 1 && typeof dbRow.duration_minutes === 'number' && dbRow.duration_minutes > 0
+    && durationMentions[0].numeric !== dbRow.duration_minutes) {
+    const mention = durationMentions[0];
+    const correct = String(dbRow.duration_minutes) + ' menit';
+    sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
+      + sanitizedReply.slice(mention.index + mention.raw.length);
+    mismatches.push({
+      type: 'duration', attempted: mention.numeric, expected: dbRow.duration_minutes, serviceId: knowledgeService.id,
+    });
+  }
+
+  return { sanitizedReply, blocked: mismatches.length > 0, mismatches };
+}
+
+// Narrow, temporally-scoped pattern for the reported incident ("Reddy
+// menyatakan pelanggan sudah melakukan kunjungan hari ini" while the
+// matchable booking was only `confirmed`). Deliberately requires a
+// same-day/just-now temporal marker so it does NOT fire on legitimate
+// CRM last-visit reporting ("terakhir kamu ke Redbox itu 11 Agustus"),
+// which is a different, already-correct code path (bookingStatusService).
+const VISIT_COMPLETION_TODAY_CLAIM_REGEX = new RegExp(
+  '\\b(sudah|udah)\\s+(datang|kesini|ke\\s*sini|melakukan\\s+kunjungan)\\b[^.!?\\n]{0,25}\\b(hari\\s+ini|tadi|barusan|sekarang)\\b'
+  + '|\\b(hari\\s+ini|tadi|barusan)\\b[^.!?\\n]{0,25}\\b(sudah|udah)\\s+(datang|kesini|ke\\s*sini)\\b'
+  + '|\\bkunjungan\\s+hari\\s+ini\\s+(sudah\\s+)?selesai\\b',
+  'i',
+);
+
+/**
+ * Blocks a same-day "customer has already visited/completed" claim unless
+ * the caller supplies backend-verified status === 'DONE' (bookings.status).
+ * A booking that is merely `confirmed` must never be restated as a
+ * completed visit (acceptance criterion: booking confirmed != kunjungan
+ * completed).
+ *
+ * @param {string} replyText
+ * @param {{ verifiedBookingStatus?: string }} options
+ */
+function guardVisitCompletionOverclaim(replyText, options = {}) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, blocked: false };
+  }
+  const verifiedStatus = String(options.verifiedBookingStatus || '').toUpperCase();
+  if (verifiedStatus === 'DONE') {
+    return { sanitizedReply: replyText, blocked: false };
+  }
+  if (!VISIT_COMPLETION_TODAY_CLAIM_REGEX.test(replyText)) {
+    return { sanitizedReply: replyText, blocked: false };
+  }
+  return {
+    sanitizedReply: 'Soal kunjungan hari ini, aku belum bisa mastiin statusnya selesai dari data resmi ya, '
+      + 'Kak — booking kamu yang bisa aku cocokkan masih belum tercatat selesai di sistem.',
+    blocked: true,
+  };
+}
+
+// Targeted fix for the reported "URL kadang terpecah menjadi beberapa baris"
+// bug (e.g. "redboxbarbershop.\ncom/booking.\nhtml?branch=sumber"). Scoped to
+// the one official domain Reddy ever links to, matching this codebase's
+// existing pattern of hardcoding known-good values rather than a generic
+// (and much more error-prone) URL-reflow parser.
+//
+// Built fresh per call (not a module-level constant) because a global-flag
+// RegExp is stateful (lastIndex) — sharing one instance across concurrent
+// guard calls would corrupt matching.
+function bookingUrlBreakPattern() {
+  return /(redboxbarbershop|booking)(\.)\s*[\r\n]+\s*(com|html)/gi;
+}
+
+/**
+ * Rejoins a booking URL that was split across a line break before send.
+ * @param {string} replyText
+ */
+function guardBookingUrlIntegrity(replyText) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, corrected: false };
+  }
+  const sanitizedReply = replyText.replace(bookingUrlBreakPattern(), '$1$2$3');
+  return { sanitizedReply, corrected: sanitizedReply !== replyText };
+}
+
 module.exports = {
   FORBIDDEN_ADDRESS_TERMS_REGEX,
   extractFirstName,
@@ -290,4 +502,8 @@ module.exports = {
   guardPricePlaceholders,
   defaultServicePriceResolver,
   classifyBranchPriceAuthority,
+  guardFactualServiceNumbers,
+  guardVisitCompletionOverclaim,
+  guardBookingUrlIntegrity,
+  resolveServiceIdentity,
 };

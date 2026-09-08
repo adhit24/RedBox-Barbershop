@@ -11,12 +11,14 @@ import {
   getTransfer,
   getAssetDashboard,
   getServiceUsage,
+  getMokaSyncStatus,
   type InventoryBalance,
   type StockTransfer,
   type StockTransferItem,
   type StockistAssetDashboard,
   type AssetLocationSummary,
-  type ServiceUsage
+  type ServiceUsage,
+  type MokaSyncOutletStatus
 } from '@/lib/stockistApi';
 import { StatCard } from '@/components/stockist/StatCard';
 import { LocationCard } from '@/components/stockist/LocationCard';
@@ -128,12 +130,52 @@ function toProductAttentionRows(items: StockistAssetDashboard['attention_items']
   }));
 }
 
+type MokaSyncSummary = {
+  status: 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED' | null;
+  lastSyncAt: string | null;
+  processed: number;
+  unmapped: number;
+  errors: number;
+};
+
+function summarizeMokaSync(outlets: MokaSyncOutletStatus[]): MokaSyncSummary {
+  if (outlets.length === 0) return { status: null, lastSyncAt: null, processed: 0, unmapped: 0, errors: 0 };
+  const statuses = outlets.map((o) => o.last_status);
+  const status: MokaSyncSummary['status'] = statuses.includes('FAILED')
+    ? 'FAILED'
+    : statuses.includes('PARTIAL')
+    ? 'PARTIAL'
+    : statuses.every((s) => s === 'SUCCESS') ? 'SUCCESS' : (statuses.find((s) => s) ?? null);
+  const timestamps = outlets.map((o) => o.last_successful_sync_at).filter(Boolean) as string[];
+  const lastSyncAt = timestamps.length
+    ? timestamps.reduce((latest, t) => (new Date(t) > new Date(latest) ? t : latest))
+    : null;
+  return {
+    status,
+    lastSyncAt,
+    processed: outlets.reduce((sum, o) => sum + o.sales_applied, 0),
+    unmapped: outlets.reduce((sum, o) => sum + o.unmapped_items, 0),
+    errors: outlets.filter((o) => o.last_status === 'FAILED').length,
+  };
+}
+
+const MOKA_SYNC_STATUS_LABEL: Record<string, string> = {
+  SUCCESS: 'Berhasil', PARTIAL: 'Perlu Perhatian', FAILED: 'Gagal', RUNNING: 'Berjalan',
+};
+
+function formatSyncTime(iso: string | null): string {
+  if (!iso) return 'Belum pernah';
+  const date = new Date(iso);
+  return `${date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })} · ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')} WIB`;
+}
+
 function OwnerCommandCenter({ user }: { user: AppUser }) {
   const [assets, setAssets] = useState<StockistAssetDashboard | null>(null);
   const [activeProductCount, setActiveProductCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drillDown, setDrillDown] = useState<DrillDown>(null);
+  const [mokaSync, setMokaSync] = useState<MokaSyncOutletStatus[] | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -147,6 +189,10 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
         setError(err instanceof Error ? err.message : 'Gagal memuat command center');
       })
       .finally(() => setLoading(false));
+
+    // Secondary, non-blocking — Moka sync status must never break the
+    // asset dashboard itself if this call fails.
+    getMokaSyncStatus().then((data) => setMokaSync(data.outlets)).catch(() => setMokaSync([]));
   }, []);
 
   const totalStockUnits = assets ? assets.asset_by_location.reduce((sum, l) => sum + l.total_quantity, 0) : 0;
@@ -241,6 +287,45 @@ function OwnerCommandCenter({ user }: { user: AppUser }) {
               ]}
             />
           </motion.section>
+
+          {mokaSync && mokaSync.length > 0 && (() => {
+            const summary = summarizeMokaSync(mokaSync);
+            const tone = summary.status === 'FAILED' ? 'danger' : summary.status === 'PARTIAL' ? 'warning' : 'success';
+            const toneClass = tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-success';
+            return (
+              <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
+                <Link
+                  href="/admin/stockist/moka-sync"
+                  className="bg-surface-elevated border border-border-base rounded-xl p-4 flex flex-col gap-2.5 active:scale-[0.99] transition-transform"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[13px] font-bold text-text-primary flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[16px]">sync</span>
+                      Sinkronisasi Moka
+                    </h3>
+                    <span className={`text-[11px] font-semibold ${toneClass}`}>
+                      {summary.status ? MOKA_SYNC_STATUS_LABEL[summary.status] : 'Belum sync'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-text-muted">Last Sync: {formatSyncTime(summary.lastSyncAt)}</p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <div className="text-[16px] font-bold text-text-primary tabular-nums">{summary.processed}</div>
+                      <div className="text-[9px] text-text-muted uppercase tracking-wide">Diproses</div>
+                    </div>
+                    <div>
+                      <div className={`text-[16px] font-bold tabular-nums ${summary.unmapped > 0 ? 'text-warning' : 'text-text-primary'}`}>{summary.unmapped}</div>
+                      <div className="text-[9px] text-text-muted uppercase tracking-wide">Unmapped</div>
+                    </div>
+                    <div>
+                      <div className={`text-[16px] font-bold tabular-nums ${summary.errors > 0 ? 'text-danger' : 'text-text-primary'}`}>{summary.errors}</div>
+                      <div className="text-[9px] text-text-muted uppercase tracking-wide">Errors</div>
+                    </div>
+                  </div>
+                </Link>
+              </motion.section>
+            );
+          })()}
 
           <motion.section variants={fadeSlideItem} className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between px-1">

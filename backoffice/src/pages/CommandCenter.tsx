@@ -567,7 +567,8 @@ export function CommandCenter() {
               <>
                 <div className="flex flex-col">
                   {visibleTimeline.map((log, i) => {
-                    const dotColor = log.status === 'ok' ? TINT.green.fg : TINT.red.fg;
+                    const isOk = log.status === 'success' || log.status === 'ok';
+                    const dotColor = isOk ? TINT.green.fg : TINT.red.fg;
                     const isLast = i === visibleTimeline.length - 1;
                     return (
                       <div key={log.id} className="flex gap-3.5">

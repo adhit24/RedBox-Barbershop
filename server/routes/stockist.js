@@ -1869,6 +1869,85 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
     });
   });
 
+  // ─── MOKA SYNC STATUS (Owner Dashboard card + reconciliation) ─
+  // Reads the per-outlet snapshot maintained by server/moka/txSync.js on
+  // every sync run. Deliberately narrow: just enough for "Last Sync /
+  // Status / Processed / Unmapped / Errors" — deeper history already lives
+  // in moka_stockist_sales / moka_stockist_sale_items / inventory_ledger.
+  router.get('/dashboard/moka-sync', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can view Moka sync status' });
+    }
+
+    const [{ data: syncStates, error: syncError }, { data: outlets, error: outletsError }, { data: openAnomalies, error: anomaliesError }] = await Promise.all([
+      supabase.from('moka_stockist_sync_state').select('*'),
+      supabase.from('outlets').select('id, name, slug'),
+      supabase.from('moka_stockist_anomalies').select('id, outlet_id, anomaly_type').eq('status', 'OPEN'),
+    ]);
+    if (syncError) return res.status(500).json({ error: syncError.message });
+    if (outletsError) return res.status(500).json({ error: outletsError.message });
+    if (anomaliesError) return res.status(500).json({ error: anomaliesError.message });
+
+    const outletById = new Map((outlets || []).map((o) => [o.id, o]));
+    const anomalyCountByOutlet = new Map();
+    for (const anomaly of openAnomalies || []) {
+      anomalyCountByOutlet.set(anomaly.outlet_id, (anomalyCountByOutlet.get(anomaly.outlet_id) || 0) + 1);
+    }
+
+    const rows = (syncStates || []).map((state) => {
+      const outlet = outletById.get(state.outlet_id);
+      const stats = state.last_run_stats || {};
+      return {
+        outlet_id: state.outlet_id,
+        outlet_name: outlet?.name || outlet?.slug || state.outlet_id,
+        last_status: state.last_status,
+        last_successful_sync_at: state.last_successful_sync_at,
+        last_started_at: state.last_started_at,
+        last_error: state.last_error,
+        sales_fetched: stats.fetched || 0,
+        sales_applied: stats.processed || 0,
+        sales_skipped_duplicate: stats.skipped_duplicate || 0,
+        unmapped_items: stats.unmapped || 0,
+        qty_deducted: stats.qty_deducted || 0,
+        open_anomalies: anomalyCountByOutlet.get(state.outlet_id) || 0,
+      };
+    });
+
+    return res.json({ outlets: rows });
+  });
+
+  // ─── MOKA SYNC ANOMALIES (unmapped items, negative-stock risk, etc.) ─
+  router.get('/moka-sync/anomalies', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+    if (access.role !== 'owner') {
+      return res.status(403).json({ error: 'only owner can view Moka sync anomalies' });
+    }
+
+    const status = ['OPEN', 'RESOLVED', 'IGNORED'].includes(req.query.status) ? req.query.status : 'OPEN';
+    let query = supabase.from('moka_stockist_anomalies').select('*').eq('status', status).order('created_at', { ascending: false }).limit(200);
+    if (req.query.outlet_id) query = query.eq('outlet_id', req.query.outlet_id);
+    const { data: anomalies, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    const [{ data: outlets }, { data: products }] = await Promise.all([
+      supabase.from('outlets').select('id, name, slug'),
+      supabase.from('products').select('id, name, sku'),
+    ]);
+    const outletById = new Map((outlets || []).map((o) => [o.id, o]));
+    const productById = new Map((products || []).map((p) => [p.id, p]));
+
+    const enriched = (anomalies || []).map((a) => ({
+      ...a,
+      outlet_name: outletById.get(a.outlet_id)?.name || outletById.get(a.outlet_id)?.slug || a.outlet_id,
+      product_name: a.product_id ? (productById.get(a.product_id)?.name || a.product_id) : null,
+    }));
+
+    return res.json({ anomalies: enriched });
+  });
+
   // ─── ASSET-FIRST DASHBOARD ────────────────────────────────────
   router.get(['/dashboard/assets', '/dashboard/owner'], adminAuth, async (req, res) => {
     const access = requireAccess(req, res);

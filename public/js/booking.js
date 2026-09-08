@@ -2239,84 +2239,127 @@ document.addEventListener('DOMContentLoaded', async () => {
  // the stale pre-submit `totalPrice` once the loop finishes successfully.
  const bookingResults = [];
 
+ // P2-B3 & P2-B5: Generate or preserve unique request IDs for safe retries
+ if (!state.booking_request_id) {
+ state.booking_request_id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+ ? crypto.randomUUID()
+ : '00000000-0000-4000-8000-' + String(Date.now()).slice(-12).padStart(12, '0');
+ }
+ if (isGroup() && !state.group_request_id) {
+ state.group_request_id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+ ? crypto.randomUUID()
+ : '11111111-1111-4000-8000-' + String(Date.now()).slice(-12).padStart(12, '0');
+ }
+
  if (USE_API) {
  try {
- // Forward the OTP-verified member session so the server can confirm the
- // person submitting this booking is really the member on the phone
- // number entered (see server/index.js's MEMBER_LOGIN_REQUIRED guard).
  const memberToken = localStorage.getItem('rb_member_token');
  const requestHeaders = { 'Content-Type': 'application/json' };
  if (memberToken) {
  requestHeaders.Authorization = 'Bearer ' + memberToken;
  }
- // POST sequentially so conflicts on the 2nd booking can be detected per-row
- for (let i = 0; i < payloads.length; i++) {
- const res = await fetch(API_URL + '/bookings', {
+
+ let res;
+ if (isGroup()) {
+ // P2-B5: All-or-nothing atomic group booking endpoint
+ res = await fetch(API_URL + '/bookings/group', {
  method: 'POST',
  headers: requestHeaders,
- body: JSON.stringify(payloads[i])
+ body: JSON.stringify({
+ group_request_id: state.group_request_id,
+ turnstileToken,
+ items: payloads,
+ }),
  });
-		 if (!res.ok) {
-		 const errData = await res.json().catch(() => ({}));
-		 if (res.status === 409) {
-		 alert('Mohon maaf' + (isGroup() ? ' (booking orang ' + (i + 1) + ')' : '') + ': ' + (errData.error || 'slot bentrok'));
-		 goToStep(3);
-		 return;
-		 }
-
-		 // Beri panduan yang bisa langsung diikuti pelanggan saat benefit
-		 // membership ditolak oleh verifikasi identitas server.
-		 if (errData.code === 'MEMBER_LOGIN_REQUIRED') {
-		 alert(`Booking belum dapat disimpan.
-
-Benefit Silver, Gold, dan Platinum hanya bisa digunakan setelah login member melalui OTP.
-
-Langkah:
-1. Tutup pesan ini.
-2. Buka menu Member lalu pilih Login via OTP.
-3. Masukkan nomor WhatsApp yang terdaftar sebagai member.
-4. Verifikasi OTP, lalu kembali ke halaman booking.
-5. Pastikan nomor WhatsApp booking sama dengan nomor yang dipakai login.
-
-Jika tidak ingin menggunakan benefit member, hapus atau ganti nomor member pada form booking.`);
-		 return;
-		 }
-
-		 if (errData.code === 'MEMBER_IDENTITY_MISMATCH') {
-		 alert(`Booking belum dapat disimpan karena data member belum cocok.
-
-Untuk benefit Silver, Gold, dan Platinum, nama booking harus sama persis dengan nama member yang terdaftar untuk nomor WhatsApp tersebut.
-
-Langkah:
-1. Tutup pesan ini.
-2. Periksa nomor WhatsApp pada form booking.
-3. Isi nama lengkap persis seperti nama saat mendaftar member.
-4. Jika belum login, masuk melalui menu Member > Login via OTP.
-5. Kirim booking kembali.
-
-Jika nama terdaftar sudah benar tetapi tetap ditolak, hubungi admin RedBox untuk memeriksa data membership. Jangan mengulang pembayaran sebelum booking berhasil tersimpan.`);
-		 return;
-		 }
-
-		 alert('Booking gagal disimpan ke server: ' + (errData.error || 'Server error'));
-		 return;
-		 }
- const resBody = await res.json().catch(() => null);
- if (resBody?.data) bookingResults.push(resBody.data);
+ } else {
+ // P2-B2 & P2-B3: Single canonical atomic booking endpoint
+ res = await fetch(API_URL + '/bookings', {
+ method: 'POST',
+ headers: requestHeaders,
+ body: JSON.stringify({
+ ...payloads[0],
+ booking_request_id: state.booking_request_id,
+ turnstileToken,
+ }),
+ });
  }
- console.log('Booking synced to Supabase');
+
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}));
+
+ // 403: Turnstile bot verification failed
+ if (res.status === 403) {
+ alert('Verifikasi keamanan bot gagal atau sesi telah kadaluarsa. Silakan verifikasi ulang checkbox keamanan atau muat ulang halaman.');
+ if (typeof turnstile !== 'undefined') turnstile.reset();
+ return;
+ }
+
+ // 409: Slot conflict or idempotency conflict
+ if (res.status === 409) {
+ if (errData.code === 'IDEMPOTENCY_KEY_REUSED') {
+ alert('Permintaan booking ini bentrok dengan request lain. Silakan coba kembali.');
+ return;
+ }
+ const personNotice = (isGroup() && errData.conflictIndex !== undefined)
+ ? ' (booking orang ke-' + (errData.conflictIndex + 1) + ')'
+ : '';
+ alert('Mohon maaf' + personNotice + ': ' + (errData.error || 'Jadwal kapster pada jam tersebut sudah terisi atau bentrok. Silakan pilih jam lain.'));
+ goToStep(3);
+ return;
+ }
+
+ // 400/401: Membership identity gates
+ if (errData.code === 'MEMBER_LOGIN_REQUIRED') {
+ alert('Booking belum dapat disimpan.\n\nBenefit Silver, Gold, dan Platinum hanya bisa digunakan setelah login member melalui OTP.\n\nLangkah:\n1. Tutup pesan ini.\n2. Buka menu Member lalu pilih Login via OTP.\n3. Masukkan nomor WhatsApp yang terdaftar sebagai member.\n4. Verifikasi OTP, lalu kembali ke halaman booking.\n5. Pastikan nomor WhatsApp booking sama dengan nomor yang dipakai login.');
+ return;
+ }
+
+ if (errData.code === 'MEMBER_IDENTITY_MISMATCH') {
+ alert('Booking belum dapat disimpan karena data member belum cocok.\n\nUntuk benefit Silver, Gold, dan Platinum, nama booking harus sama persis dengan nama member yang terdaftar untuk nomor WhatsApp tersebut.\n\nLangkah:\n1. Tutup pesan ini.\n2. Periksa nomor WhatsApp pada form booking.\n3. Isi nama lengkap persis seperti nama saat mendaftar member.\n4. Kirim booking kembali.');
+ return;
+ }
+
+ // 429: Rate limit
+ if (res.status === 429) {
+ alert('Terlalu banyak permintaan dalam waktu singkat. Silakan tunggu 1 menit lalu coba lagi.');
+ return;
+ }
+
+ // 5xx: Server error
+ alert('Booking belum dapat disimpan ke server: ' + (errData.error || 'Terjadi kendala pada server, silakan coba lagi.'));
+ return;
+ }
+
+ const resBody = await res.json().catch(() => null);
+
+ if (isGroup()) {
+ if (!resBody?.bookings || !resBody.bookings.length || !resBody?.scheduleIds) {
+ alert('Booking grup belum berhasil dibuat sepenuhnya. Silakan coba lagi atau hubungi admin Redbox.');
+ return;
+ }
+ bookingResults.push(...resBody.bookings);
+ } else {
+ if (!resBody?.data?.id || !resBody?.scheduleId) {
+ alert('Booking belum berhasil dibuat sepenuhnya. Silakan coba lagi atau hubungi admin Redbox.');
+ return;
+ }
+ bookingResults.push(resBody.data);
+ }
+
+ console.log('Booking synced to Supabase atomically');
  savedToApi = true;
+ // Reset intent IDs on successful completion
+ state.booking_request_id = null;
+ state.group_request_id = null;
  } catch(e) {
  console.warn('API sync failed', e);
- }
-
- if (!savedToApi) {
- alert('Koneksi ke server gagal. Silakan cek koneksi internet dan coba lagi.');
+ // P2-B4 Truthful UX: Do not declare false booking failure when network times out
+ alert('Koneksi terputus saat mengecek hasil booking. Silakan coba lagi — sistem akan memastikan booking tidak dibuat dua kali.');
  return;
  }
  }
 
- // The server recomputes the tier discount authoritatively and stores the
+  // The server recomputes the tier discount authoritatively and stores the
  // real charged price per row — use the sum of those (when available)
  // instead of the pre-submit `totalPrice`, which never reflects a discount.
 	 const realTotal = (savedToApi && bookingResults.length === payloads.length)

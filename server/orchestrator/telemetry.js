@@ -460,6 +460,70 @@ function logTransactionLinkageEvent(event = {}) {
   return safe;
 }
 
+// Reddy reliability round 2 — factual outbound guard telemetry. Its own
+// small allowlist schema, same rationale as every other block above: fires
+// from server/services/waOutboundGuard.js's factual guards (live-DB price/
+// duration mismatch, same-day visit-completion overclaim, booking URL
+// integrity). Deliberately its own family (not folded into
+// sanitizeAntiSpamTelemetry, whose allowlist does not carry these event
+// types and would otherwise silently drop them as 'unknown' — see
+// price_placeholder_blocked, which had exactly that bug). No message
+// content, no phone numbers — only the service id and the two numeric
+// values (attempted vs. expected) needed to audit the correction.
+const ALLOWED_FACTUAL_GUARD_EVENTS = new Set([
+  'price_placeholder_blocked',
+  'factual_price_mismatch_blocked',
+  'factual_duration_mismatch_blocked',
+  'visit_completion_overclaim_blocked',
+  'booking_url_integrity_corrected',
+]);
+
+function sanitizeFactualGuardTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_FACTUAL_GUARD_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : 'unknown',
+    service_id: typeof event.service_id === 'string' ? event.service_id.slice(0, 64) : null,
+    attempted_value: (typeof event.attempted_value === 'string' || typeof event.attempted_value === 'number')
+      ? String(event.attempted_value).slice(0, 32) : null,
+    expected_value: (typeof event.expected_value === 'string' || typeof event.expected_value === 'number')
+      ? String(event.expected_value).slice(0, 32) : null,
+  };
+}
+
+function logFactualGuardEvent(event = {}) {
+  const safe = sanitizeFactualGuardTelemetry(event);
+  console.log('[FactualGuardTelemetry]', JSON.stringify(safe));
+  observeTelemetry('factual_guard', safe);
+  return safe;
+}
+
+// Reddy reliability round 2 — conversation-history persistence observability.
+// wa_conversations.history writes are fire-and-forget relative to the
+// customer-facing send (see api/wa/webhook.js persistConversationExchange) to
+// avoid adding latency to the outbound reply; previously a failure only ever
+// reached a console.warn, invisible outside live server logs. This makes a
+// failed history write observable in reddy_evaluation_events, correlated by
+// correlation_id, without changing the fire-and-forget behavior itself.
+const ALLOWED_HISTORY_PERSISTENCE_EVENTS = new Set(['history_persistence_failed']);
+
+function sanitizeHistoryPersistenceTelemetry(event = {}) {
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: ALLOWED_HISTORY_PERSISTENCE_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : 'unknown',
+    correlation_id: typeof event.correlation_id === 'string' && /^req_[a-zA-Z0-9_-]+$/.test(event.correlation_id)
+      ? event.correlation_id.slice(0, 100) : null,
+  };
+}
+
+function logHistoryPersistenceEvent(event = {}) {
+  const safe = sanitizeHistoryPersistenceTelemetry(event);
+  console.log('[HistoryPersistenceTelemetry]', JSON.stringify(safe));
+  observeTelemetry('history_persistence', safe);
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
@@ -470,6 +534,8 @@ module.exports = {
   sanitizeBookingLinkageTelemetry, logBookingLinkageEvent,
   sanitizeInboundLifecycleTelemetry, logInboundLifecycleEvent,
   sanitizeTransactionLinkageTelemetry, logTransactionLinkageEvent,
+  sanitizeFactualGuardTelemetry, logFactualGuardEvent,
+  sanitizeHistoryPersistenceTelemetry, logHistoryPersistenceEvent,
   ALLOWED_INBOUND_LIFECYCLE_REASONS,
 };
 

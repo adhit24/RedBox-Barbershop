@@ -81,7 +81,15 @@ async function applyInventoryMovement(supabase, {
     p_reference_id: referenceId,
     p_reason: reason,
   });
-  if (error) throw new Error(error.message || 'inventory movement failed');
+  if (error) {
+    // apply_inventory_movement() RAISEs with ERRCODE 23514 specifically for
+    // the negative-stock guard — tag it so callers (e.g. the Moka sales
+    // bridge) can route it to an explicit NEGATIVE_STOCK_RISK anomaly
+    // instead of a generic failure.
+    const wrapped = new Error(error.message || 'inventory movement failed');
+    if (error.code === '23514') wrapped.code = 'NEGATIVE_STOCK_RISK';
+    throw wrapped;
+  }
   return data;
 }
 

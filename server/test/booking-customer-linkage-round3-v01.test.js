@@ -225,7 +225,10 @@ test('16. conditional update never overwrites an already-linked booking (WHERE c
 // ── 11-12: reschedule/cancel never touch customer_id (source-level guarantee) ──
 
 test('11. reschedule handler never writes customer_id', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../routes/adminCrm.js'), 'utf8');
+  const crmPath = fs.existsSync(path.join(__dirname, '../routes/adminCrmLegacy.js'))
+    ? path.join(__dirname, '../routes/adminCrmLegacy.js')
+    : path.join(__dirname, '../routes/adminCrm.js');
+  const source = fs.readFileSync(crmPath, 'utf8');
   const start = source.indexOf("router.post('/booking/reschedule'");
   const end = source.indexOf("router.post(", start + 1);
   assert.notEqual(start, -1, 'reschedule route must exist');
@@ -243,7 +246,10 @@ test('12. cancel/confirm/deny (POST /api/booking-status) handler never writes cu
 });
 
 test('reassign-barber handler never writes customer_id', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../routes/adminCrm.js'), 'utf8');
+  const crmPath = fs.existsSync(path.join(__dirname, '../routes/adminCrmLegacy.js'))
+    ? path.join(__dirname, '../routes/adminCrmLegacy.js')
+    : path.join(__dirname, '../routes/adminCrm.js');
+  const source = fs.readFileSync(crmPath, 'utf8');
   const start = source.indexOf("router.post('/booking/reassign'");
   const end = source.indexOf("router.post(", start + 1);
   assert.notEqual(start, -1);

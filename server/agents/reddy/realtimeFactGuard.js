@@ -314,6 +314,67 @@ function buildSafeStatement(verifiedSchedule, {
 }
 
 /**
+ * Location and Payment Method Fact Guard (P1-D, P1-E).
+ * Performs sentence-level sanitization for unverified floor/unit details and unverified QRIS/payment claims.
+ */
+function guardLocationAndPaymentFacts(reply) {
+  if (typeof reply !== 'string' || !reply.trim()) {
+    return { sanitizedReply: reply, triggered: false };
+  }
+
+  let sanitized = reply;
+  let triggered = false;
+
+  // Unverified floor/unit details guard (CSB street address allowed, "lantai dasar"/unit details blocked)
+  const UNSUPPORTED_FLOOR_PATTERNS = [
+    /,\s*(?:di\s+)?lantai\s+(?:dasar|lg|ug|[0-9]+)\b/gi,
+    /\b(?:di\s+)?lantai\s+(?:dasar|lg|ug|[0-9]+)\s*,?/gi,
+    /\bground\s+floor\s*,?/gi,
+    /\bunit\s*(?:no\.?|#)?\s*[0-9A-Z]+\s*,?/gi,
+  ];
+
+  for (const pattern of UNSUPPORTED_FLOOR_PATTERNS) {
+    if (pattern.test(sanitized)) {
+      sanitized = sanitized.replace(pattern, '').replace(/\s{2,}/g, ' ').trim();
+      triggered = true;
+    }
+  }
+
+  // Unverified payment method claim patterns (natural Indonesian forms)
+  const UNVERIFIED_PAYMENT_PATTERNS = [
+    /\b(?:bisa\s+bayar\s+pakai|bisa\s+pakai|bisa\s+bayar|terima|diterima)\s+(?:qris|qr|debit|kartu|cashless|gopay|ovo|dana|shopeepay)\b/i,
+    /\b(?:qris|qr\s*code|qr|debit|kartu\s*kredit|kartu\s*debit|cashless)\s+(?:tersedia|bisa|diterima|bisa\s+pakai)\b/i,
+    /\bterima\s+qris\b/i,
+    /\bpembayaran\s+debit\s+bisa\b/i,
+  ];
+
+  const sentences = splitIntoSentences(sanitized);
+  let paymentTriggered = false;
+
+  const sanitizedSentences = sentences.map((sentence) => {
+    const isViolating = UNVERIFIED_PAYMENT_PATTERNS.some((p) => p.test(sentence));
+    if (isViolating) {
+      paymentTriggered = true;
+      triggered = true;
+      return 'Untuk metode pembayaran yang tersedia saat ini, aku belum punya data resmi per cabang. Tim cabang bisa konfirmasi langsung.';
+    }
+    return sentence;
+  });
+
+  if (paymentTriggered) {
+    // Deduplicate replacement sentence if multiple sentences triggered
+    const unique = [];
+    for (const s of sanitizedSentences) {
+      if (s.includes('Untuk metode pembayaran yang tersedia saat ini') && unique.includes(s)) continue;
+      unique.push(s);
+    }
+    sanitized = unique.join('\n').trim();
+  }
+
+  return { sanitizedReply: sanitized, triggered };
+}
+
+/**
  * @param {string} reply - model-generated text, already past other guards
  * @param {object} options
  * @param {{barberName:string, status:'scheduled'|'not_scheduled', date:string}|null} options.verifiedSchedule
@@ -332,7 +393,12 @@ function guardRealtimeBarberFacts(reply, options = {}) {
     return { sanitizedReply: reply, triggered: false };
   }
 
-  const sentences = splitIntoSentences(reply);
+  // First apply location and payment fact boundaries
+  const locPayGuard = guardLocationAndPaymentFacts(reply);
+  let workingReply = locPayGuard.sanitizedReply;
+  let locPayTriggered = locPayGuard.triggered;
+
+  const sentences = splitIntoSentences(workingReply);
   const boundBarberNames = [...knownBarberNames, verifiedSchedule?.barberName].filter(Boolean);
   const violatingSentences = forceSafeResponse
     ? sentences
@@ -343,7 +409,7 @@ function guardRealtimeBarberFacts(reply, options = {}) {
     ));
 
   if (violatingSentences.length === 0) {
-    return { sanitizedReply: reply, triggered: false };
+    return { sanitizedReply: workingReply, triggered: locPayTriggered };
   }
 
   const namedClaimTypes = sentences.map((sentence) => namedBarberClaimType(sentence, boundBarberNames));
@@ -369,6 +435,7 @@ function guardRealtimeBarberFacts(reply, options = {}) {
 
 module.exports = {
   guardRealtimeBarberFacts,
+  guardLocationAndPaymentFacts,
   ATTENDANCE_PATTERNS,
   AVAILABILITY_PATTERNS,
   PRESENCE_TODAY_PATTERNS,
