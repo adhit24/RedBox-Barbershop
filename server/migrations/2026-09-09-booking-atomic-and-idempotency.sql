@@ -65,8 +65,10 @@ DECLARE
   v_inserted_booking RECORD;
   v_dur_match TEXT[];
 BEGIN
-  -- 1. Idempotency check via p_booking_request_id
+  -- 1. Idempotency concurrency lock & material parity check via p_booking_request_id
   IF p_booking_request_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(('x' || substr(md5('booking_request:' || p_booking_request_id::text), 1, 16))::bit(64)::bigint);
+
     SELECT b.*, s.id AS linked_schedule_id, s.status AS linked_schedule_status
     INTO v_existing_booking
     FROM bookings b

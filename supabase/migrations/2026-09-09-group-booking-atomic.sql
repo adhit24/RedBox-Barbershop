@@ -1,4 +1,4 @@
--- supabase/migrations/2026-09-09-group-booking-atomic.sql
+-- server/migrations/2026-09-09-group-booking-atomic.sql
 -- P2-B5: Atomic Group Booking (All-or-Nothing Transaction)
 
 CREATE OR REPLACE FUNCTION public.create_group_booking_atomic(
@@ -19,8 +19,8 @@ DECLARE
   v_item_id UUID;
   v_item_request_id UUID;
   v_existing_count INTEGER;
-  v_incoming_count INTEGER;
-  v_match_count INTEGER;
+  v_canonical_incoming JSONB;
+  v_canonical_existing JSONB;
 BEGIN
   IF p_group_request_id IS NULL THEN
     RAISE EXCEPTION 'GROUP_REQUEST_ID_REQUIRED' USING ERRCODE = '22023';
@@ -30,32 +30,96 @@ BEGIN
     RAISE EXCEPTION 'GROUP_ITEMS_REQUIRED' USING ERRCODE = '22023';
   END IF;
 
-  -- 1. Idempotency check on group_request_id with material item parity
+  -- 1. Idempotency concurrency lock on group_request_id with 1:1 canonical multiset parity
   IF p_group_request_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(('x' || substr(md5('group_booking_request:' || p_group_request_id::text), 1, 16))::bit(64)::bigint);
+
     SELECT count(*) INTO v_existing_count
     FROM bookings
     WHERE group_request_id = p_group_request_id;
 
     IF v_existing_count > 0 THEN
-      v_incoming_count := jsonb_array_length(p_items);
-      IF v_existing_count <> v_incoming_count THEN
-        RAISE EXCEPTION 'IDEMPOTENCY_KEY_REUSED' USING ERRCODE = '23505';
-      END IF;
+      -- Build deterministically sorted canonical JSON representation for incoming items
+      SELECT COALESCE(
+        jsonb_agg(
+          jsonb_build_object(
+            'barber_id', COALESCE(elem->>'barber_id', ''),
+            'date', (elem->>'date')::date::text,
+            'discount_label', COALESCE(elem->>'discount_label', ''),
+            'duration', COALESCE(elem->>'duration', '30'),
+            'location', COALESCE(elem->>'location', 'bypass'),
+            'notes', COALESCE(elem->>'notes', ''),
+            'original_price', CASE WHEN elem ? 'original_price' AND elem->>'original_price' IS NOT NULL THEN (elem->>'original_price')::integer ELSE NULL END,
+            'payment', COALESCE(elem->>'payment', ''),
+            'price', COALESCE((elem->>'price')::integer, 0),
+            'service', elem->>'service',
+            'service_id', COALESCE(elem->>'service_id', ''),
+            'time', (elem->>'time')::time::text,
+            'type', COALESCE(elem->>'type', 'outlet'),
+            'wa', elem->>'wa'
+          )
+          ORDER BY
+            elem->>'wa',
+            (elem->>'date')::date,
+            (elem->>'time')::time,
+            COALESCE(elem->>'barber_id', ''),
+            elem->>'service',
+            COALESCE((elem->>'price')::integer, 0),
+            COALESCE(elem->>'service_id', ''),
+            COALESCE(elem->>'duration', '30'),
+            COALESCE(elem->>'location', 'bypass'),
+            COALESCE(elem->>'type', 'outlet'),
+            COALESCE(elem->>'notes', ''),
+            COALESCE(elem->>'payment', ''),
+            COALESCE((elem->>'original_price')::integer, 0),
+            COALESCE(elem->>'discount_label', '')
+        ),
+        '[]'::jsonb
+      ) INTO v_canonical_incoming
+      FROM jsonb_array_elements(p_items) elem;
 
-      -- Check that every incoming item in p_items matches an existing booking row in the group
-      SELECT count(*) INTO v_match_count
-      FROM jsonb_array_elements(p_items) elem
-      JOIN bookings b ON b.group_request_id = p_group_request_id
-        AND b.wa = elem->>'wa'
-        AND b.service = elem->>'service'
-        AND b.price = COALESCE((elem->>'price')::integer, 0)
-        AND b.barber_id IS NOT DISTINCT FROM (elem->>'barber_id')
-        AND b.date = (elem->>'date')::date
-        AND b.time = (elem->>'time')::time
-        AND b.location IS NOT DISTINCT FROM (elem->>'location')
-        AND b.duration IS NOT DISTINCT FROM (elem->>'duration');
+      -- Build deterministically sorted canonical JSON representation for existing bookings
+      SELECT COALESCE(
+        jsonb_agg(
+          jsonb_build_object(
+            'barber_id', COALESCE(b.barber_id::text, ''),
+            'date', b.date::text,
+            'discount_label', COALESCE(b.discount_label, ''),
+            'duration', COALESCE(b.duration, '30'),
+            'location', COALESCE(b.location, 'bypass'),
+            'notes', COALESCE(b.notes, ''),
+            'original_price', b.original_price,
+            'payment', COALESCE(b.payment, ''),
+            'price', COALESCE(b.price, 0),
+            'service', b.service,
+            'service_id', COALESCE(b.service_id, ''),
+            'time', b.time::text,
+            'type', COALESCE(b.type, 'outlet'),
+            'wa', b.wa
+          )
+          ORDER BY
+            b.wa,
+            b.date,
+            b.time,
+            COALESCE(b.barber_id::text, ''),
+            b.service,
+            COALESCE(b.price, 0),
+            COALESCE(b.service_id, ''),
+            COALESCE(b.duration, '30'),
+            COALESCE(b.location, 'bypass'),
+            COALESCE(b.type, 'outlet'),
+            COALESCE(b.notes, ''),
+            COALESCE(b.payment, ''),
+            COALESCE(b.original_price, 0),
+            COALESCE(b.discount_label, '')
+        ),
+        '[]'::jsonb
+      ) INTO v_canonical_existing
+      FROM bookings b
+      WHERE b.group_request_id = p_group_request_id;
 
-      IF v_match_count = v_incoming_count THEN
+      -- Direct 1:1 multiset comparison
+      IF v_canonical_incoming = v_canonical_existing THEN
         SELECT jsonb_agg(
           jsonb_build_object(
             'booking_id', b.id,
@@ -74,7 +138,7 @@ BEGIN
           'items', v_existing_bookings
         );
       ELSE
-        -- Group key reused with different items/services/barbers -> conflict
+        -- Group key reused with any material difference in items, fields, or duplicates
         RAISE EXCEPTION 'IDEMPOTENCY_KEY_REUSED' USING ERRCODE = '23505';
       END IF;
     END IF;

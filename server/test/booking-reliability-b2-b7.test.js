@@ -234,143 +234,224 @@ test('P2-B3: Migration enforces comprehensive material parity check on replay', 
   assert.match(migrationB2B3, /IDEMPOTENCY_KEY_REUSED/);
 });
 
-test('P2-B3: Migration create_booking_atomic handles concurrent race on unique_violation and resolves to replay', () => {
+test('P2-B3: Migration create_booking_atomic serializes same-key concurrency via advisory lock', () => {
+  assert.match(migrationB2B3, /pg_advisory_xact_lock/);
+  assert.match(migrationB2B3, /booking_request:/);
   assert.match(migrationB2B3, /WHEN unique_violation THEN/);
   assert.match(migrationB2B3, /DELETE FROM schedules WHERE id = v_schedule_id;/);
 });
 
-test('P2-B5: Migration create_group_booking_atomic enforces full material group parity across all items', () => {
-  assert.match(migrationB5, /v_existing_count <> v_incoming_count/);
-  assert.match(migrationB5, /b\.service = elem->>'service'/);
-  assert.match(migrationB5, /b\.price = COALESCE\(\(elem->>'price'\)::integer, 0\)/);
-  assert.match(migrationB5, /b\.barber_id IS NOT DISTINCT FROM \(elem->>'barber_id'\)/);
-  assert.match(migrationB5, /b\.date = \(elem->>'date'\)::date/);
-  assert.match(migrationB5, /b\.time = \(elem->>'time'\)::time/);
+test('P2-B5: Migration create_group_booking_atomic enforces advisory lock and 1:1 canonical multiset parity', () => {
+  assert.match(migrationB5, /pg_advisory_xact_lock/);
+  assert.match(migrationB5, /group_booking_request:/);
+  assert.match(migrationB5, /v_canonical_incoming = v_canonical_existing/);
+  assert.match(migrationB5, /IDEMPOTENCY_KEY_REUSED/);
 });
 
 function createSimulatedPostgresDb() {
   const bookingsDb = new Map();
   const groupBookingsDb = new Map();
+  const schedulesDb = new Map(); // key: `${barber_id}:${date}:${time}`
+  const advisoryLocks = new Map();
+
+  async function acquireAdvisoryLock(key) {
+    while (advisoryLocks.has(key)) {
+      await advisoryLocks.get(key);
+    }
+    let release;
+    const lockPromise = new Promise(resolve => { release = resolve; });
+    advisoryLocks.set(key, lockPromise);
+    return () => {
+      advisoryLocks.delete(key);
+      release();
+    };
+  }
+
+  function canonicalizeSingle(b) {
+    return {
+      wa: b.wa || '',
+      service: b.service || '',
+      service_id: b.service_id || '',
+      price: Number(b.price) || 0,
+      duration: String(b.duration || '30'),
+      barber_id: b.barber_id || '',
+      date: String(b.date || ''),
+      time: String(b.time || ''),
+      location: b.location || 'bypass',
+      type: b.type || 'outlet',
+      notes: b.notes || '',
+      payment: b.payment || '',
+      original_price: b.original_price !== undefined ? b.original_price : null,
+      discount_label: b.discount_label || '',
+    };
+  }
+
+  function canonicalizeGroupItems(items) {
+    const list = items.map(canonicalizeSingle);
+    list.sort((a, b) => {
+      const ka = `${a.wa}|${a.date}|${a.time}|${a.barber_id}|${a.service}|${a.price}|${a.service_id}|${a.duration}|${a.location}|${a.type}|${a.notes}|${a.payment}|${a.original_price}|${a.discount_label}`;
+      const kb = `${b.wa}|${b.date}|${b.time}|${b.barber_id}|${b.service}|${b.price}|${b.service_id}|${b.duration}|${b.location}|${b.type}|${b.notes}|${b.payment}|${b.original_price}|${b.discount_label}`;
+      return ka.localeCompare(kb);
+    });
+    return list;
+  }
 
   return {
     async rpc(fnName, params) {
       if (fnName === 'create_booking_atomic') {
         const reqId = params.p_booking_request_id;
-        if (reqId && bookingsDb.has(reqId)) {
-          const existing = bookingsDb.get(reqId);
-          const matches =
-            existing.wa === params.p_wa &&
-            existing.service === params.p_service &&
-            Number(existing.price) === (Number(params.p_price) || 0) &&
-            String(existing.duration || '') === String(params.p_duration || '') &&
-            String(existing.barber_id || '') === String(params.p_barber_id || '') &&
-            existing.date === params.p_date &&
-            existing.time === params.p_time &&
-            existing.location === params.p_location &&
-            String(existing.type || 'outlet') === String(params.p_type || 'outlet');
-
-          if (matches) {
-            return {
-              data: {
-                success: true,
-                replayed: true,
-                booking: existing,
-                booking_id: existing.id,
-                schedule_id: existing.schedule_id,
-              },
-              error: null,
-            };
-          } else {
-            return {
-              data: null,
-              error: { code: '23505', message: 'IDEMPOTENCY_KEY_REUSED' },
-            };
-          }
+        let releaseLock = () => {};
+        if (reqId) {
+          releaseLock = await acquireAdvisoryLock('booking:' + reqId);
         }
+        try {
+          if (reqId && bookingsDb.has(reqId)) {
+            const existing = bookingsDb.get(reqId);
+            const canonicalExisting = canonicalizeSingle(existing);
+            const canonicalIncoming = canonicalizeSingle({
+              wa: params.p_wa,
+              service: params.p_service,
+              service_id: params.p_service_id,
+              price: params.p_price,
+              duration: params.p_duration,
+              barber_id: params.p_barber_id,
+              date: params.p_date,
+              time: params.p_time,
+              location: params.p_location,
+              type: params.p_type,
+              notes: params.p_notes,
+              payment: params.p_payment,
+              original_price: params.p_original_price,
+              discount_label: params.p_discount_label,
+            });
 
-        const newBooking = {
-          id: params.p_booking_id || 'bk-' + Math.random().toString(36).slice(2),
-          booking_request_id: reqId,
-          wa: params.p_wa,
-          service: params.p_service,
-          price: Number(params.p_price) || 0,
-          duration: params.p_duration || '30',
-          barber_id: params.p_barber_id,
-          date: params.p_date,
-          time: params.p_time,
-          location: params.p_location,
-          type: params.p_type || 'outlet',
-          schedule_id: 'sch-' + Math.random().toString(36).slice(2),
-        };
-        if (reqId) bookingsDb.set(reqId, newBooking);
-        return {
-          data: {
-            success: true,
-            replayed: false,
-            booking: newBooking,
-            booking_id: newBooking.id,
-            schedule_id: newBooking.schedule_id,
-          },
-          error: null,
-        };
+            if (JSON.stringify(canonicalExisting) === JSON.stringify(canonicalIncoming)) {
+              return {
+                data: {
+                  success: true,
+                  replayed: true,
+                  booking: existing,
+                  booking_id: existing.id,
+                  schedule_id: existing.schedule_id,
+                },
+                error: null,
+              };
+            } else {
+              return {
+                data: null,
+                error: { code: '23505', message: 'IDEMPOTENCY_KEY_REUSED' },
+              };
+            }
+          }
+
+          // Slot conflict pre-check simulating Postgres GiST exclusion constraint (blocks concurrent inserts on same barber slot)
+          let releaseSlotLock = () => {};
+          if (params.p_barber_id && params.p_barber_id !== 'any') {
+            const slotKey = `${params.p_barber_id}:${params.p_date}:${params.p_time}`;
+            releaseSlotLock = await acquireAdvisoryLock('slot:' + slotKey);
+            if (schedulesDb.has(slotKey)) {
+              releaseSlotLock();
+              return {
+                data: null,
+                error: { code: '23P01', message: 'conflicts with existing schedule (no_barber_overlap)' },
+              };
+            }
+          }
+
+          // Simulate concurrent async execution delay
+          await new Promise(r => setTimeout(r, 5));
+
+          const newBooking = {
+            id: params.p_booking_id || 'bk-' + Math.random().toString(36).slice(2),
+            booking_request_id: reqId,
+            wa: params.p_wa,
+            service: params.p_service,
+            service_id: params.p_service_id || '',
+            price: Number(params.p_price) || 0,
+            duration: params.p_duration || '30',
+            barber_id: params.p_barber_id,
+            date: params.p_date,
+            time: params.p_time,
+            location: params.p_location,
+            type: params.p_type || 'outlet',
+            notes: params.p_notes || '',
+            payment: params.p_payment || '',
+            original_price: params.p_original_price !== undefined ? params.p_original_price : null,
+            discount_label: params.p_discount_label || null,
+            schedule_id: 'sch-' + Math.random().toString(36).slice(2),
+          };
+
+          if (reqId) bookingsDb.set(reqId, newBooking);
+          if (params.p_barber_id && params.p_barber_id !== 'any') {
+            const slotKey = `${params.p_barber_id}:${params.p_date}:${params.p_time}`;
+            schedulesDb.set(slotKey, newBooking.schedule_id);
+          }
+          releaseSlotLock();
+
+          return {
+            data: {
+              success: true,
+              replayed: false,
+              booking: newBooking,
+              booking_id: newBooking.id,
+              schedule_id: newBooking.schedule_id,
+            },
+            error: null,
+          };
+        } finally {
+          releaseLock();
+        }
       }
 
       if (fnName === 'create_group_booking_atomic') {
         const gId = params.p_group_request_id;
         const incomingItems = params.p_items || [];
-        if (gId && groupBookingsDb.has(gId)) {
-          const existingItems = groupBookingsDb.get(gId);
-          if (existingItems.length !== incomingItems.length) {
-            return { data: null, error: { code: '23505', message: 'IDEMPOTENCY_KEY_REUSED' } };
-          }
-          let allMatch = true;
-          for (let i = 0; i < incomingItems.length; i++) {
-            const inc = incomingItems[i];
-            const ex = existingItems[i];
-            if (
-              inc.wa !== ex.wa ||
-              inc.service !== ex.service ||
-              Number(inc.price || 0) !== Number(ex.price || 0) ||
-              inc.barber_id !== ex.barber_id ||
-              inc.date !== ex.date ||
-              inc.time !== ex.time ||
-              inc.location !== ex.location ||
-              String(inc.duration || '') !== String(ex.duration || '')
-            ) {
-              allMatch = false;
-              break;
+        let releaseLock = () => {};
+        if (gId) {
+          releaseLock = await acquireAdvisoryLock('group:' + gId);
+        }
+        try {
+          if (gId && groupBookingsDb.has(gId)) {
+            const existingItems = groupBookingsDb.get(gId);
+            const canonicalExisting = canonicalizeGroupItems(existingItems);
+            const canonicalIncoming = canonicalizeGroupItems(incomingItems);
+
+            if (JSON.stringify(canonicalExisting) === JSON.stringify(canonicalIncoming)) {
+              return {
+                data: {
+                  success: true,
+                  replayed: true,
+                  group_request_id: gId,
+                  items: existingItems,
+                },
+                error: null,
+              };
+            } else {
+              return { data: null, error: { code: '23505', message: 'IDEMPOTENCY_KEY_REUSED' } };
             }
           }
-          if (allMatch) {
-            return {
-              data: {
-                success: true,
-                replayed: true,
-                group_request_id: gId,
-                items: existingItems,
-              },
-              error: null,
-            };
-          } else {
-            return { data: null, error: { code: '23505', message: 'IDEMPOTENCY_KEY_REUSED' } };
-          }
-        }
 
-        const committed = incomingItems.map((item, idx) => ({
-          ...item,
-          id: 'bk-g-' + idx,
-          schedule_id: 'sch-g-' + idx,
-        }));
-        if (gId) groupBookingsDb.set(gId, committed);
-        return {
-          data: {
-            success: true,
-            replayed: false,
-            group_request_id: gId,
-            items: committed,
-          },
-          error: null,
-        };
+          // Simulate concurrent async execution delay
+          await new Promise(r => setTimeout(r, 5));
+
+          const committed = incomingItems.map((item, idx) => ({
+            ...item,
+            id: 'bk-g-' + idx,
+            schedule_id: 'sch-g-' + idx,
+          }));
+          if (gId) groupBookingsDb.set(gId, committed);
+          return {
+            data: {
+              success: true,
+              replayed: false,
+              group_request_id: gId,
+              items: committed,
+            },
+            error: null,
+          };
+        } finally {
+          releaseLock();
+        }
       }
       return { data: null, error: new Error('Unknown RPC ' + fnName) };
     },
@@ -762,6 +843,167 @@ test('P2-B3: Concurrency 14 - concurrent same key but different payload -> one b
 
   assert.equal(successCount, 1, 'Exactly one request succeeds');
   assert.equal(conflictCount, 1, 'Mismatched concurrent request returns 409');
+});
+
+test('P2-B3: Concurrency 15 - two concurrent different keys + same slot -> one create, one BOOKING_SLOT_CONFLICT', async () => {
+  const db = createSimulatedPostgresDb();
+  const payload1 = {
+    booking_request_id: '11111111-aaaa-bbbb-cccc-000000000001',
+    name: 'Customer 1',
+    wa: '081211111111',
+    service: 'Gentlemen Haircut',
+    price: 50000,
+    duration: '30',
+    barber_id: 'barber-alex',
+    date: '2026-09-12',
+    time: '14:00',
+    location: 'bypass',
+  };
+  const payload2 = {
+    booking_request_id: '22222222-aaaa-bbbb-cccc-000000000002', // different key
+    name: 'Customer 2',
+    wa: '081222222222',
+    service: 'Beard Trim',
+    price: 35000,
+    duration: '30',
+    barber_id: 'barber-alex', // same barber & slot
+    date: '2026-09-12',
+    time: '14:00',
+    location: 'bypass',
+  };
+
+  const [res1, res2] = await Promise.all([
+    executeCreateBookingAtomic(db, payload1),
+    executeCreateBookingAtomic(db, payload2),
+  ]);
+
+  const createdCount = (res1.status === 201 ? 1 : 0) + (res2.status === 201 ? 1 : 0);
+  const slotConflictCount =
+    (res1.status === 409 && res1.code === 'BOOKING_SLOT_CONFLICT' ? 1 : 0) +
+    (res2.status === 409 && res2.code === 'BOOKING_SLOT_CONFLICT' ? 1 : 0);
+
+  assert.equal(createdCount, 1, 'Exactly one request succeeds with 201');
+  assert.equal(slotConflictCount, 1, 'Competing request receives 409 BOOKING_SLOT_CONFLICT');
+});
+
+test('P2-B5: Group duplicate parity 16 - duplicate items in group replay are compared correctly', async () => {
+  const db = createSimulatedPostgresDb();
+  const gKey = '33333333-4444-5555-6666-777777777777';
+  // Group with two duplicate items (e.g. 2 x Gentlemen Haircut with same barber, price, date, time)
+  const itemsWithDuplicates = [
+    { wa: '08111111111', service: 'Gentlemen Haircut', price: 50000, barber_id: 'b1', date: '2026-09-15', time: '10:00', location: 'bypass', duration: '30' },
+    { wa: '08111111111', service: 'Gentlemen Haircut', price: 50000, barber_id: 'b1', date: '2026-09-15', time: '10:00', location: 'bypass', duration: '30' },
+  ];
+
+  const first = await executeCreateGroupBookingAtomic(db, gKey, itemsWithDuplicates);
+  assert.equal(first.success, true);
+  assert.equal(first.replayed, false);
+  assert.equal(first.status, 201);
+
+  // Exact duplicate replay succeeds
+  const second = await executeCreateGroupBookingAtomic(db, gKey, itemsWithDuplicates);
+  assert.equal(second.success, true);
+  assert.equal(second.replayed, true);
+  assert.equal(second.status, 200);
+
+  // Reduced duplicate count (1 item instead of 2) -> 409
+  const reduced = await executeCreateGroupBookingAtomic(db, gKey, [itemsWithDuplicates[0]]);
+  assert.equal(reduced.success, false);
+  assert.equal(reduced.status, 409);
+  assert.equal(reduced.code, 'IDEMPOTENCY_KEY_REUSED');
+});
+
+test('P2-B5: Group material parity 17 - changed service_id/notes/payment/discount -> group 409', async () => {
+  const db = createSimulatedPostgresDb();
+  const gKey = '44444444-5555-6666-7777-888888888888';
+  const baseGroup = [
+    {
+      wa: '08111111111',
+      service: 'Cut A',
+      service_id: 'srv-a',
+      price: 50000,
+      duration: '30',
+      barber_id: 'b1',
+      date: '2026-09-15',
+      time: '10:00',
+      location: 'bypass',
+      type: 'outlet',
+      notes: 'Please gentle',
+      payment: 'cash',
+      original_price: 50000,
+      discount_label: 'NONE',
+    },
+  ];
+
+  const first = await executeCreateGroupBookingAtomic(db, gKey, baseGroup);
+  assert.equal(first.success, true);
+  assert.equal(first.status, 201);
+
+  // 1. Changed notes -> 409
+  const changedNotes = await executeCreateGroupBookingAtomic(db, gKey, [
+    { ...baseGroup[0], notes: 'Different note' },
+  ]);
+  assert.equal(changedNotes.success, false);
+  assert.equal(changedNotes.status, 409);
+  assert.equal(changedNotes.code, 'IDEMPOTENCY_KEY_REUSED');
+
+  // 2. Changed discount_label -> 409
+  const changedDiscount = await executeCreateGroupBookingAtomic(db, gKey, [
+    { ...baseGroup[0], discount_label: 'BIRTHDAY_50' },
+  ]);
+  assert.equal(changedDiscount.success, false);
+  assert.equal(changedDiscount.status, 409);
+  assert.equal(changedDiscount.code, 'IDEMPOTENCY_KEY_REUSED');
+
+  // 3. Changed payment -> 409
+  const changedPayment = await executeCreateGroupBookingAtomic(db, gKey, [
+    { ...baseGroup[0], payment: 'qris' },
+  ]);
+  assert.equal(changedPayment.success, false);
+  assert.equal(changedPayment.status, 409);
+  assert.equal(changedPayment.code, 'IDEMPOTENCY_KEY_REUSED');
+});
+
+test('P2-B5: Group concurrency 18 - concurrent identical group_request_id -> one create, second replay', async () => {
+  const db = createSimulatedPostgresDb();
+  const gKey = '55555555-6666-7777-8888-999999999999';
+  const groupItems = [
+    { wa: '08111111111', service: 'Cut A', price: 50000, barber_id: 'b1', date: '2026-09-15', time: '10:00', location: 'bypass', duration: '30' },
+    { wa: '08222222222', service: 'Cut B', price: 60000, barber_id: 'b2', date: '2026-09-15', time: '10:00', location: 'bypass', duration: '30' },
+  ];
+
+  const [res1, res2] = await Promise.all([
+    executeCreateGroupBookingAtomic(db, gKey, groupItems),
+    executeCreateGroupBookingAtomic(db, gKey, groupItems),
+  ]);
+
+  const createdCount = (res1.status === 201 ? 1 : 0) + (res2.status === 201 ? 1 : 0);
+  const replayedCount = (res1.status === 200 && res1.replayed ? 1 : 0) + (res2.status === 200 && res2.replayed ? 1 : 0);
+
+  assert.equal(createdCount, 1, 'Exactly one group create (201)');
+  assert.equal(replayedCount, 1, 'Exactly one group replay (200)');
+});
+
+test('P2-B5: Group concurrency 19 - concurrent same group_request_id with different payload -> one create, one 409', async () => {
+  const db = createSimulatedPostgresDb();
+  const gKey = '66666666-7777-8888-9999-000000000000';
+  const groupItemsA = [
+    { wa: '08111111111', service: 'Cut A', price: 50000, barber_id: 'b1', date: '2026-09-15', time: '10:00', location: 'bypass', duration: '30' },
+  ];
+  const groupItemsB = [
+    { wa: '08111111111', service: 'Cut A Modified', price: 75000, barber_id: 'b1', date: '2026-09-15', time: '10:00', location: 'bypass', duration: '30' },
+  ];
+
+  const [resA, resB] = await Promise.all([
+    executeCreateGroupBookingAtomic(db, gKey, groupItemsA),
+    executeCreateGroupBookingAtomic(db, gKey, groupItemsB),
+  ]);
+
+  const successCount = (resA.success ? 1 : 0) + (resB.success ? 1 : 0);
+  const conflictCount = (resA.status === 409 ? 1 : 0) + (resB.status === 409 ? 1 : 0);
+
+  assert.equal(successCount, 1, 'Exactly one group succeeds');
+  assert.equal(conflictCount, 1, 'Mismatched group payload receives 409');
 });
 
 test('P2-B2: Secondary review - atomic booking fails closed when RPC unavailable in production', async () => {
