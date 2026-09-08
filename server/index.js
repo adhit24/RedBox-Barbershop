@@ -2046,18 +2046,27 @@ async function handleBookingUpdate(req, res) {
 app.patch('/api/bookings/:id', adminAuth, handleBookingUpdate);
 app.post('/api/bookings/:id', adminAuth, handleBookingUpdate);
 
-// DELETE /api/bookings/:id
+// DELETE /api/bookings/:id — DEPRECATED / DISABLED
+// Hard delete is intentionally disabled to prevent orphaned schedules in Moka/Supabase
+// and preserve the audit trail. Operations must cancel via POST /api/booking-status or PATCH /api/bookings/:id.
 app.delete('/api/bookings/:id', adminAuth, async (req, res) => {
-  if (DB_TYPE === 'supabase') {
-    const { error } = await supabase.from('bookings').delete().eq('id', req.params.id);
-    if (error) return res.status(500).json({ error: error.message });
-    res.json({ message: 'Deleted' });
-  } else {
-    try {
-      await mysqlPool.execute('DELETE FROM bookings WHERE id = ?', [req.params.id]);
-      res.json({ message: 'Deleted' });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-  }
+  logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_noncanonical_write_blocked',
+    severity: 'WARNING',
+    status: 'failed',
+    entityType: 'booking',
+    entityId: req.params.id,
+    httpMethod: 'DELETE',
+    httpPath: `/api/bookings/${req.params.id}`,
+    httpStatus: 405,
+    errorMessage: 'Hard delete is disabled to prevent orphaned schedules. Update status to cancelled instead.',
+  }, { supabase }).catch(() => {});
+
+  return res.status(405).json({
+    error: 'Hard delete is disabled to prevent orphaned schedules and preserve audit trail. Update status to cancelled via POST /api/booking-status or PATCH /api/bookings/:id instead.',
+    code: 'BOOKING_HARD_DELETE_DISABLED',
+  });
 });
 
 // GET /api/barbers?include_inactive=1 (admin only)
