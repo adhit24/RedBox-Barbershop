@@ -9,9 +9,24 @@ import {
   ResponsiveContainer,
   type TooltipContentProps,
 } from 'recharts';
-import type { MonthlyPerformancePoint } from '../services/performance';
+import { computePerformanceSummary, type MonthlyPerformancePoint } from '../services/performance';
 
 const REDBOX_RED = '#C72820';
+
+const FULL_MONTH_NAMES: Record<string, string> = {
+  Jan: 'January',
+  Feb: 'February',
+  Mar: 'March',
+  Apr: 'April',
+  May: 'May',
+  Jun: 'June',
+  Jul: 'July',
+  Aug: 'August',
+  Sep: 'September',
+  Oct: 'October',
+  Nov: 'November',
+  Dec: 'December',
+};
 
 function formatJuta(value: number): string {
   return `${Math.round(value / 1_000_000).toLocaleString('id-ID')}jt`;
@@ -25,7 +40,7 @@ function formatRupiahFull(value: number): string {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
 }
 
-/** Rounds a maximum value up to a clean tick ceiling (nearest 50jt) so the Y axis reads as round numbers, without forcing any fixed range — it adapts to whatever the real data is. */
+/** Rounds a maximum value up to a clean tick ceiling (nearest 50jt) so the Y axis reads as round numbers. */
 function niceMax(maxValue: number): number {
   const step = 50_000_000;
   return Math.ceil((maxValue || step) / step) * step;
@@ -33,6 +48,7 @@ function niceMax(maxValue: number): number {
 
 interface ChartTooltipPayloadPoint extends MonthlyPerformancePoint {
   prevNetSales: number | null;
+  prevMonthLabel: string | null;
 }
 
 function ChartTooltip({ active, payload }: TooltipContentProps) {
@@ -41,23 +57,25 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
   if (point.net_sales === null) return null;
 
   const momPct = point.prevNetSales ? ((point.net_sales - point.prevNetSales) / point.prevNetSales) * 100 : null;
+  const monthTitle = `${FULL_MONTH_NAMES[point.month_label] || point.month_label} 2026`;
+  const prevMonthName = point.prevMonthLabel ? (FULL_MONTH_NAMES[point.prevMonthLabel] || point.prevMonthLabel) : 'bulan lalu';
 
   return (
-    <div className="rounded-xl border border-rb-border bg-rb-surface px-3.5 py-3 shadow-[0_4px_24px_rgba(30,25,20,0.12)]">
-      <div className="mb-1.5 text-xs font-semibold text-rb-text">{point.month_label} 2026</div>
+    <div className="rounded-xl border border-rb-border bg-rb-surface px-3.5 py-3 shadow-[0_4px_24px_rgba(30,25,20,0.12)]" data-testid="chart-tooltip">
+      <div className="mb-1.5 text-xs font-semibold text-rb-text">{monthTitle}</div>
       <div className="flex items-baseline justify-between gap-4 text-sm">
         <span className="text-rb-text-muted">Net Sales</span>
         <span className="font-semibold text-rb-text">{formatRupiahFull(point.net_sales)}</span>
       </div>
       {point.transaction_count !== null && (
         <div className="flex items-baseline justify-between gap-4 text-sm">
-          <span className="text-rb-text-muted">Transaksi</span>
+          <span className="text-rb-text-muted">Transactions</span>
           <span className="font-semibold text-rb-text">{point.transaction_count.toLocaleString('id-ID')}</span>
         </div>
       )}
       {momPct !== null && (
         <div className="mt-1 flex items-baseline justify-between gap-4 border-t border-rb-divider pt-1 text-xs">
-          <span className="text-rb-text-muted">vs bulan lalu</span>
+          <span className="text-rb-text-muted">vs {prevMonthName}</span>
           <span className="font-semibold" style={{ color: momPct >= 0 ? '#2F8F53' : REDBOX_RED }}>
             {momPct >= 0 ? '+' : ''}{momPct.toFixed(1)}%
           </span>
@@ -70,45 +88,59 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
 export function YearlyPerformanceChart({ data }: { data: MonthlyPerformancePoint[] }) {
   const chartData = useMemo(() => {
     let prevNetSales: number | null = null;
+    let prevMonthLabel: string | null = null;
     return data.map((point) => {
-      const withPrev = { ...point, prevNetSales };
-      if (point.net_sales !== null) prevNetSales = point.net_sales;
+      const withPrev = { ...point, prevNetSales, prevMonthLabel };
+      if (point.net_sales !== null) {
+        prevNetSales = point.net_sales;
+        prevMonthLabel = point.month_label;
+      }
       return withPrev;
     });
   }, [data]);
 
+  const summary = useMemo(() => computePerformanceSummary(data), [data]);
   const actualPoints = useMemo(() => data.filter((p) => p.net_sales !== null), [data]);
-
-  const summary = useMemo(() => {
-    if (actualPoints.length === 0) return null;
-    const ytd = actualPoints.reduce((sum, p) => sum + (p.net_sales ?? 0), 0);
-    const avg = ytd / actualPoints.length;
-    const best = actualPoints.reduce((a, b) => ((b.net_sales ?? 0) > (a.net_sales ?? 0) ? b : a));
-    return { ytd, avg, best };
-  }, [actualPoints]);
-
   const yAxisMax = useMemo(() => niceMax(Math.max(0, ...actualPoints.map((p) => p.net_sales ?? 0))), [actualPoints]);
 
   return (
-    <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
+    <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5" data-testid="yearly-performance-card">
       <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-serif text-[17px] font-semibold text-rb-text">Performance by Year</h2>
-          <p className="mt-0.5 text-xs text-rb-text-muted">Performa bulanan Redbox sepanjang 2026</p>
+          <h2 className="font-serif text-[17px] font-semibold text-rb-text" data-testid="yearly-performance-title">
+            Business Performance
+          </h2>
+          <p className="mt-0.5 text-xs text-rb-text-muted">Net Sales Redbox sepanjang 2026</p>
         </div>
         {summary && (
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-right">
             <div>
               <div className="text-[10.5px] font-semibold text-rb-text-muted">2026 YTD Net Sales</div>
-              <div className="font-serif text-sm font-semibold text-rb-text">{formatMiliar(summary.ytd)}</div>
+              <div className="font-serif text-sm font-semibold text-rb-text" title={formatRupiahFull(summary.ytd)} data-testid="ytd-net-sales">
+                {formatMiliar(summary.ytd)}
+              </div>
             </div>
             <div>
-              <div className="text-[10.5px] font-semibold text-rb-text-muted">Avg / Bulan</div>
-              <div className="font-serif text-sm font-semibold text-rb-text">{formatJuta(summary.avg)}</div>
+              <div className="text-[10.5px] font-semibold text-rb-text-muted">Average Net Sales / Month</div>
+              <div className="font-serif text-sm font-semibold text-rb-text" title={formatRupiahFull(summary.avg)} data-testid="avg-net-sales">
+                {formatJuta(summary.avg)}
+              </div>
             </div>
             <div>
-              <div className="text-[10.5px] font-semibold text-rb-text-muted">Bulan Terbaik</div>
-              <div className="font-serif text-sm font-semibold text-rb-text">{summary.best.month_label} — {formatJuta(summary.best.net_sales ?? 0)}</div>
+              <div className="text-[10.5px] font-semibold text-rb-text-muted">Best Month</div>
+              <div className="font-serif text-sm font-semibold text-rb-text" data-testid="best-month">
+                {summary.best.month_label} — {formatJuta(summary.best.net_sales ?? 0)}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10.5px] font-semibold text-rb-text-muted">Latest MoM</div>
+              <div
+                className="font-serif text-sm font-semibold"
+                style={{ color: summary.latestMoM ? (summary.latestMoM.isPositive ? '#2F8F53' : REDBOX_RED) : '#8A8479' }}
+                data-testid="latest-mom"
+              >
+                {summary.latestMoM ? summary.latestMoM.formatted : '—'}
+              </div>
             </div>
           </div>
         )}

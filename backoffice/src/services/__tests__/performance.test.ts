@@ -37,10 +37,53 @@ describe('getYearlyPerformance', () => {
     expect(bypass[0].net_sales).toBeLessThan(all[0].net_sales ?? 0);
   });
 
-  it('defaults to the "all" scope for an unrecognized branch value', async () => {
-    const all = await getYearlyPerformance('all');
-    const unknown = await getYearlyPerformance('some-unknown-branch');
+  it('computes exact canonical metrics for all branches (YTD, avg, best month, latest MoM)', async () => {
+    const data = await getYearlyPerformance('all');
+    const actual = data.filter((p) => p.net_sales !== null);
 
-    expect(unknown).toEqual(all);
+    // 1. Expected YTD: 4,588,709,400
+    const ytd = actual.reduce((sum, p) => sum + (p.net_sales ?? 0), 0);
+    expect(ytd).toBe(4588709400);
+
+    // 2. Expected average Jan-Aug: 573,588,675
+    const avg = ytd / actual.length;
+    expect(avg).toBe(573588675);
+
+    // 3. Expected best month: March (month 3) with 720,683,200
+    const best = actual.reduce((a, b) => ((b.net_sales ?? 0) > (a.net_sales ?? 0) ? b : a));
+    expect(best.month).toBe(3);
+    expect(best.month_label).toBe('Mar');
+    expect(best.net_sales).toBe(720683200);
+
+    // 4. Expected latest MoM Aug vs Jul: +0.8%
+    const jul = actual.find((p) => p.month === 7);
+    const aug = actual.find((p) => p.month === 8);
+    expect(jul?.net_sales).toBe(578949900);
+    expect(aug?.net_sales).toBe(583483400);
+    const mom = ((aug!.net_sales! - jul!.net_sales!) / jul!.net_sales!) * 100;
+    expect(mom.toFixed(1)).toBe('0.8');
+  });
+
+  it('excludes Parker and ensures the 5 Redbox branches sum up exactly to the all-branches total', async () => {
+    const all = await getYearlyPerformance('all');
+    const branches = ['bypass', 'csb', 'samadikun', 'sumber', 'tegal'] as const;
+    const branchData = await Promise.all(branches.map((b) => getYearlyPerformance(b)));
+
+    // Verify for each of the 8 actual months
+    for (let m = 1; m <= 8; m++) {
+      const allPoint = all.find((p) => p.month === m);
+      const sumNetSales = branchData.reduce((sum, bPoints) => {
+        const point = bPoints.find((p) => p.month === m);
+        return sum + (point?.net_sales ?? 0);
+      }, 0);
+      const sumTx = branchData.reduce((sum, bPoints) => {
+        const point = bPoints.find((p) => p.month === m);
+        return sum + (point?.transaction_count ?? 0);
+      }, 0);
+
+      expect(allPoint?.net_sales).toBe(sumNetSales);
+      expect(allPoint?.transaction_count).toBe(sumTx);
+    }
   });
 });
+

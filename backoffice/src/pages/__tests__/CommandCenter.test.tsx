@@ -144,7 +144,7 @@ describe('CommandCenter', () => {
     // The Yearly Performance Chart is an explicit, intentional exception to the
     // operational-only rule below: it exists specifically to show real Net Sales
     // figures in Rupiah. Every other panel on the page must stay revenue-free.
-    const yearlyChartCard = await waitFor(() => cardOf(screen.getByText('Performance by Year')));
+    const yearlyChartCard = await waitFor(() => cardOf(screen.getByText(/Business Performance|Performance by Year/)));
 
     const rupiahMatches = screen.queryAllByText(/Rp\s?\d/);
     rupiahMatches.forEach((el) => {
@@ -394,11 +394,11 @@ describe('CommandCenter', () => {
     renderCC();
 
     await waitFor(() => {
-      expect(screen.getByText('Performance by Year')).toBeInTheDocument();
+      expect(screen.getByText(/Business Performance|Performance by Year/)).toBeInTheDocument();
     });
     expect(screen.getByText('Live Branch Activity')).toBeInTheDocument();
 
-    const chartHeading = screen.getByText('Performance by Year');
+    const chartHeading = screen.getByText(/Business Performance|Performance by Year/);
     const liveBranchHeading = screen.getByText('Live Branch Activity');
 
     // DOCUMENT_POSITION_FOLLOWING (4) means liveBranchHeading comes after chartHeading in the DOM.

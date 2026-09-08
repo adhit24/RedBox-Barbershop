@@ -22,17 +22,31 @@ describe('YearlyPerformanceChart', () => {
   it('renders the title and Indonesian subtitle', () => {
     render(<YearlyPerformanceChart data={ACTUAL_DATA} />);
 
-    expect(screen.getByText('Performance by Year')).toBeInTheDocument();
-    expect(screen.getByText('Performa bulanan Redbox sepanjang 2026')).toBeInTheDocument();
+    expect(screen.getByText('Business Performance')).toBeInTheDocument();
+    expect(screen.getByText('Net Sales Redbox sepanjang 2026')).toBeInTheDocument();
   });
 
-  it('computes YTD Net Sales, average per month, and best month from real Jan-Aug data only', () => {
+  it('computes YTD Net Sales, average per month, best month, and latest MoM from real Jan-Aug data only', () => {
     render(<YearlyPerformanceChart data={ACTUAL_DATA} />);
 
     // YTD = sum of Jan-Aug = 4,588,709,400 -> Rp 4,59 Miliar
-    expect(screen.getByText('Rp 4,59 Miliar')).toBeInTheDocument();
-    // Best month is March (highest net_sales among actuals)
-    expect(screen.getByText(/Mar/)).toBeInTheDocument();
+    expect(screen.getByTestId('ytd-net-sales')).toHaveTextContent('Rp 4,59 Miliar');
+    // Average per month = 573,588,675 -> 574jt
+    expect(screen.getByTestId('avg-net-sales')).toHaveTextContent('574jt');
+    // Best month is March (highest net_sales among actuals: 720,683,200) -> Mar — 721jt
+    expect(screen.getByTestId('best-month')).toHaveTextContent('Mar — 721jt');
+    // Latest MoM: Aug (583,483,400) vs Jul (578,949,900) -> +0.8%
+    expect(screen.getByTestId('latest-mom')).toHaveTextContent('+0.8%');
+  });
+
+  it('displays "—" for Latest MoM when fewer than two months of real data exist', () => {
+    const singleMonthData: MonthlyPerformancePoint[] = [
+      { month: 1, month_label: 'Jan', net_sales: 500000000, transaction_count: 4000 },
+      { month: 2, month_label: 'Feb', net_sales: null, transaction_count: null },
+    ];
+    render(<YearlyPerformanceChart data={singleMonthData} />);
+
+    expect(screen.getByTestId('latest-mom')).toHaveTextContent('—');
   });
 
   it('never fabricates figures for months without real data', () => {
