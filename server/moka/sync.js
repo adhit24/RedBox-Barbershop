@@ -2212,7 +2212,23 @@ function _normalizePhone(raw) {
 async function bridgeBookingToMoka(supabase, booking) {
   const legacyRef = `booking:${booking.id}`;
 
-  // Idempotency guard
+  // B2.5: If schedule was already created atomically (or linked), reuse it and skip duplicate insertion
+  if (booking.schedule_id) {
+    const { isMokaOAuthConfigured } = require('./oauth');
+    let mokaSync = 'skipped_not_configured';
+    if (isMokaOAuthConfigured()) {
+      try {
+        await pushScheduleToMoka(supabase, booking.schedule_id);
+        mokaSync = 'success';
+      } catch (err) {
+        mokaSync = 'failed';
+        console.error(`[Bridge] Moka push failed for schedule ${booking.schedule_id}:`, err.message);
+      }
+    }
+    return { scheduleId: booking.schedule_id, mokaSync };
+  }
+
+  // Idempotency guard for legacy external_id
   const { data: already } = await supabase
     .from('schedules').select('id').eq('external_id', legacyRef).maybeSingle();
   if (already) return { scheduleId: already.id, mokaSync: 'already_synced' };
