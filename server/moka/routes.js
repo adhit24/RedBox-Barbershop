@@ -59,12 +59,19 @@ async function syncCurrentMonthTransactions(supabase, outletId = null) {
 // gtiggsilfcivuzowaexq) tapi dihapus 2026-05-28. Sekarang consolidated ke
 // primary DB — bisa pakai `supabase` client utama langsung.
 
+const { createBackofficeSupabaseAuth } = require('../middleware/backofficeSupabaseAuth');
+const { getBranchHealthOverview } = require('../services/mokaBranchHealth');
+
 /**
  * Factory — returns a configured Express Router.
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
+ * @param {Function} [legacyAdminAuth]
  */
-function createMokaRouter(supabase) {
+function createMokaRouter(supabase, legacyAdminAuth = null) {
   const router = express.Router();
+  const backofficeAuth = legacyAdminAuth
+    ? createBackofficeSupabaseAuth(supabase, legacyAdminAuth)
+    : (_req, _res, next) => next();
 
   // ── GET /api/availability ────────────────────────────────
   // Query params:
@@ -1786,6 +1793,22 @@ function createMokaRouter(supabase) {
       });
     } catch (err) {
       _serverError(res, err);
+    }
+  });
+
+  // ── GET /api/moka/branch-health ───────────────────────────
+  // Read-only branch health endpoint for Backoffice using current sync authority
+  // (moka_stockist_sync_state + moka_tokens).
+  router.get('/moka/branch-health', backofficeAuth, async (req, res) => {
+    try {
+      const result = await getBranchHealthOverview({
+        supabase,
+        auth: req.adminAuth,
+      });
+      res.json(result);
+    } catch (err) {
+      const status = err.status || 500;
+      res.status(status).json({ error: err.message });
     }
   });
 
