@@ -61,10 +61,10 @@ function fakeSupabase({ employees = [], barbers = [] } = {}) {
 
 test('GET /api/admin/crm/employees returns active employees with business unit counts', async () => {
   const mockEmployees = [
-    { id: '1', name: 'Employee Alpha', business_unit: 'Sundaze', position: 'Barista', branch: 'bypass', is_active: true },
-    { id: '2', name: 'Employee Beta', business_unit: 'Sundaze', position: 'Barista', branch: 'bypass', is_active: true },
-    { id: '3', name: 'Employee Gamma', business_unit: 'Redbox', position: 'Helper Cashier', branch: 'bypass', is_active: true },
-    { id: '4', name: 'Employee Delta', business_unit: 'Redbox', position: 'Helper Cashier', branch: 'sumber', is_active: true },
+    { id: '1', name: 'Employee Alpha', business_unit: 'Sundaze', position: 'Barista', branch: 'bypass', is_active: true, payroll_type: 'salary' },
+    { id: '2', name: 'Employee Beta', business_unit: 'Sundaze', position: 'Barista', branch: 'bypass', is_active: true, payroll_type: 'salary' },
+    { id: '3', name: 'Employee Gamma', business_unit: 'Redbox', position: 'Helper Cashier', branch: 'bypass', is_active: true, payroll_type: 'salary' },
+    { id: '4', name: 'Employee Delta', business_unit: 'Redbox', position: 'Helper Cashier', branch: 'sumber', is_active: true, payroll_type: 'salary' },
   ];
 
   const app = buildApp(fakeSupabase({ employees: mockEmployees }));
@@ -80,6 +80,38 @@ test('GET /api/admin/crm/employees returns active employees with business unit c
   assert.equal(body.sundaze_count, 2);
   assert.equal(body.redbox_count, 2);
   assert.equal(body.employees.length, 4);
+  for (const emp of body.employees) {
+    assert.equal(emp.payroll_type, 'Gaji', 'list endpoint must map raw DB payroll_type to the business term "Gaji", never the raw DB value');
+  }
+
+  server.close();
+});
+
+test('GET /api/admin/crm/employees returns a generic sanitized error message on failure, never the raw Supabase error', async () => {
+  const brokenSupabase = {
+    from() {
+      return {
+        select() { return this; },
+        order() { return this; },
+        eq() { return this; },
+        then(resolve) {
+          resolve({ data: null, error: { message: 'relation "employees" does not exist, column base_salary leaked' } });
+        },
+      };
+    },
+  };
+
+  const app = buildApp(brokenSupabase);
+  const server = app.listen(0);
+  const port = server.address().port;
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/admin/crm/employees`);
+  const body = await res.json();
+
+  assert.equal(res.status, 500);
+  assert.equal(body.error, 'Failed to load employee data');
+  assert.equal(body.error.includes('relation'), false);
+  assert.equal(body.error.includes('base_salary'), false);
 
   server.close();
 });
@@ -110,7 +142,7 @@ test('GET /api/admin/crm/employees/:id returns sanitized employee detail (no bas
       id: 'e0123456-789a-bcde-f012-3456789abcde',
       employee_code: 'SD-REG-001',
       name: 'Employee Alpha',
-      nickname: 'Abi',
+      nickname: 'Alpha',
       business_unit: 'Sundaze',
       branch: 'bypass',
       branch_name: 'Bypass',

@@ -20,8 +20,8 @@ describe('BarberPayroll (Real Barber Roster & Bagi Hasil)', () => {
   it('renders real barbers with Bagi Hasil and no hardcoded payouts or DemoBadge', async () => {
     vi.mocked(crmService.getCommandCenterForBranch).mockImplementation(async (branch) => {
       const branchBarbers = {
-        csb: [{ id: 'csb-indra', name: 'Barber Alpha', branch: 'csb' }],
-        sumber: [{ id: 'sumber-asep', name: 'Barber Beta', branch: 'sumber' }],
+        csb: [{ id: 'csb-barber-alpha', name: 'Barber Alpha', branch: 'csb' }],
+        sumber: [{ id: 'sumber-barber-beta', name: 'Barber Beta', branch: 'sumber' }],
       }[branch] || [];
 
       return {
@@ -42,8 +42,8 @@ describe('BarberPayroll (Real Barber Roster & Bagi Hasil)', () => {
     // Verify NO DemoBadge
     expect(screen.queryByText(/DEMO/i)).toBeNull();
 
-    // Verify NO fake Ubay Santoso or fake payment amounts
-    expect(screen.queryByText('Ubay Santoso')).toBeNull();
+    // Verify NO fake demo payroll name or fake payment amounts
+    expect(screen.queryByText('Demo Barber Fullname')).toBeNull();
     expect(screen.queryByText(/Rp\s*5\.640\.000/i)).toBeNull();
 
     // Verify real barbers appear

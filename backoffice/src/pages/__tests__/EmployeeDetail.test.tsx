@@ -25,7 +25,7 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
         id: 'emp-123',
         code: 'SD-REG-001',
         name: 'Employee Alpha',
-        nickname: 'Abi',
+        nickname: 'Alpha',
         business_unit: 'Sundaze Cafe',
         branch: 'bypass',
         branch_name: 'Bypass',
@@ -74,8 +74,8 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
       ok: true,
       type: 'barber',
       person: {
-        id: 'barber-csb-indra',
-        code: 'csb-indra',
+        id: 'barber-csb-barber-alpha',
+        code: 'csb-barber-alpha',
         name: 'Barber Alpha',
         nickname: null,
         business_unit: 'Redbox Barbershop',
@@ -90,7 +90,7 @@ describe('EmployeeDetail (Real Data & Honest Unavailable)', () => {
     });
 
     render(
-      <MemoryRouter initialEntries={['/hr/employees/barber-csb-indra']}>
+      <MemoryRouter initialEntries={['/hr/employees/barber-csb-barber-alpha']}>
         <Routes>
           <Route path="/hr/employees/:id" element={<EmployeeDetail />} />
         </Routes>

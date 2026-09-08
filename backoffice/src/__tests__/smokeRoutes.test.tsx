@@ -18,7 +18,7 @@ const mockEmployees = [
     id: 'emp-sd-001',
     employee_code: 'SD-REG-001',
     name: 'Employee Alpha',
-    nickname: 'Abi',
+    nickname: 'Alpha',
     business_unit: 'Sundaze',
     branch: 'bypass',
     position: 'Barista',
@@ -29,8 +29,8 @@ const mockEmployees = [
 ];
 
 const mockBarbers = [
-  { id: 'csb-ubay', name: 'Ubay', branch: 'csb', attendance_status: 'hadir', today_count: 3 },
-  { id: 'bypass-abdul', name: 'Abdul', branch: 'bypass', attendance_status: 'hadir', today_count: 2 },
+  { id: 'csb-barber-beta', name: 'Barber Beta', branch: 'csb', attendance_status: 'hadir', today_count: 3 },
+  { id: 'bypass-barber-alpha', name: 'Barber Alpha', branch: 'bypass', attendance_status: 'hadir', today_count: 2 },
 ];
 
 function setupFetchMock(options: { roleStatus?: number; employeeFound?: boolean } = {}) {
@@ -69,7 +69,7 @@ function setupFetchMock(options: { roleStatus?: number; employeeFound?: boolean 
               id: 'emp-sd-001',
               code: 'SD-REG-001',
               name: 'Employee Alpha',
-              nickname: 'Abi',
+              nickname: 'Alpha',
               business_unit: 'Sundaze',
               branch: 'bypass',
               branch_name: 'Bypass',
@@ -85,16 +85,16 @@ function setupFetchMock(options: { roleStatus?: number; employeeFound?: boolean 
       );
     }
 
-    if (url.includes('/api/admin/crm/employees/barber-csb-ubay')) {
+    if (url.includes('/api/admin/crm/employees/barber-csb-barber-beta')) {
       return Promise.resolve(
         new Response(
           JSON.stringify({
             ok: true,
             type: 'barber',
             person: {
-              id: 'barber-csb-ubay',
-              code: 'csb-ubay',
-              name: 'Ubay',
+              id: 'barber-csb-barber-beta',
+              code: 'csb-barber-beta',
+              name: 'Barber Beta',
               nickname: null,
               business_unit: 'Redbox Barbershop',
               branch: 'csb',
@@ -260,14 +260,14 @@ describe('Backoffice Route Smoke Test', () => {
     });
   });
 
-  it('smoke-tests barber employee detail route (/hr/employees/barber-csb-ubay)', async () => {
+  it('smoke-tests barber employee detail route (/hr/employees/barber-csb-barber-beta)', async () => {
     render(
-      <MemoryRouter initialEntries={['/hr/employees/barber-csb-ubay']}>
+      <MemoryRouter initialEntries={['/hr/employees/barber-csb-barber-beta']}>
         <App />
       </MemoryRouter>
     );
     await waitFor(() => {
-      expect(screen.getByRole('heading', { level: 1, name: 'Ubay' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: 'Barber Beta' })).toBeInTheDocument();
       expect(screen.getByText('Bagi Hasil')).toBeInTheDocument();
     });
   });

@@ -25,7 +25,7 @@ const OWNER_OVERVIEW = {
 const CSB_DATA = {
   today: '2026-09-01',
   barbers: [
-    { id: 'b1', name: 'Ubay', branch: 'csb', attendance_status: 'hadir', today_count: 3 },
+    { id: 'b1', name: 'Barber Alpha', branch: 'csb', attendance_status: 'hadir', today_count: 3 },
     { id: 'b2', name: 'Dedi', branch: 'csb', attendance_status: 'terlambat', today_count: 1 },
   ],
   stats: { hadir: 3, tidak_hadir: 1, belum_check_in: 1, booking_today: 5, pending: 2, home_service_active: 0, moka_open_bills: 0 },

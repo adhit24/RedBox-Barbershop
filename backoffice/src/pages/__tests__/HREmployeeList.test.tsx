@@ -4,11 +4,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { HREmployeeList } from '../HREmployeeList';
 
 const byBranch: Record<string, unknown> = {
-  bypass: { barbers: [{ id: 'bypass-abdul-dul', name: 'Abdul', branch: 'bypass', attendance_status: null, today_count: 0 }] },
-  csb: { barbers: [{ id: 'csb-ubay', name: 'Ubay', branch: 'csb', attendance_status: 'hadir', today_count: 3 }] },
-  samadikun: { barbers: [{ id: 'samadikun-sofyan', name: 'Sofyan', branch: 'samadikun', attendance_status: null, today_count: 0 }] },
-  sumber: { barbers: [{ id: 'sumber-bayu', name: 'Bayu', branch: 'sumber', attendance_status: null, today_count: 0 }] },
-  tegal: { barbers: [{ id: 'tegal-ahmad', name: 'Ahmad', branch: 'tegal', attendance_status: null, today_count: 0 }] },
+  bypass: { barbers: [{ id: 'bypass-barber-alpha', name: 'Barber Alpha', branch: 'bypass', attendance_status: null, today_count: 0 }] },
+  csb: { barbers: [{ id: 'csb-barber-beta', name: 'Barber Beta', branch: 'csb', attendance_status: 'hadir', today_count: 3 }] },
+  samadikun: { barbers: [{ id: 'samadikun-barber-gamma', name: 'Barber Gamma', branch: 'samadikun', attendance_status: null, today_count: 0 }] },
+  sumber: { barbers: [{ id: 'sumber-barber-delta', name: 'Barber Delta', branch: 'sumber', attendance_status: null, today_count: 0 }] },
+  tegal: { barbers: [{ id: 'tegal-barber-epsilon', name: 'Barber Epsilon', branch: 'tegal', attendance_status: null, today_count: 0 }] },
 };
 
 const mockEmployees = [
@@ -16,7 +16,7 @@ const mockEmployees = [
     id: 'emp-sd-001',
     employee_code: 'SD-REG-001',
     name: 'Employee Alpha',
-    nickname: 'Abi',
+    nickname: 'Alpha',
     business_unit: 'Sundaze',
     branch: 'bypass',
     branch_name: 'Bypass',
@@ -29,7 +29,7 @@ const mockEmployees = [
     id: 'emp-sd-002',
     employee_code: 'SD-REG-002',
     name: 'Employee Beta',
-    nickname: 'Agus',
+    nickname: 'Beta',
     business_unit: 'Sundaze',
     branch: 'bypass',
     branch_name: 'Bypass',
@@ -42,7 +42,7 @@ const mockEmployees = [
     id: 'emp-rb-001',
     employee_code: 'RB-REG-001',
     name: 'Employee Gamma',
-    nickname: 'Adam',
+    nickname: 'Gamma',
     business_unit: 'Redbox',
     branch: 'bypass',
     branch_name: 'Bypass',
@@ -80,18 +80,18 @@ describe('HREmployeeList', () => {
 
   it('renders real barber roster from all five branch command-center sources', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getByText('Abdul')).toBeInTheDocument());
-    expect(screen.getByText('Ubay')).toBeInTheDocument();
-    expect(screen.getByText('Sofyan')).toBeInTheDocument();
-    expect(screen.getByText('Bayu')).toBeInTheDocument();
-    expect(screen.getByText('Ahmad')).toBeInTheDocument();
-    expect(screen.queryByText(/Ubay Santoso/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Barber Alpha')).toBeInTheDocument());
+    expect(screen.getByText('Barber Beta')).toBeInTheDocument();
+    expect(screen.getByText('Barber Gamma')).toBeInTheDocument();
+    expect(screen.getByText('Barber Delta')).toBeInTheDocument();
+    expect(screen.getByText('Barber Epsilon')).toBeInTheDocument();
+    expect(screen.queryByText(/Barber Beta Santoso/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^DEMO/i)).not.toBeInTheDocument();
   });
 
   it('labels database barbers with payroll type Bagi Hasil and does not fabricate attendance', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await screen.findByText('Abdul');
+    await screen.findByText('Barber Alpha');
     expect(screen.getAllByText('Kapster').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Bagi Hasil').length).toBeGreaterThan(0);
     expect(screen.queryByText('Komisi')).not.toBeInTheDocument();
@@ -135,14 +135,14 @@ describe('HREmployeeList', () => {
     expect(screen.getByText('Employee Alpha')).toBeInTheDocument();
     expect(screen.getByText('Employee Beta')).toBeInTheDocument();
     expect(screen.queryByText('Employee Gamma')).not.toBeInTheDocument();
-    expect(screen.queryByText('Abdul')).not.toBeInTheDocument();
+    expect(screen.queryByText('Barber Alpha')).not.toBeInTheDocument();
 
     // Click Kapster filter
     const kapsterBtn = screen.getByRole('button', { name: /^Kapster/ });
     fireEvent.click(kapsterBtn);
 
-    expect(screen.getByText('Abdul')).toBeInTheDocument();
-    expect(screen.getByText('Ubay')).toBeInTheDocument();
+    expect(screen.getByText('Barber Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Barber Beta')).toBeInTheDocument();
     expect(screen.queryByText('Employee Alpha')).not.toBeInTheDocument();
   });
 

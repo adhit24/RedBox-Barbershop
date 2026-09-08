@@ -2022,10 +2022,11 @@ Terima kasih 🙏
 
       const { data: employees, error } = await query;
       if (error) {
-        return res.status(500).json({ error: error.message });
+        console.error('[AdminCRM] Failed to load employees:', error);
+        return res.status(500).json({ error: 'Failed to load employee data' });
       }
 
-      const all = employees || [];
+      const all = (employees || []).map(e => ({ ...e, payroll_type: 'Gaji' }));
       const sundazeCount = all.filter(e => e.business_unit === 'Sundaze').length;
       const redboxCount = all.filter(e => e.business_unit === 'Redbox').length;
 
@@ -2037,7 +2038,8 @@ Terima kasih 🙏
         employees: all,
       });
     } catch (err) {
-      return res.status(500).json({ error: err.message });
+      console.error('[AdminCRM] Unexpected error in employees list:', err);
+      return res.status(500).json({ error: 'Failed to load employee data' });
     }
   });
 

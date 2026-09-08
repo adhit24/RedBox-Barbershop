@@ -72,8 +72,8 @@ describe('PayrollEmployeeDetail (Real Identity & Honest Unavailable States)', ()
       ok: true,
       type: 'barber',
       person: {
-        id: 'barber-csb-indra',
-        code: 'csb-indra',
+        id: 'barber-csb-barber-alpha',
+        code: 'csb-barber-alpha',
         name: 'Barber Alpha',
         nickname: null,
         business_unit: 'Redbox Barbershop',
@@ -88,7 +88,7 @@ describe('PayrollEmployeeDetail (Real Identity & Honest Unavailable States)', ()
     });
 
     render(
-      <MemoryRouter initialEntries={['/payroll/employees/barber-csb-indra']}>
+      <MemoryRouter initialEntries={['/payroll/employees/barber-csb-barber-alpha']}>
         <Routes>
           <Route path="/payroll/employees/:id" element={<PayrollEmployeeDetail />} />
         </Routes>
