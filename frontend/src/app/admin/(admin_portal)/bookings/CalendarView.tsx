@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, X, Check, UserX, Calendar, Clock } from 'lucide-react';
 import { StatusBadge } from './bookingStatus';
 import { ConfirmDialog } from './ConfirmDialog';
-import { createClient } from '@/utils/supabase/client';
 
 interface CalendarViewProps {
   branch: string;
@@ -302,16 +301,27 @@ export function CalendarView({ branch, barbers, readonly }: CalendarViewProps) {
   async function handleReschedule(id: string, newDate: string, newTime: string) {
     setActionLoading(true);
     try {
-      const supabase = createClient();
       const updates: Record<string, string> = { date: newDate };
       if (newTime) updates.time = newTime + ':00';
-      await supabase.from('bookings').update(updates).eq('id', id);
+      const res = await fetch(`/api/bookings/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Gagal menjadwal ulang: ${err.error || res.statusText}`);
+        return;
+      }
       setActionBooking(null);
       // Invalidate both old and new date
       if (selectedDate) invalidateAndReload(selectedDate);
       if (newDate !== selectedDate) {
         setDayCache(prev => { const m = new Map(prev); m.delete(newDate); return m; });
       }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      alert(`Koneksi gagal: ${message || 'Gagal menghubungi server'}`);
     } finally {
       setActionLoading(false);
     }
