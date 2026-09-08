@@ -49,8 +49,9 @@ function makeFakeSupabase(rows) {
         eq(col, val) { query._filters.push([col, val]); return query; },
         order() { return query; },
         limit() { return query; },
-        gte() { return query; },
-        lte() { return query; },
+        gte(col, val) { query._filters.push(['gte', col, val]); return query; },
+        lte(col, val) { query._filters.push(['lte', col, val]); return query; },
+        lt(col, val) { query._filters.push(['lt', col, val]); return query; },
         then(resolve, reject) {
           return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
         },
@@ -61,6 +62,56 @@ function makeFakeSupabase(rows) {
 }
 
 function legacyAdminAuth(req, res) { return res.status(401).json({ error: 'legacy auth not used in this test' }); }
+
+test('toJakartaDateBounds helper converts date-only from and to into full day Asia/Jakarta bounds', () => {
+  const { toJakartaDateBounds } = require('../routes/systemEventLogs');
+  const bounds = toJakartaDateBounds('2026-09-07', '2026-09-07');
+  assert.equal(bounds.gteVal, '2026-09-07T00:00:00+07:00');
+  assert.equal(bounds.ltVal, '2026-09-08T00:00:00+07:00');
+  assert.equal(bounds.lteVal, null);
+
+  // Cross month-end boundary
+  const monthEndBounds = toJakartaDateBounds('2026-02-28', '2026-02-28');
+  assert.equal(monthEndBounds.ltVal, '2026-03-01T00:00:00+07:00');
+
+  // Full ISO timestamps passed directly
+  const isoBounds = toJakartaDateBounds('2026-09-07T10:00:00Z', '2026-09-07T18:00:00Z');
+  assert.equal(isoBounds.gteVal, '2026-09-07T10:00:00Z');
+  assert.equal(isoBounds.ltVal, null);
+  assert.equal(isoBounds.lteVal, '2026-09-07T18:00:00Z');
+});
+
+test('GET /api/internal/system-event-logs applies gte and lt with Asia/Jakarta boundary for date-only params', async () => {
+  const capturedFilters = [];
+  const supabase = {
+    auth: { getUser: async () => ({ data: { user: { id: 'u1', email: 'adhit24@gmail.com' } }, error: null }) },
+    from(table) {
+      if (table === 'users') {
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'owner' }, error: null }) }) }) };
+      }
+      const query = {
+        select() { return query; },
+        order() { return query; },
+        limit() { return query; },
+        gte(col, val) { capturedFilters.push(['gte', col, val]); return query; },
+        lt(col, val) { capturedFilters.push(['lt', col, val]); return query; },
+        then(resolve, reject) { return Promise.resolve({ data: [], error: null }).then(resolve, reject); },
+      };
+      return query;
+    },
+  };
+
+  await withServer(supabase, legacyAdminAuth, async (base) => {
+    const res = await fetch(`${base}/api/internal/system-event-logs?from=2026-09-07&to=2026-09-07`, {
+      headers: { Authorization: 'Bearer faketoken' },
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(capturedFilters, [
+      ['gte', 'created_at', '2026-09-07T00:00:00+07:00'],
+      ['lt', 'created_at', '2026-09-08T00:00:00+07:00'],
+    ]);
+  });
+});
 
 test('GET /api/internal/system-event-logs rejects requests without a bearer token via the legacy fallback', async () => {
   const supabase = makeFakeSupabase([]);

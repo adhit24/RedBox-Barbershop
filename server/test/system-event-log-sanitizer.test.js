@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { sanitizeMetadata } = require('../services/systemEventLogSanitizer');
+const { sanitizeMetadata, sanitizeFreeText } = require('../services/systemEventLogSanitizer');
 
 test('sanitizeMetadata strips sensitive keys at top level', () => {
   const out = sanitizeMetadata({
@@ -126,4 +126,53 @@ test('sanitizeMetadata skips constructor and prototype keys as own properties', 
   assert.strictEqual(Object.prototype.hasOwnProperty.call(result, 'constructor'), false);
   assert.strictEqual(Object.prototype.hasOwnProperty.call(result, 'prototype'), false);
   assert.strictEqual(Object.prototype.hasOwnProperty.call(result, 'normal'), true);
+});
+
+test('sanitizeFreeText scrubs Bearer tokens with Authorization prefix', () => {
+  const input = 'upstream returned 401 with Authorization: Bearer secret-tok-123456';
+  const out = sanitizeFreeText(input);
+  assert.equal(out, 'upstream returned 401 with Authorization: Bearer [REDACTED]');
+});
+
+test('sanitizeFreeText scrubs standalone Bearer tokens', () => {
+  const input = 'request headers included Bearer ya29.a0AfH6SM..._secret';
+  const out = sanitizeFreeText(input);
+  assert.equal(out, 'request headers included Bearer [REDACTED]');
+});
+
+test('sanitizeFreeText scrubs credential-bearing key=value and key: value patterns', () => {
+  const cases = [
+    ['failed connecting with access_token=ya29.xyz123', 'failed connecting with access_token=[REDACTED]'],
+    ['auth failed: refresh_token=1//abc_def-456', 'auth failed: refresh_token=[REDACTED]'],
+    ['query failed: api_key=AIzaSyD-12345678', 'query failed: api_key=[REDACTED]'],
+    ['service returned apikey=secret_key_val', 'service returned apikey=[REDACTED]'],
+    ['session error: token: my_secret_token_123', 'session error: token: [REDACTED]'],
+    ['internal secret=ultra_secret_val', 'internal secret=[REDACTED]'],
+    ['login failed for user with password=mypassword123', 'login failed for user with password=[REDACTED]'],
+    ['request header cookie=sessionid_abc123', 'request header cookie=[REDACTED]'],
+  ];
+  for (const [raw, expected] of cases) {
+    assert.equal(sanitizeFreeText(raw), expected, `failed for pattern: ${raw}`);
+  }
+});
+
+test('sanitizeFreeText scrubs credentials inside JSON formatted strings', () => {
+  const jsonStr = '{"error":"auth","password":"mySecretPassword","token":"secretToken123"}';
+  const out = sanitizeFreeText(jsonStr);
+  assert.equal(out, '{"error":"auth","password":"[REDACTED]","token":"[REDACTED]"}');
+});
+
+test('sanitizeFreeText masks phone numbers (8-15 digits) and preserves short numeric codes', () => {
+  const withPhone = 'customer phone 081234567890 submitted booking';
+  assert.equal(sanitizeFreeText(withPhone), 'customer phone 08***90 submitted booking');
+
+  const withShortCode = 'status 404 code 1234 error 500';
+  assert.equal(sanitizeFreeText(withShortCode), 'status 404 code 1234 error 500');
+});
+
+test('sanitizeFreeText handles non-string and empty inputs safely', () => {
+  assert.equal(sanitizeFreeText(null), null);
+  assert.equal(sanitizeFreeText(undefined), undefined);
+  assert.equal(sanitizeFreeText(''), '');
+  assert.equal(sanitizeFreeText(12345), '12345');
 });

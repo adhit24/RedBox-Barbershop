@@ -31,20 +31,40 @@ test('booking_submit_started is logged with status started', () => {
   assert.match(routeBody, /eventName: 'booking_submit_started'[\s\S]{0,200}status: 'started'|status: 'started'[\s\S]{0,200}eventName: 'booking_submit_started'/);
 });
 
-test('every logSystemEvent call site is defended with .catch(() => {}) so a logging failure cannot propagate', () => {
+test('terminal booking events are awaited before returning HTTP responses (Blocker 1)', () => {
   const routeBody = bookingRouteMatch[0];
-  const callSites = routeBody.match(/logSystemEvent\(\{[\s\S]*?\}, \{ supabase \}\)(\.catch\(\(\) => \{\}\))?;/g) || [];
-  assert.ok(callSites.length >= 8, `expected at least 8 logSystemEvent call sites in the booking route, found ${callSites.length}`);
-  for (const call of callSites) {
-    assert.match(call, /\.catch\(\(\) => \{\}\);$/, `logSystemEvent call site is missing .catch(() => {}): ${call}`);
+
+  // Terminal validation failure is awaited before returning 400/401/403/409/500
+  assert.match(routeBody, /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_validation_failed'[\s\S]*?\}, \{ supabase \}\);[\s\r\n]*return res\.status\(/);
+
+  // Terminal availability failure is awaited before returning 409
+  assert.match(routeBody, /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_availability_failed'[\s\S]*?\}, \{ supabase \}\);[\s\r\n]*return res\.status\(409\)/);
+
+  // Terminal booking_insert_failed is awaited before returning 500
+  assert.match(routeBody, /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_insert_failed'[\s\S]*?\}, \{ supabase \}\);[\s\r\n]*return res\.status\(500\)/);
+
+  // Terminal success (booking_confirmed_to_client) is awaited before returning 201
+  assert.match(routeBody, /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_confirmed_to_client'[\s\S]*?\}, \{ supabase \}\);[\s\r\n]*return res\.status\(201\)/);
+
+  // Outer 500 catch awaits booking_insert_failed
+  const outerCatch = routeBody.match(/console\.error\('Supabase POST Error:', err\);[\s\S]*?return res\.status\(500\)\.json\(\{ error: err\.message \}\);/);
+  assert.ok(outerCatch, 'expected outer catch block');
+  assert.match(outerCatch[0], /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_insert_failed'/);
+});
+
+test('non-terminal diagnostic events retain fire-and-forget .catch(() => {})', () => {
+  const routeBody = bookingRouteMatch[0];
+  const fireAndForgetEvents = ['booking_submit_started', 'booking_created', 'booking_customer_link_failed', 'booking_notification_failed'];
+  for (const name of fireAndForgetEvents) {
+    const blockRegex = new RegExp(`eventName: '${name}'[\\s\\S]*?\\.catch\\(\\(\\) => \\{\\}\\);`);
+    assert.match(routeBody, blockRegex, `expected non-terminal ${name} to use fire-and-forget .catch(() => {})`);
   }
 });
 
-test('every required Phase 1 booking event name appears exactly once in the route body', () => {
+test('every required Phase 1 booking event name appears in the route body', () => {
   const routeBody = bookingRouteMatch[0];
   const requiredOnce = [
     'booking_submit_started',
-    'booking_availability_failed',
     'booking_created',
   ];
   for (const name of requiredOnce) {
@@ -52,23 +72,67 @@ test('every required Phase 1 booking event name appears exactly once in the rout
     assert.equal(occurrences, 1, `expected eventName: '${name}' exactly once, found ${occurrences}`);
   }
   // These appear more than once by design:
+  //  - booking_availability_failed: once for barber holiday, once for slot overlap (Gap 3)
   //  - schedule_create_failed / schedule_created / booking_confirmed_to_client:
-  //    once on the confirmed-with-schedule path, once on the
-  //    moka-bridge-failed / no-schedule path (see Step 10).
-  //  - booking_insert_failed: once in the insert-error branch, once more in
-  //    the route's outer catch (final-review Finding 2 — instrumenting the
-  //    previously-uninstrumented terminal 500 path).
-  //  - booking_customer_link_failed: once for the "not attempted" (healthy,
-  //    common) case logged as INFO/skipped, once for an actual write
-  //    failure logged as WARNING/failed (final-review Finding 1) — the
-  //    event NAME is reused per the plan's fixed event-name contract, only
-  //    severity/status differ.
-  for (const name of ['schedule_create_failed', 'schedule_created', 'booking_confirmed_to_client', 'booking_insert_failed', 'booking_customer_link_failed']) {
+  //    once on the confirmed-with-schedule path, once on the scheduleId:null path, once on bridge catch (Blocker 2)
+  //  - booking_insert_failed: once in insert-error branch, once in route outer catch
+  //  - booking_customer_link_failed: once for not_attempted (skipped), once for write failed
+  for (const name of ['booking_availability_failed', 'schedule_create_failed', 'schedule_created', 'booking_confirmed_to_client', 'booking_insert_failed', 'booking_customer_link_failed']) {
     const occurrences = routeBody.split(`eventName: '${name}'`).length - 1;
     assert.ok(occurrences >= 1, `expected at least one eventName: '${name}', found ${occurrences}`);
   }
-  assert.ok(routeBody.split("eventName: 'booking_validation_failed'").length - 1 >= 1, 'expected at least one booking_validation_failed');
+  assert.ok(routeBody.split("eventName: 'booking_validation_failed'").length - 1 >= 5, 'expected at least 5 booking_validation_failed call sites');
   assert.ok(routeBody.split("eventName: 'booking_notification_failed'").length - 1 >= 1, 'expected at least one booking_notification_failed');
+});
+
+test('all early returns are instrumented with event logs (Gap 3)', () => {
+  const routeBody = bookingRouteMatch[0];
+
+  // 1. Branch required ("Cabang wajib dipilih")
+  const branchReq = routeBody.match(/if \(!resolvedInputLocation\) \{[\s\S]*?return res\.status\(400\)\.json\(\{ error: 'Cabang wajib dipilih' \}\);/);
+  assert.ok(branchReq, 'expected branch required guard');
+  assert.match(branchReq[0], /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_validation_failed'[\s\S]*?errorMessage: 'Cabang wajib dipilih'/);
+
+  // 2. Barber required ("Kapster wajib dipilih sebelum booking")
+  const barberReq = routeBody.match(/if \(!normalizedBarberId \|\| normalizedBarberId === 'any'\) \{[\s\S]*?return res\.status\(400\)\.json\(\{ error: 'Kapster wajib dipilih sebelum booking' \}\);/);
+  assert.ok(barberReq, 'expected barber required guard');
+  assert.match(barberReq[0], /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_validation_failed'[\s\S]*?errorMessage: 'Kapster wajib dipilih sebelum booking'/);
+
+  // 3. Barber lookup failure 500 ("Gagal memvalidasi kapster")
+  const barberErrBlock = routeBody.match(/if \(barberErr && barberErr\.code !== 'PGRST116'\) \{[\s\S]*?return res\.status\(500\)\.json\(\{ error: 'Gagal memvalidasi kapster' \}\);/);
+  assert.ok(barberErrBlock, 'expected barberErr 500 guard');
+  assert.match(barberErrBlock[0], /await logSystemEvent\(\{[\s\S]*?severity: 'ERROR'[\s\S]*?httpStatus: 500/);
+
+  // 4. Barber holiday unavailable 409 ("Kapster sedang libur pada tanggal tersebut")
+  const barberHolidayBlock = routeBody.match(/if \(!barberAvailability\.isWorking\) \{[\s\S]*?return res\.status\(409\)\.json\(\{ error: 'Kapster sedang libur pada tanggal tersebut' \}\);/);
+  assert.ok(barberHolidayBlock, 'expected barber holiday 409 guard');
+  assert.match(barberHolidayBlock[0], /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_availability_failed'[\s\S]*?httpStatus: 409/);
+});
+
+test('when bridgeBookingToMoka returns scheduleId:null without throwing, failure is logged and confirmed_to_client is WARNING/partial (Blocker 2)', () => {
+  const routeBody = bookingRouteMatch[0];
+  const bridgeSuccessAndNullBlock = routeBody.match(/const r = await require\('\.\/moka\/sync'\)\.bridgeBookingToMoka\(supabase[\s\S]*?\} else \{[\s\S]*?return res\.status\(201\)\.json\(\{ data, autoBooked: true, scheduleId: null, mokaSync: r\.mokaSync, homeServiceJobId: null \}\);/);
+  assert.ok(bridgeSuccessAndNullBlock, 'expected the if (r.scheduleId) ... else ... block after bridgeBookingToMoka');
+
+  const elseBlock = bridgeSuccessAndNullBlock[0].split('} else {')[1];
+  // Must record schedule_create_failed
+  assert.match(elseBlock, /eventName: 'schedule_create_failed'/);
+  assert.match(elseBlock, /status: 'failed'/);
+
+  // Must NOT record booking_confirmed_to_client as INFO/success
+  assert.doesNotMatch(elseBlock, /severity: 'INFO', status: 'success'/);
+  // Must record booking_confirmed_to_client as WARNING / partial
+  assert.match(elseBlock, /eventName: 'booking_confirmed_to_client'[\s\S]*?severity: 'WARNING'[\s\S]*?status: 'partial'/);
+});
+
+test('when bridgeBookingToMoka returns scheduleId present, schedule_created and confirmed_to_client are logged with INFO/success', () => {
+  const routeBody = bookingRouteMatch[0];
+  const bridgeSuccessAndNullBlock = routeBody.match(/const r = await require\('\.\/moka\/sync'\)\.bridgeBookingToMoka\(supabase[\s\S]*?\} else \{/);
+  assert.ok(bridgeSuccessAndNullBlock, 'expected if (r.scheduleId) block');
+
+  const successPath = bridgeSuccessAndNullBlock[0];
+  assert.match(successPath, /eventName: 'schedule_created'[\s\S]*?severity: 'INFO'[\s\S]*?status: 'success'/);
+  assert.match(successPath, /eventName: 'booking_confirmed_to_client'[\s\S]*?severity: 'INFO'[\s\S]*?status: 'success'/);
 });
 
 test('booking_confirmed_to_client is never logged before the bookings insert result (data.id) exists', () => {
@@ -102,7 +166,7 @@ test('the route outer catch (unexpected exception) logs booking_insert_failed be
   assert.ok(catchBlock, 'expected the outer Supabase-branch catch block');
   assert.match(catchBlock[0], /eventName: 'booking_insert_failed'/);
   assert.match(catchBlock[0], /severity: 'ERROR', status: 'failed'/);
-  assert.match(catchBlock[0], /\.catch\(\(\) => \{\}\);/);
+  assert.match(catchBlock[0], /await logSystemEvent\(/);
 });
 
 test('membership abuse-gate rejections (MEMBER_LOGIN_REQUIRED, MEMBER_IDENTITY_MISMATCH) are logged before their return', () => {

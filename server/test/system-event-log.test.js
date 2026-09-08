@@ -95,6 +95,31 @@ test('logSystemEvent: a supabase client that throws does not propagate the throw
   assert.equal(result.status, 'error');
 });
 
+test('logging DB failure still never changes the booking business response when awaited', async () => {
+  const failingSupabase = {
+    from() {
+      return { insert: async () => { throw new Error('database connection crashed'); } };
+    },
+  };
+
+  // Simulate a business handler awaiting logSystemEvent immediately before returning business response
+  async function simulatedTerminalBookingHandler() {
+    await logSystemEvent({
+      module: 'booking',
+      eventName: 'booking_confirmed_to_client',
+      severity: 'INFO',
+      status: 'success',
+      bookingId: 'bk-123',
+    }, { supabase: failingSupabase });
+
+    return { httpStatus: 201, body: { data: { id: 'bk-123' }, scheduleId: 'sch-456' } };
+  }
+
+  const response = await simulatedTerminalBookingHandler();
+  assert.equal(response.httpStatus, 201);
+  assert.equal(response.body.data.id, 'bk-123');
+});
+
 test('logSystemEvent: ERROR severity persists the exact severity given', async () => {
   const supabase = makeFakeSupabase();
   await logSystemEvent({
@@ -186,4 +211,40 @@ test('logSystemEvent: a short (e.g. 4-digit) number in error_message is left unm
   }, { supabase });
 
   assert.equal(supabase.calls[0].row.error_message, 'validation failed for code 1234');
+});
+
+test('logSystemEvent: message scrubs Bearer tokens and credentials', async () => {
+  const supabase = makeFakeSupabase();
+  await logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_submit_started',
+    severity: 'INFO',
+    message: 'User sent Authorization: Bearer eyJhbGciOi_secret with password=hunter2',
+  }, { supabase });
+
+  const persisted = supabase.calls[0].row.message;
+  assert.ok(!persisted.includes('eyJhbGciOi_secret'), 'raw bearer token must not persist in message');
+  assert.ok(!persisted.includes('hunter2'), 'raw password must not persist in message');
+  assert.match(persisted, /Authorization: Bearer \[REDACTED\]/);
+  assert.match(persisted, /password=\[REDACTED\]/);
+});
+
+test('logSystemEvent: error_message scrubs access_token, api_key, password, and secret patterns', async () => {
+  const supabase = makeFakeSupabase();
+  await logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_insert_failed',
+    severity: 'ERROR',
+    errorMessage: 'upstream failed: access_token=tok123 api_key=key456 secret=sec789 password=pwd999',
+  }, { supabase });
+
+  const persisted = supabase.calls[0].row.error_message;
+  assert.ok(!persisted.includes('tok123'), 'access_token must not persist');
+  assert.ok(!persisted.includes('key456'), 'api_key must not persist');
+  assert.ok(!persisted.includes('sec789'), 'secret must not persist');
+  assert.ok(!persisted.includes('pwd999'), 'password must not persist');
+  assert.match(persisted, /access_token=\[REDACTED\]/);
+  assert.match(persisted, /api_key=\[REDACTED\]/);
+  assert.match(persisted, /secret=\[REDACTED\]/);
+  assert.match(persisted, /password=\[REDACTED\]/);
 });

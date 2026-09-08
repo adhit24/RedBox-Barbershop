@@ -13,6 +13,31 @@ function parseLimit(raw) {
   return Math.min(Math.trunc(n), MAX_LIMIT);
 }
 
+function toJakartaDateBounds(from, to) {
+  let gteVal = from || null;
+  let ltVal = null;
+  let lteVal = null;
+
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    gteVal = `${from}T00:00:00+07:00`;
+  }
+
+  if (to) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      const [y, m, d] = to.split('-').map(Number);
+      const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
+      const nextY = nextDay.getUTCFullYear();
+      const nextM = String(nextDay.getUTCMonth() + 1).padStart(2, '0');
+      const nextD = String(nextDay.getUTCDate()).padStart(2, '0');
+      ltVal = `${nextY}-${nextM}-${nextD}T00:00:00+07:00`;
+    } else {
+      lteVal = to;
+    }
+  }
+
+  return { gteVal, ltVal, lteVal };
+}
+
 function createSystemEventLogRoutes(supabase, legacyAdminAuth) {
   const router = express.Router();
   const adminAuth = createBackofficeSupabaseAuth(supabase, legacyAdminAuth);
@@ -27,8 +52,11 @@ function createSystemEventLogRoutes(supabase, legacyAdminAuth) {
     if (eventName) query = query.eq('event_name', eventName);
     if (correlationId) query = query.eq('correlation_id', correlationId);
     if (bookingId) query = query.eq('booking_id', bookingId);
-    if (from) query = query.gte('created_at', from);
-    if (to) query = query.lte('created_at', to);
+
+    const { gteVal, ltVal, lteVal } = toJakartaDateBounds(from, to);
+    if (gteVal) query = query.gte('created_at', gteVal);
+    if (ltVal) query = query.lt('created_at', ltVal);
+    else if (lteVal) query = query.lte('created_at', lteVal);
 
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: 'failed to load system event logs' });
@@ -52,4 +80,4 @@ function createSystemEventLogRoutes(supabase, legacyAdminAuth) {
   return router;
 }
 
-module.exports = { createSystemEventLogRoutes };
+module.exports = { createSystemEventLogRoutes, toJakartaDateBounds };

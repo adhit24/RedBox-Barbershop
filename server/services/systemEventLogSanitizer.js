@@ -57,4 +57,40 @@ function sanitizeMetadata(input) {
   return { _truncated: true, _original_size: serialized.length };
 }
 
-module.exports = { sanitizeMetadata, SENSITIVE_KEY_PATTERN, MAX_METADATA_JSON_LENGTH };
+/**
+ * Bounded shared free-text sanitizer for persisted log text (message, error_message).
+ * Scrubs obvious credential-bearing patterns:
+ * - Authorization: Bearer <token>
+ * - Bearer <token>
+ * - access_token=... / refresh_token=... / api_key=... / apikey=... / token=... / secret=... / password=... / cookie=...
+ * - JSON key/value pairs: "password": "...", "token": "...", etc.
+ * Masks phone-number-shaped digit sequences (8-15 consecutive digits).
+ * Preserves non-string values safely and never throws.
+ */
+function sanitizeFreeText(value) {
+  if (value === undefined || value === null) return value;
+  let text = String(value);
+
+  // 1. Scrub Bearer tokens with or without "Authorization:" header prefix
+  text = text.replace(/(authorization\s*:\s*bearer\s+)[^\s,;]+/gi, '$1[REDACTED]');
+  text = text.replace(/\b(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, '$1[REDACTED]');
+
+  // 2. Scrub JSON / quoted credential patterns: "password": "..." or "token": "..."
+  text = text.replace(
+    /("(?:access_token|refresh_token|api[_-]?key|apikey|token|secret|password|cookie)"\s*:\s*)"(?:[^"\\]|\\.)*"/gi,
+    '$1"[REDACTED]"'
+  );
+
+  // 3. Scrub key-value credential patterns: key=val or key: val
+  text = text.replace(
+    /\b(access_token|refresh_token|api[_-]?key|apikey|token|secret|password|cookie)(\s*[:=]\s*)(["']?)([^\s,;&"']+)\3/gi,
+    '$1$2$3[REDACTED]$3'
+  );
+
+  // 4. Mask phone-number-shaped sequences (8-15 consecutive digits)
+  text = text.replace(/\d{8,15}/g, (match) => `${match.slice(0, 2)}***${match.slice(-2)}`);
+
+  return text;
+}
+
+module.exports = { sanitizeMetadata, sanitizeFreeText, SENSITIVE_KEY_PATTERN, MAX_METADATA_JSON_LENGTH };

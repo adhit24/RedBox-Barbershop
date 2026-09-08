@@ -1,7 +1,7 @@
 // server/services/systemEventLog.js
 'use strict';
 
-const { sanitizeMetadata } = require('./systemEventLogSanitizer');
+const { sanitizeMetadata, sanitizeFreeText } = require('./systemEventLogSanitizer');
 
 const SYSTEM_EVENT_LOG_TABLE = 'system_event_logs';
 const SEVERITIES = new Set(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']);
@@ -18,17 +18,10 @@ function boundedInt(value) {
   return Number.isFinite(num) ? Math.trunc(num) : null;
 }
 
-// Small, targeted mitigation: masks phone-number-shaped substrings (8-15
-// consecutive digits, matching the WA-format validation regex used elsewhere
-// in server/index.js: /^\d{8,15}$/) inside a free-text string before it is
-// persisted as error_message. Upstream Supabase/Moka error objects can in
-// principle embed row values, including a customer's WA/phone number, and
-// the plan's Global Constraints forbid persisting raw customer phone
-// numbers. This is deliberately narrow — not a general-purpose text
-// scrubber — and is applied only to error_message.
+// Targeted free-text sanitizer: scrubs credentials (tokens, passwords, api keys)
+// and masks phone-number-shaped substrings (8-15 digits) across free-text fields.
 function maskPhoneLikeSequences(value) {
-  if (typeof value !== 'string') return value;
-  return value.replace(/\d{8,15}/g, (match) => `${match.slice(0, 2)}***${match.slice(-2)}`);
+  return sanitizeFreeText(value);
 }
 
 function normalizeEvent(event = {}) {
@@ -44,11 +37,11 @@ function normalizeEvent(event = {}) {
     event_type: bounded(event.eventType, 64),
     severity,
     status: STATUSES.has(event.status) ? event.status : null,
-    message: bounded(event.message, 500),
+    message: bounded(sanitizeFreeText(event.message), 500),
     correlation_id: bounded(event.correlationId, 128),
     request_id: bounded(event.requestId, 128),
     error_code: bounded(event.errorCode, 64),
-    error_message: bounded(maskPhoneLikeSequences(event.errorMessage), 1000),
+    error_message: bounded(sanitizeFreeText(event.errorMessage), 1000),
     source: bounded(event.source, 32),
     entity_type: bounded(event.entityType, 32),
     entity_id: bounded(event.entityId, 128),

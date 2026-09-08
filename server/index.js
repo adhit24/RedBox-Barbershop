@@ -1264,26 +1264,31 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
 
   if (!name || !wa || !service || !date || !time) {
-    logSystemEvent({
+    await logSystemEvent({
       module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
       correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
       errorMessage: 'Missing required fields: name, wa, service, date, time',
-    }, { supabase }).catch(() => {});
+    }, { supabase });
     return res.status(400).json({ error: 'Missing required fields: name, wa, service, date, time' });
   }
   // Validasi format WA (hanya angka, 8-15 digit)
   if (!/^\d{8,15}$/.test(String(wa))) {
-    logSystemEvent({
+    await logSystemEvent({
       module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
       correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
       errorMessage: 'Format nomor WhatsApp tidak valid (8-15 angka tanpa kode negara)',
-    }, { supabase }).catch(() => {});
+    }, { supabase });
     return res.status(400).json({ error: 'Format nomor WhatsApp tidak valid (8-15 angka tanpa kode negara)' });
   }
 
   const bookingId = randomUUID();
   const resolvedInputLocation = normalizeBranch(location);
   if (!resolvedInputLocation) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Cabang wajib dipilih',
+    }, { supabase });
     return res.status(400).json({ error: 'Cabang wajib dipilih' });
   }
   let resolvedLocation = resolvedInputLocation;
@@ -1292,6 +1297,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   // `any` only as a legacy placeholder; accepting it here creates bookings
   // that cannot be routed to a barber or a branch reliably.
   if (!normalizedBarberId || normalizedBarberId === 'any') {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
+      correlationId, outletId: resolvedLocation, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 400,
+      errorMessage: 'Kapster wajib dipilih sebelum booking',
+    }, { supabase });
     return res.status(400).json({ error: 'Kapster wajib dipilih sebelum booking' });
   }
 
@@ -1301,22 +1311,28 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       if (normalizedBarberId && normalizedBarberId !== 'any') {
         const { data: barberCheck, error: barberErr } = await getBarberForBooking(supabase, normalizedBarberId);
         if (barberErr && barberErr.code !== 'PGRST116') {
+          await logSystemEvent({
+            module: 'booking', eventName: 'booking_validation_failed', severity: 'ERROR', status: 'failed',
+            correlationId, barberId: normalizedBarberId, outletId: resolvedLocation, httpStatus: 500,
+            errorCode: barberErr.code || 'BARBER_LOOKUP_FAILED',
+            errorMessage: barberErr.message || 'Gagal memvalidasi kapster',
+          }, { supabase });
           return res.status(500).json({ error: 'Gagal memvalidasi kapster' });
         }
         if (!barberCheck) {
-          logSystemEvent({
+          await logSystemEvent({
             module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
             correlationId, barberId: normalizedBarberId, httpStatus: 400,
             errorMessage: 'Kapster tidak ditemukan',
-          }, { supabase }).catch(() => {});
+          }, { supabase });
           return res.status(400).json({ error: 'Kapster tidak ditemukan' });
         }
         if (!isAdmin && barberCheck.is_active === false) {
-          logSystemEvent({
+          await logSystemEvent({
             module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
             correlationId, barberId: normalizedBarberId, httpStatus: 403,
             errorMessage: 'Kapster sedang tidak aktif dan tidak bisa dipesan',
-          }, { supabase }).catch(() => {});
+          }, { supabase });
           return res.status(403).json({ error: 'Kapster sedang tidak aktif dan tidak bisa dipesan' });
         }
         if (!isAdmin) {
@@ -1325,17 +1341,22 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             date,
           });
           if (!barberAvailability.isWorking) {
+            await logSystemEvent({
+              module: 'booking', eventName: 'booking_availability_failed', severity: 'WARNING', status: 'failed',
+              correlationId, barberId: normalizedBarberId, outletId: resolvedLocation, httpStatus: 409,
+              errorMessage: 'Kapster sedang libur pada tanggal tersebut',
+            }, { supabase });
             return res.status(409).json({ error: 'Kapster sedang libur pada tanggal tersebut' });
           }
         }
         // Never silently move a booking to the barber's branch. A client that
         // submits CSB + a Bypass barber must be rejected, not corrected.
         if (!branchMatchesBarber(barberCheck, resolvedLocation)) {
-          logSystemEvent({
+          await logSystemEvent({
             module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
             correlationId, barberId: normalizedBarberId, httpStatus: 409,
             errorMessage: `Kapster ${barberCheck.name || normalizedBarberId} tidak tersedia di cabang ${resolvedLocation}`,
-          }, { supabase }).catch(() => {});
+          }, { supabase });
           return res.status(409).json({
             error: `Kapster ${barberCheck.name || normalizedBarberId} tidak tersedia di cabang ${resolvedLocation}`,
           });
@@ -1344,11 +1365,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
 
       // 2. Cek overlap terlebih dahulu
       if (await hasOverlapSupabase({ barberId: normalizedBarberId, date, time, duration })) {
-        logSystemEvent({
+        await logSystemEvent({
           module: 'booking', eventName: 'booking_availability_failed', severity: 'WARNING', status: 'failed',
           correlationId, barberId: normalizedBarberId, httpStatus: 409,
           errorMessage: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.',
-        }, { supabase }).catch(() => {});
+        }, { supabase });
         return res.status(409).json({ error: 'Kapster sudah memiliki jadwal pada rentang waktu tersebut.' });
       }
 
@@ -1390,22 +1411,22 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             const memberSession = await getMemberSessionByToken(memberToken);
             const sessionMatchesPhone = sameIdentityPhone(memberSession?.customer_wa, wa);
             if (!sessionMatchesPhone) {
-              logSystemEvent({
+              await logSystemEvent({
                 module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
                 correlationId, httpStatus: 401, errorCode: 'MEMBER_LOGIN_REQUIRED',
                 errorMessage: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
-              }, { supabase }).catch(() => {});
+              }, { supabase });
               return res.status(401).json({
                 code: 'MEMBER_LOGIN_REQUIRED',
                 error: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
               });
             }
             if (!sameIdentityName(name, memberProfile?.full_name)) {
-              logSystemEvent({
+              await logSystemEvent({
                 module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
                 correlationId, httpStatus: 403, errorCode: 'MEMBER_IDENTITY_MISMATCH',
                 errorMessage: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
-              }, { supabase }).catch(() => {});
+              }, { supabase });
               return res.status(403).json({
                 code: 'MEMBER_IDENTITY_MISMATCH',
                 error: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
@@ -1440,11 +1461,11 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         original_price: originalPrice, discount_label: discountLabel
       }]).select().single();
       if (error) {
-        logSystemEvent({
+        await logSystemEvent({
           module: 'booking', eventName: 'booking_insert_failed', severity: 'ERROR', status: 'failed',
           correlationId, bookingId, barberId: normalizedBarberId, httpStatus: 500,
           errorMessage: error.message,
-        }, { supabase }).catch(() => {});
+        }, { supabase });
         return res.status(500).json({ error: error.message });
       }
       logSystemEvent({
@@ -1570,68 +1591,87 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         try {
           const r = await require('./moka/sync').bridgeBookingToMoka(supabase, { ...data, type, address });
           if (r.scheduleId) {
-            logSystemEvent({
+            await logSystemEvent({
               module: 'booking', eventName: 'schedule_created', severity: 'INFO', status: 'success',
               correlationId, bookingId: data.id, scheduleId: r.scheduleId,
               entityType: 'schedule', entityId: r.scheduleId,
-            }, { supabase }).catch(() => {});
-          }
+            }, { supabase });
 
-          // If home service: create lifecycle tracking row
-          let homeServiceJobId = null;
-          if ((type === 'home_service' || type === 'wedding') && r.scheduleId) {
-            const addrPattern = type === 'wedding'
-              ? /\[WEDDING\] Alamat:\s*(.+)/
-              : /\[HOME SERVICE\] Alamat:\s*(.+)/;
-            const jobAddress = address || (notes?.match(addrPattern)?.[1]?.trim()) || '';
-            if (jobAddress) {
-              const { data: hsJob } = await supabase
-                .from('home_service_jobs')
-                .insert({ schedule_id: r.scheduleId, address: jobAddress, status: 'confirmed' })
-                .select('id')
-                .single();
-              homeServiceJobId = hsJob?.id || null;
+            // If home service: create lifecycle tracking row
+            let homeServiceJobId = null;
+            if ((type === 'home_service' || type === 'wedding') && r.scheduleId) {
+              const addrPattern = type === 'wedding'
+                ? /\[WEDDING\] Alamat:\s*(.+)/
+                : /\[HOME SERVICE\] Alamat:\s*(.+)/;
+              const jobAddress = address || (notes?.match(addrPattern)?.[1]?.trim()) || '';
+              if (jobAddress) {
+                const { data: hsJob } = await supabase
+                  .from('home_service_jobs')
+                  .insert({ schedule_id: r.scheduleId, address: jobAddress, status: 'confirmed' })
+                  .select('id')
+                  .single();
+                homeServiceJobId = hsJob?.id || null;
+              }
             }
-          }
 
-          logSystemEvent({
-            module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
-            correlationId, bookingId: data.id, scheduleId: r.scheduleId || null,
-            entityType: 'booking', entityId: data.id, httpStatus: 201,
-          }, { supabase }).catch(() => {});
-          return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId });
+            await logSystemEvent({
+              module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
+              correlationId, bookingId: data.id, scheduleId: r.scheduleId,
+              entityType: 'booking', entityId: data.id, httpStatus: 201,
+            }, { supabase });
+            return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId });
+          } else {
+            // Blocker 2: scheduleId:null IS NOT SUCCESS.
+            // bridgeBookingToMoka resolved without throwing, but no schedule was created.
+            await logSystemEvent({
+              module: 'booking', eventName: 'schedule_create_failed',
+              severity: r.mokaSync === 'error_insert' ? 'ERROR' : 'WARNING',
+              status: 'failed',
+              correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
+              errorCode: r.mokaSync || null,
+              errorMessage: `schedule creation failed: ${r.mokaSync || 'no_schedule'}`,
+            }, { supabase });
+
+            await logSystemEvent({
+              module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'WARNING', status: 'partial',
+              correlationId, bookingId: data.id, scheduleId: null,
+              entityType: 'booking', entityId: data.id, httpStatus: 201,
+              message: `confirmed to client without a linked schedule (${r.mokaSync || 'unknown'})`,
+            }, { supabase });
+            return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: r.mokaSync, homeServiceJobId: null });
+          }
         } catch (e) {
           console.warn(`[Moka Bridge] booking ${data.id} failed:`, e.message);
-          logSystemEvent({
+          await logSystemEvent({
             module: 'booking', eventName: 'schedule_create_failed', severity: 'ERROR', status: 'failed',
             correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id,
             errorMessage: e.message,
-          }, { supabase }).catch(() => {});
+          }, { supabase });
           // A booking row exists (data.id is real) but no schedule was
           // created — this IS booking_confirmed_to_client's truthful state:
           // the client sees the booking exists, scheduleId is explicitly
           // null in the response so nothing downstream assumes a schedule.
-          logSystemEvent({
+          await logSystemEvent({
             module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'WARNING', status: 'partial',
             correlationId, bookingId: data.id, scheduleId: null,
             entityType: 'booking', entityId: data.id, httpStatus: 201,
             message: 'confirmed to client without a linked schedule (moka bridge failed)',
-          }, { supabase }).catch(() => {});
+          }, { supabase });
           return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: 'failed' });
         }
       }
 
-      logSystemEvent({
+      await logSystemEvent({
         module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
         correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id, httpStatus: 201,
-      }, { supabase }).catch(() => {});
+      }, { supabase });
       return res.status(201).json({ data, autoBooked: desiredStatus === 'confirmed' });
     } catch (err) {
       console.error('Supabase POST Error:', err);
-      logSystemEvent({
+      await logSystemEvent({
         module: 'booking', eventName: 'booking_insert_failed', severity: 'ERROR', status: 'failed',
         correlationId, bookingId, httpStatus: 500, errorMessage: err.message,
-      }, { supabase }).catch(() => {});
+      }, { supabase });
       return res.status(500).json({ error: err.message });
     }
   } else {
