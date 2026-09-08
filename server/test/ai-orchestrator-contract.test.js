@@ -31,6 +31,10 @@ const EXPECTED_ROUTES = {
   customer_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_history' },
   customer_booking_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_history' },
   points_inquiry: { route: 'crm_agent', agent: 'crm_agent', action: 'get_points' },
+  // Round 3, Objective A: a points/redeem dispute always routes to a human
+  // case — the CRM authority has no ledger/redeem-transaction/policy history
+  // to safely verify a dispute against (see executionService.js).
+  points_dispute: { route: 'human', action: 'escalate_points_dispute', reason: 'points_or_redeem_discrepancy' },
   customer_profile: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' },
   customer_preferences: { route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_preferences' },
   customer_transaction_history: { route: 'crm_agent', agent: 'crm_agent', action: 'get_transaction_summary' },
