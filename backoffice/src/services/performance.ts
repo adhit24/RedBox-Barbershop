@@ -7,8 +7,13 @@
 // signature and MonthlyPerformancePoint[] return shape stay the same, so no
 // caller (the chart component) needs to change.
 import { MOKA_2026_PERFORMANCE, LATEST_ACTUAL_MONTH, type MonthlyPerformancePoint, type BranchScope } from '../data/moka2026Performance';
+import {
+  MOKA_2026_DAILY_PERFORMANCE,
+  type DailyPerformancePoint,
+  type DailyPerformanceBranch,
+} from '../data/moka2026DailyPerformance';
 
-export type { MonthlyPerformancePoint, BranchScope };
+export type { MonthlyPerformancePoint, BranchScope, DailyPerformancePoint };
 export { LATEST_ACTUAL_MONTH };
 
 function toBranchScope(branch: string): BranchScope {
@@ -20,6 +25,52 @@ function toBranchScope(branch: string): BranchScope {
 /** Real monthly Net Sales for the given branch scope (or all branches), Jan–Dec. Months without real data yet have net_sales: null. */
 export async function getYearlyPerformance(branch: string): Promise<MonthlyPerformancePoint[]> {
   return MOKA_2026_PERFORMANCE[toBranchScope(branch)];
+}
+
+/**
+ * Daily Net Sales for a given branch scope, year, and month.
+ * Returns an array of DailyPerformancePoint sorted by day (1–31).
+ * Only days with real data are included — no fabricated zeros for missing dates.
+ *
+ * Service boundary is intentionally async so the signature is compatible with
+ * a future apiClient.get() call without changing any caller.
+ */
+export async function getMonthlyDailyPerformance({
+  branch,
+  year,
+  month,
+}: {
+  branch: string;
+  year: number;
+  month: number;
+}): Promise<DailyPerformancePoint[]> {
+  const scope = toBranchScope(branch) as DailyPerformanceBranch;
+  // Only 2026 Jan–Aug has real data; other year/month combinations return empty.
+  if (year !== 2026 || month < 1 || month > 8) return [];
+  return MOKA_2026_DAILY_PERFORMANCE[scope][month] ?? [];
+}
+
+/**
+ * Materializes every calendar day while preserving missing/future days as null.
+ * This keeps the chart honest when a future API returns an incomplete month.
+ */
+export function fillMissingDailyPoints(
+  data: DailyPerformancePoint[],
+  year: number,
+  month: number,
+): DailyPerformancePoint[] {
+  const pointByDay = new Map(data.map((point) => [point.day, point]));
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const day = index + 1;
+    return pointByDay.get(day) ?? {
+      date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      day,
+      net_sales: null,
+      transaction_count: null,
+    };
+  });
 }
 
 export interface PerformanceSummary {
@@ -79,3 +130,61 @@ export function computePerformanceSummary(data: MonthlyPerformancePoint[]): Perf
   };
 }
 
+export interface DailySummary {
+  /** Total Net Sales for all real days in the month */
+  total: number;
+  /** Average Net Sales per day with real data */
+  avgPerDay: number;
+  /** Day with highest Net Sales */
+  bestDay: DailyPerformancePoint;
+  /** Month-over-Month comparison vs previous month total (null if no previous month) */
+  vsLastMonth: {
+    pct: number;
+    formatted: string;
+    isPositive: boolean;
+    prevMonthTotal: number;
+  } | null;
+  /** Count of days with real data */
+  activeDays: number;
+}
+
+/**
+ * Computes daily-view summary metrics: total, avgPerDay, bestDay, vsLastMonth.
+ * prevMonthData may be empty — vsLastMonth will be null in that case.
+ */
+export function computeDailySummary(
+  data: DailyPerformancePoint[],
+  prevMonthData?: DailyPerformancePoint[],
+): DailySummary | null {
+  const actual = data.filter((p) => p.net_sales !== null);
+  if (actual.length === 0) return null;
+
+  const total = actual.reduce((sum, p) => sum + (p.net_sales ?? 0), 0);
+  const avgPerDay = Math.round(total / actual.length);
+  const bestDay = actual.reduce((a, b) => ((b.net_sales ?? 0) > (a.net_sales ?? 0) ? b : a));
+
+  let vsLastMonth: DailySummary['vsLastMonth'] = null;
+  if (prevMonthData && prevMonthData.length > 0) {
+    const prevActual = prevMonthData.filter((p) => p.net_sales !== null);
+    if (prevActual.length > 0) {
+      const prevTotal = prevActual.reduce((sum, p) => sum + (p.net_sales ?? 0), 0);
+      if (prevTotal > 0) {
+        const pct = ((total - prevTotal) / prevTotal) * 100;
+        vsLastMonth = {
+          pct,
+          formatted: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`,
+          isPositive: pct >= 0,
+          prevMonthTotal: prevTotal,
+        };
+      }
+    }
+  }
+
+  return {
+    total,
+    avgPerDay,
+    bestDay,
+    vsLastMonth,
+    activeDays: actual.length,
+  };
+}

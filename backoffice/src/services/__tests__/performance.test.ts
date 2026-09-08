@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getYearlyPerformance, LATEST_ACTUAL_MONTH } from '../performance';
+import { getMonthlyDailyPerformance, getYearlyPerformance, LATEST_ACTUAL_MONTH } from '../performance';
 
 describe('getYearlyPerformance', () => {
   it('returns all 12 months for the "all" branch scope', async () => {
@@ -84,6 +84,23 @@ describe('getYearlyPerformance', () => {
       expect(allPoint?.net_sales).toBe(sumNetSales);
       expect(allPoint?.transaction_count).toBe(sumTx);
     }
+  });
+});
+
+describe('getMonthlyDailyPerformance', () => {
+  it('returns exact August Net Sales and Payment-event transaction count', async () => {
+    const data = await getMonthlyDailyPerformance({ branch: 'all', year: 2026, month: 8 });
+
+    expect(data.reduce((sum, point) => sum + (point.net_sales ?? 0), 0)).toBe(583483400);
+    expect(data.reduce((sum, point) => sum + (point.transaction_count ?? 0), 0)).toBe(4644);
+  });
+
+  it('updates daily values for the requested global branch scope', async () => {
+    const all = await getMonthlyDailyPerformance({ branch: 'all', year: 2026, month: 8 });
+    const bypass = await getMonthlyDailyPerformance({ branch: 'bypass', year: 2026, month: 8 });
+
+    expect(bypass).not.toEqual(all);
+    expect(bypass.reduce((sum, point) => sum + (point.net_sales ?? 0), 0)).toBe(114320500);
   });
 });
 
