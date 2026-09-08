@@ -233,12 +233,101 @@ test('P2-B4: verifyTurnstileToken rejects invalid token with BOOKING_TURNSTILE_F
   assert.equal(res.code, 'BOOKING_TURNSTILE_FAILED');
 });
 
-test('P2-B4: verifyTurnstileToken accepts test-valid-turnstile-token in non-production test mode', async () => {
-  const res = await verifyTurnstileToken('test-valid-turnstile-token', '127.0.0.1');
-  assert.equal(res.success, true);
+test('P2-B4: verifyTurnstileToken accepts test-valid-turnstile-token only in NODE_ENV=test', async () => {
+  const prevEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+  try {
+    const res = await verifyTurnstileToken('test-valid-turnstile-token', '127.0.0.1');
+    assert.equal(res.success, true);
+    assert.equal(res.testMode, true);
+  } finally {
+    process.env.NODE_ENV = prevEnv;
+  }
 });
 
-test('P2-B4: isTrustedTurnstileBypass identifies admin credentials or internal authenticated calls', () => {
+test('P2-B4: NODE_ENV=production + test-valid-turnstile-token MUST NOT locally bypass and MUST call Cloudflare', async () => {
+  const prevEnv = process.env.NODE_ENV;
+  const prevSecret = process.env.TURNSTILE_SECRET_KEY;
+  const originalFetch = global.fetch;
+
+  process.env.NODE_ENV = 'production';
+  process.env.TURNSTILE_SECRET_KEY = 'prod-secret-sample';
+
+  let fetchCalled = false;
+  let fetchedUrl = '';
+  let fetchedBody = '';
+  global.fetch = async (url, options) => {
+    fetchCalled = true;
+    fetchedUrl = String(url);
+    fetchedBody = String(options?.body || '');
+    return {
+      ok: true,
+      json: async () => ({ success: false, 'error-codes': ['invalid-input-response'] }),
+    };
+  };
+
+  try {
+    const res = await verifyTurnstileToken('test-valid-turnstile-token', '127.0.0.1');
+    assert.equal(fetchCalled, true, 'Must call Cloudflare siteverify');
+    assert.match(fetchedUrl, /challenges\.cloudflare\.com\/turnstile\/v0\/siteverify/);
+    assert.match(fetchedBody, /response=test-valid-turnstile-token/);
+    assert.equal(res.success, false);
+    assert.equal(res.code, 'BOOKING_TURNSTILE_FAILED');
+  } finally {
+    process.env.NODE_ENV = prevEnv;
+    process.env.TURNSTILE_SECRET_KEY = prevSecret;
+    global.fetch = originalFetch;
+  }
+});
+
+test('P2-B4: NODE_ENV=production + test-valid-anything MUST NOT locally bypass', async () => {
+  const prevEnv = process.env.NODE_ENV;
+  const prevSecret = process.env.TURNSTILE_SECRET_KEY;
+  const originalFetch = global.fetch;
+
+  process.env.NODE_ENV = 'production';
+  process.env.TURNSTILE_SECRET_KEY = 'prod-secret-sample';
+
+  let fetchCalled = false;
+  global.fetch = async () => {
+    fetchCalled = true;
+    return {
+      ok: true,
+      json: async () => ({ success: false, 'error-codes': ['invalid-input-response'] }),
+    };
+  };
+
+  try {
+    const res = await verifyTurnstileToken('test-valid-arbitrary-token-123', '127.0.0.1');
+    assert.equal(fetchCalled, true);
+    assert.equal(res.success, false);
+    assert.equal(res.code, 'BOOKING_TURNSTILE_FAILED');
+  } finally {
+    process.env.NODE_ENV = prevEnv;
+    process.env.TURNSTILE_SECRET_KEY = prevSecret;
+    global.fetch = originalFetch;
+  }
+});
+
+test('P2-B4: NODE_ENV=production + missing TURNSTILE_SECRET_KEY fails closed with BOOKING_TURNSTILE_FAILED', async () => {
+  const prevEnv = process.env.NODE_ENV;
+  const prevSecret = process.env.TURNSTILE_SECRET_KEY;
+
+  process.env.NODE_ENV = 'production';
+  delete process.env.TURNSTILE_SECRET_KEY;
+
+  try {
+    const res = await verifyTurnstileToken('test-valid-turnstile-token', '127.0.0.1');
+    assert.equal(res.success, false);
+    assert.equal(res.code, 'BOOKING_TURNSTILE_FAILED');
+    assert.equal(res.error, 'TURNSTILE_NOT_CONFIGURED');
+  } finally {
+    process.env.NODE_ENV = prevEnv;
+    if (prevSecret !== undefined) process.env.TURNSTILE_SECRET_KEY = prevSecret;
+  }
+});
+
+test('P2-B4: isTrustedTurnstileBypass identifies admin credentials or internal authenticated calls only (rejects skipTurnstile client flag)', () => {
   process.env.ADMIN_PASSWORD = 'test-admin-secret';
   const reqAdmin = {
     headers: { 'x-admin-token': 'test-admin-secret' },
@@ -255,6 +344,13 @@ test('P2-B4: isTrustedTurnstileBypass identifies admin credentials or internal a
     body: { skipTurnstile: true },
   };
   assert.equal(isTrustedTurnstileBypass(reqClientBypassSpoof), false);
+});
+
+test('P2-B4: POST /api/bookings and POST /api/bookings/group enforce server-side Turnstile verification', () => {
+  assert.match(serverFile, /app\.post\('\/api\/bookings',/);
+  assert.match(serverFile, /isTrustedTurnstileBypass\(req\)[\s\S]*?verifyTurnstileToken/);
+  assert.match(serverFile, /app\.post\('\/api\/bookings\/group',/);
+  assert.match(serverFile, /BOOKING_TURNSTILE_FAILED/);
 });
 
 test('P2-B4: public/js/booking.js includes truthful customer error messages', () => {

@@ -24,30 +24,36 @@ async function verifyTurnstileToken(token, remoteIp = '') {
     };
   }
 
-  // Automated test environment bypass
-  if (
-    cleanToken === 'test-valid-turnstile-token' ||
-    (process.env.NODE_ENV === 'test' && cleanToken.startsWith('test-valid'))
-  ) {
-    return { success: true, testMode: true };
-  }
+  // Automated test environment bypass - strictly confined to NODE_ENV === 'test'
+  if (process.env.NODE_ENV === 'test') {
+    if (cleanToken === 'test-valid-turnstile-token' || cleanToken.startsWith('test-valid')) {
+      return { success: true, testMode: true };
+    }
 
-  if (cleanToken === 'invalid-dummy-token' || cleanToken.startsWith('test-invalid') || (process.env.NODE_ENV === 'test' && !cleanToken.startsWith('test-valid'))) {
-    return {
-      success: false,
-      code: 'BOOKING_TURNSTILE_FAILED',
-      error: 'BOOKING_TURNSTILE_FAILED',
-      message: 'Verifikasi keamanan bot gagal. Silakan coba lagi.',
-      errorCodes: ['invalid-input-response'],
-      testMode: true,
-    };
+    if (cleanToken === 'invalid-dummy-token' || cleanToken.startsWith('test-invalid')) {
+      return {
+        success: false,
+        code: 'BOOKING_TURNSTILE_FAILED',
+        error: 'BOOKING_TURNSTILE_FAILED',
+        message: 'Verifikasi keamanan bot gagal. Silakan coba lagi.',
+        errorCodes: ['invalid-input-response'],
+        testMode: true,
+      };
+    }
   }
 
   const secretKey = process.env.TURNSTILE_SECRET_KEY ? process.env.TURNSTILE_SECRET_KEY.trim() : '';
 
   if (!secretKey) {
     if (process.env.NODE_ENV === 'test') {
-      return { success: true, testMode: true, warning: 'no_secret_key_in_test' };
+      return {
+        success: false,
+        code: 'BOOKING_TURNSTILE_FAILED',
+        error: 'BOOKING_TURNSTILE_FAILED',
+        message: 'Verifikasi keamanan bot gagal. Silakan coba lagi.',
+        errorCodes: ['invalid-input-response'],
+        testMode: true,
+      };
     }
     console.error('[Turnstile] TURNSTILE_SECRET_KEY is not configured on server');
     return {
