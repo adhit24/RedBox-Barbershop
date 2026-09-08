@@ -458,7 +458,7 @@ export function CommandCenter() {
       <div className="mb-5">
         {yearlyPerformance.status === 'loading' && <LoadingState label="Memuat performa tahunan..." />}
         {yearlyPerformance.status === 'error' && <ErrorState message={yearlyPerformance.message} />}
-        {yearlyPerformance.status === 'ready' && <YearlyPerformanceChart data={yearlyPerformance.data} />}
+        {yearlyPerformance.status === 'ready' && <YearlyPerformanceChart data={yearlyPerformance.data} branch={branch} />}
       </div>
 
       <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
