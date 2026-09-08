@@ -27,6 +27,7 @@ import { RegularPayroll } from './pages/RegularPayroll';
 import { BarberPayroll } from './pages/BarberPayroll';
 import { PayrollEmployeeDetail } from './pages/PayrollEmployeeDetail';
 import { RolesPermissions } from './pages/RolesPermissions';
+import { SystemEventLog } from './pages/SystemEventLog';
 import { PackageFeatureAccess } from './pages/PackageFeatureAccess';
 import { ComingSoon } from './pages/ComingSoon';
 import { COMMAND_CENTER_PATH, LOGIN_PATH, PLACEHOLDER_ROUTES } from './routes';
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/payroll/employees/:id" element={<PayrollEmployeeDetail />} />
           <Route path="/system/roles" element={<RolesPermissions />} />
           <Route path="/system/packages" element={<PackageFeatureAccess />} />
+          <Route path="/system/events" element={<SystemEventLog />} />
           {PLACEHOLDER_ROUTES.map((route) => (
             <Route key={route.path} path={route.path} element={<ComingSoon title={route.title} />} />
           ))}

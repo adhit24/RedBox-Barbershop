@@ -2302,7 +2302,11 @@ Jika nama terdaftar sudah benar tetapi tetap ditolak, hubungi admin RedBox untuk
 		 return;
 		 }
  const resBody = await res.json().catch(() => null);
- if (resBody?.data) bookingResults.push(resBody.data);
+ if (!resBody?.data?.id || !resBody?.scheduleId) {
+ alert('Booking belum berhasil dibuat sepenuhnya. Silakan coba lagi atau hubungi admin Redbox.');
+ return;
+ }
+ bookingResults.push(resBody.data);
  }
  console.log('Booking synced to Supabase');
  savedToApi = true;
