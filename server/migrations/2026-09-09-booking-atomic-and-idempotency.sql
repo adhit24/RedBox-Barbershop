@@ -7,7 +7,8 @@ ALTER TABLE public.bookings
   ADD COLUMN IF NOT EXISTS group_request_id UUID,
   ADD COLUMN IF NOT EXISTS schedule_id UUID REFERENCES schedules(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS original_price INTEGER,
-  ADD COLUMN IF NOT EXISTS discount_label TEXT;
+  ADD COLUMN IF NOT EXISTS discount_label TEXT,
+  ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'outlet';
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_request_id
   ON bookings (booking_request_id)
@@ -74,12 +75,21 @@ BEGIN
     LIMIT 1;
 
     IF FOUND THEN
-      -- Check payload parity (same barber, date, time, phone, location)
-      IF v_existing_booking.barber_id IS NOT DISTINCT FROM p_barber_id
+      -- Canonical material parity check: compare all core booking intent fields
+      IF v_existing_booking.wa = p_wa
+         AND v_existing_booking.service = p_service
+         AND v_existing_booking.price = COALESCE(p_price, 0)
+         AND v_existing_booking.duration IS NOT DISTINCT FROM p_duration
+         AND v_existing_booking.barber_id IS NOT DISTINCT FROM p_barber_id
          AND v_existing_booking.date = p_date
          AND v_existing_booking.time = p_time
-         AND v_existing_booking.wa = p_wa
-         AND v_existing_booking.location IS NOT DISTINCT FROM p_location THEN
+         AND v_existing_booking.location IS NOT DISTINCT FROM p_location
+         AND v_existing_booking.type IS NOT DISTINCT FROM COALESCE(p_type, 'outlet')
+         AND v_existing_booking.service_id IS NOT DISTINCT FROM COALESCE(p_service_id, '')
+         AND v_existing_booking.notes IS NOT DISTINCT FROM p_notes
+         AND v_existing_booking.payment IS NOT DISTINCT FROM p_payment
+         AND v_existing_booking.original_price IS NOT DISTINCT FROM p_original_price
+         AND v_existing_booking.discount_label IS NOT DISTINCT FROM p_discount_label THEN
         -- Idempotent replay: return existing booking and schedule data
         RETURN jsonb_build_object(
           'success', true,
@@ -89,7 +99,7 @@ BEGIN
           'schedule_id', v_existing_booking.linked_schedule_id
         );
       ELSE
-        -- Idempotency key reused with mismatched payload -> conflict
+        -- Idempotency key reused with materially mismatched payload -> conflict
         RAISE EXCEPTION 'IDEMPOTENCY_KEY_REUSED' USING ERRCODE = '23505';
       END IF;
     END IF;
@@ -125,8 +135,8 @@ BEGIN
     v_dur_mins := 30;
   END IF;
 
-  v_start_time := (p_date + p_time) AT TIME ZONE 'Asia/Jakarta';
-  v_end_time := v_start_time + (v_dur_mins || ' minutes')::interval;
+  v_start_time := (p_date || ' ' || p_time || '+07')::timestamptz;
+  v_end_time   := v_start_time + (v_dur_mins || ' minutes')::interval;
 
   -- 4. Pre-check slot overlap if specific barber is assigned
   IF p_barber_id IS NOT NULL AND p_barber_id <> 'any' THEN
@@ -174,48 +184,96 @@ BEGIN
   RETURNING id INTO v_schedule_id;
 
   -- 7. Insert booking row with linked schedule_id
-  INSERT INTO bookings (
-    id,
-    booking_request_id,
-    group_request_id,
-    schedule_id,
-    name,
-    wa,
-    service_id,
-    service,
-    price,
-    duration,
-    barber_id,
-    date,
-    time,
-    location,
-    status,
-    notes,
-    payment,
-    original_price,
-    discount_label
-  ) VALUES (
-    v_booking_id,
-    p_booking_request_id,
-    p_group_request_id,
-    v_schedule_id,
-    p_name,
-    p_wa,
-    COALESCE(p_service_id, ''),
-    p_service,
-    COALESCE(p_price, 0),
-    p_duration,
-    p_barber_id,
-    p_date,
-    p_time,
-    p_location,
-    COALESCE(p_status, 'confirmed'),
-    p_notes,
-    p_payment,
-    p_original_price,
-    p_discount_label
-  )
-  RETURNING * INTO v_inserted_booking;
+  -- Protected by unique constraint idx_bookings_request_id under concurrency
+  BEGIN
+    INSERT INTO bookings (
+      id,
+      booking_request_id,
+      group_request_id,
+      schedule_id,
+      name,
+      wa,
+      service_id,
+      service,
+      price,
+      duration,
+      barber_id,
+      date,
+      time,
+      location,
+      status,
+      notes,
+      payment,
+      type,
+      original_price,
+      discount_label
+    ) VALUES (
+      v_booking_id,
+      p_booking_request_id,
+      p_group_request_id,
+      v_schedule_id,
+      p_name,
+      p_wa,
+      COALESCE(p_service_id, ''),
+      p_service,
+      COALESCE(p_price, 0),
+      p_duration,
+      p_barber_id,
+      p_date,
+      p_time,
+      p_location,
+      COALESCE(p_status, 'confirmed'),
+      p_notes,
+      p_payment,
+      COALESCE(p_type, 'outlet'),
+      p_original_price,
+      p_discount_label
+    )
+    RETURNING * INTO v_inserted_booking;
+  EXCEPTION
+    WHEN unique_violation THEN
+      -- Handle concurrent race: Another request committed the same booking_request_id
+      IF p_booking_request_id IS NOT NULL THEN
+        -- Delete the newly created schedule to avoid orphan schedule row
+        DELETE FROM schedules WHERE id = v_schedule_id;
+
+        SELECT b.*, s.id AS linked_schedule_id, s.status AS linked_schedule_status
+        INTO v_existing_booking
+        FROM bookings b
+        LEFT JOIN schedules s ON s.id = b.schedule_id
+        WHERE b.booking_request_id = p_booking_request_id
+        LIMIT 1;
+
+        IF FOUND THEN
+          -- Check canonical material parity against the concurrently committed booking
+          IF v_existing_booking.wa = p_wa
+             AND v_existing_booking.service = p_service
+             AND v_existing_booking.price = COALESCE(p_price, 0)
+             AND v_existing_booking.duration IS NOT DISTINCT FROM p_duration
+             AND v_existing_booking.barber_id IS NOT DISTINCT FROM p_barber_id
+             AND v_existing_booking.date = p_date
+             AND v_existing_booking.time = p_time
+             AND v_existing_booking.location IS NOT DISTINCT FROM p_location
+             AND v_existing_booking.type IS NOT DISTINCT FROM COALESCE(p_type, 'outlet')
+             AND v_existing_booking.service_id IS NOT DISTINCT FROM COALESCE(p_service_id, '')
+             AND v_existing_booking.notes IS NOT DISTINCT FROM p_notes
+             AND v_existing_booking.payment IS NOT DISTINCT FROM p_payment
+             AND v_existing_booking.original_price IS NOT DISTINCT FROM p_original_price
+             AND v_existing_booking.discount_label IS NOT DISTINCT FROM p_discount_label THEN
+            RETURN jsonb_build_object(
+              'success', true,
+              'replayed', true,
+              'booking', to_jsonb(v_existing_booking),
+              'booking_id', v_existing_booking.id,
+              'schedule_id', v_existing_booking.linked_schedule_id
+            );
+          ELSE
+            RAISE EXCEPTION 'IDEMPOTENCY_KEY_REUSED' USING ERRCODE = '23505';
+          END IF;
+        END IF;
+      END IF;
+      RAISE;
+  END;
 
   -- 8. Return composite result
   RETURN jsonb_build_object(

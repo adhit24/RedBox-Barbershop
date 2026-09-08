@@ -105,12 +105,24 @@ function mapRpcError(error) {
  * @param {object} params
  * @returns {Promise<{ success: boolean, ok: boolean, status: number, data?: any, booking?: any, scheduleId?: string, replayed?: boolean, code?: string, error?: string, message?: string }>}
  */
-async function executeCreateBookingAtomic(supabase, params) {
+async function executeCreateBookingAtomic(supabase, params, options = {}) {
   if (!supabase) {
     return { success: false, ok: false, status: 500, code: 'DB_UNAVAILABLE', error: 'Database client not available', message: 'Database client not available' };
   }
 
+  const isProd = options.env ? options.env === 'production' : (process.env.NODE_ENV === 'production');
+
   if (typeof supabase.rpc !== 'function') {
+    if (isProd) {
+      return {
+        success: false,
+        ok: false,
+        status: 500,
+        code: 'RPC_UNAVAILABLE',
+        error: 'Database atomic RPC create_booking_atomic is not available in database client',
+        message: 'Database atomic RPC is not available',
+      };
+    }
     const bookingId = params.bookingId || params.booking_id || require('crypto').randomUUID();
     const { data, error } = await supabase.from('bookings').insert([{
       id: bookingId,
@@ -209,7 +221,7 @@ async function executeCreateBookingAtomic(supabase, params) {
  * @param {Array<object>} [arg2] - Array of booking payloads
  * @returns {Promise<{ success: boolean, ok: boolean, status: number, group_request_id?: string, items?: any[], bookings?: any[], scheduleIds?: string[], replayed?: boolean, code?: string, error?: string, message?: string, conflictIndex?: number }>}
  */
-async function executeCreateGroupBookingAtomic(supabase, arg1, arg2) {
+async function executeCreateGroupBookingAtomic(supabase, arg1, arg2, options = {}) {
   if (!supabase) {
     return { success: false, ok: false, status: 500, code: 'DB_UNAVAILABLE', error: 'Database client not available', message: 'Database client not available' };
   }
@@ -229,6 +241,21 @@ async function executeCreateGroupBookingAtomic(supabase, arg1, arg2) {
 
   if (!Array.isArray(items) || items.length === 0) {
     return { success: false, ok: false, status: 400, code: 'GROUP_ITEMS_REQUIRED', error: 'items booking wajib diisi', message: 'items booking wajib diisi' };
+  }
+
+  const isProd = options.env ? options.env === 'production' : (process.env.NODE_ENV === 'production');
+
+  if (typeof supabase.rpc !== 'function') {
+    if (isProd) {
+      return {
+        success: false,
+        ok: false,
+        status: 500,
+        code: 'RPC_UNAVAILABLE',
+        error: 'Database atomic RPC create_group_booking_atomic is not available in database client',
+        message: 'Database atomic RPC is not available',
+      };
+    }
   }
 
   try {
@@ -275,9 +302,10 @@ async function executeCreateGroupBookingAtomic(supabase, arg1, arg2) {
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {object} params
+ * @param {object} [options]
  * @returns {Promise<{ success: boolean, ok: boolean, status: number, data?: any, booking?: any, code?: string, error?: string, message?: string }>}
  */
-async function executeRescheduleBookingAtomic(supabase, params) {
+async function executeRescheduleBookingAtomic(supabase, params, options = {}) {
   if (!supabase) {
     return { success: false, ok: false, status: 500, code: 'DB_UNAVAILABLE', error: 'Database client not available', message: 'Database client not available' };
   }
@@ -289,7 +317,19 @@ async function executeRescheduleBookingAtomic(supabase, params) {
   const newLocation = params.location || params.new_location || null;
   const newDuration = params.duration || params.new_duration || null;
 
+  const isProd = options.env ? options.env === 'production' : (process.env.NODE_ENV === 'production');
+
   if (typeof supabase.rpc !== 'function') {
+    if (isProd) {
+      return {
+        success: false,
+        ok: false,
+        status: 500,
+        code: 'RPC_UNAVAILABLE',
+        error: 'Database atomic RPC reschedule_booking_atomic is not available in database client',
+        message: 'Database atomic RPC is not available',
+      };
+    }
     const updates = {
       date: newDate,
       time: newTime,
@@ -353,14 +393,27 @@ async function executeRescheduleBookingAtomic(supabase, params) {
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} bookingId
  * @param {string} [reason]
+ * @param {object} [options]
  * @returns {Promise<{ success: boolean, ok: boolean, status: number, data?: any, booking?: any, alreadyCancelled?: boolean, code?: string, error?: string, message?: string }>}
  */
-async function executeCancelBookingAtomic(supabase, bookingId, reason = '') {
+async function executeCancelBookingAtomic(supabase, bookingId, reason = '', options = {}) {
   if (!supabase) {
     return { success: false, ok: false, status: 500, code: 'DB_UNAVAILABLE', error: 'Database client not available', message: 'Database client not available' };
   }
 
+  const isProd = options.env ? options.env === 'production' : (process.env.NODE_ENV === 'production');
+
   if (typeof supabase.rpc !== 'function') {
+    if (isProd) {
+      return {
+        success: false,
+        ok: false,
+        status: 500,
+        code: 'RPC_UNAVAILABLE',
+        error: 'Database atomic RPC cancel_booking_atomic is not available in database client',
+        message: 'Database atomic RPC is not available',
+      };
+    }
     const { data, error } = await supabase.from('bookings').update({ status: 'cancelled' }).eq('id', bookingId).select().single();
     if (error) return mapRpcError(error);
     const booking = data || { id: bookingId, status: 'cancelled' };
