@@ -1633,10 +1633,10 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             }, { supabase });
 
             await logSystemEvent({
-              module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'WARNING', status: 'partial',
+              module: 'booking', eventName: 'booking_schedule_incomplete', severity: 'WARNING', status: 'partial',
               correlationId, bookingId: data.id, scheduleId: null,
               entityType: 'booking', entityId: data.id, httpStatus: 201,
-              message: `confirmed to client without a linked schedule (${r.mokaSync || 'unknown'})`,
+              message: `booking response partial: schedule not created (${r.mokaSync || 'unknown'})`,
             }, { supabase });
             return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: r.mokaSync, homeServiceJobId: null });
           }
@@ -1648,14 +1648,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
             errorMessage: e.message,
           }, { supabase });
           // A booking row exists (data.id is real) but no schedule was
-          // created — this IS booking_confirmed_to_client's truthful state:
-          // the client sees the booking exists, scheduleId is explicitly
-          // null in the response so nothing downstream assumes a schedule.
+          // created — the client is NOT shown a success screen, so this
+          // is truthfully logged as booking_schedule_incomplete (WARNING/partial),
+          // keeping booking_confirmed_to_client reserved for true success only.
           await logSystemEvent({
-            module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'WARNING', status: 'partial',
+            module: 'booking', eventName: 'booking_schedule_incomplete', severity: 'WARNING', status: 'partial',
             correlationId, bookingId: data.id, scheduleId: null,
             entityType: 'booking', entityId: data.id, httpStatus: 201,
-            message: 'confirmed to client without a linked schedule (moka bridge failed)',
+            message: 'booking response partial: moka bridge threw error',
           }, { supabase });
           return res.status(201).json({ data, autoBooked: true, scheduleId: null, mokaSync: 'failed' });
         }

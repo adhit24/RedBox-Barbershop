@@ -120,6 +120,32 @@ test('logging DB failure still never changes the booking business response when 
   assert.equal(response.body.data.id, 'bk-123');
 });
 
+test('logSystemEvent: bounded timeout resumes caller with fail-open status when insert hangs', async () => {
+  const hangingSupabase = {
+    from() {
+      return {
+        insert: () => new Promise(() => {}), // never resolves
+      };
+    },
+  };
+
+  const start = Date.now();
+  const result = await logSystemEvent({
+    module: 'booking',
+    eventName: 'booking_validation_failed',
+    severity: 'WARNING',
+  }, {
+    supabase: hangingSupabase,
+    timeoutMs: 50,
+  });
+
+  const duration = Date.now() - start;
+  assert.equal(result.status, 'timeout');
+  assert.ok(result.normalized, 'normalized event should be preserved on timeout');
+  assert.equal(result.normalized.event_name, 'booking_validation_failed');
+  assert.ok(duration >= 40 && duration < 500, `caller should resume promptly after timeout bound (took ${duration}ms)`);
+});
+
 test('logSystemEvent: ERROR severity persists the exact severity given', async () => {
   const supabase = makeFakeSupabase();
   await logSystemEvent({

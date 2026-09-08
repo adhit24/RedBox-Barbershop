@@ -73,11 +73,11 @@ test('every required Phase 1 booking event name appears in the route body', () =
   }
   // These appear more than once by design:
   //  - booking_availability_failed: once for barber holiday, once for slot overlap (Gap 3)
-  //  - schedule_create_failed / schedule_created / booking_confirmed_to_client:
-  //    once on the confirmed-with-schedule path, once on the scheduleId:null path, once on bridge catch (Blocker 2)
+  //  - schedule_create_failed / schedule_created / booking_confirmed_to_client / booking_schedule_incomplete:
+  //    schedule success vs schedule missing/error paths (Blocker 2 & Round 2)
   //  - booking_insert_failed: once in insert-error branch, once in route outer catch
   //  - booking_customer_link_failed: once for not_attempted (skipped), once for write failed
-  for (const name of ['booking_availability_failed', 'schedule_create_failed', 'schedule_created', 'booking_confirmed_to_client', 'booking_insert_failed', 'booking_customer_link_failed']) {
+  for (const name of ['booking_availability_failed', 'schedule_create_failed', 'schedule_created', 'booking_confirmed_to_client', 'booking_schedule_incomplete', 'booking_insert_failed', 'booking_customer_link_failed']) {
     const occurrences = routeBody.split(`eventName: '${name}'`).length - 1;
     assert.ok(occurrences >= 1, `expected at least one eventName: '${name}', found ${occurrences}`);
   }
@@ -109,7 +109,7 @@ test('all early returns are instrumented with event logs (Gap 3)', () => {
   assert.match(barberHolidayBlock[0], /await logSystemEvent\(\{[\s\S]*?eventName: 'booking_availability_failed'[\s\S]*?httpStatus: 409/);
 });
 
-test('when bridgeBookingToMoka returns scheduleId:null without throwing, failure is logged and confirmed_to_client is WARNING/partial (Blocker 2)', () => {
+test('when bridgeBookingToMoka returns scheduleId:null without throwing, schedule_create_failed and booking_schedule_incomplete are logged (Blocker 2 & Round 2)', () => {
   const routeBody = bookingRouteMatch[0];
   const bridgeSuccessAndNullBlock = routeBody.match(/const r = await require\('\.\/moka\/sync'\)\.bridgeBookingToMoka\(supabase[\s\S]*?\} else \{[\s\S]*?return res\.status\(201\)\.json\(\{ data, autoBooked: true, scheduleId: null, mokaSync: r\.mokaSync, homeServiceJobId: null \}\);/);
   assert.ok(bridgeSuccessAndNullBlock, 'expected the if (r.scheduleId) ... else ... block after bridgeBookingToMoka');
@@ -119,10 +119,22 @@ test('when bridgeBookingToMoka returns scheduleId:null without throwing, failure
   assert.match(elseBlock, /eventName: 'schedule_create_failed'/);
   assert.match(elseBlock, /status: 'failed'/);
 
-  // Must NOT record booking_confirmed_to_client as INFO/success
-  assert.doesNotMatch(elseBlock, /severity: 'INFO', status: 'success'/);
-  // Must record booking_confirmed_to_client as WARNING / partial
-  assert.match(elseBlock, /eventName: 'booking_confirmed_to_client'[\s\S]*?severity: 'WARNING'[\s\S]*?status: 'partial'/);
+  // Must NOT record booking_confirmed_to_client in this failure/partial path
+  assert.doesNotMatch(elseBlock, /eventName: 'booking_confirmed_to_client'/);
+
+  // Must record booking_schedule_incomplete as WARNING / partial
+  assert.match(elseBlock, /eventName: 'booking_schedule_incomplete'[\s\S]*?severity: 'WARNING'[\s\S]*?status: 'partial'/);
+});
+
+test('booking_confirmed_to_client is strictly reserved for the true success invariant (Round 2)', () => {
+  const routeBody = bookingRouteMatch[0];
+  const confirmedOccurrences = routeBody.match(/eventName: 'booking_confirmed_to_client'[\s\S]*?severity: '([^']+)'[\s\S]*?status: '([^']+)'/g) || [];
+  assert.ok(confirmedOccurrences.length >= 1, 'expected at least one booking_confirmed_to_client call');
+
+  for (const occurrence of confirmedOccurrences) {
+    assert.match(occurrence, /severity: 'INFO'/);
+    assert.match(occurrence, /status: 'success'/);
+  }
 });
 
 test('when bridgeBookingToMoka returns scheduleId present, schedule_created and confirmed_to_client are logged with INFO/success', () => {

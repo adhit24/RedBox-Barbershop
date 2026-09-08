@@ -59,11 +59,18 @@ function normalizeEvent(event = {}) {
   };
 }
 
+const DEFAULT_LOGGER_TIMEOUT_MS = Number(process.env.SYSTEM_EVENT_LOG_TIMEOUT_MS) || 2000;
+
 /**
  * Fail-open: this function NEVER throws and NEVER delays/blocks the caller's
- * business operation on a logging failure. If persistence fails, the failure
- * is reported back in the return value (and echoed to console.error) but the
- * caller must not treat that as a reason to abort booking/payment/sync work.
+ * business operation on a logging failure. If persistence fails or times out,
+ * the failure is reported back in the return value (and echoed to console) but
+ * the caller must not treat that as a reason to abort booking/payment/sync work.
+ *
+ * Supabase inserts are bounded by a configurable timeout (default 2000ms, or
+ * process.env.SYSTEM_EVENT_LOG_TIMEOUT_MS, or deps.timeoutMs) to ensure awaited
+ * terminal logging preserves serverless durability without becoming an unbounded
+ * blocking dependency for business responses.
  */
 async function logSystemEvent(event, deps = {}) {
   try {
@@ -73,7 +80,38 @@ async function logSystemEvent(event, deps = {}) {
     const supabase = deps.supabase;
     if (!supabase) return { status: 'unavailable', normalized };
 
-    const { error } = await supabase.from(SYSTEM_EVENT_LOG_TABLE).insert(normalized);
+    const timeoutMs = (Number.isFinite(Number(deps.timeoutMs)) && Number(deps.timeoutMs) > 0)
+      ? Number(deps.timeoutMs)
+      : DEFAULT_LOGGER_TIMEOUT_MS;
+
+    let timer;
+    const timeoutPromise = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        resolve({ isTimeout: true });
+      }, timeoutMs);
+      if (timer && typeof timer.unref === 'function') {
+        timer.unref();
+      }
+    });
+
+    const insertPromise = Promise.resolve(supabase.from(SYSTEM_EVENT_LOG_TABLE).insert(normalized))
+      .then((res) => {
+        clearTimeout(timer);
+        return { isTimeout: false, ...res };
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        return { isTimeout: false, error: err };
+      });
+
+    const outcome = await Promise.race([insertPromise, timeoutPromise]);
+
+    if (outcome.isTimeout) {
+      console.warn(`[SystemEventLog] insert timed out after ${timeoutMs}ms:`, normalized.event_name);
+      return { status: 'timeout', normalized };
+    }
+
+    const { error } = outcome;
     if (error) {
       console.error('[SystemEventLog] insert failed:', error.message || error);
       return { status: 'error', normalized, error };
@@ -86,5 +124,5 @@ async function logSystemEvent(event, deps = {}) {
 }
 
 module.exports = {
-  logSystemEvent, normalizeEvent, SYSTEM_EVENT_LOG_TABLE, SEVERITIES, STATUSES, maskPhoneLikeSequences,
+  logSystemEvent, normalizeEvent, SYSTEM_EVENT_LOG_TABLE, SEVERITIES, STATUSES, maskPhoneLikeSequences, DEFAULT_LOGGER_TIMEOUT_MS,
 };
