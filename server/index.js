@@ -3801,7 +3801,7 @@ const memorySupabase = createInMemorySupabase();
 
 const createMokaRouter = require('./moka/routes');
 // Prefer real Supabase so sync-schema and DB writes work correctly
-const mokaRouter = createMokaRouter(supabase || memorySupabase);
+const mokaRouter = createMokaRouter(supabase || memorySupabase, adminAuth);
 app.use('/api', mokaRouter);
 console.log('✅ Moka integration routes mounted');
 
