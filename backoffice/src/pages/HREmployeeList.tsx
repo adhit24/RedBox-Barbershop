@@ -39,6 +39,13 @@ type LoadState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | {
+      status: 'partial';
+      barbers: CommandCenterBarber[];
+      employees: RegularEmployee[];
+      failedBranches: string[];
+      employeeError: string | null;
+    }
+  | {
       status: 'ready';
       barbers: CommandCenterBarber[];
       employees: RegularEmployee[];
@@ -102,51 +109,77 @@ export function HREmployeeList() {
 
       // Last result is employees call
       let employees: RegularEmployee[] = [];
+      let employeeError: string | null = null;
       const empResult = results[BRANCHES.length];
-      if (empResult && empResult.status === 'fulfilled') {
-        const val = empResult.value as { employees?: RegularEmployee[] };
-        employees = val?.employees ?? [];
+      if (!empResult || empResult.status === 'rejected') {
+        employeeError = empResult?.reason?.message || 'Gagal memuat data karyawan reguler.';
+      } else {
+        const val = empResult.value as { employees?: RegularEmployee[]; ok?: boolean; error?: string };
+        if (val && val.ok === false) {
+          employeeError = val.error || 'Gagal memuat data karyawan reguler.';
+        } else {
+          employees = val?.employees ?? [];
+        }
       }
 
-      if (barbers.length === 0 && failedBranches.length === BRANCHES.length && employees.length === 0) {
+      const allBranchesFailed = failedBranches.length === BRANCHES.length;
+      const isEmployeeFailed = Boolean(employeeError);
+
+      // Scenario 1: Total outage (both branch commands and employee service failed)
+      if ((allBranchesFailed && isEmployeeFailed) || (barbers.length === 0 && allBranchesFailed && employees.length === 0)) {
         setState({
           status: 'error',
-          message: 'Data HR & People belum dapat dimuat dari database.',
+          message: 'Data HR & People belum dapat dimuat dari database. Layanan roster sedang tidak tersedia.',
         });
         return;
       }
 
-      setState({ status: 'ready', barbers, employees, failedBranches });
+      // Scenario 2: Employee API failed OR some branches failed -> PARTIAL DATA (never LIVE)
+      if (isEmployeeFailed || failedBranches.length > 0) {
+        setState({
+          status: 'partial',
+          barbers,
+          employees,
+          failedBranches,
+          employeeError,
+        });
+        return;
+      }
+
+      // Scenario 3: All services healthy -> LIVE ready
+      setState({ status: 'ready', barbers, employees, failedBranches: [] });
     });
   }, []);
 
+  const isLoaded = state.status === 'ready' || state.status === 'partial';
+
   const branchCount = useMemo(() => {
-    if (state.status !== 'ready') return 0;
+    if (!isLoaded) return 0;
     return new Set(state.barbers.map((b) => b.branch).filter(Boolean)).size;
-  }, [state]);
+  }, [isLoaded, state]);
 
   const liveBusinessUnits = useMemo(() => {
-    if (state.status !== 'ready') return 0;
+    if (!isLoaded) return 0;
     const units = new Set<string>();
     if (state.barbers.length > 0) units.add('Redbox');
     for (const emp of state.employees) {
       if (emp.is_active && emp.business_unit) units.add(emp.business_unit);
     }
     return units.size;
-  }, [state]);
+  }, [isLoaded, state]);
 
   const sundazeCount = useMemo(() => {
-    if (state.status !== 'ready') return 0;
+    if (!isLoaded) return 0;
     return state.employees.filter((e) => e.business_unit === 'Sundaze' && e.is_active).length;
-  }, [state]);
+  }, [isLoaded, state]);
 
   const redboxRegulerCount = useMemo(() => {
-    if (state.status !== 'ready') return 0;
+    if (!isLoaded) return 0;
     return state.employees.filter((e) => e.business_unit === 'Redbox' && e.is_active).length;
-  }, [state]);
+  }, [isLoaded, state]);
 
   const unifiedList = useMemo<UnifiedPersonnel[]>(() => {
-    if (state.status !== 'ready') return [];
+    if (!isLoaded) return [];
 
     const list: UnifiedPersonnel[] = [];
 
@@ -195,7 +228,7 @@ export function HREmployeeList() {
       }
       return a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
     });
-  }, [state]);
+  }, [isLoaded, state]);
 
   const filteredList = useMemo(() => {
     return unifiedList.filter((item) => {
@@ -215,9 +248,19 @@ export function HREmployeeList() {
         title="HR & People"
         subtitle="Roster aktif Redbox Barbershop & Sundaze Cafe dari database Supabase (Kapster bagi hasil & Karyawan reguler gaji)."
         actions={
-          <span className="rounded-rb-pill bg-rb-green-tint-bg px-3 py-1.5 text-[11px] font-semibold text-rb-green-tint-fg">
-            LIVE
-          </span>
+          state.status === 'ready' ? (
+            <span className="rounded-rb-pill bg-rb-green-tint-bg px-3 py-1.5 text-[11px] font-semibold text-rb-green-tint-fg">
+              LIVE
+            </span>
+          ) : state.status === 'partial' ? (
+            <span className="rounded-rb-pill bg-rb-orange-tint-bg px-3 py-1.5 text-[11px] font-semibold text-rb-orange-tint-fg">
+              PARTIAL DATA
+            </span>
+          ) : state.status === 'error' ? (
+            <span className="rounded-rb-pill bg-rb-red-tint-bg px-3 py-1.5 text-[11px] font-semibold text-rb-red-tint-fg">
+              DATA UNAVAILABLE
+            </span>
+          ) : null
         }
       />
 
@@ -226,8 +269,17 @@ export function HREmployeeList() {
       )}
       {state.status === 'error' && <ErrorState message={state.message} />}
 
-      {state.status === 'ready' && (
+      {(state.status === 'ready' || state.status === 'partial') && (
         <>
+          {state.status === 'partial' && state.employeeError && (
+            <div className="mb-4 rounded-rb-card border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+              <div className="font-semibold">Layanan Data Karyawan Reguler Mengalami Gangguan</div>
+              <p className="mt-0.5 text-xs text-red-700 dark:text-red-400">
+                Gagal memuat daftar karyawan reguler ({state.employeeError}). Outage tidak disamarkan sebagai data kosong; roster kapster tetap ditampilkan.
+              </p>
+            </div>
+          )}
+
           {state.failedBranches.length > 0 && (
             <div className="mb-4 rounded-rb-card border border-rb-orange-tint-fg/20 bg-rb-orange-tint-bg px-4 py-3 text-sm text-rb-text-secondary">
               Data sebagian cabang belum berhasil dimuat:{' '}
@@ -238,7 +290,11 @@ export function HREmployeeList() {
           {/* KPI StatCards */}
           <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard
-              value={state.barbers.length + state.employees.length}
+              value={
+                state.status === 'partial' && state.employeeError
+                  ? `${state.barbers.length} (Kapster saja)`
+                  : state.barbers.length + state.employees.length
+              }
               label="Total Karyawan Aktif"
               tint="blue"
             />
@@ -248,8 +304,16 @@ export function HREmployeeList() {
               tint="red"
             />
             <StatCard
-              value={state.employees.length}
-              label={`Karyawan Reguler (${sundazeCount} SD · ${redboxRegulerCount} RB)`}
+              value={
+                state.status === 'partial' && state.employeeError
+                  ? 'Error'
+                  : state.employees.length
+              }
+              label={
+                state.status === 'partial' && state.employeeError
+                  ? 'Karyawan Reguler (Gagal Dimuat)'
+                  : `Karyawan Reguler (${sundazeCount} SD · ${redboxRegulerCount} RB)`
+              }
               tint="purple"
             />
             <StatCard
@@ -412,7 +476,15 @@ export function HREmployeeList() {
           </div>
 
           <div className="mt-4 text-xs text-rb-text-muted">
-            Data karyawan reguler ({state.employees.length}) dan kapster ({state.barbers.length}) terhubung langsung ke database Supabase. Total unit bisnis aktif: {liveBusinessUnits} (Redbox Barbershop &amp; Sundaze Cafe).
+            {state.status === 'partial' && state.employeeError ? (
+              <span className="text-amber-700 dark:text-amber-400">
+                Perhatian: Data karyawan reguler tidak dapat dimuat karena layanan offline. Data kapster ({state.barbers.length}) tetap dimuat langsung dari Command Center.
+              </span>
+            ) : (
+              <span>
+                Data karyawan reguler ({state.employees.length}) dan kapster ({state.barbers.length}) terhubung langsung ke database Supabase. Total unit bisnis aktif: {liveBusinessUnits} (Redbox Barbershop &amp; Sundaze Cafe).
+              </span>
+            )}
           </div>
         </>
       )}

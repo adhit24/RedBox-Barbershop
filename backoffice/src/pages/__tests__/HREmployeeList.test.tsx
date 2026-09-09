@@ -161,5 +161,43 @@ describe('HREmployeeList', () => {
     expect(screen.getByRole('button', { name: 'Sundaze (2)' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Redbox Reguler (1)' })).toBeInTheDocument();
   });
+
+  it('displays PARTIAL DATA badge and warning banner when employee API fails but branch commands succeed', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/admin/crm/employees')) {
+        return Promise.reject(new Error('Network error on employees service'));
+      }
+      const branch = new URL(url, 'https://example.test').searchParams.get('branch') ?? '';
+      return Promise.resolve(new Response(JSON.stringify(byBranch[branch] ?? { barbers: [] }), { status: 200 }));
+    }));
+
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Barber Alpha');
+
+    // Badge MUST be PARTIAL DATA, NEVER LIVE
+    expect(screen.getByText('PARTIAL DATA')).toBeInTheDocument();
+    expect(screen.queryByText('LIVE')).not.toBeInTheDocument();
+
+    // Outage warning banner must be visible
+    expect(screen.getByText('Layanan Data Karyawan Reguler Mengalami Gangguan')).toBeInTheDocument();
+
+    // Stat card should show error / not disguise outage as 0 regular employees
+    expect(screen.getByText('Error')).toBeInTheDocument();
+    expect(screen.getByText('Karyawan Reguler (Gagal Dimuat)')).toBeInTheDocument();
+  });
+
+  it('displays DATA UNAVAILABLE and error state when all services fail', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Backend completely unreachable'))));
+
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await waitFor(() => {
+      expect(screen.getByText('DATA UNAVAILABLE')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('LIVE')).not.toBeInTheDocument();
+    expect(screen.queryByText('PARTIAL DATA')).not.toBeInTheDocument();
+    expect(screen.getByText(/Layanan roster sedang tidak tersedia/i)).toBeInTheDocument();
+  });
 });
+
 
