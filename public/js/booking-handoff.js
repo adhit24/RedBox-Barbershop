@@ -7,20 +7,47 @@
 
   const VALID_BRANCHES = new Set(['bypass', 'samadikun', 'csb', 'sumber', 'tegal']);
 
-  // HOTFIX 2026-09-09 — Cloudflare Turnstile tokens are single-use.
-  // public/js/booking.js currently calls the verification Worker first and then
-  // sends the SAME token to /api/bookings, where it is verified again. The first
-  // verification consumes the token, so the authoritative booking API rejects it
-  // with HTTP 403 as "expired/duplicate". Keep the server as the only verifier.
-  //
-  // This compatibility shim short-circuits only the obsolete browser-side
-  // verification request. It does NOT bypass booking security: the untouched token
-  // is still sent to /api/bookings or /api/bookings/group and must pass the
-  // server-side Turnstile gate before a booking can be written.
+  // Booking policy 2026-09-09: booking publik tidak boleh terhambat CAPTCHA.
+  // booking.js masih memiliki compatibility gate lama yang membaca token dan
+  // memanggil Worker verifikasi. Sampai gate lama dibersihkan dari file besar
+  // booking.js, shim ini membuat flow lama transparan bagi user:
+  // 1) widget Turnstile disembunyikan,
+  // 2) token kompatibilitas disediakan agar handler lama tidak berhenti,
+  // 3) request ke Worker lama dijawab lokal sebagai sukses.
+  // Server booking sendiri juga sudah tidak menjadikan Turnstile sebagai gate.
   const LEGACY_TURNSTILE_VERIFY_URL = 'https://turnstile-siteverify-redbox-booking.adhit24.workers.dev';
-  if (root && typeof root.fetch === 'function' && !root.__rbTurnstileSingleUseHotfix) {
+  const PUBLIC_BOOKING_COMPAT_TOKEN = 'redbox-public-booking-no-captcha';
+
+  function ensureCaptchaFreeBookingUi() {
+    if (!root || !root.document) return;
+
+    const doc = root.document;
+    doc.querySelectorAll('.cf-turnstile').forEach((el) => {
+      el.style.display = 'none';
+      el.setAttribute('aria-hidden', 'true');
+    });
+
+    let tokenInput = doc.querySelector('[name="cf-turnstile-response"]');
+    if (!tokenInput) {
+      tokenInput = doc.createElement('input');
+      tokenInput.type = 'hidden';
+      tokenInput.name = 'cf-turnstile-response';
+      doc.body.appendChild(tokenInput);
+    }
+    tokenInput.value = PUBLIC_BOOKING_COMPAT_TOKEN;
+  }
+
+  if (root && root.document) {
+    if (root.document.readyState === 'loading') {
+      root.document.addEventListener('DOMContentLoaded', ensureCaptchaFreeBookingUi, { once: true });
+    } else {
+      ensureCaptchaFreeBookingUi();
+    }
+  }
+
+  if (root && typeof root.fetch === 'function' && !root.__rbCaptchaFreeBookingShim) {
     const nativeFetch = root.fetch.bind(root);
-    root.fetch = function redboxFetchWithTurnstileSingleUseFix(input, init) {
+    root.fetch = function redboxCaptchaFreeBookingFetch(input, init) {
       const url = typeof input === 'string'
         ? input
         : (input && typeof input.url === 'string' ? input.url : '');
@@ -28,7 +55,8 @@
       if (url === LEGACY_TURNSTILE_VERIFY_URL) {
         return Promise.resolve(new Response(JSON.stringify({
           success: true,
-          delegated_to_booking_api: true,
+          captcha_disabled: true,
+          policy: 'public-booking-no-captcha',
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -37,7 +65,7 @@
 
       return nativeFetch(input, init);
     };
-    root.__rbTurnstileSingleUseHotfix = true;
+    root.__rbCaptchaFreeBookingShim = true;
   }
 
   function isValidIsoDate(value) {
