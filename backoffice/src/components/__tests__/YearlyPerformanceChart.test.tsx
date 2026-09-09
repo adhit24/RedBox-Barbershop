@@ -325,6 +325,23 @@ describe('YearlyPerformanceChart — month selector', () => {
     const options = screen.getAllByRole('option');
     expect(options).toHaveLength(8);
   });
+
+  it('13. live September makes September 2026 the ninth and selected option', async () => {
+    vi.spyOn(performance, 'getMonthlyDailyPerformance').mockResolvedValue([]);
+    const liveSeptember = ACTUAL_DATA.map(point => point.month === 9
+      ? { ...point, net_sales: 157722000, transaction_count: 1214 }
+      : point);
+    render(<YearlyPerformanceChart data={liveSeptember} />);
+    fireEvent.click(screen.getByTestId('view-month'));
+
+    await waitFor(() => expect(screen.getByTestId('month-selector')).toHaveValue('9'));
+    const options = screen.getAllByRole('option');
+    expect(options).toHaveLength(9);
+    expect(options.map(option => option.textContent)).toEqual([
+      'January 2026', 'February 2026', 'March 2026', 'April 2026', 'May 2026',
+      'June 2026', 'July 2026', 'August 2026', 'September 2026',
+    ]);
+  });
 });
 
 describe('DailyPerformanceTooltip', () => {
