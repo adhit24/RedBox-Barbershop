@@ -3,7 +3,7 @@
 const { REDBOX_SERVICES } = require('../../../../public/js/services-data');
 const { validateKnowledge } = require('./validateKnowledge');
 
-const KNOWLEDGE_VERSION = 'reddy_knowledge.v0.1';
+const KNOWLEDGE_VERSION = 'reddy_knowledge.v0.2';
 const BRANCH_IDS = Object.freeze(['bypass', 'samadikun', 'csb', 'sumber', 'tegal']);
 const SERVICE_ALIAS_EXTRAS = Object.freeze({
   'gentleman-grooming': ['redbox gentleman grooming', 'gentleman grooming', 'haircut', 'hair cut', 'potong rambut', 'potong', 'fade'],
@@ -66,6 +66,7 @@ const REDBOX_KNOWLEDGE = freeze({
     { id: 'website-database-authority', summary: 'Website dan database booking adalah sumber status booking yang berwenang.', booking_url_template: 'booking.html?branch={branch_id}' },
     { id: 'walk-in-not-guaranteed', summary: 'Walk-in diperbolehkan, tetapi ketersediaan tidak dijamin.', booking_url_template: 'booking.html?branch={branch_id}' },
     { id: 'whatsapp-assist-authority-policy', summary: 'WhatsApp Redbox berfungsi untuk bantuan, edukasi, dan panduan. Pembuatan, konfirmasi, perubahan, reschedule, pembatalan, dan penguncian slot booking pelanggan harus dilakukan melalui sistem booking website Redbox.', booking_url_template: 'booking.html?branch={branch_id}' },
+    { id: 'booking-technical-error-support', summary: 'Jika pelanggan melaporkan booking online error, CAPTCHA/captca/Turnstile tidak bisa diverifikasi, atau verifikasi keamanan gagal: jangan menyalahkan koneksi internet dan jangan langsung melempar pelanggan ke nomor cabang. Akui kendalanya, jelaskan singkat bahwa verifikasi keamanan bisa perlu diulang, minta pelanggan mencoba verifikasi ulang pada halaman booking yang sama. Tegaskan booking belum terkunci sampai halaman menampilkan konfirmasi berhasil. Jika masih gagal setelah dicoba lagi, minta screenshot error dan bantu eskalasi ke manusia/support; jangan menutup percakapan dan jangan membuat booking manual lewat WhatsApp.', booking_url_template: 'booking.html?branch={branch_id}' },
   ],
   // Task 14.1 correction — membership reconciliation. Three real sources were
   // audited (not just public/membership.html as in the previous pass):
@@ -129,6 +130,7 @@ const REDBOX_KNOWLEDGE = freeze({
   faqs: [
     { id: 'membership-private-status', topics: ['membership', 'status'], question: 'Apakah saya member aktif atau tier saya apa?', answer_fact_ids: ['membership-crm-boundary'] },
     { id: 'live-booking-availability', topics: ['booking', 'availability'], question: 'Apakah slot atau kapster tersedia?', answer_fact_ids: ['website-database-authority'] },
+    { id: 'booking-captcha-error', topics: ['booking', 'technical-support'], question: 'Booking online error atau CAPTCHA/verifikasi keamanan gagal?', answer_fact_ids: ['booking-technical-error-support'] },
   ],
   contacts: [
     { id: 'whatsapp-bypass', type: 'whatsapp', value: '+62 818-202-569', branches: ['bypass'], public: true },
