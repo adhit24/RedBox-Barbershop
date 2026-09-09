@@ -6,10 +6,19 @@ const POINTS_NOUN_SIGNAL = /\b(poin|point|redeem)(nya)?\b/;
 const POINTS_DISPUTE_WORDS = /\b(berubah|kepotong|terpotong|berkurang|beda|hilang|salah|tadinya)\b/;
 const POINTS_TWO_NUMBERS = /\d+[^\d]+\d+/;
 
+// Booking-site technical failures need deterministic routing. Without this,
+// short messages such as "gabisa verifikasi captcanya" can fall into a generic
+// complaint route and Reddy may incorrectly blame the customer's internet or
+// immediately push the problem to a branch admin.
+const BOOKING_TECHNICAL_ISSUE = /(?:\b(?:booking|reservasi|website|web)\b.{0,40}\b(?:error|eror|gagal|bermasalah|nggak\s*bisa|ga\s*bisa|gabisa)\b)|(?:\b(?:captcha|captca|capcha|turnstile|verifikasi\s+keamanan|verifikasi\s+bot)\b)/;
+
 function classifyDeterministically(message) {
   const normalized = String(message || '').toLocaleLowerCase('id-ID');
   if (/\b(admin|manusia|customer service|cs)\b/.test(normalized) || /bicara (dengan |sama )?orang/.test(normalized)) {
     return { intent: 'human_request', confidence: 1 };
+  }
+  if (BOOKING_TECHNICAL_ISSUE.test(normalized)) {
+    return { intent: 'booking_request', confidence: 1, reason: 'booking_technical_issue' };
   }
   if (POINTS_NOUN_SIGNAL.test(normalized)
     && (POINTS_DISPUTE_WORDS.test(normalized) || POINTS_TWO_NUMBERS.test(normalized))) {
