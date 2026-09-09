@@ -913,9 +913,16 @@ app.use(cors({
 // Route-scoped 7MB parser for Stockist discrepancy evidence photo uploads (accommodates 5MB binary image Base64 + JSON overhead)
 app.use('/api/stockist/transfers/:id/items/:itemId/photo', express.json({ limit: '7mb' }));
 
+// Route-scoped 15MB parser for fingerprint attendance import (.xls/.xlsx base64 payload)
+app.use('/api/admin/crm/attendance/import/preview', express.json({ limit: '15mb' }));
+app.use('/api/admin/crm/attendance/import/commit', express.json({ limit: '15mb' }));
+
 // Global JSON parser (100KB limit) for all other endpoints
 app.use((req, res, next) => {
-  if (req.method === 'POST' && req.path.match(/^\/api\/stockist\/transfers\/[^/]+\/items\/[^/]+\/photo$/)) {
+  if (req.method === 'POST' && (
+    req.path.match(/^\/api\/stockist\/transfers\/[^/]+\/items\/[^/]+\/photo$/) ||
+    req.path.startsWith('/api/admin/crm/attendance/import/')
+  )) {
     return next();
   }
   express.json({ limit: '100kb' })(req, res, next);
@@ -4198,6 +4205,8 @@ const { createBusinessPerformanceRoutes } = require('./routes/businessPerformanc
 app.use('/api/admin/business-performance', createBusinessPerformanceRoutes(supabase, adminAuth));
 const { createHRPeopleRoutes } = require('./routes/hrPeople');
 app.use('/api/admin/hr-people', createHRPeopleRoutes(supabase, adminAuth));
+const { createAttendanceImportRoutes } = require('./routes/attendanceImport');
+app.use('/api/admin/crm/attendance', createAttendanceImportRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));

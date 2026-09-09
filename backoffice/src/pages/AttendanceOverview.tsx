@@ -244,9 +244,17 @@ export function AttendanceOverview() {
               <h2 className="font-serif text-base font-semibold text-rb-text">
                 Absensi Karyawan Reguler (Fingerprint)
               </h2>
-              <span className="rounded-rb-pill bg-rb-divider px-2.5 py-0.5 text-[11px] font-semibold text-rb-text-muted">
-                Belum terhubung
-              </span>
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/attendance/import"
+                  className="text-xs font-semibold text-rb-red hover:underline"
+                >
+                  Import Fingerprint →
+                </Link>
+                <span className="rounded-rb-pill bg-rb-divider px-2.5 py-0.5 text-[11px] font-semibold text-rb-text-muted">
+                  Belum terhubung
+                </span>
+              </div>
             </div>
             <EmptyState
               title="Data fingerprint karyawan reguler belum terhubung"

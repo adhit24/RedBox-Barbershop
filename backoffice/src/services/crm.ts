@@ -387,5 +387,161 @@ export function getRoleCounts(): Promise<RoleCountsResponse> {
   return apiClient.get<RoleCountsResponse>('/api/admin/crm/role-counts');
 }
 
+// ── FINGERPRINT ATTENDANCE IMPORT V1 ─────────────────────────
+
+export interface FingerprintEmployeePreview {
+  external_employee_id: string;
+  external_name: string;
+  department: string;
+  match_type?: string;
+  target_type?: 'employee' | 'barber';
+  employee_id?: string | null;
+  barber_id?: string | null;
+  target_name?: string;
+  reason?: string;
+  candidate_matches?: Array<{ type: string; id: string; name: string; branch?: string | null }>;
+}
+
+export interface FingerprintPreviewData {
+  filename: string;
+  file_hash: string;
+  period: { from: string; to: string };
+  employees_detected: number;
+  matched_count: number;
+  unmatched_count: number;
+  punch_records_count: number;
+  warnings_count: number;
+  is_duplicate: boolean;
+  existing_batch?: { id: string; uploaded_at: string; status: string } | null;
+  matched: FingerprintEmployeePreview[];
+  unmatched: FingerprintEmployeePreview[];
+  warnings: Array<{ type: string; message: string; [key: string]: unknown }>;
+  sample_records: Array<{
+    external_employee_id: string;
+    name: string;
+    date: string;
+    first_check_in: string | null;
+    last_check_out: string | null;
+    punches: string[];
+    late_minutes: number;
+    derived_status: string;
+  }>;
+}
+
+export interface FingerprintCommitResult {
+  batch_id: string;
+  status: 'completed' | 'partial' | 'failed';
+  period: { from: string; to: string };
+  employees_detected: number;
+  matched_count: number;
+  unmatched_count: number;
+  rows_imported: number;
+  rows_exceptions: number;
+  message: string;
+}
+
+export interface AttendanceImportBatch {
+  id: string;
+  filename: string;
+  file_hash: string;
+  period_from: string;
+  period_to: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  status: 'previewed' | 'importing' | 'completed' | 'partial' | 'failed';
+  rows_detected: number;
+  rows_imported: number;
+  rows_skipped: number;
+  rows_failed: number;
+}
+
+export interface AttendanceException {
+  id: string;
+  import_batch_id: string;
+  attendance_date: string | null;
+  external_employee_id: string | null;
+  external_name: string | null;
+  department: string | null;
+  exception_type: 'unmatched_employee' | 'single_punch' | 'invalid_date' | 'invalid_time' | 'duplicate_conflict' | 'unresolved_shift';
+  details: string | null;
+  raw_data: Record<string, unknown>;
+  status: 'pending' | 'resolved' | 'ignored';
+  resolution_notes: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export interface EmployeeAttendanceRecord {
+  employee_id: string;
+  name: string;
+  nickname: string | null;
+  position: string;
+  branch: string | null;
+  business_unit: string;
+  attendance_date: string;
+  status: string;
+  first_check_in: string | null;
+  last_check_out: string | null;
+  late_minutes: number;
+  raw_punches: string[];
+}
+
+export interface EmployeeAttendanceResponse {
+  ok: boolean;
+  date: string;
+  branch: string;
+  stats: {
+    total: number;
+    hadir: number;
+    terlambat: number;
+    belum_check_in: number;
+    tidak_hadir: number;
+  };
+  employees: EmployeeAttendanceRecord[];
+}
+
+export function previewAttendanceImport(file_base64: string, filename: string): Promise<{ ok: boolean; data: FingerprintPreviewData }> {
+  return apiClient.post<{ ok: boolean; data: FingerprintPreviewData }>('/api/admin/crm/attendance/import/preview', {
+    file_base64,
+    filename,
+  });
+}
+
+export function commitAttendanceImport(
+  file_base64: string,
+  filename: string,
+  manual_mappings?: Array<{ external_employee_id: string; employee_id?: string; barber_id?: string; target_type?: string }>
+): Promise<{ ok: boolean; data: FingerprintCommitResult }> {
+  return apiClient.post<{ ok: boolean; data: FingerprintCommitResult }>('/api/admin/crm/attendance/import/commit', {
+    file_base64,
+    filename,
+    manual_mappings,
+  });
+}
+
+export function getAttendanceImportBatches(): Promise<{ ok: boolean; batches: AttendanceImportBatch[] }> {
+  return apiClient.get<{ ok: boolean; batches: AttendanceImportBatch[] }>('/api/admin/crm/attendance/import/batches');
+}
+
+export function getAttendanceExceptions(status: string = 'pending'): Promise<{ ok: boolean; exceptions: AttendanceException[] }> {
+  return apiClient.get<{ ok: boolean; exceptions: AttendanceException[] }>(`/api/admin/crm/attendance/exceptions?status=${encodeURIComponent(status)}`);
+}
+
+export function resolveAttendanceException(
+  id: string,
+  payload: { employee_id?: string; barber_id?: string; target_type?: 'employee' | 'barber'; resolution_notes?: string }
+): Promise<{ ok: boolean; message: string; exception: AttendanceException }> {
+  return apiClient.post<{ ok: boolean; message: string; exception: AttendanceException }>(`/api/admin/crm/attendance/exceptions/${encodeURIComponent(id)}/resolve`, payload);
+}
+
+export function getEmployeeAttendance(date?: string, branch?: string): Promise<EmployeeAttendanceResponse> {
+  const query = new URLSearchParams();
+  if (date) query.set('date', date);
+  if (branch) query.set('branch', branch);
+  return apiClient.get<EmployeeAttendanceResponse>(`/api/admin/crm/attendance/employees?${query.toString()}`);
+}
+
+
 
 
