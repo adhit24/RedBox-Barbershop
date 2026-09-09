@@ -102,11 +102,33 @@ export function getMembership(): Promise<MemberProfile[]> {
   return apiClient.get<MemberProfile[]>('/api/admin/crm/membership');
 }
 
+export interface MokaFreshnessData {
+  status: 'live' | 'delayed' | 'stale' | 'unavailable';
+  last_updated_at: string | null;
+  age_minutes: number | null;
+  label?: string;
+}
+
+export interface CommandCenterCapacityData {
+  status: 'ready' | 'unavailable';
+  reason?: string;
+  active_barbers: number;
+  available_barbers: number;
+  serving_barbers: number;
+  home_service_barbers: number;
+  total_slots_today: number;
+  occupied_slots: number;
+  available_slots: number;
+  utilization_percent: number;
+}
+
 export interface CommandCenterBarber {
   id: string;
   name: string;
   branch: string;
   attendance_status: string | null;
+  operational_status?: 'off' | 'scheduled' | 'belum_check_in' | 'absent' | 'available' | 'serving' | 'home_service';
+  is_off?: boolean;
   today_count: number;
 }
 
@@ -123,11 +145,18 @@ export interface CommandCenterBookingFeedItem {
 
 export interface CommandCenterBranchData {
   today: string;
+  freshness?: {
+    booking: string;
+    moka: MokaFreshnessData;
+  };
+  capacity?: CommandCenterCapacityData;
   barbers: CommandCenterBarber[];
   stats: {
     hadir: number;
     tidak_hadir: number;
     belum_check_in: number;
+    off?: number;
+    scheduled?: number;
     booking_today: number;
     pending: number;
     home_service_active: number;

@@ -108,11 +108,12 @@ export function Operations() {
             </div>
           )}
 
-          <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard value={state.bookingTodayTotal} label="Booking Hari Ini" tint="red" />
             <StatCard value={state.bookings.length} label="Menunggu / Perlu Aksi" tint="purple" />
-            <StatCard value={state.barbers.filter((b) => b.attendance_status === 'hadir' || b.attendance_status === 'terlambat').length} label="Barber Hadir" tint="green" />
-            <StatCard value={state.barbers.filter((b) => !b.attendance_status).length} label="Belum Check-in" tint="orange" />
+            <StatCard value={state.barbers.filter((b) => b.operational_status === 'available' || b.attendance_status === 'hadir' || b.attendance_status === 'terlambat').length} label="Barber Hadir / Aktif" tint="green" />
+            <StatCard value={state.barbers.filter((b) => b.operational_status === 'off' || b.is_off).length} label="Barber OFF" tint="blue" />
+            <StatCard value={state.barbers.filter((b) => b.operational_status === 'belum_check_in').length} label="Belum Check-in" tint="orange" />
           </section>
 
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
@@ -152,7 +153,23 @@ export function Operations() {
                       <div className="font-medium text-rb-text-secondary">{b.name}</div>
                       <div className="text-xs text-rb-text-muted">{b.branchName}</div>
                     </div>
-                    <span className="shrink-0 text-xs text-rb-text-muted">{b.attendance_status ?? 'Belum check-in'}</span>
+                    <span className="shrink-0">
+                      {b.operational_status === 'off' || b.is_off ? (
+                        <span className="rounded-rb-pill bg-rb-divider px-2 py-0.5 text-[11px] font-semibold text-rb-text-muted">OFF</span>
+                      ) : b.operational_status === 'home_service' ? (
+                        <span className="rounded-rb-pill bg-rb-teal-tint-bg px-2 py-0.5 text-[11px] font-semibold text-rb-teal-tint-fg">HOME SERVICE</span>
+                      ) : b.operational_status === 'serving' ? (
+                        <span className="rounded-rb-pill bg-rb-purple-tint-bg px-2 py-0.5 text-[11px] font-semibold text-rb-purple-tint-fg">SERVING</span>
+                      ) : b.operational_status === 'available' ? (
+                        <span className="rounded-rb-pill bg-rb-green-tint-bg px-2 py-0.5 text-[11px] font-semibold text-rb-green-tint-fg">AVAILABLE</span>
+                      ) : b.operational_status === 'scheduled' ? (
+                        <span className="rounded-rb-pill bg-rb-blue-tint-bg px-2 py-0.5 text-[11px] font-semibold text-rb-blue-tint-fg">SCHEDULED</span>
+                      ) : b.operational_status === 'absent' ? (
+                        <span className="rounded-rb-pill bg-rb-red-tint-bg px-2 py-0.5 text-[11px] font-semibold text-rb-red-tint-fg">ABSENT</span>
+                      ) : (
+                        <span className="rounded-rb-pill bg-rb-orange-tint-bg px-2 py-0.5 text-[11px] font-semibold text-rb-orange-tint-fg">BELUM CHECK-IN</span>
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>

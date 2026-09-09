@@ -11,7 +11,7 @@ const {
   toPublicRegistration,
   validatePaymentInput,
 } = require('../services/membershipRegistration');
-const { syncScheduleForBooking } = require('../moka/slotEngine');
+const { syncScheduleForBooking, computeBranchCapacity } = require('../moka/slotEngine');
 const { syncCurrentMonthTx } = require('../moka/txSync');
 const { getBarberForBooking, branchMatchesBarber, normalizeBranch } = require('../services/bookingGuard');
 const { linkNewlyCreatedBooking } = require('../services/bookingCustomerLinkage');
@@ -21,6 +21,43 @@ const { computeBarberPerformance } = require('../crm/barberPerformanceService');
 
 function localDateStr(d = new Date()) {
   return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
+}
+
+function getMokaFreshness(lastPolledAt, now = new Date()) {
+  if (!lastPolledAt) {
+    return {
+      last_updated_at: null,
+      status: 'unavailable',
+      age_minutes: null,
+      label: 'UNAVAILABLE',
+    };
+  }
+  const pollTime = new Date(lastPolledAt).getTime();
+  if (isNaN(pollTime)) {
+    return {
+      last_updated_at: null,
+      status: 'unavailable',
+      age_minutes: null,
+      label: 'UNAVAILABLE',
+    };
+  }
+  const diffMinutes = Math.max(0, Math.floor((now.getTime() - pollTime) / 60000));
+  let status = 'live';
+  if (diffMinutes > 30) {
+    status = 'stale';
+  } else if (diffMinutes > 10) {
+    status = 'delayed';
+  }
+  const label = status === 'live'
+    ? (diffMinutes === 0 ? 'LIVE' : `LIVE (Updated ${diffMinutes} min ago)`)
+    : (status === 'delayed' ? `DELAYED (${diffMinutes} min ago)` : `STALE (${diffMinutes} min ago)`);
+
+  return {
+    last_updated_at: new Date(pollTime).toISOString(),
+    status,
+    age_minutes: diffMinutes,
+    label,
+  };
 }
 
 function getMonthStart() {
@@ -432,26 +469,65 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
     const barberIds = (barbers || []).map(b => b.id);
 
-    const { data: attendance } = await supabase
-      .from('barber_attendance')
-      .select('barber_id, status')
-      .in('barber_id', barberIds)
-      .eq('date', today);
+    const dayOfWeek = new Date(`${today}T12:00:00Z`).getUTCDay();
+    const [attendanceRes, countRes, shiftsRes, hoursRes, overridesRes] = await Promise.all([
+      supabase
+        .from('barber_attendance')
+        .select('barber_id, status')
+        .in('barber_id', barberIds)
+        .eq('date', today),
+      supabase
+        .from('barber_daily_counts')
+        .select('barber_id, count')
+        .in('barber_id', barberIds)
+        .eq('date', today),
+      (async () => {
+        try {
+          return await supabase.from('barber_shifts').select('barber_id, is_off, start_time, end_time').in('barber_id', barberIds).eq('shift_date', today);
+        } catch {
+          return { data: [] };
+        }
+      })(),
+      supabase
+        .from('barber_working_hours')
+        .select('barber_id, open_time, close_time, is_off')
+        .in('barber_id', barberIds)
+        .eq('day_of_week', dayOfWeek),
+      supabase
+        .from('barber_date_overrides')
+        .select('barber_id, is_off')
+        .in('barber_id', barberIds)
+        .eq('date', today),
+    ]);
 
     const attendMap = {};
-    for (const a of (attendance || [])) attendMap[a.barber_id] = a.status;
+    for (const a of (attendanceRes?.data || [])) attendMap[a.barber_id] = a.status;
 
-    const hadir = (barbers || []).filter(b =>
-      ['hadir','terlambat'].includes(attendMap[b.id])
-    );
-    const tidakHadir = (barbers || []).filter(b =>
-      ['izin','sakit','cuti'].includes(attendMap[b.id])
-    );
-    const belumCheckIn = (barbers || []).filter(b => !attendMap[b.id]);
+    const countMap = {};
+    for (const r of (countRes?.data || [])) countMap[r.barber_id] = r.count;
+
+    const shiftsMap = {};
+    for (const s of (shiftsRes?.data || [])) shiftsMap[s.barber_id] = s;
+
+    const workingHoursMap = {};
+    for (const h of (hoursRes?.data || [])) workingHoursMap[h.barber_id] = h;
+
+    const dateOverridesMap = {};
+    for (const o of (overridesRes?.data || [])) dateOverridesMap[o.barber_id] = o;
+
+    const isBarberOff = (bId) => {
+      const shift = shiftsMap[bId];
+      if (shift !== undefined && typeof shift.is_off === 'boolean') return shift.is_off;
+      const override = dateOverridesMap[bId];
+      if (override !== undefined && typeof override.is_off === 'boolean') return override.is_off;
+      const wh = workingHoursMap[bId];
+      if (wh !== undefined && typeof wh.is_off === 'boolean') return wh.is_off;
+      return false;
+    };
 
     const { data: bookings } = await supabase
       .from('bookings')
-      .select('id, status, time, barber_id, name, wa, service, notes, type')
+      .select('id, status, time, barber_id, name, wa, service, notes, type, duration')
       .eq('date', today)
       .eq('location', branch);
 
@@ -465,37 +541,90 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       isHomeService(b)
     );
 
-    const { data: countRows } = await supabase
-      .from('barber_daily_counts')
-      .select('barber_id, count')
-      .in('barber_id', barberIds)
-      .eq('date', today);
-    const countMap = {};
-    for (const r of (countRows || [])) countMap[r.barber_id] = r.count;
-
-    const alerts = [];
-    const nowHour = parseInt(new Intl.DateTimeFormat('en-US', {
+    const nowParts = new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
+      minute: 'numeric',
       hour12: false,
       timeZone: 'Asia/Jakarta',
-    }).format(new Date()), 10);
+    }).formatToParts(new Date());
 
-    if (nowHour >= 10) {
-      for (const b of belumCheckIn) {
-        const hasBookingToday = activeBookings.some(bk => bk.barber_id === b.id);
-        if (hasBookingToday) {
-          alerts.push({
-            type: 'warning',
-            message: `${b.name} belum check-in — ada booking hari ini`,
-          });
+    const nowHour = parseInt(nowParts.find(p => p.type === 'hour')?.value || '10', 10);
+    const nowMinute = parseInt(nowParts.find(p => p.type === 'minute')?.value || '0', 10);
+    const currentMinuteOfDay = nowHour * 60 + nowMinute;
+
+    // Derive operational status for each barber
+    const barbersWithStatus = (barbers || []).map(b => {
+      const attStatus = attendMap[b.id] || null;
+      const off = isBarberOff(b.id);
+      let opStatus = 'belum_check_in';
+
+      if (off) {
+        opStatus = 'off';
+      } else if (homeServiceActive.some(h => h.barber_id === b.id)) {
+        opStatus = 'home_service';
+      } else if (['hadir', 'terlambat'].includes(attStatus)) {
+        const isServing = activeBookings.some(bk => bk.barber_id === b.id && ['arrived', 'in_progress'].includes(bk.status));
+        opStatus = isServing ? 'serving' : 'available';
+      } else if (['izin', 'sakit', 'cuti'].includes(attStatus)) {
+        opStatus = 'absent';
+      } else {
+        // Scheduled working day, but no attendance row
+        // Open time default: 10:00 WIB. Grace period: 15 mins (10:15)
+        const shift = shiftsMap[b.id];
+        const wh = workingHoursMap[b.id];
+        const openTimeStr = (shift?.start_time ? String(shift.start_time).slice(0, 5) : null)
+          || ((wh && !wh.is_off && wh.open_time) ? wh.open_time : '10:00');
+        const [openH, openM] = openTimeStr.split(':').map(Number);
+        const shiftStartMinute = (openH || 10) * 60 + (openM || 0);
+
+        if (currentMinuteOfDay < shiftStartMinute + 15) {
+          opStatus = 'scheduled';
+        } else {
+          opStatus = 'belum_check_in';
         }
       }
-      if (hadir.length === 0 && activeBookings.length > 0) {
+
+      return {
+        ...b,
+        attendance_status: attStatus,
+        operational_status: opStatus,
+        is_off: off,
+        today_count: countMap[b.id] || 0,
+      };
+    });
+
+    const hadir = barbersWithStatus.filter(b => ['hadir','terlambat'].includes(b.attendance_status));
+    const tidakHadir = barbersWithStatus.filter(b => ['izin','sakit','cuti'].includes(b.attendance_status));
+    const belumCheckIn = barbersWithStatus.filter(b => b.operational_status === 'belum_check_in');
+    const offBarbers = barbersWithStatus.filter(b => b.operational_status === 'off');
+    const scheduledBarbers = barbersWithStatus.filter(b => b.operational_status === 'scheduled');
+
+    const alerts = [];
+
+    // Alert 1: Barber belum check-in padahal ada booking aktif hari ini (tidak berlaku untuk barber OFF)
+    for (const b of belumCheckIn) {
+      const hasBookingToday = activeBookings.some(bk => bk.barber_id === b.id);
+      if (hasBookingToday) {
         alerts.push({
-          type: 'danger',
-          message: `Cabang memiliki ${activeBookings.length} booking hari ini tetapi belum ada barber yang hadir`,
+          type: 'warning',
+          message: `${b.name} belum check-in — ada booking hari ini`,
         });
       }
+    }
+
+    // Alert 2: Booking aktif ada tapi semua barber OFF
+    const workingBarberCount = barbersWithStatus.filter(b => !b.is_off).length;
+    if (activeBookings.length > 0 && workingBarberCount === 0) {
+      alerts.push({
+        type: 'danger',
+        message: `Cabang memiliki ${activeBookings.length} booking hari ini tetapi semua barber berstatus OFF`,
+      });
+    } else if (activeBookings.length > 0 && workingBarberCount > 0 && hadir.length === 0 && currentMinuteOfDay >= (10 * 60 + 15)) {
+      // Alert 3: Ada scheduled barbers tapi belum ada satupun yang hadir setelah 10:15 WIB
+      alerts.push({
+        type: 'danger',
+        message: `Cabang memiliki ${activeBookings.length} booking hari ini tetapi belum ada barber yang hadir`,
+      });
     }
 
     for (const bk of pending) {
@@ -525,23 +654,25 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
     // ── Moka open bills (GoShow walk-in) ──
     let mokaOpenBills = [];
+    let openBillRows = [];
     if (outlet) {
       const dayStart = today + 'T00:00:00+07:00';
       const dayEnd   = today + 'T23:59:59+07:00';
-      const { data: openBillRows } = await supabase
+      const res = await supabase
         .from('schedules')
-        .select('id, barber_id, service_name, start_time, end_time, external_id, notes')
+        .select('id, barber_id, service_name, start_time, end_time, external_id, notes, status, source')
         .eq('outlet_id', outlet.id)
         .eq('source', 'moka')
         .eq('status', 'reserved')
         .gte('start_time', dayStart)
         .lte('start_time', dayEnd)
         .order('start_time', { ascending: true });
+      openBillRows = res.data || [];
 
       const barberNameMap = {};
       for (const b of (barbers || [])) barberNameMap[b.id] = b.name;
 
-      mokaOpenBills = (openBillRows || []).map(r => {
+      mokaOpenBills = openBillRows.map(r => {
         const startWib = new Date(r.start_time);
         const timeStr = startWib.toLocaleTimeString('id-ID', {
           hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta',
@@ -557,39 +688,54 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       });
     }
 
-    // Derive operational status for each barber
-    const barbersWithStatus = (barbers || []).map(b => {
-      const attStatus = attendMap[b.id] || null;
-      let opStatus = 'belum_check_in';
-      if (homeServiceActive.some(h => h.barber_id === b.id)) {
-        opStatus = 'home_service';
-      } else if (attStatus === 'hadir' || attStatus === 'terlambat') {
-        const isServing = activeBookings.some(bk => bk.barber_id === b.id && ['arrived', 'in_progress'].includes(bk.status));
-        opStatus = isServing ? 'serving' : 'available';
-      } else if (['izin', 'sakit', 'cuti'].includes(attStatus)) {
-        opStatus = 'absent';
-      }
+    // ── Capacity & Slot Utilization Calculation ──
+    const barberOperationalStatusMap = {};
+    for (const b of barbersWithStatus) barberOperationalStatusMap[b.id] = b.operational_status;
 
-      return {
-        ...b,
-        attendance_status: attStatus,
-        operational_status: opStatus,
-        today_count: countMap[b.id] || 0,
-      };
-    });
+    let capacity = {
+      status: 'unavailable',
+      reason: 'Outlet not found',
+      active_barbers: 0,
+      available_barbers: 0,
+      serving_barbers: 0,
+      home_service_barbers: 0,
+      total_slots_today: 0,
+      occupied_slots: 0,
+      available_slots: 0,
+      utilization_percent: 0,
+    };
+
+    if (outlet?.id) {
+      capacity = await computeBranchCapacity(supabase, {
+        outletId: outlet.id,
+        date: today,
+        barbers,
+        activeBookings,
+        homeServiceActive,
+        schedules: openBillRows,
+        barberOperationalStatusMap,
+      });
+    }
 
     return res.json({
       today,
-      barbers: barbersWithStatus,
+      freshness: {
+        booking: 'live',
+        moka: getMokaFreshness(outlet?.last_polled_at),
+      },
+      capacity,
       stats: {
         hadir: hadir.length,
         tidak_hadir: tidakHadir.length,
         belum_check_in: belumCheckIn.length,
+        off: offBarbers.length,
+        scheduled: scheduledBarbers.length,
         booking_today: activeBookings.length,
         pending: pending.length,
         home_service_active: homeServiceActive.length,
         moka_open_bills: mokaOpenBills.length,
       },
+      barbers: barbersWithStatus,
       home_service: homeServiceActive,
       booking_feed: allBookings
         .filter(b => ['pending','confirmed'].includes(b.status))
@@ -597,10 +743,6 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         .slice(0, 10),
       moka_open_bills: mokaOpenBills,
       alerts,
-      freshness: {
-        booking: 'live',
-        moka: outlet?.last_polled_at || null,
-      },
     });
   });
 
@@ -2269,4 +2411,4 @@ Terima kasih 🙏
   return router;
 }
 
-module.exports = { createAdminCrmRoutes, createMembershipRegistrationRoutes };
+module.exports = { createAdminCrmRoutes, createMembershipRegistrationRoutes, getMokaFreshness };

@@ -40,6 +40,10 @@ interface BranchActivity {
   name: string;
   bookingToday: number;
   pending: number;
+  capacity?: CommandCenterBranchData['capacity'];
+  freshness?: CommandCenterBranchData['freshness'];
+  barbers?: CommandCenterBranchData['barbers'];
+  alerts?: CommandCenterBranchData['alerts'];
 }
 
 const OPERATIONAL_TIMEZONE = 'Asia/Jakarta';
@@ -237,6 +241,10 @@ export function CommandCenter() {
           name: b.name,
           bookingToday: data.stats.booking_today,
           pending: data.stats.pending,
+          capacity: data.capacity,
+          freshness: data.freshness,
+          barbers: data.barbers,
+          alerts: data.alerts,
         });
       });
 
@@ -308,6 +316,63 @@ export function CommandCenter() {
       cta: 'Review',
     });
   }
+  const latestMokaFreshness = branchActivity.status === 'ready' && branchActivity.data.items.length > 0
+    ? branchActivity.data.items[0].freshness?.moka
+    : undefined;
+
+  const capacitySummary = (() => {
+    if (branchActivity.status !== 'ready' || branchActivity.data.items.length === 0) return null;
+    const readyCapacities = branchActivity.data.items
+      .map((i) => i.capacity)
+      .filter((c): c is NonNullable<typeof c> => !!c && c.status === 'ready');
+
+    if (readyCapacities.length === 0) {
+      const firstUnavailable = branchActivity.data.items.map((i) => i.capacity).find((c) => c?.status === 'unavailable');
+      return {
+        status: 'unavailable' as const,
+        reason: firstUnavailable?.reason || 'Data kapasitas belum tersedia untuk branch ini',
+        active_barbers: 0,
+        available_barbers: 0,
+        serving_barbers: 0,
+        home_service_barbers: 0,
+        total_slots_today: 0,
+        occupied_slots: 0,
+        available_slots: 0,
+        utilization_percent: 0,
+      };
+    }
+
+    const totals = readyCapacities.reduce(
+      (acc, c) => ({
+        active_barbers: acc.active_barbers + (c.active_barbers || 0),
+        available_barbers: acc.available_barbers + (c.available_barbers || 0),
+        serving_barbers: acc.serving_barbers + (c.serving_barbers || 0),
+        home_service_barbers: acc.home_service_barbers + (c.home_service_barbers || 0),
+        total_slots_today: acc.total_slots_today + (c.total_slots_today || 0),
+        occupied_slots: acc.occupied_slots + (c.occupied_slots || 0),
+        available_slots: acc.available_slots + (c.available_slots || 0),
+      }),
+      {
+        active_barbers: 0,
+        available_barbers: 0,
+        serving_barbers: 0,
+        home_service_barbers: 0,
+        total_slots_today: 0,
+        occupied_slots: 0,
+        available_slots: 0,
+      }
+    );
+
+    const utilization_percent =
+      totals.total_slots_today > 0 ? Math.round((totals.occupied_slots / totals.total_slots_today) * 100) : 0;
+
+    return {
+      status: 'ready' as const,
+      ...totals,
+      utilization_percent,
+    };
+  })();
+
   const dateSubtitle = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
@@ -325,7 +390,10 @@ export function CommandCenter() {
             <span className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-2 text-sm text-rb-text-secondary">
               Hari Ini
             </span>
-            <LiveBadge />
+            <LiveBadge
+              status={latestMokaFreshness?.status}
+              ageMinutes={latestMokaFreshness?.age_minutes}
+            />
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rb-purple-tint-bg text-[13px] font-semibold text-rb-purple-tint-fg">
               {initialsOf(currentUser?.label ?? 'Owner')}
             </div>
@@ -384,6 +452,58 @@ export function CommandCenter() {
         <KpiCard icon={<WalletClockIcon size={17} />} value={null} label="Payroll Pending" tint="purple" href="/payroll" unavailable />
       </section>
 
+      {/* Capacity & Slot Utilization */}
+      {capacitySummary && (
+        <section className="mb-5 rounded-rb-card border border-rb-border bg-rb-surface p-5">
+          <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-serif text-[17px] font-semibold text-rb-text">Kapasitas & Utilisasi Slot</h2>
+              <p className="text-xs text-rb-text-muted">
+                {branch === 'all' ? 'Agregasi kapasitas operasional seluruh cabang hari ini' : `Kapasitas operasional real-time cabang ${branch.toUpperCase()}`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {capacitySummary.status === 'ready' ? (
+                <span className="rounded-rb-pill bg-rb-green-tint-bg px-2.5 py-1 text-xs font-semibold text-rb-green-tint-fg">
+                  UTILISASI {capacitySummary.utilization_percent}%
+                </span>
+              ) : (
+                <span className="rounded-rb-pill bg-rb-divider px-2.5 py-1 text-xs font-semibold text-rb-text-muted">
+                  PARTIAL DATA: {capacitySummary.reason}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="rounded-xl bg-rb-bg p-3">
+              <div className="text-xs text-rb-text-muted">Barber Tersedia</div>
+              <div className="mt-1 text-xl font-semibold text-rb-green-tint-fg">{capacitySummary.available_barbers}</div>
+            </div>
+            <div className="rounded-xl bg-rb-bg p-3">
+              <div className="text-xs text-rb-text-muted">Barber Melayani</div>
+              <div className="mt-1 text-xl font-semibold text-rb-purple-tint-fg">{capacitySummary.serving_barbers}</div>
+            </div>
+            <div className="rounded-xl bg-rb-bg p-3">
+              <div className="text-xs text-rb-text-muted">Home Service</div>
+              <div className="mt-1 text-xl font-semibold text-rb-teal-tint-fg">{capacitySummary.home_service_barbers}</div>
+            </div>
+            <div className="rounded-xl bg-rb-bg p-3">
+              <div className="text-xs text-rb-text-muted">Slot Terisi</div>
+              <div className="mt-1 text-xl font-semibold text-rb-text">{capacitySummary.occupied_slots}</div>
+            </div>
+            <div className="rounded-xl bg-rb-bg p-3">
+              <div className="text-xs text-rb-text-muted">Slot Tersedia</div>
+              <div className="mt-1 text-xl font-semibold text-rb-blue-tint-fg">{capacitySummary.available_slots}</div>
+            </div>
+            <div className="rounded-xl bg-rb-bg p-3">
+              <div className="text-xs text-rb-text-muted">Utilisasi Hari Ini</div>
+              <div className="mt-1 text-xl font-semibold text-rb-text">{capacitySummary.utilization_percent}%</div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Performance by Year */}
       <div className="mb-5">
         {yearlyPerformance.status === 'loading' && <LoadingState label="Memuat performa tahunan..." />}
@@ -424,7 +544,12 @@ export function CommandCenter() {
                       />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold text-rb-text">{b.name}</div>
-                        <div className="text-xs text-rb-text-muted">{b.bookingToday} booking hari ini</div>
+                        <div className="text-xs text-rb-text-muted">
+                          {b.bookingToday} booking hari ini
+                          {b.capacity && b.capacity.status === 'ready'
+                            ? ` · Utilisasi ${b.capacity.utilization_percent}% (${b.capacity.available_barbers} barber ready, ${b.capacity.available_slots} slot)`
+                            : ''}
+                        </div>
                       </div>
                       <span
                         className="whitespace-nowrap rounded-rb-pill px-2.5 py-1 text-xs font-semibold"
@@ -441,6 +566,36 @@ export function CommandCenter() {
                   );
                 })}
               </div>
+
+              {branch !== 'all' && branchActivity.data.items[0]?.barbers && branchActivity.data.items[0].barbers.length > 0 && (
+                <div className="mt-5 border-t border-rb-divider pt-4">
+                  <h3 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-rb-text-muted">Roster & Status Barber ({branchActivity.data.items[0].name})</h3>
+                  <div className="flex flex-col divide-y divide-rb-divider">
+                    {branchActivity.data.items[0].barbers.map((b) => (
+                      <div key={b.id} className="flex items-center justify-between py-2 text-xs">
+                        <span className="font-medium text-rb-text">{b.name}</span>
+                        <span>
+                          {b.operational_status === 'off' || b.is_off ? (
+                            <span className="rounded-rb-pill bg-rb-divider px-2 py-0.5 text-[10.5px] font-semibold text-rb-text-muted">OFF</span>
+                          ) : b.operational_status === 'home_service' ? (
+                            <span className="rounded-rb-pill bg-rb-teal-tint-bg px-2 py-0.5 text-[10.5px] font-semibold text-rb-teal-tint-fg">HOME SERVICE</span>
+                          ) : b.operational_status === 'serving' ? (
+                            <span className="rounded-rb-pill bg-rb-purple-tint-bg px-2 py-0.5 text-[10.5px] font-semibold text-rb-purple-tint-fg">SERVING</span>
+                          ) : b.operational_status === 'available' ? (
+                            <span className="rounded-rb-pill bg-rb-green-tint-bg px-2 py-0.5 text-[10.5px] font-semibold text-rb-green-tint-fg">AVAILABLE</span>
+                          ) : b.operational_status === 'scheduled' ? (
+                            <span className="rounded-rb-pill bg-rb-blue-tint-bg px-2 py-0.5 text-[10.5px] font-semibold text-rb-blue-tint-fg">SCHEDULED</span>
+                          ) : b.operational_status === 'absent' ? (
+                            <span className="rounded-rb-pill bg-rb-red-tint-bg px-2 py-0.5 text-[10.5px] font-semibold text-rb-red-tint-fg">ABSENT</span>
+                          ) : (
+                            <span className="rounded-rb-pill bg-rb-orange-tint-bg px-2 py-0.5 text-[10.5px] font-semibold text-rb-orange-tint-fg">BELUM CHECK-IN</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
