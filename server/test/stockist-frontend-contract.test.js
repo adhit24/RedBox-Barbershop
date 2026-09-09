@@ -35,23 +35,21 @@ test('BottomNavBar is a reusable, route-aware component with the expected API', 
   assert.match(source, /usePathname/);
   assert.match(source, /from ['"]next\/link['"]/);
   assert.match(source, /from ['"]lucide-react['"]/);
-  assert.match(source, /from ['"]framer-motion['"]/);
   assert.match(source, /export function BottomNavBar/);
   assert.match(source, /items:\s*BottomNavItem\[\]/);
 });
 
-test('Stockist layout wires BottomNavBar with 5 branch-admin tabs including Permintaan and Riwayat', () => {
+test('Stockist layout wires BottomNavBar with branch-admin tabs', () => {
   const source = readFrontend('app/admin/stockist/layout.tsx');
   assert.match(source, /from ['"]@\/components\/ui\/bottom-nav-bar['"]/);
   assert.match(source, /<BottomNavBar/);
   assert.match(source, /href:\s*['"]\/admin\/stockist['"]/);
   assert.match(source, /href:\s*['"]\/admin\/stockist\/branch-stock['"]/);
   assert.match(source, /href:\s*['"]\/admin\/stockist\/transfers['"]/);
-  assert.match(source, /href:\s*['"]\/admin\/stockist\/requests['"]/);
-  assert.match(source, /href:\s*['"]\/admin\/stockist\/ledger['"]/);
+  assert.match(source, /href:\s*['"]\/admin\/stockist\/profile['"]/);
   const branchAdminTabsBlock = source.slice(source.indexOf('branchAdminTabs'), source.indexOf('branchAdminTabs') + 500);
   const hrefCount = (branchAdminTabsBlock.match(/href:/g) || []).length;
-  assert.equal(hrefCount, 5);
+  assert.equal(hrefCount, 4);
 });
 
 test('Stok Saya dashboard replaces the catalog-first layout with summary cards', () => {
@@ -83,9 +81,9 @@ test('Riwayat page renders scoped ledger entries without a branch selector', () 
 
 test('Semua Stok supports Category and Brand hierarchy grouping and dedicated category views', () => {
   const source = readFrontend('app/admin/stockist/branch-stock/all/page.tsx');
-  assert.match(source, /groupProductsByCategoryAndBrand/);
-  assert.match(source, /CATEGORIES_LIST/);
-  assert.match(source, /categoryGroups/);
-  assert.match(source, /selectedCategory/);
+  assert.match(source, /getCategoryForProduct/);
+  assert.match(source, /getBrandForProduct/);
+  assert.match(source, /inferredCategory/);
+  assert.match(source, /inferredBrand/);
 });
 

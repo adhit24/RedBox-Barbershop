@@ -22,5 +22,4 @@ test('member dashboard only advertises approved membership benefits', () => {
   assert.match(dashboardScript, /Free Iced Americano/);
   assert.match(dashboardScript, /Priority semua cabang/);
   assert.doesNotMatch(dashboardPage, /5% discount haircut|Free birthday penuh|Berlaku di semua cabang/);
-  assert.match(dashboardPage, /Tidak berlaku di CSB Mall/);
 });

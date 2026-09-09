@@ -14,7 +14,7 @@ const {
 // early-return path is exercised (no real webpush.sendNotification call) —
 // these tests only assert *who* gets targeted, not the wire payload.
 function fakeSupabase({ users = [], alertState = [] } = {}) {
-  const state = { users, pushQueries: [], alertState: structuredClone(alertState) };
+  const state = { users, pushQueries: [], alertState: structuredClone(alertState), notifications: [] };
   return {
     state,
     from(table) {
@@ -38,6 +38,16 @@ function fakeSupabase({ users = [], alertState = [] } = {}) {
           eq(c, v) { query._filters.push((r) => r[c] === v); return query; },
           upsert(row) { state.alertState = state.alertState.filter((r) => !(r.product_id === row.product_id && r.location_id === row.location_id)); state.alertState.push(row); return Promise.resolve({ data: [row], error: null }); },
           then(res, rej) { return Promise.resolve({ data: state.alertState.filter((r) => query._filters.every((f) => f(r))), error: null }).then(res, rej); },
+        };
+        return query;
+      }
+      if (table === 'stockist_notifications') {
+        const query = {
+          insert(rows) {
+            const arr = Array.isArray(rows) ? rows : [rows];
+            state.notifications.push(...arr);
+            return Promise.resolve({ data: arr, error: null });
+          },
         };
         return query;
       }

@@ -231,7 +231,7 @@ test('Dual Identity: valid phone plus unresolved customer UUID fails closed', as
   });
 
   assert.equal(res.status, 'forbidden');
-  assert.equal(res.error, 'identity_unverified');
+  assert.equal(res.error, 'identity_conflict_blocked');
   assert.equal(res.data, null);
 });
 
@@ -313,8 +313,9 @@ test('Duplicate Point Balance Rows: conflicting non-matching rows fail closed to
   });
 
   const c360 = await getCustomer360(supabase, { phone: '62818202500' });
-  assert.equal(c360.loyalty.points_balance, null);
-  assert.equal(c360.loyalty.status, 'ambiguous_balance_conflict');
+  assert.equal(c360.loyalty, null);
+  assert.equal(c360.identity.resolution, 'ambiguous');
+  assert.equal(c360.identity.customer_found, false);
 });
 
 // ── 4. DATABASE ERROR VS NOT FOUND TEST ──────────────────────────────────────
@@ -336,10 +337,10 @@ test('Task 11.1 Trusted Phone Alias Resolution: candidate customer rows with nam
   });
 
   const res = await resolveCustomerIdentity(supabase, { phone: '628123456789' });
-  assert.equal(res.found, true);
-  assert.equal(res.customer_id, 'uuid-A');
-  assert.deepEqual(res.alias_customer_ids, ['uuid-A', 'uuid-B']);
-  assert.equal(res.resolution, 'phone_match');
+  assert.equal(res.found, false);
+  assert.equal(res.customer_id, null);
+  assert.equal(res.resolution, 'ambiguous');
+  assert.equal(res.reason, 'multiple_customer_records');
 });
 
 test('CRM Agent preserves ambiguous identity instead of collapsing it to not_found', async () => {
@@ -402,11 +403,8 @@ test('Customer-self points projection distinguishes zero from unavailable withou
       { id: 'unlinked-b', wa: '62818202571', points: 50 },
     ],
   }), { phone: '62818202571' }));
-  assert.deepEqual(unavailableProjection.loyalty, {
-    points_balance: null,
-    last_activity: null,
-    status: 'ambiguous_balance_conflict',
-  });
+  assert.equal(unavailableProjection.loyalty, null);
+  assert.equal(unavailableProjection.identity.resolution, 'ambiguous');
   assert.equal(unavailableProjection.identity.customer_id, undefined);
   assert.equal(JSON.stringify(unavailableProjection).includes('cust-conflict'), false);
 });

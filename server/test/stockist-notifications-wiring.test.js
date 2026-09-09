@@ -114,6 +114,21 @@ function fakeSupabase({
         state.balances.set(key, bal);
         return { data: { ...bal, id: `ledger-${state.rpcCalls.length}` }, error: null };
       }
+      if (name === 'confirm_stock_transfer_receive') {
+        const items = args.p_items || [];
+        const hasDiscrepancy = items.some((i) => {
+          const orig = state.transferItems.find((ti) => ti.id === i.id);
+          return orig && orig.quantity_sent !== i.quantity_received;
+        });
+        return {
+          data: {
+            success: true,
+            has_discrepancy: hasDiscrepancy,
+            transfer_id: args.p_transfer_id,
+          },
+          error: null,
+        };
+      }
       return { data: { id: `ledger-${state.rpcCalls.length}`, quantity_after: 0 }, error: null };
     },
   };
