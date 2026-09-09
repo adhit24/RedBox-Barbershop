@@ -303,7 +303,7 @@ describe('Backoffice Route Smoke Test', () => {
     );
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Import Fingerprint' })).toBeInTheDocument();
-      expect(screen.getByText('Belum terhubung')).toBeInTheDocument();
+      expect(screen.getByText('Ready')).toBeInTheDocument();
     });
   });
 
@@ -315,7 +315,7 @@ describe('Backoffice Route Smoke Test', () => {
     );
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Exception Review' })).toBeInTheDocument();
-      expect(screen.getByText('Belum ada data exception yang terhubung')).toBeInTheDocument();
+      expect(screen.getByText('Ready')).toBeInTheDocument();
     });
   });
 

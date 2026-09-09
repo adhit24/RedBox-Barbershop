@@ -1,11 +1,25 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { FingerprintImport } from '../FingerprintImport';
 
 describe('FingerprintImport', () => {
-  it('does NOT render DemoBadge or fake import counts', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/admin/crm/attendance/import/batches')) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, batches: [] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }));
+  });
+
+  it('does NOT render DemoBadge or fake import counts', async () => {
     render(<FingerprintImport />, { wrapper: MemoryRouter });
+
+    await waitFor(() => {
+      expect(screen.getByText('Import Fingerprint')).toBeInTheDocument();
+    });
 
     // Verify NO DemoBadge
     expect(screen.queryByText(/DEMO/i)).toBeNull();
@@ -13,28 +27,28 @@ describe('FingerprintImport', () => {
     // Verify NO fake import counts or stats
     expect(screen.queryByText('312')).toBeNull();
     expect(screen.queryByText(/Records Diimport/i)).toBeNull();
-    expect(screen.queryByText(/Karyawan Cocok/i)).toBeNull();
     expect(screen.queryByText(/Hasil Import Terakhir/i)).toBeNull();
   });
 
-  it('renders honest unavailable empty state', () => {
+  it('renders Ready badge and active upload file selector', async () => {
     render(<FingerprintImport />, { wrapper: MemoryRouter });
 
-    expect(screen.getByText('Import Fingerprint')).toBeInTheDocument();
-    expect(screen.getByText('Belum terhubung')).toBeInTheDocument();
-    expect(
-      screen.getByText('Riwayat impor mesin fingerprint belum tersedia')
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Modul upload dan parsing akan diaktifkan setelah format mesin absensi tervalidasi/i)
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Ready')).toBeInTheDocument();
+      expect(screen.getByText('Pilih File Fingerprint')).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput).not.toBeNull();
+    expect(fileInput.getAttribute('accept')).toBe('.xls,.xlsx');
   });
 
-  it('has disabled upload button clearly marked unavailable', () => {
+  it('renders honest empty state when no import history exists', async () => {
     render(<FingerprintImport />, { wrapper: MemoryRouter });
 
-    const btn = screen.getByRole('button', { name: /Pilih File/i });
-    expect(btn).toBeDisabled();
-    expect(btn).toHaveTextContent(/Tidak Tersedia/i);
+    await waitFor(() => {
+      expect(screen.getByText('Riwayat Impor Mesin Fingerprint')).toBeInTheDocument();
+      expect(screen.getByText('Belum ada riwayat impor')).toBeInTheDocument();
+    });
   });
 });

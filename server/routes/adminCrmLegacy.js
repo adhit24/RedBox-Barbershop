@@ -525,6 +525,52 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       return false;
     };
 
+    // ── Regular employees attendance for branch ──
+    const { data: branchEmployees } = await supabase
+      .from('employees')
+      .select('id, name, nickname, position, branch')
+      .eq('branch', branch)
+      .eq('is_active', true)
+      .eq('employment_type', 'regular');
+
+    let empHadir = 0;
+    let empTerlambat = 0;
+    let empTidakHadir = 0;
+    let empBelumCheckIn = 0;
+    const empAttendanceList = [];
+
+    if (branchEmployees && branchEmployees.length > 0) {
+      const empIds = branchEmployees.map(e => e.id);
+      const { data: empAttData } = await supabase
+        .from('employee_attendance')
+        .select('employee_id, status, first_check_in, last_check_out, late_minutes')
+        .in('employee_id', empIds)
+        .eq('attendance_date', today);
+
+      const empAttMap = {};
+      for (const a of (empAttData || [])) empAttMap[a.employee_id] = a;
+
+      for (const emp of branchEmployees) {
+        const att = empAttMap[emp.id];
+        const status = att ? att.status : 'belum_check_in';
+        if (['hadir', 'terlambat'].includes(status)) empHadir++;
+        if (status === 'terlambat') empTerlambat++;
+        if (['absent', 'izin', 'sakit', 'cuti'].includes(status)) empTidakHadir++;
+        if (status === 'belum_check_in') empBelumCheckIn++;
+
+        empAttendanceList.push({
+          id: emp.id,
+          name: emp.name,
+          nickname: emp.nickname,
+          position: emp.position,
+          attendance_status: status,
+          first_check_in: att?.first_check_in || null,
+          last_check_out: att?.last_check_out || null,
+          late_minutes: att?.late_minutes || 0,
+        });
+      }
+    }
+
     const { data: bookings } = await supabase
       .from('bookings')
       .select('id, status, time, barber_id, name, wa, service, notes, type, duration')
@@ -734,8 +780,16 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         pending: pending.length,
         home_service_active: homeServiceActive.length,
         moka_open_bills: mokaOpenBills.length,
+        regular_employees: {
+          total: (branchEmployees || []).length,
+          hadir: empHadir,
+          terlambat: empTerlambat,
+          tidak_hadir: empTidakHadir,
+          belum_check_in: empBelumCheckIn,
+        },
       },
       barbers: barbersWithStatus,
+      regular_employees: empAttendanceList,
       home_service: homeServiceActive,
       booking_feed: allBookings
         .filter(b => ['pending','confirmed'].includes(b.status))
