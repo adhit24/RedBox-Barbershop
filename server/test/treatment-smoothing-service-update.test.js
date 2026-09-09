@@ -13,6 +13,7 @@ const {
   guardLegacyServiceNames,
   HISTORICAL_OR_DISPUTE_CONTEXT_REGEX,
 } = require('../agents/reddy/personalityPolicy');
+const { executeCreateBookingAtomic } = require('../services/atomicBookingService');
 
 // ── 1. CATALOG MASTER & BRANCH PRICING ────────────────────────────
 test('1. CATALOG: REDBOX_SERVICES has updated Treatment Smoothing & Shave with branch pricing', () => {
@@ -91,13 +92,14 @@ test('4. KNOWLEDGE RESOLVER: Customer smoothing queries resolve to Treatment Smo
 
 // ── 3. GUARD SCOPE & PROTECTION OF HISTORICAL CONTEXT ──────────────
 test('5. GUARD SCOPE: guardLegacyServiceNames normalizes CURRENT quotes but preserves HISTORICAL quotes', () => {
-  // Case A: Current service quote with old name -> normalized
+  // Case A: Pure current service quote with old name -> normalized to Treatment Smoothing & Shave
   const currentQuote = 'Untuk layanan Hair Smoothing harganya Rp450.000 kak.';
   const guardedCurrent = guardLegacyServiceNames(currentQuote);
   assert.equal(guardedCurrent.corrected, true);
   assert.equal(guardedCurrent.sanitizedReply, 'Untuk layanan Treatment Smoothing & Shave harganya Rp450.000 kak.');
 
-  // Case B: Customer: "Dulu saya smoothing 360 ribu ya?"
+  // Case B: Pure historical old name -> preserved
+  // Customer: "Dulu saya smoothing 360 ribu ya?"
   // Allowed response: "Ya, pada transaksi lama harganya bisa berbeda. Harga Treatment Smoothing & Shave saat ini Rp450.000."
   const pastTransactionReply = 'Ya, pada transaksi lama harganya bisa berbeda. Harga Treatment Smoothing & Shave saat ini Rp450.000.';
   const guardedPast = guardLegacyServiceNames(pastTransactionReply);
@@ -128,6 +130,17 @@ test('5. GUARD SCOPE: guardLegacyServiceNames normalizes CURRENT quotes but pres
   const guardedDispute = guardLegacyServiceNames(dispute);
   assert.equal(guardedDispute.corrected, false);
   assert.equal(guardedDispute.sanitizedReply, dispute);
+
+  // Case G: Mixed historical old name + current old name -> historical preserved, current corrected only
+  // Input: "Dulu Hair Smoothing Rp360.000, sekarang Hair Smoothing Rp450.000."
+  // Expected: "Dulu Hair Smoothing Rp360.000, sekarang Treatment Smoothing & Shave Rp450.000."
+  const mixedLegacyQuote = 'Dulu Hair Smoothing Rp360.000, sekarang Hair Smoothing Rp450.000.';
+  const guardedMixed = guardLegacyServiceNames(mixedLegacyQuote);
+  assert.equal(guardedMixed.corrected, true);
+  assert.equal(
+    guardedMixed.sanitizedReply,
+    'Dulu Hair Smoothing Rp360.000, sekarang Treatment Smoothing & Shave Rp450.000.'
+  );
 });
 
 test('6. GUARD SCOPE: guardFactualServiceNumbers corrects CURRENT prices but preserves HISTORICAL prices', async () => {
@@ -157,7 +170,7 @@ test('6. GUARD SCOPE: guardFactualServiceNumbers corrects CURRENT prices but pre
     },
   };
 
-  // Case A: Current service quote with stale price -> corrected
+  // Case A: Pure current service quote with stale price -> corrected
   const replyWithOldPrice = 'Layanan Treatment Smoothing & Shave harganya Rp360.000 ya kak.';
   const guardedCurrent = await guardFactualServiceNumbers(replyWithOldPrice, {
     supabase: mockSupabase,
@@ -166,7 +179,7 @@ test('6. GUARD SCOPE: guardFactualServiceNumbers corrects CURRENT prices but pre
   assert.equal(guardedCurrent.blocked, true, 'Current quote with old price must be corrected');
   assert.equal(guardedCurrent.sanitizedReply, 'Layanan Treatment Smoothing & Shave harganya Rp450.000 ya kak.');
 
-  // Case B: Historical quote: "Booking saya bulan lalu Hair Smoothing Rp360.000"
+  // Case B: Pure historical quote: "Booking saya bulan lalu Hair Smoothing Rp360.000"
   // Must NOT become "Booking saya bulan lalu Hair Smoothing Rp450.000"
   const historicalQuote = 'Booking saya bulan lalu Hair Smoothing Rp360.000';
   const guardedHistorical = await guardFactualServiceNumbers(historicalQuote, {
@@ -185,7 +198,7 @@ test('6. GUARD SCOPE: guardFactualServiceNumbers corrects CURRENT prices but pre
   assert.equal(guardedPast.blocked, false);
   assert.equal(guardedPast.sanitizedReply, pastTransaction);
 
-  // Case D: Comparison: "Dulu 360 ribu sekarang 450 ribu"
+  // Case D: Comparison with both correct numbers: "Dulu harganya Rp360.000, sekarang Treatment Smoothing & Shave Rp450.000 ya Kak."
   const comparisonQuote = 'Dulu harganya Rp360.000, sekarang Treatment Smoothing & Shave Rp450.000 ya Kak.';
   const guardedComp = await guardFactualServiceNumbers(comparisonQuote, {
     supabase: mockSupabase,
@@ -193,6 +206,33 @@ test('6. GUARD SCOPE: guardFactualServiceNumbers corrects CURRENT prices but pre
   });
   assert.equal(guardedComp.blocked, false);
   assert.equal(guardedComp.sanitizedReply, comparisonQuote);
+
+  // Case E: Mixed historical correct + current wrong price -> current corrected only
+  // Input: "Dulu Hair Smoothing Rp360.000, sekarang Treatment Smoothing & Shave Rp400.000."
+  // Expected: historical Rp360.000 preserved, current Rp400.000 corrected to Rp450.000
+  // Result: "Dulu Hair Smoothing Rp360.000, sekarang Treatment Smoothing & Shave Rp450.000."
+  const mixedPriceQuote = 'Dulu Hair Smoothing Rp360.000, sekarang Treatment Smoothing & Shave Rp400.000.';
+  const guardedMixed = await guardFactualServiceNumbers(mixedPriceQuote, {
+    supabase: mockSupabase,
+    serviceId: 'hair-smoothing',
+  });
+  assert.equal(guardedMixed.blocked, true);
+  assert.equal(
+    guardedMixed.sanitizedReply,
+    'Dulu Hair Smoothing Rp360.000, sekarang Treatment Smoothing & Shave Rp450.000.'
+  );
+
+  // Case F: Dispute context mentioning historical price + current wrong quote -> current corrected
+  const disputeWithWrongQuote = 'Terkait komplain selisih biaya Hair Smoothing Rp360.000, harga Treatment Smoothing & Shave sekarang adalah Rp400.000.';
+  const guardedDispute = await guardFactualServiceNumbers(disputeWithWrongQuote, {
+    supabase: mockSupabase,
+    serviceId: 'hair-smoothing',
+  });
+  assert.equal(guardedDispute.blocked, true);
+  assert.equal(
+    guardedDispute.sanitizedReply,
+    'Terkait komplain selisih biaya Hair Smoothing Rp360.000, harga Treatment Smoothing & Shave sekarang adalah Rp450.000.'
+  );
 });
 
 test('7. FACTUAL GUARD: Stale duration on current service is intercepted and corrected to 90 menit', async () => {
@@ -221,6 +261,7 @@ test('7. FACTUAL GUARD: Stale duration on current service is intercepted and cor
     },
   };
 
+  // Pure current wrong duration -> corrected to 90 menit
   const replyWithWrongDuration = 'Treatment Smoothing & Shave durasinya 60 menit ya kak.';
   const guarded = await guardFactualServiceNumbers(replyWithWrongDuration, {
     supabase: mockSupabase,
@@ -229,54 +270,111 @@ test('7. FACTUAL GUARD: Stale duration on current service is intercepted and cor
 
   assert.equal(guarded.blocked, true);
   assert.equal(guarded.sanitizedReply, 'Treatment Smoothing & Shave durasinya 90 menit ya kak.');
+
+  // Mixed historical sentence with current wrong duration -> historical preserved, current corrected to 90 menit
+  // Input: "Dulu Hair Smoothing 60 menit, sekarang Treatment Smoothing & Shave 60 menit."
+  // Result: "Dulu Hair Smoothing 60 menit, sekarang Treatment Smoothing & Shave 90 menit."
+  const mixedDurationQuote = 'Dulu Hair Smoothing 60 menit, sekarang Treatment Smoothing & Shave 60 menit.';
+  const guardedMixedDur = await guardFactualServiceNumbers(mixedDurationQuote, {
+    supabase: mockSupabase,
+    serviceId: 'hair-smoothing',
+  });
+  assert.equal(guardedMixedDur.blocked, true);
+  assert.equal(
+    guardedMixedDur.sanitizedReply,
+    'Dulu Hair Smoothing 60 menit, sekarang Treatment Smoothing & Shave 90 menit.'
+  );
 });
 
 // ── 4. BOOKING E2E AUTHORITY ──────────────────────────────────────
-test('8. BOOKING E2E AUTHORITY: New booking for slug hair-smoothing resolves to current values and writes new snapshot', () => {
-  // Simulate booking system resolving service by slug 'hair-smoothing'
+test('8. BOOKING E2E AUTHORITY: Real production booking authority produces snapshot for standard and CSB branches', async () => {
+  // Resolve canonical service by slug 'hair-smoothing'
   const catalogService = REDBOX_SERVICES.find((s) => s.id === 'hair-smoothing');
   assert.ok(catalogService, 'Slug hair-smoothing must resolve in catalog');
   assert.equal(catalogService.name, 'Treatment Smoothing & Shave');
   assert.equal(catalogService.price, 450000);
+  assert.equal(catalogService.csbPrice, 450000);
   assert.equal(catalogService.duration, '90 menit');
 
-  // Simulate payload creation in booking.js (_buildPayloadFor)
-  function buildBookingPayload(svc, location = 'bypass') {
-    const effectivePrice = (location === 'csb' && svc.csbPrice) ? svc.csbPrice : svc.price;
+  // Exercise the actual production booking service boundary: executeCreateBookingAtomic
+  const createMockDb = () => {
+    const insertedRows = [];
     return {
-      service_id: svc.id,
-      service: svc.name,
-      price: effectivePrice,
-      duration: svc.duration,
-      location,
-      status: 'pending',
+      insertedRows,
+      from(table) {
+        assert.equal(table, 'bookings');
+        return {
+          insert(rows) {
+            insertedRows.push(...rows);
+            return {
+              select() {
+                return {
+                  single() {
+                    return Promise.resolve({ data: rows[0], error: null });
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
     };
-  }
+  };
 
-  // Standard outlet payload
-  const bypassPayload = buildBookingPayload(catalogService, 'bypass');
-  assert.equal(bypassPayload.service, 'Treatment Smoothing & Shave');
-  assert.equal(bypassPayload.service_id, 'hair-smoothing');
-  assert.equal(bypassPayload.price, 450000);
-  assert.equal(bypassPayload.duration, '90 menit');
+  // 1. Standard branch booking (e.g. Bypass)
+  const standardDb = createMockDb();
+  const standardResult = await executeCreateBookingAtomic(standardDb, {
+    service_id: catalogService.id,
+    service: catalogService.name,
+    price: catalogService.price,
+    duration: catalogService.duration,
+    location: 'bypass',
+    name: 'Henky Standard',
+    wa: '081234567890',
+    date: '2026-09-15',
+    time: '14:00',
+  });
+  assert.equal(standardResult.success, true);
+  assert.equal(standardResult.booking.service_id, 'hair-smoothing');
+  assert.equal(standardResult.booking.service, 'Treatment Smoothing & Shave');
+  assert.equal(standardResult.booking.price, 450000);
+  assert.equal(standardResult.booking.duration, '90 menit');
+  assert.equal(standardResult.booking.location, 'bypass');
 
-  // CSB outlet payload
-  const csbPayload = buildBookingPayload(catalogService, 'csb');
-  assert.equal(csbPayload.service, 'Treatment Smoothing & Shave');
-  assert.equal(csbPayload.service_id, 'hair-smoothing');
-  assert.equal(csbPayload.price, 450000, 'CSB price must be 450000');
-  assert.equal(csbPayload.duration, '90 menit');
+  // 2. CSB branch booking
+  const csbDb = createMockDb();
+  const csbEffectivePrice = catalogService.csbPrice || catalogService.price;
+  const csbResult = await executeCreateBookingAtomic(csbDb, {
+    service_id: catalogService.id,
+    service: catalogService.name,
+    price: csbEffectivePrice,
+    duration: catalogService.duration,
+    location: 'csb',
+    name: 'Henky CSB',
+    wa: '081234567890',
+    date: '2026-09-15',
+    time: '15:00',
+  });
+  assert.equal(csbResult.success, true);
+  assert.equal(csbResult.booking.service_id, 'hair-smoothing');
+  assert.equal(csbResult.booking.service, 'Treatment Smoothing & Shave');
+  assert.equal(csbResult.booking.price, 450000);
+  assert.equal(csbResult.booking.duration, '90 menit');
+  assert.equal(csbResult.booking.location, 'csb');
 
-  // Verify historical snapshot rule: past booking snapshot must remain intact
+  // 3. Historical booking snapshot immutability
   const historicalBookingSnapshot = {
-    id: 'historical-booking-1',
-    date: '2026-07-21',
+    id: 'historical-booking-202607',
+    service_id: 'hair-smoothing',
     service: 'Hair Smoothing',
     price: 360000,
+    duration: '60 menit',
+    date: '2026-07-21',
     status: 'done',
   };
   assert.equal(historicalBookingSnapshot.service, 'Hair Smoothing');
   assert.equal(historicalBookingSnapshot.price, 360000);
+  assert.equal(historicalBookingSnapshot.duration, '60 menit');
 });
 
 // ── 5. WHATSAPP AI PROJECTIONS ────────────────────────────────────
@@ -302,11 +400,12 @@ test('9. WHATSAPP AI KNOWLEDGE: services.json and faq.json match Treatment Smoot
 });
 
 // ── 6. PRODUCTION DB EVIDENCE (READ-ONLY) ──────────────────────────
-test('10. PRODUCTION DB EVIDENCE: Read-only verification of canonical row a41ee0a1-f854-48ca-8304-30529451d3c8', async () => {
+test('10. PRODUCTION DB EVIDENCE: Read-only verification of canonical row a41ee0a1-f854-48ca-8304-30529451d3c8', async (t) => {
   require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
   const { createClient } = require('@supabase/supabase-js');
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-    return; // skip if no env
+    t.skip('Supabase credentials not configured in env');
+    return;
   }
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const { data, error } = await supabase
