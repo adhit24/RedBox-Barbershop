@@ -349,6 +349,11 @@ function extractDurationMentions(text) {
   return mentions;
 }
 
+// Contexts involving historical bookings, past transactions, previous prices,
+// comparisons ("dulu... sekarang..."), refunds, or disputes must NEVER have their
+// historical quotes corrupted by current catalog numbers or service renamings.
+const HISTORICAL_OR_DISPUTE_CONTEXT_REGEX = /\b(dulu|sebelumnya|riwayat|history|historis|lampau|tempo\s+hari|bulan\s+lalu|tahun\s+lalu|minggu\s+lalu|kemarin|transaksi\s+lama|booking\s+lama|booking\s+(?:kamu|saya|anda|terdahulu)|tercatat|terekam|pernah|snapshot|saat\s+transaksi|pada\s+transaksi|sewaktu|komplain|complaint|dispute|refund|selisih|beda\s+harga)\b/i;
+
 /**
  * Blocks/corrects an outbound reply that states a concrete price or
  * duration disagreeing with the live public.services row (is_active=true).
@@ -361,6 +366,12 @@ function extractDurationMentions(text) {
  */
 async function guardFactualServiceNumbers(replyText, options = {}) {
   if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+  }
+
+  // Historical booking discussion, past transaction quotes, comparisons, or dispute
+  // contexts must preserve their historical numbers and not be rewritten to the current catalog.
+  if (HISTORICAL_OR_DISPUTE_CONTEXT_REGEX.test(replyText)) {
     return { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
@@ -492,8 +503,38 @@ function guardBookingUrlIntegrity(replyText) {
   return { sanitizedReply, corrected: sanitizedReply !== replyText };
 }
 
+/**
+ * Ensures obsolete service name "Hair Smoothing" is not emitted as the official service name.
+ * If "Hair Smoothing" appears without mentioning "Treatment Smoothing & Shave",
+ * it normalizes it to "Treatment Smoothing & Shave".
+ * Strictly ignores historical, dispute, or comparison contexts to avoid corrupting past records.
+ * @param {string} replyText
+ */
+function guardLegacyServiceNames(replyText) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, corrected: false };
+  }
+
+  // Do NOT rename Hair Smoothing in historical, dispute, transaction log, or comparison contexts
+  if (HISTORICAL_OR_DISPUTE_CONTEXT_REGEX.test(replyText)) {
+    return { sanitizedReply: replyText, corrected: false };
+  }
+
+  let sanitized = replyText;
+  let corrected = false;
+
+  // If reply has "Hair Smoothing" as the service without acknowledging "Treatment Smoothing & Shave"
+  if (/hair\s+smoothing/i.test(sanitized) && !/treatment\s+smoothing\s*(&|dan)\s*shave/i.test(sanitized)) {
+    sanitized = sanitized.replace(/\bhair\s+smoothing\b/gi, 'Treatment Smoothing & Shave');
+    corrected = true;
+  }
+
+  return { sanitizedReply: sanitized, corrected };
+}
+
 module.exports = {
   FORBIDDEN_ADDRESS_TERMS_REGEX,
+  HISTORICAL_OR_DISPUTE_CONTEXT_REGEX,
   extractFirstName,
   classifyConversationSession,
   isExplicitGreeting,
@@ -505,5 +546,6 @@ module.exports = {
   guardFactualServiceNumbers,
   guardVisitCompletionOverclaim,
   guardBookingUrlIntegrity,
+  guardLegacyServiceNames,
   resolveServiceIdentity,
 };

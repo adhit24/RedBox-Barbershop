@@ -4,7 +4,8 @@
     { "name": "Hair Spa", "price": "110k", "price_csb": "120k", "duration": "30 menit", "description": "Perawatan kesehatan rambut. Juga tersedia sebagai add-on Redbox Gentleman Grooming." },
     { "name": "Hair Color", "price": "160k", "price_csb": "160k", "duration": "45 menit", "description": "Pewarnaan profesional" },
     { "name": "Shaving", "price": "40k", "price_csb": "50k", "duration": "20 menit", "description": "Cukur jenggot/kumis standar. Juga tersedia sebagai add-on Redbox Gentleman Grooming." },
-    { "name": "Men Massage Service", "price": "145k", "price_csb": "155k", "duration": "45 menit", "description": "Pijat relaksasi. Juga tersedia sebagai add-on Redbox Gentleman Grooming." }
+    { "name": "Men Massage Service", "price": "145k", "price_csb": "155k", "duration": "45 menit", "description": "Pijat relaksasi. Juga tersedia sebagai add-on Redbox Gentleman Grooming." },
+    { "name": "Treatment Smoothing & Shave", "price": "450k", "price_csb": "450k", "duration": "90 menit", "description": "Perawatan lengkap untuk rambut yang lebih halus, rapi, dan mudah diatur, dipadukan dengan shaving untuk memberikan hasil grooming yang lebih bersih dan polished." }
   ],
   "addons": {
     "gentleman-grooming": {

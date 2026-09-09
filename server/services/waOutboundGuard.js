@@ -82,6 +82,7 @@ function createGuardedSend({
     // P0-A: Price placeholder guard pass (runs BEFORE reservation & contentHash)
     const {
       guardPricePlaceholders, guardFactualServiceNumbers, guardVisitCompletionOverclaim, guardBookingUrlIntegrity,
+      guardLegacyServiceNames,
     } = require('../agents/reddy/personalityPolicy');
     const { logFactualGuardEvent } = require('../orchestrator/telemetry');
     const priceGuarded = guardPricePlaceholders(message, {
@@ -113,7 +114,12 @@ function createGuardedSend({
       });
     }
 
-    const visitGuarded = guardVisitCompletionOverclaim(factualNumbers.sanitizedReply, {
+    const legacyServiceGuarded = guardLegacyServiceNames(factualNumbers.sanitizedReply);
+    if (legacyServiceGuarded.corrected) {
+      logFactualGuardEvent({ event_type: 'legacy_service_name_corrected', branch });
+    }
+
+    const visitGuarded = guardVisitCompletionOverclaim(legacyServiceGuarded.sanitizedReply, {
       verifiedBookingStatus: options.verifiedBookingStatus,
     });
     if (visitGuarded.blocked) {
