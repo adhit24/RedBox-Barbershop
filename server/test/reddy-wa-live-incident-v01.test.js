@@ -213,7 +213,9 @@ test('INC-08. waiting_human and human_active handoffs still suppress idle close'
   await reddyIdleCloseHandler(fakeReq, fakeRes, {
     supabase: {},
     isReddyEnabled: () => true,
-    candidateSenders: ['628123456789'],
+    candidateSenders: [{
+      sender: '628123456789', providerDeviceHash: 'a'.repeat(64), branch: 'bypass',
+    }],
     getActiveHandoffState: async () => ({ status: 'waiting_human' }),
     logEvent: (e) => logs.push(e),
   });

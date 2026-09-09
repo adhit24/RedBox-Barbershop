@@ -597,6 +597,7 @@ function fakeConversationsTable(initialRows = []) {
         select() { if (!action) action = 'select'; return builder; },
         eq(field, value) { filters.push((r) => r[field] === value); return builder; },
         neq(field, value) { filters.push((r) => r[field] !== value); return builder; },
+        in(field, values) { filters.push((r) => values.includes(r[field])); return builder; },
         lte(field, value) { filters.push((r) => r[field] != null && r[field] <= value); return builder; },
         is(field, value) { filters.push((r) => (value === null ? (r[field] === null || r[field] === undefined) : r[field] === value)); return builder; },
         not(field, op, value) {
@@ -606,6 +607,7 @@ function fakeConversationsTable(initialRows = []) {
           return builder;
         },
         limit(n) { limitCount = n; return builder; },
+        order() { return builder; },
         upsert(value) { action = 'upsert'; payload = value; return builder; },
         update(value) { action = 'update'; payload = value; return builder; },
         delete() { action = 'delete'; return builder; },
@@ -957,6 +959,7 @@ test('Correction 7: missing/invalid branch route causes NO customer-facing send'
     isReddyEnabled: () => true,
     getActiveHandoffState: async () => ({ status: 'none' }),
     logEvent: (e) => loggedEvents.push(e),
+    candidateSenders: [{ sender: '628111222333', providerDeviceHash: deviceHash, branch: null }],
   });
   assert.equal(sendAttempted, false, 'zero send attempts must be made when branch route is missing');
   const suppressedLog = loggedEvents.find(e => e.event_type === 'conversation_idle_close_suppressed');

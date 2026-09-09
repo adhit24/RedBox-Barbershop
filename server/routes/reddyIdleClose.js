@@ -18,7 +18,8 @@
  *   5. channel route validation: branch metadata must be valid. If missing/invalid,
  *      fail closed (suppress send and release claim).
  *   6. guardedSend: send IDLE_CLOSE_MESSAGE passing { branch }.
- *   7. finalizeIdleClose: on success mark closed; on failure revert to active.
+ *   7. finalizeIdleClose: mark the lifecycle closed after a successful send or
+ *      after an optional close-message failure, preventing endless retries.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -27,26 +28,68 @@ const { getActiveHandoffState } = require('../services/humanHandoff');
 const { createGuardedSend } = require('../services/waOutboundGuard');
 const { LEGACY_DEVICE_SCOPE } = require('../services/conversationScope');
 const {
-  IDLE_CLOSE_MESSAGE, claimIdleConversation, verifyStillClaimedForClose, finalizeIdleClose, normalizeBranch,
+  IDLE_CLOSE_MESSAGE, ALLOWED_BRANCHES, claimIdleConversation, verifyStillClaimedForClose,
+  finalizeIdleClose, normalizeBranch,
 } = require('../services/conversationLifecycle');
 const { logIdleLifecycleEvent } = require('../orchestrator/telemetry');
 const { sendWA: realSendWA } = require('../services/fonnte');
 
-async function findDueSenders(supabase, { now = Date.now(), limit = 200 } = {}) {
-  const { data } = await supabase
+const MAX_CANDIDATES_PER_RUN = 12;
+const MAX_CONCURRENCY = 4;
+
+function emptySummary(overrides = {}) {
+  return {
+    ok: true,
+    processed: 0,
+    closed: 0,
+    closed_without_message: 0,
+    send_failures: 0,
+    failed: 0,
+    suppressed: 0,
+    ...overrides,
+  };
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await worker(items[index]);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, runWorker));
+  return results;
+}
+
+async function findDueSenders(supabase, { now = Date.now(), limit = MAX_CANDIDATES_PER_RUN } = {}) {
+  const { data, error } = await supabase
     .from('wa_conversations')
-    .select('sender,provider_device_hash,branch')
+    .select('sender,provider_device_hash,branch,idle_close_due_at')
     .eq('conversation_status', 'active')
     .not('idle_close_due_at', 'is', null)
     .lte('idle_close_due_at', new Date(now).toISOString())
     .is('idle_closed_at', null)
     .neq('provider_device_hash', LEGACY_DEVICE_SCOPE)
+    .in('branch', [...ALLOWED_BRANCHES])
+    .order('idle_close_due_at', { ascending: true })
     .limit(limit);
-  return (data || []).map((row) => ({
-    sender: row.sender,
-    providerDeviceHash: row.provider_device_hash,
-    branch: row.branch,
-  }));
+  if (error) throw error;
+  return (data || [])
+    .map((row) => ({
+      sender: row.sender,
+      providerDeviceHash: row.provider_device_hash,
+      branch: normalizeBranch(row.branch),
+      dueAt: row.idle_close_due_at,
+    }))
+    .filter((row) => row.sender && /^[a-f0-9]{64}$/i.test(row.providerDeviceHash || ''))
+    .sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt)))
+    .slice(0, limit)
+    .map(({ dueAt: _dueAt, ...row }) => row);
 }
 
 module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
@@ -61,14 +104,23 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const supabase = testDeps.supabase
-    || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
   const checkEnabled = () => (testDeps.isReddyEnabled ? testDeps.isReddyEnabled() : isReddyEnabled());
   const logEvent = testDeps.logEvent || logIdleLifecycleEvent;
+  const safeLogEvent = (event) => {
+    try { logEvent(event); } catch (_error) { /* telemetry must never fail the cron */ }
+  };
 
   if (!checkEnabled()) {
-    logEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'reddy_disabled' });
-    return res.status(200).json({ ok: true, closed: 0, suppressed: 0, reason: 'reddy_disabled' });
+    safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'reddy_disabled' });
+    return res.status(200).json(emptySummary({ reason: 'reddy_disabled' }));
+  }
+
+  let supabase;
+  try {
+    supabase = testDeps.supabase
+      || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  } catch (_error) {
+    return res.status(200).json(emptySummary({ ok: false, failed: 1, reason: 'database_not_configured' }));
   }
 
   const handoffLookup = testDeps.getActiveHandoffState
@@ -82,87 +134,127 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     supabase,
     inboundEventRowId: null,
     isEnabled: checkEnabled,
-    logEvent: (e) => logEvent({ ...e }),
+    logEvent: (e) => safeLogEvent({ ...e }),
   });
 
-  const candidates = testDeps.candidateSenders || await findDueSenders(supabase, {});
-  let closed = 0;
-  let suppressed = 0;
+  let candidates;
+  try {
+    const discover = testDeps.findDueSenders || findDueSenders;
+    candidates = testDeps.candidateSenders
+      || await discover(supabase, { limit: testDeps.candidateLimit || MAX_CANDIDATES_PER_RUN });
+  } catch (_error) {
+    return res.status(200).json(emptySummary({ ok: false, failed: 1, reason: 'discovery_failed' }));
+  }
 
-  for (const candidate of candidates) {
+  // Authenticated, read-only production probe. This validates routing, auth,
+  // configuration, and candidate discovery without claiming rows or sending WA.
+  const dryRun = String(req.query?.dry_run || '').toLowerCase();
+  if (dryRun === '1' || dryRun === 'true') {
+    return res.status(200).json(emptySummary({ dry_run: true, eligible: candidates.length }));
+  }
+
+  const processCandidate = async (candidate) => {
     const sender = typeof candidate === 'string' ? candidate : candidate.sender;
     const providerDeviceHash = typeof candidate === 'string' ? null : candidate.providerDeviceHash;
     const rawBranch = typeof candidate === 'string' ? null : candidate.branch;
     const branch = normalizeBranch(rawBranch);
+    let claimed = false;
 
-    // 1. Discovery-time handoff check
-    const discoveryHandoffState = await handoffLookup(sender);
-    if (discoveryHandoffState.status === 'waiting_human' || discoveryHandoffState.status === 'human_active') {
-      suppressed++;
-      logEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: discoveryHandoffState.status });
-      continue;
-    }
+    try {
+      if (!sender || !providerDeviceHash || !branch) {
+        safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'missing_branch_route' });
+        return { closed: 0, closedWithoutMessage: 0, failed: 0, suppressed: 1 };
+      }
 
-    // 2. Atomic claim.
+      // 1. Discovery-time handoff check. Lookup failure is fail-closed.
+      const discoveryHandoffState = await handoffLookup(sender);
+      if (discoveryHandoffState.status === 'waiting_human' || discoveryHandoffState.status === 'human_active') {
+        safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: discoveryHandoffState.status });
+        return { closed: 0, closedWithoutMessage: 0, failed: 0, suppressed: 1 };
+      }
+      if (discoveryHandoffState.status === 'lookup_failed') {
+        return { closed: 0, closedWithoutMessage: 0, failed: 1, suppressed: 0 };
+      }
+
+      // 2. Atomic claim.
       const claim = await claimFn(supabase, sender, { providerDeviceHash });
       if (!claim) {
-      continue;
-    }
+        return { closed: 0, closedWithoutMessage: 0, failed: 0, suppressed: 1 };
+      }
+      claimed = true;
 
-    // Channel route validation: the closing message MUST leave through the
-    // same Redbox branch channel that owns this scoped conversation. If branch
-    // is missing/invalid, FAIL CLOSED — do NOT silently send through Bypass.
-    if (!branch) {
-      suppressed++;
-      logEvent({
-        event_type: 'conversation_idle_close_suppressed',
-        suppress_reason: 'missing_branch_route',
-      });
-      await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
-      continue;
-    }
+      // 3. Re-verify handoff state didn't open between discovery and claim.
+      const preSendHandoffState = await handoffLookup(sender);
+      if (preSendHandoffState.status !== 'none') {
+        safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: preSendHandoffState.status });
+        await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
+        claimed = false;
+        return preSendHandoffState.status === 'lookup_failed'
+          ? { closed: 0, closedWithoutMessage: 0, failed: 1, suppressed: 0 }
+          : { closed: 0, closedWithoutMessage: 0, failed: 0, suppressed: 1 };
+      }
 
-    // 3. Re-verify handoff state didn't open between discovery and claim.
-    const preSendHandoffState = await handoffLookup(sender);
-    if (preSendHandoffState.status === 'waiting_human' || preSendHandoffState.status === 'human_active') {
-      suppressed++;
-      logEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: preSendHandoffState.status });
-      await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
-      continue;
-    }
-
-    // 4. Verification check immediately before send.
+      // 4. Verification check immediately before send.
       const stillValid = await verifyFn(supabase, sender, {
-      expectedLastCustomerMessageAt: claim.last_customer_message_at || null,
-      providerDeviceHash,
-    });
-    if (!stillValid) {
-      suppressed++;
-      logEvent({
-        event_type: 'conversation_idle_close_suppressed',
-        suppress_reason: 'newer_inbound_detected',
-        stale_idle_close_prevented: true,
+        expectedLastCustomerMessageAt: claim.last_customer_message_at || null,
+        providerDeviceHash,
       });
-      await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
-      continue;
-    }
+      if (!stillValid) {
+        safeLogEvent({
+          event_type: 'conversation_idle_close_suppressed',
+          suppress_reason: 'newer_inbound_detected',
+          stale_idle_close_prevented: true,
+        });
+        await finalizeFn(supabase, sender, { sent: false, providerDeviceHash });
+        claimed = false;
+        return { closed: 0, closedWithoutMessage: 0, failed: 0, suppressed: 1 };
+      }
 
-    let sendResult;
-    try {
+      let sendResult;
+      try {
         sendResult = await guardedSend(sender, IDLE_CLOSE_MESSAGE, { branch });
       } catch (_error) {
-      sendResult = { status: false };
-    }
-    const sent = Boolean(sendResult && sendResult.status !== false);
-    await finalizeFn(supabase, sender, { sent, providerDeviceHash });
-    if (sent) {
-      closed++;
-      logEvent({ event_type: 'conversation_idle_close_sent' });
-    } else {
-      suppressed++;
-      logEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'send_failed' });
-    }
-  }
+        sendResult = { status: false };
+      }
+      const sent = Boolean(sendResult && sendResult.status !== false);
+      await finalizeFn(supabase, sender, {
+        sent,
+        closeWithoutSend: !sent,
+        providerDeviceHash,
+      });
+      claimed = false;
+      if (sent) {
+        safeLogEvent({ event_type: 'conversation_idle_close_sent', branch });
+        return { closed: 1, closedWithoutMessage: 0, failed: 0, suppressed: 0 };
+      }
 
-  return res.status(200).json({ ok: true, closed, suppressed });
+      // The closing message is optional. A provider/guard failure closes the
+      // lifecycle without a message, so the cron cannot spam-retry forever.
+      safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'send_failed', branch });
+      return { closed: 0, closedWithoutMessage: 1, sendFailures: 1, failed: 0, suppressed: 0 };
+    } catch (_error) {
+      if (claimed) {
+        try { await finalizeFn(supabase, sender, { sent: false, providerDeviceHash }); } catch (_releaseError) { /* best effort */ }
+      }
+      return { closed: 0, closedWithoutMessage: 0, failed: 1, suppressed: 0 };
+    }
+  };
+
+  const results = await mapWithConcurrency(
+    candidates,
+    testDeps.concurrency || MAX_CONCURRENCY,
+    processCandidate,
+  );
+  const summary = results.reduce((total, result) => ({
+    closed: total.closed + result.closed,
+    closed_without_message: total.closed_without_message + result.closedWithoutMessage,
+    send_failures: total.send_failures + (result.sendFailures || 0),
+    failed: total.failed + result.failed,
+    suppressed: total.suppressed + result.suppressed,
+  }), { closed: 0, closed_without_message: 0, send_failures: 0, failed: 0, suppressed: 0 });
+
+  return res.status(200).json(emptySummary({ processed: candidates.length, ...summary, ok: summary.failed === 0 }));
 };
+
+module.exports.findDueSenders = findDueSenders;
+module.exports.mapWithConcurrency = mapWithConcurrency;
