@@ -52,6 +52,7 @@ function fakeConversationsSupabase(initialRows = []) {
     return list.filter((row) => filters.every((f) => {
       if (f.op === 'eq') return row[f.field] === f.value;
       if (f.op === 'neq') return row[f.field] !== f.value;
+      if (f.op === 'in') return f.value.includes(row[f.field]);
       if (f.op === 'lte') return row[f.field] != null && row[f.field] <= f.value;
       if (f.op === 'is') return f.value === null ? (row[f.field] === null || row[f.field] === undefined) : row[f.field] === f.value;
       if (f.op === 'not_is') return f.value === null ? (row[f.field] !== null && row[f.field] !== undefined) : row[f.field] !== f.value;
@@ -88,6 +89,7 @@ function fakeConversationsSupabase(initialRows = []) {
       select() { if (!action) action = 'select'; return builder; },
       eq(field, value) { filters.push({ field, op: 'eq', value }); return builder; },
       neq(field, value) { filters.push({ field, op: 'neq', value }); return builder; },
+      in(field, value) { filters.push({ field, op: 'in', value }); return builder; },
       lte(field, value) { filters.push({ field, op: 'lte', value }); return builder; },
       is(field, value) { filters.push({ field, op: 'is', value }); return builder; },
       not(field, _op, value) { filters.push({ field, op: 'not_is', value }); return builder; },
@@ -626,6 +628,34 @@ test('T15. authenticated dry-run validates discovery without claims or customer 
   });
   assert.equal(claims, 0);
   assert.equal(sends, 0);
+});
+
+test('T16. unroutable overdue rows are filtered before the batch cap and cannot starve valid rows', async () => {
+  const handler = loadCronHandler();
+  const now = Date.now();
+  const invalidRows = Array.from({ length: 20 }, (_, index) => ({
+    sender: `invalid-${index}`,
+    branch: null,
+    conversation_status: 'active',
+    idle_close_due_at: new Date(now - 120_000 + index).toISOString(),
+    idle_closed_at: null,
+  }));
+  const validRow = {
+    sender: 'valid-after-invalid-batch',
+    branch: 'csb',
+    conversation_status: 'active',
+    idle_close_due_at: new Date(now - 60_000).toISOString(),
+    idle_closed_at: null,
+  };
+  const candidates = await handler.findDueSenders(
+    fakeConversationsSupabase([...invalidRows, validRow]),
+    { now, limit: 12 },
+  );
+  assert.deepEqual(candidates, [{
+    sender: validRow.sender,
+    providerDeviceHash: 'a'.repeat(64),
+    branch: 'csb',
+  }]);
 });
 
 test('T-auth. unauthenticated cron request (wrong/missing bearer, secret configured) is rejected', async () => {

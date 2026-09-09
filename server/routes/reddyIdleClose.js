@@ -28,7 +28,8 @@ const { getActiveHandoffState } = require('../services/humanHandoff');
 const { createGuardedSend } = require('../services/waOutboundGuard');
 const { LEGACY_DEVICE_SCOPE } = require('../services/conversationScope');
 const {
-  IDLE_CLOSE_MESSAGE, claimIdleConversation, verifyStillClaimedForClose, finalizeIdleClose, normalizeBranch,
+  IDLE_CLOSE_MESSAGE, ALLOWED_BRANCHES, claimIdleConversation, verifyStillClaimedForClose,
+  finalizeIdleClose, normalizeBranch,
 } = require('../services/conversationLifecycle');
 const { logIdleLifecycleEvent } = require('../orchestrator/telemetry');
 const { sendWA: realSendWA } = require('../services/fonnte');
@@ -73,7 +74,8 @@ async function findDueSenders(supabase, { now = Date.now(), limit = MAX_CANDIDAT
     .lte('idle_close_due_at', new Date(now).toISOString())
     .is('idle_closed_at', null)
     .neq('provider_device_hash', LEGACY_DEVICE_SCOPE)
-    .limit(limit * 4);
+    .in('branch', [...ALLOWED_BRANCHES])
+    .limit(limit);
   if (error) throw error;
   return (data || [])
     .map((row) => ({
