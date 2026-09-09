@@ -211,6 +211,8 @@ async function resolveCustomerIdentity(supabase, input = {}) {
 
   // Collect candidate customer IDs ONLY from `customers` table
   const aliasCustomerIds = Array.from(new Set(candidateRows.map(r => r.id).filter(Boolean)));
+  // Resolve canonical target IDs for any merged duplicate records (Reconciliation Integration)
+  const canonicalCustomerIds = Array.from(new Set(candidateRows.map(r => r.merged_into_customer_id || r.id).filter(Boolean)));
 
   // Member-profile-only path: NO customers table rows found
   if (candidateRows.length === 0) {
@@ -237,7 +239,7 @@ async function resolveCustomerIdentity(supabase, input = {}) {
 
   // Strong discriminator: explicit customer_id provided
   if (cleanId) {
-    const matchesAliasId = aliasCustomerIds.includes(cleanId);
+    const matchesAliasId = aliasCustomerIds.includes(cleanId) || canonicalCustomerIds.includes(cleanId);
     if (!matchesAliasId) {
       return {
         found: false,
@@ -247,10 +249,11 @@ async function resolveCustomerIdentity(supabase, input = {}) {
         candidates_count: aliasCustomerIds.length,
       };
     }
-    const targetRow = candidateRows.find(r => r.id === cleanId);
+    const targetRow = candidateRows.find(r => r.id === cleanId) || candidateRows.find(r => r.id === canonicalCustomerIds[0]);
+    const canonicalTargetId = targetRow?.merged_into_customer_id || targetRow?.id || cleanId;
     return {
       found: true,
-      customer_id: cleanId,
+      customer_id: canonicalTargetId,
       alias_customer_ids: aliasCustomerIds,
       canonical_phone: canonical,
       phone_e164: targetRow?.phone_e164 || `+${canonical}`,
@@ -261,28 +264,29 @@ async function resolveCustomerIdentity(supabase, input = {}) {
     };
   }
 
-  // Phone alone with >1 distinct customer IDs: fail closed as ambiguous.
+  // Phone alone with >1 distinct canonical customer IDs: fail closed as ambiguous.
   // Must NOT merge duplicate customer identities into one trusted identity.
-  if (aliasCustomerIds.length > 1) {
+  if (canonicalCustomerIds.length > 1) {
     return {
       found: false,
       customer_id: null,
       resolution: 'ambiguous',
       reason: 'multiple_customer_records',
-      candidates_count: aliasCustomerIds.length,
+      candidates_count: canonicalCustomerIds.length,
     };
   }
 
-  // Exactly 1 deterministic customer candidate row
-  const singleRow = candidateRows[0];
+  // Exactly 1 deterministic canonical customer candidate row
+  const canonicalId = canonicalCustomerIds[0];
+  const canonicalRow = candidateRows.find(r => r.id === canonicalId) || candidateRows[0];
   return {
     found: true,
-    customer_id: singleRow.id,
+    customer_id: canonicalId,
     alias_customer_ids: aliasCustomerIds,
     canonical_phone: canonical,
-    phone_e164: singleRow.phone_e164 || `+${canonical}`,
+    phone_e164: canonicalRow.phone_e164 || `+${canonical}`,
     resolution: 'phone_match',
-    customer_row: singleRow,
+    customer_row: canonicalRow,
     member_profile_row: memberProfileRow,
     candidates_count: 1,
   };
