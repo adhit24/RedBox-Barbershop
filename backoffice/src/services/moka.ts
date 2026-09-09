@@ -46,3 +46,41 @@ export function getMokaSyncLogs(params: { limit?: number; direction?: string; st
   const qs = query.toString();
   return apiClient.get<{ logs: MokaSyncLogEntry[] }>(`/api/moka/sync-logs${qs ? `?${qs}` : ''}`);
 }
+
+export type MokaBranchHealthState =
+  | 'HEALTHY'
+  | 'PARTIAL'
+  | 'DELAYED'
+  | 'TOKEN_EXPIRED'
+  | 'NOT_CONFIGURED'
+  | 'ERROR';
+
+export interface MokaBranchHealthStats {
+  fetched: number;
+  unmapped: number;
+  anomalies: number;
+  processed: number;
+  qtyDeducted: number;
+  skippedDuplicate: number;
+}
+
+export interface MokaBranchHealth {
+  outletId: string;
+  name: string;
+  slug: string;
+  mokaOutletId: string | null;
+  hasToken: boolean;
+  tokenExpiresAt: string | null;
+  tokenExpired: boolean;
+  lastSuccessfulSyncAt: string | null;
+  lastStartedAt: string | null;
+  lastStatus: string | null;
+  lastError: string | null;
+  healthState: MokaBranchHealthState;
+  attentionReason: string | null;
+  stats: MokaBranchHealthStats | null;
+}
+
+export function getMokaBranchHealth(): Promise<{ branches: MokaBranchHealth[] }> {
+  return apiClient.get<{ branches: MokaBranchHealth[] }>('/api/moka/branch-health');
+}

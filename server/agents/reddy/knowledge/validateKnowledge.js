@@ -118,4 +118,4 @@ function validateKnowledge(knowledge) {
   return knowledge;
 }
 
-module.exports = { validateKnowledge };
+module.exports = { validateKnowledge, KNOWLEDGE_VERSION };

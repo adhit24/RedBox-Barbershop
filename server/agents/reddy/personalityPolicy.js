@@ -349,12 +349,71 @@ function extractDurationMentions(text) {
   return mentions;
 }
 
+// Contexts involving historical bookings, past transactions, previous prices,
+// comparisons ("dulu... sekarang..."), refunds, or disputes must NEVER have their
+// historical quotes corrupted by current catalog numbers or service renamings.
+const HISTORICAL_OR_DISPUTE_CONTEXT_REGEX = /\b(dulu|dahulu|sebelumnya|riwayat|history|historis|lampau|tempo\s+hari|bulan\s+lalu|tahun\s+lalu|minggu\s+lalu|kemarin|transaksi\s+lama|booking\s+lama|booking\s+(?:kamu|saya|anda|terdahulu)|tercatat|terekam|pernah|snapshot|saat\s+transaksi|pada\s+transaksi|sewaktu|komplain|complaint|dispute|refund|selisih|beda\s+harga)\b/i;
+
+// Current context markers to distinguish mixed historical + current statements
+const CURRENT_CONTEXT_REGEX = /\b(sekarang|kini|saat\s+ini|mulai\s+sekarang|hari\s+ini|ke\s+depannya|terbaru|yang\s+berlaku|harga\s+baru|layanan\s+baru|booking\s+baru|transaksi\s+baru)\b/i;
+
+function getClauseForSpan(text, spanIndex, spanLength = 0) {
+  if (typeof text !== 'string' || !text) return { clauseText: '', start: 0, end: 0 };
+  const boundaryRegex = /(?:(?<!\d)\.(?!\d)|[!?;\n\r]|,|(?:\b(?:namun|tetapi|tapi|sedangkan|sementara|padahal|adapun)\b)|(?:\b(?:sekarang|kini|saat\s+ini|mulai\s+sekarang|hari\s+ini|ke\s+depannya)\b))/gi;
+  let clauseStart = 0;
+  let clauseEnd = text.length;
+  let match;
+  while ((match = boundaryRegex.exec(text)) !== null) {
+    const matchStart = match.index;
+    const matchEnd = match.index + match[0].length;
+    if (matchEnd <= spanIndex) {
+      const isTransitionWord = /^(?:sekarang|kini|saat\s+ini|mulai\s+sekarang|hari\s+ini|ke\s+depannya)$/i.test(match[0].trim());
+      clauseStart = isTransitionWord ? matchStart : matchEnd;
+    }
+    if (matchStart >= spanIndex + spanLength) {
+      clauseEnd = matchStart;
+      break;
+    }
+  }
+  return { clauseText: text.slice(clauseStart, clauseEnd).trim(), start: clauseStart, end: clauseEnd };
+}
+
+function isHistoricalSpan(text, spanIndex, spanLength = 0) {
+  if (typeof text !== 'string' || !text) return false;
+  if (!HISTORICAL_OR_DISPUTE_CONTEXT_REGEX.test(text)) return false;
+  const { clauseText } = getClauseForSpan(text, spanIndex, spanLength);
+  const hasHistorical = HISTORICAL_OR_DISPUTE_CONTEXT_REGEX.test(clauseText);
+  const hasCurrent = CURRENT_CONTEXT_REGEX.test(clauseText);
+  if (hasHistorical && !hasCurrent) return true;
+  if (hasCurrent && !hasHistorical) return false;
+  if (hasHistorical && hasCurrent) {
+    const beforeText = text.slice(0, spanIndex);
+    const histMatches = [...beforeText.matchAll(new RegExp(HISTORICAL_OR_DISPUTE_CONTEXT_REGEX, 'gi'))];
+    const currMatches = [...beforeText.matchAll(new RegExp(CURRENT_CONTEXT_REGEX, 'gi'))];
+    const lastHist = histMatches.length ? histMatches[histMatches.length - 1].index : -1;
+    const lastCurr = currMatches.length ? currMatches[currMatches.length - 1].index : -1;
+    if (lastCurr > lastHist) return false;
+    if (lastHist > lastCurr) return true;
+    return false;
+  }
+  const beforeText = text.slice(0, spanIndex);
+  const histMatches = [...beforeText.matchAll(new RegExp(HISTORICAL_OR_DISPUTE_CONTEXT_REGEX, 'gi'))];
+  const currMatches = [...beforeText.matchAll(new RegExp(CURRENT_CONTEXT_REGEX, 'gi'))];
+  const lastHist = histMatches.length ? histMatches[histMatches.length - 1].index : -1;
+  const lastCurr = currMatches.length ? currMatches[currMatches.length - 1].index : -1;
+  if (lastHist !== -1 && lastHist > lastCurr) return true;
+  return false;
+}
+
 /**
  * Blocks/corrects an outbound reply that states a concrete price or
  * duration disagreeing with the live public.services row (is_active=true).
  * Fails OPEN (does not block) whenever the service or the live catalog
  * cannot be resolved unambiguously — this guard corrects known-wrong
  * numbers, it does not invent numbers for identities it cannot verify.
+ *
+ * Segment-aware: preserves historical quotes in past booking/comparison clauses,
+ * while validating and correcting current service figures.
  *
  * @param {string} replyText
  * @param {{ supabase?: object, serviceId?: string, serviceName?: string }} options
@@ -364,9 +423,18 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
     return { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
-  const hasPriceMention = extractConcreteRupiahMentions(replyText).length === 1;
-  const hasDurationMention = extractDurationMentions(replyText).length === 1;
-  if (!hasPriceMention && !hasDurationMention) {
+  const allPriceMentions = extractConcreteRupiahMentions(replyText);
+  const allDurationMentions = extractDurationMentions(replyText);
+
+  // Filter mentions to only those in CURRENT context (ignore historical spans)
+  const currentPriceMentions = allPriceMentions.filter(
+    (m) => !isHistoricalSpan(replyText, m.index, m.raw.length)
+  );
+  const currentDurationMentions = allDurationMentions.filter(
+    (m) => !isHistoricalSpan(replyText, m.index, m.raw.length)
+  );
+
+  if (currentPriceMentions.length === 0 && currentDurationMentions.length === 0) {
     return { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
@@ -399,28 +467,39 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
   let sanitizedReply = replyText;
   const mismatches = [];
 
-  const priceMentions = extractConcreteRupiahMentions(sanitizedReply);
-  if (priceMentions.length === 1 && typeof dbRow.price === 'number' && dbRow.price > 0
-    && priceMentions[0].numeric !== dbRow.price) {
-    const mention = priceMentions[0];
-    const correct = 'Rp' + dbRow.price.toLocaleString('id-ID');
-    sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
-      + sanitizedReply.slice(mention.index + mention.raw.length);
-    mismatches.push({
-      type: 'price', attempted: mention.numeric, expected: dbRow.price, serviceId: knowledgeService.id,
-    });
+  // Correct CURRENT price mentions if they mismatch dbRow.price (process right-to-left)
+  if (typeof dbRow.price === 'number' && dbRow.price > 0) {
+    const wrongPrices = currentPriceMentions
+      .filter((m) => m.numeric !== dbRow.price)
+      .sort((a, b) => b.index - a.index);
+
+    for (const mention of wrongPrices) {
+      const correct = 'Rp' + dbRow.price.toLocaleString('id-ID');
+      sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
+        + sanitizedReply.slice(mention.index + mention.raw.length);
+      mismatches.push({
+        type: 'price', attempted: mention.numeric, expected: dbRow.price, serviceId: knowledgeService.id,
+      });
+    }
   }
 
-  const durationMentions = extractDurationMentions(sanitizedReply);
-  if (durationMentions.length === 1 && typeof dbRow.duration_minutes === 'number' && dbRow.duration_minutes > 0
-    && durationMentions[0].numeric !== dbRow.duration_minutes) {
-    const mention = durationMentions[0];
-    const correct = String(dbRow.duration_minutes) + ' menit';
-    sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
-      + sanitizedReply.slice(mention.index + mention.raw.length);
-    mismatches.push({
-      type: 'duration', attempted: mention.numeric, expected: dbRow.duration_minutes, serviceId: knowledgeService.id,
-    });
+  // Correct CURRENT duration mentions if they mismatch dbRow.duration_minutes (process right-to-left)
+  if (typeof dbRow.duration_minutes === 'number' && dbRow.duration_minutes > 0) {
+    const updatedDurations = extractDurationMentions(sanitizedReply).filter(
+      (m) => !isHistoricalSpan(sanitizedReply, m.index, m.raw.length)
+    );
+    const wrongDurations = updatedDurations
+      .filter((m) => m.numeric !== dbRow.duration_minutes)
+      .sort((a, b) => b.index - a.index);
+
+    for (const mention of wrongDurations) {
+      const correct = String(dbRow.duration_minutes) + ' menit';
+      sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
+        + sanitizedReply.slice(mention.index + mention.raw.length);
+      mismatches.push({
+        type: 'duration', attempted: mention.numeric, expected: dbRow.duration_minutes, serviceId: knowledgeService.id,
+      });
+    }
   }
 
   return { sanitizedReply, blocked: mismatches.length > 0, mismatches };
@@ -492,8 +571,53 @@ function guardBookingUrlIntegrity(replyText) {
   return { sanitizedReply, corrected: sanitizedReply !== replyText };
 }
 
+/**
+ * Ensures obsolete service name "Hair Smoothing" is not emitted as the official service name.
+ * Normalizes "Hair Smoothing" to "Treatment Smoothing & Shave" in current service contexts.
+ * Strictly preserves "Hair Smoothing" in historical, dispute, transaction log, or comparison clauses.
+ *
+ * @param {string} replyText
+ */
+function guardLegacyServiceNames(replyText) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, corrected: false };
+  }
+
+  const legacyRegex = /\bhair\s+smoothing\b/gi;
+  if (!legacyRegex.test(replyText)) {
+    return { sanitizedReply: replyText, corrected: false };
+  }
+
+  const matches = [];
+  let m;
+  legacyRegex.lastIndex = 0;
+  while ((m = legacyRegex.exec(replyText)) !== null) {
+    matches.push({ raw: m[0], index: m.index, length: m[0].length });
+  }
+
+  let sanitized = replyText;
+  let corrected = false;
+
+  // Process right-to-left so indices of earlier matches are unaffected
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const match = matches[i];
+    if (!isHistoricalSpan(sanitized, match.index, match.length)) {
+      sanitized = sanitized.slice(0, match.index)
+        + 'Treatment Smoothing & Shave'
+        + sanitized.slice(match.index + match.length);
+      corrected = true;
+    }
+  }
+
+  return { sanitizedReply: sanitized, corrected };
+}
+
 module.exports = {
   FORBIDDEN_ADDRESS_TERMS_REGEX,
+  HISTORICAL_OR_DISPUTE_CONTEXT_REGEX,
+  CURRENT_CONTEXT_REGEX,
+  isHistoricalSpan,
+  getClauseForSpan,
   extractFirstName,
   classifyConversationSession,
   isExplicitGreeting,
@@ -505,5 +629,6 @@ module.exports = {
   guardFactualServiceNumbers,
   guardVisitCompletionOverclaim,
   guardBookingUrlIntegrity,
+  guardLegacyServiceNames,
   resolveServiceIdentity,
 };

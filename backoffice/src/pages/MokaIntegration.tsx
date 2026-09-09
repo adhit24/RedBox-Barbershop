@@ -9,7 +9,15 @@ import {
   RepeatIcon,
   WalletClockIcon,
 } from '../components/icons';
-import { getMokaStatus, getMokaSyncLogs, type MokaStatus, type MokaSyncLogEntry } from '../services/moka';
+import {
+  getMokaStatus,
+  getMokaSyncLogs,
+  getMokaBranchHealth,
+  type MokaStatus,
+  type MokaSyncLogEntry,
+  type MokaBranchHealth,
+  type MokaBranchHealthState,
+} from '../services/moka';
 
 type LoadState<T> =
   | { status: 'loading' }
@@ -24,6 +32,7 @@ const ENTITY_LABEL: Record<string, string> = {
   customer: 'Customer sync',
   open_bill: 'Open bill sync',
   barber_mapping: 'Barber mapping',
+  order: 'Order sync',
 };
 
 function formatClock(value: string) {
@@ -32,6 +41,21 @@ function formatClock(value: string) {
     minute: '2-digit',
     timeZone: OPERATIONAL_TIMEZONE,
   });
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return 'Belum pernah';
+  return new Date(value).toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: OPERATIONAL_TIMEZONE,
+  }) + ' WIB';
+}
+
+function isSuccess(status?: string | null) {
+  return status === 'success' || status === 'ok';
 }
 
 function statusBadge(status: 'active' | 'attention' | 'delayed' | 'unavailable') {
@@ -51,6 +75,31 @@ function statusBadge(status: 'active' | 'attention' | 'delayed' | 'unavailable')
   return (
     <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${classes[status]}`}>
       {labels[status]}
+    </span>
+  );
+}
+
+function branchHealthBadge(state: MokaBranchHealthState) {
+  const classes: Record<MokaBranchHealthState, string> = {
+    HEALTHY: 'bg-rb-green-tint-bg text-rb-green-tint-fg',
+    PARTIAL: 'bg-rb-orange-tint-bg text-rb-orange-tint-fg',
+    DELAYED: 'bg-rb-orange-tint-bg text-rb-orange-tint-fg',
+    TOKEN_EXPIRED: 'bg-rb-red-tint-bg text-rb-red-tint-fg',
+    NOT_CONFIGURED: 'bg-rb-bg text-rb-text-muted',
+    ERROR: 'bg-rb-red-tint-bg text-rb-red-tint-fg',
+  };
+  const labels: Record<MokaBranchHealthState, string> = {
+    HEALTHY: 'Healthy',
+    PARTIAL: 'Partial',
+    DELAYED: 'Delayed',
+    TOKEN_EXPIRED: 'Token Expired',
+    NOT_CONFIGURED: 'Not Configured',
+    ERROR: 'Error',
+  };
+
+  return (
+    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${classes[state]}`}>
+      {labels[state]}
     </span>
   );
 }
@@ -82,6 +131,7 @@ function SyncCard({ icon, title, detail, status }: SyncCardProps) {
 export function MokaIntegration() {
   const [status, setStatus] = useState<LoadState<MokaStatus>>({ status: 'loading' });
   const [logs, setLogs] = useState<LoadState<MokaSyncLogEntry[]>>({ status: 'loading' });
+  const [branches, setBranches] = useState<LoadState<MokaBranchHealth[]>>({ status: 'loading' });
 
   useEffect(() => {
     getMokaStatus()
@@ -95,6 +145,12 @@ export function MokaIntegration() {
       .catch(() => setLogs({ status: 'error', message: 'Terjadi kesalahan memuat sync logs.' }));
   }, []);
 
+  useEffect(() => {
+    getMokaBranchHealth()
+      .then((data) => setBranches({ status: 'ready', data: data.branches }))
+      .catch((err) => setBranches({ status: 'error', message: err?.message || 'Gagal memuat status cabang.' }));
+  }, []);
+
   const connectedCount = status.status === 'ready'
     ? status.data.outlets.filter((o) => o.hasToken && !o.tokenExpired).length
     : 0;
@@ -102,10 +158,11 @@ export function MokaIntegration() {
   const summaries = useMemo(() => {
     const entries = logs.status === 'ready' ? logs.data : [];
     const latest = (entity: string) => entries.find((entry) => entry.entity_type === entity);
-    const latestOk = entries.find((entry) => entry.status === 'ok');
+    // Contract fix: accept 'success' as well as historical 'ok'
+    const latestOk = entries.find((entry) => isSuccess(entry.status));
 
     return {
-      transaction: latest('transaction'),
+      transaction: latest('transaction') || latest('order'),
       customer: latest('customer'),
       item: latest('item_mapping'),
       barber: latest('barber_mapping'),
@@ -122,7 +179,7 @@ export function MokaIntegration() {
 
   const syncStatus = (entry: MokaSyncLogEntry | undefined, missing: 'unavailable' | 'attention' = 'unavailable') => {
     if (!entry) return missing;
-    return entry.status === 'ok' ? 'active' : 'attention';
+    return isSuccess(entry.status) ? 'active' : 'attention';
   };
 
   return (
@@ -193,7 +250,7 @@ export function MokaIntegration() {
               icon={<WalletClockIcon size={18} stroke="currentColor" />}
               title="Open Bill / Schedule Sync"
               detail={describeLog(summaries.openBill, 'Belum ada data open bill / schedule sync')}
-              status={summaries.openBill?.status === 'ok' ? 'active' : summaries.openBill ? 'delayed' : 'unavailable'}
+              status={isSuccess(summaries.openBill?.status) ? 'active' : summaries.openBill ? 'delayed' : 'unavailable'}
             />
             <SyncCard
               icon={<CheckIcon size={18} stroke="currentColor" />}
@@ -205,6 +262,66 @@ export function MokaIntegration() {
         </>
       )}
 
+      {/* Branch Sync Health Section */}
+      <div className="mb-5 overflow-hidden rounded-rb-card border border-rb-border bg-rb-surface">
+        <div className="border-b border-rb-divider px-5 py-3.5 text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
+          Kesehatan Sinkronisasi Cabang
+        </div>
+        {branches.status === 'loading' && <LoadingState label="Memuat status cabang..." />}
+        {branches.status === 'error' && <ErrorState message={branches.message} />}
+        {branches.status === 'ready' && (
+          <div className="grid grid-cols-1 gap-3.5 p-4 sm:p-5 lg:grid-cols-2">
+            {branches.data.map((b) => (
+              <div
+                key={b.outletId}
+                data-testid={`branch-health-${b.slug}`}
+                className="flex flex-col justify-between gap-3 rounded-rb-card border border-rb-border bg-rb-bg/50 p-4 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-[15px] font-semibold text-rb-text">{b.name}</div>
+                    <div className="mt-0.5 truncate text-xs text-rb-text-muted">
+                      {b.tokenExpired
+                        ? 'Token kedaluwarsa'
+                        : b.hasToken
+                          ? `Token aktif${b.tokenExpiresAt ? ` (exp: ${new Date(b.tokenExpiresAt).toLocaleDateString('id-ID')})` : ''}`
+                          : 'Token belum dikonfigurasi'}
+                    </div>
+                  </div>
+                  {branchHealthBadge(b.healthState)}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 border-t border-rb-divider/60 pt-2.5 text-xs">
+                  <div>
+                    <span className="text-rb-text-muted">Sync Terakhir</span>
+                    <div className="mt-0.5 font-medium text-rb-text">
+                      {formatDateTime(b.lastSuccessfulSyncAt)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-rb-text-muted">Status Sync</span>
+                    <div className="mt-0.5 font-medium text-rb-text">
+                      {b.lastStatus ?? 'IDLE'}
+                    </div>
+                  </div>
+                </div>
+
+                {b.attentionReason && (
+                  <div className="rounded-[6px] bg-rb-orange-tint-bg/50 px-2.5 py-1.5 text-[11px] font-medium text-rb-orange-tint-fg">
+                    ⚠️ {b.attentionReason}
+                  </div>
+                )}
+              </div>
+            ))}
+            {branches.data.length === 0 && (
+              <div className="col-span-full py-8 text-center text-sm text-rb-text-muted">
+                Tidak ada data cabang operasional yang tersedia.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="overflow-hidden rounded-rb-card border border-rb-border bg-rb-surface">
         <div className="border-b border-rb-divider px-5 py-3.5 text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
           Sync Logs
@@ -214,7 +331,8 @@ export function MokaIntegration() {
         {logs.status === 'ready' && (
           <div className="flex flex-col divide-y divide-rb-divider">
             {logs.data.map((entry) => {
-              const isOk = entry.status === 'ok';
+              // Contract fix: accept 'success' as well as historical 'ok'
+              const isOk = isSuccess(entry.status);
               return (
                 <div key={entry.id} className="flex min-h-[54px] items-center gap-3 px-5 py-3 text-sm">
                   <span

@@ -321,4 +321,4 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
   return { totalTx, totalSvc, unmatchedNames: [...unmatchedNames].slice(0, 20) };
 }
 
-module.exports = { syncCurrentMonthTx };
+module.exports = { syncCurrentMonthTx, extractBarberItems, matchBarberName };

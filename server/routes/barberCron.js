@@ -3,6 +3,7 @@ const express = require('express');
 const { sendPushNotifToBarber } = require('../services/barberMetrics');
 const { checkAchievements, assignRivals, crownKingOfShop, rebuildLeaderboardCache } = require('../services/gamificationService');
 const { processCustomerNotificationOutbox } = require('../services/bookingNotificationOutbox');
+const { resolveBusinessDates, syncMokaDailyTransactions } = require('../services/mokaDailyTransactionSync');
 
 function localDateStr(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -56,42 +57,6 @@ async function getWeeklyCount(supabase, barberId, weekStart) {
   ]);
 
   return (webCount || 0) + (mokaCount || 0);
-}
-
-// Pull the current month directly from Moka before rebuilding leaderboard data.
-// This is also exposed through the external cron route because in serverless
-// deployments an in-process node-cron timer is not guaranteed to stay alive.
-async function syncMokaTransactions(supabase) {
-  const { syncCurrentMonthTx } = require('../moka/txSync');
-  const { data: outlets, error: outletError } = await supabase
-    .from('outlets')
-    .select('id, slug, moka_outlet_id')
-    .eq('is_active', true)
-    .not('moka_outlet_id', 'is', null);
-  if (outletError) throw outletError;
-  if (!outlets?.length) return { outlets: 0, transactions: 0, services: 0 };
-
-  const { data: tokenRows, error: tokenError } = await supabase
-    .from('moka_tokens').select('outlet_id').in('outlet_id', outlets.map(o => o.id));
-  if (tokenError) throw tokenError;
-  const authorizedIds = new Set((tokenRows || []).map(row => row.outlet_id));
-
-  const results = await Promise.all(outlets.map(async outlet => {
-    if (!authorizedIds.has(outlet.id)) return { slug: outlet.slug, skipped: true };
-    try {
-      const result = await syncCurrentMonthTx(supabase, outlet);
-      return { slug: outlet.slug, ...result };
-    } catch (error) {
-      return { slug: outlet.slug, error: error.message };
-    }
-  }));
-
-  return {
-    outlets: results.filter(r => !r.skipped && !r.error).length,
-    transactions: results.reduce((sum, r) => sum + (r.totalTx || 0), 0),
-    services: results.reduce((sum, r) => sum + (r.totalSvc || 0), 0),
-    results,
-  };
 }
 
 function createBarberCronRoutes(supabase, adminAuth) {
@@ -482,13 +447,30 @@ function createBarberCronRoutes(supabase, adminAuth) {
     });
   });
 
-  // ─── SYNC MOKA DAILY (dipanggil cronjob.org tiap jam) ──
+  // ─── SYNC MOKA DAILY (production scheduler: daily) ──
   // GET /api/cron/sync-moka-daily?token=CRON_SECRET
   // Update barber_daily_counts dari moka_barber_services untuk hari ini (dan kemarin jika ada)
   router.get('/sync-moka-daily', async (req, res) => {
     const secret = process.env.CRON_SECRET || process.env.ADMIN_PASSWORD;
     if (!secret || req.query.token !== secret) {
       return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const manualDate = req.query.date === undefined ? undefined : String(req.query.date);
+    const dryRun = req.query.dry_run === '1';
+    try {
+      resolveBusinessDates({ date: manualDate });
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: error.message });
+    }
+    if (dryRun) {
+      try {
+        const mokaSync = await syncMokaDailyTransactions({ supabase, date: manualDate, dryRun: true });
+        return res.json({ ok: true, dry_run: true, moka_sync: mokaSync });
+      } catch (error) {
+        const status = error.code === 'INVALID_DATE' ? 400 : 502;
+        return res.status(status).json({ ok: false, dry_run: true, error: error.message });
+      }
     }
 
     let notifications;
@@ -501,10 +483,12 @@ function createBarberCronRoutes(supabase, adminAuth) {
 
     let mokaSync;
     try {
-      mokaSync = await syncMokaTransactions(supabase);
+      mokaSync = await syncMokaDailyTransactions({ supabase, date: manualDate });
     } catch (error) {
       console.error('[Cron] Live Moka transaction sync failed:', error.message);
-      return res.status(502).json({ ok: false, error: 'Moka transaction sync failed' });
+      // Failure isolation: notification retry, barber counts, and leaderboard
+      // maintenance remain independent from analytics ingestion.
+      mokaSync = { status: 'FAILED', error: 'Moka transaction sync failed' };
     }
 
     const today = localDateStr();

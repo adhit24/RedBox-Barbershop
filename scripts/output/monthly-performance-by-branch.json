@@ -1,0 +1,252 @@
+{
+  "bypass": [
+    {
+      "month": 1,
+      "month_label": "Jan",
+      "net_sales": 109290500,
+      "transaction_count": 986
+    },
+    {
+      "month": 2,
+      "month_label": "Feb",
+      "net_sales": 95615500,
+      "transaction_count": 837
+    },
+    {
+      "month": 3,
+      "month_label": "Mar",
+      "net_sales": 125584500,
+      "transaction_count": 1077
+    },
+    {
+      "month": 4,
+      "month_label": "Apr",
+      "net_sales": 99223700,
+      "transaction_count": 914
+    },
+    {
+      "month": 5,
+      "month_label": "May",
+      "net_sales": 109302500,
+      "transaction_count": 1004
+    },
+    {
+      "month": 6,
+      "month_label": "Jun",
+      "net_sales": 103169000,
+      "transaction_count": 925
+    },
+    {
+      "month": 7,
+      "month_label": "Jul",
+      "net_sales": 110909500,
+      "transaction_count": 1001
+    },
+    {
+      "month": 8,
+      "month_label": "Aug",
+      "net_sales": 114320500,
+      "transaction_count": 964
+    }
+  ],
+  "csb": [
+    {
+      "month": 1,
+      "month_label": "Jan",
+      "net_sales": 257478000,
+      "transaction_count": 1685
+    },
+    {
+      "month": 2,
+      "month_label": "Feb",
+      "net_sales": 216819800,
+      "transaction_count": 1425
+    },
+    {
+      "month": 3,
+      "month_label": "Mar",
+      "net_sales": 325085700,
+      "transaction_count": 2068
+    },
+    {
+      "month": 4,
+      "month_label": "Apr",
+      "net_sales": 230629700,
+      "transaction_count": 1465
+    },
+    {
+      "month": 5,
+      "month_label": "May",
+      "net_sales": 267512300,
+      "transaction_count": 1742
+    },
+    {
+      "month": 6,
+      "month_label": "Jun",
+      "net_sales": 255739900,
+      "transaction_count": 1601
+    },
+    {
+      "month": 7,
+      "month_label": "Jul",
+      "net_sales": 268433900,
+      "transaction_count": 1730
+    },
+    {
+      "month": 8,
+      "month_label": "Aug",
+      "net_sales": 266954900,
+      "transaction_count": 1676
+    }
+  ],
+  "sumber": [
+    {
+      "month": 1,
+      "month_label": "Jan",
+      "net_sales": 62791500,
+      "transaction_count": 620
+    },
+    {
+      "month": 2,
+      "month_label": "Feb",
+      "net_sales": 44656500,
+      "transaction_count": 446
+    },
+    {
+      "month": 3,
+      "month_label": "Mar",
+      "net_sales": 85676000,
+      "transaction_count": 787
+    },
+    {
+      "month": 4,
+      "month_label": "Apr",
+      "net_sales": 49882500,
+      "transaction_count": 507
+    },
+    {
+      "month": 5,
+      "month_label": "May",
+      "net_sales": 64120000,
+      "transaction_count": 636
+    },
+    {
+      "month": 6,
+      "month_label": "Jun",
+      "net_sales": 57147500,
+      "transaction_count": 544
+    },
+    {
+      "month": 7,
+      "month_label": "Jul",
+      "net_sales": 58329500,
+      "transaction_count": 589
+    },
+    {
+      "month": 8,
+      "month_label": "Aug",
+      "net_sales": 60877000,
+      "transaction_count": 586
+    }
+  ],
+  "tegal": [
+    {
+      "month": 1,
+      "month_label": "Jan",
+      "net_sales": 74205500,
+      "transaction_count": 853
+    },
+    {
+      "month": 2,
+      "month_label": "Feb",
+      "net_sales": 67277500,
+      "transaction_count": 747
+    },
+    {
+      "month": 3,
+      "month_label": "Mar",
+      "net_sales": 84895000,
+      "transaction_count": 882
+    },
+    {
+      "month": 4,
+      "month_label": "Apr",
+      "net_sales": 56714000,
+      "transaction_count": 657
+    },
+    {
+      "month": 5,
+      "month_label": "May",
+      "net_sales": 69387000,
+      "transaction_count": 821
+    },
+    {
+      "month": 6,
+      "month_label": "Jun",
+      "net_sales": 58467500,
+      "transaction_count": 682
+    },
+    {
+      "month": 7,
+      "month_label": "Jul",
+      "net_sales": 63087000,
+      "transaction_count": 783
+    },
+    {
+      "month": 8,
+      "month_label": "Aug",
+      "net_sales": 60092500,
+      "transaction_count": 715
+    }
+  ],
+  "samadikun": [
+    {
+      "month": 1,
+      "month_label": "Jan",
+      "net_sales": 72022500,
+      "transaction_count": 663
+    },
+    {
+      "month": 2,
+      "month_label": "Feb",
+      "net_sales": 65336000,
+      "transaction_count": 589
+    },
+    {
+      "month": 3,
+      "month_label": "Mar",
+      "net_sales": 99442000,
+      "transaction_count": 887
+    },
+    {
+      "month": 4,
+      "month_label": "Apr",
+      "net_sales": 64286500,
+      "transaction_count": 615
+    },
+    {
+      "month": 5,
+      "month_label": "May",
+      "net_sales": 79135500,
+      "transaction_count": 718
+    },
+    {
+      "month": 6,
+      "month_label": "Jun",
+      "net_sales": 75382000,
+      "transaction_count": 689
+    },
+    {
+      "month": 7,
+      "month_label": "Jul",
+      "net_sales": 78190000,
+      "transaction_count": 709
+    },
+    {
+      "month": 8,
+      "month_label": "Aug",
+      "net_sales": 81238500,
+      "transaction_count": 703
+    }
+  ]
+}

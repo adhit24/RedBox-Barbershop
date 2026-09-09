@@ -44,7 +44,7 @@ Sistem prompt AI (bot bernama "Reddy") dilengkapi dengan data bisnis lengkap:
 - Hair Bleaching — Rp 360.000 / Rp 370.000 CSB (3 jam)
 - Hair Highlighting — Rp 310.000 / Rp 320.000 CSB (3 jam)
 - Hair Curly — Rp 310.000 / Rp 320.000 CSB (90 menit)
-- Hair Smoothing — Rp 360.000 / Rp 370.000 CSB (90 menit)
+- Treatment Smoothing & Shave — Rp 450.000 (90 menit)
 - Hair Spa — Rp 110.000 / Rp 120.000 CSB (30 menit)
 - Down Perm / Root Lift — Rp 175.000 / Rp 185.000 CSB (60 menit)
 
@@ -96,7 +96,7 @@ AI diajarkan memetakan kata sehari-hari ke layanan:
 | cat rambut / semir / coloring | Hair Color |
 | bleaching / putihin rambut | Hair Bleaching |
 | keriting / curl / perm | Hair Curly |
-| rebonding / smoothing / lurusin | Hair Smoothing |
+| rebonding / smoothing / lurusin | Treatment Smoothing & Shave |
 | creambath / spa rambut / treatment | Hair Spa (creambath tidak ada, alternatif Hair Spa) |
 | cukur kumis / jenggot / brewok | Shaving |
 | botak / gundul / head shave | Premium Head Shave |
