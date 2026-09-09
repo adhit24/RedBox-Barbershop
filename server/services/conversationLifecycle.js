@@ -16,7 +16,7 @@
  *   - armIdleTimerAfterReply: every successful automated Reddy send — the
  *     only place idle_close_due_at is ever set to a real deadline.
  *   - claimIdleConversation / verifyStillClaimedForClose / finalizeIdleClose:
- *     driven by the api/cron/reddy-idle-close.js cron job, which atomically
+ *     driven by the mounted /api/cron/reddy-idle-close route, which atomically
  *     claims a conversation whose due time has passed, re-verifies nothing
  *     changed immediately before the actual send (Blocker 2), and finalizes.
  */
@@ -168,18 +168,19 @@ async function verifyStillClaimedForClose(supabase, sender, { expectedLastCustom
 }
 
 /**
- * Resolves a claim made by claimIdleConversation. On success, marks the
- * conversation durably closed (idle_closed_at set) so no later cron pass
- * re-attempts it. On failure, reverts to 'active' - the row stays overdue
- * (idle_close_due_at unchanged) so a later cron pass retries the send; the
- * conversation is never falsely marked closed when the send didn't happen.
+ * Resolves a claim made by claimIdleConversation. A successful send marks the
+ * conversation durably closed. `closeWithoutSend` also closes the lifecycle
+ * when the optional polite close message fails, preventing an unbounded
+ * provider retry loop. Other failures release the claim back to `active`.
  * Scoped by (sender, provider_device_hash) - see touchInboundActivity.
  */
-async function finalizeIdleClose(supabase, sender, { now = Date.now(), sent, providerDeviceHash = null } = {}) {
+async function finalizeIdleClose(supabase, sender, {
+  now = Date.now(), sent, closeWithoutSend = false, providerDeviceHash = null,
+} = {}) {
   if (!supabase || !sender) return;
   const deviceScope = resolveConversationDeviceScope(providerDeviceHash);
   try {
-    if (sent) {
+    if (sent || closeWithoutSend) {
       await supabase.from('wa_conversations')
         .update({ conversation_status: 'closed', idle_closed_at: toIso(now), updated_at: toIso(now) })
         .eq('sender', sender)

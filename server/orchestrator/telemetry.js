@@ -194,7 +194,8 @@ const ALLOWED_IDLE_LIFECYCLE_EVENTS = new Set([
 ]);
 const ALLOWED_IDLE_SUPPRESS_REASONS = new Set([
   'waiting_human', 'human_active', 'reddy_disabled', 'already_closed',
-  'not_yet_due', 'claim_lost_race', 'send_failed', 'newer_inbound_detected', null,
+  'not_yet_due', 'claim_lost_race', 'send_failed', 'newer_inbound_detected',
+  'missing_branch_route', 'lookup_failed', null,
 ]);
 
 function sanitizeIdleLifecycleTelemetry(event = {}) {

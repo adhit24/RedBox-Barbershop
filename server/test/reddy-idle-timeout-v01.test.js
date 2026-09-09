@@ -455,7 +455,7 @@ test('T7. REDDY_ENABLED=false: no automated closing send', async () => {
   assert.equal(res.body.closed, 0);
 });
 
-test('T8. provider/send failure leaves the conversation active, not falsely closed', async () => {
+test('T8. provider/send failure is isolated and closes lifecycle without retrying the optional message', async () => {
   const handler = loadCronHandler();
   const now = 1_700_000_000_000;
   const sb = fakeConversationsSupabase([{ sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null }]);
@@ -469,9 +469,163 @@ test('T8. provider/send failure leaves the conversation active, not falsely clos
     candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
   });
 
+  assert.equal(res.statusCode, 200);
   assert.equal(res.body.closed, 0);
-  assert.equal(sb.rows[0].conversation_status, 'active', 'must not falsely claim the closing was sent');
-  assert.notEqual(sb.rows[0].conversation_status, 'closed');
+  assert.equal(res.body.failed, 1);
+  assert.equal(sb.rows[0].conversation_status, 'closed', 'optional close-message failure must not create an infinite retry loop');
+});
+
+test('T9. zero idle conversations returns the stable healthy summary', async () => {
+  const handler = loadCronHandler();
+  const res = responseRecorder();
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: fakeConversationsSupabase([]),
+    isReddyEnabled: () => true,
+    candidateSenders: [],
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true, processed: 0, closed: 0, closed_without_message: 0, failed: 0, suppressed: 0 });
+});
+
+test('T10. one send failure among several returns a partial summary and preserves branch routing', async () => {
+  const handler = loadCronHandler();
+  const now = Date.now();
+  const rows = ['628111', '628222', '628333'].map((sender) => ({
+    sender, conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null,
+  }));
+  const sb = fakeConversationsSupabase(rows);
+  fakeGuardRpc(sb);
+  const sends = [];
+  const res = responseRecorder();
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none', case: null }),
+    sendWA: async (to, _msg, options) => {
+      sends.push({ to, branch: options.branch });
+      if (to === '628222') throw new Error('Fonnte timeout');
+      return { status: 'sent' };
+    },
+    candidateSenders: rows.map((row) => ({ sender: row.sender, providerDeviceHash: 'a'.repeat(64), branch: 'csb' })),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true, processed: 3, closed: 2, closed_without_message: 1, failed: 1, suppressed: 0 });
+  assert.equal(sends.length, 3);
+  assert.ok(sends.every((send) => send.branch === 'csb'));
+});
+
+test('T11. one conversation dependency failure does not reject or abort the rest of the batch', async () => {
+  const handler = loadCronHandler();
+  const now = Date.now();
+  const rows = ['628111', '628222'].map((sender) => ({
+    sender, conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null,
+  }));
+  const sb = fakeConversationsSupabase(rows);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const res = responseRecorder();
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async (sender) => {
+      if (sender === '628111') throw new Error('handoff dependency down');
+      return { status: 'none', case: null };
+    },
+    sendWA: async (to) => { sent.push(to); return { status: 'sent' }; },
+    candidateSenders: rows.map((row) => ({ sender: row.sender, providerDeviceHash: 'a'.repeat(64), branch: 'bypass' })),
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, { ok: true, processed: 2, closed: 1, closed_without_message: 0, failed: 1, suppressed: 0 });
+  assert.deepEqual(sent, ['628222']);
+});
+
+test('T12. discovery failure returns a useful 200 summary instead of a generic 500', async () => {
+  const handler = loadCronHandler();
+  const res = responseRecorder();
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: fakeConversationsSupabase([]),
+    isReddyEnabled: () => true,
+    findDueSenders: async () => { throw new Error('database unavailable'); },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, {
+    ok: false, processed: 0, closed: 0, closed_without_message: 0, failed: 1, suppressed: 0, reason: 'discovery_failed',
+  });
+});
+
+test('T13. concurrent handler invocations claim and close the same conversation exactly once', async () => {
+  const handler = loadCronHandler();
+  const now = Date.now();
+  const sb = fakeConversationsSupabase([{
+    sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(now - 1000).toISOString(), idle_closed_at: null,
+  }]);
+  fakeGuardRpc(sb);
+  const sent = [];
+  const deps = {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none', case: null }),
+    sendWA: async (to) => { sent.push(to); return { status: 'sent' }; },
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'sumber' }],
+  };
+  const first = responseRecorder();
+  const second = responseRecorder();
+  await Promise.all([
+    handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, first, deps),
+    handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, second, deps),
+  ]);
+  assert.equal(sent.length, 1);
+  assert.equal(first.body.closed + second.body.closed, 1);
+  assert.equal(sb.rows[0].conversation_status, 'closed');
+});
+
+test('T14. recent, already closed, and already idle-close-sent conversations remain untouched', async () => {
+  const handler = loadCronHandler();
+  const now = Date.now();
+  const sb = fakeConversationsSupabase([
+    { sender: 'recent', conversation_status: 'active', idle_close_due_at: new Date(now + 60_000).toISOString(), idle_closed_at: null },
+    { sender: 'closed', conversation_status: 'closed', idle_close_due_at: new Date(now - 60_000).toISOString(), idle_closed_at: new Date(now - 30_000).toISOString() },
+    { sender: 'sent', conversation_status: 'active', idle_close_due_at: new Date(now - 60_000).toISOString(), idle_closed_at: new Date(now - 30_000).toISOString() },
+  ]);
+  fakeGuardRpc(sb);
+  const sends = [];
+  const res = responseRecorder();
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    getActiveHandoffState: async () => ({ status: 'none', case: null }),
+    sendWA: async (to) => { sends.push(to); return { status: 'sent' }; },
+  });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.processed, 0);
+  assert.deepEqual(sends, []);
+  assert.equal(sb.rows.find((row) => row.sender === 'recent').conversation_status, 'active');
+  assert.equal(sb.rows.find((row) => row.sender === 'closed').conversation_status, 'closed');
+  assert.equal(sb.rows.find((row) => row.sender === 'sent').conversation_status, 'active');
+});
+
+test('T15. authenticated dry-run validates discovery without claims or customer sends', async () => {
+  const handler = loadCronHandler();
+  const sb = fakeConversationsSupabase([{
+    sender: '628111', conversation_status: 'active', idle_close_due_at: new Date(Date.now() - 1000).toISOString(), idle_closed_at: null,
+  }]);
+  const res = responseRecorder();
+  let sends = 0;
+  let claims = 0;
+  await handler({ method: 'GET', headers: CRON_AUTH_HEADERS, query: { dry_run: '1' } }, res, {
+    supabase: sb,
+    isReddyEnabled: () => true,
+    sendWA: async () => { sends++; return { status: 'sent' }; },
+    claimIdleConversation: async () => { claims++; return null; },
+    candidateSenders: [{ sender: '628111', providerDeviceHash: 'a'.repeat(64), branch: 'bypass' }],
+  });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body, {
+    ok: true, processed: 0, closed: 0, closed_without_message: 0, failed: 0, suppressed: 0,
+    dry_run: true, eligible: 1,
+  });
+  assert.equal(claims, 0);
+  assert.equal(sends, 0);
 });
 
 test('T-auth. unauthenticated cron request (wrong/missing bearer, secret configured) is rejected', async () => {
@@ -815,8 +969,21 @@ test('V2. the handler is mounted as a route inside server/index.js (the existing
 });
 
 test('V3. GET /api/cron/reddy-idle-close is reachable through the real server/index.js Express app end-to-end', async () => {
-  delete require.cache[require.resolve('../index.js')];
-  const app = require('../index.js');
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousKey = process.env.SUPABASE_SERVICE_KEY;
+  process.env.SUPABASE_URL = 'https://example.supabase.co';
+  process.env.SUPABASE_SERVICE_KEY = 'test-service-key';
+  let app;
+  try {
+    delete require.cache[require.resolve('../index.js')];
+    app = require('../index.js');
+  } catch (error) {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_KEY;
+    else process.env.SUPABASE_SERVICE_KEY = previousKey;
+    throw error;
+  }
   const request = require('node:http').request;
 
   await new Promise((resolve, reject) => {
@@ -844,6 +1011,10 @@ test('V3. GET /api/cron/reddy-idle-close is reachable through the real server/in
       } finally {
         if (previousSecret === undefined) delete process.env.CRON_SECRET;
         else process.env.CRON_SECRET = previousSecret;
+        if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+        else process.env.SUPABASE_URL = previousUrl;
+        if (previousKey === undefined) delete process.env.SUPABASE_SERVICE_KEY;
+        else process.env.SUPABASE_SERVICE_KEY = previousKey;
         server.close();
       }
     });
