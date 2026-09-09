@@ -173,9 +173,7 @@ function ViewToggle({ view, onChange }: { view: 'year' | 'month'; onChange: (v: 
 }
 
 // ── Month selector ────────────────────────────────────────────────────────────
-const AVAILABLE_MONTHS = [1, 2, 3, 4, 5, 6, 7, 8]; // Jan–Aug 2026
-
-function MonthSelector({ selected, onChange }: { selected: number; onChange: (m: number) => void }) {
+function MonthSelector({ selected, available, onChange }: { selected: number; available: number[]; onChange: (m: number) => void }) {
   return (
     <select
       className="rounded-lg border border-rb-border bg-rb-bg px-2.5 py-1 text-xs font-semibold text-rb-text focus:outline-none focus:ring-2 focus:ring-rb-red/20"
@@ -184,7 +182,7 @@ function MonthSelector({ selected, onChange }: { selected: number; onChange: (m:
       onChange={(e) => onChange(Number(e.target.value))}
       data-testid="month-selector"
     >
-      {AVAILABLE_MONTHS.map((m) => (
+      {available.map((m) => (
         <option key={m} value={m}>
           {FULL_MONTH_NAMES[MONTH_NUM_TO_LABEL[m]]} 2026
         </option>
@@ -201,7 +199,14 @@ export interface BusinessPerformanceChartProps {
 
 export function YearlyPerformanceChart({ data, branch = 'all' }: BusinessPerformanceChartProps) {
   const [view, setView] = useState<'year' | 'month'>('year');
-  const [selectedMonth, setSelectedMonth] = useState<number>(8); // default Aug
+  const availableMonths = useMemo(() => data.filter(point => point.net_sales !== null).map(point => point.month), [data]);
+  const [selectedMonth, setSelectedMonth] = useState<number>(() => availableMonths.at(-1) ?? 8);
+
+  useEffect(() => {
+    if (availableMonths.length > 0 && !availableMonths.includes(selectedMonth)) {
+      setSelectedMonth(availableMonths.at(-1) ?? 8);
+    }
+  }, [availableMonths, selectedMonth]);
 
   // Daily data state
   const [dailyData, setDailyData] = useState<DailyPerformancePoint[]>([]);
@@ -272,9 +277,11 @@ export function YearlyPerformanceChart({ data, branch = 'all' }: BusinessPerform
     };
   }), [dailyData]);
 
+  const jakartaNow = new Date(Date.now() + (7 * 60 * 60 * 1000));
+  const isCurrentMonth = jakartaNow.getUTCFullYear() === 2026 && jakartaNow.getUTCMonth() + 1 === selectedMonth;
   const dailySummary = useMemo(
-    () => computeDailySummary(dailyData, prevMonthDailyData),
-    [dailyData, prevMonthDailyData],
+    () => computeDailySummary(dailyData, prevMonthDailyData, isCurrentMonth),
+    [dailyData, prevMonthDailyData, isCurrentMonth],
   );
   const dayAxisMax = useMemo(
     () => niceMax(Math.max(0, ...dailyData.map((p) => p.net_sales ?? 0))),
@@ -384,7 +391,7 @@ export function YearlyPerformanceChart({ data, branch = 'all' }: BusinessPerform
             </div>
           )}
           <p className="mt-3 text-[11.5px] text-rb-text-faint">
-            Data aktual Januari–Agustus 2026 dari Moka POS. September–Desember belum tersedia.
+            Database live diprioritaskan; data statis Januari–Agustus dipakai hanya bila data database belum tersedia.
           </p>
         </>
       )}
@@ -394,16 +401,16 @@ export function YearlyPerformanceChart({ data, branch = 'all' }: BusinessPerform
         <>
           {/* Month selector + KPIs */}
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-            <MonthSelector selected={selectedMonth} onChange={setSelectedMonth} />
+            <MonthSelector selected={selectedMonth} available={availableMonths} onChange={setSelectedMonth} />
             {dailySummary && !dailyLoading && (
               <div className="ml-auto flex flex-wrap gap-x-6 gap-y-1">
                 <KpiChip
-                  label="Total Month"
+                  label={isCurrentMonth ? 'Total MTD' : 'Total Month'}
                   value={formatRupiahFull(dailySummary.total)}
                   testId="daily-total"
                 />
                 <KpiChip
-                  label="Average / Day"
+                  label={isCurrentMonth ? 'Average / Active Day' : 'Average / Day'}
                   value={formatRupiahFull(dailySummary.avgPerDay)}
                   testId="daily-avg"
                 />
@@ -413,7 +420,7 @@ export function YearlyPerformanceChart({ data, branch = 'all' }: BusinessPerform
                   testId="best-day"
                 />
                 <ColoredKpi
-                  label={prevMonthLabel ? `vs ${prevMonthLabel}` : 'vs Prev Month'}
+                  label={prevMonthLabel ? `${isCurrentMonth ? 'MTD' : 'Month'} vs ${prevMonthLabel}${isCurrentMonth ? ' MTD' : ''}` : 'vs Prev Month'}
                   value={dailySummary.vsLastMonth ? dailySummary.vsLastMonth.formatted : '—'}
                   isPositive={dailySummary.vsLastMonth?.isPositive ?? true}
                   testId="vs-prev-month"

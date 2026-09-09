@@ -4191,6 +4191,8 @@ configureEvaluationMonitoring(() => supabase);
 app.use('/api/internal/reddy-evaluation', createReddyEvaluationRoutes(supabase, adminAuth));
 const { createSystemEventLogRoutes } = require('./routes/systemEventLogs');
 app.use('/api/internal/system-event-logs', createSystemEventLogRoutes(supabase, adminAuth));
+const { createBusinessPerformanceRoutes } = require('./routes/businessPerformance');
+app.use('/api/admin/business-performance', createBusinessPerformanceRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));

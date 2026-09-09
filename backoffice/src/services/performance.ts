@@ -12,6 +12,7 @@ import {
   type DailyPerformancePoint,
   type DailyPerformanceBranch,
 } from '../data/moka2026DailyPerformance';
+import { apiClient } from '../lib/apiClient';
 
 export type { MonthlyPerformancePoint, BranchScope, DailyPerformancePoint };
 export { LATEST_ACTUAL_MONTH };
@@ -24,7 +25,17 @@ function toBranchScope(branch: string): BranchScope {
 
 /** Real monthly Net Sales for the given branch scope (or all branches), Jan–Dec. Months without real data yet have net_sales: null. */
 export async function getYearlyPerformance(branch: string): Promise<MonthlyPerformancePoint[]> {
-  return MOKA_2026_PERFORMANCE[toBranchScope(branch)];
+  const fallback = MOKA_2026_PERFORMANCE[toBranchScope(branch)];
+  try {
+    const response = await apiClient.get<{ points: MonthlyPerformancePoint[] }>(
+      `/api/admin/business-performance?view=year&year=2026&branch=${encodeURIComponent(toBranchScope(branch))}`,
+    );
+    if (!response.points?.length) return fallback;
+    const liveByMonth = new Map(response.points.map((point) => [point.month, point]));
+    return fallback.map((point) => liveByMonth.get(point.month) ?? point);
+  } catch {
+    return fallback;
+  }
 }
 
 /**
@@ -45,8 +56,16 @@ export async function getMonthlyDailyPerformance({
   month: number;
 }): Promise<DailyPerformancePoint[]> {
   const scope = toBranchScope(branch) as DailyPerformanceBranch;
-  // Only 2026 Jan–Aug has real data; other year/month combinations return empty.
-  if (year !== 2026 || month < 1 || month > 8) return [];
+  if (month < 1 || month > 12) return [];
+  try {
+    const response = await apiClient.get<{ points: DailyPerformancePoint[] }>(
+      `/api/admin/business-performance?view=month&year=${year}&month=${month}&branch=${encodeURIComponent(scope)}`,
+    );
+    if (response.points?.length) return response.points;
+  } catch {
+    // Compatibility fallback intentionally remains limited to audited static history.
+  }
+  if (year !== 2026 || month > 8) return [];
   return MOKA_2026_DAILY_PERFORMANCE[scope][month] ?? [];
 }
 
@@ -105,9 +124,13 @@ export function computePerformanceSummary(data: MonthlyPerformancePoint[]): Perf
   const best = actual.reduce((a, b) => ((b.net_sales ?? 0) > (a.net_sales ?? 0) ? b : a));
 
   let latestMoM: PerformanceSummary['latestMoM'] = null;
-  if (actual.length >= 2) {
-    const current = actual[actual.length - 1];
-    const prev = actual[actual.length - 2];
+  const jakartaNow = new Date(Date.now() + (7 * 60 * 60 * 1000));
+  const currentYear = jakartaNow.getUTCFullYear();
+  const currentMonth = jakartaNow.getUTCMonth() + 1;
+  const completed = currentYear === 2026 ? actual.filter((point) => point.month < currentMonth) : actual;
+  if (completed.length >= 2) {
+    const current = completed[completed.length - 1];
+    const prev = completed[completed.length - 2];
     if (current.net_sales !== null && prev.net_sales !== null && prev.net_sales !== 0) {
       const pct = ((current.net_sales - prev.net_sales) / prev.net_sales) * 100;
       const formatted = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
@@ -155,6 +178,7 @@ export interface DailySummary {
 export function computeDailySummary(
   data: DailyPerformancePoint[],
   prevMonthData?: DailyPerformancePoint[],
+  isCurrentMonth = false,
 ): DailySummary | null {
   const actual = data.filter((p) => p.net_sales !== null);
   if (actual.length === 0) return null;
@@ -165,7 +189,8 @@ export function computeDailySummary(
 
   let vsLastMonth: DailySummary['vsLastMonth'] = null;
   if (prevMonthData && prevMonthData.length > 0) {
-    const prevActual = prevMonthData.filter((p) => p.net_sales !== null);
+    const lastActualDay = Math.max(...actual.map(point => point.day));
+    const prevActual = prevMonthData.filter((p) => p.net_sales !== null && (!isCurrentMonth || p.day <= lastActualDay));
     if (prevActual.length > 0) {
       const prevTotal = prevActual.reduce((sum, p) => sum + (p.net_sales ?? 0), 0);
       if (prevTotal > 0) {
