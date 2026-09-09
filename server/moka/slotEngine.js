@@ -348,5 +348,176 @@ async function syncScheduleForBooking(supabase, { scheduleId, date, time, barber
   await supabase.from('schedules').update(patch).eq('id', scheduleId).neq('status', 'cancelled');
 }
 
-module.exports = { getAvailableSlots, isSlotAvailable, syncScheduleForBooking };
-module.exports = { getAvailableSlots, isSlotAvailable, getBarberDateAvailability, syncScheduleForBooking };
+/**
+ * Compute real-time operational capacity and slot utilization for a branch.
+ * Reuses existing working-hours, date-overrides, shift-roster, and booking rules.
+ */
+async function computeBranchCapacity(supabase, {
+  outletId,
+  date,
+  barbers: preloadedBarbers = null,
+  activeBookings: preloadedBookings = null,
+  homeServiceActive: preloadedHomeService = null,
+  schedules: preloadedSchedules = null,
+  barberOperationalStatusMap = {},
+} = {}) {
+  try {
+    if (!outletId || !date) {
+      return {
+        status: 'unavailable',
+        reason: 'outletId and date required',
+        active_barbers: 0,
+        available_barbers: 0,
+        serving_barbers: 0,
+        home_service_barbers: 0,
+        total_slots_today: 0,
+        occupied_slots: 0,
+        available_slots: 0,
+        utilization_percent: 0,
+      };
+    }
+
+    // 1. Barbers
+    let barbers = preloadedBarbers;
+    if (!barbers) {
+      const { data, error } = await supabase
+        .from('barbers')
+        .select('id, name, is_active, home_service_enabled')
+        .eq('outlet_id', outletId)
+        .eq('is_active', true);
+      if (error) throw error;
+      barbers = data || [];
+    }
+
+    if (!barbers.length) {
+      return {
+        status: 'ready',
+        active_barbers: 0,
+        available_barbers: 0,
+        serving_barbers: 0,
+        home_service_barbers: 0,
+        total_slots_today: 0,
+        occupied_slots: 0,
+        available_slots: 0,
+        utilization_percent: 0,
+      };
+    }
+
+    const barberIds = barbers.map(b => b.id);
+
+    // 2. Shifts, working hours, and overrides
+    const dayOfWeek = _dayOfWeek(date);
+    const [shiftsRes, hoursRes, overridesRes] = await Promise.all([
+      (async () => {
+        try {
+          return await supabase.from('barber_shifts').select('barber_id, is_off, start_time, end_time').in('barber_id', barberIds).eq('shift_date', date);
+        } catch {
+          return { data: [] };
+        }
+      })(),
+      supabase.from('barber_working_hours').select('barber_id, open_time, close_time, is_off').in('barber_id', barberIds).eq('day_of_week', dayOfWeek),
+      supabase.from('barber_date_overrides').select('barber_id, is_off').in('barber_id', barberIds).eq('date', date),
+    ]);
+
+    const shiftsMap = _indexBy(shiftsRes?.data || [], 'barber_id');
+    const workingHoursMap = _indexBy(hoursRes?.data || [], 'barber_id');
+    const dateOverridesMap = _indexBy(overridesRes?.data || [], 'barber_id');
+
+    // 3. Working barbers (not off)
+    const workingBarbers = barbers.filter(b => {
+      const shift = shiftsMap[b.id];
+      if (shift !== undefined) return !shift.is_off;
+      const override = dateOverridesMap[b.id];
+      if (override !== undefined) return !override.is_off;
+      const wh = workingHoursMap[b.id];
+      if (wh !== undefined) return !wh.is_off;
+      return true;
+    });
+
+    // 4. Calculate total slots across all working barbers
+    let totalSlotsToday = 0;
+    for (const barber of workingBarbers) {
+      const shift = shiftsMap[barber.id];
+      const wh = workingHoursMap[barber.id];
+      const openTime = (shift?.start_time ? String(shift.start_time).slice(0, 5) : null)
+        || ((wh && !wh.is_off && wh.open_time) ? wh.open_time : '10:00');
+      const closeTime = (shift?.end_time ? String(shift.end_time).slice(0, 5) : null)
+        || ((wh && !wh.is_off && wh.close_time) ? wh.close_time : '21:00');
+
+      const openMs = _timeStrToMs(date, openTime);
+      const closeMs = _timeStrToMs(date, closeTime);
+      let cursor = openMs;
+      while (cursor + SLOT_INTERVAL_MIN * 60_000 <= closeMs) {
+        totalSlotsToday++;
+        cursor += SLOT_INTERVAL_MIN * 60_000;
+      }
+    }
+
+    // 5. Calculate occupied slots from active bookings and schedules
+    let occupiedSlots = 0;
+    const activeBookings = preloadedBookings || [];
+    for (const bk of activeBookings) {
+      const isHs = bk.type === 'home_service' || (bk.notes || '').toUpperCase().includes('HOME SERVICE');
+      const durMins = isHs ? (HOME_SERVICE_DURATION_MIN + HOME_SERVICE_BUFFER_MIN) : (_parseDurationStr(bk.duration) || 30);
+      occupiedSlots += Math.max(1, Math.round(durMins / SLOT_INTERVAL_MIN));
+    }
+
+    const openSchedules = (preloadedSchedules || []).filter(s => s.status !== 'cancelled' && s.source === 'moka');
+    for (const s of openSchedules) {
+      if (s.start_time && s.end_time) {
+        const durMins = (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000;
+        occupiedSlots += Math.max(1, Math.round(durMins / SLOT_INTERVAL_MIN));
+      } else {
+        occupiedSlots += 1;
+      }
+    }
+
+    occupiedSlots = Math.min(occupiedSlots, totalSlotsToday);
+    const availableSlots = Math.max(0, totalSlotsToday - occupiedSlots);
+    const utilizationPercent = totalSlotsToday > 0 ? Math.min(100, Math.round((occupiedSlots / totalSlotsToday) * 100)) : 0;
+
+    let availableBarbers = 0;
+    let servingBarbers = 0;
+    let homeServiceBarbers = 0;
+
+    for (const b of workingBarbers) {
+      const opStatus = barberOperationalStatusMap[b.id];
+      if (opStatus === 'available') availableBarbers++;
+      else if (opStatus === 'serving') servingBarbers++;
+      else if (opStatus === 'home_service') homeServiceBarbers++;
+    }
+
+    return {
+      status: 'ready',
+      active_barbers: workingBarbers.length,
+      available_barbers: availableBarbers,
+      serving_barbers: servingBarbers,
+      home_service_barbers: homeServiceBarbers,
+      total_slots_today: totalSlotsToday,
+      occupied_slots: occupiedSlots,
+      available_slots: availableSlots,
+      utilization_percent: utilizationPercent,
+    };
+  } catch (err) {
+    return {
+      status: 'unavailable',
+      reason: err.message || 'Capacity calculation error',
+      active_barbers: 0,
+      available_barbers: 0,
+      serving_barbers: 0,
+      home_service_barbers: 0,
+      total_slots_today: 0,
+      occupied_slots: 0,
+      available_slots: 0,
+      utilization_percent: 0,
+    };
+  }
+}
+
+module.exports = {
+  getAvailableSlots,
+  isSlotAvailable,
+  getBarberDateAvailability,
+  syncScheduleForBooking,
+  computeBranchCapacity,
+};
