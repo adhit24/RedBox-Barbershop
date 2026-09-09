@@ -4191,8 +4191,9 @@ const {
   expirePendingMembershipRegistrations,
 } = require('./services/membershipRegistration');
 app.use('/api/admin/crm', createAdminCrmRoutes(supabase, adminAuth));
+const { createBackofficeSupabaseAuth } = require('./middleware/backofficeSupabaseAuth');
 const { createStockistRoutes } = require('./routes/stockist');
-app.use('/api/stockist', createStockistRoutes(supabase, adminAuth));
+app.use('/api/stockist', createStockistRoutes(supabase, createBackofficeSupabaseAuth(supabase, adminAuth)));
 const { createHumanHandoffRoutes } = require('./routes/humanHandoff');
 app.use('/api/handoff', createHumanHandoffRoutes(supabase, adminAuth));
 const { createReddyEvaluationRoutes } = require('./routes/reddyEvaluation');
@@ -4396,6 +4397,28 @@ app.get('/api/cron/booking-notifications', async (req, res) => {
   } catch (e) {
     console.error('[BookingNotifCron] failed:', e.message);
     return res.status(500).json({ ok: false, error: 'Notification retry failed' });
+  }
+});
+
+// CRON — DAILY INVENTORY MOVEMENTS (called at 00:15 WIB daily)
+// Aggregates previous day's inventory_ledger into inventory_daily_movements
+const { aggregateDailyMovements } = require('./services/stockistDailyMovements');
+app.all(['/api/cron/stockist-daily-movements', '/api/cron/stockist/daily-movements'], async (req, res) => {
+  const validTokens = [process.env.CRON_SECRET, process.env.ADMIN_PASSWORD].filter(Boolean);
+  const isVercelCron = req.headers['x-vercel-cron'] === '1';
+  const auth = req.headers.authorization || '';
+  const token = req.query.token || (auth.startsWith('Bearer ') ? auth.slice(7) : '') || req.headers['x-admin-token'];
+  const isAuthorized = isVercelCron || (validTokens.length > 0 && validTokens.includes(token));
+  if (validTokens.length > 0 && !isAuthorized) return res.status(401).json({ error: 'Unauthorized' });
+  if (DB_TYPE !== 'supabase' || !supabase) return res.json({ ok: true, skipped: 'supabase_not_configured' });
+
+  const targetDate = req.body?.target_date || req.query?.target_date || undefined;
+  try {
+    const result = await aggregateDailyMovements(supabase, { targetDate });
+    return res.json(result);
+  } catch (err) {
+    console.error('[StockistDailyMovementsCron] failed:', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 

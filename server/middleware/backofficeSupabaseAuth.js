@@ -5,7 +5,7 @@ const OWNER_EMAILS = new Set([
   'adhit24@gmail.com',
   'suwandi_gunawan@yahoo.com',
 ]);
-const ALLOWED_BACKOFFICE_ROLES = new Set(['owner', 'manager']);
+const ALLOWED_BACKOFFICE_ROLES = new Set(['owner', 'manager', 'branch_admin']);
 
 function normalizeRole(email, profileRole) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -21,7 +21,9 @@ function createBackofficeSupabaseAuth(supabase, legacyAdminAuth) {
   return async function backofficeSupabaseAuth(req, res, next) {
     const hostname = String(req.hostname || '').trim().toLowerCase();
     const authHeader = String(req.headers?.authorization || '');
-    const isBackofficeBearer = hostname === BACKOFFICE_HOST && authHeader.startsWith('Bearer ');
+    const isBackofficeBearer =
+      (hostname === BACKOFFICE_HOST || hostname === 'localhost' || hostname === '127.0.0.1') &&
+      authHeader.startsWith('Bearer ');
 
     // Preserve every existing admin/stockist/cron authentication path exactly.
     if (!isBackofficeBearer) return legacyAdminAuth(req, res, next);
@@ -55,7 +57,7 @@ function createBackofficeSupabaseAuth(supabase, legacyAdminAuth) {
       req.adminAuth = {
         staffId: user.id,
         role,
-        branch: role === 'manager' ? (profile?.branch || null) : null,
+        branch: (role === 'manager' || role === 'branch_admin') ? (profile?.branch || null) : null,
         sessionVerified: true,
         email: user.email,
         name: profile?.name || null,

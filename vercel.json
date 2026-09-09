@@ -1,5 +1,11 @@
 {
  "buildCommand": "npm --workspace=backoffice run build",
+ "crons": [
+   {
+     "path": "/api/cron/stockist-daily-movements",
+     "schedule": "15 17 * * *"
+   }
+ ],
  "functions": {
  "api/index.js": { "maxDuration": 60, "includeFiles": "{server/**,backoffice/dist/**}" },
  "api/ai/analyze.js": { "maxDuration": 60, "includeFiles": "server/**" },

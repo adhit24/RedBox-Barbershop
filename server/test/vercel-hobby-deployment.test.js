@@ -10,7 +10,11 @@ const vercelConfig = JSON.parse(
 );
 
 test('Vercel Hobby deployment does not declare unsupported frequent cron jobs', () => {
-  assert.deepEqual(vercelConfig.crons ?? [], [], 'frequent Vercel cron jobs fail on Hobby');
+  const crons = vercelConfig.crons ?? [];
+  // Vercel Hobby allows daily crons (once per day) but rejects frequent crons (e.g. */5 or */15)
+  for (const cron of crons) {
+    assert.match(cron.schedule, /^\d+\s+\d+\s+\*\s+\*\s+\*$/, 'cron must be daily on Hobby');
+  }
 });
 
 test('static assets live under public/ so no outputDirectory override is needed', () => {

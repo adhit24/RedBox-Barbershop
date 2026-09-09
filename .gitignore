@@ -120,3 +120,12 @@ Laporan_Gaji_*.csv
 *GAJI*.csv
 *gaji*.csv
 
+# Local runtime DBs and worktrees
+agentdb.rvf*
+ruvector.db*
+worktrees/
+archive/
+android/.gradle/
+android/build/
+
+

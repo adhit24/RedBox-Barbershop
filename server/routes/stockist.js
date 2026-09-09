@@ -26,6 +26,7 @@ const {
   calculateAssetValue, summarizeAssetLocations, buildAttentionItems, summarizeActiveTransfers,
 } = require('../services/stockistDashboard');
 const { isServiceConsumable, isFoodOrBeverageProduct } = require('../services/stockistInventory');
+const { getStockistBackofficeData, getStockistMovementChart } = require('../services/stockistBackofficeDashboard');
 
 // A push notification failing (e.g. no subscription, provider outage) must
 // never fail the transaction it's attached to — every call site awaits this
@@ -2010,6 +2011,39 @@ function createStockistRoutes(supabase, adminAuth, notifications = require('../s
         branches: isOwner ? branchAssetValue : null,
       },
     });
+  });
+
+  // ─── BACKOFFICE STOCKIST & INVENTORY MONITORING DASHBOARD ───────
+  // Read-only executive monitoring for Backoffice. Single source of truth
+  // is the existing Stockist database. Never creates its own inventory data.
+  router.get('/backoffice-dashboard', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    try {
+      const data = await getStockistBackofficeData(supabase, access);
+      return res.json(data);
+    } catch (err) {
+      console.error('[StockistBackofficeDashboard] failed:', err.message);
+      return res.status(500).json({ error: 'Data inventory belum dapat dimuat.' });
+    }
+  });
+
+  // ─── BACKOFFICE INVENTORY MOVEMENT CHART (from daily summary) ───
+  router.get('/movement-chart', adminAuth, async (req, res) => {
+    const access = requireAccess(req, res);
+    if (!access) return;
+
+    const days = req.query.days || 7;
+    const branch = req.query.branch || null;
+
+    try {
+      const data = await getStockistMovementChart(supabase, access, { days, branch });
+      return res.json(data);
+    } catch (err) {
+      console.error('[StockistMovementChart] failed:', err.message);
+      return res.status(500).json({ error: 'Data pergerakan inventory belum tersedia.' });
+    }
   });
 
   return router;
