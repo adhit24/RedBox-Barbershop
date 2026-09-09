@@ -1,9 +1,8 @@
 'use strict';
 
 const { REDBOX_SERVICES } = require('../../../../public/js/services-data');
-const { validateKnowledge } = require('./validateKnowledge');
+const { validateKnowledge, KNOWLEDGE_VERSION } = require('./validateKnowledge');
 
-const KNOWLEDGE_VERSION = 'reddy_knowledge.v0.2';
 const BRANCH_IDS = Object.freeze(['bypass', 'samadikun', 'csb', 'sumber', 'tegal']);
 const SERVICE_ALIAS_EXTRAS = Object.freeze({
   'gentleman-grooming': ['redbox gentleman grooming', 'gentleman grooming', 'haircut', 'hair cut', 'potong rambut', 'potong', 'fade'],

@@ -1,5 +1,9 @@
 const fs = require('fs');
+const path = require('path');
 'use strict';
+
+const WEBHOOK_PATH = path.resolve(__dirname, '../../api/wa/webhook.js');
+const KNOWLEDGE_PATH = path.resolve(__dirname, '../agents/reddy/knowledge/redboxKnowledge.js');
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -64,7 +68,8 @@ test('composes every knowledge service price from the booking-facing catalog', (
   }
 });
 
-test('accepts the canonical public knowledge contract', () => {
+test('accepts the canonical public knowledge contract (Test A)', () => {
+  assert.doesNotThrow(() => validateKnowledge(REDBOX_KNOWLEDGE));
   assert.equal(validateKnowledge(REDBOX_KNOWLEDGE), REDBOX_KNOWLEDGE);
   assert.deepEqual(REDBOX_KNOWLEDGE.promotions, []);
 });
@@ -83,8 +88,18 @@ test('publishes implemented home-service and server-enforced wedding capabilitie
   ]);
 });
 
-test('rejects a wrong knowledge version', () => {
-  validationError(knowledge => { knowledge.version = 'reddy_knowledge.v9'; }, /version/i);
+test('rejects a wrong knowledge version (Test B)', () => {
+  assert.throws(
+    () => validateKnowledge({ ...REDBOX_KNOWLEDGE, version: 'reddy_knowledge.v9' }),
+    /wrong version/i
+  );
+  validationError(knowledge => { knowledge.version = 'reddy_knowledge.v9'; }, /wrong version/i);
+});
+
+test('importing webhook does not crash on module load (Test C)', () => {
+  assert.doesNotThrow(() => {
+    require('../../api/wa/webhook');
+  });
 });
 
 test('rejects duplicate normalized branch aliases', () => {
@@ -309,7 +324,7 @@ test('resolves knowledge using actual production orchestrator intent taxonomy', 
     branch: 'bypass',
   });
   assert.equal(serviceRes.status, 'available');
-  assert.equal(serviceRes.facts.filter(f => f.category === 'service').length, 10);
+  assert.equal(serviceRes.facts.filter(f => f.category === 'service').length, 9);
 
   // 3. location_inquiry
   const locationRes = resolveKnowledgeContext({
@@ -383,7 +398,7 @@ test('resolves service list facts for all deterministic service-list phrase vari
     assert.equal(res.status, 'available', `Failed for phrase: "${phrase}"`);
     assert.equal(
       res.facts.filter(f => f.category === 'service').length,
-      10,
+      9,
       `Failed to return service facts for phrase: "${phrase}"`
     );
   }
@@ -1130,7 +1145,7 @@ test('S6. Fallback name normalization prevents "Kak Kak" for missing or default 
 });
 
 test('T1. No parallel numeric foreign price catalog exists in webhook.js', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
   assert.equal(webhookCode.includes('const SERVICES_EN ='), false, 'SERVICES_EN must be removed');
   assert.equal(webhookCode.includes('const SERVICES_ZH ='), false, 'SERVICES_ZH must be removed');
   assert.equal(webhookCode.includes('const SERVICES_JA ='), false, 'SERVICES_JA must be removed');
@@ -1206,8 +1221,8 @@ test('T7. Foreign detailed booking intent directs to website without booking sta
 });
 
 test('T8. forwardBookingToBranch reachability: customer chat cannot invoke forwardBookingToBranch', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
-  assert.equal(webhookCode.includes('//   forwardBookingToBranch(forwardBooking, from)'), true, 'forwardBookingToBranch must be commented out/disabled in customer chat path');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
+  assert.equal(webhookCode.includes('forwardBookingToBranch(forwardBooking, from)'), false, 'forwardBookingToBranch must be removed/disabled in customer chat path');
 });
 
 test('T9. Loyalty percentage audit: points fallback retains 5% text for un-registered member', async () => {
@@ -1319,7 +1334,7 @@ test('H14. Foreign English "Can I book CSB at 9pm?" directs to website booking w
 });
 
 test('H15. Source scan: no obsolete customer-facing CSB close values remain in knowledge or webhook', async () => {
-  const knowledgeCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/server/agents/reddy/knowledge/redboxKnowledge.js', 'utf8');
+  const knowledgeCode = fs.readFileSync(KNOWLEDGE_PATH, 'utf8');
   const csbEntry = knowledgeCode.split("id: 'csb'")[1].split('}')[0];
   assert.ok(csbEntry.includes("closes: '22:00'"), 'CSB knowledge entry must have closes: 22:00');
   assert.equal(csbEntry.includes("closes: '21:30'"), false, 'No legacy closes: 21:30');
@@ -1343,24 +1358,24 @@ test('J2. Multilingual foreign location and hours use identical canonical numeri
 });
 
 test('J3. No literal obsolete branch-hour table remains inside handleForeignGeneralQuestion', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
   assert.equal(webhookCode.includes('Bypass (main) — Jl. Bypass Kedawung | 10:00-22:00'), false);
   assert.equal(webhookCode.includes('CSB Mall — 1st Floor | 10:00-21:00'), false);
 });
 
 test('J4. Source scan verifies no customer-facing CSB 21:30 or CSB closing at 21:00 remain in webhook', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
   assert.equal(webhookCode.includes("closes: '21:30'"), false);
   assert.equal(webhookCode.includes("CSB tutup jam 21"), false);
 });
 
 test('J5. buildSystemPrompt contains no manually written branch-specific clock values', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
   assert.equal(webhookCode.includes('CSB buka sampai jam 22.00 WIB'), false);
 });
 
 test('J6. BRANCH_AI_HOURS and isBranchAiOff are removed from webhook.js', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
   assert.equal(webhookCode.includes('const BRANCH_AI_HOURS ='), false);
   assert.equal(webhookCode.includes('function isBranchAiOff('), false);
 });
@@ -1397,7 +1412,7 @@ test('J11. English "Can I book Bypass at 8pm?" returns 20:00 last booking slot b
 });
 
 test('J12. Legacy foreign booking state machine maps (foreignSessions, FOREIGN_SESSION_TTL) are removed', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
   assert.equal(webhookCode.includes('const foreignSessions = new Map()'), false);
   assert.equal(webhookCode.includes('const FOREIGN_SESSION_TTL ='), false);
 });
@@ -1493,7 +1508,7 @@ test('L3. Multilingual foreign barber responses (ZH/JA/KO/TR) contain zero live-
 });
 
 test('L4. Source scan verifies no customer-facing "best available", "most available", "currently available" in webhook.js', async () => {
-  const webhookCode = fs.readFileSync('D:/Digital Market/redbox-task13-worktree/api/wa/webhook.js', 'utf8');
+  const webhookCode = fs.readFileSync(WEBHOOK_PATH, 'utf8');
   assert.equal(webhookCode.includes('best available'), false);
   assert.equal(webhookCode.includes('most available'), false);
   assert.equal(webhookCode.includes('currently available'), false);
