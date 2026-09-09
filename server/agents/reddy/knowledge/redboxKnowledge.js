@@ -13,6 +13,15 @@ const SERVICE_ALIAS_EXTRAS = Object.freeze({
   'down-perm': ['down perm', 'root lift'],
   shaving: ['shaving', 'cukur jenggot', 'cukur kumis'],
   'men-massage': ['men massage', 'men massage service', 'pijat pria'],
+  'hair-smoothing': [
+    'treatment smoothing & shave',
+    'treatment smoothing',
+    'hair smoothing',
+    'smoothing rambut',
+    'smoothing',
+    'rebonding',
+    'lurusin',
+  ],
 });
 
 function uniqueAliases(name, extras = []) {

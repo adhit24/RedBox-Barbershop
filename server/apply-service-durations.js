@@ -33,7 +33,7 @@ const DURATIONS = [
   { min: 180, names: ['Hair Bleaching'] },
   { min: 180, names: ['Hair Highlighting'] },
   { min: 90,  names: ['Hair Curly'] },
-  { min: 90,  names: ['Hair Smoothing'] },
+  { min: 90,  names: ['Hair Smoothing', 'Treatment Smoothing & Shave'] },
   { min: 30,  names: ['Hair Spa'] },
   { min: 60,  names: ['Down Perm / Root Lift', 'Down Perm', 'Root Lift'] },
   { min: 30,  names: ['Traditional Shaving'] },

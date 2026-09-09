@@ -84,13 +84,13 @@ const REDBOX_SERVICES = [
  {
  id: 'hair-smoothing',
  category: 'haircut',
- name: 'Hair Smoothing',
+ name: 'Treatment Smoothing & Shave',
  icon: '',
  img: 'Brand_assets/Services/Hair_Smoothing.jpg',
  duration: '90 menit',
- price: 360000,
- csbPrice: 370000,
- desc: 'Meluruskan dan menghaluskan rambut agar lebih mudah diatur and berkilau.'
+ price: 450000,
+ csbPrice: 450000,
+ desc: 'Perawatan lengkap untuk rambut yang lebih halus, rapi, dan mudah diatur, dipadukan dengan shaving untuk memberikan hasil grooming yang lebih bersih dan polished.'
  },
  {
  id: 'hair-spa',

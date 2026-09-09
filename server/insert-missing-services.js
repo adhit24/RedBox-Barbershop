@@ -26,7 +26,7 @@ const SERVICES = [
   { name: 'Hair Bleaching',                slug: 'hair-bleaching',                duration_minutes: 180, moka_variant_name: 'Hair Bleaching' },
   { name: 'Hair Highlighting',             slug: 'hair-highlighting',             duration_minutes: 180, moka_variant_name: 'Hair Highlighting' },
   { name: 'Hair Curly',                    slug: 'hair-curly',                    duration_minutes: 90,  moka_variant_name: 'Hair Curly' },
-  { name: 'Hair Smoothing',                slug: 'hair-smoothing',                duration_minutes: 90,  moka_variant_name: 'Hair Smoothing' },
+  { name: 'Treatment Smoothing & Shave',   slug: 'hair-smoothing',                duration_minutes: 90,  moka_variant_name: 'Hair Smoothing' },
   { name: 'Hair Spa',                      slug: 'hair-spa',                      duration_minutes: 30,  moka_variant_name: 'Hair Spa' },
   { name: 'Down Perm / Root Lift',         slug: 'down-perm-root-lift',           duration_minutes: 60,  moka_variant_name: 'Down Perm' },
   { name: 'Traditional Shaving',           slug: 'traditional-shaving',           duration_minutes: 30,  moka_variant_name: 'Traditional Shaving' },
