@@ -147,7 +147,7 @@ export function MokaIntegration() {
 
   useEffect(() => {
     getMokaBranchHealth()
-      .then((data) => setBranches({ status: 'ready', data: data.branches }))
+      .then((data) => setBranches({ status: 'ready', data: data?.branches ?? [] }))
       .catch((err) => setBranches({ status: 'error', message: err?.message || 'Gagal memuat status cabang.' }));
   }, []);
 
@@ -271,7 +271,7 @@ export function MokaIntegration() {
         {branches.status === 'error' && <ErrorState message={branches.message} />}
         {branches.status === 'ready' && (
           <div className="grid grid-cols-1 gap-3.5 p-4 sm:p-5 lg:grid-cols-2">
-            {branches.data.map((b) => (
+            {(branches.data ?? []).map((b) => (
               <div
                 key={b.outletId}
                 data-testid={`branch-health-${b.slug}`}
