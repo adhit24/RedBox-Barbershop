@@ -1,22 +1,34 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ExceptionReview } from '../ExceptionReview';
 
 describe('ExceptionReview', () => {
-  it('shows the DEMO badge', () => {
+  it('does NOT render DemoBadge or fake exception records', () => {
     render(<ExceptionReview />, { wrapper: MemoryRouter });
-    expect(screen.getByText(/DEMO/i)).toBeInTheDocument();
+
+    // Verify NO DemoBadge
+    expect(screen.queryByText(/DEMO/i)).toBeNull();
+
+    // Verify NO fake person tickets
+    expect(screen.queryByText('Rizky Pratama')).toBeNull();
+    expect(screen.queryByText('Andra Wijaya')).toBeNull();
+    expect(screen.queryByText('Bagus Setiawan')).toBeNull();
+    expect(screen.queryByText(/Exception Menunggu/i)).toBeNull();
   });
 
-  it('selects the first exception by default', () => {
+  it('renders honest empty state stating module is not connected', () => {
     render(<ExceptionReview />, { wrapper: MemoryRouter });
-    expect(screen.getAllByText('Terlambat 22 menit').length).toBeGreaterThan(0);
-  });
 
-  it('switches the detail panel when another exception is clicked', () => {
-    render(<ExceptionReview />, { wrapper: MemoryRouter });
-    fireEvent.click(screen.getByText('Andra Wijaya'));
-    expect(screen.getAllByText('Missing check-out').length).toBeGreaterThan(0);
+    expect(screen.getByText('Exception Review')).toBeInTheDocument();
+    expect(screen.getByText('Belum tersedia')).toBeInTheDocument();
+    expect(
+      screen.getByText('Belum ada data exception yang terhubung')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Modul exception attendance belum terhubung ke database operasional/i
+      )
+    ).toBeInTheDocument();
   });
 });

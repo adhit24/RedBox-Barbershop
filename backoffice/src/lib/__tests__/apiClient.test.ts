@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const getSession = vi.fn();
+const { getSession } = vi.hoisted(() => ({
+  getSession: vi.fn(),
+}));
 
 vi.mock('../supabase', () => ({
   supabase: {

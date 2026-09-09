@@ -189,6 +189,22 @@ function membershipChangeErrorStatus(error) {
   return conflicts.some((known) => message.includes(known)) ? 409 : 500;
 }
 
+// HR employee/barber endpoints are owner (network-wide) or manager
+// (own-branch-only) — the branch scope MUST come from the verified session,
+// never from a client-supplied query param. Fails closed for any other role
+// or a branch-scoped manager with no branch on their profile.
+function resolveHrBranchScope(req) {
+  const auth = req.adminAuth;
+  if (!auth?.sessionVerified) return null;
+  if (auth.role === 'owner') return { role: 'owner', branch: null };
+  if (auth.role === 'manager') {
+    const branch = typeof auth.branch === 'string' ? auth.branch.trim().toLowerCase() : '';
+    if (!branch) return null;
+    return { role: 'manager', branch };
+  }
+  return null;
+}
+
 function createMembershipRegistrationRoutes(supabase, { rateLimiters = [] } = {}) {
   const router = express.Router();
 
@@ -1972,6 +1988,229 @@ Terima kasih 🙏
       skipped,
       failed,
     });
+  });
+
+  // ── GET /api/admin/crm/employees ─────────────────────────────────────────────
+  router.get('/employees', adminAuth, async (req, res) => {
+    try {
+      const scope = resolveHrBranchScope(req);
+      if (!scope) return res.status(403).json({ error: 'Forbidden' });
+
+      const { business_unit, is_active } = req.query;
+      let query = supabase
+        .from('employees')
+        .select('id, employee_code, name, nickname, business_unit, branch, branch_name, position, employment_type, payroll_type, is_active, join_date')
+        .order('business_unit', { ascending: true })
+        .order('name', { ascending: true });
+
+      if (business_unit) {
+        query = query.eq('business_unit', business_unit);
+      }
+      // Manager scope is derived from the verified session only — a
+      // client-supplied `branch` query param is never trusted for
+      // restricting or widening access to another branch's HR data.
+      if (scope.role === 'manager') {
+        query = query.eq('branch', scope.branch);
+      } else if (req.query.branch) {
+        query = query.eq('branch', req.query.branch);
+      }
+      if (is_active !== undefined) {
+        query = query.eq('is_active', is_active === 'true' || is_active === true);
+      } else {
+        query = query.eq('is_active', true);
+      }
+
+      const { data: employees, error } = await query;
+      if (error) {
+        console.error('[AdminCRM] Failed to load employees:', error);
+        return res.status(500).json({ error: 'Failed to load employee data' });
+      }
+
+      const all = (employees || []).map(e => ({ ...e, payroll_type: 'Gaji' }));
+      const sundazeCount = all.filter(e => e.business_unit === 'Sundaze').length;
+      const redboxCount = all.filter(e => e.business_unit === 'Redbox').length;
+
+      return res.json({
+        ok: true,
+        total: all.length,
+        sundaze_count: sundazeCount,
+        redbox_count: redboxCount,
+        employees: all,
+      });
+    } catch (err) {
+      console.error('[AdminCRM] Unexpected error in employees list:', err);
+      return res.status(500).json({ error: 'Failed to load employee data' });
+    }
+  });
+
+  // ── GET /api/admin/crm/employees/:id ──────────────────────────────────────────
+  router.get('/employees/:id', adminAuth, async (req, res) => {
+    try {
+      const scope = resolveHrBranchScope(req);
+      if (!scope) return res.status(403).json({ error: 'Forbidden' });
+
+      const { id } = req.params;
+      if (!id) return res.status(400).json({ error: 'id required' });
+
+      // If id explicitly targets a barber
+      if (id.startsWith('barber-')) {
+        const barberId = id.slice('barber-'.length);
+        const { data: barber, error } = await supabase
+          .from('barbers')
+          .select('id, name, branch, is_active')
+          .eq('id', barberId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[AdminCRM] Failed to lookup barber:', error);
+          return res.status(500).json({ error: 'Failed to load employee data' });
+        }
+        if (!barber) return res.status(404).json({ error: 'Barber not found' });
+        if (scope.role === 'manager' && barber.branch !== scope.branch) {
+          return res.status(403).json({ error: 'branch access denied' });
+        }
+
+        return res.json({
+          ok: true,
+          type: 'barber',
+          person: {
+            id: `barber-${barber.id}`,
+            code: barber.id,
+            name: barber.name,
+            nickname: null,
+            business_unit: 'Redbox Barbershop',
+            branch: barber.branch,
+            branch_name: barber.branch ? barber.branch.toUpperCase() : '—',
+            position: 'Kapster',
+            employment_type: 'barber',
+            payroll_type: 'Bagi Hasil',
+            is_active: barber.is_active,
+            join_date: null,
+          }
+        });
+      }
+
+      // Try employees table by UUID, employee_code, or stripped prefix
+      const cleanId = id.startsWith('emp-') ? id.slice('emp-'.length) : id;
+      let query = supabase
+        .from('employees')
+        .select('id, employee_code, name, nickname, business_unit, branch, branch_name, position, employment_type, payroll_type, is_active, join_date');
+
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId)) {
+        query = query.eq('id', cleanId);
+      } else {
+        query = query.eq('employee_code', cleanId);
+      }
+
+      const { data: emp, error: empErr } = await query.maybeSingle();
+      if (empErr) {
+        console.error('[AdminCRM] Failed to lookup employee:', empErr);
+        return res.status(500).json({ error: 'Failed to load employee data' });
+      }
+
+      if (emp) {
+        if (scope.role === 'manager' && emp.branch !== scope.branch) {
+          return res.status(403).json({ error: 'branch access denied' });
+        }
+        return res.json({
+          ok: true,
+          type: 'regular',
+          person: {
+            id: `emp-${emp.id}`,
+            code: emp.employee_code || emp.id.slice(0, 8),
+            name: emp.name,
+            nickname: emp.nickname,
+            business_unit: emp.business_unit === 'Sundaze' ? 'Sundaze Cafe' : 'Redbox Barbershop',
+            branch: emp.branch,
+            branch_name: emp.branch_name,
+            position: emp.position,
+            employment_type: emp.employment_type || 'regular',
+            payroll_type: 'Gaji',
+            is_active: emp.is_active,
+            join_date: emp.join_date,
+          }
+        });
+      }
+
+      // Fallback: check if id matches a barber id directly without prefix
+      const { data: barberDirect, error: barberDirectErr } = await supabase
+        .from('barbers')
+        .select('id, name, branch, is_active')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (barberDirectErr) {
+        console.error('[AdminCRM] Failed to lookup barber direct:', barberDirectErr);
+        return res.status(500).json({ error: 'Failed to load employee data' });
+      }
+
+      if (barberDirect) {
+        if (scope.role === 'manager' && barberDirect.branch !== scope.branch) {
+          return res.status(403).json({ error: 'branch access denied' });
+        }
+        return res.json({
+          ok: true,
+          type: 'barber',
+          person: {
+            id: `barber-${barberDirect.id}`,
+            code: barberDirect.id,
+            name: barberDirect.name,
+            nickname: null,
+            business_unit: 'Redbox Barbershop',
+            branch: barberDirect.branch,
+            branch_name: barberDirect.branch ? barberDirect.branch.toUpperCase() : '—',
+            position: 'Kapster',
+            employment_type: 'barber',
+            payroll_type: 'Bagi Hasil',
+            is_active: barberDirect.is_active,
+            join_date: null,
+          }
+        });
+      }
+
+      return res.status(404).json({ error: 'Personnel not found' });
+    } catch (err) {
+      console.error('[AdminCRM] Unexpected error in employees/:id:', err);
+      return res.status(500).json({ error: 'Failed to load employee data' });
+    }
+  });
+
+  // ── GET /api/admin/crm/role-counts ───────────────────────────────────────────
+  router.get('/role-counts', adminAuth, async (req, res) => {
+    try {
+      const auth = req.adminAuth;
+      if (!auth?.sessionVerified || auth.role !== 'owner') {
+        return res.status(403).json({ error: 'Forbidden: Owner role required' });
+      }
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('role');
+
+      if (error) {
+        console.error('[AdminCRM] Failed to query role counts:', error);
+        return res.status(500).json({ error: 'Failed to load role counts' });
+      }
+
+      const counts = {};
+      for (const row of (data || [])) {
+        const r = row.role || 'unknown';
+        counts[r] = (counts[r] || 0) + 1;
+      }
+
+      return res.json({
+        ok: true,
+        roles: {
+          owner: counts.owner || 0,
+          branch_admin: counts.branch_admin || 0,
+          manager: counts.manager || 0,
+          hr: counts.hr || 0,
+        },
+      });
+    } catch (err) {
+      console.error('[AdminCRM] Unexpected error in role-counts:', err);
+      return res.status(500).json({ error: 'Failed to load role counts' });
+    }
   });
 
   return router;

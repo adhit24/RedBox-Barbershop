@@ -25,7 +25,7 @@ const OWNER_OVERVIEW = {
 const CSB_DATA = {
   today: '2026-09-01',
   barbers: [
-    { id: 'b1', name: 'Ubay', branch: 'csb', attendance_status: 'hadir', today_count: 3 },
+    { id: 'b1', name: 'Barber Alpha', branch: 'csb', attendance_status: 'hadir', today_count: 3 },
     { id: 'b2', name: 'Dedi', branch: 'csb', attendance_status: 'terlambat', today_count: 1 },
   ],
   stats: { hadir: 3, tidak_hadir: 1, belum_check_in: 1, booking_today: 5, pending: 2, home_service_active: 0, moka_open_bills: 0 },
@@ -72,21 +72,48 @@ describe('AttendanceReport', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows real cross-branch Hadir/Terlambat/Tidak Hadir totals', async () => {
+  it('clearly states kapster-only scope and contains no contoh copy', async () => {
     mockFetch();
     renderPage();
 
     await waitFor(() => {
-      const hadirCard = cardOf(screen.getAllByText('Hadir')[0]);
+      expect(screen.getByText('Laporan Kehadiran Kapster')).toBeInTheDocument();
+    });
+
+    // Subtitle clearly states kapster scope and regular employee fingerprint not yet connected
+    expect(
+      screen.getByText(
+        /Data live saat ini mencakup kapster. Absensi karyawan reguler melalui fingerprint belum terhubung/i
+      )
+    ).toBeInTheDocument();
+
+    // Table header explicitly says Kapster
+    expect(screen.getByText('Kapster')).toBeInTheDocument();
+
+    // Footer explicitly states scope
+    expect(
+      screen.getByText(/Absensi karyawan reguler melalui mesin fingerprint belum terhubung/i)
+    ).toBeInTheDocument();
+
+    // Verify NO "contoh" text exists anywhere
+    expect(screen.queryByText(/contoh/i)).toBeNull();
+  });
+
+  it('shows real cross-branch Hadir/Terlambat/Tidak Hadir totals for kapster', async () => {
+    mockFetch();
+    renderPage();
+
+    await waitFor(() => {
+      const hadirCard = cardOf(screen.getAllByText('Kapster Hadir')[0]);
       // CSB hadir 3 + Bypass hadir 2 = 5
       expect(within(hadirCard).getByText('5')).toBeInTheDocument();
     });
 
-    const terlambatCard = cardOf(screen.getAllByText('Terlambat')[0]);
+    const terlambatCard = cardOf(screen.getAllByText('Kapster Terlambat')[0]);
     // Only Dedi (CSB) is terlambat = 1
     expect(within(terlambatCard).getByText('1')).toBeInTheDocument();
 
-    const tidakHadirCard = cardOf(screen.getAllByText('Tidak Hadir')[0]);
+    const tidakHadirCard = cardOf(screen.getAllByText('Kapster Tidak Hadir')[0]);
     // CSB tidak_hadir 1 + Bypass tidak_hadir 0 = 1
     expect(within(tidakHadirCard).getByText('1')).toBeInTheDocument();
   });
@@ -101,7 +128,7 @@ describe('AttendanceReport', () => {
     });
   });
 
-  it('renders a real per-branch table with real Karyawan counts and honest unavailable Exception column', async () => {
+  it('renders a real per-branch table with real Kapster counts and honest unavailable Exception column', async () => {
     mockFetch();
     renderPage();
 

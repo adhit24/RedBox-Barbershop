@@ -86,9 +86,13 @@ export function AttendanceReport() {
   return (
     <>
       <Link to="/reports" className="mb-2.5 inline-block text-sm font-semibold text-rb-text-muted">← Reports</Link>
-      <PageHeader title="Attendance Report" subtitle="Ringkasan kehadiran dan exception operasional" actions={<LiveBadge partial />} />
+      <PageHeader
+        title="Laporan Kehadiran Kapster"
+        subtitle="Data live saat ini mencakup kapster. Absensi karyawan reguler melalui fingerprint belum terhubung."
+        actions={<LiveBadge partial />}
+      />
 
-      {state.status === 'loading' && <LoadingState label="Memuat data attendance..." />}
+      {state.status === 'loading' && <LoadingState label="Memuat data attendance kapster..." />}
       {state.status === 'error' && <ErrorState message={state.message} />}
 
       {state.status === 'ready' && (
@@ -100,15 +104,15 @@ export function AttendanceReport() {
           )}
 
           <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard value={state.totalHadir} label="Hadir" tint="green" />
-            <StatCard value={state.totalTerlambat} label="Terlambat" tint="orange" />
-            <StatCard value={state.totalTidakHadir} label="Tidak Hadir" tint="red" />
+            <StatCard value={state.totalHadir} label="Kapster Hadir" tint="green" />
+            <StatCard value={state.totalTerlambat} label="Kapster Terlambat" tint="orange" />
+            <StatCard value={state.totalTidakHadir} label="Kapster Tidak Hadir" tint="red" />
             <StatCard value="—" label="Attendance Exceptions" trend="Belum tersedia" tint="blue" />
           </section>
 
           <div className="rounded-rb-card border border-rb-border bg-rb-surface overflow-hidden">
             <div className="grid grid-cols-6 gap-2 border-b border-rb-divider px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-rb-text-muted">
-              <div>Cabang</div><div>Karyawan</div><div>Hadir</div><div>Terlambat</div><div>Tidak Hadir</div><div>Exception</div>
+              <div>Cabang</div><div>Kapster</div><div>Hadir</div><div>Terlambat</div><div>Tidak Hadir</div><div>Exception</div>
             </div>
             <div className="flex flex-col divide-y divide-rb-divider">
               {state.rows.map((r) => (
@@ -125,9 +129,8 @@ export function AttendanceReport() {
           </div>
 
           <p className="mt-4 text-[11.5px] text-rb-text-faint">
-            Hadir/Terlambat/Tidak Hadir bersumber dari status booking-day barber (data hari ini, lintas cabang).
-            Attendance Exceptions belum bersumber dari sistem produksi — modul Attendance HR khusus (check-in/
-            check-out fingerprint) masih memakai data contoh, belum representatif untuk laporan ini.
+            Hadir/Terlambat/Tidak Hadir bersumber dari status booking-day kapster (data hari ini, lintas cabang).
+            Absensi karyawan reguler melalui mesin fingerprint belum terhubung ke sistem laporan ini.
           </p>
         </>
       )}

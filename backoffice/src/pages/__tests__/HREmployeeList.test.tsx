@@ -1,66 +1,203 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { HREmployeeList } from '../HREmployeeList';
 
-const responses = {
-  all: {
-    source: 'database', filter: 'all',
-    kpis: { active_barbers: 28, regular_employees: 39, barber_branches: 5, active_business_units: 2 },
-    people: [
-      { id: 'barber:bypass-abdul', source: 'barbers', source_record_id: 'bypass-abdul', name: 'Abdul', nickname: null, business_unit: 'Redbox', position: 'Kapster', branch: 'bypass', branch_name: 'bypass', employment_type: 'commission-based', payroll_type: null, attendance_status: null, is_active: true },
-      { id: 'employee:1', source: 'employees', source_record_id: '1', name: 'Ayu Redbox', nickname: 'Ayu', business_unit: 'Redbox', position: 'Admin', branch: 'bypass', branch_name: 'Bypass', employment_type: 'regular', payroll_type: 'salary', attendance_status: null, is_active: true },
-      { id: 'employee:2', source: 'employees', source_record_id: '2', name: 'Sari Sundaze', nickname: 'Sari', business_unit: 'Sundaze', position: 'Barista', branch: 'bypass', branch_name: 'Bypass', employment_type: 'regular', payroll_type: 'salary', attendance_status: null, is_active: true },
-    ],
-    attendance: { available: false, label: 'Belum tersedia' },
+const byBranch: Record<string, unknown> = {
+  bypass: { barbers: [{ id: 'bypass-barber-alpha', name: 'Barber Alpha', branch: 'bypass', attendance_status: null, today_count: 0 }] },
+  csb: { barbers: [{ id: 'csb-barber-beta', name: 'Barber Beta', branch: 'csb', attendance_status: 'hadir', today_count: 3 }] },
+  samadikun: { barbers: [{ id: 'samadikun-barber-gamma', name: 'Barber Gamma', branch: 'samadikun', attendance_status: null, today_count: 0 }] },
+  sumber: { barbers: [{ id: 'sumber-barber-delta', name: 'Barber Delta', branch: 'sumber', attendance_status: null, today_count: 0 }] },
+  tegal: { barbers: [{ id: 'tegal-barber-epsilon', name: 'Barber Epsilon', branch: 'tegal', attendance_status: null, today_count: 0 }] },
+};
+
+const mockEmployees = [
+  {
+    id: 'emp-sd-001',
+    employee_code: 'SD-REG-001',
+    name: 'Employee Alpha',
+    nickname: 'Alpha',
+    business_unit: 'Sundaze',
+    branch: 'bypass',
+    branch_name: 'Bypass',
+    position: 'Barista',
+    employment_type: 'regular',
+    payroll_type: 'salary',
+    is_active: true,
   },
-  redbox: null,
-  sundaze: null,
-} as const;
+  {
+    id: 'emp-sd-002',
+    employee_code: 'SD-REG-002',
+    name: 'Employee Beta',
+    nickname: 'Beta',
+    business_unit: 'Sundaze',
+    branch: 'bypass',
+    branch_name: 'Bypass',
+    position: 'Barista',
+    employment_type: 'regular',
+    payroll_type: 'salary',
+    is_active: true,
+  },
+  {
+    id: 'emp-rb-001',
+    employee_code: 'RB-REG-001',
+    name: 'Employee Gamma',
+    nickname: 'Gamma',
+    business_unit: 'Redbox',
+    branch: 'bypass',
+    branch_name: 'Bypass',
+    position: 'Helper Cashier',
+    employment_type: 'regular',
+    payroll_type: 'salary',
+    is_active: true,
+  },
+];
 
 describe('HREmployeeList', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
-      const filter = new URL(String(input), 'https://example.test').searchParams.get('filter') as 'all' | 'redbox' | 'sundaze';
-      const base = responses.all;
-      if (filter === 'sundaze') return Promise.resolve(new Response(JSON.stringify({ ...base, filter, kpis: { active_barbers: 0, regular_employees: 23, barber_branches: 0, active_business_units: 1 }, people: [base.people[2]] }), { status: 200 }));
-      if (filter === 'redbox') return Promise.resolve(new Response(JSON.stringify({ ...base, filter, kpis: { active_barbers: 28, regular_employees: 16, barber_branches: 5, active_business_units: 1 }, people: base.people.slice(0, 2) }), { status: 200 }));
-      return Promise.resolve(new Response(JSON.stringify(base), { status: 200 }));
+      const url = String(input);
+      if (url.includes('/api/admin/crm/employees')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ok: true,
+              total: mockEmployees.length,
+              sundaze_count: 2,
+              redbox_count: 1,
+              employees: mockEmployees,
+            }),
+            { status: 200 }
+          )
+        );
+      }
+      const branch = new URL(url, 'https://example.test').searchParams.get('branch') ?? '';
+      return Promise.resolve(new Response(JSON.stringify(byBranch[branch] ?? { barbers: [] }), { status: 200 }));
     }));
   });
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it('renders database-driven HR KPIs and the unified barber plus employee directory', async () => {
+  it('renders real barber roster from all five branch command-center sources', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await screen.findByText('Abdul');
-    expect(screen.getByText('Ayu Redbox')).toBeInTheDocument();
-    expect(screen.getByText('Sari Sundaze')).toBeInTheDocument();
-    for (const [label, value] of [['Kapster Aktif', '28'], ['Karyawan Reguler', '39'], ['Cabang dengan Kapster', '5'], ['Unit Bisnis Live', '2']]) {
-      const card = screen.getByText(label).closest<HTMLElement>('.rounded-rb-card');
-      expect(card && within(card).getByText(value)).toBeInTheDocument();
-    }
-  });
-
-  it('recalculates counts and directory for Sundaze without inventing barber rows', async () => {
-    render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await screen.findByText('Abdul');
-    fireEvent.click(screen.getByRole('button', { name: 'Sundaze' }));
-    await waitFor(() => expect(screen.queryByText('Abdul')).not.toBeInTheDocument());
-    expect(screen.getByText('Sari Sundaze')).toBeInTheDocument();
-    expect(screen.queryByTestId('barber-reconciliation-note')).not.toBeInTheDocument();
-    const barberCard = screen.getByText('Kapster Aktif').closest<HTMLElement>('.rounded-rb-card');
-    expect(barberCard && within(barberCard).getByText('0')).toBeInTheDocument();
-  });
-
-  it('keeps attendance unavailable and discloses the unresolved reconciliation note without comparing against 27', async () => {
-    render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await screen.findByText('Abdul');
-    expect(screen.getAllByText('Belum tersedia')).toHaveLength(3);
-    const note = screen.getByTestId('barber-reconciliation-note');
-    expect(note).toHaveTextContent('Database mencatat 28 kapster aktif. Beberapa record ID/cabang masih menunggu rekonsiliasi owner dan tidak diubah dalam PR ini.');
-    expect(note).not.toHaveTextContent('27');
-    expect(note).not.toHaveTextContent('satu record');
+    await waitFor(() => expect(screen.getByText('Barber Alpha')).toBeInTheDocument());
+    expect(screen.getByText('Barber Beta')).toBeInTheDocument();
+    expect(screen.getByText('Barber Gamma')).toBeInTheDocument();
+    expect(screen.getByText('Barber Delta')).toBeInTheDocument();
+    expect(screen.getByText('Barber Epsilon')).toBeInTheDocument();
+    expect(screen.queryByText(/Barber Beta Santoso/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^DEMO/i)).not.toBeInTheDocument();
   });
+
+  it('labels database barbers with payroll type Bagi Hasil and does not fabricate attendance', async () => {
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Barber Alpha');
+    expect(screen.getAllByText('Kapster').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Bagi Hasil').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Komisi')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Belum tersedia').length).toBeGreaterThan(0);
+    expect(screen.getByText('Hadir')).toBeInTheDocument();
+  });
+
+  it('renders regular employees with payroll type Gaji and dynamic KPI counts', async () => {
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Employee Alpha');
+
+    // Check regular employees rendered
+    expect(screen.getByText('Employee Beta')).toBeInTheDocument();
+    expect(screen.getByText('Employee Gamma')).toBeInTheDocument();
+    expect(screen.getByText('SD-REG-001')).toBeInTheDocument();
+    expect(screen.getByText('RB-REG-001')).toBeInTheDocument();
+
+    // Check positions, business units, and payroll type Gaji
+    expect(screen.getAllByText('Barista').length).toBe(2);
+    expect(screen.getByText('Helper Cashier')).toBeInTheDocument();
+    expect(screen.getAllByText('Sundaze Cafe').length).toBe(2);
+    expect(screen.getAllByText('Gaji').length).toBe(3);
+
+    // KPI Cards check
+    // 5 barbers + 3 regular employees = 8 total
+    expect(screen.getByText('8')).toBeInTheDocument(); // Total Karyawan Aktif
+    expect(screen.getByText('Total Karyawan Aktif')).toBeInTheDocument();
+    expect(screen.getByText('Karyawan Reguler (2 SD · 1 RB)')).toBeInTheDocument();
+    expect(screen.getByText('Unit Bisnis Live')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument(); // 2 Live units: Redbox & Sundaze
+  });
+
+  it('supports category filters for Kapster, Sundaze, and Redbox Reguler', async () => {
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Employee Alpha');
+
+    // Click Sundaze filter
+    const sundazeBtn = screen.getByRole('button', { name: /^Sundaze/ });
+    fireEvent.click(sundazeBtn);
+
+    expect(screen.getByText('Employee Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Employee Beta')).toBeInTheDocument();
+    expect(screen.queryByText('Employee Gamma')).not.toBeInTheDocument();
+    expect(screen.queryByText('Barber Alpha')).not.toBeInTheDocument();
+
+    // Click Kapster filter
+    const kapsterBtn = screen.getByRole('button', { name: /^Kapster/ });
+    fireEvent.click(kapsterBtn);
+
+    expect(screen.getByText('Barber Alpha')).toBeInTheDocument();
+    expect(screen.getByText('Barber Beta')).toBeInTheDocument();
+    expect(screen.queryByText('Employee Alpha')).not.toBeInTheDocument();
+  });
+
+  it('proves all visible production counts are dynamic with zero hardcoded headcount constants', async () => {
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Employee Alpha');
+
+    // Dynamic footer text:
+    expect(
+      screen.getByText(/Data karyawan reguler \(3\) dan kapster \(5\) terhubung langsung ke database Supabase\./i)
+    ).toBeInTheDocument();
+
+    // Verify filter button counts are dynamic
+    expect(screen.getByRole('button', { name: 'Semua (8)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kapster (5)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sundaze (2)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Redbox Reguler (1)' })).toBeInTheDocument();
+  });
+
+  it('displays PARTIAL DATA badge and warning banner when employee API fails but branch commands succeed', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/admin/crm/employees')) {
+        return Promise.reject(new Error('Network error on employees service'));
+      }
+      const branch = new URL(url, 'https://example.test').searchParams.get('branch') ?? '';
+      return Promise.resolve(new Response(JSON.stringify(byBranch[branch] ?? { barbers: [] }), { status: 200 }));
+    }));
+
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Barber Alpha');
+
+    // Badge MUST be PARTIAL DATA, NEVER LIVE
+    expect(screen.getByText('PARTIAL DATA')).toBeInTheDocument();
+    expect(screen.queryByText('LIVE')).not.toBeInTheDocument();
+
+    // Outage warning banner must be visible
+    expect(screen.getByText('Layanan Data Karyawan Reguler Mengalami Gangguan')).toBeInTheDocument();
+
+    // Stat card should show error / not disguise outage as 0 regular employees
+    expect(screen.getByText('Error')).toBeInTheDocument();
+    expect(screen.getByText('Karyawan Reguler (Gagal Dimuat)')).toBeInTheDocument();
+  });
+
+  it('displays DATA UNAVAILABLE and error state when all services fail', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Backend completely unreachable'))));
+
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await waitFor(() => {
+      expect(screen.getByText('DATA UNAVAILABLE')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('LIVE')).not.toBeInTheDocument();
+    expect(screen.queryByText('PARTIAL DATA')).not.toBeInTheDocument();
+    expect(screen.getByText(/Layanan roster sedang tidak tersedia/i)).toBeInTheDocument();
+  });
 });
+
+

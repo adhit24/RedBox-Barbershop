@@ -393,9 +393,13 @@ export function Sidebar() {
         ...section,
         items: section.items
           .map((item) => {
-            const parentMatches = item.label.toLowerCase().includes(normalizedSearch);
-            const matchingChildren = item.children?.filter((child) =>
-              child.label.toLowerCase().includes(normalizedSearch)
+            const parentMatches =
+              item.label.toLowerCase().includes(normalizedSearch) ||
+              item.to.toLowerCase().includes(normalizedSearch);
+            const matchingChildren = item.children?.filter(
+              (child) =>
+                child.label.toLowerCase().includes(normalizedSearch) ||
+                child.to.toLowerCase().includes(normalizedSearch)
             );
 
             if (parentMatches) return item;

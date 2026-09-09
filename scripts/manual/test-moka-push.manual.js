@@ -4,8 +4,18 @@
  * Jalankan: node server/test-moka-push.js
  * Schedule ini dibuat dengan status='test' sehingga tidak mempengaruhi data real.
  */
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
-const { createClient } = require('@supabase/supabase-js');
+if (process.env.ALLOW_PRODUCTION_MUTATION !== 'true') {
+  console.error('[BLOCKED] This script creates test orders and mutates Supabase and Moka production.');
+  console.error('To run intentionally, specify ALLOW_PRODUCTION_MUTATION=true');
+  process.exit(1);
+}
+
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../server/.env') });
+const { createClient } = require(path.join(__dirname, '../../node_modules/@supabase/supabase-js'));
+const { assertSafeTestEnvironment } = require('../../server/utils/testSafety');
+
+assertSafeTestEnvironment({ operation: 'MOKA_PRODUCTION_PUSH', allowOverride: true });
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
@@ -61,7 +71,7 @@ async function main() {
 
   // 4. Push ke Moka
   console.log('\n=== Push ke Moka ===');
-  const { pushScheduleToMoka } = require('./moka/sync');
+  const { pushScheduleToMoka } = require('../../server/moka/sync');
 
   try {
     const result = await pushScheduleToMoka(supabase, schedule.id);

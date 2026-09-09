@@ -4,20 +4,37 @@ import { MemoryRouter } from 'react-router-dom';
 import { FingerprintImport } from '../FingerprintImport';
 
 describe('FingerprintImport', () => {
-  it('shows the DEMO badge', () => {
+  it('does NOT render DemoBadge or fake import counts', () => {
     render(<FingerprintImport />, { wrapper: MemoryRouter });
-    expect(screen.getByText(/DEMO/i)).toBeInTheDocument();
+
+    // Verify NO DemoBadge
+    expect(screen.queryByText(/DEMO/i)).toBeNull();
+
+    // Verify NO fake import counts or stats
+    expect(screen.queryByText('312')).toBeNull();
+    expect(screen.queryByText(/Records Diimport/i)).toBeNull();
+    expect(screen.queryByText(/Karyawan Cocok/i)).toBeNull();
+    expect(screen.queryByText(/Hasil Import Terakhir/i)).toBeNull();
   });
 
-  it('renders the last-import summary stats', () => {
+  it('renders honest unavailable empty state', () => {
     render(<FingerprintImport />, { wrapper: MemoryRouter });
-    expect(screen.getByText('Records Diimport')).toBeInTheDocument();
-    expect(screen.getByText('312')).toBeInTheDocument();
+
+    expect(screen.getByText('Import Fingerprint')).toBeInTheDocument();
+    expect(screen.getByText('Belum terhubung')).toBeInTheDocument();
+    expect(
+      screen.getByText('Riwayat impor mesin fingerprint belum tersedia')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Modul upload dan parsing akan diaktifkan setelah format mesin absensi tervalidasi/i)
+    ).toBeInTheDocument();
   });
 
-  it('links the Exceptions card to Exception Review', () => {
+  it('has disabled upload button clearly marked unavailable', () => {
     render(<FingerprintImport />, { wrapper: MemoryRouter });
-    const link = screen.getByRole('link', { name: /Exceptions/i });
-    expect(link.getAttribute('href')).toBe('/attendance/exceptions');
+
+    const btn = screen.getByRole('button', { name: /Pilih File/i });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveTextContent(/Tidak Tersedia/i);
   });
 });

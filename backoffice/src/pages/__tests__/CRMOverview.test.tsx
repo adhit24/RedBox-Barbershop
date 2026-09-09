@@ -42,12 +42,18 @@ describe('CRMOverview', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
   });
 
-  it('renders a sample customer row linking to Customer 360', async () => {
+  it('renders customer list labeled Daftar Pelanggan and NO "Contoh" copy', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(new Response(JSON.stringify(SEGMENTS_RESULT), { status: 200 }));
     render(<CRMOverview />, { wrapper: MemoryRouter });
     await waitFor(() => {
+      expect(screen.getByText('Daftar Pelanggan')).toBeInTheDocument();
       expect(screen.getByText('Bima Aditya')).toBeInTheDocument();
     });
+
+    // Verify NO "Contoh" copy
+    expect(screen.queryByText(/contoh/i)).toBeNull();
+    expect(screen.queryByText(/Customer 360 — Contoh/i)).toBeNull();
+
     const link = screen.getByRole('link', { name: /Bima Aditya/i });
     expect(link.getAttribute('href')).toBe('/crm/customers/phone%3A6281');
   });

@@ -114,3 +114,9 @@ redbox-barbershop-log-export-*.json
 
 # Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
 .superpowers/
+
+# Confidential payroll & salary CSVs — never commit
+Laporan_Gaji_*.csv
+*GAJI*.csv
+*gaji*.csv
+
