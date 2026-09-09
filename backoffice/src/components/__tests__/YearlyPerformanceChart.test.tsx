@@ -80,7 +80,7 @@ describe('YearlyPerformanceChart — Year view', () => {
 
   it('1. footer caption is present', () => {
     render(<YearlyPerformanceChart data={ACTUAL_DATA} />);
-    expect(screen.getByText(/Data aktual Januari–Agustus 2026 dari Moka POS/)).toBeInTheDocument();
+    expect(screen.getByText(/Database live diprioritaskan/)).toBeInTheDocument();
   });
 });
 
