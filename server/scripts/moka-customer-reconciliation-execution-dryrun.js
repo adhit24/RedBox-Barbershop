@@ -70,23 +70,25 @@ function parseCliArgs() {
   return options;
 }
 
-async function runExecutionDryRunPlanner() {
+async function runExecutionDryRunPlanner(options = {}) {
   loadEnvFile();
-  const cliOpts = parseCliArgs();
+  const cliOpts = { ...parseCliArgs(), ...options };
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseKey) {
-    console.log('AUDIT_NOT_EXECUTED: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
-    return { status: 'AUDIT_NOT_EXECUTED' };
+  let supabase = options.dbClient;
+  if (!supabase) {
+    if (!supabaseUrl || !supabaseKey) {
+      console.log('AUDIT_NOT_EXECUTED: Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables.');
+      return { status: 'AUDIT_NOT_EXECUTED' };
+    }
+    supabase = createClient(supabaseUrl, supabaseKey);
   }
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
 
   console.log('==================================================');
   console.log('TASK 17.3.2 — RECONCILIATION EXECUTION DRY-RUN PLANNER');
-  console.log('Target DB:', supabaseUrl);
+  console.log('Target DB:', supabaseUrl || 'Mock/Custom DB Client');
   console.log('Kill Switch Enabled:', isExecutionKillSwitchEnabled());
   console.log('Mode: READ ONLY (ZERO DB WRITES)');
   console.log('==================================================\n');
@@ -203,6 +205,22 @@ async function runExecutionDryRunPlanner() {
       fingerprint: executionPlan.plan_fingerprint,
       rollback_snapshot_preview: executionPlan.rollback_snapshot,
     });
+
+    console.log(`Candidate Group [Moka ID: ${mId}]:`);
+    for (const cand of candidateRows) {
+      const isCanonical = cand.id === executionPlan.canonical_customer_id;
+      console.log(`  ${isCanonical ? 'Canonical' : 'Duplicate'}: ${cand.id} (name: "${cand.name || ''}", phone: ${cand.phone_e164 || cand.wa || '-'})`);
+    }
+    console.log(`  Canonical:     ${executionPlan.canonical_customer_id || 'NONE (Manual Review)'}`);
+    console.log(`  Reason:        ${groupPlan.reason_code}`);
+    console.log(`  Confidence:    ${executionPlan.classification}`);
+    console.log(`  Validation:    ${validation.reason_code}`);
+    if (groupPlan.conflict_flags && groupPlan.conflict_flags.length > 0) {
+      console.log(`  Warnings:      ${groupPlan.conflict_flags.join(', ')}`);
+    }
+    console.log(`  Would relink:  transactions: ${executionPlan.planned_transaction_refs}, bookings: ${executionPlan.planned_booking_refs}, schedules: ${executionPlan.planned_schedule_refs}`);
+    console.log(`  Would retire:  ${executionPlan.duplicate_customer_ids.length > 0 ? executionPlan.duplicate_customer_ids.join(', ') : 'NONE'}`);
+    console.log(`  Mutation:      NONE (dry-run)\n`);
   }
 
   console.log('--- EXECUTION DRY-RUN SUMMARY ---');
