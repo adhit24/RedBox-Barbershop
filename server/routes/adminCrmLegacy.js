@@ -20,12 +20,11 @@ const { computeCustomerSegments, fetchVisitRows } = require('../crm/customerSegm
 const { computeBarberPerformance } = require('../crm/barberPerformanceService');
 
 function localDateStr(d = new Date()) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' });
 }
 
 function getMonthStart() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+  return `${localDateStr().slice(0, 7)}-01`;
 }
 
 // ── Moka CSV import: outlet name → slug ─────────────────────────────────────
@@ -398,8 +397,32 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
   // ─── COMMAND CENTER ──────────────────────────────────────────
   router.get('/command-center', adminAuth, async (req, res) => {
-    const branch = req.query.branch;
+    let branch = typeof req.query.branch === 'string' ? req.query.branch.trim().toLowerCase() : '';
+    const auth = req.adminAuth;
+
+    // Enforce role-based branch scoping
+    if (auth?.sessionVerified && (auth.role === 'manager' || auth.role === 'branch_admin')) {
+      const assignedBranch = typeof auth.branch === 'string' ? auth.branch.trim().toLowerCase() : '';
+      if (!assignedBranch) {
+        return res.status(403).json({ error: 'Forbidden: No assigned branch' });
+      }
+      if (branch && branch !== assignedBranch) {
+        return res.status(403).json({ error: 'Forbidden: Access to branch denied' });
+      }
+      branch = assignedBranch;
+    }
+
+    if (!branch) {
+      return res.status(400).json({ error: 'branch query parameter required' });
+    }
+
     const today = localDateStr();
+
+    const { data: outlet } = await supabase
+      .from('outlets')
+      .select('id, name, slug, last_polled_at')
+      .eq('slug', branch)
+      .maybeSingle();
 
     const { data: barbers } = await supabase
       .from('barbers')
@@ -428,15 +451,18 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
     const { data: bookings } = await supabase
       .from('bookings')
-      .select('id, status, time, barber_id, name, wa, service, notes')
+      .select('id, status, time, barber_id, name, wa, service, notes, type')
       .eq('date', today)
       .eq('location', branch);
 
     const allBookings = bookings || [];
+    const activeBookings = allBookings.filter(b => b.status !== 'cancelled');
     const pending = allBookings.filter(b => b.status === 'pending');
+
+    const isHomeService = (b) => b.type === 'home_service' || (b.notes || '').toUpperCase().includes('HOME SERVICE');
     const homeServiceActive = allBookings.filter(b =>
       ['departed','arrived','in_progress'].includes(b.status) &&
-      (b.notes || '').toUpperCase().includes('HOME SERVICE')
+      isHomeService(b)
     );
 
     const { data: countRows } = await supabase
@@ -448,17 +474,27 @@ function createAdminCrmRoutes(supabase, adminAuth) {
     for (const r of (countRows || [])) countMap[r.barber_id] = r.count;
 
     const alerts = [];
-    const nowHour = new Date().getHours();
+    const nowHour = parseInt(new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      hour12: false,
+      timeZone: 'Asia/Jakarta',
+    }).format(new Date()), 10);
 
     if (nowHour >= 10) {
       for (const b of belumCheckIn) {
-        const hasBookingToday = allBookings.some(bk => bk.barber_id === b.id);
+        const hasBookingToday = activeBookings.some(bk => bk.barber_id === b.id);
         if (hasBookingToday) {
           alerts.push({
             type: 'warning',
             message: `${b.name} belum check-in — ada booking hari ini`,
           });
         }
+      }
+      if (hadir.length === 0 && activeBookings.length > 0) {
+        alerts.push({
+          type: 'danger',
+          message: `Cabang memiliki ${activeBookings.length} booking hari ini tetapi belum ada barber yang hadir`,
+        });
       }
     }
 
@@ -471,27 +507,23 @@ function createAdminCrmRoutes(supabase, adminAuth) {
 
     const homePending = allBookings.filter(b =>
       b.status === 'confirmed' &&
-      (b.notes || '').toUpperCase().includes('HOME SERVICE')
+      isHomeService(b)
     );
     for (const bk of homePending) {
-      const [h, m] = bk.time.split(':').map(Number);
-      const schedMs = new Date().setHours(h, m, 0, 0);
-      const diffMin = (schedMs - Date.now()) / 60000;
-      if (diffMin <= 30 && diffMin > 0) {
-        alerts.push({
-          type: 'warning',
-          message: `Home service jam ${bk.time} (${bk.name}) — barber belum berangkat`,
-        });
+      if (typeof bk.time === 'string' && bk.time.includes(':')) {
+        const [h, m] = bk.time.split(':').map(Number);
+        const schedMs = new Date().setHours(h, m, 0, 0);
+        const diffMin = (schedMs - Date.now()) / 60000;
+        if (diffMin <= 30 && diffMin > 0) {
+          alerts.push({
+            type: 'warning',
+            message: `Home service jam ${bk.time} (${bk.name}) — barber belum berangkat`,
+          });
+        }
       }
     }
 
     // ── Moka open bills (GoShow walk-in) ──
-    const { data: outlet } = await supabase
-      .from('outlets')
-      .select('id')
-      .eq('slug', branch)
-      .maybeSingle();
-
     let mokaOpenBills = [];
     if (outlet) {
       const dayStart = today + 'T00:00:00+07:00';
@@ -525,18 +557,35 @@ function createAdminCrmRoutes(supabase, adminAuth) {
       });
     }
 
+    // Derive operational status for each barber
+    const barbersWithStatus = (barbers || []).map(b => {
+      const attStatus = attendMap[b.id] || null;
+      let opStatus = 'belum_check_in';
+      if (homeServiceActive.some(h => h.barber_id === b.id)) {
+        opStatus = 'home_service';
+      } else if (attStatus === 'hadir' || attStatus === 'terlambat') {
+        const isServing = activeBookings.some(bk => bk.barber_id === b.id && ['arrived', 'in_progress'].includes(bk.status));
+        opStatus = isServing ? 'serving' : 'available';
+      } else if (['izin', 'sakit', 'cuti'].includes(attStatus)) {
+        opStatus = 'absent';
+      }
+
+      return {
+        ...b,
+        attendance_status: attStatus,
+        operational_status: opStatus,
+        today_count: countMap[b.id] || 0,
+      };
+    });
+
     return res.json({
       today,
-      barbers: (barbers || []).map(b => ({
-        ...b,
-        attendance_status: attendMap[b.id] || null,
-        today_count: countMap[b.id] || 0,
-      })),
+      barbers: barbersWithStatus,
       stats: {
         hadir: hadir.length,
         tidak_hadir: tidakHadir.length,
         belum_check_in: belumCheckIn.length,
-        booking_today: allBookings.length,
+        booking_today: activeBookings.length,
         pending: pending.length,
         home_service_active: homeServiceActive.length,
         moka_open_bills: mokaOpenBills.length,
@@ -548,6 +597,10 @@ function createAdminCrmRoutes(supabase, adminAuth) {
         .slice(0, 10),
       moka_open_bills: mokaOpenBills,
       alerts,
+      freshness: {
+        booking: 'live',
+        moka: outlet?.last_polled_at || null,
+      },
     });
   });
 
