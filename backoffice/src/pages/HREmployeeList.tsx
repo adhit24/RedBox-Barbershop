@@ -73,7 +73,7 @@ export function HREmployeeList() {
 
           {filter !== 'sundaze' && (
             <div className="mb-4 rounded-rb-card border border-rb-orange-tint-fg/25 bg-rb-orange-tint-bg px-4 py-3 text-sm text-rb-text-secondary" data-testid="barber-reconciliation-note">
-              Database saat ini mencatat {state.data.kpis.active_barbers} kapster aktif. Owner memperkirakan 27; satu record menunggu rekonsiliasi dan tidak diubah dalam PR ini.
+              Database mencatat {state.data.kpis.active_barbers} kapster aktif. Beberapa record ID/cabang masih menunggu rekonsiliasi owner dan tidak diubah dalam PR ini.
             </div>
           )}
 

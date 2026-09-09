@@ -12,7 +12,7 @@
       { "id": "regular_employees", "description": "Active regular rows in public.employees.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Karyawan Reguler", "field": "regular_employees", "format": "number" }] },
       { "id": "barber_branches", "description": "Distinct branches represented by active barbers.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Cabang dengan Kapster", "field": "barber_branches", "format": "number" }] },
       { "id": "business_units", "description": "Distinct business units in the active unified directory.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Unit Bisnis Live", "field": "business_units", "format": "number" }] },
-      { "id": "directory_total", "description": "Active people after source-aware duplicate suppression.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Direktori Aktif", "field": "directory_total", "format": "number" }] }
+      { "id": "directory_total", "description": "Active people from authoritative database records (barbers + regular employees).", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Direktori Aktif", "field": "directory_total", "format": "number" }] }
     ],
     "charts": [
       {

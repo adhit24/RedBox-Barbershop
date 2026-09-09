@@ -52,10 +52,8 @@ function mapEmployee(row) {
 function dedupePeople(people) {
   const unique = new Map();
   for (const person of people) {
-    const identity = [person.business_unit, person.name, person.position]
-      .map(normalizeName)
-      .join(':');
-    if (!unique.has(identity)) unique.set(identity, person);
+    if (!person || !person.id) continue;
+    if (!unique.has(person.id)) unique.set(person.id, person);
   }
   return [...unique.values()];
 }
@@ -118,10 +116,6 @@ function createHRPeopleRoutes(supabase, legacyAdminAuth) {
       kpis: summarizePeople(filteredPeople),
       people: filteredPeople,
       attendance: { available: false, label: 'Belum tersedia' },
-      reconciliation: {
-        owner_expected_active_barbers: 27,
-        status: 'pending_owner_review',
-      },
     });
   });
 

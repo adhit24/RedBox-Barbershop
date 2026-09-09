@@ -6,8 +6,12 @@ Production Supabase project: `khcvklzxfohwkyocenaf`
 ## Executive Summary
 
 - HR & People now reads active workforce records directly from `public.barbers` and `public.employees`; no import or production mutation is part of this change.
-- Production contains 28 active barbers and 39 active regular employees. The unified active directory has 67 people because no normalized-name overlap exists across the two sources.
-- The owner's expected active-barber count is 27. Three transferred-looking ID/branch mismatches need owner review, but this evidence does not identify which one person should be inactive.
+- Production contains 28 active barbers and 39 active regular employees. Database records are treated as authoritative identities (`barber:<barbers.id>` and `employee:<employees.id>`), yielding 67 active directory rows without unsafe name/position heuristic deduplication.
+- Active barber reconciliation status:
+  - Production database truth: 28 active barbers
+  - Owner historical expectation: 27
+  - Status: requires owner reconciliation
+  Three transferred-looking ID/branch mismatches need owner review, but this evidence does not identify which one person should be inactive.
 - Command Center technical log cards, placeholder controls, and attendance-absence-derived owner alerts were removed. Honest unavailable states remain visible as `—`.
 
 ## Workforce Metric Definitions
@@ -18,11 +22,22 @@ Production Supabase project: `khcvklzxfohwkyocenaf`
 | Karyawan Reguler | Active rows in `public.employees` with `employment_type = regular` | 39 |
 | Cabang dengan Kapster | Distinct branch among active barber rows | 5 |
 | Unit Bisnis Live | Distinct active workforce business unit after unified mapping | 2 |
-| Direktori Aktif | Active barber and regular-employee rows after source-aware duplicate suppression | 67 |
+| Direktori Aktif | Active barber and regular-employee rows (database records treated as authoritative identities) | 67 |
 
 The employee snapshot contains Redbox 16 and Sundaze 23. All 39 rows use payroll type `salary` and source period `26 Juli - 25 Agustus 2026`.
 
 ## Active Barber Reconciliation
+
+```text
+Production database truth:
+28 active barbers
+
+Owner historical expectation:
+27
+
+Status:
+requires owner reconciliation
+```
 
 | Name | ID | Branch | Active |
 |---|---|---|---|
@@ -109,10 +124,14 @@ No production Command Center mock array, random value, demo seed KPI, or fabrica
 
 ## Recommended Next Steps
 
-1. Owner identifies which active barber should be inactive after reviewing the 28-row roster and transfer mismatches.
-2. Add an explicit employee/barber identity-link field if one person can legitimately hold multiple workforce records; normalized names are only a conservative deduplication guard.
-3. Define attendance completeness and a check-in authority before re-enabling attendance KPIs or alerts.
-4. Expose a read-only Stockist summary and an official payroll-status endpoint before replacing those unavailable cards.
+1. Owner identifies which active barber should be inactive after reviewing the 28-row roster and transfer mismatches:
+   - Production database truth: 28 active barbers
+   - Owner historical expectation: 27
+   - Status: requires owner reconciliation
+2. Future review: confirm whether managers should have network-wide HR visibility across Redbox and Sundaze, or whether HR access must be owner-scoped / branch-scoped.
+3. Database records are authoritative identities. If duplicate physical people legitimately exist across `barbers` and `employees`, resolve this in the future via an explicit identity-link field in the database rather than heuristic name/position deduplication.
+4. Define attendance completeness and a check-in authority before re-enabling attendance KPIs or alerts.
+5. Expose a read-only Stockist summary and an official payroll-status endpoint before replacing those unavailable cards.
 
 ## Caveats
 

@@ -65,14 +65,24 @@ async function getPeople(base, filter) {
   return response.json();
 }
 
-test('HR API dynamically counts the current 28 active barbers and 39 regular employees', async () => {
+test('Case C: HR API dynamically counts 28 active barbers and 39 regular employees yielding 67 directory records from source rows without hardcoded expectations', async () => {
   await withServer(async (base, supabase) => {
     const body = await getPeople(base, 'all');
-    assert.deepEqual(body.kpis, { active_barbers: 28, regular_employees: 39, barber_branches: 5, active_business_units: 2 });
+    const barberCount = body.people.filter(person => person.source === 'barbers').length;
+    const employeeCount = body.people.filter(person => person.source === 'employees').length;
+    assert.equal(barberCount, 28);
+    assert.equal(employeeCount, 39);
+    assert.equal(body.people.length, barberCount + employeeCount);
     assert.equal(body.people.length, 67);
-    assert.equal(body.people.filter(person => person.source === 'barbers').length, 28);
-    assert.equal(body.people.filter(person => person.source === 'employees').length, 39);
+    assert.deepEqual(body.kpis, {
+      active_barbers: barberCount,
+      regular_employees: employeeCount,
+      barber_branches: 5,
+      active_business_units: 2,
+    });
     assert.deepEqual(body.attendance, { available: false, label: 'Belum tersedia' });
+    assert.equal('reconciliation' in body, false);
+    assert.equal(JSON.stringify(body).includes('27'), false);
     assert.deepEqual(supabase.operations.filter(operation => operation.type === 'from').map(operation => operation.table), ['users', 'barbers', 'employees']);
     assert.equal(supabase.operations.some(operation => ['insert', 'upsert', 'update', 'delete'].includes(operation.type)), false);
   });
@@ -91,12 +101,26 @@ test('Redbox and Sundaze filters recalculate every KPI from filtered database ro
   });
 });
 
-test('unified directory removes duplicate source rows without merging different positions', () => {
-  const base = { business_unit: 'Redbox', name: 'SAME Person', position: 'Admin' };
-  const people = dedupePeople([
-    { ...base, id: 'employee:1' },
-    { ...base, id: 'employee:1-duplicate' },
-    { ...base, id: 'employee:2', position: 'Finance' },
-  ]);
-  assert.deepEqual(people.map(person => person.id), ['employee:1', 'employee:2']);
+test('Case A: two employees with identical business unit, name, and position but different IDs both remain', () => {
+  const person1 = { id: 'employee:1', source: 'employees', business_unit: 'Redbox', name: 'Andi', position: 'Admin' };
+  const person2 = { id: 'employee:2', source: 'employees', business_unit: 'Redbox', name: 'Andi', position: 'Admin' };
+  const result = dedupePeople([person1, person2]);
+  assert.equal(result.length, 2);
+  assert.deepEqual(result.map(person => person.id), ['employee:1', 'employee:2']);
+});
+
+test('Case B: a barber and an employee with the same normalized name remain separate unless an explicit identity link exists', () => {
+  const barber = { id: 'barber:1', source: 'barbers', business_unit: 'Redbox', name: 'Andi', position: 'Kapster' };
+  const employee = { id: 'employee:1', source: 'employees', business_unit: 'Redbox', name: 'andi', position: 'Admin' };
+  const result = dedupePeople([barber, employee]);
+  assert.equal(result.length, 2);
+  assert.deepEqual(result.map(person => person.id), ['barber:1', 'employee:1']);
+});
+
+test('authoritative identity deduplication preserves single record when identical ID is provided', () => {
+  const employee1 = { id: 'employee:1', source: 'employees', business_unit: 'Redbox', name: 'Andi', position: 'Admin' };
+  const duplicate = { id: 'employee:1', source: 'employees', business_unit: 'Redbox', name: 'Andi', position: 'Admin' };
+  const result = dedupePeople([employee1, duplicate]);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, 'employee:1');
 });

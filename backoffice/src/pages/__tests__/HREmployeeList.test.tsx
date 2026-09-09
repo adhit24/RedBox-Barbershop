@@ -13,7 +13,6 @@ const responses = {
       { id: 'employee:2', source: 'employees', source_record_id: '2', name: 'Sari Sundaze', nickname: 'Sari', business_unit: 'Sundaze', position: 'Barista', branch: 'bypass', branch_name: 'Bypass', employment_type: 'regular', payroll_type: 'salary', attendance_status: null, is_active: true },
     ],
     attendance: { available: false, label: 'Belum tersedia' },
-    reconciliation: { owner_expected_active_barbers: 27, status: 'pending_owner_review' },
   },
   redbox: null,
   sundaze: null,
@@ -54,11 +53,14 @@ describe('HREmployeeList', () => {
     expect(barberCard && within(barberCard).getByText('0')).toBeInTheDocument();
   });
 
-  it('keeps attendance unavailable and discloses the unresolved 28-versus-27 reconciliation', async () => {
+  it('keeps attendance unavailable and discloses the unresolved reconciliation note without comparing against 27', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
     await screen.findByText('Abdul');
     expect(screen.getAllByText('Belum tersedia')).toHaveLength(3);
-    expect(screen.getByTestId('barber-reconciliation-note')).toHaveTextContent('Owner memperkirakan 27');
+    const note = screen.getByTestId('barber-reconciliation-note');
+    expect(note).toHaveTextContent('Database mencatat 28 kapster aktif. Beberapa record ID/cabang masih menunggu rekonsiliasi owner dan tidak diubah dalam PR ini.');
+    expect(note).not.toHaveTextContent('27');
+    expect(note).not.toHaveTextContent('satu record');
     expect(screen.queryByText(/^DEMO/i)).not.toBeInTheDocument();
   });
 });

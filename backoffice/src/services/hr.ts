@@ -29,10 +29,6 @@ export interface HRPeopleResponse {
   };
   people: HRPerson[];
   attendance: { available: false; label: 'Belum tersedia' };
-  reconciliation: {
-    owner_expected_active_barbers: number;
-    status: 'pending_owner_review';
-  };
 }
 
 export function getHRPeople(filter: WorkforceFilter): Promise<HRPeopleResponse> {
