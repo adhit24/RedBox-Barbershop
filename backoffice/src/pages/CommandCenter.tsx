@@ -14,8 +14,6 @@ import {
   MemberIcon,
   WalletClockIcon,
   BoxIcon,
-  SearchIcon,
-  BellIcon,
 } from '../components/icons';
 import {
   getOwnerOverview,
@@ -29,7 +27,6 @@ import {
   type BarberPerformanceResult,
   type MemberProfile,
 } from '../services/crm';
-import { getMokaSyncLogs, type MokaSyncLogEntry } from '../services/moka';
 import { getYearlyPerformance, type MonthlyPerformancePoint } from '../services/performance';
 import { YearlyPerformanceChart } from '../components/YearlyPerformanceChart';
 
@@ -43,8 +40,6 @@ interface BranchActivity {
   name: string;
   bookingToday: number;
   pending: number;
-  belumCheckIn: number;
-  alerts: { type: string; message: string }[];
 }
 
 const OPERATIONAL_TIMEZONE = 'Asia/Jakarta';
@@ -202,20 +197,15 @@ function SnapshotCard({
   );
 }
 
-const LIST_PREVIEW_COUNT = 5;
-
 export function CommandCenter() {
   const { currentUser } = useAuth();
   const [branch, setBranch] = useState('all');
-  const [timelineExpanded, setTimelineExpanded] = useState(false);
-  const [alertsExpanded, setAlertsExpanded] = useState(false);
 
   const [overview, setOverview] = useState<LoadState<OwnerOverview>>({ status: 'loading' });
   const [branchActivity, setBranchActivity] = useState<LoadState<{ items: BranchActivity[]; failedBranches: string[] }>>({ status: 'loading' });
   const [segments, setSegments] = useState<LoadState<CustomerSegmentsResult>>({ status: 'loading' });
   const [barberPerf, setBarberPerf] = useState<LoadState<BarberPerformanceResult>>({ status: 'loading' });
   const [membership, setMembership] = useState<LoadState<MemberProfile[]>>({ status: 'loading' });
-  const [mokaLogs, setMokaLogs] = useState<LoadState<MokaSyncLogEntry[]>>({ status: 'loading' });
   const [yearlyPerformance, setYearlyPerformance] = useState<LoadState<MonthlyPerformancePoint[]>>({ status: 'loading' });
 
   useEffect(() => {
@@ -247,8 +237,6 @@ export function CommandCenter() {
           name: b.name,
           bookingToday: data.stats.booking_today,
           pending: data.stats.pending,
-          belumCheckIn: data.stats.belum_check_in,
-          alerts: data.alerts,
         });
       });
 
@@ -279,12 +267,6 @@ export function CommandCenter() {
   }, []);
 
   useEffect(() => {
-    getMokaSyncLogs({ limit: 200 })
-      .then((data) => setMokaLogs({ status: 'ready', data: data.logs }))
-      .catch(() => setMokaLogs({ status: 'error', message: 'Terjadi kesalahan memuat log sinkronisasi Moka.' }));
-  }, []);
-
-  useEffect(() => {
     getYearlyPerformance(branch)
       .then((data) => setYearlyPerformance({ status: 'ready', data }))
       .catch(() => setYearlyPerformance({ status: 'error', message: 'Terjadi kesalahan memuat data performa tahunan.' }));
@@ -292,8 +274,6 @@ export function CommandCenter() {
 
   const bookingToday = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.bookingToday, 0) : null;
   const pendingTotal = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.pending, 0) : null;
-  const belumCheckInTotal = branchActivity.status === 'ready' ? branchActivity.data.items.reduce((s, b) => s + b.belumCheckIn, 0) : null;
-  const branchAlerts = branchActivity.status === 'ready' ? branchActivity.data.items.flatMap((b) => b.alerts.map((a) => ({ ...a, branch: b.name }))) : [];
 
   const todayJakarta = jakartaDateString(new Date().toISOString());
   const thisMonthJakarta = todayJakarta.slice(0, 7);
@@ -308,8 +288,6 @@ export function CommandCenter() {
     : null;
   const membershipIsNetworkWide = branch !== 'all';
 
-  const todayMokaLogs = mokaLogs.status === 'ready' ? mokaLogs.data.filter((l) => jakartaDateString(l.created_at) === todayJakarta) : [];
-
   const topBranch = branchActivity.status === 'ready' && branchActivity.data.items.length > 0
     ? [...branchActivity.data.items].sort((a, b) => b.bookingToday - a.bookingToday)[0]
     : null;
@@ -318,15 +296,6 @@ export function CommandCenter() {
     ? [...barberPerf.data.barbers].sort((a, b) => b.customers_served - a.customers_served)[0]
     : null;
 
-  const errorLogs = mokaLogs.status === 'ready' ? mokaLogs.data.filter((l) => l.status !== 'ok') : [];
-
-  const visibleTimeline = timelineExpanded ? todayMokaLogs : todayMokaLogs.slice(0, LIST_PREVIEW_COUNT);
-  const visibleErrorLogs = alertsExpanded ? errorLogs : errorLogs.slice(0, LIST_PREVIEW_COUNT);
-
-  // Live Branch Activity status pill — derived only from the branch's own real
-  // alerts[] payload (two-tier: Normal / Perlu Perhatian). No "Ramai" busy-tier is
-  // shown: that would require a booking-volume threshold with no defined business
-  // rule, which would be a fabricated signal rather than a real one.
   const actionItems: { key: string; icon: ReactNode; title: string; context: string; tint: TintKey; href: string; cta: string }[] = [];
   if (pendingTotal) {
     actionItems.push({
@@ -339,29 +308,6 @@ export function CommandCenter() {
       cta: 'Review',
     });
   }
-  if (belumCheckInTotal) {
-    actionItems.push({
-      key: 'checkin',
-      icon: <AlertClockIcon size={16} />,
-      title: `${belumCheckInTotal} barber belum check-in hari ini`,
-      context: 'Lintas cabang · hari ini',
-      tint: 'orange',
-      href: '/operations',
-      cta: 'Cek',
-    });
-  }
-  branchAlerts.forEach((a, i) => {
-    actionItems.push({
-      key: `alert-${i}`,
-      icon: <AlertClockIcon size={16} />,
-      title: a.message,
-      context: `${a.branch} · hari ini`,
-      tint: 'orange',
-      href: '/reports/branches',
-      cta: 'Cek',
-    });
-  });
-
   const dateSubtitle = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
@@ -380,22 +326,6 @@ export function CommandCenter() {
               Hari Ini
             </span>
             <LiveBadge />
-            <button
-              type="button"
-              disabled
-              aria-label="Cari"
-              className="flex h-9 w-9 items-center justify-center rounded-rb-button border border-rb-border bg-rb-surface text-rb-text-secondary disabled:cursor-default"
-            >
-              <SearchIcon size={16} />
-            </button>
-            <button
-              type="button"
-              disabled
-              aria-label="Notifikasi"
-              className="flex h-9 w-9 items-center justify-center rounded-rb-button border border-rb-border bg-rb-surface text-rb-text-secondary disabled:cursor-default"
-            >
-              <BellIcon size={16} />
-            </button>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-rb-purple-tint-bg text-[13px] font-semibold text-rb-purple-tint-fg">
               {initialsOf(currentUser?.label ?? 'Owner')}
             </div>
@@ -481,7 +411,7 @@ export function CommandCenter() {
               )}
               <div className="flex flex-col gap-2">
                 {branchActivity.data.items.map((b) => {
-                  const attention = b.alerts.length > 0;
+                  const attention = b.pending > 0;
                   return (
                     <Link
                       key={b.slug}
@@ -500,11 +430,11 @@ export function CommandCenter() {
                         className="whitespace-nowrap rounded-rb-pill px-2.5 py-1 text-xs font-semibold"
                         style={attention ? { background: TINT.red.bg, color: TINT.red.fg } : { background: TINT.green.bg, color: TINT.green.fg }}
                       >
-                        {attention ? 'Perlu Perhatian' : 'Normal'}
+                        {attention ? 'Booking perlu review' : 'Tidak ada booking pending'}
                       </span>
-                      {b.alerts.length > 0 && (
+                      {b.pending > 0 && (
                         <span className="whitespace-nowrap text-[11.5px] font-semibold" style={{ color: TINT.red.fg }}>
-                          {b.alerts.length} alert
+                          {b.pending} pending
                         </span>
                       )}
                     </Link>
@@ -554,101 +484,6 @@ export function CommandCenter() {
         </div>
       </div>
 
-      <div className="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Today's Operations Timeline */}
-        <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
-          <h2 className="mb-4 font-serif text-[17px] font-semibold text-rb-text">Today's Operations Timeline</h2>
-          {mokaLogs.status === 'loading' && <LoadingState />}
-          {mokaLogs.status === 'error' && <ErrorState message={mokaLogs.message} />}
-          {mokaLogs.status === 'ready' && (
-            todayMokaLogs.length === 0 ? (
-              <p className="py-6 text-center text-sm text-rb-text-muted">Belum ada aktivitas sinkronisasi hari ini.</p>
-            ) : (
-              <>
-                <div className="flex flex-col">
-                  {visibleTimeline.map((log, i) => {
-                    const isOk = log.status === 'success' || log.status === 'ok';
-                    const dotColor = isOk ? TINT.green.fg : TINT.red.fg;
-                    const isLast = i === visibleTimeline.length - 1;
-                    return (
-                      <div key={log.id} className="flex gap-3.5">
-                        <span className="w-10 shrink-0 text-[11.5px] font-semibold text-rb-text-muted">
-                          {new Date(log.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: OPERATIONAL_TIMEZONE })}
-                        </span>
-                        <div className="flex flex-col items-center">
-                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: dotColor }} />
-                          {!isLast && <span className="min-h-[22px] w-[1.5px] flex-1" style={{ background: '#EDE9DC' }} />}
-                        </div>
-                        <div className="min-w-0 flex-1 pb-4.5">
-                          <div className="text-[13.5px] font-medium text-rb-text">
-                            Sinkronisasi {log.direction} {log.entity_type} — {log.status}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {todayMokaLogs.length > LIST_PREVIEW_COUNT && (
-                  <button
-                    type="button"
-                    onClick={() => setTimelineExpanded((v) => !v)}
-                    className="mt-1 text-xs font-semibold text-rb-red"
-                  >
-                    {timelineExpanded ? 'Tampilkan lebih sedikit' : `Tampilkan semua (${todayMokaLogs.length}) →`}
-                  </button>
-                )}
-              </>
-            )
-          )}
-          <p className="mt-2 text-[11.5px] text-rb-text-faint">
-            Sumber: log sinkronisasi Moka. Belum ada log aktivitas untuk domain Attendance/Payroll/Stockist.
-          </p>
-        </div>
-
-        {/* Alerts & Exceptions */}
-        <div className="rounded-rb-card border border-rb-border bg-rb-surface p-5">
-          <h2 className="mb-3.5 font-serif text-[17px] font-semibold text-rb-text">Alerts &amp; Exceptions</h2>
-          {mokaLogs.status === 'loading' && <LoadingState />}
-          {mokaLogs.status === 'error' && <ErrorState message={mokaLogs.message} />}
-          {mokaLogs.status === 'ready' && (
-            errorLogs.length === 0 ? (
-              <p className="py-6 text-center text-sm text-rb-text-muted">Tidak ada exception sinkronisasi hari ini.</p>
-            ) : (
-              <>
-                <div className="flex flex-col gap-2.5">
-                  {visibleErrorLogs.map((log) => (
-                    <div key={log.id} className="flex items-start gap-[11px] rounded-xl p-[11px]" style={{ background: TINT.blue.bg }}>
-                      <span className="mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full" style={{ background: TINT.blue.fg }} />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[13.5px] font-semibold text-rb-text">
-                          Sinkronisasi {log.direction} {log.entity_type} gagal
-                        </div>
-                        <div className="mt-0.5 text-xs text-rb-text-muted">{log.error_message ?? 'Tidak ada detail error.'}</div>
-                      </div>
-                      <Link
-                        to="/moka"
-                        className="shrink-0 whitespace-nowrap rounded-lg border border-rb-border bg-rb-surface px-2.5 py-[5px] text-xs font-semibold text-rb-text-secondary no-underline"
-                      >
-                        Detail
-                      </Link>
-                    </div>
-                  ))}
-                </div>
-                {errorLogs.length > LIST_PREVIEW_COUNT && (
-                  <button
-                    type="button"
-                    onClick={() => setAlertsExpanded((v) => !v)}
-                    className="mt-3 text-xs font-semibold text-rb-red"
-                  >
-                    {alertsExpanded ? 'Tampilkan lebih sedikit' : `Tampilkan semua (${errorLogs.length}) →`}
-                  </button>
-                )}
-              </>
-            )
-          )}
-        </div>
-      </div>
-
       {/* Business Snapshots */}
       <section className="mb-8">
         <h2 className="mt-1.5 mb-3.5 font-serif text-[17px] font-semibold text-rb-text">Business Snapshots</h2>
@@ -690,7 +525,7 @@ export function CommandCenter() {
               topBranch
                 ? [
                     { value: branchActivity.status === 'ready' ? branchActivity.data.items.length : 0, label: 'Cabang' },
-                    { value: branchActivity.status === 'ready' ? branchActivity.data.items.filter((b) => b.alerts.length > 0).length : 0, label: 'Perlu perhatian' },
+                    { value: branchActivity.status === 'ready' ? branchActivity.data.items.reduce((sum, item) => sum + item.pending, 0) : 0, label: 'Booking pending' },
                   ]
                 : undefined
             }
@@ -703,7 +538,7 @@ export function CommandCenter() {
             stats={
               barberPerf.status === 'ready'
                 ? [
-                    { value: barberPerf.data.barbers.length, label: 'Barber aktif' },
+                    { value: barberPerf.data.barbers.length, label: 'Kapster terukur' },
                     { value: topBarber ? topBarber.name : '—', label: 'Customer terbanyak' },
                   ]
                 : undefined

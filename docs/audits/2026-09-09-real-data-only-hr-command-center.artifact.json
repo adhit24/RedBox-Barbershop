@@ -1,0 +1,182 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Real Data Only HR & People + Command Center Audit",
+    "description": "Production workforce reconciliation and Command Center source-of-truth audit for owner review.",
+    "generatedAt": "2026-09-09T06:00:00Z",
+    "filters": [],
+    "cards": [
+      { "id": "active_barbers", "description": "Active rows in public.barbers.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Kapster Aktif", "field": "active_barbers", "format": "number" }] },
+      { "id": "regular_employees", "description": "Active regular rows in public.employees.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Karyawan Reguler", "field": "regular_employees", "format": "number" }] },
+      { "id": "barber_branches", "description": "Distinct branches represented by active barbers.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Cabang dengan Kapster", "field": "barber_branches", "format": "number" }] },
+      { "id": "business_units", "description": "Distinct business units in the active unified directory.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Unit Bisnis Live", "field": "business_units", "format": "number" }] },
+      { "id": "directory_total", "description": "Active people after source-aware duplicate suppression.", "dataset": "workforce_metrics", "sourceId": "production_workforce", "metrics": [{ "label": "Direktori Aktif", "field": "directory_total", "format": "number" }] }
+    ],
+    "charts": [
+      {
+        "id": "workforce_composition",
+        "title": "Active workforce by operational group",
+        "subtitle": "67 active people in the September 9, 2026 production snapshot.",
+        "type": "bar",
+        "dataset": "workforce_composition",
+        "sourceId": "production_workforce",
+        "valueFormat": "number",
+        "encodings": {
+          "x": { "field": "group", "type": "nominal", "label": "Operational group" },
+          "y": { "field": "people", "type": "quantitative", "label": "Active people" },
+          "tooltip": [
+            { "field": "workforce_type", "type": "nominal", "label": "Workforce type" },
+            { "field": "share", "type": "quantitative", "label": "Share of directory", "format": "percent" }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "barber_reconciliation",
+        "title": "Barber roster reconciliation",
+        "subtitle": "Exact production roster; no status was changed.",
+        "dataset": "barber_reconciliation",
+        "sourceId": "production_workforce",
+        "defaultSort": { "field": "id", "direction": "asc" },
+        "columns": [
+          { "field": "id", "label": "ID", "type": "text" },
+          { "field": "name", "label": "Name", "type": "text" },
+          { "field": "branch", "label": "Current branch", "type": "text" },
+          { "field": "is_active", "label": "Active", "type": "text" }
+        ]
+      },
+      {
+        "id": "command_center_audit",
+        "title": "Command Center source audit",
+        "subtitle": "Owner-visible surfaces mapped to their runtime authority and decision.",
+        "dataset": "command_center_audit",
+        "sourceId": "repository_source_audit",
+        "defaultSort": { "field": "surface", "direction": "asc" },
+        "columns": [
+          { "field": "surface", "label": "Surface", "type": "text" },
+          { "field": "source", "label": "Source", "type": "text" },
+          { "field": "decision", "label": "Decision", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      { "id": "production_workforce", "label": "Supabase production workforce snapshot", "path": "public.barbers + public.employees" },
+      { "id": "repository_source_audit", "label": "RedBox runtime source audit", "path": "server/routes + backoffice/src/pages" }
+    ],
+    "blocks": [
+      { "id": "title", "type": "markdown", "body": "# Real Data Only HR & People + Command Center Audit" },
+      { "id": "executive_summary", "type": "markdown", "sourceId": "production_workforce", "body": "## Executive summary\n\nProduction contains **28 active barbers** and **39 active regular employees**, yielding a **67-person active directory** across **5 barber branches** and **2 business units**. The owner's expected barber count is 27; the database remains unchanged because the current evidence does not identify which record should be deactivated. Command Center owner UI now removes technical log cards, placeholder controls, and unsupported attendance inferences while preserving real operational and performance sources." },
+      { "id": "metrics", "type": "metric-strip", "cardIds": ["active_barbers", "regular_employees", "barber_branches", "business_units"] },
+      { "id": "workforce_composition_chart", "type": "chart", "chartId": "workforce_composition" },
+      { "id": "reconciliation_finding", "type": "markdown", "sourceId": "production_workforce", "body": "## Reconciliation needs an owner decision\n\nThe 28 active records contain no normalized-name duplicates. Three IDs have a branch prefix that differs from the current branch: **sumber-didi → bypass**, **sumber-aziz → csb**, and **samadikun-opan → sumber**. These look consistent with transfers and are not proof that any person should be inactive. The single already-inactive record is **csb-anggi**." },
+      { "id": "barber_table", "type": "table", "tableId": "barber_reconciliation" },
+      { "id": "command_center_finding", "type": "markdown", "body": "## Command Center now separates business facts from technical evidence\n\nBooking, customer, membership, and business-performance cards retain their real database-backed paths. Today’s Operations Timeline and Alerts & Exceptions were technical Moka sync/log surfaces, so their UI fetch and state were removed without deleting backend diagnostic routes. Missing attendance rows no longer create owner-facing barber-status conclusions; attendance remains explicitly unavailable." },
+      { "id": "command_center_table", "type": "table", "tableId": "command_center_audit" },
+      { "id": "recommendations", "type": "markdown", "body": "## Recommended next decisions\n\n1. Owner confirms which active barber record, if any, should change to reconcile 28 versus 27; this PR performs no mutation.\n2. Validate the 23 Sundaze employee rows whose source period says 2026 while the source filename says 2025.\n3. Establish an authoritative attendance ingestion and coverage monitor before showing attendance or availability status in Command Center.\n4. Keep technical Moka routes and logs for diagnostics, but expose them only in an engineering or integration surface." },
+      { "id": "caveats", "type": "markdown", "body": "## Caveats and method\n\nThis is a read-only production snapshot captured September 9, 2026. Active-member data is network-wide because safe branch attribution is unavailable. Barber performance includes only visits whose barber identity is resolvable and is not the canonical roster count. The composition chart provides aggregate context; the exact reconciliation and source-authority evidence remains in the tables." }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-09-09T06:00:00Z",
+    "status": "ready",
+    "datasets": {
+      "workforce_metrics": [{ "active_barbers": 28, "regular_employees": 39, "barber_branches": 5, "business_units": 2, "directory_total": 67 }],
+      "workforce_composition": [
+        { "group": "RB Regular", "workforce_type": "Regular employee", "people": 16, "share": 0.238806 },
+        { "group": "SDZ Regular", "workforce_type": "Regular employee", "people": 23, "share": 0.343284 },
+        { "group": "Bypass", "workforce_type": "Barber", "people": 6, "share": 0.089552 },
+        { "group": "CSB", "workforce_type": "Barber", "people": 7, "share": 0.104478 },
+        { "group": "Samadikun", "workforce_type": "Barber", "people": 4, "share": 0.059701 },
+        { "group": "Sumber", "workforce_type": "Barber", "people": 5, "share": 0.074627 },
+        { "group": "Tegal", "workforce_type": "Barber", "people": 6, "share": 0.089552 }
+      ],
+      "barber_reconciliation": [
+        { "id": "bypass-abdul-dul", "name": "Abdul", "branch": "bypass", "is_active": "true", "reconciliation": "match" },
+        { "id": "bypass-ari", "name": "Ari", "branch": "bypass", "is_active": "true", "reconciliation": "match" },
+        { "id": "bypass-bob", "name": "Bob", "branch": "bypass", "is_active": "true", "reconciliation": "match" },
+        { "id": "sumber-didi", "name": "Didi", "branch": "bypass", "is_active": "true", "reconciliation": "ID prefix mismatch" },
+        { "id": "bypass-dodi", "name": "dodi", "branch": "bypass", "is_active": "true", "reconciliation": "match" },
+        { "id": "bypass-onoy", "name": "Onoy", "branch": "bypass", "is_active": "true", "reconciliation": "match" },
+        { "id": "sumber-aziz", "name": "Aziz", "branch": "csb", "is_active": "true", "reconciliation": "ID prefix mismatch" },
+        { "id": "csb-ega", "name": "Ega", "branch": "csb", "is_active": "true", "reconciliation": "match" },
+        { "id": "csb-husen", "name": "Husen", "branch": "csb", "is_active": "true", "reconciliation": "match" },
+        { "id": "csb-ragil", "name": "Ragil", "branch": "csb", "is_active": "true", "reconciliation": "match" },
+        { "id": "csb-syarif", "name": "Sarif", "branch": "csb", "is_active": "true", "reconciliation": "match" },
+        { "id": "csb-ubay", "name": "Ubay", "branch": "csb", "is_active": "true", "reconciliation": "match" },
+        { "id": "csb-yudha", "name": "Yudha", "branch": "csb", "is_active": "true", "reconciliation": "match" },
+        { "id": "samadikun-aden", "name": "Aden", "branch": "samadikun", "is_active": "true", "reconciliation": "match" },
+        { "id": "samadikun-hamami", "name": "hamami", "branch": "samadikun", "is_active": "true", "reconciliation": "match" },
+        { "id": "samadikun-miftah", "name": "Miftah", "branch": "samadikun", "is_active": "true", "reconciliation": "match" },
+        { "id": "samadikun-sofyan", "name": "Sofyan", "branch": "samadikun", "is_active": "true", "reconciliation": "match" },
+        { "id": "sumber-bayu", "name": "Bayu", "branch": "sumber", "is_active": "true", "reconciliation": "match" },
+        { "id": "samadikun-opan", "name": "Opan", "branch": "sumber", "is_active": "true", "reconciliation": "ID prefix mismatch" },
+        { "id": "sumber-prima", "name": "Prima", "branch": "sumber", "is_active": "true", "reconciliation": "match" },
+        { "id": "sumber-putra", "name": "Putra", "branch": "sumber", "is_active": "true", "reconciliation": "match" },
+        { "id": "sumber-sigit", "name": "Sigit", "branch": "sumber", "is_active": "true", "reconciliation": "match" },
+        { "id": "tegal-ahmad", "name": "Ahmad", "branch": "tegal", "is_active": "true", "reconciliation": "match" },
+        { "id": "tegal-epik", "name": "Epik", "branch": "tegal", "is_active": "true", "reconciliation": "match" },
+        { "id": "tegal-faiz", "name": "Faiz", "branch": "tegal", "is_active": "true", "reconciliation": "match" },
+        { "id": "tegal-sephril", "name": "Sephril", "branch": "tegal", "is_active": "true", "reconciliation": "match" },
+        { "id": "tegal-wawan", "name": "wawan", "branch": "tegal", "is_active": "true", "reconciliation": "match" },
+        { "id": "tegal-yafi", "name": "Yafi", "branch": "tegal", "is_active": "true", "reconciliation": "match" },
+        { "id": "csb-anggi", "name": "Anggi", "branch": "csb", "is_active": "false", "reconciliation": "already inactive" }
+      ],
+      "command_center_audit": [
+        { "surface": "Booking Hari Ini", "source": "bookings via /api/admin/crm/command-center", "status": "real", "decision": "keep" },
+        { "surface": "Repeat Customers", "source": "completed bookings + completed Moka transactions", "status": "real", "decision": "keep" },
+        { "surface": "Active Members", "source": "member_profiles + customers.last_visit", "status": "real, network-wide", "decision": "keep with caveat" },
+        { "surface": "Business Performance", "source": "business_performance_daily + audited Jan-Aug fallback", "status": "real with disclosed fallback", "decision": "keep" },
+        { "surface": "Live Branch Activity", "source": "pending booking counts", "status": "real", "decision": "keep; remove attendance inference" },
+        { "surface": "Action Center", "source": "pending bookings", "status": "real", "decision": "keep; remove unsupported alerts" },
+        { "surface": "Barber Performance", "source": "completed visits with resolved barber identity", "status": "real but partial coverage", "decision": "keep; relabel" },
+        { "surface": "Attendance", "source": "no authoritative complete feed", "status": "unavailable", "decision": "show dash" },
+        { "surface": "Payroll", "source": "no owner-safe current metric", "status": "unavailable", "decision": "show dash" },
+        { "surface": "Stock Exceptions", "source": "no owner-safe current metric", "status": "unavailable", "decision": "show dash" },
+        { "surface": "Today's Operations Timeline", "source": "Moka technical sync logs", "status": "technical", "decision": "remove UI/fetch/state" },
+        { "surface": "Alerts & Exceptions", "source": "Moka technical errors and incomplete attendance inference", "status": "technical/misleading", "decision": "remove UI/fetch/state" },
+        { "surface": "Search and notification controls", "source": "no implemented action", "status": "placeholder", "decision": "remove" }
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "production_workforce",
+      "label": "Supabase production workforce snapshot",
+      "query": {
+        "engine": "PostgreSQL via Supabase PostgREST",
+        "language": "sql",
+        "sql": "SELECT id, name, branch, is_active\nFROM public.barbers;\n\nSELECT id, name, nickname, business_unit, position,\n       branch, branch_name, employment_type, payroll_type,\n       is_active, source, source_period\nFROM public.employees\nWHERE is_active = true\n  AND employment_type = 'regular';",
+        "description": "Read-only workforce snapshot used for counts, directory composition, and barber reconciliation.",
+        "tables_used": ["public.barbers", "public.employees"],
+        "filters": ["barber KPI uses is_active = true", "employee KPI uses is_active = true and employment_type = regular", "no database writes"],
+        "metric_definitions": {
+          "active_barbers": "Count of public.barbers rows where is_active is true.",
+          "regular_employees": "Count of public.employees rows where is_active is true and employment_type is regular.",
+          "barber_branches": "Distinct non-empty branch count among active barber rows.",
+          "business_units": "Distinct business units represented after unified active-workforce mapping.",
+          "directory_total": "Active barber plus active regular-employee identities after source-aware duplicate suppression."
+        },
+        "executed_at": "2026-09-09T05:30:00Z"
+      }
+    },
+    {
+      "id": "repository_source_audit",
+      "label": "RedBox runtime source audit",
+      "path": "server/routes and backoffice/src/pages",
+      "description": "Static trace of each owner-visible Command Center card to its frontend service and backend database/log source; owner-visible surfaces only, technical backend routes preserved, no database writes.",
+      "query": {
+        "engine": "PostgreSQL values projection",
+        "language": "sql",
+        "sql": "SELECT *\nFROM (VALUES\n  ('Booking Hari Ini','CRM booking endpoint','real','keep'),\n  ('Repeat Customers','completed bookings + Moka transactions','real','keep'),\n  ('Active Members','member_profiles + customers','real/network','keep with caveat'),\n  ('Business Performance','business_performance_daily','real/fallback','keep'),\n  ('Live Branch Activity','pending booking counts','real','remove attendance inference'),\n  ('Action Center','pending bookings','real','remove unsupported alerts'),\n  ('Barber Performance','resolved completed visits','real/partial','relabel'),\n  ('Attendance','no complete authority','unavailable','show dash'),\n  ('Payroll','no current owner metric','unavailable','show dash'),\n  ('Stock Exceptions','no current owner metric','unavailable','show dash'),\n  ('Operations Timeline','Moka sync logs','technical','remove UI/fetch/state'),\n  ('Alerts & Exceptions','Moka errors + attendance inference','misleading','remove UI/fetch/state'),\n  ('Search/notifications','no action','placeholder','remove')\n) AS audited(surface, source, status, decision);",
+        "description": "Deterministic projection of the reviewed repository source trace into the report table.",
+        "filters": ["owner-visible Command Center surfaces", "technical backend routes preserved", "no database writes"],
+        "executed_at": "2026-09-09T05:45:00Z"
+      }
+    }
+  ]
+}
