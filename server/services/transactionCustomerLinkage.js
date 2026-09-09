@@ -237,18 +237,22 @@ async function resolveTransactionCustomerLinkage(supabase, evidence = {}, option
     try {
       const { data: rows, error } = await supabase
         .from('customers')
-        .select('id')
+        .select('id, merged_into_customer_id')
         .eq('moka_customer_id', mokaCustomerId);
 
       if (error) {
         mokaResolverResult = { status: 'lookup_failed', customer_id: null, candidates_count: 0 };
       } else if (!rows || rows.length === 0) {
         mokaResolverResult = { status: 'not_found', customer_id: null, candidates_count: 0 };
-      } else if (rows.length === 1) {
-        mokaResolverResult = { status: 'resolved', customer_id: rows[0].id, candidates_count: 1 };
       } else {
-        // Ambiguous duplicate moka_customer_id in DB!
-        mokaResolverResult = { status: 'ambiguous', customer_id: null, candidates_count: rows.length };
+        // Resolve canonical targets for any merged rows (Reconciliation Integration)
+        const canonicalIds = Array.from(new Set(rows.map(r => r.merged_into_customer_id || r.id).filter(Boolean)));
+        if (canonicalIds.length === 1) {
+          mokaResolverResult = { status: 'resolved', customer_id: canonicalIds[0], candidates_count: 1 };
+        } else {
+          // Ambiguous duplicate moka_customer_id across distinct canonical identities in DB!
+          mokaResolverResult = { status: 'ambiguous', customer_id: null, candidates_count: canonicalIds.length };
+        }
       }
     } catch (_) {
       mokaResolverResult = { status: 'lookup_failed', customer_id: null, candidates_count: 0 };
@@ -350,7 +354,7 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
     try {
       const res = await supabase
         .from('customers')
-        .select('id')
+        .select('id, merged_into_customer_id')
         .eq('moka_customer_id', mokaId);
       existingMokaRows = res.data;
       mokaErr = res.error;
@@ -363,7 +367,11 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
     }
 
     if (existingMokaRows.length > 0) {
-      return { action: 'backfill_skipped_duplicate_moka_id', customer_id: canonicalPlan.customer_id };
+      // Ignore rows that are already merged into this customer or are this customer
+      const conflicting = existingMokaRows.filter(r => (r.merged_into_customer_id || r.id) !== canonicalPlan.customer_id);
+      if (conflicting.length > 0) {
+        return { action: 'backfill_skipped_duplicate_moka_id', customer_id: canonicalPlan.customer_id };
+      }
     }
 
     // Proven 0 matches -> execute UPDATE
@@ -398,7 +406,7 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
       try {
         const res = await supabase
           .from('customers')
-          .select('id')
+          .select('id, merged_into_customer_id')
           .eq('moka_customer_id', mokaId);
         mokaRows = res.data;
         mokaErr = res.error;
@@ -410,7 +418,8 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
         return { action: 'creation_blocked_lookup_failed', customer_id: null };
       }
 
-      if (mokaRows.length > 0) {
+      const activeConflictingMoka = mokaRows.filter(r => !r.merged_into_customer_id);
+      if (activeConflictingMoka.length > 0) {
         return { action: 'creation_blocked_conflicting_moka_id', customer_id: null };
       }
     }
@@ -422,7 +431,7 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
       try {
         const res = await supabase
           .from('customers')
-          .select('id')
+          .select('id, merged_into_customer_id')
           .eq('phone_e164', phoneE164);
         phoneRows = res.data;
         phoneErr = res.error;
@@ -434,7 +443,8 @@ async function maintainCustomerRecordSafely(supabase, customerData = {}, canonic
         return { action: 'creation_blocked_lookup_failed', customer_id: null };
       }
 
-      if (phoneRows.length > 0) {
+      const activeConflictingPhone = phoneRows.filter(r => !r.merged_into_customer_id);
+      if (activeConflictingPhone.length > 0) {
         return { action: 'creation_blocked_conflicting_phone', customer_id: null };
       }
     }

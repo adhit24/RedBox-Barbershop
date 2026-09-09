@@ -86,16 +86,18 @@ async function resolveCustomerIdentity(supabase, input = {}, options = {}) {
   const mokaId = typeof input.moka_customer_id === 'string' ? input.moka_customer_id.trim() : null;
 
   if (mokaId) {
-    let mokaRow = null;
+    let mokaData = null;
     let mokaError = null;
     try {
-      const result = await supabase
+      const query = supabase
         .from('customers')
-        .select('id')
-        .eq('moka_customer_id', mokaId)
-        .maybeSingle();
-      mokaRow = result.data;
-      mokaError = result.error;
+        .select('id, merged_into_customer_id')
+        .eq('moka_customer_id', mokaId);
+      const result = typeof query?.maybeSingle === 'function'
+        ? await query.maybeSingle()
+        : await query;
+      mokaData = result?.data;
+      mokaError = result?.error;
     } catch (error) {
       mokaError = error;
     }
@@ -112,16 +114,30 @@ async function resolveCustomerIdentity(supabase, input = {}, options = {}) {
       return result;
     }
 
-    if (mokaRow) {
-      const result = {
-        status: 'resolved',
-        customer_id: mokaRow.id,
-        match_basis: 'moka_customer_id',
-        candidates_count: 1,
-        confidence: 'verified',
-      };
-      emit(source, result.status, result.match_basis, result.candidates_count, normalizedInputPresent);
-      return result;
+    const mokaRows = Array.isArray(mokaData) ? mokaData : (mokaData ? [mokaData] : []);
+    if (mokaRows.length > 0) {
+      const canonicalIds = Array.from(new Set(mokaRows.map(r => r.merged_into_customer_id || r.id).filter(Boolean)));
+      if (canonicalIds.length === 1) {
+        const result = {
+          status: 'resolved',
+          customer_id: canonicalIds[0],
+          match_basis: 'moka_customer_id',
+          candidates_count: 1,
+          confidence: 'verified',
+        };
+        emit(source, result.status, result.match_basis, result.candidates_count, normalizedInputPresent);
+        return result;
+      } else if (canonicalIds.length > 1) {
+        const result = {
+          status: 'ambiguous',
+          customer_id: null,
+          match_basis: 'moka_customer_id',
+          candidates_count: canonicalIds.length,
+          confidence: 'ambiguous',
+        };
+        emit(source, result.status, result.match_basis, result.candidates_count, normalizedInputPresent);
+        return result;
+      }
     }
     // Not found via moka_customer_id — fall through to phone/id resolution below.
   }

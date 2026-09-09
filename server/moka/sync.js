@@ -366,25 +366,26 @@ async function _pullMokaToWebNow(supabase, outletId) {
     const pull3 = await pull3Promise;
 
     // Wait for Pull 1 before advancing last_polled_at.
-    // CRITICAL FIX: only advance the cursor if Pull 1 did NOT return an API error.
-    // If Pull 1 errored, keep last_polled_at at the old `since` so the next tick retries
-    // from the same window — prevents the cursor from silently jumping past missed orders.
+    // Checkpoint safety: only advance the cursor if Pull 1 had zero API errors AND zero processing errors.
+    // If any orders failed to persist, keep last_polled_at at the old `since` so the next tick retries
+    // from the same window — prevents the cursor from silently jumping past unpersisted orders.
     const pull1 = await pull1Promise;
     processed = pull1.processed + pull3.processed;
     skipped   = pull1.skipped   + pull3.skipped;
     errors    = pull1.errors    + pull3.errors;
 
-    if (!pull1.apiError) {
+    if (!pull1.apiError && pull1.errors === 0) {
       const polledAt = new Date().toISOString();
       _lastSyncAt.set(outletId, polledAt);
       const { error: persistErr } = await supabase
         .from('outlets').update({ last_polled_at: polledAt }).eq('id', outletId);
       if (persistErr) console.warn(`[Sync] persist last_polled_at failed: ${persistErr.message}`);
     } else {
-      console.warn(`[Sync] Pull 1 API error for outlet ${outletId} — NOT advancing last_polled_at, will retry`);
+      console.warn(`[Sync] Pull 1 API error (${Boolean(pull1.apiError)}) or processing errors (${pull1.errors}) for outlet ${outletId} — NOT advancing last_polled_at, will retry`);
     }
 
-    await _finishLog(supabase, logId, 'success', null, { processed, skipped, errors });
+    const overallStatus = errors > 0 ? (processed > 0 ? 'partial' : 'failed') : 'success';
+    await _finishLog(supabase, logId, overallStatus, errors > 0 ? `${errors} item(s) failed during sync` : null, { processed, skipped, errors });
 
   } catch (err) {
     await _finishLog(supabase, logId, 'failed', err.message);
@@ -534,11 +535,14 @@ async function _processIncomingOrder(supabase, order, outletId) {
     .eq('external_id', mokaOrderId)
     .maybeSingle();
 
-  // VOID — cancel existing schedule (if any) and stop
+  // VOID — cancel existing schedule and update transaction status (if any) and stop
   if (mokaStatus === 'VOID' || mokaStatus === 'VOIDED') {
     if (existing) {
       await supabase.from('schedules').update({ status: 'cancelled' }).eq('id', existing.id);
     }
+    await supabase.from('transactions').update({
+      status: order.is_refunded ? 'refunded' : 'cancelled',
+    }).eq('external_id', mokaOrderId);
     return 'cancelled';
   }
 
@@ -2234,11 +2238,16 @@ async function bridgeBookingToMoka(supabase, booking) {
     .from('schedules').select('id').eq('external_id', legacyRef).maybeSingle();
   if (already) return { scheduleId: already.id, mokaSync: 'already_synced' };
 
-  // 1. Resolve outlet from location slug
+  // 1. Resolve outlet from location slug (fail closed on missing/unknown location)
+  if (!booking.location) {
+    console.warn(`[Bridge] Booking missing location`);
+    return { scheduleId: null, mokaSync: 'skipped_no_outlet' };
+  }
+
   const { data: outlet } = await supabase
     .from('outlets')
     .select('id, moka_outlet_id')
-    .eq('slug', booking.location || 'bypass')
+    .eq('slug', booking.location)
     .maybeSingle();
 
   if (!outlet?.id) {
