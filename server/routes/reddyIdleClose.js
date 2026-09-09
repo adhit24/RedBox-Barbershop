@@ -43,6 +43,7 @@ function emptySummary(overrides = {}) {
     processed: 0,
     closed: 0,
     closed_without_message: 0,
+    send_failures: 0,
     failed: 0,
     suppressed: 0,
     ...overrides,
@@ -75,6 +76,7 @@ async function findDueSenders(supabase, { now = Date.now(), limit = MAX_CANDIDAT
     .is('idle_closed_at', null)
     .neq('provider_device_hash', LEGACY_DEVICE_SCOPE)
     .in('branch', [...ALLOWED_BRANCHES])
+    .order('idle_close_due_at', { ascending: true })
     .limit(limit);
   if (error) throw error;
   return (data || [])
@@ -159,6 +161,11 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
     let claimed = false;
 
     try {
+      if (!sender || !providerDeviceHash || !branch) {
+        safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'missing_branch_route' });
+        return { closed: 0, closedWithoutMessage: 0, failed: 0, suppressed: 1 };
+      }
+
       // 1. Discovery-time handoff check. Lookup failure is fail-closed.
       const discoveryHandoffState = await handoffLookup(sender);
       if (discoveryHandoffState.status === 'waiting_human' || discoveryHandoffState.status === 'human_active') {
@@ -167,11 +174,6 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
       }
       if (discoveryHandoffState.status === 'lookup_failed') {
         return { closed: 0, closedWithoutMessage: 0, failed: 1, suppressed: 0 };
-      }
-
-      if (!sender || !providerDeviceHash || !branch) {
-        safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'missing_branch_route' });
-        return { closed: 0, closedWithoutMessage: 0, failed: 0, suppressed: 1 };
       }
 
       // 2. Atomic claim.
@@ -229,7 +231,7 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
       // The closing message is optional. A provider/guard failure closes the
       // lifecycle without a message, so the cron cannot spam-retry forever.
       safeLogEvent({ event_type: 'conversation_idle_close_suppressed', suppress_reason: 'send_failed', branch });
-      return { closed: 0, closedWithoutMessage: 1, failed: 1, suppressed: 0 };
+      return { closed: 0, closedWithoutMessage: 1, sendFailures: 1, failed: 0, suppressed: 0 };
     } catch (_error) {
       if (claimed) {
         try { await finalizeFn(supabase, sender, { sent: false, providerDeviceHash }); } catch (_releaseError) { /* best effort */ }
@@ -246,11 +248,12 @@ module.exports = async function reddyIdleCloseHandler(req, res, testDeps = {}) {
   const summary = results.reduce((total, result) => ({
     closed: total.closed + result.closed,
     closed_without_message: total.closed_without_message + result.closedWithoutMessage,
+    send_failures: total.send_failures + (result.sendFailures || 0),
     failed: total.failed + result.failed,
     suppressed: total.suppressed + result.suppressed,
-  }), { closed: 0, closed_without_message: 0, failed: 0, suppressed: 0 });
+  }), { closed: 0, closed_without_message: 0, send_failures: 0, failed: 0, suppressed: 0 });
 
-  return res.status(200).json(emptySummary({ processed: candidates.length, ...summary }));
+  return res.status(200).json(emptySummary({ processed: candidates.length, ...summary, ok: summary.failed === 0 }));
 };
 
 module.exports.findDueSenders = findDueSenders;

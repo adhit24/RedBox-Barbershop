@@ -607,6 +607,7 @@ function fakeConversationsTable(initialRows = []) {
           return builder;
         },
         limit(n) { limitCount = n; return builder; },
+        order() { return builder; },
         upsert(value) { action = 'upsert'; payload = value; return builder; },
         update(value) { action = 'update'; payload = value; return builder; },
         delete() { action = 'delete'; return builder; },

@@ -66,6 +66,8 @@ function fakeConversationsSupabase(initialRows = []) {
     let action = null;
     let payload = null;
     let limitN = null;
+    let orderBy = null;
+    let orderAscending = true;
 
     function resolve() {
       if (action === 'upsert') {
@@ -80,7 +82,11 @@ function fakeConversationsSupabase(initialRows = []) {
         return { data: matches[0] || null, error: null };
       }
       // select
-      const matches = applyFilters(rows, filters);
+      let matches = applyFilters(rows, filters);
+      if (orderBy) {
+        matches = [...matches].sort((a, b) => String(a[orderBy]).localeCompare(String(b[orderBy])));
+        if (!orderAscending) matches.reverse();
+      }
       if (limitN != null) return { data: matches.slice(0, limitN), error: null };
       return { data: matches[0] || null, error: null };
     }
@@ -94,6 +100,7 @@ function fakeConversationsSupabase(initialRows = []) {
       is(field, value) { filters.push({ field, op: 'is', value }); return builder; },
       not(field, _op, value) { filters.push({ field, op: 'not_is', value }); return builder; },
       limit(n) { limitN = n; return builder; },
+      order(field, options = {}) { orderBy = field; orderAscending = options.ascending !== false; return builder; },
       update(value) { action = 'update'; payload = value; return builder; },
       upsert(value) { action = 'upsert'; payload = value; return builder; },
       async maybeSingle() { return resolve(); },
@@ -473,7 +480,8 @@ test('T8. provider/send failure is isolated and closes lifecycle without retryin
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.closed, 0);
-  assert.equal(res.body.failed, 1);
+  assert.equal(res.body.failed, 0);
+  assert.equal(res.body.send_failures, 1);
   assert.equal(sb.rows[0].conversation_status, 'closed', 'optional close-message failure must not create an infinite retry loop');
 });
 
@@ -486,7 +494,7 @@ test('T9. zero idle conversations returns the stable healthy summary', async () 
     candidateSenders: [],
   });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { ok: true, processed: 0, closed: 0, closed_without_message: 0, failed: 0, suppressed: 0 });
+  assert.deepEqual(res.body, { ok: true, processed: 0, closed: 0, closed_without_message: 0, send_failures: 0, failed: 0, suppressed: 0 });
 });
 
 test('T10. one send failure among several returns a partial summary and preserves branch routing', async () => {
@@ -511,7 +519,7 @@ test('T10. one send failure among several returns a partial summary and preserve
     candidateSenders: rows.map((row) => ({ sender: row.sender, providerDeviceHash: 'a'.repeat(64), branch: 'csb' })),
   });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { ok: true, processed: 3, closed: 2, closed_without_message: 1, failed: 1, suppressed: 0 });
+  assert.deepEqual(res.body, { ok: true, processed: 3, closed: 2, closed_without_message: 1, send_failures: 1, failed: 0, suppressed: 0 });
   assert.equal(sends.length, 3);
   assert.ok(sends.every((send) => send.branch === 'csb'));
 });
@@ -537,7 +545,7 @@ test('T11. one conversation dependency failure does not reject or abort the rest
     candidateSenders: rows.map((row) => ({ sender: row.sender, providerDeviceHash: 'a'.repeat(64), branch: 'bypass' })),
   });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, { ok: true, processed: 2, closed: 1, closed_without_message: 0, failed: 1, suppressed: 0 });
+  assert.deepEqual(res.body, { ok: false, processed: 2, closed: 1, closed_without_message: 0, send_failures: 0, failed: 1, suppressed: 0 });
   assert.deepEqual(sent, ['628222']);
 });
 
@@ -551,7 +559,7 @@ test('T12. discovery failure returns a useful 200 summary instead of a generic 5
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
-    ok: false, processed: 0, closed: 0, closed_without_message: 0, failed: 1, suppressed: 0, reason: 'discovery_failed',
+    ok: false, processed: 0, closed: 0, closed_without_message: 0, send_failures: 0, failed: 1, suppressed: 0, reason: 'discovery_failed',
   });
 });
 
@@ -623,7 +631,7 @@ test('T15. authenticated dry-run validates discovery without claims or customer 
   });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.body, {
-    ok: true, processed: 0, closed: 0, closed_without_message: 0, failed: 0, suppressed: 0,
+    ok: true, processed: 0, closed: 0, closed_without_message: 0, send_failures: 0, failed: 0, suppressed: 0,
     dry_run: true, eligible: 1,
   });
   assert.equal(claims, 0);
@@ -656,6 +664,23 @@ test('T16. unroutable overdue rows are filtered before the batch cap and cannot 
     providerDeviceHash: 'a'.repeat(64),
     branch: 'csb',
   }]);
+});
+
+test('T17. discovery applies deterministic oldest-first ordering before the batch limit', async () => {
+  const handler = loadCronHandler();
+  const now = Date.now();
+  const rows = Array.from({ length: 5 }, (_, index) => ({
+    sender: `sender-${index}`,
+    branch: 'bypass',
+    conversation_status: 'active',
+    idle_close_due_at: new Date(now - ((index + 1) * 60_000)).toISOString(),
+    idle_closed_at: null,
+  }));
+  const candidates = await handler.findDueSenders(
+    fakeConversationsSupabase(rows),
+    { now, limit: 2 },
+  );
+  assert.deepEqual(candidates.map((candidate) => candidate.sender), ['sender-4', 'sender-3']);
 });
 
 test('T-auth. unauthenticated cron request (wrong/missing bearer, secret configured) is rejected', async () => {
