@@ -1,6 +1,7 @@
 'use strict';
 
 const express = require('express');
+const { createBackofficeSupabaseAuth } = require('../middleware/backofficeSupabaseAuth');
 
 const BRANCHES = Object.freeze(['bypass', 'csb', 'samadikun', 'sumber', 'tegal']);
 const SCOPES = new Set(['all', ...BRANCHES]);
@@ -23,8 +24,9 @@ function combineRows(rows, keyForRow) {
   return grouped;
 }
 
-function createBusinessPerformanceRoutes(supabase, adminAuth) {
+function createBusinessPerformanceRoutes(supabase, legacyAdminAuth) {
   const router = express.Router();
+  const adminAuth = createBackofficeSupabaseAuth(supabase, legacyAdminAuth);
 
   router.get('/', adminAuth, async (req, res) => {
     const branch = String(req.query.branch || 'all').toLowerCase();

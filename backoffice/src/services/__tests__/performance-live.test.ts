@@ -3,6 +3,7 @@ import { apiClient } from '../../lib/apiClient';
 import {
   computeDailySummary,
   computePerformanceSummary,
+  fillMissingDailyPoints,
   getMonthlyDailyPerformance,
   getYearlyPerformance,
 } from '../performance';
@@ -18,6 +19,20 @@ describe('database-first business performance', () => {
     expect(result[7].net_sales).toBe(583483400);
     expect(result[8]).toMatchObject({ net_sales: 157722000, transaction_count: 1214 });
     expect(result[9].net_sales).toBeNull();
+    expect(result.filter(point => point.net_sales !== null).map(point => point.month)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  });
+
+  it('materializes September 1-8 while preserving future days as null', () => {
+    const live = Array.from({ length: 8 }, (_, index) => ({
+      date: `2026-09-${String(index + 1).padStart(2, '0')}`,
+      day: index + 1,
+      net_sales: 100,
+      transaction_count: 1,
+    }));
+    const result = fillMissingDailyPoints(live, 2026, 9);
+    expect(result).toHaveLength(30);
+    expect(result.slice(0, 8).every(point => point.net_sales === 100)).toBe(true);
+    expect(result.slice(8).every(point => point.net_sales === null && point.transaction_count === null)).toBe(true);
   });
 
   it('requests the selected branch/month and returns database daily rows', async () => {
