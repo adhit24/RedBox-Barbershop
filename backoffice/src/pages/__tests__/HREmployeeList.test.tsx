@@ -1,43 +1,66 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { HREmployeeList } from '../HREmployeeList';
 
-const byBranch: Record<string, unknown> = {
-  bypass: { barbers: [{ id: 'bypass-abdul-dul', name: 'Abdul', branch: 'bypass', attendance_status: null, today_count: 0 }] },
-  csb: { barbers: [{ id: 'csb-ubay', name: 'Ubay', branch: 'csb', attendance_status: 'hadir', today_count: 3 }] },
-  samadikun: { barbers: [{ id: 'samadikun-sofyan', name: 'Sofyan', branch: 'samadikun', attendance_status: null, today_count: 0 }] },
-  sumber: { barbers: [{ id: 'sumber-bayu', name: 'Bayu', branch: 'sumber', attendance_status: null, today_count: 0 }] },
-  tegal: { barbers: [{ id: 'tegal-ahmad', name: 'Ahmad', branch: 'tegal', attendance_status: null, today_count: 0 }] },
-};
+const responses = {
+  all: {
+    source: 'database', filter: 'all',
+    kpis: { active_barbers: 28, regular_employees: 39, barber_branches: 5, active_business_units: 2 },
+    people: [
+      { id: 'barber:bypass-abdul', source: 'barbers', source_record_id: 'bypass-abdul', name: 'Abdul', nickname: null, business_unit: 'Redbox', position: 'Kapster', branch: 'bypass', branch_name: 'bypass', employment_type: 'commission-based', payroll_type: null, attendance_status: null, is_active: true },
+      { id: 'employee:1', source: 'employees', source_record_id: '1', name: 'Ayu Redbox', nickname: 'Ayu', business_unit: 'Redbox', position: 'Admin', branch: 'bypass', branch_name: 'Bypass', employment_type: 'regular', payroll_type: 'salary', attendance_status: null, is_active: true },
+      { id: 'employee:2', source: 'employees', source_record_id: '2', name: 'Sari Sundaze', nickname: 'Sari', business_unit: 'Sundaze', position: 'Barista', branch: 'bypass', branch_name: 'Bypass', employment_type: 'regular', payroll_type: 'salary', attendance_status: null, is_active: true },
+    ],
+    attendance: { available: false, label: 'Belum tersedia' },
+  },
+  redbox: null,
+  sundaze: null,
+} as const;
 
 describe('HREmployeeList', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-      const branch = new URL(url, 'https://example.test').searchParams.get('branch') ?? '';
-      return Promise.resolve(new Response(JSON.stringify(byBranch[branch]), { status: 200 }));
+      const filter = new URL(String(input), 'https://example.test').searchParams.get('filter') as 'all' | 'redbox' | 'sundaze';
+      const base = responses.all;
+      if (filter === 'sundaze') return Promise.resolve(new Response(JSON.stringify({ ...base, filter, kpis: { active_barbers: 0, regular_employees: 23, barber_branches: 0, active_business_units: 1 }, people: [base.people[2]] }), { status: 200 }));
+      if (filter === 'redbox') return Promise.resolve(new Response(JSON.stringify({ ...base, filter, kpis: { active_barbers: 28, regular_employees: 16, barber_branches: 5, active_business_units: 1 }, people: base.people.slice(0, 2) }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify(base), { status: 200 }));
     }));
   });
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it('renders real barber roster from all five branch command-center sources', async () => {
-    render(<HREmployeeList />, { wrapper: MemoryRouter });
-    await waitFor(() => expect(screen.getByText('Abdul')).toBeInTheDocument());
-    expect(screen.getByText('Ubay')).toBeInTheDocument();
-    expect(screen.getByText('Sofyan')).toBeInTheDocument();
-    expect(screen.getByText('Bayu')).toBeInTheDocument();
-    expect(screen.getByText('Ahmad')).toBeInTheDocument();
-    expect(screen.queryByText(/Ubay Santoso/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^DEMO/i)).not.toBeInTheDocument();
-  });
-
-  it('labels database barbers as Kapster and does not fabricate attendance', async () => {
+  it('renders database-driven HR KPIs and the unified barber plus employee directory', async () => {
     render(<HREmployeeList />, { wrapper: MemoryRouter });
     await screen.findByText('Abdul');
-    expect(screen.getAllByText('Kapster').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Belum tersedia').length).toBeGreaterThan(0);
-    expect(screen.getByText('Hadir')).toBeInTheDocument();
+    expect(screen.getByText('Ayu Redbox')).toBeInTheDocument();
+    expect(screen.getByText('Sari Sundaze')).toBeInTheDocument();
+    for (const [label, value] of [['Kapster Aktif', '28'], ['Karyawan Reguler', '39'], ['Cabang dengan Kapster', '5'], ['Unit Bisnis Live', '2']]) {
+      const card = screen.getByText(label).closest<HTMLElement>('.rounded-rb-card');
+      expect(card && within(card).getByText(value)).toBeInTheDocument();
+    }
+  });
+
+  it('recalculates counts and directory for Sundaze without inventing barber rows', async () => {
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Abdul');
+    fireEvent.click(screen.getByRole('button', { name: 'Sundaze' }));
+    await waitFor(() => expect(screen.queryByText('Abdul')).not.toBeInTheDocument());
+    expect(screen.getByText('Sari Sundaze')).toBeInTheDocument();
+    expect(screen.queryByTestId('barber-reconciliation-note')).not.toBeInTheDocument();
+    const barberCard = screen.getByText('Kapster Aktif').closest<HTMLElement>('.rounded-rb-card');
+    expect(barberCard && within(barberCard).getByText('0')).toBeInTheDocument();
+  });
+
+  it('keeps attendance unavailable and discloses the unresolved reconciliation note without comparing against 27', async () => {
+    render(<HREmployeeList />, { wrapper: MemoryRouter });
+    await screen.findByText('Abdul');
+    expect(screen.getAllByText('Belum tersedia')).toHaveLength(3);
+    const note = screen.getByTestId('barber-reconciliation-note');
+    expect(note).toHaveTextContent('Database mencatat 28 kapster aktif. Beberapa record ID/cabang masih menunggu rekonsiliasi owner dan tidak diubah dalam PR ini.');
+    expect(note).not.toHaveTextContent('27');
+    expect(note).not.toHaveTextContent('satu record');
+    expect(screen.queryByText(/^DEMO/i)).not.toBeInTheDocument();
   });
 });

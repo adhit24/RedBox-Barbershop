@@ -4193,6 +4193,8 @@ const { createSystemEventLogRoutes } = require('./routes/systemEventLogs');
 app.use('/api/internal/system-event-logs', createSystemEventLogRoutes(supabase, adminAuth));
 const { createBusinessPerformanceRoutes } = require('./routes/businessPerformance');
 app.use('/api/admin/business-performance', createBusinessPerformanceRoutes(supabase, adminAuth));
+const { createHRPeopleRoutes } = require('./routes/hrPeople');
+app.use('/api/admin/hr-people', createHRPeopleRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));
