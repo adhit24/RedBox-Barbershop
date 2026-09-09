@@ -235,7 +235,10 @@ test('old NEW Pending for the same tier is cancelled and never reused as an upgr
 });
 
 test('CRM list expires stale Pending rows before reading registrations', () => {
-  const route = fs.readFileSync(path.join(__dirname, '..', 'routes', 'adminCrm.js'), 'utf8');
+  const adminCrmPath = fs.existsSync(path.join(__dirname, '..', 'routes', 'adminCrmLegacy.js'))
+    ? path.join(__dirname, '..', 'routes', 'adminCrmLegacy.js')
+    : path.join(__dirname, '..', 'routes', 'adminCrm.js');
+  const route = fs.readFileSync(adminCrmPath, 'utf8');
   const listStart = route.indexOf("router.get('/membership/registrations'");
   const changeStart = route.indexOf("router.post('/membership/registrations/:registrationId/change'");
   const listRoute = route.slice(listStart, changeStart);

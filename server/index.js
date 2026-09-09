@@ -4156,18 +4156,21 @@ const mokaRouter = createMokaRouter(supabase || memorySupabase, adminAuth);
 app.use('/api', mokaRouter);
 console.log('✅ Moka integration routes mounted');
 
-// Background: start cron jobs
-try {
-  const { startCronJobs } = require('./moka/sync');
-  if (supabase) {
-    supabase.from('outlets').select('id').limit(1)
-      .then(() => console.log('✅ Supabase outlets table available'))
-      .catch(() => console.log('⚠️  Supabase outlets table missing'));
-    const { isMokaOAuthConfigured } = require('./moka/oauth');
-    if (isMokaOAuthConfigured()) startCronJobs(supabase);
+// Background: start cron jobs (guarded against test environments)
+const isTestEnv = process.env.NODE_ENV === 'test' || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.npm_lifecycle_event === 'test';
+if (!isTestEnv) {
+  try {
+    const { startCronJobs } = require('./moka/sync');
+    if (supabase) {
+      supabase.from('outlets').select('id').limit(1)
+        .then(() => console.log('✅ Supabase outlets table available'))
+        .catch(() => console.log('⚠️  Supabase outlets table missing'));
+      const { isMokaOAuthConfigured } = require('./moka/oauth');
+      if (isMokaOAuthConfigured()) startCronJobs(supabase);
+    }
+  } catch (e) {
+    console.warn('[Cron] Could not start Moka cron jobs:', e.message);
   }
-} catch (e) {
-  console.warn('[Cron] Could not start Moka cron jobs:', e.message);
 }
 
 // Barber self-service routes

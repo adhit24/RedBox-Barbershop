@@ -1598,7 +1598,8 @@ async function handleWebhookEvent(supabase, callbackBody) {
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  */
 function startCronJobs(supabase) {
-  if (process.env.NODE_ENV === 'test') return;
+  const isTest = process.env.NODE_ENV === 'test' || Boolean(process.env.NODE_TEST_CONTEXT) || process.env.npm_lifecycle_event === 'test';
+  if (isTest || process.env.ALLOW_PRODUCTION_MUTATION !== 'true') return;
   if (!supabase) { console.warn('[Cron] Supabase not configured — skipping Moka cron'); return; }
 
   let cron;

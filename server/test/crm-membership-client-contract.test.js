@@ -35,7 +35,10 @@ test('Next CRM shows paid registration states and activates only the selected re
   const registrationsProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', 'route.ts'));
   const activationProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'activate', 'route.ts'));
   const changeProxy = source(path.join('frontend', 'src', 'app', 'api', 'admin', 'crm', 'membership', 'registrations', '[registrationId]', 'change', 'route.ts'));
-  const backend = source(path.join('server', 'routes', 'adminCrm.js'));
+  const adminCrmPath = fs.existsSync(path.join(workspace, 'server', 'routes', 'adminCrmLegacy.js'))
+    ? path.join('server', 'routes', 'adminCrmLegacy.js')
+    : path.join('server', 'routes', 'adminCrm.js');
+  const backend = source(adminCrmPath);
 
   assert.match(page, /\/api\/admin\/crm\/membership\/registrations/);
   assert.match(page, /'PENDING'/);
