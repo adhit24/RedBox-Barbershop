@@ -89,12 +89,26 @@ class MokaClient {
   }
 
   /**
-   * Fetch a single Advanced Order by Moka's internal order ID.
-   * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}
-   * @param {string} mokaOrderId
+   * Fetch a single Advanced Order.
+   * IDENTIFIER CONTRACT: like cancelOrder() below, this path family
+   * (`/advanced_orderings/orders/{id}`) takes the application_order_id
+   * (Redbox-generated UUID — schedule.id), not the numeric moka_order_id
+   * returned in order responses. Inferred from the same path prefix that
+   * cancelOrder() uses (confirmed against production: numeric ID → 400
+   * ORDR-ORNF, UUID → 200) — this method currently has no callers, so the
+   * inference has not itself been exercised against the live API. Verify
+   * with a read-only call before relying on it operationally.
+   * Docs: GET /v1/outlets/{outlet_id}/advanced_orderings/orders/{application_order_id}
+   * @param {string} applicationOrderId - Redbox schedule UUID (schedule.id)
    */
-  async getOrder(mokaOrderId) {
-    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}`);
+  async getOrder(applicationOrderId) {
+    if (!applicationOrderId) {
+      throw new Error('application_order_id is required');
+    }
+    if (/^\d+$/.test(String(applicationOrderId))) {
+      throw new Error('getOrder expects Moka application_order_id UUID, not numeric moka_order_id');
+    }
+    return this._req('GET', `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${applicationOrderId}`);
   }
 
   /**
@@ -129,22 +143,38 @@ class MokaClient {
 
   /**
    * Cancel an Advanced Order (cashier hasn't accepted yet).
-   * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/orders/{order_id}/cancel
-   * @param {string} mokaOrderId
+   *
+   * IDENTIFIER CONTRACT: Moka Advanced Ordering path operations use
+   * application_order_id (the Redbox-generated UUID we sent as
+   * application_order_id when creating the order — i.e. schedule.id),
+   * NOT the numeric moka_order_id Moka returns in its response and that
+   * we store in schedules.external_id. Confirmed in production
+   * (2026-09): numeric ID (e.g. 8787416) → HTTP 400 ORDR-ORNF; UUID
+   * (e.g. 1bb98668-2588-476b-94f4-aa3aad859b41) → HTTP 200, cancelled.
+   * This distinction must remain explicit to avoid future regression.
+   *
+   * Docs: POST /v1/outlets/{outlet_id}/advanced_orderings/orders/{application_order_id}/cancel
+   * @param {string} applicationOrderId - Redbox schedule UUID (schedule.id), NOT schedule.external_id
    * @param {string} reason  - e.g. "CUSTOMER#Customer requested cancellation"
    */
-  async cancelOrder(mokaOrderId, reason = 'CUSTOMER#Cancelled by customer') {
+  async cancelOrder(applicationOrderId, reason = 'CUSTOMER#Cancelled by customer') {
+    if (!applicationOrderId) {
+      throw new Error('application_order_id is required');
+    }
+    if (/^\d+$/.test(String(applicationOrderId))) {
+      throw new Error('cancelOrder expects Moka application_order_id UUID, not numeric moka_order_id');
+    }
     return this._req('POST',
-      `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${mokaOrderId}/cancel`,
+      `/v1/outlets/${this._mokaOutletId}/advanced_orderings/orders/${applicationOrderId}/cancel`,
       { cancel_reason: reason });
   }
 
   /**
    * @deprecated Use cancelOrder() directly. PATCH endpoint not in Moka API spec.
    */
-  async updateOrder(mokaOrderId, patch) {
+  async updateOrder(applicationOrderId, patch) {
     if (patch?.status === 'CANCELLED') {
-      return this.cancelOrder(mokaOrderId);
+      return this.cancelOrder(applicationOrderId);
     }
     // BUG FIX: PATCH /advanced_orderings/orders/{id} is not in Moka API spec — skip silently
     console.warn(`[MokaClient] updateOrder() with non-cancel patch ignored (PATCH not in API spec)`);

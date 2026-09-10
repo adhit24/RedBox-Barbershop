@@ -2072,8 +2072,10 @@ async function _cancelMokaOrder(supabase, schedule) {
     .from('outlets').select('id, moka_outlet_id').eq('id', schedule.outlet_id).single();
   if (!outlet?.moka_outlet_id) return;
   const client = new MokaClient(supabase, outlet.id, outlet.moka_outlet_id);
-  // BUG FIX: use cancelOrder() directly — PATCH not in Moka API spec
-  await client.cancelOrder(schedule.external_id, 'CUSTOMER#Cancelled by admin');
+  // BUG FIX (P1, 2026-09-10): cancelOrder() needs the application_order_id we
+  // sent Moka when creating the order (schedule.id) — NOT schedule.external_id,
+  // which holds the numeric moka_order_id and is rejected with 400 ORDR-ORNF.
+  await client.cancelOrder(schedule.id, 'CUSTOMER#Cancelled by admin');
 }
 
 function _serverError(res, err) {
