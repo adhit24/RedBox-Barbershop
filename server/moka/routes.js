@@ -30,6 +30,8 @@ const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEven
 const { getAvailableSlots, isSlotAvailable, getBarberDateAvailability } = require('./slotEngine');
 const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
 const { getBarberForBooking, branchMatchesBarber }                     = require('../services/bookingGuard');
+const { getStaleOrFailedJobs } = require('../services/mokaOutboxService');
+const { evaluateTestIsolation } = require('../utils/testIsolation');
 
 async function syncCurrentMonthTransactions(supabase, outletId = null) {
   const { syncCurrentMonthTx } = require('./txSync');
@@ -495,8 +497,8 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
       let mokaSyncDetail = null;
       if (isMokaOAuthConfigured()) {
         try {
-          const result = await pushScheduleToMoka(supabase, schedule.id);
-          mokaSync = 'success';
+          const result = await pushScheduleToMoka(supabase, schedule.id, { req });
+          mokaSync = result?.skipped ? `skipped_${result.reason}` : 'success';
           mokaSyncDetail = result;
         } catch (err) {
           mokaSync = 'failed';
@@ -1011,46 +1013,33 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-      const now     = new Date();
-      const ceiling = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+      const jobs = await getStaleOrFailedJobs(supabase, { limit: 20 });
 
-      const { data: nullMissed } = await supabase
-        .from('schedules').select('id')
-        .is('external_id', null).eq('source', 'web')
-        .in('status', ['reserved', 'confirmed'])
-        .gte('start_time', now.toISOString())
-        .lte('start_time', ceiling.toISOString());
-
-      const { data: bridgeMissed } = await supabase
-        .from('schedules').select('id')
-        .like('external_id', 'booking:%').eq('source', 'web')
-        .in('status', ['reserved', 'confirmed'])
-        .gte('start_time', now.toISOString())
-        .lte('start_time', ceiling.toISOString());
-
-      const scheduleIds = [
-        ...((nullMissed  || []).map(s => s.id)),
-        ...((bridgeMissed || []).map(s => s.id)),
-      ];
-
-      if (!scheduleIds.length) {
-        return res.status(200).json({ ok: true, retried: 0, message: 'No pending schedules' });
+      if (!jobs.length) {
+        return res.status(200).json({ ok: true, retried: 0, message: 'No eligible retry jobs in outbox' });
       }
 
-      const results = { success: 0, failed: 0, errors: [] };
-      for (const id of scheduleIds) {
+      console.log(`[MokaPushRetry] [moka_retry_started] Found ${jobs.length} eligible jobs in outbox`);
+      const results = { success: 0, skipped: 0, failed: 0, errors: [] };
+      for (const job of jobs) {
         try {
-          await pushScheduleToMoka(supabase, id);
-          results.success++;
+          const outcome = await pushScheduleToMoka(supabase, job.schedule_id, { bookingId: job.booking_id, req });
+          if (outcome?.skipped) {
+            results.skipped++;
+            console.log(`[MokaPushRetry] [moka_retry_skipped] schedule=${job.schedule_id} reason=${outcome.reason}`);
+          } else {
+            results.success++;
+            console.log(`[MokaPushRetry] [moka_retry_succeeded] schedule=${job.schedule_id} mokaOrderId=${outcome?.mokaOrderId}`);
+          }
         } catch (err) {
           results.failed++;
-          results.errors.push({ id, error: err.message });
-          console.error(`[MokaPushRetry] Schedule ${id} failed:`, err.message);
+          results.errors.push({ id: job.schedule_id, error: err.message });
+          console.error(`[MokaPushRetry] Schedule ${job.schedule_id} failed:`, err.message);
         }
       }
 
-      console.log(`[MokaPushRetry] Retried ${scheduleIds.length}: ${results.success} OK, ${results.failed} failed`);
-      return res.status(200).json({ ok: true, retried: scheduleIds.length, ...results });
+      console.log(`[MokaPushRetry] Retried ${jobs.length}: ${results.success} OK, ${results.skipped} skipped, ${results.failed} failed`);
+      return res.status(200).json({ ok: true, retried: jobs.length, ...results });
     } catch (err) {
       console.error('[MokaPushRetry] Unexpected error:', err.message);
       return res.status(500).json({ error: err.message });

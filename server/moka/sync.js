@@ -11,6 +11,8 @@ const MokaClient = require('./client');
 const { _matchScore } = require('./schemaSync');
 const { logDataAuthorityEvent } = require('../orchestrator/telemetry');
 const { resolveTransactionCustomerLinkage, maintainCustomerRecordSafely, PROVENANCE, STATUS } = require('../services/transactionCustomerLinkage');
+const { evaluateTestIsolation, logSideEffectSkipped } = require('../utils/testIsolation');
+const { claimOutboxJob, markOutboxSent, markOutboxFailed, getStaleOrFailedJobs } = require('../services/mokaOutboxService');
 
 
 
@@ -59,26 +61,75 @@ const MOKA_OPENBILL_STALE_HOURS = Math.max(1, parseInt(process.env.MOKA_OPENBILL
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} scheduleId - UUID of the schedule row
  */
-async function pushScheduleToMoka(supabase, scheduleId) {
-  const logId = await _startLog(supabase, 'web_to_moka', 'schedule', scheduleId);
+async function pushScheduleToMoka(supabase, scheduleId, options = {}) {
+  const actualScheduleId = (typeof scheduleId === 'object' && scheduleId !== null)
+    ? (scheduleId.id || scheduleId.schedule_id)
+    : scheduleId;
+  const logId = await _startLog(supabase, 'web_to_moka', 'schedule', actualScheduleId);
 
   try {
     // 1. Load schedule
-    const { data: sch, error: schErr } = await supabase
-      .from('schedules_full')
-      .select('*')
-      .eq('id', scheduleId)
-      .single();
-
-    if (schErr || !sch) throw new Error(`Schedule not found: ${scheduleId}`);
-    // Skip only if external_id is a real Moka order ID (not a bridge legacy ref like 'booking:uuid')
-    if (sch.external_id && !String(sch.external_id).startsWith('booking:')) {
-      await _finishLog(supabase, logId, 'skipped', 'Already synced');
-      return;
+    let sch = null;
+    if (typeof scheduleId === 'object' && scheduleId !== null && scheduleId.customer_name) {
+      sch = scheduleId;
+    } else {
+      const { data, error: schErr } = await supabase
+        .from('schedules_full')
+        .select('*')
+        .eq('id', actualScheduleId)
+        .single();
+      if (schErr || !data) throw new Error(`Schedule not found: ${actualScheduleId}`);
+      sch = data;
     }
 
-    // 2. Resolve Moka client for this outlet
-    const client = await _getClient(supabase, sch.outlet_id, sch.outlet_moka_id);
+    // 2. Test isolation check — NEVER push to Moka for automated tests
+    const testCheck = evaluateTestIsolation(options.req, sch, options);
+    if (testCheck.isTest) {
+      logSideEffectSkipped('moka_order_create', {
+        reason: testCheck.reason,
+        scheduleId: actualScheduleId,
+        bookingId: options.bookingId || sch.booking_id,
+      });
+      console.log(`[Sync] 🛡️ [moka_push_skipped_test] schedule=${actualScheduleId} reason=${testCheck.reason}`);
+      await _finishLog(supabase, logId, 'skipped', `Test mode active (${testCheck.reason})`);
+      return { skipped: true, reason: testCheck.reason || 'automated_test' };
+    }
+
+    // 3. Skip if external_id is already a real Moka order ID
+    if (sch.external_id && !String(sch.external_id).startsWith('booking:')) {
+      console.log(`[Sync] 🛡️ [moka_push_skipped_already_sent] schedule=${actualScheduleId} external_id=${sch.external_id}`);
+      await _finishLog(supabase, logId, 'skipped', 'Already synced');
+      return { skipped: true, reason: 'already_sent', mokaOrderId: sch.external_id };
+    }
+
+    // 4. Atomic claim via persistent outbox table
+    const bookingId = options.bookingId || sch.booking_id || null;
+    console.log(`[Sync] [moka_push_started] schedule=${actualScheduleId} booking=${bookingId || 'none'}`);
+
+    const claim = await claimOutboxJob(supabase, {
+      scheduleId: actualScheduleId,
+      bookingId,
+      staleMinutes: 5,
+    });
+
+    if (!claim.claimed) {
+      if (claim.status === 'sent' || claim.mokaOrderId) {
+        console.log(`[Sync] 🛡️ [moka_push_skipped_already_sent] schedule=${actualScheduleId} outbox=${claim.outboxId} moka_order_id=${claim.mokaOrderId}`);
+        await _finishLog(supabase, logId, 'skipped', 'Already sent in outbox');
+        return { skipped: true, reason: 'already_sent', mokaOrderId: claim.mokaOrderId };
+      }
+      if (claim.status === 'processing') {
+        console.log(`[Sync] 🛡️ [moka_duplicate_prevented] schedule=${actualScheduleId} worker currently processing`);
+        await _finishLog(supabase, logId, 'skipped', 'Concurrent worker processing');
+        return { skipped: true, reason: 'in_flight' };
+      }
+      console.warn(`[Sync] Claim failed for schedule=${actualScheduleId} status=${claim.status}`);
+      await _finishLog(supabase, logId, 'skipped', `Claim failed: ${claim.status}`);
+      return { skipped: true, reason: 'claim_failed' };
+    }
+
+    // 5. Resolve Moka client for this outlet
+    const client = options.mokaClient || await _getClient(supabase, sch.outlet_id, sch.outlet_moka_id);
 
     // Enrich schedule with barber's moka_employee_id and service's moka_variant_name
     // if the schedules_full view doesn't expose them directly
@@ -93,10 +144,10 @@ async function pushScheduleToMoka(supabase, scheduleId) {
       sch.moka_variant_name = svc?.moka_variant_name || null;
     }
 
-    // 3. Customer upsert removed — POST /v2/customers not in Moka API spec.
+    // 6. Customer upsert removed — POST /v2/customers not in Moka API spec.
     //    Customer is identified in Moka via customer_name + customer_phone_number in the order.
 
-    // 4. Create Moka order (with 404 auto-recovery via generate_sales_type)
+    // 7. Create Moka order (with 404 auto-recovery via generate_sales_type)
     const orderPayload = await _buildMokaOrderPayload(sch, client);
     let mokaOrder;
     try {
@@ -116,18 +167,22 @@ async function pushScheduleToMoka(supabase, scheduleId) {
 
     if (!mokaOrderId) throw new Error('Moka order created but no ID returned');
 
-    // 5. Update schedule with Moka order ID
-    await supabase.from('schedules').update({
-      external_id: mokaOrderId,
-      status:      'confirmed',
-    }).eq('id', scheduleId);
+    // 8. Atomically mark outbox as SENT (NEVER create again)
+    await markOutboxSent(supabase, { scheduleId: actualScheduleId, mokaOrderId });
+    console.log(`[Sync] ✅ [moka_push_succeeded] schedule=${actualScheduleId} moka_order_id=${mokaOrderId} attempt=${claim.attemptCount || 1}`);
 
-    // 6. Insert transaction
+    // 9. Update schedule with Moka order ID
+    await supabase.from('schedules').update({
+      external_id: String(mokaOrderId),
+      status:      'confirmed',
+    }).eq('id', actualScheduleId);
+
+    // 10. Insert transaction
     await _insertTransaction(supabase, {
       customerId:  sch.customer_id,
       outletId:    sch.outlet_id,
-      scheduleId:  scheduleId,
-      externalId:  mokaOrderId,
+      scheduleId:  actualScheduleId,
+      externalId:  String(mokaOrderId),
       totalAmount: sch.price || 0,
       source:      'web',
       mokaPayload: mokaOrder,
@@ -135,11 +190,13 @@ async function pushScheduleToMoka(supabase, scheduleId) {
     });
 
     await _finishLog(supabase, logId, 'success', null, { mokaOrderId });
-    return { mokaOrderId };
+    return { success: true, mokaOrderId };
 
   } catch (err) {
+    console.error(`[Sync] ❌ [moka_push_failed] schedule=${actualScheduleId}:`, err.message);
+    await markOutboxFailed(supabase, { scheduleId: actualScheduleId, error: err.message });
     await _finishLog(supabase, logId, 'failed', err.message, err.details ? { mokaError: err.details } : null);
-    throw err;
+    return { success: false, error: err.message };
   }
 }
 
@@ -1638,44 +1695,22 @@ function startCronJobs(supabase) {
     }
   });
 
-  // Cron 2: Retry fallback — interval lebih rapat dari default lama
-  // Push real-time dilakukan saat booking dibuat. Cron ini menangani jadwal
-  // yang gagal push dalam 24 jam ke depan. Dua kondisi yang perlu di-retry:
-  //   (a) external_id IS NULL  → push belum pernah dicoba / gagal sebelum save
-  //   (b) external_id LIKE 'booking:%' → bridge booking (dari /api/bookings)
-  //       yang belum dapat Moka order ID
+  // Cron 2: Retry fallback using persistent moka_order_outbox
+  // Only retries failed jobs or stale processing jobs from the outbox.
+  // Never creates duplicate Moka orders for already-sent records.
   cron.schedule(`*/${MOKA_RETRY_INTERVAL_MINUTES} * * * *`, async () => {
     try {
-      const now     = new Date();
-      const ceiling = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const range   = { gte: now.toISOString(), lte: ceiling.toISOString() };
+      const eligibleJobs = await getStaleOrFailedJobs(supabase, { limit: 20 });
+      if (!eligibleJobs.length) return;
 
-      // (a) external_id null
-      const { data: nullMissed } = await supabase
-        .from('schedules')
-        .select('id')
-        .is('external_id', null)
-        .in('status', ['reserved', 'confirmed'])
-        .gte('start_time', range.gte)
-        .lte('start_time', range.lte);
-
-      // (b) external_id starts with 'booking:' (bridge ref, not a real Moka ID)
-      const { data: bridgeMissed } = await supabase
-        .from('schedules')
-        .select('id')
-        .like('external_id', 'booking:%')
-        .in('status', ['reserved', 'confirmed'])
-        .gte('start_time', range.gte)
-        .lte('start_time', range.lte);
-
-      const missed = [...(nullMissed || []), ...(bridgeMissed || [])];
-      if (!missed.length) return;
-
-      console.log(`[Cron] Retry push: ${missed.length} schedule(s) belum ke Moka`);
-      for (const s of missed) {
-        pushScheduleToMoka(supabase, s.id).catch(err =>
-          console.error(`[Cron] Retry push ${s.id}:`, err.message)
-        );
+      console.log(`[Cron] [moka_retry_started] Found ${eligibleJobs.length} eligible job(s) in outbox`);
+      for (const job of eligibleJobs) {
+        pushScheduleToMoka(supabase, job.schedule_id, { bookingId: job.booking_id })
+          .then(res => {
+            if (res?.skipped) console.log(`[Cron] [moka_retry_skipped] schedule=${job.schedule_id} reason=${res.reason}`);
+            else console.log(`[Cron] [moka_retry_succeeded] schedule=${job.schedule_id}`);
+          })
+          .catch(err => console.error(`[Cron] Retry push ${job.schedule_id}:`, err.message));
       }
     } catch (err) {
       console.error('[Cron] Retry push error:', err.message);
@@ -2214,8 +2249,19 @@ function _normalizePhone(raw) {
  * @param {object} booking  - row from bookings table
  * @returns {Promise<{ scheduleId:string|null, mokaSync:string }>}
  */
-async function bridgeBookingToMoka(supabase, booking) {
+async function bridgeBookingToMoka(supabase, booking, options = {}) {
   const legacyRef = `booking:${booking.id}`;
+
+  // Test isolation: suppress Moka push if in automated test mode
+  const testCheck = evaluateTestIsolation(options.req, booking);
+  if (testCheck.isTest) {
+    logSideEffectSkipped('moka_bridge_push', {
+      reason: testCheck.reason,
+      bookingId: booking.id,
+      scheduleId: booking.schedule_id,
+    });
+    return { scheduleId: booking.schedule_id || null, mokaSync: 'skipped_test' };
+  }
 
   // B2.5: If schedule was already created atomically (or linked), reuse it and skip duplicate insertion
   if (booking.schedule_id) {
@@ -2223,8 +2269,8 @@ async function bridgeBookingToMoka(supabase, booking) {
     let mokaSync = 'skipped_not_configured';
     if (isMokaOAuthConfigured()) {
       try {
-        await pushScheduleToMoka(supabase, booking.schedule_id);
-        mokaSync = 'success';
+        const pushRes = await pushScheduleToMoka(supabase, booking.schedule_id, { bookingId: booking.id, req: options.req });
+        mokaSync = pushRes?.skipped ? `skipped_${pushRes.reason}` : 'success';
       } catch (err) {
         mokaSync = 'failed';
         console.error(`[Bridge] Moka push failed for schedule ${booking.schedule_id}:`, err.message);
@@ -2342,13 +2388,13 @@ async function bridgeBookingToMoka(supabase, booking) {
   const { isMokaOAuthConfigured } = require('./oauth');
   let mokaSync = 'skipped_not_configured';
   if (isMokaOAuthConfigured()) {
-    try {
-      await pushScheduleToMoka(supabase, schedule.id);
-      mokaSync = 'success';
-    } catch (err) {
-      mokaSync = 'failed';
-      console.error(`[Bridge] Moka push failed for schedule ${schedule.id}:`, err.message);
-    }
+      try {
+        const pushRes = await pushScheduleToMoka(supabase, schedule.id, { bookingId: booking.id, req: options.req });
+        mokaSync = pushRes?.skipped ? `skipped_${pushRes.reason}` : 'success';
+      } catch (err) {
+        mokaSync = 'failed';
+        console.error(`[Bridge] Moka push failed for schedule ${schedule.id}:`, err.message);
+      }
   }
 
   return { scheduleId: schedule.id, mokaSync };

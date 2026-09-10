@@ -2070,12 +2070,25 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (finalBtn) finalBtn.disabled = false;
  }
 
- document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
+ const _finalBookBtn = document.getElementById('finalBookBtn');
+ _finalBookBtn?.addEventListener('click', async () => {
+ if (_finalBookBtn.disabled || _finalBookBtn.dataset.submitting === 'true') return;
+ _finalBookBtn.dataset.submitting = 'true';
+ _finalBookBtn.disabled = true;
+ const _origBtnText = _finalBookBtn.textContent;
+ _finalBookBtn.textContent = 'Memproses Booking...';
+ const _releaseBtn = () => {
+   _finalBookBtn.dataset.submitting = 'false';
+   _finalBookBtn.disabled = false;
+   _finalBookBtn.textContent = _origBtnText;
+ };
+
  // Turnstile bot-check gate — verified server-side via the Spin-deployed
  // Worker before any of the existing booking logic below runs.
  const turnstileToken = document.querySelector('[name="cf-turnstile-response"]')?.value;
  if (!turnstileToken) {
  alert('Mohon selesaikan verifikasi keamanan sebelum konfirmasi booking.');
+ _releaseBtn();
  return;
  }
  try {
@@ -2088,10 +2101,12 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (!verifyData.success) {
  alert('Verifikasi keamanan gagal. Silakan coba lagi.');
  if (typeof turnstile !== 'undefined') turnstile.reset();
+ _releaseBtn();
  return;
  }
  } catch (e) {
  alert('Gagal memverifikasi keamanan. Periksa koneksi internet kamu dan coba lagi.');
+ _releaseBtn();
  return;
  }
 
@@ -2113,6 +2128,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  const p2DurMins = isHomeService ? 120 : _parseDurToMins(state.person2.service?.duration);
  if (RedboxBookingOverlap.timeRangesOverlap(timeToMins(state.time), p1DurMins, timeToMins(state.person2.time), p2DurMins)) {
  alert('Mohon maaf, jam Orang 1 dan Orang 2 bentrok untuk kapster yang sama. Silakan pilih jadwal lain.');
+ _releaseBtn();
  goToStep(3);
  return;
  }
@@ -2296,6 +2312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (res.status === 403) {
  alert('Verifikasi keamanan bot gagal atau sesi telah kadaluarsa. Silakan verifikasi ulang checkbox keamanan atau muat ulang halaman.');
  if (typeof turnstile !== 'undefined') turnstile.reset();
+ _releaseBtn();
  return;
  }
 
@@ -2303,12 +2320,14 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (res.status === 409) {
  if (errData.code === 'IDEMPOTENCY_KEY_REUSED') {
  alert('Permintaan booking ini bentrok dengan request lain. Silakan coba kembali.');
+ _releaseBtn();
  return;
  }
  const personNotice = (isGroup() && errData.conflictIndex !== undefined)
  ? ' (booking orang ke-' + (errData.conflictIndex + 1) + ')'
  : '';
  alert('Mohon maaf' + personNotice + ': ' + (errData.error || 'Jadwal kapster pada jam tersebut sudah terisi atau bentrok. Silakan pilih jam lain.'));
+ _releaseBtn();
  goToStep(3);
  return;
  }
@@ -2316,11 +2335,13 @@ document.addEventListener('DOMContentLoaded', async () => {
  // 429: Rate limit
  if (res.status === 429) {
  alert('Terlalu banyak permintaan dalam waktu singkat. Silakan tunggu 1 menit lalu coba lagi.');
+ _releaseBtn();
  return;
  }
 
  // 5xx: Server error
  alert('Booking belum dapat disimpan ke server: ' + (errData.error || 'Terjadi kendala pada server, silakan coba lagi.'));
+ _releaseBtn();
  return;
  }
 
@@ -2329,12 +2350,14 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (isGroup()) {
  if (!resBody?.bookings || !resBody.bookings.length || !resBody?.scheduleIds) {
  alert('Booking grup belum berhasil dibuat sepenuhnya. Silakan coba lagi atau hubungi admin Redbox.');
+ _releaseBtn();
  return;
  }
  bookingResults.push(...resBody.bookings);
  } else {
  if (!resBody?.data?.id || !resBody?.scheduleId) {
  alert('Booking belum berhasil dibuat sepenuhnya. Silakan coba lagi atau hubungi admin Redbox.');
+ _releaseBtn();
  return;
  }
  bookingResults.push(resBody.data);
@@ -2349,6 +2372,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  console.warn('API sync failed', e);
  // P2-B4 Truthful UX: Do not declare false booking failure when network times out
  alert('Koneksi terputus saat mengecek hasil booking. Silakan coba lagi — sistem akan memastikan booking tidak dibuat dua kali.');
+ _releaseBtn();
  return;
  }
  }

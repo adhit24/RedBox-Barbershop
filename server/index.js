@@ -1654,15 +1654,32 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         }, { supabase }).catch(() => {});
       }
 
+      // Test isolation check: automated tests must NOT trigger real WA or Moka push
+      const { evaluateTestIsolation, logSideEffectSkipped } = require('./utils/testIsolation');
+      const testCheck = evaluateTestIsolation(req, { ...data, ...req.body });
+      if (testCheck.isTest) {
+        logSideEffectSkipped('booking_external_side_effects', {
+          reason: testCheck.reason,
+          bookingId: data.id,
+          scheduleId: atomicResult.scheduleId,
+        });
+        if (supabase) {
+          supabase.from('bookings').update({ is_test: true }).eq('id', data.id).then(()=>{}).catch(()=>{});
+          if (atomicResult.scheduleId) {
+            supabase.from('schedules').update({ is_test: true }).eq('id', atomicResult.scheduleId).then(()=>{}).catch(()=>{});
+          }
+        }
+      }
+
       // Notif admin untuk setiap booking baru (fire-and-forget — tidak block response)
-      if (data.wa) {
+      if (data.wa && !testCheck.isTest) {
         notifyAdminNewBooking({ ...data }).catch(e => console.warn('[WA Admin] failed:', e.message));
       }
 
       // Kirim WA konfirmasi ke pelanggan + notif barber (if assigned)
       // Awaited (bukan fire-and-forget) agar selesai sebelum res.end() — Vercel kills
       // orphaned promises setelah response dikirim.
-      if (desiredStatus === 'confirmed' && data.wa) {
+      if (desiredStatus === 'confirmed' && data.wa && !testCheck.isTest) {
         let barberName = null;
         if (data.barber_id) {
           try {
@@ -1703,7 +1720,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       }
 
       // Send Web Push to the assigned barber (fire-and-forget)
-      if (data && data.barber_id && data.location) {
+      if (data && data.barber_id && data.location && !testCheck.isTest) {
         supabase
           .from('users')
           .select('id')
@@ -1725,7 +1742,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       // dan langsung dibridge ke schedules + push ke Moka (non-blocking untuk admin draft).
       if (supabase && desiredStatus === 'confirmed') {
         try {
-          const r = await require('./moka/sync').bridgeBookingToMoka(supabase, { ...data, type, address });
+          const r = await require('./moka/sync').bridgeBookingToMoka(supabase, { ...data, type, address, schedule_id: atomicResult.scheduleId }, { req });
           if (r.scheduleId) {
             await logSystemEvent({
               module: 'booking', eventName: 'schedule_created', severity: 'INFO', status: 'success',
@@ -2039,21 +2056,35 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     correlationId, httpStatus: 201,
   }, { supabase });
 
+  const { evaluateTestIsolation, logSideEffectSkipped } = require('./utils/testIsolation');
+  const groupTestCheck = evaluateTestIsolation(req, req.body);
+  if (groupTestCheck.isTest) {
+    logSideEffectSkipped('group_booking_external_side_effects', {
+      reason: groupTestCheck.reason,
+      groupId: group_request_id,
+    });
+  }
+
   for (let i = 0; i < groupResult.bookings.length; i++) {
     const b = groupResult.bookings[i];
     const schId = groupResult.scheduleIds[i];
+
+    if (groupTestCheck.isTest && supabase) {
+      supabase.from('bookings').update({ is_test: true }).eq('id', b.id).then(()=>{}).catch(()=>{});
+      if (schId) supabase.from('schedules').update({ is_test: true }).eq('id', schId).then(()=>{}).catch(()=>{});
+    }
 
     // Customer upsert & link
     await supabase.from('customers').upsert({ name: b.name, wa: b.wa, visits: 0, total_spent: 0, last_visit: null }, { onConflict: 'wa', ignoreDuplicates: true });
     linkNewlyCreatedBooking(supabase, { booking: { id: b.id }, phone: b.wa, source: 'booking_create', branch: b.location }).catch(() => {});
 
-    // Notifications
-    if (b.status === 'confirmed' && b.wa) {
+    // Notifications (skipped in test mode)
+    if (b.status === 'confirmed' && b.wa && !groupTestCheck.isTest) {
       _notifyCustomerConfirmedWithRetry(supabase, b, null).catch(() => {});
     }
 
     // Bridge to Moka with schedule_id passed
-    require('./moka/sync').bridgeBookingToMoka(supabase, { ...b, schedule_id: schId }).catch(() => {});
+    require('./moka/sync').bridgeBookingToMoka(supabase, { ...b, schedule_id: schId }, { req }).catch(() => {});
   }
 
   return res.status(201).json({
@@ -3127,41 +3158,34 @@ app.all('/api/admin/moka-retry-schedules', async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'DB unavailable' });
 
   const { pushScheduleToMoka } = require('./moka/sync');
+  const { getStaleOrFailedJobs } = require('./services/mokaOutboxService');
   const specificId = req.query.schedule_id || req.body?.schedule_id;
 
-  let scheduleIds = [];
+  const results = [];
   if (specificId) {
-    scheduleIds = [specificId];
-  } else {
-    const now = new Date();
-    const ceiling = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-    const { data: nullMissed } = await supabase
-      .from('schedules').select('id')
-      .is('external_id', null)
-      .in('status', ['reserved', 'confirmed'])
-      .gte('start_time', now.toISOString())
-      .lte('start_time', ceiling.toISOString());
-    const { data: bridgeMissed } = await supabase
-      .from('schedules').select('id')
-      .like('external_id', 'booking:%')
-      .in('status', ['reserved', 'confirmed'])
-      .gte('start_time', now.toISOString())
-      .lte('start_time', ceiling.toISOString());
-    scheduleIds = [...(nullMissed || []), ...(bridgeMissed || [])].map(s => s.id);
+    try {
+      const outcome = await pushScheduleToMoka(supabase, specificId, { req });
+      results.push({ id: specificId, status: outcome?.skipped ? `skipped_${outcome.reason}` : 'success', outcome });
+    } catch (e) {
+      results.push({ id: specificId, status: 'failed', error: e.message });
+    }
+    return res.json({ ok: true, retried: 1, results });
   }
 
-  if (!scheduleIds.length) return res.json({ ok: true, retried: 0, message: 'Tidak ada schedule yang perlu di-retry' });
+  const eligibleJobs = await getStaleOrFailedJobs(supabase, { limit: 50 });
+  if (!eligibleJobs.length) {
+    return res.json({ ok: true, retried: 0, message: 'Tidak ada schedule yang perlu di-retry' });
+  }
 
-  const results = [];
-  for (const id of scheduleIds) {
+  for (const job of eligibleJobs) {
     try {
-      await pushScheduleToMoka(supabase, id);
-      results.push({ id, status: 'success' });
+      const outcome = await pushScheduleToMoka(supabase, job.schedule_id, { bookingId: job.booking_id, req });
+      results.push({ id: job.schedule_id, status: outcome?.skipped ? `skipped_${outcome.reason}` : 'success', outcome });
     } catch (e) {
-      results.push({ id, status: 'failed', error: e.message });
+      results.push({ id: job.schedule_id, status: 'failed', error: e.message });
     }
   }
-  res.json({ ok: true, retried: scheduleIds.length, results });
+  res.json({ ok: true, retried: eligibleJobs.length, results });
 });
 
 // ── GET /api/admin/moka-advanced-ordering ──────────────────────────────────────
