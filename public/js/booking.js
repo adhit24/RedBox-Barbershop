@@ -2287,6 +2287,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (!res.ok) {
  const errData = await res.json().catch(() => ({}));
 
+ // 400/401: Membership identity notes (non-blocking fallback)
+ if (errData.code === 'MEMBER_LOGIN_REQUIRED' || errData.code === 'MEMBER_IDENTITY_MISMATCH') {
+  console.warn('[Booking] Member authentication note:', errData.error);
+ }
+
  // 403: Turnstile bot verification failed
  if (res.status === 403) {
  alert('Verifikasi keamanan bot gagal atau sesi telah kadaluarsa. Silakan verifikasi ulang checkbox keamanan atau muat ulang halaman.');
@@ -2305,17 +2310,6 @@ document.addEventListener('DOMContentLoaded', async () => {
  : '';
  alert('Mohon maaf' + personNotice + ': ' + (errData.error || 'Jadwal kapster pada jam tersebut sudah terisi atau bentrok. Silakan pilih jam lain.'));
  goToStep(3);
- return;
- }
-
- // 400/401: Membership identity gates
- if (errData.code === 'MEMBER_LOGIN_REQUIRED') {
- alert('Booking belum dapat disimpan.\n\nBenefit Silver, Gold, dan Platinum hanya bisa digunakan setelah login member melalui OTP.\n\nLangkah:\n1. Tutup pesan ini.\n2. Buka menu Member lalu pilih Login via OTP.\n3. Masukkan nomor WhatsApp yang terdaftar sebagai member.\n4. Verifikasi OTP, lalu kembali ke halaman booking.\n5. Pastikan nomor WhatsApp booking sama dengan nomor yang dipakai login.');
- return;
- }
-
- if (errData.code === 'MEMBER_IDENTITY_MISMATCH') {
- alert('Booking belum dapat disimpan karena data member belum cocok.\n\nUntuk benefit Silver, Gold, dan Platinum, nama booking harus sama persis dengan nama member yang terdaftar untuk nomor WhatsApp tersebut.\n\nLangkah:\n1. Tutup pesan ini.\n2. Periksa nomor WhatsApp pada form booking.\n3. Isi nama lengkap persis seperti nama saat mendaftar member.\n4. Kirim booking kembali.');
  return;
  }
 

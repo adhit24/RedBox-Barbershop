@@ -65,8 +65,8 @@ test('Backoffice bearer session authorizes owner and populates verified adminAut
   });
 });
 
-test('Backoffice bearer session permits manager but rejects branch_admin', async () => {
-  for (const [profileRole, expected] of [['manager', 200], ['branch_admin', 403]]) {
+test('Backoffice bearer session permits manager and branch_admin but rejects unauthorized roles', async () => {
+  for (const [profileRole, expected] of [['manager', 200], ['branch_admin', 200], ['barber', 403]]) {
     const supabase = createSupabase({
       user: { id: `user-${profileRole}`, email: `${profileRole}@redbox.test` },
       profile: { id: `user-${profileRole}`, name: profileRole, role: profileRole, branch: 'csb' },
@@ -81,9 +81,9 @@ test('Backoffice bearer session permits manager but rejects branch_admin', async
     await middleware(req, res, () => { nextCalled = true; });
 
     assert.equal(res.statusCode, expected);
-    assert.equal(nextCalled, profileRole === 'manager');
-    if (profileRole === 'manager') {
-      assert.equal(req.adminAuth.role, 'manager');
+    assert.equal(nextCalled, expected === 200);
+    if (expected === 200) {
+      assert.equal(req.adminAuth.role, profileRole);
       assert.equal(req.adminAuth.branch, 'csb');
     }
   }

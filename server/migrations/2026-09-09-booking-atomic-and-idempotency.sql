@@ -27,23 +27,23 @@ CREATE INDEX IF NOT EXISTS idx_bookings_schedule_id
 -- Enforces slot conflict (exclusion / overlap), idempotent replay via booking_request_id,
 -- and links schedule_id to the booking row.
 CREATE OR REPLACE FUNCTION public.create_booking_atomic(
-  p_booking_id UUID,
-  p_booking_request_id UUID,
-  p_group_request_id UUID,
-  p_name TEXT,
-  p_wa TEXT,
-  p_service_id TEXT,
-  p_service TEXT,
-  p_price INTEGER,
-  p_duration TEXT,
-  p_barber_id TEXT,
-  p_date DATE,
-  p_time TIME,
-  p_location TEXT,
-  p_status TEXT,
-  p_notes TEXT,
-  p_payment TEXT,
-  p_type TEXT,
+  p_booking_id UUID DEFAULT NULL,
+  p_booking_request_id UUID DEFAULT NULL,
+  p_group_request_id UUID DEFAULT NULL,
+  p_name TEXT DEFAULT NULL,
+  p_wa TEXT DEFAULT NULL,
+  p_service_id TEXT DEFAULT '',
+  p_service TEXT DEFAULT NULL,
+  p_price INTEGER DEFAULT 0,
+  p_duration TEXT DEFAULT '30',
+  p_barber_id TEXT DEFAULT NULL,
+  p_date DATE DEFAULT NULL,
+  p_time TIME DEFAULT NULL,
+  p_location TEXT DEFAULT 'bypass',
+  p_status TEXT DEFAULT 'confirmed',
+  p_notes TEXT DEFAULT '',
+  p_payment TEXT DEFAULT '',
+  p_type TEXT DEFAULT 'outlet',
   p_original_price INTEGER DEFAULT NULL,
   p_discount_label TEXT DEFAULT NULL
 )
@@ -292,3 +292,4 @@ REVOKE EXECUTE ON FUNCTION public.create_booking_atomic FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.create_booking_atomic FROM anon;
 REVOKE EXECUTE ON FUNCTION public.create_booking_atomic FROM authenticated;
 GRANT EXECUTE ON FUNCTION public.create_booking_atomic TO service_role;
+GRANT EXECUTE ON FUNCTION public.create_booking_atomic TO postgres;

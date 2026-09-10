@@ -1225,6 +1225,8 @@ async function _notifyCustomerConfirmedWithRetry(supabaseClient, bookingData, ba
   }
 }
 
+const { REDBOX_SERVICES } = require('../public/js/services-data');
+
 const WEDDING_PACKAGE_PRICES = {
   'wedding-gentleman': 350000,
   'wedding-silver': 500000,
@@ -1243,7 +1245,7 @@ function isWeddingBooking({ type, service }) {
   return bookingType === 'wedding' || serviceName.includes('wedding') || serviceName.includes('weeding');
 }
 
-function normalizeBookingPrice({ service_id, service, price, type }) {
+function normalizeBookingPrice({ service_id, service, price, type, location }) {
   const serviceKey = String(service_id || '').trim().toLowerCase().replace(/^weeding-/, 'wedding-');
   const serviceName = String(service || '').trim().toLowerCase();
   const bookingType = String(type || '').trim().toLowerCase();
@@ -1255,7 +1257,18 @@ function normalizeBookingPrice({ service_id, service, price, type }) {
     if (serviceName.includes('silver')) return WEDDING_PACKAGE_PRICES['wedding-silver'];
     if (serviceName.includes('gentleman')) return WEDDING_PACKAGE_PRICES['wedding-gentleman'];
   }
-  return Number(price) || 0;
+  const submittedPrice = Number(price);
+  const isCsb = String(location || '').trim().toLowerCase() === 'csb';
+  const catalogService = Array.isArray(REDBOX_SERVICES)
+    ? REDBOX_SERVICES.find(s => s.id === serviceKey || String(s.name || '').trim().toLowerCase() === serviceName)
+    : null;
+  if (catalogService) {
+    const baseCatalogPrice = isCsb ? (catalogService.csbPrice || catalogService.price) : catalogService.price;
+    if (!Number.isFinite(submittedPrice) || submittedPrice < baseCatalogPrice) {
+      return baseCatalogPrice;
+    }
+  }
+  return Number.isFinite(submittedPrice) && submittedPrice > 0 ? submittedPrice : 0;
 }
 
 // POST /api/bookings — Rate limited: max 10 booking per menit per IP
@@ -1273,7 +1286,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
     httpPath: '/api/bookings',
     source: 'website',
   }, { supabase }).catch(() => {});
-  const bookingPrice = normalizeBookingPrice({ service_id, service, price, type });
+  const bookingPrice = normalizeBookingPrice({ service_id, service, price, type, location });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
   const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
@@ -1434,6 +1447,8 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
       let finalPrice = bookingPrice;
       let originalPrice = null;
       let discountLabel = null;
+      let membershipBenefitApplied = false;
+      let membershipLoginRequired = false;
       const bookingType = String(type || '').trim().toLowerCase();
       // Cross-check the client-supplied `group` flag against the [GROUP:...]
       // marker booking.js already writes into notes for real group bookings
@@ -1459,49 +1474,50 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
           // member. Paid tier benefits require the OTP session that belongs to
           // the same phone and the registered member name. Without this
           // server-side gate, anyone could type a paid member's WA number into
-          // the public booking form and receive the discount. Bronze/legacy
-          // members intentionally do not enter this gate.
+          // the public booking form and receive the discount.
+          // CRITICAL: Decouple booking authorization from benefit authorization.
+          // If unauthenticated or identity mismatch, we simply do NOT apply the
+          // discount, but the booking itself proceeds as a normal guest booking.
+          let eligibleForMemberBenefits = memberActive;
           if (requiresMemberIdentity) {
             const memberToken = getMemberToken(req.headers);
             const memberSession = await getMemberSessionByToken(memberToken);
             const sessionMatchesPhone = sameIdentityPhone(memberSession?.customer_wa, wa);
             if (!sessionMatchesPhone) {
+              eligibleForMemberBenefits = false;
+              membershipLoginRequired = true;
               await logSystemEvent({
                 module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
-                correlationId, httpStatus: 401, errorCode: 'MEMBER_LOGIN_REQUIRED',
+                correlationId, httpStatus: 401, code: 'MEMBER_LOGIN_REQUIRED', errorCode: 'MEMBER_LOGIN_REQUIRED',
                 errorMessage: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
               }, { supabase });
-              return res.status(401).json({
-                code: 'MEMBER_LOGIN_REQUIRED',
-                error: 'Login member melalui OTP diperlukan untuk menggunakan benefit membership.',
-              });
             }
             if (!sameIdentityName(name, memberProfile?.full_name)) {
+              eligibleForMemberBenefits = false;
               await logSystemEvent({
                 module: 'booking', eventName: 'booking_validation_failed', severity: 'WARNING', status: 'failed',
-                correlationId, httpStatus: 403, errorCode: 'MEMBER_IDENTITY_MISMATCH',
+                correlationId, httpStatus: 403, code: 'MEMBER_IDENTITY_MISMATCH', errorCode: 'MEMBER_IDENTITY_MISMATCH',
                 errorMessage: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
               }, { supabase });
-              return res.status(403).json({
-                code: 'MEMBER_IDENTITY_MISMATCH',
-                error: 'Benefit membership hanya dapat digunakan oleh member terdaftar.',
-              });
             }
           }
 
-          const discount = computeServiceDiscount({
-            tier: memberProfile?.current_tier,
-            membershipActive: memberActive,
-            birthdate: memberProfile?.birthdate,
-            serviceId: service_id,
-            location: resolvedLocation,
-            bookingDate: date,
-            basePrice: bookingPrice,
-          });
-          if (discount.discountPercent > 0) {
-            finalPrice = discount.finalPrice;
-            originalPrice = bookingPrice;
-            discountLabel = discount.benefitLabel;
+          if (eligibleForMemberBenefits) {
+            const discount = computeServiceDiscount({
+              tier: memberProfile?.current_tier,
+              membershipActive: memberActive,
+              birthdate: memberProfile?.birthdate,
+              serviceId: service_id,
+              location: resolvedLocation,
+              bookingDate: date,
+              basePrice: bookingPrice,
+            });
+            if (discount.discountPercent > 0) {
+              finalPrice = discount.finalPrice;
+              originalPrice = bookingPrice;
+              discountLabel = discount.benefitLabel;
+              membershipBenefitApplied = true;
+            }
           }
         } catch (err) {
           console.warn('[Booking] tier discount lookup skipped:', err?.message);
@@ -1739,7 +1755,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
               correlationId, bookingId: data.id, scheduleId: r.scheduleId,
               entityType: 'booking', entityId: data.id, httpStatus: 201,
             }, { supabase });
-            return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId });
+            return res.status(201).json({ data, autoBooked: true, scheduleId: r.scheduleId, mokaSync: r.mokaSync, homeServiceJobId, membershipBenefitApplied, membershipLoginRequired });
           } else {
             // Blocker 2: scheduleId:null IS NOT SUCCESS.
             // bridgeBookingToMoka resolved without throwing, but no schedule was created.
@@ -1785,7 +1801,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
         module: 'booking', eventName: 'booking_confirmed_to_client', severity: 'INFO', status: 'success',
         correlationId, bookingId: data.id, entityType: 'booking', entityId: data.id, httpStatus: 201,
       }, { supabase });
-      return res.status(201).json({ data, autoBooked: desiredStatus === 'confirmed' });
+      return res.status(201).json({ data, autoBooked: desiredStatus === 'confirmed', membershipBenefitApplied, membershipLoginRequired });
     } catch (err) {
       console.error('Supabase POST Error:', err);
       await logSystemEvent({
@@ -1959,7 +1975,7 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     if (!normalizedBarber || normalizedBarber === 'any') {
       return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: `Kapster orang ke-${i + 1} wajib dipilih` });
     }
-    const itemPrice = normalizeBookingPrice({ service_id, service, price, type });
+    const itemPrice = normalizeBookingPrice({ service_id, service, price, type, location: resolvedLoc });
     normalizedItems.push({
       ...item,
       name: String(name).trim(),
@@ -2028,7 +2044,7 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     const schId = groupResult.scheduleIds[i];
 
     // Customer upsert & link
-    supabase.from('customers').upsert({ name: b.name, wa: b.wa, visits: 0, total_spent: 0, last_visit: null }, { onConflict: 'wa', ignoreDuplicates: true }).catch(() => {});
+    await supabase.from('customers').upsert({ name: b.name, wa: b.wa, visits: 0, total_spent: 0, last_visit: null }, { onConflict: 'wa', ignoreDuplicates: true });
     linkNewlyCreatedBooking(supabase, { booking: { id: b.id }, phone: b.wa, source: 'booking_create', branch: b.location }).catch(() => {});
 
     // Notifications

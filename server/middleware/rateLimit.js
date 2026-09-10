@@ -33,4 +33,8 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000).unref();
 
-module.exports = { rateLimit };
+function _resetBuckets() {
+  buckets.clear();
+}
+
+module.exports = { rateLimit, _resetBuckets };
