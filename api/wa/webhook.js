@@ -1928,10 +1928,20 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
     // this exact failure mode (Reddy repeating a stale membership
     // clarification after the customer said it misread them) — this reply
     // is deterministic so the old interpretation can never be echoed back.
+    // Correction Round 1 (Aira actual-source review): clarify_short must be
+    // ACTION-specific, not strategy-wide. Only the two explicit membership
+    // clarification actions may ever use membership/paid-plan wording — an
+    // unrelated/ambiguous message that merely fell through to the generic
+    // "unknown" -> clarify_short fallback (or to the ambiguous_unrelated_
+    // message context-recovery reason, which also keeps response_strategy
+    // clarify_short) must never inherit membership phrasing just because
+    // membership happened to be the last topic discussed.
     const boundedReply = orchDecision.response_strategy === 'clarify_short'
       ? (orchDecision.action === 'clarify_membership_time_scope'
         ? 'Maksud Kak, sejak kapan terdaftar sebagai member Redbox, atau sejak kapan paket membership-nya aktif?'
-        : 'Maksud Kak, status akun member Redbox atau status paket membership berbayar?')
+        : (orchDecision.action === 'clarify_membership_scope'
+          ? 'Maksud Kak, status akun member Redbox atau status paket membership berbayar?'
+          : 'Maksud Kak yang bagian mana?'))
       : (orchDecision.response_strategy === 'acknowledge_correction_or_clarify_neutral'
         ? 'Sepertinya aku salah nangkep tadi. Maksud Kak yang mana?'
         : (orchDecision.response_strategy === 'acknowledge_only'

@@ -87,55 +87,9 @@ function detectNeutralAcknowledgement(text = '') {
     : { detected: false, reason: null };
 }
 
-/**
- * Bounded decision surface: whether stale conversational context is allowed
- * to control this turn, and what the (deterministic) envelope semantics
- * should look like when it is not. Never decides CRM/business truth — the
- * orchestrator still owns which specific business branch (if any) fires;
- * this only tells it whether the "old topic" is authoritative for this turn.
- */
-function deriveContextRecoveryDecision({ message = '' } = {}) {
-  const correction = detectExplicitContextCorrection(message);
-  if (correction.detected) {
-    return {
-      triggered: true,
-      reason: 'explicit_user_correction',
-      conversational_act: 'context_correction',
-      continuation_type: 'none',
-      context_reference: null,
-      session_behavior: 'continue',
-      response_strategy: 'acknowledge_correction_or_clarify_neutral',
-    };
-  }
-
-  const neutral = detectNeutralAcknowledgement(message);
-  if (neutral.detected) {
-    return {
-      triggered: true,
-      reason: 'neutral_acknowledgement',
-      conversational_act: 'social_acknowledgement',
-      continuation_type: 'none',
-      context_reference: null,
-      session_behavior: 'keep_current_state',
-      response_strategy: 'acknowledge_only',
-    };
-  }
-
-  return {
-    triggered: false,
-    reason: null,
-    conversational_act: null,
-    continuation_type: null,
-    context_reference: null,
-    session_behavior: null,
-    response_strategy: null,
-  };
-}
-
 module.exports = {
   CONTEXT_CORRECTION_PATTERNS,
   NEUTRAL_ACK_REGEX,
   detectExplicitContextCorrection,
   detectNeutralAcknowledgement,
-  deriveContextRecoveryDecision,
 };
