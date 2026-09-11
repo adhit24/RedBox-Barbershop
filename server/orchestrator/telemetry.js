@@ -27,13 +27,16 @@ function sanitizeTelemetry(event = {}) {
     'temporal_followup', 'barber_choice_followup', 'service_choice_followup',
     'branch_choice_followup', 'booking_request', 'booking_status_question',
     'customer_fact_question', 'business_fact_question', 'complaint', 'unknown',
-    'booking_completion_report',
+    'booking_completion_report', 'context_correction',
   ]);
   const allowedStrategies = new Set([
     'answer_directly', 'acknowledge_only', 'acknowledge_context', 'clarify_short',
     'answer_with_crm_fact', 'answer_with_knowledge_fact', 'guide_to_booking',
     'correct_semantic_confusion', 'close_conversation', 'human_handoff',
-    'acknowledge_booking_completion_report',
+    'acknowledge_booking_completion_report', 'acknowledge_correction_or_clarify_neutral',
+  ]);
+  const allowedContextRecoveryReasons = new Set([
+    'explicit_user_correction', 'neutral_acknowledgement', 'ambiguous_unrelated_message', null,
   ]);
   const allowedSources = new Set([
     'crm:get_points', 'crm:get_customer_profile', 'crm:get_customer_history',
@@ -89,6 +92,13 @@ function sanitizeTelemetry(event = {}) {
       ? event.booking_eligibility_reason : null,
     realtime_fact_guard_triggered: typeof event.realtime_fact_guard_triggered === 'boolean'
       ? event.realtime_fact_guard_triggered : null,
+    // Reddy Context Recovery — privacy-minimized: never the message text,
+    // phone, or customer name, only whether/why stale conversational context
+    // was invalidated for this turn (see contextRecovery.js).
+    context_recovery_triggered: typeof event.context_recovery_triggered === 'boolean'
+      ? event.context_recovery_triggered : false,
+    context_recovery_reason: allowedContextRecoveryReasons.has(event.context_recovery_reason)
+      ? event.context_recovery_reason : null,
   };
 }
 
