@@ -7,6 +7,7 @@
 
 const { classifyMessage } = require('./classifier');
 const { detectBookingCompletionReport } = require('../agents/reddy/bookingCompletionReport');
+const { detectExplicitContextCorrection, detectNeutralAcknowledgement } = require('../agents/reddy/contextRecovery');
 
 // Human handoff is a routing outcome/state, not an AI agent.
 const ALLOWED_AGENTS = Object.freeze(['reddy_agent', 'crm_agent']);
@@ -132,7 +133,24 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
   let policy = sourcePolicyFor(base);
   let resolved = { ...base };
 
-  const socialAck = /^(ok(?:e|ay)?|sip|siap|noted|baik|mantap|ya|iya|yoi|thanks?|makasih|terima kasih)[.!\s]*$/.test(normalized);
+  // Context Recovery: an explicit customer correction ("bukan itu maksud
+  // saya", "itu balasan pesan lain", "nggak bahas membership"...) means the
+  // LATEST explicit customer meaning wins — conversation history is
+  // supporting context only and must never keep steering this turn once the
+  // customer has said Reddy misread them. Detected on the CURRENT message
+  // alone; see contextRecovery.js for the bounded pattern set.
+  const correctionSignal = detectExplicitContextCorrection(message);
+  const explicitCorrectionActive = correctionSignal.detected;
+
+  // "aman"/"aman kak"/"oke aman"/"sudah aman"/"udah aman"/"sip aman" are
+  // plain WhatsApp-native status acknowledgements carrying no business
+  // intent — they must not inherit a membership (or any other) topic merely
+  // because it appeared earlier in the conversation. Anchored so a real
+  // question like "Aman untuk booking besok?" is never swallowed by this.
+  const neutralAckSignal = detectNeutralAcknowledgement(normalized);
+
+  const socialAck = /^(ok(?:e|ay)?|sip|siap|noted|baik|mantap|ya|iya|yoi|thanks?|makasih|terima kasih)[.!\s]*$/.test(normalized)
+    || neutralAckSignal.detected;
   const explicitClosure = /^(cukup|udah cukup|sudah cukup|selesai|gak ada lagi|ga ada lagi|bye|dadah)[.!\s]*$/.test(normalized);
   const greeting = /^(halo|hai|hi|pagi|selamat pagi|selamat siang|selamat sore|selamat malam)[!.,\s]*$/.test(normalized);
   const currentTimeChoice = /^(?:jam\s*)?(?:\d{1,2}(?:(?:[.:]\d{2})|\s*\/\s*\d{1,2})?|pagi|siang|sore|malam)(?:\s*(?:aja|saja|mungkin|ya))?[.!\s]*$/.test(normalized);
@@ -190,8 +208,11 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     || /\btetap\s+jam\b/.test(normalized);
   const priorBookingTimeSignal = priorTimeContext || /\bjam\s*\d{1,2}\b/.test(contextText);
 
-  // Contextual ellipsis wins over an independently classified business intent.
-  if (hasActiveContext && earlyArrivalPhrase && priorBookingTimeSignal) {
+  // Contextual ellipsis wins over an independently classified business intent
+  // — but only when the customer has NOT just told Reddy it misread them.
+  // An explicit correction means stale continuation must never fire, no
+  // matter how strongly the shape of this message resembles a followup.
+  if (!explicitCorrectionActive && hasActiveContext && earlyArrivalPhrase && priorBookingTimeSignal) {
     conversationalAct = 'booking_status_question';
     continuationType = 'contextual';
     contextReference = 'active_booking_early_arrival';
@@ -224,7 +245,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
         'repeat_booking_cta',
       ],
     };
-  } else if (hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
+  } else if (!explicitCorrectionActive && hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
     conversationalAct = 'temporal_followup';
     continuationType = 'contextual';
     contextReference = 'prior_arrival_or_booking_time';
@@ -235,7 +256,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
       prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
-  } else if (hasActiveContext && currentBranchChoice && priorBranchChoice && !socialAck && !explicitClosure) {
+  } else if (!explicitCorrectionActive && hasActiveContext && currentBranchChoice && priorBranchChoice && !socialAck && !explicitClosure) {
     conversationalAct = 'branch_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_branch_choice';
@@ -246,7 +267,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
       prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
-  } else if (hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure && /\b(layanan|service|treatment|grooming|paket|cukur|haircut)\b/.test(normalized)) {
+  } else if (!explicitCorrectionActive && hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure && /\b(layanan|service|treatment|grooming|paket|cukur|haircut)\b/.test(normalized)) {
     conversationalAct = 'service_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_service_choice';
@@ -257,7 +278,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
       prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
-  } else if (hasActiveContext && shortChoice && priorBarberChoice && !socialAck && !explicitClosure && /^[\p{L} .'-]+$/u.test(normalized)) {
+  } else if (!explicitCorrectionActive && hasActiveContext && shortChoice && priorBarberChoice && !socialAck && !explicitClosure && /^[\p{L} .'-]+$/u.test(normalized)) {
     conversationalAct = 'barber_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_barber_choice';
@@ -268,7 +289,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
       prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
-  } else if (hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure && classifierIntentIsWeak) {
+  } else if (!explicitCorrectionActive && hasActiveContext && shortChoice && priorServiceChoice && !socialAck && !explicitClosure && classifierIntentIsWeak) {
     conversationalAct = 'service_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_service_choice';
@@ -279,7 +300,7 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       allowed_claims: BOOKING_CONTEXT_ALLOWED_CLAIMS,
       prohibited_claims: BOOKING_MUTATION_PROHIBITED_CLAIMS,
     };
-  } else if (hasActiveContext && shortChoice && priorBranchChoice && !socialAck && !explicitClosure && classifierIntentIsWeak) {
+  } else if (!explicitCorrectionActive && hasActiveContext && shortChoice && priorBranchChoice && !socialAck && !explicitClosure && classifierIntentIsWeak) {
     conversationalAct = 'branch_choice_followup';
     continuationType = 'contextual';
     contextReference = 'prior_branch_choice';
@@ -312,14 +333,14 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     contextReference = 'explicit_member_account_scope';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
-  } else if (hasActiveContext && membershipActivationSemantic && membershipTimeSemantic
+  } else if (!explicitCorrectionActive && hasActiveContext && membershipActivationSemantic && membershipTimeSemantic
     && priorAccountScope && !priorPaidPlanScope) {
     conversationalAct = 'customer_fact_question';
     continuationType = 'contextual';
     contextReference = 'prior_account_registration_discussion';
     resolved = { ...resolved, intent: 'customer_profile', route: 'crm_agent', agent: 'crm_agent', action: 'get_customer_profile' };
     policy = { required_sources: ['crm:get_customer_profile'], response_strategy: 'answer_with_crm_fact' };
-  } else if (hasActiveContext && membershipActivationSemantic && membershipTimeSemantic
+  } else if (!explicitCorrectionActive && hasActiveContext && membershipActivationSemantic && membershipTimeSemantic
     && priorPaidPlanScope && !priorAccountScope) {
     conversationalAct = 'customer_fact_question';
     continuationType = 'contextual';
@@ -396,11 +417,40 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     conversationalAct = 'booking_request';
   } else if (resolved.intent === 'booking_status' || resolved.intent === 'booking_availability_inquiry') {
     conversationalAct = 'booking_status_question';
+  } else if (explicitCorrectionActive) {
+    // Nothing more specific matched the CURRENT message — an explicit
+    // correction with no re-identified topic gets a neutral, WhatsApp-native
+    // recovery instead of falling back into generic "unknown" clarification
+    // or (worse) whatever topic the stale history last touched.
+    conversationalAct = 'context_correction';
+    continuationType = 'none';
+    contextReference = null;
+    sessionBehavior = 'continue';
+    policy = { required_sources: [], response_strategy: 'acknowledge_correction_or_clarify_neutral' };
   } else if (resolved.intent === 'unknown') {
     clarificationRequired = true;
     policy = { required_sources: [], response_strategy: 'clarify_short' };
   } else {
     conversationalAct = 'contextual_followup';
+  }
+
+  // Context Recovery telemetry (privacy-minimized — no message text, no
+  // phone, no customer name; see server/orchestrator/telemetry.js). Reported
+  // even when a reintroduced topic still won the turn (e.g. an explicit
+  // correction that reintroduces membership), because stale context was
+  // still invalidated for this decision.
+  let contextRecoveryTriggered = explicitCorrectionActive || neutralAckSignal.detected;
+  let contextRecoveryReason = null;
+  if (explicitCorrectionActive) {
+    contextRecoveryReason = 'explicit_user_correction';
+  } else if (neutralAckSignal.detected) {
+    contextRecoveryReason = 'neutral_acknowledgement';
+  } else if (conversationalAct === 'unknown' && hasActiveContext) {
+    // Fell all the way through to the generic fallback while prior context
+    // existed: a genuinely ambiguous/unrelated message, not a recognized
+    // business intent — must never be reported/treated as a resolved topic.
+    contextRecoveryTriggered = true;
+    contextRecoveryReason = 'ambiguous_unrelated_message';
   }
 
   return {
@@ -414,6 +464,8 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     clarification_required: clarificationRequired,
     session_behavior: sessionBehavior,
     response_strategy: policy.response_strategy || 'answer_directly',
+    context_recovery_triggered: contextRecoveryTriggered,
+    context_recovery_reason: contextRecoveryReason,
   };
 }
 
