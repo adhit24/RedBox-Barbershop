@@ -122,6 +122,70 @@ function serviceFact(service, selectedBranch) {
   return fact;
 }
 
+const STRUCTURED_BOOKING_LABEL = /(?:^|\n)\s*(?:nama|name|layanan|service|harga|price|durasi|duration|kapster|barber|tanggal|date|hari|jam|time|cabang|branch|lokasi|location)\s*:/gim;
+
+function isStructuredBookingSummaryText(text) {
+  const raw = String(text || '');
+  const matches = raw.match(STRUCTURED_BOOKING_LABEL) || [];
+  return matches.length >= 3
+    && /(?:^|\n)\s*(?:layanan|service)\s*:/im.test(raw)
+    && (/(?:^|\n)\s*(?:tanggal|date|hari|jam|time)\s*:/im.test(raw)
+      || /(?:^|\n)\s*(?:kapster|barber|cabang|branch|lokasi|location)\s*:/im.test(raw));
+}
+
+function parseReportedPriceIdr(text) {
+  const match = String(text || '').match(/(?:^|\n)\s*(?:harga|price)\s*:\s*(?:rp\.?\s*)?([\d.,\s]+)/im);
+  if (!match) return null;
+  const digits = match[1].replace(/\D/g, '');
+  if (!digits) return null;
+  const value = Number.parseInt(digits, 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function parseReportedDurationMinutes(text) {
+  const match = String(text || '').match(/(?:^|\n)\s*(?:durasi|duration)\s*:\s*(\d{1,4})\s*(?:menit|mins?|minutes?)?/im);
+  if (!match) return null;
+  const value = Number.parseInt(match[1], 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function structuredBookingValidationFact(text, service, selectedBranch) {
+  if (!service || !isStructuredBookingSummaryText(text)) return null;
+
+  const priceScope = selectedBranch?.id === 'csb' ? 'csb' : 'standard';
+  const verifiedPriceIdr = service.prices?.[priceScope] ?? null;
+  const verifiedDurationMinutes = Number.isFinite(service.duration_minutes) ? service.duration_minutes : null;
+  const reportedPriceIdr = parseReportedPriceIdr(text);
+  const reportedDurationMinutes = parseReportedDurationMinutes(text);
+  const conflicts = [];
+
+  if (reportedPriceIdr !== null && verifiedPriceIdr !== null && reportedPriceIdr !== verifiedPriceIdr) {
+    conflicts.push('price');
+  }
+  if (reportedDurationMinutes !== null && verifiedDurationMinutes !== null
+    && reportedDurationMinutes !== verifiedDurationMinutes) {
+    conflicts.push('duration');
+  }
+
+  return {
+    category: 'booking_summary_validation',
+    id: 'structured-booking-summary-validation',
+    status: conflicts.length ? 'conflict' : 'consistent',
+    service_id: service.id,
+    service_name: service.name,
+    branch_id: selectedBranch?.id || null,
+    price_scope: priceScope,
+    reported_price_idr: reportedPriceIdr,
+    verified_price_idr: verifiedPriceIdr,
+    reported_duration_minutes: reportedDurationMinutes,
+    verified_duration_minutes: verifiedDurationMinutes,
+    conflicts,
+    instruction: conflicts.length
+      ? 'Customer-supplied booking summary conflicts with verified catalog data. Do not treat the summary as official booking proof; explicitly flag the conflicting fields and require booking verification.'
+      : 'Customer-supplied booking summary matches the verified service catalog for the fields that were present, but it is still not proof that a booking exists.',
+  };
+}
+
 function maxNumber(value, fallback) {
   return Number.isInteger(value) && value >= 0 ? value : fallback;
 }
@@ -178,7 +242,7 @@ function resolveKnowledgeContext({
   const topics = [];
   const facts = [];
   const addTopic = value => { if (!topics.includes(value)) topics.push(value); };
-  const addFact = fact => { if (!facts.some(existing => existing.category === fact.category && existing.id === fact.id)) facts.push(fact); };
+  const addFact = fact => { if (fact && !facts.some(existing => existing.category === fact.category && existing.id === fact.id)) facts.push(fact); };
 
   if (signals.live) {
     addTopic('booking');
@@ -201,8 +265,14 @@ function resolveKnowledgeContext({
 
     if (signals.services) {
       addTopic('services');
-      if (service) addFact(serviceFact(service, selectedBranch));
-      else if (signals.serviceList) knowledge.services.forEach(item => addFact(serviceFact(item, selectedBranch)));
+      if (service) {
+        addFact(serviceFact(service, selectedBranch));
+        const validationFact = structuredBookingValidationFact(text, service, selectedBranch);
+        if (validationFact) {
+          addTopic('booking_summary_validation');
+          addFact(validationFact);
+        }
+      } else if (signals.serviceList) knowledge.services.forEach(item => addFact(serviceFact(item, selectedBranch)));
       else if (/\b(harga|biaya)\b/.test(normalizedText)) unknownFields.push('service');
     }
 
@@ -256,4 +326,10 @@ function resolveKnowledgeContext({
   });
 }
 
-module.exports = { resolveKnowledgeContext };
+module.exports = {
+  resolveKnowledgeContext,
+  isStructuredBookingSummaryText,
+  parseReportedPriceIdr,
+  parseReportedDurationMinutes,
+  structuredBookingValidationFact,
+};
