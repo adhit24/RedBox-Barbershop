@@ -11,6 +11,7 @@ const {
   resolveResponseLanguage,
   hasIndonesianLanguageSignal,
 } = require('../agents/reddy/languageResolution');
+const { resolveKnowledgeContext } = require('../agents/reddy/knowledge/knowledgeResolver');
 
 const INDONESIAN_SUMMARY = `Ringkasan booking\nNama: Budi\nLayanan: Gentleman Grooming\nHarga: Rp95.000\nDurasi: 60 menit\nKapster: Abdul\nTanggal: 13 September 2026\nJam: 14:00\nCabang: Bypass`;
 
@@ -29,6 +30,23 @@ test('structured booking summary routes to trusted booking-status verification, 
 test('Indonesian structured booking labels outrank English-ish service/barber vocabulary', () => {
   assert.equal(hasIndonesianLanguageSignal(INDONESIAN_SUMMARY), true);
   assert.equal(resolveResponseLanguage(INDONESIAN_SUMMARY, { turns: [] }), 'indonesian');
+});
+
+test('structured booking summary validates reported price and duration against active catalog', () => {
+  const context = resolveKnowledgeContext({
+    intent: 'booking_status',
+    text: INDONESIAN_SUMMARY,
+    branch: 'bypass',
+  });
+  const validation = context.facts.find((fact) => fact.category === 'booking_summary_validation');
+
+  assert.ok(validation, 'booking summary validation fact should be present');
+  assert.equal(validation.status, 'conflict');
+  assert.deepEqual(validation.conflicts.sort(), ['duration', 'price']);
+  assert.equal(validation.reported_price_idr, 95000);
+  assert.equal(validation.reported_duration_minutes, 60);
+  assert.equal(validation.verified_price_idr, 120000);
+  assert.equal(validation.verified_duration_minutes, 75);
 });
 
 test('ordinary barber question is not mistaken for a structured booking summary', () => {
