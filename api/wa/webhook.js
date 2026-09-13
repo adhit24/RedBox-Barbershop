@@ -1753,7 +1753,14 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   // the orchestrator/policy would otherwise do with that text.
   const hasOtwTravelSignal = /\b(otw|on the way|di jalan|dijalan|lagi jalan|sudah jalan|udah jalan|berangkat|sudah berangkat|udah berangkat|menuju cabang|menuju redbox)\b/.test(msgLower);
   const hasLatenessSignal = /\b(telat|terlambat|kesiangan)\b/.test(msgLower);
-  const isOtw = hasOtwTravelSignal;
+  // Reddy audit (4-hour window): an explicit cancellation request ("Kalau
+  // saya cancel bisa tidak?") was swallowed by the OTW/travel shortcut below
+  // and answered "hati-hati di jalan" instead of addressing the
+  // cancellation — the arrival shortcut was dominating over cancel intent.
+  // Cancel/batal must always win over a travel-state signal, even when both
+  // appear in the same message ("udah otw tapi jadi mau batal").
+  const hasCancelSignal = /\b(cancel|(?:di)?batal(?:in|kan)?|pembatalan)\b/.test(msgLower);
+  const isOtw = hasOtwTravelSignal && !hasCancelSignal;
   const isWalkIn = /\b(walk\s*in|langsung datang|langsung dateng|datang langsung|dateng langsung|tanpa booking|tanpa bookingan)\b/.test(msgLower);
   const isHomeService = /(home\s*service|ke rumah|datang ke rumah|panggil barber|barber ke kantor)/.test(msgLower);
   const isWedding = /(wedding|pernikahan|nikah|pengantin|prewedding|pre-wedding)/.test(msgLower);
@@ -1764,6 +1771,70 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
 
   if (isWedding && /\b(h-?2|2\s*hari|besok|lusa|tomorrow|day after tomorrow)\b/.test(msgLower)) {
     return sendAndPersistFinalReply('Untuk wedding grooming, booking minimal H-3 ya kak supaya tim bisa siapin slot dan kebutuhannya dengan rapi 🙏 Kalau masih H-2, coba hubungi admin untuk dicek kemungkinan khusus.', 'policy');
+  }
+
+  // Booking cancellation: WhatsApp is never the cancellation authority
+  // (Task14 — website is the sole reservation authority), so this must
+  // never claim a cancellation succeeded. It looks up the backend booking
+  // status first (never a guess), then routes to a human case so an admin
+  // actually performs the cancellation — matching the same "verify against
+  // backend or hand off, never assert success" pattern already used for
+  // booking_status and points_dispute above.
+  if (hasCancelSignal) {
+    let cancelBooking;
+    try {
+      cancelBooking = await getBookingStatus(from, branch, { limit: 10 });
+    } catch (_error) {
+      cancelBooking = { status: BOOKING_STATUS.AMBIGUOUS, bookings: [], reason: 'database_error' };
+    }
+
+    if (cancelBooking.status === BOOKING_STATUS.NOT_FOUND) {
+      return sendAndPersistFinalReply(
+        'Aku belum menemukan booking aktif atas nomor ini di cabang tersebut, Kak — jadi belum ada yang perlu dibatalkan. Kalau booking-nya ada di nomor atau cabang lain, boleh infokan ya biar aku bantu cek.',
+        'cancel_request_not_found',
+      );
+    }
+
+    const cancelHandoffCreation = await createHandoffCase({
+      customerPhone: from,
+      customerId: trustedIdentity?.customer_id || null,
+      channel: 'whatsapp',
+      branch,
+      reason: 'booking_cancellation_request',
+      triggerType: 'explicit_customer_request',
+      intent: 'cancel_request',
+      priority: 'normal',
+      conversationSummary: `customer asked to cancel a booking: ${text}`,
+      latestCustomerMessage: text,
+    });
+
+    // 'existing': a case is already open for this request — Task15's own
+    // suppression (getHandoffState, checked at the top of handleMessage)
+    // takes over from the next inbound message; this only guards the race
+    // on the very first message that opens it, and must not reply twice.
+    if (cancelHandoffCreation.status === 'existing') {
+      logTelemetry({
+        intent: 'cancel_request', route: 'human', action: 'route_cancel_request',
+        conversational_act: 'booking_request', response_strategy: 'guide_to_booking',
+        execution_status: 'human_handoff_existing', reddy_execution_status: 'not_used',
+        confidence: 1.0, model_tier: 'none', fallback_used: false, branch,
+        trust_status: trustedIdentity ? 'verified' : 'unverified',
+      });
+      return { used: 'cancel_request_handoff_existing', reply: null, sendResult: null, error: null };
+    }
+
+    const cancelReply = cancelHandoffCreation.status === 'created'
+      ? 'Pembatalan booking belum bisa aku proses langsung lewat WhatsApp, Kak — permintaan ini sudah aku teruskan ke tim RedBox supaya dibantu batalkan.'
+      : 'Aku belum berhasil meneruskan permintaan pembatalan ini ke tim RedBox. Bisa coba lagi sebentar atau hubungi customer service RedBox ya Kak.';
+
+    logTelemetry({
+      intent: 'cancel_request', route: 'human', action: 'route_cancel_request',
+      conversational_act: 'booking_request', response_strategy: 'guide_to_booking',
+      execution_status: cancelHandoffCreation.status, reddy_execution_status: 'not_used',
+      confidence: 1.0, model_tier: 'none', fallback_used: cancelHandoffCreation.status !== 'created', branch,
+      trust_status: trustedIdentity ? 'verified' : 'unverified',
+    });
+    return sendAndPersistFinalReply(cancelReply, 'cancel_request_handoff');
   }
 
   if (isOtw) {
