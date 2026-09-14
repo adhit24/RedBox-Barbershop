@@ -1,6 +1,11 @@
 'use strict';
 
+const crypto = require('crypto');
 const { observeTelemetry } = require('../services/reddyEvaluationMonitoring');
+
+function sha256Hex(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex');
+}
 
 /**
  * Redbox AI Telemetry Logger v0.1
@@ -525,8 +530,56 @@ function logHistoryPersistenceEvent(event = {}) {
   return safe;
 }
 
+// Reddy barber-availability MVP (spec §26) — its own small allowlist schema,
+// same rationale as every other block above: fires from
+// server/agents/reddy/reddyAdapter.js's new deterministic availability
+// branch, which calls server/services/barberAvailabilityQuery.js.
+// OBSERVER-ONLY: nothing reads this to make a routing/send decision. No raw
+// customer phone (hashed here, one-way, same as device_hash elsewhere in
+// this file), no booking notes/IDs — only branch/barber/date/time/result
+// classification dimensions.
+const ALLOWED_AVAILABILITY_RESULT_STATUSES = new Set([
+  'available', 'no_slot', 'barber_off', 'barber_not_found', 'branch_not_found',
+  'invalid_date', 'tool_error',
+]);
+const ALLOWED_AVAILABILITY_INTENTS = new Set([
+  'barber_availability_query', 'specific_time_availability_query', 'branch_availability_query',
+]);
+
+function availabilityEventTypeFor(resultStatus, partial) {
+  if (resultStatus === 'tool_error') return partial ? 'availability_query_partial_failure' : 'availability_query_tool_error';
+  if (resultStatus === 'barber_off') return 'availability_query_barber_off';
+  if (resultStatus === 'no_slot') return 'availability_query_no_slot';
+  return 'availability_query';
+}
+
+function sanitizeAvailabilityQueryTelemetry(event = {}) {
+  const resultStatus = ALLOWED_AVAILABILITY_RESULT_STATUSES.has(event.result_status) ? event.result_status : 'tool_error';
+  return {
+    timestamp: new Date().toISOString(),
+    event_type: availabilityEventTypeFor(resultStatus, Boolean(event.partial)),
+    branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : 'unknown',
+    barber_id: typeof event.barber_id === 'string' ? event.barber_id.slice(0, 64) : null,
+    intent: ALLOWED_AVAILABILITY_INTENTS.has(event.intent) ? event.intent : null,
+    requested_date: /^\d{4}-\d{2}-\d{2}$/.test(event.requested_date || '') ? event.requested_date : null,
+    requested_time: /^\d{2}:\d{2}$/.test(event.requested_time || '') ? event.requested_time : null,
+    result_status: resultStatus,
+    result_count: Number.isInteger(event.result_count) && event.result_count >= 0 ? event.result_count : null,
+    latency_ms: typeof event.latency_ms === 'number' && event.latency_ms >= 0 ? Math.round(event.latency_ms) : null,
+    customer_phone_hash: event.customer_phone ? sha256Hex(event.customer_phone) : null,
+  };
+}
+
+function logAvailabilityQueryEvent(event = {}) {
+  const safe = sanitizeAvailabilityQueryTelemetry(event);
+  console.log('[AvailabilityQueryTelemetry]', JSON.stringify(safe));
+  observeTelemetry('availability_query', safe);
+  return safe;
+}
+
 module.exports = {
   sanitizeTelemetry, logOrchestratedEvent,
+  sanitizeAvailabilityQueryTelemetry, logAvailabilityQueryEvent,
   sanitizeHandoffTelemetry, logHandoffEvent,
   sanitizeAntiSpamTelemetry, logAntiSpamEvent,
   sanitizeIdleLifecycleTelemetry, logIdleLifecycleEvent,

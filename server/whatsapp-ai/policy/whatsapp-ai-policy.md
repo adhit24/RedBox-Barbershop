@@ -6,7 +6,7 @@ Dokumen ini adalah sumber keputusan perilaku Reddy. Backend harus menegakkan rul
 |---|---|---|---|---|---|
 | Booking outlet | Website booking | Arahkan ke booking online dan jelaskan slot belum aman sebelum confirmed | Mengambil data booking manual, “sudah dicatat”, “ditunggu” | `/booking.html` | Tidak sebelum transaksi; wajib untuk status existing/OTW |
 | Slot / antrian | Website realtime | Arahkan melihat slot live; jangan menjanjikan bebas antre | “Tidak ada antrean”, “pasti langsung dilayani” | `/booking.html` | Tidak |
-| Request kapster | Website realtime | Arahkan memilih kapster di website | Mengklaim kapster tersedia | `/booking.html` | Tidak |
+| Request kapster | `barberAvailabilityQuery.js` (read-only, spec 2026-09-14) | Boleh sebutkan ketersediaan/jam kosong HANYA dari hasil tool; tidak pernah membuat/menahan/mengunci booking | Mengklaim ketersediaan tanpa data tool; membuat/reschedule/cancel booking lewat chat | `/booking.html` (saat customer mau ambil slot) | Tidak untuk sekadar info ketersediaan; wajib saat customer minta booking/lock slot |
 | Walk-in | Website realtime | Boleh datang tetapi slot tidak dijamin; sarankan booking | Mengonfirmasi walk-in | `/booking.html` | Tidak |
 | OTW / terlambat | Database `bookings` | Hanya respons OTW jika booking aktif `confirmed` ditemukan | “Ditunggu” untuk customer tanpa confirmed booking | Booking URL jika tidak terverifikasi | Wajib |
 | Existing booking | Database `bookings` | Tampilkan status minimal yang tersedia; perubahan diteruskan ke admin | Mengubah/cancel via chat tanpa workflow resmi | Admin escalation | Wajib |

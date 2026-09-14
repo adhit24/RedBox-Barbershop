@@ -68,6 +68,13 @@ const EVENT_DEFINITIONS = Object.freeze({
   context_bleed: ['WARNING', 'quality', 'CONTEXT_BLEED'],
   unnecessary_booking_cta: ['WARNING', 'quality', 'UNNECESSARY_BOOKING_CTA'],
   response_too_long_for_simple_question: ['WARNING', 'quality', 'RESPONSE_TOO_LONG'],
+  // Reddy barber-availability MVP (read-only capability, spec §26) —
+  // observer-only, same as every other family here.
+  availability_query: ['INFO', 'availability', 'AVAILABILITY_QUERY'],
+  availability_query_no_slot: ['INFO', 'availability', 'AVAILABILITY_QUERY_NO_SLOT'],
+  availability_query_barber_off: ['INFO', 'availability', 'AVAILABILITY_QUERY_BARBER_OFF'],
+  availability_query_tool_error: ['WARNING', 'availability', 'AVAILABILITY_QUERY_TOOL_ERROR'],
+  availability_query_partial_failure: ['WARNING', 'availability', 'AVAILABILITY_QUERY_PARTIAL_FAILURE'],
   p0_identity_bypass: ['CRITICAL', 'inbound', 'P0_IDENTITY_BYPASS'],
   p0_guard_bypass: ['CRITICAL', 'outbound', 'P0_GUARD_BYPASS'],
   kill_switch_bypass: ['CRITICAL', 'outbound', 'KILL_SWITCH_BYPASS'],
@@ -271,6 +278,24 @@ function mapTelemetryToEvaluation(family, telemetry = {}) {
     if (telemetry.realtime_fact_guard_triggered) events.push({ ...common, event_type: 'barber_realtime_overclaim_detected', intent: telemetry.intent, route: telemetry.route });
     if (telemetry.guard_blocked_prohibited_claim) events.push({ ...common, event_type: 'booking_confirmation_claim_detected', intent: telemetry.intent, route: telemetry.route });
     return events;
+  }
+  if (family === 'availability_query') {
+    return EVENT_DEFINITIONS[telemetry.event_type]
+      ? [{
+        ...common,
+        event_type: telemetry.event_type,
+        intent: telemetry.intent,
+        metadata: {
+          barber_id: telemetry.barber_id,
+          requested_date: telemetry.requested_date,
+          requested_time: telemetry.requested_time,
+          result_status: telemetry.result_status,
+          result_count: telemetry.result_count,
+          latency_ms: telemetry.latency_ms,
+          customer_phone_hash: telemetry.customer_phone_hash,
+        },
+      }]
+      : [];
   }
   if (family === 'data_authority') {
     return EVENT_DEFINITIONS[telemetry.event_type]

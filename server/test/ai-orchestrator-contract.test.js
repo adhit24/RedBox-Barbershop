@@ -25,6 +25,11 @@ const EXPECTED_ROUTES = {
   barber_popularity_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'read_barber_popularity' },
   booking_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_booking_request' },
   booking_availability_inquiry: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_booking_availability' },
+  // Reddy barber-availability MVP (2026-09-14 spec): read-only, backed by
+  // server/services/barberAvailabilityQuery.js, never guessed by the LLM.
+  barber_availability_query: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability' },
+  specific_time_availability_query: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability' },
+  branch_availability_query: { route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability' },
   booking_status: { route: 'reddy_agent', agent: 'reddy_agent', action: 'get_booking_status' },
   reschedule_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_reschedule_request' },
   cancel_request: { route: 'reddy_agent', agent: 'reddy_agent', action: 'route_cancel_request' },

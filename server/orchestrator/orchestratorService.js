@@ -36,6 +36,12 @@ const BOOKING_CONTEXT_ALLOWED_CLAIMS = Object.freeze([
   'final_selection_must_be_made_on_website',
 ]);
 
+const AVAILABILITY_QUERY_INTENTS = new Set([
+  'barber_availability_query',
+  'specific_time_availability_query',
+  'branch_availability_query',
+]);
+
 const KNOWLEDGE_INTENTS = new Set([
   'price_inquiry',
   'location_inquiry',
@@ -95,6 +101,20 @@ function sourcePolicyFor(base) {
       response_strategy: 'guide_to_booking',
       allowed_claims: ['website_is_reservation_authority', 'availability_must_be_checked_live'],
       prohibited_claims: ['unsupported_slot_full_or_available', 'unsupported_barber_availability'],
+    };
+  }
+  if (AVAILABILITY_QUERY_INTENTS.has(base.intent)) {
+    // Reddy barber-availability MVP: unlike booking_availability_inquiry above,
+    // these intents are always answered from a real barberAvailabilityQuery.js
+    // lookup (never LLM free-form text), so the general "don't claim
+    // availability" prohibition does not apply here — the tool result itself
+    // is the source of truth. Booking write actions remain forbidden
+    // regardless (BOOKING_MUTATION_PROHIBITED_CLAIMS covers those intents).
+    return {
+      required_sources: ['booking_backend:barber_availability_query'],
+      response_strategy: 'answer_with_availability_tool_result',
+      allowed_claims: ['tool_verified_availability'],
+      prohibited_claims: ['booking_created_via_whatsapp', 'slot_reserved_via_whatsapp'],
     };
   }
   if (base.intent === 'booking_request' || base.intent === 'reschedule_request' || base.intent === 'cancel_request') {
@@ -190,6 +210,27 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
     || /\btetap\s+jam\b/.test(normalized);
   const priorBookingTimeSignal = priorTimeContext || /\bjam\s*\d{1,2}\b/.test(contextText);
 
+  // Reddy barber-availability MVP follow-up fix (Task: contextual time
+  // refinement). A prior turn is availability-shaped when it names a barber
+  // (honorific + name, same shape routingPolicy.js's classifyAvailabilityIntent
+  // requires) alongside an availability signal word or a branch-wide
+  // "siapa yang kosong" question — mirrors, not duplicates, that classifier's
+  // own signal words.
+  const priorAvailabilityContext = /\b(kosong|available|tersedia|free|bebas)\b/.test(contextText)
+    && /\b(mas|mbak|pak|bu|bang)\s+[\p{L}][\p{L}'.-]{1,30}\b/iu.test(contextText);
+  const bookingWriteVerbPresent = /\b(booking|bookingin|pesan slot|amankan|lock|kunci|reschedule|jadwal ulang|cancel|batalkan)\b/.test(normalized);
+  // A short current message that is just a clock time / time-of-day word,
+  // tolerating a leading "kalau"/"yang" and a trailing "gimana"/"aja"/"ya" —
+  // deliberately narrower than currentTimeChoice below (which this branch
+  // must win over), not a replacement for it.
+  const availabilityTimeRefinement = (() => {
+    let s = normalized.replace(/[?.!]+$/, '').trim();
+    s = s.replace(/^(?:kalau|yang)\s+/, '');
+    s = s.replace(/\s+(?:gimana|aja|saja|mungkin|ya)$/, '').trim();
+    return /^(?:jam\s*)?\d{1,2}(?:[.:]\d{2})?(?:\s*(?:pagi|siang|sore|malam))?$/.test(s)
+      || /^(?:pagi|siang|sore|malam)$/.test(s);
+  })();
+
   // Contextual ellipsis wins over an independently classified business intent.
   if (hasActiveContext && earlyArrivalPhrase && priorBookingTimeSignal) {
     conversationalAct = 'booking_status_question';
@@ -224,6 +265,22 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
         'repeat_booking_cta',
       ],
     };
+  } else if (hasActiveContext && priorAvailabilityContext && availabilityTimeRefinement && !bookingWriteVerbPresent) {
+    // Reddy barber-availability MVP follow-up fix: a bare time refinement
+    // ("Kalau jam 8?", "Jam 7?") after a turn that was itself availability-
+    // shaped (named barber + kosong/available/siapa-yang-kosong signal, per
+    // routingPolicy.js's own classifyAvailabilityIntent logic) must win over
+    // the generic booking-flow temporal_followup below — otherwise the
+    // customer's barber/date get silently reinterpreted as a booking-flow
+    // time choice instead of a fresh availability check. Booking-write verbs
+    // (booking/lock/reschedule/...) always take precedence over this branch.
+    conversationalAct = 'temporal_followup';
+    continuationType = 'contextual';
+    contextReference = 'prior_availability_barber_date';
+    resolved = {
+      ...resolved, intent: 'specific_time_availability_query', route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability',
+    };
+    policy = sourcePolicyFor({ ...base, intent: 'specific_time_availability_query' });
   } else if (hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
     conversationalAct = 'temporal_followup';
     continuationType = 'contextual';

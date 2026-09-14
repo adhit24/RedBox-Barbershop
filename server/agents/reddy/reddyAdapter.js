@@ -4,15 +4,110 @@ const { buildCustomerFactsContext } = require('./customerFactsContext');
 const { serializeKnowledgeForPrompt } = require('./knowledge/knowledgeContext');
 const { loadCanonicalBarbers, resolveCanonicalBarber } = require('../../services/canonicalBarberResolver');
 const { getBarberScheduleStatus } = require('../../services/barberScheduleAuthority');
+const { checkBarberAvailability } = require('../../services/barberAvailabilityQuery');
 const {
   extractBookingContext, buildPrefilledBookingUrl, reconstructBookingContextFromTurns, resolveRelativeDate,
+  resolveBranch, resolveTimeAndPreference, resolveTimePeriodRange,
 } = require('./bookingContext');
 const { guardReddyReply, suppressUnsolicitedBookingCta, REDDY_BOOKING_EXECUTION } = require('./bookingGuards');
 const { guardRealtimeBarberFacts } = require('./realtimeFactGuard');
 const { stripGenericClosingQuestion } = require('./closingSuppressionGuard');
 const { deriveBookingEligibility } = require('./bookingEligibility');
-const { logOrchestratedEvent } = require('../../orchestrator/telemetry');
+const { logOrchestratedEvent, logAvailabilityQueryEvent } = require('../../orchestrator/telemetry');
 const { classifyBarberPresenceQuery } = require('./barberPresenceIntent');
+const { classifyDeterministically } = require('../../orchestrator/routingPolicy');
+
+// Staging-verification P1 fix: a cheap, free pre-check (no DB) so the roster
+// is fetched only for messages that could plausibly be a bare barber-name
+// availability question — never on every inbound message.
+const BARE_BARBER_AVAILABILITY_PRECHECK = /\b(ada|kosong|available|penuh|full|masuk|jadwal|slot|bisa|kerja)\b/i;
+
+// Reddy barber-availability MVP: orchestrator intents backed by
+// server/services/barberAvailabilityQuery.js — always answered from a real,
+// deterministic tool lookup, never from LLM free-form text (spec §10).
+const AVAILABILITY_QUERY_INTENTS = new Set([
+  'barber_availability_query',
+  'specific_time_availability_query',
+  'branch_availability_query',
+]);
+
+const BOOKING_URL = 'https://www.redboxbarbershop.com/booking.html';
+
+/**
+ * Resolve the parameters an availability lookup needs from the current
+ * message + already-resolved context. Branch/date/time are always
+ * re-resolved fresh per turn (spec §23 freshness rule) — never carried over
+ * silently from a stale earlier decision.
+ */
+function resolveAvailabilityParams(text, { branch, barberMatch, fallbackDate = null } = {}) {
+  const explicitBranch = resolveBranch(text);
+  const resolvedBranch = explicitBranch || barberMatch?.barber?.branch || branch;
+  // Fresh-per-turn date resolution (spec §23): the CURRENT message's own
+  // explicit date always wins; only when it says nothing about date do we
+  // fall back to the barber/date carried over from conversation history
+  // (never a cached availability RESULT — see the contextual time-refinement
+  // follow-up fix), and only after that to "today".
+  const dateResolution = resolveRelativeDate(text)
+    || (fallbackDate ? { date: fallbackDate } : null)
+    || resolveRelativeDate('hari ini');
+  const timeResolution = resolveTimeAndPreference(text);
+  const timeRange = !timeResolution.time ? resolveTimePeriodRange(text) : null;
+  return {
+    branch: resolvedBranch,
+    date: dateResolution?.date || null,
+    time: timeResolution.time || null,
+    timeRange,
+  };
+}
+
+function formatSlotList(slots) {
+  if (slots.length <= 1) return slots.join('');
+  return `${slots.slice(0, -1).join(', ')} dan ${slots[slots.length - 1]}`;
+}
+
+/**
+ * Deterministic, zero-LLM reply builder for the barber-availability MVP
+ * (spec §12/§13). Every branch is filled ONLY from the tool result — never
+ * guessed — and never claims a slot is reserved/held/locked.
+ */
+function buildAvailabilityReply({ mode, barberName, availability }) {
+  if (!availability?.success) {
+    return `Aku belum bisa baca jadwal live-nya sebentar ini kak. Buat memastikan slotnya, cek langsung di booking Redbox ya:\n${BOOKING_URL}`;
+  }
+
+  if (mode === 'branch_wide') {
+    const { barbers = [] } = availability;
+    if (!barbers.length) {
+      return 'Untuk jam itu belum ada kapster yang keliatan kosong kak. Coba cek jam lain ya, atau langsung lihat di website Redbox.';
+    }
+    const names = barbers.map((b) => `Mas ${b.name}`);
+    return `Sekarang masih ada ${formatSlotList(names)} kak 👍\n\nKalau mau ambil salah satunya, booking-nya tetap lewat website Redbox ya: ${BOOKING_URL}`;
+  }
+
+  const name = `Mas ${barberName}`;
+
+  if (availability.reason_code === 'barber_off') {
+    return `Hari ini ${name} lagi nggak ada jadwal kak.`;
+  }
+
+  if (Object.hasOwn(availability, 'requested_time')) {
+    if (availability.available) {
+      return `Iya kak, dari jadwal saat ini ${name} masih available jam ${availability.requested_time} 👍\n\nKalau mau diamankan, tinggal booking lewat website Redbox ya: ${BOOKING_URL}`;
+    }
+    const alternatives = availability.alternative_slots || [];
+    if (alternatives.length) {
+      return `Jam ${availability.requested_time} ${name} udah terisi kak. Yang masih available paling dekat jam ${formatSlotList(alternatives)}.`;
+    }
+    return `Jam ${availability.requested_time} ${name} udah terisi kak, dan belum keliatan slot kosong lain hari ini.`;
+  }
+
+  if (availability.reason_code === 'no_slot') {
+    return `${name} masuk hari ini, tapi slot beliau udah penuh kak.`;
+  }
+
+  const slots = availability.available_slots || [];
+  return `${name} hari ini masih ada slot jam ${formatSlotList(slots)} kak 👍\n\nKalau mau ambil salah satunya, booking-nya lewat website Redbox ya: ${BOOKING_URL}`;
+}
 
 // Task orchestratorService.buildDecisionEnvelope already decided, upstream,
 // whether this turn is a customer-reported booking completion ("sudah kak",
@@ -175,7 +270,9 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     supabase = null,
     loadBarbers = loadCanonicalBarbers,
     getSchedule = getBarberScheduleStatus,
+    getAvailability = checkBarberAvailability,
     logBookingTelemetry = logOrchestratedEvent,
+    logAvailability = logAvailabilityQueryEvent,
     persistConversation = null,
   } = dependencies;
 
@@ -280,12 +377,55 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
 
     if (useDeterministicPresencePresentation) {
       const { barberMatch, scheduleStatus } = presenceResolution;
-      const presenceReply = buildPresenceReply({
+      let presenceReply = buildPresenceReply({
         barberMatch,
         scheduleStatus,
         claimType: presenceIntent.claimType,
         responseLanguage,
       });
+
+      // Barber-availability MVP enrichment: when the barber is verified,
+      // scheduled to work, and we can resolve real slot data, upgrade the
+      // bare "he's scheduled" fact into actual slot times (spec §12, the
+      // literal "Mas Abdul hari ini ada?" example) instead of leaving the
+      // customer with only a yes/no. Only applies to Indonesian presentation
+      // (the richer template set is not yet localized); any lookup failure
+      // falls back to the unchanged presence-only reply above.
+      if (responseLanguage === 'indonesian' && barberMatch.status === 'verified'
+        && scheduleStatus?.status === 'scheduled' && supabase) {
+        const availParams = resolveAvailabilityParams(text, { branch, barberMatch });
+        if (availParams.date) {
+          const availStart = Date.now();
+          let availability = null;
+          try {
+            availability = await getAvailability(supabase, {
+              branch: availParams.branch,
+              barberId: barberMatch.barber.id,
+              date: availParams.date,
+              time: availParams.time,
+              timeRange: availParams.timeRange,
+            });
+          } catch (_error) {
+            availability = null;
+          }
+          if (availability?.success) {
+            presenceReply = buildAvailabilityReply({
+              mode: 'single_barber', barberName: barberMatch.barber.name, availability,
+            });
+            logAvailability({
+              branch: availParams.branch,
+              barber_id: barberMatch.barber.id,
+              intent: 'barber_availability_query',
+              requested_date: availParams.date,
+              requested_time: availParams.time,
+              result_status: availability.reason_code,
+              result_count: (availability.available_slots || []).length,
+              latency_ms: Date.now() - availStart,
+              customer_phone: from,
+            });
+          }
+        }
+      }
 
       logBookingTelemetry({
         route: 'reddy_agent',
@@ -327,10 +467,187 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
   const realtimeBarberQuerySignal = REALTIME_BARBER_QUERY_VERB_PATTERN.test(String(text || ''))
     && REALTIME_BARBER_QUERY_TIME_PATTERN.test(String(text || ''));
 
+  const upstreamAvailabilityIntentMatched = responseLanguage === 'indonesian'
+    && AVAILABILITY_QUERY_INTENTS.has(orchestrationDecision?.intent);
+
+  // Staging-verification P1 fix: a bare barber name with no honorific
+  // ("abdul ada ga hari ini") isn't classified upstream at all (the
+  // orchestrator's classifier has no barber roster) and would otherwise
+  // silently miss this capability. This cheap regex pre-check decides
+  // whether it's even worth loading the roster below; the actual roster-
+  // aware decision happens once canonicalBarberSource is available.
+  //
+  // Restricted to a "weak" upstream classification (unknown/general_question)
+  // — same guard orchestratorService.js's own contextual-followup branches
+  // use before overriding. A message already classified into a SPECIFIC
+  // business intent (e.g. 'barber_inquiry', tested extensively by the
+  // existing realtime-fact-guard suite for phrasing like "Mas X masuk hari
+  // ini gak?") must never be silently re-routed just because it also
+  // happens to contain a roster name + a signal word like "masuk".
+  const WEAK_UPSTREAM_INTENTS = new Set(['unknown', 'general_question']);
+  const maybeBareBarberAvailability = !upstreamAvailabilityIntentMatched
+    && responseLanguage === 'indonesian'
+    && WEAK_UPSTREAM_INTENTS.has(orchestrationDecision?.intent)
+    && BARE_BARBER_AVAILABILITY_PRECHECK.test(String(text || ''));
+
   const canonicalBarberSource = presenceResolution?.canonicalSource
-    || ((bookingMemoryRelevant || realtimeBarberQuerySignal)
+    || ((bookingMemoryRelevant || realtimeBarberQuerySignal || upstreamAvailabilityIntentMatched || maybeBareBarberAvailability)
       ? await loadBarbers(supabase)
       : { status: 'not_requested', barbers: [], reason: null });
+
+  // Roster is now available (if it was going to be loaded at all) — resolve
+  // the actual bare-name decision. A booking-write verb or an already-
+  // resolved non-availability intent from a real business topic never gets
+  // overridden; classifyBareBarberAvailability's own write-verb guard
+  // handles the former, and the roster/signal-word requirement keeps this
+  // narrow (never fires on an unrelated message that merely mentions a
+  // barber's name, e.g. "Abdul ganteng juga ya").
+  let effectiveAvailabilityIntent = upstreamAvailabilityIntentMatched ? orchestrationDecision.intent : null;
+  if (!effectiveAvailabilityIntent && maybeBareBarberAvailability && canonicalBarberSource?.barbers?.length) {
+    const bareClassification = classifyDeterministically(text, {
+      canonicalBarberNames: canonicalBarberSource.barbers.map((b) => b.name),
+    });
+    if (bareClassification && AVAILABILITY_QUERY_INTENTS.has(bareClassification.intent)) {
+      effectiveAvailabilityIntent = bareClassification.intent;
+    }
+  }
+  const availabilityIntentMatched = Boolean(effectiveAvailabilityIntent);
+  const effectiveOrchestrationDecision = effectiveAvailabilityIntent && effectiveAvailabilityIntent !== orchestrationDecision?.intent
+    ? { ...orchestrationDecision, intent: effectiveAvailabilityIntent, action: 'answer_barber_availability' }
+    : orchestrationDecision;
+
+  // Barber-availability MVP: specific-time and branch-wide queries never
+  // match classifyBarberPresenceQuery's bare current-tense regex (it
+  // requires the WHOLE message to be a presence-shaped question — "Abdul
+  // kosong jam berapa?" and "jam 7 malam Bypass siapa yang kosong?" both
+  // fail that anchor), so they get their own deterministic, zero-LLM branch
+  // here, gated on the orchestrator's own intent classification instead.
+  if (availabilityIntentMatched && supabase) {
+    let barberMatch = resolveCanonicalBarber(text, canonicalBarberSource?.barbers || [], null);
+    let historicalFallbackDate = null;
+
+    // Contextual time-refinement follow-up ("Kalau jam 8?", "Jam 7?") carries
+    // no barber/date of its own — only the orchestrator-level routing fix
+    // (contextReference === 'prior_availability_barber_date') recovers
+    // enough SEMANTIC context (never a cached availability result) via the
+    // existing bookingContext.js accumulator to fill them back in.
+    if (effectiveOrchestrationDecision.context_reference === 'prior_availability_barber_date'
+      && barberMatch.status !== 'verified') {
+      const historicalContext = extractBookingContext(
+        text,
+        reconstructBookingContextFromTurns(conversationContext?.turns || [], {
+          sessionStatus: conversationContext?.sessionStatus,
+          canonicalBarbers: canonicalBarberSource?.barbers || [],
+        }),
+        { canonicalBarbers: canonicalBarberSource?.barbers || [] },
+      );
+      if (historicalContext.barber?.id) {
+        barberMatch = {
+          status: 'verified',
+          barber: {
+            id: historicalContext.barber.id, name: historicalContext.barber.name, branch: historicalContext.barber.branch,
+          },
+          reason: null,
+        };
+      }
+      historicalFallbackDate = historicalContext.date?.value || null;
+    }
+
+    const isBranchWide = effectiveOrchestrationDecision.intent === 'branch_availability_query'
+      || barberMatch.status !== 'verified';
+    const availParams = resolveAvailabilityParams(text, { branch, barberMatch, fallbackDate: historicalFallbackDate });
+
+    let availabilityReply = null;
+    let telemetryResult = null;
+    if (!isBranchWide) {
+      const availStart = Date.now();
+      let availability = null;
+      try {
+        availability = await getAvailability(supabase, {
+          branch: availParams.branch,
+          barberId: barberMatch.barber.id,
+          date: availParams.date,
+          time: availParams.time,
+          timeRange: availParams.timeRange,
+        });
+      } catch (_error) {
+        availability = { success: false, reason_code: 'tool_error' };
+      }
+      availabilityReply = buildAvailabilityReply({ mode: 'single_barber', barberName: barberMatch.barber.name, availability });
+      telemetryResult = { availability, barberId: barberMatch.barber.id, latency: Date.now() - availStart };
+    } else if (barberMatch.status !== 'verified' && effectiveOrchestrationDecision.intent !== 'branch_availability_query') {
+      // Named-but-unresolved barber on a barber/specific-time query: never
+      // silently fall through to the branch-wide answer for a name we
+      // simply failed to match — tell the customer plainly instead.
+      availabilityReply = barberMatch.status === 'ambiguous'
+        ? 'Ada lebih dari satu kapster dengan nama itu, Kak. Cabang mana yang Kak maksud?'
+        : 'Aku belum menemukan nama kapster itu di data kapster aktif, Kak. Bisa tulis nama kapsternya lagi?';
+    } else {
+      const availStart = Date.now();
+      let availability = null;
+      try {
+        availability = await getAvailability(supabase, {
+          branch: availParams.branch,
+          date: availParams.date,
+          time: availParams.time,
+          timeRange: availParams.timeRange,
+        });
+      } catch (_error) {
+        availability = { success: false, reason_code: 'tool_error' };
+      }
+      availabilityReply = buildAvailabilityReply({ mode: 'branch_wide', availability });
+      telemetryResult = { availability, barberId: null, latency: Date.now() - availStart };
+    }
+
+    if (telemetryResult) {
+      logAvailability({
+        branch: availParams.branch,
+        barber_id: telemetryResult.barberId,
+        intent: effectiveOrchestrationDecision.intent,
+        requested_date: availParams.date,
+        requested_time: availParams.time,
+        result_status: telemetryResult.availability.reason_code || (telemetryResult.availability.success ? 'success' : 'tool_error'),
+        result_count: (telemetryResult.availability.available_slots || telemetryResult.availability.barbers || []).length,
+        latency_ms: telemetryResult.latency,
+        partial: Boolean(telemetryResult.availability.partial),
+        customer_phone: from,
+      });
+    }
+
+    logBookingTelemetry({
+      route: 'reddy_agent',
+      agent: 'reddy_agent',
+      intent: effectiveOrchestrationDecision.intent,
+      action: 'answer_barber_availability',
+      branch: availParams.branch,
+      trust_status: telemetryResult?.availability?.success ? 'verified' : 'unverified',
+      execution_status: 'deterministic_response',
+      booking_cta_eligible: false,
+    });
+
+    if (persistConversation && typeof persistConversation === 'function') {
+      await persistConversation(
+        from, conversationContext?.turns || [], text, availabilityReply,
+        {}, conversationContext?.providerDeviceHash || null,
+      );
+    }
+    let availabilitySendResult = null;
+    if (sendWA && typeof sendWA === 'function') {
+      try {
+        availabilitySendResult = await sendWA(from, availabilityReply, { branch });
+      } catch (err) {
+        err.outboundFailure = true;
+        err.failureReason = err.failureReason || 'processing_failed';
+        throw err;
+      }
+    }
+    return {
+      used: 'reddy_barber_availability_guard',
+      reply: availabilityReply,
+      sendResult: availabilitySendResult,
+      error: null,
+    };
+  }
 
   // Task 14.1 correction round 2 (Blocker 3): registered-at-branch (roster),
   // scheduled-today (barber_working_hours + barber_date_overrides via

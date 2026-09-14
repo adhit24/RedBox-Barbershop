@@ -68,9 +68,11 @@ Barber+date / branch-wide mode:
   working: true,
   working_hours: { start: "10:00", end: "22:00" },
   available_slots: ["17:00", "18:00", "20:00"],
-  reason_code: "available"                      // | "no_slot" | "barber_off" | "barber_not_found" | "branch_not_found" | "invalid_date"
+  reason_code: "available"                      // | "no_slot" | "barber_off" | "barber_not_found" | "branch_not_found" | "invalid_date" | "tool_error"
 }
 ```
+
+`working = true, available_slots = [], reason_code = "no_slot"` means "barber is working, but fully booked." There is no separate `fully_booked` code — keep the transport contract to exactly these 7 reason codes.
 
 Specific-time mode adds:
 
@@ -87,6 +89,18 @@ Failure mode:
 ```js
 { success: false, reason_code: "tool_error" | "branch_not_found" | "barber_not_found" | "invalid_date" }
 ```
+
+Branch-wide mode may additionally carry partial-failure metadata (internal use, not exposed to the customer as technical detail):
+
+```js
+{
+  success: true,
+  partial: true,
+  failed_barber_count: 1,
+  barbers: [ /* only successfully-resolved barbers */ ]
+}
+```
+A branch-wide query resolves every active barber independently; one barber's lookup failing must not fail the whole request or cause that barber to be silently claimed available/unavailable. If every barber lookup fails, return the standard `success: false, reason_code: "tool_error"` fallback.
 
 ---
 
@@ -109,7 +123,7 @@ Add to `routingPolicy.js` (deterministic keyword/regex classification, checked b
 - `specific_time_availability_query`
 - `branch_availability_query`
 
-All three route to `agent: 'reddy_agent'`, `action: 'answer_barber_availability'`, calling `barberAvailabilityQuery.js`. `next_available_slot_query` and `barber_schedule_query` are deferred — for MVP, phrasing that would map to them (e.g. "slot terdekat kapan?") falls back to the closest supported mode (barber+date) rather than adding new intents now.
+All three route to `agent: 'reddy_agent'`, `action: 'answer_barber_availability'`, calling `barberAvailabilityQuery.js`. `next_available_slot_query` and `barber_schedule_query` are deferred. Critically, a phrase that maps to `next_available_slot_query` (e.g. "slot terdekat kapan?", "kapan lagi kosong?") must NOT be silently answered as if it were a barber+date query — that would imply a future-date search was performed when it wasn't. Since no date is given and satisfying the request would require searching forward across dates we don't support yet, these phrases get the safe fallback response (booking website redirect), not a same-day answer dressed up as "the nearest slot."
 
 For these three intents, `prohibited_claims` in `contract.js` drops `unsupported_barber_availability` / `unsupported_slot_full_or_available` (only for these intents — the general `booking_availability_inquiry` intent keeps the existing prohibition for anything not backed by a tool call).
 
@@ -131,7 +145,7 @@ No LLM free-form claims about slots. A small template set (Indonesian, matches e
 | write-attempt detected | Existing `bookingGuards.js` refusal, redirecting to booking.html — never claims to have booked/held/locked anything |
 | `success: false` (any reason) | "Aku belum bisa baca jadwal live-nya sebentar ini kak. ... {booking.html}" — no guessing |
 
-Booking URL `https://www.redboxbarbershop.com/booking.html` is only appended once per relevant reply, not repeated on every turn (section 14).
+Booking URL `https://www.redboxbarbershop.com/booking.html` may be reduced/omitted on repeated purely-informational availability replies within the same conversation (section 14). It must NOT be suppressed on a write-attempt refusal (book/reserve/lock/hold/reschedule/cancel) — that reply always includes the actionable link, even if a link already appeared earlier in the conversation, since the customer needs it to actually act.
 
 ---
 

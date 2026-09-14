@@ -21,6 +21,11 @@ const ROUTES = Object.freeze({
   barber_popularity_inquiry: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'read_barber_popularity' }),
   booking_request: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'route_booking_request' }),
   booking_availability_inquiry: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_booking_availability' }),
+  // Reddy barber-availability MVP: read-only, backed by
+  // server/services/barberAvailabilityQuery.js (never guessed by the LLM).
+  barber_availability_query: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability' }),
+  specific_time_availability_query: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability' }),
+  branch_availability_query: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability' }),
   booking_status: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'get_booking_status' }),
   reschedule_request: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'route_reschedule_request' }),
   cancel_request: Object.freeze({ route: 'reddy_agent', agent: 'reddy_agent', action: 'route_cancel_request' }),

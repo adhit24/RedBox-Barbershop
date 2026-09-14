@@ -75,6 +75,22 @@ function resolveTimeAndPreference(text, priorContext = null) {
   return { time: `${String(hour).padStart(2, '0')}:${minute}`, preference: period, timeAmbiguous: false };
 }
 
+// Fixed search-filter windows (spec §8). These are only used to narrow a slot
+// search — they never fabricate availability themselves.
+const TIME_PERIOD_RANGES = {
+  pagi: { start: '00:00', end: '12:00' },
+  siang: { start: '12:00', end: '15:00' },
+  sore: { start: '15:00', end: '18:00' },
+  malam: { start: '18:00', end: '23:59' },
+};
+
+/** Resolve a qualitative time-of-day word ("sore"/"malam"/...) to a fixed HH:mm range, or null. */
+function resolveTimePeriodRange(text) {
+  const lower = String(text || '').toLowerCase();
+  const match = lower.match(/\b(pagi|siang|sore|malam)\b/);
+  return match ? TIME_PERIOD_RANGES[match[1]] : null;
+}
+
 function resolveBranch(text) {
   const lower = String(text || '').toLowerCase();
   return Object.entries(BRANCH_ALIASES)
@@ -233,6 +249,7 @@ module.exports = {
   formatDateIso,
   resolveRelativeDate,
   resolveTimeAndPreference,
+  resolveTimePeriodRange,
   resolveBranch,
   resolveService,
   createEmptyBookingContext,
