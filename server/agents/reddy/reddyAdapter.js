@@ -91,6 +91,17 @@ function buildAvailabilityReply({ mode, barberName, availability }) {
   }
 
   if (Object.hasOwn(availability, 'requested_time')) {
+    // P1 fix: a requested time that isn't a valid booking-grid position
+    // (e.g. "jam 10:30") is never "taken" — it was never a bookable slot to
+    // begin with, so this must not be worded like the ordinary already-
+    // booked case (which would misleadingly imply someone else grabbed it).
+    if (availability.off_grid) {
+      const alternatives = availability.alternative_slots || [];
+      const grid = `Untuk booking ${name} slotnya per jam ya kak.`;
+      return alternatives.length
+        ? `${grid} Yang tersedia di sekitar waktu itu jam ${formatSlotList(alternatives)}.`
+        : `${grid} Belum keliatan slot kosong lain hari ini.`;
+    }
     if (availability.available) {
       return `Iya kak, dari jadwal saat ini ${name} masih available jam ${availability.requested_time} 👍\n\nKalau mau diamankan, tinggal booking lewat website Redbox ya: ${BOOKING_URL}`;
     }

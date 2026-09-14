@@ -1,6 +1,7 @@
 'use strict';
 
 const { getAvailableSlots, getBarberDateAvailability } = require('../moka/slotEngine');
+const { isOnBookableGrid, filterToBookableGrid } = require('./bookableSlotGrid');
 
 /**
  * Read-only adapter over the existing website booking engine's slot math
@@ -12,6 +13,14 @@ const { getAvailableSlots, getBarberDateAvailability } = require('../moka/slotEn
  *
  * Never returns customer identity, phone, booking notes, booking IDs, or
  * payment info — only barber/branch/date/time/availability fields.
+ *
+ * P1 fix: slotEngine.js's getAvailableSlots() returns 30-minute-granularity
+ * candidates (an internal free/busy computation aid) — those are NOT all
+ * customer-bookable. The website only ever renders its own canonical hourly
+ * grid (see bookableSlotGrid.js for the full explanation). Every raw slot
+ * list this file produces is filtered through that same canonical grid
+ * before being returned, so Reddy can never advertise a time the customer
+ * couldn't actually select on the booking website.
  */
 
 const DEFAULT_DURATION_MINUTES = 30; // base outlet slot granularity; used when no service is specified
@@ -124,8 +133,9 @@ async function checkSingleBarber(supabase, {
     return { success: false, reason_code: 'tool_error' };
   }
 
-  let times = slots.map((slot) => toHHMM(slot.start));
-  times = filterByTimeRange(times, timeRange);
+  let rawTimes = slots.map((slot) => toHHMM(slot.start));
+  rawTimes = filterByTimeRange(rawTimes, timeRange);
+  const times = filterToBookableGrid(rawTimes);
 
   const result = {
     ...base,
@@ -136,12 +146,26 @@ async function checkSingleBarber(supabase, {
   };
 
   if (time) {
+    // A requested time that isn't even a valid grid position (e.g. "jam
+    // 10:30") is never "available" regardless of the barber's raw calendar —
+    // there is no such bookable slot to be available. Distinguished from the
+    // ordinary "that slot is taken" case so the reply can explain WHY,
+    // rather than implying someone else booked it.
+    if (!isOnBookableGrid(time)) {
+      return {
+        ...result,
+        requested_time: time,
+        available: false,
+        off_grid: true,
+        alternative_slots: nearestSlots(times, time, 3),
+      };
+    }
     const available = times.includes(time);
     return {
       ...result,
       requested_time: time,
       available,
-      alternative_slots: available ? [] : times.slice(0, 3),
+      alternative_slots: available ? [] : nearestSlots(times, time, 3),
     };
   }
 
@@ -171,9 +195,10 @@ async function checkBranchWide(supabase, {
       const slots = await getAvailableSlots(supabase, {
         outletId: outlet.id, date, durationMinutes, barberId: barber.id, type: 'outlet',
       });
-      let times = slots.map((slot) => toHHMM(slot.start));
-      times = filterByTimeRange(times, timeRange);
-      if (time) times = times.includes(time) ? [time] : [];
+      let rawTimes = slots.map((slot) => toHHMM(slot.start));
+      rawTimes = filterByTimeRange(rawTimes, timeRange);
+      let times = filterToBookableGrid(rawTimes);
+      if (time) times = (isOnBookableGrid(time) && times.includes(time)) ? [time] : [];
       if (times.length) {
         results.push({ id: barber.id, name: barber.name, available_slots: times });
       }
@@ -202,6 +227,21 @@ async function checkBranchWide(supabase, {
 function filterByTimeRange(times, timeRange) {
   if (!timeRange?.start || !timeRange?.end) return times;
   return times.filter((t) => t >= timeRange.start && t < timeRange.end);
+}
+
+function minutesOf(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/** Nearest `count` bookable times to `requestedTime`, by absolute distance (chronological on ties). */
+function nearestSlots(bookableTimes, requestedTime, count) {
+  const target = minutesOf(requestedTime);
+  return bookableTimes
+    .slice()
+    .sort((a, b) => Math.abs(minutesOf(a) - target) - Math.abs(minutesOf(b) - target))
+    .slice(0, count)
+    .sort((a, b) => minutesOf(a) - minutesOf(b));
 }
 
 module.exports = { checkBarberAvailability };
