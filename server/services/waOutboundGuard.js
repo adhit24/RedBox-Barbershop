@@ -101,7 +101,7 @@ function createGuardedSend({
     // matches placeholder-shaped tokens). Each is independently additive and
     // fails open (never blocks) when it cannot verify the fact.
     const factualNumbers = await guardFactualServiceNumbers(priceGuarded.sanitizedReply, {
-      supabase, serviceId: options.serviceId, serviceName: options.serviceName,
+      supabase, serviceId: options.serviceId, serviceName: options.serviceName, branch,
     });
     for (const mismatch of factualNumbers.mismatches) {
       const eventType = mismatch.type === 'duration' ? 'factual_duration_mismatch_blocked' : 'factual_price_mismatch_blocked';

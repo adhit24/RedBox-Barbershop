@@ -163,9 +163,33 @@ test('PLACEHOLDER 1: end-to-end guardedSend also fixes a concrete wrong price vi
     inboundEventRowId: 'evt-factual-1',
   });
   await send('628123456789', 'Gentleman Grooming di Redbox harganya Rp95.000 ya kak.', {
-    branch: 'bypass', serviceId: 'gentleman-grooming',
+    branch: 'csb', serviceId: 'gentleman-grooming',
   });
   assert.equal(realSentMessage, 'Gentleman Grooming di Redbox harganya Rp120.000 ya kak.');
+});
+
+test('PLACEHOLDER 1b: branch-aware guard does NOT force the CSB price onto a non-CSB branch reply', async () => {
+  resetServicesCatalogCache();
+  const supabase = fakeSupabaseWithServices([
+    { id: 'gg', name: 'Gentleman Grooming', price: 120000, duration_minutes: 75, is_active: true },
+  ]);
+  let realSentMessage = null;
+  const send = createGuardedSend({
+    realSend: async (to, msg) => { realSentMessage = msg; return { status: true }; },
+    supabase: {
+      ...supabase,
+      rpc: async (fn) => (fn === 'reserve_wa_automated_send'
+        ? { data: [{ decision: 'allowed', claim_id: 'c1' }], error: null }
+        : { data: null, error: null }),
+    },
+    inboundEventRowId: 'evt-factual-1b',
+  });
+  await send('628123456789', 'Gentleman Grooming di Redbox harganya Rp95.000 ya kak.', {
+    branch: 'bypass', serviceId: 'gentleman-grooming',
+  });
+  // Rp95.000 is the correct Standard/Bypass price — the flat db row (120000,
+  // the CSB Mall figure) must not leak into a non-CSB branch reply.
+  assert.equal(realSentMessage, 'Gentleman Grooming di Redbox harganya Rp95.000 ya kak.');
 });
 
 // ── Visit-completion overclaim vs. confirmed booking (production bug #6) ───

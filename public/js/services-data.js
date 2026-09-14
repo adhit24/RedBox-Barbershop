@@ -250,7 +250,7 @@ const REDBOX_SERVICES = [
  img: 'Brand_assets/Redbox Duxe.jpg',
  duration: '90 menit',
  price: 250000,
- csbPrice: 260000,
+ csbPrice: 280000,
  badge: 'DUXE',
  desc: 'Haircut, Charcoal Deep Cleansing, Face Scrub, Hair Spa.'
  },
@@ -262,7 +262,7 @@ const REDBOX_SERVICES = [
  img: 'Brand_assets/Redbox Earl.jpg',
  duration: '90 menit',
  price: 185000,
- csbPrice: 195000,
+ csbPrice: 235000,
  badge: 'EARL',
  desc: 'Haircut, Face & Back Massage, Hair Spa.'
  },
@@ -286,7 +286,7 @@ const REDBOX_SERVICES = [
  img: 'Brand_assets/Redbox Noble.jpg',
  duration: '90 menit',
  price: 140000,
- csbPrice: 150000,
+ csbPrice: 170000,
  badge: 'NOBLE',
  desc: 'Haircut, Face & Back Massage, Ear Singeing.'
  }

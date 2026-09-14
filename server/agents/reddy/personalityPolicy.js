@@ -467,18 +467,37 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
   let sanitizedReply = replyText;
   const mismatches = [];
 
-  // Correct CURRENT price mentions if they mismatch dbRow.price (process right-to-left)
-  if (typeof dbRow.price === 'number' && dbRow.price > 0) {
+  // dbRow.price is a single, branch-agnostic column — it cannot represent a
+  // service with different Standard vs. CSB Mall prices. When the caller
+  // tells us which branch this reply is for AND the knowledge catalog shows
+  // this service actually has branch-specific pricing, trust that
+  // branch-scoped catalog price instead of the flat db value; otherwise keep
+  // the original db-authoritative behavior unchanged (no `branch` passed —
+  // e.g. existing callers/tests — behaves exactly as before).
+  const branchId = String(options.branch || '').trim().toLowerCase();
+  const catalogPrices = knowledgeService.prices;
+  const hasBranchSpecificPrice = catalogPrices
+    && Number.isFinite(catalogPrices.standard) && Number.isFinite(catalogPrices.csb)
+    && catalogPrices.standard !== catalogPrices.csb;
+  const branchScopedPrice = branchId && hasBranchSpecificPrice
+    ? catalogPrices[branchId === 'csb' ? 'csb' : 'standard']
+    : null;
+  const expectedPrice = Number.isFinite(branchScopedPrice) && branchScopedPrice > 0
+    ? branchScopedPrice
+    : dbRow.price;
+
+  // Correct CURRENT price mentions if they mismatch the expected price (process right-to-left)
+  if (typeof expectedPrice === 'number' && expectedPrice > 0) {
     const wrongPrices = currentPriceMentions
-      .filter((m) => m.numeric !== dbRow.price)
+      .filter((m) => m.numeric !== expectedPrice)
       .sort((a, b) => b.index - a.index);
 
     for (const mention of wrongPrices) {
-      const correct = 'Rp' + dbRow.price.toLocaleString('id-ID');
+      const correct = 'Rp' + expectedPrice.toLocaleString('id-ID');
       sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
         + sanitizedReply.slice(mention.index + mention.raw.length);
       mismatches.push({
-        type: 'price', attempted: mention.numeric, expected: dbRow.price, serviceId: knowledgeService.id,
+        type: 'price', attempted: mention.numeric, expected: expectedPrice, serviceId: knowledgeService.id,
       });
     }
   }

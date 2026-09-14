@@ -6,6 +6,14 @@ const { validateKnowledge, KNOWLEDGE_VERSION } = require('./validateKnowledge');
 const BRANCH_IDS = Object.freeze(['bypass', 'samadikun', 'csb', 'sumber', 'tegal']);
 const SERVICE_ALIAS_EXTRAS = Object.freeze({
   'gentleman-grooming': ['redbox gentleman grooming', 'gentleman grooming', 'haircut', 'hair cut', 'potong rambut', 'potong', 'fade'],
+  'package-royal': ['redbox royal grooming', 'royal grooming', 'royal'],
+  // The live CSB Mall packages page (public/packages.html, data-pkg="duke")
+  // brands this tier "Redbox Duke Grooming" while the catalog id/name still
+  // say "Duxe" — both names must resolve to the same service.
+  'package-duxe': ['redbox duxe grooming', 'duxe grooming', 'duxe', 'redbox duke grooming', 'duke grooming', 'duke'],
+  'package-earl': ['redbox earl grooming', 'earl grooming', 'earl'],
+  'package-baron': ['redbox baron grooming', 'baron grooming', 'baron'],
+  'package-noble': ['redbox noble grooming', 'noble grooming', 'noble'],
   'hair-spa': ['hair spa', 'spa rambut'],
   'hair-color': ['hair color', 'coloring', 'cat rambut'],
   'hair-curly': ['hair curly', 'curly', 'keriting rambut'],
