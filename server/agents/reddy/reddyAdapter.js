@@ -66,6 +66,23 @@ function formatSlotList(slots) {
 }
 
 /**
+ * Audit fix (2026-09-16): the reply text must describe the DATE the tool
+ * actually looked up, never a hardcoded "hari ini" — a lookup for tomorrow
+ * (e.g. barber_off on a next-day request) was previously worded as if it were
+ * today's schedule, and a follow-up question then had no date to fall back
+ * on. Derived straight from availability.date (the same value sent to the
+ * tool), so wording and lookup date can never drift apart.
+ */
+function describeAvailabilityDate(date) {
+  if (!date) return { lower: 'hari ini', capitalized: 'Hari ini' };
+  const today = jakartaDate();
+  const tomorrow = jakartaDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  if (date === today) return { lower: 'hari ini', capitalized: 'Hari ini' };
+  if (date === tomorrow) return { lower: 'besok', capitalized: 'Besok' };
+  return { lower: `tanggal ${date}`, capitalized: `Tanggal ${date}` };
+}
+
+/**
  * Deterministic, zero-LLM reply builder for the barber-availability MVP
  * (spec §12/§13). Every branch is filled ONLY from the tool result — never
  * guessed — and never claims a slot is reserved/held/locked.
@@ -75,19 +92,21 @@ function buildAvailabilityReply({ mode, barberName, availability }) {
     return `Aku belum bisa baca jadwal live-nya sebentar ini kak. Buat memastikan slotnya, cek langsung di booking Redbox ya:\n${BOOKING_URL}`;
   }
 
+  const dateWord = describeAvailabilityDate(availability.date);
+
   if (mode === 'branch_wide') {
     const { barbers = [] } = availability;
     if (!barbers.length) {
       return 'Untuk jam itu belum ada kapster yang keliatan kosong kak. Coba cek jam lain ya, atau langsung lihat di website Redbox.';
     }
     const names = barbers.map((b) => `Mas ${b.name}`);
-    return `Sekarang masih ada ${formatSlotList(names)} kak 👍\n\nKalau mau ambil salah satunya, booking-nya tetap lewat website Redbox ya: ${BOOKING_URL}`;
+    return `${dateWord.capitalized} masih ada ${formatSlotList(names)} kak 👍\n\nKalau mau ambil salah satunya, booking-nya tetap lewat website Redbox ya: ${BOOKING_URL}`;
   }
 
   const name = `Mas ${barberName}`;
 
   if (availability.reason_code === 'barber_off') {
-    return `Hari ini ${name} lagi nggak ada jadwal kak.`;
+    return `${dateWord.capitalized} ${name} lagi nggak ada jadwal kak.`;
   }
 
   if (Object.hasOwn(availability, 'requested_time')) {
@@ -100,24 +119,28 @@ function buildAvailabilityReply({ mode, barberName, availability }) {
       const grid = `Untuk booking ${name} slotnya per jam ya kak.`;
       return alternatives.length
         ? `${grid} Yang tersedia di sekitar waktu itu jam ${formatSlotList(alternatives)}.`
-        : `${grid} Belum keliatan slot kosong lain hari ini.`;
+        : `${grid} Belum keliatan slot kosong lain ${dateWord.lower}.`;
     }
     if (availability.available) {
-      return `Iya kak, dari jadwal saat ini ${name} masih available jam ${availability.requested_time} 👍\n\nKalau mau diamankan, tinggal booking lewat website Redbox ya: ${BOOKING_URL}`;
+      return `Iya kak, dari jadwal ${dateWord.lower} ${name} masih available jam ${availability.requested_time} 👍\n\nKalau mau diamankan, tinggal booking lewat website Redbox ya: ${BOOKING_URL}`;
     }
     const alternatives = availability.alternative_slots || [];
     if (alternatives.length) {
-      return `Jam ${availability.requested_time} ${name} udah terisi kak. Yang masih available paling dekat jam ${formatSlotList(alternatives)}.`;
+      return `Jam ${availability.requested_time} ${dateWord.lower} ${name} udah terisi kak. Yang masih available paling dekat jam ${formatSlotList(alternatives)}.`;
     }
-    return `Jam ${availability.requested_time} ${name} udah terisi kak, dan belum keliatan slot kosong lain hari ini.`;
+    return `Jam ${availability.requested_time} ${dateWord.lower} ${name} udah terisi kak, dan belum keliatan slot kosong lain ${dateWord.lower}.`;
   }
 
   if (availability.reason_code === 'no_slot') {
-    return `${name} masuk hari ini, tapi slot beliau udah penuh kak.`;
+    // Audit fix: a "no_slot" lookup only proves the schedule has zero open
+    // slots — it says nothing about attendance. The previous wording ("masuk
+    // hari ini") asserted the barber was physically present, which is a
+    // claim no attendance/check-in data source here can support.
+    return `Slot ${name} ${dateWord.lower} udah penuh semua kak.`;
   }
 
   const slots = availability.available_slots || [];
-  return `${name} hari ini masih ada slot jam ${formatSlotList(slots)} kak 👍\n\nKalau mau ambil salah satunya, booking-nya lewat website Redbox ya: ${BOOKING_URL}`;
+  return `${name} ${dateWord.lower} masih ada slot jam ${formatSlotList(slots)} kak 👍\n\nKalau mau ambil salah satunya, booking-nya lewat website Redbox ya: ${BOOKING_URL}`;
 }
 
 // Task orchestratorService.buildDecisionEnvelope already decided, upstream,
@@ -136,6 +159,16 @@ const BOOKING_COMPLETION_ACK_REPLY =
 // they must not depend on these explicit temporal markers.
 const REALTIME_BARBER_QUERY_VERB_PATTERN = /\b(masuk|kerja|hadir|ada|tersedia|standby|bertugas)\b/i;
 const REALTIME_BARBER_QUERY_TIME_PATTERN = /\bhari\s*ini\b|\bsekarang\b|\bbesok\b|\blusa\b/i;
+
+// Audit fix (2026-09-16): a time-only message like "Besok jam 10.00" carries
+// no barber name at all, yet an unresolved canonicalBarberResolver match
+// ('unresolved'/'barber_not_verified') looks identical whether the customer
+// never named anyone OR typed a name that doesn't match the roster — the
+// resolver has no way to tell those apart. Mirrors routingPolicy.js's own
+// BARBER_NAME_PREFIX so "did the customer even attempt a name" can be
+// checked directly against the current message before assuming one was
+// given and asking the customer to "write the kapster's name again".
+const BARBER_NAME_ATTEMPT_PATTERN = /\b(mas|mbak|pak|bu|bang|abang|kak|om|kapster|barber)\s+[\p{L}][\p{L}'.-]{1,30}\b/iu;
 
 function jakartaDate(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -586,10 +619,15 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
       }
       availabilityReply = buildAvailabilityReply({ mode: 'single_barber', barberName: barberMatch.barber.name, availability });
       telemetryResult = { availability, barberId: barberMatch.barber.id, latency: Date.now() - availStart };
-    } else if (barberMatch.status !== 'verified' && effectiveOrchestrationDecision.intent !== 'branch_availability_query') {
+    } else if (barberMatch.status !== 'verified' && effectiveOrchestrationDecision.intent !== 'branch_availability_query'
+      && (barberMatch.status === 'ambiguous' || BARBER_NAME_ATTEMPT_PATTERN.test(String(text || '')))) {
       // Named-but-unresolved barber on a barber/specific-time query: never
       // silently fall through to the branch-wide answer for a name we
-      // simply failed to match — tell the customer plainly instead.
+      // simply failed to match — tell the customer plainly instead. Gated on
+      // an actual name attempt in THIS message (or an ambiguous match, which
+      // by definition means a name was given) so a bare time-only message
+      // never gets told to "write the kapster's name again" for a name it
+      // never gave.
       availabilityReply = barberMatch.status === 'ambiguous'
         ? 'Ada lebih dari satu kapster dengan nama itu, Kak. Cabang mana yang Kak maksud?'
         : 'Aku belum menemukan nama kapster itu di data kapster aktif, Kak. Bisa tulis nama kapsternya lagi?';
