@@ -456,9 +456,6 @@ document.addEventListener('DOMContentLoaded', () => {
  if (memberStatusBadge) { memberStatusBadge.textContent = ' Membership Aktif'; memberStatusBadge.className = 'member-status-badge active'; }
  if (physCardWrap) physCardWrap.classList.remove('inactive');
  if (physCardHint) physCardHint.textContent = ' Kartu fisik kamu sudah aktif';
- // Apply tier glow to tier card
- const tierCard = document.querySelector('.tier-card');
- if (tierCard) tierCard.style.boxShadow = `0 0 40px ${tier.glow}, inset 0 0 60px ${tier.glow.replace('.5','0.04')}`;
  }
 
  // ============================================================
@@ -571,39 +568,26 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  // TIER MAP
  // ============================================================
+ const CROWN_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18h16M4 18l-1.5-9L8 12l4-7 4 7 5.5-3L20 18"/></svg>';
+
  function renderTierMap(tier) {
  const container = document.getElementById('tierMapContainer');
  if (!container) return;
 
- const headline = ACTIVE
- ? `Poin kamu: <strong>${(memberData.points||0).toLocaleString('id-ID')}</strong>. Tukarkan di Katalog Rewards.`
- : 'Aktivasi membership untuk membuka tier dan mulai kumpulkan poin.';
-
  const userIdx = ACTIVE ? tierLevelOf(tier.class) : -1;
 
- const rows = TIERS.map((t, idx) => {
+ const nodes = TIERS.map((t, idx) => {
  const isCurrent = ACTIVE && idx === userIdx;
- const isBelowCurrent = ACTIVE && idx < userIdx;
- const rowClass = isCurrent ? 'current' : (isBelowCurrent ? 'unlocked' : '');
- const statusHtml = isCurrent
- ? '<span class="tier-map-status current">Tier saat ini</span>'
- : isBelowCurrent
- ? '<span class="tier-map-status unlocked">Unlocked</span>'
- : t.class === 'bronze'
- ? '<span class="tier-map-status unlocked">Otomatis</span>'
- : `<a class="tier-map-upgrade" href="member-register.html?tier=${t.class}">Upgrade</a>`;
  return `
- <div class="tier-map-row ${rowClass}" data-tier="${t.class}">
- <div class="tier-map-dot"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>
- <div class="tier-map-info">
- <span class="tier-map-name">${t.name}</span>
- <span class="tier-map-benefit">${t.label}</span>
- </div>
- ${statusHtml}
+ <div class="tier-node ${isCurrent ? 'current' : ''} tier-${t.class}" data-tier="${t.class}">
+ <span class="tier-node-circle">${CROWN_SVG}</span>
+ <span class="tier-node-label">${t.name}</span>
+ <span class="tier-node-level">${t.label}</span>
+ ${isCurrent ? '<span class="tier-node-current">Tier saat ini</span>' : ''}
  </div>`;
  }).join('');
 
- container.innerHTML = `${rows}<div class="tier-message"><p>${headline}</p></div>`;
+ container.innerHTML = `<div class="tier-line-wrap"><div class="tier-line"></div>${nodes}</div>`;
  }
 
  renderTierMap(tier);
@@ -939,6 +923,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
  if (dashNavToggle) dashNavToggle.addEventListener('click', openNav);
  if (dashNavBackdrop) dashNavBackdrop.addEventListener('click', closeNav);
+
+ // On this page the navbar hamburger opens the member sidebar drawer
+ // (Riwayat Kunjungan/Poin, Shop, Kode Referral, Keluar) instead of the
+ // site's marketing nav-links dropdown — there is no separate "Menu" row
+ // in the dashboard content on mobile anymore, matching the target design.
+ if (hamburger) {
+ hamburger.addEventListener('click', () => {
+ const isOpen = dashSidebar.classList.contains('open');
+ if (isOpen) closeNav(); else openNav();
+ hamburger.setAttribute('aria-expanded', String(!isOpen));
+ });
+ }
 
  // ============================================================
  // TAB SWITCHING

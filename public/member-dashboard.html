@@ -19,7 +19,7 @@
  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet" />
  <link rel="stylesheet" href="css/style.css" />
  <link rel="stylesheet" href="css/tier-tokens.css" />
- <link rel="stylesheet" href="css/dashboard.css?v=20260807" />
+ <link rel="stylesheet" href="css/dashboard.css?v=20260916b" />
  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
 
  <!-- Mobile-first form override - highest specificity, must load last -->
@@ -72,28 +72,11 @@
  </ul>
  </div>
  <a href="booking.html" class="btn-book-nav">Book Now</a>
- <button type="button" class="hamburger" id="hamburger" aria-label="Menu" aria-controls="navLinks" aria-expanded="false" onclick="window.toggleMemberNav(this)">
+ <button type="button" class="hamburger" id="hamburger" aria-label="Menu" aria-controls="dashSidebar" aria-expanded="false">
  <span></span><span></span><span></span>
  </button>
  </div>
  </nav>
-
- <!-- ========== BREADCRUMB ========== -->
- <div class="dash-breadcrumb">
- <div class="container">
- <a href="index.html">Home</a>
- <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M16.28 11.47a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 0 1 1.06-1.06l7.5 7.5Z" clip-rule="evenodd"/></svg>
- <span>Member Dashboard</span>
- </div>
- </div>
-
- <!-- ========== PAGE HEADING ========== -->
- <section class="dash-page-heading">
- <div class="container">
- <h1>Membership Saya</h1>
- <p>Semua benefit dan aktivitasmu dalam satu tempat.</p>
- </div>
- </section>
 
  <!-- ========== ACTIVATION BANNER (shown when INACTIVE) ========== -->
  <div id="activationBannerTop" class="activation-banner-top" style="display:none">
@@ -111,15 +94,15 @@
  </div>
  </div>
 
- <!-- ========== DASHBOARD MAIN ========== -->
- <section class="dash-main">
- <div class="container dash-layout">
+ <!-- ========== DASHBOARD SHELL ========== -->
+ <!-- Deliberately a <div>, not <section>: style.css has a sitewide
+ `section{padding-top:28px !important}` mobile rule (for marketing
+ page sections) that was clobbering this wrapper's own padding-top,
+ pushing the heading under the fixed navbar. Scoped fix — style.css
+ is shared across the whole site and isn't touched. -->
+ <div class="dash-main">
+ <div class="dash-shell">
 
- <!-- Mobile nav toggle -->
- <button class="dash-nav-toggle" id="dashNavToggle" aria-label="Menu">
- <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75ZM3 12a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 12Zm0 5.25a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" clip-rule="evenodd"/></svg>
- <span>Menu</span>
- </button>
  <div class="dash-nav-backdrop" id="dashNavBackdrop"></div>
 
  <!-- Sidebar -->
@@ -166,24 +149,18 @@
  <!-- Content Panels -->
  <div class="dash-content">
 
+ <div class="dash-content-header">
+ <h1>Membership Saya</h1>
+ <p>Semua benefit dan aktivitasmu dalam satu tempat.</p>
+ </div>
+
  <!-- Tab: Ringkasan (default landing view) -->
  <div class="dash-panel dash-panel-plain active" id="panel-ringkasan">
 
- <!-- Smart Upsell Banner -->
- <div class="upsell-banner" id="upsellBanner" style="display:none">
- <div class="ub-left">
- <div class="ub-icon" id="ubIcon"></div>
- <div class="ub-text">
- <strong id="ubTitle"></strong>
- <span id="ubDesc"></span>
- <div class="ub-progress-wrap" id="ubProgressWrap">
- <div class="ub-progress-bar"><div class="ub-progress-fill" id="ubProgressFill"></div></div>
- <span class="ub-progress-label" id="ubProgressLabel"></span>
- </div>
- </div>
- </div>
- <div class="ub-actions" id="ubActions"></div>
- </div>
+ <!-- No upsell-banner element on Ringkasan — the target visual has no
+ equivalent. renderUpsellBanner() in dashboard.js already no-ops safely
+ when #upsellBanner is missing (`if (!banner) return;`), so removing the
+ element here does not touch any logic. -->
 
  <!-- Identitas, kartu, masa berlaku -->
  <div class="profile-card">
@@ -191,9 +168,6 @@
  <div class="profile-avatar" id="profileAvatar">
  <span id="avatarInitials">RB</span>
  <img id="avatarImage" src="" alt="" style="display:none" />
- <div class="avatar-badge" id="avatarBadge">
- <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
- </div>
  <button type="button" class="avatar-upload-btn" id="avatarUploadBtn" style="display:none" aria-label="Ubah foto profil" title="Ubah foto profil (khusus member berbayar, max 2MB)">
  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 9a3.75 3.75 0 1 0 0 7.5A3.75 3.75 0 0 0 12 9Z"/><path fill-rule="evenodd" d="M9.344 3.071a49.52 49.52 0 0 1 5.312 0c.967.052 1.83.585 2.332 1.39l.821 1.317c.24.383.645.643 1.11.71.386.054.77.113 1.152.177 1.432.239 2.429 1.493 2.429 2.909V18a3 3 0 0 1-3 3h-15a3 3 0 0 1-3-3V9.574c0-1.416.997-2.67 2.429-2.909.382-.064.766-.123 1.151-.178a1.56 1.56 0 0 0 1.11-.71l.822-1.315a2.942 2.942 0 0 1 2.332-1.39ZM6.75 12.75a5.25 5.25 0 1 1 10.5 0 5.25 5.25 0 0 1-10.5 0Zm12-1.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clip-rule="evenodd"/></svg>
  </button>
@@ -201,22 +175,23 @@
  </div>
  <div class="profile-details">
  <h2 class="profile-name" id="profileName">Member Redbox</h2>
- <p class="profile-since" id="profileSince">Bergabung sejak Mei 2026</p>
+ <div class="profile-badges-row">
  <div class="profile-tier-badge" id="profileTierBadge">
- <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+ <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
  <span id="tierBadgeText">Level 1 - Bronze</span>
  </div>
  <span class="member-status-badge inactive" id="memberStatusBadge">Membership Belum Aktif</span>
  </div>
+ <p class="profile-since" id="profileSince">Bergabung sejak Mei 2026</p>
+ </div>
  </div>
  <!-- Physical Membership Card -->
  <div class="phys-card-wrap" id="physCardWrap">
- <div class="phys-card-glow"></div>
  <div class="phys-card-inner">
  <img src="Brand_assets/membership_card.png" alt="Redbox Membership Card" class="phys-card-img" id="physCardImg" />
  <div class="phys-card-overlay" id="physCardOverlay">
- <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>
- <span>Aktivasi untuk<br/>dapatkan kartu fisik</span>
+ <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 1.5a5.25 5.25 0 0 0-5.25 5.25v3a3 3 0 0 0-3 3v6.75a3 3 0 0 0 3 3h10.5a3 3 0 0 0 3-3v-6.75a3 3 0 0 0-3-3v-3c0-2.9-2.35-5.25-5.25-5.25Zm3.75 8.25v-3a3.75 3.75 0 1 0-7.5 0v3h7.5Z" clip-rule="evenodd"/></svg>
+ <span>Aktivasi untuk dapatkan kartu fisik</span>
  </div>
  </div>
  <p class="phys-card-hint" id="physCardHint">Kartu fisik dikirim setelah aktivasi</p>
@@ -224,44 +199,58 @@
 
  <!-- Masa Berlaku Membership -->
  <div class="expiry-panel" id="expiryPanel">
- <div class="expiry-panel-icon">
- <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/></svg>
- </div>
- <div class="expiry-panel-body">
  <div class="expiry-panel-top">
+ <span class="expiry-panel-icon">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/></svg>
+ </span>
  <span class="expiry-label">Berlaku Hingga</span>
  <span class="expiry-status-badge" id="expiryStatusBadge">Memuat...</span>
  </div>
  <strong class="expiry-date" id="expiryDateText">—</strong>
  <span class="expiry-sub" id="expiryDaysLeft"></span>
- </div>
  <button type="button" class="expiry-cta" id="expiryCtaBtn" style="display:none">Hubungi Admin untuk Perpanjang</button>
  </div>
+ </div>
 
- <div class="profile-stats" id="profileStats">
+ <!-- Statistik: section terpisah di bawah panel utama -->
+ <div class="dash-stats" id="profileStats">
  <div class="stat-box">
- <span class="stat-number" id="statVisits">0</span>
- <span class="stat-label">Kunjungan</span>
- </div>
- <div class="stat-box" id="statReviewsBox">
- <span class="stat-number" id="statReviews">0</span>
- <span class="stat-label">Ulasan</span>
- </div>
- <div class="stat-box stat-box-accent">
+ <span class="stat-box-icon">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 14.5 8l5.9.7-4.4 4.1 1.2 5.8L12 15.7l-5.2 2.9 1.2-5.8-4.4-4.1L9.5 8 12 2.5Z"/></svg>
+ </span>
+ <span class="stat-box-text">
  <span class="stat-number" id="statPoints">0</span>
  <span class="stat-label">Total Poin</span>
+ </span>
  </div>
+ <div class="stat-box">
+ <span class="stat-box-icon">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/></svg>
+ </span>
+ <span class="stat-box-text">
+ <span class="stat-number" id="statVisits">0</span>
+ <span class="stat-label">Kunjungan</span>
+ </span>
+ </div>
+ <div class="stat-box" id="statReviewsBox">
+ <span class="stat-box-icon">
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>
+ </span>
+ <span class="stat-box-text">
+ <span class="stat-number" id="statReviews">0</span>
+ <span class="stat-label">Ulasan</span>
+ </span>
  </div>
  </div>
 
  <!-- Quick actions -->
  <div class="dash-quick-actions">
  <a href="booking.html" class="btn-quick-primary">
- <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 0 1 7.5 3v1.5h9V3a.75.75 0 0 1 1.5 0v1.5h.75a3 3 0 0 1 3 3v11.25a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V7.5a3 3 0 0 1 3-3H6V3a.75.75 0 0 1 .75-.75Zm13.5 9a1.5 1.5 0 0 0-1.5-1.5H5.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5v-7.5Z" clip-rule="evenodd"/></svg>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/></svg>
  Booking Sekarang
  </a>
  <button type="button" class="btn-quick-secondary" id="btnQuickRewards">
- <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+ <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v9H4v-9M2 7h20v5H2V7ZM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7ZM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7Z"/></svg>
  Lihat Rewards
  </button>
  </div>
@@ -270,10 +259,13 @@
  <div class="tier-card">
  <div class="tier-header">
  <div class="tier-title-row">
- <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M14.615 1.595a.75.75 0 0 1 .359.852L12.982 9.75h7.268a.75.75 0 0 1 .548 1.262l-10.5 11.25a.75.75 0 0 1-1.272-.71l1.992-7.203H3.75a.75.75 0 0 1-.548-1.262l10.5-11.25a.75.75 0 0 1 .913-.342Z" clip-rule="evenodd"/></svg>
- <h3>Membership Level</h3>
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 16v3M12 11v8M17 6v13"/></svg>
+ <h3>Level Membership</h3>
  </div>
- <a href="membership.html" class="tier-rewards-btn">All Rewards</a>
+ <a href="membership.html" class="tier-rewards-btn">
+ Lihat Semua Benefit
+ <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+ </a>
  </div>
  <div class="tier-map" id="tierMapContainer"></div>
  <!-- Lock Overlay (shown when INACTIVE) -->
@@ -286,29 +278,28 @@
  </div>
 
  <!-- Benefit & Rewards quick access -->
- <div class="ringkasan-links">
- <h3 class="ringkasan-links-title">
- <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9.375 3a1.875 1.875 0 0 0 0 3.75h1.875v4.5H3.375A1.875 1.875 0 0 1 1.5 9.375v-.75c0-1.036.84-1.875 1.875-1.875h3.193A3.375 3.375 0 0 1 12 2.753a3.375 3.375 0 0 1 5.432 3.997h3.193c1.035 0 1.875.84 1.875 1.875v.75c0 1.036-.84 1.875-1.875 1.875H12.75v-4.5h1.875a1.875 1.875 0 1 0-1.875-1.875V6.75h-1.5V4.875C11.25 3.839 10.41 3 9.375 3ZM11.25 12.75H3v6.75a2.25 2.25 0 0 0 2.25 2.25h6v-9ZM12.75 12.75v9h6A2.25 2.25 0 0 0 21 19.5v-6.75h-8.25Z"/></svg>
- Benefit &amp; Rewards
- </h3>
+ <h3 class="ringkasan-links-title">Benefit &amp; Rewards</h3>
  <div class="ringkasan-links-grid">
  <button type="button" class="ringkasan-link-card" data-goto-tab="benefits">
- <span class="rlc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9.375 3a1.875 1.875 0 0 0 0 3.75h1.875v4.5H3.375A1.875 1.875 0 0 1 1.5 9.375v-.75c0-1.036.84-1.875 1.875-1.875h3.193A3.375 3.375 0 0 1 12 2.753a3.375 3.375 0 0 1 5.432 3.997h3.193c1.035 0 1.875.84 1.875 1.875v.75c0 1.036-.84 1.875-1.875 1.875H12.75v-4.5h1.875a1.875 1.875 0 1 0-1.875-1.875V6.75h-1.5V4.875C11.25 3.839 10.41 3 9.375 3ZM11.25 12.75H3v6.75a2.25 2.25 0 0 0 2.25 2.25h6v-9ZM12.75 12.75v9h6A2.25 2.25 0 0 0 21 19.5v-6.75h-8.25Z"/></svg></span>
+ <span class="rlc-thumb"><img src="Brand_assets/product/clay.jpeg" alt="" /></span>
  <span class="rlc-text">
  <strong>Katalog Rewards</strong>
  <span>Tukarkan poin dengan reward pilihan.</span>
  </span>
- <svg class="rlc-arrow" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M16.28 11.47a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 0 1 1.06-1.06l7.5 7.5Z" clip-rule="evenodd"/></svg>
+ <span class="rlc-arrow-circle">
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+ </span>
  </button>
  <button type="button" class="ringkasan-link-card" data-goto-tab="bookings">
- <span class="rlc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 0 1 7.5 3v1.5h9V3a.75.75 0 0 1 1.5 0v1.5h.75a3 3 0 0 1 3 3v11.25a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V7.5a3 3 0 0 1 3-3H6V3a.75.75 0 0 1 .75-.75Zm13.5 9a1.5 1.5 0 0 0-1.5-1.5H5.25a1.5 1.5 0 0 0-1.5 1.5v7.5a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5v-7.5Z" clip-rule="evenodd"/></svg></span>
+ <span class="rlc-thumb"><img src="Brand_assets/Services/Hair_Cut.jpg" alt="" /></span>
  <span class="rlc-text">
  <strong>Riwayat Kunjungan</strong>
  <span>Lihat kembali pengalaman grooming-mu.</span>
  </span>
- <svg class="rlc-arrow" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M16.28 11.47a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 0 1 1.06-1.06l7.5 7.5Z" clip-rule="evenodd"/></svg>
+ <span class="rlc-arrow-circle">
+ <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+ </span>
  </button>
- </div>
  </div>
  </div>
 
@@ -502,15 +493,10 @@
 
  </div>
  </div>
-
- <!-- Mobile logout button - only shown when sidebar nav is horizontal scroll -->
- <div class="mobile-logout-wrap">
- <button class="mobile-logout-btn" id="mobileLogoutBtn">
- <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M7.5 3.75A1.5 1.5 0 0 0 6 5.25v13.5a1.5 1.5 0 0 0 1.5 1.5h6a1.5 1.5 0 0 0 1.5-1.5V15a.75.75 0 0 1 1.5 0v3.75a3 3 0 0 1-3 3h-6a3 3 0 0 1-3-3V5.25a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3V9a.75.75 0 0 1-1.5 0V5.25a1.5 1.5 0 0 0-1.5-1.5h-6Zm10.72 4.72a.75.75 0 0 1 1.06 0l3 3a.75.75 0 0 1 0 1.06l-3 3a.75.75 0 1 1-1.06-1.06l1.72-1.72H9a.75.75 0 0 1 0-1.5h10.94l-1.72-1.72a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/></svg>
- Keluar
- </button>
+ <!-- No standalone "Keluar" button here — reachable via the sidebar
+ drawer (navbar hamburger) or the desktop sidebar; a full-width logout
+ control at the bottom of Ringkasan has no equivalent in the target. -->
  </div>
- </section>
 
  <!-- ========== ACTIVATION BANNER ========== -->
  <section class="activation-banner" id="activationBanner" style="display:none">
