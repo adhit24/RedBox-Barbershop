@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/stockist-sync",
-      "schedule": "0 17 * * *"
+      "schedule": "36 22 * * *"
     },
     {
       "path": "/api/cron/stockist-daily-movements",
