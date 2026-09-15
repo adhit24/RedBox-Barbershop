@@ -89,6 +89,7 @@ async function syncOutlet(supabase, outlet, ownerId) {
     unmapped: 0, anomalies: 0, qty_deducted: 0, pages: 0,
     page_size: PAGE_SIZE, recovery_from_baseline: ctx.isStale, baseline_at: ctx.baselineAt,
   };
+  const touchedDates = new Set();
 
   await supabase.from('moka_stockist_sync_state').upsert({
     outlet_id: outlet.id, last_started_at: new Date().toISOString(),
@@ -114,6 +115,10 @@ async function syncOutlet(supabase, outlet, ownerId) {
           outlet, locationId: ctx.locationId, mappings: ctx.mappings, performedBy: ownerId,
         });
         const occurredAt = result?.transaction?.occurredAt || payment.transaction_date || payment.created_at || null;
+        if (occurredAt) {
+          const occurredDate = new Date(occurredAt);
+          if (!Number.isNaN(occurredDate.getTime())) touchedDates.add(getWIBDate(occurredDate));
+        }
         if (result.action === 'PROCESSED') {
           stats.processed += 1;
           stats.qty_deducted += result.quantityDeducted || 0;
@@ -144,13 +149,13 @@ async function syncOutlet(supabase, outlet, ownerId) {
       last_successful_sync_at: nowIso, cursor_at: nowIso,
       last_run_stats: stats, updated_at: nowIso,
     }, { onConflict: 'outlet_id' });
-    return { outlet: outlet.slug, ok: true, status: finalStatus, stats };
+    return { outlet: outlet.slug, ok: true, status: finalStatus, stats, touched_dates: [...touchedDates].sort() };
   } catch (error) {
     await supabase.from('moka_stockist_sync_state').upsert({
       outlet_id: outlet.id, last_status: 'FAILED', last_error: error.message,
       last_run_stats: stats, updated_at: new Date().toISOString(),
     }, { onConflict: 'outlet_id' });
-    return { outlet: outlet.slug, ok: false, status: 'FAILED', error: error.message, stats };
+    return { outlet: outlet.slug, ok: false, status: 'FAILED', error: error.message, stats, touched_dates: [...touchedDates].sort() };
   }
 }
 
@@ -175,10 +180,16 @@ async function stockistSalesRecoveryHandler(req, res) {
     const results = [];
     for (const outlet of outlets || []) results.push(await syncOutlet(supabase, outlet, owner.id));
 
-    // Refresh yesterday and today so late-arriving transactions appear without
-    // waiting for another calendar day.
+    // Rebuild every calendar date touched by the fetched Moka transactions,
+    // plus yesterday/today. This keeps historical daily reports correct when
+    // a late transaction or stale-recovery run backfills older ledger rows.
+    const datesToRefresh = new Set([getYesterdayWIBDate(), getWIBDate()]);
+    for (const result of results) {
+      for (const date of result.touched_dates || []) datesToRefresh.add(date);
+    }
+
     const movementResults = [];
-    for (const date of [getYesterdayWIBDate(), getWIBDate()]) {
+    for (const date of [...datesToRefresh].sort()) {
       try { movementResults.push(await aggregateDailyMovements(supabase, { targetDate: date })); }
       catch (error) { movementResults.push({ ok: false, target_date: date, error: error.message }); }
     }
