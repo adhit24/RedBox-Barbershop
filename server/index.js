@@ -24,6 +24,7 @@ const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
 const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('./membership-policy');
 const { normalizeMemberPhone, getMemberPhoneVariants, mergeCustomerRows } = require('./member-identity');
+const { getCustomerReviewsCount } = require('./member-reviews');
 const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membership-identity');
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
@@ -3738,6 +3739,14 @@ async function getMemberSessionByToken(token) {
           }).or(phoneFilter).then(() => {}, () => {});
         }
       }
+
+      // Identity for this lookup is session.customer_wa only (resolved
+      // above from the authenticated token via member_sessions) — never
+      // anything the caller supplies in the request itself. A failure here
+      // is fully contained inside getCustomerReviewsCount (never throws)
+      // and must never abort the main profile response below.
+      const reviewsCount = await getCustomerReviewsCount(supabase, session.customer_wa);
+      if (reviewsCount !== undefined) customer.reviews_count = reviewsCount;
     }
 
     return res.json({ customer: customer || null });

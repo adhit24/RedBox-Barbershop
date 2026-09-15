@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
  // STATE
  // ============================================================
  const defaultMember = {
- points: 0, visits: 0, reviews: 0,
+ points: 0, visits: 0, reviews: 0, reviewsAvailable: false,
  phone: '', birthdate: '', gender: 'male',
  address: '', favBarber: '',
  referralCode: '', referralCount: 0, referralPoints: 0,
@@ -173,8 +173,15 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  function animateCount(el, target, duration) {
  if (!el) return;
+ // Stat boxes get animated twice: once at synchronous page load (cached/
+ // default data) and again once the async profile fetch resolves. Without
+ // this token guard, the first (longer) animation's later frames can
+ // overwrite the second, correct animation's result — e.g. "Total Poin"
+ // freezing at 0 after a real non-zero balance briefly flashed in.
+ const token = (el._animToken = (el._animToken || 0) + 1);
  const startTime = performance.now();
  function step(now) {
+ if (el._animToken !== token) return;
  const p = Math.min((now - startTime) / duration, 1);
  const e = 1 - Math.pow(1 - p, 3);
  el.textContent = Math.floor(e * target).toLocaleString('id-ID');
@@ -233,7 +240,22 @@ document.addEventListener('DOMContentLoaded', () => {
  const avatarFileInput = document.getElementById('avatarFileInput');
  const statVisits = document.getElementById('statVisits');
  const statReviews = document.getElementById('statReviews');
+ const statReviewsBox = document.getElementById('statReviewsBox');
  const statPoints = document.getElementById('statPoints');
+
+ // "Ulasan" only has a real backing source for OTP members, where
+ // /api/auth/me can resolve it via the reviews table (joined through
+ // bookings.wa — reviews has no direct customer/wa column of its own).
+ // Until that resolves, hide the stat instead of showing a misleading 0.
+ function updateReviewsStatVisibility() {
+ if (!statReviewsBox) return;
+ statReviewsBox.hidden = !memberData.reviewsAvailable;
+ // Defense in depth: also blank the old number when hiding, so a stale
+ // count never lingers in the DOM (e.g. a later CSS change, or the box
+ // becoming visible again) — not just relying on [hidden] to cover it.
+ if (!memberData.reviewsAvailable && statReviews) statReviews.textContent = '0';
+ }
+ updateReviewsStatVisibility();
 
  if (profileName) profileName.textContent = userData.name || 'Member Redbox';
  if (profileSince) {
@@ -587,6 +609,108 @@ document.addEventListener('DOMContentLoaded', () => {
  renderTierMap(tier);
 
  // ============================================================
+ // MASA BERLAKU MEMBERSHIP (Expiry Panel)
+ // ============================================================
+ // Presentation-only "segera berakhir" threshold. No business-confirmed
+ // reminder window exists yet — flagged as an open decision in the report.
+ const EXPIRY_SOON_DAYS = 30;
+ // Verified against public/membership.html and the site-wide floating WhatsApp
+ // widget (.wa-float, also membership.html), where this exact number is used
+ // repeatedly with membership-related pre-filled text. The number hardcoded
+ // in this file's Shop "Beli via WA" button (6289635379441) appears nowhere
+ // else on the site and is treated as an unverified outlier, not reused here.
+ const REDBOX_WA_NUMBER = '62818202569';
+
+ function hasDateValue(v) { return v !== null && v !== undefined && String(v).trim() !== ''; }
+
+ function computeMembershipLifecycle(data) {
+ const status = data.membership_status;
+ const startedAt = data.membership_started_at;
+ const expiresAt = data.membership_expires_at;
+ const hasExpiry = hasDateValue(expiresAt);
+ const expiryDate = hasExpiry ? new Date(expiresAt) : null;
+ const validExpiry = expiryDate && !Number.isNaN(expiryDate.getTime());
+
+ if (status !== 'ACTIVE') {
+ if (validExpiry && expiryDate.getTime() <= Date.now()) return { state: 'expired', expiryDate };
+ return { state: 'inactive', expiryDate: null };
+ }
+
+ if (!hasExpiry) {
+ // Legacy ACTIVE record with no dates: access is on, but we cannot claim an expiry.
+ return { state: hasDateValue(startedAt) ? 'unknown' : 'active', expiryDate: null };
+ }
+ if (!validExpiry) return { state: 'unknown', expiryDate: null };
+
+ const msLeft = expiryDate.getTime() - Date.now();
+ if (msLeft <= 0) return { state: 'expired', expiryDate };
+ const daysLeft = Math.ceil(msLeft / 86400000);
+ return { state: daysLeft <= EXPIRY_SOON_DAYS ? 'expiring' : 'active', expiryDate, daysLeft };
+ }
+
+ function renderExpiryPanel() {
+ const badge = document.getElementById('expiryStatusBadge');
+ const dateEl = document.getElementById('expiryDateText');
+ const subEl = document.getElementById('expiryDaysLeft');
+ const ctaBtn = document.getElementById('expiryCtaBtn');
+ if (!badge || !dateEl || !subEl || !ctaBtn) return;
+
+ const lifecycle = computeMembershipLifecycle(memberData);
+ const BADGE_TEXT = { active:'Aktif', expiring:'Segera Berakhir', expired:'Kedaluwarsa', inactive:'Belum Aktif', unknown:'Data Tidak Tersedia' };
+ badge.textContent = BADGE_TEXT[lifecycle.state] || 'Belum Aktif';
+ badge.className = 'expiry-status-badge ' + (lifecycle.state === 'unknown' ? 'inactive' : lifecycle.state);
+
+ dateEl.classList.remove('is-placeholder');
+ subEl.textContent = '';
+
+ if (lifecycle.state === 'expired') {
+ dateEl.textContent = lifecycle.expiryDate ? fmtDate(lifecycle.expiryDate) : 'Membership kedaluwarsa';
+ subEl.textContent = lifecycle.expiryDate ? 'Membership berakhir pada tanggal di atas' : '';
+ } else if (lifecycle.state === 'expiring') {
+ dateEl.textContent = fmtDate(lifecycle.expiryDate);
+ subEl.textContent = lifecycle.daysLeft <= 1 ? 'Berakhir besok' : `Berakhir dalam ${lifecycle.daysLeft} hari`;
+ } else if (lifecycle.state === 'active' && lifecycle.expiryDate) {
+ dateEl.textContent = fmtDate(lifecycle.expiryDate);
+ } else if (lifecycle.state === 'active') {
+ dateEl.textContent = 'Masa berlaku belum tersedia';
+ dateEl.classList.add('is-placeholder');
+ } else if (lifecycle.state === 'inactive') {
+ dateEl.textContent = 'Aktifkan membership untuk melihat masa berlaku';
+ dateEl.classList.add('is-placeholder');
+ } else {
+ dateEl.textContent = 'Masa berlaku belum tersedia';
+ dateEl.classList.add('is-placeholder');
+ }
+
+ ctaBtn.onclick = null;
+ if (lifecycle.state === 'inactive') {
+ ctaBtn.style.display = 'inline-flex';
+ ctaBtn.className = 'expiry-cta';
+ ctaBtn.textContent = 'Aktivasi Membership';
+ ctaBtn.onclick = () => showActivationModal();
+ } else if (lifecycle.state === 'expiring' || lifecycle.state === 'expired') {
+ ctaBtn.style.display = 'inline-flex';
+ ctaBtn.className = 'expiry-cta';
+ ctaBtn.textContent = 'Hubungi Admin untuk Perpanjang';
+ ctaBtn.onclick = () => {
+ const tierName = getDisplayTier(memberData.points || 0).name;
+ const memberName = (userData && userData.name && String(userData.name).trim()) || 'Member Redbox';
+ const dateSuffix = lifecycle.expiryDate ? ` (berakhir ${fmtDate(lifecycle.expiryDate)})` : '';
+ const msg = `Halo Redbox, saya ${memberName} ingin memperpanjang membership tier ${tierName}${dateSuffix}.`;
+ window.open(`https://wa.me/${REDBOX_WA_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank');
+ };
+ } else {
+ ctaBtn.style.display = 'none';
+ }
+ }
+
+ renderExpiryPanel();
+
+ document.getElementById('btnQuickRewards')?.addEventListener('click', () => {
+ document.querySelector('.dash-nav-item[data-tab="benefits"]')?.click();
+ });
+
+ // ============================================================
  // TIER-UP CELEBRATION
  // ============================================================
  // Captured once, before any sync path can call maybeShowTierUpBanner, so that
@@ -821,15 +945,33 @@ document.addEventListener('DOMContentLoaded', () => {
  // ============================================================
  const navItems = document.querySelectorAll('.dash-nav-item[data-tab]');
  const panels = document.querySelectorAll('.dash-panel');
- navItems.forEach(item => {
- item.addEventListener('click', () => {
- const tab = item.dataset.tab;
- navItems.forEach(n => n.classList.remove('active'));
- item.classList.add('active');
- panels.forEach(p => { p.classList.remove('active'); if (p.id === 'panel-'+tab) p.classList.add('active'); });
+ // Bottom nav only maps to two of the tabs (Member -> ringkasan, Akun ->
+ // account); the other tabs have no bottom-nav slot, matching how a real
+ // 4-item bottom bar works — reached instead via the sidebar drawer.
+ const bottomNavItems = document.querySelectorAll('.mbn-item[data-tab]');
+
+ function switchToTab(tab) {
+ navItems.forEach(n => n.classList.toggle('active', n.dataset.tab === tab));
+ panels.forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+ bottomNavItems.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
  closeNav(); // close sidebar drawer after selecting tab on mobile
+ }
+
+ navItems.forEach(item => {
+ item.addEventListener('click', () => switchToTab(item.dataset.tab));
+ });
+ bottomNavItems.forEach(item => {
+ item.addEventListener('click', () => {
+ switchToTab(item.dataset.tab);
+ window.scrollTo({ top: 0, behavior: 'smooth' });
  });
  });
+ document.querySelectorAll('[data-goto-tab]').forEach(item => {
+ item.addEventListener('click', () => switchToTab(item.dataset.gotoTab));
+ });
+ // Sync bottom nav with whichever tab is active by default at page load.
+ const initialActiveTab = document.querySelector('.dash-nav-item.active')?.dataset.tab;
+ if (initialActiveTab) bottomNavItems.forEach(b => b.classList.toggle('active', b.dataset.tab === initialActiveTab));
 
  // ============================================================
  // ACCOUNT FORM
@@ -1226,6 +1368,19 @@ document.addEventListener('DOMContentLoaded', () => {
  memberData.membership_started_at = c.membership_started_at ?? null;
  memberData.membership_expires_at = c.membership_expires_at ?? null;
  memberData.lastVisit = c.last_visit || memberData.lastVisit || null;
+ // Every fresh fetch must explicitly decide availability both ways — not
+ // just set it true when present. Otherwise a customer whose reviews_count
+ // came back once (reviewsAvailable=true, persisted to localStorage) but
+ // is absent from a later refresh (a transient backend failure, a session
+ // that no longer resolves it, etc.) would keep showing that stale old
+ // number forever with no way for it to ever go away.
+ if (c.reviews_count !== undefined && c.reviews_count !== null) {
+ memberData.reviews = Number(c.reviews_count) || 0;
+ memberData.reviewsAvailable = true;
+ } else {
+ memberData.reviews = 0;
+ memberData.reviewsAvailable = false;
+ }
  refreshMembershipAccess();
  updateAvatarUploadVisibility();
  // first_visit = tanggal transaksi Moka paling awal - sumber kebenaran "Bergabung sejak"
@@ -1243,6 +1398,8 @@ document.addEventListener('DOMContentLoaded', () => {
  const pts = isACTIVE ? memberData.points : 0;
  animateCount(statPoints, pts, 800);
  animateCount(statVisits, memberData.visits, 600);
+ updateReviewsStatVisibility();
+ if (memberData.reviewsAvailable) animateCount(statReviews, memberData.reviews, 600);
  const t2 = getDisplayTier(pts);
  const t2Class = isACTIVE ? t2.class : 'bronze';
  window.RedboxTierTheme.applyTierTheme(t2Class);
@@ -1266,6 +1423,7 @@ document.addEventListener('DOMContentLoaded', () => {
  renderUpsellBanner(t2);
  renderBenefitTracker(t2);
  renderTierMap(t2);
+ renderExpiryPanel();
  renderShop(t2);
  if (memberStatusBadge) {
  memberStatusBadge.textContent = isACTIVE ? ' Membership Aktif' : 'Membership Belum Aktif';
@@ -1275,6 +1433,18 @@ document.addEventListener('DOMContentLoaded', () => {
  physCardWrap.classList.toggle('inactive', !isACTIVE);
  if (physCardHint) physCardHint.textContent = isACTIVE ? ' Kartu fisik kamu sudah aktif' : 'Aktivasi untuk dapatkan kartu fisik eksklusif ini';
  }
+ // Bug fix: this async re-sync path previously never toggled the tier-lock
+ // overlay / activation banners after fetching the real membership status,
+ // so an OTP member whose account was actually ACTIVE still saw "Tier
+ // Terkunci" and the activation prompts (left over from the INACTIVE
+ // default render at page load) even though the status badge above
+ // correctly switched to "Aktif".
+ if (tierLockOverlay) tierLockOverlay.style.display = isACTIVE ? 'none' : 'flex';
+ if (activationBannerTop) activationBannerTop.style.display = isACTIVE ? 'none' : 'block';
+ if (activationBanner) activationBanner.style.display = 'none';
+ // Same staleness bug as tierLockOverlay above: the referral lock note was
+ // only ever set once, synchronously, from the default/cached ACTIVE value.
+ if (refLockNote) refLockNote.style.display = isACTIVE ? 'none' : 'flex';
  if (accName) accName.value = userData.name || '';
  if (accPhone) accPhone.value = memberData.phone || '';
  if (accEmail) accEmail.value = memberData.email || '';
@@ -1356,6 +1526,7 @@ document.addEventListener('DOMContentLoaded', () => {
  renderUpsellBanner(t2);
  renderBenefitTracker(t2);
  renderTierMap(t2);
+ renderExpiryPanel();
  renderShop(t2);
  if (memberStatusBadge) {
  memberStatusBadge.textContent = isACTIVE ? ' Membership Aktif' : 'Membership Belum Aktif';
@@ -1365,6 +1536,12 @@ document.addEventListener('DOMContentLoaded', () => {
  physCardWrap.classList.toggle('inactive', !isACTIVE);
  if (physCardHint) physCardHint.textContent = isACTIVE ? ' Kartu fisik kamu sudah aktif' : 'Aktivasi untuk dapatkan kartu fisik eksklusif ini';
  }
+ if (tierLockOverlay) tierLockOverlay.style.display = isACTIVE ? 'none' : 'flex';
+ if (activationBannerTop) activationBannerTop.style.display = isACTIVE ? 'none' : 'block';
+ if (activationBanner) activationBanner.style.display = 'none';
+ // Same staleness bug as tierLockOverlay above: the referral lock note was
+ // only ever set once, synchronously, from the default/cached ACTIVE value.
+ if (refLockNote) refLockNote.style.display = isACTIVE ? 'none' : 'flex';
  // Refresh form fields
  if (accName) accName.value = userData.name || '';
  if (accPhone) accPhone.value = memberData.phone || '';
