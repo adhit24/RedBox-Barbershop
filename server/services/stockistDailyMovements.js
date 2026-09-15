@@ -2,9 +2,10 @@
 
 /**
  * Service: stockistDailyMovements
- * 
- * Handles daily aggregation of inventory_ledger into inventory_daily_movements.
- * Strictly READ-ONLY with respect to operational balances and stockist transactions.
+ * Aggregates inventory_ledger into inventory_daily_movements.
+ * READ-ONLY with respect to operational balances/transactions.
+ * Uses movement_at (business-effective time), not created_at (processing time),
+ * so late/backfilled Moka sales land on the correct business date.
  * Timezone: Asia/Jakarta (+07:00).
  */
 
@@ -23,37 +24,31 @@ function getYesterdayWIBDate(date = new Date()) {
 }
 
 function getWIBDateBoundaries(dateStr) {
-  // dateStr is YYYY-MM-DD
-  const startIso = `${dateStr}T00:00:00.000+07:00`;
-  const endIso = `${dateStr}T23:59:59.999+07:00`;
-  return { startIso, endIso };
+  return {
+    startIso: `${dateStr}T00:00:00.000+07:00`,
+    endIso: `${dateStr}T23:59:59.999+07:00`,
+  };
 }
 
 async function aggregateDailyMovements(supabase, options = {}) {
   const targetDate = options.targetDate || getYesterdayWIBDate(options.now || new Date());
   const { startIso, endIso } = getWIBDateBoundaries(targetDate);
 
-  // 1. Fetch locations map to resolve branch_id (outlet_id)
   const { data: locations, error: locError } = await supabase
     .from('inventory_locations')
     .select('id, type, outlet_id');
   if (locError) throw new Error(`Failed to load locations: ${locError.message}`);
-
   const locationById = new Map((locations || []).map((loc) => [loc.id, loc]));
 
-  // 2. Fetch ledger rows in the exact WIB 24h window
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from('inventory_ledger')
-    .select('id, product_id, location_id, movement_type, quantity_delta, quantity_before, quantity_after, created_at')
-    .gte('created_at', startIso)
-    .lte('created_at', endIso)
-    .order('created_at', { ascending: true });
-
+    .select('id, product_id, location_id, movement_type, quantity_delta, quantity_before, quantity_after, movement_at, created_at')
+    .gte('movement_at', startIso)
+    .lte('movement_at', endIso)
+    .order('movement_at', { ascending: true });
   if (ledgerError) throw new Error(`Failed to load ledger: ${ledgerError.message}`);
 
-  // 3. Group by (location_id, product_id)
   const groups = new Map();
-
   for (const row of ledgerRows || []) {
     const key = `${row.location_id}:${row.product_id}`;
     if (!groups.has(key)) {
@@ -70,27 +65,16 @@ async function aggregateDailyMovements(supabase, options = {}) {
         adjustment_minus_qty: 0,
       });
     }
-
     const grp = groups.get(key);
     grp.last_row = row;
-
-    const delta = row.quantity_delta;
+    const delta = Number(row.quantity_delta || 0);
     const absDelta = Math.abs(delta);
-
     switch (row.movement_type) {
-      case 'WAREHOUSE_RECEIVE':
-        grp.received_qty += delta;
-        break;
-      case 'TRANSFER_IN':
-        grp.transfer_in_qty += delta;
-        break;
-      case 'TRANSFER_OUT':
-        grp.transfer_out_qty += absDelta;
-        break;
+      case 'WAREHOUSE_RECEIVE': grp.received_qty += delta; break;
+      case 'TRANSFER_IN': grp.transfer_in_qty += delta; break;
+      case 'TRANSFER_OUT': grp.transfer_out_qty += absDelta; break;
       case 'SALE_MOKA':
-      case 'SALE_RETAIL':
-        grp.sales_qty += absDelta;
-        break;
+      case 'SALE_RETAIL': grp.sales_qty += absDelta; break;
       case 'ADJUSTMENT':
       case 'STOCK_OPNAME_GAIN':
         if (delta > 0) grp.adjustment_plus_qty += delta;
@@ -99,26 +83,20 @@ async function aggregateDailyMovements(supabase, options = {}) {
       case 'STOCK_OPNAME_LOSS':
       case 'DAMAGE':
       case 'LOST':
-      case 'RETURN_TO_CENTER':
-        grp.adjustment_minus_qty += absDelta;
-        break;
+      case 'RETURN_TO_CENTER': grp.adjustment_minus_qty += absDelta; break;
       default:
         if (delta > 0) grp.adjustment_plus_qty += delta;
         else grp.adjustment_minus_qty += absDelta;
-        break;
     }
   }
 
-  // 4. Construct records for upsert
   const records = [];
   for (const grp of groups.values()) {
     const loc = locationById.get(grp.location_id);
-    const branchId = loc?.outlet_id || null;
-
     records.push({
       date: targetDate,
       location_id: grp.location_id,
-      branch_id: branchId,
+      branch_id: loc?.outlet_id || null,
       product_id: grp.product_id,
       opening_qty: grp.first_row.quantity_before,
       received_qty: grp.received_qty,
@@ -132,12 +110,27 @@ async function aggregateDailyMovements(supabase, options = {}) {
     });
   }
 
-  // 5. Upsert idempotently into inventory_daily_movements
-  if (records.length > 0) {
+  // Remove stale rows for this date that may have been produced before a
+  // late correction/backfill, then upsert the fresh canonical aggregate.
+  // This table is reporting-only; operational stock remains in balances/ledger.
+  const keys = new Set(records.map(r => `${r.location_id}:${r.product_id}`));
+  const { data: existingRows, error: existingError } = await supabase
+    .from('inventory_daily_movements')
+    .select('id, location_id, product_id')
+    .eq('date', targetDate);
+  if (existingError) throw new Error(`Failed to inspect daily movements: ${existingError.message}`);
+  const staleIds = (existingRows || [])
+    .filter(r => !keys.has(`${r.location_id}:${r.product_id}`))
+    .map(r => r.id);
+  if (staleIds.length) {
+    const { error: deleteError } = await supabase.from('inventory_daily_movements').delete().in('id', staleIds);
+    if (deleteError) throw new Error(`Failed to clear stale daily movements: ${deleteError.message}`);
+  }
+
+  if (records.length) {
     const { error: upsertError } = await supabase
       .from('inventory_daily_movements')
       .upsert(records, { onConflict: 'date,location_id,product_id' });
-
     if (upsertError) throw new Error(`Failed to upsert daily movements: ${upsertError.message}`);
   }
 
@@ -148,6 +141,7 @@ async function aggregateDailyMovements(supabase, options = {}) {
     window_end: endIso,
     movements_processed: (ledgerRows || []).length,
     records_upserted: records.length,
+    stale_rows_removed: staleIds.length,
     records,
   };
 }
