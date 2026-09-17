@@ -3,50 +3,96 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AttendanceOverview } from '../AttendanceOverview';
 
-const mockBranchCommandCenter: Record<string, unknown> = {
-  bypass: {
-    stats: { hadir: 1, belum_check_in: 0, tidak_hadir: 0 },
-    barbers: [
-      { id: 'b-bypass-1', name: 'Barber Alpha', branch: 'bypass', attendance_status: 'hadir', today_count: 4 },
-    ],
+const mockOverviewResponse = {
+  ok: true,
+  date: '2026-08-05',
+  branch: 'all',
+  filter: {
+    person_type: 'all',
+    status: 'all',
   },
-  csb: {
-    stats: { hadir: 1, belum_check_in: 1, tidak_hadir: 0 },
-    barbers: [
-      { id: 'b-csb-1', name: 'Barber Beta', branch: 'csb', attendance_status: 'hadir', today_count: 5 },
-      { id: 'b-csb-2', name: 'Barber Gamma', branch: 'csb', attendance_status: 'terlambat', today_count: 2 },
-    ],
+  stats: {
+    total_workforce: 3,
+    hadir: 2,
+    terlambat: 1,
+    belum_check_in: 1,
+    tidak_hadir: 0,
+    missing_clock_in: 0,
+    missing_clock_out: 0,
+    exceptions_count: 2,
   },
-  samadikun: {
-    stats: { hadir: 0, belum_check_in: 1, tidak_hadir: 0 },
-    barbers: [
-      { id: 'b-samadikun-1', name: 'Barber Delta', branch: 'samadikun', attendance_status: 'belum_check_in', today_count: 0 },
-    ],
-  },
-  sumber: {
-    stats: { hadir: 1, belum_check_in: 0, tidak_hadir: 0 },
-    barbers: [
-      { id: 'b-sumber-1', name: 'Barber Epsilon', branch: 'sumber', attendance_status: 'hadir', today_count: 3 },
-    ],
-  },
-  tegal: {
-    stats: { hadir: 0, belum_check_in: 0, tidak_hadir: 1 },
-    barbers: [
-      { id: 'b-tegal-1', name: 'Barber Foxtrot', branch: 'tegal', attendance_status: 'tidak_hadir', today_count: 0 },
-    ],
-  },
+  records: [
+    {
+      id: 'barber-csb-beta',
+      person_type: 'barber',
+      person_id: 'csb-beta',
+      name: 'Barber Beta',
+      nickname: null,
+      position: 'Kapster',
+      branch: 'csb',
+      business_unit: 'Redbox',
+      date: '2026-08-05',
+      status: 'hadir',
+      first_check_in: '10:00',
+      last_check_out: '21:00',
+      total_hours: '11.0 jam',
+      late_minutes: 0,
+      overtime_minutes: 0,
+      raw_punches: ['10:00', '21:00'],
+      has_single_punch: false,
+      notes: null,
+    },
+    {
+      id: 'emp-jumadi',
+      person_type: 'employee',
+      person_id: 'emp-jumadi-uuid',
+      name: 'Jumadi',
+      nickname: null,
+      position: 'Staff',
+      branch: 'sumber',
+      business_unit: 'Redbox',
+      date: '2026-08-05',
+      status: 'terlambat',
+      first_check_in: '10:15',
+      last_check_out: '21:30',
+      total_hours: '11.3 jam',
+      late_minutes: 15,
+      overtime_minutes: 0,
+      raw_punches: ['10:15', '21:30'],
+      has_single_punch: false,
+      notes: null,
+    },
+    {
+      id: 'barber-bypass-dul',
+      person_type: 'barber',
+      person_id: 'bypass-dul',
+      name: 'Abdul',
+      nickname: null,
+      position: 'Kapster',
+      branch: 'bypass',
+      business_unit: 'Redbox',
+      date: '2026-08-05',
+      status: 'belum_check_in',
+      first_check_in: null,
+      last_check_out: null,
+      total_hours: null,
+      late_minutes: 0,
+      overtime_minutes: 0,
+      raw_punches: [],
+      has_single_punch: false,
+      notes: null,
+    },
+  ],
 };
 
 describe('AttendanceOverview', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
-      for (const branch of ['bypass', 'csb', 'samadikun', 'sumber', 'tegal']) {
-        if (url.includes(`branch=${branch}`)) {
-          return Promise.resolve(
-            new Response(JSON.stringify(mockBranchCommandCenter[branch]), { status: 200 })
-          );
-        }
+      if (url.includes('/api/admin/crm/attendance/overview')) {
+        return Promise.resolve(
+          new Response(JSON.stringify(mockOverviewResponse), { status: 200 })
+        );
       }
       return Promise.resolve(new Response('not found', { status: 404 }));
     }));
@@ -56,11 +102,11 @@ describe('AttendanceOverview', () => {
     vi.unstubAllGlobals();
   });
 
-  it('has no fake employee fixtures and no DemoBadge', async () => {
+  it('has no fake fixtures and no DemoBadge', async () => {
     render(<AttendanceOverview />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
-      expect(screen.getByText('Kehadiran Kapster Hari Ini')).toBeInTheDocument();
+      expect(screen.getByText('Attendance Command Center')).toBeInTheDocument();
     });
 
     // Verify NO DemoBadge
@@ -72,39 +118,45 @@ describe('AttendanceOverview', () => {
     expect(screen.queryByText('Andra Wijaya')).toBeNull();
   });
 
-  it('renders barber attendance sourced from real API data', async () => {
+  it('renders attendance sourced from real API data for both regular staff and barbers', async () => {
     render(<AttendanceOverview />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
-      expect(screen.getByText('Barber Alpha')).toBeInTheDocument();
       expect(screen.getByText('Barber Beta')).toBeInTheDocument();
-      expect(screen.getByText('Barber Gamma')).toBeInTheDocument();
+      expect(screen.getByText('Jumadi')).toBeInTheDocument();
+      expect(screen.getByText('Abdul')).toBeInTheDocument();
     });
 
-    // Check status labels and service counts
-    expect(screen.getByText('5 layanan')).toBeInTheDocument();
-    expect(screen.getByText('4 layanan')).toBeInTheDocument();
+    // Check branch and position
+    expect(screen.getAllByText('Kapster').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Staff').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('CSB').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Sumber').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Bypass').length).toBeGreaterThan(0);
+
+    // Check punches and total hours
+    expect(screen.getByText('10:00')).toBeInTheDocument();
+    expect(screen.getByText('11.0 jam')).toBeInTheDocument();
+    expect(screen.getByText('+15 mnt')).toBeInTheDocument();
   });
 
-  it('displays honest unavailable state for regular fingerprint attendance', async () => {
+  it('renders KPI cards from API stats', async () => {
     render(<AttendanceOverview />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
-      expect(screen.getByText('Data fingerprint karyawan reguler belum terhubung')).toBeInTheDocument();
-      expect(screen.getByText(/format mesin absensi tervalidasi|tahap perancangan format data/i)).toBeInTheDocument();
-      expect(screen.getByText('Belum terhubung')).toBeInTheDocument();
+      expect(screen.getByText('Hadir (3 Total)')).toBeInTheDocument();
+      expect(screen.getByText('Terlambat Masuk')).toBeInTheDocument();
     });
   });
 
-  it('links Exception card to /attendance/exceptions with honest unavailable state', async () => {
+  it('links Exception card to /attendance/exceptions', async () => {
     render(<AttendanceOverview />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
-      expect(screen.getByText('Exception Attendance →')).toBeInTheDocument();
+      expect(screen.getByText('Exception / Anomali →')).toBeInTheDocument();
     });
 
-    const link = screen.getByRole('link', { name: /Exception Attendance/i });
+    const link = screen.getByRole('link', { name: /Exception \/ Anomali/i });
     expect(link.getAttribute('href')).toBe('/attendance/exceptions');
-    expect(screen.getByText('Belum tersedia')).toBeInTheDocument();
   });
 });

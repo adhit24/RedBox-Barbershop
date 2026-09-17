@@ -524,8 +524,61 @@ export function getAttendanceImportBatches(): Promise<{ ok: boolean; batches: At
   return apiClient.get<{ ok: boolean; batches: AttendanceImportBatch[] }>('/api/admin/crm/attendance/import/batches');
 }
 
-export function getAttendanceExceptions(status: string = 'pending'): Promise<{ ok: boolean; exceptions: AttendanceException[] }> {
-  return apiClient.get<{ ok: boolean; exceptions: AttendanceException[] }>(`/api/admin/crm/attendance/exceptions?status=${encodeURIComponent(status)}`);
+export interface AttendanceOverviewStats {
+  total_workforce: number;
+  hadir: number;
+  terlambat: number;
+  belum_check_in: number;
+  tidak_hadir: number;
+  missing_clock_in: number;
+  missing_clock_out: number;
+  exceptions_count: number;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  person_type: 'employee' | 'barber';
+  person_id: string;
+  name: string;
+  nickname: string | null;
+  position: string;
+  branch: string;
+  business_unit: string;
+  date: string;
+  status: string;
+  first_check_in: string | null;
+  last_check_out: string | null;
+  total_hours: string | null;
+  late_minutes: number;
+  overtime_minutes: number;
+  raw_punches: string[];
+  has_single_punch: boolean;
+  notes: string | null;
+}
+
+export interface AttendanceOverviewResponse {
+  ok: boolean;
+  date: string;
+  branch: string;
+  filter: {
+    person_type: string;
+    status: string;
+  };
+  stats: AttendanceOverviewStats;
+  records: AttendanceRecord[];
+}
+
+export function getAttendanceExceptions(
+  status: string = 'pending',
+  business_unit: string = 'redbox'
+): Promise<{
+  ok: boolean;
+  business_unit: string;
+  counts: { redbox: number; sundaze: number; unclassified: number; total: number };
+  exceptions: AttendanceException[];
+}> {
+  const query = new URLSearchParams({ status, business_unit });
+  return apiClient.get(`/api/admin/crm/attendance/exceptions?${query.toString()}`);
 }
 
 export function resolveAttendanceException(
@@ -540,6 +593,20 @@ export function getEmployeeAttendance(date?: string, branch?: string): Promise<E
   if (date) query.set('date', date);
   if (branch) query.set('branch', branch);
   return apiClient.get<EmployeeAttendanceResponse>(`/api/admin/crm/attendance/employees?${query.toString()}`);
+}
+
+export function getAttendanceOverview(params?: {
+  date?: string;
+  branch?: string;
+  person_type?: string;
+  status?: string;
+}): Promise<AttendanceOverviewResponse> {
+  const query = new URLSearchParams();
+  if (params?.date) query.set('date', params.date);
+  if (params?.branch) query.set('branch', params.branch);
+  if (params?.person_type) query.set('person_type', params.person_type);
+  if (params?.status) query.set('status', params.status);
+  return apiClient.get<AttendanceOverviewResponse>(`/api/admin/crm/attendance/overview?${query.toString()}`);
 }
 
 

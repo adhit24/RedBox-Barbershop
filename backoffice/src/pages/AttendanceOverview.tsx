@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
 import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
 import { EmptyState } from '../components/EmptyState';
-import { getCommandCenterForBranch, type CommandCenterBarber } from '../services/crm';
+import {
+  getAttendanceOverview,
+  type AttendanceOverviewResponse,
+} from '../services/crm';
 
 const BRANCHES = ['bypass', 'csb', 'samadikun', 'sumber', 'tegal'] as const;
 const BRANCH_LABELS: Record<string, string> = {
@@ -14,15 +17,20 @@ const BRANCH_LABELS: Record<string, string> = {
   samadikun: 'Samadikun',
   sumber: 'Sumber',
   tegal: 'Tegal',
+  pusat: 'Pusat',
 };
 
 function attendanceLabel(status: string | null) {
   if (!status) return 'Belum tersedia';
   const normalized = status.trim().toLowerCase();
   if (normalized === 'hadir') return 'Hadir';
-  if (normalized === 'tidak_hadir') return 'Tidak hadir';
+  if (normalized === 'tidak_hadir' || normalized === 'absent') return 'Tidak Hadir';
   if (normalized === 'terlambat') return 'Terlambat';
-  if (normalized === 'belum_check_in') return 'Belum check-in';
+  if (normalized === 'belum_check_in') return 'Belum Check-in';
+  if (normalized === 'izin') return 'Izin';
+  if (normalized === 'sakit') return 'Sakit';
+  if (normalized === 'cuti') return 'Cuti';
+  if (normalized === 'off') return 'Libur (Off)';
   return status.replaceAll('_', ' ');
 }
 
@@ -31,238 +39,324 @@ function statusBadgeTint(status: string | null) {
   const normalized = status.trim().toLowerCase();
   if (normalized === 'hadir') return 'bg-rb-green-tint-bg text-rb-green-tint-fg';
   if (normalized === 'terlambat') return 'bg-rb-orange-tint-bg text-rb-orange-tint-fg';
-  if (normalized === 'tidak_hadir') return 'bg-rb-red-tint-bg text-rb-red-tint-fg';
+  if (['tidak_hadir', 'absent'].includes(normalized)) return 'bg-rb-red-tint-bg text-rb-red-tint-fg';
+  if (['izin', 'sakit', 'cuti'].includes(normalized)) return 'bg-rb-blue-tint-bg text-rb-blue-tint-fg';
+  if (normalized === 'belum_check_in') return 'bg-rb-divider text-rb-text-muted';
   return 'bg-rb-divider text-rb-text-muted';
 }
 
-type PageState =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | {
-      status: 'ready';
-      barbers: CommandCenterBarber[];
-      totalHadir: number;
-      totalTerlambat: number;
-      totalBelumCheckIn: number;
-      totalTidakHadir: number;
-    };
-
 export function AttendanceOverview() {
-  const [state, setState] = useState<PageState>({ status: 'loading' });
+  // Default to sample imported date where real data exists (2026-08-05) or allow today
+  const [selectedDate, setSelectedDate] = useState<string>('2026-08-05');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedPersonType, setSelectedPersonType] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  const [data, setData] = useState<AttendanceOverviewResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const fetchOverview = async () => {
+    try {
+      setLoading(true);
+      setErrorMsg(null);
+      const res = await getAttendanceOverview({
+        date: selectedDate,
+        branch: selectedBranch,
+        person_type: selectedPersonType,
+        status: selectedStatus,
+      });
+      if (res.ok) {
+        setData(res);
+      } else {
+        setErrorMsg('Gagal memuat ringkasan presensi');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Gagal memuat data presensi dari server');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    Promise.allSettled(BRANCHES.map((b) => getCommandCenterForBranch(b))).then(
-      (results) => {
-        const barberMap = new Map<string, CommandCenterBarber>();
-        let totalHadir = 0;
-        let totalTerlambat = 0;
-        let totalBelumCheckIn = 0;
-        let totalTidakHadir = 0;
+    fetchOverview();
+  }, [selectedDate, selectedBranch, selectedPersonType, selectedStatus]);
 
-        for (const res of results) {
-          if (res.status === 'fulfilled' && res.value) {
-            const data = res.value;
-            totalHadir += data.stats.hadir || 0;
-            totalBelumCheckIn += data.stats.belum_check_in || 0;
-            totalTidakHadir += data.stats.tidak_hadir || 0;
+  const stats = data?.stats || {
+    total_workforce: 0,
+    hadir: 0,
+    terlambat: 0,
+    belum_check_in: 0,
+    tidak_hadir: 0,
+    missing_clock_in: 0,
+    missing_clock_out: 0,
+    exceptions_count: 0,
+  };
 
-            for (const barber of data.barbers || []) {
-              if (!barberMap.has(barber.id)) {
-                barberMap.set(barber.id, barber);
-                if (barber.attendance_status === 'terlambat') {
-                  totalTerlambat++;
-                }
-              }
-            }
-          }
-        }
-
-        const barbers = [...barberMap.values()].sort((a, b) => {
-          const branchDiff =
-            BRANCHES.indexOf(a.branch as (typeof BRANCHES)[number]) -
-            BRANCHES.indexOf(b.branch as (typeof BRANCHES)[number]);
-          if (branchDiff !== 0) return branchDiff;
-          return a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
-        });
-
-        if (barbers.length === 0) {
-          setState({
-            status: 'error',
-            message: 'Data attendance kapster belum dapat dimuat dari cabang.',
-          });
-          return;
-        }
-
-        setState({
-          status: 'ready',
-          barbers,
-          totalHadir,
-          totalTerlambat,
-          totalBelumCheckIn,
-          totalTidakHadir,
-        });
-      }
-    );
-  }, []);
-
-  const filteredBarbers = useMemo(() => {
-    if (state.status !== 'ready') return [];
-    if (selectedBranch === 'all') return state.barbers;
-    return state.barbers.filter((b) => b.branch === selectedBranch);
-  }, [state, selectedBranch]);
+  const records = data?.records || [];
 
   return (
     <>
       <PageHeader
-        title="Attendance"
-        subtitle="Monitoring kehadiran kapster real-time di seluruh cabang. Absensi fingerprint karyawan reguler dalam persiapan."
+        title="Attendance Command Center"
+        subtitle="Monitoring kehadiran terpadu Redbox (Karyawan Reguler & Kapster) dari data fingerprint mesin dan terminal cabang."
       />
 
-      {state.status === 'loading' && (
-        <LoadingState label="Memuat status kehadiran kapster dari seluruh cabang..." />
-      )}
+      {/* Control Bar: Date, Branch, Person Type, Status */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-rb-card border border-rb-border bg-rb-surface p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label htmlFor="att-date" className="text-xs font-semibold text-rb-text-muted">
+              Tanggal:
+            </label>
+            <input
+              id="att-date"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text"
+            />
+          </div>
 
-      {state.status === 'error' && <ErrorState message={state.message} />}
+          <button
+            type="button"
+            onClick={() => setSelectedDate('2026-08-05')}
+            className={`rounded-rb-button px-2.5 py-1 text-xs font-medium transition ${
+              selectedDate === '2026-08-05'
+                ? 'bg-rb-red text-white'
+                : 'border border-rb-border bg-rb-surface text-rb-text-secondary hover:bg-rb-surface-hover'
+            }`}
+          >
+            Sample Import (05 Ags)
+          </button>
 
-      {state.status === 'ready' && (
+          <button
+            type="button"
+            onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+            className={`rounded-rb-button px-2.5 py-1 text-xs font-medium transition ${
+              selectedDate === new Date().toISOString().split('T')[0]
+                ? 'bg-rb-red text-white'
+                : 'border border-rb-border bg-rb-surface text-rb-text-secondary hover:bg-rb-surface-hover'
+            }`}
+          >
+            Hari Ini
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Branch Filter */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="branch-filter" className="text-xs font-semibold text-rb-text-muted">
+              Cabang:
+            </label>
+            <select
+              id="branch-filter"
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text"
+            >
+              <option value="all">Semua Cabang Redbox</option>
+              {BRANCHES.map((b) => (
+                <option key={b} value={b}>
+                  {BRANCH_LABELS[b]}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Person Type Filter */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="person-type-filter" className="text-xs font-semibold text-rb-text-muted">
+              Tipe:
+            </label>
+            <select
+              id="person-type-filter"
+              value={selectedPersonType}
+              onChange={(e) => setSelectedPersonType(e.target.value)}
+              className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text"
+            >
+              <option value="all">Semua Person</option>
+              <option value="employee">Karyawan Reguler</option>
+              <option value="barber">Kapster</option>
+            </select>
+          </div>
+
+          {/* Status Filter */}
+          <div className="flex items-center gap-2">
+            <label htmlFor="status-filter" className="text-xs font-semibold text-rb-text-muted">
+              Status:
+            </label>
+            <select
+              id="status-filter"
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text"
+            >
+              <option value="all">Semua Status</option>
+              <option value="hadir">Hadir (Tepat Waktu & Terlambat)</option>
+              <option value="terlambat">Terlambat</option>
+              <option value="belum_check_in">Belum Check-In</option>
+              <option value="tidak_hadir">Tidak Hadir (Absent / Izin)</option>
+              <option value="missing_punch">Missing Punch (Single Punch)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {loading && <LoadingState label="Memuat ringkasan presensi Redbox..." />}
+      {errorMsg && <ErrorState message={errorMsg} />}
+
+      {!loading && !errorMsg && (
         <>
+          {/* KPI Stat Cards */}
           <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              value={state.totalHadir}
-              label="Kapster Hadir"
+              value={stats.hadir}
+              label={`Hadir (${stats.total_workforce} Total)`}
+              trend={`${stats.terlambat} terlambat`}
               tint="green"
             />
             <StatCard
-              value={state.totalTerlambat}
-              label="Kapster Terlambat"
+              value={stats.terlambat}
+              label="Terlambat Masuk"
+              trend="Berdasarkan jam shift"
               tint="orange"
             />
             <StatCard
-              value={state.totalBelumCheckIn}
-              label="Belum Check-in"
+              value={stats.belum_check_in + stats.tidak_hadir}
+              label="Belum / Tidak Hadir"
+              trend={`${stats.belum_check_in} belum, ${stats.tidak_hadir} absen`}
               tint="yellow"
             />
             <Link to="/attendance/exceptions" className="block no-underline">
               <StatCard
-                value="—"
-                label="Exception Attendance →"
-                trend="Belum tersedia"
-                tint="blue"
+                value={stats.exceptions_count + stats.missing_clock_out}
+                label="Exception / Anomali →"
+                trend={`${stats.exceptions_count} unresolved, ${stats.missing_clock_out} missing out`}
+                tint={stats.exceptions_count > 0 ? 'red' : 'blue'}
               />
             </Link>
           </section>
 
-          {/* Barber Attendance Roster */}
+          {/* Attendance Roster Table */}
           <div className="mb-6 overflow-hidden rounded-rb-card border border-rb-border bg-rb-surface">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rb-divider px-4 py-3">
               <div>
                 <h2 className="font-serif text-base font-semibold text-rb-text">
-                  Kehadiran Kapster Hari Ini
+                  Daftar Kehadiran Person ({records.length})
                 </h2>
                 <div className="text-xs text-rb-text-muted">
-                  Berdasarkan status check-in terminal Command Center cabang
+                  Tanggal {selectedDate} · Cabang: {selectedBranch === 'all' ? 'Seluruh Cabang' : BRANCH_LABELS[selectedBranch] || selectedBranch}
                 </div>
               </div>
-
               <div className="flex items-center gap-2">
-                <label htmlFor="branch-filter" className="text-xs text-rb-text-muted">
-                  Cabang:
-                </label>
-                <select
-                  id="branch-filter"
-                  value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                  className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text"
+                <Link
+                  to="/attendance/import"
+                  className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-surface-hover"
                 >
-                  <option value="all">Semua Cabang ({state.barbers.length})</option>
-                  {BRANCHES.map((b) => {
-                    const count = state.barbers.filter((barber) => barber.branch === b).length;
-                    return (
-                      <option key={b} value={b}>
-                        {BRANCH_LABELS[b]} ({count})
-                      </option>
-                    );
-                  })}
-                </select>
+                  Import Fingerprint
+                </Link>
+                <Link
+                  to="/attendance/exceptions"
+                  className="rounded-rb-button bg-rb-red px-3 py-1.5 text-xs font-semibold text-white hover:bg-rb-red-hover"
+                >
+                  Review Exception ({stats.exceptions_count})
+                </Link>
               </div>
             </div>
 
-            <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-2 border-b border-rb-divider px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-rb-text-muted">
-              <div>Kapster</div>
+            {/* Table Header */}
+            <div className="grid grid-cols-[1.8fr_1fr_1fr_1fr_1fr_1fr_1fr] gap-2 border-b border-rb-divider px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-rb-text-muted">
+              <div>Person / Nama</div>
               <div>Cabang</div>
-              <div>Status Kehadiran</div>
-              <div>Layanan Hari Ini</div>
+              <div>Masuk</div>
+              <div>Keluar</div>
+              <div>Total Jam</div>
+              <div>Keterlambatan</div>
+              <div>Status Presensi</div>
             </div>
 
+            {/* Table Rows */}
             <div className="flex flex-col divide-y divide-rb-divider">
-              {filteredBarbers.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-rb-text-muted">
-                  Tidak ada data kapster pada cabang yang dipilih.
-                </div>
+              {records.length === 0 ? (
+                <EmptyState
+                  title="Tidak ada catatan presensi"
+                  description="Tidak ditemukan data presensi untuk kriteria tanggal, cabang, atau filter yang dipilih."
+                />
               ) : (
-                filteredBarbers.map((barber) => (
+                records.map((r) => (
                   <div
-                    key={barber.id}
-                    className="grid grid-cols-[1.5fr_1fr_1fr_1fr] items-center gap-2 px-4 py-3 text-sm"
+                    key={r.id}
+                    className="grid grid-cols-[1.8fr_1fr_1fr_1fr_1fr_1fr_1fr] items-center gap-2 px-4 py-3 text-sm"
                   >
                     <div>
-                      <Link
-                        to={`/hr/employees/barber-${barber.id}`}
-                        className="font-semibold capitalize text-rb-text hover:text-rb-red hover:underline"
-                      >
-                        {barber.name}
-                      </Link>
-                      <div className="text-[11px] font-mono text-rb-text-faint">
-                        {barber.id}
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-rb-text">
+                          {r.name}
+                        </span>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                            r.person_type === 'barber'
+                              ? 'bg-rb-brand-tint-bg text-rb-red'
+                              : 'bg-rb-surface-hover text-rb-text-secondary'
+                          }`}
+                        >
+                          {r.person_type === 'barber' ? 'Kapster' : 'Staff'}
+                        </span>
+                        {r.has_single_punch && (
+                          <span className="rounded bg-rb-orange-tint-bg px-1.5 py-0.5 text-[10px] font-semibold text-rb-orange-tint-fg" title="Hanya 1 punch fingerprint tercatat">
+                            Single Punch
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-rb-text-faint">
+                        {r.position}
                       </div>
                     </div>
-                    <div className="capitalize text-rb-text-secondary font-medium">
-                      {BRANCH_LABELS[barber.branch] ?? barber.branch ?? '—'}
+
+                    <div className="capitalize font-medium text-rb-text-secondary">
+                      {BRANCH_LABELS[r.branch.toLowerCase()] || r.branch}
                     </div>
+
+                    <div className="font-mono text-xs text-rb-text font-medium">
+                      {r.first_check_in || '—'}
+                    </div>
+
+                    <div className="font-mono text-xs text-rb-text font-medium">
+                      {r.last_check_out || '—'}
+                    </div>
+
+                    <div className="text-xs text-rb-text font-medium">
+                      {r.total_hours || '—'}
+                    </div>
+
+                    <div className="text-xs text-rb-text-secondary">
+                      {r.late_minutes > 0 ? (
+                        <span className="font-semibold text-rb-orange-tint-fg">
+                          +{r.late_minutes} mnt
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </div>
+
                     <div>
                       <span
                         className={`inline-block rounded-rb-pill px-2.5 py-1 text-[11px] font-semibold ${statusBadgeTint(
-                          barber.attendance_status
+                          r.status
                         )}`}
                       >
-                        {attendanceLabel(barber.attendance_status)}
+                        {attendanceLabel(r.status)}
                       </span>
-                    </div>
-                    <div className="text-sm font-semibold text-rb-text">
-                      {barber.today_count} layanan
                     </div>
                   </div>
                 ))
               )}
             </div>
           </div>
-
-          {/* Regular Employee Attendance Section - Honest Unavailable State */}
-          <div className="rounded-rb-card border border-rb-border bg-rb-surface p-6">
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-serif text-base font-semibold text-rb-text">
-                Absensi Karyawan Reguler (Fingerprint)
-              </h2>
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/attendance/import"
-                  className="text-xs font-semibold text-rb-red hover:underline"
-                >
-                  Import Fingerprint →
-                </Link>
-                <span className="rounded-rb-pill bg-rb-divider px-2.5 py-0.5 text-[11px] font-semibold text-rb-text-muted">
-                  Belum terhubung
-                </span>
-              </div>
-            </div>
-            <EmptyState
-              title="Data fingerprint karyawan reguler belum terhubung"
-              description="Integrasi mesin absensi fingerprint cabang dan kantor pusat sedang dalam tahap perancangan format data. Backoffice tidak menampilkan estimasi atau simulasi absensi tanpa integrasi langsung."
-            />
-          </div>
         </>
       )}
     </>
   );
 }
+

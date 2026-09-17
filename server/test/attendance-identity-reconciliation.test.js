@@ -112,6 +112,11 @@ function createMockDb() {
               targets.forEach(item => Object.assign(item, updates));
               return query;
             },
+            in(col, vals) {
+              targets = targets.filter(r => vals.includes(r[col]));
+              targets.forEach(item => Object.assign(item, updates));
+              return query;
+            },
             select() {
               return {
                 single: async () => ({ data: targets[0] || null, error: null }),

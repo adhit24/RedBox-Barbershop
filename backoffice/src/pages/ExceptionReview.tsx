@@ -59,6 +59,11 @@ function findSuggestedCandidate(
   let bestCandidate: CandidateSuggestion | null = null;
 
   for (const person of workforce) {
+    // Strictly isolate: never suggest non-Redbox persons
+    if ((person.business_unit || '').toLowerCase() !== 'redbox') {
+      continue;
+    }
+
     const cleanPersonName = person.name.toLowerCase().replace(/[^a-z0-9]/g, '');
     const cleanNick = (person.nickname || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const personWords = person.name.toLowerCase().trim().split(/\s+/);
@@ -104,10 +109,12 @@ function findSuggestedCandidate(
 export function ExceptionReview() {
   const [exceptions, setExceptions] = useState<AttendanceException[]>([]);
   const [statusFilter, setStatusFilter] = useState<'pending' | 'resolved' | 'all'>('pending');
+  const [businessUnitFilter, setBusinessUnitFilter] = useState<'redbox' | 'sundaze' | 'unclassified' | 'all'>('redbox');
+  const [counts, setCounts] = useState({ redbox: 0, sundaze: 0, unclassified: 0, total: 0 });
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Workforce list for mapping modal
+  // Workforce list for mapping modal (strictly Redbox workforce)
   const [workforce, setWorkforce] = useState<WorkforcePerson[]>([]);
   const [mappingException, setMappingException] = useState<AttendanceException | null>(null);
   const [selectedPersonId, setSelectedPersonId] = useState<string>('');
@@ -118,9 +125,12 @@ export function ExceptionReview() {
     try {
       setLoading(true);
       setErrorMsg(null);
-      const res = await getAttendanceExceptions(statusFilter);
+      const res = await getAttendanceExceptions(statusFilter, businessUnitFilter);
       if (res.ok) {
         setExceptions(res.exceptions || []);
+        if (res.counts) {
+          setCounts(res.counts);
+        }
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal memuat daftar exception');
@@ -131,15 +141,18 @@ export function ExceptionReview() {
 
   useEffect(() => {
     loadData();
-  }, [statusFilter]);
+  }, [statusFilter, businessUnitFilter]);
 
-  // Load workforce options for mapping
+  // Load workforce options for mapping (strictly Redbox personnel)
   useEffect(() => {
     apiClient
-      .get<{ ok?: boolean; people?: WorkforcePerson[] }>('/api/admin/hr-people?filter=all')
+      .get<{ ok?: boolean; people?: WorkforcePerson[] }>('/api/admin/hr-people?filter=redbox')
       .then((data) => {
         if (data && data.people) {
-          setWorkforce(data.people);
+          const redboxOnly = data.people.filter(
+            (p) => (p.business_unit || '').toLowerCase() === 'redbox'
+          );
+          setWorkforce(redboxOnly);
         }
       })
       .catch(() => {});
@@ -225,50 +238,106 @@ export function ExceptionReview() {
         </div>
       )}
 
-      {/* FILTER TABS */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex rounded-rb-pill border border-rb-border bg-rb-surface p-1">
-          <button
-            type="button"
-            onClick={() => setStatusFilter('pending')}
-            className={`rounded-rb-pill px-4 py-1.5 text-xs font-semibold transition-all ${
-              statusFilter === 'pending'
-                ? 'bg-rb-red text-white shadow-sm'
-                : 'text-rb-text-muted hover:text-rb-text'
-            }`}
+      {/* BUSINESS UNIT & STATUS FILTER TABS */}
+      <div className="mb-6 flex flex-col gap-3">
+        {/* Business Unit Isolation Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-rb-text-muted">Unit Bisnis:</span>
+            <div className="flex rounded-rb-pill border border-rb-border bg-rb-surface p-0.5">
+              <button
+                type="button"
+                onClick={() => setBusinessUnitFilter('redbox')}
+                className={`rounded-rb-pill px-3 py-1 text-xs font-semibold transition-all ${
+                  businessUnitFilter === 'redbox'
+                    ? 'bg-rb-red text-white shadow-sm'
+                    : 'text-rb-text-muted hover:text-rb-text'
+                }`}
+              >
+                Redbox Operasional ({counts.redbox})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBusinessUnitFilter('sundaze')}
+                className={`rounded-rb-pill px-3 py-1 text-xs font-semibold transition-all ${
+                  businessUnitFilter === 'sundaze'
+                    ? 'bg-rb-brand-tint-bg text-rb-red shadow-sm'
+                    : 'text-rb-text-muted hover:text-rb-text'
+                }`}
+              >
+                Sundaze ({counts.sundaze})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBusinessUnitFilter('unclassified')}
+                className={`rounded-rb-pill px-3 py-1 text-xs font-semibold transition-all ${
+                  businessUnitFilter === 'unclassified'
+                    ? 'bg-rb-surface-hover text-rb-text shadow-sm'
+                    : 'text-rb-text-muted hover:text-rb-text'
+                }`}
+              >
+                Unclassified ({counts.unclassified})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBusinessUnitFilter('all')}
+                className={`rounded-rb-pill px-3 py-1 text-xs font-semibold transition-all ${
+                  businessUnitFilter === 'all'
+                    ? 'bg-rb-surface-hover text-rb-text shadow-sm'
+                    : 'text-rb-text-muted hover:text-rb-text'
+                }`}
+              >
+                Semua ({counts.total})
+              </button>
+            </div>
+          </div>
+
+          <Link
+            to="/attendance/import"
+            className="rounded-rb-button border border-rb-border bg-rb-surface px-4 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-bg no-underline"
           >
-            Menunggu Review
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('resolved')}
-            className={`rounded-rb-pill px-4 py-1.5 text-xs font-semibold transition-all ${
-              statusFilter === 'resolved'
-                ? 'bg-rb-red text-white shadow-sm'
-                : 'text-rb-text-muted hover:text-rb-text'
-            }`}
-          >
-            Terselesaikan
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('all')}
-            className={`rounded-rb-pill px-4 py-1.5 text-xs font-semibold transition-all ${
-              statusFilter === 'all'
-                ? 'bg-rb-red text-white shadow-sm'
-                : 'text-rb-text-muted hover:text-rb-text'
-            }`}
-          >
-            Semua
-          </button>
+            + Import Berkas Baru
+          </Link>
         </div>
 
-        <Link
-          to="/attendance/import"
-          className="rounded-rb-button border border-rb-border bg-rb-surface px-4 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-bg no-underline"
-        >
-          + Import Berkas Baru
-        </Link>
+        {/* Status Filter Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex rounded-rb-pill border border-rb-border bg-rb-surface p-1">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('pending')}
+              className={`rounded-rb-pill px-4 py-1.5 text-xs font-semibold transition-all ${
+                statusFilter === 'pending'
+                  ? 'bg-rb-red text-white shadow-sm'
+                  : 'text-rb-text-muted hover:text-rb-text'
+              }`}
+            >
+              Menunggu Review
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('resolved')}
+              className={`rounded-rb-pill px-4 py-1.5 text-xs font-semibold transition-all ${
+                statusFilter === 'resolved'
+                  ? 'bg-rb-red text-white shadow-sm'
+                  : 'text-rb-text-muted hover:text-rb-text'
+              }`}
+            >
+              Terselesaikan
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={`rounded-rb-pill px-4 py-1.5 text-xs font-semibold transition-all ${
+                statusFilter === 'all'
+                  ? 'bg-rb-red text-white shadow-sm'
+                  : 'text-rb-text-muted hover:text-rb-text'
+              }`}
+            >
+              Semua
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* EXCEPTIONS CONTAINER */}

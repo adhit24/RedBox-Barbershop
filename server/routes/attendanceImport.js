@@ -147,11 +147,47 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
     }
   });
 
-  // 4. GET /exceptions — Exception Review list
+  // Classification helper for business unit isolation
+  function classifyExceptionBusinessUnit(exc) {
+    const dept = String(exc.department || '').toLowerCase().trim();
+    const name = String(exc.external_name || '').toLowerCase().trim();
+    const extId = String(exc.external_employee_id || '').trim();
+
+    // 1. Sundaze markers
+    if (
+      dept.includes('sundaze') ||
+      dept.includes('barista') ||
+      ['abi', 'dendi', 'karnadi'].some(x => name.includes(x)) ||
+      extId === '2' || extId === '21'
+    ) {
+      return 'Sundaze';
+    }
+
+    // 2. Redbox markers
+    if (
+      dept.includes('barber') ||
+      dept.includes('kasir') ||
+      dept.includes('csb') ||
+      dept.includes('sumber') ||
+      dept.includes('tegal') ||
+      dept.includes('samadikun') ||
+      dept.includes('bypass') ||
+      ['yuda', 'yudha', 'ragil', 'jumadi', 'sarif', 'aziz', 'dede kumaedi', 'reza budiman', 'rizki adi nugroho', 'muhammad indra hadikusuma'].some(x => name.includes(x)) ||
+      extId === '3'
+    ) {
+      return 'Redbox';
+    }
+
+    // 3. Corporate / unclassified
+    return 'Unclassified';
+  }
+
+  // 4. GET /exceptions — Exception Review list with Business Unit Isolation
   router.get('/exceptions', adminAuth, async (req, res) => {
     try {
       const status = req.query.status || 'pending';
       const batchId = req.query.batch_id;
+      const requestedBU = String(req.query.business_unit || 'redbox').toLowerCase().trim();
 
       let query = supabase
         .from('attendance_exceptions')
@@ -165,12 +201,35 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
         query = query.eq('import_batch_id', batchId);
       }
 
-      const { data: exceptions, error } = await query.limit(100);
+      const { data: rawExceptions, error } = await query.limit(200);
       if (error) throw error;
+
+      const classified = (rawExceptions || []).map(exc => ({
+        ...exc,
+        business_unit: classifyExceptionBusinessUnit(exc),
+      }));
+
+      const counts = {
+        redbox: classified.filter(x => x.business_unit === 'Redbox').length,
+        sundaze: classified.filter(x => x.business_unit === 'Sundaze').length,
+        unclassified: classified.filter(x => x.business_unit === 'Unclassified').length,
+        total: classified.length,
+      };
+
+      let filtered = classified;
+      if (requestedBU === 'redbox') {
+        filtered = classified.filter(x => x.business_unit === 'Redbox');
+      } else if (requestedBU === 'sundaze') {
+        filtered = classified.filter(x => x.business_unit === 'Sundaze');
+      } else if (requestedBU === 'unclassified') {
+        filtered = classified.filter(x => x.business_unit === 'Unclassified');
+      }
 
       return res.json({
         ok: true,
-        exceptions: exceptions || [],
+        business_unit: requestedBU,
+        counts,
+        exceptions: filtered,
       });
     } catch (err) {
       console.error('[AttendanceImport] Exceptions error:', err);
@@ -337,30 +396,40 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
         // 7. Reprocess & link attendance record for current exception
         await linkAttendanceRecord(exc, finalTargetType, finalPersonId, supabase);
 
-        // 8. Propagate resolution to sibling pending exceptions with the same external_employee_id
-        if (exc.external_employee_id) {
-          const { data: siblings } = await supabase
+        // 8. Propagate resolution to sibling pending exceptions with the same canonical identity (source + external_employee_id)
+        const excExtId = String(exc.external_employee_id || '').trim();
+        const excSource = String(exc.raw_data?.source || 'fingerprint').trim();
+
+        if (excExtId) {
+          const { data: rawSiblings } = await supabase
             .from('attendance_exceptions')
             .select('*')
-            .eq('external_employee_id', exc.external_employee_id)
+            .eq('external_employee_id', excExtId)
             .eq('status', 'pending')
             .neq('id', exceptionId);
 
-          if (siblings && siblings.length > 0) {
-            for (const sib of siblings) {
+          // Verify both external_employee_id AND source match exactly
+          const validSiblings = (rawSiblings || []).filter(sib => {
+            const sibExtId = String(sib.external_employee_id || '').trim();
+            const sibSource = String(sib.raw_data?.source || 'fingerprint').trim();
+            return sibExtId === excExtId && sibSource === excSource;
+          });
+
+          if (validSiblings.length > 0) {
+            for (const sib of validSiblings) {
               await linkAttendanceRecord(sib, finalTargetType, finalPersonId, supabase);
             }
+            const sibIds = validSiblings.map(s => s.id);
             await supabase
               .from('attendance_exceptions')
               .update({
                 status: 'resolved',
-                resolution_notes: `Auto-resolved via identity mapping confirmed for ID ${exc.external_employee_id} (${resolution_notes || 'Resolved by manager'})`.trim(),
+                resolution_notes: `Auto-resolved via identity mapping confirmed for ID ${excExtId} (${resolution_notes || 'Resolved by manager'})`.trim(),
                 resolved_by: userEmail,
                 resolved_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               })
-              .eq('external_employee_id', exc.external_employee_id)
-              .eq('status', 'pending');
+              .in('id', sibIds);
           }
         }
       }
@@ -419,20 +488,29 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
     }
   });
 
-  // 6. GET /employees — Regular employee attendance for branch / date
+  // 6. GET /employees — Regular Redbox employee attendance for branch / date
   router.get('/employees', adminAuth, async (req, res) => {
     try {
+      const userRole = req.adminAuth?.role;
+      const userBranch = req.adminAuth?.branch;
       const date = String(req.query.date || '').trim() || new Date().toISOString().slice(0, 10);
-      const branch = String(req.query.branch || '').trim().toLowerCase();
+      let requestedBranch = String(req.query.branch || '').trim().toLowerCase();
+
+      // Server-side branch scope enforcement: Manager is restricted to their branch only!
+      let effectiveBranch = requestedBranch;
+      if (userRole === 'manager') {
+        effectiveBranch = userBranch ? String(userBranch).trim().toLowerCase() : 'none';
+      }
 
       let empQuery = supabase
         .from('employees')
         .select('id, name, nickname, position, branch, branch_name, business_unit, is_active')
         .eq('is_active', true)
-        .eq('employment_type', 'regular');
+        .eq('employment_type', 'regular')
+        .eq('business_unit', 'Redbox');
 
-      if (branch && branch !== 'all') {
-        empQuery = empQuery.eq('branch', branch);
+      if (effectiveBranch && effectiveBranch !== 'all') {
+        empQuery = empQuery.eq('branch', effectiveBranch);
       }
 
       const { data: employees, error: empErr } = await empQuery.order('name');
@@ -484,13 +562,231 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
       return res.json({
         ok: true,
         date,
-        branch: branch || 'all',
+        branch: effectiveBranch || 'all',
         stats,
         employees: results,
       });
     } catch (err) {
       console.error('[AttendanceImport] Employee attendance query error:', err);
       return res.status(500).json({ error: 'Gagal memuat presensi karyawan reguler' });
+    }
+  });
+
+  // 7. GET /overview — Canonical Attendance Overview (Redbox employees + barbers)
+  router.get('/overview', adminAuth, async (req, res) => {
+    try {
+      const userRole = req.adminAuth?.role;
+      const userBranch = req.adminAuth?.branch;
+      const date = String(req.query.date || '').trim() || new Date().toISOString().slice(0, 10);
+      let requestedBranch = String(req.query.branch || 'all').trim().toLowerCase();
+
+      // Server-side branch scope enforcement: Manager is restricted to their branch only!
+      let effectiveBranch = requestedBranch;
+      if (userRole === 'manager') {
+        effectiveBranch = userBranch ? String(userBranch).trim().toLowerCase() : 'none';
+      }
+
+      const personTypeFilter = String(req.query.person_type || 'all').trim().toLowerCase();
+      const statusFilter = String(req.query.status || 'all').trim().toLowerCase();
+
+      // 1. Fetch Redbox regular employees
+      let empQuery = supabase
+        .from('employees')
+        .select('id, name, nickname, position, branch, branch_name, business_unit, is_active')
+        .eq('is_active', true)
+        .eq('employment_type', 'regular')
+        .eq('business_unit', 'Redbox');
+
+      if (effectiveBranch && effectiveBranch !== 'all') {
+        empQuery = empQuery.eq('branch', effectiveBranch);
+      }
+      const { data: dbEmployees, error: empErr } = await empQuery.order('name');
+      if (empErr) throw empErr;
+
+      // 2. Fetch Redbox active barbers
+      let barQuery = supabase
+        .from('barbers')
+        .select('id, name, branch, is_active')
+        .eq('is_active', true);
+
+      if (effectiveBranch && effectiveBranch !== 'all') {
+        barQuery = barQuery.eq('branch', effectiveBranch);
+      }
+      const { data: dbBarbers, error: barErr } = await barQuery.order('name');
+      if (barErr) throw barErr;
+
+      // 3. Fetch employee_attendance for requested date
+      const employeeIds = (dbEmployees || []).map(e => e.id);
+      let empAttMap = new Map();
+      if (employeeIds.length > 0) {
+        const { data: empAttList, error: empAttErr } = await supabase
+          .from('employee_attendance')
+          .select('*')
+          .in('employee_id', employeeIds)
+          .eq('attendance_date', date);
+        if (!empAttErr && empAttList) {
+          for (const a of empAttList) {
+            empAttMap.set(a.employee_id, a);
+          }
+        }
+      }
+
+      // 4. Fetch barber_attendance for requested date
+      const barberIds = (dbBarbers || []).map(b => b.id);
+      let barberAttMap = new Map();
+      if (barberIds.length > 0) {
+        const { data: bAttList, error: bAttErr } = await supabase
+          .from('barber_attendance')
+          .select('*')
+          .in('barber_id', barberIds)
+          .eq('date', date);
+        if (!bAttErr && bAttList) {
+          for (const b of bAttList) {
+            barberAttMap.set(b.barber_id, b);
+          }
+        }
+      }
+
+      // 5. Fetch exceptions on this date
+      const { data: dayExceptions } = await supabase
+        .from('attendance_exceptions')
+        .select('*')
+        .eq('attendance_date', date);
+
+      const records = [];
+
+      function calcHours(inTime, outTime) {
+        if (!inTime || !outTime) return null;
+        const [inH, inM] = inTime.split(':').map(Number);
+        const [outH, outM] = outTime.split(':').map(Number);
+        if (Number.isNaN(inH) || Number.isNaN(outH)) return null;
+        let diffMin = (outH * 60 + outM) - (inH * 60 + inM);
+        if (diffMin < 0) diffMin += 24 * 60;
+        const hours = (diffMin / 60).toFixed(1);
+        return `${hours} jam`;
+      }
+
+      // Process Redbox regular employees
+      if (personTypeFilter === 'all' || personTypeFilter === 'employee') {
+        for (const emp of dbEmployees || []) {
+          const att = empAttMap.get(emp.id) || null;
+          const status = att ? att.status : 'belum_check_in';
+          const punches = att?.raw_punches || [];
+
+          records.push({
+            id: `emp-${emp.id}`,
+            person_type: 'employee',
+            person_id: emp.id,
+            name: emp.name,
+            nickname: emp.nickname || null,
+            position: emp.position || 'Staff',
+            branch: emp.branch || 'Pusat',
+            business_unit: 'Redbox',
+            date,
+            status,
+            first_check_in: att?.first_check_in || null,
+            last_check_out: att?.last_check_out || null,
+            total_hours: calcHours(att?.first_check_in, att?.last_check_out),
+            late_minutes: att?.late_minutes || 0,
+            overtime_minutes: att?.overtime_minutes || 0,
+            raw_punches: punches,
+            has_single_punch: punches.length === 1 || (att?.first_check_in && !att?.last_check_out),
+            notes: att?.notes || null,
+          });
+        }
+      }
+
+      // Process Redbox barbers
+      if (personTypeFilter === 'all' || personTypeFilter === 'barber') {
+        for (const barb of dbBarbers || []) {
+          const bAtt = barberAttMap.get(barb.id) || null;
+          let inTime = null;
+          let outTime = null;
+          if (bAtt?.note) {
+            const m = bAtt.note.match(/(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/);
+            if (m) {
+              inTime = m[1];
+              outTime = m[2];
+            }
+          }
+          const status = bAtt ? bAtt.status : 'belum_check_in';
+
+          records.push({
+            id: `barber-${barb.id}`,
+            person_type: 'barber',
+            person_id: barb.id,
+            name: barb.name,
+            nickname: null,
+            position: 'Kapster',
+            branch: barb.branch || 'Pusat',
+            business_unit: 'Redbox',
+            date,
+            status,
+            first_check_in: inTime,
+            last_check_out: outTime,
+            total_hours: calcHours(inTime, outTime),
+            late_minutes: status === 'terlambat' ? 15 : 0,
+            overtime_minutes: 0,
+            raw_punches: inTime ? [inTime, ...(outTime ? [outTime] : [])] : [],
+            has_single_punch: (inTime && !outTime) || (!inTime && outTime),
+            notes: bAtt?.note || null,
+          });
+        }
+      }
+
+      records.sort((a, b) => {
+        if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
+        if (a.person_type !== b.person_type) return a.person_type.localeCompare(b.person_type);
+        return a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
+      });
+
+      let filteredRecords = records;
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'hadir') {
+          filteredRecords = records.filter(r => ['hadir', 'terlambat'].includes(r.status));
+        } else if (statusFilter === 'terlambat') {
+          filteredRecords = records.filter(r => r.status === 'terlambat');
+        } else if (statusFilter === 'tidak_hadir') {
+          filteredRecords = records.filter(r => ['absent', 'izin', 'sakit', 'cuti', 'off'].includes(r.status));
+        } else if (statusFilter === 'belum_check_in') {
+          filteredRecords = records.filter(r => r.status === 'belum_check_in');
+        } else if (statusFilter === 'missing_punch') {
+          filteredRecords = records.filter(r => r.has_single_punch);
+        } else {
+          filteredRecords = records.filter(r => r.status === statusFilter);
+        }
+      }
+
+      const stats = {
+        total_workforce: records.length,
+        hadir: records.filter(r => ['hadir', 'terlambat'].includes(r.status)).length,
+        terlambat: records.filter(r => r.status === 'terlambat').length,
+        belum_check_in: records.filter(r => r.status === 'belum_check_in').length,
+        tidak_hadir: records.filter(r => ['absent', 'izin', 'sakit', 'cuti', 'off'].includes(r.status)).length,
+        missing_clock_in: records.filter(r => !r.first_check_in && r.last_check_out).length,
+        missing_clock_out: records.filter(r => (r.first_check_in && !r.last_check_out) || r.has_single_punch).length,
+        exceptions_count: (dayExceptions || []).filter(x => {
+          if (effectiveBranch && effectiveBranch !== 'all') {
+            return String(x.department || '').toLowerCase() === effectiveBranch;
+          }
+          return true;
+        }).length,
+      };
+
+      return res.json({
+        ok: true,
+        date,
+        branch: effectiveBranch || 'all',
+        filter: {
+          person_type: personTypeFilter,
+          status: statusFilter,
+        },
+        stats,
+        records: filteredRecords,
+      });
+    } catch (err) {
+      console.error('[AttendanceImport] Attendance overview error:', err);
+      return res.status(500).json({ error: 'Gagal memuat ringkasan presensi harian' });
     }
   });
 

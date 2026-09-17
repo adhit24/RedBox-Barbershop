@@ -173,6 +173,42 @@ function setupFetchMock(options: { roleStatus?: number; employeeFound?: boolean 
       return Promise.resolve(new Response(JSON.stringify([]), { status: 200 }));
     }
 
+    if (url.includes('attendance/overview')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            ok: true,
+            date: '2026-08-05',
+            branch: 'all',
+            filter: { person_type: 'all', status: 'all' },
+            stats: { total_workforce: 2, hadir: 2, terlambat: 0, belum_check_in: 0, tidak_hadir: 0, missing_clock_in: 0, missing_clock_out: 0, exceptions_count: 0 },
+            records: [
+              {
+                id: 'barber-b1',
+                person_type: 'barber',
+                person_id: 'b1',
+                name: 'Barber Beta',
+                position: 'Kapster',
+                branch: 'csb',
+                business_unit: 'Redbox',
+                date: '2026-08-05',
+                status: 'hadir',
+                first_check_in: '10:00',
+                last_check_out: '21:00',
+                total_hours: '11.0 jam',
+                late_minutes: 0,
+                overtime_minutes: 0,
+                raw_punches: ['10:00', '21:00'],
+                has_single_punch: false,
+                notes: null,
+              }
+            ],
+          }),
+          { status: 200 }
+        )
+      );
+    }
+
     if (url.includes('status')) {
       return Promise.resolve(
         new Response(
@@ -290,8 +326,9 @@ describe('Backoffice Route Smoke Test', () => {
       </MemoryRouter>
     );
     await waitFor(() => {
-      expect(screen.getByText('Kehadiran Kapster Hari Ini')).toBeInTheDocument();
-      expect(screen.getByText('Data fingerprint karyawan reguler belum terhubung')).toBeInTheDocument();
+      expect(screen.getByText('Attendance Command Center')).toBeInTheDocument();
+      expect(screen.getByText(/Daftar Kehadiran Person/i)).toBeInTheDocument();
+      expect(screen.getByText('Barber Beta')).toBeInTheDocument();
     });
   });
 

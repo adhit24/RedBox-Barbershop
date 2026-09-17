@@ -60,7 +60,10 @@ function dedupePeople(people) {
 
 function applyPeopleFilter(people, filter) {
   if (filter === 'all') return people;
-  return people.filter(person => normalizeText(person.business_unit) === filter);
+  if (filter === 'sundaze') {
+    return people.filter(person => normalizeText(person.business_unit) === 'sundaze');
+  }
+  return people.filter(person => normalizeText(person.business_unit) === 'redbox');
 }
 
 function summarizePeople(people) {
@@ -83,7 +86,7 @@ function createHRPeopleRoutes(supabase, legacyAdminAuth) {
   const adminAuth = createBackofficeSupabaseAuth(supabase, legacyAdminAuth);
 
   router.get('/', adminAuth, async (req, res) => {
-    const filter = normalizeText(req.query.filter || 'all');
+    const filter = normalizeText(req.query.filter || 'redbox');
     if (!FILTERS.has(filter)) return res.status(400).json({ error: 'Invalid workforce filter' });
 
     const [barberResult, employeeResult] = await Promise.all([
