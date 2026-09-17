@@ -22,7 +22,7 @@ const { notifyCustomerBookingConfirmed, notifyAdminNewBooking, notifyCustomerRev
 const { enqueueCustomerNotification, markCustomerNotificationSent, processCustomerNotificationOutbox } = require('./services/bookingNotificationOutbox');
 const { sendPushToUser, sendPushToBranch } = require('./services/webPush');
 const { onBookingCompleted } = require('./services/barberMetrics');
-const { membershipStateForSync, isActiveMembership, resolveMembershipTier } = require('./membership-policy');
+const { membershipStateForSync, isActiveMembership, resolveMembershipTier, calculateMembershipExpiry } = require('./membership-policy');
 const { normalizeMemberPhone, getMemberPhoneVariants, mergeCustomerRows } = require('./member-identity');
 const { getCustomerReviewsCount } = require('./member-reviews');
 const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membership-identity');
@@ -942,6 +942,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use(express.static(path.join(__dirname, '..')));
 
 const { verifyAdminSessionAssertion } = require('./services/adminSessionAssertion');
@@ -3738,6 +3739,20 @@ async function getMemberSessionByToken(token) {
             membership_activated_at: null,
           }).or(phoneFilter).then(() => {}, () => {});
         }
+      }
+
+      // Canonical single source of truth for membership expiry:
+      // If member is ACTIVE and has membership_activated_at (or membership_started_at)
+      // but membership_expires_at is null/missing, backend computes:
+      // membership_expires_at = calculateMembershipExpiry(activationAnchor) (+1 calendar year).
+      if (customer.membership_status === 'ACTIVE') {
+        const activationAnchor = customer.membership_activated_at || customer.membership_started_at;
+        if (!customer.membership_expires_at && activationAnchor) {
+          customer.membership_expires_at = calculateMembershipExpiry(activationAnchor);
+        }
+      } else {
+        customer.membership_expires_at = null;
+        customer.membership_activated_at = null;
       }
 
       // Identity for this lookup is session.customer_wa only (resolved

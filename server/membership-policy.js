@@ -1,6 +1,9 @@
 'use strict';
 
-const { isActiveMembership: isActiveMembershipRecord } = require('../public/js/membership-access');
+const {
+  isActiveMembership: isActiveMembershipRecord,
+  calculateMembershipExpiry,
+} = require('../public/js/membership-access');
 
 const MEMBERSHIP_TIERS = new Set(['bronze', 'silver', 'gold', 'platinum']);
 
@@ -52,4 +55,9 @@ function membershipStateForSync({
   };
 }
 
-module.exports = { isActiveMembership, membershipStateForSync, resolveMembershipTier };
+module.exports = {
+  isActiveMembership,
+  membershipStateForSync,
+  resolveMembershipTier,
+  calculateMembershipExpiry,
+};

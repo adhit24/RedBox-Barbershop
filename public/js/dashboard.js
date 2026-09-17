@@ -610,7 +610,18 @@ document.addEventListener('DOMContentLoaded', () => {
  function computeMembershipLifecycle(data) {
  const status = data.membership_status;
  const startedAt = data.membership_started_at;
- const expiresAt = data.membership_expires_at;
+ let expiresAt = data.membership_expires_at;
+
+ // Backend is the single source of truth for expiresAt.
+ // Defensive fallback using shared canonical helper: if backend did not provide expiresAt
+ // but membership is ACTIVE and has an activation/start anchor:
+ if (status === 'ACTIVE' && !hasDateValue(expiresAt)) {
+ const anchor = data.membership_activated_at || startedAt;
+ if (hasDateValue(anchor) && window.RedboxMembership?.calculateMembershipExpiry) {
+ expiresAt = window.RedboxMembership.calculateMembershipExpiry(anchor);
+ }
+ }
+
  const hasExpiry = hasDateValue(expiresAt);
  const expiryDate = hasExpiry ? new Date(expiresAt) : null;
  const validExpiry = expiryDate && !Number.isNaN(expiryDate.getTime());
@@ -918,8 +929,25 @@ document.addEventListener('DOMContentLoaded', () => {
  const dashNavToggle = document.getElementById('dashNavToggle');
  const dashNavBackdrop = document.getElementById('dashNavBackdrop');
 
- function openNav() { dashSidebar.classList.add('open'); dashNavBackdrop.classList.add('open'); }
- function closeNav() { dashSidebar.classList.remove('open'); dashNavBackdrop.classList.remove('open'); }
+ function openNav() {
+ dashSidebar?.classList.add('open');
+ dashNavBackdrop?.classList.add('open');
+ if (hamburger) {
+ hamburger.classList.add('active');
+ hamburger.setAttribute('aria-expanded', 'true');
+ }
+ document.body.style.overflow = 'hidden';
+ }
+
+ function closeNav() {
+ dashSidebar?.classList.remove('open');
+ dashNavBackdrop?.classList.remove('open');
+ if (hamburger) {
+ hamburger.classList.remove('active');
+ hamburger.setAttribute('aria-expanded', 'false');
+ }
+ document.body.style.overflow = '';
+ }
 
  if (dashNavToggle) dashNavToggle.addEventListener('click', openNav);
  if (dashNavBackdrop) dashNavBackdrop.addEventListener('click', closeNav);
@@ -930,11 +958,16 @@ document.addEventListener('DOMContentLoaded', () => {
  // in the dashboard content on mobile anymore, matching the target design.
  if (hamburger) {
  hamburger.addEventListener('click', () => {
- const isOpen = dashSidebar.classList.contains('open');
+ const isOpen = dashSidebar?.classList.contains('open');
  if (isOpen) closeNav(); else openNav();
- hamburger.setAttribute('aria-expanded', String(!isOpen));
  });
  }
+
+ document.addEventListener('keydown', (e) => {
+ if (e.key === 'Escape' && dashSidebar?.classList.contains('open')) {
+ closeNav();
+ }
+ });
 
  // ============================================================
  // TAB SWITCHING

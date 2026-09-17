@@ -27,5 +27,30 @@
     return !hasValue(startsAt);
   }
 
-  return { isActiveMembership };
+  function calculateMembershipExpiry(activatedAt) {
+    if (!hasValue(activatedAt)) return null;
+    const d = new Date(activatedAt);
+    if (Number.isNaN(d.getTime())) return null;
+
+    // Follow PostgreSQL `INTERVAL '1 year'` calendar semantics:
+    // 1. Advance year by 1.
+    // 2. If original date is Feb 29 (leap day) and the target year is not a leap year,
+    //    PostgreSQL clamps to Feb 28 (e.g. 2024-02-29 + 1 year = 2025-02-28).
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth(); // 0-indexed (1 = Feb)
+    const day = d.getUTCDate();
+    const targetYear = year + 1;
+
+    if (month === 1 && day === 29) {
+      const isTargetLeap = (targetYear % 4 === 0 && targetYear % 100 !== 0) || (targetYear % 400 === 0);
+      if (!isTargetLeap) {
+        d.setUTCFullYear(targetYear, 1, 28);
+        return d.toISOString();
+      }
+    }
+    d.setUTCFullYear(targetYear);
+    return d.toISOString();
+  }
+
+  return { isActiveMembership, calculateMembershipExpiry };
 });

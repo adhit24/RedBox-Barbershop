@@ -9,18 +9,20 @@ const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'member-
 const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'dashboard.js'), 'utf8');
 const mainJs = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
 
-test('member dashboard hamburger is an accessible button wired before dashboard data loading', () => {
+test('member dashboard hamburger controls the dashSidebar drawer with accessible attributes and event listeners', () => {
   assert.match(html, /<button[^>]+type="button"[^>]+id="hamburger"/);
-  assert.match(html, /id="hamburger"[^>]+aria-controls="navLinks"/);
+  assert.match(html, /id="hamburger"[^>]+aria-controls="dashSidebar"/);
   assert.match(html, /id="hamburger"[^>]+aria-expanded="false"/);
-  assert.match(html, /id="hamburger"[^>]+onclick="window\.toggleMemberNav\(this\)"/);
-  assert.match(js, /const hamburger = document\.getElementById\('hamburger'\);/);
-  assert.match(js, /window\.toggleMemberNav = function/);
-  assert.ok(
-    js.indexOf("const hamburger = document.getElementById('hamburger');") <
-      js.indexOf('// ---- Check login state ----'),
-    'hamburger setup must run before dashboard initialization'
-  );
+  assert.match(html, /<aside class="dash-sidebar"[^>]+id="dashSidebar"/);
+  assert.match(html, /<div class="dash-nav-backdrop"[^>]+id="dashNavBackdrop"/);
+
+  // JS event wiring for mobile drawer
+  assert.match(js, /const dashSidebar = document\.getElementById\('dashSidebar'\);/);
+  assert.match(js, /const dashNavBackdrop = document\.getElementById\('dashNavBackdrop'\);/);
+  assert.match(js, /hamburger\.setAttribute\('aria-expanded',\s*'true'\)/);
+  assert.match(js, /hamburger\.setAttribute\('aria-expanded',\s*'false'\)/);
+  assert.match(js, /dashNavBackdrop(?:\.addEventListener\('click',\s*closeNav|\?\.addEventListener)/);
+  assert.match(js, /e\.key === 'Escape'/);
 });
 
 test('shared main navigation does not register a second member dashboard toggle handler', () => {
