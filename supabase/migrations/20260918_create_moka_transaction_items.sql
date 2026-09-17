@@ -41,6 +41,11 @@ CREATE INDEX IF NOT EXISTS idx_mti_receipt ON public.moka_transaction_items (rec
 CREATE INDEX IF NOT EXISTS idx_mti_barber ON public.moka_transaction_items (barber_id, tx_date);
 CREATE INDEX IF NOT EXISTS idx_mti_classification ON public.moka_transaction_items (classification);
 
+-- Enable RLS and lock down to service_role only (Redbox backend-only pattern)
+ALTER TABLE public.moka_transaction_items ENABLE ROW LEVEL SECURITY;
+REVOKE ALL PRIVILEGES ON TABLE public.moka_transaction_items FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.moka_transaction_items TO service_role;
+
 -- 2. Allow NULL on moka_barber_services.revenue_share (Task 2.1B single-writer remediation)
 ALTER TABLE IF EXISTS public.moka_barber_services ALTER COLUMN revenue_share DROP NOT NULL;
 
