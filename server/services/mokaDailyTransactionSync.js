@@ -230,7 +230,7 @@ async function upsertChunks(supabase, rows) {
 async function upsertTransactionItems(supabase, items) {
   if (!items || !items.length) return 0;
   for (let index = 0; index < items.length; index += 500) {
-    const chunk = items.slice(index, index + 500);
+    const chunk = items.slice(index, index + 500).map(({ commission_base, ...item }) => item);
     const { error } = await supabase.from('moka_transaction_items')
       .upsert(chunk, { onConflict: 'outlet_id,receipt_number,source_line_key', ignoreDuplicates: false });
     if (error) {
