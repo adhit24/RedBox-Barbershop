@@ -51,4 +51,53 @@ describe('ExceptionReview', () => {
       expect(screen.getByText('Tidak ada exception attendance yang menunggu review')).toBeInTheDocument();
     });
   });
+
+  it('renders candidate suggestions with evidence and punch details for unmatched employee', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/admin/crm/attendance/exceptions')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          ok: true,
+          exceptions: [
+            {
+              id: 'exc-yuda-test',
+              external_employee_id: '3',
+              external_name: 'Yuda',
+              department: 'CSB',
+              exception_type: 'unmatched_employee',
+              attendance_date: '2026-08-01',
+              status: 'pending',
+              details: 'Karyawan mesin ID 3 (Yuda) belum terhubung.',
+              raw_data: { first_check_in: '09:55', last_check_out: '21:00', raw_punches: ['09:55', '21:00'] },
+            },
+          ],
+        }), { status: 200 }));
+      }
+      if (url.includes('/api/admin/hr-people')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          ok: true,
+          people: [
+            {
+              id: 'barber:csb-yudha',
+              source: 'barbers',
+              source_record_id: 'csb-yudha',
+              name: 'Yudha',
+              nickname: null,
+              position: 'Kapster',
+              branch: 'csb',
+              business_unit: 'Redbox',
+            },
+          ],
+        }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }));
+
+    render(<ExceptionReview />, { wrapper: MemoryRouter });
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Hubungkan Karyawan/i })).toBeInTheDocument();
+      expect(screen.getByText('Karyawan Belum Cocok')).toBeInTheDocument();
+    });
+  });
 });

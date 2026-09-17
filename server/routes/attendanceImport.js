@@ -10,9 +10,11 @@ const {
   extractEmployees,
   extractDailyPunches,
   matchEmployees,
+  deriveAttendanceStatus,
   previewImport,
   commitImport,
 } = require('../services/fingerprintAttendanceImporter');
+const { logSystemEvent } = require('../services/systemEventLog');
 
 function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
   const router = express.Router();
@@ -176,12 +178,69 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
     }
   });
 
+  // Helper to link attendance record atomically
+  async function linkAttendanceRecord(exc, targetType, personId, dbClient) {
+    if (!exc.raw_data || !exc.attendance_date) return;
+    const derivedStatus = deriveAttendanceStatus(exc.raw_data);
+
+    if (targetType === 'employee') {
+      await dbClient
+        .from('employee_attendance')
+        .upsert({
+          employee_id: personId,
+          attendance_date: exc.attendance_date,
+          first_check_in: exc.raw_data.first_check_in || null,
+          last_check_out: exc.raw_data.last_check_out || null,
+          status: derivedStatus,
+          late_minutes: exc.raw_data.late_minutes || 0,
+          early_leave_minutes: exc.raw_data.early_leave_minutes || 0,
+          overtime_minutes: 0,
+          raw_punches: exc.raw_data.raw_punches || [],
+          source: 'fingerprint',
+          import_batch_id: exc.import_batch_id || null,
+          notes: exc.raw_data.notes || `Resolved from exception ${exc.id}`,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'employee_id,attendance_date' });
+    } else if (targetType === 'barber') {
+      const { data: existing } = await dbClient
+        .from('barber_attendance')
+        .select('id')
+        .eq('barber_id', personId)
+        .eq('date', exc.attendance_date)
+        .maybeSingle();
+
+      if (!existing) {
+        await dbClient.from('barber_attendance').insert({
+          barber_id: personId,
+          date: exc.attendance_date,
+          status: derivedStatus === 'terlambat' ? 'terlambat' : 'hadir',
+          note: `Fingerprint ${exc.raw_data.first_check_in || ''}-${exc.raw_data.last_check_out || ''}`.trim(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
+  }
+
   // 5. POST /exceptions/:id/resolve — Resolve single exception & create identity mapping
   router.post('/exceptions/:id/resolve', adminAuth, async (req, res) => {
     try {
+      // 1. Session verification check
+      if (!req.adminAuth?.sessionVerified) {
+        return res.status(401).json({ error: 'Sesi backoffice belum terverifikasi' });
+      }
+
+      // 2. Role authorization check (Owner & Manager only)
+      const userRole = req.adminAuth?.role;
+      if (userRole !== 'owner' && userRole !== 'manager') {
+        return res.status(403).json({ error: 'Akses ditolak: Hanya Owner dan Manager yang berwenang menyelesaikan exception' });
+      }
+
+      const userBranch = req.adminAuth?.branch;
+      const userEmail = req.adminAuth?.email || 'manager';
       const exceptionId = req.params.id;
       const { employee_id, barber_id, target_type, resolution_notes } = req.body || {};
 
+      // 3. Validate exception exists
       const { data: exc, error: excErr } = await supabase
         .from('attendance_exceptions')
         .select('*')
@@ -192,28 +251,127 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
         return res.status(404).json({ error: 'Record exception tidak ditemukan' });
       }
 
-      // If linking an unmatched employee, persist to identity mapping
-      if (exc.external_employee_id && (employee_id || barber_id)) {
-        await supabase
-          .from('employee_attendance_identity')
-          .upsert({
-            source: 'fingerprint',
-            external_employee_id: String(exc.external_employee_id).trim(),
-            external_name: exc.external_name || null,
-            target_type: target_type || (employee_id ? 'employee' : 'barber'),
-            employee_id: employee_id || null,
-            barber_id: barber_id || null,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'source,external_employee_id' });
+      // 4. Idempotency: return success if already resolved
+      if (exc.status === 'resolved') {
+        return res.json({
+          ok: true,
+          message: 'Exception presensi ini sudah diselesaikan sebelumnya (idempotent).',
+          exception: exc,
+        });
       }
 
-      // Update exception record
+      const isIdentityException = exc.exception_type === 'unmatched_employee';
+      let finalTargetType = null;
+      let finalPersonId = null;
+      let targetPerson = null;
+
+      if (isIdentityException) {
+        // Enforce either employee_id OR barber_id (mutual exclusion)
+        if (!employee_id && !barber_id) {
+          return res.status(400).json({ error: 'Target person (karyawan atau barber) wajib ditentukan untuk exception identitas' });
+        }
+        if (employee_id && barber_id) {
+          return res.status(400).json({ error: 'Hanya boleh memilih salah satu antara employee_id atau barber_id' });
+        }
+
+        if (employee_id) {
+          finalTargetType = 'employee';
+          finalPersonId = employee_id;
+          const { data: emp, error: empErr } = await supabase
+            .from('employees')
+            .select('id, name, branch, is_active')
+            .eq('id', employee_id)
+            .maybeSingle();
+
+          if (empErr || !emp) {
+            return res.status(404).json({ error: 'Target karyawan tidak ditemukan di database' });
+          }
+          targetPerson = emp;
+        } else {
+          finalTargetType = 'barber';
+          finalPersonId = barber_id;
+          const { data: bar, error: barErr } = await supabase
+            .from('barbers')
+            .select('id, name, branch, is_active')
+            .eq('id', barber_id)
+            .maybeSingle();
+
+          if (barErr || !bar) {
+            return res.status(404).json({ error: 'Target barber/kapster tidak ditemukan di database' });
+          }
+          targetPerson = bar;
+        }
+
+        // 5. Server-side branch scope enforcement: Manager cannot map outside their branch
+        if (userRole === 'manager' && userBranch) {
+          const normUserBranch = String(userBranch).trim().toLowerCase();
+          const personBranch = String(targetPerson.branch || '').trim().toLowerCase();
+
+          if (personBranch && personBranch !== normUserBranch) {
+            return res.status(403).json({
+              error: `Akses ditolak: Manager hanya berwenang untuk person di cabangnya (${userBranch.toUpperCase()}). Target person berada di cabang '${targetPerson.branch}'.`,
+            });
+          }
+        }
+
+        // 6. Write identity mapping atomically into employee_attendance_identity
+        if (exc.external_employee_id) {
+          const { error: idnErr } = await supabase
+            .from('employee_attendance_identity')
+            .upsert({
+              source: 'fingerprint',
+              external_employee_id: String(exc.external_employee_id).trim(),
+              external_name: exc.external_name || null,
+              target_type: finalTargetType,
+              employee_id: finalTargetType === 'employee' ? finalPersonId : null,
+              barber_id: finalTargetType === 'barber' ? finalPersonId : null,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'source,external_employee_id' });
+
+          if (idnErr) {
+            console.error('[AttendanceImport] Failed to upsert employee_attendance_identity:', idnErr);
+            throw idnErr;
+          }
+        }
+
+        // 7. Reprocess & link attendance record for current exception
+        await linkAttendanceRecord(exc, finalTargetType, finalPersonId, supabase);
+
+        // 8. Propagate resolution to sibling pending exceptions with the same external_employee_id
+        if (exc.external_employee_id) {
+          const { data: siblings } = await supabase
+            .from('attendance_exceptions')
+            .select('*')
+            .eq('external_employee_id', exc.external_employee_id)
+            .eq('status', 'pending')
+            .neq('id', exceptionId);
+
+          if (siblings && siblings.length > 0) {
+            for (const sib of siblings) {
+              await linkAttendanceRecord(sib, finalTargetType, finalPersonId, supabase);
+            }
+            await supabase
+              .from('attendance_exceptions')
+              .update({
+                status: 'resolved',
+                resolution_notes: `Auto-resolved via identity mapping confirmed for ID ${exc.external_employee_id} (${resolution_notes || 'Resolved by manager'})`.trim(),
+                resolved_by: userEmail,
+                resolved_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('external_employee_id', exc.external_employee_id)
+              .eq('status', 'pending');
+          }
+        }
+      }
+
+      // 9. Update the primary exception state
       const { data: updated, error: updateErr } = await supabase
         .from('attendance_exceptions')
         .update({
           status: 'resolved',
-          resolution_notes: resolution_notes || 'Resolved by manager',
-          resolved_by: req.adminAuth?.email || 'manager',
+          resolution_notes: resolution_notes || (isIdentityException ? `Dipetakan ke ${finalTargetType} ${targetPerson?.name || finalPersonId}` : 'Resolved by manager'),
+          resolved_by: userEmail,
           resolved_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -223,9 +381,36 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
 
       if (updateErr) throw updateErr;
 
+      // 10. Audit trail via logSystemEvent
+      await logSystemEvent({
+        module: 'attendance',
+        eventName: 'attendance_exception_resolved',
+        severity: 'INFO',
+        status: 'success',
+        message: `Attendance exception ${exc.id} resolved (${exc.exception_type})`,
+        entityType: 'attendance_exception',
+        entityId: exc.id,
+        barberId: finalTargetType === 'barber' ? finalPersonId : null,
+        outletId: targetPerson?.branch || null,
+        metadata: {
+          exception_id: exc.id,
+          exception_type: exc.exception_type,
+          external_employee_id: exc.external_employee_id,
+          external_name: exc.external_name,
+          mapped_person_type: finalTargetType,
+          mapped_person_id: finalPersonId,
+          target_person_name: targetPerson?.name || null,
+          target_branch: targetPerson?.branch || null,
+          resolved_by: userEmail,
+          resolved_at: new Date().toISOString(),
+        },
+      }, { supabase });
+
       return res.json({
         ok: true,
-        message: 'Exception berhasil diselesaikan dan identity mapping telah disimpan.',
+        message: isIdentityException
+          ? `Exception berhasil diselesaikan dan identity mapping (ID ${exc.external_employee_id} -> ${targetPerson?.name}) disimpan permanen.`
+          : 'Exception berhasil diselesaikan.',
         exception: updated,
       });
     } catch (err) {

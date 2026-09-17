@@ -6,8 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const importer = require('../services/fingerprintAttendanceImporter');
 
-// Path to real sample reference file
-const SAMPLE_PATH = 'C:/Users/Win11/Downloads/1_StandardReport-51.xls';
+// Path to portable test fixture
+const SAMPLE_PATH = path.join(__dirname, 'fixtures', 'fingerprint', 'sample_standard_report.xls');
 
 test('Fingerprint Parser: File Safety & Signature Validation', (t) => {
   const sampleBuf = fs.readFileSync(SAMPLE_PATH);

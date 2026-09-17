@@ -4,10 +4,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const http = require('node:http');
+const path = require('path');
 const express = require('express');
 const { createAttendanceImportRoutes } = require('../routes/attendanceImport');
 
-const SAMPLE_PATH = 'C:/Users/Win11/Downloads/1_StandardReport-51.xls';
+const SAMPLE_PATH = path.join(__dirname, 'fixtures', 'fingerprint', 'sample_standard_report.xls');
 const sampleBuf = fs.readFileSync(SAMPLE_PATH);
 const sampleBase64 = sampleBuf.toString('base64');
 
@@ -26,6 +27,7 @@ function createMockSupabase() {
     barbers: [
       { id: 'csb-ubay', name: 'Ubay', branch: 'csb', is_active: true },
       { id: 'csb-syarif', name: 'Sarif', branch: 'csb', is_active: true },
+      { id: 'csb-yudha', name: 'Yudha', branch: 'csb', is_active: true },
     ],
     employee_attendance_identity: [],
     attendance_import_batches: [],
@@ -47,34 +49,32 @@ function createMockSupabase() {
       const records = store[table] || [];
       return {
         select(cols = '*') {
-          return {
+          let filtered = [...records];
+          const query = {
             eq(col, val) {
-              return {
-                maybeSingle: async () => ({ data: records.find(r => r[col] === val) || null, error: null }),
-                order: () => ({
-                  limit: async () => ({ data: records.filter(r => r[col] === val), error: null }),
-                }),
-                then: (res) => res({ data: records.filter(r => r[col] === val), error: null }),
-              };
+              filtered = filtered.filter(r => r[col] === val);
+              return query;
+            },
+            neq(col, val) {
+              filtered = filtered.filter(r => r[col] !== val);
+              return query;
             },
             in(col, vals) {
-              return {
-                in: () => this,
-                eq: () => ({
-                  then: (res) => res({ data: records.filter(r => vals.includes(r[col])), error: null }),
-                }),
-                then: (res) => res({ data: records.filter(r => vals.includes(r[col])), error: null }),
-              };
+              filtered = filtered.filter(r => vals.includes(r[col]));
+              return query;
             },
             order() {
-              return {
-                limit: async () => ({ data: [...records], error: null }),
-                then: (res) => res({ data: [...records], error: null }),
-              };
+              return query;
             },
-            maybeSingle: async () => ({ data: records[0] || null, error: null }),
-            then: (res) => res({ data: [...records], error: null }),
+            limit(n) {
+              filtered = filtered.slice(0, n);
+              return query;
+            },
+            maybeSingle: async () => ({ data: filtered[0] || null, error: null }),
+            single: async () => ({ data: filtered[0] || null, error: null }),
+            then: (res) => res({ data: filtered, error: null }),
           };
+          return query;
         },
         insert(rows) {
           const arr = Array.isArray(rows) ? rows : [rows];
@@ -107,20 +107,21 @@ function createMockSupabase() {
           };
         },
         update(updates) {
-          return {
+          let targets = [...records];
+          const query = {
             eq(col, val) {
-              const item = records.find(r => r[col] === val);
-              if (item) Object.assign(item, updates);
+              targets = targets.filter(r => r[col] === val);
+              targets.forEach(item => Object.assign(item, updates));
+              return query;
+            },
+            select() {
               return {
-                select() {
-                  return {
-                    single: async () => ({ data: item || null, error: null }),
-                  };
-                },
-                then: (res) => res({ data: item, error: null }),
+                single: async () => ({ data: targets[0] || null, error: null }),
               };
             },
+            then: (res) => res({ data: targets, error: null }),
           };
+          return query;
         },
       };
     },
