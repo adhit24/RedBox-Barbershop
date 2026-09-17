@@ -189,8 +189,7 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
       console.log(`[TxSync] ${outlet.slug} — sample payment keys:`, Object.keys(payments[0]).join(', '));
     }
 
-    const txRows  = [];
-    const svcRows = [];
+    const txRows = [];
 
     for (const p of payments) {
       if (p.is_deleted || p.is_refunded) continue;
@@ -249,27 +248,23 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
         items_raw:       itemsRaw,
       });
 
+      // Task 2.1B (single-writer remediation): syncCurrentMonthTx no longer
+      // writes moka_barber_services. Two independent writers (this function
+      // and server/services/mokaDailyTransactionSync.js) were both upserting
+      // that table on the same (receipt_number, barber_id) conflict key, each
+      // with its own equal-split "revenue_share = net_sales / barber_count"
+      // arithmetic — a P1 data-integrity bug (37.5% of rows ended up with
+      // revenue_share=0, escalating to 100% for 2026-08-10..17). Barber
+      // attribution + commission must now go through
+      // server/services/commissionCalculator.js, fed by the canonical writer
+      // (syncMokaDailyTransactions). unmatchedNames is still collected below
+      // (still useful for the "unmatched Moka name" diagnostics this
+      // function's callers surface), but no row is written for it here.
       if (itemsRaw) {
-        const barberItems  = extractBarberItems(itemsRaw);
-        const seenBarbers  = new Map();
+        const barberItems = extractBarberItems(itemsRaw);
         for (const item of barberItems) {
           const matched = matchBarberName(item.name, activeBarbers, outlet.slug);
-          if (!matched) { unmatchedNames.add(item.name); continue; }
-          if (!seenBarbers.has(matched.id)) seenBarbers.set(matched.id, { csvName: item.name, services: [] });
-          seenBarbers.get(matched.id).services.push(item.service);
-        }
-        const netSales    = Number(p.net_sales || 0);
-        const revShare    = seenBarbers.size > 0 ? Math.round(netSales / seenBarbers.size) : 0;
-        for (const [barberId, { csvName, services }] of seenBarbers) {
-          svcRows.push({
-            receipt_number:  String(receiptNumber),
-            outlet_slug:     outlet.slug,
-            tx_date:         txDate,
-            barber_id:       barberId,
-            barber_name_raw: csvName,
-            service_name:    services.join(', '),
-            revenue_share:   revShare,
-          });
+          if (!matched) unmatchedNames.add(item.name);
         }
       }
     }
@@ -279,12 +274,6 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
         .upsert(txRows, { onConflict: 'receipt_number', ignoreDuplicates: false });
       if (error) console.error(`[TxSync] ${outlet.slug} tx upsert:`, error.message);
       else totalTx += txRows.length;
-    }
-    if (svcRows.length) {
-      const { error } = await supabase.from('moka_barber_services')
-        .upsert(svcRows, { onConflict: 'receipt_number,barber_id', ignoreDuplicates: false });
-      if (error) console.error(`[TxSync] ${outlet.slug} svc upsert:`, error.message);
-      else totalSvc += svcRows.length;
     }
 
     if (data.completed || payments.length < 1000) break;
@@ -317,7 +306,9 @@ async function syncCurrentMonthTx(supabase, outlet, options = {}) {
     }, { onConflict: 'outlet_id' });
   }
 
-  console.log(`[TxSync] ${outlet.slug} — ${totalTx} tx, ${totalSvc} svc upserted`);
+  console.log(`[TxSync] ${outlet.slug} — ${totalTx} tx upserted (barber-service attribution no longer written here — see syncMokaDailyTransactions)`);
+  // totalSvc is kept at 0 in the return shape for backward compatibility
+  // with any existing caller destructuring it.
   return { totalTx, totalSvc, unmatchedNames: [...unmatchedNames].slice(0, 20) };
 }
 

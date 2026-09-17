@@ -215,6 +215,18 @@ async function upsertChunks(supabase, rows) {
 }
 
 async function upsertBarberServices(supabase, rows, barbers) {
+  // Task 2.1B (single-writer remediation): this is now the ONLY writer of
+  // moka_barber_services (server/moka/txSync.js's syncCurrentMonthTx used to
+  // write here too, with its own independent equal-split arithmetic — a P1
+  // data-integrity bug, see commit history). revenue_share is deliberately
+  // never computed here anymore: "net_sales / distinct barber count" folds
+  // retail/drink line items into the shared total and divides it across
+  // every barber on a receipt regardless of who actually performed which
+  // service — exactly the outcome Task 2.1B forbids. This column is kept
+  // (not dropped) for backward-compatible reads but always written as NULL;
+  // real commission must be computed by
+  // server/services/commissionCalculator.js, which knows how to mark a
+  // multi-barber/mixed-item receipt REVIEW_REQUIRED instead of guessing.
   const serviceRows = [];
   for (const row of rows) {
     const matched = new Map();
@@ -225,7 +237,6 @@ async function upsertBarberServices(supabase, rows, barbers) {
       current.services.push(item.service);
       matched.set(barber.id, current);
     }
-    const revenueShare = matched.size > 0 ? Math.round(amount(row.net_sales) / matched.size) : 0;
     for (const [barberId, item] of matched) {
       serviceRows.push({
         receipt_number: row.receipt_number,
@@ -234,13 +245,24 @@ async function upsertBarberServices(supabase, rows, barbers) {
         barber_id: barberId,
         barber_name_raw: item.name,
         service_name: item.services.join(', '),
-        revenue_share: revenueShare,
+        revenue_share: null,
       });
     }
   }
+  // Task 2.1B root-cause fix: the live moka_barber_services table has NO
+  // unique constraint on (receipt_number, barber_id) — only on
+  // (receipt_number, barber_name_raw, service_name)
+  // (moka_barber_services_receipt_number_barber_name_raw_service_key,
+  // confirmed via pg_constraint). Upserting with onConflict:
+  // 'receipt_number,barber_id' is invalid against this schema and Postgres
+  // rejects EVERY such statement with "no unique or exclusion constraint
+  // matching the ON CONFLICT specification" — this was the actual cause of
+  // zero rows being written by every cron run logged since 2026-09-08 (187
+  // consecutive failures). Using the real constraint here is a correctness
+  // fix, not a schema change.
   for (let index = 0; index < serviceRows.length; index += 500) {
     const { error } = await supabase.from('moka_barber_services')
-      .upsert(serviceRows.slice(index, index + 500), { onConflict: 'receipt_number,barber_id', ignoreDuplicates: false });
+      .upsert(serviceRows.slice(index, index + 500), { onConflict: 'receipt_number,barber_name_raw,service_name', ignoreDuplicates: false });
     if (error) throw error;
   }
   return serviceRows.length;
