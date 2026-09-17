@@ -306,19 +306,255 @@ test('Real-shape: multi-barber receipt, no item price => REVIEW_REQUIRED, never 
 });
 
 // -------------------------------------------------------------------------
-// parseReceiptItems — pure parser correctness
+// Task 2.1C: Canonical moka_transaction_items integration tests
 // -------------------------------------------------------------------------
 
-test('parseReceiptItems splits multi-barber, multi-service receipt text correctly', () => {
-  const items = parseReceiptItems('Abdul (Hair Cut+), Onoy (Redbox Baron Grooming), Onoy (Hair Colouring)');
-  assert.deepEqual(items, [
-    { barber_name: 'Abdul', service_name: 'Hair Cut+' },
-    { barber_name: 'Onoy', service_name: 'Redbox Baron Grooming' },
-    { barber_name: 'Onoy', service_name: 'Hair Colouring' },
-  ]);
+/**
+ * Adapter function transforming canonical moka_transaction_items rows
+ * into the input structure expected by calculateBarberCommission.
+ */
+function adaptCanonicalItemsToCalculator(transaction, canonicalItems) {
+  const items = (canonicalItems || []).map(ci => ({
+    moka_item_id: ci.source_item_id,
+    moka_variant_id: ci.source_variant_id || null,
+    outlet_id: ci.outlet_id || null,
+    service_name: ci.variant_name ? `${ci.item_name} (${ci.variant_name})` : ci.item_name,
+    barber_name: ci.barber_name_raw || null,
+    classification: ci.classification,
+    price: ci.classification === 'NON_STOCK_SERVICE' ? ci.net_amount : (ci.net_amount ?? 0),
+  }));
+
+  return {
+    transaction: {
+      id: transaction.id || transaction.receipt_number,
+      receipt_number: transaction.receipt_number,
+      net_sales: transaction.net_sales,
+      gross_sales: transaction.gross_sales,
+      status: transaction.status || 'payment',
+    },
+    items,
+  };
+}
+
+test('Canonical integration: service-only => READY if rate supplied', () => {
+  const tx = { receipt_number: 'REC-001', net_sales: 85000, gross_sales: 85000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: '16902095', source_variant_id: '207062709',
+      item_name: 'Abdul', variant_name: 'Hair Cut+',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 85000, discount_amount: 0, net_amount: 85000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+  const result = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: 0.35,
+    itemMappings: [mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: '207062709' })],
+  });
+  assert.equal(result.status, STATUS.READY);
+  assert.equal(result.commissionable_amount, 85000);
+  assert.equal(result.calculated_commission, 29750);
 });
 
-test('parseReceiptItems returns empty array for blank/undefined input', () => {
-  assert.deepEqual(parseReceiptItems(''), []);
-  assert.deepEqual(parseReceiptItems(undefined), []);
+test('Canonical integration: service + retail => retail excluded', () => {
+  const tx = { receipt_number: 'REC-002', net_sales: 220000, gross_sales: 220000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: '16902095', source_variant_id: '207062709',
+      item_name: 'Abdul', variant_name: 'Hair Cut',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+    {
+      source_item_id: 'retail-1', source_variant_id: 'var-1',
+      item_name: 'MANTOLOGY', variant_name: 'Styling Powder',
+      barber_name_raw: null, classification: 'STOCK_PRODUCT',
+      gross_amount: 145000, discount_amount: 0, net_amount: 145000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+  const result = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: 0.35,
+    itemMappings: [
+      mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: '207062709' }),
+      mapping('retail-1', 'STOCK_PRODUCT', { moka_variant_id: 'var-1' }),
+    ],
+  });
+  assert.equal(result.status, STATUS.READY);
+  assert.equal(result.commissionable_amount, 75000);
+  assert.equal(result.calculated_commission, 26250);
 });
+
+test('Canonical integration: service + drink => drink excluded', () => {
+  const tx = { receipt_number: 'REC-003', net_sales: 95000, gross_sales: 95000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: '16902095', source_variant_id: '207062709',
+      item_name: 'Abdul', variant_name: 'Hair Cut',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+    {
+      source_item_id: 'drink-1', source_variant_id: 'var-drink',
+      item_name: 'Teh Botol', variant_name: '',
+      barber_name_raw: null, classification: 'NON_STOCK_MISC',
+      gross_amount: 20000, discount_amount: 0, net_amount: 20000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+  const result = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: 0.35,
+    itemMappings: [
+      mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: '207062709' }),
+      mapping('drink-1', 'NON_STOCK_MISC', { moka_variant_id: 'var-drink' }),
+    ],
+  });
+  assert.equal(result.status, STATUS.READY);
+  assert.equal(result.commissionable_amount, 75000);
+});
+
+test('Canonical integration: service + membership => membership excluded', () => {
+  const tx = { receipt_number: 'REC-004', net_sales: 275000, gross_sales: 275000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: '16902095', source_variant_id: '207062709',
+      item_name: 'Abdul', variant_name: 'Hair Cut',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+    {
+      source_item_id: '16902093', source_variant_id: '207049813',
+      item_name: 'Member Platinum', variant_name: '',
+      barber_name_raw: null, classification: 'NON_STOCK_MISC',
+      gross_amount: 200000, discount_amount: 0, net_amount: 200000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+  const result = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: 0.35,
+    itemMappings: [
+      mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: '207062709' }),
+      mapping('16902093', 'NON_STOCK_MISC', { moka_variant_id: '207049813' }),
+    ],
+  });
+  assert.equal(result.status, STATUS.READY);
+  assert.equal(result.commissionable_amount, 75000);
+});
+
+test('Canonical integration: multi-service same barber => correct sum', () => {
+  const tx = { receipt_number: 'REC-005', net_sales: 90000, gross_sales: 90000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: '16902095', source_variant_id: '207062709',
+      item_name: 'Abdul', variant_name: 'Hair Cut',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+    {
+      source_item_id: '16902095', source_variant_id: 'beard-id',
+      item_name: 'Abdul', variant_name: 'Beard & Mustache',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 15000, discount_amount: 0, net_amount: 15000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+  const result = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: 0.35,
+    itemMappings: [
+      mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: '207062709' }),
+      mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: 'beard-id' }),
+    ],
+  });
+  assert.equal(result.status, STATUS.READY);
+  assert.equal(result.commissionable_amount, 90000);
+  assert.equal(result.calculated_commission, 31500);
+});
+
+test('Canonical integration: multi-barber with deterministic per-item attribution => correct individual totals', () => {
+  const tx = { receipt_number: 'REC-006', net_sales: 245000, gross_sales: 245000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: 'bob-item', source_variant_id: 'v1',
+      item_name: 'Bob', variant_name: 'Redbox Gentleman Grooming',
+      barber_name_raw: 'Bob', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 95000, discount_amount: 0, net_amount: 95000,
+    },
+    {
+      source_item_id: '16902095', source_variant_id: 'v2',
+      item_name: 'Abdul', variant_name: 'Hair Cut',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+    {
+      source_item_id: 'ari-item', source_variant_id: 'v3',
+      item_name: 'Ari', variant_name: 'Hair Cut',
+      barber_name_raw: 'Ari', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+
+  // Abdul's commission calculation
+  const abdulResult = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: 0.35,
+    itemMappings: [
+      mapping('bob-item', 'NON_STOCK_SERVICE', { moka_variant_id: 'v1' }),
+      mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: 'v2' }),
+      mapping('ari-item', 'NON_STOCK_SERVICE', { moka_variant_id: 'v3' }),
+    ],
+  });
+  assert.equal(abdulResult.status, STATUS.READY);
+  assert.equal(abdulResult.commissionable_amount, 75000);
+  assert.equal(abdulResult.calculated_commission, 26250);
+
+  // Bob's commission calculation
+  const bobResult = calculateBarberCommission({
+    transaction, items, barber: { id: 'bob-id', name: 'Bob' }, commissionRate: 0.35,
+    itemMappings: [
+      mapping('bob-item', 'NON_STOCK_SERVICE', { moka_variant_id: 'v1' }),
+      mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: 'v2' }),
+      mapping('ari-item', 'NON_STOCK_SERVICE', { moka_variant_id: 'v3' }),
+    ],
+  });
+  assert.equal(bobResult.status, STATUS.READY);
+  assert.equal(bobResult.commissionable_amount, 95000);
+  assert.equal(bobResult.calculated_commission, 33250);
+});
+
+test('Canonical integration: missing barber => review', () => {
+  const tx = { receipt_number: 'REC-007', net_sales: 75000, gross_sales: 75000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: '16902095', source_variant_id: 'v1',
+      item_name: 'Unknown', variant_name: 'Hair Cut',
+      barber_name_raw: null, classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+  const result = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: 0.35,
+    itemMappings: [mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: 'v1' })],
+  });
+  assert.equal(result.status, STATUS.REVIEW_REQUIRED);
+  assert.ok(result.exception_reasons.includes(EXCEPTION_REASON.AMBIGUOUS_BARBER));
+});
+
+test('Canonical integration: missing rate => MISSING_RATE', () => {
+  const tx = { receipt_number: 'REC-008', net_sales: 75000, gross_sales: 75000, status: 'payment' };
+  const canonicalItems = [
+    {
+      source_item_id: '16902095', source_variant_id: 'v1',
+      item_name: 'Abdul', variant_name: 'Hair Cut',
+      barber_name_raw: 'Abdul', classification: 'NON_STOCK_SERVICE',
+      gross_amount: 75000, discount_amount: 0, net_amount: 75000,
+    },
+  ];
+  const { transaction, items } = adaptCanonicalItemsToCalculator(tx, canonicalItems);
+  const result = calculateBarberCommission({
+    transaction, items, barber: ABDUL, commissionRate: null,
+    itemMappings: [mapping('16902095', 'NON_STOCK_SERVICE', { moka_variant_id: 'v1' })],
+  });
+  assert.equal(result.status, STATUS.MISSING_RATE);
+});
+

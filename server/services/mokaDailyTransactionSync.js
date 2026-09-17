@@ -3,6 +3,7 @@
 const MokaClient = require('../moka/client');
 const { matchBarberName } = require('../moka/txSync');
 const { logSystemEvent } = require('./systemEventLog');
+const { normalizeTransactionPackage } = require('./mokaTransactionNormalizer');
 
 const JAKARTA_TIME_ZONE = 'Asia/Jakarta';
 const REDBOX_OUTLET_SLUGS = Object.freeze(['bypass', 'csb', 'samadikun', 'sumber', 'tegal']);
@@ -131,7 +132,15 @@ function nextSince(nextUrl) {
   return match ? Number(match[1]) : null;
 }
 
-async function fetchOutletDayRange({ supabase, outlet, businessDates, clientFactory, maxPages = MAX_PAGES }) {
+async function fetchOutletDayRange({
+  supabase,
+  outlet,
+  businessDates,
+  clientFactory,
+  maxPages = MAX_PAGES,
+  mappingsMap = new Map(),
+  barbers = [],
+}) {
   const firstDate = [...businessDates].sort()[0];
   let sinceEpoch = Math.floor(new Date(`${firstDate}T00:00:00+07:00`).getTime() / 1000);
   const wanted = new Set(businessDates);
@@ -158,6 +167,10 @@ async function fetchOutletDayRange({ supabase, outlet, businessDates, clientFact
       if (!row || !wanted.has(row.tx_date)) {
         skipped += 1;
         continue;
+      }
+      const pkg = normalizeTransactionPackage(payment, outlet, mappingsMap, barbers);
+      if (pkg && pkg.items) {
+        row._normalized_items = pkg.items;
       }
       rowsByReceipt.set(row.receipt_number, row);
     }
@@ -207,11 +220,28 @@ function sameMetrics(a, b) {
 
 async function upsertChunks(supabase, rows) {
   for (let index = 0; index < rows.length; index += 500) {
-    const persistedRows = rows.slice(index, index + 500).map(({ _barber_items, ...row }) => row);
+    const persistedRows = rows.slice(index, index + 500).map(({ _barber_items, _normalized_items, ...row }) => row);
     const { error } = await supabase.from('moka_transactions')
       .upsert(persistedRows, { onConflict: 'receipt_number', ignoreDuplicates: false });
     if (error) throw error;
   }
+}
+
+async function upsertTransactionItems(supabase, items) {
+  if (!items || !items.length) return 0;
+  for (let index = 0; index < items.length; index += 500) {
+    const chunk = items.slice(index, index + 500);
+    const { error } = await supabase.from('moka_transaction_items')
+      .upsert(chunk, { onConflict: 'outlet_id,receipt_number,source_line_key', ignoreDuplicates: false });
+    if (error) {
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        console.warn('[MokaSync] moka_transaction_items table not present in Postgres schema — skipping table write');
+        return 0;
+      }
+      throw error;
+    }
+  }
+  return items.length;
 }
 
 async function upsertBarberServices(supabase, rows, barbers) {
@@ -290,17 +320,33 @@ async function syncMokaDailyTransactions({
     .select('id,name,branch').eq('is_active', true);
   if (barberError) throw barberError;
 
+  const { data: mappingsData } = await supabase.from('moka_item_mappings').select('*');
+  const mappingsMap = new Map();
+  for (const m of mappingsData || []) {
+    if (m.outlet_id && m.moka_item_id && m.moka_variant_id) {
+      mappingsMap.set(`${m.outlet_id}:${m.moka_item_id}:${m.moka_variant_id}`, m);
+    }
+    if (m.moka_item_id && m.moka_variant_id) {
+      mappingsMap.set(`${m.moka_item_id}:${m.moka_variant_id}`, m);
+    }
+  }
+
   const settled = await Promise.all(REDBOX_OUTLET_SLUGS.map(async slug => {
     const outlet = bySlug.get(slug);
     if (!outlet) return { slug, error: 'outlet_not_configured' };
     try {
-      const result = await fetchOutletDayRange({ supabase, outlet, businessDates, clientFactory });
+      const result = await fetchOutletDayRange({
+        supabase, outlet, businessDates, clientFactory, mappingsMap, barbers: barbers || [],
+      });
       let servicesUpserted = 0;
+      let itemsUpserted = 0;
       if (!dryRun) {
         await upsertChunks(supabase, result.rows);
         servicesUpserted = await upsertBarberServices(supabase, result.rows, barbers || []);
+        const allItems = result.rows.flatMap(r => r._normalized_items || []);
+        itemsUpserted = await upsertTransactionItems(supabase, allItems);
       }
-      return { slug, ...result, servicesUpserted };
+      return { slug, ...result, servicesUpserted, itemsUpserted };
     } catch (error) {
       return { slug, error: error.message };
     }
@@ -365,9 +411,10 @@ async function syncMokaDailyTransactions({
     outlets_succeeded: successful.length,
     transactions_fetched: settled.reduce((sum, item) => sum + (item.fetched || 0), 0),
     transactions_upserted: dryRun ? 0 : successful.reduce((sum, item) => sum + (item.accepted || 0), 0),
+    items_upserted: dryRun ? 0 : successful.reduce((sum, item) => sum + (item.itemsUpserted || 0), 0),
     aggregates_updated: dryRun ? 0 : aggregates.length - reconciliations.filter(item => item.status === 'protected_mismatch').length,
     duration_ms: Date.now() - startedAt,
-    outlets: settled.map(item => ({ slug: item.slug, pages: item.pages || 0, rows_fetched: item.fetched || 0, rows_accepted: item.accepted || 0, rows_skipped: item.skipped || 0, services_upserted: item.servicesUpserted || 0, error: item.error || null })),
+    outlets: settled.map(item => ({ slug: item.slug, pages: item.pages || 0, rows_fetched: item.fetched || 0, rows_accepted: item.accepted || 0, rows_skipped: item.skipped || 0, services_upserted: item.servicesUpserted || 0, items_upserted: item.itemsUpserted || 0, error: item.error || null })),
     errors: uniqueFailures,
     reconciliations,
     aggregates,
@@ -381,7 +428,8 @@ async function syncMokaDailyTransactions({
     metadata: {
       business_dates: businessDates, outlets_requested: summary.outlets_requested,
       outlets_succeeded: summary.outlets_succeeded, transactions_fetched: summary.transactions_fetched,
-      transactions_upserted: summary.transactions_upserted, aggregates_updated: summary.aggregates_updated,
+      transactions_upserted: summary.transactions_upserted, items_upserted: summary.items_upserted,
+      aggregates_updated: summary.aggregates_updated,
       error_summary: uniqueFailures.map(item => ({ outlet: item.slug, error: item.error })), dry_run: dryRun,
     },
   }, { supabase });

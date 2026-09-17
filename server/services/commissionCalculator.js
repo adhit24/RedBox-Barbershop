@@ -276,7 +276,8 @@ function calculateBarberCommission({ transaction = {}, items = [], barber = null
     // items are summed independently of what other barbers' items cost.
     const commissionable = myService.reduce((sum, i) => sum + i.price, 0);
     result.commissionable_amount = round(commissionable);
-    if (unattributedItems.length > 0) {
+    const unattributedServices = unattributedItems.filter((i) => i.classification === CLASSIFICATION.NON_STOCK_SERVICE);
+    if (unattributedServices.length > 0) {
       result.exception_reasons.push(EXCEPTION_REASON.AMBIGUOUS_BARBER);
       result.status = STATUS.REVIEW_REQUIRED;
     } else if (myReview.length > 0) {
