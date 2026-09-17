@@ -99,19 +99,38 @@ export function BarberPayroll() {
               label="Cabang Operasional"
               tint="blue"
             />
+            <Link to="/payroll/revenue-sharing" className="block no-underline">
+              <StatCard
+                value="Preview →"
+                label="Revenue Sharing Preview"
+                trend="Estimasi Komisi Kanonikal"
+                tint="green"
+              />
+            </Link>
             <StatCard
-              value="—"
-              label="Skema Revenue Sharing"
-              trend="Formula belum tervalidasi"
+              value="Multi-rate"
+              label="Konfigurasi Rate"
+              trend="30% / 35% per kapster"
               tint="yellow"
             />
-            <StatCard
-              value="—"
-              label="Kalkulasi Komisi Bulanan"
-              trend="Belum tersedia"
-              tint="green"
-            />
           </section>
+
+          <div className="mb-6 flex items-center justify-between rounded-rb-card border border-rb-green-tint-fg/30 bg-rb-green-tint-bg/50 p-4">
+            <div>
+              <div className="text-sm font-semibold text-rb-text">
+                Revenue Sharing Preview Kini Tersedia
+              </div>
+              <div className="text-xs text-rb-text-muted">
+                Perhitungan estimasi bagi hasil berbasis data kanonikal Moka line-item dan konfigurasi rate per kapster.
+              </div>
+            </div>
+            <Link
+              to="/payroll/revenue-sharing"
+              className="rounded-rb-button bg-rb-red px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rb-red/90"
+            >
+              Buka Revenue Sharing Preview →
+            </Link>
+          </div>
 
           {/* Filter Bar */}
           <div className="mb-4 flex items-center justify-between gap-3">

@@ -25,6 +25,7 @@ import { ExceptionReview } from './pages/ExceptionReview';
 import { PayrollOverview } from './pages/PayrollOverview';
 import { RegularPayroll } from './pages/RegularPayroll';
 import { BarberPayroll } from './pages/BarberPayroll';
+import { RevenueSharingPreview } from './pages/RevenueSharingPreview';
 import { PayrollEmployeeDetail } from './pages/PayrollEmployeeDetail';
 import { RolesPermissions } from './pages/RolesPermissions';
 import { SystemEventLog } from './pages/SystemEventLog';
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/payroll" element={<PayrollOverview />} />
           <Route path="/payroll/regular" element={<RegularPayroll />} />
           <Route path="/payroll/barber" element={<BarberPayroll />} />
+          <Route path="/payroll/revenue-sharing" element={<RevenueSharingPreview />} />
           <Route path="/payroll/employees/:id" element={<PayrollEmployeeDetail />} />
           <Route path="/system/roles" element={<RolesPermissions />} />
           <Route path="/system/packages" element={<PackageFeatureAccess />} />

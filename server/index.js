@@ -4272,6 +4272,8 @@ const { createHRPeopleRoutes } = require('./routes/hrPeople');
 app.use('/api/admin/hr-people', createHRPeopleRoutes(supabase, adminAuth));
 const { createAttendanceImportRoutes } = require('./routes/attendanceImport');
 app.use('/api/admin/crm/attendance', createAttendanceImportRoutes(supabase, adminAuth));
+const { createRevenueSharingRoutes } = require('./routes/revenueSharing');
+app.use('/api/payroll/revenue-sharing', createRevenueSharingRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));

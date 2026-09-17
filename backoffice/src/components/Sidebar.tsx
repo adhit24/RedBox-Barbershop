@@ -161,6 +161,7 @@ const CATEGORIES: SidebarCategory[] = [
             children: [
               { to: '/payroll/regular', label: 'Payroll Karyawan' },
               { to: '/payroll/barber', label: 'Payroll Kapster' },
+              { to: '/payroll/revenue-sharing', label: 'Bagi Hasil (Preview)' },
             ],
           },
         ],
