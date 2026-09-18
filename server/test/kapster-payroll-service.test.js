@@ -137,9 +137,19 @@ function createMockDb(initialState = {}) {
             }
           }
 
-          // 2. payroll_source_claims PK constraint simulation
+          // 2. payroll_source_claims PK & immutability constraint simulation
           if (table === 'payroll_source_claims') {
             for (const item of toInsert) {
+              const run = tables.payroll_runs.find((r) => r.id === item.payroll_run_id);
+              if (run && run.status === RUN_STATUS.LOCKED) {
+                const err = new Error(`Cannot add source claim: payroll run ${item.payroll_run_id} is already LOCKED`);
+                return {
+                  select: () => ({ single: async () => ({ data: null, error: err }) }),
+                  then(resolve) {
+                    resolve({ data: null, error: err });
+                  },
+                };
+              }
               const existingClaim = rows.find(
                 (r) => r.source_moka_transaction_item_id === item.source_moka_transaction_item_id
               );
@@ -235,11 +245,19 @@ function createMockDb(initialState = {}) {
                       throw new Error(`Invalid status transition from LOCKED to DRAFT`);
                     }
                     if (r.status === RUN_STATUS.DRAFT && values.status === RUN_STATUS.LOCKED) {
-                      if (
-                        (values.period_start && values.period_start !== r.period_start) ||
-                        (values.period_end && values.period_end !== r.period_end)
-                      ) {
-                        throw new Error(`Cannot alter period when locking payroll run`);
+                      // Check the 10 forbidden fields:
+                      const historicalFields = [
+                        'id', 'payroll_type', 'business_unit', 'period_start', 'period_end',
+                        'generated_at', 'generated_by', 'calculation_version', 'summary', 'created_at'
+                      ];
+                      for (const field of historicalFields) {
+                        if (values[field] !== undefined) {
+                          const valBefore = JSON.stringify(r[field] === undefined ? null : r[field]);
+                          const valAfter = JSON.stringify(values[field]);
+                          if (valBefore !== valAfter) {
+                            throw new Error(`Cannot alter historical fields when locking payroll run ${r.id}: field ${field} altered`);
+                          }
+                        }
                       }
                     }
                   }
@@ -253,6 +271,18 @@ function createMockDb(initialState = {}) {
                     const run = tables.payroll_runs.find((rn) => rn.id === r.payroll_run_id);
                     if (run && run.status === RUN_STATUS.LOCKED) {
                       throw new Error(`Cannot modify payroll data: payroll run ${r.payroll_run_id} is LOCKED`);
+                    }
+                  }
+                }
+              }
+
+              // 3. payroll_source_claims immutability on UPDATE
+              if (table === 'payroll_source_claims') {
+                for (const r of rows) {
+                  if (r[col] === val) {
+                    const run = tables.payroll_runs.find((rn) => rn.id === r.payroll_run_id);
+                    if (run && run.status === RUN_STATUS.LOCKED) {
+                      throw new Error(`Cannot modify source claim: payroll run ${r.payroll_run_id} is LOCKED and claims are immutable`);
                     }
                   }
                 }
@@ -310,7 +340,7 @@ function createMockDb(initialState = {}) {
                   if (r[col] === val) {
                     const run = tables.payroll_runs.find((rn) => rn.id === r.payroll_run_id);
                     if (run && run.status === RUN_STATUS.LOCKED) {
-                      throw new Error(`Cannot delete payroll source claims for locked payroll run ${r.payroll_run_id}: claims are permanent`);
+                      throw new Error(`Cannot delete source claim: payroll run ${r.payroll_run_id} is LOCKED and claims are permanent`);
                     }
                   }
                 }
@@ -662,8 +692,8 @@ test('Task 2.3 Hardened Suite: Kapster Payroll Draft Engine & Snapshot Guarantee
     );
   });
 
-  // J. DRAFT → LOCKED allowed
-  await t.test('J: DRAFT -> LOCKED transition allowed when clean', async () => {
+  // J. Header immutability suite: DRAFT -> LOCKED and locked immutability
+  await t.test('J: header immutability suite (transition and post-lock guarantees)', async () => {
     const mockDb = createMockDb({
       barbers: [{ id: 'b1', name: 'Abdul', branch: 'bypass', commission_rate: 0.30, is_active: true }],
       barber_commission_rates: [{ id: 'r1', barber_id: 'b1', rate: 0.30, effective_from: '2026-09-01', effective_to: null }],
@@ -673,35 +703,68 @@ test('Task 2.3 Hardened Suite: Kapster Payroll Draft Engine & Snapshot Guarantee
     });
 
     const draft = await generatePayrollDraft(mockDb, { periodStart: '2026-09-01', periodEnd: '2026-09-30' });
-    const lockRes = await lockPayrollRun(mockDb, { runId: draft.run.id });
+    const runId = draft.run.id;
+
+    // Test 1: DRAFT -> LOCKED normal transition PASS via atomic lock function
+    const lockRes = await lockPayrollRun(mockDb, { runId, userEmail: 'owner@redbox.id' });
     assert.equal(lockRes.success, true);
     assert.equal(lockRes.run.status, RUN_STATUS.LOCKED);
-  });
+    assert.ok(lockRes.run.locked_at);
+    assert.equal(lockRes.run.locked_by, 'owner@redbox.id');
 
-  // K. LOCKED → DRAFT rejected
-  await t.test('K: LOCKED -> DRAFT transition rejected', async () => {
-    const mockDb = createMockDb({
-      payroll_runs: [{ id: 'run-locked', status: RUN_STATUS.LOCKED, period_start: '2026-09-01', period_end: '2026-09-30' }],
+    // Test 2: DRAFT -> LOCKED + changed summary FAIL
+    const draft2 = createMockDb({
+      payroll_runs: [{
+        id: 'run-d2',
+        payroll_type: 'BARBER_REVENUE_SHARE',
+        business_unit: 'Redbox',
+        period_start: '2026-09-01',
+        period_end: '2026-09-30',
+        status: RUN_STATUS.DRAFT,
+        generated_at: '2026-09-01T00:00:00.000Z',
+        generated_by: 'owner@redbox.id',
+        calculation_version: 'v2.3',
+        summary: { barber_count: 1 },
+        created_at: '2026-09-01T00:00:00.000Z',
+      }],
     });
-
     assert.throws(() => {
-      mockDb.from('payroll_runs').update({ status: RUN_STATUS.DRAFT }).eq('id', 'run-locked');
+      draft2.from('payroll_runs').update({
+        status: RUN_STATUS.LOCKED,
+        summary: { barber_count: 999 },
+      }).eq('id', 'run-d2');
+    }, /Cannot alter historical fields when locking payroll run run-d2: field summary altered/);
+
+    // Test 3: DRAFT -> LOCKED + changed calculation_version FAIL
+    assert.throws(() => {
+      draft2.from('payroll_runs').update({
+        status: RUN_STATUS.LOCKED,
+        calculation_version: 'v3.0-unauthorized',
+      }).eq('id', 'run-d2');
+    }, /Cannot alter historical fields when locking payroll run run-d2: field calculation_version altered/);
+
+    // Test 4: DRAFT -> LOCKED + changed generated_by FAIL
+    assert.throws(() => {
+      draft2.from('payroll_runs').update({
+        status: RUN_STATUS.LOCKED,
+        generated_by: 'attacker@evil.com',
+      }).eq('id', 'run-d2');
+    }, /Cannot alter historical fields when locking payroll run run-d2: field generated_by altered/);
+
+    // Test 5: LOCKED -> DRAFT FAIL
+    assert.throws(() => {
+      mockDb.from('payroll_runs').update({ status: RUN_STATUS.DRAFT }).eq('id', runId);
     }, /run is LOCKED and immutable/);
-  });
 
-  // L. Locked payroll_runs header cannot be edited
-  await t.test('L: locked payroll_runs header cannot be edited', async () => {
-    const mockDb = createMockDb({
-      payroll_runs: [{ id: 'run-locked', status: RUN_STATUS.LOCKED, period_start: '2026-09-01', period_end: '2026-09-30' }],
-    });
-
+    // Test 6: LOCKED summary UPDATE FAIL
     assert.throws(() => {
-      mockDb.from('payroll_runs').update({ period_start: '2026-08-01' }).eq('id', 'run-locked');
+      mockDb.from('payroll_runs').update({ summary: { tampered: true } }).eq('id', runId);
     }, /run is LOCKED and immutable/);
 
+    // Test 7: LOCKED DELETE FAIL
     assert.throws(() => {
-      mockDb.from('payroll_runs').delete().eq('id', 'run-locked');
-    }, /Cannot delete payroll run run-locked: run is LOCKED/);
+      mockDb.from('payroll_runs').delete().eq('id', runId);
+    }, /Cannot delete payroll run .* run is LOCKED/);
   });
 
   // M. Locked children cannot be edited
@@ -772,28 +835,57 @@ test('Task 2.3 Hardened Suite: Kapster Payroll Draft Engine & Snapshot Guarantee
     assert.equal(lockedDb.tables.payroll_adjustments.length, 1);
   });
 
-  // M3. Source claim delete behavior: claims cannot be deleted indirectly or directly for a LOCKED run
-  await t.test('M3: source claims permanence: cannot be deleted indirectly or directly for a LOCKED run', async () => {
-    const lockedDb = createMockDb({
-      payroll_runs: [{ id: 'run-locked', status: RUN_STATUS.LOCKED, period_start: '2026-09-01', period_end: '2026-09-30' }],
-      payroll_source_claims: [
-        { source_moka_transaction_item_id: 'claim-perm-1', payroll_run_id: 'run-locked', claimed_by: 'owner@redbox.id' },
+  // M3. Source claim immutability suite: A through F
+  await t.test('M3: source claims immutability suite (A through F)', async () => {
+    const mockDb = createMockDb({
+      barbers: [{ id: 'b1', name: 'Abdul', branch: 'bypass', commission_rate: 0.30, is_active: true }],
+      barber_commission_rates: [{ id: 'r1', barber_id: 'b1', rate: 0.30, effective_from: '2026-09-01', effective_to: null }],
+      moka_transaction_items: [
+        { id: 'm1', receipt_number: 'R1', barber_id: 'b1', item_name: 'Cut', classification: 'NON_STOCK_SERVICE', gross_amount: 100000, discount_amount: 0, net_amount: 100000, is_deleted: false, tx_date: '2026-09-05' },
       ],
     });
 
-    // Indirect delete via deleting the locked run must fail
-    assert.throws(() => {
-      lockedDb.from('payroll_runs').delete().eq('id', 'run-locked');
-    }, /Cannot delete payroll run run-locked: run is LOCKED/);
+    const draft = await generatePayrollDraft(mockDb, { periodStart: '2026-09-01', periodEnd: '2026-09-30' });
 
-    // Direct delete of source claim belonging to locked run must be rejected
-    assert.throws(() => {
-      lockedDb.from('payroll_source_claims').delete().eq('source_moka_transaction_item_id', 'claim-perm-1');
-    }, /claims are permanent/);
+    // A. lock creates source claims
+    const lockRes = await lockPayrollRun(mockDb, { runId: draft.run.id, userEmail: 'owner@redbox.id' });
+    assert.equal(lockRes.success, true);
+    assert.equal(mockDb.tables.payroll_source_claims.length, 1);
+    const claim = mockDb.tables.payroll_source_claims[0];
+    assert.equal(claim.source_moka_transaction_item_id, 'm1');
+    assert.equal(claim.payroll_run_id, draft.run.id);
+    assert.equal(claim.claimed_by, 'owner@redbox.id');
 
-    // Claim remains permanently intact
-    assert.equal(lockedDb.tables.payroll_source_claims.length, 1);
-    assert.equal(lockedDb.tables.payroll_runs.length, 1);
+    // B. source claim UPDATE after LOCKED rejected
+    assert.throws(() => {
+      mockDb.from('payroll_source_claims').update({ claimed_by: 'malicious@redbox.id' }).eq('source_moka_transaction_item_id', 'm1');
+    }, /Cannot modify source claim: payroll run .* is LOCKED and claims are immutable/);
+
+    // C. source claim DELETE after LOCKED rejected
+    assert.throws(() => {
+      mockDb.from('payroll_source_claims').delete().eq('source_moka_transaction_item_id', 'm1');
+    }, /Cannot delete source claim: payroll run .* is LOCKED and claims are permanent/);
+
+    // D. locked payroll run DELETE rejected and cannot cascade claims
+    assert.throws(() => {
+      mockDb.from('payroll_runs').delete().eq('id', draft.run.id);
+    }, /Cannot delete payroll run .* run is LOCKED/);
+
+    // E. duplicate source claim still rejects second payroll atomically
+    const { error: dupClaimErr } = await mockDb.from('payroll_source_claims').insert({
+      source_moka_transaction_item_id: 'm1',
+      payroll_run_id: 'run-other-draft',
+      claimed_by: 'other@redbox.id',
+    });
+    assert.ok(dupClaimErr);
+    assert.equal(dupClaimErr.code, '23505');
+
+    // F. source claim remains present after all rejected mutation attempts
+    assert.equal(mockDb.tables.payroll_source_claims.length, 1);
+    assert.equal(mockDb.tables.payroll_source_claims[0].claimed_by, 'owner@redbox.id');
+    assert.equal(mockDb.tables.payroll_source_claims[0].source_moka_transaction_item_id, 'm1');
+    assert.equal(mockDb.tables.payroll_runs.length, 1);
+    assert.equal(mockDb.tables.payroll_runs[0].status, RUN_STATUS.LOCKED);
   });
 
   // N. Locked adjustments cannot be edited or added

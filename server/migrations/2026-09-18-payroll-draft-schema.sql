@@ -159,11 +159,18 @@ BEGIN
 
     -- Transition from DRAFT -> LOCKED:
     IF OLD.status = 'DRAFT' AND NEW.status = 'LOCKED' THEN
-        IF NEW.period_start <> OLD.period_start
-           OR NEW.period_end <> OLD.period_end
-           OR NEW.payroll_type <> OLD.payroll_type
-           OR NEW.business_unit <> OLD.business_unit THEN
-            RAISE EXCEPTION 'Cannot alter period or metadata when locking payroll run %', OLD.id;
+        IF NEW.id IS DISTINCT FROM OLD.id
+           OR NEW.payroll_type IS DISTINCT FROM OLD.payroll_type
+           OR NEW.business_unit IS DISTINCT FROM OLD.business_unit
+           OR NEW.period_start IS DISTINCT FROM OLD.period_start
+           OR NEW.period_end IS DISTINCT FROM OLD.period_end
+           OR NEW.generated_at IS DISTINCT FROM OLD.generated_at
+           OR NEW.generated_by IS DISTINCT FROM OLD.generated_by
+           OR NEW.calculation_version IS DISTINCT FROM OLD.calculation_version
+           OR NEW.summary IS DISTINCT FROM OLD.summary
+           OR NEW.created_at IS DISTINCT FROM OLD.created_at
+        THEN
+            RAISE EXCEPTION 'Cannot alter historical fields when locking payroll run %', OLD.id;
         END IF;
     END IF;
 
@@ -228,6 +235,48 @@ DROP TRIGGER IF EXISTS trg_pa_immutability ON public.payroll_adjustments;
 CREATE TRIGGER trg_pa_immutability
 BEFORE INSERT OR UPDATE OR DELETE ON public.payroll_adjustments
 FOR EACH ROW EXECUTE FUNCTION public.check_payroll_run_not_locked();
+
+-- 8b. Immutability Trigger for payroll_source_claims
+CREATE OR REPLACE FUNCTION public.check_payroll_source_claims_immutability()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_status TEXT;
+    v_run_id UUID;
+BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        SELECT status INTO v_status FROM public.payroll_runs WHERE id = OLD.payroll_run_id;
+        IF v_status = 'LOCKED' THEN
+            RAISE EXCEPTION 'Cannot modify source claim: payroll run % is LOCKED and claims are immutable', OLD.payroll_run_id;
+        END IF;
+        v_run_id := NEW.payroll_run_id;
+    ELSIF TG_OP = 'DELETE' THEN
+        v_run_id := OLD.payroll_run_id;
+    ELSE
+        v_run_id := NEW.payroll_run_id;
+    END IF;
+
+    SELECT status INTO v_status FROM public.payroll_runs WHERE id = v_run_id;
+    IF v_status = 'LOCKED' THEN
+        IF TG_OP = 'DELETE' THEN
+            RAISE EXCEPTION 'Cannot delete source claim: payroll run % is LOCKED and claims are permanent', v_run_id;
+        ELSIF TG_OP = 'INSERT' THEN
+            RAISE EXCEPTION 'Cannot add source claim: payroll run % is already LOCKED', v_run_id;
+        END IF;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$ LANGUAGE plpgsql
+SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS trg_psc_immutability ON public.payroll_source_claims;
+CREATE TRIGGER trg_psc_immutability
+BEFORE INSERT OR UPDATE OR DELETE ON public.payroll_source_claims
+FOR EACH ROW EXECUTE FUNCTION public.check_payroll_source_claims_immutability();
 
 -- 9. Atomic Lock Function (Single Transaction Lock & Claim)
 CREATE OR REPLACE FUNCTION public.lock_payroll_run(
