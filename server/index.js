@@ -4274,6 +4274,8 @@ const { createAttendanceImportRoutes } = require('./routes/attendanceImport');
 app.use('/api/admin/crm/attendance', createAttendanceImportRoutes(supabase, adminAuth));
 const { createRevenueSharingRoutes } = require('./routes/revenueSharing');
 app.use('/api/payroll/revenue-sharing', createRevenueSharingRoutes(supabase, adminAuth));
+const { createKapsterPayrollRoutes } = require('./routes/kapsterPayroll');
+app.use('/api/payroll/barber-runs', createKapsterPayrollRoutes(supabase, adminAuth));
 app.use('/api', createMembershipRegistrationRoutes(supabase, {
   rateLimiters: createMembershipRegistrationRateLimiters(),
 }));

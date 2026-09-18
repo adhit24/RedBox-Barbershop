@@ -25,6 +25,7 @@ import { ExceptionReview } from './pages/ExceptionReview';
 import { PayrollOverview } from './pages/PayrollOverview';
 import { RegularPayroll } from './pages/RegularPayroll';
 import { BarberPayroll } from './pages/BarberPayroll';
+import { KapsterPayrollRuns } from './pages/KapsterPayrollRuns';
 import { RevenueSharingPreview } from './pages/RevenueSharingPreview';
 import { PayrollEmployeeDetail } from './pages/PayrollEmployeeDetail';
 import { RolesPermissions } from './pages/RolesPermissions';
@@ -66,6 +67,8 @@ export default function App() {
           <Route path="/attendance/exceptions" element={<ExceptionReview />} />
           <Route path="/payroll" element={<PayrollOverview />} />
           <Route path="/payroll/regular" element={<RegularPayroll />} />
+          <Route path="/payroll/barbers" element={<KapsterPayrollRuns />} />
+          <Route path="/payroll/barber-runs" element={<KapsterPayrollRuns />} />
           <Route path="/payroll/barber" element={<BarberPayroll />} />
           <Route path="/payroll/revenue-sharing" element={<RevenueSharingPreview />} />
           <Route path="/payroll/employees/:id" element={<PayrollEmployeeDetail />} />
