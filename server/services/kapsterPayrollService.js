@@ -8,6 +8,10 @@
  *   - Rate Authority: `barber_commission_rates` (resolved by transaction date)
  *   - No salary, overtime, or automated attendance deduction.
  *   - Immutable Snapshotting: Once locked, calculations are final.
+ *   - Invariant: Every relevant source item ends in EXACTLY ONE table:
+ *       A. payroll_barber_commission_items (resolved payable commission lines)
+ *       B. payroll_review_items (unresolved audit snapshot)
+ *   - Concurrency Double-Pay Prevention: `payroll_source_claims` table with PK(source_moka_transaction_item_id).
  */
 
 const {
@@ -38,6 +42,15 @@ const BLOCKER_TYPE = Object.freeze({
   RECONCILIATION_DISCREPANCY: 'RECONCILIATION_DISCREPANCY',
 });
 
+const REVIEW_REASON = Object.freeze({
+  MISSING_RATE: 'MISSING_RATE',
+  MISSING_BARBER: 'MISSING_BARBER',
+  REVIEW_REQUIRED_ITEM: 'REVIEW_REQUIRED_ITEM',
+  DUPLICATE_SOURCE: 'DUPLICATE_SOURCE',
+  REFUND_REVIEW: 'REFUND_REVIEW',
+  SOURCE_DATA_INVALID: 'SOURCE_DATA_INVALID',
+});
+
 /**
  * Fetch attendance context for barbers in a given period.
  */
@@ -47,8 +60,8 @@ async function fetchAttendanceContext(supabase, barberIds = [], periodStart, per
     contextMap.set(bId, {
       days_present: 0,
       days_absent: 0,
-      exception_count: 0,
-      notes: null,
+      late_count: 0,
+      attendance_exceptions: 0,
     });
   }
 
@@ -77,7 +90,7 @@ async function fetchAttendanceContext(supabase, barberIds = [], periodStart, per
         // scheduled off day
       } else {
         ctx.days_absent++;
-        ctx.exception_count++;
+        ctx.attendance_exceptions++;
       }
     }
   } catch (err) {
@@ -88,11 +101,28 @@ async function fetchAttendanceContext(supabase, barberIds = [], periodStart, per
 }
 
 /**
- * Check if any Moka item IDs in current list are already locked in another payroll run.
+ * Check if any Moka item IDs in current list are already claimed or locked in another payroll run.
  */
 async function findLockedDuplicateSourceItems(supabase, sourceItemIds = [], excludeRunId = null) {
   if (!sourceItemIds.length) return [];
   try {
+    // 1. Check payroll_source_claims table
+    const { data: claims, error: claimsErr } = await supabase
+      .from('payroll_source_claims')
+      .select('source_moka_transaction_item_id, payroll_run_id')
+      .in('source_moka_transaction_item_id', sourceItemIds);
+
+    if (!claimsErr && claims && claims.length > 0) {
+      const filtered = excludeRunId ? claims.filter((c) => c.payroll_run_id !== excludeRunId) : claims;
+      if (filtered.length > 0) {
+        return filtered.map((c) => ({
+          source_moka_transaction_item_id: c.source_moka_transaction_item_id,
+          payroll_run_id: c.payroll_run_id,
+        }));
+      }
+    }
+
+    // 2. Also check locked runs' commission items as fallback
     let runsQuery = supabase
       .from('payroll_runs')
       .select('id')
@@ -167,6 +197,7 @@ async function generatePayrollDraft(supabase, {
   }
 
   const barberIds = barbers.map((b) => b.id);
+  const barberMap = new Map(barbers.map((b) => [b.id, b]));
 
   // 3. Fetch rate history
   const rateHistory = await fetchBarberRateHistory(supabase, barberIds);
@@ -191,28 +222,13 @@ async function generatePayrollDraft(supabase, {
   }
 
   const allItems = rawItems || [];
-  const eligibleServiceItems = allItems.filter(
-    (i) => i.classification === CLASSIFICATION.NON_STOCK_SERVICE && i.barber_id != null
-  );
-  const unassignedServiceItems = allItems.filter(
-    (i) => i.classification === CLASSIFICATION.NON_STOCK_SERVICE && i.barber_id == null
-  );
-  const reviewRequiredItems = allItems.filter(
-    (i) => i.classification === CLASSIFICATION.REVIEW_REQUIRED
-  );
 
   // 6. Check for duplicate source items in locked runs
-  const sourceIds = eligibleServiceItems.map((i) => i.id);
-  const lockedDuplicates = await findLockedDuplicateSourceItems(supabase, sourceIds, existingRunId);
-
-  // 7. Group items by barber
-  const itemsByBarber = new Map();
-  for (const item of eligibleServiceItems) {
-    if (!itemsByBarber.has(item.barber_id)) {
-      itemsByBarber.set(item.barber_id, []);
-    }
-    itemsByBarber.get(item.barber_id).push(item);
-  }
+  const allCandidateIds = allItems
+    .filter((i) => i.classification === CLASSIFICATION.NON_STOCK_SERVICE || i.classification === CLASSIFICATION.REVIEW_REQUIRED)
+    .map((i) => i.id);
+  const lockedDuplicates = await findLockedDuplicateSourceItems(supabase, allCandidateIds, existingRunId);
+  const lockedDuplicateIdSet = new Set(lockedDuplicates.map((d) => d.source_moka_transaction_item_id));
 
   // Pre-index rate history by barber
   const historyByBarber = new Map();
@@ -232,7 +248,7 @@ async function generatePayrollDraft(supabase, {
     adjustmentsByBarber.get(adj.barber_id).push(adj);
   }
 
-  // 8. Create or update payroll_runs record
+  // 7. Create or update payroll_runs record
   let runId = existingRunId;
   if (!runId) {
     const { data: newRun, error: runInsertErr } = await supabase
@@ -255,58 +271,172 @@ async function generatePayrollDraft(supabase, {
     runId = newRun.id;
   }
 
-  // 9. Prepare barber items and commission detail snapshot
-  const barberItemRows = [];
-  const commissionItemRows = [];
-  const blockers = [];
-
-  let totalGross = 0;
-  let totalDiscount = 0;
-  let totalNet = 0;
-  let totalCommission = 0;
-  let totalAdjustments = 0;
-
+  // 8. Prepare resolved commission lines, review snapshot items, and barber items
+  const barberCalculations = new Map();
   for (const barber of barbers) {
-    const bItems = itemsByBarber.get(barber.id) || [];
-    const bHistory = historyByBarber.get(barber.id) || [];
-    const bAdjustments = adjustmentsByBarber.get(barber.id) || [];
-    const attCtx = attendanceContextMap.get(barber.id) || {};
+    barberCalculations.set(barber.id, {
+      barber,
+      gross: 0,
+      discount: 0,
+      net: 0,
+      commission: 0,
+      serviceCount: 0,
+      receipts: new Set(),
+      commissionLines: [],
+      missingRateCount: 0,
+      reviewRequiredCount: 0,
+    });
+  }
 
-    let bGross = 0;
-    let bDisc = 0;
-    let bNet = 0;
-    let bComm = 0;
-    let bServiceCount = 0;
-    let bMissingRateCount = 0;
-    const bReceipts = new Set();
+  const reviewItemsToInsert = [];
 
-    const bCommissionLines = [];
+  // Group candidate items by barber
+  for (const item of allItems) {
+    const gross = Number(item.gross_amount) || 0;
+    const disc = Number(item.discount_amount) || 0;
+    const net = item.net_amount != null ? Number(item.net_amount) : (gross - disc);
+    const qty = Number(item.quantity) || 1;
+    const refunded = Number(item.refunded_quantity) || 0;
+    const effectiveQty = Math.max(0, qty - refunded);
 
-    for (const item of bItems) {
-      const qty = Number(item.quantity) || 1;
-      const refunded = Number(item.refunded_quantity) || 0;
-      const effectiveQty = Math.max(0, qty - refunded);
-      if (effectiveQty <= 0) continue; // skip refunded
+    // Skip fully refunded items or non-payroll classifications (retail product, non-stock misc)
+    if (item.classification === CLASSIFICATION.RETAIL_PRODUCT || item.classification === CLASSIFICATION.NON_STOCK_MISC) {
+      continue;
+    }
 
-      const gross = Number(item.gross_amount) || 0;
-      const disc = Number(item.discount_amount) || 0;
-      const net = item.net_amount != null ? Number(item.net_amount) : (gross - disc);
+    // A. Check DUPLICATE_SOURCE (already claimed in locked run)
+    if (lockedDuplicateIdSet.has(item.id)) {
+      const bObj = item.barber_id ? barberMap.get(item.barber_id) : null;
+      reviewItemsToInsert.push({
+        payroll_run_id: runId,
+        source_moka_transaction_item_id: item.id,
+        receipt_number: item.receipt_number,
+        tx_date: item.tx_date,
+        item_name_snapshot: item.item_name,
+        classification_snapshot: item.classification,
+        barber_id: item.barber_id || null,
+        barber_name_snapshot: bObj ? bObj.name : null,
+        branch_snapshot: bObj ? bObj.branch : (item.outlet_slug || null),
+        gross_amount: gross,
+        discount_amount: disc,
+        net_amount: net,
+        reason_code: REVIEW_REASON.DUPLICATE_SOURCE,
+        blocking: true,
+        detail: `Item transaksi ${item.receipt_number} sudah pernah diklaim/dikunci pada periode payroll lain.`,
+      });
+      continue;
+    }
 
-      bGross += gross;
-      bDisc += disc;
-      bNet += net;
-      bServiceCount += effectiveQty;
-      if (item.receipt_number) bReceipts.add(item.receipt_number);
+    // B. Check REVIEW_REQUIRED items
+    if (item.classification === CLASSIFICATION.REVIEW_REQUIRED) {
+      const bObj = item.barber_id ? barberMap.get(item.barber_id) : null;
+      if (item.barber_id && barberCalculations.has(item.barber_id)) {
+        barberCalculations.get(item.barber_id).reviewRequiredCount++;
+      }
+      reviewItemsToInsert.push({
+        payroll_run_id: runId,
+        source_moka_transaction_item_id: item.id,
+        receipt_number: item.receipt_number,
+        tx_date: item.tx_date,
+        item_name_snapshot: item.item_name,
+        classification_snapshot: item.classification,
+        barber_id: item.barber_id || null,
+        barber_name_snapshot: bObj ? bObj.name : null,
+        branch_snapshot: bObj ? bObj.branch : (item.outlet_slug || null),
+        gross_amount: gross,
+        discount_amount: disc,
+        net_amount: net,
+        reason_code: REVIEW_REASON.REVIEW_REQUIRED_ITEM,
+        blocking: true,
+        detail: item.classification_reason || 'Item transaksi memerlukan review konfirmasi klasifikasi.',
+      });
+      continue;
+    }
 
-      // Resolve effective rate for item tx_date
+    // C. Check UNASSIGNED SERVICE items (barber_id is null)
+    if (item.classification === CLASSIFICATION.NON_STOCK_SERVICE && !item.barber_id) {
+      reviewItemsToInsert.push({
+        payroll_run_id: runId,
+        source_moka_transaction_item_id: item.id,
+        receipt_number: item.receipt_number,
+        tx_date: item.tx_date,
+        item_name_snapshot: item.item_name,
+        classification_snapshot: item.classification,
+        barber_id: null,
+        barber_name_snapshot: null,
+        branch_snapshot: item.outlet_slug || null,
+        gross_amount: gross,
+        discount_amount: disc,
+        net_amount: net,
+        reason_code: REVIEW_REASON.MISSING_BARBER,
+        blocking: true,
+        detail: `Layanan ${item.item_name} pada struk ${item.receipt_number} tidak memiliki atribusi kapster.`,
+      });
+      continue;
+    }
+
+    // D. Check ELIGIBLE SERVICE with barber_id
+    if (item.classification === CLASSIFICATION.NON_STOCK_SERVICE && item.barber_id) {
+      const bCalc = barberCalculations.get(item.barber_id);
+      const bHistory = historyByBarber.get(item.barber_id) || [];
+      const barber = barberMap.get(item.barber_id);
+
+      if (!bCalc || !barber) {
+        // Barber not found in active barbers
+        reviewItemsToInsert.push({
+          payroll_run_id: runId,
+          source_moka_transaction_item_id: item.id,
+          receipt_number: item.receipt_number,
+          tx_date: item.tx_date,
+          item_name_snapshot: item.item_name,
+          classification_snapshot: item.classification,
+          barber_id: item.barber_id,
+          barber_name_snapshot: 'Inactive/Unknown Barber',
+          branch_snapshot: item.outlet_slug || null,
+          gross_amount: gross,
+          discount_amount: disc,
+          net_amount: net,
+          reason_code: REVIEW_REASON.MISSING_BARBER,
+          blocking: true,
+          detail: `Kapster ID ${item.barber_id} tidak aktif atau tidak ditemukan dalam master kapster.`,
+        });
+        continue;
+      }
+
+      // Check rate resolution for transaction date
       const rateRes = resolveBarberRateForDate(bHistory, barber.commission_rate, item.tx_date);
       if (rateRes.rate == null) {
-        bMissingRateCount++;
+        // MISSING RATE -> Snapshot into payroll_review_items!
+        // DO NOT insert fake 0% rate into commission lines!
+        bCalc.missingRateCount++;
+        reviewItemsToInsert.push({
+          payroll_run_id: runId,
+          source_moka_transaction_item_id: item.id,
+          receipt_number: item.receipt_number,
+          tx_date: item.tx_date,
+          item_name_snapshot: item.item_name,
+          classification_snapshot: item.classification,
+          barber_id: barber.id,
+          barber_name_snapshot: barber.name,
+          branch_snapshot: barber.branch,
+          gross_amount: gross,
+          discount_amount: disc,
+          net_amount: net,
+          reason_code: REVIEW_REASON.MISSING_RATE,
+          blocking: true,
+          detail: `Kapster ${barber.name} tidak memiliki rate komisi aktif pada tanggal transaksi ${item.tx_date}.`,
+        });
       } else {
+        // RESOLVED RATE -> Snapshot into payroll_barber_commission_items!
         const itemComm = round(net * rateRes.rate);
-        bComm += itemComm;
+        bCalc.gross += gross;
+        bCalc.discount += disc;
+        bCalc.net += net;
+        bCalc.commission += itemComm;
+        bCalc.serviceCount += effectiveQty;
+        if (item.receipt_number) bCalc.receipts.add(item.receipt_number);
 
-        bCommissionLines.push({
+        bCalc.commissionLines.push({
           source_moka_transaction_item_id: item.id,
           receipt_number: item.receipt_number,
           tx_date: item.tx_date,
@@ -323,168 +453,182 @@ async function generatePayrollDraft(supabase, {
         });
       }
     }
+  }
 
-    // Manual adjustment total
+  // 9. Persist Barber Items & Commission Detail Snapshots
+  let totalGross = 0;
+  let totalDiscount = 0;
+  let totalNet = 0;
+  let totalCommission = 0;
+  let totalAdjustments = 0;
+
+  for (const barber of barbers) {
+    const bCalc = barberCalculations.get(barber.id);
+    const bAdjustments = adjustmentsByBarber.get(barber.id) || [];
+    const attCtx = attendanceContextMap.get(barber.id) || {};
+
+    const bGross = bCalc ? bCalc.gross : 0;
+    const bDisc = bCalc ? bCalc.discount : 0;
+    const bNet = bCalc ? bCalc.net : 0;
+    const bComm = bCalc ? bCalc.commission : 0;
+    const bServiceCount = bCalc ? bCalc.serviceCount : 0;
+    const bReceiptCount = bCalc ? bCalc.receipts.size : 0;
+    const bMissingRateCount = bCalc ? bCalc.missingRateCount : 0;
+    const bReviewRequiredCount = bCalc ? bCalc.reviewRequiredCount : 0;
+
     const bAdjTotal = round(bAdjustments.reduce((sum, a) => sum + Number(a.amount || 0), 0));
-    const bPayable = bMissingRateCount > 0 ? 0 : round(bComm + bAdjTotal);
+    const bPayable = round(bComm + bAdjTotal);
 
     let barberStatus = ITEM_STATUS.READY;
     if (bMissingRateCount > 0) {
       barberStatus = ITEM_STATUS.MISSING_RATE;
-      blockers.push({
-        type: BLOCKER_TYPE.MISSING_RATE,
-        barber_id: barber.id,
-        barber_name: barber.name,
-        message: `Kapster ${barber.name} memiliki ${bMissingRateCount} layanan tanpa konfigurasi komisi aktif pada tanggal transaksi.`,
-      });
+    } else if (bReviewRequiredCount > 0) {
+      barberStatus = ITEM_STATUS.REVIEW_REQUIRED;
     }
 
-    const barberItemRow = {
-      payroll_run_id: runId,
-      barber_id: barber.id,
-      barber_name_snapshot: barber.name,
-      branch_snapshot: barber.branch || 'unknown',
-      service_item_count: bServiceCount,
-      receipt_count: bReceipts.size,
-      gross_service_revenue: round(bGross),
-      discount_total: round(bDisc),
-      net_service_revenue: round(bNet),
-      commission_amount: bMissingRateCount > 0 ? 0 : round(bComm),
-      manual_adjustment_total: bAdjTotal,
-      payable_amount: bPayable,
-      review_required_count: 0,
-      missing_rate_count: bMissingRateCount,
-      attendance_context: attCtx,
-      status: barberStatus,
-    };
-
-    barberItemRows.push({
-      barberItem: barberItemRow,
-      commissionLines: bCommissionLines,
-      adjustments: bAdjustments,
-    });
-
-    totalGross += bGross;
-    totalDiscount += bDisc;
-    totalNet += bNet;
-    totalCommission += (bMissingRateCount > 0 ? 0 : bComm);
-    totalAdjustments += bAdjTotal;
-  }
-
-  // Global blockers evaluation
-  if (unassignedServiceItems.length > 0) {
-    blockers.push({
-      type: BLOCKER_TYPE.MISSING_BARBER,
-      count: unassignedServiceItems.length,
-      message: `Terdapat ${unassignedServiceItems.length} item layanan tanpa atribusi kapster pada periode ini.`,
-    });
-  }
-
-  if (reviewRequiredItems.length > 0) {
-    blockers.push({
-      type: BLOCKER_TYPE.UNRESOLVED_REVIEW_ITEM,
-      count: reviewRequiredItems.length,
-      message: `Terdapat ${reviewRequiredItems.length} item bertanda REVIEW_REQUIRED yang perlu dikonfirmasi.`,
-    });
-  }
-
-  if (lockedDuplicates.length > 0) {
-    blockers.push({
-      type: BLOCKER_TYPE.DUPLICATE_SOURCE,
-      count: lockedDuplicates.length,
-      message: `Terdapat ${lockedDuplicates.length} item layanan yang sudah pernah dikunci pada periode payroll lain.`,
-    });
-  }
-
-  // 10. Persist barber items and commission detail snapshot
-  for (const entry of barberItemRows) {
     const { data: insertedPbi, error: pbiErr } = await supabase
       .from('payroll_barber_items')
-      .insert(entry.barberItem)
+      .insert({
+        payroll_run_id: runId,
+        barber_id: barber.id,
+        barber_name_snapshot: barber.name,
+        branch_snapshot: barber.branch || 'unknown',
+        service_item_count: bServiceCount,
+        receipt_count: bReceiptCount,
+        gross_service_revenue: round(bGross),
+        discount_total: round(bDisc),
+        net_service_revenue: round(bNet),
+        commission_amount: round(bComm),
+        manual_adjustment_total: bAdjTotal,
+        payable_amount: bPayable,
+        review_required_count: bReviewRequiredCount,
+        missing_rate_count: bMissingRateCount,
+        attendance_context: attCtx,
+        status: barberStatus,
+      })
       .select()
       .single();
 
     if (pbiErr) {
-      throw new Error(`Failed to insert payroll_barber_item for ${entry.barberItem.barber_id}: ${pbiErr.message}`);
+      throw new Error(`Failed to insert payroll_barber_item for ${barber.name}: ${pbiErr.message}`);
     }
 
     const pbiId = insertedPbi.id;
 
-    // Attach pbiId to commission lines and insert
-    if (entry.commissionLines.length > 0) {
-      const preparedLines = entry.commissionLines.map((line) => ({
-        ...line,
+    // Attach pbiId to resolved commission lines and persist
+    if (bCalc && bCalc.commissionLines.length > 0) {
+      const commRows = bCalc.commissionLines.map((line) => ({
         payroll_run_id: runId,
         payroll_barber_item_id: pbiId,
+        ...line,
       }));
 
-      const { error: linesErr } = await supabase
+      const { error: commInsertErr } = await supabase
         .from('payroll_barber_commission_items')
-        .insert(preparedLines);
+        .insert(commRows);
 
-      if (linesErr) {
-        throw new Error(`Failed to insert commission snapshot items for ${entry.barberItem.barber_id}: ${linesErr.message}`);
+      if (commInsertErr) {
+        throw new Error(`Failed to insert commission lines for ${barber.name}: ${commInsertErr.message}`);
       }
     }
 
-    // Re-insert preserved adjustments if regenerating
-    if (entry.adjustments.length > 0) {
-      const preparedAdjs = entry.adjustments.map((adj) => ({
+    // Re-attach preserved manual adjustments if regenerating
+    for (const adj of bAdjustments) {
+      await supabase.from('payroll_adjustments').insert({
         payroll_run_id: runId,
         payroll_barber_item_id: pbiId,
-        barber_id: adj.barber_id,
+        barber_id: barber.id,
         amount: adj.amount,
         reason: adj.reason,
-        note: adj.note,
+        note: adj.note || null,
         created_by: adj.created_by || userEmail,
-      }));
+      });
+    }
 
-      await supabase.from('payroll_adjustments').insert(preparedAdjs);
+    totalGross += bGross;
+    totalDiscount += bDisc;
+    totalNet += bNet;
+    totalCommission += bComm;
+    totalAdjustments += bAdjTotal;
+  }
+
+  // 10. Persist Review Items Snapshot (Unresolved source items)
+  if (reviewItemsToInsert.length > 0) {
+    const { error: reviewInsertErr } = await supabase
+      .from('payroll_review_items')
+      .insert(reviewItemsToInsert);
+
+    if (reviewInsertErr) {
+      throw new Error(`Failed to insert payroll_review_items: ${reviewInsertErr.message}`);
     }
   }
 
-  // 11. Update top summary on payroll_runs
+  // 11. Update payroll_runs summary totals
   const totalPayable = round(totalCommission + totalAdjustments);
-  const summaryObj = {
-    total_gross_service_revenue: round(totalGross),
+  const summaryPayload = {
+    total_gross: round(totalGross),
     total_discount: round(totalDiscount),
-    total_net_service_revenue: round(totalNet),
-    total_commission_amount: round(totalCommission),
-    total_adjustment_amount: round(totalAdjustments),
-    total_payable_amount: totalPayable,
+    total_net: round(totalNet),
+    total_commission: round(totalCommission),
+    total_adjustments: round(totalAdjustments),
+    total_payable: totalPayable,
     barber_count: barbers.length,
-    blocking_count: blockers.length,
-    unassigned_service_items_count: unassignedServiceItems.length,
-    review_required_items_count: reviewRequiredItems.length,
+    review_items_count: reviewItemsToInsert.length,
   };
 
-  const { data: updatedRun, error: updateRunErr } = await supabase
+  await supabase
     .from('payroll_runs')
     .update({
-      summary: summaryObj,
+      summary: summaryPayload,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', runId)
-    .select()
-    .single();
+    .eq('id', runId);
 
-  if (updateRunErr) {
-    throw new Error(`Failed to update payroll_run summary: ${updateRunErr.message}`);
+  // 12. Build audit blockers list from persistent payroll_review_items
+  const { data: persistentReviewItems } = await supabase
+    .from('payroll_review_items')
+    .select('*')
+    .eq('payroll_run_id', runId)
+    .eq('blocking', true);
+
+  const blockers = [];
+  for (const pri of persistentReviewItems || []) {
+    blockers.push({
+      type: pri.reason_code,
+      barber_id: pri.barber_id || null,
+      barber_name: pri.barber_name_snapshot || null,
+      receipt_number: pri.receipt_number,
+      message: pri.detail || `Item review ${pri.reason_code} pada struk ${pri.receipt_number}`,
+    });
   }
 
+  const { data: finalRun } = await supabase
+    .from('payroll_runs')
+    .select('*')
+    .eq('id', runId)
+    .single();
+
   return {
-    run: updatedRun,
+    run: {
+      ...finalRun,
+      total_service_revenue: round(totalNet),
+      total_commission: round(totalCommission),
+      total_adjustments: round(totalAdjustments),
+      total_payable: totalPayable,
+      barber_count: barbers.length,
+      blocking_issues_count: blockers.length,
+    },
     blockers,
+    review_items: persistentReviewItems || [],
   };
 }
 
 /**
- * Atomically regenerate a DRAFT payroll run.
+ * Regenerate an existing DRAFT payroll run atomically.
  */
-async function regeneratePayrollDraft(supabase, { runId, userEmail }) {
+async function regeneratePayrollDraft(supabase, { runId, userEmail = 'owner@redbox.id' }) {
   if (!runId) throw new Error('runId is required');
 
-  // 1. Verify run exists and is DRAFT
   const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
     .select('*')
@@ -492,43 +636,83 @@ async function regeneratePayrollDraft(supabase, { runId, userEmail }) {
     .single();
 
   if (runErr || !run) {
-    throw new Error(`Payroll run not found: ${runErr?.message || runId}`);
+    throw new Error(`Payroll run ${runId} not found`);
   }
 
   if (run.status === RUN_STATUS.LOCKED) {
-    const err = new Error('Cannot regenerate a LOCKED payroll run');
-    err.status = 409;
-    throw err;
+    throw new Error(`Cannot regenerate: payroll run ${runId} is LOCKED and immutable`);
   }
 
-  // 2. Fetch existing manual adjustments to preserve
+  // Preserve manual adjustments
   const { data: existingAdjustments } = await supabase
     .from('payroll_adjustments')
     .select('*')
     .eq('payroll_run_id', runId);
 
-  // 3. Delete existing child items
-  await supabase.from('payroll_barber_commission_items').delete().eq('payroll_run_id', runId);
+  const adjustmentsToPreserve = (existingAdjustments || []).map((a) => ({
+    barber_id: a.barber_id,
+    amount: Number(a.amount),
+    reason: a.reason,
+    note: a.note,
+    created_by: a.created_by,
+  }));
+
+  // Atomic cleanup of previous draft lines
   await supabase.from('payroll_adjustments').delete().eq('payroll_run_id', runId);
+  await supabase.from('payroll_barber_commission_items').delete().eq('payroll_run_id', runId);
+  await supabase.from('payroll_review_items').delete().eq('payroll_run_id', runId);
   await supabase.from('payroll_barber_items').delete().eq('payroll_run_id', runId);
 
-  // 4. Re-run calculation with preserved adjustments
-  return generatePayrollDraft(supabase, {
+  // Regenerate with preserved adjustments
+  return await generatePayrollDraft(supabase, {
     periodStart: run.period_start,
     periodEnd: run.period_end,
-    userEmail: userEmail || run.generated_by,
+    userEmail,
     existingRunId: runId,
-    preserveAdjustments: existingAdjustments || [],
+    preserveAdjustments: adjustmentsToPreserve,
   });
 }
 
 /**
- * Lock a reviewed payroll run.
+ * Atomic Locking of Payroll Run.
  */
-async function lockPayrollRun(supabase, { runId, userEmail }) {
+async function lockPayrollRun(supabase, { runId, userEmail = 'owner@redbox.id' }) {
   if (!runId) throw new Error('runId is required');
 
-  // 1. Fetch run with child items
+  // 1. Try atomic PostgreSQL RPC if available in database
+  if (typeof supabase.rpc === 'function') {
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('lock_payroll_run', {
+        p_run_id: runId,
+        p_user_email: userEmail,
+      });
+
+      if (!rpcErr && rpcRes && rpcRes.success) {
+        const { data: lockedRun } = await supabase
+          .from('payroll_runs')
+          .select('*')
+          .eq('id', runId)
+          .single();
+        return {
+          success: true,
+          run: lockedRun,
+          locked_at: lockedRun.locked_at,
+          claims_created: rpcRes.claims_created,
+        };
+      }
+
+      // If database explicitly raised an exception via RPC (e.g. blocking issues remain or already claimed)
+      if (rpcErr && rpcErr.message && !rpcErr.message.includes('not implemented') && !rpcErr.message.includes('Could not find') && !rpcErr.message.includes('schema cache')) {
+        throw new Error(rpcErr.message);
+      }
+    } catch (rpcEx) {
+      if (rpcEx.message && !rpcEx.message.includes('not implemented') && !rpcEx.message.includes('Could not find') && !rpcEx.message.includes('schema cache') && !rpcEx.message.includes('does not exist')) {
+        throw rpcEx;
+      }
+    }
+  }
+
+  // 2. Fallback Atomic Validation Sequence (used in mockDb or pre-RPC environments)
   const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
     .select('*')
@@ -536,73 +720,99 @@ async function lockPayrollRun(supabase, { runId, userEmail }) {
     .single();
 
   if (runErr || !run) {
-    throw new Error(`Payroll run not found: ${runErr?.message || runId}`);
+    throw new Error(`Payroll run ${runId} not found`);
   }
 
   if (run.status === RUN_STATUS.LOCKED) {
-    throw new Error('Payroll run is already LOCKED');
+    throw new Error(`Payroll run ${runId} is already LOCKED`);
   }
 
-  // 2. Fetch barber items and verify zero blockers
+  // Verify 0 blocking review items
+  const { data: blockingReviewItems } = await supabase
+    .from('payroll_review_items')
+    .select('id, reason_code, detail')
+    .eq('payroll_run_id', runId)
+    .eq('blocking', true);
+
+  if (blockingReviewItems && blockingReviewItems.length > 0) {
+    throw new Error(
+      `Cannot lock payroll: ${blockingReviewItems.length} blocking review issues remain unresolved.`
+    );
+  }
+
+  // Verify mathematical reconciliation per barber
   const { data: barberItems } = await supabase
     .from('payroll_barber_items')
-    .select('*')
+    .select('id, barber_name_snapshot, net_service_revenue, commission_amount')
     .eq('payroll_run_id', runId);
 
-  for (const bItem of barberItems || []) {
-    if (bItem.missing_rate_count > 0 || bItem.status === ITEM_STATUS.MISSING_RATE) {
-      throw new Error(`Cannot lock payroll: barber ${bItem.barber_name_snapshot} has missing commission rates.`);
-    }
-  }
-
-  // 3. Verify reconciliation of snapshot commission lines
-  const { data: lines } = await supabase
+  const { data: commissionLines } = await supabase
     .from('payroll_barber_commission_items')
-    .select('payroll_barber_item_id, net_amount, commission_amount')
+    .select('payroll_barber_item_id, net_amount, commission_amount, source_moka_transaction_item_id')
     .eq('payroll_run_id', runId);
 
-  const linesByBarber = new Map();
-  for (const l of lines || []) {
-    if (!linesByBarber.has(l.payroll_barber_item_id)) {
-      linesByBarber.set(l.payroll_barber_item_id, { net: 0, comm: 0 });
-    }
-    const acc = linesByBarber.get(l.payroll_barber_item_id);
-    acc.net += Number(l.net_amount || 0);
-    acc.comm += Number(l.commission_amount || 0);
-  }
+  for (const b of barberItems || []) {
+    const lines = (commissionLines || []).filter((l) => l.payroll_barber_item_id === b.id);
+    const sumNet = round(lines.reduce((s, l) => s + Number(l.net_amount || 0), 0));
+    const sumComm = round(lines.reduce((s, l) => s + Number(l.commission_amount || 0), 0));
 
-  for (const bItem of barberItems || []) {
-    const acc = linesByBarber.get(bItem.id) || { net: 0, comm: 0 };
-    const netDiff = Math.abs(round(acc.net) - Number(bItem.net_service_revenue));
-    const commDiff = Math.abs(round(acc.comm) - Number(bItem.commission_amount));
-    if (netDiff > 0.01 || commDiff > 0.01) {
-      throw new Error(`Reconciliation discrepancy on barber ${bItem.barber_name_snapshot}: lines net=${acc.net}, item net=${bItem.net_service_revenue}`);
+    if (sumNet !== Number(b.net_service_revenue)) {
+      throw new Error(
+        `Reconciliation error for ${b.barber_name_snapshot}: sum(net_amount) [${sumNet}] != net_service_revenue [${b.net_service_revenue}]`
+      );
+    }
+    if (sumComm !== Number(b.commission_amount)) {
+      throw new Error(
+        `Reconciliation error for ${b.barber_name_snapshot}: sum(commission_amount) [${sumComm}] != commission_amount [${b.commission_amount}]`
+      );
     }
   }
 
-  // 4. Update status to LOCKED
-  const now = new Date().toISOString();
-  const { data: lockedRun, error: lockErr } = await supabase
+  // Insert claims into payroll_source_claims to guarantee cross-run double-pay prevention
+  if (commissionLines && commissionLines.length > 0) {
+    const claims = commissionLines.map((l) => ({
+      source_moka_transaction_item_id: l.source_moka_transaction_item_id,
+      payroll_run_id: runId,
+      claimed_at: new Date().toISOString(),
+      claimed_by: userEmail,
+    }));
+
+    const { error: claimErr } = await supabase
+      .from('payroll_source_claims')
+      .insert(claims);
+
+    if (claimErr) {
+      throw new Error(`Cannot lock payroll: duplicate source claim detected: ${claimErr.message}`);
+    }
+  }
+
+  // Update status to LOCKED
+  const nowIso = new Date().toISOString();
+  const { data: updatedRun, error: updateErr } = await supabase
     .from('payroll_runs')
     .update({
       status: RUN_STATUS.LOCKED,
-      locked_at: now,
-      locked_by: userEmail || 'owner@redbox.id',
-      updated_at: now,
+      locked_at: nowIso,
+      locked_by: userEmail,
+      updated_at: nowIso,
     })
     .eq('id', runId)
     .select()
     .single();
 
-  if (lockErr) {
-    throw new Error(`Failed to lock payroll run: ${lockErr.message}`);
+  if (updateErr) {
+    throw new Error(`Failed to lock payroll run: ${updateErr.message}`);
   }
 
-  return lockedRun;
+  return {
+    success: true,
+    run: updatedRun,
+    locked_at: nowIso,
+  };
 }
 
 /**
- * Add a manual adjustment to a barber item in a DRAFT payroll run.
+ * Add a manual adjustment to a barber item within a DRAFT payroll run.
  */
 async function addManualAdjustment(supabase, {
   runId,
@@ -613,60 +823,57 @@ async function addManualAdjustment(supabase, {
   userEmail = 'owner@redbox.id',
 }) {
   if (!runId || !barberId) throw new Error('runId and barberId are required');
-  const numAmount = Number(amount);
+  const numAmount = round(Number(amount));
   if (!Number.isFinite(numAmount) || numAmount === 0) {
-    throw new Error('Adjustment amount must be a non-zero number');
+    throw new Error('Adjustment amount must be non-zero');
   }
-  const cleanReason = String(reason || '').trim();
-  if (!cleanReason) {
+  if (!reason || !reason.trim()) {
     throw new Error('Adjustment reason is required');
   }
 
-  // 1. Verify run is DRAFT
-  const { data: run } = await supabase
+  const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
     .select('id, status')
     .eq('id', runId)
     .single();
 
-  if (!run || run.status === RUN_STATUS.LOCKED) {
-    throw new Error('Cannot add adjustments to a LOCKED payroll run');
+  if (runErr || !run) throw new Error(`Payroll run ${runId} not found`);
+  if (run.status === RUN_STATUS.LOCKED) {
+    throw new Error(`Cannot modify adjustments: payroll run ${runId} is LOCKED`);
   }
 
-  // 2. Find barber item
-  const { data: bItem, error: bErr } = await supabase
+  const { data: barberItem, error: pbiErr } = await supabase
     .from('payroll_barber_items')
     .select('id, commission_amount, manual_adjustment_total, payable_amount')
     .eq('payroll_run_id', runId)
     .eq('barber_id', barberId)
     .single();
 
-  if (bErr || !bItem) {
-    throw new Error(`Barber item not found in payroll run: ${barberId}`);
+  if (pbiErr || !barberItem) {
+    throw new Error(`Barber item not found for barber ${barberId} in run ${runId}`);
   }
 
-  // 3. Insert adjustment
-  const { data: insertedAdj, error: adjErr } = await supabase
+  const { data: adjustment, error: adjErr } = await supabase
     .from('payroll_adjustments')
     .insert({
       payroll_run_id: runId,
-      payroll_barber_item_id: bItem.id,
+      payroll_barber_item_id: barberItem.id,
       barber_id: barberId,
       amount: numAmount,
-      reason: cleanReason,
-      note: note ? String(note).trim() : null,
+      reason: reason.trim(),
+      note: note ? note.trim() : null,
       created_by: userEmail,
     })
     .select()
     .single();
 
   if (adjErr) {
-    throw new Error(`Failed to insert adjustment: ${adjErr.message}`);
+    throw new Error(`Failed to create adjustment: ${adjErr.message}`);
   }
 
-  // 4. Update barber item totals
-  const newAdjTotal = round(Number(bItem.manual_adjustment_total || 0) + numAmount);
-  const newPayable = round(Number(bItem.commission_amount || 0) + newAdjTotal);
+  // Update barber item totals
+  const newAdjTotal = round(Number(barberItem.manual_adjustment_total) + numAmount);
+  const newPayable = round(Number(barberItem.commission_amount) + newAdjTotal);
 
   await supabase
     .from('payroll_barber_items')
@@ -675,81 +882,63 @@ async function addManualAdjustment(supabase, {
       payable_amount: newPayable,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', bItem.id);
+    .eq('id', barberItem.id);
 
-  // 5. Update run summary total adjustments & payable
-  const { data: allItems } = await supabase
-    .from('payroll_barber_items')
-    .select('commission_amount, manual_adjustment_total, payable_amount')
-    .eq('payroll_run_id', runId);
-
-  const runComm = round(allItems.reduce((s, x) => s + Number(x.commission_amount || 0), 0));
-  const runAdj = round(allItems.reduce((s, x) => s + Number(x.manual_adjustment_total || 0), 0));
-  const runPayable = round(runComm + runAdj);
-
-  await supabase
-    .from('payroll_runs')
-    .update({
-      summary: {
-        ...(run.summary || {}),
-        total_commission_amount: runComm,
-        total_adjustment_amount: runAdj,
-        total_payable_amount: runPayable,
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', runId);
-
-  return insertedAdj;
+  return adjustment;
 }
 
 /**
  * Delete a manual adjustment from a DRAFT payroll run.
  */
-async function deleteManualAdjustment(supabase, { runId, adjustmentId, userEmail }) {
+async function deleteManualAdjustment(supabase, {
+  runId,
+  adjustmentId,
+  userEmail = 'owner@redbox.id',
+}) {
   if (!runId || !adjustmentId) throw new Error('runId and adjustmentId are required');
 
-  // Verify run is DRAFT
-  const { data: run } = await supabase
+  const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
     .select('id, status')
     .eq('id', runId)
     .single();
 
-  if (!run || run.status === RUN_STATUS.LOCKED) {
-    throw new Error('Cannot delete adjustments from a LOCKED payroll run');
+  if (runErr || !run) throw new Error(`Payroll run ${runId} not found`);
+  if (run.status === RUN_STATUS.LOCKED) {
+    throw new Error(`Cannot delete adjustments: payroll run ${runId} is LOCKED`);
   }
 
-  // Find adjustment
   const { data: adj, error: adjErr } = await supabase
     .from('payroll_adjustments')
-    .select('id, payroll_barber_item_id, amount')
+    .select('*')
     .eq('id', adjustmentId)
     .eq('payroll_run_id', runId)
     .single();
 
   if (adjErr || !adj) {
-    throw new Error('Adjustment not found');
+    throw new Error(`Adjustment ${adjustmentId} not found in run ${runId}`);
   }
 
   // Delete adjustment
   await supabase.from('payroll_adjustments').delete().eq('id', adjustmentId);
 
-  // Recalculate barber item
-  const { data: bItem } = await supabase
+  // Reconcile barber item totals
+  const { data: barberItem } = await supabase
     .from('payroll_barber_items')
     .select('id, commission_amount')
     .eq('id', adj.payroll_barber_item_id)
     .single();
 
-  if (bItem) {
+  if (barberItem) {
     const { data: remainingAdjs } = await supabase
       .from('payroll_adjustments')
       .select('amount')
-      .eq('payroll_barber_item_id', bItem.id);
+      .eq('payroll_barber_item_id', barberItem.id);
 
-    const newAdjTotal = round((remainingAdjs || []).reduce((s, x) => s + Number(x.amount || 0), 0));
-    const newPayable = round(Number(bItem.commission_amount || 0) + newAdjTotal);
+    const newAdjTotal = round(
+      (remainingAdjs || []).reduce((s, a) => s + Number(a.amount || 0), 0)
+    );
+    const newPayable = round(Number(barberItem.commission_amount) + newAdjTotal);
 
     await supabase
       .from('payroll_barber_items')
@@ -758,34 +947,69 @@ async function deleteManualAdjustment(supabase, { runId, adjustmentId, userEmail
         payable_amount: newPayable,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', bItem.id);
+      .eq('id', barberItem.id);
   }
 
-  return { ok: true };
+  return { success: true };
 }
 
 /**
- * List all payroll runs with filtering and authorization.
+ * List all payroll runs.
  */
-async function listPayrollRuns(supabase, { status = null, auth = null }) {
+async function listPayrollRuns(supabase, { status = null, auth = {} } = {}) {
   let query = supabase
     .from('payroll_runs')
     .select('*')
     .order('period_start', { ascending: false });
 
-  if (status && status !== 'all') {
+  if (status) {
     query = query.eq('status', status);
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
+  const { data: runs, error } = await query;
+  if (error) {
+    if (error.code === 'PGRST205' || error.message?.includes('schema cache')) return [];
+    throw new Error(`Failed to list payroll runs: ${error.message}`);
+  }
+
+  // Augment runs with summary stats
+  const result = [];
+  for (const r of runs || []) {
+    const { data: barbers } = await supabase
+      .from('payroll_barber_items')
+      .select('net_service_revenue, commission_amount, manual_adjustment_total, payable_amount')
+      .eq('payroll_run_id', r.id);
+
+    const { count: blockerCount } = await supabase
+      .from('payroll_review_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('payroll_run_id', r.id)
+      .eq('blocking', true);
+
+    const bList = barbers || [];
+    const totalNet = round(bList.reduce((s, b) => s + Number(b.net_service_revenue || 0), 0));
+    const totalComm = round(bList.reduce((s, b) => s + Number(b.commission_amount || 0), 0));
+    const totalAdj = round(bList.reduce((s, b) => s + Number(b.manual_adjustment_total || 0), 0));
+    const totalPayable = round(bList.reduce((s, b) => s + Number(b.payable_amount || 0), 0));
+
+    result.push({
+      ...r,
+      total_service_revenue: totalNet,
+      total_commission: totalComm,
+      total_adjustments: totalAdj,
+      total_payable: totalPayable,
+      barber_count: bList.length,
+      blocking_issues_count: blockerCount || 0,
+    });
+  }
+
+  return result;
 }
 
 /**
- * Get detailed payroll run with all barbers and adjustments.
+ * Get detailed view of a single payroll run.
  */
-async function getPayrollRunDetail(supabase, { runId, auth = null }) {
+async function getPayrollRunDetail(supabase, { runId, auth = {} }) {
   if (!runId) throw new Error('runId is required');
 
   const { data: run, error: runErr } = await supabase
@@ -794,80 +1018,127 @@ async function getPayrollRunDetail(supabase, { runId, auth = null }) {
     .eq('id', runId)
     .single();
 
-  if (runErr || !run) {
-    throw new Error(`Payroll run not found: ${runErr?.message || runId}`);
-  }
+  if (runErr || !run) throw new Error(`Payroll run ${runId} not found`);
 
   // Fetch barber items
-  let bQuery = supabase
+  let barberQuery = supabase
     .from('payroll_barber_items')
+    .select('*')
+    .eq('payroll_run_id', runId)
+    .order('barber_name_snapshot');
+
+  // Branch isolation for non-owners
+  if (auth.role !== 'owner' && auth.branchScope && auth.branchScope !== 'all') {
+    barberQuery = barberQuery.eq('branch_snapshot', auth.branchScope);
+  }
+
+  const { data: barbers } = await barberQuery;
+
+  // Fetch review items
+  const { data: reviewItems } = await supabase
+    .from('payroll_review_items')
     .select('*')
     .eq('payroll_run_id', runId);
 
-  // Manager branch scoping
-  if (auth && auth.role !== 'owner' && auth.branch) {
-    bQuery = bQuery.eq('branch_snapshot', auth.branch);
-  }
-
-  const { data: barberItems, error: bErr } = await bQuery.order('branch_snapshot', { ascending: true });
-  if (bErr) throw bErr;
-
-  // Fetch adjustments
+  // Fetch manual adjustments
   const { data: adjustments } = await supabase
     .from('payroll_adjustments')
     .select('*')
-    .eq('payroll_run_id', runId);
+    .eq('payroll_run_id', runId)
+    .order('created_at', { ascending: false });
+
+  const bList = barbers || [];
+  const totalNet = round(bList.reduce((s, b) => s + Number(b.net_service_revenue || 0), 0));
+  const totalComm = round(bList.reduce((s, b) => s + Number(b.commission_amount || 0), 0));
+  const totalAdj = round(bList.reduce((s, b) => s + Number(b.manual_adjustment_total || 0), 0));
+  const totalPayable = round(bList.reduce((s, b) => s + Number(b.payable_amount || 0), 0));
+
+  const blockingItems = (reviewItems || []).filter((r) => r.blocking === true);
+  const blockers = blockingItems.map((r) => ({
+    type: r.reason_code,
+    barber_id: r.barber_id || null,
+    barber_name: r.barber_name_snapshot || null,
+    receipt_number: r.receipt_number,
+    message: r.detail || `Item review ${r.reason_code} pada struk ${r.receipt_number}`,
+  }));
 
   return {
-    run,
-    barbers: barberItems || [],
+    run: {
+      ...run,
+      total_service_revenue: totalNet,
+      total_commission: totalComm,
+      total_adjustments: totalAdj,
+      total_payable: totalPayable,
+      barber_count: bList.length,
+      blocking_issues_count: blockers.length,
+    },
+    barbers: bList,
+    blockers,
+    review_items: reviewItems || [],
     adjustments: adjustments || [],
   };
 }
 
 /**
- * Get snapshotted service items and detail for one barber in a payroll run.
+ * Get detailed breakdown for a specific barber within a run.
  */
-async function getBarberRunDetail(supabase, { runId, barberId, auth = null }) {
+async function getBarberRunDetail(supabase, { runId, barberId, auth = {} }) {
   if (!runId || !barberId) throw new Error('runId and barberId are required');
 
-  const { data: bItem, error: bErr } = await supabase
+  const { data: run, error: runErr } = await supabase
+    .from('payroll_runs')
+    .select('*')
+    .eq('id', runId)
+    .single();
+
+  if (runErr || !run) throw new Error(`Payroll run ${runId} not found`);
+
+  const { data: barberItem, error: bErr } = await supabase
     .from('payroll_barber_items')
     .select('*')
     .eq('payroll_run_id', runId)
     .eq('barber_id', barberId)
     .single();
 
-  if (bErr || !bItem) {
-    throw new Error(`Barber payroll item not found: ${bErr?.message || barberId}`);
+  if (bErr || !barberItem) {
+    throw new Error(`Barber ${barberId} not found in payroll run ${runId}`);
   }
 
-  // Check branch permission for Manager
-  if (auth && auth.role !== 'owner' && auth.branch && bItem.branch_snapshot !== auth.branch) {
-    const err = new Error(`Forbidden: You cannot view barber details for branch ${bItem.branch_snapshot}`);
-    err.status = 403;
-    throw err;
+  // Branch isolation check
+  if (auth.role !== 'owner' && auth.branchScope && auth.branchScope !== 'all') {
+    if (barberItem.branch_snapshot !== auth.branchScope) {
+      throw new Error(`Forbidden: Staff is restricted to branch ${auth.branchScope}`);
+    }
   }
 
-  // Fetch snapshotted commission lines
-  const { data: commissionLines, error: linesErr } = await supabase
+  // Fetch commission snapshot lines
+  const { data: commissionLines } = await supabase
     .from('payroll_barber_commission_items')
     .select('*')
-    .eq('payroll_barber_item_id', bItem.id)
-    .order('tx_date', { ascending: false });
+    .eq('payroll_barber_item_id', barberItem.id)
+    .order('tx_date', { ascending: true });
 
-  if (linesErr) throw linesErr;
+  // Fetch review items for this barber
+  const { data: reviewItems } = await supabase
+    .from('payroll_review_items')
+    .select('*')
+    .eq('payroll_run_id', runId)
+    .eq('barber_id', barberId);
 
-  // Fetch adjustments for this barber
+  // Fetch manual adjustments
   const { data: adjustments } = await supabase
     .from('payroll_adjustments')
     .select('*')
-    .eq('payroll_barber_item_id', bItem.id);
+    .eq('payroll_barber_item_id', barberItem.id)
+    .order('created_at', { ascending: false });
 
   return {
-    barber_item: bItem,
+    run,
+    barber: barberItem,
     commission_lines: commissionLines || [],
+    review_items: reviewItems || [],
     adjustments: adjustments || [],
+    attendance_context: barberItem.attendance_context || {},
   };
 }
 
@@ -875,7 +1146,9 @@ module.exports = {
   RUN_STATUS,
   ITEM_STATUS,
   BLOCKER_TYPE,
+  REVIEW_REASON,
   fetchAttendanceContext,
+  findLockedDuplicateSourceItems,
   generatePayrollDraft,
   regeneratePayrollDraft,
   lockPayrollRun,

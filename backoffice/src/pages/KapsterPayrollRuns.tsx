@@ -17,6 +17,7 @@ import {
   type PayrollRun,
   type PayrollBarberItem,
   type PayrollCommissionItem,
+  type PayrollReviewItem,
   type PayrollAdjustment,
   type PayrollBlocker,
   type AttendanceContext,
@@ -71,6 +72,7 @@ export function KapsterPayrollRuns() {
   const [selectedRun, setSelectedRun] = useState<PayrollRun | null>(null);
   const [runBarbers, setRunBarbers] = useState<PayrollBarberItem[]>([]);
   const [runBlockers, setRunBlockers] = useState<PayrollBlocker[]>([]);
+  const [runReviewItems, setRunReviewItems] = useState<PayrollReviewItem[]>([]);
   const [, setRunAdjustments] = useState<PayrollAdjustment[]>([]);
   const [loadingRunDetail, setLoadingRunDetail] = useState(false);
   const [runDetailError, setRunDetailError] = useState<string | null>(null);
@@ -86,8 +88,10 @@ export function KapsterPayrollRuns() {
   const [detailBarberId, setDetailBarberId] = useState<string | null>(null);
   const [detailBarber, setDetailBarber] = useState<PayrollBarberItem | null>(null);
   const [detailCommissionLines, setDetailCommissionLines] = useState<PayrollCommissionItem[]>([]);
+  const [detailReviewItems, setDetailReviewItems] = useState<PayrollReviewItem[]>([]);
   const [detailAdjustments, setDetailAdjustments] = useState<PayrollAdjustment[]>([]);
   const [detailAttendance, setDetailAttendance] = useState<AttendanceContext | null>(null);
+  const [drawerTab, setDrawerTab] = useState<'commission' | 'review'>('commission');
   const [loadingBarberDetail, setLoadingBarberDetail] = useState(false);
   const [barberDetailError, setBarberDetailError] = useState<string | null>(null);
 
@@ -130,6 +134,7 @@ export function KapsterPayrollRuns() {
       setSelectedRun(res.run);
       setRunBarbers(res.barbers);
       setRunBlockers(res.blockers);
+      setRunReviewItems(res.review_items || []);
       setRunAdjustments(res.adjustments);
     } catch (err: any) {
       setRunDetailError(err.message || 'Gagal memuat rincian payroll draft.');
@@ -153,8 +158,10 @@ export function KapsterPayrollRuns() {
       const res = await getBarberRunDetail(selectedRunId, barberId);
       setDetailBarber(res.barber);
       setDetailCommissionLines(res.commission_lines || []);
+      setDetailReviewItems(res.review_items || []);
       setDetailAdjustments(res.adjustments || []);
       setDetailAttendance(res.attendance_context || null);
+      setDrawerTab('commission');
     } catch (err: any) {
       setBarberDetailError(err.message || 'Gagal memuat rincian kapster.');
     } finally {
@@ -459,8 +466,13 @@ export function KapsterPayrollRuns() {
                       : 'Draft kalkulasi berbasis item-level Moka dan konfigurasi komisi historis.'}
                   </p>
                 </div>
-                <div className="text-xs text-rb-text-muted">
-                  Total Kapster: <span className="font-semibold text-rb-text">{visibleBarbers.length}</span>
+                <div className="flex items-center space-x-3 text-xs text-rb-text-muted">
+                  <span>Total Kapster: <span className="font-semibold text-rb-text">{visibleBarbers.length}</span></span>
+                  {runReviewItems.length > 0 && (
+                    <span className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 font-bold text-rose-400">
+                      {runReviewItems.length} Item Review
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -955,63 +967,142 @@ export function KapsterPayrollRuns() {
                     )}
                   </div>
 
-                  {/* Service Items Table */}
+                  {/* Items Tabs: Resolved Commission Lines vs Unresolved Review Items */}
                   <div className="rounded-2xl border border-rb-border bg-rb-surface p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h4 className="text-sm font-bold text-rb-text">
-                        Snapshot Garis Layanan ({detailCommissionLines.length} Item)
-                      </h4>
+                    <div className="mb-3 flex items-center justify-between border-b border-rb-border pb-3">
+                      <div className="flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setDrawerTab('commission')}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                            drawerTab === 'commission'
+                              ? 'bg-rb-surface-card text-rb-text border border-rb-border shadow-sm'
+                              : 'text-rb-text-muted hover:text-rb-text'
+                          }`}
+                        >
+                          Garis Layanan Komisi ({detailCommissionLines.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDrawerTab('review')}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                            drawerTab === 'review'
+                              ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30 shadow-sm'
+                              : detailReviewItems.length > 0
+                              ? 'text-rose-400 hover:text-rose-300'
+                              : 'text-rb-text-muted hover:text-rb-text'
+                          }`}
+                        >
+                          Item Review / Tertunda ({detailReviewItems.length})
+                        </button>
+                      </div>
                       <span className="text-[11px] text-rb-text-muted">
                         Sumber kanonikal: moka_transaction_items
                       </span>
                     </div>
 
-                    <div className="overflow-x-auto max-h-96">
-                      <table className="w-full text-left text-xs text-rb-text">
-                        <thead className="border-b border-rb-border bg-rb-surface-card/60 sticky top-0 font-semibold text-rb-text-muted">
-                          <tr>
-                            <th className="px-3 py-2">Tanggal</th>
-                            <th className="px-3 py-2">No. Struk</th>
-                            <th className="px-3 py-2">Layanan</th>
-                            <th className="px-3 py-2 text-right">Gross</th>
-                            <th className="px-3 py-2 text-right">Diskon</th>
-                            <th className="px-3 py-2 text-right">Net</th>
-                            <th className="px-3 py-2 text-right">Rate</th>
-                            <th className="px-3 py-2 text-right">Komisi</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-rb-border">
-                          {detailCommissionLines.map((line) => (
-                            <tr key={line.id} className="hover:bg-rb-surface-card/30">
-                              <td className="px-3 py-2 whitespace-nowrap text-rb-text-muted">
-                                {line.tx_date}
-                              </td>
-                              <td className="px-3 py-2 font-mono text-[11px]">
-                                {line.receipt_number}
-                              </td>
-                              <td className="px-3 py-2 font-medium">
-                                {line.service_name_snapshot}
-                              </td>
-                              <td className="px-3 py-2 text-right font-mono">
-                                {formatRupiah(line.gross_amount)}
-                              </td>
-                              <td className="px-3 py-2 text-right font-mono text-rb-text-muted">
-                                {line.discount_amount > 0 ? formatRupiah(line.discount_amount) : '—'}
-                              </td>
-                              <td className="px-3 py-2 text-right font-mono font-medium">
-                                {formatRupiah(line.net_amount)}
-                              </td>
-                              <td className="px-3 py-2 text-right font-mono">
-                                {(line.commission_rate_used * 100).toFixed(0)}%
-                              </td>
-                              <td className="px-3 py-2 text-right font-mono font-bold text-emerald-400">
-                                {formatRupiah(line.commission_amount)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    {drawerTab === 'commission' ? (
+                      detailCommissionLines.length === 0 ? (
+                        <p className="py-6 text-center text-xs text-rb-text-muted italic">
+                          Tidak ada garis layanan yang eligible komisi pada periode ini.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto max-h-96">
+                          <table className="w-full text-left text-xs text-rb-text">
+                            <thead className="border-b border-rb-border bg-rb-surface-card/60 sticky top-0 font-semibold text-rb-text-muted">
+                              <tr>
+                                <th className="px-3 py-2">Tanggal</th>
+                                <th className="px-3 py-2">No. Struk</th>
+                                <th className="px-3 py-2">Layanan</th>
+                                <th className="px-3 py-2 text-right">Gross</th>
+                                <th className="px-3 py-2 text-right">Diskon</th>
+                                <th className="px-3 py-2 text-right">Net</th>
+                                <th className="px-3 py-2 text-right">Rate</th>
+                                <th className="px-3 py-2 text-right">Komisi</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-rb-border">
+                              {detailCommissionLines.map((line) => (
+                                <tr key={line.id} className="hover:bg-rb-surface-card/30">
+                                  <td className="px-3 py-2 whitespace-nowrap text-rb-text-muted">
+                                    {line.tx_date}
+                                  </td>
+                                  <td className="px-3 py-2 font-mono text-[11px]">
+                                    {line.receipt_number}
+                                  </td>
+                                  <td className="px-3 py-2 font-medium">
+                                    {line.service_name_snapshot}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono">
+                                    {formatRupiah(line.gross_amount)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono text-rb-text-muted">
+                                    {line.discount_amount > 0 ? formatRupiah(line.discount_amount) : '—'}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono font-medium">
+                                    {formatRupiah(line.net_amount)}
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono">
+                                    {(line.commission_rate_used * 100).toFixed(0)}%
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono font-bold text-emerald-400">
+                                    {formatRupiah(line.commission_amount)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    ) : (
+                      detailReviewItems.length === 0 ? (
+                        <p className="py-6 text-center text-xs text-emerald-400 font-medium">
+                          ✓ Tidak ada item yang tertunda / memerlukan review untuk kapster ini.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto max-h-96">
+                          <table className="w-full text-left text-xs text-rb-text">
+                            <thead className="border-b border-rb-border bg-rb-surface-card/60 sticky top-0 font-semibold text-rb-text-muted">
+                              <tr>
+                                <th className="px-3 py-2">Tanggal</th>
+                                <th className="px-3 py-2">No. Struk</th>
+                                <th className="px-3 py-2">Item</th>
+                                <th className="px-3 py-2">Alasan Review</th>
+                                <th className="px-3 py-2 text-right">Net Amount</th>
+                                <th className="px-3 py-2 text-center">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-rb-border">
+                              {detailReviewItems.map((rItem) => (
+                                <tr key={rItem.id} className="hover:bg-rb-surface-card/30">
+                                  <td className="px-3 py-2 whitespace-nowrap text-rb-text-muted">
+                                    {rItem.tx_date}
+                                  </td>
+                                  <td className="px-3 py-2 font-mono text-[11px]">
+                                    {rItem.receipt_number}
+                                  </td>
+                                  <td className="px-3 py-2 font-medium">
+                                    {rItem.item_name_snapshot}
+                                  </td>
+                                  <td className="px-3 py-2 text-rose-300">
+                                    <div className="font-semibold text-[11px]">{rItem.reason_code}</div>
+                                    <div className="text-[10px] text-rb-text-muted">{rItem.detail}</div>
+                                  </td>
+                                  <td className="px-3 py-2 text-right font-mono font-medium">
+                                    {formatRupiah(rItem.net_amount)}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold text-rose-400">
+                                      {rItem.blocking ? 'BLOCKING' : 'WARNING'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    )}
                   </div>
                 </>
               ) : null}

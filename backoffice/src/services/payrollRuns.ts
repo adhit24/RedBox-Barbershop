@@ -90,10 +90,31 @@ export interface PayrollAdjustment {
   created_at: string;
 }
 
+export interface PayrollReviewItem {
+  id: string;
+  payroll_run_id: string;
+  source_moka_transaction_item_id: string | null;
+  receipt_number: string;
+  tx_date: string;
+  item_name_snapshot: string;
+  classification_snapshot: string;
+  barber_id: string | null;
+  barber_name_snapshot: string | null;
+  branch_snapshot: string | null;
+  gross_amount: number;
+  discount_amount: number;
+  net_amount: number;
+  reason_code: string;
+  blocking: boolean;
+  detail: string | null;
+  created_at: string;
+}
+
 export interface PayrollRunDetailResponse {
   run: PayrollRun;
   barbers: PayrollBarberItem[];
   blockers: PayrollBlocker[];
+  review_items: PayrollReviewItem[];
   adjustments: PayrollAdjustment[];
 }
 
@@ -101,6 +122,7 @@ export interface BarberRunDetailResponse {
   barber: PayrollBarberItem;
   run: PayrollRun;
   commission_lines: PayrollCommissionItem[];
+  review_items: PayrollReviewItem[];
   adjustments: PayrollAdjustment[];
   attendance_context: AttendanceContext;
 }

@@ -33,22 +33,29 @@ async function runValidation() {
   let testRunId = null;
 
   try {
-    // 1. Check Tables Existence
+    // 1. Check Tables Existence (All 6 canonical tables)
     console.log('1. Verifying Database Tables...');
-    const tables = ['payroll_runs', 'payroll_barber_items', 'payroll_barber_commission_items', 'payroll_adjustments'];
+    const tables = [
+      'payroll_runs',
+      'payroll_barber_items',
+      'payroll_barber_commission_items',
+      'payroll_review_items',
+      'payroll_adjustments',
+      'payroll_source_claims',
+    ];
     for (const tbl of tables) {
-      const { data, error } = await supabase.from(tbl).select('id').limit(1);
+      const { data, error } = await supabase.from(tbl).select('*').limit(1);
       if (error) {
         throw new Error(`Table public.${tbl} does not exist or schema cache not refreshed: ${error.message}`);
       }
       console.log(`   ✓ public.${tbl} exists`);
     }
 
-    // 2. Check Overlap Trigger on barber_commission_rates
-    console.log('\n2. Testing barber_commission_rates overlap trigger...');
+    // 2. Check Exclusion Constraint on barber_commission_rates
+    console.log('\n2. Testing barber_commission_rates exclusion constraint...');
     const { data: testBarber } = await supabase.from('barbers').select('id, name').limit(1).single();
     if (testBarber) {
-      // Try to insert two identical overlapping rate ranges to confirm trigger raises exception
+      // Try to insert a rate then an overlapping rate
       const { data: r1, error: e1 } = await supabase
         .from('barber_commission_rates')
         .insert({
@@ -74,10 +81,10 @@ async function runValidation() {
             created_by: 'system_test',
           });
 
-        if (eOverlap) {
-          console.log(`   ✓ Overlap trigger correctly rejected overlapping period: ${eOverlap.message}`);
+        if (eOverlap && (eOverlap.code === '23P01' || eOverlap.message.includes('exclusion constraint'))) {
+          console.log(`   ✓ Exclusion constraint correctly rejected overlapping period at database level: ${eOverlap.message}`);
         } else {
-          console.warn('   ⚠ Overlap trigger did not reject overlapping period!');
+          console.warn('   ⚠ Exclusion constraint did not reject overlapping period!', eOverlap);
         }
 
         // Clean up test rate 1
@@ -97,6 +104,7 @@ async function runValidation() {
     testRunId = draftRes.run.id;
     console.log(`   ✓ Created Draft Run ID: ${testRunId}`);
     console.log(`   ✓ Status: ${draftRes.run.status}`);
+    console.log(`   ✓ Review items persisted: ${draftRes.review_items.length}`);
     console.log(`   ✓ Blockers found: ${draftRes.blockers.length}`);
     if (draftRes.blockers.length > 0) {
       console.log(`   Blocker sample: ${draftRes.blockers[0].type} - ${draftRes.blockers[0].message}`);
@@ -111,6 +119,7 @@ async function runValidation() {
     console.log(`   ✓ Barber items count: ${detail.barbers.length}`);
     console.log(`   ✓ Total net service revenue: Rp ${detail.run.total_service_revenue.toLocaleString('id-ID')}`);
     console.log(`   ✓ Total commission snapshot: Rp ${detail.run.total_commission.toLocaleString('id-ID')}`);
+    console.log(`   ✓ Review items in run: ${detail.review_items.length}`);
 
     if (detail.barbers.length > 0) {
       const b0 = detail.barbers[0];
@@ -185,7 +194,7 @@ async function runValidation() {
         await lockPayrollRun(supabase, { runId: testRunId, userEmail: 'owner@redbox.id' });
       } catch (err) {
         lockBlocked = true;
-        console.log(`   ✓ Locking correctly blocked due to active blockers: ${err.message}`);
+        console.log(`   ✓ Locking correctly blocked due to active review blockers: ${err.message}`);
       }
       if (!lockBlocked) throw new Error('Locking should have been blocked!');
     } else {
