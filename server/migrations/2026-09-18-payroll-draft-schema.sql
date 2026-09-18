@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS public.payroll_review_items (
     reason_code TEXT NOT NULL CHECK (reason_code IN ('MISSING_RATE', 'MISSING_BARBER', 'REVIEW_REQUIRED_ITEM', 'DUPLICATE_SOURCE', 'REFUND_REVIEW', 'SOURCE_DATA_INVALID')),
     blocking BOOLEAN NOT NULL DEFAULT true,
     detail TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_review_run_source_item UNIQUE (payroll_run_id, source_moka_transaction_item_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_pri_run_id ON public.payroll_review_items (payroll_run_id);
@@ -188,12 +189,22 @@ DECLARE
     v_status TEXT;
     v_run_id UUID;
 BEGIN
-    v_run_id := COALESCE(NEW.payroll_run_id, OLD.payroll_run_id);
+    IF TG_OP = 'DELETE' THEN
+        v_run_id := OLD.payroll_run_id;
+    ELSE
+        v_run_id := NEW.payroll_run_id;
+    END IF;
+
     SELECT status INTO v_status FROM public.payroll_runs WHERE id = v_run_id;
     IF v_status = 'LOCKED' THEN
         RAISE EXCEPTION 'Cannot modify payroll data: payroll run % is LOCKED', v_run_id;
     END IF;
-    RETURN COALESCE(NEW, OLD);
+
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    ELSE
+        RETURN NEW;
+    END IF;
 END;
 $$ LANGUAGE plpgsql
 SET search_path = public, pg_temp;

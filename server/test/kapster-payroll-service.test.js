@@ -158,7 +158,32 @@ function createMockDb(initialState = {}) {
             }
           }
 
-          // 3. Child tables immutability trigger simulation (trg_child_immutability)
+          // 3. payroll_review_items uniqueness constraint (uq_review_run_source_item)
+          if (table === 'payroll_review_items') {
+            for (const item of toInsert) {
+              if (item.source_moka_transaction_item_id) {
+                const existing = rows.find(
+                  (r) =>
+                    r.payroll_run_id === item.payroll_run_id &&
+                    r.source_moka_transaction_item_id === item.source_moka_transaction_item_id
+                );
+                if (existing) {
+                  const err = new Error(
+                    `duplicate key value violates unique constraint "uq_review_run_source_item"`
+                  );
+                  err.code = '23505';
+                  return {
+                    select: () => ({ single: async () => ({ data: null, error: err }) }),
+                    then(resolve) {
+                      resolve({ data: null, error: err });
+                    },
+                  };
+                }
+              }
+            }
+          }
+
+          // 4. Child tables immutability trigger simulation (trg_child_immutability: INSERT)
           if (['payroll_barber_items', 'payroll_barber_commission_items', 'payroll_review_items', 'payroll_adjustments'].includes(table)) {
             for (const item of toInsert) {
               const run = tables.payroll_runs.find((r) => r.id === item.payroll_run_id);
@@ -274,6 +299,18 @@ function createMockDb(initialState = {}) {
                     const run = tables.payroll_runs.find((rn) => rn.id === r.payroll_run_id);
                     if (run && run.status === RUN_STATUS.LOCKED) {
                       throw new Error(`Cannot modify payroll data: payroll run ${r.payroll_run_id} is LOCKED`);
+                    }
+                  }
+                }
+              }
+
+              // Source claims permanence: cannot delete claims belonging to a locked run
+              if (table === 'payroll_source_claims') {
+                for (const r of rows) {
+                  if (r[col] === val) {
+                    const run = tables.payroll_runs.find((rn) => rn.id === r.payroll_run_id);
+                    if (run && run.status === RUN_STATUS.LOCKED) {
+                      throw new Error(`Cannot delete payroll source claims for locked payroll run ${r.payroll_run_id}: claims are permanent`);
                     }
                   }
                 }
@@ -443,9 +480,21 @@ test('Task 2.3 Hardened Suite: Kapster Payroll Draft Engine & Snapshot Guarantee
     assert.equal(revItem.blocking, true);
   });
 
-  // F. Invariant: Every relevant source item belongs to commission OR review snapshot (never neither)
-  await t.test('F: every relevant source item belongs to commission OR review snapshot', async () => {
+  // F. Exactly-one service invariant: count(comm) + count(rev) === 1 for every relevant canonical source item
+  await t.test('F: exactly-one service invariant across all 5 test cases', async () => {
+    // 5 Test cases:
+    // 1. resolved service -> comm=1, rev=0
+    // 2. missing rate -> comm=0, rev=1 (reason: MISSING_RATE)
+    // 3. missing barber -> comm=0, rev=1 (reason: MISSING_BARBER)
+    // 4. REVIEW_REQUIRED -> comm=0, rev=1 (reason: REVIEW_REQUIRED_ITEM)
+    // 5. duplicate locked source -> comm=0, rev=1 (reason: DUPLICATE_SOURCE)
     const mockDb = createMockDb({
+      payroll_runs: [
+        { id: 'run-locked-prior', status: RUN_STATUS.LOCKED, period_start: '2026-08-01', period_end: '2026-08-31' },
+      ],
+      payroll_source_claims: [
+        { source_moka_transaction_item_id: 'item-dup-locked', payroll_run_id: 'run-locked-prior', claimed_by: 'owner@redbox.id' },
+      ],
       barbers: [
         { id: 'b1', name: 'Abdul', branch: 'bypass', commission_rate: 0.30, is_active: true },
         { id: 'b2', name: 'Budi', branch: 'csb', commission_rate: null, is_active: true }, // b2 missing rate
@@ -454,28 +503,89 @@ test('Task 2.3 Hardened Suite: Kapster Payroll Draft Engine & Snapshot Guarantee
         { id: 'r1', barber_id: 'b1', rate: 0.30, effective_from: '2026-09-01', effective_to: null },
       ],
       moka_transaction_items: [
-        // 1. Resolved service item -> commission lines
-        { id: 'item-1', receipt_number: 'R1', barber_id: 'b1', item_name: 'Cut', classification: 'NON_STOCK_SERVICE', gross_amount: 100000, discount_amount: 0, net_amount: 100000, is_deleted: false, tx_date: '2026-09-02' },
-        // 2. Missing rate service item -> review items
-        { id: 'item-2', receipt_number: 'R2', barber_id: 'b2', item_name: 'Shave', classification: 'NON_STOCK_SERVICE', gross_amount: 50000, discount_amount: 0, net_amount: 50000, is_deleted: false, tx_date: '2026-09-03' },
-        // 3. Missing barber service item -> review items
-        { id: 'item-3', receipt_number: 'R3', barber_id: null, item_name: 'Coloring', classification: 'NON_STOCK_SERVICE', gross_amount: 200000, discount_amount: 0, net_amount: 200000, is_deleted: false, tx_date: '2026-09-04' },
-        // 4. Review required item -> review items
-        { id: 'item-4', receipt_number: 'R4', barber_id: 'b1', item_name: 'Custom', classification: 'REVIEW_REQUIRED', gross_amount: 80000, discount_amount: 0, net_amount: 80000, is_deleted: false, tx_date: '2026-09-05' },
+        // Case 1: Resolved service item
+        { id: 'item-resolved', receipt_number: 'R1', barber_id: 'b1', item_name: 'Haircut', classification: 'NON_STOCK_SERVICE', gross_amount: 100000, discount_amount: 0, net_amount: 100000, is_deleted: false, tx_date: '2026-09-02' },
+        // Case 2: Missing rate
+        { id: 'item-no-rate', receipt_number: 'R2', barber_id: 'b2', item_name: 'Shave', classification: 'NON_STOCK_SERVICE', gross_amount: 50000, discount_amount: 0, net_amount: 50000, is_deleted: false, tx_date: '2026-09-03' },
+        // Case 3: Missing barber
+        { id: 'item-no-barber', receipt_number: 'R3', barber_id: null, item_name: 'Coloring', classification: 'NON_STOCK_SERVICE', gross_amount: 200000, discount_amount: 0, net_amount: 200000, is_deleted: false, tx_date: '2026-09-04' },
+        // Case 4: REVIEW_REQUIRED item
+        { id: 'item-review-req', receipt_number: 'R4', barber_id: 'b1', item_name: 'Custom Package', classification: 'REVIEW_REQUIRED', gross_amount: 80000, discount_amount: 0, net_amount: 80000, is_deleted: false, tx_date: '2026-09-05' },
+        // Case 5: Duplicate locked source
+        { id: 'item-dup-locked', receipt_number: 'R5', barber_id: 'b1', item_name: 'Haircut Dup', classification: 'NON_STOCK_SERVICE', gross_amount: 90000, discount_amount: 0, net_amount: 90000, is_deleted: false, tx_date: '2026-09-06' },
       ],
     });
 
     await generatePayrollDraft(mockDb, { periodStart: '2026-09-01', periodEnd: '2026-09-30' });
 
-    const commSourceIds = new Set(mockDb.tables.payroll_barber_commission_items.map((c) => c.source_moka_transaction_item_id));
-    const reviewSourceIds = new Set(mockDb.tables.payroll_review_items.map((r) => r.source_moka_transaction_item_id));
+    const testCases = [
+      { id: 'item-resolved', expectedComm: 1, expectedRev: 0, expectedReason: null },
+      { id: 'item-no-rate', expectedComm: 0, expectedRev: 1, expectedReason: REVIEW_REASON.MISSING_RATE },
+      { id: 'item-no-barber', expectedComm: 0, expectedRev: 1, expectedReason: REVIEW_REASON.MISSING_BARBER },
+      { id: 'item-review-req', expectedComm: 0, expectedRev: 1, expectedReason: REVIEW_REASON.REVIEW_REQUIRED_ITEM },
+      { id: 'item-dup-locked', expectedComm: 0, expectedRev: 1, expectedReason: REVIEW_REASON.DUPLICATE_SOURCE },
+    ];
 
-    const relevantIds = ['item-1', 'item-2', 'item-3', 'item-4'];
-    for (const id of relevantIds) {
-      const inComm = commSourceIds.has(id);
-      const inRev = reviewSourceIds.has(id);
-      assert.ok(inComm !== inRev, `Item ${id} must be in exactly one table (inComm: ${inComm}, inRev: ${inRev})`);
+    for (const tc of testCases) {
+      const commCount = mockDb.tables.payroll_barber_commission_items.filter(
+        (c) => c.source_moka_transaction_item_id === tc.id
+      ).length;
+      const revCount = mockDb.tables.payroll_review_items.filter(
+        (r) => r.source_moka_transaction_item_id === tc.id
+      ).length;
+
+      const totalCount = commCount + revCount;
+
+      // Invariant: count in commission + count in review MUST EQUAL EXACTLY 1 (never 0 or >1)
+      assert.equal(
+        totalCount,
+        1,
+        `Invariant violated for source item ${tc.id}: commCount(${commCount}) + revCount(${revCount}) must be exactly 1, but was ${totalCount}`
+      );
+      assert.equal(commCount, tc.expectedComm, `Item ${tc.id} comm count mismatch`);
+      assert.equal(revCount, tc.expectedRev, `Item ${tc.id} rev count mismatch`);
+
+      if (tc.expectedReason) {
+        const revItem = mockDb.tables.payroll_review_items.find(
+          (r) => r.source_moka_transaction_item_id === tc.id
+        );
+        assert.equal(revItem.reason_code, tc.expectedReason, `Item ${tc.id} reason code mismatch`);
+      }
     }
+  });
+
+  // F2. Review item uniqueness: duplicate review rows for same source item rejected by uq_review_run_source_item
+  await t.test('F2: review item uniqueness rejected by uq_review_run_source_item', async () => {
+    const mockDb = createMockDb({
+      payroll_runs: [{ id: 'run-draft', status: RUN_STATUS.DRAFT, period_start: '2026-09-01', period_end: '2026-09-30' }],
+      payroll_review_items: [
+        {
+          id: 'pri-1',
+          payroll_run_id: 'run-draft',
+          source_moka_transaction_item_id: 'item-uniq-test',
+          receipt_number: 'R1',
+          tx_date: '2026-09-10',
+          item_name_snapshot: 'Haircut',
+          classification_snapshot: 'NON_STOCK_SERVICE',
+          reason_code: REVIEW_REASON.MISSING_RATE,
+        },
+      ],
+    });
+
+    const { error } = await mockDb.from('payroll_review_items').insert({
+      id: 'pri-2',
+      payroll_run_id: 'run-draft',
+      source_moka_transaction_item_id: 'item-uniq-test',
+      receipt_number: 'R1',
+      tx_date: '2026-09-10',
+      item_name_snapshot: 'Haircut Dup',
+      classification_snapshot: 'NON_STOCK_SERVICE',
+      reason_code: REVIEW_REASON.MISSING_BARBER,
+    });
+
+    assert.ok(error, 'Inserting duplicate review row for same source item must fail');
+    assert.equal(error.code, '23505');
+    assert.ok(error.message.includes('uq_review_run_source_item'));
   });
 
   // G. Blocking review prevents lock
@@ -604,6 +714,86 @@ test('Task 2.3 Hardened Suite: Kapster Payroll Draft Engine & Snapshot Guarantee
     assert.throws(() => {
       mockDb.from('payroll_barber_items').update({ commission_amount: 999999 }).eq('id', 'pbi-1');
     }, /payroll run run-locked is LOCKED/);
+  });
+
+  // M2. Child DELETE immutability: DRAFT allows DELETE, LOCKED rejects DELETE across all 4 tables
+  await t.test('M2: child DELETE immutability trigger across all 4 child tables', async () => {
+    // 1. DRAFT run: DELETE must be allowed on all 4 child tables
+    const draftDb = createMockDb({
+      payroll_runs: [{ id: 'run-draft', status: RUN_STATUS.DRAFT, period_start: '2026-09-01', period_end: '2026-09-30' }],
+      payroll_barber_items: [{ id: 'pbi-draft', payroll_run_id: 'run-draft', barber_id: 'b1' }],
+      payroll_barber_commission_items: [{ id: 'pbci-draft', payroll_run_id: 'run-draft', source_moka_transaction_item_id: 's1' }],
+      payroll_review_items: [{ id: 'pri-draft', payroll_run_id: 'run-draft', source_moka_transaction_item_id: 's2' }],
+      payroll_adjustments: [{ id: 'pa-draft', payroll_run_id: 'run-draft', barber_id: 'b1', amount: 15000 }],
+    });
+
+    // Delete allowed on all 4 in DRAFT
+    await draftDb.from('payroll_adjustments').delete().eq('id', 'pa-draft');
+    assert.equal(draftDb.tables.payroll_adjustments.length, 0);
+
+    await draftDb.from('payroll_review_items').delete().eq('id', 'pri-draft');
+    assert.equal(draftDb.tables.payroll_review_items.length, 0);
+
+    await draftDb.from('payroll_barber_commission_items').delete().eq('id', 'pbci-draft');
+    assert.equal(draftDb.tables.payroll_barber_commission_items.length, 0);
+
+    await draftDb.from('payroll_barber_items').delete().eq('id', 'pbi-draft');
+    assert.equal(draftDb.tables.payroll_barber_items.length, 0);
+
+    // 2. LOCKED run: DELETE must be rejected on all 4 child tables
+    const lockedDb = createMockDb({
+      payroll_runs: [{ id: 'run-locked', status: RUN_STATUS.LOCKED, period_start: '2026-09-01', period_end: '2026-09-30' }],
+      payroll_barber_items: [{ id: 'pbi-locked', payroll_run_id: 'run-locked', barber_id: 'b1' }],
+      payroll_barber_commission_items: [{ id: 'pbci-locked', payroll_run_id: 'run-locked', source_moka_transaction_item_id: 's1' }],
+      payroll_review_items: [{ id: 'pri-locked', payroll_run_id: 'run-locked', source_moka_transaction_item_id: 's2' }],
+      payroll_adjustments: [{ id: 'pa-locked', payroll_run_id: 'run-locked', barber_id: 'b1', amount: 15000 }],
+    });
+
+    assert.throws(() => {
+      lockedDb.from('payroll_barber_items').delete().eq('id', 'pbi-locked');
+    }, /payroll run run-locked is LOCKED/);
+
+    assert.throws(() => {
+      lockedDb.from('payroll_barber_commission_items').delete().eq('id', 'pbci-locked');
+    }, /payroll run run-locked is LOCKED/);
+
+    assert.throws(() => {
+      lockedDb.from('payroll_review_items').delete().eq('id', 'pri-locked');
+    }, /payroll run run-locked is LOCKED/);
+
+    assert.throws(() => {
+      lockedDb.from('payroll_adjustments').delete().eq('id', 'pa-locked');
+    }, /payroll run run-locked is LOCKED/);
+
+    // Rows remain intact
+    assert.equal(lockedDb.tables.payroll_barber_items.length, 1);
+    assert.equal(lockedDb.tables.payroll_barber_commission_items.length, 1);
+    assert.equal(lockedDb.tables.payroll_review_items.length, 1);
+    assert.equal(lockedDb.tables.payroll_adjustments.length, 1);
+  });
+
+  // M3. Source claim delete behavior: claims cannot be deleted indirectly or directly for a LOCKED run
+  await t.test('M3: source claims permanence: cannot be deleted indirectly or directly for a LOCKED run', async () => {
+    const lockedDb = createMockDb({
+      payroll_runs: [{ id: 'run-locked', status: RUN_STATUS.LOCKED, period_start: '2026-09-01', period_end: '2026-09-30' }],
+      payroll_source_claims: [
+        { source_moka_transaction_item_id: 'claim-perm-1', payroll_run_id: 'run-locked', claimed_by: 'owner@redbox.id' },
+      ],
+    });
+
+    // Indirect delete via deleting the locked run must fail
+    assert.throws(() => {
+      lockedDb.from('payroll_runs').delete().eq('id', 'run-locked');
+    }, /Cannot delete payroll run run-locked: run is LOCKED/);
+
+    // Direct delete of source claim belonging to locked run must be rejected
+    assert.throws(() => {
+      lockedDb.from('payroll_source_claims').delete().eq('source_moka_transaction_item_id', 'claim-perm-1');
+    }, /claims are permanent/);
+
+    // Claim remains permanently intact
+    assert.equal(lockedDb.tables.payroll_source_claims.length, 1);
+    assert.equal(lockedDb.tables.payroll_runs.length, 1);
   });
 
   // N. Locked adjustments cannot be edited or added
