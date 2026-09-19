@@ -19,15 +19,27 @@ test('Fingerprint Parser: File Safety & Signature Validation', (t) => {
   assert.equal(meta.isXlsx, false);
   assert.equal(meta.fileHash.length, 64);
 
-  // Reject invalid extension
+  // Reject invalid extension (.pdf, .doc, .txt)
   assert.throws(
-    () => importer.validateFileSafety(sampleBuf, 'attendance.csv'),
+    () => importer.validateFileSafety(sampleBuf, 'attendance.doc'),
     (err) => err.code === 'INVALID_FILE_EXTENSION'
   );
   assert.throws(
     () => importer.validateFileSafety(sampleBuf, 'attendance.pdf'),
     (err) => err.code === 'INVALID_FILE_EXTENSION'
   );
+
+  // Binary masquerading as .csv is rejected with INVALID_FILE_SIGNATURE
+  assert.throws(
+    () => importer.validateFileSafety(sampleBuf, 'attendance.csv'),
+    (err) => err.code === 'INVALID_FILE_SIGNATURE'
+  );
+
+  // Valid CSV text is accepted
+  const validCsvBuf = Buffer.from('No,Name,Date,Punch\n1,Ahmad,2026-08-26,09:59\n');
+  const csvMeta = importer.validateFileSafety(validCsvBuf, 'attendance.csv');
+  assert.equal(csvMeta.isCsv, true);
+  assert.equal(csvMeta.isXls, false);
 
   // Reject invalid magic bytes (e.g. text or image masquerading as .xls)
   const fakeXls = Buffer.from('Name,Date,Punch\nJohn,2026-08-01,09:00');

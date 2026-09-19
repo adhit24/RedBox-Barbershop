@@ -2,6 +2,13 @@
 
 const crypto = require('crypto');
 const XLSX = require('xlsx');
+const {
+  FORMAT_STANDARD_FLAT,
+  FORMAT_TEGAL_HORIZONTAL,
+  detectAttendanceFormat,
+} = require('./attendanceParsers/attendanceFormatDetector');
+const standardParser = require('./attendanceParsers/standardFlatAttendanceParser');
+const tegalParser = require('./attendanceParsers/tegalHorizontalAttendanceParser');
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB limit
 const OLE2_MAGIC = 'd0cf11e0a1b11ae1'; // .xls legacy BIFF8
@@ -18,6 +25,7 @@ function normalizeAlphanumeric(value) {
 /**
  * 1. Validate File Safety
  * Checks size, extension, magic bytes, and computes sha256 hash.
+ * Supports .xls, .xlsx, and .csv.
  */
 function validateFileSafety(buffer, filename) {
   if (!buffer || !Buffer.isBuffer(buffer)) {
@@ -34,20 +42,47 @@ function validateFileSafety(buffer, filename) {
 
   const cleanFilename = String(filename || '').replace(/[^a-zA-Z0-9._-]/g, '_');
   const lowerName = cleanFilename.toLowerCase();
-  if (!lowerName.endsWith('.xls') && !lowerName.endsWith('.xlsx')) {
-    const err = new Error('Format file tidak didukung. Harap unggah file laporan absensi .xls atau .xlsx');
+  const isXls = lowerName.endsWith('.xls');
+  const isXlsx = lowerName.endsWith('.xlsx');
+  const isCsv = lowerName.endsWith('.csv');
+
+  if (!isXls && !isXlsx && !isCsv) {
+    const err = new Error('Format file tidak didukung. Harap unggah file laporan absensi .xls, .xlsx, atau .csv');
     err.code = 'INVALID_FILE_EXTENSION';
     throw err;
   }
 
   const hexHeader = buffer.slice(0, 8).toString('hex').toLowerCase();
-  const isXls = hexHeader.startsWith(OLE2_MAGIC);
-  const isXlsx = hexHeader.startsWith(ZIP_MAGIC);
+  const hasOle2Magic = hexHeader.startsWith(OLE2_MAGIC);
+  const hasZipMagic = hexHeader.startsWith(ZIP_MAGIC);
 
-  if (!isXls && !isXlsx) {
-    const err = new Error('File tidak valid atau rusak. Tipe file bukan workbook Excel yang sah');
-    err.code = 'INVALID_FILE_SIGNATURE';
-    throw err;
+  let verifiedXls = false;
+  let verifiedXlsx = false;
+  let verifiedCsv = false;
+
+  if (isXls) {
+    if (!hasOle2Magic) {
+      const err = new Error('File tidak valid atau rusak. Tipe file bukan workbook Excel .xls (BIFF8) yang sah');
+      err.code = 'INVALID_FILE_SIGNATURE';
+      throw err;
+    }
+    verifiedXls = true;
+  } else if (isXlsx) {
+    if (!hasZipMagic) {
+      const err = new Error('File tidak valid atau rusak. Tipe file bukan workbook Excel .xlsx yang sah');
+      err.code = 'INVALID_FILE_SIGNATURE';
+      throw err;
+    }
+    verifiedXlsx = true;
+  } else if (isCsv) {
+    // Check first 1KB: must be text, not binary or masqueraded OLE2/ZIP
+    const sample = buffer.slice(0, 1024);
+    if (sample.includes(0x00) || hasOle2Magic || hasZipMagic) {
+      const err = new Error('File tidak valid atau rusak. File CSV berisi format biner tidak sah');
+      err.code = 'INVALID_FILE_SIGNATURE';
+      throw err;
+    }
+    verifiedCsv = true;
   }
 
   const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
@@ -55,8 +90,9 @@ function validateFileSafety(buffer, filename) {
   return {
     cleanFilename,
     fileHash,
-    isXls,
-    isXlsx,
+    isXls: verifiedXls,
+    isXlsx: verifiedXlsx,
+    isCsv: verifiedCsv,
     size: buffer.length,
   };
 }
@@ -74,36 +110,38 @@ function parseWorkbook(buffer) {
   }
 }
 
-function detectReportFormat(workbook) {
-  const sheetNames = workbook.SheetNames || [];
-  const knownSheets = ['Stat. Absen', 'Lap. Log Absen', 'Exception Stat.', 'Jadwal Info'];
-  const hasKnownSheet = knownSheets.some(s => sheetNames.includes(s));
+/**
+ * Parser selector helper
+ */
+function getParserForFormat(format) {
+  if (format === FORMAT_TEGAL_HORIZONTAL) {
+    return tegalParser;
+  }
+  return standardParser;
+}
 
-  if (!hasKnownSheet) {
-    // Scan sheet contents for signature labels
-    let foundSignature = false;
-    for (const name of sheetNames) {
-      const ws = workbook.Sheets[name];
-      if (!ws) continue;
-      const text = JSON.stringify(XLSX.utils.sheet_to_json(ws, { header: 1 })).toLowerCase();
-      if (
-        text.includes('lap. statistik absensi') ||
-        text.includes('lap. detail absensi') ||
-        text.includes('waktu absen') ||
-        text.includes('stat. tgl')
-      ) {
-        foundSignature = true;
-        break;
-      }
-    }
-    if (!foundSignature) {
-      const err = new Error('Format laporan fingerprint tidak dikenali (signature tidak cocok)');
-      err.code = 'UNSUPPORTED_FINGERPRINT_FORMAT';
-      throw err;
-    }
+/**
+ * Backward-compatible detectReportFormat
+ */
+function detectReportFormat(workbook) {
+  const detected = detectAttendanceFormat(workbook);
+  const sheetNames = workbook.SheetNames || [];
+
+  if (detected.format === FORMAT_TEGAL_HORIZONTAL) {
+    return {
+      format: FORMAT_TEGAL_HORIZONTAL,
+      sheetNames,
+      hasSummarySheet: sheetNames.some(s => s.toLowerCase() === 'summary'),
+      hasLogsSheet: sheetNames.some(s => s.toLowerCase() === 'logs'),
+      hasStatAbsen: false,
+      hasLogAbsen: false,
+      hasExceptionStat: false,
+      hasJadwalInfo: false,
+    };
   }
 
   return {
+    format: FORMAT_STANDARD_FLAT,
     sheetNames,
     hasStatAbsen: sheetNames.includes('Stat. Absen'),
     hasLogAbsen: sheetNames.includes('Lap. Log Absen'),
@@ -113,224 +151,44 @@ function detectReportFormat(workbook) {
 }
 
 /**
+ * Unified Parser Dispatcher
+ */
+function parseAttendanceWorkbook(workbook) {
+  const detected = detectAttendanceFormat(workbook);
+  const parser = getParserForFormat(detected.format);
+  const parsed = parser.parse(workbook);
+  return {
+    ...parsed,
+    detected,
+  };
+}
+
+/**
  * 3. Extract Report Period (YYYY-MM-DD ~ YYYY-MM-DD)
  */
 function extractReportPeriod(workbook) {
-  const periodRegex = /(\d{4}-\d{2}-\d{2})\s*[~–-]\s*(\d{4}-\d{2}-\d{2})/;
-
-  // Check Stat. Absen, Lap. Log Absen, Exception Stat.
-  for (const name of ['Stat. Absen', 'Lap. Log Absen', 'Exception Stat.', 'Jadwal Info']) {
-    const ws = workbook.Sheets[name];
-    if (!ws) continue;
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
-    for (let r = 0; r < Math.min(10, rows.length); r++) {
-      const row = rows[r] || [];
-      for (const cell of row) {
-        const str = String(cell || '');
-        const match = str.match(periodRegex);
-        if (match) {
-          return { from: match[1], to: match[2] };
-        }
-      }
-    }
-  }
-
-  // Fallback: Scan dates in Exception Stat. column 3
-  if (workbook.Sheets['Exception Stat.']) {
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Exception Stat.'], { header: 1 });
-    const dates = [];
-    for (let r = 4; r < rows.length; r++) {
-      const d = String(rows[r]?.[3] || '').trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) dates.push(d);
-    }
-    if (dates.length > 0) {
-      dates.sort();
-      return { from: dates[0], to: dates[dates.length - 1] };
-    }
-  }
-
-  const err = new Error('Periode laporan absensi tidak ditemukan dalam file');
-  err.code = 'REPORT_PERIOD_NOT_FOUND';
-  throw err;
+  const detected = detectAttendanceFormat(workbook);
+  return getParserForFormat(detected.format).extractPeriod(workbook);
 }
 
 /**
  * 4. Extract Employees
- * Reads employee list from Stat. Absen and Lap. Log Absen.
  */
 function extractEmployees(workbook) {
-  const employeesMap = new Map();
-
-  // Try Stat. Absen first
-  if (workbook.Sheets['Stat. Absen']) {
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Stat. Absen'], { header: 1 });
-    for (let r = 4; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row || row[0] === undefined || row[0] === null || String(row[0]).trim() === '') continue;
-      const extId = String(row[0]).trim();
-      const extName = String(row[1] || '').trim();
-      const dept = String(row[2] || '').trim();
-      if (!extId || !extName) continue;
-
-      employeesMap.set(extId, {
-        external_employee_id: extId,
-        external_name: extName,
-        department: dept,
-        normal_hours: String(row[3] || '0:00'),
-        real_hours: String(row[4] || '0:00'),
-        late_count: parseInt(row[5] || '0', 10),
-        late_minutes: parseInt(row[6] || '0', 10),
-        early_leave_count: parseInt(row[7] || '0', 10),
-        early_leave_minutes: parseInt(row[8] || '0', 10),
-        absent_days: parseInt(row[13] || '0', 10),
-      });
-    }
-  }
-
-  // Complement or fallback with Lap. Log Absen
-  if (workbook.Sheets['Lap. Log Absen']) {
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Lap. Log Absen'], { header: 1 });
-    for (let r = 0; r < rows.length; r++) {
-      const row = rows[r] || [];
-      if (String(row[0] || '').trim() === 'ID:') {
-        const extId = String(row[2] || '').trim();
-        const extName = String(row[10] || '').trim();
-        const dept = String(row[20] || row[18] || '').trim();
-        if (extId && extName && !employeesMap.has(extId)) {
-          employeesMap.set(extId, {
-            external_employee_id: extId,
-            external_name: extName,
-            department: dept,
-          });
-        }
-      }
-    }
-  }
-
-  return [...employeesMap.values()];
+  const detected = detectAttendanceFormat(workbook);
+  return getParserForFormat(detected.format).extractEmployees(workbook);
 }
 
 /**
  * 5. Extract Punches & Daily Records
  */
 function extractDailyPunches(workbook, period) {
-  const dailyPunches = []; // { external_employee_id, date, raw_punches: [] }
-  const timeRegex = /(\d{1,2}:\d{2})/g;
-
-  if (workbook.Sheets['Lap. Log Absen']) {
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Lap. Log Absen'], { header: 1 });
-    // Find header row with day numbers
-    let dayCols = [];
-    for (let r = 0; r < Math.min(6, rows.length); r++) {
-      const row = rows[r] || [];
-      if (row.some(c => typeof c === 'number' && c >= 1 && c <= 31)) {
-        dayCols = row;
-        break;
-      }
-    }
-
-    const yearMonth = period.from.slice(0, 7); // e.g. "2026-08"
-
-    for (let r = 0; r < rows.length; r++) {
-      const row = rows[r] || [];
-      if (String(row[0] || '').trim() === 'ID:') {
-        const extId = String(row[2] || '').trim();
-        const punchRow = rows[r + 1] || [];
-        for (let c = 0; c < punchRow.length; c++) {
-          const cellVal = String(punchRow[c] || '').trim();
-          if (!cellVal) continue;
-          const dayNum = parseInt(dayCols[c], 10);
-          if (isNaN(dayNum) || dayNum < 1 || dayNum > 31) continue;
-          const dayStr = String(dayNum).padStart(2, '0');
-          const dateStr = `${yearMonth}-${dayStr}`;
-
-          const matches = cellVal.match(timeRegex);
-          if (matches && matches.length > 0) {
-            dailyPunches.push({
-              external_employee_id: extId,
-              attendance_date: dateStr,
-              raw_punches: matches,
-            });
-          }
-        }
-      }
-    }
+  const detected = detectAttendanceFormat(workbook);
+  if (detected.format === FORMAT_TEGAL_HORIZONTAL) {
+    const res = tegalParser.extractDailyPunches(workbook, period);
+    return res.dailyRecords;
   }
-
-  // Index daily punches by `${extId}|${date}`
-  const punchIndex = new Map();
-  for (const dp of dailyPunches) {
-    const key = `${dp.external_employee_id}|${dp.attendance_date}`;
-    punchIndex.set(key, dp.raw_punches);
-  }
-
-  // Read daily records from Exception Stat.
-  const dailyRecords = [];
-  if (workbook.Sheets['Exception Stat.']) {
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets['Exception Stat.'], { header: 1 });
-    for (let r = 4; r < rows.length; r++) {
-      const row = rows[r] || [];
-      const extId = String(row[0] || '').trim();
-      const extName = String(row[1] || '').trim();
-      const dept = String(row[2] || '').trim();
-      const dateStr = String(row[3] || '').trim();
-      if (!extId || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
-
-      const masuk = String(row[4] || '').trim() || null;
-      const keluar = String(row[5] || '').trim() || null;
-      const lateMin = parseInt(row[8] || '0', 10) || 0;
-      const earlyMin = parseInt(row[9] || '0', 10) || 0;
-      const absentMin = parseInt(row[10] || '0', 10) || 0;
-      const totalMin = parseInt(row[11] || '0', 10) || 0;
-      const notes = String(row[12] || '').trim() || null;
-
-      const key = `${extId}|${dateStr}`;
-      const punchesFromLog = punchIndex.get(key) || [];
-
-      // Combine punches
-      const punchSet = new Set(punchesFromLog);
-      if (masuk) punchSet.add(masuk);
-      if (keluar) punchSet.add(keluar);
-      const combinedPunches = [...punchSet].sort();
-
-      dailyRecords.push({
-        external_employee_id: extId,
-        external_name: extName,
-        department: dept,
-        attendance_date: dateStr,
-        first_check_in: masuk || (combinedPunches[0] || null),
-        last_check_out: keluar || (combinedPunches.length > 1 ? combinedPunches[combinedPunches.length - 1] : null),
-        late_minutes: lateMin,
-        early_leave_minutes: earlyMin,
-        absent_minutes: absentMin,
-        total_minutes: totalMin,
-        raw_punches: combinedPunches,
-        notes,
-      });
-      // Mark as processed in punchIndex
-      punchIndex.delete(key);
-    }
-  }
-
-  // Any remaining punches in punchIndex without Exception Stat. rows
-  for (const [key, punches] of punchIndex.entries()) {
-    const [extId, dateStr] = key.split('|');
-    const sorted = [...new Set(punches)].sort();
-    dailyRecords.push({
-      external_employee_id: extId,
-      attendance_date: dateStr,
-      first_check_in: sorted[0] || null,
-      last_check_out: sorted.length > 1 ? sorted[sorted.length - 1] : null,
-      late_minutes: 0,
-      early_leave_minutes: 0,
-      absent_minutes: 0,
-      total_minutes: 0,
-      raw_punches: sorted,
-      notes: null,
-    });
-  }
-
-  return dailyRecords;
+  return standardParser.extractDailyPunches(workbook, period);
 }
 
 /**
@@ -463,10 +321,11 @@ function deriveAttendanceStatus(record) {
 async function previewImport({ buffer, filename, uploadedBy, supabase }) {
   const fileMeta = validateFileSafety(buffer, filename);
   const workbook = parseWorkbook(buffer);
-  detectReportFormat(workbook);
-  const period = extractReportPeriod(workbook);
-  const fileEmployees = extractEmployees(workbook);
-  const dailyRecords = extractDailyPunches(workbook, period);
+  const parsedData = parseAttendanceWorkbook(workbook);
+
+  const period = parsedData.period;
+  const fileEmployees = parsedData.employees;
+  const dailyRecords = parsedData.dailyRecords;
 
   // Check if hash already exists in DB
   let isDuplicate = false;
@@ -536,6 +395,8 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
   return {
     filename: fileMeta.cleanFilename,
     file_hash: fileMeta.fileHash,
+    format: parsedData.format,
+    detected_format: parsedData.format,
     period,
     employees_detected: fileEmployees.length,
     matched_count: matched.length,
@@ -547,6 +408,7 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
     matched,
     unmatched,
     warnings,
+    metadata: parsedData.metadata || {},
     sample_records: dailyRecords.slice(0, 20).map(r => ({
       external_employee_id: r.external_employee_id,
       name: r.external_name,
@@ -572,10 +434,11 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
 
   const fileMeta = validateFileSafety(buffer, filename);
   const workbook = parseWorkbook(buffer);
-  detectReportFormat(workbook);
-  const period = extractReportPeriod(workbook);
-  const fileEmployees = extractEmployees(workbook);
-  const dailyRecords = extractDailyPunches(workbook, period);
+  const parsedData = parseAttendanceWorkbook(workbook);
+
+  const period = parsedData.period;
+  const fileEmployees = parsedData.employees;
+  const dailyRecords = parsedData.dailyRecords;
 
   // Apply any manualMappings passed by manager
   if (Array.isArray(manualMappings) && manualMappings.length > 0) {
@@ -630,9 +493,11 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
       status: 'importing',
       rows_detected: dailyRecords.length,
       metadata: {
+        format: parsedData.format,
         employees_detected: fileEmployees.length,
         matched: matched.length,
         unmatched: unmatched.length,
+        ...(parsedData.metadata || {}),
       },
     })
     .select()
@@ -646,7 +511,6 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
 
   const batchId = batch.id;
   let importedCount = 0;
-  let updatedCount = 0;
   let skippedCount = 0;
   let exceptionsCount = 0;
 
@@ -710,7 +574,6 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         updated_at: new Date().toISOString(),
       });
     } else if (match.target_type === 'barber') {
-      // Barbers: check existing terminal check-in to protect live floor authority
       barberAttendanceRows.push({
         barber_id: match.barber_id,
         date: record.attendance_date,
@@ -788,11 +651,15 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
 module.exports = {
   OLE2_MAGIC,
   ZIP_MAGIC,
+  FORMAT_STANDARD_FLAT,
+  FORMAT_TEGAL_HORIZONTAL,
   normalizeText,
   normalizeAlphanumeric,
   validateFileSafety,
   parseWorkbook,
   detectReportFormat,
+  detectAttendanceFormat,
+  parseAttendanceWorkbook,
   extractReportPeriod,
   extractEmployees,
   extractDailyPunches,
