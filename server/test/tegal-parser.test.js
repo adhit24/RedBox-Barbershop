@@ -314,6 +314,36 @@ test('Tegal Parser: End-to-End Preview & Commit Flow with Mock DB', async () => 
   assert.ok(mockDbExceptions.length > 0);
 });
 
+test('Attendance Import: terminated workforce names are rejected before matching', () => {
+  const fileEmployees = [
+    { external_employee_id: '9001', external_name: 'Ajeng' },
+    { external_employee_id: '9002', external_name: 'REKA' },
+    { external_employee_id: '9003', external_name: ' Anggi ' },
+    { external_employee_id: '9004', external_name: 'Hardi' },
+    { external_employee_id: '9005', external_name: 'farhan' },
+    { external_employee_id: '1', external_name: 'Ahmad' },
+  ];
+  const dbEmployees = [
+    { id: 'emp-ajeng', employee_code: '9001', name: 'Ajeng' },
+    { id: 'emp-ahmad', employee_code: '1', name: 'Ahmad' },
+  ];
+
+  const result = importer.matchEmployees({ fileEmployees, dbEmployees, dbBarbers: [], existingIdentities: [] });
+
+  assert.equal(result.rejected.length, 5);
+  assert.deepEqual(
+    result.rejected.map(r => importer.normalizeAlphanumeric(r.external_name)).sort(),
+    ['ajeng', 'anggi', 'farhan', 'hardi', 'reka']
+  );
+  assert.equal(result.matched.length, 1);
+  assert.equal(result.matched[0].external_name, 'Ahmad');
+  assert.equal(result.unmatched.length, 0);
+
+  for (const name of ['Ajeng', 'reka', 'ANGGI', ' hardi ', 'Farhan']) {
+    assert.equal(importer.isTerminatedWorkforceName(name), true);
+  }
+});
+
 test('Tegal Parser: Real User File Local Verification (Read-Only)', () => {
   const realFilePath = 'C:\\Users\\Win11\\Downloads\\tegalsept.xls';
   if (!fs.existsSync(realFilePath)) {
