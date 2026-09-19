@@ -51,4 +51,161 @@ describe('FingerprintImport', () => {
       expect(screen.getByText('Belum ada riwayat impor')).toBeInTheDocument();
     });
   });
+
+  it('smoke-tests Tegal attendance import UI: preview and cancel flow', async () => {
+    const mockTegalPreview = {
+      filename: 'tegalsept.xls',
+      file_hash: 'mockhash123456789',
+      format: 'tegal_horizontal_report',
+      detected_format: 'tegal_horizontal_report',
+      period: { from: '2026-08-26', to: '2026-09-19' },
+      employees_detected: 13,
+      matched_count: 2,
+      unmatched_count: 11,
+      punch_records_count: 192,
+      warnings_count: 1,
+      warnings: [{ type: 'unmatched_employees', message: '11 karyawan belum terhubung ke database' }],
+      matched: [
+        { external_employee_id: '1', external_name: 'Ahmad', department: 'Dept1', target_name: 'Ahmad Syarif', target_type: 'employee' },
+      ],
+      unmatched: [
+        { external_employee_id: '4', external_name: 'shepril', department: 'Dept1' },
+      ],
+      sample_records: [
+        { external_employee_id: '1', name: 'Ahmad', date: '2026-08-26', first_check_in: '09:59', last_check_out: '20:56', punches: ['09:59', '14:53', '15:22', '20:56'], late_minutes: 0, derived_status: 'hadir' },
+      ],
+    };
+
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/admin/crm/attendance/import/batches')) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, batches: [] }), { status: 200 }));
+      }
+      if (url.includes('/api/admin/crm/attendance/import/preview')) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, data: mockTegalPreview }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }));
+
+    class MockFileReader {
+      result = 'data:application/vnd.ms-excel;base64,bW9jaw==';
+      onload: (() => void) | null = null;
+      readAsDataURL() {
+        setTimeout(() => {
+          if (this.onload) this.onload();
+        }, 10);
+      }
+    }
+    vi.stubGlobal('FileReader', MockFileReader);
+
+    render(<FingerprintImport />, { wrapper: MemoryRouter });
+
+    await waitFor(() => {
+      expect(screen.getByText('Import Fingerprint')).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const mockFile = new File(['mock content'], 'tegalsept.xls', { type: 'application/vnd.ms-excel' });
+    const { fireEvent } = await import('@testing-library/react');
+    fireEvent.change(fileInput, { target: { files: [mockFile] } });
+
+    // Verify preview renders
+    await waitFor(() => {
+      expect(screen.getByText('Stage 2 — Preview Only')).toBeInTheDocument();
+      expect(screen.getByText('tegalsept.xls')).toBeInTheDocument();
+      expect(screen.getByText('2026-08-26 — 2026-09-19')).toBeInTheDocument();
+      expect(screen.getByText('13')).toBeInTheDocument(); // Karyawan terdeteksi
+      expect(screen.getByText('192')).toBeInTheDocument(); // Record presensi
+    });
+
+    // Test Batal (Cancel preview)
+    const cancelButton = screen.getByRole('button', { name: 'Batal' });
+    fireEvent.click(cancelButton);
+
+    // Verify reset to stage 1 (SELECT) with zero mutation
+    await waitFor(() => {
+      expect(screen.getByText('Pilih File Fingerprint')).toBeInTheDocument();
+      expect(screen.queryByText('Stage 2 — Preview Only')).toBeNull();
+    });
+  });
+
+  it('smoke-tests Tegal attendance import UI: commit flow', async () => {
+    const mockTegalPreview = {
+      filename: 'tegalsept.xls',
+      file_hash: 'mockhash123456789',
+      format: 'tegal_horizontal_report',
+      detected_format: 'tegal_horizontal_report',
+      period: { from: '2026-08-26', to: '2026-09-19' },
+      employees_detected: 13,
+      matched_count: 2,
+      unmatched_count: 11,
+      punch_records_count: 192,
+      warnings_count: 0,
+      warnings: [],
+      matched: [],
+      unmatched: [],
+      sample_records: [],
+    };
+
+    let commitCalled = false;
+
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/admin/crm/attendance/import/batches')) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, batches: [] }), { status: 200 }));
+      }
+      if (url.includes('/api/admin/crm/attendance/import/preview')) {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, data: mockTegalPreview }), { status: 200 }));
+      }
+      if (url.includes('/api/admin/crm/attendance/import/commit')) {
+        commitCalled = true;
+        return Promise.resolve(new Response(JSON.stringify({
+          ok: true,
+          data: {
+            batch_id: 'batch-tegal-uuid',
+            status: 'completed',
+            period: mockTegalPreview.period,
+            employees_detected: 13,
+            matched_count: 2,
+            unmatched_count: 11,
+            rows_imported: 192,
+            rows_exceptions: 0,
+            message: 'Impor berhasil disimpan',
+          },
+        }), { status: 200 }));
+      }
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }));
+
+    class MockFileReader {
+      result = 'data:application/vnd.ms-excel;base64,bW9jaw==';
+      onload: (() => void) | null = null;
+      readAsDataURL() {
+        setTimeout(() => {
+          if (this.onload) this.onload();
+        }, 10);
+      }
+    }
+    vi.stubGlobal('FileReader', MockFileReader);
+
+    render(<FingerprintImport />, { wrapper: MemoryRouter });
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const mockFile = new File(['mock content'], 'tegalsept.xls', { type: 'application/vnd.ms-excel' });
+    const { fireEvent } = await import('@testing-library/react');
+    fireEvent.change(fileInput, { target: { files: [mockFile] } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Stage 2 — Preview Only')).toBeInTheDocument();
+    });
+
+    // Click commit
+    const commitButton = screen.getByRole('button', { name: 'Import Attendance' });
+    fireEvent.click(commitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Impor Berhasil Disimpan/i)).toBeInTheDocument();
+      expect(commitCalled).toBe(true);
+    });
+  });
 });

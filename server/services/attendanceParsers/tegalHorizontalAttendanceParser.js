@@ -279,6 +279,7 @@ function extractDailyPunches(workbook, period) {
         absent_minutes: 0,
         total_minutes: 0,
         raw_punches: distinctSorted,
+        all_raw_punches: extractedPunches,
         raw_scans_count: extractedPunches.length,
         notes: null,
       });
@@ -298,6 +299,7 @@ function extractDailyPunches(workbook, period) {
     stats: {
       totalRawPunchesCount,
       totalDistinctPunchesCount,
+      doubleTapsCount: totalRawPunchesCount - totalDistinctPunchesCount,
       employeeDaysWithAttendance: dailyRecords.length,
     },
   };
@@ -322,6 +324,7 @@ function parse(workbook) {
       records_detected: dailyRecords.length,
       total_raw_punches: stats.totalRawPunchesCount,
       total_distinct_punches: stats.totalDistinctPunchesCount,
+      double_taps_count: stats.doubleTapsCount,
       employee_days_with_attendance: stats.employeeDaysWithAttendance,
     },
   };

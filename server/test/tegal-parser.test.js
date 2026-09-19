@@ -50,13 +50,13 @@ test('Tegal Parser: Real tegalsept.xls Verification (13 Employees, 411 Distinct 
     assert.ok(empIds.includes(expId), `Employee ID ${expId} must be present`);
   }
 
-  // Verify specific employees
-  const ahmad = employees.find(e => e.external_employee_id === '1');
-  assert.equal(ahmad.external_name, 'ahmad');
-  assert.equal(ahmad.department, 'Dept1');
+  // Verify specific employees (Sanitized PII Fixture)
+  const emp1 = employees.find(e => e.external_employee_id === '1');
+  assert.equal(emp1.external_name, 'Kapster 01');
+  assert.equal(emp1.department, 'Dept1');
 
-  const paAli = employees.find(e => e.external_employee_id === '10');
-  assert.equal(paAli.external_name, 'PaAli');
+  const emp10 = employees.find(e => e.external_employee_id === '10');
+  assert.equal(emp10.external_name, 'Kapster 10');
 
   // 3. Punch & Daily Records Extraction
   const { dailyRecords, stats } = tegalParser.extractDailyPunches(wb, period);
@@ -312,4 +312,58 @@ test('Tegal Parser: End-to-End Preview & Commit Flow with Mock DB', async () => 
   assert.ok(mockDbBatches.length > 0);
   assert.ok(mockDbEmpAttendance.length > 0);
   assert.ok(mockDbExceptions.length > 0);
+});
+
+test('Tegal Parser: Real User File Local Verification (Read-Only)', () => {
+  const realFilePath = 'C:\\Users\\Win11\\Downloads\\tegalsept.xls';
+  if (!fs.existsSync(realFilePath)) {
+    // Skip if running in CI without user's local downloads
+    return;
+  }
+
+  const realBuf = fs.readFileSync(realFilePath);
+  const wb = importer.parseWorkbook(realBuf);
+
+  // 1. Format
+  const detected = detectAttendanceFormat(wb);
+  assert.equal(detected.format, FORMAT_TEGAL_HORIZONTAL);
+
+  // 2. Period
+  const period = importer.extractReportPeriod(wb);
+  assert.equal(period.from, '2026-08-26');
+  assert.equal(period.to, '2026-09-19');
+
+  // 3. 13 Unique Employees
+  const employees = importer.extractEmployees(wb);
+  assert.equal(employees.length, 13);
+
+  const realEmpMap = Object.fromEntries(employees.map(e => [e.external_employee_id, e.external_name]));
+  assert.equal(realEmpMap['1'], 'ahmad');
+  assert.equal(realEmpMap['2'], 'melly');
+  assert.equal(realEmpMap['4'], 'shepril');
+  assert.equal(realEmpMap['5'], 'elsa');
+  assert.equal(realEmpMap['7'], 'dede');
+  assert.equal(realEmpMap['8'], 'wawan');
+  assert.equal(realEmpMap['11'], 'fais');
+  assert.equal(realEmpMap['12'], 'yafi');
+  assert.equal(realEmpMap['13'], 'meli');
+  assert.equal(realEmpMap['14'], 'epik');
+  assert.equal(realEmpMap['15'], 'miftah');
+  assert.equal(realEmpMap['6'], 'hamam');
+  assert.equal(realEmpMap['10'], 'PaAli');
+
+  // 4. Punches & Days
+  const { dailyRecords, stats } = tegalParser.extractDailyPunches(wb, period);
+  assert.equal(stats.totalRawPunchesCount, 416);
+  assert.equal(stats.totalDistinctPunchesCount, 411);
+  assert.equal(stats.doubleTapsCount, 5);
+  assert.equal(stats.employeeDaysWithAttendance, 192);
+
+  // 5. Sample Ahmad 2026-08-26
+  const ahmadRecord = dailyRecords.find(r => r.external_employee_id === '1' && r.attendance_date === '2026-08-26');
+  assert.ok(ahmadRecord);
+  assert.equal(ahmadRecord.first_check_in, '09:59');
+  assert.equal(ahmadRecord.last_check_out, '20:56');
+  assert.deepEqual(ahmadRecord.raw_punches, ['09:59', '14:53', '15:22', '20:56']);
+  assert.deepEqual(ahmadRecord.all_raw_punches, ['09:59', '14:53', '15:22', '20:56']);
 });
