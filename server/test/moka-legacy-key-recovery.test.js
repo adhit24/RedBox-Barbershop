@@ -2,26 +2,27 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { classifyLegacyRecovery, applyRecovery } = require('../services/mokaLegacyKeyRecovery');
+const { classifyLegacyRecovery, applyRecovery, applyExtras } = require('../services/mokaLegacyKeyRecovery');
 
 const api = (receipt, date, outlet) => ({ receipt_number: receipt, tx_date: date, outlet_slug: outlet });
 const legacy = (receipt, date = null, outlet = null) => ({ receipt_number: receipt, tx_date: date, outlet_slug: outlet });
 
-// Minimal supabase fake supporting update().in().is().select() over one table.
+// Minimal supabase fake supporting update().in()/eq().is().select() over one table.
 function fakeSupabase(rows) {
   const calls = [];
   return {
     _rows: rows, _calls: calls,
     from() {
-      let patch; let receipts = []; const nullCols = [];
+      let patch; const filters = []; const nullCols = [];
       const api = {
         update(value) { patch = value; return api; },
-        in(_key, values) { receipts = values; return api; },
-        is(col, value) { if (value === null) nullCols.push(col); return api; },
+        in(key, values) { filters.push(r => values.includes(r[key])); return api; },
+        eq(key, value) { filters.push(r => r[key] === value); return api; },
+        is(col, value) { if (value === null) { nullCols.push(col); filters.push(r => r[col] === null || r[col] === undefined); } return api; },
         async select() {
-          const hit = rows.filter(r => receipts.includes(r.receipt_number) && nullCols.every(c => r[c] === null));
+          const hit = rows.filter(r => filters.every(f => f(r)));
           hit.forEach(r => Object.assign(r, patch));
-          calls.push({ patch, receipts, nullCols });
+          calls.push({ patch, nullCols });
           return { data: hit.map(r => ({ receipt_number: r.receipt_number })), error: null };
         },
       };
@@ -51,7 +52,9 @@ test('conflicting existing date is reported and not recovered', () => {
   const r = classifyLegacyRecovery({ legacyRows: [legacy('u4', '2026-09-01', null)], apiRows: [api('u4', '2026-09-12', 'csb')] });
   assert.equal(r.recoverable.length, 0);
   assert.equal(r.conflicts[0].disagreements[0].field, 'tx_date');
-  assert.equal(r.ambiguous.length, 1);
+  assert.equal(r.conflicts[0].was_null_row, true);
+  assert.equal(r.ambiguous.length, 0);
+  assert.equal(r.extras.length, 0);
 });
 
 test('conflicting existing branch is reported and not recovered', () => {
@@ -104,4 +107,59 @@ test('apply never overwrites a value that became non-null after planning', async
   const updated = await applyRecovery({ supabase, recoverable: [{ receipt_number: 'u1', tx_date: '2026-09-12', outlet_slug: 'csb', set_tx_date: true, set_outlet_slug: true }] });
   assert.equal(updated, 0);
   assert.equal(rows[0].tx_date, '2026-09-20');
+});
+
+// ---- Sep 7-8 recovery and fill-only extras ----
+
+const apiFull = (receipt, date, outlet, extra = {}) => ({ receipt_number: receipt, tx_date: date, outlet_slug: outlet, tx_time: '10:15:30', collected_by: 'Kasir A', total_collected: 95000, ...extra });
+const legacyFull = (receipt, extra = {}) => ({ receipt_number: receipt, tx_date: null, outlet_slug: null, tx_time: null, collected_by: null, total_collected: 0, items_raw: null, ...extra });
+
+test('Sep 7-8 receipts recover exactly by UUID and produce fill-only extras', () => {
+  const r = classifyLegacyRecovery({
+    legacyRows: [legacyFull('7a'), legacyFull('8b')],
+    apiRows: [apiFull('7a', '2026-09-07', 'csb'), apiFull('8b', '2026-09-08', 'tegal', { collected_by: '' })],
+  });
+  assert.deepEqual(r.recoverable.map(x => [x.receipt_number, x.tx_date, x.outlet_slug]), [['7a', '2026-09-07', 'csb'], ['8b', '2026-09-08', 'tegal']]);
+  assert.deepEqual(r.extras[0], { receipt_number: '7a', tx_time: '10:15:30', collected_by: 'Kasir A', total_collected: 95000 });
+  assert.deepEqual(r.extras[1], { receipt_number: '8b', tx_time: '10:15:30', total_collected: 95000 });
+});
+
+test('extras never plan an overwrite of a non-null value', () => {
+  const r = classifyLegacyRecovery({
+    legacyRows: [legacyFull('x', { tx_date: '2026-09-08', outlet_slug: 'csb', tx_time: '09:00:00', collected_by: 'Existing', total_collected: 50000 })],
+    apiRows: [apiFull('x', '2026-09-08', 'csb')],
+  });
+  assert.equal(r.alreadyValid.length, 1);
+  assert.equal(r.extras.length, 0);
+});
+
+test('extras are skipped when the primary keys conflict', () => {
+  const r = classifyLegacyRecovery({
+    legacyRows: [legacyFull('c', { tx_date: '2026-09-01', outlet_slug: 'csb' })],
+    apiRows: [apiFull('c', '2026-09-08', 'csb')],
+  });
+  assert.equal(r.extras.length, 0);
+  assert.equal(r.conflicts.length, 1);
+});
+
+test('applyExtras fills tx_time / collected_by / total_collected only when missing, leaves items_raw alone, and is idempotent', async () => {
+  const rows = [
+    legacyFull('a', { items_raw: 'legacy text' }),
+    legacyFull('b', { tx_time: '08:00:00', collected_by: 'Keep', total_collected: 70000 }),
+    legacyFull('untouched'),
+  ];
+  const supabase = fakeSupabase(rows);
+  const extras = [
+    { receipt_number: 'a', tx_time: '10:15:30', collected_by: 'Kasir A', total_collected: 95000 },
+    { receipt_number: 'b', tx_time: '10:15:30', collected_by: 'Kasir A', total_collected: 95000 },
+  ];
+  const first = await applyExtras({ supabase, extras });
+  assert.deepEqual(first, { tx_time: 1, collected_by: 1, total_collected: 1 });
+  assert.deepEqual(rows[0], { ...legacyFull('a'), tx_time: '10:15:30', collected_by: 'Kasir A', total_collected: 95000, items_raw: 'legacy text' });
+  assert.equal(rows[1].tx_time, '08:00:00');
+  assert.equal(rows[1].collected_by, 'Keep');
+  assert.equal(rows[1].total_collected, 70000);
+  assert.deepEqual(rows[2], legacyFull('untouched'));
+  assert.equal(supabase._calls.some(c => 'items_raw' in c.patch), false);
+  assert.deepEqual(await applyExtras({ supabase, extras }), { tx_time: 0, collected_by: 0, total_collected: 0 });
 });

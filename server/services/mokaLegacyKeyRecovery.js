@@ -1,13 +1,16 @@
 'use strict';
 
-// Recovers NULL tx_date / outlet_slug on legacy public.moka_transactions rows using the Moka
-// API as the only authority, matched strictly on receipt_number (the payment UUID).
-// Never overwrites a non-null value, never guesses, never touches other columns or tables.
+// Recovers NULL tx_date / outlet_slug (primary) and fill-only tx_time / collected_by / total_collected
+// (extras) on legacy public.moka_transactions rows, using the Moka API as the only authority,
+// matched strictly on receipt_number (the payment UUID).
+// Never overwrites a non-null value, never guesses, never touches items_raw or other tables.
 
 const { fetchOutletDayRange, REDBOX_OUTLET_SLUGS } = require('./mokaDailyTransactionSync');
 
+const LEGACY_COLUMNS = 'receipt_number,tx_date,outlet_slug,tx_time,collected_by,total_collected';
 const isNullRow = row => row.tx_date === null || row.tx_date === undefined
   || row.outlet_slug === null || row.outlet_slug === undefined;
+const blank = value => value === null || value === undefined || String(value).trim() === '';
 
 function indexApiRows(apiRows) {
   const index = new Map();
@@ -15,19 +18,30 @@ function indexApiRows(apiRows) {
     if (!row.receipt_number || !row.tx_date || !row.outlet_slug) continue;
     const key = `${row.tx_date}|${row.outlet_slug}`;
     const entry = index.get(row.receipt_number) || new Map();
-    entry.set(key, { tx_date: row.tx_date, outlet_slug: row.outlet_slug });
+    entry.set(key, row);
     index.set(row.receipt_number, entry);
   }
   return index;
 }
 
+/** Fill-only extras for a legacy row with a unique, non-conflicting API match. */
+function extraFills(legacy, api) {
+  const fills = {};
+  if (blank(legacy.tx_time) && !blank(api.tx_time)) fills.tx_time = String(api.tx_time).trim();
+  if (blank(legacy.collected_by) && !blank(api.collected_by)) fills.collected_by = String(api.collected_by).trim();
+  const apiTotal = Number(api.total_collected);
+  if (Number(legacy.total_collected || 0) === 0 && Number.isFinite(apiTotal) && apiTotal > 0) fills.total_collected = apiTotal;
+  return Object.keys(fills).length ? { receipt_number: legacy.receipt_number, ...fills } : null;
+}
+
 /**
- * legacyRows: { receipt_number, tx_date, outlet_slug } from public.moka_transactions
- * apiRows:    normalized API rows { receipt_number, tx_date, outlet_slug }
+ * legacyRows: rows from public.moka_transactions (LEGACY_COLUMNS)
+ * apiRows:    normalized API rows (receipt_number, tx_date, outlet_slug, tx_time, collected_by, total_collected)
+ * Null rows are classified RECOVERABLE / AMBIGUOUS / NOT_FOUND / CONFLICT.
  */
 function classifyLegacyRecovery({ legacyRows, apiRows }) {
   const index = indexApiRows(apiRows);
-  const result = { recoverable: [], ambiguous: [], notFound: [], alreadyValid: [], conflicts: [] };
+  const result = { recoverable: [], ambiguous: [], notFound: [], alreadyValid: [], conflicts: [], extras: [] };
   for (const legacy of legacyRows) {
     const candidates = index.get(legacy.receipt_number);
     const needsRecovery = isNullRow(legacy);
@@ -36,7 +50,7 @@ function classifyLegacyRecovery({ legacyRows, apiRows }) {
       continue;
     }
     if (candidates.size > 1) {
-      if (needsRecovery) result.ambiguous.push({ receipt_number: legacy.receipt_number, reason: 'multiple_api_matches', candidates: [...candidates.keys()] });
+      result.ambiguous.push({ receipt_number: legacy.receipt_number, reason: 'multiple_api_matches', candidates: [...candidates.keys()] });
       continue;
     }
     const [api] = candidates.values();
@@ -45,17 +59,21 @@ function classifyLegacyRecovery({ legacyRows, apiRows }) {
     if (legacy.outlet_slug && legacy.outlet_slug !== api.outlet_slug) disagreements.push({ field: 'outlet_slug', legacy: legacy.outlet_slug, api: api.outlet_slug });
     if (disagreements.length) {
       result.conflicts.push({ receipt_number: legacy.receipt_number, disagreements, was_null_row: needsRecovery });
-      if (needsRecovery) result.ambiguous.push({ receipt_number: legacy.receipt_number, reason: 'conflicts_with_existing_value', disagreements });
       continue;
     }
-    if (!needsRecovery) { result.alreadyValid.push({ receipt_number: legacy.receipt_number }); continue; }
-    result.recoverable.push({
-      receipt_number: legacy.receipt_number,
-      tx_date: api.tx_date,
-      outlet_slug: api.outlet_slug,
-      set_tx_date: !legacy.tx_date,
-      set_outlet_slug: !legacy.outlet_slug,
-    });
+    if (needsRecovery) {
+      result.recoverable.push({
+        receipt_number: legacy.receipt_number,
+        tx_date: api.tx_date,
+        outlet_slug: api.outlet_slug,
+        set_tx_date: !legacy.tx_date,
+        set_outlet_slug: !legacy.outlet_slug,
+      });
+    } else {
+      result.alreadyValid.push({ receipt_number: legacy.receipt_number });
+    }
+    const fills = extraFills(legacy, api);
+    if (fills) result.extras.push(fills);
   }
   return result;
 }
@@ -67,15 +85,15 @@ async function fetchApiRows({ supabase, businessDates, clientFactory }) {
   const results = await Promise.all((outlets || []).map(outlet => fetchOutletDayRange({ supabase, outlet, businessDates, clientFactory })));
   return {
     outlets: results.map(r => ({ slug: r.outlet.slug, pages: r.pages, fetched: r.fetched, accepted: r.accepted })),
-    rows: results.flatMap(r => r.rows.map(({ receipt_number, tx_date, outlet_slug }) => ({ receipt_number, tx_date, outlet_slug }))),
+    rows: results.flatMap(r => r.rows.map(({ receipt_number, tx_date, outlet_slug, tx_time, collected_by, total_collected }) => (
+      { receipt_number, tx_date, outlet_slug, tx_time, collected_by, total_collected }))),
   };
 }
 
 async function readLegacyRows(supabase, apiReceipts) {
-  const columns = 'receipt_number,tx_date,outlet_slug';
   const byReceipt = new Map();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('moka_transactions').select(columns)
+    const { data, error } = await supabase.from('moka_transactions').select(LEGACY_COLUMNS)
       .or('tx_date.is.null,outlet_slug.is.null').order('receipt_number').range(from, from + 999);
     if (error) throw error;
     for (const row of data || []) byReceipt.set(row.receipt_number, row);
@@ -83,7 +101,7 @@ async function readLegacyRows(supabase, apiReceipts) {
   }
   const receipts = [...apiReceipts];
   for (let i = 0; i < receipts.length; i += 100) {
-    const { data, error } = await supabase.from('moka_transactions').select(columns).in('receipt_number', receipts.slice(i, i + 100));
+    const { data, error } = await supabase.from('moka_transactions').select(LEGACY_COLUMNS).in('receipt_number', receipts.slice(i, i + 100));
     if (error) throw error;
     for (const row of data || []) byReceipt.set(row.receipt_number, row);
   }
@@ -121,4 +139,27 @@ async function applyRecovery({ supabase, recoverable }) {
   return updated;
 }
 
-module.exports = { classifyLegacyRecovery, planRecovery, applyRecovery, fetchApiRows };
+/**
+ * Fill-only extras. Each field is its own guarded UPDATE so a value that is already
+ * present is never replaced: tx_time/collected_by IS NULL, total_collected = 0.
+ * items_raw is deliberately never written.
+ */
+async function applyExtras({ supabase, extras, concurrency = 20 }) {
+  const counts = { tx_time: 0, collected_by: 0, total_collected: 0 };
+  const jobs = [];
+  for (const item of extras) {
+    for (const field of Object.keys(counts)) if (item[field] !== undefined) jobs.push({ receipt: item.receipt_number, field, value: item[field] });
+  }
+  for (let i = 0; i < jobs.length; i += concurrency) {
+    await Promise.all(jobs.slice(i, i + concurrency).map(async job => {
+      let query = supabase.from('moka_transactions').update({ [job.field]: job.value }).eq('receipt_number', job.receipt);
+      query = job.field === 'total_collected' ? query.eq('total_collected', 0) : query.is(job.field, null);
+      const { data, error } = await query.select('receipt_number');
+      if (error) throw error;
+      counts[job.field] += (data || []).length;
+    }));
+  }
+  return counts;
+}
+
+module.exports = { classifyLegacyRecovery, extraFills, planRecovery, applyRecovery, applyExtras, fetchApiRows };
