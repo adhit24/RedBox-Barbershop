@@ -213,6 +213,70 @@ function aggregateRows(rows, businessDate, branchSlug) {
   });
 }
 
+/**
+ * Canonical arithmetic (Task 2.1C authority: public.moka_transaction_items).
+ * Verified against live Moka payloads for 2026-09-16..18: SUM(net_amount) and
+ * SUM(gross_amount) equal the receipt-level Net/Gross Sales exactly (tax and
+ * gratuity live in their own columns and are not part of net_amount). Item
+ * discount_amount is NOT used: it under-reports receipt-level discounts, so
+ * discounts are derived as gross - net, the same identity Moka reports.
+ */
+function aggregateItems(items, businessDate, branchSlug) {
+  const live = (items || []).filter(item => item.tx_date === businessDate
+    && item.outlet_slug === branchSlug && !item.is_deleted);
+  const receipts = new Set();
+  let gross = 0; let net = 0; let refunds = 0;
+  for (const item of live) {
+    receipts.add(item.receipt_number);
+    gross += amount(item.gross_amount);
+    net += amount(item.net_amount);
+    const quantity = amount(item.quantity);
+    if (quantity > 0 && amount(item.refunded_quantity) > 0) {
+      refunds += Math.round(amount(item.net_amount) * Math.min(amount(item.refunded_quantity), quantity) / quantity);
+    }
+  }
+  return {
+    business_date: businessDate,
+    branch_slug: branchSlug,
+    net_sales: net,
+    gross_sales: gross,
+    discounts: Math.max(gross - net, 0),
+    refunds,
+    transaction_count: receipts.size,
+    source: 'moka_api',
+    imported_at: new Date().toISOString(),
+  };
+}
+
+async function readCanonicalItems(supabase, branchSlug, businessDate) {
+  const items = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase.from('moka_transaction_items')
+      .select('receipt_number,outlet_slug,tx_date,gross_amount,net_amount,quantity,refunded_quantity,is_deleted')
+      .eq('outlet_slug', branchSlug).eq('tx_date', businessDate)
+      .order('receipt_number').order('source_line_key')
+      .range(from, from + pageSize - 1);
+    if (error) return { error };
+    items.push(...(data || []));
+    if (!data || data.length < pageSize) return { items };
+  }
+}
+
+const isZeroAggregate = aggregate => amount(aggregate.net_sales) === 0 && amount(aggregate.transaction_count) === 0;
+
+/**
+ * Zero-overwrite guard. A zero aggregate may only be persisted when the
+ * canonical sources genuinely hold no transactions for the date/branch and it
+ * would not wipe an existing non-zero row.
+ */
+function zeroOverwriteBlocker(aggregate, { canonicalReceipts = 0, existing = null } = {}) {
+  if (!isZeroAggregate(aggregate)) return null;
+  if (canonicalReceipts > 0) return 'canonical_transactions_exist';
+  if (existing && (amount(existing.net_sales) !== 0 || amount(existing.transaction_count) !== 0)) return 'would_overwrite_non_zero_row';
+  return null;
+}
+
 function sameMetrics(a, b) {
   return ['net_sales', 'gross_sales', 'discounts', 'refunds', 'transaction_count']
     .every(key => amount(a?.[key]) === amount(b?.[key]));
@@ -360,18 +424,26 @@ async function syncMokaDailyTransactions({
 
   for (const result of successful) {
     for (const businessDate of businessDates) {
-      let canonicalRows = projectedRows;
-      if (!dryRun) {
-        const { data: persisted, error } = await supabase.from('moka_transactions')
-          .select('receipt_number,outlet_slug,tx_date,net_sales,gross_sales,"Discounts","Refunds","Event Type"')
-          .eq('outlet_slug', result.slug).eq('tx_date', businessDate);
+      const fetchedRows = result.rows.filter(row => row.tx_date === businessDate);
+      let aggregate;
+      let canonicalReceipts = fetchedRows.length;
+      if (dryRun) {
+        aggregate = aggregateRows(projectedRows, businessDate, result.slug);
+      } else {
+        // moka_transactions is NOT the aggregate authority: its
+        // trg_sync_moka_csv_columns trigger nulls tx_date/outlet_slug on API rows.
+        const { items, error } = await readCanonicalItems(supabase, result.slug, businessDate);
         if (error) {
           failed.push({ slug: result.slug, error: `canonical_read_failed: ${error.message}` });
           continue;
         }
-        canonicalRows = persisted || [];
+        const fromItems = aggregateItems(items, businessDate, result.slug);
+        // Receipts without checkout detail have no item rows; the freshly
+        // fetched API payload is the fallback only when it holds more receipts.
+        aggregate = fromItems.transaction_count >= fetchedRows.length
+          ? fromItems : aggregateRows(result.rows, businessDate, result.slug);
+        canonicalReceipts = Math.max(fromItems.transaction_count, fetchedRows.length);
       }
-      const aggregate = aggregateRows(canonicalRows, businessDate, result.slug);
       aggregates.push(aggregate);
       if (dryRun) continue;
 
@@ -392,6 +464,12 @@ async function syncMokaDailyTransactions({
         });
         continue;
       }
+      const blocked = zeroOverwriteBlocker(aggregate, { canonicalReceipts, existing: seeded });
+      if (blocked) {
+        aggregates.pop();
+        reconciliations.push({ business_date: businessDate, branch_slug: result.slug, status: 'zero_overwrite_blocked', reason: blocked });
+        continue;
+      }
       const { error: aggregateError } = await supabase.from('business_performance_daily')
         .upsert(aggregate, { onConflict: 'business_date,branch_slug', ignoreDuplicates: false });
       if (aggregateError) failed.push({ slug: result.slug, error: `aggregate_upsert_failed: ${aggregateError.message}` });
@@ -402,7 +480,7 @@ async function syncMokaDailyTransactions({
   const uniqueFailures = [...new Map(failed.map(item => [`${item.slug}:${item.error}`, item])).values()];
   const status = uniqueFailures.length
     ? (successful.length ? 'PARTIAL' : 'FAILED')
-    : reconciliations.some(item => item.status === 'protected_mismatch') ? 'PARTIAL' : 'SUCCESS';
+    : reconciliations.some(item => item.status === 'protected_mismatch' || item.status === 'zero_overwrite_blocked') ? 'PARTIAL' : 'SUCCESS';
   const summary = {
     status,
     dry_run: dryRun,
@@ -438,6 +516,6 @@ async function syncMokaDailyTransactions({
 
 module.exports = {
   JAKARTA_TIME_ZONE, REDBOX_OUTLET_SLUGS, MAX_PAGES, PAGE_SIZE,
-  jakartaDate, resolveBusinessDates, normalizeMokaPayment, fetchOutletDayRange,
-  aggregateRows, sameMetrics, upsertBarberServices, syncMokaDailyTransactions,
+  jakartaDate, shiftDate, resolveBusinessDates, normalizeMokaPayment, fetchOutletDayRange,
+  aggregateRows, aggregateItems, readCanonicalItems, zeroOverwriteBlocker, sameMetrics, upsertBarberServices, syncMokaDailyTransactions,
 };

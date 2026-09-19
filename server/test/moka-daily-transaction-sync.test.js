@@ -8,6 +8,8 @@ const {
   normalizeMokaPayment,
   fetchOutletDayRange,
   aggregateRows,
+  aggregateItems,
+  zeroOverwriteBlocker,
   syncMokaDailyTransactions,
 } = require('../services/mokaDailyTransactionSync');
 
@@ -15,7 +17,7 @@ function createSupabase(seed = {}) {
   const store = Object.fromEntries(Object.entries(seed).map(([name, rows]) => [name, rows.map(row => ({ ...row }))]));
   const table = name => (store[name] ||= []);
   function builder(name) {
-    let mode = 'select'; let payload; let conflict = []; const filters = [];
+    let mode = 'select'; let payload; let conflict = []; const filters = []; let window = null;
     const api = {
       select() { return api; },
       in(key, values) { filters.push(row => values.includes(row[key])); return api; },
@@ -24,6 +26,7 @@ function createSupabase(seed = {}) {
       gte(key, value) { filters.push(row => row[key] >= value); return api; },
       lte(key, value) { filters.push(row => row[key] <= value); return api; },
       order() { return api; },
+      range(from, to) { window = [from, to]; return api; },
       upsert(value, opts = {}) { mode = 'upsert'; payload = value; conflict = String(opts.onConflict || '').split(','); return api; },
       insert(value) { mode = 'insert'; payload = value; return api; },
       async maybeSingle() { const result = await api._exec(); return { ...result, data: result.data[0] || null }; },
@@ -37,7 +40,8 @@ function createSupabase(seed = {}) {
           }
           return { data: payload, error: null };
         }
-        return { data: table(name).filter(row => filters.every(filter => filter(row))), error: null };
+        const rows = table(name).filter(row => filters.every(filter => filter(row)));
+        return { data: window ? rows.slice(window[0], window[1] + 1) : rows, error: null };
       },
     };
     return api;
@@ -171,4 +175,147 @@ test('summary event and returned result never contain customer PII', async () =>
   });
   assert.equal(JSON.stringify({ result, loggedEvent }).includes('081234567890'), false);
   assert.equal(JSON.stringify({ result, loggedEvent }).includes('Sensitive Name'), false);
+});
+
+// ---- Canonical item aggregation (Sep 16-18 zero-revenue regression) ----
+
+function item(receipt, slug, date, gross, net, extra = {}) {
+  return {
+    receipt_number: receipt, outlet_slug: slug, tx_date: date, gross_amount: gross, net_amount: net,
+    discount_amount: 0, quantity: 1, refunded_quantity: 0, is_deleted: false, source_line_key: `${receipt}-${extra.line || 1}`, ...extra,
+  };
+}
+
+function apiPayment(id, createdAt, gross, net) {
+  return payment(id, createdAt, { subtotal: net, discounts: gross - net, total_collected: net, checkouts: [
+    { uuid: `${id}-l1`, item_id: 1, item_variant_id: 2, item_name: 'Haircut', item_variant_name: 'Regular', item_price_quantity: gross, net_sales: net, quantity: 1 },
+  ] });
+}
+
+test('aggregateItems: receipts, gross, net and derived discounts reconcile per branch/date', () => {
+  const rows = [
+    item('r1', 'csb', '2026-09-16', 100000, 90000),
+    item('r1', 'csb', '2026-09-16', 50000, 50000, { line: 2 }),
+    item('r2', 'csb', '2026-09-16', 200000, 200000),
+    item('r3', 'tegal', '2026-09-16', 70000, 70000),
+    item('r4', 'csb', '2026-09-17', 999, 999),
+  ];
+  const csb = aggregateItems(rows, '2026-09-16', 'csb');
+  assert.deepEqual(
+    { net: csb.net_sales, gross: csb.gross_sales, disc: csb.discounts, n: csb.transaction_count },
+    { net: 340000, gross: 350000, disc: 10000, n: 2 },
+  );
+  assert.equal(aggregateItems(rows, '2026-09-16', 'tegal').transaction_count, 1);
+});
+
+test('aggregateItems: empty date is a genuine zero; deleted items and refunds are handled', () => {
+  const empty = aggregateItems([], '2026-09-16', 'csb');
+  assert.equal(empty.net_sales, 0);
+  assert.equal(empty.transaction_count, 0);
+  const rows = [
+    item('v1', 'csb', '2026-09-16', 80000, 80000, { is_deleted: true }),
+    item('k1', 'csb', '2026-09-16', 100000, 100000, { refunded_quantity: 1 }),
+  ];
+  const agg = aggregateItems(rows, '2026-09-16', 'csb');
+  assert.equal(agg.transaction_count, 1);
+  assert.equal(agg.refunds, 100000);
+});
+
+test('zeroOverwriteBlocker only allows zero for genuinely empty canonical data', () => {
+  const zero = { net_sales: 0, transaction_count: 0 };
+  assert.equal(zeroOverwriteBlocker(zero, { canonicalReceipts: 3 }), 'canonical_transactions_exist');
+  assert.equal(zeroOverwriteBlocker(zero, { canonicalReceipts: 0, existing: { net_sales: 500, transaction_count: 2 } }), 'would_overwrite_non_zero_row');
+  assert.equal(zeroOverwriteBlocker(zero, { canonicalReceipts: 0, existing: null }), null);
+  assert.equal(zeroOverwriteBlocker({ net_sales: 10, transaction_count: 1 }, { canonicalReceipts: 1 }), null);
+});
+
+test('regression: API date with real transactions aggregates even when moka_transactions has NULL tx_date/outlet_slug', async () => {
+  // Production: trg_sync_moka_csv_columns nulls tx_date/outlet_slug on API rows and
+  // stale zero moka_api aggregates already exist for the date.
+  const stale = REDBOX_OUTLET_SLUGS.map(slug => ({ business_date: '2026-09-16', branch_slug: slug, net_sales: 0, gross_sales: 0, discounts: 0, refunds: 0, transaction_count: 0, source: 'moka_api' }));
+  const supabase = createSupabase({ outlets: outlets(), business_performance_daily: stale });
+  const realFrom = supabase.from;
+  supabase.from = name => {
+    const api = realFrom(name);
+    if (name !== 'moka_transactions') return api;
+    const upsert = api.upsert;
+    api.upsert = (value, opts) => {
+      const result = upsert(value, opts);
+      for (const row of supabase._store.moka_transactions || []) { row.tx_date = null; row.outlet_slug = null; }
+      return result;
+    };
+    return api;
+  };
+  const options = {
+    supabase, date: '2026-09-16', eventLogger: async () => ({}),
+    clientFactory: outlet => ({ getPaidTransactionsPage: async () => ({ data: { payments: [
+      apiPayment(`a-${outlet.slug}`, '2026-09-16T10:00:00+07:00', 120000, 100000),
+      apiPayment(`b-${outlet.slug}`, '2026-09-16T11:00:00+07:00', 50000, 50000),
+    ], completed: true } }) }),
+  };
+  const first = await syncMokaDailyTransactions(options);
+  assert.equal(first.status, 'SUCCESS');
+  const rows = supabase._store.business_performance_daily;
+  assert.equal(rows.length, 5);
+  for (const row of rows) {
+    assert.equal(row.net_sales, 150000);
+    assert.equal(row.transaction_count, 2);
+    assert.equal(row.discounts, 20000);
+  }
+  const strip = list => JSON.stringify(list.map(({ imported_at, ...rest }) => rest));
+  const snapshot = strip(rows);
+  await syncMokaDailyTransactions(options);
+  assert.equal(supabase._store.business_performance_daily.length, 5);
+  assert.equal(strip(supabase._store.business_performance_daily), snapshot);
+  assert.equal(supabase._store.moka_transaction_items.length, 10);
+});
+
+test('regression: zero is never persisted over existing non-zero data when canonical items exist', async () => {
+  const good = { business_date: '2026-09-17', branch_slug: 'csb', net_sales: 777, gross_sales: 777, discounts: 0, refunds: 0, transaction_count: 3, source: 'moka_api' };
+  const supabase = createSupabase({
+    outlets: outlets(), business_performance_daily: [good],
+    moka_transaction_items: [item('v1', 'csb', '2026-09-17', 100, 100, { is_deleted: true })],
+  });
+  const result = await syncMokaDailyTransactions({
+    supabase, date: '2026-09-17', eventLogger: async () => ({}),
+    clientFactory: () => ({ getPaidTransactionsPage: async () => ({ data: { payments: [], completed: true } }) }),
+  });
+  const csb = supabase._store.business_performance_daily.find(row => row.branch_slug === 'csb');
+  assert.equal(csb.net_sales, 777);
+  assert.equal(result.reconciliations.some(r => r.branch_slug === 'csb' && r.status === 'zero_overwrite_blocked'), true);
+});
+
+test('empty API date with no canonical data persists a genuine zero', async () => {
+  const supabase = createSupabase({ outlets: outlets() });
+  await syncMokaDailyTransactions({
+    supabase, date: '2026-09-13', eventLogger: async () => ({}),
+    clientFactory: () => ({ getPaidTransactionsPage: async () => ({ data: { payments: [], completed: true } }) }),
+  });
+  assert.equal(supabase._store.business_performance_daily.length, 5);
+  assert.equal(supabase._store.business_performance_daily.every(row => row.net_sales === 0 && row.transaction_count === 0), true);
+});
+
+test('CSV historical rows are preserved when a later API date syncs', async () => {
+  const csv = REDBOX_OUTLET_SLUGS.map(slug => ({ business_date: '2026-09-15', branch_slug: slug, net_sales: 4242, gross_sales: 4242, discounts: 0, refunds: 0, transaction_count: 9, source: 'moka_csv' }));
+  const supabase = createSupabase({ outlets: outlets(), business_performance_daily: csv });
+  await syncMokaDailyTransactions({
+    supabase, date: '2026-09-16', eventLogger: async () => ({}),
+    clientFactory: outlet => ({ getPaidTransactionsPage: async () => ({ data: { payments: [apiPayment(`c-${outlet.slug}`, '2026-09-16T10:00:00+07:00', 100000, 100000)], completed: true } }) }),
+  });
+  const rows = supabase._store.business_performance_daily;
+  assert.equal(rows.filter(r => r.business_date === '2026-09-15').every(r => r.net_sales === 4242 && r.source === 'moka_csv'), true);
+  assert.equal(rows.filter(r => r.business_date === '2026-09-16').every(r => r.net_sales === 100000), true);
+});
+
+test('Sep 16 production shape: csb 41 receipts / 5,848,000 gross reconciles to 5,428,000 net', () => {
+  const rows = [];
+  for (let i = 0; i < 41; i += 1) rows.push(item(`s${i}`, 'csb', '2026-09-16', i < 40 ? 142000 : 168000, 0));
+  const total = rows.reduce((sum, row) => sum + row.gross_amount, 0);
+  assert.equal(total, 5848000);
+  rows.forEach(row => { row.net_amount = row.gross_amount; });
+  rows[0].net_amount -= 420000;
+  const agg = aggregateItems(rows, '2026-09-16', 'csb');
+  assert.equal(agg.transaction_count, 41);
+  assert.equal(agg.net_sales, 5428000);
+  assert.equal(agg.discounts, 420000);
 });
