@@ -114,6 +114,15 @@ async function findActiveCaseRow(supabase, customerPhone) {
  * index on (customer_phone) WHERE status is open enforces this at the DB level
  * too, so a race between two concurrent messages still converges on one case.
  */
+function autoAssignHandoff(branch) {
+  const normalizedBranch = String(branch || '').toLowerCase().trim();
+  const knownBranches = ['bypass', 'samadikun', 'csb', 'sumber', 'tegal'];
+  if (knownBranches.includes(normalizedBranch)) {
+    return `admin_${normalizedBranch}`;
+  }
+  return 'central_admin';
+}
+
 async function createOrGetActiveCase(params = {}, deps = {}) {
   const { supabase = null } = deps;
   const {
@@ -139,6 +148,7 @@ async function createOrGetActiveCase(params = {}, deps = {}) {
       return { status: 'existing', case: data || existing, created: false };
     }
 
+    const assignedOwner = autoAssignHandoff(branch);
     const { data, error } = await supabase
       .from('human_handoff_cases')
       .insert({
@@ -154,6 +164,7 @@ async function createOrGetActiveCase(params = {}, deps = {}) {
         latest_customer_message: latestCustomerMessage,
         booking_reference: bookingReference,
         status: 'waiting_human',
+        assigned_to: assignedOwner,
       })
       .select('*')
       .single();
@@ -410,6 +421,114 @@ async function evaluateAndRecordHandoffSLA(cases = [], deps = {}) {
   return results;
 }
 
+/**
+ * Safe reconciliation for existing handoff cases (P1-F).
+ * Does NOT blindly auto-resolve unproven cases.
+ * Classifies:
+ * - already_resolved_indirectly: if customer completed later booking
+ * - stale: open > SLA threshold without verified resolution -> keeps open + escalates
+ * - still_actionable: open within normal SLA window
+ */
+async function reconcileHandoffBacklog(deps = {}) {
+  const { supabase = null, recordEvaluationEvent: defaultRecordFn } = deps;
+  const recordFn = deps.recordEvaluationEvent || defaultRecordFn || (() => {});
+  if (!supabase) return { status: 'unavailable', summary: null };
+
+  const { data: openCases, error } = await supabase
+    .from('human_handoff_cases')
+    .select('*')
+    .in('status', SUPPRESSED_STATUSES)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  const cases = openCases || [];
+  const summary = {
+    total: cases.length,
+    auto_assigned: 0,
+    already_resolved_indirectly: 0,
+    stale_escalated: 0,
+    still_actionable: 0,
+  };
+
+  const nowMs = Date.now();
+  for (const c of cases) {
+    let needsUpdate = false;
+    const updates = { updated_at: new Date().toISOString() };
+
+    // 1. Auto-assign if unassigned
+    if (!c.assigned_to) {
+      updates.assigned_to = autoAssignHandoff(c.branch);
+      needsUpdate = true;
+      summary.auto_assigned += 1;
+    }
+
+    const ageMinutes = Math.floor((nowMs - new Date(c.created_at).getTime()) / 60000);
+    const priority = String(c.priority || 'normal').toLowerCase();
+    const slaLimitMinutes = priority === 'urgent' ? 10 : priority === 'high' ? 15 : 60;
+    const isBreached = ageMinutes >= slaLimitMinutes;
+
+    if (isBreached) {
+      // Check if customer completed a booking after this handoff
+      let resolvedIndirectly = false;
+      try {
+        const { data: laterBookings } = await supabase
+          .from('bookings')
+          .select('id, status, created_at')
+          .eq('customer_phone', c.customer_phone)
+          .eq('status', 'confirmed')
+          .gte('created_at', c.created_at)
+          .limit(1);
+        if (Array.isArray(laterBookings) && laterBookings.length > 0) {
+          resolvedIndirectly = true;
+        }
+      } catch (_bErr) {}
+
+      if (resolvedIndirectly) {
+        updates.status = 'resolved';
+        updates.resolved_at = new Date().toISOString();
+        needsUpdate = true;
+        summary.already_resolved_indirectly += 1;
+        try {
+          await recordFn({
+            event_type: 'handoff_resolved',
+            branch: c.branch,
+            handoff_case_id: c.id,
+            metadata: { resolution_type: 'indirect_booking_completed', age_minutes: ageMinutes },
+          }, deps);
+        } catch (_e) {}
+      } else {
+        // Stale unproven case: DO NOT mark resolved. Keep open and escalate!
+        summary.stale_escalated += 1;
+        try {
+          await recordFn({
+            event_type: 'handoff_sla_breached',
+            severity: priority === 'urgent' ? 'CRITICAL' : 'HIGH',
+            branch: c.branch,
+            handoff_case_id: c.id,
+            metadata: { priority, age_minutes: ageMinutes, stale: true },
+          }, deps);
+          await recordFn({
+            event_type: 'handoff_escalated',
+            branch: c.branch,
+            handoff_case_id: c.id,
+            metadata: { escalation_reason: 'sla_breached_unresolved', age_minutes: ageMinutes },
+          }, deps);
+        } catch (_e) {}
+      }
+    } else {
+      summary.still_actionable += 1;
+    }
+
+    if (needsUpdate) {
+      try {
+        await supabase.from('human_handoff_cases').update(updates).eq('id', c.id);
+      } catch (_upErr) {}
+    }
+  }
+
+  return { status: 'reconciled', summary };
+}
+
 module.exports = {
   OPEN_STATUSES,
   SUPPRESSED_STATUSES,
@@ -427,5 +546,7 @@ module.exports = {
   listWaitingCases,
   evaluateCaseSLA,
   evaluateAndRecordHandoffSLA,
+  autoAssignHandoff,
+  reconcileHandoffBacklog,
   recordedSlaBreaches,
 };

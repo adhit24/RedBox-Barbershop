@@ -79,10 +79,14 @@ function createGuardedSend({
       return { status: false, suppressed: true, reason: 'ai_kill_switch' };
     }
 
+    const correlationId = options.correlationId || options.correlation_id || null;
+    const destinationHash = hashValue(normalizePhoneDigits(to));
+    const senderHash = destinationHash;
+
     // P0-A: Price placeholder guard pass (runs BEFORE reservation & contentHash)
     const {
       guardPricePlaceholders, guardFactualServiceNumbers, guardVisitCompletionOverclaim, guardBookingUrlIntegrity,
-      guardLegacyServiceNames,
+      guardLegacyServiceNames, guardLateArrivalGuarantees, guardRepeatedGreeting,
     } = require('../agents/reddy/personalityPolicy');
     const { logFactualGuardEvent } = require('../orchestrator/telemetry');
     const priceGuarded = guardPricePlaceholders(message, {
@@ -92,8 +96,8 @@ function createGuardedSend({
       authoritativePriceResolver: options.authoritativePriceResolver,
     });
     if (priceGuarded.blocked) {
-      logEvent({ event_type: 'price_placeholder_blocked', branch });
-      logFactualGuardEvent({ event_type: 'price_placeholder_blocked', branch });
+      logEvent({ event_type: 'price_placeholder_blocked', branch, correlation_id: correlationId });
+      logFactualGuardEvent({ event_type: 'price_placeholder_blocked', branch, correlation_id: correlationId });
     }
 
     // Round 2 reliability — factual guards. These catch a CONCRETE wrong
@@ -105,36 +109,63 @@ function createGuardedSend({
     });
     for (const mismatch of factualNumbers.mismatches) {
       const eventType = mismatch.type === 'duration' ? 'factual_duration_mismatch_blocked' : 'factual_price_mismatch_blocked';
-      logFactualGuardEvent({
+      const eventPayload = {
         event_type: eventType,
+        correlation_id: correlationId,
+        sender_hash: senderHash,
         branch,
-        service_id: mismatch.serviceId,
+        service_id: mismatch.serviceId || mismatch.service_id,
+        service_name: mismatch.serviceName || mismatch.service_name,
+        claimed_price: mismatch.claimedPrice ?? mismatch.attempted,
+        canonical_price: mismatch.canonicalPrice ?? mismatch.expected,
+        response_source: options.responseSource || options.response_source || 'ai',
+        blocked_at: new Date().toISOString(),
+        action: factualNumbers.action || 'corrected',
         attempted_value: mismatch.attempted,
         expected_value: mismatch.expected,
-      });
+      };
+      logEvent(eventPayload);
+      logFactualGuardEvent(eventPayload);
     }
 
     const legacyServiceGuarded = guardLegacyServiceNames(factualNumbers.sanitizedReply);
     if (legacyServiceGuarded.corrected) {
-      logFactualGuardEvent({ event_type: 'legacy_service_name_corrected', branch });
+      logFactualGuardEvent({ event_type: 'legacy_service_name_corrected', branch, correlation_id: correlationId });
     }
 
-    const visitGuarded = guardVisitCompletionOverclaim(legacyServiceGuarded.sanitizedReply, {
+    const lateArrivalGuarded = guardLateArrivalGuarantees(legacyServiceGuarded.sanitizedReply, {
+      hasActiveBooking: options.hasActiveBooking ?? Boolean(options.verifiedBookingStatus),
+      policyPermits: options.lateArrivalPolicyPermits ?? false,
+    });
+    if (lateArrivalGuarded.blocked) {
+      logFactualGuardEvent({
+        event_type: 'unsupported_late_guarantee_blocked',
+        correlation_id: correlationId,
+        sender_hash: senderHash,
+        branch,
+        action: 'rewritten',
+      });
+    }
+
+    const greetingGuarded = guardRepeatedGreeting(lateArrivalGuarded.sanitizedReply, {
+      isContinuation: options.isContinuation ?? (Boolean(options.hasPriorMessages) || (options.turnCount && options.turnCount > 1)),
+    });
+
+    const visitGuarded = guardVisitCompletionOverclaim(greetingGuarded.sanitizedReply, {
       verifiedBookingStatus: options.verifiedBookingStatus,
     });
     if (visitGuarded.blocked) {
-      logFactualGuardEvent({ event_type: 'visit_completion_overclaim_blocked', branch });
+      logFactualGuardEvent({ event_type: 'visit_completion_overclaim_blocked', branch, correlation_id: correlationId });
     }
 
     const urlGuarded = guardBookingUrlIntegrity(visitGuarded.sanitizedReply);
     if (urlGuarded.corrected) {
-      logFactualGuardEvent({ event_type: 'booking_url_integrity_corrected', branch });
+      logFactualGuardEvent({ event_type: 'booking_url_integrity_corrected', branch, correlation_id: correlationId });
     }
 
     const finalOutboundText = urlGuarded.sanitizedReply;
 
     // Hashes computed on final sanitized text
-    const destinationHash = hashValue(normalizePhoneDigits(to));
     const contentHash = hashValue(String(finalOutboundText || '').trim().toLowerCase());
     const reservation = await reserveAutomatedSend(supabase, {
       inboundEventId: inboundEventRowId,
@@ -149,18 +180,19 @@ function createGuardedSend({
           : reservation.status === 'already_attempted'
             ? 'inbound_duplicate_suppressed'
             : 'processing_failed';
-      logEvent({ event_type: eventType, branch, guard_reason: reservation.status });
-      return { status: false, suppressed: true, reason: reservation.status };
+      logEvent({ event_type: eventType, branch, guard_reason: reservation.status, correlation_id: correlationId });
+      return { status: false, suppressed: true, reason: reservation.status, finalOutboundText, correlationId };
     }
 
-    logEvent({ event_type: 'outbound_send_attempt', branch });
-    logEvent({ event_type: 'final_outbound_after_guards', branch, metadata: { text_length: finalOutboundText.length } });
+    logEvent({ event_type: 'outbound_send_attempt', branch, correlation_id: correlationId });
+    logEvent({ event_type: 'final_outbound_after_guards', branch, correlation_id: correlationId, metadata: { text_length: finalOutboundText.length } });
 
     // Task 16 is observation-only and fail-open. Evaluation storage or rule
     // failures must never block, replace, or mutate the customer reply.
     await observeMessageFailOpen(observeMessage, finalOutboundText, {
       branch,
       inboundEventRowId,
+      correlationId,
       ...(options.evaluationContext && typeof options.evaluationContext === 'object' ? options.evaluationContext : {}),
     });
     let result;
@@ -170,7 +202,7 @@ function createGuardedSend({
       await markOutboundResult(supabase, {
         inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent: false,
       });
-      logEvent({ event_type: 'processing_failed', branch, guard_reason: 'send_threw' });
+      logEvent({ event_type: 'processing_failed', branch, guard_reason: 'send_threw', correlation_id: correlationId });
       error.outboundFailure = true;
       error.failureReason = 'processing_failed';
       throw error;
@@ -182,7 +214,11 @@ function createGuardedSend({
     await markOutboundResult(supabase, {
       inboundEventId: inboundEventRowId, claimId: reservation.claimId, sent,
     });
-    logEvent({ event_type: sent ? 'outbound_sent' : 'processing_failed', branch, guard_reason: sent ? null : 'send_failed' });
+    logEvent({ event_type: sent ? 'outbound_sent' : 'processing_failed', branch, guard_reason: sent ? null : 'send_failed', correlation_id: correlationId });
+    if (result && typeof result === 'object') {
+      result.finalOutboundText = finalOutboundText;
+      result.correlationId = correlationId;
+    }
     return result;
   };
 }
@@ -205,9 +241,9 @@ function normalizeOutboundLifecycleOutcome(sendResult) {
 
   const rawReason = String(sendResult.reason || '').toLowerCase();
 
-  // 2. Suppressions with bounded known reason
+  // 2. Duplicate terminal state
   if (rawReason === 'duplicate_content' || rawReason === 'already_attempted' || rawReason === 'duplicate_suppressed') {
-    return { terminalKind: 'suppressed', reason: 'duplicate_suppressed' };
+    return { terminalKind: 'duplicate', reason: 'duplicate_suppressed' };
   }
   if (rawReason === 'rate_limited') {
     return { terminalKind: 'suppressed', reason: 'rate_limited' };

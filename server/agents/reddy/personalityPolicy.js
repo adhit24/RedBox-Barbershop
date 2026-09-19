@@ -438,15 +438,6 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
     return { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
-  const knowledgeService = resolveServiceIdentity({
-    serviceId: options.serviceId,
-    serviceName: options.serviceName,
-    text: replyText,
-  });
-  if (!knowledgeService) {
-    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
-  }
-
   let rows = null;
   try {
     const { getActiveServicesCatalog } = require('../../services/servicesCatalog');
@@ -454,28 +445,119 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
   } catch (_error) {
     rows = null;
   }
-  if (!rows) {
+  if (!rows || !Array.isArray(rows) || rows.length === 0) {
     return { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
-  const { findServiceRow } = require('../../services/servicesCatalog');
-  const dbRow = findServiceRow(rows, { name: knowledgeService.name, aliases: knowledgeService.aliases });
-  if (!dbRow) {
+  const { findServiceRow, resolveAllServiceMentions } = require('../../services/servicesCatalog');
+
+  // Detect all services mentioned across the reply text
+  const detectedMentions = resolveAllServiceMentions(replyText, rows);
+
+  // If caller specified an explicit serviceId/serviceName, prioritize or add it
+  let singleServiceRow = null;
+  if (options.serviceId || options.serviceName) {
+    singleServiceRow = findServiceRow(rows, { id: options.serviceId, name: options.serviceName });
+  }
+
+  // If no services detected via catalog and no explicit service option, try legacy resolveServiceIdentity
+  if (!singleServiceRow && detectedMentions.length === 0) {
+    const legacyService = resolveServiceIdentity({
+      serviceId: options.serviceId,
+      serviceName: options.serviceName,
+      text: replyText,
+    });
+    if (legacyService) {
+      singleServiceRow = findServiceRow(rows, { name: legacyService.name, aliases: legacyService.aliases });
+    }
+  }
+
+  if (!singleServiceRow && detectedMentions.length === 0) {
     return { sanitizedReply: replyText, blocked: false, mismatches: [] };
   }
 
   let sanitizedReply = replyText;
   const mismatches = [];
 
-  // dbRow.price is a single, branch-agnostic column — it cannot represent a
-  // service with different Standard vs. CSB Mall prices. When the caller
-  // tells us which branch this reply is for AND the knowledge catalog shows
-  // this service actually has branch-specific pricing, trust that
-  // branch-scoped catalog price instead of the flat db value; otherwise keep
-  // the original db-authoritative behavior unchanged (no `branch` passed —
-  // e.g. existing callers/tests — behaves exactly as before).
+  // CASE 1: Multi-service catalog atomic validation (e.g. price list or multiple service mentions)
+  if (detectedMentions.length > 1) {
+    // For each detected service mention, associate it with the closest price mention on the same line or clause
+    const lines = replyText.split('\n');
+    let runningIndex = 0;
+    const lineSpans = lines.map((line) => {
+      const start = runningIndex;
+      const end = runningIndex + line.length;
+      runningIndex = end + 1; // +1 for '\n'
+      return { line, start, end };
+    });
+
+    const priceReplacements = [];
+
+    for (const mention of detectedMentions) {
+      const canonicalPrice = mention.row.price;
+      if (typeof canonicalPrice !== 'number' || canonicalPrice <= 0) continue;
+
+      // Find price mentions within the same line or in proximity (+- 80 chars)
+      const mentionLine = lineSpans.find((ls) => mention.index >= ls.start && mention.index <= ls.end);
+      let candidates;
+      if (mentionLine) {
+        candidates = currentPriceMentions.filter((pm) => pm.index >= mentionLine.start && pm.index <= mentionLine.end);
+      } else {
+        candidates = currentPriceMentions.filter((pm) => Math.abs(pm.index - mention.index) < 80);
+      }
+
+      if (candidates.length === 1) {
+        const candidate = candidates[0];
+        if (candidate.numeric !== canonicalPrice) {
+          mismatches.push({
+            type: 'price',
+            serviceId: mention.row.id,
+            serviceName: mention.row.name,
+            attempted: candidate.numeric,
+            expected: canonicalPrice,
+            claimed_price: candidate.numeric,
+            canonical_price: canonicalPrice,
+            index: candidate.index,
+            raw: candidate.raw,
+          });
+          priceReplacements.push({
+            index: candidate.index,
+            rawLength: candidate.raw.length,
+            correctText: 'Rp' + canonicalPrice.toLocaleString('id-ID'),
+          });
+        }
+      }
+    }
+
+    // Atomic behavior: if any price in the catalog mismatches, apply corrections right-to-left
+    if (priceReplacements.length > 0) {
+      priceReplacements.sort((a, b) => b.index - a.index);
+      for (const rep of priceReplacements) {
+        sanitizedReply = sanitizedReply.slice(0, rep.index) + rep.correctText
+          + sanitizedReply.slice(rep.index + rep.rawLength);
+      }
+    }
+
+    return {
+      sanitizedReply,
+      blocked: mismatches.length > 0,
+      mismatches,
+    };
+  }
+
+  // CASE 2: Single-service validation
+  const targetRow = singleServiceRow || (detectedMentions.length === 1 ? detectedMentions[0].row : null);
+  if (!targetRow) {
+    return { sanitizedReply: replyText, blocked: false, mismatches: [] };
+  }
+
   const branchId = String(options.branch || '').trim().toLowerCase();
-  const catalogPrices = knowledgeService.prices;
+  const knowledgeService = resolveServiceIdentity({
+    serviceId: options.serviceId,
+    serviceName: options.serviceName,
+    text: replyText,
+  });
+  const catalogPrices = knowledgeService?.prices;
   const hasBranchSpecificPrice = catalogPrices
     && Number.isFinite(catalogPrices.standard) && Number.isFinite(catalogPrices.csb)
     && catalogPrices.standard !== catalogPrices.csb;
@@ -484,9 +566,9 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
     : null;
   const expectedPrice = Number.isFinite(branchScopedPrice) && branchScopedPrice > 0
     ? branchScopedPrice
-    : dbRow.price;
+    : targetRow.price;
 
-  // Correct CURRENT price mentions if they mismatch the expected price (process right-to-left)
+  // Correct CURRENT price mentions if they mismatch the expected canonical price
   if (typeof expectedPrice === 'number' && expectedPrice > 0) {
     const wrongPrices = currentPriceMentions
       .filter((m) => m.numeric !== expectedPrice)
@@ -497,26 +579,36 @@ async function guardFactualServiceNumbers(replyText, options = {}) {
       sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
         + sanitizedReply.slice(mention.index + mention.raw.length);
       mismatches.push({
-        type: 'price', attempted: mention.numeric, expected: expectedPrice, serviceId: knowledgeService.id,
+        type: 'price',
+        serviceId: targetRow.id,
+        serviceName: targetRow.name,
+        attempted: mention.numeric,
+        expected: expectedPrice,
+        claimed_price: mention.numeric,
+        canonical_price: expectedPrice,
       });
     }
   }
 
-  // Correct CURRENT duration mentions if they mismatch dbRow.duration_minutes (process right-to-left)
-  if (typeof dbRow.duration_minutes === 'number' && dbRow.duration_minutes > 0) {
+  // Correct CURRENT duration mentions if they mismatch dbRow.duration_minutes
+  if (typeof targetRow.duration_minutes === 'number' && targetRow.duration_minutes > 0) {
     const updatedDurations = extractDurationMentions(sanitizedReply).filter(
       (m) => !isHistoricalSpan(sanitizedReply, m.index, m.raw.length)
     );
     const wrongDurations = updatedDurations
-      .filter((m) => m.numeric !== dbRow.duration_minutes)
+      .filter((m) => m.numeric !== targetRow.duration_minutes)
       .sort((a, b) => b.index - a.index);
 
     for (const mention of wrongDurations) {
-      const correct = String(dbRow.duration_minutes) + ' menit';
+      const correct = String(targetRow.duration_minutes) + ' menit';
       sanitizedReply = sanitizedReply.slice(0, mention.index) + correct
         + sanitizedReply.slice(mention.index + mention.raw.length);
       mismatches.push({
-        type: 'duration', attempted: mention.numeric, expected: dbRow.duration_minutes, serviceId: knowledgeService.id,
+        type: 'duration',
+        serviceId: targetRow.id,
+        serviceName: targetRow.name,
+        attempted: mention.numeric,
+        expected: targetRow.duration_minutes,
       });
     }
   }
@@ -631,6 +723,104 @@ function guardLegacyServiceNames(replyText) {
   return { sanitizedReply: sanitized, corrected };
 }
 
+/**
+ * P0 Late Arrival Safety Guard.
+ * Blocks overclaims/guarantees on late arrival (e.g. "tetap ditunggu", "slot aman", "gapapa kak")
+ * and deterministically sanitizes them to safe conditional statements.
+ * Emits 'unsupported_late_guarantee_blocked' telemetry.
+ *
+ * @param {string} replyText
+ * @param {object} [options]
+ */
+const LATE_ARRIVAL_GUARANTEE_REGEX = /\b(tetap\s+ditunggu|kapster(?:nya)?\s+siap|slot\s+aman|tidak\s+masalah\s+telat|ga(?:k)?\s+masalah\s+telat|booking\s+tetap\s+berlaku|pasti\s+bisa\s+dilayani|pasti\s+ditunggu|pasti\s+aman|gapapa\s+kak|santai\s+aja\s+kak)\b/i;
+
+function guardLateArrivalGuarantees(replyText, options = {}) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, blocked: false, reason: null };
+  }
+
+  const guaranteeCheck = /\b(tetap\s+(?:di)?tunggu|kapster(?:nya)?\s+(?:siap|pasti\s+(?:di)?tunggu)|slot\s+aman|tidak\s+masalah\s+telat|ga(?:k)?\s+masalah\s+telat|booking\s+tetap\s+berlaku|pasti\s+bisa\s+dilayani|pasti\s+(?:di)?tunggu|pasti\s+aman|gapapa\s+kak|santai\s+aja\s+kak|tenang\s+kak)\b/i;
+
+  if (!guaranteeCheck.test(replyText)) {
+    return { sanitizedReply: replyText, blocked: false, reason: null };
+  }
+
+  const SAFE_LATE_POLICY_PHRASE = 'Untuk keterlambatan, layanan tetap menyesuaikan kondisi slot dan operasional cabang saat Kakak tiba ya.';
+
+  // Strip all guarantee phrases globally
+  const guaranteePattern = new RegExp(guaranteeCheck.source, 'gi');
+  let cleaned = replyText.replace(guaranteePattern, '').replace(/\s{2,}/g, ' ').replace(/,\s*,/g, ',').trim();
+  // Ensure the safe policy phrase is present
+  if (!cleaned.includes('menyesuaikan kondisi slot')) {
+    cleaned = (SAFE_LATE_POLICY_PHRASE + ' ' + cleaned).trim();
+  }
+  // Clean up punctuation at edges
+  cleaned = cleaned.replace(/^[,.\s]+/, '').replace(/[,.\s]+$/, '.');
+
+  return {
+    sanitizedReply: cleaned,
+    blocked: true,
+    reason: 'unsupported_late_guarantee_blocked',
+  };
+}
+
+/**
+ * P1 Repeated Greeting Guard.
+ * Strips redundant greetings at the beginning of assistant replies in an ongoing active conversation.
+ *
+ * @param {string} replyText
+ * @param {object} [options]
+ */
+const START_GREETING_REGEX = /^(?:halo|hai|selamat\s+(?:pagi|siang|sore|malam))\s*(?:kak(?:\s+[\p{L}'-]+)?)?[!.,\s]*/iu;
+
+function guardRepeatedGreeting(replyText, options = {}) {
+  if (typeof replyText !== 'string' || !replyText.trim()) {
+    return { sanitizedReply: replyText, stripped: false };
+  }
+
+  const sessionStatus = options.sessionStatus || 'expired';
+  const hasPriorTurns = Array.isArray(options.turns) && options.turns.length > 0;
+  const isActiveSession = sessionStatus !== 'expired' || hasPriorTurns;
+
+  if (!isActiveSession) {
+    return { sanitizedReply: replyText, stripped: false };
+  }
+
+  if (START_GREETING_REGEX.test(replyText)) {
+    let sanitized = replyText.replace(START_GREETING_REGEX, '').trim();
+    if (sanitized.length > 0) {
+      sanitized = sanitized[0].toUpperCase() + sanitized.slice(1);
+    }
+    return { sanitizedReply: sanitized, stripped: true };
+  }
+
+  return { sanitizedReply: replyText, stripped: false };
+}
+
+/**
+ * Personalization Safety Helper.
+ * Determines whether a customer name from CRM may safely be used in responses.
+ *
+ * @param {object} options - { customer, trustedIdentity, conversationContext, name }
+ * @returns {boolean}
+ */
+function canUseCustomerName(options = {}) {
+  const { customer = null, trustedIdentity = null, name = null } = options;
+  if (!name || typeof name !== 'string') return false;
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length < 2) return false;
+
+  // Placeholder and generic role blacklist
+  const placeholderPattern = /^(kak|customer|user|pelanggan|admin|guest|anonymous|member|\+?\d+)$/i;
+  if (placeholderPattern.test(trimmed)) return false;
+
+  // Confident match: trustedIdentity verified or customer record with verified ID
+  const isTrusted = Boolean(trustedIdentity && (trustedIdentity.is_trusted === true || trustedIdentity.verified === true));
+  const hasMatchedCustomer = Boolean(customer && (customer.id || customer.customer_id));
+
+  return isTrusted || hasMatchedCustomer;
+}
+
 module.exports = {
   FORBIDDEN_ADDRESS_TERMS_REGEX,
   HISTORICAL_OR_DISPUTE_CONTEXT_REGEX,
@@ -649,5 +839,8 @@ module.exports = {
   guardVisitCompletionOverclaim,
   guardBookingUrlIntegrity,
   guardLegacyServiceNames,
+  guardLateArrivalGuarantees,
+  guardRepeatedGreeting,
+  canUseCustomerName,
   resolveServiceIdentity,
 };

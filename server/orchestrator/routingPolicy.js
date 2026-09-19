@@ -163,6 +163,19 @@ function classifyDeterministically(message, { canonicalBarberNames = [] } = {}) 
   if (availabilityIntent) return availabilityIntent;
   const bareBarberAvailability = classifyBareBarberAvailability(normalized, canonicalBarberNames);
   if (bareBarberAvailability) return bareBarberAvailability;
+
+  // Request datang lebih cepat / early arrival
+  const EARLY_ARRIVAL_SIGNAL = /\b(lebih\s+(?:cepat|awal|pagi)|maju(?:\s+jamnya)?|dimajukan|diajukan|majuin|datang\s+sekarang|dateng\s+sekarang|kalau\s+(?:datang\s+)?sekarang\s+bisa|nyampe\s+sekarang|sampai\s+sekarang)\b/i;
+  if (EARLY_ARRIVAL_SIGNAL.test(normalized)) {
+    return { intent: 'early_arrival_request', confidence: 1 };
+  }
+
+  const LATE_ARRIVAL_SIGNAL = /\b(agak\s+telat|agak\s+terlambat|telat|terlambat|kesiangan|macet|\d+\s*menit\s+lagi|sebentar\s+lagi\s+sampai|sebentar\s+lagi\s+nyampe)\b/i;
+  const LATENESS_POLICY_QUERY = /\b(kebijakan|aturan|batas|toleransi|berapa\s+menit|boleh.*(?:telat|terlambat)|kalau.*(?:telat|terlambat).*(?:gimana|bisa|hangus|dibatalkan))\b/i;
+  if (LATE_ARRIVAL_SIGNAL.test(normalized) && !LATENESS_POLICY_QUERY.test(normalized)) {
+    return { intent: 'late_arrival_notification', confidence: 1 };
+  }
+
   return null;
 }
 

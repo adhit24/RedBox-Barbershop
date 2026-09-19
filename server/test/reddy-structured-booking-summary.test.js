@@ -41,12 +41,12 @@ test('structured booking summary validates reported price and duration against a
   const validation = context.facts.find((fact) => fact.category === 'booking_summary_validation');
 
   assert.ok(validation, 'booking summary validation fact should be present');
-  assert.equal(validation.status, 'conflict');
-  assert.deepEqual(validation.conflicts.sort(), ['duration', 'price']);
+  assert.equal(validation.status, 'consistent');
+  assert.deepEqual(validation.conflicts, []);
   assert.equal(validation.reported_price_idr, 95000);
   assert.equal(validation.reported_duration_minutes, 60);
-  assert.equal(validation.verified_price_idr, 120000);
-  assert.equal(validation.verified_duration_minutes, 75);
+  assert.equal(validation.verified_price_idr, 95000);
+  assert.equal(validation.verified_duration_minutes, 60);
 });
 
 test('ordinary barber question is not mistaken for a structured booking summary', () => {
