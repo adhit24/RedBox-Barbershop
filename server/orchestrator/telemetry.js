@@ -492,6 +492,8 @@ const ALLOWED_FACTUAL_GUARD_EVENTS = new Set([
   'factual_duration_mismatch_blocked',
   'visit_completion_overclaim_blocked',
   'booking_url_integrity_corrected',
+  'legacy_service_name_corrected',
+  'unsupported_late_guarantee_blocked',
 ]);
 
 function sanitizeFactualGuardTelemetry(event = {}) {
@@ -499,7 +501,15 @@ function sanitizeFactualGuardTelemetry(event = {}) {
     timestamp: new Date().toISOString(),
     event_type: ALLOWED_FACTUAL_GUARD_EVENTS.has(event.event_type) ? event.event_type : 'unknown',
     branch: typeof event.branch === 'string' ? event.branch.slice(0, 32) : 'unknown',
+    correlation_id: typeof event.correlation_id === 'string' ? event.correlation_id.slice(0, 64) : null,
+    sender_hash: typeof event.sender_hash === 'string' ? event.sender_hash.slice(0, 64) : null,
     service_id: typeof event.service_id === 'string' ? event.service_id.slice(0, 64) : null,
+    service_name: typeof event.service_name === 'string' ? event.service_name.slice(0, 64) : null,
+    claimed_price: Number.isFinite(event.claimed_price) ? event.claimed_price : null,
+    canonical_price: Number.isFinite(event.canonical_price) ? event.canonical_price : null,
+    response_source: typeof event.response_source === 'string' ? event.response_source.slice(0, 32) : null,
+    blocked_at: typeof event.blocked_at === 'string' ? event.blocked_at.slice(0, 32) : null,
+    action: typeof event.action === 'string' ? event.action.slice(0, 32) : null,
     attempted_value: (typeof event.attempted_value === 'string' || typeof event.attempted_value === 'number')
       ? String(event.attempted_value).slice(0, 32) : null,
     expected_value: (typeof event.expected_value === 'string' || typeof event.expected_value === 'number')

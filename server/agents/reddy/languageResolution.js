@@ -30,13 +30,18 @@ function hasIndonesianLanguageSignal(text) {
   if (INDONESIAN_STRUCTURED_BOOKING_FIELD.test(raw)) return true;
 
   const lower = raw.toLowerCase();
-  const indonesianWords = ['mau', 'booking', 'potong', 'rambut', 'harga', 'berapa', 'bisa', 'kapan',
+  const indonesianWords = [
+    'ini', 'itu', 'mau', 'booking', 'potong', 'rambut', 'harga', 'berapa', 'bisa', 'kapan',
     'hari', 'jam', 'cabang', 'lokasi', 'dimana', 'ada', 'saya', 'aku', 'kak', 'mas',
     'terima kasih', 'makasih', 'tolong', 'bantu', 'info', 'dong', 'ya', 'iya', 'gak',
-    'tidak', 'bukan', 'oke', 'siap', 'datang', 'jadi', 'batal'];
-  const words = lower.split(/\s+/);
-  const indonesianCount = words.filter((w) => indonesianWords.some((iw) => w.includes(iw))).length;
-  return words.length > 0 && indonesianCount / words.length > 0.3;
+    'nggak', 'tidak', 'bukan', 'oke', 'siap', 'datang', 'jadi', 'batal', 'untuk', 'buat',
+    'di', 'ke', 'dari', 'sama', 'dengan', 'yang', 'apa', 'aja', 'saja', 'nih', 'tuh',
+    'kan', 'besok', 'lusa', 'kemarin', 'sekarang', 'nanti', 'sudah', 'udah', 'belum',
+    'kalau', 'kalo', 'gimana', 'kenapa', 'kok', 'tanya', 'min', 'admin'
+  ];
+  const words = lower.split(/[^a-zA-Z0-9_-]+/).filter(Boolean);
+  const indonesianCount = words.filter((w) => indonesianWords.some((iw) => w === iw || (iw.length > 3 && w.includes(iw)))).length;
+  return words.length > 0 && indonesianCount / words.length >= 0.25;
 }
 
 const MALAY_WORDS = ['awak', 'ringgit', 'boleh tak', 'tak boleh', 'sila '];
@@ -68,11 +73,12 @@ function isForeignLanguage(text) {
   const foreignPatterns = [
     /\b(i want|i need|i would|i'd like|can i|could you|please|thank you|thanks)\b/i,
     /\b(hello|hey|good morning|good afternoon|good evening)\b/i,
-    /\b(haircut|hair cut|barber|appointment|schedule|book|reserve)\b/i,
+    /\b(appointment|schedule)\b/i,
     /\b(how much|what time|when|where|which)\b/i,
     /\b(tomorrow|today|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
     /\b(do you|are you|is there|can you|will you)\b/i,
     /\b(my name|i am|i'm)\b/i,
+    /(?:^|\n)\s*(?:booking\s+summary|name|service|price|duration|barber|date|time|branch)\s*:/i,
     // Turkish
     /\b(merhaba|selam|berber|randevu|rezervasyon|istiyorum|saç|kesim|tıraş)\b/i,
     // Chinese

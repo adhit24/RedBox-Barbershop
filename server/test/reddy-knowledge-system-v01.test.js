@@ -1078,10 +1078,10 @@ test('S1. Every price/name emitted by buildServicesText originates from canonica
   assert.ok(textCSB.includes('Gentleman Grooming — Rp120.000'), 'CSB price must be Rp120.000');
 
   // Hair Color
-  assert.ok(textBypass.includes('Hair Color — Rp160.000'));
+  assert.ok(textBypass.includes('Hair Color — Rp150.000'));
 
   // Down Perm / Root Lift
-  assert.ok(textBypass.includes('Down Perm / Root Lift — Rp175.000'));
+  assert.ok(textBypass.includes('Down Perm / Root Lift — Rp165.000'));
 
   // Ear Candle
   assert.ok(textBypass.includes('Ear Candle — Rp40.000'));
@@ -1244,8 +1244,8 @@ test('T9. Loyalty percentage audit: points fallback retains 5% text for un-regis
 test('T10. Indonesian deterministic price path preserves canonical REDBOX_SERVICES only (S1 rule)', async () => {
   const textBypass = buildServicesText('bypass');
   assert.ok(textBypass.includes('Gentleman Grooming — Rp95.000'));
-  assert.ok(textBypass.includes('Hair Color — Rp160.000'));
-  assert.ok(textBypass.includes('Down Perm / Root Lift — Rp175.000'));
+  assert.ok(textBypass.includes('Hair Color — Rp150.000'));
+  assert.ok(textBypass.includes('Down Perm / Root Lift — Rp165.000'));
   assert.ok(textBypass.includes('Ear Candle — Rp40.000'));
 });
 

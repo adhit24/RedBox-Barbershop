@@ -94,6 +94,7 @@ function getBranchConfig(branchKey = 'bypass') {
 const crypto = require('crypto');
 const { REDBOX_KNOWLEDGE, resolveOfficialBranchContact } = require('../../server/agents/reddy/knowledge/redboxKnowledge');
 const { REDBOX_SERVICES } = require('../../public/js/services-data');
+const { servicesCatalog, buildCanonicalServicesText } = require('../../server/services/servicesCatalog');
 /**
  * Vercel Serverless — POST /api/wa/webhook
  * Fonnte WhatsApp webhook — RedBox Barbershop AI Assistant
@@ -690,11 +691,7 @@ function formatIDR(amount) {
 }
 
 function buildServicesText(branch = 'bypass') {
-  const isCSB = branch === 'csb';
-  return REDBOX_SERVICES.map(service => {
-    const price = isCSB ? (service.csbPrice || service.price) : service.price;
-    return `  ${service.name} — ${formatIDR(price)}`;
-  }).join('\n');
+  return buildCanonicalServicesText(branch);
 }
 
 function buildSystemPrompt(branch = 'bypass', sessionStatus = 'expired', verifiedName = null) {
@@ -1355,7 +1352,8 @@ function extractForeignService(text) {
 
 // ── Main Handler ──────────────────────────────────────────────────────────────
 
-async function handleMessage({ from, name, text, device, receiver, branch: explicitBranchParam, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null }, deps = {}) {
+async function handleMessage({ from, name, text, device, receiver, branch: explicitBranchParam, branchFromPayload, trustedIdentity = null, aiPaused = false, providerDeviceHash = null, correlationId: explicitCorrelationId = null }, deps = {}) {
+  const correlationId = explicitCorrelationId || deps.correlationId || null;
   const {
     loadConversationHistory = getHistory,
     checkHumanTakeover = null,
@@ -1628,14 +1626,15 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   const sendAndPersistFinalReply = async (replyText, routeUsed, extraMeta = {}, sendOptions = {}) => {
     reply = replyText;
     used = routeUsed;
-    const sendResult = await send(from, reply, { branch, ...sendOptions });
+    const sendResult = await send(from, reply, { branch, correlationId, responseSource: routeUsed, ...sendOptions });
     const sendSucceeded = Boolean(sendResult && sendResult.status !== false && sendResult.suppressed !== true);
     if (sendSucceeded) {
+      const textToPersist = sendResult?.finalOutboundText || reply;
       try {
-        await persistConversation(from, activeHistoryTurns, text, reply, { ...extraMeta, branch }, providerDeviceHash);
+        await persistConversation(from, activeHistoryTurns, text, textToPersist, { ...extraMeta, branch, correlationId }, providerDeviceHash);
       } catch (_e) {}
     }
-    return { used, reply, sendResult, error: null };
+    return { used, reply: sendResult?.finalOutboundText || reply, sendResult, error: null };
   };
 
   // Existing language routing owns presentation before the fact gate.
@@ -1760,7 +1759,10 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   // Cancel/batal must always win over a travel-state signal, even when both
   // appear in the same message ("udah otw tapi jadi mau batal").
   const hasCancelSignal = /\b(cancel|(?:di)?batal(?:in|kan)?|pembatalan)\b/.test(msgLower);
-  const isOtw = hasOtwTravelSignal && !hasCancelSignal;
+  const isLatenessPolicyQuestion = /\b(kebijakan|aturan|batas|toleransi|berapa\s+menit|boleh.*(?:telat|terlambat)|kalau.*(?:telat|terlambat).*(?:gimana|bisa|hangus|dibatalkan))\b/i.test(msgLower);
+  const isLateArrivalNotification = (hasLatenessSignal || /\b(macet|\d+\s*menit\s+lagi|sebentar\s+lagi\s+sampai|agak\s+(?:telat|terlambat)|sedikit\s+(?:telat|terlambat))\b/i.test(msgLower))
+    && !isLatenessPolicyQuestion && !hasCancelSignal;
+  const isOtw = (hasOtwTravelSignal || isLateArrivalNotification) && !hasCancelSignal;
   const isWalkIn = /\b(walk\s*in|langsung datang|langsung dateng|datang langsung|dateng langsung|tanpa booking|tanpa bookingan)\b/.test(msgLower);
   const isHomeService = /(home\s*service|ke rumah|datang ke rumah|panggil barber|barber ke kantor)/.test(msgLower);
   const isWedding = /(wedding|pernikahan|nikah|pengantin|prewedding|pre-wedding)/.test(msgLower);
@@ -1838,25 +1840,46 @@ async function handleMessage({ from, name, text, device, receiver, branch: expli
   }
 
   if (isOtw) {
-    // Round 3, Objective C: OTW-type messages describe travel state, not a
-    // booking request. Never ask the customer to create/check a booking here
-    // — a plain acknowledgement is the safe default. Booking lookup is
-    // optional and only used to *append* a bounded confirmation when a
-    // confirmed booking is actually found; a lookup failure/ambiguous/
-    // not-found result must never be surfaced as "you have no booking" or
-    // turned into a booking CTA.
-    reply = hasLatenessSignal
-      ? 'Siap Kak, hati-hati di jalan. Kalau terlambat cukup lama, tim cabang mungkin perlu menyesuaikan slot.'
-      : 'Siap Kak, hati-hati di jalan ya.';
+    let bookingFound = false;
+    let activeBooking = null;
     try {
-      const booking = await getBookingStatus(from, branch, { statuses: ['confirmed'], limit: 5 });
-      if (booking?.status === BOOKING_STATUS.CONFIRMED) {
-        reply += ' Booking Kakak sudah tercatat.';
+      const bRes = await getBookingStatus(from, branch, { statuses: ['confirmed'], limit: 5 });
+      if (bRes?.status === BOOKING_STATUS.CONFIRMED) {
+        bookingFound = true;
+        if (Array.isArray(bRes.bookings) && bRes.bookings.length > 0) {
+          activeBooking = bRes.bookings[0];
+        }
       }
     } catch (_error) {
-      // Lookup failure — fall through with the plain acknowledgement only.
+      bookingFound = false;
+      activeBooking = null;
     }
-    return sendAndPersistFinalReply(reply, 'policy');
+
+    if (hasOtwTravelSignal) {
+      if (hasLatenessSignal) {
+        reply = 'Siap Kak, hati-hati di jalan. Kalau terlambat cukup lama, tim cabang mungkin perlu menyesuaikan slot.';
+      } else {
+        reply = 'Siap Kak, hati-hati di jalan ya.';
+        if (bookingFound) {
+          reply += ' Booking Kakak sudah tercatat.';
+        }
+      }
+    } else if (isLateArrivalNotification) {
+      if (activeBooking) {
+        const barberPart = activeBooking.barber_name ? ` dengan Mas ${activeBooking.barber_name}` : '';
+        const timePart = activeBooking.booking_time ? ` jam ${activeBooking.booking_time}` : '';
+        reply = `Siap kak, aku lihat booking-nya${timePart}${barberPart}. Untuk keterlambatan, layanan tetap menyesuaikan kondisi slot dan operasional cabang saat kakak tiba ya. Kalau perlu aku bantu teruskan ke tim cabang.`;
+      } else if (bookingFound) {
+        reply = 'Siap kak, aku lihat booking-nya. Untuk keterlambatan, layanan tetap menyesuaikan kondisi slot dan operasional cabang saat kakak tiba ya. Kalau perlu aku bantu teruskan ke tim cabang.';
+      } else {
+        reply = 'Aku belum bisa memastikan booking yang dimaksud dari percakapan ini. Bisa kirim jam booking atau cabangnya?';
+      }
+    }
+
+    return sendAndPersistFinalReply(reply, isLateArrivalNotification ? 'late_arrival_handling' : 'policy', {}, {
+      hasActiveBooking: bookingFound,
+      verifiedBookingStatus: bookingFound ? 'confirmed' : null,
+    });
   }
 
   const isPersonalHistoryOrPreferenceSignal = /\b(saya|aku|ku|terakhir|riwayat|histori|history|biasanya|favorit|sering|pernah|kapan|sama siapa)\b/.test(msgLower);
@@ -3123,9 +3146,20 @@ module.exports = async function handler(req, res, testDeps = {}) {
     if (type && MEDIA_TYPES.includes(type)) {
       // Balas agar customer tahu pesan mereka diterima, tapi bot tidak bisa proses media
       res.status(200).json({ status: 'ok' });
-      const mediaReply = type === 'sticker'
-        ? `Terima kasih sticker-nya Kak 😄 Ada yang bisa aku bantu? Booking, info layanan, atau tanya harga?`
-        : `Maaf Kak, aku belum bisa baca ${type === 'image' ? 'gambar' : type === 'audio' || type === 'ptt' ? 'pesan suara' : 'file'} ya 🙏 Silakan ketik pertanyaan Kakak, aku siap bantu!`;
+      let mediaReply;
+      if (type === 'image') {
+        mediaReply = 'Aku sudah terima fotonya kak. Kalau ada yang mau dicek dari foto itu, kasih sedikit konteks ya—misalnya mau tanya model rambut, booking, atau layanan.';
+      } else if (type === 'audio' || type === 'ptt') {
+        mediaReply = 'Aku sudah terima voice note-nya kak, tapi aku belum bisa memastikan isinya. Bisa tulis singkat pesannya?';
+      } else if (type === 'video') {
+        mediaReply = 'Aku sudah terima videonya kak. Kalau ada yang mau dicek dari video itu, kasih sedikit info atau pertanyaannya ya!';
+      } else if (type === 'document') {
+        mediaReply = 'Aku sudah terima dokumennya kak. Kalau ada info layanan atau booking yang mau ditanyakan, bisa tulis singkat di sini ya!';
+      } else if (type === 'sticker') {
+        mediaReply = 'Terima kasih stickernya kak! Ada yang bisa aku bantu seputar layanan atau booking di RedBox?';
+      } else {
+        mediaReply = 'Aku sudah terima kirimannya kak, tapi format ini belum bisa aku buka langsung. Bisa tuliskan pertanyaannya?';
+      }
       // Use branchFromPayload first for media reply
       let branch = branchFromPayload;
       if (!branch) {
@@ -3140,7 +3174,7 @@ module.exports = async function handler(req, res, testDeps = {}) {
       // instance of the same class of bug as the other suppression paths).
       let mediaSendResult;
       try {
-        mediaSendResult = await guardedSend(sender, mediaReply, { branch });
+        mediaSendResult = await guardedSend(sender, mediaReply, { branch, correlationId });
       } catch (err) {
         mediaSendResult = { status: false, reason: 'send_threw', error: err };
       }
@@ -3232,15 +3266,17 @@ module.exports = async function handler(req, res, testDeps = {}) {
         // send idempotency system already uses, never a separately derived
         // value.
         providerDeviceHash: inboundAdmission.providerDeviceHash,
+        correlationId,
       }, {
         send: guardedSend,
         getHandoffState: async () => handoffState,
+        correlationId,
       });
       const ms = Date.now() - t0;
       const outboundOutcome = normalizeOutboundLifecycleOutcome(result?.sendResult);
       if (result && result.error && (result.failureReason || result.reason)) {
         activeFailureReason = result.failureReason || result.reason;
-      } else if (outboundOutcome.terminalKind === 'suppressed' || outboundOutcome.terminalKind === 'failed') {
+      } else if (outboundOutcome.terminalKind === 'duplicate' || outboundOutcome.terminalKind === 'suppressed' || outboundOutcome.terminalKind === 'failed') {
         activeFailureReason = outboundOutcome.reason || 'processing_failed';
       } else if (result && result.error) {
         activeFailureReason = result.failureReason || result.reason || 'internal_exception';

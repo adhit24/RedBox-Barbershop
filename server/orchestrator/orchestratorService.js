@@ -234,19 +234,27 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
   // requires) alongside an availability signal word or a branch-wide
   // "siapa yang kosong" question — mirrors, not duplicates, that classifier's
   // own signal words.
-  const priorAvailabilityContext = /\b(kosong|available|tersedia|free|bebas)\b/.test(contextText)
-    && /\b(mas|mbak|pak|bu|bang)\s+[\p{L}][\p{L}'.-]{1,30}\b/iu.test(contextText);
+  const priorAvailabilityContext = (
+    /\b(kosong|available|tersedia|free|bebas|jadwal|ada|masuk)\b/.test(contextText)
+    && /\b(mas|mbak|pak|bu|bang)\s+[\p{L}][\p{L}'.-]{1,30}\b/iu.test(contextText)
+  ) || conversationContext?.latest_availability_result != null
+    || conversationContext?.booking_context?.barber?.value != null;
   const bookingWriteVerbPresent = /\b(booking|bookingin|pesan slot|amankan|lock|kunci|reschedule|jadwal ulang|cancel|batalkan)\b/.test(normalized);
-  // A short current message that is just a clock time / time-of-day word,
-  // tolerating a leading "kalau"/"yang" and a trailing "gimana"/"aja"/"ya" —
-  // deliberately narrower than currentTimeChoice below (which this branch
-  // must win over), not a replacement for it.
+  // A short current message that is just a clock time, day, day+time, or relative shift word
+  // ("Minggu jam 12.00", "jam 12", "Minggu", "yang jam 2 aja", "yang tadi", "lebih pagi")
   const availabilityTimeRefinement = (() => {
     let s = normalized.replace(/[?.!]+$/, '').trim();
-    s = s.replace(/^(?:kalau|yang)\s+/, '');
-    s = s.replace(/\s+(?:gimana|aja|saja|mungkin|ya)$/, '').trim();
-    return /^(?:jam\s*)?\d{1,2}(?:[.:]\d{2})?(?:\s*(?:pagi|siang|sore|malam))?$/.test(s)
-      || /^(?:pagi|siang|sore|malam)$/.test(s);
+    s = s.replace(/^(?:kalau|yang|di)\s+/, '');
+    s = s.replace(/\s+(?:gimana|aja|saja|mungkin|ya|deh)$/, '').trim();
+    // 1. Clock time (jam 12, 12.00, jam 2, etc.)
+    if (/^(?:jam\s*)?\d{1,2}(?:[.:]\d{2})?(?:\s*(?:pagi|siang|sore|malam))?$/.test(s)) return true;
+    // 2. Day or relative day (Minggu, besok, lusa, hari ini)
+    if (/^(?:senin|selasa|rabu|kamis|jumat|sabtu|minggu|besok|lusa|hari\s+ini)$/.test(s)) return true;
+    // 3. Day + Clock time ("Minggu jam 12.00", "besok jam 2 siang", "minggu jam 12")
+    if (/^(?:senin|selasa|rabu|kamis|jumat|sabtu|minggu|besok|lusa|hari\s+ini)\s+(?:jam\s*)?\d{1,2}(?:[.:]\d{2})?(?:\s*(?:pagi|siang|sore|malam))?$/.test(s)) return true;
+    // 4. Period / shift words (pagi, siang, sore, malam, lebih pagi, lebih sore, lebih awal, yang tadi, yang mas abdul)
+    if (/^(?:pagi|siang|sore|malam|lebih\s+(?:pagi|siang|sore|malam|awal|cepat)|yang\s+(?:tadi|mas\s+[\p{L}'-]+))$/u.test(s)) return true;
+    return false;
   })();
 
   // Contextual ellipsis wins over an independently classified business intent
@@ -287,23 +295,19 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
       ],
     };
   } else if (!explicitCorrectionActive && hasActiveContext && priorAvailabilityContext && availabilityTimeRefinement && !bookingWriteVerbPresent) {
-    // Reddy barber-availability MVP follow-up fix: a bare time refinement
-    // ("Kalau jam 8?", "Jam 7?") after a turn that was itself availability-
-    // shaped (named barber + kosong/available/siapa-yang-kosong signal, per
-    // routingPolicy.js's own classifyAvailabilityIntent logic) must win over
-    // the generic booking-flow temporal_followup below — otherwise the
-    // customer's barber/date get silently reinterpreted as a booking-flow
-    // time choice instead of a fresh availability check. Booking-write verbs
-    // (booking/lock/reschedule/...) always take precedence over this branch,
-    // and (same as every other contextual-followup branch here) an explicit
-    // correction from the customer disqualifies stale continuation entirely.
+    // Reddy barber-availability MVP follow-up fix: a bare time/day refinement
+    // ("Minggu jam 12.00", "Kalau jam 8?", "Jam 7?", "Minggu") after an availability turn
+    const hasSpecificClockTime = /\bjam\s*\d{1,2}\b|\b\d{1,2}[:.]\d{2}\b/.test(normalized);
+    const resolvedAvailabilityIntent = hasSpecificClockTime
+      ? 'specific_time_availability_query'
+      : 'barber_availability_query';
     conversationalAct = 'temporal_followup';
     continuationType = 'contextual';
     contextReference = 'prior_availability_barber_date';
     resolved = {
-      ...resolved, intent: 'specific_time_availability_query', route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability',
+      ...resolved, intent: resolvedAvailabilityIntent, route: 'reddy_agent', agent: 'reddy_agent', action: 'answer_barber_availability',
     };
-    policy = sourcePolicyFor({ ...base, intent: 'specific_time_availability_query' });
+    policy = sourcePolicyFor({ ...base, intent: resolvedAvailabilityIntent });
   } else if (!explicitCorrectionActive && hasActiveContext && currentTimeChoice && (priorTimeContext || conversationContext?.sessionStatus !== 'expired')) {
     conversationalAct = 'temporal_followup';
     continuationType = 'contextual';
@@ -529,13 +533,26 @@ function buildDecisionEnvelope({ message = '', conversationContext = null, decis
 }
 
 async function orchestrateMessage(params = {}, dependencies = {}) {
-  const {
-    message,
-    channel = 'whatsapp',
-    branch = null,
-    conversationContext = null,
-  } = params;
-  const classifier = dependencies.classifier || classifyMessage;
+  let message;
+  let channel = 'whatsapp';
+  let branch = null;
+  let conversationContext = null;
+  let deps = dependencies;
+
+  if (typeof params === 'string') {
+    message = params;
+    if (dependencies && typeof dependencies === 'object' && ('turns' in dependencies || 'sessionStatus' in dependencies || 'turn_count' in dependencies || 'latest_availability_result' in dependencies)) {
+      conversationContext = dependencies;
+      deps = (arguments.length > 2 && typeof arguments[2] === 'object') ? arguments[2] : {};
+    }
+  } else if (params && typeof params === 'object') {
+    message = params.message;
+    channel = params.channel || 'whatsapp';
+    branch = params.branch || null;
+    conversationContext = params.conversationContext || null;
+  }
+
+  const classifier = deps.classifier || classifyMessage;
 
   const output = (decision, fallbackUsed, fallbackReason) => ({
     ...buildDecisionEnvelope({ message, conversationContext, decision }),

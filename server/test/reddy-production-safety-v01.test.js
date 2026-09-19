@@ -286,13 +286,13 @@ test('TEST 27: observer failure remains fail-open', async () => {
 
 test('ROUND 3 TEST 1: guardedSend duplicate_content propagates duplicate_suppressed', () => {
   const outcome = normalizeOutboundLifecycleOutcome({ status: false, suppressed: true, reason: 'duplicate_content' });
-  assert.equal(outcome.terminalKind, 'suppressed');
+  assert.equal(outcome.terminalKind, 'duplicate');
   assert.equal(outcome.reason, 'duplicate_suppressed');
 });
 
 test('ROUND 3 TEST 2: guardedSend already_attempted propagates duplicate_suppressed', () => {
   const outcome = normalizeOutboundLifecycleOutcome({ status: false, suppressed: true, reason: 'already_attempted' });
-  assert.equal(outcome.terminalKind, 'suppressed');
+  assert.equal(outcome.terminalKind, 'duplicate');
   assert.equal(outcome.reason, 'duplicate_suppressed');
 });
 

@@ -947,13 +947,6 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     });
   }
 
-  if (persistConversation && typeof persistConversation === 'function') {
-    await persistConversation(
-      from, boundedConversationContext.turns || [], text, reply,
-      {}, boundedConversationContext.providerDeviceHash || null,
-    );
-  }
-
   let sendResult = null;
   if (sendWA && typeof sendWA === 'function') {
     try {
@@ -965,9 +958,20 @@ async function executeReddyAgent(params = {}, dependencies = {}) {
     }
   }
 
+  // Pre-outbound factual gate guarantee: only persist assistant history if send passed,
+  // and persist the post-guard canonical text (sendResult.finalOutboundText).
+  const finalReplyToPersist = sendResult?.finalOutboundText || reply;
+  const sendSuccessful = !sendResult || (sendResult.status !== false && sendResult.suppressed !== true);
+  if (persistConversation && typeof persistConversation === 'function' && sendSuccessful) {
+    await persistConversation(
+      from, boundedConversationContext.turns || [], text, finalReplyToPersist,
+      {}, boundedConversationContext.providerDeviceHash || null,
+    );
+  }
+
   return {
     used,
-    reply,
+    reply: finalReplyToPersist,
     sendResult,
     error,
   };
