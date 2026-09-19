@@ -4,7 +4,17 @@ import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
 import { LoadingState } from '../components/LoadingState';
 import { ErrorState } from '../components/ErrorState';
-import { getEmployees, type RegularEmployee } from '../services/crm';
+import {
+  fetchRegularPayrollRuns,
+  fetchRegularPayrollRunDetail,
+  generateRegularPayrollDraft,
+  lockRegularPayrollRun,
+  addRegularPayrollAdjustment,
+  deleteRegularPayrollAdjustment,
+  type RegularPayrollRun,
+  type RegularPayrollItem,
+} from '../services/regularPayroll';
+import { useAuth } from '../auth/AuthProvider';
 
 const BRANCH_LABELS: Record<string, string> = {
   bypass: 'Bypass',
@@ -14,206 +24,896 @@ const BRANCH_LABELS: Record<string, string> = {
   tegal: 'Tegal',
 };
 
-type FilterUnit = 'all' | 'Redbox' | 'Sundaze';
-
-type PageState =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'ready'; employees: RegularEmployee[] };
+function formatRupiah(amount: number): string {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
+}
 
 export function RegularPayroll() {
-  const [state, setState] = useState<PageState>({ status: 'loading' });
-  const [unitFilter, setUnitFilter] = useState<FilterUnit>('all');
+  let isOwner = false;
+  try {
+    const auth = useAuth();
+    isOwner = auth.role === 'owner';
+  } catch {
+    // Graceful fallback when rendered without AuthProvider in standalone tests
+    isOwner = true;
+  }
+
+  // Runs & active run state
+  const [runs, setRuns] = useState<RegularPayrollRun[]>([]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [activeRun, setActiveRun] = useState<RegularPayrollRun | null>(null);
+  const [items, setItems] = useState<RegularPayrollItem[]>([]);
+
+  // Page status
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Filters
+  const [unitFilter, setUnitFilter] = useState<'all' | 'Redbox' | 'Sundaze'>('all');
+  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals & Drawer
+  const [detailItem, setDetailItem] = useState<RegularPayrollItem | null>(null);
+  const [adjustmentTargetItem, setAdjustmentTargetItem] = useState<RegularPayrollItem | null>(null);
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+
+  // Generate Draft form state
+  const [genPeriodStart, setGenPeriodStart] = useState('2026-08-26');
+  const [genPeriodEnd, setGenPeriodEnd] = useState('2026-09-25');
+  const [genBusinessUnit, setGenBusinessUnit] = useState('ALL');
+
+  // Adjustment form state
+  const [adjType, setAdjType] = useState<'BONUS' | 'DEDUCTION' | 'DEBT' | 'CORRECTION'>('DEBT');
+  const [adjAmount, setAdjAmount] = useState('');
+  const [adjReason, setAdjReason] = useState('');
+  const [adjNote, setAdjNote] = useState('');
+
+  // 1. Initial load of runs
+  const loadRuns = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchRegularPayrollRuns();
+      const runList = res?.runs || [];
+      setRuns(runList);
+      if (runList.length > 0) {
+        const initialRun = selectedRunId
+          ? runList.find((r) => r.id === selectedRunId) || runList[0]
+          : runList[0];
+        setSelectedRunId(initialRun.id);
+        await loadRunDetail(initialRun.id);
+      } else {
+        setActiveRun(null);
+        setItems([]);
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setRuns([]);
+      setError(err?.message || 'Gagal memuat riwayat payroll reguler.');
+      setLoading(false);
+    }
+  };
+
+  const loadRunDetail = async (runId: string) => {
+    try {
+      const res = await fetchRegularPayrollRunDetail(runId);
+      setActiveRun(res.run);
+      setItems(res.items);
+      // Keep detailItem refreshed if open
+      if (detailItem) {
+        const refreshed = res.items.find((i) => i.id === detailItem.id);
+        if (refreshed) setDetailItem(refreshed);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Gagal memuat rincian payroll reguler.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    getEmployees()
-      .then((res) => {
-        if (res.ok && res.employees) {
-          setState({ status: 'ready', employees: res.employees });
-        } else {
-          setState({ status: 'error', message: 'Gagal memuat daftar karyawan reguler.' });
-        }
-      })
-      .catch((err) => {
-        setState({
-          status: 'error',
-          message: err?.message || 'Terjadi kesalahan saat memuat data karyawan reguler.',
-        });
-      });
+    loadRuns();
   }, []);
 
-  const filteredEmployees = useMemo(() => {
-    if (state.status !== 'ready') return [];
-    return state.employees.filter((emp) => {
-      if (!emp.is_active) return false;
-      if (unitFilter !== 'all' && emp.business_unit !== unitFilter) return false;
+  const handleSelectRun = async (runId: string) => {
+    setSelectedRunId(runId);
+    setLoading(true);
+    await loadRunDetail(runId);
+  };
+
+  // 2. Generate Draft
+  const handleGenerateDraft = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const res = await generateRegularPayrollDraft({
+        period_start: genPeriodStart,
+        period_end: genPeriodEnd,
+        business_unit: genBusinessUnit,
+      });
+      setIsGenerateModalOpen(false);
+      setActionMessage({ type: 'success', text: 'Draft payroll reguler berhasil dibuat.' });
+      await loadRuns();
+      if (res.run_id) {
+        setSelectedRunId(res.run_id);
+        await loadRunDetail(res.run_id);
+      }
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err?.message || 'Gagal membuat draft payroll reguler.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 3. Lock Payroll
+  const handleLockRun = async () => {
+    if (!activeRun) return;
+    const confirm = window.confirm(
+      `Apakah Anda yakin ingin mengunci (LOCK) payroll periode ${activeRun.period_start} s/d ${activeRun.period_end}? Setelah dikunci, data snapshot menjadi permanen dan tidak dapat diubah lagi.`
+    );
+    if (!confirm) return;
+
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      await lockRegularPayrollRun(activeRun.id);
+      setActionMessage({ type: 'success', text: 'Payroll run berhasil dikunci secara permanen (LOCKED).' });
+      await loadRunDetail(activeRun.id);
+      await loadRuns();
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err?.message || 'Gagal mengunci payroll run.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 4. Add Adjustment
+  const handleAddAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeRun || !adjustmentTargetItem) return;
+    const numAmount = Number(adjAmount);
+    if (!numAmount || numAmount <= 0) {
+      alert('Jumlah nominal penyesuaian harus lebih dari 0.');
+      return;
+    }
+    if (!adjReason.trim()) {
+      alert('Alasan penyesuaian wajib diisi.');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await addRegularPayrollAdjustment({
+        runId: activeRun.id,
+        payroll_regular_item_id: adjustmentTargetItem.id,
+        employee_id: adjustmentTargetItem.employee_id,
+        type: adjType,
+        amount: numAmount,
+        reason: adjReason,
+        note: adjNote,
+      });
+      setAdjustmentTargetItem(null);
+      setAdjAmount('');
+      setAdjReason('');
+      setAdjNote('');
+      setActionMessage({ type: 'success', text: 'Penyesuaian manual berhasil ditambahkan.' });
+      await loadRunDetail(activeRun.id);
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err?.message || 'Gagal menambahkan penyesuaian.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // 5. Delete Adjustment
+  const handleDeleteAdjustment = async (adjId: string) => {
+    if (!activeRun) return;
+    const ok = window.confirm('Hapus penyesuaian ini?');
+    if (!ok) return;
+
+    setActionLoading(true);
+    try {
+      await deleteRegularPayrollAdjustment(adjId);
+      setActionMessage({ type: 'success', text: 'Penyesuaian berhasil dihapus.' });
+      await loadRunDetail(activeRun.id);
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err?.message || 'Gagal menghapus penyesuaian.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Filtered table items
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      if (unitFilter !== 'all' && item.business_unit_snapshot !== unitFilter) return false;
+      if (branchFilter !== 'all' && item.branch_snapshot?.toLowerCase() !== branchFilter.toLowerCase()) return false;
+      if (statusFilter !== 'all' && item.status !== statusFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = item.employee_name_snapshot.toLowerCase().includes(q);
+        const matchesNick = item.employee_nickname_snapshot?.toLowerCase().includes(q);
+        const matchesPos = item.position_snapshot.toLowerCase().includes(q);
+        if (!matchesName && !matchesNick && !matchesPos) return false;
+      }
       return true;
     });
-  }, [state, unitFilter]);
+  }, [items, unitFilter, branchFilter, statusFilter, searchQuery]);
 
-  const sundazeCount = useMemo(() => {
-    if (state.status !== 'ready') return 0;
-    return state.employees.filter((e) => e.business_unit === 'Sundaze' && e.is_active).length;
-  }, [state]);
+  // Summary Metrics
+  const summary = useMemo(() => {
+    const totalEmp = filteredItems.length;
+    let gross = 0;
+    let deduction = 0;
+    let takeHome = 0;
+    let reviewCount = 0;
 
-  const redboxCount = useMemo(() => {
-    if (state.status !== 'ready') return 0;
-    return state.employees.filter((e) => e.business_unit === 'Redbox' && e.is_active).length;
-  }, [state]);
+    for (const it of filteredItems) {
+      gross += Number(it.gross_pay || 0);
+      deduction += Number(it.total_deduction || 0);
+      takeHome += Number(it.take_home_pay || 0);
+      if (it.status === 'REVIEW_REQUIRED' || it.status === 'MISSING_SALARY') reviewCount++;
+    }
+
+    return { totalEmp, gross, deduction, takeHome, reviewCount };
+  }, [filteredItems]);
+
+  const sundazeCount = useMemo(
+    () => items.filter((e) => e.business_unit_snapshot === 'Sundaze').length,
+    [items]
+  );
+  const redboxCount = useMemo(
+    () => items.filter((e) => e.business_unit_snapshot === 'Redbox').length,
+    [items]
+  );
 
   return (
     <>
-      <Link to="/payroll" className="mb-4 inline-block text-sm font-semibold text-rb-text-muted hover:text-rb-text">
-        ← Kembali ke Payroll
-      </Link>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <Link to="/payroll" className="inline-block text-sm font-semibold text-rb-text-muted hover:text-rb-text">
+          ← Kembali ke Payroll
+        </Link>
+        <div className="flex items-center gap-2">
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setIsGenerateModalOpen(true)}
+              className="rounded-rb-button bg-rb-red px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+            >
+              + Buat Payroll Draft Baru
+            </button>
+          )}
+          {activeRun && activeRun.status === 'DRAFT' && isOwner && (
+            <button
+              type="button"
+              onClick={handleLockRun}
+              disabled={actionLoading}
+              className="rounded-rb-button border border-amber-500 bg-amber-500/10 px-3.5 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+            >
+              🔒 Kunci Payroll (Lock)
+            </button>
+          )}
+        </div>
+      </div>
+
       <PageHeader
         title="Regular Payroll"
-        subtitle="Daftar karyawan reguler Redbox & Sundaze berbasis gaji. Formula komisi dan kalkulasi otomatis dalam tahap validasi."
+        subtitle="Perhitungan gaji staf reguler (kasir, helper, barista, kitchen) terintegrasi dengan presensi, kompensasi master, dan kebijakan operasional."
       />
 
-      {state.status === 'loading' && (
-        <LoadingState label="Memuat data karyawan reguler dari database..." />
+      {actionMessage && (
+        <div
+          className={`mb-4 rounded-rb-card p-3 text-xs font-semibold ${
+            actionMessage.type === 'success'
+              ? 'bg-rb-green-tint-bg text-rb-green-tint-fg border border-emerald-500/20'
+              : 'bg-red-50 text-red-700 border border-red-300 dark:bg-red-950/40 dark:text-red-300'
+          }`}
+        >
+          {actionMessage.text}
+        </div>
       )}
 
-      {state.status === 'error' && <ErrorState message={state.message} />}
+      {loading && !activeRun && <LoadingState label="Memuat data payroll reguler..." />}
+      {error && !activeRun && <ErrorState message={error} />}
 
-      {state.status === 'ready' && (
+      {/* Run Selector Bar */}
+      {(runs || []).length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-rb-card border border-rb-border bg-rb-surface p-3.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
+            Periode Payroll:
+          </span>
+          <select
+            value={selectedRunId || ''}
+            onChange={(e) => handleSelectRun(e.target.value)}
+            className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text"
+          >
+            {(runs || []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.period_start} s/d {r.period_end} ({r.business_unit}) — [{r.status}]
+              </option>
+            ))}
+          </select>
+
+          {activeRun && (
+            <div className="flex items-center gap-2">
+              <span
+                className={`rounded-rb-pill px-2.5 py-0.5 text-[11px] font-semibold ${
+                  activeRun.status === 'LOCKED'
+                    ? 'bg-rb-green-tint-bg text-rb-green-tint-fg'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                }`}
+              >
+                {activeRun.status === 'LOCKED' ? 'TERKUNCI (LOCKED)' : 'DRAFT AKTIF'}
+              </span>
+              <span className="text-xs text-rb-text-muted">
+                Versi kalkulasi: {activeRun.calculation_version}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(runs || []).length === 0 && !loading && (
+        <div className="mb-8 rounded-rb-card border border-rb-border bg-rb-surface p-8 text-center">
+          <div className="text-base font-semibold text-rb-text">Belum ada periode payroll reguler</div>
+          <p className="mt-1 text-xs text-rb-text-muted">
+            Klik tombol &ldquo;+ Buat Payroll Draft Baru&rdquo; untuk memulai perhitungan periode berjalan.
+          </p>
+        </div>
+      )}
+
+      {activeRun && (
         <>
-          <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Header Metric Cards */}
+          <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <StatCard
-              value={state.employees.length}
+              value={summary.totalEmp}
               label={`Total Karyawan (${sundazeCount} SD · ${redboxCount} RB)`}
               tint="blue"
             />
             <StatCard
-              value="—"
-              label="Komisi Kasir / Produk"
-              trend="Formula belum tervalidasi"
-              tint="yellow"
+              value={formatRupiah(summary.gross)}
+              label="Total Gaji Kotor (Gross)"
+              tint="blue"
             />
             <StatCard
-              value="—"
-              label="Penyesuaian Absensi"
-              trend="Belum terhubung"
+              value={formatRupiah(summary.deduction)}
+              label="Total Potongan (Deduction)"
               tint="purple"
             />
             <StatCard
-              value="—"
-              label="Status Payroll Periode Ini"
-              trend="Belum tersedia"
+              value={formatRupiah(summary.takeHome)}
+              label="Total Take-Home Pay"
               tint="green"
+            />
+            <StatCard
+              value={summary.reviewCount}
+              label="Review Diperlukan"
+              trend={summary.reviewCount > 0 ? 'Perlu konfirmasi' : 'Semua Siap'}
+              tint={summary.reviewCount > 0 ? 'yellow' : 'green'}
             />
           </section>
 
-          {/* Filter Bar */}
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setUnitFilter('all')}
-              className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
-                unitFilter === 'all'
-                  ? 'bg-rb-red text-white'
-                  : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
-              }`}
-            >
-              Semua ({state.employees.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setUnitFilter('Sundaze')}
-              className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
-                unitFilter === 'Sundaze'
-                  ? 'bg-rb-red text-white'
-                  : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
-              }`}
-            >
-              Sundaze ({sundazeCount})
-            </button>
-            <button
-              type="button"
-              onClick={() => setUnitFilter('Redbox')}
-              className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
-                unitFilter === 'Redbox'
-                  ? 'bg-rb-red text-white'
-                  : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
-              }`}
-            >
-              Redbox ({redboxCount})
-            </button>
+          {/* Filter & Search Bar */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setUnitFilter('all')}
+                className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
+                  unitFilter === 'all'
+                    ? 'bg-rb-red text-white'
+                    : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
+                }`}
+              >
+                Semua ({items.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnitFilter('Sundaze')}
+                className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
+                  unitFilter === 'Sundaze'
+                    ? 'bg-rb-red text-white'
+                    : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
+                }`}
+              >
+                Sundaze ({sundazeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnitFilter('Redbox')}
+                className={`rounded-rb-pill px-3 py-1.5 text-xs font-semibold transition ${
+                  unitFilter === 'Redbox'
+                    ? 'bg-rb-red text-white'
+                    : 'bg-rb-surface text-rb-text-secondary border border-rb-border hover:bg-rb-surface-hover'
+                }`}
+              >
+                Redbox ({redboxCount})
+              </button>
+
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="rounded-rb-button border border-rb-border bg-rb-surface px-2.5 py-1.5 text-xs font-medium text-rb-text"
+              >
+                <option value="all">Semua Cabang</option>
+                <option value="bypass">Bypass</option>
+                <option value="csb">CSB</option>
+                <option value="samadikun">Samadikun</option>
+                <option value="sumber">Sumber</option>
+                <option value="tegal">Tegal</option>
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-rb-button border border-rb-border bg-rb-surface px-2.5 py-1.5 text-xs font-medium text-rb-text"
+              >
+                <option value="all">Semua Status</option>
+                <option value="READY">READY</option>
+                <option value="REVIEW_REQUIRED">REVIEW_REQUIRED</option>
+                <option value="MISSING_SALARY">MISSING_SALARY</option>
+                <option value="LOCKED">LOCKED</option>
+              </select>
+            </div>
+
+            <div className="w-full sm:w-64">
+              <input
+                type="text"
+                placeholder="Cari nama atau jabatan..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text placeholder:text-rb-text-muted focus:outline-none focus:ring-1 focus:ring-rb-red"
+              />
+            </div>
           </div>
 
-          <div className="overflow-hidden rounded-rb-card border border-rb-border bg-rb-surface">
-            <div className="grid grid-cols-[1.4fr_1fr_1fr_0.9fr_1fr_1.1fr_0.7fr] gap-2 border-b border-rb-divider px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-rb-text-muted">
+          {/* Regular Payroll Table */}
+          <div className="overflow-hidden rounded-rb-card border border-rb-border bg-rb-surface shadow-sm">
+            <div className="grid grid-cols-[1.3fr_0.9fr_0.9fr_0.7fr_0.5fr_0.9fr_0.9fr_0.8fr_1fr_0.8fr_0.9fr] gap-2 border-b border-rb-divider px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-rb-text-muted">
               <div>Karyawan</div>
-              <div>Unit Bisnis</div>
+              <div>Unit</div>
               <div>Posisi</div>
               <div>Cabang</div>
-              <div>Tipe Payroll</div>
-              <div>Rincian Payroll</div>
-              <div>Status</div>
+              <div className="text-center">HK</div>
+              <div className="text-right">Gaji Pokok</div>
+              <div className="text-right">Gaji Kotor</div>
+              <div className="text-right">Potongan</div>
+              <div className="text-right">Take-Home Pay</div>
+              <div className="text-center">Status</div>
+              <div className="text-center">Aksi</div>
             </div>
+
             <div className="flex flex-col divide-y divide-rb-divider">
-              {filteredEmployees.length === 0 ? (
+              {filteredItems.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-rb-text-muted">
-                  Tidak ada karyawan yang cocok dengan filter yang dipilih.
+                  Tidak ada karyawan yang cocok dengan kriteria pencarian.
                 </div>
               ) : (
-                filteredEmployees.map((emp) => (
+                filteredItems.map((item) => (
                   <div
-                    key={emp.id}
-                    className="grid grid-cols-[1.4fr_1fr_1fr_0.9fr_1fr_1.1fr_0.7fr] items-center gap-2 px-4 py-3 text-sm"
+                    key={item.id}
+                    className="grid grid-cols-[1.3fr_0.9fr_0.9fr_0.7fr_0.5fr_0.9fr_0.9fr_0.8fr_1fr_0.8fr_0.9fr] items-center gap-2 px-4 py-3 text-sm hover:bg-rb-surface-hover/50"
                   >
                     <div>
-                      <Link
-                        to={`/payroll/employees/emp-${emp.id}`}
-                        className="font-semibold capitalize text-rb-text hover:text-rb-red hover:underline"
-                      >
-                        {emp.name}
-                      </Link>
+                      <div className="font-semibold text-rb-text capitalize">{item.employee_name_snapshot}</div>
                       <div className="text-[11px] font-mono text-rb-text-faint">
-                        {emp.employee_code || emp.id.slice(0, 8)}
+                        {item.employee_nickname_snapshot || item.employee_id.slice(0, 8)}
                       </div>
                     </div>
                     <div>
                       <span
-                        className={`inline-block rounded-rb-pill px-2.5 py-0.5 text-[11px] font-semibold ${
-                          emp.business_unit === 'Sundaze'
+                        className={`inline-block rounded-rb-pill px-2.5 py-0.5 text-[10.5px] font-semibold ${
+                          item.business_unit_snapshot === 'Sundaze'
                             ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                             : 'bg-rb-red-tint-bg text-rb-red-tint-fg'
                         }`}
                       >
-                        {emp.business_unit === 'Sundaze' ? 'Sundaze Cafe' : 'Redbox Barbershop'}
+                        {item.business_unit_snapshot}
                       </span>
                     </div>
-                    <div className="text-rb-text-secondary font-medium">
-                      {emp.position}
+                    <div className="text-xs font-medium text-rb-text-secondary">{item.position_snapshot}</div>
+                    <div className="text-xs capitalize text-rb-text-muted">
+                      {item.branch_snapshot ? (BRANCH_LABELS[item.branch_snapshot.toLowerCase()] ?? item.branch_snapshot) : '—'}
                     </div>
-                    <div className="capitalize text-rb-text-secondary">
-                      {emp.branch ? (BRANCH_LABELS[emp.branch.toLowerCase()] ?? emp.branch) : '—'}
+                    <div className="text-center font-mono text-xs font-semibold text-rb-text">{item.work_days}</div>
+                    <div className="text-right font-mono text-xs text-rb-text-secondary">
+                      {formatRupiah(item.base_salary)}
                     </div>
-                    <div className="text-xs text-rb-text-secondary font-medium">
-                      Gaji
+                    <div className="text-right font-mono text-xs font-medium text-rb-text">
+                      {formatRupiah(item.gross_pay)}
                     </div>
-                    <div>
-                      <span className="text-xs text-rb-text-muted italic">
-                        Formula belum tervalidasi
+                    <div className="text-right font-mono text-xs font-medium text-red-600 dark:text-red-400">
+                      {item.total_deduction > 0 ? `-${formatRupiah(item.total_deduction)}` : 'Rp 0'}
+                    </div>
+                    <div className="text-right font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                      {formatRupiah(item.take_home_pay)}
+                    </div>
+                    <div className="text-center">
+                      <span
+                        className={`inline-block rounded-rb-pill px-2 py-0.5 text-[10px] font-semibold ${
+                          item.status === 'READY'
+                            ? 'bg-rb-green-tint-bg text-rb-green-tint-fg'
+                            : item.status === 'LOCKED'
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                        }`}
+                      >
+                        {item.status}
                       </span>
                     </div>
-                    <div>
-                      <span className="rounded-rb-pill bg-rb-green-tint-bg px-2.5 py-1 text-[11px] font-semibold text-rb-green-tint-fg">
-                        Aktif
-                      </span>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setDetailItem(item)}
+                        className="rounded-rb-button border border-rb-border bg-rb-surface px-2 py-1 text-[11px] font-semibold text-rb-text hover:bg-rb-surface-hover"
+                      >
+                        Detail
+                      </button>
+                      {activeRun.status === 'DRAFT' && isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => setAdjustmentTargetItem(item)}
+                          className="rounded-rb-button border border-rb-border bg-rb-surface px-2 py-1 text-[11px] font-semibold text-rb-text hover:bg-rb-surface-hover"
+                        >
+                          +Adj
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
               )}
             </div>
           </div>
-
-          <div className="mt-4 text-xs text-rb-text-muted">
-            Menampilkan {filteredEmployees.length} karyawan reguler aktif dari Supabase. Gaji pokok dan komisi tidak diekspos pada daftar publik demi privasi data dan kepatuhan RLS.
-          </div>
         </>
+      )}
+
+      {/* DETAIL DRAWER / MODAL */}
+      {detailItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-rb-card border border-rb-border bg-rb-surface p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-rb-divider pb-4">
+              <div>
+                <h2 className="text-base font-bold text-rb-text capitalize">{detailItem.employee_name_snapshot}</h2>
+                <div className="text-xs text-rb-text-muted">
+                  {detailItem.position_snapshot} · {detailItem.business_unit_snapshot} · Cabang{' '}
+                  {detailItem.branch_snapshot || '—'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailItem(null)}
+                className="rounded-rb-pill p-1.5 text-rb-text-muted hover:bg-rb-surface-hover hover:text-rb-text"
+              >
+                ✕
+              </button>
+            </div>
+
+            {detailItem.warnings && detailItem.warnings.length > 0 && (
+              <div className="mt-4 rounded-rb-card border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                <div className="font-bold uppercase tracking-wide">Perhatian / Review Diperlukan:</div>
+                <ul className="mt-1 list-disc pl-4 space-y-0.5">
+                  {detailItem.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Component Breakdown with Sources */}
+            <div className="mt-5 space-y-4">
+              {/* 1. Base Salary */}
+              <div className="rounded-rb-card border border-rb-border p-3.5">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
+                  <span>1. Gaji Pokok &amp; Hari Kerja</span>
+                  <span className="text-[10.5px] font-mono text-rb-text-faint">Sumber: MASTER DATA + PRESENSI</span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div>Gaji Pokok Master: <span className="font-mono font-semibold">{formatRupiah(detailItem.base_salary)}</span></div>
+                  <div>Gaji Harian (/30): <span className="font-mono font-semibold">{formatRupiah(detailItem.daily_salary)}</span></div>
+                  <div>Hari Masuk Kerja (HK): <span className="font-mono font-semibold">{detailItem.work_days} hari</span></div>
+                  <div>Gaji Proporsional: <span className="font-mono font-bold text-rb-text">{formatRupiah(detailItem.actual_salary)}</span></div>
+                </div>
+              </div>
+
+              {/* 2. Allowances */}
+              <div className="rounded-rb-card border border-rb-border p-3.5">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
+                  <span>2. Tunjangan (Allowances)</span>
+                  <span className="text-[10.5px] font-mono text-rb-text-faint">Sumber: KEBIJAKAN &amp; OVERRIDE</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span>Uang Makan ({detailItem.meal_allowance_days} hari × {formatRupiah(detailItem.meal_allowance_rate)}):</span>
+                    <span className="font-mono font-semibold">{formatRupiah(detailItem.meal_allowance_total)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Tunjangan Jabatan:</span>
+                    <span className="font-mono font-semibold">{formatRupiah(detailItem.position_allowance)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Tunjangan Absensi ({detailItem.attendance_allowance_source}):</span>
+                    <span className="font-mono font-semibold">{formatRupiah(detailItem.attendance_allowance)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Variables */}
+              <div className="rounded-rb-card border border-rb-border p-3.5">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
+                  <span>3. Komponen Variabel</span>
+                  <span className="text-[10.5px] font-mono text-rb-text-faint">Sumber: MOKA / MANUAL</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span>Komisi Produk ({detailItem.product_commission_source}):</span>
+                    <span className="font-mono font-semibold">{formatRupiah(detailItem.product_commission)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Service Barber ({detailItem.service_barber_source}):</span>
+                    <span className="font-mono font-semibold">{formatRupiah(detailItem.service_barber_amount)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Lembur ({detailItem.overtime_hours} jam × {formatRupiah(detailItem.overtime_rate)}):</span>
+                    <span className="font-mono font-semibold">{formatRupiah(detailItem.overtime_amount)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Deductions */}
+              <div className="rounded-rb-card border border-rb-border p-3.5">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
+                  <span>4. Potongan (Deductions)</span>
+                  <span className="text-[10.5px] font-mono text-rb-text-faint">Sumber: PRESENSI &amp; UTANG</span>
+                </div>
+                <div className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span>Potongan Telat ({detailItem.late_count} kali · {detailItem.late_deduction_source}):</span>
+                    <span className="font-mono font-semibold text-red-600 dark:text-red-400">
+                      -{formatRupiah(detailItem.late_deduction)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Utang / Kasbon:</span>
+                    <span className="font-mono font-semibold text-red-600 dark:text-red-400">
+                      -{formatRupiah(detailItem.debt_deduction)}
+                    </span>
+                  </div>
+                  {detailItem.manual_deduction > 0 && (
+                    <div className="flex justify-between">
+                      <span>Potongan Penyesuaian Lain:</span>
+                      <span className="font-mono font-semibold text-red-600 dark:text-red-400">
+                        -{formatRupiah(detailItem.manual_deduction)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Adjustments List */}
+              {detailItem.adjustments && detailItem.adjustments.length > 0 && (
+                <div className="rounded-rb-card border border-rb-border p-3.5">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-rb-text-muted mb-2">
+                    Daftar Penyesuaian Manual Periode Ini:
+                  </div>
+                  <div className="divide-y divide-rb-divider text-xs">
+                    {detailItem.adjustments.map((adj) => (
+                      <div key={adj.id} className="flex items-center justify-between py-1.5">
+                        <div>
+                          <span className="font-semibold text-rb-text">[{adj.type}]</span> {adj.reason}
+                          {adj.note && <span className="text-rb-text-muted"> ({adj.note})</span>}
+                        </div>
+                        <div className="flex items-center gap-2 font-mono">
+                          <span>{formatRupiah(adj.amount)}</span>
+                          {activeRun?.status === 'DRAFT' && isOwner && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAdjustment(adj.id)}
+                              className="text-red-600 hover:underline"
+                            >
+                              Hapus
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Totals Summary */}
+              <div className="rounded-rb-card border-2 border-rb-border bg-rb-surface-hover/30 p-4">
+                <div className="flex justify-between text-sm py-1">
+                  <span className="font-medium text-rb-text">Total Pendapatan Kotor (Gross Pay):</span>
+                  <span className="font-mono font-bold text-rb-text">{formatRupiah(detailItem.gross_pay)}</span>
+                </div>
+                <div className="flex justify-between text-sm py-1">
+                  <span className="font-medium text-rb-text">Total Seluruh Potongan:</span>
+                  <span className="font-mono font-bold text-red-600 dark:text-red-400">
+                    -{formatRupiah(detailItem.total_deduction)}
+                  </span>
+                </div>
+                <div className="mt-2 flex justify-between border-t border-rb-divider pt-2 text-base font-bold">
+                  <span className="text-rb-text">Take-Home Pay (Diterima):</span>
+                  <span className="font-mono text-emerald-600 dark:text-emerald-400">
+                    {formatRupiah(detailItem.take_home_pay)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDetailItem(null)}
+                className="rounded-rb-button border border-rb-border bg-rb-surface px-4 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-surface-hover"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GENERATE DRAFT MODAL */}
+      {isGenerateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form
+            onSubmit={handleGenerateDraft}
+            className="w-full max-w-md rounded-rb-card border border-rb-border bg-rb-surface p-6 shadow-xl"
+          >
+            <h3 className="text-base font-bold text-rb-text">Buat Draft Payroll Reguler Baru</h3>
+            <p className="mt-1 text-xs text-rb-text-muted">
+              Sistem akan menghitung hari kerja, lembur, dan keterlambatan dari data presensi periode berjalan.
+            </p>
+
+            <div className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-rb-text">Tanggal Mulai (Period Start):</label>
+                <input
+                  type="date"
+                  required
+                  value={genPeriodStart}
+                  onChange={(e) => setGenPeriodStart(e.target.value)}
+                  className="mt-1 w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-rb-text">Tanggal Akhir (Period End):</label>
+                <input
+                  type="date"
+                  required
+                  value={genPeriodEnd}
+                  onChange={(e) => setGenPeriodEnd(e.target.value)}
+                  className="mt-1 w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-rb-text">Unit Bisnis:</label>
+                <select
+                  value={genBusinessUnit}
+                  onChange={(e) => setGenBusinessUnit(e.target.value)}
+                  className="mt-1 w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text"
+                >
+                  <option value="ALL">Semua (Redbox &amp; Sundaze)</option>
+                  <option value="Redbox">Khusus Redbox Barbershop</option>
+                  <option value="Sundaze">Khusus Sundaze Cafe</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsGenerateModalOpen(false)}
+                className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-surface-hover"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="rounded-rb-button bg-rb-red px-4 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading ? 'Menghitung...' : 'Mulai Hitung Draft'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ADD ADJUSTMENT MODAL */}
+      {adjustmentTargetItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form
+            onSubmit={handleAddAdjustment}
+            className="w-full max-w-md rounded-rb-card border border-rb-border bg-rb-surface p-6 shadow-xl"
+          >
+            <h3 className="text-base font-bold text-rb-text">Tambah Penyesuaian Manual</h3>
+            <p className="mt-1 text-xs text-rb-text-muted">
+              Untuk karyawan: <span className="font-semibold text-rb-text">{adjustmentTargetItem.employee_name_snapshot}</span>
+            </p>
+
+            <div className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-rb-text">Jenis Penyesuaian:</label>
+                <select
+                  value={adjType}
+                  onChange={(e) => setAdjType(e.target.value as any)}
+                  className="mt-1 w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text"
+                >
+                  <option value="DEBT">UTANG / KASBON (Deduction)</option>
+                  <option value="BONUS">BONUS / INSENTIF (Addition)</option>
+                  <option value="DEDUCTION">POTONGAN LAIN (Deduction)</option>
+                  <option value="CORRECTION">KOREKSI (Correction)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-rb-text">Nominal (Rupiah):</label>
+                <input
+                  type="number"
+                  required
+                  placeholder="Contoh: 50000"
+                  value={adjAmount}
+                  onChange={(e) => setAdjAmount(e.target.value)}
+                  className="mt-1 w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-rb-text">Alasan / Keterangan (Wajib):</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Misal: Cicilan pinjaman kasbon ke-2"
+                  value={adjReason}
+                  onChange={(e) => setAdjReason(e.target.value)}
+                  className="mt-1 w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-rb-text">Catatan Tambahan (Opsional):</label>
+                <input
+                  type="text"
+                  placeholder="Nomor referensi bukti transfer / nota"
+                  value={adjNote}
+                  onChange={(e) => setAdjNote(e.target.value)}
+                  className="mt-1 w-full rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs text-rb-text"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAdjustmentTargetItem(null)}
+                className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-surface-hover"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={actionLoading}
+                className="rounded-rb-button bg-rb-red px-4 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading ? 'Menyimpan...' : 'Simpan Penyesuaian'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </>
   );

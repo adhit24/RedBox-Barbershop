@@ -25,7 +25,7 @@ describe('Sidebar two-level navigation', () => {
     expect(screen.getByRole('button', { name: 'People' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('People')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Payroll' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Payroll Kapster' })).toHaveAttribute('href', '/payroll/barber');
+    expect(screen.getByRole('link', { name: 'Daftar Kapster' })).toHaveAttribute('href', '/payroll/barber');
     expect(screen.getByRole('link', { name: 'Payroll Karyawan' })).toHaveAttribute('href', '/payroll/regular');
   });
 
