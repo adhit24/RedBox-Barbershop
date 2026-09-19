@@ -22,6 +22,12 @@ function normalizeAlphanumeric(value) {
   return normalizeText(value).replace(/[^a-z0-9]/g, '');
 }
 
+const TERMINATED_WORKFORCE_NAMES = new Set(['ajeng', 'reka', 'anggi', 'hardi', 'farhan']);
+
+function isTerminatedWorkforceName(value) {
+  return TERMINATED_WORKFORCE_NAMES.has(normalizeAlphanumeric(value));
+}
+
 /**
  * 1. Validate File Safety
  * Checks size, extension, magic bytes, and computes sha256 hash.
@@ -205,11 +211,23 @@ function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], exist
 
   const matched = [];
   const unmatched = [];
+  const rejected = [];
 
   for (const fe of fileEmployees) {
     const extId = fe.external_employee_id;
     const extName = fe.external_name;
     const normExtName = normalizeAlphanumeric(extName);
+
+    // Priority 0: former employees explicitly blocked from attendance import.
+    // Keep historical master/attendance references intact, but never remap or re-import them.
+    if (isTerminatedWorkforceName(extName)) {
+      rejected.push({
+        ...fe,
+        reason: 'terminated_employee',
+        blocked: true,
+      });
+      continue;
+    }
 
     // Priority 1: Known mapping in identity table
     if (identityMap.has(extId)) {
@@ -291,7 +309,7 @@ function matchEmployees({ fileEmployees, dbEmployees = [], dbBarbers = [], exist
     });
   }
 
-  return { matched, unmatched };
+  return { matched, unmatched, rejected };
 }
 
 /**
@@ -358,7 +376,7 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
     existingIdentities = idnRes.data || [];
   }
 
-  const { matched, unmatched } = matchEmployees({
+  const { matched, unmatched, rejected } = matchEmployees({
     fileEmployees,
     dbEmployees,
     dbBarbers,
@@ -382,6 +400,15 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
     });
   }
 
+  if (rejected.length > 0) {
+    warnings.push({
+      type: 'terminated_employees_rejected',
+      message: `${rejected.length} nama mantan karyawan ditolak dan tidak akan diimpor ke attendance.`,
+      rejected_names: rejected.map(r => r.external_name),
+      rejected_ids: rejected.map(r => r.external_employee_id),
+    });
+  }
+
   // Check single punches
   const singlePunchRecords = dailyRecords.filter(r => (r.raw_punches || []).length === 1);
   if (singlePunchRecords.length > 0) {
@@ -401,15 +428,20 @@ async function previewImport({ buffer, filename, uploadedBy, supabase }) {
     employees_detected: fileEmployees.length,
     matched_count: matched.length,
     unmatched_count: unmatched.length,
+    rejected_count: rejected.length,
     punch_records_count: dailyRecords.length,
     warnings_count: warnings.length,
     is_duplicate: isDuplicate,
     existing_batch: existingBatch,
     matched,
     unmatched,
+    rejected,
     warnings,
     metadata: parsedData.metadata || {},
-    sample_records: dailyRecords.slice(0, 20).map(r => ({
+    sample_records: dailyRecords
+      .filter(r => !new Set(rejected.map(x => x.external_employee_id)).has(r.external_employee_id))
+      .slice(0, 20)
+      .map(r => ({
       external_employee_id: r.external_employee_id,
       name: r.external_name,
       date: r.attendance_date,
@@ -440,9 +472,17 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   const fileEmployees = parsedData.employees;
   const dailyRecords = parsedData.dailyRecords;
 
-  // Apply any manualMappings passed by manager
+  // Apply any manualMappings passed by manager.
+  // Explicitly block former employees even if a manager attempts to remap them manually.
+  const fileEmployeeById = new Map(fileEmployees.map(e => [String(e.external_employee_id || '').trim(), e]));
   if (Array.isArray(manualMappings) && manualMappings.length > 0) {
     for (const mapping of manualMappings) {
+      const sourceEmployee = fileEmployeeById.get(String(mapping.external_employee_id || '').trim());
+      if (sourceEmployee && isTerminatedWorkforceName(sourceEmployee.external_name)) {
+        const err = new Error(`Nama ${sourceEmployee.external_name} sudah tidak aktif dan ditolak dari attendance import.`);
+        err.code = 'TERMINATED_EMPLOYEE_MAPPING_BLOCKED';
+        throw err;
+      }
       if (mapping.external_employee_id && (mapping.employee_id || mapping.barber_id)) {
         await supabase
           .from('employee_attendance_identity')
@@ -469,7 +509,7 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   const dbBarbers = barRes.data || [];
   const existingIdentities = idnRes.data || [];
 
-  const { matched, unmatched } = matchEmployees({
+  const { matched, unmatched, rejected } = matchEmployees({
     fileEmployees,
     dbEmployees,
     dbBarbers,
@@ -480,6 +520,7 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   for (const m of matched) {
     matchedMap.set(m.external_employee_id, m);
   }
+  const rejectedIds = new Set(rejected.map(r => r.external_employee_id));
 
   // Create or update import batch
   const { data: batch, error: batchErr } = await supabase
@@ -497,6 +538,8 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         employees_detected: fileEmployees.length,
         matched: matched.length,
         unmatched: unmatched.length,
+        rejected_terminated: rejected.length,
+        rejected_terminated_names: rejected.map(r => r.external_name),
         ...(parsedData.metadata || {}),
       },
     })
@@ -519,6 +562,11 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   const exceptionRows = [];
 
   for (const record of dailyRecords) {
+    if (rejectedIds.has(record.external_employee_id)) {
+      skippedCount++;
+      continue;
+    }
+
     const match = matchedMap.get(record.external_employee_id);
 
     // Case 1: Unmatched Employee -> goes to Exception Review
@@ -640,6 +688,7 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
     employees_detected: fileEmployees.length,
     matched_count: matched.length,
     unmatched_count: unmatched.length,
+    rejected_count: rejected.length,
     rows_imported: importedCount,
     rows_exceptions: exceptionsCount,
     message: finalStatus === 'completed'
@@ -655,6 +704,8 @@ module.exports = {
   FORMAT_TEGAL_HORIZONTAL,
   normalizeText,
   normalizeAlphanumeric,
+  TERMINATED_WORKFORCE_NAMES,
+  isTerminatedWorkforceName,
   validateFileSafety,
   parseWorkbook,
   detectReportFormat,
