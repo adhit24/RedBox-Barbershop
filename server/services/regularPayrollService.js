@@ -36,18 +36,28 @@ async function listRegularPayrollRuns(supabase, { status = null, businessUnit = 
 /**
  * Fetch attendance summary for a list of employees over a date range
  */
-async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], periodStart, periodEnd) {
+async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], periodStart, periodEnd, employeeMap = new Map()) {
   const summaryMap = new Map();
   for (const empId of employeeIds) {
+    const emp = employeeMap.get(empId);
     summaryMap.set(empId, {
       present_days: 0,
       absent_days: 0,
       late_count: 0,
       late_minutes: 0,
       overtime_hours: 0,
+      candidate_overtime_minutes: 0,
+      approved_overtime_minutes: 0,
+      pending_overtime_count: 0,
       incomplete_attendance: 0,
       records_count: 0,
       unresolved_exceptions_count: 0,
+      min_date: null,
+      max_date: null,
+      attendance_period_expected: `${periodStart} s/d ${periodEnd}`,
+      attendance_period_available: 'Belum tersedia',
+      attendance_coverage_days: 0,
+      attendance_coverage_status: emp?.business_unit === 'Sundaze' ? 'BLOCKED_ATTENDANCE_SOURCE' : 'NO_ATTENDANCE',
     });
   }
 
@@ -68,6 +78,10 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
       const s = summaryMap.get(row.employee_id);
       if (!s) continue;
       s.records_count++;
+
+      // Track min and max dates
+      if (!s.min_date || row.attendance_date < s.min_date) s.min_date = row.attendance_date;
+      if (!s.max_date || row.attendance_date > s.max_date) s.max_date = row.attendance_date;
 
       const st = String(row.status || '').toLowerCase().trim();
       if (st === 'hadir') {
@@ -91,14 +105,38 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
         s.incomplete_attendance++;
       }
 
-      // Overtime minutes
+      // Raw candidate overtime minutes from attendance
       if (row.overtime_minutes > 0) {
-        s.overtime_hours += Number(row.overtime_minutes) / 60;
+        s.candidate_overtime_minutes += Number(row.overtime_minutes);
       }
     }
   }
 
-  // 2. Query unresolved attendance_exceptions
+  // 2. Query employee_overtime_approvals (ONLY approved overtime counts towards payroll)
+  try {
+    const { data: otApprovals, error: otErr } = await supabase
+      .from('employee_overtime_approvals')
+      .select('employee_id, attendance_date, raw_overtime_minutes, approved_overtime_minutes, status')
+      .in('employee_id', employeeIds)
+      .gte('attendance_date', periodStart)
+      .lte('attendance_date', periodEnd);
+
+    if (!otErr && otApprovals) {
+      for (const ot of otApprovals) {
+        const s = summaryMap.get(ot.employee_id);
+        if (!s) continue;
+        if (ot.status === 'APPROVED') {
+          s.approved_overtime_minutes += Number(ot.approved_overtime_minutes || 0);
+        } else if (ot.status === 'PENDING') {
+          s.pending_overtime_count++;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[RegularPayrollService] Warning querying employee_overtime_approvals:', err.message);
+  }
+
+  // 3. Query unresolved attendance_exceptions
   try {
     const { data: excRows, error: excError } = await supabase
       .from('attendance_exceptions')
@@ -119,9 +157,26 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
     console.warn('[RegularPayrollService] Warning querying attendance_exceptions:', err.message);
   }
 
-  // Round overtime hours to 1 decimal place
-  for (const s of summaryMap.values()) {
-    s.overtime_hours = Math.round(s.overtime_hours * 10) / 10;
+  // 4. Finalize metrics per employee
+  for (const [empId, s] of summaryMap.entries()) {
+    // Only approved overtime minutes are converted to overtime hours!
+    s.overtime_hours = Math.round((s.approved_overtime_minutes / 60) * 10) / 10;
+
+    s.attendance_coverage_days = s.records_count;
+    s.attendance_period_available = s.min_date && s.max_date ? `${s.min_date} s/d ${s.max_date}` : 'Belum tersedia';
+
+    const emp = employeeMap.get(empId);
+    const unit = emp?.business_unit;
+
+    if (s.records_count >= 18) {
+      s.attendance_coverage_status = 'COMPLETE';
+    } else if (s.records_count > 0) {
+      s.attendance_coverage_status = 'PARTIAL';
+    } else if (unit === 'Sundaze') {
+      s.attendance_coverage_status = 'BLOCKED_ATTENDANCE_SOURCE';
+    } else {
+      s.attendance_coverage_status = 'NO_ATTENDANCE';
+    }
   }
 
   return summaryMap;
@@ -180,7 +235,8 @@ async function generateRegularPayrollDraft(supabase, {
 
   // 3. Fetch attendance summaries
   const employeeIds = employees.map(e => e.id);
-  const attendanceMap = await fetchEmployeeAttendanceSummaries(supabase, employeeIds, periodStart, periodEnd);
+  const employeeMap = new Map(employees.map(e => [e.id, e]));
+  const attendanceMap = await fetchEmployeeAttendanceSummaries(supabase, employeeIds, periodStart, periodEnd, employeeMap);
 
   // 4. Calculate items
   const calculatedItems = [];
@@ -189,6 +245,7 @@ async function generateRegularPayrollDraft(supabase, {
   let totalTakeHome = 0;
   let reviewRequiredCount = 0;
   let missingSalaryCount = 0;
+  let missingAttendanceCount = 0;
 
   for (const emp of employees) {
     const attSummary = attendanceMap.get(emp.id) || {
@@ -197,9 +254,18 @@ async function generateRegularPayrollDraft(supabase, {
       late_count: 0,
       late_minutes: 0,
       overtime_hours: 0,
+      candidate_overtime_minutes: 0,
+      approved_overtime_minutes: 0,
+      pending_overtime_count: 0,
       incomplete_attendance: 0,
       records_count: 0,
       unresolved_exceptions_count: 0,
+      min_date: null,
+      max_date: null,
+      attendance_period_expected: `${periodStart} s/d ${periodEnd}`,
+      attendance_period_available: 'Belum tersedia',
+      attendance_coverage_days: 0,
+      attendance_coverage_status: emp.business_unit === 'Sundaze' ? 'BLOCKED_ATTENDANCE_SOURCE' : 'NO_ATTENDANCE',
     };
 
     const override = itemOverrides[emp.id] || {};
@@ -231,6 +297,9 @@ async function generateRegularPayrollDraft(supabase, {
 
     if (itemResult.status === REGULAR_ITEM_STATUS.REVIEW_REQUIRED) reviewRequiredCount++;
     if (itemResult.status === REGULAR_ITEM_STATUS.MISSING_SALARY) missingSalaryCount++;
+    if (itemResult.status === REGULAR_ITEM_STATUS.MISSING_ATTENDANCE || itemResult.status === REGULAR_ITEM_STATUS.BLOCKED_ATTENDANCE_SOURCE) {
+      missingAttendanceCount++;
+    }
 
     calculatedItems.push(itemResult);
   }
@@ -243,6 +312,7 @@ async function generateRegularPayrollDraft(supabase, {
     total_take_home_pay: totalTakeHome,
     review_required_count: reviewRequiredCount,
     missing_salary_count: missingSalaryCount,
+    missing_attendance_count: missingAttendanceCount,
   };
 
   const { data: run, error: runInsertErr } = await supabase
@@ -309,6 +379,11 @@ async function generateRegularPayrollDraft(supabase, {
     gross_pay: item.gross_pay,
     total_deduction: item.total_deduction,
     take_home_pay: item.take_home_pay,
+
+    attendance_period_expected: item.attendance_period_expected,
+    attendance_period_available: item.attendance_period_available,
+    attendance_coverage_days: item.attendance_coverage_days,
+    attendance_coverage_status: item.attendance_coverage_status,
 
     attendance_summary: item.attendance_summary,
     warnings: item.warnings,
@@ -597,6 +672,18 @@ async function refreshRunSummary(supabase, runId) {
  * Lock regular payroll run
  */
 async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbox.id' }) {
+  // Safety guard: Check for incomplete attendance or missing salary before locking
+  const { data: blockingItems } = await supabase
+    .from('payroll_regular_items')
+    .select('id, employee_name_snapshot, status')
+    .eq('payroll_run_id', runId)
+    .in('status', ['MISSING_ATTENDANCE', 'MISSING_SALARY', 'BLOCKED_ATTENDANCE_SOURCE']);
+
+  if (blockingItems && blockingItems.length > 0) {
+    const names = blockingItems.slice(0, 3).map(b => `${b.employee_name_snapshot} (${b.status})`).join(', ');
+    throw new Error(`Cannot lock payroll run: ${blockingItems.length} employee(s) have incomplete attendance or salary data (${names}). Take-home pay is not finalized.`);
+  }
+
   const { data, error } = await supabase.rpc('lock_payroll_run', {
     p_run_id: runId,
     p_user_email: userEmail,
@@ -608,6 +695,132 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   return data;
 }
 
+/**
+ * List overtime approvals
+ */
+async function listOvertimeApprovals(supabase, { periodStart, periodEnd, employeeId = null, status = null } = {}) {
+  let query = supabase
+    .from('employee_overtime_approvals')
+    .select(`
+      id,
+      employee_id,
+      attendance_date,
+      raw_overtime_minutes,
+      approved_overtime_minutes,
+      status,
+      approved_by,
+      approved_at,
+      note,
+      created_at,
+      employees (
+        id,
+        name,
+        nickname,
+        business_unit,
+        branch,
+        position
+      )
+    `)
+    .order('attendance_date', { ascending: false });
+
+  if (periodStart) query = query.gte('attendance_date', periodStart);
+  if (periodEnd) query = query.lte('attendance_date', periodEnd);
+  if (employeeId) query = query.eq('employee_id', employeeId);
+  if (status && status !== 'ALL') query = query.eq('status', status);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Failed to list overtime approvals: ${error.message}`);
+  return data || [];
+}
+
+/**
+ * Review overtime approval (Owner or Manager only)
+ */
+async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMinutes, note, userEmail = 'manager@redbox.id' }) {
+  if (!['APPROVED', 'REJECTED', 'PENDING'].includes(status)) {
+    throw new Error(`Invalid approval status: ${status}`);
+  }
+
+  const { data: existing, error: getErr } = await supabase
+    .from('employee_overtime_approvals')
+    .select('*')
+    .eq('id', approvalId)
+    .single();
+
+  if (getErr || !existing) throw new Error(`Overtime approval ${approvalId} not found`);
+
+  const updates = {
+    status,
+    note: note ? String(note).trim() : existing.note,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (status === 'APPROVED') {
+    updates.approved_overtime_minutes = approvedMinutes !== undefined ? Number(approvedMinutes) : Number(existing.raw_overtime_minutes || 0);
+    updates.approved_by = userEmail;
+    updates.approved_at = new Date().toISOString();
+  } else if (status === 'REJECTED') {
+    updates.approved_overtime_minutes = 0;
+    updates.approved_by = userEmail;
+    updates.approved_at = new Date().toISOString();
+  } else {
+    // PENDING
+    updates.approved_by = null;
+    updates.approved_at = null;
+  }
+
+  const { data: updated, error: updErr } = await supabase
+    .from('employee_overtime_approvals')
+    .update(updates)
+    .eq('id', approvalId)
+    .select()
+    .single();
+
+  if (updErr) throw new Error(`Failed to update overtime approval: ${updErr.message}`);
+  return { success: true, approval: updated };
+}
+
+/**
+ * Sync candidate overtime from employee_attendance into employee_overtime_approvals
+ */
+async function syncOvertimeCandidates(supabase, { periodStart, periodEnd } = {}) {
+  let query = supabase
+    .from('employee_attendance')
+    .select('employee_id, attendance_date, overtime_minutes')
+    .gt('overtime_minutes', 0);
+
+  if (periodStart) query = query.gte('attendance_date', periodStart);
+  if (periodEnd) query = query.lte('attendance_date', periodEnd);
+
+  const { data: rawRows, error } = await query;
+  if (error) throw new Error(`Failed to query attendance overtime: ${error.message}`);
+
+  let createdCount = 0;
+  for (const row of rawRows || []) {
+    const { data: existing } = await supabase
+      .from('employee_overtime_approvals')
+      .select('id')
+      .eq('employee_id', row.employee_id)
+      .eq('attendance_date', row.attendance_date)
+      .maybeSingle();
+
+    if (!existing) {
+      await supabase
+        .from('employee_overtime_approvals')
+        .insert({
+          employee_id: row.employee_id,
+          attendance_date: row.attendance_date,
+          raw_overtime_minutes: row.overtime_minutes,
+          approved_overtime_minutes: 0,
+          status: 'PENDING',
+        });
+      createdCount++;
+    }
+  }
+
+  return { success: true, candidates_found: (rawRows || []).length, newly_created: createdCount };
+}
+
 module.exports = {
   listRegularPayrollRuns,
   generateRegularPayrollDraft,
@@ -617,4 +830,7 @@ module.exports = {
   lockRegularPayrollRun,
   recalculateSingleRegularItem,
   fetchEmployeeAttendanceSummaries,
+  listOvertimeApprovals,
+  reviewOvertimeApproval,
+  syncOvertimeCandidates,
 };

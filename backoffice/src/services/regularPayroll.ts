@@ -98,7 +98,12 @@ export interface RegularPayrollItem {
 
   attendance_summary: AttendanceSummary;
   warnings: string[];
-  status: 'READY' | 'REVIEW_REQUIRED' | 'MISSING_SALARY' | 'MISSING_ATTENDANCE' | 'LOCKED';
+  attendance_period_expected?: string;
+  attendance_period_available?: string;
+  attendance_coverage_days?: number;
+  attendance_coverage_status?: string;
+
+  status: 'READY' | 'REVIEW_REQUIRED' | 'MISSING_SALARY' | 'MISSING_ATTENDANCE' | 'BLOCKED_ATTENDANCE_SOURCE' | 'LOCKED';
 
   created_at: string;
   updated_at: string;
@@ -109,6 +114,27 @@ export interface RegularPayrollItem {
 export interface RegularPayrollDetailResponse {
   run: RegularPayrollRun;
   items: RegularPayrollItem[];
+}
+
+export interface OvertimeApproval {
+  id: string;
+  employee_id: string;
+  attendance_date: string;
+  raw_overtime_minutes: number;
+  approved_overtime_minutes: number;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  approved_by: string | null;
+  approved_at: string | null;
+  note: string | null;
+  created_at: string;
+  employees?: {
+    id: string;
+    name: string;
+    nickname: string | null;
+    business_unit: string;
+    branch: string | null;
+    position: string;
+  };
 }
 
 export async function fetchRegularPayrollRuns(params?: {
@@ -159,4 +185,33 @@ export async function addRegularPayrollAdjustment(payload: {
 
 export async function deleteRegularPayrollAdjustment(adjustmentId: string): Promise<{ success: boolean }> {
   return apiClient.delete(`/api/payroll/regular-runs/adjustments/${adjustmentId}`);
+}
+
+export async function fetchOvertimeApprovals(params?: {
+  period_start?: string;
+  period_end?: string;
+  employee_id?: string;
+  status?: string;
+}): Promise<{ approvals: OvertimeApproval[] }> {
+  const q = new URLSearchParams();
+  if (params?.period_start) q.set('period_start', params.period_start);
+  if (params?.period_end) q.set('period_end', params.period_end);
+  if (params?.employee_id) q.set('employee_id', params.employee_id);
+  if (params?.status && params.status !== 'ALL') q.set('status', params.status);
+  const query = q.toString() ? `?${q.toString()}` : '';
+  return apiClient.get<{ approvals: OvertimeApproval[] }>(`/api/payroll/regular-runs/overtime/approvals${query}`);
+}
+
+export async function reviewOvertimeApproval(
+  approvalId: string,
+  payload: { status: 'APPROVED' | 'REJECTED' | 'PENDING'; approved_minutes?: number; note?: string }
+): Promise<{ success: boolean; approval: OvertimeApproval }> {
+  return apiClient.post(`/api/payroll/regular-runs/overtime/approvals/${approvalId}/review`, payload);
+}
+
+export async function syncOvertimeCandidates(params?: {
+  period_start?: string;
+  period_end?: string;
+}): Promise<{ success: boolean; candidates_found: number; newly_created: number }> {
+  return apiClient.post('/api/payroll/regular-runs/overtime/sync', params || {});
 }

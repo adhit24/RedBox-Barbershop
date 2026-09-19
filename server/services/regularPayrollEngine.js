@@ -17,6 +17,7 @@ const REGULAR_ITEM_STATUS = Object.freeze({
   REVIEW_REQUIRED: 'REVIEW_REQUIRED',
   MISSING_SALARY: 'MISSING_SALARY',
   MISSING_ATTENDANCE: 'MISSING_ATTENDANCE',
+  BLOCKED_ATTENDANCE_SOURCE: 'BLOCKED_ATTENDANCE_SOURCE',
   LOCKED: 'LOCKED',
 });
 
@@ -203,12 +204,23 @@ function calculateRegularPayrollItem({
   let status = REGULAR_ITEM_STATUS.READY;
   if (!rawBaseSalary || baseSalary <= 0) {
     status = REGULAR_ITEM_STATUS.MISSING_SALARY;
-  } else if (incompleteCount > 0 || exceptionCount > 0 || productCommissionSource === 'REVIEW_REQUIRED') {
+  } else if (attendanceSummary.attendance_coverage_status === 'BLOCKED_ATTENDANCE_SOURCE' || (unit === 'Sundaze' && workDays === 0 && !attendanceSummary.records_count)) {
+    status = REGULAR_ITEM_STATUS.BLOCKED_ATTENDANCE_SOURCE;
+    warnings.push('Data presensi Sundaze belum terintegrasi (BLOCKED_ATTENDANCE_SOURCE). Gaji tidak dapat dianggap final.');
+  } else if (incompleteCount > 0 || exceptionCount > 0 || productCommissionSource === 'REVIEW_REQUIRED' || (attendanceSummary.pending_overtime_count || 0) > 0) {
     status = REGULAR_ITEM_STATUS.REVIEW_REQUIRED;
+    if ((attendanceSummary.pending_overtime_count || 0) > 0) {
+      warnings.push(`Terdapat ${attendanceSummary.pending_overtime_count} kandidat lembur menunggu persetujuan manager.`);
+    }
   } else if (workDays === 0 && absentDays === 0 && !attendanceSummary.records_count) {
     status = REGULAR_ITEM_STATUS.MISSING_ATTENDANCE;
-    warnings.push('Tidak ada catatan presensi untuk periode ini.');
+    warnings.push('Tidak ada catatan presensi untuk periode ini. Gaji tidak dapat dianggap final.');
   }
+
+  const coverageStatus = attendanceSummary.attendance_coverage_status ||
+    (attendanceSummary.records_count >= 18 ? 'COMPLETE' :
+      (attendanceSummary.records_count > 0 ? 'PARTIAL' :
+        (unit === 'Sundaze' ? 'BLOCKED_ATTENDANCE_SOURCE' : 'NO_ATTENDANCE')));
 
   return {
     employee_id: employee.id,
@@ -263,9 +275,15 @@ function calculateRegularPayrollItem({
     total_deduction: totalDeduction,
     take_home_pay: takeHomePay,
 
-    // Audit & Context
-    status,
+    // Attendance Coverage Metadata
+    attendance_period_expected: attendanceSummary.attendance_period_expected || (period.period_start ? `${period.period_start} s/d ${period.period_end}` : '-'),
+    attendance_period_available: attendanceSummary.attendance_period_available || (attendanceSummary.records_count > 0 ? `${attendanceSummary.min_date || ''} s/d ${attendanceSummary.max_date || ''}` : 'Belum tersedia'),
+    attendance_coverage_days: Number(attendanceSummary.attendance_coverage_days ?? attendanceSummary.records_count ?? 0),
+    attendance_coverage_status: coverageStatus,
+
+    // Diagnostics & Sources
     warnings,
+    status,
     attendance_summary: {
       present_days: workDays,
       absent_days: absentDays,
@@ -274,6 +292,8 @@ function calculateRegularPayrollItem({
       overtime_hours: approvedOvertimeHours,
       incomplete_attendance: incompleteCount,
       unresolved_exceptions_count: exceptionCount,
+      attendance_coverage_days: Number(attendanceSummary.attendance_coverage_days ?? attendanceSummary.records_count ?? 0),
+      attendance_coverage_status: coverageStatus,
     },
     sources: {
       actual_salary: SOURCE_ORIGIN.ATTENDANCE_AND_MASTER,

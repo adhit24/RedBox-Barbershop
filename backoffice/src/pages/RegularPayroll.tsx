@@ -13,6 +13,12 @@ import {
   deleteRegularPayrollAdjustment,
   type RegularPayrollRun,
   type RegularPayrollItem,
+  type OvertimeApproval,
+} from '../services/regularPayroll';
+import {
+  fetchOvertimeApprovals,
+  reviewOvertimeApproval,
+  syncOvertimeCandidates,
 } from '../services/regularPayroll';
 import { useAuth } from '../auth/AuthProvider';
 
@@ -34,12 +40,15 @@ function formatRupiah(amount: number): string {
 
 export function RegularPayroll() {
   let isOwner = false;
+  let isManager = false;
   try {
     const auth = useAuth();
     isOwner = auth.role === 'owner';
+    isManager = auth.role === 'manager' || auth.role === 'owner';
   } catch {
     // Graceful fallback when rendered without AuthProvider in standalone tests
     isOwner = true;
+    isManager = true;
   }
 
   // Runs & active run state
@@ -64,6 +73,13 @@ export function RegularPayroll() {
   const [detailItem, setDetailItem] = useState<RegularPayrollItem | null>(null);
   const [adjustmentTargetItem, setAdjustmentTargetItem] = useState<RegularPayrollItem | null>(null);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
+  const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
+
+  // Overtime Review State
+  const [overtimeApprovals, setOvertimeApprovals] = useState<OvertimeApproval[]>([]);
+  const [overtimeLoading, setOvertimeLoading] = useState(false);
+  const [overtimeMinutesInput, setOvertimeMinutesInput] = useState<Record<string, number>>({});
+  const [overtimeNoteInput, setOvertimeNoteInput] = useState<Record<string, string>>({});
 
   // Generate Draft form state
   const [genPeriodStart, setGenPeriodStart] = useState('2026-08-26');
@@ -232,6 +248,70 @@ export function RegularPayroll() {
     }
   };
 
+  // Overtime Review Handlers
+  const loadOvertimeList = async () => {
+    if (!activeRun) return;
+    setOvertimeLoading(true);
+    try {
+      const res = await fetchOvertimeApprovals({
+        period_start: activeRun.period_start,
+        period_end: activeRun.period_end,
+      });
+      setOvertimeApprovals(res.approvals || []);
+      const initialMinutes: Record<string, number> = {};
+      const initialNotes: Record<string, string> = {};
+      for (const ot of res.approvals || []) {
+        initialMinutes[ot.id] = ot.approved_overtime_minutes !== undefined ? ot.approved_overtime_minutes : ot.raw_overtime_minutes;
+        initialNotes[ot.id] = ot.note || '';
+      }
+      setOvertimeMinutesInput(initialMinutes);
+      setOvertimeNoteInput(initialNotes);
+    } catch (err: any) {
+      console.error('Gagal memuat kandidat lembur:', err);
+    } finally {
+      setOvertimeLoading(false);
+    }
+  };
+
+  const handleSyncOvertime = async () => {
+    if (!activeRun) return;
+    setOvertimeLoading(true);
+    try {
+      await syncOvertimeCandidates({
+        period_start: activeRun.period_start,
+        period_end: activeRun.period_end,
+      });
+      await loadOvertimeList();
+      setActionMessage({ type: 'success', text: 'Kandidat lembur berhasil disinkronkan dari presensi.' });
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err?.message || 'Gagal sinkronisasi lembur.' });
+    } finally {
+      setOvertimeLoading(false);
+    }
+  };
+
+  const handleReviewOvertime = async (otId: string, status: 'APPROVED' | 'REJECTED') => {
+    setActionLoading(true);
+    try {
+      const approvedMinutes = status === 'APPROVED' ? (overtimeMinutesInput[otId] ?? 0) : 0;
+      const note = overtimeNoteInput[otId] || '';
+      await reviewOvertimeApproval(otId, {
+        status,
+        approved_minutes: approvedMinutes,
+        note,
+      });
+      setActionMessage({ type: 'success', text: `Lembur berhasil di-${status === 'APPROVED' ? 'setujui' : 'tolak'}.` });
+      await loadOvertimeList();
+      if (activeRun) {
+        await loadRunDetail(activeRun.id);
+      }
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err?.message || 'Gagal memperbarui status lembur.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Filtered table items
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -249,6 +329,18 @@ export function RegularPayroll() {
     });
   }, [items, unitFilter, branchFilter, statusFilter, searchQuery]);
 
+  // Blocking safety guard items
+  const blockingItems = useMemo(() => {
+    return items.filter(
+      (item) =>
+        item.status === 'MISSING_ATTENDANCE' ||
+        item.status === 'MISSING_SALARY' ||
+        item.status === 'BLOCKED_ATTENDANCE_SOURCE'
+    );
+  }, [items]);
+
+  const isLockBlocked = blockingItems.length > 0;
+
   // Summary Metrics
   const summary = useMemo(() => {
     const totalEmp = filteredItems.length;
@@ -261,7 +353,14 @@ export function RegularPayroll() {
       gross += Number(it.gross_pay || 0);
       deduction += Number(it.total_deduction || 0);
       takeHome += Number(it.take_home_pay || 0);
-      if (it.status === 'REVIEW_REQUIRED' || it.status === 'MISSING_SALARY') reviewCount++;
+      if (
+        it.status === 'REVIEW_REQUIRED' ||
+        it.status === 'MISSING_SALARY' ||
+        it.status === 'MISSING_ATTENDANCE' ||
+        it.status === 'BLOCKED_ATTENDANCE_SOURCE'
+      ) {
+        reviewCount++;
+      }
     }
 
     return { totalEmp, gross, deduction, takeHome, reviewCount };
@@ -283,6 +382,18 @@ export function RegularPayroll() {
           ← Kembali ke Payroll
         </Link>
         <div className="flex items-center gap-2">
+          {isManager && activeRun && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsOvertimeModalOpen(true);
+                loadOvertimeList();
+              }}
+              className="rounded-rb-button border border-rb-border bg-rb-surface px-3.5 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-surface-hover"
+            >
+              ⏰ Tinjau Lembur
+            </button>
+          )}
           {isOwner && (
             <button
               type="button"
@@ -296,8 +407,17 @@ export function RegularPayroll() {
             <button
               type="button"
               onClick={handleLockRun}
-              disabled={actionLoading}
-              className="rounded-rb-button border border-amber-500 bg-amber-500/10 px-3.5 py-1.5 text-xs font-semibold text-amber-600 hover:bg-amber-500/20 dark:text-amber-400"
+              disabled={actionLoading || isLockBlocked}
+              title={
+                isLockBlocked
+                  ? `Payroll tidak dapat dikunci jika terdapat ${blockingItems.length} karyawan berstatus belum lengkap.`
+                  : 'Kunci payroll run secara permanen.'
+              }
+              className={`rounded-rb-button px-3.5 py-1.5 text-xs font-semibold transition ${
+                isLockBlocked
+                  ? 'cursor-not-allowed border border-gray-300 bg-gray-100 text-gray-400 dark:border-gray-800 dark:bg-gray-800/40 dark:text-gray-500'
+                  : 'border border-amber-500 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400'
+              }`}
             >
               🔒 Kunci Payroll (Lock)
             </button>
@@ -403,6 +523,18 @@ export function RegularPayroll() {
             />
           </section>
 
+          {/* Safety Guard Warning Banner if Draft has Blockers */}
+          {activeRun.status === 'DRAFT' && isLockBlocked && (
+            <div className="mb-6 rounded-rb-card border border-amber-500/40 bg-amber-500/10 p-4 text-xs text-amber-800 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-bold uppercase tracking-wide text-amber-900 dark:text-amber-100">
+                <span>⚠️ PAYROLL SAFETY GUARD AKTIF — PENGUNCIAN (LOCK) DITANGGUHKAN</span>
+              </div>
+              <p className="mt-1 text-xs leading-relaxed">
+                Terdapat <strong>{blockingItems.length} karyawan</strong> dengan status data belum memadai (presensi belum diimpor / cabang belum terintegrasi / gaji pokok kosong). Angka take-home pay belum bersifat final dan sistem secara ketat memblokir penguncian (LOCK) payroll untuk mencegah kekeliruan pembayaran gaji.
+              </p>
+            </div>
+          )}
+
           {/* Filter & Search Bar */}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -461,6 +593,8 @@ export function RegularPayroll() {
                 <option value="all">Semua Status</option>
                 <option value="READY">READY</option>
                 <option value="REVIEW_REQUIRED">REVIEW_REQUIRED</option>
+                <option value="BLOCKED_ATTENDANCE_SOURCE">BLOCKED_ATTENDANCE_SOURCE</option>
+                <option value="MISSING_ATTENDANCE">MISSING_ATTENDANCE</option>
                 <option value="MISSING_SALARY">MISSING_SALARY</option>
                 <option value="LOCKED">LOCKED</option>
               </select>
@@ -525,7 +659,14 @@ export function RegularPayroll() {
                     <div className="text-xs capitalize text-rb-text-muted">
                       {item.branch_snapshot ? (BRANCH_LABELS[item.branch_snapshot.toLowerCase()] ?? item.branch_snapshot) : '—'}
                     </div>
-                    <div className="text-center font-mono text-xs font-semibold text-rb-text">{item.work_days}</div>
+                    <div className="text-center font-mono text-xs font-semibold text-rb-text">
+                      <div>{item.work_days}</div>
+                      {item.attendance_coverage_status && item.attendance_coverage_status !== 'COMPLETE' && (
+                        <div className="text-[9.5px] text-amber-600 dark:text-amber-400 font-sans">
+                          {item.attendance_coverage_status === 'BLOCKED_SOURCE' ? 'No Source' : 'Gaps'}
+                        </div>
+                      )}
+                    </div>
                     <div className="text-right font-mono text-xs text-rb-text-secondary">
                       {formatRupiah(item.base_salary)}
                     </div>
@@ -545,6 +686,10 @@ export function RegularPayroll() {
                             ? 'bg-rb-green-tint-bg text-rb-green-tint-fg'
                             : item.status === 'LOCKED'
                             ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                            : item.status === 'BLOCKED_ATTENDANCE_SOURCE'
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
+                            : item.status === 'MISSING_ATTENDANCE'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
                             : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                         }`}
                       >
@@ -608,6 +753,35 @@ export function RegularPayroll() {
                 </ul>
               </div>
             )}
+
+            {/* Attendance Coverage Audit */}
+            <div className="mt-4 rounded-rb-card border border-rb-border p-3.5 bg-rb-surface-hover/20">
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-rb-text-muted">
+                <span>Coverage Presensi (Audit Kehadiran)</span>
+                <span
+                  className={`rounded-rb-pill px-2 py-0.5 text-[10px] font-semibold ${
+                    detailItem.attendance_coverage_status === 'COMPLETE'
+                      ? 'bg-rb-green-tint-bg text-rb-green-tint-fg'
+                      : detailItem.attendance_coverage_status === 'BLOCKED_SOURCE'
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                  }`}
+                >
+                  {detailItem.attendance_coverage_status || 'UNKNOWN'}
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                <div>Periode Diharapkan: <span className="font-mono">{detailItem.attendance_period_expected || '—'}</span></div>
+                <div>Periode Tersedia di DB: <span className="font-mono">{detailItem.attendance_period_available || '—'}</span></div>
+                <div>Hari Terdeteksi: <span className="font-mono font-semibold">{detailItem.attendance_coverage_days ?? detailItem.work_days} hari</span></div>
+                <div>Status Audit: <span className="font-semibold">{detailItem.attendance_coverage_status || '—'}</span></div>
+              </div>
+              {detailItem.status === 'BLOCKED_ATTENDANCE_SOURCE' && (
+                <div className="mt-2 text-[11px] text-purple-700 dark:text-purple-300 font-medium">
+                  ℹ️ Karyawan unit Sundaze belum memiliki upload data fingerprint mesin periode ini. Sesuai kebijakan payroll safety guard, staf ini tidak dianggap alpa dan tidak menerima gaji Rp0, melainkan ditangguhkan sampai file diimpor.
+                </div>
+              )}
+            </div>
 
             {/* Component Breakdown with Sources */}
             <div className="mt-5 space-y-4">
@@ -913,6 +1087,162 @@ export function RegularPayroll() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* OVERTIME REVIEW MODAL */}
+      {isOvertimeModalOpen && activeRun && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-rb-card border border-rb-border bg-rb-surface p-6 shadow-xl">
+            <div className="flex items-center justify-between border-b border-rb-divider pb-4">
+              <div>
+                <h3 className="text-base font-bold text-rb-text">Tinjau Lembur Karyawan (Overtime Review)</h3>
+                <p className="text-xs text-rb-text-muted">
+                  Periode: {activeRun.period_start} s/d {activeRun.period_end} · Hanya jam lembur yang disetujui (Approved) yang dihitung ke payroll reguler.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSyncOvertime}
+                  disabled={overtimeLoading}
+                  className="rounded-rb-button border border-rb-border bg-rb-surface px-3 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-surface-hover"
+                >
+                  {overtimeLoading ? 'Menyinkronkan...' : '🔄 Tarik Kandidat dari Presensi'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsOvertimeModalOpen(false)}
+                  className="rounded-rb-pill p-1.5 text-rb-text-muted hover:bg-rb-surface-hover hover:text-rb-text"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              {overtimeLoading && <LoadingState label="Memuat kandidat lembur..." />}
+              {!overtimeLoading && overtimeApprovals.length === 0 && (
+                <div className="p-8 text-center text-xs text-rb-text-muted">
+                  Belum ada catatan lembur terdeteksi pada periode ini. Klik &quot;🔄 Tarik Kandidat dari Presensi&quot; untuk memindai presensi periode ini.
+                </div>
+              )}
+              {!overtimeLoading && overtimeApprovals.length > 0 && (
+                <div className="overflow-x-auto rounded-rb-card border border-rb-border">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-rb-divider bg-rb-surface-hover/50 text-[11px] font-semibold uppercase text-rb-text-muted">
+                      <tr>
+                        <th className="p-2.5">Karyawan</th>
+                        <th className="p-2.5">Unit / Cabang</th>
+                        <th className="p-2.5">Tanggal</th>
+                        <th className="p-2.5 text-right">Raw Extra Time</th>
+                        <th className="p-2.5 text-right">Approved Minutes</th>
+                        <th className="p-2.5 text-center">Status</th>
+                        <th className="p-2.5 text-right">Aksi Review</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-rb-divider">
+                      {overtimeApprovals.map((ot) => (
+                        <tr key={ot.id} className="hover:bg-rb-surface-hover/30">
+                          <td className="p-2.5 font-medium text-rb-text">
+                            <div>{ot.employees?.name || ot.employee_id.slice(0, 8)}</div>
+                            <div className="text-[10px] text-rb-text-muted font-normal">{ot.employees?.position || ''}</div>
+                          </td>
+                          <td className="p-2.5 text-xs text-rb-text-secondary">
+                            {ot.employees?.business_unit || '—'} · {ot.employees?.branch ? (BRANCH_LABELS[ot.employees.branch.toLowerCase()] ?? ot.employees.branch) : '—'}
+                          </td>
+                          <td className="p-2.5 font-mono text-rb-text-secondary">{ot.attendance_date}</td>
+                          <td className="p-2.5 text-right font-mono font-semibold text-amber-600">
+                            {ot.raw_overtime_minutes} m ({Math.round((ot.raw_overtime_minutes / 60) * 10) / 10} j)
+                          </td>
+                          <td className="p-2.5 text-right">
+                            {activeRun.status === 'DRAFT' && isManager ? (
+                              <input
+                                type="number"
+                                min={0}
+                                max={720}
+                                value={overtimeMinutesInput[ot.id] ?? ot.approved_overtime_minutes ?? ot.raw_overtime_minutes}
+                                onChange={(e) =>
+                                  setOvertimeMinutesInput((prev) => ({
+                                    ...prev,
+                                    [ot.id]: Number(e.target.value),
+                                  }))
+                                }
+                                className="w-20 rounded border border-rb-border bg-rb-surface px-2 py-1 text-right font-mono text-xs"
+                              />
+                            ) : (
+                              <span className="font-mono font-bold text-emerald-600">
+                                {ot.approved_overtime_minutes} m
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <span
+                              className={`rounded-rb-pill px-2 py-0.5 text-[10px] font-semibold ${
+                                ot.status === 'APPROVED'
+                                  ? 'bg-rb-green-tint-bg text-rb-green-tint-fg'
+                                  : ot.status === 'REJECTED'
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                              }`}
+                            >
+                              {ot.status}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-right">
+                            {activeRun.status === 'DRAFT' && isManager ? (
+                              <div className="flex items-center gap-1.5 justify-end">
+                                <input
+                                  type="text"
+                                  placeholder="Catatan..."
+                                  value={overtimeNoteInput[ot.id] ?? ot.note ?? ''}
+                                  onChange={(e) =>
+                                    setOvertimeNoteInput((prev) => ({
+                                      ...prev,
+                                      [ot.id]: e.target.value,
+                                    }))
+                                  }
+                                  className="w-28 rounded border border-rb-border bg-rb-surface px-2 py-1 text-xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewOvertime(ot.id, 'APPROVED')}
+                                  disabled={actionLoading}
+                                  className="rounded bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReviewOvertime(ot.id, 'REJECTED')}
+                                  disabled={actionLoading}
+                                  className="rounded bg-red-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-rb-text-muted">{ot.note || '—'}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsOvertimeModalOpen(false)}
+                className="rounded-rb-button border border-rb-border bg-rb-surface px-4 py-1.5 text-xs font-semibold text-rb-text hover:bg-rb-surface-hover"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

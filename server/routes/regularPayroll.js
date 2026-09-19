@@ -9,6 +9,9 @@ const {
   addRegularPayrollAdjustment,
   deleteRegularPayrollAdjustment,
   lockRegularPayrollRun,
+  listOvertimeApprovals,
+  reviewOvertimeApproval,
+  syncOvertimeCandidates,
 } = require('../services/regularPayrollService');
 
 function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
@@ -19,6 +22,15 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
   function requireOwner(req, res, next) {
     if (req.adminAuth?.role !== 'owner') {
       return res.status(403).json({ error: 'Forbidden: Only Owner can manage regular payroll' });
+    }
+    next();
+  }
+
+  // Helper guard: Owner or Manager (for overtime approvals)
+  function requireOwnerOrManager(req, res, next) {
+    const role = req.adminAuth?.role;
+    if (role !== 'owner' && role !== 'manager') {
+      return res.status(403).json({ error: 'Forbidden: Only Owner or Manager can approve overtime' });
     }
     next();
   }
@@ -133,6 +145,62 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
     } catch (err) {
       console.error('[RegularPayrollRoutes] delete adjustment error:', err);
       return res.status(400).json({ error: err.message || 'Failed to delete adjustment' });
+    }
+  });
+
+  // 7. GET /overtime/approvals — List overtime approvals
+  router.get('/overtime/approvals', adminAuth, async (req, res) => {
+    try {
+      const { period_start, period_end, employee_id, status } = req.query;
+      const approvals = await listOvertimeApprovals(supabase, {
+        periodStart: period_start || null,
+        periodEnd: period_end || null,
+        employeeId: employee_id || null,
+        status: status || null,
+      });
+      return res.json({ approvals });
+    } catch (err) {
+      console.error('[RegularPayrollRoutes] list overtime approvals error:', err);
+      return res.status(500).json({ error: err.message || 'Failed to list overtime approvals' });
+    }
+  });
+
+  // 8. POST /overtime/approvals/:id/review — Review overtime candidate (Approve / Reject) (Owner/Manager only)
+  router.post('/overtime/approvals/:id/review', adminAuth, requireOwnerOrManager, async (req, res) => {
+    try {
+      const approvalId = req.params.id;
+      const { status, approved_minutes, note } = req.body || {};
+
+      if (!status || !['APPROVED', 'REJECTED', 'PENDING'].includes(status)) {
+        return res.status(400).json({ error: "status must be 'APPROVED', 'REJECTED', or 'PENDING'" });
+      }
+
+      const result = await reviewOvertimeApproval(supabase, {
+        approvalId,
+        status,
+        approvedMinutes: approved_minutes,
+        note,
+        userEmail: req.adminAuth?.email || 'manager@redbox.id',
+      });
+      return res.json(result);
+    } catch (err) {
+      console.error('[RegularPayrollRoutes] review overtime error:', err);
+      return res.status(400).json({ error: err.message || 'Failed to review overtime approval' });
+    }
+  });
+
+  // 9. POST /overtime/sync — Sync candidate overtime from attendance records (Owner/Manager only)
+  router.post('/overtime/sync', adminAuth, requireOwnerOrManager, async (req, res) => {
+    try {
+      const { period_start, period_end } = req.body || {};
+      const result = await syncOvertimeCandidates(supabase, {
+        periodStart: period_start || null,
+        periodEnd: period_end || null,
+      });
+      return res.json(result);
+    } catch (err) {
+      console.error('[RegularPayrollRoutes] sync overtime candidates error:', err);
+      return res.status(500).json({ error: err.message || 'Failed to sync overtime candidates' });
     }
   });
 

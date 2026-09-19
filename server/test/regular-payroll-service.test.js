@@ -340,7 +340,26 @@ test('End-to-End Regular Payroll Lifecycle (Draft -> Adjustment -> Lock -> Immut
   assert.equal(Number(updatedItem.debt_deduction), 100000);
   assert.equal(Number(updatedItem.take_home_pay), initialTakeHome - 100000);
 
-  // 4. Lock the run
+  // 4. Verify Safety Guard: Attempting to lock when blockers exist MUST FAIL
+  await assert.rejects(
+    async () => {
+      await lockRegularPayrollRun(mockDb, {
+        runId: createdRunId,
+        userEmail: 'test-admin@redbox.id',
+      });
+    },
+    /incomplete attendance|blocked/i,
+    'Safety guard must block locking payroll run when incomplete attendance or blocked source exists'
+  );
+
+  // Mark mock items to READY in mockDb to simulate attendance/data blockers resolved
+  for (const it of mockDb.tables.payroll_regular_items) {
+    if (it.payroll_run_id === createdRunId) {
+      it.status = 'READY';
+    }
+  }
+
+  // 4b. Lock the run after blockers are resolved
   const lockRes = await lockRegularPayrollRun(mockDb, {
     runId: createdRunId,
     userEmail: 'test-admin@redbox.id',
