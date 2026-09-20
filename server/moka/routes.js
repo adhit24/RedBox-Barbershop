@@ -28,6 +28,7 @@ const { resolveMembershipTier } = require('../membership-policy');
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
 const { getAvailableSlots, isSlotAvailable, getBarberDateAvailability } = require('./slotEngine');
+const { getWibDateTime, calculateEarliestAllowedSlot, isBookingLeadTimeAllowed, timeStrToMinutes } = require('../utils/bookingLeadTime');
 const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
 const { getBarberForBooking, branchMatchesBarber }                     = require('../services/bookingGuard');
 const { getStaleOrFailedJobs } = require('../services/mokaOutboxService');
@@ -121,11 +122,27 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
         type:            type || 'outlet',
       });
 
+      const serverNowWib = getWibDateTime();
+      const isTodayWib = date === serverNowWib.dateStr;
+      const earliestAllowedSlot = isTodayWib ? calculateEarliestAllowedSlot() : null;
+
+      let filteredSlots = slots;
+      if (isTodayWib && earliestAllowedSlot) {
+        const earliestMinutes = timeStrToMinutes(earliestAllowedSlot);
+        filteredSlots = slots.filter(s => {
+          const slotWib = getWibDateTime(s.start);
+          return slotWib.totalMinutes >= earliestMinutes;
+        });
+      }
+
       res.json({
         date,
         outletId,
         durationMinutes: duration,
-        slots,
+        slots: filteredSlots,
+        serverNow: serverNowWib.isoString,
+        earliestAllowedSlot: earliestAllowedSlot || null,
+        timezone: 'Asia/Jakarta',
         lastSyncAt: getLastSyncAt(outletId),
       });
     } catch (err) {
@@ -403,6 +420,22 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
       const resolvedBarberId = barberId;
 
       const reservationDate = new Date(startTime);
+      const startWib = getWibDateTime(reservationDate);
+      const leadTimeCheck = isBookingLeadTimeAllowed({
+        bookingDate: startWib.dateStr,
+        bookingTime: startWib.timeStr,
+        branch: outlet.slug,
+        isAdmin: false,
+      });
+      if (!leadTimeCheck.allowed) {
+        return res.status(422).json({
+          error: leadTimeCheck.error,
+          message: leadTimeCheck.message,
+          earliestAllowedSlot: leadTimeCheck.earliestAllowedSlot || null,
+          timezone: leadTimeCheck.timezone,
+        });
+      }
+
       const date = new Intl.DateTimeFormat('en-CA', {
         timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit',
       }).format(reservationDate);

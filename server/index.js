@@ -29,6 +29,7 @@ const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membe
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
 const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
+const { isBookingLeadTimeAllowed } = require('./utils/bookingLeadTime');
 // Task 17.2 (CRM Integrity Round 3) — Correction Round 1, Blocker 1: only
 // linkNewlyCreatedBooking is actually called from this file; the other
 // Task 17.2 primitives (resolveCustomerIdentity, planBookingCustomerLinkage,
@@ -1363,6 +1364,28 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   }
   let resolvedLocation = resolvedInputLocation;
 
+  // Enforce minimum 60-minute lead time for online bookings (non-admin)
+  const leadTimeCheck = isBookingLeadTimeAllowed({
+    bookingDate: date,
+    bookingTime: time,
+    branch: resolvedLocation,
+    isAdmin,
+  });
+  if (!leadTimeCheck.allowed) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_lead_time_violation', severity: 'WARNING', status: 'failed',
+      correlationId, outletId: resolvedLocation, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 422,
+      errorCode: leadTimeCheck.error,
+      errorMessage: leadTimeCheck.message,
+    }, { supabase });
+    return res.status(422).json({
+      error: leadTimeCheck.error,
+      message: leadTimeCheck.message,
+      earliestAllowedSlot: leadTimeCheck.earliestAllowedSlot || null,
+      timezone: leadTimeCheck.timezone,
+    });
+  }
+
   // Public website bookings must always identify a kapster. The UI uses
   // `any` only as a legacy placeholder; accepting it here creates bookings
   // that cannot be routed to a barber or a branch reliably.
@@ -1989,6 +2012,29 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     const resolvedLoc = normalizeBranch(location);
     if (!resolvedLoc) {
       return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: `Cabang orang ke-${i + 1} wajib dipilih` });
+    }
+
+    // Enforce minimum 60-minute lead time for online bookings (non-admin)
+    const itemLeadTimeCheck = isBookingLeadTimeAllowed({
+      bookingDate: date,
+      bookingTime: time,
+      branch: resolvedLoc,
+      isAdmin,
+    });
+    if (!itemLeadTimeCheck.allowed) {
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_lead_time_violation', severity: 'WARNING', status: 'failed',
+        correlationId, outletId: resolvedLoc, httpMethod: 'POST', httpPath: '/api/bookings/group', httpStatus: 422,
+        errorCode: itemLeadTimeCheck.error,
+        errorMessage: `Orang ke-${i + 1}: ${itemLeadTimeCheck.message}`,
+      }, { supabase });
+      return res.status(422).json({
+        error: itemLeadTimeCheck.error,
+        message: `Orang ke-${i + 1}: ${itemLeadTimeCheck.message}`,
+        earliestAllowedSlot: itemLeadTimeCheck.earliestAllowedSlot || null,
+        timezone: itemLeadTimeCheck.timezone,
+        conflictIndex: i,
+      });
     }
     const normalizedBarber = normalizeBarberIdInput(barber_id);
     if (!normalizedBarber || normalizedBarber === 'any') {
