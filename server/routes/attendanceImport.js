@@ -55,6 +55,7 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
         filename: fileData.filename,
         uploadedBy: userEmail,
         supabase,
+        machineSource: req.body?.machine_source || req.query?.machine_source || null,
       });
 
       // Role branch scoping check: if manager is bound to a specific branch,
@@ -111,6 +112,7 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
         userAuth: req.adminAuth,
         supabase,
         manualMappings,
+        machineSource: req.body?.machine_source || req.query?.machine_source || null,
       });
 
       return res.json({

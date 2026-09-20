@@ -57,7 +57,7 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
       attendance_period_expected: `${periodStart} s/d ${periodEnd}`,
       attendance_period_available: 'Belum tersedia',
       attendance_coverage_days: 0,
-      attendance_coverage_status: emp?.business_unit === 'Sundaze' ? 'BLOCKED_ATTENDANCE_SOURCE' : 'NO_ATTENDANCE',
+      attendance_coverage_status: 'NO_ATTENDANCE',
     });
   }
 
@@ -94,11 +94,8 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
         s.absent_days++;
       } else if (st === 'incomplete') {
         s.incomplete_attendance++;
-      } else if (st === 'izin' || st === 'sakit' || st === 'cuti') {
-        // Scheduled leave/permission
-      } else {
-        s.records_count++;
       }
+      // 'izin'/'sakit'/'cuti'/'off' rows are already counted once in records_count
 
       // Check missing punch
       if ((!row.first_check_in || !row.last_check_out) && st !== 'off' && st !== 'absent') {
@@ -165,15 +162,11 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
     s.attendance_coverage_days = s.records_count;
     s.attendance_period_available = s.min_date && s.max_date ? `${s.min_date} s/d ${s.max_date}` : 'Belum tersedia';
 
-    const emp = employeeMap.get(empId);
-    const unit = emp?.business_unit;
-
+    // Attendance source is resolved by fingerprint identity, never by business unit.
     if (s.records_count >= 18) {
       s.attendance_coverage_status = 'COMPLETE';
     } else if (s.records_count > 0) {
       s.attendance_coverage_status = 'PARTIAL';
-    } else if (unit === 'Sundaze') {
-      s.attendance_coverage_status = 'BLOCKED_ATTENDANCE_SOURCE';
     } else {
       s.attendance_coverage_status = 'NO_ATTENDANCE';
     }
@@ -265,7 +258,7 @@ async function generateRegularPayrollDraft(supabase, {
       attendance_period_expected: `${periodStart} s/d ${periodEnd}`,
       attendance_period_available: 'Belum tersedia',
       attendance_coverage_days: 0,
-      attendance_coverage_status: emp.business_unit === 'Sundaze' ? 'BLOCKED_ATTENDANCE_SOURCE' : 'NO_ATTENDANCE',
+      attendance_coverage_status: 'NO_ATTENDANCE',
     };
 
     const override = itemOverrides[emp.id] || {};

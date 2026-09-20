@@ -204,9 +204,6 @@ function calculateRegularPayrollItem({
   let status = REGULAR_ITEM_STATUS.READY;
   if (!rawBaseSalary || baseSalary <= 0) {
     status = REGULAR_ITEM_STATUS.MISSING_SALARY;
-  } else if (attendanceSummary.attendance_coverage_status === 'BLOCKED_ATTENDANCE_SOURCE' || (unit === 'Sundaze' && workDays === 0 && !attendanceSummary.records_count)) {
-    status = REGULAR_ITEM_STATUS.BLOCKED_ATTENDANCE_SOURCE;
-    warnings.push('Data presensi Sundaze belum terintegrasi (BLOCKED_ATTENDANCE_SOURCE). Gaji tidak dapat dianggap final.');
   } else if (incompleteCount > 0 || exceptionCount > 0 || productCommissionSource === 'REVIEW_REQUIRED' || (attendanceSummary.pending_overtime_count || 0) > 0) {
     status = REGULAR_ITEM_STATUS.REVIEW_REQUIRED;
     if ((attendanceSummary.pending_overtime_count || 0) > 0) {
@@ -219,8 +216,7 @@ function calculateRegularPayrollItem({
 
   const coverageStatus = attendanceSummary.attendance_coverage_status ||
     (attendanceSummary.records_count >= 18 ? 'COMPLETE' :
-      (attendanceSummary.records_count > 0 ? 'PARTIAL' :
-        (unit === 'Sundaze' ? 'BLOCKED_ATTENDANCE_SOURCE' : 'NO_ATTENDANCE')));
+      (attendanceSummary.records_count > 0 ? 'PARTIAL' : 'NO_ATTENDANCE'));
 
   return {
     employee_id: employee.id,
