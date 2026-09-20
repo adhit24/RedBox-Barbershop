@@ -114,17 +114,18 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
       }
       duration = duration || 30; // fallback to 30 min
 
+      const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+        ? new Date(req.headers['x-test-reference-time'])
+        : undefined;
+
       const slots = await getAvailableSlots(supabase, {
         outletId,
         date,
         durationMinutes: duration,
         barberId:        barberId || null,
         type:            type || 'outlet',
+        refDate:         testRefDate,
       });
-
-      const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
-        ? new Date(req.headers['x-test-reference-time'])
-        : undefined;
       const serverNowWib = getWibDateTime(testRefDate);
       const isTodayWib = date === serverNowWib.dateStr;
       const earliestAllowedSlot = isTodayWib ? calculateEarliestAllowedSlot(testRefDate) : null;
