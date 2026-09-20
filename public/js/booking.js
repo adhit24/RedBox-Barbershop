@@ -2126,11 +2126,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (finalBtn) finalBtn.disabled = false;
  }
 
- const _finalBookBtn = document.getElementById('finalBookBtn');
- _finalBookBtn?.addEventListener('click', async () => {
- if (_finalBookBtn.disabled || _finalBookBtn.dataset.submitting === 'true') return;
- _finalBookBtn.dataset.submitting = 'true';
- _finalBookBtn.disabled = true;
+  document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
+    const _finalBookBtn = document.getElementById('finalBookBtn');
+    if (_finalBookBtn && (_finalBookBtn.disabled || _finalBookBtn.dataset.submitting === 'true')) return;
+    if (_finalBookBtn) _finalBookBtn.dataset.submitting = 'true';
+    if (_finalBookBtn) _finalBookBtn.disabled = true;
  const _origBtnText = _finalBookBtn.textContent;
  _finalBookBtn.textContent = 'Memproses Booking...';
  const _releaseBtn = () => {

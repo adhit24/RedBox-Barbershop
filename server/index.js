@@ -29,7 +29,8 @@ const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membe
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
 const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
-const { isBookingLeadTimeAllowed } = require('./utils/bookingLeadTime');
+const { isBookingLeadTimeAllowed, safeAdminTokenMatch } = require('./utils/bookingLeadTime');
+const { isServerTestEnvironment } = require('./utils/testIsolation');
 // Task 17.2 (CRM Integrity Round 3) — Correction Round 1, Blocker 1: only
 // linkNewlyCreatedBooking is actually called from this file; the other
 // Task 17.2 primitives (resolveCustomerIdentity, planBookingCustomerLinkage,
@@ -1291,7 +1292,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   }, { supabase }).catch(() => {});
   const bookingPrice = normalizeBookingPrice({ service_id, service, price, type, location });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
-  const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
+  const isAdmin = safeAdminTokenMatch(req.headers['x-admin-token'], process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
 
   // P2-B4: Server-side Turnstile verification (fail closed for public callers)
@@ -1365,11 +1366,15 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   let resolvedLocation = resolvedInputLocation;
 
   // Enforce minimum 60-minute lead time for online bookings (non-admin)
+  const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+    ? new Date(req.headers['x-test-reference-time'])
+    : undefined;
   const leadTimeCheck = isBookingLeadTimeAllowed({
     bookingDate: date,
     bookingTime: time,
     branch: resolvedLocation,
     isAdmin,
+    refDate: testRefDate,
   });
   if (!leadTimeCheck.allowed) {
     await logSystemEvent({
@@ -1987,7 +1992,7 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: 'items harus berupa array booking antara 1 sampai 10 orang' });
   }
 
-  const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
+  const isAdmin = safeAdminTokenMatch(req.headers['x-admin-token'], process.env.ADMIN_PASSWORD);
   const normalizedItems = [];
 
   for (let i = 0; i < items.length; i++) {
@@ -2015,11 +2020,15 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     }
 
     // Enforce minimum 60-minute lead time for online bookings (non-admin)
+    const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+      ? new Date(req.headers['x-test-reference-time'])
+      : undefined;
     const itemLeadTimeCheck = isBookingLeadTimeAllowed({
       bookingDate: date,
       bookingTime: time,
       branch: resolvedLoc,
       isAdmin,
+      refDate: testRefDate,
     });
     if (!itemLeadTimeCheck.allowed) {
       await logSystemEvent({

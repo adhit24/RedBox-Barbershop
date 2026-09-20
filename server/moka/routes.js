@@ -28,11 +28,11 @@ const { resolveMembershipTier } = require('../membership-policy');
 const { buildAuthorizationUrl, exchangeCode, getTokenInfo, isMokaOAuthConfigured } = require('./oauth');
 const { pushScheduleToMoka, pushCheckoutToMoka, pullMokaToWeb, handleWebhookEvent, maybeRefreshOutletData, getLastSyncAt } = require('./sync');
 const { getAvailableSlots, isSlotAvailable, getBarberDateAvailability } = require('./slotEngine');
-const { getWibDateTime, calculateEarliestAllowedSlot, isBookingLeadTimeAllowed, timeStrToMinutes } = require('../utils/bookingLeadTime');
+const { getWibDateTime, calculateEarliestAllowedSlot, isBookingLeadTimeAllowed, timeStrToMinutes, safeAdminTokenMatch } = require('../utils/bookingLeadTime');
 const { reschedule: homeServiceReschedule }                            = require('../home-service/reschedule');
 const { getBarberForBooking, branchMatchesBarber }                     = require('../services/bookingGuard');
 const { getStaleOrFailedJobs } = require('../services/mokaOutboxService');
-const { evaluateTestIsolation } = require('../utils/testIsolation');
+const { evaluateTestIsolation, isServerTestEnvironment } = require('../utils/testIsolation');
 
 async function syncCurrentMonthTransactions(supabase, outletId = null) {
   const { syncCurrentMonthTx } = require('./txSync');
@@ -122,9 +122,12 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
         type:            type || 'outlet',
       });
 
-      const serverNowWib = getWibDateTime();
+      const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+        ? new Date(req.headers['x-test-reference-time'])
+        : undefined;
+      const serverNowWib = getWibDateTime(testRefDate);
       const isTodayWib = date === serverNowWib.dateStr;
-      const earliestAllowedSlot = isTodayWib ? calculateEarliestAllowedSlot() : null;
+      const earliestAllowedSlot = isTodayWib ? calculateEarliestAllowedSlot(testRefDate) : null;
 
       let filteredSlots = slots;
       if (isTodayWib && earliestAllowedSlot) {
@@ -421,11 +424,16 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
 
       const reservationDate = new Date(startTime);
       const startWib = getWibDateTime(reservationDate);
+      const isAdmin = safeAdminTokenMatch(req.headers['x-admin-token'], process.env.ADMIN_PASSWORD);
+      const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+        ? new Date(req.headers['x-test-reference-time'])
+        : undefined;
       const leadTimeCheck = isBookingLeadTimeAllowed({
         bookingDate: startWib.dateStr,
         bookingTime: startWib.timeStr,
         branch: outlet.slug,
-        isAdmin: false,
+        isAdmin,
+        refDate: testRefDate,
       });
       if (!leadTimeCheck.allowed) {
         return res.status(422).json({
@@ -561,11 +569,20 @@ function createMokaRouter(supabase, legacyAdminAuth = null) {
       if (!jobId || !newStartTime) {
         return res.status(400).json({ error: 'jobId and newStartTime are required' });
       }
-      const result = await homeServiceReschedule(supabase, { jobId, newStartTime });
+      const isAdmin = safeAdminTokenMatch(req.headers['x-admin-token'], process.env.ADMIN_PASSWORD);
+      const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+        ? new Date(req.headers['x-test-reference-time'])
+        : undefined;
+      const result = await homeServiceReschedule(supabase, { jobId, newStartTime, isAdmin, testRefDate });
       res.json({ ok: true, ...result });
     } catch (err) {
       const status = err.statusCode || 500;
-      res.status(status).json({ error: err.message });
+      res.status(status).json({
+        error: err.message,
+        code: err.code,
+        earliestAllowedSlot: err.earliestAllowedSlot,
+        timezone: err.timezone,
+      });
     }
   });
 

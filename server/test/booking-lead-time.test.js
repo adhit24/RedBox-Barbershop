@@ -14,6 +14,7 @@ const {
   isBookingLeadTimeAllowed,
   filterSlotsForLeadTime,
   timeStrToMinutes,
+  safeAdminTokenMatch,
 } = require('../utils/bookingLeadTime');
 const createMokaRouter = require('../moka/routes');
 
@@ -329,6 +330,13 @@ function makeQueryableTable(rows, tableName) {
 }
 
 function fakeLeadTimeSupabase(seed = {}) {
+  const allDays = [0, 1, 2, 3, 4, 5, 6];
+  const wh = [];
+  allDays.forEach((d) => {
+    wh.push({ barber_id: 'barber-bypass-1', day_of_week: d, open_time: '10:00', close_time: '21:00', is_off: false });
+    wh.push({ barber_id: 'barber-csb-1', day_of_week: d, open_time: '10:00', close_time: '22:00', is_off: false });
+  });
+
   const store = {
     barbers: seed.barbers || [
       { id: 'barber-bypass-1', name: 'Abdul', is_active: true, branch: 'bypass', outlet_id: 'outlet-bypass-uuid' },
@@ -341,13 +349,32 @@ function fakeLeadTimeSupabase(seed = {}) {
     services: [
       { id: 'haircut', name: 'Haircut', duration_minutes: 30, price: 50000 },
     ],
-    barber_working_hours: [
-      { barber_id: 'barber-bypass-1', day_of_week: new Date().getDay(), open_time: '10:00', close_time: '21:00', is_off: false },
-      { barber_id: 'barber-csb-1', day_of_week: new Date().getDay(), open_time: '10:00', close_time: '22:00', is_off: false },
-    ],
+    barber_working_hours: wh,
     barber_date_overrides: [],
     bookings: seed.bookings || [],
-    schedules: seed.schedules || [],
+    schedules: seed.schedules || [
+      {
+        id: 'sch-future-1',
+        start_time: '2026-09-25T10:00:00+07:00',
+        end_time: '2026-09-25T11:00:00+07:00',
+        outlet_id: 'outlet-bypass-uuid',
+        barber_id: 'barber-bypass-1',
+        customer_id: 'cust-1',
+        service_id: 'haircut',
+        service_name: 'Haircut',
+        price: 50000,
+        status: 'confirmed',
+      },
+    ],
+    home_service_jobs: seed.home_service_jobs || [
+      {
+        id: 'job-future-1',
+        status: 'confirmed',
+        address: 'Jl. Pemuda No. 10',
+        reschedule_count: 0,
+        schedule_id: 'sch-future-1',
+      },
+    ],
     customers: seed.customers || [],
     system_event_logs: [],
   };
@@ -359,6 +386,9 @@ function fakeLeadTimeSupabase(seed = {}) {
       return makeQueryableTable(store[table], table)();
     },
     rpc(proc, params) {
+      if (proc === 'check_barber_overlap') {
+        return Promise.resolve({ data: false, error: null });
+      }
       if (proc === 'create_booking_atomic') {
         const newBooking = { id: 'bk-' + Date.now(), ...params };
         store.bookings.push(newBooking);
@@ -629,4 +659,434 @@ test('Case 16: UMD pattern exposes RedboxBookingLeadTime to browser root/globalT
   );
   assert.match(src, /root\.RedboxBookingLeadTime = api/);
   assert.match(src, /typeof module === 'object' && module\.exports/);
+});
+
+// ─────────────────────────────────────────────────────────────
+// 5. AUDIT TESTS: ADMIN TOKEN SECURITY, INTEGRATION & RESCHEDULE
+// ─────────────────────────────────────────────────────────────
+
+test('Case 17: safeAdminTokenMatch unit verification (token benar, token salah, header kosong, secret tidak tersedia)', () => {
+  const SECRET = 'admin-secret-xyz';
+
+  // Token benar -> true
+  assert.equal(safeAdminTokenMatch('admin-secret-xyz', SECRET), true, 'Exact secret must match');
+  assert.equal(safeAdminTokenMatch(' admin-secret-xyz ', SECRET), true, 'Trimmed token must match');
+
+  // Token salah -> false
+  assert.equal(safeAdminTokenMatch('wrong-secret', SECRET), false, 'Wrong token must fail');
+  assert.equal(safeAdminTokenMatch('admin-secret-xy', SECRET), false, 'Partial token must fail');
+
+  // Header kosong / non-string -> false
+  assert.equal(safeAdminTokenMatch('', SECRET), false, 'Empty token string must fail');
+  assert.equal(safeAdminTokenMatch('   ', SECRET), false, 'Whitespace-only token must fail');
+  assert.equal(safeAdminTokenMatch(undefined, SECRET), false, 'Undefined token must fail');
+  assert.equal(safeAdminTokenMatch(null, SECRET), false, 'Null token must fail');
+  assert.equal(safeAdminTokenMatch(12345, SECRET), false, 'Number token must fail');
+
+  // Secret admin tidak tersedia -> false (must NEVER bypass)
+  assert.equal(safeAdminTokenMatch(SECRET, ''), false, 'Empty secret must fail');
+  assert.equal(safeAdminTokenMatch(SECRET, undefined), false, 'Undefined secret must fail');
+  assert.equal(safeAdminTokenMatch(SECRET, null), false, 'Null secret must fail');
+  assert.equal(safeAdminTokenMatch('', ''), false, 'Both empty must fail');
+  assert.equal(safeAdminTokenMatch(undefined, undefined), false, 'Both undefined must fail');
+});
+
+test('Case 18: Admin token security audit on POST /api/bookings (correct token passes, wrong/empty/missing secret returns 422)', async () => {
+  const fakeClient = fakeLeadTimeSupabase();
+  const refTime = '2026-09-20T16:18:00+07:00';
+
+  await withTestServer(fakeClient, async (base) => {
+    // 1. Correct admin token -> bypasses lead time restriction (allowed)
+    const resCorrect = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': 'test-admin-secret-2026',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Admin Customer',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Haircut',
+        price: 50000,
+        duration: '30',
+        barber_id: 'barber-bypass-1',
+        date: '2026-09-20',
+        time: '17:00',
+        location: 'bypass',
+      }),
+    });
+    assert.notEqual(resCorrect.status, 422, 'Correct admin token must bypass lead time restriction');
+
+    // 2. Wrong admin token -> must NOT bypass (returns 422)
+    const resWrong = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': 'wrong-password-here',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Attacker Admin',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Haircut',
+        price: 50000,
+        duration: '30',
+        barber_id: 'barber-bypass-1',
+        date: '2026-09-20',
+        time: '17:00',
+        location: 'bypass',
+      }),
+    });
+    assert.equal(resWrong.status, 422, 'Wrong admin token must be rejected with HTTP 422');
+
+    // 3. Empty header -> must NOT bypass (returns 422)
+    const resEmpty = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': '',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Public Customer',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Haircut',
+        price: 50000,
+        duration: '30',
+        barber_id: 'barber-bypass-1',
+        date: '2026-09-20',
+        time: '17:00',
+        location: 'bypass',
+      }),
+    });
+    assert.equal(resEmpty.status, 422, 'Empty admin token header must be rejected with HTTP 422');
+
+    // 4. Secret unavailable in environment -> must NOT bypass even if header is missing or empty
+    const origPassword = process.env.ADMIN_PASSWORD;
+    try {
+      delete process.env.ADMIN_PASSWORD;
+      const resNoSecret = await fetch(`${base}/api/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-reference-time': refTime,
+        },
+        body: JSON.stringify({
+          name: 'Public Customer Without Secret In Env',
+          wa: '6281234567890',
+          service_id: 'haircut',
+          service: 'Haircut',
+          price: 50000,
+          duration: '30',
+          barber_id: 'barber-bypass-1',
+          date: '2026-09-20',
+          time: '17:00',
+          location: 'bypass',
+        }),
+      });
+      assert.equal(resNoSecret.status, 422, 'Missing ADMIN_PASSWORD environment variable must NOT grant bypass');
+    } finally {
+      process.env.ADMIN_PASSWORD = origPassword;
+    }
+  });
+});
+
+test('Case 19: Behavioral/Integration at 16:18 WIB — POST /api/bookings (17:00 fails 422, 18:00 passes)', async () => {
+  const fakeClient = fakeLeadTimeSupabase();
+  const refTime = '2026-09-20T16:18:00+07:00';
+
+  await withTestServer(fakeClient, async (base) => {
+    // 17:00 is within 42 minutes (< 60 min) -> MUST return 422
+    const res17 = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Budi 17.00',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Haircut',
+        price: 50000,
+        duration: '30',
+        barber_id: 'barber-bypass-1',
+        date: '2026-09-20',
+        time: '17:00',
+        location: 'bypass',
+      }),
+    });
+    assert.equal(res17.status, 422, 'At 16:18 WIB, booking 17:00 must return HTTP 422');
+    const body17 = await res17.json();
+    assert.equal(body17.error, 'BOOKING_LEAD_TIME_VIOLATION');
+    assert.equal(body17.earliestAllowedSlot, '18:00');
+    assert.equal(body17.timezone, 'Asia/Jakarta');
+
+    // 18:00 is >= 60 minutes -> MUST pass lead time validation
+    const res18 = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Budi 18.00',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Haircut',
+        price: 50000,
+        duration: '30',
+        barber_id: 'barber-bypass-1',
+        date: '2026-09-20',
+        time: '18:00',
+        location: 'bypass',
+      }),
+    });
+    assert.notEqual(res18.status, 422, 'At 16:18 WIB, booking 18:00 must pass lead time validation');
+  });
+});
+
+test('Case 20: Behavioral/Integration at 16:18 WIB — POST /api/bookings/group (17:00 fails 422, 18:00 passes)', async () => {
+  const fakeClient = fakeLeadTimeSupabase();
+  const refTime = '2026-09-20T16:18:00+07:00';
+
+  await withTestServer(fakeClient, async (base) => {
+    // Group with 17:00 -> fails with 422
+    const res17 = await fetch(`${base}/api/bookings/group`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        group_request_id: 'b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5e',
+        items: [
+          {
+            name: 'Person 1',
+            wa: '628111111111',
+            service_id: 'haircut',
+            service: 'Haircut',
+            price: 50000,
+            duration: '30',
+            barber_id: 'barber-bypass-1',
+            date: '2026-09-20',
+            time: '17:00',
+            location: 'bypass',
+          },
+        ],
+      }),
+    });
+    assert.equal(res17.status, 422, 'Group booking at 17:00 must return 422 at 16:18 WIB');
+    const body17 = await res17.json();
+    assert.equal(body17.error, 'BOOKING_LEAD_TIME_VIOLATION');
+    assert.equal(body17.earliestAllowedSlot, '18:00');
+
+    // Group with 18:00 -> passes lead time validation
+    const res18 = await fetch(`${base}/api/bookings/group`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        group_request_id: 'b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5f',
+        items: [
+          {
+            name: 'Person 1',
+            wa: '628111111111',
+            service_id: 'haircut',
+            service: 'Haircut',
+            price: 50000,
+            duration: '30',
+            barber_id: 'barber-bypass-1',
+            date: '2026-09-20',
+            time: '18:00',
+            location: 'bypass',
+          },
+        ],
+      }),
+    });
+    assert.notEqual(res18.status, 422, 'Group booking at 18:00 must pass lead time validation at 16:18 WIB');
+  });
+});
+
+test('Case 21: Behavioral/Integration at 16:18 WIB — POST /api/reservations (17:00 fails 422, 18:00 passes)', async () => {
+  const fakeClient = fakeLeadTimeSupabase();
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createMokaRouter(fakeClient));
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.on('listening', resolve));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const refTime = '2026-09-20T16:18:00+07:00';
+
+    // 17:00 reservation -> 422
+    const res17 = await fetch(`${base}/api/reservations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        outletId: 'bypass',
+        barberId: 'barber-bypass-1',
+        serviceId: 'haircut',
+        startTime: '2026-09-20T17:00:00+07:00',
+        customer: { name: 'Reservation Test 17.00', phone: '08123456789' },
+      }),
+    });
+    assert.equal(res17.status, 422, 'POST /api/reservations at 17:00 must return 422 at 16:18 WIB');
+    const body17 = await res17.json();
+    assert.equal(body17.error, 'BOOKING_LEAD_TIME_VIOLATION');
+    assert.equal(body17.earliestAllowedSlot, '18:00');
+    assert.equal(body17.timezone, 'Asia/Jakarta');
+
+    // 18:00 reservation -> passes lead time (201 Created)
+    const res18 = await fetch(`${base}/api/reservations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        outletId: 'bypass',
+        barberId: 'barber-bypass-1',
+        serviceId: 'haircut',
+        startTime: '2026-09-20T18:00:00+07:00',
+        customer: { name: 'Reservation Test 18.00', phone: '08123456789' },
+      }),
+    });
+    assert.notEqual(res18.status, 422, 'POST /api/reservations at 18:00 must pass lead time validation');
+  } finally {
+    await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+test('Case 22: Behavioral/Integration at 16:18 WIB — GET /api/availability (17:00 excluded, earliestAllowedSlot 18:00, timezone Asia/Jakarta)', async () => {
+  const fakeClient = fakeLeadTimeSupabase();
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createMokaRouter(fakeClient));
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.on('listening', resolve));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const refTime = '2026-09-20T16:18:00+07:00';
+
+    const res = await fetch(`${base}/api/availability?outletId=bypass&date=2026-09-20`, {
+      headers: {
+        'x-test-reference-time': refTime,
+      },
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+
+    // Required metadata
+    assert.equal(body.earliestAllowedSlot, '18:00', 'Metadata earliestAllowedSlot must be 18:00');
+    assert.equal(body.timezone, 'Asia/Jakarta', 'Metadata timezone must be Asia/Jakarta');
+
+    // Slot filtering: slot 17:00 must NOT be in available slots
+    const slotTimes = body.slots.map((s) => {
+      const wib = getWibDateTime(s.start);
+      return wib.timeStr;
+    });
+    assert.equal(slotTimes.includes('17:00'), false, 'Slot 17:00 must not be returned');
+    assert.ok(slotTimes.includes('18:00'), 'Slot 18:00 must be returned in available slots');
+  } finally {
+    await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+test('Case 23: Customer reschedule lead-time audit — POST /api/home-service/reschedule (reschedule to 17:00 today rejected 422, 18:00 passes, admin override allowed, wrong admin token rejected 422)', async () => {
+  const fakeClient = fakeLeadTimeSupabase();
+  const origPassword = process.env.ADMIN_PASSWORD;
+  process.env.ADMIN_PASSWORD = 'test-admin-secret-2026';
+
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createMokaRouter(fakeClient));
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.on('listening', resolve));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const refTime = '2026-09-20T16:18:00+07:00';
+
+    // 1. Customer attempts to reschedule booking from tomorrow to today at 17:00 (< 60 min) -> rejected 422
+    const resCustomer17 = await fetch(`${base}/api/home-service/reschedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        jobId: 'job-future-1',
+        newStartTime: '2026-09-20T17:00:00+07:00',
+      }),
+    });
+    assert.equal(resCustomer17.status, 422, 'Customer reschedule to today at 17:00 must return HTTP 422');
+    const bodyCustomer17 = await resCustomer17.json();
+    assert.equal(bodyCustomer17.code, 'BOOKING_LEAD_TIME_VIOLATION');
+    assert.equal(bodyCustomer17.earliestAllowedSlot, '18:00');
+    assert.equal(bodyCustomer17.timezone, 'Asia/Jakarta');
+
+    // 2. Customer reschedules to today at 18:00 (>= 60 min) -> passes lead time validation
+    const resCustomer18 = await fetch(`${base}/api/home-service/reschedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        jobId: 'job-future-1',
+        newStartTime: '2026-09-20T18:00:00+07:00',
+      }),
+    });
+    assert.equal(resCustomer18.status, 200, 'Customer reschedule to today at 18:00 must succeed');
+    const bodyCustomer18 = await resCustomer18.json();
+    assert.equal(bodyCustomer18.ok, true);
+
+    // 3. Admin with valid x-admin-token reschedules to today at 17:00 -> override allowed (200 OK)
+    const resAdmin17 = await fetch(`${base}/api/home-service/reschedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': 'test-admin-secret-2026',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        jobId: 'job-future-1',
+        newStartTime: '2026-09-20T17:00:00+07:00',
+      }),
+    });
+    assert.equal(resAdmin17.status, 200, 'Admin with valid token must be allowed to override reschedule lead time');
+    const bodyAdmin17 = await resAdmin17.json();
+    assert.equal(bodyAdmin17.ok, true);
+
+    // 4. Attacker with wrong x-admin-token reschedules to 17:00 -> rejected 422
+    const resWrongAdmin = await fetch(`${base}/api/home-service/reschedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': 'invalid-token-12345',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        jobId: 'job-future-1',
+        newStartTime: '2026-09-20T17:00:00+07:00',
+      }),
+    });
+    assert.equal(resWrongAdmin.status, 422, 'Reschedule with invalid admin token must NOT bypass lead time');
+  } finally {
+    if (origPassword === undefined) delete process.env.ADMIN_PASSWORD;
+    else process.env.ADMIN_PASSWORD = origPassword;
+    await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
 });
