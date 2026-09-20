@@ -34,6 +34,28 @@ async function listRegularPayrollRuns(supabase, { status = null, businessUnit = 
 }
 
 /**
+ * Read every row of a query, paging past PostgREST's 1000-row response cap.
+ * buildQuery must return a fresh, deterministically ordered query each call.
+ */
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+  const out = [];
+  for (let from = 0; ; from += pageSize) {
+    const q = buildQuery();
+    const pageable = typeof q.range === 'function';
+    const res = await (pageable ? q.range(from, from + pageSize - 1) : q);
+    if (res.error) return { data: null, error: res.error };
+    out.push(...(res.data || []));
+    if (!pageable || !res.data || res.data.length < pageSize) break;
+  }
+  return { data: out, error: null };
+}
+
+function inclusiveDayCount(from, to) {
+  if (!from || !to || to < from) return 0;
+  return Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+}
+
+/**
  * Fetch attendance summary for a list of employees over a date range
  */
 async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], periodStart, periodEnd, employeeMap = new Map()) {
@@ -64,12 +86,14 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
   if (!employeeIds.length || !periodStart || !periodEnd) return summaryMap;
 
   // 1. Query employee_attendance
-  const { data: attendanceRows, error: attError } = await supabase
+  const { data: attendanceRows, error: attError } = await fetchAllRows(() => supabase
     .from('employee_attendance')
     .select('employee_id, attendance_date, status, late_minutes, overtime_minutes, first_check_in, last_check_out')
     .in('employee_id', employeeIds)
     .gte('attendance_date', periodStart)
-    .lte('attendance_date', periodEnd);
+    .lte('attendance_date', periodEnd)
+    .order('employee_id')
+    .order('attendance_date'));
 
   if (attError) {
     console.warn('[RegularPayrollService] Warning querying employee_attendance:', attError.message);
@@ -135,12 +159,14 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
 
   // 3. Query unresolved attendance_exceptions
   try {
-    const { data: excRows, error: excError } = await supabase
+    const { data: excRows, error: excError } = await fetchAllRows(() => supabase
       .from('attendance_exceptions')
       .select('raw_data, status, attendance_date')
       .eq('status', 'pending')
       .gte('attendance_date', periodStart)
-      .lte('attendance_date', periodEnd);
+      .lte('attendance_date', periodEnd)
+      .order('attendance_date')
+      .order('id'));
 
     if (!excError && excRows) {
       for (const exc of excRows) {
@@ -155,7 +181,21 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
   }
 
   // 4. Finalize metrics per employee
+  // The attendance source only covers up to the last day it has data; days after that
+  // are "not yet available", never "absent".
+  let dataThrough = null;
+  for (const s of summaryMap.values()) {
+    if (s.max_date && (!dataThrough || s.max_date > dataThrough)) dataThrough = s.max_date;
+  }
+  const periodComplete = !!dataThrough && dataThrough >= periodEnd;
+
   for (const [empId, s] of summaryMap.entries()) {
+    const joinDate = employeeMap.get(empId)?.join_date || null;
+    const windowStart = joinDate && joinDate > periodStart ? joinDate : periodStart;
+    const windowEnd = dataThrough && dataThrough < periodEnd ? dataThrough : periodEnd;
+    s.attendance_data_through = dataThrough;
+    s.attendance_period_complete = periodComplete;
+    s.expected_coverage_days = dataThrough ? inclusiveDayCount(windowStart, windowEnd) : 0;
     // Only approved overtime minutes are converted to overtime hours!
     s.overtime_hours = Math.round((s.approved_overtime_minutes / 60) * 10) / 10;
 
@@ -212,7 +252,7 @@ async function generateRegularPayrollDraft(supabase, {
   // 2. Fetch regular employees
   let empQuery = supabase
     .from('employees')
-    .select('id, name, nickname, business_unit, branch, branch_name, position, base_salary, position_allowance, meal_allowance_rate, is_active')
+    .select('id, name, nickname, business_unit, branch, branch_name, position, base_salary, position_allowance, meal_allowance_rate, is_active, join_date')
     .eq('is_active', true)
     .order('name');
 
@@ -232,6 +272,10 @@ async function generateRegularPayrollDraft(supabase, {
   const attendanceMap = await fetchEmployeeAttendanceSummaries(supabase, employeeIds, periodStart, periodEnd, employeeMap);
 
   // 4. Calculate items
+  let attendanceDataThrough = null;
+  for (const a of attendanceMap.values()) {
+    if (a.attendance_data_through) { attendanceDataThrough = a.attendance_data_through; break; }
+  }
   const calculatedItems = [];
   let totalGross = 0;
   let totalDeductions = 0;
@@ -306,6 +350,10 @@ async function generateRegularPayrollDraft(supabase, {
     review_required_count: reviewRequiredCount,
     missing_salary_count: missingSalaryCount,
     missing_attendance_count: missingAttendanceCount,
+    attendance_data_through: attendanceDataThrough,
+    expected_period_end: periodEnd,
+    attendance_period_complete: attendanceDataThrough ? attendanceDataThrough >= periodEnd : false,
+    is_final: false,
   };
 
   const { data: run, error: runInsertErr } = await supabase
@@ -645,10 +693,19 @@ async function refreshRunSummary(supabase, runId) {
     if (it.status === 'MISSING_SALARY') missingSalaryCount++;
   }
 
+  let previousSummary = {};
+  try {
+    const { data: runRow } = await supabase.from('payroll_runs').select('summary').eq('id', runId).single();
+    previousSummary = runRow?.summary || {};
+  } catch (_) { /* keep defaults */ }
+  const missingAttendanceCount = allItems.filter(it => it.status === 'MISSING_ATTENDANCE' || it.status === 'BLOCKED_ATTENDANCE_SOURCE').length;
+
   await supabase
     .from('payroll_runs')
     .update({
       summary: {
+        ...previousSummary,
+        missing_attendance_count: missingAttendanceCount,
         total_employees: allItems.length,
         total_gross_pay: totalGross,
         total_deductions: totalDeduction,
@@ -675,6 +732,12 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   if (blockingItems && blockingItems.length > 0) {
     const names = blockingItems.slice(0, 3).map(b => `${b.employee_name_snapshot} (${b.status})`).join(', ');
     throw new Error(`Cannot lock payroll run: ${blockingItems.length} employee(s) have incomplete attendance or salary data (${names}). Take-home pay is not finalized.`);
+  }
+
+  // Period guard: attendance must cover the whole payroll period before locking.
+  const { data: runRow } = await supabase.from('payroll_runs').select('summary, period_end').eq('id', runId).single();
+  if (runRow?.summary?.attendance_period_complete === false) {
+    throw new Error(`Cannot lock payroll run: attendance data is only available through ${runRow.summary.attendance_data_through || 'unknown'} but the period ends ${runRow.period_end}. Import the final fingerprint files first.`);
   }
 
   const { data, error } = await supabase.rpc('lock_payroll_run', {

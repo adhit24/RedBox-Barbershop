@@ -1,0 +1,248 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const XLSX = require('xlsx');
+
+const importer = require('../services/fingerprintAttendanceImporter');
+const { calculateRegularPayrollItem, REGULAR_ITEM_STATUS } = require('../services/regularPayrollEngine');
+
+// Period spans a month boundary on purpose: 2026-08-26 .. 2026-09-04 (10 days)
+const DAYS = [26, 27, 28, 29, 30, 31, 1, 2, 3, 4];
+const DATES = ['2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29', '2026-08-30', '2026-08-31',
+  '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04'];
+
+/**
+ * people: [{ id, name, dept, punchesByDayIndex: { idx: ['08:00','17:00'] } }]
+ */
+function buildWorkbookBuffer(people) {
+  const stat = [['Stat'], ['Periode: 2026-08-26 ~ 2026-09-04'], [], []];
+  const exc = [['Exception'], [], [], []];
+  const log = [['Log'], [], [], [null, null, null, ...DAYS]];
+  for (const p of people) {
+    stat.push([p.id, p.name, p.dept || 'ADMIN']);
+    log.push(['ID:', null, p.id, null, null, null, null, null, null, null, p.name]);
+    const punchRow = [null, null, null];
+    DATES.forEach((d, i) => {
+      const pun = p.punchesByDayIndex[i] || [];
+      punchRow.push(pun.join(' '));
+      exc.push([p.id, p.name, p.dept || 'ADMIN', d, pun[0] || '', pun.length > 1 ? pun[pun.length - 1] : '', null, null,
+        0, 0, pun.length ? 0 : 480, 0, '']);
+    });
+    log.push(punchRow);
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(stat), 'Stat. Absen');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(log), 'Lap. Log Absen');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(exc), 'Exception Stat.');
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+
+function fakeSupabase(store) {
+  let seq = 1;
+  const table = (name) => {
+    const rows = (store[name] = store[name] || []);
+    const filters = [];
+    const api = {
+      select() { return api; },
+      eq(c, v) { filters.push(r => r[c] === v); return api; },
+      in(c, v) { filters.push(r => v.includes(r[c])); return api; },
+      then(res) { res({ data: rows.filter(r => filters.every(f => f(r))), error: null }); },
+      maybeSingle: async () => ({ data: rows.find(r => filters.every(f => f(r))) || null, error: null }),
+      single: async () => ({ data: rows.find(r => filters.every(f => f(r))) || null, error: null }),
+      insert(v) {
+        const arr = [].concat(v).map(r => ({ id: `id${seq++}`, ...r }));
+        rows.push(...arr);
+        const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
+        return o;
+      },
+      upsert(v, opt) {
+        const keys = (opt?.onConflict || 'id').split(',');
+        for (const r of [].concat(v)) {
+          const ex = rows.find(x => keys.every(k => x[k] === r[k]));
+          if (ex) Object.assign(ex, r); else rows.push({ id: `id${seq++}`, ...r });
+        }
+        return Promise.resolve({ error: null });
+      },
+      update(v) {
+        return { eq(c, val) { rows.filter(r => r[c] === val).forEach(r => Object.assign(r, v)); return Promise.resolve({ error: null }); } };
+      },
+    };
+    return api;
+  };
+  return { from: table };
+}
+
+const AGUS = 'emp-agus';
+const MELI = 'emp-meli';
+const ZED = 'emp-zed';
+
+function seedStore() {
+  return {
+    employees: [
+      { id: AGUS, name: 'Agus Habibi', nickname: 'Agus', business_unit: 'Sundaze', branch: 'bypass', is_active: true },
+      { id: MELI, name: 'Aulia Meiliani Putri', nickname: 'Meli', business_unit: 'Redbox', branch: 'tegal', is_active: true },
+      { id: ZED, name: 'Zed Zedan', nickname: 'Zed', business_unit: 'Redbox', branch: 'bypass', is_active: true },
+    ],
+    barbers: [],
+    employee_attendance_identity: [],
+    employee_attendance: [],
+    barber_attendance: [],
+    attendance_import_batches: [],
+    attendance_exceptions: [],
+  };
+}
+
+function people() {
+  const full = {};
+  [0, 1, 2, 3, 4, 5, 6, 7].forEach(i => { full[i] = ['08:00', '17:00']; }); // days 9,10 = zero punch
+  return [
+    { id: '1', name: 'Agus', dept: 'ADMIN', punchesByDayIndex: full },
+    { id: '2', name: 'Meli', dept: 'ADMIN', punchesByDayIndex: { 1: ['09:00'] } }, // sporadic: 1 punch of 10 days
+    { id: '3', name: 'Ajeng', dept: 'ADMIN', punchesByDayIndex: { 0: ['08:00', '17:00'], 1: ['08:00', '17:00'] } }, // terminated
+    { id: '4', name: 'Ghost', dept: 'ADMIN', punchesByDayIndex: { 2: ['08:00', '17:00'] } }, // unmatched with punches
+    { id: '5', name: 'Nobody', dept: 'ADMIN', punchesByDayIndex: {} }, // unmatched, no punches
+    { id: '6', name: 'Zed', dept: 'ADMIN', punchesByDayIndex: {} }, // matched, enrolled but never punched
+  ];
+}
+
+async function commit(store, machine = 'bypass') {
+  return importer.commitImport({
+    buffer: buildWorkbookBuffer(people()),
+    filename: 'report.xlsx',
+    uploadedBy: 'test',
+    supabase: fakeSupabase(store),
+    machineSource: machine,
+  });
+}
+
+const rowsOf = (store, empId) => store.employee_attendance.filter(r => r.employee_id === empId);
+
+test('Reconciliation: month rollover, primary user gets punched + absent days, dates cross Aug->Sep', async () => {
+  const store = seedStore();
+  await commit(store);
+  const agus = rowsOf(store, AGUS);
+  assert.equal(agus.length, 10);
+  assert.deepEqual(agus.map(r => r.attendance_date).sort(), DATES);
+  assert.equal(agus.filter(r => r.status === 'absent').length, 2);
+  assert.equal(agus.find(r => r.attendance_date === '2026-09-01').raw_punches.length, 2);
+});
+
+test('Reconciliation: sparse identity (1/10 days) never gets fabricated absent/off rows', async () => {
+  const store = seedStore();
+  await commit(store);
+  const meli = rowsOf(store, MELI);
+  assert.equal(meli.length, 1);
+  assert.equal(meli[0].attendance_date, '2026-08-27');
+  assert.equal(meli[0].status, 'incomplete');
+  assert.deepEqual(meli[0].raw_punches, ['09:00']);
+});
+
+test('Reconciliation: enrolled-but-never-punched identity writes no rows', async () => {
+  const store = seedStore();
+  await commit(store);
+  assert.equal(rowsOf(store, ZED).length, 0);
+});
+
+test('Reconciliation: terminated identity rejected (no attendance, no exception); unmatched only with punches', async () => {
+  const store = seedStore();
+  const res = await commit(store);
+  assert.equal(res.rejected_count, 1);
+  assert.equal(store.employee_attendance.filter(r => !['emp-agus', 'emp-meli', 'emp-zed'].includes(r.employee_id)).length, 0);
+  assert.equal(store.attendance_exceptions.filter(e => e.external_employee_id === '3').length, 0);
+  const unmatched = store.attendance_exceptions.filter(e => e.exception_type === 'unmatched_employee');
+  assert.deepEqual([...new Set(unmatched.map(e => e.external_employee_id))], ['4']);
+  assert.equal(unmatched.length, 1); // only the single day with punches
+});
+
+test('Reconciliation: re-importing the same file creates 0 duplicate attendance and 0 duplicate exceptions', async () => {
+  const store = seedStore();
+  await commit(store);
+  const attendanceAfterFirst = store.employee_attendance.length;
+  const exceptionsAfterFirst = store.attendance_exceptions.length;
+  const second = await commit(store);
+  assert.equal(store.employee_attendance.length, attendanceAfterFirst);
+  assert.equal(new Set(store.employee_attendance.map(r => `${r.employee_id}|${r.attendance_date}`)).size, attendanceAfterFirst);
+  assert.equal(store.attendance_exceptions.length, exceptionsAfterFirst);
+  assert.equal(second.rows_inserted, 0);
+});
+
+test('Reconciliation: existing real punches are unioned, never overwritten by absent/off', async () => {
+  const store = seedStore();
+  // Real punch from another source on a day the file marks as zero-punch (day index 8 = 2026-09-03)
+  store.employee_attendance.push({
+    id: 'seed1', employee_id: AGUS, attendance_date: '2026-09-03', first_check_in: '07:30', last_check_out: '16:00',
+    status: 'hadir', late_minutes: 0, early_leave_minutes: 0, raw_punches: ['07:30', '16:00'], source: 'fingerprint',
+  });
+  // Existing Meli day with real punches on a day this machine has nothing
+  store.employee_attendance.push({
+    id: 'seed2', employee_id: MELI, attendance_date: '2026-08-29', first_check_in: '09:00', last_check_out: '18:00',
+    status: 'hadir', late_minutes: 0, early_leave_minutes: 0, raw_punches: ['09:00', '18:00'], source: 'fingerprint',
+  });
+  await commit(store);
+  const d3 = rowsOf(store, AGUS).find(r => r.attendance_date === '2026-09-03');
+  assert.deepEqual(d3.raw_punches, ['07:30', '16:00']);
+  assert.equal(d3.status, 'hadir');
+  const d29 = rowsOf(store, MELI).find(r => r.attendance_date === '2026-08-29');
+  assert.deepEqual(d29.raw_punches, ['09:00', '18:00']);
+
+  // Same day, both sources have punches -> union
+  const store2 = seedStore();
+  store2.employee_attendance.push({
+    id: 'seed3', employee_id: AGUS, attendance_date: '2026-08-26', first_check_in: '12:00', last_check_out: null,
+    status: 'incomplete', late_minutes: 0, early_leave_minutes: 0, raw_punches: ['12:00'], source: 'fingerprint',
+  });
+  await commit(store2);
+  const d26 = rowsOf(store2, AGUS).find(r => r.attendance_date === '2026-08-26');
+  assert.deepEqual(d26.raw_punches, ['08:00', '12:00', '17:00']);
+});
+
+test('Reconciliation: machine-scoped manual mapping is stored per machine, not globally', async () => {
+  const store = seedStore();
+  await importer.commitImport({
+    buffer: buildWorkbookBuffer(people()),
+    filename: 'report.xlsx',
+    supabase: fakeSupabase(store),
+    machineSource: 'bypass',
+    manualMappings: [{ external_employee_id: '4', external_name: 'Ghost', target_type: 'employee', employee_id: ZED }],
+  });
+  const idn = store.employee_attendance_identity.find(i => i.external_employee_id === '4');
+  assert.equal(idn.source, 'fingerprint:bypass');
+  assert.equal(store.employee_attendance_identity.filter(i => i.source === 'fingerprint').length, 0);
+  // Ghost (ID 4) is now mapped on bypass -> attendance for ZED on that machine day
+  assert.equal(rowsOf(store, ZED).length > 0, true);
+});
+
+// ---- Payroll READY must consider coverage and source period ----
+
+const period = { period_start: '2026-08-26', period_end: '2026-09-25' };
+const baseEmployee = { id: 'e1', name: 'Tester', business_unit: 'Sundaze', base_salary: 3000000, position: 'Barista' };
+const summary = (over) => ({
+  present_days: 6, absent_days: 0, late_count: 0, late_minutes: 0, incomplete_attendance: 0,
+  unresolved_exceptions_count: 0, pending_overtime_count: 0, records_count: 6,
+  expected_coverage_days: 26, attendance_data_through: '2026-09-20', attendance_period_complete: false, ...over,
+});
+
+test('Payroll: few attendance days out of expected coverage is REVIEW_REQUIRED, not READY', () => {
+  const item = calculateRegularPayrollItem({ employee: baseEmployee, period, attendanceSummary: summary({}) });
+  assert.equal(item.status, REGULAR_ITEM_STATUS.REVIEW_REQUIRED);
+  assert.match(item.warnings.join(' '), /Cakupan presensi hanya 6 dari 26/);
+});
+
+test('Payroll: full coverage through source end is READY but flagged not final while source ends before period end', () => {
+  const item = calculateRegularPayrollItem({
+    employee: baseEmployee, period,
+    attendanceSummary: summary({ present_days: 22, records_count: 26 }),
+  });
+  assert.equal(item.status, REGULAR_ITEM_STATUS.READY);
+  assert.match(item.warnings.join(' '), /Belum final/);
+  assert.equal(item.attendance_summary.attendance_period_complete, false);
+});
+
+test('Payroll: no records stays MISSING_ATTENDANCE (never treated as absent for missing days)', () => {
+  const item = calculateRegularPayrollItem({
+    employee: baseEmployee, period,
+    attendanceSummary: summary({ present_days: 0, records_count: 0 }),
+  });
+  assert.equal(item.status, REGULAR_ITEM_STATUS.MISSING_ATTENDANCE);
+});

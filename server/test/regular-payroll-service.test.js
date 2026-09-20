@@ -359,6 +359,17 @@ test('End-to-End Regular Payroll Lifecycle (Draft -> Adjustment -> Lock -> Immut
     }
   }
 
+  // 4a. Period guard: attendance only covers part of the period -> lock must still be blocked
+  await assert.rejects(
+    async () => lockRegularPayrollRun(mockDb, { runId: createdRunId, userEmail: 'test-admin@redbox.id' }),
+    /attendance data is only available through/i,
+    'Lock must be blocked while attendance data does not cover the whole payroll period'
+  );
+
+  // Simulate the final fingerprint file covering the whole period
+  const runRow = mockDb.tables.payroll_runs.find(r => r.id === createdRunId);
+  runRow.summary = { ...runRow.summary, attendance_period_complete: true };
+
   // 4b. Lock the run after blockers are resolved
   const lockRes = await lockRegularPayrollRun(mockDb, {
     runId: createdRunId,

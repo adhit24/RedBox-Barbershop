@@ -12,6 +12,9 @@
 
 const { getPolicyForUnit, roundRupiah } = require('./regularPayrollPolicy');
 
+// Minimum share of expected attendance days that must have a record before an item can be READY.
+const MIN_COVERAGE_RATIO = 0.9;
+
 const REGULAR_ITEM_STATUS = Object.freeze({
   READY: 'READY',
   REVIEW_REQUIRED: 'REVIEW_REQUIRED',
@@ -78,6 +81,20 @@ function calculateRegularPayrollItem({
   const lateMinutes = Number(attendanceSummary.late_minutes ?? 0);
   const incompleteCount = Number(attendanceSummary.incomplete_attendance ?? 0);
   const exceptionCount = Number(attendanceSummary.unresolved_exceptions_count ?? 0);
+
+  // Coverage vs the window the attendance source actually covers (start of period or
+  // join date, up to the last day the source has data). Only evaluated when the caller
+  // supplies expected_coverage_days.
+  const expectedCoverageDays = Number(attendanceSummary.expected_coverage_days ?? 0);
+  const recordsCount = Number(attendanceSummary.records_count ?? 0);
+  const coverageShort = expectedCoverageDays > 0 && recordsCount > 0 &&
+    recordsCount / expectedCoverageDays < MIN_COVERAGE_RATIO;
+  if (coverageShort) {
+    warnings.push(`Cakupan presensi hanya ${recordsCount} dari ${expectedCoverageDays} hari yang diharapkan (sampai ${attendanceSummary.attendance_data_through || '-'}). Periksa tanggal mulai/berhenti kerja atau data mesin lain.`);
+  }
+  if (attendanceSummary.attendance_period_complete === false && recordsCount > 0) {
+    warnings.push(`Data presensi baru tersedia sampai ${attendanceSummary.attendance_data_through || '-'}, periode payroll sampai ${period.period_end || '-'}. Belum final.`);
+  }
 
   if (incompleteCount > 0) {
     warnings.push(`Terdapat ${incompleteCount} presensi belum lengkap (incomplete/missing punch).`);
@@ -204,7 +221,7 @@ function calculateRegularPayrollItem({
   let status = REGULAR_ITEM_STATUS.READY;
   if (!rawBaseSalary || baseSalary <= 0) {
     status = REGULAR_ITEM_STATUS.MISSING_SALARY;
-  } else if (incompleteCount > 0 || exceptionCount > 0 || productCommissionSource === 'REVIEW_REQUIRED' || (attendanceSummary.pending_overtime_count || 0) > 0) {
+  } else if (incompleteCount > 0 || exceptionCount > 0 || coverageShort || productCommissionSource === 'REVIEW_REQUIRED' || (attendanceSummary.pending_overtime_count || 0) > 0) {
     status = REGULAR_ITEM_STATUS.REVIEW_REQUIRED;
     if ((attendanceSummary.pending_overtime_count || 0) > 0) {
       warnings.push(`Terdapat ${attendanceSummary.pending_overtime_count} kandidat lembur menunggu persetujuan manager.`);
@@ -290,6 +307,10 @@ function calculateRegularPayrollItem({
       unresolved_exceptions_count: exceptionCount,
       attendance_coverage_days: Number(attendanceSummary.attendance_coverage_days ?? attendanceSummary.records_count ?? 0),
       attendance_coverage_status: coverageStatus,
+      records_count: recordsCount,
+      expected_coverage_days: expectedCoverageDays || null,
+      attendance_data_through: attendanceSummary.attendance_data_through || null,
+      attendance_period_complete: attendanceSummary.attendance_period_complete ?? null,
     },
     sources: {
       actual_salary: SOURCE_ORIGIN.ATTENDANCE_AND_MASTER,
