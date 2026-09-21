@@ -43,11 +43,26 @@ function fakeSupabase(store) {
   const table = (name) => {
     const rows = (store[name] = store[name] || []);
     const filters = [];
+    const orderBy = [];
+    let window = null;
+    const log = { table: name, gte: {}, lte: {}, ranged: false };
+    (store.__queries = store.__queries || []).push(log);
+    const PAGE_CAP = 1000; // PostgREST default max rows per response
+    const run = () => {
+      let out = rows.filter(r => filters.every(f => f(r)));
+      if (orderBy.length) out = [...out].sort((a, b) => orderBy.reduce((acc, c) => acc || String(a[c]).localeCompare(String(b[c])), 0));
+      if (window) return out.slice(window[0], window[1] + 1).slice(0, PAGE_CAP);
+      return out.slice(0, PAGE_CAP);
+    };
     const api = {
       select() { return api; },
       eq(c, v) { filters.push(r => r[c] === v); return api; },
       in(c, v) { filters.push(r => v.includes(r[c])); return api; },
-      then(res) { res({ data: rows.filter(r => filters.every(f => f(r))), error: null }); },
+      gte(c, v) { log.gte[c] = v; filters.push(r => r[c] >= v); return api; },
+      lte(c, v) { log.lte[c] = v; filters.push(r => r[c] <= v); return api; },
+      order(c) { orderBy.push(c); return api; },
+      range(a, b) { log.ranged = true; window = [a, b]; return api; },
+      then(res) { res({ data: run(), error: null }); },
       maybeSingle: async () => ({ data: rows.find(r => filters.every(f => f(r))) || null, error: null }),
       single: async () => ({ data: rows.find(r => filters.every(f => f(r))) || null, error: null }),
       insert(v) {
@@ -211,6 +226,64 @@ test('Reconciliation: machine-scoped manual mapping is stored per machine, not g
   assert.equal(store.employee_attendance_identity.filter(i => i.source === 'fingerprint').length, 0);
   // Ghost (ID 4) is now mapped on bypass -> attendance for ZED on that machine day
   assert.equal(rowsOf(store, ZED).length > 0, true);
+});
+
+test('Attendance merge lookup: existing row beyond the first 1000-row page is still found and unioned', async () => {
+  const N = 120; // 120 employees x 10 days = 1200 in-period rows > 1000-row response cap
+  const store = seedStore();
+  store.employees = [];
+  const ppl = [];
+  for (let i = 0; i < N; i++) {
+    const id = i === N - 1 ? 'zz-target' : `emp-${String(i).padStart(3, '0')}`; // target sorts LAST
+    const nick = `E${String(i).padStart(3, '0')}`;
+    store.employees.push({ id, name: `Person ${nick}`, nickname: nick, business_unit: 'Redbox', branch: 'bypass', is_active: true });
+    const punches = {};
+    DATES.forEach((_, d) => { punches[d] = ['08:00', '17:00']; });
+    ppl.push({ id: String(i + 1), name: nick, dept: 'ADMIN', punchesByDayIndex: punches });
+    DATES.forEach(d => store.employee_attendance.push({
+      id: `seed-${id}-${d}`, employee_id: id, attendance_date: d, first_check_in: '08:00', last_check_out: '17:00',
+      status: 'hadir', late_minutes: 0, early_leave_minutes: 0, raw_punches: ['08:00', '17:00'], source: 'fingerprint',
+    }));
+  }
+  // The last-sorted employee has an extra earlier punch from another source that must survive
+  const targetRow = store.employee_attendance.find(r => r.employee_id === 'zz-target' && r.attendance_date === '2026-08-26');
+  targetRow.raw_punches = ['07:00', '08:00', '17:00'];
+  targetRow.first_check_in = '07:00';
+  const before = store.employee_attendance.length;
+
+  await importer.commitImport({
+    buffer: buildWorkbookBuffer(ppl), filename: 'big.xlsx', supabase: fakeSupabase(store), machineSource: 'bypass',
+  });
+
+  assert.equal(store.employee_attendance.length, before); // no duplicates
+  const t = store.employee_attendance.find(r => r.employee_id === 'zz-target' && r.attendance_date === '2026-08-26');
+  assert.deepEqual(t.raw_punches, ['07:00', '08:00', '17:00']);
+  assert.equal(t.first_check_in, '07:00');
+  const att = store.__queries.filter(q => q.table === 'employee_attendance' && q.ranged);
+  assert.ok(att.length >= 2, 'lookup must page (range) past the first 1000 rows');
+});
+
+test('Attendance merge lookup: bounded to the import period; rows outside are never queried or merged', async () => {
+  const store = seedStore();
+  store.employee_attendance.push({
+    id: 'old1', employee_id: AGUS, attendance_date: '2026-07-01', first_check_in: '06:00', last_check_out: '15:00',
+    status: 'hadir', late_minutes: 0, early_leave_minutes: 0, raw_punches: ['06:00', '15:00'], source: 'fingerprint',
+  });
+  await commit(store);
+  const q = store.__queries.find(x => x.table === 'employee_attendance' && x.gte.attendance_date);
+  assert.equal(q.gte.attendance_date, '2026-08-26');
+  assert.equal(q.lte.attendance_date, '2026-09-04');
+  const old = store.employee_attendance.find(r => r.id === 'old1');
+  assert.deepEqual(old.raw_punches, ['06:00', '15:00']);
+  assert.equal(old.import_batch_id, undefined); // untouched
+});
+
+test('Attendance merge lookup: a failed existing-attendance read aborts instead of overwriting blindly', async () => {
+  const failing = { from: (t) => t === 'employee_attendance' ? {
+    select() { return this; }, in() { return this; }, gte() { return this; }, lte() { return this; }, order() { return this; },
+    range: async () => ({ data: null, error: { message: 'boom' } }),
+  } : null };
+  await assert.rejects(() => importer.fetchExistingAttendance(failing, ['a'], '2026-08-26', '2026-09-04'), /boom/);
 });
 
 // ---- Payroll READY must consider coverage and source period ----

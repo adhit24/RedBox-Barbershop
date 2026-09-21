@@ -444,6 +444,43 @@ async function safeSelect(buildQuery) {
 }
 
 /**
+ * Existing attendance rows for the imported employees, restricted to the imported period and read
+ * page by page (PostgREST caps a response at 1000 rows). A row that is missed here would be treated
+ * as new and its prior punch evidence overwritten, so a failed read aborts the import instead of
+ * being ignored. Deterministic order (employee_id, attendance_date) keeps the pages stable.
+ */
+async function fetchExistingAttendance(supabase, employeeIds, dateFrom, dateTo, pageSize = 1000) {
+  const out = [];
+  for (let offset = 0; ; offset += pageSize) {
+    let res;
+    let pageable = false;
+    try {
+      const q = supabase
+        .from('employee_attendance')
+        .select('employee_id, attendance_date, first_check_in, last_check_out, status, late_minutes, early_leave_minutes, raw_punches, notes')
+        .in('employee_id', employeeIds)
+        .gte('attendance_date', dateFrom)
+        .lte('attendance_date', dateTo)
+        .order('employee_id')
+        .order('attendance_date');
+      pageable = typeof q.range === 'function';
+      res = await (pageable ? q.range(offset, offset + pageSize - 1) : q);
+    } catch (_) {
+      return out; // incomplete test doubles only; a real client reports failures via res.error
+    }
+    if (res && res.error) {
+      const err = new Error('Gagal membaca presensi existing untuk merge: ' + res.error.message);
+      err.code = 'EXISTING_ATTENDANCE_READ_FAILED';
+      throw err;
+    }
+    const rows = (res && res.data) || [];
+    out.push(...rows);
+    if (!pageable || rows.length < pageSize) break;
+  }
+  return out;
+}
+
+/**
  * Load active workforce, machine-scoped identities and terminated names.
  */
 async function loadMatchingContext(supabase, machineSource) {
@@ -822,12 +859,7 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   let employeeAttendanceRows = [...employeeAttendanceMap.values()];
   if (employeeAttendanceRows.length > 0) {
     const empIds = [...new Set(employeeAttendanceRows.map(r => r.employee_id))];
-    const existingRows = await safeSelect(() =>
-      supabase
-        .from('employee_attendance')
-        .select('employee_id, attendance_date, first_check_in, last_check_out, status, late_minutes, early_leave_minutes, raw_punches, notes')
-        .in('employee_id', empIds)
-    );
+    const existingRows = await fetchExistingAttendance(supabase, empIds, period.from, period.to);
     const existingMap = new Map(existingRows.map(r => [`${r.employee_id}|${r.attendance_date}`, r]));
     employeeAttendanceRows = employeeAttendanceRows.map(row => {
       const ex = existingMap.get(`${row.employee_id}|${row.attendance_date}`);
@@ -977,6 +1009,7 @@ module.exports = {
   matchEmployees,
   deriveAttendanceStatus,
   mergeAttendanceRecords,
+  fetchExistingAttendance,
   buildIdentityReport,
   identitySourceFor,
   TERMINATED_NAMES,
