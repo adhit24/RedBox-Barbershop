@@ -14,6 +14,9 @@ vi.mock('../../services/regularPayroll', async (importOriginal) => {
     lockRegularPayrollRun: vi.fn(),
     addRegularPayrollAdjustment: vi.fn(),
     deleteRegularPayrollAdjustment: vi.fn(),
+    fetchOvertimeApprovals: vi.fn(),
+    reviewOvertimeApproval: vi.fn(),
+    syncOvertimeCandidates: vi.fn(),
   };
 });
 
@@ -184,6 +187,80 @@ describe('RegularPayroll (Operational Payroll Page)', () => {
       expect(screen.getByText('1. Gaji Pokok & Hari Kerja')).toBeInTheDocument();
       expect(screen.getByText('2. Tunjangan (Allowances)')).toBeInTheDocument();
       expect(screen.getByText('Take-Home Pay (Diterima):')).toBeInTheDocument();
+    });
+  });
+
+  describe('overtime review modal', () => {
+    const run = {
+      id: 'run-ot',
+      payroll_type: 'REGULAR',
+      business_unit: 'ALL',
+      period_start: '2026-08-26',
+      period_end: '2026-09-25',
+      status: 'DRAFT' as const,
+      generated_at: new Date().toISOString(),
+      generated_by: 'owner@redbox.id',
+      locked_at: null,
+      locked_by: null,
+      calculation_version: 'regular-v1.0',
+      summary: {
+        total_employees: 0, total_gross_pay: 0, total_deductions: 0, total_take_home_pay: 0,
+        review_required_count: 0, missing_salary_count: 0,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const approval = (over: Record<string, unknown>) => ({
+      id: 'ot-1',
+      employee_id: 'emp-1',
+      attendance_date: '2026-09-02',
+      raw_overtime_minutes: 120,
+      approved_overtime_minutes: 0,
+      status: 'PENDING',
+      note: null,
+      approved_by: null,
+      approved_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      employees: { id: 'emp-1', name: 'Employee Alpha', nickname: 'Alpha', business_unit: 'Sundaze', branch: 'bypass', position: 'Barista' },
+      ...over,
+    });
+
+    async function openModal(approvals: unknown[]) {
+      vi.mocked(regularPayrollService.fetchRegularPayrollRuns).mockResolvedValueOnce({ runs: [run] });
+      vi.mocked(regularPayrollService.fetchRegularPayrollRunDetail).mockResolvedValueOnce({ run, items: [] });
+      vi.mocked(regularPayrollService.fetchOvertimeApprovals).mockResolvedValue({ approvals } as never);
+      render(<RegularPayroll />, { wrapper: MemoryRouter });
+      const open = await screen.findByRole('button', { name: /Tinjau Lembur/ });
+      fireEvent.click(open);
+    }
+
+    it('defaults the approved field to the RAW detected minutes for a PENDING candidate (raw=120, approved=0)', async () => {
+      await openModal([approval({})]);
+      const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
+      expect(input.value).toBe('120');
+      expect(screen.getByText('Raw Detected Overtime')).toBeInTheDocument();
+      expect(screen.getByText('Approved Overtime (min)')).toBeInTheDocument();
+    });
+
+    it('approving without touching the field sends the raw minutes, not zero', async () => {
+      vi.mocked(regularPayrollService.reviewOvertimeApproval).mockResolvedValue({ success: true, approval: approval({}) } as never);
+      await openModal([approval({})]);
+      await screen.findByLabelText('Approved overtime minutes ot-1');
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await waitFor(() => {
+        expect(regularPayrollService.reviewOvertimeApproval).toHaveBeenCalledWith(
+          'ot-1',
+          expect.objectContaining({ status: 'APPROVED', approved_minutes: 120 })
+        );
+      });
+    });
+
+    it('a recorded approved value wins over the raw default (approved=90, raw=120)', async () => {
+      await openModal([approval({ approved_overtime_minutes: 90 })]);
+      const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
+      expect(input.value).toBe('90');
     });
   });
 });

@@ -202,10 +202,26 @@ export async function fetchOvertimeApprovals(params?: {
   return apiClient.get<{ approvals: OvertimeApproval[] }>(`/api/payroll/regular-runs/overtime/approvals${query}`);
 }
 
+/**
+ * Initial value of the editable "approved minutes" field for an overtime approval.
+ * A PENDING candidate always starts with approved_overtime_minutes = 0, so defaulting to that value
+ * would let a manager approve 0 minutes by just pressing Approve. Undecided candidates therefore start
+ * from the raw detected minutes; a recorded (non-zero) approved value always wins.
+ */
+export function defaultApprovedOvertimeMinutes(
+  ot: Pick<OvertimeApproval, 'status' | 'raw_overtime_minutes' | 'approved_overtime_minutes'>
+): number {
+  const approved = Number(ot.approved_overtime_minutes ?? 0);
+  if (ot.status === 'PENDING' && !(approved > 0)) {
+    return Number(ot.raw_overtime_minutes ?? 0);
+  }
+  return approved;
+}
+
 export async function reviewOvertimeApproval(
   approvalId: string,
   payload: { status: 'APPROVED' | 'REJECTED' | 'PENDING'; approved_minutes?: number; note?: string }
-): Promise<{ success: boolean; approval: OvertimeApproval }> {
+): Promise<{ success: boolean; approval: OvertimeApproval; approval_saved?: boolean; recalculation_success?: boolean }> {
   return apiClient.post(`/api/payroll/regular-runs/overtime/approvals/${approvalId}/review`, payload);
 }
 

@@ -11,6 +11,7 @@ import {
   lockRegularPayrollRun,
   addRegularPayrollAdjustment,
   deleteRegularPayrollAdjustment,
+  defaultApprovedOvertimeMinutes,
   type RegularPayrollRun,
   type RegularPayrollItem,
   type OvertimeApproval,
@@ -261,7 +262,7 @@ export function RegularPayroll() {
       const initialMinutes: Record<string, number> = {};
       const initialNotes: Record<string, string> = {};
       for (const ot of res.approvals || []) {
-        initialMinutes[ot.id] = ot.approved_overtime_minutes !== undefined ? ot.approved_overtime_minutes : ot.raw_overtime_minutes;
+        initialMinutes[ot.id] = defaultApprovedOvertimeMinutes(ot);
         initialNotes[ot.id] = ot.note || '';
       }
       setOvertimeMinutesInput(initialMinutes);
@@ -307,6 +308,8 @@ export function RegularPayroll() {
       }
     } catch (err: any) {
       setActionMessage({ type: 'error', text: err?.message || 'Gagal memperbarui status lembur.' });
+      // The approval may have been saved even though payroll could not follow (e.g. run locked meanwhile).
+      await loadOvertimeList();
     } finally {
       setActionLoading(false);
     }
@@ -1135,8 +1138,8 @@ export function RegularPayroll() {
                         <th className="p-2.5">Karyawan</th>
                         <th className="p-2.5">Unit / Cabang</th>
                         <th className="p-2.5">Tanggal</th>
-                        <th className="p-2.5 text-right">Raw Extra Time</th>
-                        <th className="p-2.5 text-right">Approved Minutes</th>
+                        <th className="p-2.5 text-right">Raw Detected Overtime</th>
+                        <th className="p-2.5 text-right">Approved Overtime (min)</th>
                         <th className="p-2.5 text-center">Status</th>
                         <th className="p-2.5 text-right">Aksi Review</th>
                       </tr>
@@ -1161,7 +1164,8 @@ export function RegularPayroll() {
                                 type="number"
                                 min={0}
                                 max={720}
-                                value={overtimeMinutesInput[ot.id] ?? ot.approved_overtime_minutes ?? ot.raw_overtime_minutes}
+                                value={overtimeMinutesInput[ot.id] ?? defaultApprovedOvertimeMinutes(ot)}
+                                aria-label={`Approved overtime minutes ${ot.id}`}
                                 onChange={(e) =>
                                   setOvertimeMinutesInput((prev) => ({
                                     ...prev,
