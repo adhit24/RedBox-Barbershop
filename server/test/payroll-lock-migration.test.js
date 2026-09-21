@@ -42,9 +42,43 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   assert.ok(list.includes('20260919143000_create_overtime_approvals_and_guards.sql'), 'sanity: regressed migration still defines it');
   const restore = list.find((f) => /restore_barber_lock_and_regular_guards/.test(f));
   assert.ok(restore, 'barber-restoring migration exists');
+  const pendingGuard = list.find((f) => /block_pending_overtime_on_payroll_lock/.test(f));
+  assert.ok(pendingGuard, 'pending-overtime guard migration exists');
   const last = list[list.length - 1];
-  assert.match(last, /block_pending_overtime_on_payroll_lock/);
-  assert.ok(restore > '20260919143000' && last > restore, 'migrations are ordered 143000 < restore < pending-overtime guard');
+  assert.match(last, /reconcile_overtime_before_payroll_lock/);
+  assert.ok(
+    restore > '20260919143000' && pendingGuard > restore && last > pendingGuard,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation'
+  );
+});
+
+test('Final lock_payroll_run enforces the full overtime invariants (attendance -> approval -> snapshot)', () => {
+  const body = norm(functionBody(read(definers().pop())));
+  const regular = body.slice(body.indexOf("IF v_run.payroll_type IN ('REGULAR', 'REGULAR_PAYROLL') THEN"), body.indexOf('ELSE -- Barber'));
+  const at = (frag) => { const i = regular.indexOf(frag); assert.ok(i >= 0, 'missing: ' + frag); return i; };
+
+  // 5. attendance overtime without a reviewed (APPROVED/REJECTED) approval
+  const unreviewed = at('FROM public.employee_attendance att WHERE att.overtime_minutes > 0');
+  assert.match(regular, /NOT EXISTS \( SELECT 1 FROM public\.employee_overtime_approvals a WHERE a\.employee_id = att\.employee_id AND a\.attendance_date = att\.attendance_date AND a\.status IN \('APPROVED', 'REJECTED'\) \)/);
+  assert.match(regular, /attendance overtime row\(s\) have no reviewed approval/);
+  // 6. pending
+  const pending = at("a.status = 'PENDING'");
+  // 7. approval raw minutes vs current attendance overtime
+  const mismatch = at('a.raw_overtime_minutes <> COALESCE(');
+  assert.match(regular, /no longer match attendance overtime/);
+  // 8. sum(APPROVED) == item snapshot, without duplicating the payroll formula
+  const snapshot = at("i.attendance_summary ->> 'approved_overtime_minutes'");
+  assert.match(regular, /SUM\(a\.approved_overtime_minutes\)/);
+  assert.match(regular, /a\.status = 'APPROVED'/);
+  assert.match(regular, /Payroll overtime snapshot is stale for %\. Recalculate before locking\./);
+  // ordering: pending -> unreviewed -> mismatch -> snapshot -> period -> reconciliation -> freeze
+  const period = at('attendance_period_complete');
+  const recon = at('Reconciliation failed for %');
+  const freeze = at("SET status = 'LOCKED'");
+  assert.ok(pending < unreviewed && unreviewed < mismatch && mismatch < snapshot && snapshot < period && period < recon && recon < freeze,
+    'invariants are evaluated in order before items are frozen');
+  // none of the overtime rules leak into the barber branch
+  assert.ok(!norm(elseBranch(functionBody(read(definers().pop())))).includes('overtime'));
 });
 
 test('Final lock_payroll_run blocks locking while overtime approvals are PENDING (authority: approvals, not item status)', () => {
@@ -61,10 +95,13 @@ test('Final lock_payroll_run blocks locking while overtime approvals are PENDING
   assert.ok(!norm(elseBranch(functionBody(read(definers().pop())))).includes('employee_overtime_approvals'));
 });
 
-test('Already-applied migrations were not edited to add the pending-overtime rule', () => {
+test('Already-applied migrations were not edited to add the overtime rules', () => {
   const restore = read(definers().find((f) => /restore_barber_lock_and_regular_guards/.test(f)));
+  const pendingGuard = read(definers().find((f) => /block_pending_overtime_on_payroll_lock/.test(f)));
   assert.doesNotMatch(restore, /pending overtime/i);
   assert.doesNotMatch(read('20260919143000_create_overtime_approvals_and_guards.sql'), /pending overtime approval/i);
+  assert.match(pendingGuard, /pending overtime approval/i);
+  assert.doesNotMatch(pendingGuard, /no reviewed approval|snapshot is stale|no longer match/i);
 });
 
 test('Final lock_payroll_run: explicit REGULAR and non-REGULAR branches, DRAFT-only with row lock', () => {
