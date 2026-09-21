@@ -616,10 +616,13 @@ test('Overtime sync: LOCKED run is never changed and the anomaly is reported', a
 
   const res = await syncOvertimeCandidates(db, {});
 
-  assert.equal(res.newly_created, 1); // the candidate itself is stored
+  // LOCKED payroll is immutable: no candidate is created for its period, the anomaly is reported instead
+  assert.equal(res.success, true);
+  assert.equal(res.newly_created, 0);
+  assert.equal(db.tables.employee_overtime_approvals.length, 0);
   assert.deepEqual(res.recalculation.updated, []);
-  assert.equal(res.recalculation.locked_run_anomalies.length, 1);
-  assert.equal(res.recalculation.locked_run_anomalies[0].run_id, run().id);
+  assert.equal(res.locked_run_anomalies.length, 1);
+  assert.equal(res.locked_run_anomalies[0].run_id, run().id);
   assert.equal(JSON.stringify(item()), itemSnap);
   assert.equal(JSON.stringify(run().summary), summarySnap);
 });

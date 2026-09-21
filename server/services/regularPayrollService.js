@@ -62,6 +62,59 @@ function isEmployeeInBranchScope(employeeBranch, branchScope) {
   return normalizeBranch(employeeBranch) === normalizeBranch(branchScope);
 }
 
+/**
+ * Overtime minutes must be a finite number >= 0 (numeric strings are accepted). No upper limit is
+ * invented: none exists as Redbox policy. Returns the number or throws INVALID_OVERTIME_MINUTES.
+ */
+function parseNonNegativeMinutes(value, label = 'approved_minutes') {
+  let n = value;
+  if (typeof n === 'string' && n.trim() !== '') n = Number(n);
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) {
+    const err = new Error(`${label} must be a finite number >= 0`);
+    err.code = 'INVALID_OVERTIME_MINUTES';
+    throw err;
+  }
+  return n;
+}
+
+/**
+ * LOCKED regular payroll runs (with their employees) that overlap the period. Locked payroll is
+ * immutable: overtime for those (employee, date) pairs is never created, refreshed or deleted here
+ * (the database triggers enforce the same rule); it is reported as an anomaly instead.
+ */
+async function loadLockedRegularCoverage(supabase, { periodStart = null, periodEnd = null } = {}) {
+  const { data: runs, error } = await fetchAllRows(() => {
+    let q = supabase
+      .from('payroll_runs')
+      .select('id, period_start, period_end')
+      .in('payroll_type', ['REGULAR', 'REGULAR_PAYROLL'])
+      .eq('status', 'LOCKED');
+    if (periodEnd) q = q.lte('period_start', periodEnd);
+    if (periodStart) q = q.gte('period_end', periodStart);
+    return q.order('id');
+  });
+  if (error) throw new Error(`Failed to load locked payroll runs: ${error.message}`);
+
+  const coverage = [];
+  for (const run of runs || []) {
+    const { data: items, error: itemsErr } = await fetchAllRows(() => supabase
+      .from('payroll_regular_items')
+      .select('employee_id')
+      .eq('payroll_run_id', run.id)
+      .order('employee_id'));
+    if (itemsErr) throw new Error(`Failed to load locked payroll items: ${itemsErr.message}`);
+    coverage.push({
+      run_id: run.id,
+      period_start: run.period_start,
+      period_end: run.period_end,
+      employees: new Set((items || []).map((i) => i.employee_id)),
+    });
+  }
+  return (employeeId, date) => coverage.find(
+    (c) => c.employees.has(employeeId) && date >= c.period_start && date <= c.period_end
+  ) || null;
+}
+
 function branchForbiddenError() {
   const err = new Error('Forbidden: overtime approval is outside your assigned branch');
   err.code = 'FORBIDDEN_BRANCH';
@@ -107,8 +160,10 @@ function summarizeOvertimeState(approvals = [], attendanceOvertimeByDate = new M
  *   C attendance = 0, approval PENDING      -> invalidate (delete the undecided, system-generated candidate)
  *   D source differs, APPROVED / REJECTED   -> never overwrite a human decision; report a discrepancy
  *                                              (the lock invariants keep the run from finalizing)
+ * (employee, date) pairs that belong to a LOCKED regular payroll run are never touched: they are skipped
+ * and reported in locked_run_anomalies (the database triggers refuse such writes anyway).
  * Reads both sides (attendance overtime AND existing approvals), paged and deterministically ordered.
- * Any failed read/write is reported or thrown; nothing is silently treated as "no data".
+ * Failed writes are collected per kind (insert_errors / update_errors / delete_errors); failed reads throw.
  */
 async function reconcileOvertimeForPeriod(supabase, { periodStart = null, periodEnd = null, employeeIds = null } = {}) {
   const result = {
@@ -118,7 +173,10 @@ async function reconcileOvertimeForPeriod(supabase, { periodStart = null, period
     invalidated: [],
     decision_discrepancies: [],
     pending: [],
+    locked_run_anomalies: [],
     insert_errors: [],
+    update_errors: [],
+    delete_errors: [],
     touched: [],
   };
   if (Array.isArray(employeeIds) && employeeIds.length === 0) return result;
@@ -146,15 +204,29 @@ async function reconcileOvertimeForPeriod(supabase, { periodStart = null, period
     .order('id'));
   if (apprErr) throw new Error(`Failed to query overtime approvals: ${apprErr.message}`);
 
+  const lockedRunFor = await loadLockedRegularCoverage(supabase, { periodStart, periodEnd });
+
   const keyOf = (r) => `${r.employee_id}|${r.attendance_date}`;
   const byKey = new Map((approvals || []).map((a) => [keyOf(a), a]));
   const attKeys = new Set();
   const touch = (r) => result.touched.push({ employee_id: r.employee_id, attendance_date: r.attendance_date });
+  const skipLocked = (r) => {
+    const locked = lockedRunFor(r.employee_id, r.attendance_date);
+    if (!locked) return false;
+    result.locked_run_anomalies.push({
+      run_id: locked.run_id,
+      employee_id: r.employee_id,
+      attendance_date: r.attendance_date,
+      reason: 'Overtime exists in the period of a LOCKED payroll run; nothing was changed.',
+    });
+    return true;
+  };
   result.attendance_rows = (attRows || []).length;
 
   for (const row of attRows || []) {
     const key = keyOf(row);
     attKeys.add(key);
+    if (skipLocked(row)) continue;
     const source = Number(row.overtime_minutes);
     const existing = byKey.get(key);
 
@@ -180,7 +252,7 @@ async function reconcileOvertimeForPeriod(supabase, { periodStart = null, period
           .update({ raw_overtime_minutes: source, updated_at: new Date().toISOString() })
           .eq('id', existing.id);
         if (rawErr) {
-          result.insert_errors.push({ employee_id: row.employee_id, attendance_date: row.attendance_date, error: rawErr.message });
+          result.update_errors.push({ employee_id: row.employee_id, attendance_date: row.attendance_date, error: rawErr.message });
         } else {
           result.raw_refreshed.push({ approval_id: existing.id, from: previousRaw, to: source });
         }
@@ -203,10 +275,11 @@ async function reconcileOvertimeForPeriod(supabase, { periodStart = null, period
   // Approvals whose attendance overtime is gone (0 / no row): the other side of the reconciliation
   for (const ap of approvals || []) {
     if (attKeys.has(keyOf(ap))) continue;
+    if (skipLocked(ap)) continue;
     if (ap.status === 'PENDING') {
       const { error: delErr } = await supabase.from('employee_overtime_approvals').delete().eq('id', ap.id);
       if (delErr) {
-        result.insert_errors.push({ employee_id: ap.employee_id, attendance_date: ap.attendance_date, error: delErr.message });
+        result.delete_errors.push({ employee_id: ap.employee_id, attendance_date: ap.attendance_date, error: delErr.message });
         continue;
       }
       result.invalidated.push({
@@ -229,6 +302,12 @@ async function reconcileOvertimeForPeriod(supabase, { periodStart = null, period
     }
   }
   return result;
+}
+
+/** First failure message across every write kind of a reconciliation result (null when clean). */
+function firstReconciliationError(r) {
+  const e = [...r.insert_errors, ...r.update_errors, ...r.delete_errors][0];
+  return e ? e.error : null;
 }
 
 /**
@@ -511,8 +590,8 @@ async function generateRegularPayrollDraft(supabase, {
   // 3a. Reconcile overtime BEFORE calculating: attendance overtime must exist as an approval candidate
   // so the draft cannot be READY while unreviewed overtime exists.
   const overtimeReconciliation = await reconcileOvertimeForPeriod(supabase, { periodStart, periodEnd, employeeIds });
-  if (overtimeReconciliation.insert_errors.length > 0) {
-    throw new Error(`Overtime reconciliation failed: ${overtimeReconciliation.insert_errors[0].error}`);
+  if (firstReconciliationError(overtimeReconciliation)) {
+    throw new Error(`Overtime reconciliation failed: ${firstReconciliationError(overtimeReconciliation)}`);
   }
   const attendanceMap = await fetchEmployeeAttendanceSummaries(supabase, employeeIds, periodStart, periodEnd, employeeMap);
 
@@ -762,7 +841,7 @@ async function getRegularPayrollRunDetail(supabase, { runId, filters = {} }) {
 async function addRegularPayrollAdjustment(supabase, {
   runId,
   payrollRegularItemId,
-  employeeId,
+  employeeId = undefined, // optional consistency check only; the employee is derived from the item
   type = 'OTHER',
   amount,
   reason,
@@ -772,23 +851,40 @@ async function addRegularPayrollAdjustment(supabase, {
   if (!amount || amount === 0) throw new Error('Adjustment amount cannot be zero');
   if (!reason || !reason.trim()) throw new Error('Reason is required for manual adjustment');
 
-  // Verify run is DRAFT
+  // Never trust the client's combination of runId / itemId / employeeId: load the item by BOTH ids.
   const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
-    .select('id, status')
+    .select('id, status, payroll_type')
     .eq('id', runId)
     .single();
 
   if (runErr || !run) throw new Error(`Payroll run ${runId} not found`);
-  if (run.status === 'LOCKED') throw new Error('Cannot add adjustment: payroll run is LOCKED');
+  if (run.payroll_type !== 'REGULAR' && run.payroll_type !== 'REGULAR_PAYROLL') {
+    throw new Error('Cannot add adjustment: payroll run is not a REGULAR payroll run');
+  }
+  if (run.status !== 'DRAFT') throw new Error(`Cannot add adjustment: payroll run is ${run.status}`);
 
-  // Insert adjustment
+  const { data: item, error: itemErr } = await supabase
+    .from('payroll_regular_items')
+    .select('id, payroll_run_id, employee_id, status')
+    .eq('id', payrollRegularItemId)
+    .eq('payroll_run_id', runId)
+    .maybeSingle();
+
+  if (itemErr) throw new Error(`Failed to load payroll item: ${itemErr.message}`);
+  if (!item) throw new Error(`Payroll item ${payrollRegularItemId} does not belong to payroll run ${runId}`);
+  if (item.status === 'LOCKED') throw new Error('Cannot add adjustment: payroll item is LOCKED');
+  if (employeeId !== undefined && employeeId !== null && employeeId !== item.employee_id) {
+    throw new Error('Adjustment employee does not match the payroll item');
+  }
+
+  // Insert adjustment (employee derived from the item, run from the verified item)
   const { data: adj, error: adjErr } = await supabase
     .from('payroll_adjustments')
     .insert({
-      payroll_run_id: runId,
-      payroll_regular_item_id: payrollRegularItemId,
-      employee_id: employeeId,
+      payroll_run_id: item.payroll_run_id,
+      payroll_regular_item_id: item.id,
+      employee_id: item.employee_id,
       type: type.toUpperCase().trim(),
       amount: roundRupiah(amount),
       reason: reason.trim(),
@@ -801,7 +897,7 @@ async function addRegularPayrollAdjustment(supabase, {
   if (adjErr) throw new Error(`Failed to insert adjustment: ${adjErr.message}`);
 
   // Recalculate employee item
-  await recalculateSingleRegularItem(supabase, runId, payrollRegularItemId);
+  await recalculateSingleRegularItem(supabase, item.payroll_run_id, item.id);
 
   return { success: true, adjustment: adj };
 }
@@ -872,8 +968,8 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
       periodEnd: run.period_end,
       employeeIds: [item.employee_id],
     });
-    if (reconciliation.insert_errors.length > 0) {
-      throw new Error(`Overtime reconciliation failed: ${reconciliation.insert_errors[0].error}`);
+    if (firstReconciliationError(reconciliation)) {
+      throw new Error(`Overtime reconciliation failed: ${firstReconciliationError(reconciliation)}`);
     }
 
     const { data: otRows, error: otErr } = await fetchAllRows(() => supabase
@@ -1128,43 +1224,66 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
 }
 
 /**
- * List overtime approvals
+ * Employee ids of one branch (employee branch authority, case-insensitive), read with paging.
+ */
+async function resolveBranchEmployeeIds(supabase, branchScope) {
+  const { data, error } = await fetchAllRows(() => supabase
+    .from('employees')
+    .select('id, branch')
+    .order('id'));
+  if (error) throw new Error(`Failed to load employees: ${error.message}`);
+  return (data || []).filter((e) => isEmployeeInBranchScope(e.branch, branchScope)).map((e) => e.id);
+}
+
+/**
+ * List overtime approvals.
+ * A branch scope is enforced IN the query (employee_id IN authorized ids) and every page is read
+ * (deterministic order) - never "first 1000 rows, then filter in Node", which would hide a branch's
+ * later approvals (still blocking the lock) from its manager.
  */
 async function listOvertimeApprovals(supabase, { periodStart, periodEnd, employeeId = null, status = null, branchScope = null } = {}) {
-  let query = supabase
-    .from('employee_overtime_approvals')
-    .select(`
-      id,
-      employee_id,
-      attendance_date,
-      raw_overtime_minutes,
-      approved_overtime_minutes,
-      status,
-      approved_by,
-      approved_at,
-      note,
-      created_at,
-      employees (
+  let scopedIds = null;
+  if (branchScope) {
+    scopedIds = await resolveBranchEmployeeIds(supabase, branchScope);
+    if (scopedIds.length === 0) return [];
+    if (employeeId && !scopedIds.includes(employeeId)) return [];
+  }
+
+  const { data, error } = await fetchAllRows(() => {
+    let query = supabase
+      .from('employee_overtime_approvals')
+      .select(`
         id,
-        name,
-        nickname,
-        business_unit,
-        branch,
-        position
-      )
-    `)
-    .order('attendance_date', { ascending: false });
-
-  if (periodStart) query = query.gte('attendance_date', periodStart);
-  if (periodEnd) query = query.lte('attendance_date', periodEnd);
-  if (employeeId) query = query.eq('employee_id', employeeId);
-  if (status && status !== 'ALL') query = query.eq('status', status);
-
-  const { data, error } = await query;
+        employee_id,
+        attendance_date,
+        raw_overtime_minutes,
+        approved_overtime_minutes,
+        status,
+        approved_by,
+        approved_at,
+        note,
+        created_at,
+        employees (
+          id,
+          name,
+          nickname,
+          business_unit,
+          branch,
+          position
+        )
+      `);
+    if (scopedIds) query = query.in('employee_id', scopedIds);
+    if (periodStart) query = query.gte('attendance_date', periodStart);
+    if (periodEnd) query = query.lte('attendance_date', periodEnd);
+    if (employeeId) query = query.eq('employee_id', employeeId);
+    if (status && status !== 'ALL') query = query.eq('status', status);
+    return query
+      .order('attendance_date', { ascending: false })
+      .order('employee_id')
+      .order('id');
+  });
   if (error) throw new Error(`Failed to list overtime approvals: ${error.message}`);
-  // Branch authority is enforced here (backend), never only in the UI: a branch-scoped caller gets
-  // only approvals of employees in the assigned branch (employee branch, not the fingerprint machine).
-  return (data || []).filter((a) => isEmployeeInBranchScope(a.employees?.branch, branchScope));
+  return data || [];
 }
 
 /**
@@ -1172,12 +1291,14 @@ async function listOvertimeApprovals(supabase, { periodStart, periodEnd, employe
  * For every (employee, date) the covering DRAFT REGULAR runs get that employee's item recalculated
  * through recalculateSingleRegularItem (engine formula reused, run summary refreshed). LOCKED runs
  * are never mutated; they are reported as anomalies so unreviewed overtime in a frozen period is visible.
+ * A failure for one candidate does not hide the others: every failure is collected in `errors`
+ * (`error` / `reason` keep the first one for callers that only need a summary).
  */
 async function propagateOvertimeToDraftRuns(supabase, candidates = []) {
-  const result = { updated: [], locked_run_anomalies: [], error: null };
+  const result = { updated: [], locked_run_anomalies: [], errors: [], error: null, reason: null };
   const done = new Set();
-  try {
-    for (const c of candidates) {
+  for (const c of candidates) {
+    try {
       const { data: runs, error: runsErr } = await supabase
         .from('payroll_runs')
         .select('id, status')
@@ -1210,12 +1331,20 @@ async function propagateOvertimeToDraftRuns(supabase, candidates = []) {
           if (res) result.updated.push(res);
         }
       }
+    } catch (err) {
+      // Approval rows are already saved; surface the failure instead of hiding a stale draft.
+      console.error('[RegularPayrollService] overtime recalculation failed:', err.message);
+      result.errors.push({
+        employee_id: c.employee_id,
+        attendance_date: c.attendance_date,
+        message: err.message,
+        reason: err.code || 'RECALCULATION_FAILED',
+      });
     }
-  } catch (err) {
-    // Approval rows are already saved; surface the failure instead of hiding a stale draft.
-    console.error('[RegularPayrollService] overtime recalculation failed:', err.message);
-    result.error = err.message;
-    result.reason = err.code || 'RECALCULATION_FAILED';
+  }
+  if (result.errors.length > 0) {
+    result.error = result.errors[0].message;
+    result.reason = result.errors[0].reason;
   }
   return result;
 }
@@ -1259,6 +1388,12 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
     throw err;
   }
 
+  // Validate BEFORE any write: negative / NaN / Infinity / non-numeric approved minutes would create
+  // negative (or absurd) overtime pay that the lock invariants would then consider consistent.
+  const requestedMinutes = status === 'APPROVED' && approvedMinutes !== undefined
+    ? parseNonNegativeMinutes(approvedMinutes)
+    : undefined;
+
   const updates = {
     status,
     raw_overtime_minutes: sourceMinutes,
@@ -1267,7 +1402,7 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
   };
 
   if (status === 'APPROVED') {
-    updates.approved_overtime_minutes = approvedMinutes !== undefined ? Number(approvedMinutes) : sourceMinutes;
+    updates.approved_overtime_minutes = requestedMinutes !== undefined ? requestedMinutes : sourceMinutes;
     updates.approved_by = userEmail;
     updates.approved_at = new Date().toISOString();
   } else if (status === 'REJECTED') {
@@ -1288,7 +1423,12 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
     .select()
     .single();
 
-  if (updErr) throw new Error(`Failed to update overtime approval: ${updErr.message}`);
+  if (updErr) {
+    // The database trigger refuses approval writes for a LOCKED run (serialized with lock_payroll_run()).
+    const err = new Error(`Failed to update overtime approval: ${updErr.message}`);
+    err.code = /LOCKED/i.test(updErr.message || '') ? 'RUN_LOCKED' : 'APPROVAL_UPDATE_FAILED';
+    throw err;
+  }
 
   // Propagate the review into every affected DRAFT regular payroll run (LOCKED runs untouched).
   const recalculation = await propagateOvertimeToDraftRuns(supabase, [
@@ -1310,16 +1450,14 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
  * Sync overtime: reconcile attendance overtime <-> approvals for the period (see
  * reconcileOvertimeForPeriod) and re-snapshot every affected DRAFT payroll item.
  * branchScope restricts the sync to employees of that branch (manager); null = all (owner).
+ * success is TRUE only when every step succeeded; any failed insert / update / delete / recalculation
+ * sets success=false (partial_success tells whether some changes did apply) so operators are never told
+ * that a sync worked when unsynchronized overtime remains.
  */
 async function syncOvertimeCandidates(supabase, { periodStart, periodEnd, branchScope = null } = {}) {
   let employeeIds = null;
   if (branchScope) {
-    const { data: branchEmployees, error: empErr } = await fetchAllRows(() => supabase
-      .from('employees')
-      .select('id, branch')
-      .order('id'));
-    if (empErr) throw new Error(`Failed to load employees: ${empErr.message}`);
-    employeeIds = (branchEmployees || []).filter((e) => isEmployeeInBranchScope(e.branch, branchScope)).map((e) => e.id);
+    employeeIds = await resolveBranchEmployeeIds(supabase, branchScope);
   }
 
   const reconciliation = await reconcileOvertimeForPeriod(supabase, { periodStart, periodEnd, employeeIds });
@@ -1327,14 +1465,30 @@ async function syncOvertimeCandidates(supabase, { periodStart, periodEnd, branch
   // Draft snapshots must follow every change (READY -> REVIEW_REQUIRED, warnings, summary).
   const recalculation = await propagateOvertimeToDraftRuns(supabase, reconciliation.touched);
 
+  const failures =
+    reconciliation.insert_errors.length +
+    reconciliation.update_errors.length +
+    reconciliation.delete_errors.length +
+    recalculation.errors.length;
+  const applied =
+    reconciliation.created.length +
+    reconciliation.raw_refreshed.length +
+    reconciliation.invalidated.length +
+    recalculation.updated.length;
+
   return {
-    success: true,
+    success: failures === 0,
+    partial_success: failures > 0 && applied > 0,
     candidates_found: reconciliation.attendance_rows,
     newly_created: reconciliation.created.length,
     insert_errors: reconciliation.insert_errors,
+    update_errors: reconciliation.update_errors,
+    delete_errors: reconciliation.delete_errors,
+    recalculation_errors: recalculation.errors,
     raw_refreshed: reconciliation.raw_refreshed,
     invalidated_pending: reconciliation.invalidated,
     decision_discrepancies: reconciliation.decision_discrepancies,
+    locked_run_anomalies: [...reconciliation.locked_run_anomalies, ...recalculation.locked_run_anomalies],
     recalculation,
   };
 }
@@ -1355,4 +1509,5 @@ module.exports = {
   evaluateOvertimeLockInvariants,
   summarizeOvertimeState,
   isEmployeeInBranchScope,
+  parseNonNegativeMinutes,
 };

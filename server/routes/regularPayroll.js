@@ -130,14 +130,15 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
       const runId = req.params.id;
       const { payroll_regular_item_id, employee_id, type, amount, reason, note } = req.body || {};
 
-      if (!payroll_regular_item_id || !employee_id || !amount || !reason) {
+      // employee_id is optional and only cross-checked against the item; the employee is derived server-side
+      if (!payroll_regular_item_id || !amount || !reason) {
         return res.status(400).json({ error: 'Missing required fields for adjustment' });
       }
 
       const result = await addRegularPayrollAdjustment(supabase, {
         runId,
         payrollRegularItemId: payroll_regular_item_id,
-        employeeId: employee_id,
+        employeeId: employee_id || undefined,
         type: type || 'OTHER',
         amount: Number(amount),
         reason,
@@ -213,6 +214,8 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
     } catch (err) {
       console.error('[RegularPayrollRoutes] review overtime error:', err);
       if (err.code === 'FORBIDDEN_BRANCH') return res.status(403).json({ error: err.message });
+      if (err.code === 'RUN_LOCKED') return res.status(409).json({ error: err.message, code: err.code });
+      if (err.code === 'INVALID_OVERTIME_MINUTES') return res.status(400).json({ error: err.message, code: err.code });
       return res.status(400).json({ error: err.message || 'Failed to review overtime approval' });
     }
   });
@@ -226,6 +229,21 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
         periodEnd: period_end || null,
         branchScope: req.overtimeBranchScope,
       });
+      if (!result.success) {
+        // Never report a failed reconciliation as success. State conflicts (locked run, duplicate candidate
+        // from a concurrent sync) are 409; anything else is an unexpected persistence failure (500).
+        const messages = [
+          ...result.insert_errors.map((e) => e.error),
+          ...result.update_errors.map((e) => e.error),
+          ...result.delete_errors.map((e) => e.error),
+          ...result.recalculation_errors.map((e) => e.message),
+        ];
+        const conflict = messages.some((m) => /LOCKED|duplicate key|unique constraint/i.test(m || ''));
+        return res.status(conflict ? 409 : 500).json({
+          ...result,
+          error: `Sinkronisasi lembur gagal atau hanya sebagian berhasil (${messages.length} kegagalan): ${messages[0] || 'unknown'}`,
+        });
+      }
       return res.json(result);
     } catch (err) {
       console.error('[RegularPayrollRoutes] sync overtime candidates error:', err);
