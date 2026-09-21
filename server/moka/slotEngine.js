@@ -40,6 +40,7 @@ async function getAvailableSlots(supabase, {
   barberId = null,
   timezone = 'Asia/Jakarta',
   type = 'outlet',
+  refDate = null,
 }) {
   // ── 1. Load barbers for this outlet ───────────────────────
   const barbersQuery = supabase
@@ -135,7 +136,7 @@ async function getAvailableSlots(supabase, {
 
   // ── 4. Generate slots ──────────────────────────────────────
   const slots = [];
-  const now   = Date.now();
+  const now   = refDate ? new Date(refDate).getTime() : Date.now();
 
   for (const barber of barbers) {
     const wh           = workingHoursMap[barber.id];
