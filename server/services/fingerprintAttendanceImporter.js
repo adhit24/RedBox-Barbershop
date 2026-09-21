@@ -561,19 +561,43 @@ function fetchPendingExceptions(supabase, externalIds, dateFrom, dateTo, pageSiz
  */
 async function loadMatchingContext(supabase, machineSource) {
   const identitySource = identitySourceFor(machineSource);
-  const [empRes, barRes, idnRes] = await Promise.all([
+  const [empRes, barRes, idnRes, inEmpRes, inBarRes] = await Promise.all([
     supabase.from('employees').select('id, employee_code, name, nickname, position, branch, business_unit').eq('is_active', true),
     supabase.from('barbers').select('id, name, branch').eq('is_active', true),
     supabase.from('employee_attendance_identity').select('*').eq('source', identitySource),
+    supabase.from('employees').select('name, nickname').eq('is_active', false),
+    supabase.from('barbers').select('name').eq('is_active', false),
   ]);
 
+  if (idnRes && idnRes.error) {
+    const err = new Error(`Gagal membaca machine-scoped identities: ${idnRes.error.message}`);
+    err.code = 'IDENTITY_CONTEXT_READ_FAILED';
+    throw err;
+  }
+  if (empRes && empRes.error) {
+    const err = new Error(`Gagal membaca master employee: ${empRes.error.message}`);
+    err.code = 'EMPLOYEE_MASTER_READ_FAILED';
+    throw err;
+  }
+  if (barRes && barRes.error) {
+    const err = new Error(`Gagal membaca master barber: ${barRes.error.message}`);
+    err.code = 'BARBER_MASTER_READ_FAILED';
+    throw err;
+  }
+  if (inEmpRes && inEmpRes.error) {
+    const err = new Error(`Gagal membaca inactive employees: ${inEmpRes.error.message}`);
+    err.code = 'EMPLOYEE_MASTER_READ_FAILED';
+    throw err;
+  }
+  if (inBarRes && inBarRes.error) {
+    const err = new Error(`Gagal membaca inactive barbers: ${inBarRes.error.message}`);
+    err.code = 'BARBER_MASTER_READ_FAILED';
+    throw err;
+  }
+
   const terminatedNames = [];
-  const [inactiveEmp, inactiveBar] = await Promise.all([
-    safeSelect(() => supabase.from('employees').select('name, nickname').eq('is_active', false)),
-    safeSelect(() => supabase.from('barbers').select('name').eq('is_active', false)),
-  ]);
-  for (const e of inactiveEmp) terminatedNames.push(e.name, e.nickname);
-  for (const b of inactiveBar) terminatedNames.push(b.name);
+  for (const e of inEmpRes.data || []) terminatedNames.push(e.name, e.nickname);
+  for (const b of inBarRes.data || []) terminatedNames.push(b.name);
 
   return {
     dbEmployees: empRes.data || [],
@@ -747,6 +771,11 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   const dailyRecords = parsedData.dailyRecords;
   const identitySource = identitySourceFor(machineSource);
 
+  // 1. Load authoritative matching context BEFORE any mutation.
+  // Fail-closed: If reading machine-scoped identities or workforce fails, abort immediately
+  // before writing manual mappings, attendance, or exceptions.
+  const ctx = await loadMatchingContext(supabase, machineSource);
+
   // Apply any manualMappings passed by manager.
   // Explicitly block former employees even if a manager attempts to remap them manually.
   const fileEmployeeById = new Map(fileEmployees.map(e => [String(e.external_employee_id || '').trim(), e]));
@@ -759,7 +788,7 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
         throw err;
       }
       if (mapping.external_employee_id && (mapping.employee_id || mapping.barber_id)) {
-        await supabase
+        const { error: mapErr } = await supabase
           .from('employee_attendance_identity')
           .upsert({
             source: identitySource,
@@ -770,12 +799,23 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
             barber_id: mapping.barber_id || null,
             updated_at: new Date().toISOString(),
           }, { onConflict: 'source,external_employee_id' });
+        if (mapErr) {
+          const err = new Error(`Gagal menyimpan mapping manual: ${mapErr.message}`);
+          err.code = 'IDENTITY_MAPPING_WRITE_FAILED';
+          throw err;
+        }
+        ctx.existingIdentities = ctx.existingIdentities.filter(i => i.external_employee_id !== String(mapping.external_employee_id).trim());
+        ctx.existingIdentities.push({
+          source: identitySource,
+          external_employee_id: String(mapping.external_employee_id).trim(),
+          external_name: mapping.external_name || null,
+          target_type: mapping.target_type || (mapping.employee_id ? 'employee' : 'barber'),
+          employee_id: mapping.employee_id || null,
+          barber_id: mapping.barber_id || null,
+        });
       }
     }
   }
-
-  // Fetch updated identities & workforce
-  const ctx = await loadMatchingContext(supabase, machineSource);
 
   const { matched, unmatched, rejected } = matchEmployees({
     fileEmployees,
@@ -969,11 +1009,16 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   if (barberAttendanceRows.length > 0) {
     const barberDates = barberAttendanceRows.map(r => r.date);
     const barberIds = [...new Set(barberAttendanceRows.map(r => r.barber_id))];
-    const { data: existingBarberAtt } = await supabase
+    const { data: existingBarberAtt, error: barberAttErr } = await supabase
       .from('barber_attendance')
       .select('barber_id, date')
       .in('barber_id', barberIds)
       .in('date', barberDates);
+    if (barberAttErr) {
+      const err = new Error(`Gagal membaca presensi barber existing: ${barberAttErr.message}`);
+      err.code = 'BARBER_ATTENDANCE_READ_FAILED';
+      throw err;
+    }
 
     const existingSet = new Set((existingBarberAtt || []).map(r => `${r.barber_id}|${r.date}`));
     const seen = new Set();
@@ -985,7 +1030,12 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
     });
 
     if (newBarberRows.length > 0) {
-      await supabase.from('barber_attendance').insert(newBarberRows);
+      const { error: barInsertErr } = await supabase.from('barber_attendance').insert(newBarberRows);
+      if (barInsertErr) {
+        const err = new Error(`Gagal menyimpan presensi barber: ${barInsertErr.message}`);
+        err.code = 'BARBER_ATTENDANCE_WRITE_FAILED';
+        throw err;
+      }
       importedCount += newBarberRows.length;
     }
   }
@@ -1008,7 +1058,12 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
       const { error: idnErr } = await supabase
         .from('employee_attendance_identity')
         .upsert(newIdentities, { onConflict: 'source,external_employee_id' });
-      if (!idnErr) identitiesSaved = newIdentities.length;
+      if (idnErr) {
+        const err = new Error(`Gagal menyimpan identitas mesin: ${idnErr.message}`);
+        err.code = 'IDENTITY_MAPPING_WRITE_FAILED';
+        throw err;
+      }
+      identitiesSaved = newIdentities.length;
     }
   }
 
@@ -1023,7 +1078,31 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
     newExceptionRows = newExceptionRows.filter(e => !existingKeys.has(excKey(e, machineKey)));
   }
   if (newExceptionRows.length > 0) {
-    await supabase.from('attendance_exceptions').insert(newExceptionRows);
+    const { error: excErr } = await supabase.from('attendance_exceptions').insert(newExceptionRows);
+    if (excErr) {
+      if (batchId) {
+        await supabase
+          .from('attendance_import_batches')
+          .update({
+            status: 'failed',
+            rows_imported: importedCount,
+            rows_skipped: skippedCount,
+            rows_failed: newExceptionRows.length,
+            metadata: {
+              ...(batch?.metadata || {}),
+              error: excErr.message,
+              error_code: 'ATTENDANCE_EXCEPTION_WRITE_FAILED',
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', batchId);
+      }
+      const err = new Error(`Gagal menyimpan anomali absensi ke database: ${excErr.message}`);
+      err.code = 'ATTENDANCE_EXCEPTION_WRITE_FAILED';
+      err.partial_success = importedCount > 0;
+      err.imported_count = importedCount;
+      throw err;
+    }
   }
   exceptionsCount = newExceptionRows.length;
 

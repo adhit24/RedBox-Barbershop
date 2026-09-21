@@ -51,10 +51,12 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   const last = list[list.length - 1];
   const lifecycle = list.find((f) => /atomic_regular_payroll_lifecycle/.test(f));
   assert.ok(lifecycle, 'atomic lifecycle migration exists');
-  assert.match(last, /attendance_payroll_sync_dirty_marker/);
+  const syncDirty = list.find((f) => /attendance_payroll_sync_dirty_marker/.test(f));
+  assert.ok(syncDirty, 'attendance sync dirty marker migration exists');
+  assert.match(last, /block_review_required_on_payroll_lock/);
   assert.ok(
-    restore > '20260919143000' && pendingGuard > restore && reconcile > pendingGuard && lifecycle > reconcile && last > lifecycle,
-    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync'
+    restore > '20260919143000' && pendingGuard > restore && reconcile > pendingGuard && lifecycle > reconcile && syncDirty > lifecycle && last > syncDirty,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required'
   );
 });
 
@@ -354,6 +356,39 @@ test('Attendance sync: lock_payroll_run rejects a dirty attendance snapshot and 
   assert.match(body, /attendance_summary ->> 'attendance_dirty'/);
   assert.match(body, /IF v_snap_item.attendance_dirty THEN RAISE EXCEPTION 'Payroll attendance snapshot is stale for %/);
   for (const inv of ['FOR UPDATE', 'find_overlapping_regular_run', 'pending overtime approval', 'no longer match attendance overtime', 'adjustments_dirty', 'attendance_period_complete', 'Reconciliation failed for %']) {
+    assert.ok(body.includes(inv), 'invariant kept: ' + inv);
+  }
+  assert.ok(norm(elseBranch(functionBody(sql))).includes('payroll_source_claims'), 'barber branch preserved');
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.lock_payroll_run\(UUID, TEXT\) TO service_role/);
+  assert.doesNotMatch(sql, /GRANT [^;]*TO (anon|authenticated|PUBLIC)/i);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 8: block all REVIEW_REQUIRED items before lock (P1-1)
+// ---------------------------------------------------------------------------------------------
+function blockReviewRequiredMigration() {
+  const f = fs.readdirSync(MIGRATIONS_DIR).find((n) => /block_review_required_on_payroll_lock/.test(n));
+  assert.ok(f, 'block review-required migration exists');
+  return { file: f, sql: read(f) };
+}
+
+test('Round 8: lock_payroll_run blocks locking when ANY regular item is REVIEW_REQUIRED', () => {
+  const { sql } = blockReviewRequiredMigration();
+  const body = norm(functionBody(sql));
+  assert.match(body, /status = 'REVIEW_REQUIRED'/);
+  assert.match(body, /Cannot lock regular payroll run %: % review-required item\(s\) remain/);
+  for (const inv of [
+    'FOR UPDATE',
+    'find_overlapping_regular_run',
+    'MISSING_ATTENDANCE',
+    'pending overtime approval',
+    'no longer match attendance overtime',
+    'attendance_dirty',
+    'adjustments_dirty',
+    'attendance_period_complete',
+    'Reconciliation failed for %',
+    "SET status = 'LOCKED'",
+  ]) {
     assert.ok(body.includes(inv), 'invariant kept: ' + inv);
   }
   assert.ok(norm(elseBranch(functionBody(sql))).includes('payroll_source_claims'), 'barber branch preserved');

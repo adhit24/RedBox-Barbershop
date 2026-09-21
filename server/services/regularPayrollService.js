@@ -428,9 +428,56 @@ function inclusiveDayCount(from, to) {
 }
 
 /**
+ * Compute run-level attendance coverage from authoritative employee_attendance records.
+ * Authority: The latest attendance_date present in employee_attendance for any employee
+ * in the run's population within [periodStart, periodEnd].
+ * If no attendance records exist, attendance_data_through is null and attendance_period_complete is false.
+ * attendance_period_complete is true if and only if attendance_data_through >= periodEnd.
+ * Fail-closed: Any database query error throws ATTENDANCE_COVERAGE_READ_FAILED.
+ */
+async function computeRunAttendanceCoverage(supabase, { periodStart, periodEnd, employeeIds = [] }) {
+  if (!employeeIds.length || !periodStart || !periodEnd) {
+    return {
+      attendance_data_through: null,
+      expected_period_end: periodEnd || null,
+      attendance_period_complete: false,
+    };
+  }
+
+  let q = supabase
+    .from('employee_attendance')
+    .select('attendance_date')
+    .in('employee_id', employeeIds)
+    .gte('attendance_date', periodStart)
+    .lte('attendance_date', periodEnd)
+    .order('attendance_date', { ascending: false });
+
+  if (typeof q.limit === 'function') {
+    q = q.limit(1);
+  }
+
+  const { data, error } = await q;
+
+  if (error) {
+    const err = new Error(`Failed to compute run attendance coverage: ${error.message}`);
+    err.code = 'ATTENDANCE_COVERAGE_READ_FAILED';
+    throw err;
+  }
+
+  const latestDate = (data && data.length > 0) ? data[0].attendance_date : null;
+  const isComplete = Boolean(latestDate && latestDate >= periodEnd);
+
+  return {
+    attendance_data_through: latestDate,
+    expected_period_end: periodEnd,
+    attendance_period_complete: isComplete,
+  };
+}
+
+/**
  * Fetch attendance summary for a list of employees over a date range
  */
-async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], periodStart, periodEnd, employeeMap = new Map()) {
+async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], periodStart, periodEnd, employeeMap = new Map(), { runCoverage = null } = {}) {
   const summaryMap = new Map();
   for (const empId of employeeIds) {
     const emp = employeeMap.get(empId);
@@ -564,11 +611,12 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
   // 4. Finalize metrics per employee
   // The attendance source only covers up to the last day it has data; days after that
   // are "not yet available", never "absent".
-  let dataThrough = null;
+  let computedDataThrough = null;
   for (const s of summaryMap.values()) {
-    if (s.max_date && (!dataThrough || s.max_date > dataThrough)) dataThrough = s.max_date;
+    if (s.max_date && (!computedDataThrough || s.max_date > computedDataThrough)) computedDataThrough = s.max_date;
   }
-  const periodComplete = !!dataThrough && dataThrough >= periodEnd;
+  const dataThrough = runCoverage ? runCoverage.attendance_data_through : computedDataThrough;
+  const periodComplete = runCoverage ? runCoverage.attendance_period_complete : (!!dataThrough && dataThrough >= periodEnd);
 
   for (const [empId, s] of summaryMap.entries()) {
     const joinDate = employeeMap.get(empId)?.join_date || null;
@@ -661,10 +709,8 @@ async function generateRegularPayrollDraft(supabase, {
   const attendanceMap = await fetchEmployeeAttendanceSummaries(supabase, employeeIds, periodStart, periodEnd, employeeMap);
 
   // 4. Calculate items
-  let attendanceDataThrough = null;
-  for (const a of attendanceMap.values()) {
-    if (a.attendance_data_through) { attendanceDataThrough = a.attendance_data_through; break; }
-  }
+  const coverage = await computeRunAttendanceCoverage(supabase, { periodStart, periodEnd, employeeIds });
+  const attendanceDataThrough = coverage.attendance_data_through;
   const calculatedItems = [];
   let totalGross = 0;
   let totalDeductions = 0;
@@ -1014,7 +1060,7 @@ async function deleteRegularPayrollAdjustment(supabase, { adjustmentId }) {
 /**
  * Helper to recalculate a single regular item in draft after adjustments change
  */
-async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOvertime = false, refreshAttendance = false } = {}) {
+async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOvertime = false, refreshAttendance = false, runCoverage = null } = {}) {
   // Fetch item (fail closed: an unreadable item is an error, never a silent no-op)
   const { data: item, error: itemReadErr } = await supabase
     .from('payroll_regular_items')
@@ -1070,7 +1116,14 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
         err.code = 'EMPLOYEE_READ_FAILED';
         throw err;
       }
-      const map = await fetchEmployeeAttendanceSummaries(supabase, [item.employee_id], run.period_start, run.period_end, new Map([[item.employee_id, empRow]]));
+      const map = await fetchEmployeeAttendanceSummaries(
+        supabase,
+        [item.employee_id],
+        run.period_start,
+        run.period_end,
+        new Map([[item.employee_id, empRow]]),
+        { runCoverage }
+      );
       attendanceSummary = map.get(item.employee_id);
       approvedOvertimeHours = attendanceSummary.overtime_hours;
       freshAttendance = true;
@@ -1232,7 +1285,7 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
 async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {}) {
   const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
-    .select('id, status, payroll_type')
+    .select('id, status, payroll_type, period_start, period_end')
     .eq('id', runId)
     .single();
   if (runErr || !run) {
@@ -1247,7 +1300,7 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
   }
   const { data: items, error: itemsErr } = await fetchAllRows(() => supabase
     .from('payroll_regular_items')
-    .select('id, attendance_summary')
+    .select('id, employee_id, attendance_summary')
     .eq('payroll_run_id', runId)
     .order('id'));
   if (itemsErr) {
@@ -1255,22 +1308,53 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
     err.code = 'ITEMS_READ_FAILED';
     throw err;
   }
+
+  // 1. Re-read attendance source & compute authoritative run coverage across all employeeIds
+  const allEmployeeIds = [...new Set((items || []).map((i) => i.employee_id).filter(Boolean))];
+  const runCoverage = await computeRunAttendanceCoverage(supabase, {
+    periodStart: run.period_start,
+    periodEnd: run.period_end,
+    employeeIds: allEmployeeIds,
+  });
+
+  // 2. Recalculate affected/all payroll items
   const targets = (items || []).filter((i) => all || i.attendance_summary?.attendance_dirty === true);
   const recalculated = [];
   for (const it of targets) {
-    const res = await recalculateSingleRegularItem(supabase, runId, it.id, { refreshOvertime: true, refreshAttendance: true });
+    const res = await recalculateSingleRegularItem(supabase, runId, it.id, {
+      refreshOvertime: true,
+      refreshAttendance: true,
+      runCoverage,
+    });
     if (res) recalculated.push(res);
   }
+
+  // 3 & 4. Recompute and refresh run summary with the fresh coverage
+  await refreshRunSummary(supabase, runId, { coverage: runCoverage });
+
   return { run_id: runId, recalculated_count: recalculated.length, items: recalculated };
 }
 
 /**
- * Refresh run summary after items or adjustments update
+ * Refresh run summary after items or adjustments update.
+ * If coverage is passed (from recalculateRegularPayrollRun or generateRegularPayrollDraft),
+ * coverage fields are refreshed authoritatively. Otherwise, existing summary coverage is preserved.
  */
-async function refreshRunSummary(supabase, runId) {
+async function refreshRunSummary(supabase, runId, { coverage = null } = {}) {
+  const { data: runRow, error: runSummaryErr } = await supabase
+    .from('payroll_runs')
+    .select('id, period_start, period_end, summary')
+    .eq('id', runId)
+    .single();
+  if (runSummaryErr || !runRow) {
+    const err = new Error(`Failed to read payroll run ${runId}: ${runSummaryErr?.message || 'not found'}`);
+    err.code = 'RUN_READ_FAILED';
+    throw err;
+  }
+
   const { data: allItems, error: allItemsErr } = await fetchAllRows(() => supabase
     .from('payroll_regular_items')
-    .select('gross_pay, total_deduction, take_home_pay, status')
+    .select('employee_id, gross_pay, total_deduction, take_home_pay, status')
     .eq('payroll_run_id', runId)
     .order('id'));
   // Fail closed: an unreadable item list must not leave the run summary (totals/counts) silently stale.
@@ -1294,12 +1378,6 @@ async function refreshRunSummary(supabase, runId) {
     if (it.status === 'MISSING_SALARY') missingSalaryCount++;
   }
 
-  const { data: runRow, error: runSummaryErr } = await supabase.from('payroll_runs').select('summary').eq('id', runId).single();
-  if (runSummaryErr || !runRow) {
-    const err = new Error(`Failed to read payroll run ${runId}: ${runSummaryErr?.message || 'not found'}`);
-    err.code = 'RUN_READ_FAILED';
-    throw err;
-  }
   const previousSummary = runRow.summary || {};
   const missingAttendanceCount = allItems.filter(it => it.status === 'MISSING_ATTENDANCE' || it.status === 'BLOCKED_ATTENDANCE_SOURCE').length;
 
@@ -1315,6 +1393,11 @@ async function refreshRunSummary(supabase, runId) {
         total_take_home_pay: totalTakeHome,
         review_required_count: reviewRequiredCount,
         missing_salary_count: missingSalaryCount,
+        ...(coverage ? {
+          attendance_data_through: coverage.attendance_data_through,
+          expected_period_end: coverage.expected_period_end,
+          attendance_period_complete: coverage.attendance_period_complete,
+        } : {}),
       },
       updated_at: new Date().toISOString(),
     })
@@ -1413,6 +1496,19 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   if (runRowErr || !runRow) throw new Error(`Cannot verify payroll run: ${runRowErr?.message || 'not found'}`);
   if (runRow?.summary?.attendance_period_complete === false) {
     throw new Error(`Cannot lock payroll run: attendance data is only available through ${runRow.summary.attendance_data_through || 'unknown'} but the period ends ${runRow.period_end}. Import the final fingerprint files first.`);
+  }
+
+  // Safety guard (P1-1): Block locking if ANY item remains in REVIEW_REQUIRED
+  const { data: reviewItems, error: reviewErr } = await supabase
+    .from('payroll_regular_items')
+    .select('id, employee_name_snapshot, status')
+    .eq('payroll_run_id', runId)
+    .eq('status', 'REVIEW_REQUIRED');
+  if (reviewErr) throw new Error(`Cannot verify payroll items: ${reviewErr.message}`);
+
+  if (reviewItems && reviewItems.length > 0) {
+    const names = reviewItems.slice(0, 3).map(b => b.employee_name_snapshot).join(', ');
+    throw new Error(`Cannot lock regular payroll: ${reviewItems.length} review-required item(s) remain (${names}). Resolve all review warnings before locking.`);
   }
 
   const { data, error } = await supabase.rpc('lock_payroll_run', {
@@ -1720,4 +1816,5 @@ module.exports = {
   summarizeOvertimeState,
   isEmployeeInBranchScope,
   parseNonNegativeMinutes,
+  computeRunAttendanceCoverage,
 };

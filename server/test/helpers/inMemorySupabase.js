@@ -116,6 +116,28 @@ function createInMemorySupabase(store, opts = {}) {
         const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
         return o;
       },
+      upsert(v, opts = {}) {
+        const msg = fail('upsert');
+        if (msg) {
+          const o = { select() { return o; }, single: async () => ({ data: null, error: { message: msg } }), then(res) { res({ data: null, error: { message: msg } }); } };
+          return o;
+        }
+        const arr = [].concat(v);
+        const conflictCols = (opts.onConflict || '').split(',').map((c) => c.trim()).filter(Boolean);
+        for (const r of arr) {
+          let idx = -1;
+          if (conflictCols.length > 0) {
+            idx = rows.findIndex((existing) => conflictCols.every((c) => existing[c] === r[c]));
+          }
+          if (idx >= 0) {
+            rows[idx] = { ...rows[idx], ...r };
+          } else {
+            rows.push({ id: r.id || `n${seq++}`, ...r });
+          }
+        }
+        const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
+        return o;
+      },
       update(u) {
         return {
           eq(c, val) {
@@ -170,6 +192,9 @@ function createInMemorySupabase(store, opts = {}) {
         // lock invariant: a DRAFT item whose attendance changed after calculation cannot be locked
         const dirtyItem = (store.payroll_regular_items || []).find((i) => i.payroll_run_id === runRow.id && i.attendance_summary?.attendance_dirty === true);
         if (dirtyItem) return Promise.resolve({ data: null, error: { message: `Payroll attendance snapshot is stale for ${dirtyItem.employee_name_snapshot}. Recalculate before locking.` } });
+        // lock invariant (P1-1): ANY item with REVIEW_REQUIRED rejects lock
+        const reviewItems = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id && i.status === 'REVIEW_REQUIRED');
+        if (reviewItems.length > 0) return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: ${reviewItems.length} review-required item(s) remain. Resolve all review warnings before locking.` } });
         runRow.status = 'LOCKED';
         (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id).forEach((i) => { i.status = 'LOCKED'; });
         return Promise.resolve({ data: { success: true, status: 'LOCKED', run_id: runRow.id }, error: null });
