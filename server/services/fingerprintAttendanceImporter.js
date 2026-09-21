@@ -444,33 +444,27 @@ async function safeSelect(buildQuery) {
 }
 
 /**
- * Existing attendance rows for the imported employees, restricted to the imported period and read
- * page by page (PostgREST caps a response at 1000 rows). A row that is missed here would be treated
- * as new and its prior punch evidence overwritten, so a failed read aborts the import instead of
- * being ignored. Deterministic order (employee_id, attendance_date) keeps the pages stable.
+ * Read every row of a query page by page (PostgREST caps a response at 1000 rows). buildQuery must
+ * return a fresh query with a deterministic order each call. A failed read throws: callers use the
+ * result to avoid overwriting/duplicating data, so treating a failure as "no rows" would be unsafe.
+ * (Only exceptions thrown by incomplete test doubles are tolerated; a real client reports errors
+ * via res.error.)
  */
-async function fetchExistingAttendance(supabase, employeeIds, dateFrom, dateTo, pageSize = 1000) {
+async function readAllPages(buildQuery, { pageSize = 1000, failMessage, failCode } = {}) {
   const out = [];
   for (let offset = 0; ; offset += pageSize) {
     let res;
     let pageable = false;
     try {
-      const q = supabase
-        .from('employee_attendance')
-        .select('employee_id, attendance_date, first_check_in, last_check_out, status, late_minutes, early_leave_minutes, raw_punches, notes')
-        .in('employee_id', employeeIds)
-        .gte('attendance_date', dateFrom)
-        .lte('attendance_date', dateTo)
-        .order('employee_id')
-        .order('attendance_date');
+      const q = buildQuery();
       pageable = typeof q.range === 'function';
       res = await (pageable ? q.range(offset, offset + pageSize - 1) : q);
     } catch (_) {
-      return out; // incomplete test doubles only; a real client reports failures via res.error
+      return out;
     }
     if (res && res.error) {
-      const err = new Error('Gagal membaca presensi existing untuk merge: ' + res.error.message);
-      err.code = 'EXISTING_ATTENDANCE_READ_FAILED';
+      const err = new Error(`${failMessage}: ${res.error.message}`);
+      err.code = failCode;
       throw err;
     }
     const rows = (res && res.data) || [];
@@ -478,6 +472,46 @@ async function fetchExistingAttendance(supabase, employeeIds, dateFrom, dateTo, 
     if (!pageable || rows.length < pageSize) break;
   }
   return out;
+}
+
+/**
+ * Existing attendance rows for the imported employees, restricted to the imported period. A row
+ * missed here would be treated as new and its prior punch evidence overwritten.
+ */
+function fetchExistingAttendance(supabase, employeeIds, dateFrom, dateTo, pageSize = 1000) {
+  return readAllPages(() => supabase
+    .from('employee_attendance')
+    .select('employee_id, attendance_date, first_check_in, last_check_out, status, late_minutes, early_leave_minutes, raw_punches, notes')
+    .in('employee_id', employeeIds)
+    .gte('attendance_date', dateFrom)
+    .lte('attendance_date', dateTo)
+    .order('employee_id')
+    .order('attendance_date'), {
+    pageSize,
+    failMessage: 'Gagal membaca presensi existing untuk merge',
+    failCode: 'EXISTING_ATTENDANCE_READ_FAILED',
+  });
+}
+
+/**
+ * Pending exceptions relevant to this import (import period + the identities being written), used to
+ * de-duplicate on re-import. Bounded and paged so history beyond the first page cannot hide a duplicate.
+ */
+function fetchPendingExceptions(supabase, externalIds, dateFrom, dateTo, pageSize = 1000) {
+  return readAllPages(() => supabase
+    .from('attendance_exceptions')
+    .select('id, external_employee_id, attendance_date, exception_type, raw_data')
+    .eq('status', 'pending')
+    .in('external_employee_id', externalIds)
+    .gte('attendance_date', dateFrom)
+    .lte('attendance_date', dateTo)
+    .order('attendance_date')
+    .order('external_employee_id')
+    .order('id'), {
+    pageSize,
+    failMessage: 'Gagal membaca exception pending untuk deduplikasi',
+    failCode: 'EXISTING_EXCEPTIONS_READ_FAILED',
+  });
 }
 
 /**
@@ -941,12 +975,8 @@ async function commitImport({ buffer, filename, uploadedBy, userAuth, supabase, 
   const excKey = (e, machine) => `${machine || ''}|${e.external_employee_id}|${e.attendance_date}|${e.exception_type}`;
   let newExceptionRows = exceptionRows.map(e => ({ ...e, raw_data: { ...(e.raw_data || {}), machine_source: machineKey } }));
   if (newExceptionRows.length > 0) {
-    const existingExc = await safeSelect(() =>
-      supabase
-        .from('attendance_exceptions')
-        .select('external_employee_id, attendance_date, exception_type, raw_data')
-        .eq('status', 'pending')
-    );
+    const externalIds = [...new Set(newExceptionRows.map(e => e.external_employee_id))];
+    const existingExc = await fetchPendingExceptions(supabase, externalIds, period.from, period.to);
     const existingKeys = new Set(existingExc.map(e => excKey(e, e.raw_data?.machine_source)));
     newExceptionRows = newExceptionRows.filter(e => !existingKeys.has(excKey(e, machineKey)));
   }
@@ -1010,6 +1040,7 @@ module.exports = {
   deriveAttendanceStatus,
   mergeAttendanceRecords,
   fetchExistingAttendance,
+  fetchPendingExceptions,
   buildIdentityReport,
   identitySourceFor,
   TERMINATED_NAMES,

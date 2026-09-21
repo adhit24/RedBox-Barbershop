@@ -57,7 +57,7 @@ function fakeSupabase(store) {
     const api = {
       select() { return api; },
       eq(c, v) { filters.push(r => r[c] === v); return api; },
-      in(c, v) { filters.push(r => v.includes(r[c])); return api; },
+      in(c, v) { (log.inFilters = log.inFilters || {})[c] = v; filters.push(r => v.includes(r[c])); return api; },
       gte(c, v) { log.gte[c] = v; filters.push(r => r[c] >= v); return api; },
       lte(c, v) { log.lte[c] = v; filters.push(r => r[c] <= v); return api; },
       order(c) { orderBy.push(c); return api; },
@@ -318,4 +318,52 @@ test('Payroll: no records stays MISSING_ATTENDANCE (never treated as absent for 
     attendanceSummary: summary({ present_days: 0, records_count: 0 }),
   });
   assert.equal(item.status, REGULAR_ITEM_STATUS.MISSING_ATTENDANCE);
+});
+
+test('Exception dedup: a duplicate that sits beyond the first 1000-row page is still found (no duplicate created)', async () => {
+  const store = seedStore();
+  // 1100 pending exceptions for identity 4 within the period (different types) sort BEFORE the target day
+  for (let i = 0; i < 1100; i++) {
+    store.attendance_exceptions.push({
+      id: `fill-${String(i).padStart(4, '0')}`, external_employee_id: '4', attendance_date: i % 2 ? '2026-08-26' : '2026-08-27',
+      exception_type: `other_type_${i}`, status: 'pending', raw_data: { machine_source: 'bypass' },
+    });
+  }
+  // The real earlier exception for Ghost's punched day (2026-08-28) sorts after them -> page 2
+  store.attendance_exceptions.push({
+    id: 'target-dup', external_employee_id: '4', attendance_date: '2026-08-28',
+    exception_type: 'unmatched_employee', status: 'pending', raw_data: { machine_source: 'bypass' },
+  });
+  const before = store.attendance_exceptions.filter((e) => e.exception_type === 'unmatched_employee').length;
+
+  await commit(store);
+
+  assert.equal(store.attendance_exceptions.filter((e) => e.exception_type === 'unmatched_employee').length, before,
+    'the duplicate on page 2 must be detected');
+  const pagedQueries = store.__queries.filter((q) => q.table === 'attendance_exceptions' && q.ranged);
+  assert.ok(pagedQueries.length >= 2, 'lookup must page past the first 1000 rows');
+});
+
+test('Exception dedup: lookup is bounded to the import period; rows outside are never read', async () => {
+  const store = seedStore();
+  store.attendance_exceptions.push({
+    id: 'old', external_employee_id: '4', attendance_date: '2026-07-01',
+    exception_type: 'unmatched_employee', status: 'pending', raw_data: { machine_source: 'bypass' },
+  });
+  await commit(store);
+  const q = store.__queries.find((x) => x.table === 'attendance_exceptions' && x.gte.attendance_date);
+  assert.equal(q.gte.attendance_date, '2026-08-26');
+  assert.equal(q.lte.attendance_date, '2026-09-04');
+  assert.ok(q.inFilters && q.inFilters.external_employee_id, 'scoped to the identities being written');
+  // The out-of-period row was left alone and a fresh one was still inserted for the in-period day
+  assert.equal(store.attendance_exceptions.find((e) => e.id === 'old').attendance_date, '2026-07-01');
+  assert.ok(store.attendance_exceptions.some((e) => e.exception_type === 'unmatched_employee' && e.attendance_date === '2026-08-28'));
+});
+
+test('Exception dedup: a failed pending-exception read aborts instead of treating it as empty', async () => {
+  const failing = { from: () => ({
+    select() { return this; }, eq() { return this; }, in() { return this; }, gte() { return this; }, lte() { return this; }, order() { return this; },
+    range: async () => ({ data: null, error: { message: 'boom' } }),
+  }) };
+  await assert.rejects(() => importer.fetchPendingExceptions(failing, ['4'], '2026-08-26', '2026-09-04'), /boom/);
 });
