@@ -848,6 +848,58 @@ async function listOvertimeApprovals(supabase, { periodStart, periodEnd, employe
 }
 
 /**
+ * Re-snapshot payroll after overtime approvals changed (review or candidate sync).
+ * For every (employee, date) the covering DRAFT REGULAR runs get that employee's item recalculated
+ * through recalculateSingleRegularItem (engine formula reused, run summary refreshed). LOCKED runs
+ * are never mutated; they are reported as anomalies so unreviewed overtime in a frozen period is visible.
+ */
+async function propagateOvertimeToDraftRuns(supabase, candidates = []) {
+  const result = { updated: [], locked_run_anomalies: [], error: null };
+  const done = new Set();
+  try {
+    for (const c of candidates) {
+      const { data: runs, error: runsErr } = await supabase
+        .from('payroll_runs')
+        .select('id, status')
+        .eq('payroll_type', 'REGULAR')
+        .in('status', ['DRAFT', 'LOCKED'])
+        .lte('period_start', c.attendance_date)
+        .gte('period_end', c.attendance_date);
+      if (runsErr) throw new Error(runsErr.message);
+
+      for (const run of runs || []) {
+        if (run.status === 'LOCKED') {
+          result.locked_run_anomalies.push({
+            run_id: run.id,
+            employee_id: c.employee_id,
+            attendance_date: c.attendance_date,
+            reason: 'Overtime exists in the period of a LOCKED payroll run; the locked snapshot was not changed.',
+          });
+          continue;
+        }
+        const key = `${run.id}|${c.employee_id}`;
+        if (done.has(key)) continue; // one recalculation per run+employee covers every date
+        done.add(key);
+        const { data: items } = await supabase
+          .from('payroll_regular_items')
+          .select('id')
+          .eq('payroll_run_id', run.id)
+          .eq('employee_id', c.employee_id);
+        for (const it of items || []) {
+          const res = await recalculateSingleRegularItem(supabase, run.id, it.id, { refreshOvertime: true });
+          if (res) result.updated.push(res);
+        }
+      }
+    }
+  } catch (err) {
+    // Approval rows are already saved; surface the failure instead of hiding a stale draft.
+    console.error('[RegularPayrollService] overtime recalculation failed:', err.message);
+    result.error = err.message;
+  }
+  return result;
+}
+
+/**
  * Review overtime approval (Owner or Manager only)
  */
 async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMinutes, note, userEmail = 'manager@redbox.id' }) {
@@ -892,35 +944,10 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
 
   if (updErr) throw new Error(`Failed to update overtime approval: ${updErr.message}`);
 
-  // Propagate the review into every affected DRAFT regular payroll run. LOCKED runs are never
-  // touched (they are excluded here, and the DB immutability triggers reject writes anyway).
-  const recalculation = { updated: [], error: null };
-  try {
-    const { data: draftRuns, error: runsErr } = await supabase
-      .from('payroll_runs')
-      .select('id')
-      .eq('payroll_type', 'REGULAR')
-      .eq('status', 'DRAFT')
-      .lte('period_start', updated.attendance_date)
-      .gte('period_end', updated.attendance_date);
-    if (runsErr) throw new Error(runsErr.message);
-
-    for (const run of draftRuns || []) {
-      const { data: items } = await supabase
-        .from('payroll_regular_items')
-        .select('id')
-        .eq('payroll_run_id', run.id)
-        .eq('employee_id', updated.employee_id);
-      for (const it of items || []) {
-        const res = await recalculateSingleRegularItem(supabase, run.id, it.id, { refreshOvertime: true });
-        if (res) recalculation.updated.push(res);
-      }
-    }
-  } catch (recalcErr) {
-    // The approval itself is already saved; surface the failure instead of hiding a stale draft.
-    console.error('[RegularPayrollService] overtime recalculation failed:', recalcErr.message);
-    recalculation.error = recalcErr.message;
-  }
+  // Propagate the review into every affected DRAFT regular payroll run (LOCKED runs untouched).
+  const recalculation = await propagateOvertimeToDraftRuns(supabase, [
+    { employee_id: updated.employee_id, attendance_date: updated.attendance_date },
+  ]);
 
   return { success: true, approval: updated, recalculation };
 }
@@ -929,28 +956,30 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
  * Sync candidate overtime from employee_attendance into employee_overtime_approvals
  */
 async function syncOvertimeCandidates(supabase, { periodStart, periodEnd } = {}) {
-  let query = supabase
-    .from('employee_attendance')
-    .select('employee_id, attendance_date, overtime_minutes')
-    .gt('overtime_minutes', 0);
-
-  if (periodStart) query = query.gte('attendance_date', periodStart);
-  if (periodEnd) query = query.lte('attendance_date', periodEnd);
-
-  const { data: rawRows, error } = await query;
+  const { data: rawRows, error } = await fetchAllRows(() => {
+    let query = supabase
+      .from('employee_attendance')
+      .select('employee_id, attendance_date, overtime_minutes')
+      .gt('overtime_minutes', 0);
+    if (periodStart) query = query.gte('attendance_date', periodStart);
+    if (periodEnd) query = query.lte('attendance_date', periodEnd);
+    return query.order('employee_id').order('attendance_date');
+  });
   if (error) throw new Error(`Failed to query attendance overtime: ${error.message}`);
 
   let createdCount = 0;
+  const insertErrors = [];
+  const pendingCandidates = [];
   for (const row of rawRows || []) {
     const { data: existing } = await supabase
       .from('employee_overtime_approvals')
-      .select('id')
+      .select('id, status')
       .eq('employee_id', row.employee_id)
       .eq('attendance_date', row.attendance_date)
       .maybeSingle();
 
     if (!existing) {
-      await supabase
+      const { error: insErr } = await supabase
         .from('employee_overtime_approvals')
         .insert({
           employee_id: row.employee_id,
@@ -959,11 +988,28 @@ async function syncOvertimeCandidates(supabase, { periodStart, periodEnd } = {})
           approved_overtime_minutes: 0,
           status: 'PENDING',
         });
+      if (insErr) {
+        insertErrors.push({ employee_id: row.employee_id, attendance_date: row.attendance_date, error: insErr.message });
+        continue;
+      }
       createdCount++;
+      pendingCandidates.push({ employee_id: row.employee_id, attendance_date: row.attendance_date });
+    } else if (existing.status === 'PENDING') {
+      // Already pending: an earlier sync may predate the draft, so re-snapshot it too (idempotent).
+      pendingCandidates.push({ employee_id: row.employee_id, attendance_date: row.attendance_date });
     }
   }
 
-  return { success: true, candidates_found: (rawRows || []).length, newly_created: createdCount };
+  // Draft snapshots must reflect the pending candidates (READY -> REVIEW_REQUIRED, warning, summary).
+  const recalculation = await propagateOvertimeToDraftRuns(supabase, pendingCandidates);
+
+  return {
+    success: true,
+    candidates_found: (rawRows || []).length,
+    newly_created: createdCount,
+    insert_errors: insertErrors,
+    recalculation,
+  };
 }
 
 module.exports = {
