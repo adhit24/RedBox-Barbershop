@@ -103,6 +103,8 @@ export interface RegularPayrollItem {
   attendance_summary: AttendanceSummary;
   attendance_source_revision?: number;
   attendance_snapshot_revision?: number;
+  payroll_input_revision?: number;
+  payroll_snapshot_revision?: number;
   warnings: string[];
   attendance_period_expected?: string;
   attendance_period_available?: string;

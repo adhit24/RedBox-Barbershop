@@ -14,15 +14,46 @@ function createInMemorySupabase(store, opts = {}) {
   const failOn = opts.failOn || {};
   const emulateTriggers = opts.emulateTriggers !== false;
 
+  const bumpSourceVersion = (employeeId) => {
+    store.payroll_attendance_source_versions = store.payroll_attendance_source_versions || [];
+    let rec = store.payroll_attendance_source_versions.find((v) => v.employee_id === employeeId);
+    if (!rec) {
+      rec = { employee_id: employeeId, source_revision: 1 };
+      store.payroll_attendance_source_versions.push(rec);
+    } else {
+      rec.source_revision = Number(rec.source_revision || 0) + 1;
+    }
+  };
+
   // trg_payroll_adjustment_mark_dirty: same transaction as the adjustment write
   const markDirty = (itemId) => {
     const item = (store.payroll_regular_items || []).find((i) => i.id === itemId);
-    if (item) item.attendance_summary = { ...(item.attendance_summary || {}), adjustments_dirty: true };
+    if (item) {
+      item.payroll_input_revision = Number(item.payroll_input_revision || 0) + 1;
+      item.attendance_summary = { ...(item.attendance_summary || {}), adjustments_dirty: true };
+    }
   };
+
+  // trg_overtime_approval_payroll_sync: bumps source version & draft item input revision
+  const overtimeApprovalEffect = (employeeId, date) => {
+    bumpSourceVersion(employeeId);
+    for (const run of store.payroll_runs || []) {
+      if (!['REGULAR', 'REGULAR_PAYROLL'].includes(run.payroll_type)) continue;
+      if (!(date >= run.period_start && date <= run.period_end)) continue;
+      const items = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === run.id && i.employee_id === employeeId);
+      if (run.status === 'DRAFT') {
+        items.filter((i) => i.status !== 'LOCKED').forEach((i) => {
+          i.payroll_input_revision = Number(i.payroll_input_revision || 0) + 1;
+        });
+      }
+    }
+  };
+
   // trg_attendance_payroll_sync: a payroll-relevant employee_attendance change marks the employee's DRAFT items
   // attendance_dirty; LOCKED runs are never touched (anomaly log instead). Mirrors apply_attendance_payroll_effect.
   const ATT_FIELDS = ['status', 'late_minutes', 'overtime_minutes', 'first_check_in', 'last_check_out'];
   const attendanceEffect = (employeeId, date, operation) => {
+    bumpSourceVersion(employeeId);
     for (const run of store.payroll_runs || []) {
       if (!['REGULAR', 'REGULAR_PAYROLL'].includes(run.payroll_type)) continue;
       if (!(date >= run.period_start && date <= run.period_end)) continue;
@@ -30,6 +61,7 @@ function createInMemorySupabase(store, opts = {}) {
       if (run.status === 'DRAFT') {
         items.filter((i) => i.status !== 'LOCKED').forEach((i) => {
           i.attendance_source_revision = Number(i.attendance_source_revision || 0) + 1;
+          i.payroll_input_revision = Number(i.payroll_input_revision || 0) + 1;
           i.attendance_summary = { ...(i.attendance_summary || {}), attendance_dirty: true };
         });
       } else if (run.status === 'LOCKED' && items.length) {
@@ -114,6 +146,9 @@ function createInMemorySupabase(store, opts = {}) {
             if (!(existing && ATT_FIELDS.every((f) => existing[f] === r[f]))) attendanceEffect(r.employee_id, r.attendance_date, 'INSERT');
           }
         }
+        if (emulateTriggers && name === 'employee_overtime_approvals') {
+          arr.forEach((r) => overtimeApprovalEffect(r.employee_id, r.attendance_date));
+        }
         rows.push(...arr);
         if (emulateTriggers && name === 'payroll_adjustments') arr.forEach((r) => markDirty(r.payroll_regular_item_id));
         const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
@@ -166,6 +201,9 @@ function createInMemorySupabase(store, opts = {}) {
               if (ATT_FIELDS.some((f) => f in u && u[f] !== r[f])) attendanceEffect(r.employee_id, r.attendance_date, 'UPDATE');
             });
           }
+          if (emulateTriggers && name === 'employee_overtime_approvals') {
+            hit.forEach((r) => overtimeApprovalEffect(r.employee_id, r.attendance_date));
+          }
           hit.forEach((r) => Object.assign(r, u));
           return { data: hit[0] || null, error: (mustExist && !hit[0]) ? { message: 'not found' } : null };
         };
@@ -180,6 +218,7 @@ function createInMemorySupabase(store, opts = {}) {
             let removed = null;
             if (i >= 0) removed = rows.splice(i, 1)[0];
             if (emulateTriggers && name === 'employee_attendance' && removed) attendanceEffect(removed.employee_id, removed.attendance_date, 'DELETE');
+            if (emulateTriggers && name === 'employee_overtime_approvals' && removed) overtimeApprovalEffect(removed.employee_id, removed.attendance_date);
             if (emulateTriggers && name === 'payroll_adjustments' && removed) markDirty(removed.payroll_regular_item_id);
             return Promise.resolve({ error: null });
           },
@@ -206,7 +245,9 @@ function createInMemorySupabase(store, opts = {}) {
         const dirtyItem = (store.payroll_regular_items || []).find((i) =>
           i.payroll_run_id === runRow.id && (
             i.attendance_summary?.attendance_dirty === true ||
-            Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0)
+            i.attendance_summary?.adjustments_dirty === true ||
+            Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0) ||
+            Number(i.payroll_input_revision || 0) !== Number(i.payroll_snapshot_revision || 0)
           )
         );
         if (dirtyItem) return Promise.resolve({ data: null, error: { message: `Payroll attendance snapshot is stale for ${dirtyItem.employee_name_snapshot}. Recalculate before locking.` } });

@@ -680,6 +680,23 @@ async function fetchEligibleRegularEmployees(supabase, { businessUnit = 'ALL', p
 }
 
 /**
+ * Authoritative attendance source versions per employee for generation concurrency validation (P1-1).
+ */
+async function fetchAttendanceSourceVersions(supabase, employeeIds) {
+  if (!employeeIds || !employeeIds.length) return new Map();
+  try {
+    const { data: rows, error } = await supabase
+      .from('payroll_attendance_source_versions')
+      .select('employee_id, source_revision')
+      .in('employee_id', employeeIds);
+    if (error) return new Map();
+    return new Map((rows || []).map((r) => [r.employee_id, Number(r.source_revision || 0)]));
+  } catch (_e) {
+    return new Map();
+  }
+}
+
+/**
  * Generate regular payroll draft
  */
 async function generateRegularPayrollDraft(supabase, {
@@ -688,7 +705,8 @@ async function generateRegularPayrollDraft(supabase, {
   businessUnit = 'ALL',
   userEmail = 'owner@redbox.id',
   itemOverrides = {},
-}) {
+  maxRetries = 1,
+} = {}) {
   if (!periodStart || !periodEnd) {
     throw new Error('periodStart and periodEnd are required');
   }
@@ -723,6 +741,9 @@ async function generateRegularPayrollDraft(supabase, {
   // 3. Fetch attendance summaries
   const employeeIds = employees.map(e => e.id);
   const employeeMap = new Map(employees.map(e => [e.id, e]));
+
+  // Capture authoritative attendance source version(s) for the population BEFORE reading attendance (P1-1)
+  const sourceVersions = await fetchAttendanceSourceVersions(supabase, employeeIds);
 
   // 3a. Reconcile overtime BEFORE calculating: attendance overtime must exist as an approval candidate
   // so the draft cannot be READY while unreviewed overtime exists.
@@ -786,6 +807,12 @@ async function generateRegularPayrollDraft(supabase, {
       lateDeductionOverride: override.late_deduction,
       adjustments: override.adjustments || [],
     });
+
+    const empSourceVer = sourceVersions.get(emp.id) || 0;
+    itemResult.attendance_source_revision = empSourceVer;
+    itemResult.attendance_snapshot_revision = empSourceVer;
+    itemResult.payroll_input_revision = 0;
+    itemResult.payroll_snapshot_revision = 0;
 
     totalGross += itemResult.gross_pay;
     totalDeductions += itemResult.total_deduction;
@@ -870,6 +897,10 @@ async function generateRegularPayrollDraft(supabase, {
     attendance_summary: item.attendance_summary,
     warnings: item.warnings,
     status: item.status,
+    attendance_source_revision: item.attendance_source_revision ?? 0,
+    attendance_snapshot_revision: item.attendance_snapshot_revision ?? 0,
+    payroll_input_revision: item.payroll_input_revision ?? 0,
+    payroll_snapshot_revision: item.payroll_snapshot_revision ?? 0,
   }));
 
   const { data: created, error: createErr } = await supabase.rpc('create_regular_payroll_run', {
@@ -885,6 +916,21 @@ async function generateRegularPayrollDraft(supabase, {
   });
 
   if (createErr || !created || !created.run_id) {
+    if (/ATTENDANCE_CHANGED_DURING_GENERATION/i.test(createErr?.message || '')) {
+      if (maxRetries > 0) {
+        return generateRegularPayrollDraft(supabase, {
+          businessUnit,
+          periodStart,
+          periodEnd,
+          userEmail,
+          itemOverrides,
+          maxRetries: maxRetries - 1,
+        });
+      }
+      const err = new Error(`Attendance changed during draft generation: ${createErr.message}`);
+      err.code = 'ATTENDANCE_CHANGED_DURING_GENERATION';
+      throw err;
+    }
     const err = new Error(`Failed to create regular payroll run: ${createErr?.message || 'no run returned'}`);
     err.code = /Overlapping regular payroll run/i.test(createErr?.message || '') ? 'OVERLAPPING_RUN' : 'RUN_CREATE_FAILED';
     throw err;
@@ -1098,15 +1144,15 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
   }
   if (item.status === 'LOCKED') return null; // never touch frozen items
 
-  // Overtime review changes employee_overtime_approvals only; re-read it so the snapshot
-  // (hours, pending count) reflects the current approvals for this run's period.
-  // A payroll-relevant attendance change (late_minutes / status / punches / overtime / rows added or removed)
-  // marks the DRAFT item attendance_dirty (trg_attendance_payroll_sync) and increments attendance_source_revision.
+  // Generalized revisions across attendance, overtime, adjustments (P2)
+  const inputRevision = Number(item.payroll_input_revision || 0);
+  const snapshotRevision = Number(item.payroll_snapshot_revision || 0);
   const sourceRevision = Number(item.attendance_source_revision || 0);
-  const snapshotRevision = Number(item.attendance_snapshot_revision || 0);
+  const attSnapshotRevision = Number(item.attendance_snapshot_revision || 0);
   const attendanceStale = refreshAttendance ||
     item.attendance_summary?.attendance_dirty === true ||
-    sourceRevision !== snapshotRevision;
+    sourceRevision !== attSnapshotRevision ||
+    inputRevision !== snapshotRevision;
   let freshAttendance = false;
   let attendanceSummary = item.attendance_summary;
   let approvedOvertimeHours = item.overtime_hours;
@@ -1254,13 +1300,18 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
       attendance_coverage_status: calc.attendance_coverage_status,
       attendance_snapshot_revision: sourceRevision,
     } : {}),
+    payroll_snapshot_revision: inputRevision,
     overtime_hours: calc.overtime_hours,
     overtime_rate: calc.overtime_rate,
     overtime_amount: calc.overtime_amount,
-    attendance_summary: {
-      ...calc.attendance_summary,
-      ...(freshAttendance ? { attendance_dirty: false } : {}),
-    },
+    attendance_summary: (() => {
+      const summary = {
+        ...calc.attendance_summary,
+        ...(freshAttendance ? { attendance_dirty: false } : {}),
+      };
+      delete summary.adjustments_dirty;
+      return summary;
+    })(),
     warnings: calc.warnings,
     manual_bonus: calc.manual_bonus,
     debt_deduction: calc.debt_deduction,
@@ -1276,7 +1327,8 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
   let updateQuery = supabase
     .from('payroll_regular_items')
     .update(updatePayload)
-    .eq('id', itemId);
+    .eq('id', itemId)
+    .eq('payroll_input_revision', inputRevision);
 
   if (freshAttendance) {
     updateQuery = updateQuery.eq('attendance_source_revision', sourceRevision);
@@ -1288,14 +1340,19 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
     : await selectQuery.single();
 
   if (itemUpdErr || !updatedItem) {
-    if (!updatedItem && freshAttendance) {
+    if (!updatedItem) {
       const { data: cur } = await supabase
         .from('payroll_regular_items')
-        .select('attendance_source_revision, status')
+        .select('payroll_input_revision, attendance_source_revision, status')
         .eq('id', itemId)
         .maybeSingle();
 
-      if (cur && Number(cur.attendance_source_revision) !== sourceRevision) {
+      if (cur && Number(cur.payroll_input_revision) !== inputRevision) {
+        const err = new Error(`Payroll input changed during recalculation for item ${itemId} (revision ${inputRevision} -> ${cur.payroll_input_revision}). Recalculate again.`);
+        err.code = 'PAYROLL_INPUT_CHANGED_DURING_RECALCULATION';
+        throw err;
+      }
+      if (cur && freshAttendance && Number(cur.attendance_source_revision) !== sourceRevision) {
         const err = new Error(`Attendance changed during recalculation for item ${itemId} (revision ${sourceRevision} -> ${cur.attendance_source_revision}). Recalculate again.`);
         err.code = 'ATTENDANCE_CHANGED_DURING_RECALCULATION';
         throw err;
@@ -1354,7 +1411,7 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
   }
   const { data: items, error: itemsErr } = await fetchAllRows(() => supabase
     .from('payroll_regular_items')
-    .select('id, employee_id, attendance_summary, attendance_source_revision, attendance_snapshot_revision')
+    .select('id, employee_id, attendance_summary, attendance_source_revision, attendance_snapshot_revision, payroll_input_revision, payroll_snapshot_revision')
     .eq('payroll_run_id', runId)
     .order('id'));
   if (itemsErr) {
@@ -1375,7 +1432,9 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
   const targets = (items || []).filter(
     (i) => all ||
            i.attendance_summary?.attendance_dirty === true ||
-           Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0)
+           i.attendance_summary?.adjustments_dirty === true ||
+           Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0) ||
+           Number(i.payroll_input_revision || 0) !== Number(i.payroll_snapshot_revision || 0)
   );
   const recalculated = [];
   for (const it of targets) {
@@ -1387,7 +1446,7 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
         runCoverage,
       });
     } catch (err) {
-      if (err.code === 'ATTENDANCE_CHANGED_DURING_RECALCULATION') {
+      if (err.code === 'ATTENDANCE_CHANGED_DURING_RECALCULATION' || err.code === 'PAYROLL_INPUT_CHANGED_DURING_RECALCULATION') {
         // Retry once from fresh attendance
         res = await recalculateSingleRegularItem(supabase, runId, it.id, {
           refreshOvertime: true,
@@ -1573,13 +1632,15 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   // Attendance snapshot guard: no dirty items and source revision must match snapshot revision
   const { data: allItems, error: itemsReadErr } = await supabase
     .from('payroll_regular_items')
-    .select('id, employee_name_snapshot, attendance_summary, attendance_source_revision, attendance_snapshot_revision, status')
+    .select('id, employee_name_snapshot, attendance_summary, attendance_source_revision, attendance_snapshot_revision, payroll_input_revision, payroll_snapshot_revision, status')
     .eq('payroll_run_id', runId);
   if (itemsReadErr) throw new Error(`Cannot verify payroll items: ${itemsReadErr.message}`);
 
   const staleItem = (allItems || []).find((i) =>
     i.attendance_summary?.attendance_dirty === true ||
-    Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0)
+    i.attendance_summary?.adjustments_dirty === true ||
+    Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0) ||
+    Number(i.payroll_input_revision || 0) !== Number(i.payroll_snapshot_revision || 0)
   );
   if (staleItem) {
     throw new Error(`Cannot lock regular payroll: Payroll attendance snapshot is stale for ${staleItem.employee_name_snapshot}. Recalculate before locking.`);
@@ -1906,4 +1967,5 @@ module.exports = {
   computeRunAttendanceCoverage,
   isEmployeeEligibleForPeriod,
   fetchEligibleRegularEmployees,
+  fetchAttendanceSourceVersions,
 };

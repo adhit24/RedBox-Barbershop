@@ -28,6 +28,21 @@ function emulateCreateRegularPayrollRun(store, args, { idFactory, failItemInsert
     return { data: null, error: { message: `Overlapping regular payroll run exists: ${overlap.id} (a DRAFT or LOCKED run already covers this period and business unit)` } };
   }
 
+  // Validate authoritative attendance source versions (P1-1)
+  for (const it of itemsIn) {
+    const rec = (store.payroll_attendance_source_versions || []).find((v) => v.employee_id === it.employee_id);
+    const currVer = Number(rec?.source_revision || 0);
+    const expectedVer = Number(it.attendance_source_revision || 0);
+    if (currVer !== expectedVer) {
+      return {
+        data: null,
+        error: {
+          message: `ATTENDANCE_CHANGED_DURING_GENERATION: attendance source changed for employee ${it.employee_id} (expected ${expectedVer}, current ${currVer})`,
+        },
+      };
+    }
+  }
+
   const before = { runs: runs.length, items: items.length };
   const runId = idFactory();
   runs.push({
@@ -51,8 +66,10 @@ function emulateCreateRegularPayrollRun(store, args, { idFactory, failItemInsert
         payroll_run_id: runId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        attendance_source_revision: 0,
-        attendance_snapshot_revision: 0,
+        attendance_source_revision: Number(it.attendance_source_revision || 0),
+        attendance_snapshot_revision: Number(it.attendance_snapshot_revision || 0),
+        payroll_input_revision: Number(it.payroll_input_revision || 0),
+        payroll_snapshot_revision: Number(it.payroll_snapshot_revision || 0),
         ...it,
       });
     }

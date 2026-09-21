@@ -56,8 +56,10 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   assert.ok(blockReview, 'block review-required migration exists');
   const versionSnapshot = list.find((f) => /version_attendance_payroll_snapshot/.test(f));
   assert.ok(versionSnapshot, 'version attendance snapshot migration exists');
+  const generalizeConcurrency = list.find((f) => /generalize_payroll_snapshot_concurrency/.test(f));
+  assert.ok(generalizeConcurrency, 'generalize concurrency migration exists');
   const last = list[list.length - 1];
-  assert.match(last, /version_attendance_payroll_snapshot/);
+  assert.match(last, /generalize_payroll_snapshot_concurrency/);
   assert.ok(
     restore > '20260919143000' &&
       pendingGuard > restore &&
@@ -65,8 +67,9 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
       lifecycle > reconcile &&
       syncDirty > lifecycle &&
       blockReview > syncDirty &&
-      versionSnapshot > blockReview,
-    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required < version snapshot'
+      versionSnapshot > blockReview &&
+      generalizeConcurrency > versionSnapshot,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required < version snapshot < generalize concurrency'
   );
 });
 
@@ -433,6 +436,59 @@ test('Round 9: lock_payroll_run blocks locking when source_revision <> snapshot_
   const { sql } = versionAttendanceMigration();
   const body = norm(functionBody(sql));
   assert.match(body, /v_snap_item\.attendance_dirty OR v_snap_item\.attendance_source_revision <> v_snap_item\.attendance_snapshot_revision/);
+  assert.match(body, /Payroll attendance snapshot is stale for %\. Recalculate before locking\./);
+  for (const inv of [
+    'FOR UPDATE',
+    'find_overlapping_regular_run',
+    "status = 'REVIEW_REQUIRED'",
+    'MISSING_ATTENDANCE',
+    'pending overtime approval',
+    'no longer match attendance overtime',
+    'adjustments_dirty',
+    'attendance_period_complete',
+    'Reconciliation failed for %',
+    "SET status = 'LOCKED'",
+  ]) {
+    assert.ok(body.includes(inv), 'invariant kept: ' + inv);
+  }
+  assert.ok(norm(elseBranch(functionBody(sql))).includes('payroll_source_claims'), 'barber branch preserved');
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.lock_payroll_run\(UUID, TEXT\) TO service_role/);
+  assert.doesNotMatch(sql, /GRANT [^;]*TO (anon|authenticated|PUBLIC)/i);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 10: generalized concurrency, DRAFT-only migration backfill, generation race closure
+// ---------------------------------------------------------------------------------------------
+function generalizeConcurrencyMigration() {
+  const f = fs.readdirSync(MIGRATIONS_DIR).find((n) => /generalize_payroll_snapshot_concurrency/.test(n));
+  assert.ok(f, 'generalize concurrency migration exists');
+  return { file: f, sql: read(f) };
+}
+
+test('Round 10: migration adds generalized revision columns and attendance source versions table', () => {
+  const { sql } = generalizeConcurrencyMigration();
+  const n = norm(sql);
+  assert.match(n, /ALTER TABLE public\.payroll_regular_items ADD COLUMN IF NOT EXISTS payroll_input_revision BIGINT NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS payroll_snapshot_revision BIGINT NOT NULL DEFAULT 0/);
+  assert.match(n, /CREATE TABLE IF NOT EXISTS public\.payroll_attendance_source_versions/);
+});
+
+test('Round 10: migration initializes revisions for DRAFT runs ONLY (never mutating LOCKED rows) (P1-2)', () => {
+  const { sql } = generalizeConcurrencyMigration();
+  const n = norm(sql);
+  assert.match(n, /UPDATE public\.payroll_regular_items i SET .* FROM public\.payroll_runs r WHERE i\.payroll_run_id = r\.id AND r\.status = 'DRAFT'/);
+});
+
+test('Round 10: create_regular_payroll_run validates authoritative source versions (P1-1)', () => {
+  const { sql } = generalizeConcurrencyMigration();
+  const n = norm(sql);
+  assert.match(n, /ATTENDANCE_CHANGED_DURING_GENERATION/);
+  assert.match(n, /PERFORM pg_advisory_xact_lock\(hashtext\('redbox\.regular_payroll_run_overlap'\)\)/);
+});
+
+test('Round 10: lock_payroll_run blocks locking when payroll_input_revision <> payroll_snapshot_revision (P2)', () => {
+  const { sql } = generalizeConcurrencyMigration();
+  const body = norm(functionBody(sql));
+  assert.match(body, /v_snap_item\.payroll_input_revision <> v_snap_item\.payroll_snapshot_revision/);
   assert.match(body, /Payroll attendance snapshot is stale for %\. Recalculate before locking\./);
   for (const inv of [
     'FOR UPDATE',
