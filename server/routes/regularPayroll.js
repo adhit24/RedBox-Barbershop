@@ -9,6 +9,7 @@ const {
   addRegularPayrollAdjustment,
   deleteRegularPayrollAdjustment,
   lockRegularPayrollRun,
+  recalculateRegularPayrollRun,
   listOvertimeApprovals,
   reviewOvertimeApproval,
   syncOvertimeCandidates,
@@ -140,6 +141,17 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
     } catch (err) {
       console.error('[RegularPayrollRoutes] lock error:', err);
       return res.status(400).json({ error: err.message || 'Failed to lock payroll run' });
+    }
+  });
+
+  // 4b. POST /:id/recalculate — Rebuild stale (attendance_dirty) items of a DRAFT run (Owner only)
+  router.post('/:id/recalculate', adminAuth, requireOwner, async (req, res) => {
+    try {
+      const result = await recalculateRegularPayrollRun(supabase, req.params.id, { all: req.body?.all === true });
+      return res.json(result);
+    } catch (err) {
+      console.error('[RegularPayrollRoutes] recalculate error:', err);
+      return res.status(400).json({ error: err.message || 'Failed to recalculate payroll run', code: err.code });
     }
   });
 

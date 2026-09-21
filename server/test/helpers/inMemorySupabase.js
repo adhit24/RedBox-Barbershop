@@ -19,6 +19,21 @@ function createInMemorySupabase(store, opts = {}) {
     const item = (store.payroll_regular_items || []).find((i) => i.id === itemId);
     if (item) item.attendance_summary = { ...(item.attendance_summary || {}), adjustments_dirty: true };
   };
+  // trg_attendance_payroll_sync: a payroll-relevant employee_attendance change marks the employee's DRAFT items
+  // attendance_dirty; LOCKED runs are never touched (anomaly log instead). Mirrors apply_attendance_payroll_effect.
+  const ATT_FIELDS = ['status', 'late_minutes', 'overtime_minutes', 'first_check_in', 'last_check_out'];
+  const attendanceEffect = (employeeId, date, operation) => {
+    for (const run of store.payroll_runs || []) {
+      if (!['REGULAR', 'REGULAR_PAYROLL'].includes(run.payroll_type)) continue;
+      if (!(date >= run.period_start && date <= run.period_end)) continue;
+      const items = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === run.id && i.employee_id === employeeId);
+      if (run.status === 'DRAFT') {
+        items.filter((i) => i.status !== 'LOCKED').forEach((i) => { i.attendance_summary = { ...(i.attendance_summary || {}), attendance_dirty: true }; });
+      } else if (run.status === 'LOCKED' && items.length) {
+        (store.payroll_attendance_post_lock_anomalies = store.payroll_attendance_post_lock_anomalies || []).push({ payroll_run_id: run.id, employee_id: employeeId, attendance_date: date, operation });
+      }
+    }
+  };
   const CAP = 1000;
   let seq = 1;
 
@@ -66,8 +81,8 @@ function createInMemorySupabase(store, opts = {}) {
         if (selMsg) return res({ data: null, error: { message: selMsg } });
         res({ data: run(), error: null });
       },
-      single: async () => { const r = run()[0]; return { data: r || null, error: r ? null : { message: 'not found' } }; },
-      maybeSingle: async () => ({ data: run()[0] || null, error: null }),
+      single: async () => { const sm = fail('select'); if (sm) return { data: null, error: { message: sm } }; const r = run()[0]; return { data: r || null, error: r ? null : { message: 'not found' } }; },
+      maybeSingle: async () => { const sm = fail('select'); if (sm) return { data: null, error: { message: sm } }; return { data: run()[0] || null, error: null }; },
       insert(v) {
         const msg = fail('insert');
         if (msg) {
@@ -90,6 +105,12 @@ function createInMemorySupabase(store, opts = {}) {
             }
           }
         }
+        if (emulateTriggers && name === 'employee_attendance') {
+          for (const r of arr) {
+            const existing = rows.find((x) => x.employee_id === r.employee_id && x.attendance_date === r.attendance_date);
+            if (!(existing && ATT_FIELDS.every((f) => existing[f] === r[f]))) attendanceEffect(r.employee_id, r.attendance_date, 'INSERT');
+          }
+        }
         rows.push(...arr);
         if (emulateTriggers && name === 'payroll_adjustments') arr.forEach((r) => markDirty(r.payroll_regular_item_id));
         const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
@@ -104,6 +125,11 @@ function createInMemorySupabase(store, opts = {}) {
               return o;
             }
             const hit = rows.filter((r) => r[c] === val);
+            if (emulateTriggers && name === 'employee_attendance') {
+              hit.forEach((r) => {
+                if (ATT_FIELDS.some((f) => f in u && u[f] !== r[f])) attendanceEffect(r.employee_id, r.attendance_date, 'UPDATE');
+              });
+            }
             hit.forEach((r) => Object.assign(r, u));
             const o = { select() { return o; }, single: async () => ({ data: hit[0] || null, error: hit[0] ? null : { message: 'not found' } }), then(res) { res({ data: hit, error: null }); } };
             return o;
@@ -118,6 +144,7 @@ function createInMemorySupabase(store, opts = {}) {
             const i = rows.findIndex((r) => r[c] === val);
             let removed = null;
             if (i >= 0) removed = rows.splice(i, 1)[0];
+            if (emulateTriggers && name === 'employee_attendance' && removed) attendanceEffect(removed.employee_id, removed.attendance_date, 'DELETE');
             if (emulateTriggers && name === 'payroll_adjustments' && removed) markDirty(removed.payroll_regular_item_id);
             return Promise.resolve({ error: null });
           },
@@ -140,6 +167,9 @@ function createInMemorySupabase(store, opts = {}) {
         const runRow = (store.payroll_runs || []).find((r) => r.id === args.p_run_id);
         if (!runRow) return Promise.resolve({ data: null, error: { message: `Payroll run ${args.p_run_id} not found` } });
         if (runRow.status !== 'DRAFT') return Promise.resolve({ data: null, error: { message: `Cannot lock payroll run: current status is ${runRow.status}` } });
+        // lock invariant: a DRAFT item whose attendance changed after calculation cannot be locked
+        const dirtyItem = (store.payroll_regular_items || []).find((i) => i.payroll_run_id === runRow.id && i.attendance_summary?.attendance_dirty === true);
+        if (dirtyItem) return Promise.resolve({ data: null, error: { message: `Payroll attendance snapshot is stale for ${dirtyItem.employee_name_snapshot}. Recalculate before locking.` } });
         runRow.status = 'LOCKED';
         (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id).forEach((i) => { i.status = 'LOCKED'; });
         return Promise.resolve({ data: { success: true, status: 'LOCKED', run_id: runRow.id }, error: null });

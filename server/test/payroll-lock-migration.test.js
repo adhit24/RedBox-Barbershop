@@ -49,10 +49,12 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   const reconcile = list.find((f) => /reconcile_overtime_before_payroll_lock/.test(f));
   assert.ok(reconcile, 'overtime reconciliation migration exists');
   const last = list[list.length - 1];
-  assert.match(last, /atomic_regular_payroll_lifecycle/);
+  const lifecycle = list.find((f) => /atomic_regular_payroll_lifecycle/.test(f));
+  assert.ok(lifecycle, 'atomic lifecycle migration exists');
+  assert.match(last, /attendance_payroll_sync_dirty_marker/);
   assert.ok(
-    restore > '20260919143000' && pendingGuard > restore && reconcile > pendingGuard && last > reconcile,
-    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle'
+    restore > '20260919143000' && pendingGuard > restore && reconcile > pendingGuard && lifecycle > reconcile && last > lifecycle,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync'
   );
 });
 
@@ -159,7 +161,7 @@ test('Corrective migration is forward-only: applied migrations were not edited t
   // The regressed migration is left as historically applied (generic lock still present) ...
   assert.match(regressed, /status = 'LOCKED'/);
   // ... and the fix lives in a new file that does not run schema DDL beyond the function.
-  const corrective = read(definers().pop());
+  const corrective = read(definers().find((f) => /reconcile_overtime_before_payroll_lock/.test(f)));
   assert.doesNotMatch(corrective, /CREATE TABLE|ALTER TABLE|DROP (TABLE|COLUMN|SCHEMA|FUNCTION)/i);
 });
 
@@ -308,4 +310,53 @@ test('Lifecycle migration: no privilege widening, earlier migrations untouched',
   for (const f of fs.readdirSync(MIGRATIONS_DIR).filter((n) => /restore_barber_lock|block_pending_overtime|reconcile_overtime_before|serialize_regular_payroll/.test(n))) {
     assert.doesNotMatch(read(f), /create_regular_payroll_run|find_overlapping_regular_run|adjustments_dirty/, `${f} was not edited`);
   }
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 7: attendance-wide payroll sync + attendance_dirty marker
+// ---------------------------------------------------------------------------------------------
+function attendanceSyncMigration() {
+  const f = fs.readdirSync(MIGRATIONS_DIR).find((n) => /attendance_payroll_sync_dirty_marker/.test(n));
+  assert.ok(f, 'attendance sync migration exists');
+  return { file: f, sql: read(f) };
+}
+
+test('Attendance sync: fires on every payroll-relevant field the engine reads (not only overtime)', () => {
+  const n = norm(attendanceSyncMigration().sql);
+  assert.match(n, /BEFORE UPDATE OF employee_id, attendance_date, status, late_minutes, overtime_minutes, first_check_in, last_check_out ON public.employee_attendance/);
+  assert.match(n, /BEFORE INSERT ON public.employee_attendance/);
+  assert.match(n, /BEFORE DELETE ON public.employee_attendance/);
+  for (const f of ['status', 'late_minutes', 'overtime_minutes', 'first_check_in', 'last_check_out']) {
+    assert.match(n, new RegExp('NEW\.' + f + ' IS NOT DISTINCT FROM OLD\.' + f), f + ' compared on UPDATE');
+  }
+  // the old overtime-only triggers are gone
+  assert.match(n, /DROP TRIGGER IF EXISTS trg_attendance_overtime_serialize_upd ON public.employee_attendance/);
+  // metadata columns never take part
+  assert.doesNotMatch(n, /raw_punches IS DISTINCT|NEW.source IS|NEW.notes/);
+});
+
+test('Attendance sync: takes the SHARE-lock helper first, marks DRAFT items dirty, never mutates LOCKED runs', () => {
+  const n = norm(attendanceSyncMigration().sql);
+  const fn = n.slice(n.indexOf('FUNCTION public.apply_attendance_payroll_effect'), n.indexOf('FUNCTION public.trg_attendance_payroll_sync'));
+  assert.ok(fn.indexOf('serialize_regular_payroll_mutation') < fn.indexOf('attendance_dirty'), 'serialize before marking');
+  assert.match(fn, /r.status = 'DRAFT'/);
+  assert.match(fn, /'{attendance_dirty}', 'true'::jsonb/);
+  assert.match(fn, /INSERT INTO public.payroll_attendance_post_lock_anomalies/);
+  assert.match(fn, /r.status = 'LOCKED'/);
+  assert.doesNotMatch(fn, /UPDATE public.payroll_runs/);
+  assert.match(n, /ALTER TABLE public.payroll_attendance_post_lock_anomalies ENABLE ROW LEVEL SECURITY/);
+  assert.match(n, /REVOKE ALL ON public.payroll_attendance_post_lock_anomalies FROM PUBLIC, anon, authenticated/);
+});
+
+test('Attendance sync: lock_payroll_run rejects a dirty attendance snapshot and keeps every older invariant + barber branch', () => {
+  const sql = attendanceSyncMigration().sql;
+  const body = norm(functionBody(sql));
+  assert.match(body, /attendance_summary ->> 'attendance_dirty'/);
+  assert.match(body, /IF v_snap_item.attendance_dirty THEN RAISE EXCEPTION 'Payroll attendance snapshot is stale for %/);
+  for (const inv of ['FOR UPDATE', 'find_overlapping_regular_run', 'pending overtime approval', 'no longer match attendance overtime', 'adjustments_dirty', 'attendance_period_complete', 'Reconciliation failed for %']) {
+    assert.ok(body.includes(inv), 'invariant kept: ' + inv);
+  }
+  assert.ok(norm(elseBranch(functionBody(sql))).includes('payroll_source_claims'), 'barber branch preserved');
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.lock_payroll_run\(UUID, TEXT\) TO service_role/);
+  assert.doesNotMatch(sql, /GRANT [^;]*TO (anon|authenticated|PUBLIC)/i);
 });
