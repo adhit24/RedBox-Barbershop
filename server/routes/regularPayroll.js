@@ -14,9 +14,27 @@ const {
   syncOvertimeCandidates,
 } = require('../services/regularPayrollService');
 
-function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
+function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
   const router = express.Router();
-  const adminAuth = createBackofficeSupabaseAuth(supabase, legacyAdminAuth);
+  // options.adminAuth lets tests inject the auth middleware; production always uses Supabase auth.
+  const adminAuth = options.adminAuth || createBackofficeSupabaseAuth(supabase, legacyAdminAuth);
+
+  // Overtime branch authority: OWNER -> all branches; MANAGER / BRANCH_ADMIN -> the branch assigned in
+  // their verified session (employee branch, never the fingerprint machine). A branch-bound role
+  // without an assigned branch gets no overtime access (fail closed).
+  function overtimeScope(req, res, next) {
+    const role = req.adminAuth?.role;
+    if (role === 'owner') {
+      req.overtimeBranchScope = null;
+      return next();
+    }
+    const branch = req.adminAuth?.branch;
+    if (!branch) {
+      return res.status(403).json({ error: 'Forbidden: akun belum memiliki cabang yang ditetapkan untuk persetujuan lembur' });
+    }
+    req.overtimeBranchScope = branch;
+    return next();
+  }
 
   // Helper guard: Owner only
   function requireOwner(req, res, next) {
@@ -149,7 +167,7 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
   });
 
   // 7. GET /overtime/approvals — List overtime approvals
-  router.get('/overtime/approvals', adminAuth, async (req, res) => {
+  router.get('/overtime/approvals', adminAuth, overtimeScope, async (req, res) => {
     try {
       const { period_start, period_end, employee_id, status } = req.query;
       const approvals = await listOvertimeApprovals(supabase, {
@@ -157,6 +175,7 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
         periodEnd: period_end || null,
         employeeId: employee_id || null,
         status: status || null,
+        branchScope: req.overtimeBranchScope,
       });
       return res.json({ approvals });
     } catch (err) {
@@ -166,7 +185,7 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
   });
 
   // 8. POST /overtime/approvals/:id/review — Review overtime candidate (Approve / Reject) (Owner/Manager only)
-  router.post('/overtime/approvals/:id/review', adminAuth, requireOwnerOrManager, async (req, res) => {
+  router.post('/overtime/approvals/:id/review', adminAuth, requireOwnerOrManager, overtimeScope, async (req, res) => {
     try {
       const approvalId = req.params.id;
       const { status, approved_minutes, note } = req.body || {};
@@ -181,6 +200,7 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
         approvedMinutes: approved_minutes,
         note,
         userEmail: req.adminAuth?.email || 'manager@redbox.id',
+        branchScope: req.overtimeBranchScope,
       });
       if (result.approval_saved && !result.recalculation_success) {
         // Approval is committed but the payroll snapshot could not follow (e.g. run locked concurrently).
@@ -192,17 +212,19 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
       return res.json(result);
     } catch (err) {
       console.error('[RegularPayrollRoutes] review overtime error:', err);
+      if (err.code === 'FORBIDDEN_BRANCH') return res.status(403).json({ error: err.message });
       return res.status(400).json({ error: err.message || 'Failed to review overtime approval' });
     }
   });
 
   // 9. POST /overtime/sync — Sync candidate overtime from attendance records (Owner/Manager only)
-  router.post('/overtime/sync', adminAuth, requireOwnerOrManager, async (req, res) => {
+  router.post('/overtime/sync', adminAuth, requireOwnerOrManager, overtimeScope, async (req, res) => {
     try {
       const { period_start, period_end } = req.body || {};
       const result = await syncOvertimeCandidates(supabase, {
         periodStart: period_start || null,
         periodEnd: period_end || null,
+        branchScope: req.overtimeBranchScope,
       });
       return res.json(result);
     } catch (err) {
