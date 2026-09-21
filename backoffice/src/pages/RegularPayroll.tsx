@@ -375,7 +375,7 @@ export function RegularPayroll() {
   // Run dirty state (stale attendance requiring recalculation)
   const isRunDirty = useMemo(() => {
     return items.some(
-      (item: any) =>
+      (item) =>
         item.attendance_summary?.attendance_dirty === true ||
         (item.attendance_source_revision !== undefined &&
           item.attendance_snapshot_revision !== undefined &&
@@ -386,7 +386,7 @@ export function RegularPayroll() {
   // Blocking safety guard items
   const blockingItems = useMemo(() => {
     return items.filter(
-      (item: any) =>
+      (item) =>
         item.status === 'MISSING_ATTENDANCE' ||
         item.status === 'MISSING_SALARY' ||
         item.status === 'BLOCKED_ATTENDANCE_SOURCE' ||

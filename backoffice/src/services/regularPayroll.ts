@@ -34,6 +34,10 @@ export interface AttendanceSummary {
   overtime_hours: number;
   incomplete_attendance: number;
   unresolved_exceptions_count: number;
+  attendance_dirty?: boolean;
+  adjustments_dirty?: boolean;
+  approved_overtime_minutes?: number;
+  pending_overtime_count?: number;
 }
 
 export interface RegularPayrollAdjustment {
@@ -97,6 +101,8 @@ export interface RegularPayrollItem {
   take_home_pay: number;
 
   attendance_summary: AttendanceSummary;
+  attendance_source_revision?: number;
+  attendance_snapshot_revision?: number;
   warnings: string[];
   attendance_period_expected?: string;
   attendance_period_available?: string;
