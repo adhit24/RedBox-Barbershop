@@ -600,7 +600,7 @@ async function deleteRegularPayrollAdjustment(supabase, { adjustmentId }) {
 /**
  * Helper to recalculate a single regular item in draft after adjustments change
  */
-async function recalculateSingleRegularItem(supabase, runId, itemId) {
+async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOvertime = false } = {}) {
   // Fetch item
   const { data: item } = await supabase
     .from('payroll_regular_items')
@@ -608,6 +608,38 @@ async function recalculateSingleRegularItem(supabase, runId, itemId) {
     .eq('id', itemId)
     .single();
   if (!item) return;
+  if (item.status === 'LOCKED') return null; // never touch frozen items
+
+  // Overtime review changes employee_overtime_approvals only; re-read it so the snapshot
+  // (hours, pending count) reflects the current approvals for this run's period.
+  let attendanceSummary = item.attendance_summary;
+  let approvedOvertimeHours = item.overtime_hours;
+  if (refreshOvertime) {
+    const { data: run } = await supabase
+      .from('payroll_runs')
+      .select('period_start, period_end')
+      .eq('id', runId)
+      .single();
+    const { data: otRows } = await supabase
+      .from('employee_overtime_approvals')
+      .select('attendance_date, approved_overtime_minutes, status')
+      .eq('employee_id', item.employee_id)
+      .gte('attendance_date', run.period_start)
+      .lte('attendance_date', run.period_end);
+    let approvedMinutes = 0;
+    let pendingCount = 0;
+    for (const ot of otRows || []) {
+      if (ot.status === 'APPROVED') approvedMinutes += Number(ot.approved_overtime_minutes || 0);
+      else if (ot.status === 'PENDING') pendingCount++;
+    }
+    approvedOvertimeHours = Math.round((approvedMinutes / 60) * 10) / 10;
+    attendanceSummary = {
+      ...(item.attendance_summary || {}),
+      approved_overtime_minutes: approvedMinutes,
+      pending_overtime_count: pendingCount,
+      overtime_hours: approvedOvertimeHours,
+    };
+  }
 
   // Fetch employee master
   const { data: emp } = await supabase
@@ -630,7 +662,7 @@ async function recalculateSingleRegularItem(supabase, runId, itemId) {
       position: item.position_snapshot,
       base_salary: item.base_salary,
     },
-    attendanceSummary: item.attendance_summary,
+    attendanceSummary,
     allowances: {
       meal_allowance_days: item.meal_allowance_days,
       meal_allowance_rate: item.meal_allowance_rate,
@@ -642,7 +674,7 @@ async function recalculateSingleRegularItem(supabase, runId, itemId) {
       product_commission_source: item.product_commission_source,
       service_barber_amount: item.service_barber_amount,
       service_barber_source: item.service_barber_source,
-      approved_overtime_hours: item.overtime_hours,
+      approved_overtime_hours: approvedOvertimeHours,
     },
     lateDeductionOverride: item.late_deduction,
     adjustments: adjs || [],
@@ -652,6 +684,11 @@ async function recalculateSingleRegularItem(supabase, runId, itemId) {
   await supabase
     .from('payroll_regular_items')
     .update({
+      overtime_hours: calc.overtime_hours,
+      overtime_rate: calc.overtime_rate,
+      overtime_amount: calc.overtime_amount,
+      attendance_summary: calc.attendance_summary,
+      warnings: calc.warnings,
       manual_bonus: calc.manual_bonus,
       debt_deduction: calc.debt_deduction,
       manual_deduction: calc.manual_deduction,
@@ -666,6 +703,27 @@ async function recalculateSingleRegularItem(supabase, runId, itemId) {
 
   // Update run header summary
   await refreshRunSummary(supabase, runId);
+
+  return {
+    run_id: runId,
+    item_id: itemId,
+    employee_id: item.employee_id,
+    before: {
+      overtime_hours: item.overtime_hours,
+      overtime_amount: item.overtime_amount,
+      gross_pay: item.gross_pay,
+      take_home_pay: item.take_home_pay,
+      status: item.status,
+    },
+    after: {
+      overtime_hours: calc.overtime_hours,
+      overtime_amount: calc.overtime_amount,
+      gross_pay: calc.gross_pay,
+      take_home_pay: calc.take_home_pay,
+      status: calc.status,
+      pending_overtime_count: calc.attendance_summary.pending_overtime_count,
+    },
+  };
 }
 
 /**
@@ -833,7 +891,38 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
     .single();
 
   if (updErr) throw new Error(`Failed to update overtime approval: ${updErr.message}`);
-  return { success: true, approval: updated };
+
+  // Propagate the review into every affected DRAFT regular payroll run. LOCKED runs are never
+  // touched (they are excluded here, and the DB immutability triggers reject writes anyway).
+  const recalculation = { updated: [], error: null };
+  try {
+    const { data: draftRuns, error: runsErr } = await supabase
+      .from('payroll_runs')
+      .select('id')
+      .eq('payroll_type', 'REGULAR')
+      .eq('status', 'DRAFT')
+      .lte('period_start', updated.attendance_date)
+      .gte('period_end', updated.attendance_date);
+    if (runsErr) throw new Error(runsErr.message);
+
+    for (const run of draftRuns || []) {
+      const { data: items } = await supabase
+        .from('payroll_regular_items')
+        .select('id')
+        .eq('payroll_run_id', run.id)
+        .eq('employee_id', updated.employee_id);
+      for (const it of items || []) {
+        const res = await recalculateSingleRegularItem(supabase, run.id, it.id, { refreshOvertime: true });
+        if (res) recalculation.updated.push(res);
+      }
+    }
+  } catch (recalcErr) {
+    // The approval itself is already saved; surface the failure instead of hiding a stale draft.
+    console.error('[RegularPayrollService] overtime recalculation failed:', recalcErr.message);
+    recalculation.error = recalcErr.message;
+  }
+
+  return { success: true, approval: updated, recalculation };
 }
 
 /**

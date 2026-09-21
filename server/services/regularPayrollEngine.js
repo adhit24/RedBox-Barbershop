@@ -303,6 +303,8 @@ function calculateRegularPayrollItem({
       late_count: lateCount,
       late_minutes: lateMinutes,
       overtime_hours: approvedOvertimeHours,
+      approved_overtime_minutes: Number(attendanceSummary.approved_overtime_minutes ?? Math.round(approvedOvertimeHours * 60)),
+      pending_overtime_count: Number(attendanceSummary.pending_overtime_count ?? 0),
       incomplete_attendance: incompleteCount,
       unresolved_exceptions_count: exceptionCount,
       attendance_coverage_days: Number(attendanceSummary.attendance_coverage_days ?? attendanceSummary.records_count ?? 0),
