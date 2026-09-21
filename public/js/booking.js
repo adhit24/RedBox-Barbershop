@@ -1781,11 +1781,13 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (typeof RedboxBookingLeadTime !== 'undefined') {
  const refDate = getServerOrLocalWibDate();
  const leadResult = RedboxBookingLeadTime.filterSlotsForLeadTime({
- slots,
- bookingDate: state.date,
- branch: state.location,
- refDate,
- });
+      slots,
+      bookingDate: state.date,
+      branch: state.location,
+      isHomeService: isHomeService,
+      bookingType: isHomeService ? 'home_service' : 'outlet',
+      refDate,
+    });
  visibleSlots = leadResult.filteredSlots;
  earliestAllowedSlot = leadResult.earliestAllowedSlot;
  } else {
@@ -2204,11 +2206,13 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (typeof RedboxBookingLeadTime !== 'undefined') {
  const refDate = getServerOrLocalWibDate();
  const p1Lead = RedboxBookingLeadTime.isBookingLeadTimeAllowed({
- bookingDate: state.date,
- bookingTime: state.time,
- branch: state.location,
- refDate,
- });
+      bookingDate: state.date,
+      bookingTime: state.time,
+      branch: state.location,
+      isHomeService: isHomeService,
+      bookingType: isHomeService ? 'home_service' : 'outlet',
+      refDate,
+    });
  if (!p1Lead.allowed) {
  alert('Mohon maaf: ' + (p1Lead.message || 'Booking harus dilakukan minimal 1 jam sebelumnya.') + ' Silakan pilih jadwal lain.');
  _releaseBtn();
@@ -2218,11 +2222,13 @@ document.addEventListener('DOMContentLoaded', async () => {
  }
  if (isGroup() && state.person2?.time) {
  const p2Lead = RedboxBookingLeadTime.isBookingLeadTimeAllowed({
- bookingDate: state.date,
- bookingTime: state.person2.time,
- branch: state.location,
- refDate,
- });
+      bookingDate: state.date,
+      bookingTime: state.person2.time,
+      branch: state.location,
+      isHomeService: isHomeService,
+      bookingType: isHomeService ? 'home_service' : 'outlet',
+      refDate,
+    });
  if (!p2Lead.allowed) {
  alert('Mohon maaf (Orang 2): ' + (p2Lead.message || 'Booking harus dilakukan minimal 1 jam sebelumnya.') + ' Silakan pilih jadwal lain.');
  _releaseBtn();

@@ -29,7 +29,7 @@ const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membe
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
 const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
-const { isBookingLeadTimeAllowed, safeAdminTokenMatch } = require('./utils/bookingLeadTime');
+const { isBookingLeadTimeAllowed, safeAdminTokenMatch, isHomeServiceBooking } = require('./utils/bookingLeadTime');
 const { isServerTestEnvironment } = require('./utils/testIsolation');
 // Task 17.2 (CRM Integrity Round 3) — Correction Round 1, Blocker 1: only
 // linkNewlyCreatedBooking is actually called from this file; the other
@@ -1249,6 +1249,23 @@ function isWeddingBooking({ type, service }) {
   return bookingType === 'wedding' || serviceName.includes('wedding') || serviceName.includes('weeding');
 }
 
+function normalizeBookingType({ type, service, notes } = {}) {
+  if (isWeddingBooking({ type, service })) {
+    return 'wedding';
+  }
+  if (isHomeServiceBooking({ type, service, notes })) {
+    return 'home_service';
+  }
+  const cleanType = String(type || '').trim().toLowerCase();
+  if (cleanType === 'home_service' || cleanType === 'homeservice' || cleanType === 'home-service') {
+    return 'home_service';
+  }
+  if (cleanType === 'wedding') {
+    return 'wedding';
+  }
+  return 'outlet';
+}
+
 function normalizeBookingPrice({ service_id, service, price, type, location }) {
   const serviceKey = String(service_id || '').trim().toLowerCase().replace(/^weeding-/, 'wedding-');
   const serviceName = String(service || '').trim().toLowerCase();
@@ -1369,10 +1386,14 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
     ? new Date(req.headers['x-test-reference-time'])
     : undefined;
+  const normalizedBookingType = normalizeBookingType({ type, service, notes });
+  const isHomeService = normalizedBookingType === 'home_service';
   const leadTimeCheck = isBookingLeadTimeAllowed({
     bookingDate: date,
     bookingTime: time,
     branch: resolvedLocation,
+    bookingType: normalizedBookingType,
+    isHomeService,
     isAdmin,
     refDate: testRefDate,
   });
@@ -2023,10 +2044,14 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
       ? new Date(req.headers['x-test-reference-time'])
       : undefined;
+    const itemBookingType = normalizeBookingType({ type, service, notes });
+    const isItemHomeService = itemBookingType === 'home_service';
     const itemLeadTimeCheck = isBookingLeadTimeAllowed({
       bookingDate: date,
       bookingTime: time,
       branch: resolvedLoc,
+      bookingType: itemBookingType,
+      isHomeService: isItemHomeService,
       isAdmin,
       refDate: testRefDate,
     });

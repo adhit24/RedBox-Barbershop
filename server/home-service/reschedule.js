@@ -5,29 +5,11 @@ const { sendWA } = require('../services/fonnte');
 const { getWibDateTime, isBookingLeadTimeAllowed } = require('../utils/bookingLeadTime');
 
 async function reschedule(supabase, { jobId, newStartTime, isAdmin = false, testRefDate = undefined }) {
-  // 0. Lead time check: prevent customer from rescheduling to today < 60 min
   const newDateObj = new Date(newStartTime);
   if (isNaN(newDateObj.getTime())) {
     throw Object.assign(new Error('Format newStartTime tidak valid'), { statusCode: 400 });
   }
-  const newWib = getWibDateTime(newDateObj);
-  const leadTimeCheck = isBookingLeadTimeAllowed({
-    bookingDate: newWib.dateStr,
-    bookingTime: newWib.timeStr,
-    isAdmin,
-    refDate: testRefDate,
-  });
-  if (!leadTimeCheck.allowed) {
-    throw Object.assign(
-      new Error(leadTimeCheck.message),
-      {
-        statusCode: 422,
-        code: leadTimeCheck.error,
-        earliestAllowedSlot: leadTimeCheck.earliestAllowedSlot || null,
-        timezone: leadTimeCheck.timezone,
-      }
-    );
-  }
+
   // 1. Load job
   const { data: job, error: jobErr } = await supabase
     .from('home_service_jobs')
@@ -49,7 +31,30 @@ async function reschedule(supabase, { jobId, newStartTime, isAdmin = false, test
     .eq('id', job.schedule_id)
     .single();
 
-  // 3. H-1 check (must be > 24 hours from now)
+  // 3. Lead time & operating hours check for home service (cutoff: 23:00 WIB)
+  const newWib = getWibDateTime(newDateObj);
+  const leadTimeCheck = isBookingLeadTimeAllowed({
+    bookingDate: newWib.dateStr,
+    bookingTime: newWib.timeStr,
+    branch: old?.outlet_id,
+    bookingType: 'home_service',
+    isHomeService: true,
+    isAdmin,
+    refDate: testRefDate,
+  });
+  if (!leadTimeCheck.allowed) {
+    throw Object.assign(
+      new Error(leadTimeCheck.message),
+      {
+        statusCode: 422,
+        code: leadTimeCheck.error,
+        earliestAllowedSlot: leadTimeCheck.earliestAllowedSlot || null,
+        timezone: leadTimeCheck.timezone,
+      }
+    );
+  }
+
+  // 4. H-1 check (must be > 24 hours from now)
   const hoursUntil = (new Date(old.start_time).getTime() - Date.now()) / 3_600_000;
   if (hoursUntil < 24) {
     throw Object.assign(

@@ -10,6 +10,11 @@ const {
   MIN_LEAD_TIME_MINUTES,
   getWibDateTime,
   getBranchLastSlot,
+  getLastAllowedSlot,
+  isHomeServiceBooking,
+  HOME_SERVICE_LAST_SLOT,
+  CSB_LAST_SLOT,
+  DEFAULT_LAST_SLOT,
   calculateEarliestAllowedSlot,
   isBookingLeadTimeAllowed,
   filterSlotsForLeadTime,
@@ -17,6 +22,7 @@ const {
   safeAdminTokenMatch,
 } = require('../utils/bookingLeadTime');
 const createMokaRouter = require('../moka/routes');
+const { _resetBuckets } = require('../middleware/rateLimit');
 
 // ─────────────────────────────────────────────────────────────
 // 1. UNIT TESTS: CORE MATHEMATICAL FORMULA & TIMING BOUNDARIES
@@ -1084,6 +1090,273 @@ test('Case 23: Customer reschedule lead-time audit — POST /api/home-service/re
       }),
     });
     assert.equal(resWrongAdmin.status, 422, 'Reschedule with invalid admin token must NOT bypass lead time');
+  } finally {
+    if (origPassword === undefined) delete process.env.ADMIN_PASSWORD;
+    else process.env.ADMIN_PASSWORD = origPassword;
+    await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// 5. REGRESSION SUITE: HOME SERVICE VS OUTLET OPERATING HOURS
+// ─────────────────────────────────────────────────────────────
+
+test('Case 24: Home Service vs Outlet operating hours and lead time separation (Unit Tests)', () => {
+  const refTime = new Date('2026-09-20T16:18:00+07:00'); // 16:18 WIB today
+
+  // 1. Home service non-CSB at 21:00, 22:00, and 23:00 accepted
+  for (const time of ['21:00', '22:00', '23:00']) {
+    const res = isBookingLeadTimeAllowed({
+      bookingDate: '2026-09-20',
+      bookingTime: time,
+      branch: 'bypass', // non-CSB branch
+      bookingType: 'home_service',
+      isHomeService: true,
+      refDate: refTime,
+    });
+    assert.equal(res.allowed, true, `Home service non-CSB at ${time} must be allowed`);
+  }
+
+  // 2. Home service after 23:00 ditolak (e.g. 23:01 or 23:30)
+  const resPast23 = isBookingLeadTimeAllowed({
+    bookingDate: '2026-09-20',
+    bookingTime: '23:30',
+    branch: 'bypass',
+    bookingType: 'home_service',
+    isHomeService: true,
+    refDate: refTime,
+  });
+  assert.equal(resPast23.allowed, false);
+  assert.equal(resPast23.error, 'BOOKING_AFTER_CLOSING');
+  assert.match(resPast23.message, /23:00/);
+
+  // 3. Outlet non-CSB pukul 21:00 ditolak (cutoff outlet non-CSB = 20:00)
+  const resOutletNonCsb21 = isBookingLeadTimeAllowed({
+    bookingDate: '2026-09-20',
+    bookingTime: '21:00',
+    branch: 'bypass',
+    bookingType: 'outlet',
+    isHomeService: false,
+    refDate: refTime,
+  });
+  assert.equal(resOutletNonCsb21.allowed, false);
+  assert.equal(resOutletNonCsb21.error, 'BOOKING_AFTER_CLOSING');
+  assert.match(resOutletNonCsb21.message, /20:00/);
+
+  // 4. Outlet CSB pukul 21:00 diterima (cutoff CSB = 21:00)
+  const resOutletCsb21 = isBookingLeadTimeAllowed({
+    bookingDate: '2026-09-20',
+    bookingTime: '21:00',
+    branch: 'csb',
+    bookingType: 'outlet',
+    isHomeService: false,
+    refDate: refTime,
+  });
+  assert.equal(resOutletCsb21.allowed, true, 'Outlet CSB at 21:00 must be allowed');
+
+  // 5. Same-day lead time tetap diberlakukan pada home service (16:18 -> 17:00 ditolak, 18:00 diterima)
+  const resHs17 = isBookingLeadTimeAllowed({
+    bookingDate: '2026-09-20',
+    bookingTime: '17:00',
+    branch: 'bypass',
+    bookingType: 'home_service',
+    refDate: refTime,
+  });
+  assert.equal(resHs17.allowed, false);
+  assert.equal(resHs17.error, 'BOOKING_LEAD_TIME_VIOLATION');
+  assert.equal(resHs17.earliestAllowedSlot, '18:00');
+
+  const resHs18 = isBookingLeadTimeAllowed({
+    bookingDate: '2026-09-20',
+    bookingTime: '18:00',
+    branch: 'bypass',
+    bookingType: 'home_service',
+    refDate: refTime,
+  });
+  assert.equal(resHs18.allowed, true);
+
+  // 6. Future-date home service 21:00–23:00 tidak salah ditolak
+  for (const time of ['21:00', '22:00', '23:00']) {
+    const resFuture = isBookingLeadTimeAllowed({
+      bookingDate: '2026-09-25',
+      bookingTime: time,
+      branch: 'bypass',
+      bookingType: 'home_service',
+      refDate: refTime,
+    });
+    assert.equal(resFuture.allowed, true, `Future-date home service at ${time} must be allowed`);
+  }
+
+  // Future-date home service after 23:00 must still be rejected
+  const resFuturePast = isBookingLeadTimeAllowed({
+    bookingDate: '2026-09-25',
+    bookingTime: '23:30',
+    branch: 'bypass',
+    bookingType: 'home_service',
+    refDate: refTime,
+  });
+  assert.equal(resFuturePast.allowed, false);
+  assert.equal(resFuturePast.error, 'BOOKING_AFTER_CLOSING');
+});
+
+test('Case 25: POST /api/bookings respects home service operating hours & normalized context', async () => {
+  const fakeClient = fakeLeadTimeSupabase();
+  const refTime = '2026-09-20T16:18:00+07:00';
+
+  await withTestServer(fakeClient, async (base) => {
+    _resetBuckets();
+    // 1. Home service on non-CSB branch at 21:00, 22:00, 23:00 -> accepted by lead time gate
+    for (const time of ['21:00', '22:00', '23:00']) {
+      const resHs = await fetch(`${base}/api/bookings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-reference-time': refTime,
+        },
+        body: JSON.stringify({
+          name: 'Budi Home',
+          wa: '6281234567890',
+          service_id: 'haircut',
+          service: 'Home Service Haircut',
+          price: 150000,
+          duration: '60',
+          barber_id: 'barber-bypass-1',
+          date: '2026-09-20',
+          time,
+          location: 'bypass',
+          type: 'home_service',
+        }),
+      });
+      // Should NOT be rejected with 422 lead time error
+      assert.notEqual(resHs.status, 422, `POST /api/bookings for home service at ${time} must pass lead time check`);
+    }
+
+    // 2. Home service on non-CSB branch after 23:00 -> rejected with 422 BOOKING_AFTER_CLOSING
+    const resHsLate = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Budi Home Late',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Home Service Haircut',
+        price: 150000,
+        duration: '60',
+        barber_id: 'barber-bypass-1',
+        date: '2026-09-20',
+        time: '23:30',
+        location: 'bypass',
+        type: 'home_service',
+      }),
+    });
+    assert.equal(resHsLate.status, 422);
+    const bodyLate = await resHsLate.json();
+    assert.equal(bodyLate.error, 'BOOKING_AFTER_CLOSING');
+    assert.match(bodyLate.message, /23:00/);
+
+    // 3. Outlet booking on non-CSB branch at 21:00 -> rejected with 422 BOOKING_AFTER_CLOSING (cutoff 20:00)
+    const resOutletNonCsb = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Budi Outlet',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Haircut',
+        price: 50000,
+        duration: '30',
+        barber_id: 'barber-bypass-1',
+        date: '2026-09-20',
+        time: '21:00',
+        location: 'bypass',
+        type: 'outlet',
+      }),
+    });
+    assert.equal(resOutletNonCsb.status, 422);
+    const bodyOutletNonCsb = await resOutletNonCsb.json();
+    assert.equal(bodyOutletNonCsb.error, 'BOOKING_AFTER_CLOSING');
+    assert.match(bodyOutletNonCsb.message, /20:00/);
+
+    // 4. Outlet booking on CSB branch at 21:00 -> accepted by lead time gate
+    const resOutletCsb = await fetch(`${base}/api/bookings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        name: 'Budi CSB',
+        wa: '6281234567890',
+        service_id: 'haircut',
+        service: 'Haircut',
+        price: 50000,
+        duration: '30',
+        barber_id: 'barber-csb-1',
+        date: '2026-09-20',
+        time: '21:00',
+        location: 'csb',
+        type: 'outlet',
+      }),
+    });
+    assert.notEqual(resOutletCsb.status, 422, 'CSB outlet booking at 21:00 must pass lead time check');
+  });
+});
+
+test('Case 26: Home-service reschedule respects 23:00 cutoff and lead time', async () => {
+  const origPassword = process.env.ADMIN_PASSWORD;
+  process.env.ADMIN_PASSWORD = 'test-admin-secret-2026';
+
+  const app = express();
+  app.use(express.json());
+  const fakeClient = fakeLeadTimeSupabase();
+  app.use('/api', createMokaRouter(fakeClient));
+
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise((resolve) => server.on('listening', resolve));
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const refTime = '2026-09-20T16:18:00+07:00';
+
+    // 1. Reschedule to 21:00, 22:00, 23:00 on future date or valid same-day -> accepted
+    for (const time of ['21:00:00', '22:00:00', '23:00:00']) {
+      const resOk = await fetch(`${base}/api/home-service/reschedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-test-reference-time': refTime,
+        },
+        body: JSON.stringify({
+          jobId: 'job-future-1',
+          newStartTime: `2026-09-25T${time}+07:00`,
+        }),
+      });
+      assert.equal(resOk.status, 200, `Reschedule to ${time} must succeed`);
+      const bodyOk = await resOk.json();
+      assert.equal(bodyOk.ok, true);
+    }
+
+    // 2. Reschedule after 23:00 (e.g. 23:30) -> rejected with 422 BOOKING_AFTER_CLOSING
+    const resLate = await fetch(`${base}/api/home-service/reschedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-reference-time': refTime,
+      },
+      body: JSON.stringify({
+        jobId: 'job-future-1',
+        newStartTime: '2026-09-25T23:30:00+07:00',
+      }),
+    });
+    assert.equal(resLate.status, 422);
+    const bodyLate = await resLate.json();
+    assert.equal(bodyLate.code, 'BOOKING_AFTER_CLOSING');
+    assert.match(bodyLate.error, /23:00/);
   } finally {
     if (origPassword === undefined) delete process.env.ADMIN_PASSWORD;
     else process.env.ADMIN_PASSWORD = origPassword;

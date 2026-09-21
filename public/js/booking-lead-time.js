@@ -9,6 +9,7 @@
   const MIN_LEAD_TIME_MINUTES = 60;
   const CSB_LAST_SLOT = '21:00';
   const DEFAULT_LAST_SLOT = '20:00';
+  const HOME_SERVICE_LAST_SLOT = '23:00';
 
   /**
    * Convert any date / timestamp to WIB (Asia/Jakarta) wall-clock components.
@@ -66,19 +67,73 @@
   }
 
   /**
-   * Return the last allowed booking slot for a given branch slug.
-   * CSB: 21:00 WIB
-   * Other branches: 20:00 WIB
+   * Determine whether a booking context represents a home service appointment.
+   *
+   * @param {object|string} [context]
+   * @returns {boolean}
+   */
+  function isHomeServiceBooking(context) {
+    if (!context) return false;
+    if (typeof context === 'string') {
+      const s = context.trim().toLowerCase();
+      return s === 'home_service' || s === 'homeservice' || s === 'home-service';
+    }
+    if (context.isHomeService === true) return true;
+    const typeStr = String(context.bookingType || context.type || '').trim().toLowerCase();
+    return typeStr === 'home_service' || typeStr === 'homeservice' || typeStr === 'home-service';
+  }
+
+  /**
+   * Return the last allowed booking slot based on booking context and branch.
+   * - Home Service: 23:00 WIB across all branches
+   * - Outlet CSB: 21:00 WIB
+   * - Outlet (other branches): 20:00 WIB
+   *
+   * Accepts either an options object or a legacy branchSlug string.
+   *
+   * @param {object|string} [options]
+   * @param {string} [options.branch]
+   * @param {string} [options.bookingType]
+   * @param {boolean} [options.isHomeService]
+   * @param {string} [options.lastAllowedSlot]
+   * @returns {string} 'HH:mm'
+   */
+  function getLastAllowedSlot(options) {
+    if (typeof options === 'string') {
+      const normalized = options.trim().toLowerCase();
+      if (normalized === 'home_service' || normalized === 'homeservice' || normalized === 'home-service') {
+        return HOME_SERVICE_LAST_SLOT;
+      }
+      if (normalized === 'csb' || normalized.includes('csb')) {
+        return CSB_LAST_SLOT;
+      }
+      return DEFAULT_LAST_SLOT;
+    }
+
+    const opts = options || {};
+    if (opts.lastAllowedSlot && typeof opts.lastAllowedSlot === 'string') {
+      return opts.lastAllowedSlot.slice(0, 5);
+    }
+
+    if (isHomeServiceBooking(opts)) {
+      return HOME_SERVICE_LAST_SLOT;
+    }
+
+    const branch = String(opts.branch || opts.location || '').trim().toLowerCase();
+    if (branch === 'csb' || branch.includes('csb')) {
+      return CSB_LAST_SLOT;
+    }
+    return DEFAULT_LAST_SLOT;
+  }
+
+  /**
+   * Return the last allowed booking slot for a given branch slug (backwards compatible).
    *
    * @param {string} [branchSlug]
    * @returns {string} 'HH:mm'
    */
   function getBranchLastSlot(branchSlug) {
-    const normalized = String(branchSlug || '').trim().toLowerCase();
-    if (normalized === 'csb' || normalized.includes('csb')) {
-      return CSB_LAST_SLOT;
-    }
-    return DEFAULT_LAST_SLOT;
+    return getLastAllowedSlot(branchSlug);
   }
 
   /**
@@ -128,12 +183,17 @@
   }
 
   /**
-   * Determine whether a booking is permitted according to the minimum 60-minute lead time rule.
+   * Determine whether a booking is permitted according to:
+   * 1. 60-minute minimum lead time for same-day booking (rounded up to next hour).
+   * 2. Operating hours cutoff (23:00 for Home Service, 21:00 for CSB, 20:00 for other branches).
    *
    * @param {object} params
    * @param {string} params.bookingDate - 'YYYY-MM-DD'
    * @param {string} params.bookingTime - 'HH:mm'
    * @param {string} [params.branch] - branch slug / identifier
+   * @param {string} [params.bookingType] - 'outlet', 'home_service', etc.
+   * @param {boolean} [params.isHomeService]
+   * @param {string} [params.lastAllowedSlot] - optional explicit cutoff override
    * @param {Date|number|string} [params.refDate=new Date()] - reference time (defaults to now)
    * @param {boolean} [params.isAdmin=false] - true for admin backoffice bypass
    * @returns {{ allowed: boolean, error?: string, message?: string, earliestAllowedSlot?: string, timezone: string }}
@@ -142,6 +202,10 @@
     bookingDate,
     bookingTime,
     branch = 'bypass',
+    bookingType,
+    type,
+    isHomeService,
+    lastAllowedSlot,
     refDate = new Date(),
     isAdmin = false,
   }) {
@@ -172,14 +236,23 @@
       };
     }
 
+    const effectiveLastSlot = getLastAllowedSlot({
+      branch,
+      bookingType: bookingType || type,
+      isHomeService,
+      lastAllowedSlot,
+    });
+    const bookingMinutes = timeStrToMinutes(cleanTime);
+    const lastSlotMinutes = timeStrToMinutes(effectiveLastSlot);
+
     // If booking is for future date (tomorrow or later), 60-min lead time does not apply!
+    // Operating hours cutoff still applies.
     if (cleanDate > wib.dateStr) {
-      const lastSlot = getBranchLastSlot(branch);
-      if (timeStrToMinutes(cleanTime) > timeStrToMinutes(lastSlot)) {
+      if (bookingMinutes > lastSlotMinutes) {
         return {
           allowed: false,
           error: 'BOOKING_AFTER_CLOSING',
-          message: `Slot booking melebihi slot terakhir cabang (${lastSlot} WIB).`,
+          message: `Slot booking melebihi slot terakhir (${effectiveLastSlot} WIB).`,
           timezone: TIMEZONE,
         };
       }
@@ -188,7 +261,6 @@
 
     // Same-day booking: enforce 60-minute lead time rounded up to next hour
     const earliestAllowedSlot = calculateEarliestAllowedSlot(refDate);
-    const bookingMinutes = timeStrToMinutes(cleanTime);
     const earliestMinutes = timeStrToMinutes(earliestAllowedSlot);
 
     if (bookingMinutes < earliestMinutes) {
@@ -201,13 +273,12 @@
       };
     }
 
-    // Check branch last slot
-    const lastSlot = getBranchLastSlot(branch);
-    if (bookingMinutes > timeStrToMinutes(lastSlot)) {
+    // Operating hours check
+    if (bookingMinutes > lastSlotMinutes) {
       return {
         allowed: false,
         error: 'BOOKING_AFTER_CLOSING',
-        message: `Slot booking melebihi slot terakhir cabang (${lastSlot} WIB).`,
+        message: `Slot booking melebihi slot terakhir (${effectiveLastSlot} WIB).`,
         earliestAllowedSlot,
         timezone: TIMEZONE,
       };
@@ -227,6 +298,9 @@
    * @param {string[]} params.slots - candidate slots e.g. ['10:00', '11:00', ...]
    * @param {string} params.bookingDate - 'YYYY-MM-DD'
    * @param {string} [params.branch] - branch slug
+   * @param {string} [params.bookingType]
+   * @param {boolean} [params.isHomeService]
+   * @param {string} [params.lastAllowedSlot]
    * @param {Date|number|string} [params.refDate=new Date()]
    * @returns {{ filteredSlots: string[], earliestAllowedSlot: string|null, isClosedToday: boolean }}
    */
@@ -234,6 +308,10 @@
     slots = [],
     bookingDate,
     branch = 'bypass',
+    bookingType,
+    type,
+    isHomeService,
+    lastAllowedSlot,
     refDate = new Date(),
   }) {
     const cleanDate = String(bookingDate || '').slice(0, 10);
@@ -250,10 +328,15 @@
 
     const earliestAllowedSlot = calculateEarliestAllowedSlot(refDate);
     const earliestMinutes = timeStrToMinutes(earliestAllowedSlot);
-    const lastSlot = getBranchLastSlot(branch);
-    const lastSlotMinutes = timeStrToMinutes(lastSlot);
+    const effectiveLastSlot = getLastAllowedSlot({
+      branch,
+      bookingType: bookingType || type,
+      isHomeService,
+      lastAllowedSlot,
+    });
+    const lastSlotMinutes = timeStrToMinutes(effectiveLastSlot);
 
-    // Check if earliest slot already exceeds branch last slot
+    // Check if earliest slot already exceeds last slot
     const isClosedToday = earliestMinutes > lastSlotMinutes;
 
     const filteredSlots = isClosedToday
@@ -272,8 +355,11 @@
     MIN_LEAD_TIME_MINUTES,
     CSB_LAST_SLOT,
     DEFAULT_LAST_SLOT,
+    HOME_SERVICE_LAST_SLOT,
     getWibDateTime,
     getBranchLastSlot,
+    getLastAllowedSlot,
+    isHomeServiceBooking,
     timeStrToMinutes,
     minutesToTimeStr,
     calculateEarliestAllowedSlot,
