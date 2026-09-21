@@ -37,12 +37,34 @@ function elseBranch(body) {
   return body.slice(i, j);
 }
 
-test('Final lock_payroll_run definition is the corrective migration (not the regressed 143000 one)', () => {
+test('Final lock_payroll_run definition is the newest forward migration (not the regressed 143000 one)', () => {
   const list = definers();
   assert.ok(list.includes('20260919143000_create_overtime_approvals_and_guards.sql'), 'sanity: regressed migration still defines it');
+  const restore = list.find((f) => /restore_barber_lock_and_regular_guards/.test(f));
+  assert.ok(restore, 'barber-restoring migration exists');
   const last = list[list.length - 1];
-  assert.match(last, /restore_barber_lock_and_regular_guards/);
-  assert.ok(last > '20260919143000', 'corrective migration must be ordered after the regressed one');
+  assert.match(last, /block_pending_overtime_on_payroll_lock/);
+  assert.ok(restore > '20260919143000' && last > restore, 'migrations are ordered 143000 < restore < pending-overtime guard');
+});
+
+test('Final lock_payroll_run blocks locking while overtime approvals are PENDING (authority: approvals, not item status)', () => {
+  const body = norm(functionBody(read(definers().pop())));
+  assert.match(body, /FROM public\.employee_overtime_approvals a WHERE a\.status = 'PENDING'/);
+  assert.match(body, /a\.attendance_date BETWEEN v_run\.period_start AND v_run\.period_end/);
+  assert.match(body, /EXISTS \( SELECT 1 FROM public\.payroll_regular_items i WHERE i\.payroll_run_id = p_run_id AND i\.employee_id = a\.employee_id \)/);
+  assert.match(body, /pending overtime approval\(s\) remain/);
+  // The guard is inside the REGULAR branch, before anything is frozen
+  const regular = body.slice(body.indexOf("IF v_run.payroll_type IN ('REGULAR', 'REGULAR_PAYROLL') THEN"), body.indexOf('ELSE -- Barber'));
+  assert.ok(regular.includes('v_pending_overtime'), 'guard lives in the REGULAR branch');
+  assert.ok(regular.indexOf('v_pending_overtime') < regular.indexOf("SET status = 'LOCKED'"), 'guard runs before items are frozen');
+  // and does not leak into the barber branch
+  assert.ok(!norm(elseBranch(functionBody(read(definers().pop())))).includes('employee_overtime_approvals'));
+});
+
+test('Already-applied migrations were not edited to add the pending-overtime rule', () => {
+  const restore = read(definers().find((f) => /restore_barber_lock_and_regular_guards/.test(f)));
+  assert.doesNotMatch(restore, /pending overtime/i);
+  assert.doesNotMatch(read('20260919143000_create_overtime_approvals_and_guards.sql'), /pending overtime approval/i);
 });
 
 test('Final lock_payroll_run: explicit REGULAR and non-REGULAR branches, DRAFT-only with row lock', () => {
