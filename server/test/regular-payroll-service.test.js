@@ -19,6 +19,8 @@ const {
  * - employee_attendance
  * - attendance_exceptions
  */
+const { emulateCreateRegularPayrollRun } = require('./helpers/regularPayrollRpc');
+
 function createMockDb(initialState = {}) {
   const tables = {
     payroll_runs: initialState.payroll_runs || [],
@@ -205,6 +207,9 @@ function createMockDb(initialState = {}) {
       };
     },
     rpc(fnName, args) {
+      if (fnName === 'create_regular_payroll_run') {
+        return Promise.resolve(emulateCreateRegularPayrollRun(tables, args, { idFactory: () => `mock-id-${idCounter++}` }));
+      }
       if (fnName === 'lock_payroll_run') {
         const run = tables.payroll_runs.find((r) => r.id === args.p_run_id);
         if (!run) {

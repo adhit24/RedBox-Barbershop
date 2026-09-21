@@ -6,31 +6,72 @@
  * item snapshots, manual adjustments, and locking.
  */
 
-const { calculateRegularPayrollItem, REGULAR_ITEM_STATUS, SOURCE_ORIGIN } = require('./regularPayrollEngine');
+const { calculateRegularPayrollItem, aggregateAdjustments, REGULAR_ITEM_STATUS, SOURCE_ORIGIN } = require('./regularPayrollEngine');
 const { getPolicyForUnit, roundRupiah } = require('./regularPayrollPolicy');
 
 /**
  * List regular payroll runs
  */
-async function listRegularPayrollRuns(supabase, { status = null, businessUnit = null } = {}) {
-  let query = supabase
-    .from('payroll_runs')
-    .select('*')
-    .eq('payroll_type', 'REGULAR')
-    .order('period_start', { ascending: false });
-
-  if (status) {
-    query = query.eq('status', status);
-  }
-  if (businessUnit && businessUnit !== 'ALL') {
-    query = query.eq('business_unit', businessUnit);
-  }
-
-  const { data, error } = await query;
+async function listRegularPayrollRuns(supabase, { status = null, businessUnit = null, branchScope = null } = {}) {
+  const { data, error } = await fetchAllRows(() => {
+    let query = supabase
+      .from('payroll_runs')
+      .select('*')
+      .eq('payroll_type', 'REGULAR');
+    if (status) query = query.eq('status', status);
+    if (businessUnit && businessUnit !== 'ALL') query = query.eq('business_unit', businessUnit);
+    return query.order('period_start', { ascending: false }).order('id');
+  });
   if (error) {
     throw new Error(`Failed to list regular payroll runs: ${error.message}`);
   }
-  return data || [];
+  const runs = data || [];
+  if (!branchScope) return runs;
+
+  // Branch-scoped callers never see run-wide compensation totals: the summary is recomputed from the
+  // items they are authorized to see.
+  const scoped = [];
+  for (const run of runs) {
+    const items = await loadScopedRunItems(supabase, run.id, branchScope);
+    scoped.push({ ...run, summary: scopedRunSummary(run, items) });
+  }
+  return scoped;
+}
+
+/**
+ * Items of one run restricted to a branch (payroll branch snapshot, case-insensitive). Every page is
+ * read (deterministic order) before the branch filter; a failed read throws (never "no items").
+ */
+async function loadScopedRunItems(supabase, runId, branchScope, { filters = {} } = {}) {
+  const { data, error } = await fetchAllRows(() => {
+    let q = supabase
+      .from('payroll_regular_items')
+      .select('*')
+      .eq('payroll_run_id', runId);
+    if (filters.status && filters.status !== 'all') q = q.eq('status', filters.status);
+    if (filters.business_unit && filters.business_unit !== 'all') q = q.eq('business_unit_snapshot', filters.business_unit);
+    return q.order('employee_name_snapshot').order('id');
+  });
+  if (error) throw new Error(`Failed to load payroll regular items: ${error.message}`);
+  return (data || []).filter((i) => isEmployeeInBranchScope(i.branch_snapshot, branchScope));
+}
+
+function scopedRunSummary(run, items) {
+  const summary = run.summary || {};
+  return {
+    total_employees: items.length,
+    total_gross_pay: items.reduce((s, i) => s + Number(i.gross_pay || 0), 0),
+    total_deductions: items.reduce((s, i) => s + Number(i.total_deduction || 0), 0),
+    total_take_home_pay: items.reduce((s, i) => s + Number(i.take_home_pay || 0), 0),
+    review_required_count: items.filter((i) => i.status === 'REVIEW_REQUIRED').length,
+    missing_salary_count: items.filter((i) => i.status === 'MISSING_SALARY').length,
+    missing_attendance_count: items.filter((i) => i.status === 'MISSING_ATTENDANCE' || i.status === 'BLOCKED_ATTENDANCE_SOURCE').length,
+    attendance_data_through: summary.attendance_data_through ?? null,
+    expected_period_end: summary.expected_period_end ?? null,
+    attendance_period_complete: summary.attendance_period_complete ?? null,
+    is_final: summary.is_final ?? false,
+    scoped_to_branch: true,
+  };
 }
 
 /**
@@ -311,6 +352,29 @@ function firstReconciliationError(r) {
 }
 
 /**
+ * Adjustment lock invariant (service-side mirror of lock_payroll_run; the database stays the authority):
+ * every item's manual_bonus / debt_deduction / manual_deduction / adjustments_total must equal the aggregate
+ * of its adjustment rows, and an item explicitly marked dirty is stale. Returns the first violation or null.
+ */
+function evaluateAdjustmentLockInvariants({ items = [], adjustments = [] }) {
+  for (const item of items) {
+    const mine = adjustments.filter((a) => a.payroll_regular_item_id === item.id);
+    const agg = aggregateAdjustments(mine);
+    const dirty = item.attendance_summary?.adjustments_dirty === true || item.attendance_summary?.adjustments_dirty === 'true';
+    if (
+      dirty ||
+      agg.bonus !== Number(item.manual_bonus || 0) ||
+      agg.debt !== Number(item.debt_deduction || 0) ||
+      agg.deduction !== Number(item.manual_deduction || 0) ||
+      agg.bonus - agg.debt - agg.deduction !== Number(item.adjustments_total || 0)
+    ) {
+      return { code: 'ADJUSTMENT_SNAPSHOT_STALE', message: `Payroll adjustment snapshot is stale for ${item.employee_name_snapshot || item.employee_id}. Recalculate before locking.` };
+    }
+  }
+  return null;
+}
+
+/**
  * Lock invariants for overtime, evaluated in the same order as the lock_payroll_run RPC (the database
  * remains the final authority; this is the service-side fail-fast and the testable mirror).
  *   items: [{ employee_id, employee_name_snapshot, overtime_hours, attendance_summary }]
@@ -546,7 +610,8 @@ async function generateRegularPayrollDraft(supabase, {
     throw new Error('periodStart and periodEnd are required');
   }
 
-  // 1. Check for overlapping locked runs
+  // 1. Friendly pre-check for an overlapping DRAFT or LOCKED run. The database is authoritative
+  // (trg_payroll_runs_no_overlap under an advisory lock) and also rejects the concurrent race.
   let checkQuery = supabase
     .from('payroll_runs')
     .select('id, period_start, period_end, status, business_unit')
@@ -561,9 +626,9 @@ async function generateRegularPayrollDraft(supabase, {
   const { data: existingRuns, error: checkErr } = await checkQuery;
   if (checkErr) throw new Error(`Check existing runs failed: ${checkErr.message}`);
 
-  const lockedConflict = (existingRuns || []).find(r => r.status === 'LOCKED');
-  if (lockedConflict) {
-    throw new Error(`Cannot generate payroll draft: overlapping LOCKED run found (${lockedConflict.id} from ${lockedConflict.period_start} to ${lockedConflict.period_end})`);
+  const overlap = (existingRuns || []).find(r => r.status === 'LOCKED' || r.status === 'DRAFT');
+  if (overlap) {
+    throw new Error(`Cannot generate payroll draft: overlapping ${overlap.status} run found (${overlap.id} from ${overlap.period_start} to ${overlap.period_end})`);
   }
 
   // 2. Fetch regular employees
@@ -680,28 +745,10 @@ async function generateRegularPayrollDraft(supabase, {
     is_final: false,
   };
 
-  const { data: run, error: runInsertErr } = await supabase
-    .from('payroll_runs')
-    .insert({
-      payroll_type: 'REGULAR',
-      business_unit: businessUnit,
-      period_start: periodStart,
-      period_end: periodEnd,
-      status: 'DRAFT',
-      generated_by: userEmail,
-      calculation_version: 'regular-v1.0',
-      summary: summaryPayload,
-    })
-    .select()
-    .single();
-
-  if (runInsertErr) {
-    throw new Error(`Failed to create payroll run header: ${runInsertErr.message}`);
-  }
-
-  // 6. Insert items into payroll_regular_items
-  const itemsToInsert = calculatedItems.map(item => ({
-    payroll_run_id: run.id,
+  // 6. Header + items in ONE database transaction (create_regular_payroll_run): the run becomes visible
+  // only when every item is stored, and any failure (including an overlapping run created concurrently)
+  // rolls the header back. No visible partial / empty DRAFT can be locked.
+  const itemsPayload = calculatedItems.map(item => ({
     employee_id: item.employee_id,
     employee_name_snapshot: item.employee_name_snapshot,
     employee_nickname_snapshot: item.employee_nickname_snapshot,
@@ -755,15 +802,25 @@ async function generateRegularPayrollDraft(supabase, {
     status: item.status,
   }));
 
-  const { error: itemsInsertErr } = await supabase
-    .from('payroll_regular_items')
-    .insert(itemsToInsert);
+  const { data: created, error: createErr } = await supabase.rpc('create_regular_payroll_run', {
+    p_header: {
+      business_unit: businessUnit,
+      period_start: periodStart,
+      period_end: periodEnd,
+      generated_by: userEmail,
+      calculation_version: 'regular-v1.0',
+      summary: summaryPayload,
+    },
+    p_items: itemsPayload,
+  });
 
-  if (itemsInsertErr) {
-    // Cleanup run header on failure
-    await supabase.from('payroll_runs').delete().eq('id', run.id);
-    throw new Error(`Failed to insert regular payroll items: ${itemsInsertErr.message}`);
+  if (createErr || !created || !created.run_id) {
+    const err = new Error(`Failed to create regular payroll run: ${createErr?.message || 'no run returned'}`);
+    err.code = /Overlapping regular payroll run/i.test(createErr?.message || '') ? 'OVERLAPPING_RUN' : 'RUN_CREATE_FAILED';
+    throw err;
   }
+  const run = { id: created.run_id };
+  const itemsToInsert = itemsPayload;
 
   return {
     success: true,
@@ -779,7 +836,7 @@ async function generateRegularPayrollDraft(supabase, {
 /**
  * Get payroll run detail with items and adjustments
  */
-async function getRegularPayrollRunDetail(supabase, { runId, filters = {} }) {
+async function getRegularPayrollRunDetail(supabase, { runId, filters = {}, branchScope = null }) {
   const { data: run, error: runErr } = await supabase
     .from('payroll_runs')
     .select('*')
@@ -792,45 +849,37 @@ async function getRegularPayrollRunDetail(supabase, { runId, filters = {} }) {
     throw err;
   }
 
-  let itemsQuery = supabase
-    .from('payroll_regular_items')
-    .select('*')
-    .eq('payroll_run_id', runId)
-    .order('employee_name_snapshot');
+  // Compensation detail is scoped BEFORE it is assembled: a branch-bound caller only ever gets the
+  // items (and adjustments of those items) of their branch; direct run ids do not widen scope.
+  const items = await loadScopedRunItems(supabase, runId, branchScope, { filters });
 
-  if (filters.status && filters.status !== 'all') {
-    itemsQuery = itemsQuery.eq('status', filters.status);
-  }
-  if (filters.business_unit && filters.business_unit !== 'all') {
-    itemsQuery = itemsQuery.eq('business_unit_snapshot', filters.business_unit);
-  }
-
-  const { data: items, error: itemsErr } = await itemsQuery;
-  if (itemsErr) {
-    throw new Error(`Failed to load payroll regular items: ${itemsErr.message}`);
-  }
-
-  // Fetch adjustments for this run
-  const { data: adjustments, error: adjErr } = await supabase
+  // Fetch adjustments for this run (fail closed: a failed read must not look like "no adjustments")
+  const { data: adjustments, error: adjErr } = await fetchAllRows(() => supabase
     .from('payroll_adjustments')
     .select('*')
     .eq('payroll_run_id', runId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .order('id'));
+  if (adjErr) {
+    throw new Error(`Failed to load payroll adjustments: ${adjErr.message}`);
+  }
 
+  const visibleItemIds = new Set(items.map((i) => i.id));
   const adjMap = new Map();
   for (const adj of adjustments || []) {
     const itemId = adj.payroll_regular_item_id;
+    if (!visibleItemIds.has(itemId)) continue;
     if (!adjMap.has(itemId)) adjMap.set(itemId, []);
     adjMap.get(itemId).push(adj);
   }
 
-  const enrichedItems = (items || []).map(item => ({
+  const enrichedItems = items.map(item => ({
     ...item,
     adjustments: adjMap.get(item.id) || [],
   }));
 
   return {
-    run,
+    run: branchScope ? { ...run, summary: scopedRunSummary(run, items) } : run,
     items: enrichedItems,
   };
 }
@@ -896,10 +945,23 @@ async function addRegularPayrollAdjustment(supabase, {
 
   if (adjErr) throw new Error(`Failed to insert adjustment: ${adjErr.message}`);
 
-  // Recalculate employee item
-  await recalculateSingleRegularItem(supabase, item.payroll_run_id, item.id);
+  // Recalculate the employee item. The adjustment row is committed (and the item snapshot is already marked
+  // dirty by the database in the same transaction, so lock_payroll_run refuses it until recalculated);
+  // report honestly when the snapshot could not follow.
+  try {
+    await recalculateSingleRegularItem(supabase, item.payroll_run_id, item.id);
+  } catch (recalcErr) {
+    return {
+      success: false,
+      adjustment_saved: true,
+      recalculation_success: false,
+      adjustment: adj,
+      reason: recalcErr.code || 'RECALCULATION_FAILED',
+      error: recalcErr.message,
+    };
+  }
 
-  return { success: true, adjustment: adj };
+  return { success: true, adjustment_saved: true, recalculation_success: true, adjustment: adj };
 }
 
 /**
@@ -932,23 +994,38 @@ async function deleteRegularPayrollAdjustment(supabase, { adjustmentId }) {
 
   if (delErr) throw new Error(`Failed to delete adjustment: ${delErr.message}`);
 
-  // Recalculate item
-  await recalculateSingleRegularItem(supabase, adj.payroll_run_id, adj.payroll_regular_item_id);
+  // Recalculate item (the database already marked the snapshot dirty in the delete's transaction)
+  try {
+    await recalculateSingleRegularItem(supabase, adj.payroll_run_id, adj.payroll_regular_item_id);
+  } catch (recalcErr) {
+    return {
+      success: false,
+      adjustment_deleted: true,
+      recalculation_success: false,
+      deleted_id: adjustmentId,
+      reason: recalcErr.code || 'RECALCULATION_FAILED',
+      error: recalcErr.message,
+    };
+  }
 
-  return { success: true, deleted_id: adjustmentId };
+  return { success: true, adjustment_deleted: true, recalculation_success: true, deleted_id: adjustmentId };
 }
 
 /**
  * Helper to recalculate a single regular item in draft after adjustments change
  */
 async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOvertime = false } = {}) {
-  // Fetch item
-  const { data: item } = await supabase
+  // Fetch item (fail closed: an unreadable item is an error, never a silent no-op)
+  const { data: item, error: itemReadErr } = await supabase
     .from('payroll_regular_items')
     .select('*')
     .eq('id', itemId)
     .single();
-  if (!item) return;
+  if (itemReadErr || !item) {
+    const err = new Error(`Failed to read payroll item ${itemId}: ${itemReadErr?.message || 'not found'}`);
+    err.code = 'ITEM_READ_FAILED';
+    throw err;
+  }
   if (item.status === 'LOCKED') return null; // never touch frozen items
 
   // Overtime review changes employee_overtime_approvals only; re-read it so the snapshot
@@ -1003,11 +1080,19 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
     };
   }
 
-  // Fetch all adjustments for this item
-  const { data: adjs } = await supabase
+  // Fetch all adjustments for this item. A failed read must abort: continuing with "no adjustments" would
+  // rewrite the snapshot without its bonuses/deductions and report success.
+  const { data: adjs, error: adjReadErr } = await fetchAllRows(() => supabase
     .from('payroll_adjustments')
     .select('*')
-    .eq('payroll_regular_item_id', itemId);
+    .eq('payroll_regular_item_id', itemId)
+    .order('created_at')
+    .order('id'));
+  if (adjReadErr) {
+    const err = new Error(`Failed to read payroll adjustments for item ${itemId}: ${adjReadErr.message}`);
+    err.code = 'ADJUSTMENTS_READ_FAILED';
+    throw err;
+  }
 
   const calc = calculateRegularPayrollItem({
     // Compensation authority is the DRAFT snapshot stored on the item. The live employees master
@@ -1038,7 +1123,7 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
       approved_overtime_hours: approvedOvertimeHours,
     },
     lateDeductionOverride: item.late_deduction,
-    adjustments: adjs || [],
+    adjustments: adjs,
   });
 
   // Update item in database. A rejected write (e.g. the run was LOCKED concurrently and the
@@ -1170,10 +1255,28 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   if (guardRun && (guardRun.payroll_type === 'REGULAR' || guardRun.payroll_type === 'REGULAR_PAYROLL')) {
     const { data: runItems, error: itemsErr } = await fetchAllRows(() => supabase
       .from('payroll_regular_items')
-      .select('employee_id, employee_name_snapshot, overtime_hours, attendance_summary')
+      .select('id, employee_id, employee_name_snapshot, overtime_hours, attendance_summary, manual_bonus, debt_deduction, manual_deduction, adjustments_total')
       .eq('payroll_run_id', runId)
-      .order('employee_id'));
+      .order('employee_id')
+      .order('id'));
     if (itemsErr) throw new Error(`Cannot verify payroll items: ${itemsErr.message}`);
+    if (!runItems || runItems.length === 0) {
+      const err = new Error('Cannot lock regular payroll run: it has no payroll items');
+      err.code = 'EMPTY_RUN';
+      throw err;
+    }
+    const { data: runAdjustments, error: adjLockErr } = await fetchAllRows(() => supabase
+      .from('payroll_adjustments')
+      .select('id, payroll_regular_item_id, type, amount')
+      .eq('payroll_run_id', runId)
+      .order('id'));
+    if (adjLockErr) throw new Error(`Cannot verify payroll adjustments: ${adjLockErr.message}`);
+    const adjViolation = evaluateAdjustmentLockInvariants({ items: runItems, adjustments: runAdjustments });
+    if (adjViolation) {
+      const err = new Error(adjViolation.message);
+      err.code = adjViolation.code;
+      throw err;
+    }
     const employeeIds = [...new Set((runItems || []).map(i => i.employee_id))];
     if (employeeIds.length > 0) {
       const { data: runApprovals, error: apprErr } = await fetchAllRows(() => supabase
@@ -1507,6 +1610,7 @@ module.exports = {
   syncOvertimeCandidates,
   reconcileOvertimeForPeriod,
   evaluateOvertimeLockInvariants,
+  evaluateAdjustmentLockInvariants,
   summarizeOvertimeState,
   isEmployeeInBranchScope,
   parseNonNegativeMinutes,

@@ -15,6 +15,35 @@ const { getPolicyForUnit, roundRupiah } = require('./regularPayrollPolicy');
 // Minimum share of expected attendance days that must have a record before an item can be READY.
 const MIN_COVERAGE_RATIO = 0.9;
 
+/**
+ * Manual adjustment aggregate with the payroll semantics (single source of truth; the lock RPC and the
+ * service-side lock mirror use the same rules):
+ *   DEBT -> debt +|amt|; DEDUCTION -> deduction +|amt|; BONUS -> bonus +|amt|;
+ *   CORRECTION / OTHER / anything else -> amt >= 0 bonus, amt < 0 deduction.
+ */
+function aggregateAdjustments(adjustments = []) {
+  let debt = 0;
+  let deduction = 0;
+  let bonus = 0;
+  for (const adj of adjustments) {
+    const amt = roundRupiah(adj.amount || 0);
+    const type = String(adj.type || 'OTHER').toUpperCase().trim();
+
+    if (type === 'DEBT') {
+      debt += Math.abs(amt);
+    } else if (type === 'DEDUCTION') {
+      deduction += Math.abs(amt);
+    } else if (type === 'BONUS') {
+      bonus += Math.abs(amt);
+    } else if (amt >= 0) {
+      bonus += amt;
+    } else {
+      deduction += Math.abs(amt);
+    }
+  }
+  return { debt, deduction, bonus };
+}
+
 const REGULAR_ITEM_STATUS = Object.freeze({
   READY: 'READY',
   REVIEW_REQUIRED: 'REVIEW_REQUIRED',
@@ -178,30 +207,7 @@ function calculateRegularPayrollItem({
   }
 
   // 9. Manual Adjustments (DEBT, BONUS, DEDUCTION, CORRECTION, OTHER)
-  let debtDeduction = 0;
-  let manualDeduction = 0;
-  let manualBonus = 0;
-
-  for (const adj of adjustments) {
-    const amt = roundRupiah(adj.amount || 0);
-    const type = String(adj.type || 'OTHER').toUpperCase().trim();
-
-    if (type === 'DEBT') {
-      // Debt is a positive deduction value subtracted from take-home pay
-      debtDeduction += Math.abs(amt);
-    } else if (type === 'DEDUCTION') {
-      manualDeduction += Math.abs(amt);
-    } else if (type === 'BONUS') {
-      manualBonus += Math.abs(amt);
-    } else if (type === 'CORRECTION') {
-      if (amt >= 0) manualBonus += amt;
-      else manualDeduction += Math.abs(amt);
-    } else {
-      // Generic OTHER
-      if (amt >= 0) manualBonus += amt;
-      else manualDeduction += Math.abs(amt);
-    }
-  }
+  const { debt: debtDeduction, deduction: manualDeduction, bonus: manualBonus } = aggregateAdjustments(adjustments);
 
   const adjustmentsTotal = manualBonus - (debtDeduction + manualDeduction);
 
@@ -341,6 +347,7 @@ function calculateRegularPayrollItem({
 }
 
 module.exports = {
+  aggregateAdjustments,
   calculateRegularPayrollItem,
   REGULAR_ITEM_STATUS,
   SOURCE_ORIGIN,

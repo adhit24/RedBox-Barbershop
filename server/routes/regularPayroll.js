@@ -19,6 +19,23 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
   // options.adminAuth lets tests inject the auth middleware; production always uses Supabase auth.
   const adminAuth = options.adminAuth || createBackofficeSupabaseAuth(supabase, legacyAdminAuth);
 
+  // Compensation (salary, allowances, deductions, adjustments, take-home) authority:
+  //   OWNER   -> every unit / branch
+  //   MANAGER -> only employees of the branch in the VERIFIED session (never a query/body value)
+  //   anything else (incl. BRANCH_ADMIN) and a manager without an assigned branch -> denied (fail closed)
+  function compensationScope(req, res, next) {
+    const role = req.adminAuth?.role;
+    if (role === 'owner') {
+      req.compensationBranchScope = null;
+      return next();
+    }
+    if (role === 'manager' && req.adminAuth?.branch) {
+      req.compensationBranchScope = req.adminAuth.branch;
+      return next();
+    }
+    return res.status(403).json({ error: 'Forbidden: rincian kompensasi payroll hanya untuk Owner atau Manager cabang yang ditetapkan' });
+  }
+
   // Overtime branch authority: OWNER -> all branches; MANAGER / BRANCH_ADMIN -> the branch assigned in
   // their verified session (employee branch, never the fingerprint machine). A branch-bound role
   // without an assigned branch gets no overtime access (fail closed).
@@ -54,12 +71,13 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
   }
 
   // 1. GET / — List all regular payroll runs
-  router.get('/', adminAuth, async (req, res) => {
+  router.get('/', adminAuth, compensationScope, async (req, res) => {
     try {
       const { status, business_unit } = req.query;
       const runs = await listRegularPayrollRuns(supabase, {
         status: status || null,
         businessUnit: business_unit || null,
+        branchScope: req.compensationBranchScope,
       });
       return res.json({ runs });
     } catch (err) {
@@ -87,19 +105,20 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
       return res.status(201).json(result);
     } catch (err) {
       console.error('[RegularPayrollRoutes] generate error:', err);
-      const status = err.message?.includes('overlapping') ? 409 : 400;
+      const status = (err.code === 'OVERLAPPING_RUN' || /overlapping/i.test(err.message || '')) ? 409 : 400;
       return res.status(status).json({ error: err.message || 'Failed to generate regular payroll draft' });
     }
   });
 
   // 3. GET /:id — Get run detail with items and adjustments
-  router.get('/:id', adminAuth, async (req, res) => {
+  router.get('/:id', adminAuth, compensationScope, async (req, res) => {
     try {
       const runId = req.params.id;
       const { status, business_unit } = req.query;
       const detail = await getRegularPayrollRunDetail(supabase, {
         runId,
         filters: { status, business_unit },
+        branchScope: req.compensationBranchScope,
       });
       return res.json(detail);
     } catch (err) {
@@ -146,6 +165,12 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
         userEmail: req.adminAuth?.email || 'owner@redbox.id',
       });
 
+      if (result.adjustment_saved && !result.recalculation_success) {
+        return res.status(result.reason === 'RUN_LOCKED_CONCURRENTLY' ? 409 : 500).json({
+          ...result,
+          error: `Penyesuaian tersimpan, tetapi payroll tidak dapat dihitung ulang (${result.reason}): ${result.error}`,
+        });
+      }
       return res.status(201).json(result);
     } catch (err) {
       console.error('[RegularPayrollRoutes] add adjustment error:', err);
@@ -160,6 +185,12 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth, options = {}) {
       const result = await deleteRegularPayrollAdjustment(supabase, {
         adjustmentId: adjId,
       });
+      if (result.adjustment_deleted && !result.recalculation_success) {
+        return res.status(result.reason === 'RUN_LOCKED_CONCURRENTLY' ? 409 : 500).json({
+          ...result,
+          error: `Penyesuaian dihapus, tetapi payroll tidak dapat dihitung ulang (${result.reason}): ${result.error}`,
+        });
+      }
       return res.json(result);
     } catch (err) {
       console.error('[RegularPayrollRoutes] delete adjustment error:', err);
