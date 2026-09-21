@@ -174,7 +174,6 @@ export async function lockRegularPayrollRun(runId: string): Promise<{ success: b
 export async function addRegularPayrollAdjustment(payload: {
   runId: string;
   payroll_regular_item_id: string;
-  employee_id: string;
   type: string;
   amount: number;
   reason: string;
@@ -203,6 +202,16 @@ export async function fetchOvertimeApprovals(params?: {
 }
 
 /**
+ * Approved overtime minutes must be a finite number >= 0 (the backend enforces the same rule).
+ * Returns the number, or null when the value is not acceptable.
+ */
+export function parseApprovedOvertimeMinutes(value: unknown): number | null {
+  if (typeof value === 'string' && value.trim() !== '') value = Number(value);
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return value;
+}
+
+/**
  * Initial value of the editable "approved minutes" field for an overtime approval.
  * A PENDING candidate always starts with approved_overtime_minutes = 0, so defaulting to that value
  * would let a manager approve 0 minutes by just pressing Approve. Undecided candidates therefore start
@@ -228,6 +237,15 @@ export async function reviewOvertimeApproval(
 export async function syncOvertimeCandidates(params?: {
   period_start?: string;
   period_end?: string;
-}): Promise<{ success: boolean; candidates_found: number; newly_created: number }> {
+}): Promise<{
+  success: boolean;
+  partial_success?: boolean;
+  candidates_found: number;
+  newly_created: number;
+  insert_errors?: unknown[];
+  update_errors?: unknown[];
+  delete_errors?: unknown[];
+  recalculation_errors?: unknown[];
+}> {
   return apiClient.post('/api/payroll/regular-runs/overtime/sync', params || {});
 }

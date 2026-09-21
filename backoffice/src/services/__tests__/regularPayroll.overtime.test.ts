@@ -21,3 +21,19 @@ describe('defaultApprovedOvertimeMinutes', () => {
     ).toBe(60);
   });
 });
+
+import { parseApprovedOvertimeMinutes } from '../regularPayroll';
+
+describe('parseApprovedOvertimeMinutes', () => {
+  it('accepts finite numbers >= 0 (and numeric strings)', () => {
+    expect(parseApprovedOvertimeMinutes(0)).toBe(0);
+    expect(parseApprovedOvertimeMinutes(120)).toBe(120);
+    expect(parseApprovedOvertimeMinutes('90')).toBe(90);
+  });
+
+  it('rejects negative, NaN, Infinity, non-numeric and empty values', () => {
+    for (const bad of [-60, NaN, Infinity, -Infinity, 'abc', '', null, undefined, true, {}]) {
+      expect(parseApprovedOvertimeMinutes(bad)).toBeNull();
+    }
+  });
+});

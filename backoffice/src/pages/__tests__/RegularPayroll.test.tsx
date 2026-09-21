@@ -257,6 +257,38 @@ describe('RegularPayroll (Operational Payroll Page)', () => {
       });
     });
 
+    it('refuses to send negative / non-numeric approved minutes (Approve bypasses native validation)', async () => {
+      await openModal([approval({})]);
+      const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
+      fireEvent.change(input, { target: { value: '-60' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await waitFor(() => {
+        expect(screen.getByText(/angka 0 atau lebih/)).toBeInTheDocument();
+      });
+      expect(regularPayrollService.reviewOvertimeApproval).not.toHaveBeenCalled();
+    });
+
+    it('does not announce a successful sync when the backend reports failure', async () => {
+      vi.mocked(regularPayrollService.syncOvertimeCandidates).mockResolvedValue({
+        success: false, partial_success: true, candidates_found: 3, newly_created: 1, insert_errors: [{ error: 'boom' }],
+      } as never);
+      await openModal([approval({})]);
+      fireEvent.click(await screen.findByRole('button', { name: /Tarik Kandidat dari Presensi/ }));
+      await waitFor(() => {
+        expect(screen.getByText(/tidak sepenuhnya berhasil/)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/berhasil disinkronkan/)).not.toBeInTheDocument();
+    });
+
+    it('announces success only when the sync really succeeded', async () => {
+      vi.mocked(regularPayrollService.syncOvertimeCandidates).mockResolvedValue({ success: true, candidates_found: 1, newly_created: 1 } as never);
+      await openModal([approval({})]);
+      fireEvent.click(await screen.findByRole('button', { name: /Tarik Kandidat dari Presensi/ }));
+      await waitFor(() => {
+        expect(screen.getByText(/berhasil disinkronkan/)).toBeInTheDocument();
+      });
+    });
+
     it('a recorded approved value wins over the raw default (approved=90, raw=120)', async () => {
       await openModal([approval({ approved_overtime_minutes: 90 })]);
       const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;

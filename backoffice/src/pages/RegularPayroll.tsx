@@ -12,6 +12,7 @@ import {
   addRegularPayrollAdjustment,
   deleteRegularPayrollAdjustment,
   defaultApprovedOvertimeMinutes,
+  parseApprovedOvertimeMinutes,
   type RegularPayrollRun,
   type RegularPayrollItem,
   type OvertimeApproval,
@@ -212,7 +213,6 @@ export function RegularPayroll() {
       await addRegularPayrollAdjustment({
         runId: activeRun.id,
         payroll_regular_item_id: adjustmentTargetItem.id,
-        employee_id: adjustmentTargetItem.employee_id,
         type: adjType,
         amount: numAmount,
         reason: adjReason,
@@ -278,12 +278,20 @@ export function RegularPayroll() {
     if (!activeRun) return;
     setOvertimeLoading(true);
     try {
-      await syncOvertimeCandidates({
+      const res = await syncOvertimeCandidates({
         period_start: activeRun.period_start,
         period_end: activeRun.period_end,
       });
       await loadOvertimeList();
-      setActionMessage({ type: 'success', text: 'Kandidat lembur berhasil disinkronkan dari presensi.' });
+      if (res && res.success === false) {
+        // Never announce success when the backend reports failed reconciliation steps.
+        setActionMessage({
+          type: 'error',
+          text: 'Sinkronisasi lembur tidak sepenuhnya berhasil; sebagian kandidat belum tersinkron. Ulangi atau hubungi admin.',
+        });
+      } else {
+        setActionMessage({ type: 'success', text: 'Kandidat lembur berhasil disinkronkan dari presensi.' });
+      }
     } catch (err: any) {
       setActionMessage({ type: 'error', text: err?.message || 'Gagal sinkronisasi lembur.' });
     } finally {
@@ -294,7 +302,16 @@ export function RegularPayroll() {
   const handleReviewOvertime = async (otId: string, status: 'APPROVED' | 'REJECTED') => {
     setActionLoading(true);
     try {
-      const approvedMinutes = status === 'APPROVED' ? (overtimeMinutesInput[otId] ?? 0) : 0;
+      let approvedMinutes = 0;
+      if (status === 'APPROVED') {
+        // The Approve button bypasses native input validation, so validate here (backend enforces it too).
+        const parsed = parseApprovedOvertimeMinutes(overtimeMinutesInput[otId] ?? 0);
+        if (parsed === null) {
+          setActionMessage({ type: 'error', text: 'Menit lembur yang disetujui harus berupa angka 0 atau lebih.' });
+          return;
+        }
+        approvedMinutes = parsed;
+      }
       const note = overtimeNoteInput[otId] || '';
       await reviewOvertimeApproval(otId, {
         status,
