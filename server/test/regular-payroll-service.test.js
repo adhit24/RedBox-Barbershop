@@ -661,3 +661,142 @@ test('Overtime workflow: sync -> PENDING -> approve recalculates pending, amount
   assert.equal(run().summary.review_required_count, 0);
   assert.equal(run().summary.total_gross_pay, item().gross_pay);
 });
+
+// ---------------------------------------------------------------------------
+// Review round 2 regressions: lock guard, race handling, snapshot authority, raw refresh
+// ---------------------------------------------------------------------------
+const { lockRegularPayrollRun: lockRun } = require('../services/regularPayrollService');
+
+test('Lock guard: pending overtime approval blocks locking a regular payroll run', async () => {
+  const { db, draft, run } = await setupOvertimeDraft(); // draft has one PENDING candidate (120 min)
+  run().summary = { ...run().summary, attendance_period_complete: true }; // isolate the overtime rule
+
+  await assert.rejects(
+    () => lockRun(db, { runId: draft.run_id, userEmail: 'owner@redbox.id' }),
+    /pending overtime approval/i
+  );
+  assert.equal(run().status, 'DRAFT');
+  assert.equal(run().locked_at, undefined);
+});
+
+test('Lock guard: once overtime is reviewed and coverage is complete, a valid run locks', async () => {
+  const { db, draft, run } = await setupOvertimeDraft();
+  await reviewOvertimeApproval(db, { approvalId: 'ot-1', status: 'APPROVED', approvedMinutes: 120, userEmail: 'manager@redbox.id' });
+  run().summary = { ...run().summary, attendance_period_complete: true };
+
+  const res = await lockRun(db, { runId: draft.run_id, userEmail: 'owner@redbox.id' });
+
+  assert.equal(res.status, 'LOCKED');
+  assert.equal(run().status, 'LOCKED');
+});
+
+test('Lock guard: a PENDING candidate of an employee NOT in the run, or outside the period, does not block', async () => {
+  const { db, draft, run } = await setupOvertimeDraft();
+  await reviewOvertimeApproval(db, { approvalId: 'ot-1', status: 'REJECTED', userEmail: 'manager@redbox.id' });
+  db.tables.employee_overtime_approvals.push(
+    { id: 'ot-other', employee_id: 'someone-else', attendance_date: '2026-09-02', raw_overtime_minutes: 60, approved_overtime_minutes: 0, status: 'PENDING' },
+    { id: 'ot-outside', employee_id: 'emp-ot', attendance_date: '2026-10-05', raw_overtime_minutes: 60, approved_overtime_minutes: 0, status: 'PENDING' }
+  );
+  run().summary = { ...run().summary, attendance_period_complete: true };
+
+  const res = await lockRun(db, { runId: draft.run_id, userEmail: 'owner@redbox.id' });
+  assert.equal(res.status, 'LOCKED');
+});
+
+test('Race: approval saved but payroll item update rejected (run locked concurrently) is NOT reported as success', async () => {
+  const { db, item, run } = await setupOvertimeDraft();
+  const itemSnap = JSON.stringify(item());
+  const summarySnap = JSON.stringify(run().summary);
+
+  // Simulate the immutability trigger firing on the item update
+  const realFrom = db.from.bind(db);
+  db.from = (table) => {
+    const t = realFrom(table);
+    if (table !== 'payroll_regular_items') return t;
+    return {
+      ...t,
+      update: () => ({
+        eq: () => ({
+          select: () => ({
+            single: async () => ({ data: null, error: { message: 'Cannot modify payroll_regular_items: payroll run is LOCKED and immutable' } }),
+          }),
+        }),
+      }),
+    };
+  };
+
+  const res = await reviewOvertimeApproval(db, { approvalId: 'ot-1', status: 'APPROVED', approvedMinutes: 120, userEmail: 'manager@redbox.id' });
+
+  assert.equal(res.approval_saved, true);
+  assert.equal(res.recalculation_success, false);
+  assert.equal(res.success, false);
+  assert.equal(res.recalculation.reason, 'RUN_LOCKED_CONCURRENTLY');
+  assert.match(res.recalculation.error, /LOCKED/);
+  assert.deepEqual(res.recalculation.updated, []);
+  assert.equal(db.tables.employee_overtime_approvals[0].status, 'APPROVED', 'the committed approval is not falsely rolled back');
+  assert.equal(JSON.stringify(item()), itemSnap);
+  assert.equal(JSON.stringify(run().summary), summarySnap, 'summary must not be refreshed after a failed item update');
+});
+
+test('Snapshot authority: recalculation keeps the draft compensation, ignoring later employee master changes', async () => {
+  const { db, item } = await setupOvertimeDraft();
+  assert.equal(item().base_salary, 3000000);
+  const baseGross = item().gross_pay;
+  const baseActual = item().actual_salary;
+
+  // Master data changes AFTER the draft was generated
+  const emp = db.tables.employees.find((e) => e.id === 'emp-ot');
+  emp.base_salary = 4000000;
+  emp.position_allowance = 500000;
+  emp.meal_allowance_rate = 30000;
+
+  await reviewOvertimeApproval(db, { approvalId: 'ot-1', status: 'APPROVED', approvedMinutes: 120, userEmail: 'manager@redbox.id' });
+
+  assert.equal(item().base_salary, 3000000);
+  assert.equal(item().actual_salary, baseActual);
+  assert.equal(item().position_allowance, 0);
+  assert.equal(item().gross_pay, baseGross + 15000, 'only overtime moved; compensation stayed on the snapshot');
+});
+
+test('Sync: existing PENDING candidate raw minutes follow the latest attendance (60 -> 90)', async () => {
+  const { db } = await setupSyncDraft();
+  db.tables.employee_overtime_approvals.push({
+    id: 'ot-pend', employee_id: 'emp-ot', attendance_date: '2026-09-02', raw_overtime_minutes: 60,
+    approved_overtime_minutes: 0, status: 'PENDING',
+  });
+  db.tables.employee_attendance.find((r) => r.attendance_date === '2026-09-02').overtime_minutes = 90;
+
+  const res = await syncOvertimeCandidates(db, {});
+
+  assert.equal(db.tables.employee_overtime_approvals.length, 1, 'no duplicate approval');
+  assert.equal(db.tables.employee_overtime_approvals[0].raw_overtime_minutes, 90);
+  assert.equal(db.tables.employee_overtime_approvals[0].status, 'PENDING');
+  assert.deepEqual(res.raw_refreshed, [{ approval_id: 'ot-pend', from: 60, to: 90 }]);
+});
+
+test('Sync: APPROVED / REJECTED decisions are never overwritten by a resync, only reported', async () => {
+  const { db } = await setupSyncDraft();
+  db.tables.employee_overtime_approvals.push({
+    id: 'ot-appr', employee_id: 'emp-ot', attendance_date: '2026-09-02', raw_overtime_minutes: 60,
+    approved_overtime_minutes: 60, status: 'APPROVED', approved_by: 'manager@redbox.id',
+  });
+  db.tables.employee_attendance.find((r) => r.attendance_date === '2026-09-02').overtime_minutes = 90;
+  const before = JSON.stringify(db.tables.employee_overtime_approvals[0]);
+
+  const res = await syncOvertimeCandidates(db, {});
+
+  assert.equal(JSON.stringify(db.tables.employee_overtime_approvals[0]), before);
+  assert.deepEqual(res.raw_refreshed, []);
+  assert.equal(res.decision_discrepancies.length, 1);
+  assert.equal(res.decision_discrepancies[0].status, 'APPROVED');
+  assert.equal(res.decision_discrepancies[0].attendance_overtime_minutes, 90);
+
+  // same for REJECTED
+  db.tables.employee_overtime_approvals[0] = {
+    id: 'ot-rej', employee_id: 'emp-ot', attendance_date: '2026-09-02', raw_overtime_minutes: 60,
+    approved_overtime_minutes: 0, status: 'REJECTED',
+  };
+  const before2 = JSON.stringify(db.tables.employee_overtime_approvals[0]);
+  await syncOvertimeCandidates(db, {});
+  assert.equal(JSON.stringify(db.tables.employee_overtime_approvals[0]), before2);
+});

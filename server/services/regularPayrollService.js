@@ -641,13 +641,6 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
     };
   }
 
-  // Fetch employee master
-  const { data: emp } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('id', item.employee_id)
-    .single();
-
   // Fetch all adjustments for this item
   const { data: adjs } = await supabase
     .from('payroll_adjustments')
@@ -655,12 +648,18 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
     .eq('payroll_regular_item_id', itemId);
 
   const calc = calculateRegularPayrollItem({
-    employee: emp || {
+    // Compensation authority is the DRAFT snapshot stored on the item. The live employees master
+    // may have changed since the draft was generated; only attendance/overtime are refreshed here.
+    employee: {
       id: item.employee_id,
       name: item.employee_name_snapshot,
+      nickname: item.employee_nickname_snapshot,
       business_unit: item.business_unit_snapshot,
+      branch: item.branch_snapshot,
       position: item.position_snapshot,
       base_salary: item.base_salary,
+      position_allowance: item.position_allowance,
+      meal_allowance_rate: item.meal_allowance_rate,
     },
     attendanceSummary,
     allowances: {
@@ -680,8 +679,9 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
     adjustments: adjs || [],
   });
 
-  // Update item in database
-  await supabase
+  // Update item in database. A rejected write (e.g. the run was LOCKED concurrently and the
+  // immutability trigger fired) must surface as an error, never as a successful recalculation.
+  const { data: updatedItem, error: itemUpdErr } = await supabase
     .from('payroll_regular_items')
     .update({
       overtime_hours: calc.overtime_hours,
@@ -699,7 +699,15 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
       status: calc.status,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', itemId);
+    .eq('id', itemId)
+    .select('id')
+    .single();
+
+  if (itemUpdErr || !updatedItem) {
+    const err = new Error(`Failed to update payroll item ${itemId}: ${itemUpdErr?.message || 'no row updated'}`);
+    err.code = /LOCKED|immutable/i.test(itemUpdErr?.message || '') ? 'RUN_LOCKED_CONCURRENTLY' : 'ITEM_UPDATE_FAILED';
+    throw err;
+  }
 
   // Update run header summary
   await refreshRunSummary(supabase, runId);
@@ -758,7 +766,7 @@ async function refreshRunSummary(supabase, runId) {
   } catch (_) { /* keep defaults */ }
   const missingAttendanceCount = allItems.filter(it => it.status === 'MISSING_ATTENDANCE' || it.status === 'BLOCKED_ATTENDANCE_SOURCE').length;
 
-  await supabase
+  const { error: summaryErr } = await supabase
     .from('payroll_runs')
     .update({
       summary: {
@@ -774,6 +782,7 @@ async function refreshRunSummary(supabase, runId) {
       updated_at: new Date().toISOString(),
     })
     .eq('id', runId);
+  if (summaryErr) throw new Error(`Failed to refresh payroll run summary: ${summaryErr.message}`);
 }
 
 /**
@@ -790,6 +799,32 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   if (blockingItems && blockingItems.length > 0) {
     const names = blockingItems.slice(0, 3).map(b => `${b.employee_name_snapshot} (${b.status})`).join(', ');
     throw new Error(`Cannot lock payroll run: ${blockingItems.length} employee(s) have incomplete attendance or salary data (${names}). Take-home pay is not finalized.`);
+  }
+
+  // Pending overtime guard (fail-fast; the lock RPC enforces the same rule): every overtime candidate
+  // of an employee in this run and period must be approved or rejected before finalizing.
+  const { data: guardRun } = await supabase.from('payroll_runs').select('period_start, period_end, payroll_type').eq('id', runId).single();
+  if (guardRun && (guardRun.payroll_type === 'REGULAR' || guardRun.payroll_type === 'REGULAR_PAYROLL')) {
+    const { data: runItems } = await fetchAllRows(() => supabase
+      .from('payroll_regular_items')
+      .select('employee_id')
+      .eq('payroll_run_id', runId)
+      .order('employee_id'));
+    const employeeIds = [...new Set((runItems || []).map(i => i.employee_id))];
+    if (employeeIds.length > 0) {
+      const { data: pendingOt, error: pendingErr } = await fetchAllRows(() => supabase
+        .from('employee_overtime_approvals')
+        .select('id')
+        .in('employee_id', employeeIds)
+        .eq('status', 'PENDING')
+        .gte('attendance_date', guardRun.period_start)
+        .lte('attendance_date', guardRun.period_end)
+        .order('id'));
+      if (pendingErr) throw new Error(`Cannot verify pending overtime approvals: ${pendingErr.message}`);
+      if ((pendingOt || []).length > 0) {
+        throw new Error(`Cannot lock regular payroll: ${pendingOt.length} pending overtime approval(s) remain. Approve or reject them first.`);
+      }
+    }
   }
 
   // Period guard: attendance must cover the whole payroll period before locking.
@@ -895,6 +930,7 @@ async function propagateOvertimeToDraftRuns(supabase, candidates = []) {
     // Approval rows are already saved; surface the failure instead of hiding a stale draft.
     console.error('[RegularPayrollService] overtime recalculation failed:', err.message);
     result.error = err.message;
+    result.reason = err.code || 'RECALCULATION_FAILED';
   }
   return result;
 }
@@ -949,7 +985,15 @@ async function reviewOvertimeApproval(supabase, { approvalId, status, approvedMi
     { employee_id: updated.employee_id, attendance_date: updated.attendance_date },
   ]);
 
-  return { success: true, approval: updated, recalculation };
+  // The approval row is committed regardless; report honestly whether the payroll snapshot followed.
+  const recalculationSuccess = !recalculation.error;
+  return {
+    success: recalculationSuccess,
+    approval_saved: true,
+    recalculation_success: recalculationSuccess,
+    approval: updated,
+    recalculation,
+  };
 }
 
 /**
@@ -969,11 +1013,13 @@ async function syncOvertimeCandidates(supabase, { periodStart, periodEnd } = {})
 
   let createdCount = 0;
   const insertErrors = [];
+  const rawRefreshed = [];
+  const decisionDiscrepancies = [];
   const pendingCandidates = [];
   for (const row of rawRows || []) {
     const { data: existing } = await supabase
       .from('employee_overtime_approvals')
-      .select('id, status')
+      .select('id, status, raw_overtime_minutes')
       .eq('employee_id', row.employee_id)
       .eq('attendance_date', row.attendance_date)
       .maybeSingle();
@@ -995,8 +1041,29 @@ async function syncOvertimeCandidates(supabase, { periodStart, periodEnd } = {})
       createdCount++;
       pendingCandidates.push({ employee_id: row.employee_id, attendance_date: row.attendance_date });
     } else if (existing.status === 'PENDING') {
-      // Already pending: an earlier sync may predate the draft, so re-snapshot it too (idempotent).
+      // Still undecided: keep the raw value in step with attendance so the manager never reviews a
+      // stale duration, and re-snapshot the draft (idempotent).
+      const previousRaw = Number(existing.raw_overtime_minutes);
+      if (previousRaw !== Number(row.overtime_minutes)) {
+        const { error: rawErr } = await supabase
+          .from('employee_overtime_approvals')
+          .update({ raw_overtime_minutes: row.overtime_minutes, updated_at: new Date().toISOString() })
+          .eq('id', existing.id);
+        if (rawErr) {
+          insertErrors.push({ employee_id: row.employee_id, attendance_date: row.attendance_date, error: rawErr.message });
+        } else {
+          rawRefreshed.push({ approval_id: existing.id, from: previousRaw, to: Number(row.overtime_minutes) });
+        }
+      }
       pendingCandidates.push({ employee_id: row.employee_id, attendance_date: row.attendance_date });
+    } else if (Number(existing.raw_overtime_minutes) !== Number(row.overtime_minutes)) {
+      // APPROVED / REJECTED are human decisions: never changed by a resync, only reported.
+      decisionDiscrepancies.push({
+        approval_id: existing.id,
+        status: existing.status,
+        decided_against_raw_minutes: Number(existing.raw_overtime_minutes),
+        attendance_overtime_minutes: Number(row.overtime_minutes),
+      });
     }
   }
 
@@ -1008,6 +1075,8 @@ async function syncOvertimeCandidates(supabase, { periodStart, periodEnd } = {})
     candidates_found: (rawRows || []).length,
     newly_created: createdCount,
     insert_errors: insertErrors,
+    raw_refreshed: rawRefreshed,
+    decision_discrepancies: decisionDiscrepancies,
     recalculation,
   };
 }

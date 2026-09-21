@@ -182,6 +182,13 @@ function createRegularPayrollRoutes(supabase, legacyAdminAuth) {
         note,
         userEmail: req.adminAuth?.email || 'manager@redbox.id',
       });
+      if (result.approval_saved && !result.recalculation_success) {
+        // Approval is committed but the payroll snapshot could not follow (e.g. run locked concurrently).
+        return res.status(409).json({
+          ...result,
+          error: `Persetujuan lembur tersimpan, tetapi payroll tidak dapat dihitung ulang (${result.recalculation?.reason || 'RECALCULATION_FAILED'}): ${result.recalculation?.error || ''}`,
+        });
+      }
       return res.json(result);
     } catch (err) {
       console.error('[RegularPayrollRoutes] review overtime error:', err);
