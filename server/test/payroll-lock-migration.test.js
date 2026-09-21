@@ -32,7 +32,9 @@ function functionBody(sql) {
 }
 
 function elseBranch(body) {
-  const i = body.indexOf('ELSE');
+  // the ELSE that opens the barber branch (the function also contains CASE ... ELSE expressions)
+  const marker = body.indexOf('-- Barber payroll');
+  const i = marker >= 0 ? body.lastIndexOf('ELSE', marker) : body.indexOf('ELSE');
   const j = body.indexOf('END IF;\n\n    -- 3. Mark run as LOCKED');
   return body.slice(i, j);
 }
@@ -44,11 +46,13 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   assert.ok(restore, 'barber-restoring migration exists');
   const pendingGuard = list.find((f) => /block_pending_overtime_on_payroll_lock/.test(f));
   assert.ok(pendingGuard, 'pending-overtime guard migration exists');
+  const reconcile = list.find((f) => /reconcile_overtime_before_payroll_lock/.test(f));
+  assert.ok(reconcile, 'overtime reconciliation migration exists');
   const last = list[list.length - 1];
-  assert.match(last, /reconcile_overtime_before_payroll_lock/);
+  assert.match(last, /atomic_regular_payroll_lifecycle/);
   assert.ok(
-    restore > '20260919143000' && pendingGuard > restore && last > pendingGuard,
-    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation'
+    restore > '20260919143000' && pendingGuard > restore && reconcile > pendingGuard && last > reconcile,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle'
   );
 });
 
@@ -156,7 +160,7 @@ test('Corrective migration is forward-only: applied migrations were not edited t
   assert.match(regressed, /status = 'LOCKED'/);
   // ... and the fix lives in a new file that does not run schema DDL beyond the function.
   const corrective = read(definers().pop());
-  assert.doesNotMatch(corrective, /CREATE TABLE|ALTER TABLE|DROP /i);
+  assert.doesNotMatch(corrective, /CREATE TABLE|ALTER TABLE|DROP (TABLE|COLUMN|SCHEMA|FUNCTION)/i);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -205,11 +209,103 @@ test('Serialization migration: non-negative overtime minutes constraints, orderi
   const { file, sql } = serializeMigration();
   assert.match(norm(sql), /ADD CONSTRAINT employee_overtime_approved_minutes_nonneg CHECK \(approved_overtime_minutes >= 0\)/);
   assert.match(norm(sql), /ADD CONSTRAINT employee_overtime_raw_minutes_nonneg CHECK \(raw_overtime_minutes >= 0\)/);
-  const reconcile = definers().pop();
+  const reconcile = definers().find((x) => /reconcile_overtime_before_payroll_lock/.test(x));
   assert.ok(file > reconcile, 'ordered after the overtime-reconciliation lock migration');
   for (const f of [reconcile, definers().find((x) => /block_pending_overtime/.test(x)), definers().find((x) => /restore_barber_lock/.test(x))]) {
     assert.doesNotMatch(read(f), /FOR SHARE|serialize_regular_payroll_mutation/, `${f} was not edited`);
   }
   // deterministic ordering is what prevents lock-order cycles
   assert.match(sql, /ORDER BY r\.id\s+FOR SHARE/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Atomic Regular Payroll lifecycle (uniqueness, atomic creation, adjustments, empty-run guard)
+// ---------------------------------------------------------------------------------------------
+function lifecycleMigration() {
+  const f = fs.readdirSync(MIGRATIONS_DIR).find((n) => /atomic_regular_payroll_lifecycle/.test(n));
+  assert.ok(f, 'atomic lifecycle migration exists');
+  return { file: f, sql: read(f) };
+}
+
+test('Lifecycle: overlap trigger serializes generation with an advisory lock and rejects DRAFT/LOCKED overlaps', () => {
+  const { sql } = lifecycleMigration();
+  const n = norm(sql);
+  const fn = n.slice(n.indexOf('FUNCTION public.find_overlapping_regular_run'), n.indexOf('CREATE TRIGGER trg_payroll_runs_no_overlap'));
+  assert.match(fn, /r\.status IN \('DRAFT', 'LOCKED'\)/);
+  assert.match(fn, /r\.period_start <= p_end AND r\.period_end >= p_start/);
+  assert.match(fn, /\(r\.business_unit = p_business_unit OR r\.business_unit = 'ALL' OR p_business_unit = 'ALL'\)/);
+  assert.match(fn, /PERFORM pg_advisory_xact_lock\(hashtext\('redbox\.regular_payroll_run_overlap'\)\);/);
+  assert.ok(fn.indexOf('pg_advisory_xact_lock') < fn.lastIndexOf('find_overlapping_regular_run(NEW.id'), 'lock before the check');
+  assert.match(n, /CREATE TRIGGER trg_payroll_runs_no_overlap BEFORE INSERT OR UPDATE OF period_start, period_end, business_unit, payroll_type ON public\.payroll_runs FOR EACH ROW/);
+  assert.match(n, /Overlapping regular payroll run exists/);
+});
+
+test('Lifecycle: header and items are created by ONE function (one transaction), never by separate requests', () => {
+  const { sql } = lifecycleMigration();
+  const start = sql.indexOf('CREATE OR REPLACE FUNCTION public.create_regular_payroll_run');
+  const end = sql.indexOf('-- 3. Adjustments');
+  const fn = norm(sql.slice(start, end));
+  assert.match(fn, /RETURNS JSONB LANGUAGE plpgsql SECURITY INVOKER/);
+  assert.match(fn, /jsonb_array_length\(p_items\) = 0 THEN RAISE EXCEPTION 'Cannot create a regular payroll run without payroll items'/);
+  const iRun = fn.indexOf('INSERT INTO public.payroll_runs');
+  const iItems = fn.indexOf('INSERT INTO public.payroll_regular_items');
+  assert.ok(iRun > 0 && iItems > iRun, 'header then items inside the same function body');
+  assert.match(fn, /jsonb_populate_recordset\(NULL::public\.payroll_regular_items, p_items\)/);
+  assert.match(fn, /IF v_inserted <> v_expected THEN RAISE EXCEPTION/);
+  assert.doesNotMatch(fn, /\bCOMMIT\b/, 'no transaction control inside the function');
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.create_regular_payroll_run\(JSONB, JSONB\) TO service_role;/);
+  assert.match(sql, /REVOKE ALL ON FUNCTION public\.create_regular_payroll_run\(JSONB, JSONB\) FROM PUBLIC, anon, authenticated;/);
+});
+
+test('Lifecycle: adjustments get database-enforced ownership and an atomic snapshot-dirty marker', () => {
+  const n = norm(lifecycleMigration().sql);
+  assert.match(n, /CREATE TRIGGER trg_payroll_adjustment_ownership BEFORE INSERT OR UPDATE OF payroll_run_id, payroll_regular_item_id, employee_id ON public\.payroll_adjustments/);
+  assert.match(n, /Payroll adjustment item % does not belong to payroll run %/);
+  assert.match(n, /Payroll adjustment employee does not match the payroll item/);
+  assert.match(n, /CREATE TRIGGER trg_payroll_adjustment_mark_dirty AFTER INSERT OR UPDATE OR DELETE ON public\.payroll_adjustments FOR EACH ROW/);
+  assert.match(n, /jsonb_set\(COALESCE\(attendance_summary, '\{\}'::JSONB\), '\{adjustments_dirty\}', 'true'::JSONB, TRUE\)/);
+});
+
+test('Lifecycle: lock RPC refuses empty runs, overlaps and stale adjustment snapshots (engine semantics, no salary formula)', () => {
+  const sql = read(definers().pop());
+  const body = norm(functionBody(sql));
+  const regular = body.slice(body.indexOf("IF v_run.payroll_type IN ('REGULAR', 'REGULAR_PAYROLL') THEN"), body.indexOf('ELSE -- Barber'));
+  assert.match(regular, /IF v_item_count = 0 THEN RAISE EXCEPTION 'Cannot lock regular payroll run %: it has no payroll items'/);
+  assert.match(regular, /v_overlap := public\.find_overlapping_regular_run\(p_run_id, v_run\.business_unit, v_run\.period_start, v_run\.period_end\);/);
+  assert.match(regular, /it overlaps regular payroll run/);
+  // aggregate semantics: BONUS, DEBT, DEDUCTION, others by sign - identical to aggregateAdjustments in the engine
+  assert.match(regular, /WHEN x\.t = 'BONUS' THEN ABS\(x\.amount\) WHEN x\.t IN \('DEBT', 'DEDUCTION'\) THEN 0 ELSE GREATEST\(x\.amount, 0\) END/);
+  assert.match(regular, /CASE WHEN x\.t = 'DEBT' THEN ABS\(x\.amount\) ELSE 0 END/);
+  assert.match(regular, /WHEN x\.t = 'DEDUCTION' THEN ABS\(x\.amount\) WHEN x\.t IN \('BONUS', 'DEBT'\) THEN 0 ELSE GREATEST\(-x\.amount, 0\) END/);
+  assert.match(regular, /FROM public\.payroll_adjustments a WHERE a\.payroll_regular_item_id = v_snap_item\.id/);
+  assert.match(regular, /v_snap_item\.adjustments_dirty OR v_adj_bonus <> v_snap_item\.manual_bonus OR v_adj_debt <> v_snap_item\.debt_deduction OR v_adj_deduction <> v_snap_item\.manual_deduction OR \(v_adj_bonus - v_adj_debt - v_adj_deduction\) <> v_snap_item\.adjustments_total/);
+  assert.match(regular, /Payroll adjustment snapshot is stale for %\. Recalculate before locking\./);
+  // ordering: guards first, adjustments inside the snapshot loop before period / reconciliation / freeze
+  const at = (frag) => { const i = regular.indexOf(frag); assert.ok(i >= 0, 'missing ' + frag); return i; };
+  assert.ok(at('v_item_count = 0') < at("status IN ('MISSING_ATTENDANCE'"));
+  assert.ok(at('Payroll overtime snapshot is stale') < at('Payroll adjustment snapshot is stale'));
+  assert.ok(at('Payroll adjustment snapshot is stale') < at('attendance_period_complete'));
+  assert.ok(at('attendance_period_complete') < at('Reconciliation failed for %'));
+  assert.ok(at('Reconciliation failed for %') < at("SET status = 'LOCKED'"));
+  // no salary formula in SQL: no gross / take-home computation beyond the pre-existing reconciliation check
+  assert.doesNotMatch(regular, /base_salary|daily_salary|meal_allowance|late_deduction \*/);
+  assert.ok(!norm(elseBranch(functionBody(sql))).includes('payroll_adjustments'), 'barber branch untouched');
+});
+
+test('Lifecycle migration: no privilege widening, earlier migrations untouched', () => {
+  const { file, sql } = lifecycleMigration();
+  for (const sig of [
+    'lock_payroll_run(UUID, TEXT)',
+    'create_regular_payroll_run(JSONB, JSONB)',
+    'find_overlapping_regular_run(UUID, TEXT, DATE, DATE)',
+  ]) {
+    assert.ok(sql.includes(`REVOKE ALL ON FUNCTION public.${sig} FROM PUBLIC, anon, authenticated;`), 'revoked: ' + sig);
+    assert.ok(sql.includes(`GRANT EXECUTE ON FUNCTION public.${sig} TO service_role;`), 'service_role only: ' + sig);
+  }
+  assert.doesNotMatch(sql, /GRANT [A-Z ,]+ (ON|TO) (PUBLIC|anon|authenticated)/);
+  const serialize = fs.readdirSync(MIGRATIONS_DIR).find((n) => /serialize_regular_payroll_mutations/.test(n));
+  assert.ok(file > serialize, 'ordered after the serialization migration');
+  for (const f of fs.readdirSync(MIGRATIONS_DIR).filter((n) => /restore_barber_lock|block_pending_overtime|reconcile_overtime_before|serialize_regular_payroll/.test(n))) {
+    assert.doesNotMatch(read(f), /create_regular_payroll_run|find_overlapping_regular_run|adjustments_dirty/, `${f} was not edited`);
+  }
 });

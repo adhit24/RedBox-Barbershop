@@ -218,3 +218,93 @@ test('No deadlock: writers take run locks in id order while an RPC holds the lat
   assert.equal(await withTimeout(W), 'DONE');
   assert.equal(await withTimeout(L1), 'LOCKED1');
 });
+
+// ---------------------------------------------------------------------------------------------
+// Adjustments: the adjustment write and its snapshot follow-up are separate steps; the lock must never
+// freeze between them (dirty marker written in the SAME transaction + lock-time aggregate check).
+// ---------------------------------------------------------------------------------------------
+const { evaluateAdjustmentLockInvariants } = require('../services/regularPayrollService');
+
+function adjDb() {
+  return {
+    run: { id: 'R1', status: 'DRAFT' },
+    adjustments: [],
+    item: { id: 'i1', employee_id: 'e1', employee_name_snapshot: 'E1', manual_bonus: 0, debt_deduction: 0, manual_deduction: 0, adjustments_total: 0, attendance_summary: {} },
+  };
+}
+const validateAdj = (db) => evaluateAdjustmentLockInvariants({ items: [db.item], adjustments: db.adjustments });
+
+/** adjustment writer: SHARE lock (check_payroll_run_not_locked), write + dirty marker in ONE commit */
+async function adjustmentWriter(db, lock, name, { hold, apply }) {
+  await lock.acquire(name, 'S');
+  if (db.run.status === 'LOCKED') { lock.release(name); return 'REJECTED_LOCKED'; }
+  if (hold) await hold.wait;
+  apply(db);
+  db.item.attendance_summary = { ...db.item.attendance_summary, adjustments_dirty: true }; // trg_payroll_adjustment_mark_dirty
+  lock.release(name);
+  return 'COMMITTED';
+}
+async function adjLockRpc(db, lock, name) {
+  await lock.acquire(name, 'X');
+  const v = validateAdj(db);
+  if (v) { lock.release(name); return 'REJECTED:' + v.code; }
+  db.run.status = 'LOCKED';
+  lock.release(name);
+  return 'LOCKED';
+}
+/** the Node recalculation that follows (runs later, its own transaction) */
+async function recalcAdj(db, lock) {
+  await lock.acquire('RECALC', 'S');
+  if (db.run.status === 'LOCKED') { lock.release('RECALC'); return 'REJECTED_LOCKED'; }
+  const bonus = db.adjustments.reduce((s, a) => s + a.amount, 0);
+  db.item = { ...db.item, manual_bonus: bonus, adjustments_total: bonus, attendance_summary: {} }; // dirty cleared
+  lock.release('RECALC');
+  return 'RECALCULATED';
+}
+
+test('Adjustment insert committed, recalculation pending -> the lock (starting in between) is rejected; after recalc it locks', async () => {
+  const db = adjDb();
+  const lock = new RowLock();
+  assert.equal(await withTimeout(adjustmentWriter(db, lock, 'A', { apply: (d) => d.adjustments.push({ payroll_regular_item_id: 'i1', type: 'BONUS', amount: 50000 }) })), 'COMMITTED');
+  // owner locks BEFORE the recalculation transaction runs
+  assert.equal(await withTimeout(adjLockRpc(db, lock, 'L')), 'REJECTED:ADJUSTMENT_SNAPSHOT_STALE');
+  assert.equal(db.run.status, 'DRAFT');
+  assert.equal(await withTimeout(recalcAdj(db, lock)), 'RECALCULATED');
+  assert.equal(await withTimeout(adjLockRpc(db, lock, 'L2')), 'LOCKED');
+});
+
+test('Adjustment delete committed, recalculation pending -> lock rejected; after recalc it locks', async () => {
+  const db = adjDb();
+  db.adjustments.push({ payroll_regular_item_id: 'i1', type: 'BONUS', amount: 50000 });
+  db.item = { ...db.item, manual_bonus: 50000, adjustments_total: 50000 };
+  const lock = new RowLock();
+  assert.equal(await withTimeout(adjustmentWriter(db, lock, 'A', { apply: (d) => { d.adjustments.length = 0; } })), 'COMMITTED');
+  assert.equal(await withTimeout(adjLockRpc(db, lock, 'L')), 'REJECTED:ADJUSTMENT_SNAPSHOT_STALE');
+  assert.equal(await withTimeout(recalcAdj(db, lock)), 'RECALCULATED');
+  assert.equal(db.item.manual_bonus, 0);
+  assert.equal(await withTimeout(adjLockRpc(db, lock, 'L2')), 'LOCKED');
+});
+
+test('Lock first -> an adjustment write waits and is refused; the frozen payroll is unchanged', async () => {
+  const db = adjDb();
+  const lock = new RowLock();
+  const L = adjLockRpc(db, lock, 'L');
+  const A = adjustmentWriter(db, lock, 'A', { apply: (d) => d.adjustments.push({ payroll_regular_item_id: 'i1', type: 'BONUS', amount: 1 }) });
+  assert.equal(await withTimeout(L), 'LOCKED');
+  assert.equal(await withTimeout(A), 'REJECTED_LOCKED');
+  assert.deepEqual(db.adjustments, []);
+});
+
+test('Adjustment writer holding SHARE makes the lock wait; the lock then sees the dirty snapshot', async () => {
+  const db = adjDb();
+  const lock = new RowLock();
+  const hold = gate();
+  const A = adjustmentWriter(db, lock, 'A', { hold, apply: (d) => d.adjustments.push({ payroll_regular_item_id: 'i1', type: 'DEBT', amount: 10 }) });
+  await tick();
+  const L = adjLockRpc(db, lock, 'L');
+  await tick();
+  assert.equal(db.run.status, 'DRAFT');
+  hold.open();
+  assert.equal(await withTimeout(A), 'COMMITTED');
+  assert.equal(await withTimeout(L), 'REJECTED:ADJUSTMENT_SNAPSHOT_STALE');
+});
