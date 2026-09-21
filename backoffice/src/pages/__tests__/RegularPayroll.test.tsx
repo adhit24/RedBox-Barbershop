@@ -4,6 +4,16 @@ import { MemoryRouter } from 'react-router-dom';
 import { RegularPayroll } from '../RegularPayroll';
 import * as regularPayrollService from '../../services/regularPayroll';
 
+import * as authProvider from '../../auth/AuthProvider';
+
+vi.mock('../../auth/AuthProvider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../auth/AuthProvider')>();
+  return {
+    ...actual,
+    useAuth: vi.fn(() => ({ role: 'owner', isAuthenticated: true })),
+  };
+});
+
 vi.mock('../../services/regularPayroll', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/regularPayroll')>();
   return {
@@ -12,6 +22,7 @@ vi.mock('../../services/regularPayroll', async (importOriginal) => {
     fetchRegularPayrollRunDetail: vi.fn(),
     generateRegularPayrollDraft: vi.fn(),
     lockRegularPayrollRun: vi.fn(),
+    recalculateRegularPayrollRun: vi.fn(),
     addRegularPayrollAdjustment: vi.fn(),
     deleteRegularPayrollAdjustment: vi.fn(),
     fetchOvertimeApprovals: vi.fn(),
@@ -293,6 +304,200 @@ describe('RegularPayroll (Operational Payroll Page)', () => {
       await openModal([approval({ approved_overtime_minutes: 90 })]);
       const input = (await screen.findByLabelText('Approved overtime minutes ot-1')) as HTMLInputElement;
       expect(input.value).toBe('90');
+    });
+  });
+
+  describe('recalculate payroll action', () => {
+    const draftRun = {
+      id: 'run-recalc-1',
+      payroll_type: 'REGULAR',
+      business_unit: 'ALL',
+      period_start: '2026-08-26',
+      period_end: '2026-09-25',
+      status: 'DRAFT' as const,
+      generated_at: new Date().toISOString(),
+      generated_by: 'owner@redbox.id',
+      locked_at: null,
+      locked_by: null,
+      calculation_version: 'regular-v1.0',
+      summary: {
+        total_employees: 1,
+        total_gross_pay: 1000000,
+        total_deductions: 0,
+        total_take_home_pay: 1000000,
+        review_required_count: 0,
+        missing_salary_count: 0,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const dirtyItem = {
+      id: 'item-dirty-1',
+      payroll_run_id: 'run-recalc-1',
+      employee_id: 'emp-1',
+      employee_name_snapshot: 'Employee Alpha',
+      employee_nickname_snapshot: 'Alpha',
+      business_unit_snapshot: 'Sundaze',
+      position_snapshot: 'Barista',
+      branch_snapshot: 'bypass',
+      base_salary: 1800000,
+      daily_salary: 60000,
+      salary_divisor: 30,
+      work_days: 27,
+      actual_salary: 1620000,
+      meal_allowance_days: 25,
+      meal_allowance_rate: 20000,
+      meal_allowance_total: 500000,
+      position_allowance: 0,
+      attendance_allowance: 0,
+      attendance_allowance_source: 'POLICY_PENDING',
+      product_commission: 0,
+      product_commission_source: 'MANUAL',
+      service_barber_amount: 0,
+      service_barber_source: 'MANUAL',
+      overtime_hours: 0,
+      overtime_rate: 7500,
+      overtime_amount: 0,
+      late_count: 0,
+      late_penalty_rate: 15000,
+      late_deduction: 0,
+      late_deduction_source: 'ATTENDANCE + POLICY',
+      debt_deduction: 0,
+      manual_deduction: 0,
+      manual_bonus: 0,
+      adjustments_total: 0,
+      gross_pay: 2120000,
+      total_deduction: 0,
+      take_home_pay: 2120000,
+      attendance_source_revision: 2,
+      attendance_snapshot_revision: 1,
+      attendance_summary: {
+        present_days: 27,
+        absent_days: 3,
+        late_count: 0,
+        late_minutes: 0,
+        overtime_hours: 0,
+        incomplete_attendance: 0,
+        unresolved_exceptions_count: 0,
+        attendance_dirty: true,
+      },
+      warnings: [],
+      status: 'READY' as const,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      adjustments: [],
+    };
+
+    it('shows Hitung Ulang Payroll button for owner on DRAFT run, and prompts confirmation', async () => {
+      vi.mocked(regularPayrollService.fetchRegularPayrollRuns).mockResolvedValueOnce({ runs: [draftRun] });
+      vi.mocked(regularPayrollService.fetchRegularPayrollRunDetail).mockResolvedValueOnce({ run: draftRun, items: [dirtyItem] });
+      vi.mocked(regularPayrollService.recalculateRegularPayrollRun).mockResolvedValueOnce({
+        success: true,
+        recalculated_count: 1,
+      } as never);
+
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(<RegularPayroll />, { wrapper: MemoryRouter });
+
+      const recalcBtn = await screen.findByRole('button', { name: /Hitung Ulang Payroll/ });
+      expect(recalcBtn).toBeInTheDocument();
+
+      // Verify dirty warning indicator is displayed
+      expect(screen.getAllByText(/Presensi berubah — perlu hitung ulang/i).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/Presensi Berubah/i).length).toBeGreaterThan(0);
+
+      fireEvent.click(recalcBtn);
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Hitung ulang payroll menggunakan data presensi, lembur, dan adjustment terbaru?')
+      );
+
+      await waitFor(() => {
+        expect(regularPayrollService.recalculateRegularPayrollRun).toHaveBeenCalledWith('run-recalc-1', { all: true });
+        expect(screen.getByText('Payroll berhasil dihitung ulang.')).toBeInTheDocument();
+      });
+
+      confirmSpy.mockRestore();
+    });
+
+    it('does not invoke recalculate if user cancels confirmation', async () => {
+      vi.mocked(regularPayrollService.fetchRegularPayrollRuns).mockResolvedValueOnce({ runs: [draftRun] });
+      vi.mocked(regularPayrollService.fetchRegularPayrollRunDetail).mockResolvedValueOnce({ run: draftRun, items: [dirtyItem] });
+
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      render(<RegularPayroll />, { wrapper: MemoryRouter });
+
+      const recalcBtn = await screen.findByRole('button', { name: /Hitung Ulang Payroll/ });
+      fireEvent.click(recalcBtn);
+
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(regularPayrollService.recalculateRegularPayrollRun).not.toHaveBeenCalled();
+
+      confirmSpy.mockRestore();
+    });
+
+    it('displays error message and does not show success when recalculate fails', async () => {
+      vi.mocked(regularPayrollService.fetchRegularPayrollRuns).mockResolvedValueOnce({ runs: [draftRun] });
+      vi.mocked(regularPayrollService.fetchRegularPayrollRunDetail).mockResolvedValueOnce({ run: draftRun, items: [dirtyItem] });
+      vi.mocked(regularPayrollService.recalculateRegularPayrollRun).mockRejectedValueOnce(
+        new Error('ATTENDANCE_CHANGED_DURING_RECALCULATION: Data presensi berubah saat kalkulasi berjalan.')
+      );
+
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(<RegularPayroll />, { wrapper: MemoryRouter });
+
+      const recalcBtn = await screen.findByRole('button', { name: /Hitung Ulang Payroll/ });
+      fireEvent.click(recalcBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText(/ATTENDANCE_CHANGED_DURING_RECALCULATION/)).toBeInTheDocument();
+        expect(screen.queryByText('Payroll berhasil dihitung ulang.')).not.toBeInTheDocument();
+      });
+
+      confirmSpy.mockRestore();
+    });
+
+    it('does not show Hitung Ulang Payroll button when run is LOCKED', async () => {
+      const lockedRun = { ...draftRun, status: 'LOCKED' as const };
+      vi.mocked(regularPayrollService.fetchRegularPayrollRuns).mockResolvedValueOnce({ runs: [lockedRun] });
+      vi.mocked(regularPayrollService.fetchRegularPayrollRunDetail).mockResolvedValueOnce({ run: lockedRun, items: [] });
+
+      render(<RegularPayroll />, { wrapper: MemoryRouter });
+
+      await waitFor(() => {
+        expect(screen.getByText('TERKUNCI (LOCKED)')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', { name: /Hitung Ulang Payroll/ })).not.toBeInTheDocument();
+    });
+
+    it('does not show Hitung Ulang Payroll button for manager role', async () => {
+      vi.mocked(authProvider.useAuth).mockReturnValue({
+        role: 'manager',
+        isAuthenticated: true,
+        isLoading: false,
+        currentUser: { label: 'Mgr', email: 'mgr@redbox.id' },
+        branchScope: null,
+        permissions: [],
+        loginError: null,
+        login: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      vi.mocked(regularPayrollService.fetchRegularPayrollRuns).mockResolvedValueOnce({ runs: [draftRun] });
+      vi.mocked(regularPayrollService.fetchRegularPayrollRunDetail).mockResolvedValueOnce({ run: draftRun, items: [] });
+
+      render(<RegularPayroll />, { wrapper: MemoryRouter });
+
+      await waitFor(() => {
+        expect(screen.getByText('DRAFT AKTIF')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', { name: /Hitung Ulang Payroll/ })).not.toBeInTheDocument();
     });
   });
 });

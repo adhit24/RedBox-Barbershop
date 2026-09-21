@@ -48,15 +48,25 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   assert.ok(pendingGuard, 'pending-overtime guard migration exists');
   const reconcile = list.find((f) => /reconcile_overtime_before_payroll_lock/.test(f));
   assert.ok(reconcile, 'overtime reconciliation migration exists');
-  const last = list[list.length - 1];
   const lifecycle = list.find((f) => /atomic_regular_payroll_lifecycle/.test(f));
   assert.ok(lifecycle, 'atomic lifecycle migration exists');
   const syncDirty = list.find((f) => /attendance_payroll_sync_dirty_marker/.test(f));
   assert.ok(syncDirty, 'attendance sync dirty marker migration exists');
-  assert.match(last, /block_review_required_on_payroll_lock/);
+  const blockReview = list.find((f) => /block_review_required_on_payroll_lock/.test(f));
+  assert.ok(blockReview, 'block review-required migration exists');
+  const versionSnapshot = list.find((f) => /version_attendance_payroll_snapshot/.test(f));
+  assert.ok(versionSnapshot, 'version attendance snapshot migration exists');
+  const last = list[list.length - 1];
+  assert.match(last, /version_attendance_payroll_snapshot/);
   assert.ok(
-    restore > '20260919143000' && pendingGuard > restore && reconcile > pendingGuard && lifecycle > reconcile && syncDirty > lifecycle && last > syncDirty,
-    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required'
+    restore > '20260919143000' &&
+      pendingGuard > restore &&
+      reconcile > pendingGuard &&
+      lifecycle > reconcile &&
+      syncDirty > lifecycle &&
+      blockReview > syncDirty &&
+      versionSnapshot > blockReview,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required < version snapshot'
   );
 });
 
@@ -384,6 +394,53 @@ test('Round 8: lock_payroll_run blocks locking when ANY regular item is REVIEW_R
     'pending overtime approval',
     'no longer match attendance overtime',
     'attendance_dirty',
+    'adjustments_dirty',
+    'attendance_period_complete',
+    'Reconciliation failed for %',
+    "SET status = 'LOCKED'",
+  ]) {
+    assert.ok(body.includes(inv), 'invariant kept: ' + inv);
+  }
+  assert.ok(norm(elseBranch(functionBody(sql))).includes('payroll_source_claims'), 'barber branch preserved');
+  assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.lock_payroll_run\(UUID, TEXT\) TO service_role/);
+  assert.doesNotMatch(sql, /GRANT [^;]*TO (anon|authenticated|PUBLIC)/i);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Round 9: attendance revision CAS & lock invariant (P1-1)
+// ---------------------------------------------------------------------------------------------
+function versionAttendanceMigration() {
+  const f = fs.readdirSync(MIGRATIONS_DIR).find((n) => /version_attendance_payroll_snapshot/.test(n));
+  assert.ok(f, 'version attendance snapshot migration exists');
+  return { file: f, sql: read(f) };
+}
+
+test('Round 9: migration adds revision columns and initializes them safely', () => {
+  const { sql } = versionAttendanceMigration();
+  const n = norm(sql);
+  assert.match(n, /ALTER TABLE public\.payroll_regular_items ADD COLUMN IF NOT EXISTS attendance_source_revision BIGINT NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS attendance_snapshot_revision BIGINT NOT NULL DEFAULT 0/);
+  assert.match(n, /UPDATE public\.payroll_regular_items.*attendance_source_revision =/);
+});
+
+test('Round 9: attendance trigger increments attendance_source_revision on DRAFT items', () => {
+  const { sql } = versionAttendanceMigration();
+  const n = norm(sql);
+  assert.match(n, /attendance_source_revision = i\.attendance_source_revision \+ 1/);
+  assert.match(n, /attendance_dirty/);
+});
+
+test('Round 9: lock_payroll_run blocks locking when source_revision <> snapshot_revision or attendance_dirty', () => {
+  const { sql } = versionAttendanceMigration();
+  const body = norm(functionBody(sql));
+  assert.match(body, /v_snap_item\.attendance_dirty OR v_snap_item\.attendance_source_revision <> v_snap_item\.attendance_snapshot_revision/);
+  assert.match(body, /Payroll attendance snapshot is stale for %\. Recalculate before locking\./);
+  for (const inv of [
+    'FOR UPDATE',
+    'find_overlapping_regular_run',
+    "status = 'REVIEW_REQUIRED'",
+    'MISSING_ATTENDANCE',
+    'pending overtime approval',
+    'no longer match attendance overtime',
     'adjustments_dirty',
     'attendance_period_complete',
     'Reconciliation failed for %',

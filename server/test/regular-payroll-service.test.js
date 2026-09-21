@@ -142,51 +142,42 @@ function createMockDb(initialState = {}) {
           };
         },
         update(updates) {
-          return {
+          const filters = [];
+          const execute = (mustExist) => {
+            const target = rows.find((r) => filters.every((f) => f(r)));
+            if (table === 'payroll_regular_items' && target) {
+              const run = tables.payroll_runs.find((r) => r.id === target.payroll_run_id);
+              if (run && run.status === 'LOCKED') {
+                const err = new Error('Cannot modify payroll_regular_items: payroll run is LOCKED and immutable');
+                return { data: null, error: err };
+              }
+            }
+            if (table === 'payroll_runs' && target) {
+              if (target.status === 'LOCKED') {
+                const err = new Error('Cannot modify payroll run: run is LOCKED and immutable');
+                return { data: null, error: err };
+              }
+            }
+            if (target) {
+              Object.assign(target, updates, { updated_at: new Date().toISOString() });
+            }
+            return { data: target || null, error: (mustExist && !target) ? { message: 'not found' } : null };
+          };
+          const builder = {
             eq(col, val) {
-              const target = rows.find((r) => r[col] === val);
-
-              // Immutability trigger simulation for payroll_regular_items
-              if (table === 'payroll_regular_items' && target) {
-                const run = tables.payroll_runs.find((r) => r.id === target.payroll_run_id);
-                if (run && run.status === 'LOCKED') {
-                  const err = new Error('Cannot modify payroll_regular_items: payroll run is LOCKED and immutable');
-                  return {
-                    single: async () => ({ data: null, error: err }),
-                    then(resolve) {
-                      resolve({ data: null, error: err });
-                    },
-                  };
-                }
-              }
-
-              // Immutability trigger simulation for payroll_runs
-              if (table === 'payroll_runs' && target) {
-                if (target.status === 'LOCKED') {
-                  const err = new Error('Cannot modify payroll run: run is LOCKED and immutable');
-                  return {
-                    single: async () => ({ data: null, error: err }),
-                    then(resolve) {
-                      resolve({ data: null, error: err });
-                    },
-                  };
-                }
-              }
-
-              if (target) {
-                Object.assign(target, updates, { updated_at: new Date().toISOString() });
-              }
-              return {
-                select: () => ({
-                  single: async () => ({ data: target || null, error: null }),
-                }),
-                single: async () => ({ data: target || null, error: null }),
-                then(resolve) {
-                  resolve({ data: target, error: null });
-                },
-              };
+              filters.push((r) => r[col] === val);
+              return builder;
+            },
+            select() {
+              return builder;
+            },
+            single: async () => execute(true),
+            maybeSingle: async () => execute(false),
+            then(resolve) {
+              resolve(execute(false));
             },
           };
+          return builder;
         },
         delete() {
           return {
@@ -726,8 +717,15 @@ test('Race: approval saved but payroll item update rejected (run locked concurre
       ...t,
       update: () => ({
         eq: () => ({
+          eq: () => ({
+            select: () => ({
+              single: async () => ({ data: null, error: { message: 'Cannot modify payroll_regular_items: payroll run is LOCKED and immutable' } }),
+              maybeSingle: async () => ({ data: null, error: { message: 'Cannot modify payroll_regular_items: payroll run is LOCKED and immutable' } }),
+            }),
+          }),
           select: () => ({
             single: async () => ({ data: null, error: { message: 'Cannot modify payroll_regular_items: payroll run is LOCKED and immutable' } }),
+            maybeSingle: async () => ({ data: null, error: { message: 'Cannot modify payroll_regular_items: payroll run is LOCKED and immutable' } }),
           }),
         }),
       }),

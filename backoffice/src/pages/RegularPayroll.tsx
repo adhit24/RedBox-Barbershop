@@ -9,6 +9,7 @@ import {
   fetchRegularPayrollRunDetail,
   generateRegularPayrollDraft,
   lockRegularPayrollRun,
+  recalculateRegularPayrollRun,
   addRegularPayrollAdjustment,
   deleteRegularPayrollAdjustment,
   defaultApprovedOvertimeMinutes,
@@ -167,6 +168,28 @@ export function RegularPayroll() {
       }
     } catch (err: any) {
       setActionMessage({ type: 'error', text: err?.message || 'Gagal membuat draft payroll reguler.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Recalculate Payroll
+  const handleRecalculateRun = async () => {
+    if (!activeRun) return;
+    const confirm = window.confirm(
+      'Hitung ulang payroll menggunakan data presensi, lembur, dan adjustment terbaru?'
+    );
+    if (!confirm) return;
+
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      await recalculateRegularPayrollRun(activeRun.id, { all: true });
+      setActionMessage({ type: 'success', text: 'Payroll berhasil dihitung ulang.' });
+      await loadRunDetail(activeRun.id);
+      await loadRuns();
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err?.message || 'Gagal menghitung ulang payroll run.' });
     } finally {
       setActionLoading(false);
     }
@@ -349,13 +372,29 @@ export function RegularPayroll() {
     });
   }, [items, unitFilter, branchFilter, statusFilter, searchQuery]);
 
+  // Run dirty state (stale attendance requiring recalculation)
+  const isRunDirty = useMemo(() => {
+    return items.some(
+      (item: any) =>
+        item.attendance_summary?.attendance_dirty === true ||
+        (item.attendance_source_revision !== undefined &&
+          item.attendance_snapshot_revision !== undefined &&
+          Number(item.attendance_source_revision) !== Number(item.attendance_snapshot_revision))
+    );
+  }, [items]);
+
   // Blocking safety guard items
   const blockingItems = useMemo(() => {
     return items.filter(
-      (item) =>
+      (item: any) =>
         item.status === 'MISSING_ATTENDANCE' ||
         item.status === 'MISSING_SALARY' ||
-        item.status === 'BLOCKED_ATTENDANCE_SOURCE'
+        item.status === 'BLOCKED_ATTENDANCE_SOURCE' ||
+        item.status === 'REVIEW_REQUIRED' ||
+        item.attendance_summary?.attendance_dirty === true ||
+        (item.attendance_source_revision !== undefined &&
+          item.attendance_snapshot_revision !== undefined &&
+          Number(item.attendance_source_revision) !== Number(item.attendance_snapshot_revision))
     );
   }, [items]);
 
@@ -421,6 +460,17 @@ export function RegularPayroll() {
               className="rounded-rb-button bg-rb-red px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
             >
               + Buat Payroll Draft Baru
+            </button>
+          )}
+          {activeRun && activeRun.status === 'DRAFT' && isOwner && (
+            <button
+              type="button"
+              onClick={handleRecalculateRun}
+              disabled={actionLoading}
+              title="Hitung ulang payroll reguler menggunakan data presensi, lembur, dan penyesuaian terbaru."
+              className="rounded-rb-button border border-sky-500 bg-sky-500/10 px-3.5 py-1.5 text-xs font-semibold text-sky-600 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-sky-400"
+            >
+              🔄 Hitung Ulang Payroll
             </button>
           )}
           {activeRun && activeRun.status === 'DRAFT' && isOwner && (
@@ -497,6 +547,11 @@ export function RegularPayroll() {
               <span className="text-xs text-rb-text-muted">
                 Versi kalkulasi: {activeRun.calculation_version}
               </span>
+              {isRunDirty && (
+                <span className="rounded-rb-pill bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                  ⚠️ Presensi berubah — perlu hitung ulang
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -715,6 +770,11 @@ export function RegularPayroll() {
                       >
                         {item.status}
                       </span>
+                      {item.attendance_summary?.attendance_dirty && (
+                        <span className="mt-0.5 block rounded-rb-pill bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                          Presensi Berubah
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center justify-center gap-1.5">
                       <button

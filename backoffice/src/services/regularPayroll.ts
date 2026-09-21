@@ -171,6 +171,13 @@ export async function lockRegularPayrollRun(runId: string): Promise<{ success: b
   return apiClient.post(`/api/payroll/regular-runs/${runId}/lock`, {});
 }
 
+export async function recalculateRegularPayrollRun(
+  runId: string,
+  options?: { all?: boolean }
+): Promise<{ success: boolean; run_id: string; recalculated_count: number }> {
+  return apiClient.post(`/api/payroll/regular-runs/${runId}/recalculate`, options || {});
+}
+
 export async function addRegularPayrollAdjustment(payload: {
   runId: string;
   payroll_regular_item_id: string;

@@ -435,8 +435,13 @@ function inclusiveDayCount(from, to) {
  * attendance_period_complete is true if and only if attendance_data_through >= periodEnd.
  * Fail-closed: Any database query error throws ATTENDANCE_COVERAGE_READ_FAILED.
  */
-async function computeRunAttendanceCoverage(supabase, { periodStart, periodEnd, employeeIds = [] }) {
-  if (!employeeIds.length || !periodStart || !periodEnd) {
+async function computeRunAttendanceCoverage(supabase, { periodStart, periodEnd, employeeIds = [], businessUnit = null }) {
+  let empIds = employeeIds;
+  if (!empIds.length && businessUnit) {
+    const eligible = await fetchEligibleRegularEmployees(supabase, { businessUnit, periodEnd });
+    empIds = eligible.map((e) => e.id);
+  }
+  if (!empIds.length || !periodStart || !periodEnd) {
     return {
       attendance_data_through: null,
       expected_period_end: periodEnd || null,
@@ -447,7 +452,7 @@ async function computeRunAttendanceCoverage(supabase, { periodStart, periodEnd, 
   let q = supabase
     .from('employee_attendance')
     .select('attendance_date')
-    .in('employee_id', employeeIds)
+    .in('employee_id', empIds)
     .gte('attendance_date', periodStart)
     .lte('attendance_date', periodEnd)
     .order('attendance_date', { ascending: false });
@@ -645,6 +650,36 @@ async function fetchEmployeeAttendanceSummaries(supabase, employeeIds = [], peri
 }
 
 /**
+ * Shared population rule for Regular Payroll:
+ * Active employees whose join_date is null OR join_date <= periodEnd.
+ * HR master employee data remains the sole authority.
+ */
+function isEmployeeEligibleForPeriod(employee, periodEnd) {
+  if (!employee || employee.is_active === false) return false;
+  if (!employee.join_date) return true; // join_date IS NULL -> included
+  if (!periodEnd) return true;
+  return employee.join_date <= periodEnd;
+}
+
+async function fetchEligibleRegularEmployees(supabase, { businessUnit = 'ALL', periodEnd }) {
+  let empQuery = supabase
+    .from('employees')
+    .select('id, name, nickname, business_unit, branch, branch_name, position, base_salary, position_allowance, meal_allowance_rate, is_active, join_date')
+    .eq('is_active', true)
+    .order('name');
+
+  if (businessUnit && businessUnit !== 'ALL') {
+    empQuery = empQuery.eq('business_unit', businessUnit);
+  }
+
+  const { data: allActive, error: empErr } = await empQuery;
+  if (empErr) throw new Error(`Failed to load employees: ${empErr.message}`);
+
+  const eligible = (allActive || []).filter((e) => isEmployeeEligibleForPeriod(e, periodEnd));
+  return eligible;
+}
+
+/**
  * Generate regular payroll draft
  */
 async function generateRegularPayrollDraft(supabase, {
@@ -679,21 +714,10 @@ async function generateRegularPayrollDraft(supabase, {
     throw new Error(`Cannot generate payroll draft: overlapping ${overlap.status} run found (${overlap.id} from ${overlap.period_start} to ${overlap.period_end})`);
   }
 
-  // 2. Fetch regular employees
-  let empQuery = supabase
-    .from('employees')
-    .select('id, name, nickname, business_unit, branch, branch_name, position, base_salary, position_allowance, meal_allowance_rate, is_active, join_date')
-    .eq('is_active', true)
-    .order('name');
-
-  if (businessUnit && businessUnit !== 'ALL') {
-    empQuery = empQuery.eq('business_unit', businessUnit);
-  }
-
-  const { data: employees, error: empErr } = await empQuery;
-  if (empErr) throw new Error(`Failed to load employees: ${empErr.message}`);
+  // 2. Fetch regular employees satisfying: active = true AND (join_date IS NULL OR join_date <= period_end)
+  const employees = await fetchEligibleRegularEmployees(supabase, { businessUnit, periodEnd });
   if (!employees || !employees.length) {
-    throw new Error(`No active regular employees found for business unit: ${businessUnit}`);
+    throw new Error(`No active regular employees found for business unit: ${businessUnit} in period ending ${periodEnd}`);
   }
 
   // 3. Fetch attendance summaries
@@ -1077,9 +1101,12 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
   // Overtime review changes employee_overtime_approvals only; re-read it so the snapshot
   // (hours, pending count) reflects the current approvals for this run's period.
   // A payroll-relevant attendance change (late_minutes / status / punches / overtime / rows added or removed)
-  // marks the DRAFT item attendance_dirty (trg_attendance_payroll_sync). The snapshot is then stale as a whole,
-  // so recalculation re-reads ATTENDANCE, not only overtime; the rebuilt attendance_summary drops the marker.
-  const attendanceStale = refreshAttendance || item.attendance_summary?.attendance_dirty === true;
+  // marks the DRAFT item attendance_dirty (trg_attendance_payroll_sync) and increments attendance_source_revision.
+  const sourceRevision = Number(item.attendance_source_revision || 0);
+  const snapshotRevision = Number(item.attendance_snapshot_revision || 0);
+  const attendanceStale = refreshAttendance ||
+    item.attendance_summary?.attendance_dirty === true ||
+    sourceRevision !== snapshotRevision;
   let freshAttendance = false;
   let attendanceSummary = item.attendance_summary;
   let approvedOvertimeHours = item.overtime_hours;
@@ -1209,44 +1236,71 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
     adjustments: adjs,
   });
 
-  // Update item in database. A rejected write (e.g. the run was LOCKED concurrently and the
-  // immutability trigger fired) must surface as an error, never as a successful recalculation.
-  const { data: updatedItem, error: itemUpdErr } = await supabase
+  // Update item in database with optimistic compare-and-swap (CAS) on attendance_source_revision.
+  // If attendance changed concurrently, attendance_source_revision was bumped by the trigger,
+  // so the update matches 0 rows and fails closed with ATTENDANCE_CHANGED_DURING_RECALCULATION.
+  const updatePayload = {
+    ...(freshAttendance ? {
+      work_days: calc.work_days,
+      actual_salary: calc.actual_salary,
+      meal_allowance_days: calc.meal_allowance_days,
+      meal_allowance_total: calc.meal_allowance_total,
+      late_count: calc.late_count,
+      late_deduction: calc.late_deduction,
+      late_deduction_source: calc.late_deduction_source,
+      attendance_period_expected: calc.attendance_period_expected,
+      attendance_period_available: calc.attendance_period_available,
+      attendance_coverage_days: calc.attendance_coverage_days,
+      attendance_coverage_status: calc.attendance_coverage_status,
+      attendance_snapshot_revision: sourceRevision,
+    } : {}),
+    overtime_hours: calc.overtime_hours,
+    overtime_rate: calc.overtime_rate,
+    overtime_amount: calc.overtime_amount,
+    attendance_summary: {
+      ...calc.attendance_summary,
+      ...(freshAttendance ? { attendance_dirty: false } : {}),
+    },
+    warnings: calc.warnings,
+    manual_bonus: calc.manual_bonus,
+    debt_deduction: calc.debt_deduction,
+    manual_deduction: calc.manual_deduction,
+    adjustments_total: calc.adjustments_total,
+    gross_pay: calc.gross_pay,
+    total_deduction: calc.total_deduction,
+    take_home_pay: calc.take_home_pay,
+    status: calc.status,
+    updated_at: new Date().toISOString(),
+  };
+
+  let updateQuery = supabase
     .from('payroll_regular_items')
-    .update({
-      ...(freshAttendance ? {
-        work_days: calc.work_days,
-        actual_salary: calc.actual_salary,
-        meal_allowance_days: calc.meal_allowance_days,
-        meal_allowance_total: calc.meal_allowance_total,
-        late_count: calc.late_count,
-        late_deduction: calc.late_deduction,
-        late_deduction_source: calc.late_deduction_source,
-        attendance_period_expected: calc.attendance_period_expected,
-        attendance_period_available: calc.attendance_period_available,
-        attendance_coverage_days: calc.attendance_coverage_days,
-        attendance_coverage_status: calc.attendance_coverage_status,
-      } : {}),
-      overtime_hours: calc.overtime_hours,
-      overtime_rate: calc.overtime_rate,
-      overtime_amount: calc.overtime_amount,
-      attendance_summary: calc.attendance_summary,
-      warnings: calc.warnings,
-      manual_bonus: calc.manual_bonus,
-      debt_deduction: calc.debt_deduction,
-      manual_deduction: calc.manual_deduction,
-      adjustments_total: calc.adjustments_total,
-      gross_pay: calc.gross_pay,
-      total_deduction: calc.total_deduction,
-      take_home_pay: calc.take_home_pay,
-      status: calc.status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', itemId)
-    .select('id')
-    .single();
+    .update(updatePayload)
+    .eq('id', itemId);
+
+  if (freshAttendance) {
+    updateQuery = updateQuery.eq('attendance_source_revision', sourceRevision);
+  }
+
+  const selectQuery = updateQuery.select('id');
+  const { data: updatedItem, error: itemUpdErr } = typeof selectQuery.maybeSingle === 'function'
+    ? await selectQuery.maybeSingle()
+    : await selectQuery.single();
 
   if (itemUpdErr || !updatedItem) {
+    if (!updatedItem && freshAttendance) {
+      const { data: cur } = await supabase
+        .from('payroll_regular_items')
+        .select('attendance_source_revision, status')
+        .eq('id', itemId)
+        .maybeSingle();
+
+      if (cur && Number(cur.attendance_source_revision) !== sourceRevision) {
+        const err = new Error(`Attendance changed during recalculation for item ${itemId} (revision ${sourceRevision} -> ${cur.attendance_source_revision}). Recalculate again.`);
+        err.code = 'ATTENDANCE_CHANGED_DURING_RECALCULATION';
+        throw err;
+      }
+    }
     const err = new Error(`Failed to update payroll item ${itemId}: ${itemUpdErr?.message || 'no row updated'}`);
     err.code = /LOCKED|immutable/i.test(itemUpdErr?.message || '') ? 'RUN_LOCKED_CONCURRENTLY' : 'ITEM_UPDATE_FAILED';
     throw err;
@@ -1300,7 +1354,7 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
   }
   const { data: items, error: itemsErr } = await fetchAllRows(() => supabase
     .from('payroll_regular_items')
-    .select('id, employee_id, attendance_summary')
+    .select('id, employee_id, attendance_summary, attendance_source_revision, attendance_snapshot_revision')
     .eq('payroll_run_id', runId)
     .order('id'));
   if (itemsErr) {
@@ -1317,22 +1371,40 @@ async function recalculateRegularPayrollRun(supabase, runId, { all = false } = {
     employeeIds: allEmployeeIds,
   });
 
-  // 2. Recalculate affected/all payroll items
-  const targets = (items || []).filter((i) => all || i.attendance_summary?.attendance_dirty === true);
+  // 2. Recalculate affected/all payroll items (dirty marker OR revision mismatch)
+  const targets = (items || []).filter(
+    (i) => all ||
+           i.attendance_summary?.attendance_dirty === true ||
+           Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0)
+  );
   const recalculated = [];
   for (const it of targets) {
-    const res = await recalculateSingleRegularItem(supabase, runId, it.id, {
-      refreshOvertime: true,
-      refreshAttendance: true,
-      runCoverage,
-    });
+    let res;
+    try {
+      res = await recalculateSingleRegularItem(supabase, runId, it.id, {
+        refreshOvertime: true,
+        refreshAttendance: true,
+        runCoverage,
+      });
+    } catch (err) {
+      if (err.code === 'ATTENDANCE_CHANGED_DURING_RECALCULATION') {
+        // Retry once from fresh attendance
+        res = await recalculateSingleRegularItem(supabase, runId, it.id, {
+          refreshOvertime: true,
+          refreshAttendance: true,
+          runCoverage,
+        });
+      } else {
+        throw err;
+      }
+    }
     if (res) recalculated.push(res);
   }
 
   // 3 & 4. Recompute and refresh run summary with the fresh coverage
   await refreshRunSummary(supabase, runId, { coverage: runCoverage });
 
-  return { run_id: runId, recalculated_count: recalculated.length, items: recalculated };
+  return { success: true, run_id: runId, recalculated_count: recalculated.length, items: recalculated };
 }
 
 /**
@@ -1496,6 +1568,21 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   if (runRowErr || !runRow) throw new Error(`Cannot verify payroll run: ${runRowErr?.message || 'not found'}`);
   if (runRow?.summary?.attendance_period_complete === false) {
     throw new Error(`Cannot lock payroll run: attendance data is only available through ${runRow.summary.attendance_data_through || 'unknown'} but the period ends ${runRow.period_end}. Import the final fingerprint files first.`);
+  }
+
+  // Attendance snapshot guard: no dirty items and source revision must match snapshot revision
+  const { data: allItems, error: itemsReadErr } = await supabase
+    .from('payroll_regular_items')
+    .select('id, employee_name_snapshot, attendance_summary, attendance_source_revision, attendance_snapshot_revision, status')
+    .eq('payroll_run_id', runId);
+  if (itemsReadErr) throw new Error(`Cannot verify payroll items: ${itemsReadErr.message}`);
+
+  const staleItem = (allItems || []).find((i) =>
+    i.attendance_summary?.attendance_dirty === true ||
+    Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0)
+  );
+  if (staleItem) {
+    throw new Error(`Cannot lock regular payroll: Payroll attendance snapshot is stale for ${staleItem.employee_name_snapshot}. Recalculate before locking.`);
   }
 
   // Safety guard (P1-1): Block locking if ANY item remains in REVIEW_REQUIRED
@@ -1817,4 +1904,6 @@ module.exports = {
   isEmployeeInBranchScope,
   parseNonNegativeMinutes,
   computeRunAttendanceCoverage,
+  isEmployeeEligibleForPeriod,
+  fetchEligibleRegularEmployees,
 };

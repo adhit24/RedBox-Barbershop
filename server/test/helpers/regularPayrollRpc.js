@@ -46,7 +46,15 @@ function emulateCreateRegularPayrollRun(store, args, { idFactory, failItemInsert
   try {
     if (failItemInsert) throw new Error(failItemInsert);
     for (const it of itemsIn) {
-      items.push({ id: idFactory(), payroll_run_id: runId, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...it });
+      items.push({
+        id: idFactory(),
+        payroll_run_id: runId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        attendance_source_revision: 0,
+        attendance_snapshot_revision: 0,
+        ...it,
+      });
     }
   } catch (err) {
     runs.length = before.runs; // whole function is one transaction: nothing survives

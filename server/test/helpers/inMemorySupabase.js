@@ -28,7 +28,10 @@ function createInMemorySupabase(store, opts = {}) {
       if (!(date >= run.period_start && date <= run.period_end)) continue;
       const items = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === run.id && i.employee_id === employeeId);
       if (run.status === 'DRAFT') {
-        items.filter((i) => i.status !== 'LOCKED').forEach((i) => { i.attendance_summary = { ...(i.attendance_summary || {}), attendance_dirty: true }; });
+        items.filter((i) => i.status !== 'LOCKED').forEach((i) => {
+          i.attendance_source_revision = Number(i.attendance_source_revision || 0) + 1;
+          i.attendance_summary = { ...(i.attendance_summary || {}), attendance_dirty: true };
+        });
       } else if (run.status === 'LOCKED' && items.length) {
         (store.payroll_attendance_post_lock_anomalies = store.payroll_attendance_post_lock_anomalies || []).push({ payroll_run_id: run.id, employee_id: employeeId, attendance_date: date, operation });
       }
@@ -139,24 +142,34 @@ function createInMemorySupabase(store, opts = {}) {
         return o;
       },
       update(u) {
-        return {
+        const filters = [];
+        const builder = {
           eq(c, val) {
-            const msg = fail('update');
-            if (msg) {
-              const o = { select() { return o; }, single: async () => ({ data: null, error: { message: msg } }), then(res) { res({ data: null, error: { message: msg } }); } };
-              return o;
-            }
-            const hit = rows.filter((r) => r[c] === val);
-            if (emulateTriggers && name === 'employee_attendance') {
-              hit.forEach((r) => {
-                if (ATT_FIELDS.some((f) => f in u && u[f] !== r[f])) attendanceEffect(r.employee_id, r.attendance_date, 'UPDATE');
-              });
-            }
-            hit.forEach((r) => Object.assign(r, u));
-            const o = { select() { return o; }, single: async () => ({ data: hit[0] || null, error: hit[0] ? null : { message: 'not found' } }), then(res) { res({ data: hit, error: null }); } };
-            return o;
+            filters.push((r) => r[c] === val);
+            return builder;
+          },
+          select() {
+            return builder;
+          },
+          single: async () => execute(true),
+          maybeSingle: async () => execute(false),
+          then(res) {
+            res(execute(false));
           },
         };
+        const execute = (mustExist) => {
+          const msg = fail('update');
+          if (msg) return { data: null, error: { message: msg } };
+          const hit = rows.filter((r) => filters.every((f) => f(r)));
+          if (emulateTriggers && name === 'employee_attendance') {
+            hit.forEach((r) => {
+              if (ATT_FIELDS.some((f) => f in u && u[f] !== r[f])) attendanceEffect(r.employee_id, r.attendance_date, 'UPDATE');
+            });
+          }
+          hit.forEach((r) => Object.assign(r, u));
+          return { data: hit[0] || null, error: (mustExist && !hit[0]) ? { message: 'not found' } : null };
+        };
+        return builder;
       },
       delete() {
         return {
@@ -189,8 +202,13 @@ function createInMemorySupabase(store, opts = {}) {
         const runRow = (store.payroll_runs || []).find((r) => r.id === args.p_run_id);
         if (!runRow) return Promise.resolve({ data: null, error: { message: `Payroll run ${args.p_run_id} not found` } });
         if (runRow.status !== 'DRAFT') return Promise.resolve({ data: null, error: { message: `Cannot lock payroll run: current status is ${runRow.status}` } });
-        // lock invariant: a DRAFT item whose attendance changed after calculation cannot be locked
-        const dirtyItem = (store.payroll_regular_items || []).find((i) => i.payroll_run_id === runRow.id && i.attendance_summary?.attendance_dirty === true);
+        // lock invariant: a DRAFT item whose attendance changed after calculation cannot be locked (dirty OR revision mismatch)
+        const dirtyItem = (store.payroll_regular_items || []).find((i) =>
+          i.payroll_run_id === runRow.id && (
+            i.attendance_summary?.attendance_dirty === true ||
+            Number(i.attendance_source_revision || 0) !== Number(i.attendance_snapshot_revision || 0)
+          )
+        );
         if (dirtyItem) return Promise.resolve({ data: null, error: { message: `Payroll attendance snapshot is stale for ${dirtyItem.employee_name_snapshot}. Recalculate before locking.` } });
         // lock invariant (P1-1): ANY item with REVIEW_REQUIRED rejects lock
         const reviewItems = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id && i.status === 'REVIEW_REQUIRED');
