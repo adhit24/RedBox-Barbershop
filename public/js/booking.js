@@ -88,14 +88,25 @@ document.addEventListener('DOMContentLoaded', async () => {
  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
  let activeLoadSeq = 0;
+ let serverTimeOffset = 0;
+
+ function getServerOrLocalWibDate() {
+ return new Date(Date.now() + serverTimeOffset);
+ }
 
  function todayStr() {
- const d = new Date();
+ if (typeof RedboxBookingLeadTime !== 'undefined' && RedboxBookingLeadTime.getWibDateTime) {
+ return RedboxBookingLeadTime.getWibDateTime(getServerOrLocalWibDate()).dateStr;
+ }
+ const d = getServerOrLocalWibDate();
  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
  }
 
  function currentLocalMins() {
- const d = new Date();
+ if (typeof RedboxBookingLeadTime !== 'undefined' && RedboxBookingLeadTime.getWibDateTime) {
+ return RedboxBookingLeadTime.getWibDateTime(getServerOrLocalWibDate()).totalMinutes;
+ }
+ const d = getServerOrLocalWibDate();
  return d.getHours() * 60 + d.getMinutes();
  }
 
@@ -812,7 +823,7 @@ document.addEventListener('DOMContentLoaded', async () => {
  mokaAvailableSlots = [];
  personAvailabilityCache = { 1: null, 2: null };
  buildCalendar();
- buildTimeGrid([]); // Pass empty initially, will load on date click
+ buildTimeGrid([]); // Recompute lead time and initialize grid for step 3
  const ts = document.getElementById('timeSection');
  if (ts) ts.style.display = '';
  document.getElementById('step3Next').disabled = !step3Ready();
@@ -918,6 +929,12 @@ document.addEventListener('DOMContentLoaded', async () => {
  const json = await res.json();
  localMokaSlots = json.slots || [];
  localMokaActive = true;
+ if (json.serverNow) {
+ const parsedServerTime = new Date(json.serverNow).getTime();
+ if (Number.isFinite(parsedServerTime)) {
+ serverTimeOffset = parsedServerTime - Date.now();
+ }
+ }
  }
  } catch (e) {
  console.warn('[Availability] Moka slot API unavailable', e.message);
@@ -1749,14 +1766,53 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (!grid) return;
 
  const slotsDefault = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
- const slotsCsb = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+ const slotsCsb = ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00'];
  // Home service / wedding: 06:00-23:00 WIB (sesuai slotEngine server)
  const slotsHomeService = ['06:00','07:00','08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00'];
  const slots = isHomeService ? slotsHomeService : (state.location === 'csb' ? slotsCsb : slotsDefault);
  const today = todayStr();
  const isToday = state.date === today;
- const floorHourMins = Math.floor(currentLocalMins() / 60) * 60;
- const visibleSlots = isToday ? slots.filter(s => timeToMins(s) > floorHourMins) : slots;
+ const leadNoticeEl = document.getElementById('leadTimeNotice');
+
+ let visibleSlots = slots;
+ let earliestAllowedSlot = null;
+
+ if (isToday) {
+ if (typeof RedboxBookingLeadTime !== 'undefined') {
+ const refDate = getServerOrLocalWibDate();
+ const leadResult = RedboxBookingLeadTime.filterSlotsForLeadTime({
+      slots,
+      bookingDate: state.date,
+      branch: state.location,
+      isHomeService: isHomeService,
+      bookingType: isHomeService ? 'home_service' : 'outlet',
+      refDate,
+    });
+ visibleSlots = leadResult.filteredSlots;
+ earliestAllowedSlot = leadResult.earliestAllowedSlot;
+ } else {
+ const earliestHour = Math.ceil((currentLocalMins() + 60) / 60);
+ earliestAllowedSlot = String(earliestHour).padStart(2, '0') + ':00';
+ const earliestMins = earliestHour * 60;
+ visibleSlots = slots.filter(s => timeToMins(s) >= earliestMins);
+ }
+
+ if (leadNoticeEl) {
+ leadNoticeEl.style.display = 'flex';
+ if (!visibleSlots.length) {
+ leadNoticeEl.className = 'lead-time-notice closed';
+ leadNoticeEl.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-1.72 6.97a.75.75 0 1 0-1.06 1.06L10.94 12l-1.72 1.72a.75.75 0 1 0 1.06 1.06L12 13.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L13.06 12l1.72-1.72a.75.75 0 1 0-1.06-1.06L12 10.94l-1.72-1.72Z" clip-rule="evenodd"/></svg><span>Booking online untuk hari ini sudah ditutup. Silakan pilih tanggal berikutnya.</span>';
+ } else {
+ leadNoticeEl.className = 'lead-time-notice';
+ leadNoticeEl.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 6a.75.75 0 0 0-1.5 0v6c0 .414.336.75.75.75h4.5a.75.75 0 0 0 0-1.5h-3.75V6Z" clip-rule="evenodd"/></svg><span>Booking minimal 1 jam sebelum kedatangan. Slot terdekat yang dapat dipilih mulai pukul <strong>' + (earliestAllowedSlot || visibleSlots[0]) + ' WIB</strong>.</span>';
+ }
+ }
+ } else {
+ if (leadNoticeEl) {
+ leadNoticeEl.style.display = 'none';
+ leadNoticeEl.innerHTML = '';
+ }
+ }
 
  // Use DocumentFragment for batch DOM updates
  const fragment = document.createDocumentFragment();
@@ -1764,7 +1820,9 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (!visibleSlots.length) {
  const emptyMsg = document.createElement('div');
  emptyMsg.style.cssText = 'grid-column:1/-1;color:var(--w50);font-size:.85rem;padding:8px 2px';
- emptyMsg.textContent = 'Tidak ada jam tersedia untuk hari ini. Silakan pilih tanggal lain.';
+ emptyMsg.textContent = isToday
+ ? 'Booking online untuk hari ini sudah ditutup. Silakan pilih tanggal berikutnya.'
+ : 'Tidak ada jam tersedia untuk tanggal ini. Silakan pilih tanggal lain.';
  fragment.appendChild(emptyMsg);
  grid.innerHTML = '';
  grid.appendChild(fragment);
@@ -1930,8 +1988,8 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (step3Ready()) goToStep(4);
  });
 
- // ── STEP 4: DETAILS ────────────────────────
- document.getElementById('step4Next')?.addEventListener('click', () => {
+  // ── STEP 4: DETAILS ─────────────────────────
+  document.getElementById('step4Next')?.addEventListener('click', () => {
  const custName = document.getElementById('custName');
  const custName2 = document.getElementById('custName2');
  const custWa = document.getElementById('custWa');
@@ -2070,11 +2128,11 @@ document.addEventListener('DOMContentLoaded', async () => {
  if (finalBtn) finalBtn.disabled = false;
  }
 
- const _finalBookBtn = document.getElementById('finalBookBtn');
- _finalBookBtn?.addEventListener('click', async () => {
- if (_finalBookBtn.disabled || _finalBookBtn.dataset.submitting === 'true') return;
- _finalBookBtn.dataset.submitting = 'true';
- _finalBookBtn.disabled = true;
+  document.getElementById('finalBookBtn')?.addEventListener('click', async () => {
+    const _finalBookBtn = document.getElementById('finalBookBtn');
+    if (_finalBookBtn && (_finalBookBtn.disabled || _finalBookBtn.dataset.submitting === 'true')) return;
+    if (_finalBookBtn) _finalBookBtn.dataset.submitting = 'true';
+    if (_finalBookBtn) _finalBookBtn.disabled = true;
  const _origBtnText = _finalBookBtn.textContent;
  _finalBookBtn.textContent = 'Memproses Booking...';
  const _releaseBtn = () => {
@@ -2142,6 +2200,43 @@ document.addEventListener('DOMContentLoaded', async () => {
  alert('Mohon maaf, kapster ' + state.person2.barber.name + ' (orang 2) baru saja di-booking pada jam tersebut. Silakan pilih jadwal lain.');
  goToStep(3);
  return;
+ }
+
+ // Minimum lead time pre-submit check (in case user lingered on booking page)
+ if (typeof RedboxBookingLeadTime !== 'undefined') {
+ const refDate = getServerOrLocalWibDate();
+ const p1Lead = RedboxBookingLeadTime.isBookingLeadTimeAllowed({
+      bookingDate: state.date,
+      bookingTime: state.time,
+      branch: state.location,
+      isHomeService: isHomeService,
+      bookingType: isHomeService ? 'home_service' : 'outlet',
+      refDate,
+    });
+ if (!p1Lead.allowed) {
+ alert('Mohon maaf: ' + (p1Lead.message || 'Booking harus dilakukan minimal 1 jam sebelumnya.') + ' Silakan pilih jadwal lain.');
+ _releaseBtn();
+ goToStep(3);
+ buildTimeGrid();
+ return;
+ }
+ if (isGroup() && state.person2?.time) {
+ const p2Lead = RedboxBookingLeadTime.isBookingLeadTimeAllowed({
+      bookingDate: state.date,
+      bookingTime: state.person2.time,
+      branch: state.location,
+      isHomeService: isHomeService,
+      bookingType: isHomeService ? 'home_service' : 'outlet',
+      refDate,
+    });
+ if (!p2Lead.allowed) {
+ alert('Mohon maaf (Orang 2): ' + (p2Lead.message || 'Booking harus dilakukan minimal 1 jam sebelumnya.') + ' Silakan pilih jadwal lain.');
+ _releaseBtn();
+ goToStep(3);
+ buildTimeGrid();
+ return;
+ }
+ }
  }
 
  const locLabel = document.querySelector('#custLocation [value="' + state.location + '"]')?.textContent || state.location;
@@ -2329,6 +2424,15 @@ document.addEventListener('DOMContentLoaded', async () => {
  alert('Mohon maaf' + personNotice + ': ' + (errData.error || 'Jadwal kapster pada jam tersebut sudah terisi atau bentrok. Silakan pilih jam lain.'));
  _releaseBtn();
  goToStep(3);
+ return;
+ }
+
+ // 422: Lead time violation or validation rejection
+ if (res.status === 422 || errData.error === 'BOOKING_LEAD_TIME_VIOLATION') {
+ alert('Mohon maaf: ' + (errData.message || 'Booking harus dilakukan minimal 1 jam sebelumnya. Silakan pilih jam lain.'));
+ _releaseBtn();
+ goToStep(3);
+ buildTimeGrid();
  return;
  }
 

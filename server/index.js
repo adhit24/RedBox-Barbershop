@@ -29,6 +29,8 @@ const { getMemberToken, sameIdentityName, sameIdentityPhone } = require('./membe
 const { computeServiceDiscount } = require('./membership-benefits');
 const { getBarberDateAvailability } = require('./moka/slotEngine');
 const { normalizeBranch, getBarberForBooking, branchMatchesBarber } = require('./services/bookingGuard');
+const { isBookingLeadTimeAllowed, safeAdminTokenMatch, isHomeServiceBooking } = require('./utils/bookingLeadTime');
+const { isServerTestEnvironment } = require('./utils/testIsolation');
 // Task 17.2 (CRM Integrity Round 3) — Correction Round 1, Blocker 1: only
 // linkNewlyCreatedBooking is actually called from this file; the other
 // Task 17.2 primitives (resolveCustomerIdentity, planBookingCustomerLinkage,
@@ -1247,6 +1249,23 @@ function isWeddingBooking({ type, service }) {
   return bookingType === 'wedding' || serviceName.includes('wedding') || serviceName.includes('weeding');
 }
 
+function normalizeBookingType({ type, service, notes } = {}) {
+  if (isWeddingBooking({ type, service })) {
+    return 'wedding';
+  }
+  if (isHomeServiceBooking({ type, service, notes })) {
+    return 'home_service';
+  }
+  const cleanType = String(type || '').trim().toLowerCase();
+  if (cleanType === 'home_service' || cleanType === 'homeservice' || cleanType === 'home-service') {
+    return 'home_service';
+  }
+  if (cleanType === 'wedding') {
+    return 'wedding';
+  }
+  return 'outlet';
+}
+
 function normalizeBookingPrice({ service_id, service, price, type, location }) {
   const serviceKey = String(service_id || '').trim().toLowerCase().replace(/^weeding-/, 'wedding-');
   const serviceName = String(service || '').trim().toLowerCase();
@@ -1290,7 +1309,7 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
   }, { supabase }).catch(() => {});
   const bookingPrice = normalizeBookingPrice({ service_id, service, price, type, location });
   const normalizedBarberId = normalizeBarberIdInput(barber_id);
-  const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
+  const isAdmin = safeAdminTokenMatch(req.headers['x-admin-token'], process.env.ADMIN_PASSWORD);
   const desiredStatus = isAdmin ? (status || 'pending') : 'confirmed';
 
   // P2-B4: Server-side Turnstile verification (fail closed for public callers)
@@ -1362,6 +1381,36 @@ app.post('/api/bookings', rateLimit({ windowMs: 60000, max: 10, name: 'bookings-
     return res.status(400).json({ error: 'Cabang wajib dipilih' });
   }
   let resolvedLocation = resolvedInputLocation;
+
+  // Enforce minimum 60-minute lead time for online bookings (non-admin)
+  const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+    ? new Date(req.headers['x-test-reference-time'])
+    : undefined;
+  const normalizedBookingType = normalizeBookingType({ type, service, notes });
+  const isHomeService = normalizedBookingType === 'home_service';
+  const leadTimeCheck = isBookingLeadTimeAllowed({
+    bookingDate: date,
+    bookingTime: time,
+    branch: resolvedLocation,
+    bookingType: normalizedBookingType,
+    isHomeService,
+    isAdmin,
+    refDate: testRefDate,
+  });
+  if (!leadTimeCheck.allowed) {
+    await logSystemEvent({
+      module: 'booking', eventName: 'booking_lead_time_violation', severity: 'WARNING', status: 'failed',
+      correlationId, outletId: resolvedLocation, httpMethod: 'POST', httpPath: '/api/bookings', httpStatus: 422,
+      errorCode: leadTimeCheck.error,
+      errorMessage: leadTimeCheck.message,
+    }, { supabase });
+    return res.status(422).json({
+      error: leadTimeCheck.error,
+      message: leadTimeCheck.message,
+      earliestAllowedSlot: leadTimeCheck.earliestAllowedSlot || null,
+      timezone: leadTimeCheck.timezone,
+    });
+  }
 
   // Public website bookings must always identify a kapster. The UI uses
   // `any` only as a legacy placeholder; accepting it here creates bookings
@@ -1964,7 +2013,7 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: 'items harus berupa array booking antara 1 sampai 10 orang' });
   }
 
-  const isAdmin = (req.headers['x-admin-token'] === process.env.ADMIN_PASSWORD);
+  const isAdmin = safeAdminTokenMatch(req.headers['x-admin-token'], process.env.ADMIN_PASSWORD);
   const normalizedItems = [];
 
   for (let i = 0; i < items.length; i++) {
@@ -1989,6 +2038,37 @@ app.post('/api/bookings/group', rateLimit({ windowMs: 60000, max: 10, name: 'boo
     const resolvedLoc = normalizeBranch(location);
     if (!resolvedLoc) {
       return res.status(400).json({ code: 'BOOKING_INVALID_REQUEST', error: `Cabang orang ke-${i + 1} wajib dipilih` });
+    }
+
+    // Enforce minimum 60-minute lead time for online bookings (non-admin)
+    const testRefDate = isServerTestEnvironment() && req.headers['x-test-reference-time']
+      ? new Date(req.headers['x-test-reference-time'])
+      : undefined;
+    const itemBookingType = normalizeBookingType({ type, service, notes });
+    const isItemHomeService = itemBookingType === 'home_service';
+    const itemLeadTimeCheck = isBookingLeadTimeAllowed({
+      bookingDate: date,
+      bookingTime: time,
+      branch: resolvedLoc,
+      bookingType: itemBookingType,
+      isHomeService: isItemHomeService,
+      isAdmin,
+      refDate: testRefDate,
+    });
+    if (!itemLeadTimeCheck.allowed) {
+      await logSystemEvent({
+        module: 'booking', eventName: 'booking_lead_time_violation', severity: 'WARNING', status: 'failed',
+        correlationId, outletId: resolvedLoc, httpMethod: 'POST', httpPath: '/api/bookings/group', httpStatus: 422,
+        errorCode: itemLeadTimeCheck.error,
+        errorMessage: `Orang ke-${i + 1}: ${itemLeadTimeCheck.message}`,
+      }, { supabase });
+      return res.status(422).json({
+        error: itemLeadTimeCheck.error,
+        message: `Orang ke-${i + 1}: ${itemLeadTimeCheck.message}`,
+        earliestAllowedSlot: itemLeadTimeCheck.earliestAllowedSlot || null,
+        timezone: itemLeadTimeCheck.timezone,
+        conflictIndex: i,
+      });
     }
     const normalizedBarber = normalizeBarberIdInput(barber_id);
     if (!normalizedBarber || normalizedBarber === 'any') {

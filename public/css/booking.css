@@ -364,6 +364,10 @@
 
 .time-section{background:var(--bg-3);border:1px solid var(--w10);border-radius:16px;padding:24px}
 .time-section h4{font-family:var(--font-accent);font-size:1rem;font-weight:600;margin-bottom:16px;color:var(--w70)}
+.lead-time-notice{display:flex;align-items:center;gap:10px;background:rgba(193,18,31,.08);border:1px solid rgba(193,18,31,.25);border-left:3px solid var(--red);border-radius:8px;padding:10px 14px;font-size:.82rem;color:var(--w80);line-height:1.4;margin-bottom:16px}
+.lead-time-notice.closed{background:rgba(229,62,62,.12);border-color:rgba(229,62,62,.4);border-left-color:#e53e3e;color:#ff8b8b}
+.lead-time-notice svg{flex-shrink:0;color:var(--red)}
+.lead-time-notice.closed svg{color:#e53e3e}
 .time-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px}
 .time-slot{
  padding:10px 8px;background:var(--bg-5);border:1px solid var(--w10);
