@@ -13,6 +13,9 @@ const {
   deriveAttendanceStatus,
   previewImport,
   commitImport,
+  exceptionNamespaces,
+  normalizeMachineSource,
+  requireKnownMachineSource,
 } = require('../services/fingerprintAttendanceImporter');
 const { logSystemEvent } = require('../services/systemEventLog');
 
@@ -38,9 +41,23 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
     return null;
   }
 
+  // The fingerprint machine is an explicit operational field: required, validated, never inferred
+  // (not from the filename, the business unit or the employee branch). It selects the identity
+  // namespace fingerprint:<machine>; the global legacy namespace is not used by this flow.
+  function machineSourceOrReject(req, res) {
+    try {
+      return requireKnownMachineSource(req.body?.machine_source);
+    } catch (err) {
+      res.status(400).json({ error: err.message, code: err.code });
+      return null;
+    }
+  }
+
   // 1. POST /import/preview — Stage B: Zero mutation preview
   router.post('/import/preview', adminAuth, async (req, res) => {
     try {
+      const machineSource = machineSourceOrReject(req, res);
+      if (!machineSource) return;
       const fileData = extractBuffer(req);
       if (!fileData || !fileData.buffer || fileData.buffer.length === 0) {
         return res.status(400).json({ error: 'File absensi (.xls / .xlsx) harus diunggah' });
@@ -55,7 +72,7 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
         filename: fileData.filename,
         uploadedBy: userEmail,
         supabase,
-        machineSource: req.body?.machine_source || req.query?.machine_source || null,
+        machineSource,
       });
 
       // Role branch scoping check: if manager is bound to a specific branch,
@@ -94,6 +111,15 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
   // 2. POST /import/commit — Stage C: Write verified attendance to database
   router.post('/import/commit', adminAuth, async (req, res) => {
     try {
+      const machineSource = machineSourceOrReject(req, res);
+      if (!machineSource) return;
+      // The commit must run in the namespace the operator previewed: a differing value is refused
+      if (req.body?.preview_machine_source && normalizeMachineSource(req.body.preview_machine_source) !== machineSource) {
+        return res.status(400).json({
+          error: 'machine_source pada commit berbeda dari yang dipakai saat preview',
+          code: 'MACHINE_SOURCE_MISMATCH',
+        });
+      }
       const fileData = extractBuffer(req);
       if (!fileData || !fileData.buffer || fileData.buffer.length === 0) {
         return res.status(400).json({ error: 'File absensi (.xls / .xlsx) harus diunggah untuk commit' });
@@ -112,7 +138,7 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
         userAuth: req.adminAuth,
         supabase,
         manualMappings,
-        machineSource: req.body?.machine_source || req.query?.machine_source || null,
+        machineSource,
       });
 
       return res.json({
@@ -375,12 +401,15 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
           }
         }
 
-        // 6. Write identity mapping atomically into employee_attendance_identity
+        // 6. Write identity mapping atomically into employee_attendance_identity, in the SAME namespace the
+        // importer reads for that machine (fingerprint:<machine>). An exception without a machine_source is a
+        // legacy record and keeps the legacy global namespace; nothing is reinterpreted as a specific machine.
+        const { identitySource, siblingKey: excSiblingKey } = exceptionNamespaces(exc.raw_data);
         if (exc.external_employee_id) {
           const { error: idnErr } = await supabase
             .from('employee_attendance_identity')
             .upsert({
-              source: 'fingerprint',
+              source: identitySource,
               external_employee_id: String(exc.external_employee_id).trim(),
               external_name: exc.external_name || null,
               target_type: finalTargetType,
@@ -400,7 +429,7 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
 
         // 8. Propagate resolution to sibling pending exceptions with the same canonical identity (source + external_employee_id)
         const excExtId = String(exc.external_employee_id || '').trim();
-        const excSource = String(exc.raw_data?.source || 'fingerprint').trim();
+        const excSource = excSiblingKey;
 
         if (excExtId) {
           const { data: rawSiblings } = await supabase
@@ -413,7 +442,8 @@ function createAttendanceImportRoutes(supabase, legacyAdminAuth) {
           // Verify both external_employee_id AND source match exactly
           const validSiblings = (rawSiblings || []).filter(sib => {
             const sibExtId = String(sib.external_employee_id || '').trim();
-            const sibSource = String(sib.raw_data?.source || 'fingerprint').trim();
+            // same machine namespace AND same machine id: ID 3 on Bypass never resolves ID 3 on Samadikun
+            const sibSource = exceptionNamespaces(sib.raw_data).siblingKey;
             return sibExtId === excExtId && sibSource === excSource;
           });
 

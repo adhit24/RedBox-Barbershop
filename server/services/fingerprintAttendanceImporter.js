@@ -221,6 +221,48 @@ function normalizeMachineSource(machineSource) {
   return m || null;
 }
 
+/**
+ * Machines that can produce fingerprint exports (the same names as the employee/barber branches). The
+ * Backoffice flow MUST name one; it is never derived from the filename, the business unit or the employee
+ * branch. Adding a machine is a deliberate code change so a typo cannot create a stray identity namespace.
+ */
+const FINGERPRINT_MACHINES = ['bypass', 'samadikun', 'csb', 'tegal', 'sumber'];
+
+/** Normalize and validate an explicitly chosen machine; throws MACHINE_SOURCE_REQUIRED / MACHINE_SOURCE_UNKNOWN. */
+function requireKnownMachineSource(value) {
+  const m = normalizeMachineSource(value);
+  if (!m) {
+    const err = new Error('machine_source wajib diisi: pilih mesin fingerprint sumber file ini');
+    err.code = 'MACHINE_SOURCE_REQUIRED';
+    throw err;
+  }
+  if (!FINGERPRINT_MACHINES.includes(m)) {
+    const err = new Error(`machine_source tidak dikenal: ${m}`);
+    err.code = 'MACHINE_SOURCE_UNKNOWN';
+    throw err;
+  }
+  return m;
+}
+
+/**
+ * Identity namespaces of an attendance exception, from ITS OWN raw_data (one canonical derivation):
+ *   machine_source present -> identitySource = siblingKey = fingerprint:<machine>
+ *   legacy record (no machine_source) -> identitySource stays the legacy global 'fingerprint', and the
+ *   sibling key stays the legacy raw_data.source value; a legacy record is never reinterpreted as a machine.
+ */
+function exceptionNamespaces(rawData) {
+  const machine = normalizeMachineSource(rawData && rawData.machine_source);
+  if (machine) {
+    const scoped = `${LEGACY_IDENTITY_SOURCE}:${machine}`;
+    return { identitySource: scoped, siblingKey: scoped, machine };
+  }
+  return {
+    identitySource: LEGACY_IDENTITY_SOURCE,
+    siblingKey: String((rawData && rawData.source) || LEGACY_IDENTITY_SOURCE).trim(),
+    machine: null,
+  };
+}
+
 function identitySourceFor(machineSource) {
   const m = normalizeMachineSource(machineSource);
   return m ? `${LEGACY_IDENTITY_SOURCE}:${m}` : LEGACY_IDENTITY_SOURCE;
@@ -1043,6 +1085,10 @@ module.exports = {
   fetchPendingExceptions,
   buildIdentityReport,
   identitySourceFor,
+  exceptionNamespaces,
+  normalizeMachineSource,
+  requireKnownMachineSource,
+  FINGERPRINT_MACHINES,
   TERMINATED_NAMES,
   PRIMARY_MACHINE_MIN_PUNCH_DAY_RATIO,
   previewImport,

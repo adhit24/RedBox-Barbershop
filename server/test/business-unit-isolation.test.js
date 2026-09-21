@@ -375,6 +375,46 @@ test('Test E, F, G: Sibling exception propagation requires exact same source + e
 });
 
 // -------------------------------------------------------------
+// Round 7: exception resolution is machine-scoped (raw_data.machine_source), legacy stays legacy
+// -------------------------------------------------------------
+test('Resolver: Bypass ID 3 maps ONLY under fingerprint:bypass; Samadikun ID 3 and legacy stay unresolved; bypass sibling resolves', async () => {
+  const mk = (id, date, raw) => ({
+    id, attendance_date: date, external_employee_id: '3', external_name: 'Yuda', department: 'X',
+    exception_type: 'unmatched_employee', status: 'pending', raw_data: raw,
+  });
+  const exceptions = [
+    mk('bp-1', '2026-08-03', { source: 'fingerprint', machine_source: 'bypass' }),
+    mk('bp-2', '2026-08-04', { source: 'fingerprint', machine_source: 'bypass' }),
+    mk('sm-1', '2026-08-05', { source: 'fingerprint', machine_source: 'samadikun' }),
+    mk('legacy-1', '2026-08-06', { source: 'fingerprint' }),
+  ];
+  const identities = [];
+  const mockSupabase = createMockSupabase({ exceptions, identities });
+  const app = express();
+  app.use(express.json());
+  app.use('/attendance', createAttendanceImportRoutes(mockSupabase, (req, res, next) => {
+    req.adminAuth = { sessionVerified: true, role: 'owner', email: 'owner@redbox.com' };
+    next();
+  }));
+  const server = http.createServer(app);
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/attendance/exceptions/bp-1/resolve`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_type: 'barber', barber_id: 'csb-barber-1', resolution_notes: 'ok' }),
+    });
+    assert.equal((await res.json()).ok, true);
+    assert.equal(exceptions.find(e => e.id === 'bp-2').status, 'resolved', 'same machine + id sibling resolves');
+    assert.equal(exceptions.find(e => e.id === 'sm-1').status, 'pending', 'Samadikun ID 3 is a different identity');
+    assert.equal(exceptions.find(e => e.id === 'legacy-1').status, 'pending', 'legacy record is never reinterpreted as Bypass');
+    assert.ok(identities.length >= 1);
+    assert.ok(identities.every(i => i.source === 'fingerprint:bypass'), JSON.stringify(identities));
+  } finally {
+    server.close();
+  }
+});
+
+// -------------------------------------------------------------
 // Test H & I: Attendance overview reads real attendance rows & reflects unresolved exceptions
 // -------------------------------------------------------------
 test('Test H & I: Attendance overview reads real attendance rows and reflects exception counts accurately', async () => {

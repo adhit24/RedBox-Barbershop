@@ -104,9 +104,10 @@ describe('FingerprintImport', () => {
       expect(screen.getByText('Import Fingerprint')).toBeInTheDocument();
     });
 
+    const { fireEvent } = await import('@testing-library/react');
+    fireEvent.change(document.getElementById('fingerprint-machine-select') as HTMLSelectElement, { target: { value: 'tegal' } });
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const mockFile = new File(['mock content'], 'tegalsept.xls', { type: 'application/vnd.ms-excel' });
-    const { fireEvent } = await import('@testing-library/react');
     fireEvent.change(fileInput, { target: { files: [mockFile] } });
 
     // Verify preview renders
@@ -148,16 +149,19 @@ describe('FingerprintImport', () => {
     };
 
     let commitCalled = false;
+    const sentBodies: Record<string, any> = {};
 
-    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('/api/admin/crm/attendance/import/batches')) {
         return Promise.resolve(new Response(JSON.stringify({ ok: true, batches: [] }), { status: 200 }));
       }
       if (url.includes('/api/admin/crm/attendance/import/preview')) {
+        sentBodies.preview = JSON.parse(String((init as RequestInit)?.body ?? '{}'));
         return Promise.resolve(new Response(JSON.stringify({ ok: true, data: mockTegalPreview }), { status: 200 }));
       }
       if (url.includes('/api/admin/crm/attendance/import/commit')) {
+        sentBodies.commit = JSON.parse(String((init as RequestInit)?.body ?? '{}'));
         commitCalled = true;
         return Promise.resolve(new Response(JSON.stringify({
           ok: true,
@@ -190,9 +194,10 @@ describe('FingerprintImport', () => {
 
     render(<FingerprintImport />, { wrapper: MemoryRouter });
 
+    const { fireEvent } = await import('@testing-library/react');
+    fireEvent.change(document.getElementById('fingerprint-machine-select') as HTMLSelectElement, { target: { value: 'tegal' } });
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     const mockFile = new File(['mock content'], 'tegalsept.xls', { type: 'application/vnd.ms-excel' });
-    const { fireEvent } = await import('@testing-library/react');
     fireEvent.change(fileInput, { target: { files: [mockFile] } });
 
     await waitFor(() => {
@@ -206,6 +211,26 @@ describe('FingerprintImport', () => {
     await waitFor(() => {
       expect(screen.getByText(/Impor Berhasil Disimpan/i)).toBeInTheDocument();
       expect(commitCalled).toBe(true);
+      expect(sentBodies.preview.machine_source).toBe('tegal');
+      expect(sentBodies.commit.machine_source).toBe('tegal');
+      expect(sentBodies.commit.preview_machine_source).toBe('tegal');
     });
+  });
+
+  it('requires an explicit machine: file input disabled and no preview request without selection', async () => {
+    let previewCalls = 0;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/import/batches')) return Promise.resolve(new Response(JSON.stringify({ ok: true, batches: [] }), { status: 200 }));
+      if (url.includes('/import/preview')) previewCalls += 1;
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }));
+    render(<FingerprintImport />, { wrapper: MemoryRouter });
+    await waitFor(() => expect(screen.getByText('Import Fingerprint')).toBeInTheDocument());
+    const select = document.getElementById('fingerprint-machine-select') as HTMLSelectElement;
+    expect(select.value).toBe('');
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(fileInput.disabled).toBe(true);
+    expect(previewCalls).toBe(0);
   });
 });

@@ -501,21 +501,36 @@ export interface EmployeeAttendanceResponse {
   employees: EmployeeAttendanceRecord[];
 }
 
-export function previewAttendanceImport(file_base64: string, filename: string): Promise<{ ok: boolean; data: FingerprintPreviewData }> {
+export const FINGERPRINT_MACHINES = [
+  { value: 'bypass', label: 'Bypass' },
+  { value: 'samadikun', label: 'Samadikun' },
+  { value: 'csb', label: 'CSB' },
+  { value: 'tegal', label: 'Tegal' },
+  { value: 'sumber', label: 'Sumber' },
+] as const;
+
+export type FingerprintMachine = (typeof FINGERPRINT_MACHINES)[number]['value'];
+
+// machine_source is REQUIRED: the fingerprint machine is chosen explicitly, never derived from filename/unit/branch.
+export function previewAttendanceImport(file_base64: string, filename: string, machine_source: FingerprintMachine): Promise<{ ok: boolean; data: FingerprintPreviewData }> {
   return apiClient.post<{ ok: boolean; data: FingerprintPreviewData }>('/api/admin/crm/attendance/import/preview', {
     file_base64,
     filename,
+    machine_source,
   });
 }
 
 export function commitAttendanceImport(
   file_base64: string,
   filename: string,
+  machine_source: FingerprintMachine,
   manual_mappings?: Array<{ external_employee_id: string; employee_id?: string; barber_id?: string; target_type?: string }>
 ): Promise<{ ok: boolean; data: FingerprintCommitResult }> {
   return apiClient.post<{ ok: boolean; data: FingerprintCommitResult }>('/api/admin/crm/attendance/import/commit', {
     file_base64,
     filename,
+    machine_source,
+    preview_machine_source: machine_source,
     manual_mappings,
   });
 }

@@ -171,7 +171,7 @@ test('Flow: Stage B Preview returns parsed report with ZERO DB mutation', async 
         'Authorization': 'Bearer token-owner',
         'X-Forwarded-Host': 'backoffice.redboxbarbershop.com',
       },
-      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls' }),
+      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls', machine_source: 'bypass' }),
     });
 
     assert.equal(res.status, 200);
@@ -199,7 +199,7 @@ test('Flow: Stage C Commit writes batch, employee attendance, and exceptions', a
         'Authorization': 'Bearer token-owner',
         'X-Forwarded-Host': 'backoffice.redboxbarbershop.com',
       },
-      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls' }),
+      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls', machine_source: 'bypass' }),
     });
 
     assert.equal(res.status, 200);
@@ -230,7 +230,7 @@ test('Flow: Idempotent Commit — Uploading same file twice does not duplicate a
         'Authorization': 'Bearer token-owner',
         'X-Forwarded-Host': 'backoffice.redboxbarbershop.com',
       },
-      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls' }),
+      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls', machine_source: 'bypass' }),
     });
 
     const initialEmpAttCount = supabase.store.employee_attendance.length;
@@ -243,7 +243,7 @@ test('Flow: Idempotent Commit — Uploading same file twice does not duplicate a
         'Authorization': 'Bearer token-owner',
         'X-Forwarded-Host': 'backoffice.redboxbarbershop.com',
       },
-      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls' }),
+      body: JSON.stringify({ file_base64: sampleBase64, filename: '1_StandardReport-51.xls', machine_source: 'bypass' }),
     });
 
     const secondEmpAttCount = supabase.store.employee_attendance.length;
@@ -294,5 +294,50 @@ test('Flow: Exception Review — Map unmatched external employee and resolve', a
     // Verify exception status updated to resolved
     const exc = supabase.store.attendance_exceptions.find(e => e.id === 'exc-yuda');
     assert.equal(exc.status, 'resolved');
+  });
+});
+
+const authHeaders = {
+  'Content-Type': 'application/json',
+  'Authorization': 'Bearer token-owner',
+  'X-Forwarded-Host': 'backoffice.redboxbarbershop.com',
+};
+
+test('Flow: preview and commit WITHOUT machine_source are rejected (400) and never fall back to global fingerprint', async () => {
+  await withServer(async (baseUrl, supabase) => {
+    for (const path of ['preview', 'commit']) {
+      const res = await fetch(`${baseUrl}/api/admin/crm/attendance/import/${path}`, {
+        method: 'POST', headers: authHeaders,
+        body: JSON.stringify({ file_base64: sampleBase64, filename: 'bypass_sept.xls' }),
+      });
+      assert.equal(res.status, 400, path);
+      const body = await res.json();
+      assert.equal(body.code, 'MACHINE_SOURCE_REQUIRED');
+    }
+    assert.equal(supabase.store.attendance_import_batches.length, 0);
+    assert.equal(supabase.store.employee_attendance.length, 0);
+  });
+});
+
+test('Flow: unknown machine_source is rejected; filename is never authority', async () => {
+  await withServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/admin/crm/attendance/import/preview`, {
+      method: 'POST', headers: authHeaders,
+      body: JSON.stringify({ file_base64: sampleBase64, filename: 'bypass_sept.xls', machine_source: 'nowhere' }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).code, 'MACHINE_SOURCE_UNKNOWN');
+  });
+});
+
+test('Flow: commit rejects a machine different from the one previewed', async () => {
+  await withServer(async (baseUrl, supabase) => {
+    const res = await fetch(`${baseUrl}/api/admin/crm/attendance/import/commit`, {
+      method: 'POST', headers: authHeaders,
+      body: JSON.stringify({ file_base64: sampleBase64, filename: 'x.xls', machine_source: 'samadikun', preview_machine_source: 'bypass' }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).code, 'MACHINE_SOURCE_MISMATCH');
+    assert.equal(supabase.store.attendance_import_batches.length, 0);
   });
 });
