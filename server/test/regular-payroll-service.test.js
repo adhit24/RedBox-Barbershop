@@ -442,7 +442,8 @@ async function setupOvertimeDraft() {
       position: 'Staff', base_salary: 3000000, position_allowance: 0, meal_allowance_rate: 0, is_active: true,
     }],
     employee_attendance: attendance.map(([date]) => ({
-      employee_id: 'emp-ot', attendance_date: date, status: 'hadir', late_minutes: 0, overtime_minutes: 0,
+      // the source of the pending 120-minute candidate below
+      employee_id: 'emp-ot', attendance_date: date, status: 'hadir', late_minutes: 0, overtime_minutes: date === '2026-09-02' ? 120 : 0,
       first_check_in: '08:00', last_check_out: '17:00',
     })),
     employee_overtime_approvals: [{
@@ -799,4 +800,231 @@ test('Sync: APPROVED / REJECTED decisions are never overwritten by a resync, onl
   const before2 = JSON.stringify(db.tables.employee_overtime_approvals[0]);
   await syncOvertimeCandidates(db, {});
   assert.equal(JSON.stringify(db.tables.employee_overtime_approvals[0]), before2);
+});
+
+// ---------------------------------------------------------------------------
+// Review round 3: unified overtime reconciliation (attendance -> approval -> snapshot -> lock)
+// ---------------------------------------------------------------------------
+const {
+  fetchEmployeeAttendanceSummaries,
+  recalculateSingleRegularItem,
+  reconcileOvertimeForPeriod,
+} = require('../services/regularPayrollService');
+
+async function setupBaseDraft({ overtimeAtDraft = 0, withApproval = null } = {}) {
+  const dates = [];
+  for (let d = 26; d <= 31; d++) dates.push('2026-08-' + d);
+  for (let d = 1; d <= 14; d++) dates.push('2026-09-' + String(d).padStart(2, '0'));
+  const db = createMockDb({
+    employees: [{
+      id: 'emp-ot', name: 'Overtime Tester', nickname: 'OT', business_unit: 'Redbox', branch: 'bypass',
+      position: 'Staff', base_salary: 3000000, position_allowance: 0, meal_allowance_rate: 0, is_active: true,
+    }],
+    employee_attendance: dates.map((date) => ({
+      employee_id: 'emp-ot', attendance_date: date, status: 'hadir', late_minutes: 0,
+      overtime_minutes: date === '2026-09-02' ? overtimeAtDraft : 0, first_check_in: '08:00', last_check_out: '17:00',
+    })),
+    employee_overtime_approvals: withApproval ? [withApproval] : [],
+  });
+  const draft = await generateRegularPayrollDraft(db, {
+    periodStart: '2026-08-26', periodEnd: '2026-09-25', businessUnit: 'ALL', userEmail: 'test@redbox.id',
+  });
+  const item = () => db.tables.payroll_regular_items.find((i) => i.payroll_run_id === draft.run_id);
+  const run = () => db.tables.payroll_runs.find((r) => r.id === draft.run_id);
+  const att = (date) => db.tables.employee_attendance.find((r) => r.attendance_date === date);
+  const complete = () => { run().summary = { ...run().summary, attendance_period_complete: true }; };
+  return { db, draft, item, run, att, complete };
+}
+
+test('Draft generation reconciles attendance overtime first: candidate exists, item REVIEW_REQUIRED (never READY)', async () => {
+  const { db, item, run } = await setupBaseDraft({ overtimeAtDraft: 120 });
+
+  assert.equal(db.tables.employee_overtime_approvals.length, 1, 'PENDING candidate created without any manual sync');
+  const cand = db.tables.employee_overtime_approvals[0];
+  assert.equal(cand.status, 'PENDING');
+  assert.equal(cand.raw_overtime_minutes, 120);
+  assert.equal(cand.approved_overtime_minutes, 0);
+  assert.equal(item().attendance_summary.pending_overtime_count, 1);
+  assert.equal(item().status, 'REVIEW_REQUIRED');
+  assert.equal(item().overtime_amount, 0);
+  assert.equal(run().summary.review_required_count, 1);
+});
+
+test('Lock invariant: attendance overtime that was never synced blocks the lock (no approval row)', async () => {
+  const { db, draft, item, att, complete } = await setupBaseDraft();
+  assert.equal(item().status, 'READY');
+  att('2026-09-02').overtime_minutes = 90; // appears after the draft, nobody synced it
+  complete();
+
+  await assert.rejects(
+    () => lockRun(db, { runId: draft.run_id, userEmail: 'owner@redbox.id' }),
+    /attendance overtime row\(s\) have no reviewed approval/
+  );
+});
+
+test('Race approve -> lock: approval committed but item not recalculated => lock REJECTED, then allowed after recalculation', async () => {
+  const { db, draft, item, run, complete } = await setupBaseDraft({ overtimeAtDraft: 120 });
+  const apprId = db.tables.employee_overtime_approvals[0].id;
+  complete();
+  assert.equal(item().attendance_summary.approved_overtime_minutes, 0); // T1 snapshot: overtime 0
+
+  // T2: manager approval is committed (row written) ...
+  Object.assign(db.tables.employee_overtime_approvals[0], { status: 'APPROVED', approved_overtime_minutes: 120, raw_overtime_minutes: 120 });
+  // T3: ... the recalculation has not happened. T4: owner locks.
+  await assert.rejects(
+    () => lockRun(db, { runId: draft.run_id, userEmail: 'owner@redbox.id' }),
+    /Payroll overtime snapshot is stale/
+  );
+  assert.equal(run().status, 'DRAFT');
+
+  // After the recalculation the snapshot follows and the lock proceeds
+  await recalculateSingleRegularItem(db, draft.run_id, item().id, { refreshOvertime: true });
+  assert.equal(item().attendance_summary.approved_overtime_minutes, 120);
+  assert.equal(item().overtime_amount, 15000);
+  assert.equal(apprId, db.tables.employee_overtime_approvals[0].id);
+  complete();
+  const res = await lockRun(db, { runId: draft.run_id, userEmail: 'owner@redbox.id' });
+  assert.equal(res.status, 'LOCKED');
+});
+
+test('Source correction, APPROVED: 60 -> attendance corrected to 0 => decision kept, discrepancy reported, item REVIEW_REQUIRED, lock REJECTED', async () => {
+  const { db, draft, item, att, complete } = await setupBaseDraft({ overtimeAtDraft: 60 });
+  await reviewOvertimeApproval(db, { approvalId: db.tables.employee_overtime_approvals[0].id, status: 'APPROVED', approvedMinutes: 60, userEmail: 'manager@redbox.id' });
+  assert.equal(item().attendance_summary.approved_overtime_minutes, 60);
+  assert.equal(item().status, 'READY');
+  complete();
+
+  att('2026-09-02').overtime_minutes = 0; // corrected import
+  const before = JSON.stringify(db.tables.employee_overtime_approvals[0]);
+  const res = await syncOvertimeCandidates(db, {});
+
+  assert.equal(JSON.stringify(db.tables.employee_overtime_approvals[0]), before, 'human decision is never overwritten');
+  assert.equal(res.decision_discrepancies.length, 1);
+  assert.equal(res.decision_discrepancies[0].status, 'APPROVED');
+  assert.equal(res.decision_discrepancies[0].attendance_overtime_minutes, 0);
+  assert.equal(item().status, 'REVIEW_REQUIRED');
+  assert.ok(item().warnings.some((w) => /tidak lagi sesuai dengan presensi/.test(w)));
+  complete();
+  await assert.rejects(
+    () => lockRun(db, { runId: draft.run_id, userEmail: 'owner@redbox.id' }),
+    /no longer match attendance overtime/
+  );
+});
+
+test('Source correction, PENDING: attendance 60 -> 0 invalidates the undecided candidate and unblocks the draft', async () => {
+  const { db, item, run, att } = await setupBaseDraft({ overtimeAtDraft: 60 });
+  assert.equal(item().status, 'REVIEW_REQUIRED');
+
+  att('2026-09-02').overtime_minutes = 0;
+  const res = await syncOvertimeCandidates(db, {});
+
+  assert.equal(db.tables.employee_overtime_approvals.length, 0, 'system-generated PENDING candidate removed');
+  assert.equal(res.invalidated_pending.length, 1);
+  assert.equal(res.invalidated_pending[0].raw_overtime_minutes, 60);
+  assert.equal(item().attendance_summary.pending_overtime_count, 0);
+  assert.equal(item().status, 'READY');
+  assert.equal(run().summary.review_required_count, 0);
+});
+
+test('Review: refuses to approve overtime the attendance no longer reports; raw follows the current source', async () => {
+  const { db, att } = await setupBaseDraft({ overtimeAtDraft: 60 });
+  const id = db.tables.employee_overtime_approvals[0].id;
+
+  att('2026-09-02').overtime_minutes = 0;
+  await assert.rejects(
+    () => reviewOvertimeApproval(db, { approvalId: id, status: 'APPROVED', approvedMinutes: 60, userEmail: 'manager@redbox.id' }),
+    /tidak lagi melaporkan lembur/
+  );
+
+  att('2026-09-02').overtime_minutes = 90;
+  await reviewOvertimeApproval(db, { approvalId: id, status: 'APPROVED', approvedMinutes: 90, userEmail: 'manager@redbox.id' });
+  assert.equal(db.tables.employee_overtime_approvals[0].raw_overtime_minutes, 90);
+});
+
+test('Reconciliation helper: covers both sides (attendance rows AND existing approvals)', async () => {
+  const { db } = await setupBaseDraft();
+  db.tables.employee_attendance.find((r) => r.attendance_date === '2026-08-27').overtime_minutes = 30;        // A: missing -> create
+  db.tables.employee_overtime_approvals.push(
+    { id: 'p-stale', employee_id: 'emp-ot', attendance_date: '2026-08-28', raw_overtime_minutes: 45, approved_overtime_minutes: 0, status: 'PENDING' }, // C: source 0 -> invalidate
+    { id: 'a-src', employee_id: 'emp-ot', attendance_date: '2026-08-29', raw_overtime_minutes: 20, approved_overtime_minutes: 20, status: 'APPROVED' }   // D: source 0 -> discrepancy
+  );
+
+  const r = await reconcileOvertimeForPeriod(db, { periodStart: '2026-08-26', periodEnd: '2026-09-25', employeeIds: ['emp-ot'] });
+
+  assert.equal(r.created.length, 1);
+  assert.equal(r.invalidated.length, 1);
+  assert.equal(r.invalidated[0].approval_id, 'p-stale');
+  assert.equal(r.decision_discrepancies.length, 1);
+  assert.equal(r.decision_discrepancies[0].approval_id, 'a-src');
+  assert.ok(db.tables.employee_overtime_approvals.some((a) => a.id === 'a-src' && a.status === 'APPROVED'));
+  assert.ok(!db.tables.employee_overtime_approvals.some((a) => a.id === 'p-stale'));
+});
+
+// ---- approval reads must page (PostgREST 1000-row cap) and fail closed ----
+function cappedSupabase(tables) {
+  const CAP = 1000;
+  const make = (name) => {
+    const rows = tables[name] || [];
+    const f = [];
+    const order = [];
+    let win = null;
+    const api = {
+      select() { return api; },
+      in(c, v) { f.push((r) => v.includes(r[c])); return api; },
+      eq(c, v) { f.push((r) => r[c] === v); return api; },
+      gt(c, v) { f.push((r) => r[c] > v); return api; },
+      gte(c, v) { f.push((r) => r[c] >= v); return api; },
+      lte(c, v) { f.push((r) => r[c] <= v); return api; },
+      order(c) { order.push(c); return api; },
+      range(a, b) { win = [a, b]; return api; },
+      then(res) {
+        let out = rows.filter((r) => f.every((x) => x(r)));
+        if (order.length) out = [...out].sort((a, b) => order.reduce((acc, c) => acc || String(a[c]).localeCompare(String(b[c])), 0));
+        out = win ? out.slice(win[0], win[1] + 1) : out;
+        res({ data: out.slice(0, CAP), error: null });
+      },
+    };
+    return api;
+  };
+  return { from: make };
+}
+
+test('Approval paging: >1000 approvals in the period, target on page 2 -> approved minutes and pending count still counted', async () => {
+  const ids = [];
+  const approvals = [];
+  for (let i = 0; i < 1100; i++) {
+    const id = 'e-' + String(i).padStart(4, '0');
+    ids.push(id);
+    approvals.push({ id: 'a-' + id, employee_id: id, attendance_date: '2026-09-01', raw_overtime_minutes: 30, approved_overtime_minutes: 0, status: 'PENDING' });
+  }
+  ids.push('zz-target');
+  approvals.push({ id: 'a-zz', employee_id: 'zz-target', attendance_date: '2026-09-01', raw_overtime_minutes: 120, approved_overtime_minutes: 120, status: 'APPROVED' });
+  approvals.push({ id: 'a-zz2', employee_id: 'zz-target', attendance_date: '2026-09-02', raw_overtime_minutes: 45, approved_overtime_minutes: 0, status: 'PENDING' });
+  const attendance = [
+    { employee_id: 'zz-target', attendance_date: '2026-09-01', status: 'hadir', overtime_minutes: 120, first_check_in: '08:00', last_check_out: '19:00' },
+    { employee_id: 'zz-target', attendance_date: '2026-09-02', status: 'hadir', overtime_minutes: 45, first_check_in: '08:00', last_check_out: '18:00' },
+  ];
+  const sb = cappedSupabase({ employee_attendance: attendance, employee_overtime_approvals: approvals, attendance_exceptions: [] });
+  // give every synthetic employee a matching attendance overtime so only page position matters
+  for (let i = 0; i < 1100; i++) attendance.push({ employee_id: 'e-' + String(i).padStart(4, '0'), attendance_date: '2026-09-01', status: 'hadir', overtime_minutes: 30, first_check_in: '08:00', last_check_out: '17:30' });
+
+  const map = await fetchEmployeeAttendanceSummaries(sb, ids, '2026-08-26', '2026-09-25', new Map());
+
+  const t = map.get('zz-target');
+  assert.equal(t.approved_overtime_minutes, 120, 'approved minutes from page 2 counted');
+  assert.equal(t.pending_overtime_count, 1, 'pending count from page 2 counted');
+  assert.equal(t.overtime_discrepancy_count, 0);
+  assert.equal(map.get('e-0000').pending_overtime_count, 1);
+});
+
+test('Approval paging: a failed approvals/attendance read fails closed instead of looking like "no overtime"', async () => {
+  const failing = (badTable) => ({ from: (name) => {
+    const api = {
+      select() { return api; }, in() { return api; }, eq() { return api; }, gt() { return api; }, gte() { return api; }, lte() { return api; }, order() { return api; },
+      then(res) { res(name === badTable ? { data: null, error: { message: 'boom' } } : { data: [], error: null }); },
+    };
+    return api;
+  } });
+  await assert.rejects(() => fetchEmployeeAttendanceSummaries(failing('employee_overtime_approvals'), ['e1'], '2026-08-26', '2026-09-25', new Map()), /employee_overtime_approvals/);
+  await assert.rejects(() => fetchEmployeeAttendanceSummaries(failing('employee_attendance'), ['e1'], '2026-08-26', '2026-09-25', new Map()), /employee_attendance/);
 });

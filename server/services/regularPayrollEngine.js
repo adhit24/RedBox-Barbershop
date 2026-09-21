@@ -81,6 +81,16 @@ function calculateRegularPayrollItem({
   const lateMinutes = Number(attendanceSummary.late_minutes ?? 0);
   const incompleteCount = Number(attendanceSummary.incomplete_attendance ?? 0);
   const exceptionCount = Number(attendanceSummary.unresolved_exceptions_count ?? 0);
+  // Overtime that does not line up with the attendance source: approvals whose raw minutes differ from
+  // current attendance (decision discrepancy / stale candidate) or attendance overtime with no approval yet.
+  const overtimeDiscrepancyCount = Number(attendanceSummary.overtime_discrepancy_count ?? 0);
+  const unsyncedOvertimeCount = Number(attendanceSummary.unsynced_overtime_count ?? 0);
+  if (overtimeDiscrepancyCount > 0) {
+    warnings.push(`Terdapat ${overtimeDiscrepancyCount} persetujuan lembur yang tidak lagi sesuai dengan presensi. Tinjau ulang sebelum finalisasi.`);
+  }
+  if (unsyncedOvertimeCount > 0) {
+    warnings.push(`Terdapat ${unsyncedOvertimeCount} hari lembur pada presensi yang belum menjadi kandidat persetujuan. Sinkronkan lembur terlebih dahulu.`);
+  }
 
   // Coverage vs the window the attendance source actually covers (start of period or
   // join date, up to the last day the source has data). Only evaluated when the caller
@@ -221,7 +231,7 @@ function calculateRegularPayrollItem({
   let status = REGULAR_ITEM_STATUS.READY;
   if (!rawBaseSalary || baseSalary <= 0) {
     status = REGULAR_ITEM_STATUS.MISSING_SALARY;
-  } else if (incompleteCount > 0 || exceptionCount > 0 || coverageShort || productCommissionSource === 'REVIEW_REQUIRED' || (attendanceSummary.pending_overtime_count || 0) > 0) {
+  } else if (incompleteCount > 0 || exceptionCount > 0 || coverageShort || overtimeDiscrepancyCount > 0 || unsyncedOvertimeCount > 0 || productCommissionSource === 'REVIEW_REQUIRED' || (attendanceSummary.pending_overtime_count || 0) > 0) {
     status = REGULAR_ITEM_STATUS.REVIEW_REQUIRED;
     if ((attendanceSummary.pending_overtime_count || 0) > 0) {
       warnings.push(`Terdapat ${attendanceSummary.pending_overtime_count} kandidat lembur menunggu persetujuan manager.`);
@@ -305,6 +315,8 @@ function calculateRegularPayrollItem({
       overtime_hours: approvedOvertimeHours,
       approved_overtime_minutes: Number(attendanceSummary.approved_overtime_minutes ?? Math.round(approvedOvertimeHours * 60)),
       pending_overtime_count: Number(attendanceSummary.pending_overtime_count ?? 0),
+      overtime_discrepancy_count: overtimeDiscrepancyCount,
+      unsynced_overtime_count: unsyncedOvertimeCount,
       incomplete_attendance: incompleteCount,
       unresolved_exceptions_count: exceptionCount,
       attendance_coverage_days: Number(attendanceSummary.attendance_coverage_days ?? attendanceSummary.records_count ?? 0),
