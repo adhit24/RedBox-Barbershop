@@ -64,8 +64,10 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
   assert.ok(lockPopulationSymmetry, 'lock population symmetry corrective migration exists');
   const workforceRevision = list.find((f) => /workforce_revision/.test(f));
   assert.ok(workforceRevision, 'workforce revision corrective migration exists');
+  const workforceLockHold = list.find((f) => /workforce_lock_and_manual_overtime/.test(f));
+  assert.ok(workforceLockHold, 'workforce lock-hold + manual overtime corrective migration exists');
   const last = list[list.length - 1];
-  assert.match(last, /workforce_revision/);
+  assert.match(last, /workforce_lock_and_manual_overtime/);
   assert.ok(
     restore > '20260919143000' &&
       pendingGuard > restore &&
@@ -77,8 +79,9 @@ test('Final lock_payroll_run definition is the newest forward migration (not the
       generalizeConcurrency > versionSnapshot &&
       populationReconciliation > generalizeConcurrency &&
       lockPopulationSymmetry > populationReconciliation &&
-      workforceRevision > lockPopulationSymmetry,
-    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required < version snapshot < generalize concurrency < population reconciliation < lock population symmetry < workforce revision'
+      workforceRevision > lockPopulationSymmetry &&
+      workforceLockHold > workforceRevision,
+    'migrations are ordered 143000 < restore < pending-overtime guard < overtime reconciliation < atomic lifecycle < attendance sync < block review-required < version snapshot < generalize concurrency < population reconciliation < lock population symmetry < workforce revision < workforce lock-hold + manual overtime'
   );
 });
 

@@ -134,39 +134,16 @@ test('workforce revision: activation (is_active false -> true) also bumps the re
   assert.equal(store.__workforceRevision || 0, before + 1);
 });
 
-test('lock is rejected when workforce eligibility changes between population validation and the freeze', async () => {
-  const store = baseWorkforce([regularEmployee({ id: 'emp-1' })]);
-  fillAttendance(store, 'emp-1');
-  const sb = createInMemorySupabase(store);
-  const draft = await generateRegularPayrollDraft(sb, { periodStart: PERIOD_START, periodEnd: PERIOD_END, businessUnit: 'ALL', userEmail: 'owner@redbox.id' });
-
-  // T1 begins the lock; T2's concurrent commit is simulated to land exactly between population
-  // validation and the freeze via the test-only injection hook (mirrors the real DB race window).
-  store.__midLockWorkforceHook = () => {
-    store.employees.push(regularEmployee({ id: 'emp-2', name: 'Beta Regular', nickname: 'Beta' }));
-    store.__workforceRevision = (store.__workforceRevision || 0) + 1;
-  };
-
-  await assert.rejects(
-    () => lockRegularPayrollRun(sb, { runId: draft.run_id, userEmail: 'owner@redbox.id' }),
-    /WORKFORCE_CHANGED_DURING_PAYROLL_LOCK|workforce eligibility changed/i
-  );
-  const run = store.payroll_runs.find((r) => r.id === draft.run_id);
-  assert.equal(run.status, 'DRAFT', 'the run must remain DRAFT: no silent lock past a mid-transaction workforce change');
-});
-
-test('the DB lock_payroll_run RPC independently enforces the same workforce revision check', async () => {
-  const store = baseWorkforce([regularEmployee({ id: 'emp-1' })]);
-  fillAttendance(store, 'emp-1');
-  const sb = createInMemorySupabase(store);
-  const draft = await generateRegularPayrollDraft(sb, { periodStart: PERIOD_START, periodEnd: PERIOD_END, businessUnit: 'ALL', userEmail: 'owner@redbox.id' });
-
-  store.__midLockWorkforceHook = () => { store.__workforceRevision = (store.__workforceRevision || 0) + 1; };
-
-  const { data, error } = await sb.rpc('lock_payroll_run', { p_run_id: draft.run_id, p_user_email: 'owner@redbox.id' });
-  assert.equal(data, null);
-  assert.match(error.message, /WORKFORCE_CHANGED_DURING_PAYROLL_LOCK/);
-});
+// NOTE (round 15, PRRT_kwDOSNmW7c6klyj1): the capture-then-recheck design that used to be tested here
+// (two unlocked reads of payroll_workforce_version.revision, compared before freezing) was replaced by
+// an actual `FOR UPDATE` row lock held for the rest of the transaction -- see
+// 20260922080000_regular_payroll_workforce_lock_and_manual_overtime.sql. A synchronous single-threaded
+// JS double cannot reproduce genuine Postgres transactional blocking, so the correctness of the new
+// design is verified by the static SQL-text assertions in regular-payroll-round15.test.js instead
+// (the FOR UPDATE hold is present; the old capture/recheck pattern is gone). The tests that used to
+// live here (`WORKFORCE_CHANGED_DURING_PAYROLL_LOCK` / `_DURING_POPULATION_RECONCILIATION` no longer
+// exist in the real function, so a mock that raised them would misrepresent production behavior) were
+// removed rather than left asserting a mechanism that no longer exists.
 
 test('no workforce change during lock validation -> lock flow unaffected, run LOCKED', async () => {
   const store = baseWorkforce([regularEmployee({ id: 'emp-1' })]);
@@ -178,7 +155,7 @@ test('no workforce change during lock validation -> lock flow unaffected, run LO
   assert.equal(result.status, 'LOCKED');
 });
 
-test('population reconciliation is rejected when workforce eligibility changes mid-reconciliation, then succeeds after a clean retry', async () => {
+test('population reconciliation still succeeds when a new eligible employee appears (unaffected by the lock-holding redesign)', async () => {
   const store = baseWorkforce([regularEmployee({ id: 'emp-1' })]);
   fillAttendance(store, 'emp-1');
   const sb = createInMemorySupabase(store);
@@ -187,24 +164,13 @@ test('population reconciliation is rejected when workforce eligibility changes m
   store.employees.push(regularEmployee({ id: 'emp-2', name: 'Beta Regular', nickname: 'Beta' }));
   fillAttendance(store, 'emp-2');
 
-  let hookCalls = 0;
-  store.__midPopulationReconcileWorkforceHook = () => {
-    hookCalls += 1;
-    if (hookCalls === 1) {
-      // Only the FIRST reconciliation attempt races; the retry (reconcileRegularPayrollPopulation's
-      // own maxRetries=1) must converge cleanly with no further injected change.
-      store.__workforceRevision = (store.__workforceRevision || 0) + 1;
-    }
-  };
-
   const population = await reconcileRegularPayrollPopulation(sb, draft.run_id);
   assert.deepEqual(population.inserted, ['emp-2']);
-  assert.equal(hookCalls, 2, 'first attempt raced and was rejected, second attempt (retry) succeeded');
   const items = store.payroll_regular_items.filter((i) => i.payroll_run_id === draft.run_id);
   assert.deepEqual(items.map((i) => i.employee_id).sort(), ['emp-1', 'emp-2']);
 });
 
-test('Barber payroll lock is unaffected by the workforce revision check (no employees table dependency)', async () => {
+test('Barber payroll lock is unaffected by the workforce serialization redesign (no employees table dependency)', async () => {
   const store = baseWorkforce([]);
   store.payroll_runs.push({
     id: 'barber-run-1', payroll_type: 'BARBER', business_unit: 'Redbox', status: 'DRAFT',
@@ -215,9 +181,6 @@ test('Barber payroll lock is unaffected by the workforce revision check (no empl
   store.payroll_barber_commission_items = [];
   store.payroll_source_claims = [];
   const sb = createInMemorySupabase(store);
-
-  // Even with an in-flight workforce hook set, Barber payroll must never consult it.
-  store.__midLockWorkforceHook = () => { throw new Error('must not be called for Barber payroll'); };
 
   const { data, error } = await sb.rpc('lock_payroll_run', { p_run_id: 'barber-run-1', p_user_email: 'owner@redbox.id' });
   assert.equal(error, null);

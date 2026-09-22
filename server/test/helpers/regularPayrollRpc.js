@@ -105,9 +105,10 @@ function emulateAddRegularPayrollRunItems(store, args, { idFactory = () => `n${M
     return { data: null, error: { message: `Cannot add items to payroll run ${runId}: status is ${run.status} (only DRAFT can be modified)` } };
   }
 
-  // Workforce serialization (P1, PRRT_kwDOSNmW7c6kldWl): captured BEFORE the per-item eligibility
-  // loop, re-checked immediately before the insert below.
-  const workforceRevBefore = store.__workforceRevision || 0;
+  // Workforce serialization (P1, PRRT_kwDOSNmW7c6klyj1): the real SQL holds a `FOR UPDATE` row lock on
+  // payroll_workforce_version for the rest of the transaction instead of comparing two unlocked reads --
+  // a real Postgres transactional guarantee a synchronous single-threaded JS double cannot meaningfully
+  // reproduce. See regular-payroll-round15.test.js for the static SQL-text assertions.
 
   for (const it of itemsIn) {
     const alreadyPresent = store.payroll_regular_items.some((i) => i.payroll_run_id === runId && i.employee_id === it.employee_id);
@@ -133,14 +134,6 @@ function emulateAddRegularPayrollRunItems(store, args, { idFactory = () => `n${M
     if (!empEligible) {
       return { data: null, error: { message: `EMPLOYEE_NOT_ELIGIBLE_FOR_POPULATION_RECONCILIATION: employee ${it.employee_id} is not currently eligible for run ${runId}` } };
     }
-  }
-
-  // Test-only injection point: simulates a concurrent commit landing exactly between the eligibility
-  // loop and the insert (the real DB-side race window this check closes).
-  if (typeof store.__midPopulationReconcileWorkforceHook === 'function') store.__midPopulationReconcileWorkforceHook();
-  const workforceRevAfter = store.__workforceRevision || 0;
-  if (workforceRevAfter !== workforceRevBefore) {
-    return { data: null, error: { message: `WORKFORCE_CHANGED_DURING_POPULATION_RECONCILIATION: workforce eligibility changed during reconciliation (revision ${workforceRevBefore} -> ${workforceRevAfter})` } };
   }
 
   for (const it of itemsIn) {

@@ -268,9 +268,12 @@ function createInMemorySupabase(store, opts = {}) {
         const runRow = (store.payroll_runs || []).find((r) => r.id === args.p_run_id);
         if (!runRow) return Promise.resolve({ data: null, error: { message: `Payroll run ${args.p_run_id} not found` } });
         if (runRow.status !== 'DRAFT') return Promise.resolve({ data: null, error: { message: `Cannot lock payroll run: current status is ${runRow.status}` } });
-        // Workforce serialization (P1, PRRT_kwDOSNmW7c6kldWl): captured BEFORE any population/guard
-        // validation, re-checked immediately before the freeze below. Barber payroll is excluded.
-        const workforceRevBefore = store.__workforceRevision || 0;
+        // Workforce serialization (P1, PRRT_kwDOSNmW7c6klyj1): the real SQL holds a `FOR UPDATE` row
+        // lock on payroll_workforce_version for the rest of the transaction instead of comparing two
+        // unlocked reads -- a real Postgres transactional guarantee that a synchronous single-threaded
+        // JS double cannot meaningfully reproduce (there is no concurrent statement to block). The
+        // static SQL-text assertions in regular-payroll-round15.test.js verify the FOR UPDATE hold and
+        // the absence of the old capture/recheck pattern instead.
         // Population completeness backstop (P1-2, PRRT_kwDOSNmW7c6kkm1X): every employee CURRENTLY
         // eligible for this run's business unit/period must already have an item.
         if (['REGULAR', 'REGULAR_PAYROLL'].includes(runRow.payroll_type)) {
@@ -317,15 +320,16 @@ function createInMemorySupabase(store, opts = {}) {
         // lock invariant (P1-1): ANY item with REVIEW_REQUIRED rejects lock
         const reviewItems = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id && i.status === 'REVIEW_REQUIRED');
         if (reviewItems.length > 0) return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: ${reviewItems.length} review-required item(s) remain. Resolve all review warnings before locking.` } });
-        if (['REGULAR', 'REGULAR_PAYROLL'].includes(runRow.payroll_type)) {
-          // Test-only injection point: simulates a concurrent commit landing exactly between
-          // population validation and the freeze (the real DB-side race window this check closes).
-          if (typeof store.__midLockWorkforceHook === 'function') store.__midLockWorkforceHook();
-          const workforceRevAfter = store.__workforceRevision || 0;
-          if (workforceRevAfter !== workforceRevBefore) {
-            return Promise.resolve({ data: null, error: { message: `WORKFORCE_CHANGED_DURING_PAYROLL_LOCK: workforce eligibility changed during lock validation (revision ${workforceRevBefore} -> ${workforceRevAfter}). Retry the lock.` } });
-          }
-        }
+        // Manual overtime override invariant (P2, PRRT_kwDOSNmW7c6klyj8): validated deterministically
+        // against the item's own rate/minutes, never against the DB approval aggregate.
+        const badOverrideItem = (store.payroll_regular_items || []).find((i) => {
+          if (i.payroll_run_id !== runRow.id) return false;
+          if (i.attendance_summary?.overtime_source !== 'MANUAL_OVERRIDE') return false;
+          const snapMinutes = Number(i.attendance_summary?.approved_overtime_minutes || 0);
+          const expected = Math.round((snapMinutes / 60) * Number(i.overtime_rate || 0));
+          return expected !== Number(i.overtime_amount || 0);
+        });
+        if (badOverrideItem) return Promise.resolve({ data: null, error: { message: `Payroll manual overtime override is inconsistent for ${badOverrideItem.employee_name_snapshot}. Recalculate before locking.` } });
         runRow.status = 'LOCKED';
         (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id).forEach((i) => { i.status = 'LOCKED'; });
         return Promise.resolve({ data: { success: true, status: 'LOCKED', run_id: runRow.id }, error: null });

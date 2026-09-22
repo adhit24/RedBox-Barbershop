@@ -410,6 +410,20 @@ function evaluateOvertimeLockInvariants({ items = [], approvals = [], attendance
   }
 
   for (const item of items) {
+    // Manual overtime override (P2, PRRT_kwDOSNmW7c6klyj8): an explicit owner override is authoritative
+    // and is never required to equal the routine approved-overtime aggregate (there may be no approval
+    // rows backing it at all -- that is the point of an override). Validate it deterministically instead:
+    // the persisted overtime_amount must correspond EXACTLY to the snapshot minutes at the item's own
+    // rate, rounded only at the final whole-Rupiah step -- this still catches a stale/tampered snapshot
+    // (e.g. minutes edited without recalculating the amount) without requiring a matching approval row.
+    if (item.attendance_summary?.overtime_source === 'MANUAL_OVERRIDE') {
+      const snapshotMinutes = Number(item.attendance_summary?.approved_overtime_minutes || 0);
+      const expectedAmount = Math.round((snapshotMinutes / 60) * Number(item.overtime_rate || 0));
+      if (expectedAmount !== Number(item.overtime_amount || 0)) {
+        return { code: 'OVERTIME_SNAPSHOT_STALE', message: `Payroll overtime snapshot is stale for ${item.employee_name_snapshot || item.employee_id}. Recalculate before locking.` };
+      }
+      continue;
+    }
     const dbMinutes = approvals
       .filter((a) => a.employee_id === item.employee_id && a.status === 'APPROVED')
       .reduce((sum, a) => sum + Number(a.approved_overtime_minutes || 0), 0);
@@ -1203,6 +1217,10 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
   }
   if (item.status === 'LOCKED') return null; // never touch frozen items
 
+  // Manual overtime override provenance (P2, PRRT_kwDOSNmW7c6klyj8): read from the item's OWN persisted
+  // state before any attendance/overtime refresh below, so recalculation cannot silently discard it.
+  const isManualOvertimeOverride = item.attendance_summary?.overtime_source === 'MANUAL_OVERRIDE';
+
   // Generalized revisions across attendance, overtime, adjustments (P2)
   const inputRevision = Number(item.payroll_input_revision || 0);
   const snapshotRevision = Number(item.payroll_snapshot_revision || 0);
@@ -1334,7 +1352,17 @@ async function recalculateSingleRegularItem(supabase, runId, itemId, { refreshOv
       product_commission_source: item.product_commission_source,
       service_barber_amount: item.service_barber_amount,
       service_barber_source: item.service_barber_source,
-      approved_overtime_hours: approvedOvertimeHours,
+      // A manual overtime override persists across recalculation until the owner explicitly changes it
+      // (P2, PRRT_kwDOSNmW7c6klyj8): the attendance/overtime-approval reconciliation above still
+      // refreshes every OTHER attendance-derived field, but overtime money keeps using the owner's
+      // override minutes, never the freshly reconciled approved-overtime aggregate. For a normal
+      // (non-override) item, approved_overtime_hours/minutes is intentionally left unset here so the
+      // engine falls through to attendanceSummary.approved_overtime_minutes (the freshly reconciled
+      // value set above) -- passing a value unconditionally would make calculateRegularPayrollItem treat
+      // every recalculated item as an override (variables always outrank attendanceSummary).
+      ...(isManualOvertimeOverride
+        ? { approved_overtime_minutes: Number(item.attendance_summary?.approved_overtime_minutes || 0) }
+        : {}),
     },
     // Fresh attendance recomputes late deduction from the new late count unless it was a MANUAL override.
     lateDeductionOverride: freshAttendance && item.late_deduction_source !== 'MANUAL_OVERRIDE' ? undefined : item.late_deduction,
@@ -1753,7 +1781,7 @@ async function lockRegularPayrollRun(supabase, { runId, userEmail = 'owner@redbo
   if (guardRun && (guardRun.payroll_type === 'REGULAR' || guardRun.payroll_type === 'REGULAR_PAYROLL')) {
     const { data: runItems, error: itemsErr } = await fetchAllRows(() => supabase
       .from('payroll_regular_items')
-      .select('id, employee_id, employee_name_snapshot, overtime_hours, attendance_summary, manual_bonus, debt_deduction, manual_deduction, adjustments_total')
+      .select('id, employee_id, employee_name_snapshot, overtime_hours, overtime_rate, overtime_amount, attendance_summary, manual_bonus, debt_deduction, manual_deduction, adjustments_total')
       .eq('payroll_run_id', runId)
       .order('employee_id')
       .order('id'));
