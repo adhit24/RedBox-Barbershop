@@ -177,21 +177,30 @@ function calculateRegularPayrollItem({
   // 6. Overtime -- approved MINUTES are authoritative and exact; money is derived directly from them,
   // never from a pre-rounded hours value (Codex round-12 P1, PRRT_kwDOSNmW7c6klJoN). Rounding minutes
   // to 1-decimal hours BEFORE multiplying by the rate loses precision (15 min -> 0.3h -> Rp2,250
-  // instead of the correct 15/60 * rate = Rp1,875). `approved_overtime_hours` (variables or
-  // attendanceSummary.overtime_hours) is accepted only as a fallback for callers that have not been
-  // updated to pass exact minutes (e.g. a manual hours override), and `overtime_hours` on the result is
-  // for DISPLAY only -- it is never used to compute overtime_amount.
-  const approvedOvertimeMinutes = Number(
-    variables.approved_overtime_minutes !== undefined
-      ? variables.approved_overtime_minutes
-      : attendanceSummary.approved_overtime_minutes !== undefined
-        ? attendanceSummary.approved_overtime_minutes
-        : Math.round(Number(
-            variables.approved_overtime_hours !== undefined
-              ? variables.approved_overtime_hours
-              : (attendanceSummary.overtime_hours || 0)
-          ) * 60)
-  );
+  // instead of the correct 15/60 * rate = Rp1,875). `overtime_hours` on the result is for DISPLAY only
+  // -- it is never used to compute overtime_amount.
+  //
+  // Precedence (Codex round-13 P2, PRRT_kwDOSNmW7c6kldWm): an EXPLICIT owner override
+  // (variables.approved_overtime_minutes / .approved_overtime_hours) must always win over the
+  // attendance-derived value, even when the override is exactly 0 -- 0 may be an intentional override,
+  // so presence (`!== undefined`), not truthiness, decides. Only when neither override is present does
+  // the attendance-derived approved_overtime_minutes (or, lacking that, overtime_hours) apply.
+  let approvedOvertimeMinutes;
+  let overtimeSource = SOURCE_ORIGIN.ATTENDANCE;
+  if (variables.approved_overtime_minutes !== undefined) {
+    approvedOvertimeMinutes = Number(variables.approved_overtime_minutes);
+    overtimeSource = SOURCE_ORIGIN.MANUAL_OVERRIDE;
+  } else if (variables.approved_overtime_hours !== undefined) {
+    approvedOvertimeMinutes = Math.round(Number(variables.approved_overtime_hours) * 60);
+    overtimeSource = SOURCE_ORIGIN.MANUAL_OVERRIDE;
+  } else if (attendanceSummary.approved_overtime_minutes !== undefined) {
+    approvedOvertimeMinutes = Number(attendanceSummary.approved_overtime_minutes);
+  } else {
+    approvedOvertimeMinutes = Math.round(Number(attendanceSummary.overtime_hours || 0) * 60);
+  }
+  if (!Number.isFinite(approvedOvertimeMinutes) || approvedOvertimeMinutes < 0) {
+    approvedOvertimeMinutes = 0;
+  }
   const approvedOvertimeHours = Math.round((approvedOvertimeMinutes / 60) * 10) / 10; // display only
   const overtimeRate = policy.overtimeRate || 7500;
   const overtimeAmount = roundRupiah((approvedOvertimeMinutes / 60) * overtimeRate);
@@ -332,7 +341,11 @@ function calculateRegularPayrollItem({
       late_count: lateCount,
       late_minutes: lateMinutes,
       overtime_hours: approvedOvertimeHours,
-      approved_overtime_minutes: Number(attendanceSummary.approved_overtime_minutes ?? Math.round(approvedOvertimeHours * 60)),
+      // The RESOLVED minute value actually used for overtime_amount (override-or-attendance), never the
+      // raw attendance-only value -- otherwise an active override would silently desync the snapshot
+      // from the money that was actually calculated.
+      approved_overtime_minutes: approvedOvertimeMinutes,
+      overtime_source: overtimeSource,
       pending_overtime_count: Number(attendanceSummary.pending_overtime_count ?? 0),
       overtime_discrepancy_count: overtimeDiscrepancyCount,
       unsynced_overtime_count: unsyncedOvertimeCount,

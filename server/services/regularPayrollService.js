@@ -1530,7 +1530,7 @@ async function reconcileRegularPayrollPopulation(supabase, runId, { maxRetries =
     });
 
     if (addErr || !addResult) {
-      if (/PAYROLL_INPUT_CHANGED_DURING_POPULATION_RECONCILIATION|EMPLOYEE_ALREADY_IN_RUN/i.test(addErr?.message || '') && maxRetries > 0) {
+      if (/PAYROLL_INPUT_CHANGED_DURING_POPULATION_RECONCILIATION|EMPLOYEE_ALREADY_IN_RUN|WORKFORCE_CHANGED_DURING_POPULATION_RECONCILIATION/i.test(addErr?.message || '') && maxRetries > 0) {
         return reconcileRegularPayrollPopulation(supabase, runId, { maxRetries: maxRetries - 1 });
       }
       const err = new Error(`Failed to add missing employees to payroll run ${runId}: ${addErr?.message || 'no result'}`);

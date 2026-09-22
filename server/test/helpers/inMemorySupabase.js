@@ -25,6 +25,14 @@ function createInMemorySupabase(store, opts = {}) {
     }
   };
 
+  // trg_bump_payroll_workforce_version: mirrors the DB trigger on employees -- a single global counter,
+  // bumped only when a payroll-relevant column changes (is_active/employment_type/join_date/
+  // business_unit for UPDATE; always for INSERT/DELETE). An unrelated employee edit does not bump it.
+  const WORKFORCE_FIELDS = ['is_active', 'employment_type', 'join_date', 'business_unit'];
+  const bumpWorkforceVersion = () => {
+    store.__workforceRevision = Number(store.__workforceRevision || 0) + 1;
+  };
+
   // trg_payroll_adjustment_mark_dirty: same transaction as the adjustment write
   const markDirty = (itemId) => {
     const item = (store.payroll_regular_items || []).find((i) => i.id === itemId);
@@ -156,6 +164,7 @@ function createInMemorySupabase(store, opts = {}) {
         }
         rows.push(...arr);
         if (emulateTriggers && name === 'payroll_adjustments') arr.forEach((r) => markDirty(r.payroll_regular_item_id));
+        if (emulateTriggers && name === 'employees') arr.forEach(() => bumpWorkforceVersion());
         const o = { select() { return o; }, single: async () => ({ data: arr[0], error: null }), then(res) { res({ data: arr, error: null }); } };
         return o;
       },
@@ -213,6 +222,11 @@ function createInMemorySupabase(store, opts = {}) {
           if (emulateTriggers && name === 'employee_overtime_approvals') {
             hit.forEach((r) => overtimeApprovalEffect(r.employee_id, r.attendance_date));
           }
+          if (emulateTriggers && name === 'employees') {
+            hit.forEach((r) => {
+              if (WORKFORCE_FIELDS.some((f) => f in u && u[f] !== r[f])) bumpWorkforceVersion();
+            });
+          }
           hit.forEach((r) => Object.assign(r, u));
           return { data: hit[0] || null, error: (mustExist && !hit[0]) ? { message: 'not found' } : null };
         };
@@ -229,6 +243,7 @@ function createInMemorySupabase(store, opts = {}) {
             if (emulateTriggers && name === 'employee_attendance' && removed) attendanceEffect(removed.employee_id, removed.attendance_date, 'DELETE');
             if (emulateTriggers && name === 'employee_overtime_approvals' && removed) overtimeApprovalEffect(removed.employee_id, removed.attendance_date);
             if (emulateTriggers && name === 'payroll_adjustments' && removed) markDirty(removed.payroll_regular_item_id);
+            if (emulateTriggers && name === 'employees' && removed) bumpWorkforceVersion();
             return Promise.resolve({ error: null });
           },
         };
@@ -253,6 +268,9 @@ function createInMemorySupabase(store, opts = {}) {
         const runRow = (store.payroll_runs || []).find((r) => r.id === args.p_run_id);
         if (!runRow) return Promise.resolve({ data: null, error: { message: `Payroll run ${args.p_run_id} not found` } });
         if (runRow.status !== 'DRAFT') return Promise.resolve({ data: null, error: { message: `Cannot lock payroll run: current status is ${runRow.status}` } });
+        // Workforce serialization (P1, PRRT_kwDOSNmW7c6kldWl): captured BEFORE any population/guard
+        // validation, re-checked immediately before the freeze below. Barber payroll is excluded.
+        const workforceRevBefore = store.__workforceRevision || 0;
         // Population completeness backstop (P1-2, PRRT_kwDOSNmW7c6kkm1X): every employee CURRENTLY
         // eligible for this run's business unit/period must already have an item.
         if (['REGULAR', 'REGULAR_PAYROLL'].includes(runRow.payroll_type)) {
@@ -299,6 +317,15 @@ function createInMemorySupabase(store, opts = {}) {
         // lock invariant (P1-1): ANY item with REVIEW_REQUIRED rejects lock
         const reviewItems = (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id && i.status === 'REVIEW_REQUIRED');
         if (reviewItems.length > 0) return Promise.resolve({ data: null, error: { message: `Cannot lock regular payroll run ${runRow.id}: ${reviewItems.length} review-required item(s) remain. Resolve all review warnings before locking.` } });
+        if (['REGULAR', 'REGULAR_PAYROLL'].includes(runRow.payroll_type)) {
+          // Test-only injection point: simulates a concurrent commit landing exactly between
+          // population validation and the freeze (the real DB-side race window this check closes).
+          if (typeof store.__midLockWorkforceHook === 'function') store.__midLockWorkforceHook();
+          const workforceRevAfter = store.__workforceRevision || 0;
+          if (workforceRevAfter !== workforceRevBefore) {
+            return Promise.resolve({ data: null, error: { message: `WORKFORCE_CHANGED_DURING_PAYROLL_LOCK: workforce eligibility changed during lock validation (revision ${workforceRevBefore} -> ${workforceRevAfter}). Retry the lock.` } });
+          }
+        }
         runRow.status = 'LOCKED';
         (store.payroll_regular_items || []).filter((i) => i.payroll_run_id === runRow.id).forEach((i) => { i.status = 'LOCKED'; });
         return Promise.resolve({ data: { success: true, status: 'LOCKED', run_id: runRow.id }, error: null });

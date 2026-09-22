@@ -180,6 +180,65 @@ test('4d. no exact minutes available falls back to hours (backward compatible, n
   assert.equal(res.overtime_amount, 150000);
 });
 
+// ---- PRRT_kwDOSNmW7c6kldWm: an explicit override must win over the attendance-derived value ----
+
+test('4e. explicit approved_overtime_hours override wins over attendance approved_overtime_minutes=0', () => {
+  const employee = { id: 'emp-4e', name: 'X', business_unit: 'Redbox', position: 'Cashier', base_salary: 1000000 };
+  const res = calculateRegularPayrollItem({
+    employee,
+    attendanceSummary: { present_days: 30, approved_overtime_minutes: 0 },
+    variables: { approved_overtime_hours: 1.5 },
+  });
+  assert.equal(res.attendance_summary.approved_overtime_minutes, 90);
+  assert.equal(res.overtime_amount, 11250); // 90/60 * 7500
+  assert.equal(res.attendance_summary.overtime_source, 'MANUAL_OVERRIDE');
+});
+
+test('4f. explicit override wins over a non-zero attendance-derived value too', () => {
+  const employee = { id: 'emp-4f', name: 'X', business_unit: 'Redbox', position: 'Cashier', base_salary: 1000000 };
+  const res = calculateRegularPayrollItem({
+    employee,
+    attendanceSummary: { present_days: 30, approved_overtime_minutes: 60 },
+    variables: { approved_overtime_hours: 0.5 },
+  });
+  assert.equal(res.attendance_summary.approved_overtime_minutes, 30);
+  assert.equal(res.overtime_amount, 3750); // 30/60 * 7500
+});
+
+test('4g. an explicit override of exactly 0 is honored as intentional, not treated as "no override"', () => {
+  const employee = { id: 'emp-4g', name: 'X', business_unit: 'Redbox', position: 'Cashier', base_salary: 1000000 };
+  const res = calculateRegularPayrollItem({
+    employee,
+    attendanceSummary: { present_days: 30, approved_overtime_minutes: 60 },
+    variables: { approved_overtime_hours: 0 },
+  });
+  assert.equal(res.attendance_summary.approved_overtime_minutes, 0);
+  assert.equal(res.overtime_amount, 0);
+  assert.equal(res.attendance_summary.overtime_source, 'MANUAL_OVERRIDE');
+});
+
+test('4h. no override at all uses the attendance-derived approved minutes', () => {
+  const employee = { id: 'emp-4h', name: 'X', business_unit: 'Redbox', position: 'Cashier', base_salary: 1000000 };
+  const res = calculateRegularPayrollItem({
+    employee,
+    attendanceSummary: { present_days: 30, approved_overtime_minutes: 45 },
+  });
+  assert.equal(res.attendance_summary.approved_overtime_minutes, 45);
+  assert.equal(res.overtime_amount, 5625); // 45/60 * 7500
+  assert.equal(res.attendance_summary.overtime_source, 'ATTENDANCE');
+});
+
+test('4i. an explicit minutes override (not just hours) also wins and is used exactly', () => {
+  const employee = { id: 'emp-4i', name: 'X', business_unit: 'Redbox', position: 'Cashier', base_salary: 1000000 };
+  const res = calculateRegularPayrollItem({
+    employee,
+    attendanceSummary: { present_days: 30, approved_overtime_minutes: 60 },
+    variables: { approved_overtime_minutes: 17 },
+  });
+  assert.equal(res.attendance_summary.approved_overtime_minutes, 17);
+  assert.equal(res.overtime_amount, 2125);
+});
+
 test('5. Late deduction (occurrence * 15000)', () => {
   const employee = {
     id: 'emp-5',
